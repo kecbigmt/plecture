@@ -116,7 +116,7 @@ func TestValidTag(t *testing.T) {
 		{"a/b", false}, // path separator
 		{"a b", false}, // space
 		{"a:b", false}, // tmux conflict
-		{"日本語", false}, // non-ASCII
+		{"日本語", false}, // multibyte sample: exercises rejection of non-ASCII tags
 	}
 	for _, tt := range tests {
 		if tt.tag == "" {
