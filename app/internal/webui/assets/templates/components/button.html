@@ -1,0 +1,5 @@
+{{- /* button: props = variant (default|destructive|outline|ghost), label, type
+       (default "button"), name, value. buttonClass supplies variant classes.
+       html/template has no slots, so partials take a `dict` of named props
+       (see the dict FuncMap helper in server.go). */ -}}
+{{define "button"}}<button type="{{ or .type "button" }}"{{ if .name }} name="{{ .name }}"{{ end }}{{ if .value }} value="{{ .value }}"{{ end }} class="{{ buttonClass .variant }}">{{ .label }}</button>{{end}}

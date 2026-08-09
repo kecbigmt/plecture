@@ -1,0 +1,11 @@
+{{- /* destroy-warnings: shown in place (not redirected) when a forced teardown
+       finished but downgraded cleanup errors to warnings, so they aren't lost.
+       Arg is a service.DestroyResult. */ -}}
+{{define "destroy-warnings"}}<div role="alert" class="rounded-md border border-yellow-300 bg-yellow-50 p-3 text-body text-yellow-900">
+  <div class="flex items-start gap-2">{{ template "icon-triangle-alert" "size-4 shrink-0 mt-0.5" }}<span>{{ .SessionName }} was destroyed, but with warnings.</span></div>
+  <ul class="mt-2 ml-6 list-disc space-y-1">
+    {{- range .CleanupWarnings }}<li class="break-all">{{ . }}</li>{{ end }}
+    {{- if .WorktreeWarning }}<li class="break-all">{{ .WorktreeWarning }}</li>{{ end }}
+  </ul>
+  <div class="mt-2"><a class="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="/">Back to list</a></div>
+</div>{{end}}

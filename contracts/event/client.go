@@ -1,0 +1,244 @@
+package event
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Client talks to a tws bus server over its HTTP/SSE API. The transport is set
+// by BaseURL + HTTP: NewUDSClient dials a Unix domain socket; tests inject an
+// httptest base URL. The bus speaks session_name only — Slack/GitHub specifics
+// ride opaquely in Event.Metadata.
+type Client struct {
+	BaseURL string // e.g. "http://unix" (UDS) or an httptest URL
+	Token   string // bearer; empty for same-user UDS
+	HTTP    *http.Client
+}
+
+// NewUDSClient builds a Client whose HTTP transport dials the given Unix socket.
+func NewUDSClient(socketPath, token string) *Client {
+	return &Client{
+		BaseURL: "http://unix",
+		Token:   token,
+		HTTP: &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+					var d net.Dialer
+					return d.DialContext(ctx, "unix", socketPath)
+				},
+			},
+		},
+	}
+}
+
+func (c *Client) auth(req *http.Request) {
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+}
+
+// Publish appends an event and returns its assigned id and byte offset.
+func (c *Client) Publish(ctx context.Context, ev Event) (id string, off int64, err error) {
+	body, err := json.Marshal(ev)
+	if err != nil {
+		return "", 0, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/events", bytes.NewReader(body))
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.auth(req)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", 0, fmt.Errorf("publish: %s", resp.Status)
+	}
+	var out struct {
+		ID     string `json:"id"`
+		Offset int64  `json:"offset"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", 0, err
+	}
+	return out.ID, out.Offset, nil
+}
+
+// listResponse is the wire shape of GET /v1/events. The cursor is opaque:
+// clients pass NextCursor back verbatim and never interpret it.
+type listResponse struct {
+	Events     []Event `json:"events"`
+	NextCursor string  `json:"next_cursor"`
+}
+
+// List returns one page of a session's events in the given order, filtered by
+// f, plus the opaque token for the next page (empty when there is none). An
+// empty cursor starts from the head (asc) or the most recent page (desc).
+// session rides as a query param (not a path segment) to avoid the %2F-in-path
+// footgun for names like "owner/repo-1".
+func (c *Client) List(ctx context.Context, session string, order Order, cursor string, f Filter) (evs []Event, nextCursor string, err error) {
+	u := c.BaseURL + "/v1/events?" + listQuery(session, order, cursor, f).Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	c.auth(req)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("list: %s", resp.Status)
+	}
+	var out listResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, "", err
+	}
+	return out.Events, out.NextCursor, nil
+}
+
+// Subscribe streams events for a session from byte offset `since`, calling fn
+// for each. It replays from the log then follows live (one SSE path), and
+// reconnects with Last-Event-ID so reconnects don't drop events. The caller is
+// expected to dedup by Event.ID across reconnects. Returns when ctx is done.
+func (c *Client) Subscribe(ctx context.Context, session string, since int64, f Filter, fn func(Event, int64)) error {
+	backoff := 200 * time.Millisecond
+	cursor := since
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		n, err := c.streamOnce(ctx, session, cursor, f, func(ev Event, off int64) {
+			// off is the SSE `id` = the resume cursor (offset past this record),
+			// so the next reconnect requests since=off (no +1, no re-read).
+			cursor = off
+			fn(ev, off)
+		})
+		_ = n
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err == nil {
+			backoff = 200 * time.Millisecond
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff < 5*time.Second {
+			backoff *= 2
+		}
+	}
+}
+
+// streamOnce opens a single SSE connection and dispatches events until the
+// stream ends or ctx is cancelled. It returns the number of events delivered.
+func (c *Client) streamOnce(ctx context.Context, session string, since int64, f Filter, fn func(Event, int64)) (int, error) {
+	u := c.BaseURL + "/v1/stream?" + filterQuery(session, since, f).Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	if since > 0 {
+		req.Header.Set("Last-Event-ID", strconv.FormatInt(since, 10))
+	}
+	c.auth(req)
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("subscribe: %s", resp.Status)
+	}
+
+	sc := bufio.NewScanner(resp.Body)
+	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	var dataLines []string
+	var lastID int64
+	count := 0
+	for sc.Scan() {
+		line := sc.Text()
+		switch {
+		case line == "": // dispatch on blank line
+			if len(dataLines) == 0 {
+				continue
+			}
+			var ev Event
+			if err := json.Unmarshal([]byte(strings.Join(dataLines, "\n")), &ev); err == nil {
+				fn(ev, lastID)
+				count++
+			}
+			dataLines = dataLines[:0]
+		case strings.HasPrefix(line, "id:"):
+			lastID, _ = strconv.ParseInt(strings.TrimSpace(line[3:]), 10, 64)
+		case strings.HasPrefix(line, "data:"):
+			dataLines = append(dataLines, strings.TrimPrefix(strings.TrimPrefix(line[5:], " "), ""))
+		}
+	}
+	return count, sc.Err()
+}
+
+// addFilterParams encodes the type/source/direction/delivery_mode/limit
+// selection shared by the list and stream query shapes.
+func addFilterParams(q url.Values, f Filter) {
+	if len(f.Types) > 0 {
+		q.Set("types", strings.Join(f.Types, ","))
+	}
+	if len(f.Sources) > 0 {
+		q.Set("source", strings.Join(f.Sources, ","))
+	}
+	if f.Direction != "" {
+		q.Set("direction", string(f.Direction))
+	}
+	if f.DeliveryMode != "" {
+		q.Set("delivery_mode", string(f.DeliveryMode))
+	}
+	if f.Limit > 0 {
+		q.Set("limit", strconv.Itoa(f.Limit))
+	}
+}
+
+// listQuery encodes session + order + opaque cursor + filter for GET /v1/events.
+// session rides as a query param (not a path segment) to avoid the %2F-in-path
+// footgun for names like "owner/repo-1".
+func listQuery(session string, order Order, cursor string, f Filter) url.Values {
+	q := url.Values{}
+	q.Set("session", session)
+	if order != "" && order != OrderAsc {
+		q.Set("order", string(order))
+	}
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	addFilterParams(q, f)
+	return q
+}
+
+// filterQuery encodes session + byte offset `since` + filter for the streaming
+// path (GET /v1/stream), whose replay cursor rides as the SSE id frame /
+// Last-Event-ID. session rides as a query param for the same reason as listQuery.
+func filterQuery(session string, since int64, f Filter) url.Values {
+	q := url.Values{}
+	q.Set("session", session)
+	if since > 0 {
+		q.Set("since", strconv.FormatInt(since, 10))
+	}
+	addFilterParams(q, f)
+	return q
+}

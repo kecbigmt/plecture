@@ -1,0 +1,208 @@
+{{- /* detail-pane: the right-pane content for one session. Arg is a
+       service.StatusResult (identity/runtime/work/flow layers). Rendered
+       standalone for htmx card-click swaps and inlined into the shell for
+       full-page loads; no <html>/<body> wrapper, so it inherits the shell
+       body's hx-headers (CSRF). */ -}}
+{{define "detail-pane"}}<div class="space-y-4" data-detail>
+
+  {{- /* Mobile shows the list and the detail as separate screens (see the
+         max-width rule in input.css keyed off data-detail); this back link
+         returns to the list. hx-select pulls the empty pane from "/" so it's a
+         no-reload swap, with the href as the no-JS fallback. Hidden on md+. */}}
+  <a href="/" hx-get="/" hx-select="#detail-pane" hx-target="#detail-pane" hx-swap="outerHTML" hx-push-url="true" class="inline-flex items-center gap-1 rounded-sm text-label text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden">{{ template "icon-arrow-left" "size-4" }}List</a>
+
+  {{- /* Header: name + status on the left, lifecycle actions on the right.
+         up/down run run-scoped tasks; destroy opens the confirm dialog. All
+         post the session name in the body (the {name...} route can't carry an
+         action suffix). Errors swap into #action-error just below. */}}
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex min-w-0 items-center gap-2">
+      <h2 class="min-w-0 truncate text-heading font-semibold break-all">{{ .Identity.SessionName }}</h2>
+      {{ template "badge" .Runtime.Run }}
+      {{- if .Runtime.Health }}{{ template "badge" .Runtime.Health }}{{ end }}
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <form hx-post="/sessions/up" hx-target="#action-error" hx-swap="innerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="name" value="{{ .Identity.SessionName }}">
+        {{ template "button" (dict "type" "submit" "label" "Up") }}
+      </form>
+      <form hx-post="/sessions/down" hx-target="#action-error" hx-swap="innerHTML" hx-disabled-elt="find button">
+        <input type="hidden" name="name" value="{{ .Identity.SessionName }}">
+        {{ template "button" (dict "type" "submit" "variant" "outline" "label" "Down") }}
+      </form>
+      {{- /* Destroy is irreversible, so it opens a native <dialog> first. The
+             browser supplies focus trap / Esc; showModal needs the one-line
+             handler. up/down show progress by disabling their button mid-request
+             (hx-disabled-elt) — no separate spinner, which as a sibling here
+             would never match htmx's descendant rule and only reserve space. */}}
+      <button type="button" onclick="document.getElementById('destroy-dialog').showModal()" class="{{ buttonClass "destructive" }}">Destroy…</button>
+    </div>
+  </div>
+  <div id="action-error" role="alert" aria-live="polite" class="empty:hidden"></div>
+
+  {{- /* Clicking the backdrop closes: the click lands on the <dialog> itself
+         (content clicks hit children), so target===this means the backdrop.
+         Success redirects away; warnings/errors swap into #action-error, so
+         close after the request to reveal them. */}}
+  <dialog id="destroy-dialog" aria-labelledby="destroy-dialog-title" onclick="if(event.target===this)this.close()" class="w-full max-w-md rounded-lg border border-border bg-card p-0 text-card-foreground shadow-lg backdrop:bg-foreground/50">
+    <form hx-post="/sessions/destroy" hx-target="#action-error" hx-swap="innerHTML" hx-disabled-elt="find button" hx-on::after-request="this.closest('dialog').close()" class="grid gap-4 p-6">
+      <div class="grid gap-1.5">
+        <h2 id="destroy-dialog-title" class="text-heading font-semibold text-foreground">Destroy this session?</h2>
+        <p class="text-body text-muted-foreground">Runs task cleanup and removes the worktree and state entry. This cannot be undone.</p>
+      </div>
+      <input type="hidden" name="name" value="{{ .Identity.SessionName }}">
+      <label class="flex items-start gap-2 text-body"><input type="checkbox" name="force" value="1" class="mt-1"><span>Force — demote cleanup errors to warnings and remove a dirty worktree too, continuing teardown</span></label>
+      <label class="flex items-start gap-2 text-body"><input type="checkbox" name="delete_branch" value="1" class="mt-1"><span>Also delete the local branch</span></label>
+      <div class="flex items-center justify-end gap-2">
+        <span class="htmx-indicator mr-auto text-label text-muted-foreground">Running…</span>
+        <button type="button" onclick="this.closest('dialog').close()" class="{{ buttonClass "outline" }}">Cancel</button>
+        <button type="submit" class="{{ buttonClass "destructive" }}">Destroy</button>
+      </div>
+    </form>
+  </dialog>
+
+  <section class="rounded-lg border border-border bg-card p-3 text-card-foreground">
+    <h3 class="mb-2 text-label font-semibold text-muted-foreground">Identity</h3>
+    <dl class="grid grid-cols-1 gap-x-4 gap-y-1 text-body sm:grid-cols-[8rem_1fr]">
+      {{- if .Identity.Title }}<dt class="text-muted-foreground">title</dt><dd class="break-all">{{ .Identity.Title }}</dd>{{ end }}
+      {{- /* Resource ids are arbitrary strings; only http(s) ones are navigable.
+             A resolver-less id (e.g. "my-experiment") or a non-web scheme would
+             otherwise render as a broken/sanitized link, so show plain text. */}}
+      <dt class="text-muted-foreground">resource</dt>
+      <dd class="break-all">{{ if isWebURL .Identity.ResourceID }}<a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ .Identity.ResourceID }}">{{ .Identity.ResourceID }}</a>{{ else }}{{ .Identity.ResourceID }}{{ end }}</dd>
+      {{- if .Identity.Workflow }}<dt class="text-muted-foreground">workflow</dt><dd class="break-all">{{ .Identity.Workflow }}</dd>{{ end }}
+      {{- if .Identity.Tag }}<dt class="text-muted-foreground">tag</dt><dd class="break-all">{{ .Identity.Tag }}</dd>{{ end }}
+      {{- if .Identity.Branch }}<dt class="text-muted-foreground">branch</dt><dd class="break-all">{{ .Identity.Branch }}</dd>{{ end }}
+      <dt class="text-muted-foreground">created</dt><dd>{{ .Identity.CreatedAt.Format "2006-01-02 15:04" }}</dd>
+      {{- /* Session tree projection: parent/children link across the tree, and
+             the subtree link below opens its merged timeline. */}}
+      {{- if .Identity.ParentSession }}
+      <dt class="text-muted-foreground">parent</dt>
+      <dd class="break-all"><a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ sessionPath .Identity.ParentSession }}">{{ .Identity.ParentSession }}</a></dd>
+      {{- end }}
+      {{- if .Identity.Children }}
+      <dt class="text-muted-foreground">children</dt>
+      <dd class="break-all">{{ range $i, $c := .Identity.Children }}{{ if $i }}, {{ end }}<a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ sessionPath $c }}">{{ $c }}</a>{{ end }}</dd>
+      {{- end }}
+    </dl>
+  </section>
+
+  <section class="rounded-lg border border-border bg-card p-3 text-card-foreground">
+    <h3 class="mb-2 text-label font-semibold text-muted-foreground">Runtime</h3>
+    <dl class="grid grid-cols-1 gap-x-4 gap-y-1 text-body sm:grid-cols-[8rem_1fr]">
+      <dt class="text-muted-foreground">worktree</dt>
+      <dd class="break-all">{{ .Runtime.WorktreePath }}{{ if not .Runtime.WorktreeExists }} <span class="text-destructive">(missing)</span>{{ end }}</dd>
+      {{- if .Runtime.Conversation }}
+      <dt class="text-muted-foreground">conversation</dt>
+      <dd class="break-all">{{ .Runtime.Conversation.Source }}{{ if .Runtime.Conversation.URL }} — <a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ .Runtime.Conversation.URL }}">{{ .Runtime.Conversation.URL }}</a>{{ end }}</dd>
+      {{- end }}
+      {{- if .Runtime.Message }}
+      <dt class="text-muted-foreground">message</dt>
+      <dd class="break-all">{{ .Runtime.Message.Text }} <span class="text-muted-foreground">({{ .Runtime.Message.UpdatedAt.Format "2006-01-02 15:04" }})</span></dd>
+      {{- end }}
+    </dl>
+  </section>
+
+  {{- /* Work: dynamic instances and done_when-bearing static tasks, reusing the
+         service projection (.Work) so the gate state shown matches `tws status`
+         — the web never re-evaluates done_when. Outputs render generically
+         (dynamic and mutable alike); chains show the same dry-run plan
+         `tws status`'s CLI reports. */}}
+  {{- if .Work }}
+  <section class="rounded-lg border border-border bg-card p-3 text-card-foreground" aria-labelledby="work-h">
+    <h3 id="work-h" class="mb-2 text-label font-semibold text-muted-foreground">Work</h3>
+    <ul role="list" class="space-y-3">
+      {{- range .Work }}
+      <li class="rounded-md border border-border p-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="break-all font-medium">{{ taskName .Name .Instance }}</span>
+          {{- if .Status }}<span class="text-label text-muted-foreground">{{ .Status }}</span>{{ end }}
+          {{- if .DoneWhen }}{{ template "done-badge" .DoneWhen }}{{ end }}
+        </div>
+        {{- if .Outputs }}
+        <dl class="mt-1.5 grid grid-cols-1 gap-x-4 gap-y-0.5 text-label text-muted-foreground sm:grid-cols-[8rem_1fr]">
+          {{- range $k, $v := .Outputs }}
+          <dt class="break-all">{{ $k }}</dt><dd class="break-all">{{ $v }}</dd>
+          {{- end }}
+        </dl>
+        {{- end }}
+        {{- if and .DoneWhen .DoneWhen.Leaves }}
+        <ul role="list" class="mt-2 space-y-1.5 border-l border-border pl-3">
+          {{- range .DoneWhen.Leaves }}
+          <li>{{ template "done-leaf" . }}</li>
+          {{- end }}
+        </ul>
+        {{- end }}
+        {{- if .Chains }}
+        <ul role="list" class="mt-1.5 space-y-0.5 text-label text-muted-foreground">
+          {{- range .Chains }}
+          <li>chain {{ .ChainID }}: {{ if .AlreadyActive }}already-active {{ .TargetSession }}{{ else if .Fired }}fired{{ else }}blocked:{{ .BlockedReason }}{{ end }}</li>
+          {{- end }}
+        </ul>
+        {{- end }}
+      </li>
+      {{- end }}
+    </ul>
+  </section>
+  {{- end }}
+
+  <section class="rounded-lg border border-border bg-card p-3 text-card-foreground" aria-labelledby="events-h">
+    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <h3 id="events-h" class="text-label font-semibold text-muted-foreground">Events</h3>
+      {{- /* The canonical cross-session view: this session's tree (root + descendants)
+             merged in time order. Always offered — a leaf's subtree is itself. */}}
+      <a class="rounded-sm text-label text-muted-foreground underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ subtreePath .Identity.SessionName }}">subtree timeline →</a>
+    </div>
+
+    {{- /* Emit form: publishes a user.emit. The web credential is limited to
+           user.* server-side. The appended event returns to the timeline below via
+           the bus tailer (SSE), so there is no manual refresh; on success reset
+           the form. */}}
+    <form hx-post="/events" hx-target="#emit-error" hx-swap="innerHTML" hx-disabled-elt="find button" hx-on::after-request="if(event.detail.successful)this.reset()" class="mb-3 grid gap-2">
+      <input type="hidden" name="session" value="{{ .Identity.SessionName }}">
+      <input type="hidden" name="type" value="user.emit">
+      <textarea name="body" rows="2" required placeholder="Note / message" class="flex w-full rounded-md border border-input bg-background px-3 py-2 text-body text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"></textarea>
+      <div class="flex flex-wrap items-center gap-3">
+        {{ template "button" (dict "type" "submit" "variant" "outline" "label" "Send") }}
+        <span class="htmx-indicator text-label text-muted-foreground">Sending…</span>
+      </div>
+      <div id="emit-error" role="alert" aria-live="polite" class="empty:hidden"></div>
+    </form>
+
+    {{- /* Live timeline. The hidden #event-stream carries the SSE URL; the shell
+           script (list.html) opens an EventSource to it on detail-pane swaps and
+           prepends each rendered <li>. The bus stream replays the recent tail on
+           connect, so the list fills itself — no htmx polling. */}}
+    {{- /* Don't queryEscape here: html/template already URL-escapes the value
+           in this attribute's query context, so pre-escaping would double-encode
+           ("/"→%2F→%252F) and the SSE endpoint would query a non-existent
+           session (empty timeline). Pass the raw name and let the template
+           escape it exactly once. */ -}}
+    <div id="event-stream" data-url="/events/stream?session={{ .Identity.SessionName }}" hidden></div>
+    <ul id="event-list" role="list" class="space-y-2">
+      <li data-placeholder class="text-body text-muted-foreground">Waiting for events…</li>
+    </ul>
+  </section>
+
+  <section class="rounded-lg border border-border bg-card p-3 text-card-foreground">
+    <h3 class="mb-2 flex items-center gap-1.5 text-label font-semibold text-muted-foreground">{{ template "icon-terminal" "size-4" }}Attach</h3>
+    {{- /* attach is a TTY handoff: not supported over the web, shown as a copy-paste hint only. */}}
+    <code class="block break-all rounded-md bg-muted p-2 font-mono text-label">{{ .Runtime.AttachCommand }}</code>
+  </section>
+
+</div>{{end}}
+
+{{- /* detail-empty: placeholder shown when no session is selected. */ -}}
+{{define "detail-empty"}}<div class="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border p-12 text-muted-foreground">{{ template "icon-inbox" "size-8" }}<p class="text-body">Select a session</p></div>{{end}}
+
+{{- /* detail-notfound-pane: shown in the right pane when a session is missing
+       (stale link / destroyed). Arg is the requested name. */ -}}
+{{define "detail-notfound-pane"}}<div class="space-y-3" data-detail>
+  <a href="/" hx-get="/" hx-select="#detail-pane" hx-target="#detail-pane" hx-swap="outerHTML" hx-push-url="true" class="inline-flex items-center gap-1 rounded-sm text-label text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden">{{ template "icon-arrow-left" "size-4" }}List</a>
+  <div role="alert" class="flex items-start gap-2 rounded-md border border-yellow-300 bg-yellow-50 p-3 text-body text-yellow-900">
+    {{ template "icon-triangle-alert" "size-4 shrink-0 mt-0.5" }}
+    <div>Session not found: <span class="font-mono break-all">{{ . }}</span>
+      <div class="mt-1 text-muted-foreground">Session not found.<a class="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="/">Back to list</a></div>
+    </div>
+  </div>
+</div>{{end}}

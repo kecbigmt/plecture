@@ -1,0 +1,26 @@
+{{- /* card: a single session row. Arg is a cardView (a service.ListEntry plus
+       .Active). Depth via border + card surface (no shadow, per DESIGN.md). The
+       open row is marked with aria-current on its link; the row's ring + accent
+       fill is driven off that (has-[...]) so a client-side instant toggle and
+       the server's render agree on one source of truth. data-status is a stable
+       hook for tests/inspection. */ -}}
+{{- /* The row stacks vertically (name/title, then meta) because it lives in the
+       narrow master column — a side-by-side split would crush long names into
+       one-char-per-line. */ -}}
+{{define "card"}}<li data-run="{{ .Run }}" data-health="{{ .Health }}" class="rounded-lg border border-border bg-card p-3 text-card-foreground has-[[aria-current=page]]:border-ring has-[[aria-current=page]]:bg-accent">
+  <div class="min-w-0">
+    {{- /* Clicking opens the session in the right pane (htmx swap + push-url);
+           the href is the same URL so it deep-links and degrades without JS.
+           Names contain "/", so sessionPath path-escapes each segment. */}}
+    <a href="{{ sessionPath .SessionName }}" hx-get="{{ sessionPath .SessionName }}" hx-target="#detail-pane" hx-swap="innerHTML" hx-push-url="true" data-session="{{ .SessionName }}" {{ if .Active }}aria-current="page" {{ end }}class="font-medium break-all rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{{ .SessionName }}</a>
+    {{- if .Title }}<div class="truncate text-body text-muted-foreground">{{ .Title }}</div>{{ end }}
+    {{- if .Message }}<div class="truncate text-label text-muted-foreground">{{ .Message.Text }}</div>{{ end }}
+  </div>
+  <div class="mt-2 flex flex-wrap items-center gap-2">
+    {{ template "badge" .Run }}
+    {{- if .Health }}{{ template "badge" .Health }}{{ end }}
+    {{- if .Branch }}<span class="inline-flex items-center gap-1 text-label text-muted-foreground">{{ template "icon-git-branch" "size-3" }}{{ .Branch }}</span>{{ end }}
+    {{- if .GitHubStatus }}<span class="text-label text-muted-foreground">{{ .GitHubStatus }}</span>{{ end }}
+    {{- with gateSummary .Tasks }}{{ template "gate-badge" . }}{{ end }}
+  </div>
+</li>{{end}}

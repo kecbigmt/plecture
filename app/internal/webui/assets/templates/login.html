@@ -1,0 +1,24 @@
+{{- /* login: token entry, shown only when auth_token is configured. Arg is a
+       bool — true when re-rendered after a wrong token. Plain form (no htmx /
+       CSRF token needed): it is the pre-auth entry point. */ -}}
+{{define "login"}}<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sign in — tws</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="bg-background text-foreground">
+<main class="mx-auto max-w-sm p-4">
+  <h1 class="mb-4 text-heading font-semibold">tws sign in</h1>
+  {{- if . }}
+  <div role="alert" class="mb-3 flex items-center gap-2 rounded-md border border-destructive/50 bg-card p-3 text-body text-destructive">{{ template "icon-circle-alert" "size-4 shrink-0" }}<span>The token is incorrect.</span></div>
+  {{- end }}
+  <form method="post" action="/login" class="grid gap-3">
+    {{ template "input" (dict "id" "login-token" "name" "token" "type" "password" "label" "Auth token" "required" true) }}
+    {{ template "button" (dict "type" "submit" "label" "Sign in") }}
+  </form>
+</main>
+</body>
+</html>{{end}}

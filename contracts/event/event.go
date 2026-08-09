@@ -1,0 +1,211 @@
+// Package event defines the shared contract types for the tws event bus:
+// a per-session, append-only, durable pub/sub log.
+//
+// The bus core (eventlog, bus server) treats SessionName and Type as opaque
+// strings — it does not interpret provider-specific structure (owner/repo,
+// Slack thread ids, etc.). Producers own their Type namespace (github.*,
+// slack.message, claude.reply, ...); the core only routes and filters.
+//
+// This module is zero-dependency (stdlib only) so app and plugins
+// can all import it, mirroring contracts/{state,hook,channel-protocol}.
+package event
+
+import (
+	"slices"
+	"strings"
+	"time"
+)
+
+// Direction is the flow of an event relative to the tws session.
+type Direction string
+
+const (
+	Inbound  Direction = "inbound"  // toward the agent (e.g. a Slack user message)
+	Outbound Direction = "outbound" // away from the agent (e.g. a Claude reply, a Slack post)
+	Internal Direction = "internal" // neither in nor out (e.g. a GitHub sync change, lifecycle)
+)
+
+// Source identifies who produced the event. These are conventions for
+// producers; the core does not interpret them.
+const (
+	SourceTWS    = "tws"
+	SourceGitHub = "github"
+	SourceSlack  = "slack"
+	SourceClaude = "claude"
+	SourceWeb    = "web"
+	SourceCLI    = "cli"
+	SourceMCP    = "mcp"
+	// SourceTick marks every same-session event tws tick itself publishes
+	// (review_required, kick's user.emit, escalated). The tick reactor
+	// excludes anything carrying this source from its trigger set by
+	// provenance rather than by enumerating types, so a kick's user.emit —
+	// which otherwise looks like an ordinary user.emit — cannot retrigger
+	// tick under a broad declared pattern (e.g. "*" or "user.emit").
+	SourceTick = "tws.tick"
+)
+
+// Type prefixes / well-known types. Type is a free-form dotted topic; these are
+// the namespaces tws itself produces. Subscribers filter with globs ("github.*").
+const (
+	TypeLifecyclePrefix = "lifecycle." // lifecycle.created|up|down|destroyed
+	TypeGitHubPrefix    = "github."    // github.<change type>
+	TypeSlackMessage    = "slack.message"
+	TypeClaudeReply     = "claude.reply"
+	TypeClaudePermReq   = "claude.permission_request"
+	TypePermissionReply = "permission.reply"
+	TypeUserNote        = "user.note"
+	TypeUserEmit        = "user.emit"
+	// TypeInstruction is a task instruction appended to a session's stream for
+	// delivery to its runtime via a workflow channel (not sent from TaskSetup).
+	TypeInstruction = "tws.instruction"
+	// TypeChannelError records a channel worker exhausting its retries. It rides
+	// the log for observability but is never itself a channel `include` target,
+	// so a failed delivery cannot loop.
+	TypeChannelError = "tws.channel.error"
+	// TypeTerminalPrefix namespaces the cross-session terminal signals defined
+	// by the terminal-event-propagation ADR: done, escalate, dead. A terminal
+	// event is pushed one hop into the *receiving* session's own log (D1-D3),
+	// so its SessionName is the receiver, not the emitter — MetaOriginSession
+	// names the emitter.
+	TypeTerminalPrefix   = "tws.terminal."
+	TypeTerminalDone     = "tws.terminal.done"
+	TypeTerminalEscalate = "tws.terminal.escalate"
+	TypeTerminalDead     = "tws.terminal.dead"
+	// TypeTickReviewRequired and TypeTickEscalated are tws tick's own
+	// same-session progress markers (internal/service/tick.go). Neither is a
+	// terminal event nor an external-resource signal; both are excluded from
+	// the tick reactor's trigger set so a declared `[tick].on` pattern broad
+	// enough to match them (e.g. "*") cannot make tick re-trigger itself.
+	TypeTickReviewRequired = "tws.tick.review_required"
+	TypeTickEscalated      = "tws.tick.escalated"
+	// TypeJudgeRecorded is a same-session builtin signal appended to the
+	// *target* work session's log (not the reviewer's) whenever a judge
+	// verdict is recorded, independent of any `[tick]` declaration — the tick
+	// reactor always reacts to it by ticking that target session.
+	TypeJudgeRecorded = "tws.judge.recorded"
+)
+
+// Metadata keys stamped on a pushed terminal event (TypeTerminalDone /
+// TypeTerminalEscalate / TypeTerminalDead).
+const (
+	// MetaOriginSession names the session the terminal fact is about (the
+	// event's own SessionName is the receiving parent/ancestor instead).
+	MetaOriginSession = "origin_session"
+	// MetaRelation is the receiver's tree relation to the origin, stamped at
+	// push time (mirrors DoneWhenJudge.Relation's record-time-fact pattern).
+	MetaRelation = "relation"
+	// MetaDedupKey is the idempotency key a repeated push checks against the
+	// target's recent terminal events before appending (P1).
+	MetaDedupKey = "dedup_key"
+	// MetaInstance names the task instance a done/escalate push is about.
+	MetaInstance = "instance"
+)
+
+// DeliveryMode distinguishes a pushed terminal signal from an ordinary
+// pull-only event (P2). The zero value behaves as pull, so existing events
+// and Filter callers with no opinion on delivery_mode are unaffected.
+type DeliveryMode string
+
+const (
+	DeliveryModePush DeliveryMode = "push"
+	DeliveryModePull DeliveryMode = "pull"
+)
+
+// Normalize returns m with the zero value mapped to DeliveryModePull, so
+// comparisons never need to treat "" and "pull" as two different states.
+func (m DeliveryMode) Normalize() DeliveryMode {
+	if m == "" {
+		return DeliveryModePull
+	}
+	return m
+}
+
+// Event is both the durable log record and the pub/sub message. The replay
+// cursor is the byte offset of the record's line in the log file, carried
+// out-of-band (SSE id frame / List offsets) — never a field here. ID is the
+// identity/dedup key, not the cursor.
+type Event struct {
+	ID          string            `json:"id"`           // ULID: global uniqueness + dedup
+	SessionName string            `json:"session_name"` // opaque session id; the log partition + routing key
+	Time        time.Time         `json:"time"`         // RFC3339Nano
+	Type        string            `json:"type"`         // free-form dotted topic
+	Source      string            `json:"source"`       // tws|github|slack|claude|web|cli|mcp
+	Direction   Direction         `json:"direction"`
+	Summary     string            `json:"summary"`        // one-line render for timelines / Slack
+	Body        string            `json:"body,omitempty"` // full text payload
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	// DeliveryMode marks a terminal event pushed one hop to a parent/ancestor
+	// (P2). Empty means pull: an ordinary progress event, read via
+	// subtree/stream query or subscribe, never pushed.
+	DeliveryMode DeliveryMode `json:"delivery_mode,omitempty"`
+}
+
+// Filter selects events for listing or subscription. A zero Filter matches
+// everything (Limit is applied by the caller, not by Match).
+type Filter struct {
+	Types        []string     // glob patterns; empty = any
+	Sources      []string     // exact; empty = any
+	Direction    Direction    // exact; empty = any
+	DeliveryMode DeliveryMode // exact; empty = any
+	Limit        int          // 0 = no limit (caller-applied)
+}
+
+// Match reports whether ev satisfies the filter's Types/Sources/Direction/DeliveryMode.
+func (f Filter) Match(ev Event) bool {
+	if len(f.Types) > 0 {
+		ok := false
+		for _, p := range f.Types {
+			if MatchType(p, ev.Type) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	if len(f.Sources) > 0 && !slices.Contains(f.Sources, ev.Source) {
+		return false
+	}
+	if f.Direction != "" && ev.Direction != f.Direction {
+		return false
+	}
+	if f.DeliveryMode != "" && ev.DeliveryMode.Normalize() != f.DeliveryMode.Normalize() {
+		return false
+	}
+	return true
+}
+
+// MatchType reports whether typ matches pattern. Pattern is either "*" (any),
+// an exact type, or a trailing ".*" prefix glob ("github.*" matches
+// "github.ci_status" and "github." but not "github").
+func MatchType(pattern, typ string) bool {
+	if pattern == "*" || pattern == typ {
+		return true
+	}
+	if strings.HasSuffix(pattern, ".*") {
+		return strings.HasPrefix(typ, pattern[:len(pattern)-1])
+	}
+	return false
+}
+
+// SplitCSV splits a comma-separated Filter.Types/Sources argument into
+// trimmed, non-empty elements, so CLI, MCP, and the bus HTTP face agree on
+// how "a, b" and " a,,b " parse. A blank input returns nil, matching
+// Filter's "empty = any" convention.
+func SplitCSV(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := parts[:0]
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
