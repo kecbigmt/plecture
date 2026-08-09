@@ -28,7 +28,7 @@ func TestStore_PutAndGet(t *testing.T) {
 		WorktreePath: "/tmp/worktrees/github.com/owner/repo/issue-123",
 		Conversation: &domain.Conversation{
 			Source: "Slack",
-			URL:    "https://kecyhq.slack.com/archives/C01ABCDEF/p1234567890123456",
+			URL:    "https://exampleorg.slack.com/archives/C01ABCDEF/p1234567890123456",
 			Metadata: map[string]string{
 				"thread_ts":  "1234567890.123456",
 				"channel_id": "C01ABCDEF",
@@ -56,7 +56,7 @@ func TestStore_PutAndGet(t *testing.T) {
 	if got.Conversation == nil || got.Conversation.Source != "Slack" {
 		t.Errorf("Conversation not persisted correctly")
 	}
-	if got.Conversation.URL != "https://kecyhq.slack.com/archives/C01ABCDEF/p1234567890123456" {
+	if got.Conversation.URL != "https://exampleorg.slack.com/archives/C01ABCDEF/p1234567890123456" {
 		t.Errorf("Conversation URL = %q", got.Conversation.URL)
 	}
 }

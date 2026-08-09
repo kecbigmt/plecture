@@ -277,7 +277,7 @@ func TestSetConversation(t *testing.T) {
 
 	conv := &domain.Conversation{
 		Source:   "Slack",
-		URL:      "https://kecyhq.slack.com/archives/C123/p456",
+		URL:      "https://exampleorg.slack.com/archives/C123/p456",
 		Metadata: map[string]string{"thread_ts": "456", "channel_id": "C123"},
 	}
 	err := SetConversation(nil, store, "https://github.com/owner/repo/issues/1", conv)
@@ -292,8 +292,8 @@ func TestSetConversation(t *testing.T) {
 	if got.Conversation.Source != "Slack" {
 		t.Errorf("Source = %q, want %q", got.Conversation.Source, "Slack")
 	}
-	if got.Conversation.URL != "https://kecyhq.slack.com/archives/C123/p456" {
-		t.Errorf("URL = %q, want %q", got.Conversation.URL, "https://kecyhq.slack.com/archives/C123/p456")
+	if got.Conversation.URL != "https://exampleorg.slack.com/archives/C123/p456" {
+		t.Errorf("URL = %q, want %q", got.Conversation.URL, "https://exampleorg.slack.com/archives/C123/p456")
 	}
 	if got.Conversation.Metadata["thread_ts"] != "456" {
 		t.Errorf("Metadata[thread_ts] = %q, want %q", got.Conversation.Metadata["thread_ts"], "456")
@@ -326,11 +326,11 @@ func TestSetConversation_SessionNotFound(t *testing.T) {
 func TestSetConversation_SessionGuardBlocksCrossOwner(t *testing.T) {
 	store := testStore(t)
 	now := time.Now()
-	store.Put(&domain.Session{Name: "matsuolab/repo-26", CreatedAt: now, UpdatedAt: now})
+	store.Put(&domain.Session{Name: "exampleorg/repo-26", CreatedAt: now, UpdatedAt: now})
 	cfg := &config.Config{SessionGuard: "^acme/"}
 
 	conv := &domain.Conversation{Source: "Slack", URL: "https://example.com"}
-	err := SetConversation(cfg, store, "matsuolab/repo-26", conv)
+	err := SetConversation(cfg, store, "exampleorg/repo-26", conv)
 	if err == nil {
 		t.Fatal("expected session-guard rejection for cross-owner conversation write")
 	}
@@ -338,7 +338,7 @@ func TestSetConversation_SessionGuardBlocksCrossOwner(t *testing.T) {
 	if !ok || svcErr.Code != ErrRepoNotAllowed {
 		t.Errorf("want ErrRepoNotAllowed, got %v", err)
 	}
-	if store.Get("matsuolab/repo-26").Conversation != nil {
+	if store.Get("exampleorg/repo-26").Conversation != nil {
 		t.Error("blocked SetConversation must not mutate the session")
 	}
 }
@@ -402,10 +402,10 @@ func TestSetMessage_SessionNotFound(t *testing.T) {
 func TestSetMessage_SessionGuardBlocksCrossOwner(t *testing.T) {
 	store := testStore(t)
 	now := time.Now()
-	store.Put(&domain.Session{Name: "matsuolab/repo-26", CreatedAt: now, UpdatedAt: now})
+	store.Put(&domain.Session{Name: "exampleorg/repo-26", CreatedAt: now, UpdatedAt: now})
 	cfg := &config.Config{SessionGuard: "^acme/"}
 
-	err := SetMessage(cfg, store, "matsuolab/repo-26", "working")
+	err := SetMessage(cfg, store, "exampleorg/repo-26", "working")
 	if err == nil {
 		t.Fatal("expected session-guard rejection for cross-owner message write")
 	}
@@ -413,7 +413,7 @@ func TestSetMessage_SessionGuardBlocksCrossOwner(t *testing.T) {
 	if !ok || svcErr.Code != ErrRepoNotAllowed {
 		t.Errorf("want ErrRepoNotAllowed, got %v", err)
 	}
-	if store.Get("matsuolab/repo-26").Message != nil {
+	if store.Get("exampleorg/repo-26").Message != nil {
 		t.Error("blocked SetMessage must not mutate the session")
 	}
 }

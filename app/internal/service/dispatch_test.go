@@ -273,14 +273,14 @@ func TestCreate_SessionGuardBlocksCrossOwner(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	// The orchestrator pane exports this guard; it matches resolved names like
-	// "acme/repo-1" but not "matsuolab/repo-26".
+	// "acme/repo-1" but not "exampleorg/repo-26".
 	cfg.SessionGuard = "^acme/"
 	writeSetupWorkflow(t, cfg, "gh", `
 setup = "echo '{\"workdir\":\"/tmp/x\"}'"
 `+githubResolver)
 
-	// acme's orchestrator must not be able to dispatch matsuolab work.
-	_, err := Create(cfg, store, CreateParams{URL: "https://github.com/matsuolab/repo/issues/26"})
+	// acme's orchestrator must not be able to dispatch exampleorg work.
+	_, err := Create(cfg, store, CreateParams{URL: "https://github.com/exampleorg/repo/issues/26"})
 	if err == nil {
 		t.Fatal("expected session-guard rejection for cross-owner dispatch")
 	}

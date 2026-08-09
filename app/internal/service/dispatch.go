@@ -31,7 +31,7 @@ func validateSessionName(name string) *Error {
 // checkSessionGuard enforces the per-session SessionGuard (TWS_SESSION_GUARD)
 // against the resolved session name, before any worktree/setup side task.
 // The orchestrator's pane exports a guard like "^acme/" so a cross-owner
-// dispatch (which resolves to "matsuolab/...") is rejected server-side rather
+// dispatch (which resolves to "exampleorg/...") is rejected server-side rather
 // than relying on the loop-spec prompt. tws core never parses the owner — the
 // guard is an opaque regex the provider supplied.
 func checkSessionGuard(cfg *config.Config, sessionName string) *Error {

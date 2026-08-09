@@ -104,7 +104,7 @@ func TestIsURL(t *testing.T) {
 		{"https://github.com/org/repo/pull/1", true},
 		{"https://not-github.com/org/repo", true},
 		{"owner/repo-123", false},
-		{"matsuolab/quri-336", false},
+		{"exampleorg/quri-336", false},
 		{"not-a-url", false},
 	}
 	for _, tt := range tests {
@@ -149,8 +149,8 @@ func TestSessionNameWithTag(t *testing.T) {
 		tag       string
 		want      string
 	}{
-		{"matsuolab/quri", 336, "review", "matsuolab/quri-336+review"},
-		{"matsuolab/quri", 336, "debug", "matsuolab/quri-336+debug"},
+		{"exampleorg/quri", 336, "review", "exampleorg/quri-336+review"},
+		{"exampleorg/quri", 336, "debug", "exampleorg/quri-336+debug"},
 		{"acme/widgets", 79, "test", "acme/widgets-79+test"},
 	}
 	for _, tt := range tests {

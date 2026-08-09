@@ -109,7 +109,7 @@ func TestEventPublishSessionGuardBlocksCrossOwner(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	cfg := &config.Config{SessionGuard: "^acme/"}
 
-	_, err := EventPublish(cfg, store, "matsuolab/repo-26", EventPublishParams{
+	_, err := EventPublish(cfg, store, "exampleorg/repo-26", EventPublishParams{
 		Type: event.TypeUserEmit, Summary: "inject",
 	})
 	var svcErr *Error
@@ -117,7 +117,7 @@ func TestEventPublishSessionGuardBlocksCrossOwner(t *testing.T) {
 		t.Fatalf("want ErrRepoNotAllowed for cross-owner publish, got %v", err)
 	}
 	// The rejected publish must not have touched the target's log.
-	evs, _, _, lerr := EventList(cfg, store, "matsuolab/repo-26", 0, event.Filter{})
+	evs, _, _, lerr := EventList(cfg, store, "exampleorg/repo-26", 0, event.Filter{})
 	if lerr != nil || len(evs) != 0 {
 		t.Fatalf("rejected publish leaked into the log: err=%v evs=%+v", lerr, evs)
 	}
@@ -141,7 +141,7 @@ func TestEventPublishNoGuardAllowsCrossOwner(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	cfg := &config.Config{} // SessionGuard == ""
 
-	if _, err := EventPublish(cfg, store, "matsuolab/repo-26", EventPublishParams{
+	if _, err := EventPublish(cfg, store, "exampleorg/repo-26", EventPublishParams{
 		Type: event.TypeUserNote, Summary: "ok",
 	}); err != nil {
 		t.Fatalf("an unset guard must allow all publishes: %v", err)

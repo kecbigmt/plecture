@@ -35,7 +35,7 @@ var setConversationCmd = &cobra.Command{
 Example:
   tws state set-conversation owner/repo-1 \
     --source Slack \
-    --url "https://kecyhq.slack.com/archives/C.../p..." \
+    --url "https://exampleorg.slack.com/archives/C.../p..." \
     --meta thread_ts=1234567890.123456 \
     --meta channel_id=C01ABCDEF`,
 	Args: cobra.ExactArgs(1),

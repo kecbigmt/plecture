@@ -99,7 +99,7 @@ func newTestAdapter(cfg *Config) *Adapter {
 
 func TestHandleInfo(t *testing.T) {
 	cfg := &Config{ChannelID: "C12345"}
-	a := &Adapter{cfg: cfg, workspace: "kecyhq"}
+	a := &Adapter{cfg: cfg, workspace: "exampleorg"}
 
 	req := httptest.NewRequest(http.MethodGet, "/info", nil)
 	w := httptest.NewRecorder()
@@ -114,8 +114,8 @@ func TestHandleInfo(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if resp.Workspace != "kecyhq" {
-		t.Errorf("got workspace %q, want %q", resp.Workspace, "kecyhq")
+	if resp.Workspace != "exampleorg" {
+		t.Errorf("got workspace %q, want %q", resp.Workspace, "exampleorg")
 	}
 	if resp.ChannelID != "C12345" {
 		t.Errorf("got channel_id %q, want %q", resp.ChannelID, "C12345")

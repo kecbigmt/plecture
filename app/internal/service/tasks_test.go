@@ -227,8 +227,8 @@ func TestResolveSessionInput_InlineAndFileMutuallyExclusive(t *testing.T) {
 func TestDestroy_SessionGuardBlocksCrossOwner(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{SessionGuard: "^acme/"}
-	sessionName := "matsuolab/repo-26"
-	seedSession(t, store, sessionName, "matsuolab/repo", 26, "default", nil)
+	sessionName := "exampleorg/repo-26"
+	seedSession(t, store, sessionName, "exampleorg/repo", 26, "default", nil)
 
 	_, err := Destroy(cfg, store, DestroyParams{Identifier: sessionName})
 	svcErr, ok := err.(*Error)
@@ -244,8 +244,8 @@ func TestDestroy_SessionGuardBlocksCrossOwner(t *testing.T) {
 func TestDown_SessionGuardBlocksCrossOwner(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{SessionGuard: "^acme/"}
-	sessionName := "matsuolab/repo-26"
-	seedSession(t, store, sessionName, "matsuolab/repo", 26, "default", nil)
+	sessionName := "exampleorg/repo-26"
+	seedSession(t, store, sessionName, "exampleorg/repo", 26, "default", nil)
 
 	_, err := Down(cfg, store, DownParams{Identifier: sessionName})
 	svcErr, ok := err.(*Error)
@@ -400,8 +400,8 @@ func TestDestroy_RelationGuardAllowsSelf(t *testing.T) {
 func TestUp_SessionGuardBlocksCrossOwner(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{SessionGuard: "^acme/"}
-	sessionName := "matsuolab/repo-26"
-	seedSession(t, store, sessionName, "matsuolab/repo", 26, "default", nil)
+	sessionName := "exampleorg/repo-26"
+	seedSession(t, store, sessionName, "exampleorg/repo", 26, "default", nil)
 
 	_, err := Up(cfg, store, UpParams{Identifier: sessionName})
 	svcErr, ok := err.(*Error)

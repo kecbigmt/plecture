@@ -242,9 +242,9 @@ func TestIsSessionNameAllowed(t *testing.T) {
 		want    bool
 		wantErr bool
 	}{
-		{name: "empty guard allows all", guard: "", session: "matsuolab/x-26", want: true},
+		{name: "empty guard allows all", guard: "", session: "exampleorg/x-26", want: true},
 		{name: "owner-prefix guard matches own owner", guard: "^acme/", session: "acme/widgets-1", want: true},
-		{name: "owner-prefix guard rejects other owner", guard: "^acme/", session: "matsuolab/x-26", want: false},
+		{name: "owner-prefix guard rejects other owner", guard: "^acme/", session: "exampleorg/x-26", want: false},
 		{name: "tagged session still matches", guard: "^acme/", session: "acme/widgets-1+review", want: true},
 		{name: "trailing slash blocks lookalike owner", guard: "^acme/", session: "acme-evil/x-1", want: false},
 		{name: "invalid pattern fails closed", guard: "([", wantErr: true},

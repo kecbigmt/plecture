@@ -70,7 +70,7 @@ func TestSetOutput_SessionGuardBlocksCrossOwner(t *testing.T) {
 		[]taskFixture{{id: "watch", scope: "session", setup: "echo '{}'", extra: watchTaskSchema}},
 		[]nodeFixture{{id: "watch"}})
 
-	seedSession(t, store, "matsuolab/repo-26", "matsuolab/repo", 26, "wf", map[string]*contract.TaskState{
+	seedSession(t, store, "exampleorg/repo-26", "exampleorg/repo", 26, "wf", map[string]*contract.TaskState{
 		"watch": {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
@@ -81,7 +81,7 @@ func TestSetOutput_SessionGuardBlocksCrossOwner(t *testing.T) {
 	cfg.SessionGuard = "^acme/"
 
 	_, err := SetOutput(cfg, store, SetOutputParams{
-		Identifier: "matsuolab/repo-26",
+		Identifier: "exampleorg/repo-26",
 		Node:       "watch",
 		Outputs:    map[string]any{"pr_state": "merged"},
 	})
@@ -92,7 +92,7 @@ func TestSetOutput_SessionGuardBlocksCrossOwner(t *testing.T) {
 	if !ok || svcErr.Code != ErrRepoNotAllowed {
 		t.Errorf("want ErrRepoNotAllowed, got %v", err)
 	}
-	if got := store.Get("matsuolab/repo-26").Tasks["watch"].Outputs["pr_state"]; got != "open" {
+	if got := store.Get("exampleorg/repo-26").Tasks["watch"].Outputs["pr_state"]; got != "open" {
 		t.Errorf("blocked set-output must not mutate the session; pr_state = %v", got)
 	}
 }
