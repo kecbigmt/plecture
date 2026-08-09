@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/plect/plugins/github-watcher/internal/ratebudget"
 )
 
 // resourceRE parses the GitHub issue/PR resource identifiers the watcher
@@ -27,8 +28,7 @@ var resourceRE = regexp.MustCompile(`^https://github\.com/([^/]+)/([^/]+)/(issue
 
 // Observed is the set of GitHub values the watcher uses to detect meaningful
 // transitions for notification delivery. Each *Resolved flag gates a value
-// fetched by its own gh/REST call, split into several independent probes
-// instead of one `gh pr view`/`gh issue view` call: a
+// fetched by its own gh/REST call, split into several independent probes so a
 // failed probe must leave its value out of outputsFor entirely so a transient
 // error can never retract or falsely seed a baseline — only a resolved fetch
 // is authoritative.
@@ -91,6 +91,11 @@ type Poller struct {
 	NotifyURL string // slack-adapter /notify endpoint; empty disables delivery
 	GhBin     string // gh binary; default "gh"
 	HTTP      *http.Client
+	// Guard is the shared cross-process GitHub API rate budget:
+	// every gh api call below checks it before running and reports 403/429
+	// responses to it, so a burst hit by one poll tick backs off every other
+	// tws surface sharing the same token, not just this process.
+	Guard *ratebudget.Guard
 }
 
 func (p *Poller) gh() string {
@@ -105,6 +110,13 @@ func (p *Poller) httpClient() *http.Client {
 		return p.HTTP
 	}
 	return &http.Client{Timeout: 10 * time.Second}
+}
+
+func (p *Poller) guard() *ratebudget.Guard {
+	if p.Guard != nil {
+		return p.Guard
+	}
+	return ratebudget.NewGuard("")
 }
 
 // Tick polls every subscription once, deduplicating fetches per fetchKey
@@ -231,7 +243,7 @@ func (p *Poller) fetchIssue(sub *Subscription, owner, repo, kind, number string)
 	}
 	// mergeable_state/draft aren't in the pulls?head= list response, so the
 	// linked-PR path needs one more REST call to the single-PR endpoint
-	// — accepted per the revised evidence.
+	// — the extra round trip is accepted for correctness.
 	prState, prHeadSHA, mergeableState, draft, ok := p.fetchPRCore(owner, repo, prNumber)
 	if !ok {
 		return obs
@@ -248,15 +260,16 @@ func (p *Poller) fetchIssue(sub *Subscription, owner, repo, kind, number string)
 }
 
 // fetchPRCore is the primary REST probe: state/head sha/mergeable_state/draft
-// in one `gh api` call, replacing the GraphQL-backed `gh pr view`.
-// REST only reports open/closed, so a merged PR is recovered from
+// in one `gh api` call, replacing a GraphQL-backed `gh pr view`
+// item 3). REST only reports open/closed, so a merged PR is recovered from
 // the `merged` flag to keep the same lowercase open/closed/merged vocabulary
-// the rest of the package (and its consumers) already use.
+// the rest of the package (and its consumers) already use. The call is
+// conditional: an unchanged PR answers 304 and this
+// re-parses the last-cached body instead of costing a fresh fetch.
 func (p *Poller) fetchPRCore(owner, repo, number string) (state, headSHA, mergeableState string, draft bool, ok bool) {
-	out, err := exec.Command(p.gh(), "api",
-		fmt.Sprintf("repos/%s/%s/pulls/%s", owner, repo, number),
-		"--jq", "{state:.state,merged:.merged,sha:.head.sha,mergeable_state:.mergeable_state,draft:.draft}").Output()
-	if err != nil {
+	path := fmt.Sprintf("repos/%s/%s/pulls/%s", owner, repo, number)
+	out, ok := p.ghAPI(path, path, "--jq", "{state:.state,merged:.merged,sha:.head.sha,mergeable_state:.mergeable_state,draft:.draft}")
+	if !ok {
 		return "", "", "", false, false
 	}
 	var r struct {
@@ -278,10 +291,9 @@ func (p *Poller) fetchPRCore(owner, repo, number string) (state, headSHA, mergea
 
 // fetchIssueCore is the REST equivalent of `gh issue view --json state`.
 func (p *Poller) fetchIssueCore(owner, repo, number string) (state string, ok bool) {
-	out, err := exec.Command(p.gh(), "api",
-		fmt.Sprintf("repos/%s/%s/issues/%s", owner, repo, number),
-		"--jq", "{state:.state}").Output()
-	if err != nil {
+	path := fmt.Sprintf("repos/%s/%s/issues/%s", owner, repo, number)
+	out, ok := p.ghAPI(path, path, "--jq", "{state:.state}")
+	if !ok {
 		return "", false
 	}
 	var r struct {
@@ -307,11 +319,17 @@ func (p *Poller) fetchLinkedPRNumber(owner, repo, branch string) (number string,
 	// PR-creation endpoint!) whenever -f/--raw-field parameters are present,
 	// unless the method is pinned explicitly (same pattern resources/
 	// github.toml's own pulls?head= discovery call uses).
-	out, err := exec.Command(p.gh(), "api",
-		fmt.Sprintf("repos/%s/%s/pulls", owner, repo), "--method", "GET",
+	//
+	// The cache key includes the query (branch), not just the path: unlike
+	// fetchPRCore/fetchIssueCore (one path per resource), this same path is
+	// polled with a different head= filter per branch, so branches must not
+	// share a conditional-GET baseline.
+	path := fmt.Sprintf("repos/%s/%s/pulls", owner, repo)
+	cacheKey := path + "?head=" + owner + ":" + branch
+	out, ok := p.ghAPI(cacheKey, path, "--method", "GET",
 		"-f", "head="+owner+":"+branch, "-f", "state=all",
-		"--jq", "if length==0 then empty else .[0].number end").Output()
-	if err != nil {
+		"--jq", "if length==0 then empty else .[0].number end")
+	if !ok {
 		return "", false, false
 	}
 	trimmed := strings.TrimSpace(string(out))
@@ -323,6 +341,66 @@ func (p *Poller) fetchLinkedPRNumber(owner, repo, branch string) (number string,
 		return "", false, false
 	}
 	return strconv.Itoa(n), true, true
+}
+
+// ghAPI runs one conditional `gh api` GET through the shared rate guard and
+// ETag cache: it refuses to call gh at all while a shared
+// backoff window is active (item 2 — no immediate retry after a 403/429),
+// otherwise sends the cached ETag as If-None-Match and reuses the cached
+// body verbatim on a 304 (item 1), never re-fetching an unchanged resource.
+// cacheKey identifies the conditional-GET baseline (usually the API path
+// itself; fetchLinkedPRNumber includes its query since the same path answers
+// differently per branch). apiPath and jqArgs are passed to `gh api` as-is.
+func (p *Poller) ghAPI(cacheKey, apiPath string, jqArgs ...string) ([]byte, bool) {
+	guard := p.guard()
+	if wait, err := guard.Wait(); err == nil && wait > 0 {
+		p.Logger.Warn("gh rate backoff active; skipping fetch", "wait", wait, "path", apiPath)
+		return nil, false
+	}
+
+	args := append([]string{"api", apiPath, "-i"}, jqArgs...)
+	var cachedBody string
+	var hasCache bool
+	var etag string
+	if cacheKey != "" {
+		etag, cachedBody, hasCache = p.Store.GetCache(cacheKey)
+	}
+	if hasCache && etag != "" {
+		args = append(args, "-H", "If-None-Match: "+etag)
+	}
+	out, _ := exec.Command(p.gh(), args...).Output()
+	resp, ok := ratebudget.ParseHTTPResponse(out)
+	if !ok {
+		return nil, false
+	}
+
+	switch {
+	case resp.Status == http.StatusNotModified:
+		_ = guard.RecordSuccess()
+		if !hasCache {
+			return nil, false
+		}
+		return []byte(cachedBody), true
+	case resp.Status == http.StatusForbidden || resp.Status == http.StatusTooManyRequests:
+		retryAfter := ratebudget.RetryAfterSeconds(resp.Headers["retry-after"])
+		reset := ratebudget.RateLimitReset(resp.Headers["x-ratelimit-reset"])
+		if err := guard.RecordThrottle(retryAfter, reset); err != nil {
+			p.Logger.Warn("record gh throttle failed", "error", err)
+		}
+		return nil, false
+	case resp.Status >= 200 && resp.Status < 300:
+		_ = guard.RecordSuccess()
+		if cacheKey != "" {
+			if newEtag := resp.Headers["etag"]; newEtag != "" {
+				if err := p.Store.SetCache(cacheKey, newEtag, string(resp.Body)); err != nil {
+					p.Logger.Warn("persist gh cache failed", "error", err)
+				}
+			}
+		}
+		return resp.Body, true
+	default:
+		return nil, false
+	}
 }
 
 // statusCheck is one classified check entry, fed by either REST check-runs
@@ -337,16 +415,14 @@ type statusCheck struct {
 // field. Either call failing leaves checks unresolved
 // rather than guessing — a partial read must not overwrite a good baseline.
 func (p *Poller) fetchChecks(owner, repo, sha string) (string, bool) {
-	runsOut, err := exec.Command(p.gh(), "api",
-		fmt.Sprintf("repos/%s/%s/commits/%s/check-runs", owner, repo, sha),
-		"--paginate", "--jq", ".check_runs[]? | {conclusion:.conclusion}").Output()
-	if err != nil {
+	runsPath := fmt.Sprintf("repos/%s/%s/commits/%s/check-runs", owner, repo, sha)
+	runsOut, ok := p.ghAPI(runsPath, runsPath, "--paginate", "--jq", ".check_runs[]? | {conclusion:.conclusion}")
+	if !ok {
 		return "", false
 	}
-	statusOut, err := exec.Command(p.gh(), "api",
-		fmt.Sprintf("repos/%s/%s/commits/%s/status", owner, repo, sha),
-		"--jq", ".statuses[]? | {state:.state}").Output()
-	if err != nil {
+	statusPath := fmt.Sprintf("repos/%s/%s/commits/%s/status", owner, repo, sha)
+	statusOut, ok := p.ghAPI(statusPath, statusPath, "--jq", ".statuses[]? | {state:.state}")
+	if !ok {
 		return "", false
 	}
 	checks := parseCheckLines(runsOut)
@@ -451,7 +527,8 @@ func (p *Poller) apply(sub *Subscription, obs *Observed) {
 // probe (fetchPRCore/fetchIssueCore), so they're emitted whenever obs is
 // non-nil. checks_status/mergeable_state are gated by their own Resolved
 // flag: a probe that failed (or, for mergeable_state, reported "unknown")
-// must neither retract a good baseline value nor seed a wrong one.
+// must neither retract a good baseline value nor seed a wrong one (issue
+// and the mergeable/draft split above.
 func outputsFor(obs *Observed) map[string]string {
 	out := map[string]string{}
 	if obs.Kind == "pull" {
@@ -606,8 +683,8 @@ func (p *Poller) notify(sub *Subscription, c change) {
 // safety net).
 //
 // The payload is intentionally minimal — type, summary, metadata.url,
-// metadata.resource — and carries no other structured facts: the event is
-// a trigger, not the source of truth. Consumers re-read
+// metadata.resource — and carries no other structured facts
+// 2): the event is a trigger, not the source of truth. Consumers re-read
 // current values from resource observe / dynamic outputs, never from this
 // payload.
 func (p *Poller) publish(sub *Subscription, c change) {

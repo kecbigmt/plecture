@@ -35,6 +35,8 @@ func main() {
 		err = cmdList(os.Args[2:])
 	case "serve":
 		err = cmdServe(os.Args[2:])
+	case "gh-api":
+		err = cmdGhAPI(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -50,7 +52,8 @@ func usage() {
   github-watcher subscribe --session <name> --resource <id> [--branch <branch>]
   github-watcher unsubscribe --session <name> [--resource <id>]
   github-watcher list
-  github-watcher serve [--interval 60s] [--allow-legacy-notify [--notify-url http://127.0.0.1:7890/notify]]`)
+  github-watcher serve [--interval 60s] [--allow-legacy-notify [--notify-url http://127.0.0.1:7890/notify]]
+  github-watcher gh-api [--data-dir <dir>] <gh api args...>`)
 }
 
 func cmdSubscribe(args []string) error {

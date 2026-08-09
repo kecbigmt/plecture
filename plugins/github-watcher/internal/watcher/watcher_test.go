@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/plect/plugins/github-watcher/internal/ratebudget"
 )
 
 func TestStore_SubscribeUnsubscribe(t *testing.T) {
@@ -55,7 +57,7 @@ func TestStore_SubscribeUnsubscribe(t *testing.T) {
 // A re-subscribe with an empty Branch must NOT wipe a value a prior
 // subscribe stored: runtime `tws subscribe` omits --branch, and re-subscribing
 // a resource a dispatch-time auto-subscribe already recorded (with branch) must
-// keep that branch — else an issue session loses its linked-PR resolution.
+// keep that branch — else an issue session loses its linked-PR resolution
 // A non-empty incoming field still updates.
 func TestStore_ResubscribePreservesNonEmptyFields(t *testing.T) {
 	store := NewStore(t.TempDir())
@@ -160,21 +162,23 @@ func fakeBin(t *testing.T, dir, name, script string) string {
 
 // ghRoute answers one `gh` invocation whose full argument list contains match.
 // Routes are tried in order; the first match wins. fail makes the stub exit
-// non-zero (simulating a network/API error) instead of printing stdout.
+// non-zero (simulating a network/API error, not an HTTP error status —
+// poll.go's -i/status-line parsing never sees this case) instead of printing
+// stdout.
 type ghRoute struct {
 	match  string
 	stdout string
 	fail   bool
 }
 
-// fakeGh writes a `gh` stub that answers the first matching route. This
-// replaces the single porcelain `gh pr view`/`gh issue view` call the old
-// watcher made with several independent `gh api` REST probes (the watcher's
-// GraphQL dependency was removed entirely) — each test wires up only the
-// routes its scenario needs; anything unmatched prints nothing and exits 0
-// (an empty, not a failed, response). When log is non-empty, every
-// invocation's arguments are appended to that file (one line each) for
-// call-count assertions.
+// fakeGh writes a `gh` stub that answers the first matching route by
+// wrapping stdout as a synthetic `gh api -i` HTTP/1.1 200 response (poll.go
+// parses the status line + headers unconditionally) — callers only supply
+// the body, matching the shape tests used before conditional GET support was
+// added. Each test wires up only the routes its scenario needs; anything
+// unmatched prints a bare empty 200 (an empty, not a failed, response). When
+// log is non-empty, every invocation's arguments are appended to that file
+// (one line each) for call-count assertions.
 func fakeGh(t *testing.T, dir, log string, routes []ghRoute) string {
 	t.Helper()
 	var b strings.Builder
@@ -186,12 +190,13 @@ func fakeGh(t *testing.T, dir, log string, routes []ghRoute) string {
 	for _, r := range routes {
 		fmt.Fprintf(&b, "if [[ \"$args\" == *'%s'* ]]; then\n", r.match)
 		if r.fail {
-			b.WriteString("  exit 1\n")
+			b.WriteString("  printf 'HTTP/1.1 500 Internal Server Error\\n\\n'\n  exit 1\n")
 		} else {
-			b.WriteString("  cat <<'GHSTUB_EOF'\n" + r.stdout + "\nGHSTUB_EOF\n  exit 0\n")
+			b.WriteString("  printf 'HTTP/1.1 200 OK\\n\\n'\n  cat <<'GHSTUB_EOF'\n" + r.stdout + "\nGHSTUB_EOF\n  exit 0\n")
 		}
 		b.WriteString("fi\n")
 	}
+	b.WriteString("printf 'HTTP/1.1 200 OK\\n\\n'\n")
 	return fakeBin(t, dir, "gh", b.String())
 }
 
@@ -266,6 +271,7 @@ func TestPoller_TickNotifiesAndAdvancesBaseline(t *testing.T) {
 		Logger:    slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		NotifyURL: srv.URL,
 		GhBin:     gh,
+		Guard:     ratebudget.NewGuard(t.TempDir()),
 	}
 	p.Tick()
 
@@ -339,6 +345,7 @@ func TestPoller_TickPublishesToBus(t *testing.T) {
 		Bus:       &event.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 		NotifyURL: "http://127.0.0.1:1/notify", // must be ignored when Bus is set
 		GhBin:     gh,
+		Guard:     ratebudget.NewGuard(t.TempDir()),
 	}
 	p.Tick()
 
@@ -410,6 +417,7 @@ func TestPoller_PublishedEventPayloadIsMinimal(t *testing.T) {
 		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		Bus:    &event.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 		GhBin:  gh,
+		Guard:  ratebudget.NewGuard(t.TempDir()),
 	}
 	p.Tick()
 
@@ -475,6 +483,7 @@ func TestPoller_SamePRPublishesPerSubscriber(t *testing.T) {
 		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		Bus:    &event.Client{BaseURL: srv.URL, HTTP: srv.Client()},
 		GhBin:  gh,
+		Guard:  ratebudget.NewGuard(t.TempDir()),
 	}
 	p.Tick()
 
@@ -528,7 +537,7 @@ func TestPoller_InitialObservationDoesNotNotify(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 	if notifyCount != 0 {
 		t.Errorf("first observation must establish a baseline silently, got %d notifications", notifyCount)
@@ -553,7 +562,7 @@ func TestPoller_DoesNotPruneSubscriptionsDuringPoll(t *testing.T) {
 		prCoreRoute("9", "open", false, "abc1234"),
 	})
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	// Polling no longer probes tws state as a side task. Session teardown is
@@ -566,8 +575,8 @@ func TestPoller_DoesNotPruneSubscriptionsDuringPoll(t *testing.T) {
 }
 
 // A new head commit fires new_commits (github.new_comments/new_review_comments
-// were removed — GitHub comments have no machine-consumer, so the watcher no
-// longer fetches them at all).
+// were removed — GitHub comments have no machine-consumer, so the watcher
+// no longer fetches them at all).
 func TestPoller_NewCommitsNotifies(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
@@ -596,7 +605,7 @@ func TestPoller_NewCommitsNotifies(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	got := map[string]string{}
@@ -671,6 +680,7 @@ func TestPoller_SameIssueDifferentBranchesDoNotShareObservation(t *testing.T) {
 	// the generic ghRoute table can't express, so it's a bespoke stub. Each
 	// branch's discovered PR number then gets its own follow-up pulls/{n} call.
 	gh := fakeBin(t, binDir, "gh", `
+printf 'HTTP/1.1 200 OK\n\n'
 args="$*"
 case "$args" in
   *"pulls/70 "*)
@@ -690,7 +700,7 @@ case "$args" in
     ;;
 esac
 `)
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	subs, _ := store.All()
@@ -705,7 +715,8 @@ esac
 // Two sessions subscribing the SAME PR with different branches (dispatch-time
 // auto-subscribe carries the PR's head branch; runtime `tws subscribe` carries
 // none) must still poll once: a PR fetch ignores branch, so it is keyed on the
-// resource alone. Guards the "poll dedup independent of branch" contract.
+// resource alone. Guards the AC7 "poll dedup independent of branch" contract
+// Guards poll dedup independent of branch.
 func TestPoller_SamePRDifferentBranchesShareOneFetch(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
@@ -725,7 +736,7 @@ func TestPoller_SamePRDifferentBranchesShareOneFetch(t *testing.T) {
 		prCoreRoute("7", "open", false, "abc1234"),
 	})
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	data, err := os.ReadFile(callLog)
@@ -773,7 +784,7 @@ func TestPoller_ChecksResetToPendingNotifies(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if len(notified) != 1 {
@@ -789,8 +800,8 @@ func TestPoller_ChecksResetToPendingNotifies(t *testing.T) {
 }
 
 // A mergeable_state transition (clean → dirty, e.g. a conflicting rebase)
-// fires github.mergeable — the signal added to cover the known blind spot
-// where a conflicting PR gets no CI run at all and
+// fires github.mergeable — the signal added to
+// cover the known blind spot where a conflicting PR gets no CI run at all and
 // so never fires github.ci_status.
 func TestPoller_MergeableStateTransitionNotifies(t *testing.T) {
 	dir := t.TempDir()
@@ -820,7 +831,7 @@ func TestPoller_MergeableStateTransitionNotifies(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if len(notified) != 1 {
@@ -837,7 +848,8 @@ func TestPoller_MergeableStateTransitionNotifies(t *testing.T) {
 
 // GitHub reporting mergeable_state "unknown" (still computing) must neither
 // notify nor overwrite the last real value — otherwise a PR would flap
-// clean→unknown→clean on every poll while GitHub recomputes mergeability.
+// clean→unknown→clean on every poll while GitHub recomputes mergeability
+// (the flapping-prevention requirement).
 func TestPoller_MergeableUnknownDoesNotUpdateOrNotify(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
@@ -862,7 +874,7 @@ func TestPoller_MergeableUnknownDoesNotUpdateOrNotify(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { notifyCount++ }))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if notifyCount != 0 {
@@ -903,7 +915,7 @@ func TestPoller_DraftBecomesReadyForReviewNotifies(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if len(notified) != 1 {
@@ -944,7 +956,7 @@ func TestPoller_DraftGoingBackToDraftDoesNotNotify(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { notifyCount++ }))
 	defer srv.Close()
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	if notifyCount != 0 {
@@ -976,7 +988,7 @@ func TestPoller_LinkedPRMergeableAndDraftResolved(t *testing.T) {
 		prCoreRouteFull("70", "open", false, "abc1234", "dirty", true),
 	})
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	subs, _ := store.All()
@@ -1015,7 +1027,7 @@ func TestPoller_LinkedPRUnlinkRetractsAllFields(t *testing.T) {
 		linkedPRDiscoveryRoute(""), // successful lookup, no PR found
 	})
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	subs, _ := store.All()
@@ -1048,11 +1060,123 @@ func TestPoller_FailedLinkedPRLookupDoesNotRetract(t *testing.T) {
 		issueCoreRoute("13", "open"),
 	})
 
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh}
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
 	subs, _ := store.All()
 	if got := subs[subKey("org/repo-13", res13)].Last["pr_state"]; got != "open" {
 		t.Errorf("failed lookup must keep the stale value, got %q", got)
+	}
+}
+
+// --- ETag conditional GET + shared rate guard ---
+
+// httpFakeGh writes a `gh` stub that speaks raw HTTP/1.1 status lines,
+// headers, and body verbatim (unlike fakeGh, which always synthesizes a bare
+// 200) — for scenarios that need to control status code and headers
+// (If-None-Match echoing, 403 with rate-limit headers).
+func httpFakeGh(t *testing.T, dir, script string) string {
+	t.Helper()
+	return fakeBin(t, dir, "gh", script)
+}
+
+// A second poll of an unchanged resource sends If-None-Match and, on 304,
+// must resolve the SAME observation from the cached body rather than
+// treating the fetch as failed: a 304 is a successful "unchanged" answer,
+// not an error.
+func TestPoller_ConditionalGetReusesCachedBodyOn304(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	const res = "https://github.com/org/repo/pull/100"
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-100", Resource: res}); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	callLog := filepath.Join(t.TempDir(), "gh-calls.log")
+	// First call (no If-None-Match yet) answers 200 with an ETag; any later
+	// call carrying that ETag answers 304 with no body.
+	gh := httpFakeGh(t, binDir, `
+echo "$@" >> `+callLog+`
+args="$*"
+case "$args" in
+  *"pulls/100 "*)
+    if [[ "$args" == *'If-None-Match: "v1"'* ]]; then
+      printf 'HTTP/1.1 304 Not Modified\r\nEtag: "v1"\r\n\r\n'
+      exit 1
+    fi
+    printf 'HTTP/1.1 200 OK\r\nEtag: "v1"\r\n\r\n{"state":"open","merged":false,"sha":"abc1234","mergeable_state":"clean","draft":false}'
+    exit 0
+    ;;
+  *"check-runs"*|*"/status"*)
+    printf 'HTTP/1.1 200 OK\r\n\r\n'
+    exit 0
+    ;;
+esac
+printf 'HTTP/1.1 200 OK\r\n\r\n'
+`)
+
+	guardDir := t.TempDir()
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(guardDir)}
+	p.Tick() // seeds the baseline + ETag cache from the 200 response
+	p.Tick() // must hit the cache via 304
+
+	subs, _ := store.All()
+	if got := subs[subKey("org/repo-100", res)].Last["pr_state"]; got != "open" {
+		t.Fatalf("pr_state = %q, want open (304 must resolve from cache, not fail)", got)
+	}
+	etag, body, ok := store.GetCache("repos/org/repo/pulls/100")
+	if !ok || etag != `"v1"` || body == "" {
+		t.Errorf("cache = etag=%q body=%q ok=%v, want persisted v1/non-empty", etag, body, ok)
+	}
+
+	data, _ := os.ReadFile(callLog)
+	if !strings.Contains(string(data), `If-None-Match: "v1"`) {
+		t.Errorf("second tick must send If-None-Match, calls:\n%s", data)
+	}
+}
+
+// A 403/429 response must set the shared backoff guard from its
+// Retry-After header, and a caller that checks the guard before that window
+// elapses must not invoke gh at all. This exercises the same guard the
+// poller's fetch path consults, end-to-end through Tick.
+func TestPoller_ThrottleSetsGuardAndSkipsSubsequentFetch(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	const res = "https://github.com/org/repo/pull/101"
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-101", Resource: res}); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	callLog := filepath.Join(t.TempDir(), "gh-calls.log")
+	gh := httpFakeGh(t, binDir, `
+echo "$@" >> `+callLog+`
+printf 'HTTP/1.1 403 Forbidden\r\nRetry-After: 120\r\n\r\n{"message":"secondary rate limit"}'
+exit 1
+`)
+
+	guardDir := t.TempDir()
+	guard := ratebudget.NewGuard(guardDir)
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: guard}
+	p.Tick()
+
+	wait, err := guard.Wait()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wait < 110*time.Second || wait > 120*time.Second {
+		t.Fatalf("guard wait = %v, want ~120s (Retry-After honored)", wait)
+	}
+
+	calls, _ := os.ReadFile(callLog)
+	before := strings.Count(string(calls), "\n")
+
+	p.Tick() // must not call gh at all: the guard is still backed off
+
+	after, _ := os.ReadFile(callLog)
+	afterCount := strings.Count(string(after), "\n")
+	if afterCount != before {
+		t.Errorf("second tick invoked gh %d more time(s) while backed off, want 0 (log:\n%s)", afterCount-before, after)
 	}
 }

@@ -154,7 +154,7 @@ var listTool = mcp.NewTool("tws_list",
 )
 
 var gcTool = mcp.NewTool("tws_gc",
-	mcp.WithDescription("Identify and remove stale sessions. By default returns a dry-run preview. Set execute=true to perform cleanup. Completion is judged by each session's done_when-bearing task instances over persisted outputs; sessions without such tasks fall back to PR-merged per local github_cache.json. Dynamic outputs are refreshed explicitly before decision points, not by gc. Deletion goes through a non-force destroy, so task cleanups run and a dirty worktree blocks it."),
+	mcp.WithDescription("Identify and remove stale sessions. By default returns a dry-run preview. Set execute=true to perform cleanup. Completion is judged by each session's done_when-bearing task instances over persisted outputs; sessions without such tasks are left alone. Dynamic outputs are refreshed explicitly before decision points, not by gc. Deletion goes through a non-force destroy, so task cleanups run and a dirty worktree blocks it."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
 	mcp.WithBoolean("execute",
 		mcp.Description("Actually perform cleanup. When false (default), returns what would be deleted without making changes."),

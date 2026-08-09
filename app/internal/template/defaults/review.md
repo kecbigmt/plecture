@@ -29,7 +29,7 @@ Steps:
    who the actor is — it does not make this review non-independent.
 
 **Review perspective for changes touching tws core:** if the change touches
-tws core (the Go implementation under `tools/tws/app` etc.), ask whether a
+tws core (the Go implementation under `app/` etc.), ask whether a
 prompt (template/instructions) or config (TOML etc.) could have achieved the
 same result instead, and evaluate whether the added complexity is worth the
 benefit. Reference this evaluation in the verdict's reason.

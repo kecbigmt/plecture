@@ -13,10 +13,8 @@ import (
 // release whatever the environment needs (a container, a remote host, ...),
 // and Exec is the host-run script that launches an argv inside it.
 //
-// This PR only loads and validates EnvironmentConfig; nothing calls
-// Setup/Exec/Cleanup yet (environment lifecycle is a later PR). A workflow
-// that never sets `environment` (host degeneration) never consults this
-// loader at all.
+// A workflow that never sets `environment` (host degeneration) never
+// consults this loader at all.
 //
 // Environments deliberately do NOT participate in the per-worktree cascade,
 // for the same reason providers don't: they must be resolvable independent

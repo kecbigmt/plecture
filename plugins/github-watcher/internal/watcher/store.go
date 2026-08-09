@@ -2,8 +2,8 @@
 // subscription registry, polls GitHub via the gh CLI, and forwards change
 // notifications to the configured delivery path.
 //
-// Component boundaries (tools/tws/CLAUDE.md): the watcher imports no tws
-// internals.
+// Component boundaries (see this repository's CLAUDE.md/AGENTS.md): the
+// watcher imports no tws core internals.
 package watcher
 
 import (
@@ -43,10 +43,19 @@ func subKey(session, resource string) string {
 	return session + "\x00" + resource
 }
 
+// cacheEntry is one cached conditional-GET response: the ETag GitHub returned
+// and the (already jq-projected) body it was served with, reused verbatim on
+// a subsequent 304.
+type cacheEntry struct {
+	ETag string `json:"etag"`
+	Body string `json:"body"`
+}
+
 // registry is the on-disk subscription store.
 type registry struct {
 	Version       int                      `json:"version"`
-	Subscriptions map[string]*Subscription `json:"subscriptions"` // keyed by subKey(session, resource)
+	Subscriptions map[string]*Subscription `json:"subscriptions"`   // keyed by subKey(session, resource)
+	Cache         map[string]cacheEntry    `json:"cache,omitempty"` // keyed by gh API path
 }
 
 // Store persists subscriptions under flock so subscribe/unsubscribe (task
@@ -130,6 +139,31 @@ func (s *Store) SetLast(sessionName, resource string, last map[string]string) er
 		if sub, ok := r.Subscriptions[subKey(sessionName, resource)]; ok {
 			sub.Last = last
 		}
+		return nil
+	})
+}
+
+// GetCache returns the cached ETag/body for a gh API path, if any.
+func (s *Store) GetCache(key string) (etag, body string, ok bool) {
+	r, err := s.load()
+	if err != nil {
+		return "", "", false
+	}
+	entry, ok := r.Cache[key]
+	if !ok {
+		return "", "", false
+	}
+	return entry.ETag, entry.Body, true
+}
+
+// SetCache persists the ETag/body for a gh API path, overwriting any prior
+// entry for the same key.
+func (s *Store) SetCache(key, etag, body string) error {
+	return s.update(func(r *registry) error {
+		if r.Cache == nil {
+			r.Cache = map[string]cacheEntry{}
+		}
+		r.Cache[key] = cacheEntry{ETag: etag, Body: body}
 		return nil
 	})
 }

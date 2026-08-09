@@ -25,8 +25,7 @@ By default runs in dry-run mode, showing what would be removed.
 Use --execute to actually perform the cleanup.
 
 Completion is declared by task-level done_when predicates. Sessions without
-done_when-bearing tasks fall back to the legacy basis: PR merged per
-github_cache.
+any done_when-bearing tasks have nothing to evaluate and are left alone.
 
 Auto-deleted:
   - Worktree missing: state entry removed; no plan can be built without a
@@ -37,10 +36,7 @@ Auto-deleted:
     only, runtime left alive" caveat as worktree-missing applies
 
 Listed for manual attention:
-  - Runtime unhealthy but not eligible for auto-delete (not done or dirty worktree)
-
-The legacy basis reads the local github_cache.json. Run 'tws ls --sync' first
-to refresh it.`,
+  - Runtime unhealthy but not eligible for auto-delete (not done or dirty worktree)`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()
