@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/* Design tokens generated from DESIGN.md (pnpm tokens). Do not edit by hand. */
+@import "./theme.generated.css";
+
+/* Class sources: server-rendered templates and Go-embedded class strings
+   (e.g. statusClass). node_modules is gitignored and excluded automatically. */
+@source "./assets/templates/**/*.html";
+@source "./*.go";
+
+/* Tailwind preflight resets `margin: 0` on every element, which overrides the
+   UA stylesheet's `margin: auto` on <dialog> and pins a showModal() dialog to
+   the top-left instead of centering it. Restore the centering (the `dialog`
+   type selector outranks preflight's `*`). */
+dialog {
+  margin: auto;
+}
+
+/* Mobile: present the list and the detail as separate screens instead of
+   stacking both. The two live side by side as columns on md+ (see list.html);
+   below the md breakpoint (48rem) we show only one at a time, switching on
+   whether a session is open — the detail/not-found panes carry [data-detail],
+   the empty placeholder does not. A session's detail then has a mobile-only
+   "← list" link to switch back. */
+@media (max-width: 47.999rem) {
+  /* a session is open → the detail is the screen; hide the list */
+  main:has(#detail-pane [data-detail]) #session-list {
+    display: none;
+  }
+  /* nothing open → the list is the screen; hide the empty detail pane */
+  main:not(:has(#detail-pane [data-detail])) #detail-pane {
+    display: none;
+  }
+}

@@ -1,0 +1,29 @@
+{{- /* event-row: a single timeline entry. Defined separately so the live SSE
+       relay can render one event at a time and the browser prepends it; the
+       polling/initial list reuses it via event-rows. Arg is an event.Event. */ -}}
+{{define "event-row"}}<li data-type="{{ .Type }}" class="rounded-md border border-border bg-background p-2 text-body">
+  <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-label text-muted-foreground">
+    <time datetime="{{ .Time.Format "2006-01-02T15:04:05Z07:00" }}">{{ .Time.Format "01-02 15:04:05" }}</time>
+    <span class="font-mono text-foreground">{{ .Type }}</span>
+    <span>{{ .Source }}</span>
+    {{- if .Direction }}<span>{{ .Direction }}</span>{{ end }}
+    {{- /* The merged subtree/stream timelines interleave several sessions, so
+           each row names (and links) its session; the single-session timeline
+           carries it too rather than forking the partial. */}}
+    {{- if .SessionName }}<a class="break-all rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ sessionPath .SessionName }}">{{ .SessionName }}</a>{{ end }}
+  </div>
+  {{- if .Summary }}<div class="mt-0.5 break-words">{{ .Summary }}</div>{{ end }}
+  {{- if .Body }}<div class="mt-0.5 whitespace-pre-wrap break-words text-muted-foreground">{{ .Body }}</div>{{ end }}
+</li>{{end}}
+
+{{- /* event-rows: the full timeline list (newest first). Arg is []event.Event. */ -}}
+{{define "event-rows"}}
+{{- if . }}
+<ul role="list" class="space-y-2">
+  {{- range . }}{{ template "event-row" . }}
+  {{- end }}
+</ul>
+{{- else }}
+<p class="text-body text-muted-foreground">No events yet.</p>
+{{- end }}
+{{end}}

@@ -1,0 +1,113 @@
+{{define "list"}}<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{{- /* Swap on every status code so mapped error banners (400/403/404/500) land
+       in their target; success carries HX-Redirect, which htmx honors first. */}}
+<meta name="htmx-config" content='{"responseHandling":[{"code":".*","swap":true}]}'>
+<title>tws sessions</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx.min.js"></script>
+</head>
+{{- /* CSRF token rides on the body so every descendant htmx request (the create
+       form, the rows' card links, the detail-pane actions) sends it. On md+ the
+       body is locked to the viewport so the two panes scroll internally (GitHub
+       Projects style); mobile keeps a normal scrolling page. */}}
+<body class="flex min-h-screen flex-col bg-background text-foreground md:h-screen md:overflow-hidden" hx-headers='{"X-CSRF-Token":"{{ .CSRFToken }}"}'>
+<header class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card p-4">
+  <h1 class="text-heading font-semibold">tws sessions</h1>
+  <nav class="text-label" aria-label="Sort order" hx-boost="true">
+    <a href="/?order=recent" {{if eq .Order "recent"}}aria-current="page" {{end}}class="rounded-sm px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {{if eq .Order "recent"}}font-semibold text-foreground{{else}}text-muted-foreground{{end}}">Newest first</a>
+    <span class="text-border" aria-hidden="true">/</span>
+    <a href="/?order=oldest" {{if eq .Order "oldest"}}aria-current="page" {{end}}class="rounded-sm px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {{if eq .Order "oldest"}}font-semibold text-foreground{{else}}text-muted-foreground{{end}}">Oldest first</a>
+  </nav>
+</header>
+{{- /* Master-detail: list on the left, selected session on the right. One column
+       on mobile (list, then detail below); two independently-scrolling columns
+       from md up. min-h-0 lets the columns shrink so their overflow can scroll. */}}
+<main class="grid min-h-0 flex-1 grid-cols-1 gap-4 p-4 md:grid-cols-[20rem_1fr]">
+  <div id="session-list" class="space-y-4 md:min-h-0 md:overflow-y-auto md:pr-1">
+    <details class="rounded-lg border border-border bg-card p-3 text-card-foreground">
+      <summary class="cursor-pointer text-label font-semibold text-muted-foreground">New session</summary>
+      {{- /* Posts to /sessions, which auto-creates then runs (Up). Errors swap into
+             #create-error; success redirects to the new session via HX-Redirect. */}}
+      <form hx-post="/sessions" hx-target="#create-error" hx-swap="innerHTML" hx-disabled-elt="find button" class="mt-3 grid gap-3">
+        {{ template "input" (dict "id" "create-url" "name" "url" "label" "Resource ID" "placeholder" "e.g. https://github.com/owner/repo/issues/1" "required" true) }}
+        {{ template "input" (dict "id" "create-tag" "name" "tag" "label" "Tag (optional)" "placeholder" "experiment") }}
+        {{ template "input" (dict "id" "create-workflow" "name" "workflow" "label" "Workflow (optional)" "placeholder" "used to pick among multiple matching workflows") }}
+        {{ template "input" (dict "id" "create-task" "name" "task" "label" "Initial task (optional)" "placeholder" "work / review / respond / investigate / none") }}
+        {{ template "input" (dict "id" "create-stream" "name" "stream" "label" "Stream ID (optional)" "placeholder" "e.g. sprint-42") }}
+        <div class="grid gap-1.5">
+          <label for="create-inputs" class="text-label font-medium text-foreground">Inputs JSON (optional)</label>
+          <textarea id="create-inputs" name="inputs" rows="3" placeholder='{"key":"value"}' class="flex w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-body text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"></textarea>
+        </div>
+        <div class="flex items-center gap-3">
+          {{ template "button" (dict "type" "submit" "label" "Create and start") }}
+          <span class="htmx-indicator text-label text-muted-foreground">Running…</span>
+        </div>
+        <div id="create-error" role="alert" aria-live="polite"></div>
+      </form>
+    </details>
+    <div id="sessions" hx-get="/sessions?order={{.Order}}" hx-trigger="every 5s" hx-swap="innerHTML">
+      {{template "rows" .Cards}}
+    </div>
+  </div>
+
+  {{- /* after-swap: show a freshly-opened session from its own top. On md+ the
+         pane scrolls internally (scrollTop reset); on mobile scrollIntoView
+         brings the detail (below the list) into view — a no-op on desktop where
+         the page doesn't scroll. */}}
+  <section id="detail-pane" hx-on::after-swap="this.scrollTop=0;this.scrollIntoView({block:'start'})" aria-live="polite" aria-label="Session detail" class="md:min-h-0 md:overflow-y-auto">
+    {{- if .NotFound }}{{ template "detail-notfound-pane" .NotFound }}
+    {{- else if .Detail }}{{ template "detail-pane" .Detail }}
+    {{- else }}{{ template "detail-empty" }}{{ end }}
+  </section>
+</main>
+{{- /* Instant active-row highlight on click; the server reaffirms it via
+       aria-current on the list's periodic refresh and on full page loads. The
+       card visual is driven by that attribute (see card.html). */}}
+<script>
+document.addEventListener("click", function (e) {
+  var link = e.target.closest("#sessions a[data-session]");
+  if (!link) return;
+  document.querySelectorAll("#sessions a[aria-current]").forEach(function (a) { a.removeAttribute("aria-current"); });
+  link.setAttribute("aria-current", "page");
+});
+
+// Live event timeline: one EventSource per open session. The detail pane carries
+// a hidden #event-stream with the SSE URL; tws-web relays the bus stream there as
+// rendered <li> fragments, which we prepend (newest first). The connection is
+// tied to the detail pane — reconnect when it swaps, leave it alone on the list's
+// 5s refresh (which targets #sessions, not #detail-pane).
+var _twsEventStream = null;
+function connectEventStream() {
+  if (_twsEventStream) { _twsEventStream.close(); _twsEventStream = null; }
+  var el = document.getElementById("event-stream");
+  if (!el || !el.dataset.url) return;
+  _twsEventStream = new EventSource(el.dataset.url);
+  _twsEventStream.onmessage = function (e) {
+    var list = document.getElementById("event-list");
+    if (!list) return;
+    var ph = list.querySelector("[data-placeholder]");
+    if (ph) ph.remove();
+    list.insertAdjacentHTML("afterbegin", e.data);
+  };
+  // The bus may be down (502) or restarting; EventSource retries on its own, but
+  // surface the degraded state instead of leaving a silent "waiting…" forever.
+  _twsEventStream.onerror = function () {
+    var ph = document.querySelector("#event-list [data-placeholder]");
+    if (ph) ph.textContent = "Reconnecting live updates…";
+  };
+}
+document.body.addEventListener("htmx:afterSwap", function (e) {
+  var t = e.detail && e.detail.target;
+  if (t && (t.id === "detail-pane" || (t.querySelector && t.querySelector("#event-stream")))) {
+    connectEventStream();
+  }
+});
+connectEventStream();
+</script>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,18 @@
+{{- /* dialog: native <dialog> confirmation baseline. The browser provides focus
+       trap / Esc / focus restore; <form method="dialog"> closes and reports the
+       pressed button's value as returnValue. A backdrop click (target===the
+       dialog itself, since content clicks hit children) also closes. props = id,
+       title, message, confirmLabel, confirmVariant (default destructive),
+       cancelLabel. */ -}}
+{{define "dialog"}}<dialog id="{{ .id }}" aria-labelledby="{{ .id }}-title" onclick="if(event.target===this)this.close()" class="w-full max-w-md rounded-lg border border-border bg-card p-0 text-card-foreground shadow-lg backdrop:bg-foreground/50">
+  <form method="dialog" class="grid gap-4 p-6">
+    <div class="grid gap-1.5">
+      <h2 id="{{ .id }}-title" class="text-heading font-semibold text-foreground">{{ .title }}</h2>
+      {{- if .message }}<p class="text-body text-muted-foreground">{{ .message }}</p>{{ end }}
+    </div>
+    <div class="flex justify-end gap-2">
+      {{ template "button" (dict "variant" "outline" "type" "submit" "value" "cancel" "label" (or .cancelLabel "Cancel")) }}
+      {{ template "button" (dict "variant" (or .confirmVariant "destructive") "type" "submit" "value" "confirm" "label" (or .confirmLabel "Confirm")) }}
+    </div>
+  </form>
+</dialog>{{end}}

@@ -1,0 +1,595 @@
+package reactor
+
+import (
+	"context"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/sessionhub"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/contracts/event"
+	contract "github.com/kecbigmt/plect/contracts/state"
+)
+
+// newTestReactor builds a sessionReactor over a fast-poll hub so tests don't
+// wait on the production 500ms poll interval.
+func newTestReactor(t *testing.T, tc config.TickConfig) (*sessionReactor, *state.Store, *eventlog.Store) {
+	t.Helper()
+	log := eventlog.NewStore(t.TempDir())
+	hub := sessionhub.NewRegistry(log, sessionhub.WithPollInterval(2*time.Millisecond))
+	t.Cleanup(hub.Close)
+	st := state.NewStore(t.TempDir())
+	if err := st.Put(&domain.Session{
+		Name: "o/r-1",
+		Tasks: map[string]*contract.TaskState{
+			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r := &sessionReactor{
+		session: "o/r-1",
+		cfg:     &config.Config{WorktreesRoot: t.TempDir()},
+		state:   st,
+		log:     log,
+		hub:     hub,
+		tick:    tc,
+	}
+	return r, st, log
+}
+
+func startReactor(t *testing.T, r *sessionReactor) func() {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { r.run(ctx); close(done) }()
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
+// waitLastTickAt polls until the session's LastTickAt is at or after floor
+// (the moment just before the triggering append), or fails the test.
+func waitLastTickAt(t *testing.T, st *state.Store, session string, floor time.Time) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if s := st.Get(session); s != nil && !s.LastTickAt.Before(floor) {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("session %q was never ticked (LastTickAt did not advance past %s)", session, floor)
+}
+
+// assertNeverTicked sleeps briefly and asserts LastTickAt never advanced past
+// floor — used to prove a self-emitted event did not trigger a tick.
+func assertNeverTicked(t *testing.T, st *state.Store, session string, floor time.Time) {
+	t.Helper()
+	time.Sleep(150 * time.Millisecond)
+	if s := st.Get(session); s != nil && s.LastTickAt.After(floor) {
+		t.Fatalf("session %q was ticked (LastTickAt = %s) when it should not have been", session, s.LastTickAt)
+	}
+}
+
+func TestSessionReactor_TicksOnDeclaredPattern(t *testing.T) {
+	r, st, log := newTestReactor(t, config.TickConfig{On: []string{"resource.*"}})
+	stop := startReactor(t, r)
+	defer stop()
+	time.Sleep(50 * time.Millisecond) // let run() seed, Watch, and reach its select
+
+	floor := time.Now()
+	log.Append(event.Event{SessionName: "o/r-1", Type: "resource.updated"})
+	waitLastTickAt(t, st, "o/r-1", floor)
+}
+
+func TestSessionReactor_UndeclaredWorkflowDoesNotReactiveTick(t *testing.T) {
+	// AC3: no `[tick].on` declared → an event that would otherwise match
+	// nothing (empty On) must not cause a reactive tick.
+	r, st, log := newTestReactor(t, config.TickConfig{})
+	stop := startReactor(t, r)
+	defer stop()
+	time.Sleep(50 * time.Millisecond)
+
+	floor := time.Now()
+	log.Append(event.Event{SessionName: "o/r-1", Type: "resource.updated"})
+	assertNeverTicked(t, st, "o/r-1", floor)
+}
+
+// TestSessionReactor_SelfEmittedEventsNeverTrigger proves the self-excitation
+// whitelist wins over an intentionally maximal declared pattern (AC5, ADR
+// amendment 2026-07-04 §3): tick's own terminal/progress markers, a kick's
+// user.emit, and a chain-spawn's lifecycle event must not re-trigger tick
+// even under `on = ["*"]`. The kick case is the one that must exclude by
+// Source rather than Type: its Type (`user.emit`) is otherwise
+// indistinguishable from a genuine externally published user.emit.
+func TestSessionReactor_SelfEmittedEventsNeverTrigger(t *testing.T) {
+	selfEmitted := []event.Event{
+		{Type: event.TypeTerminalDone, Source: event.SourceTWS},
+		{Type: event.TypeTerminalEscalate, Source: event.SourceTWS},
+		{Type: event.TypeTerminalDead, Source: event.SourceTWS},
+		{Type: event.TypeTickReviewRequired, Source: event.SourceTick},
+		{Type: event.TypeTickEscalated, Source: event.SourceTick},
+		{Type: event.TypeUserEmit, Source: event.SourceTick}, // tick's own kick output
+		{Type: event.TypeLifecyclePrefix + "created", Source: event.SourceTWS},
+	}
+	for _, fixture := range selfEmitted {
+		t.Run(fixture.Type+"/"+fixture.Source, func(t *testing.T) {
+			r, st, log := newTestReactor(t, config.TickConfig{On: []string{"*"}})
+			stop := startReactor(t, r)
+			defer stop()
+			time.Sleep(50 * time.Millisecond)
+
+			floor := time.Now()
+			ev := fixture
+			ev.SessionName = "o/r-1"
+			log.Append(ev)
+			assertNeverTicked(t, st, "o/r-1", floor)
+		})
+	}
+}
+
+// TestSessionReactor_GenuineUserEmitStillTriggersWhenDeclared proves the
+// Source-based exclusion doesn't overreach: a user.emit NOT authored by tick
+// itself (e.g. published by an orchestrator or a real user) must still
+// trigger a declared `on` pattern — only tick's own SourceTick-stamped
+// user.emit (kick) is excluded.
+func TestSessionReactor_GenuineUserEmitStillTriggersWhenDeclared(t *testing.T) {
+	r, st, log := newTestReactor(t, config.TickConfig{On: []string{"user.emit"}})
+	stop := startReactor(t, r)
+	defer stop()
+	time.Sleep(50 * time.Millisecond)
+
+	floor := time.Now()
+	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeUserEmit, Source: event.SourceCLI})
+	waitLastTickAt(t, st, "o/r-1", floor)
+}
+
+// TestSessionReactor_JudgeRecordedAlwaysTriggers proves the judge builtin
+// trigger (AC2) fires with no `[tick].on` declared at all — the trigger is
+// tws's own concept, not a declaration.
+func TestSessionReactor_JudgeRecordedAlwaysTriggers(t *testing.T) {
+	r, st, log := newTestReactor(t, config.TickConfig{})
+	stop := startReactor(t, r)
+	defer stop()
+	time.Sleep(50 * time.Millisecond)
+
+	floor := time.Now()
+	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeJudgeRecorded})
+	waitLastTickAt(t, st, "o/r-1", floor)
+}
+
+// TestSessionReactor_StaleWhenSweepTicksAfterElapsed proves a session with no
+// `on` declared still ticks once `stale_when` has elapsed since its last
+// tick, using a shortened staleCheckInterval so the test doesn't wait a full
+// minute.
+func TestSessionReactor_StaleWhenSweepTicksAfterElapsed(t *testing.T) {
+	r, st, _ := newTestReactor(t, config.TickConfig{StaleWhen: config.Duration{Duration: 20 * time.Millisecond}})
+
+	floor := time.Now()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Drive checkStale directly on a short interval instead of running the
+		// full 1-minute-cadence loop, so the test stays fast without weakening
+		// the assertion: checkStale is exactly what staleCheck.C invokes.
+		ticker := time.NewTicker(5 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				r.checkStale(ctx)
+			}
+		}
+	}()
+	defer func() { cancel(); <-done }()
+
+	waitLastTickAt(t, st, "o/r-1", floor)
+}
+
+// TestSessionReactor_UndeclaredStaleWhenNeverSweeps covers the second half of
+// AC4: with no `stale_when` declared, the passage of time alone must never
+// tick a session (only a declared `on` match or the judge builtin can).
+// staleCheckEvery is shortened so several sweep cycles fit in a fast test.
+func TestSessionReactor_UndeclaredStaleWhenNeverSweeps(t *testing.T) {
+	r, st, _ := newTestReactor(t, config.TickConfig{})
+	r.staleCheckEvery = 5 * time.Millisecond
+	stop := startReactor(t, r)
+	defer stop()
+
+	time.Sleep(80 * time.Millisecond) // several sweep cycles' worth
+	if s := st.Get("o/r-1"); s != nil && !s.LastTickAt.IsZero() {
+		t.Fatalf("session was ticked (LastTickAt = %s) with no stale_when declared", s.LastTickAt)
+	}
+}
+
+// TestSessionReactor_ReactiveTickResetsStaleWindow covers the other half of
+// AC4: a reactive tick resets the staleness clock, so a `stale_when` sweep
+// due to fire soon after it must not fire an extra, redundant tick within
+// that same window — but the sweep must still fire once a full window has
+// elapsed since the reset.
+func TestSessionReactor_ReactiveTickResetsStaleWindow(t *testing.T) {
+	const staleWhen = 120 * time.Millisecond
+	r, _, log := newTestReactor(t, config.TickConfig{
+		On:        []string{"resource.*"},
+		StaleWhen: config.Duration{Duration: staleWhen},
+	})
+	r.staleCheckEvery = 10 * time.Millisecond
+
+	var mu sync.Mutex
+	var calls []time.Time
+	r.tickFn = func(cfg *config.Config, store *state.Store, params service.TickParams) (*service.CheckResult, error) {
+		mu.Lock()
+		calls = append(calls, time.Now())
+		mu.Unlock()
+		return service.TickSession(cfg, store, params) // real stamp, so LastTickAt genuinely resets
+	}
+	callCount := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(calls)
+	}
+
+	stop := startReactor(t, r)
+	defer stop()
+
+	// Wait past the startup stale check (immediate, since LastTickAt starts
+	// zero) — this is call #1, establishing a real reset point.
+	deadline := time.Now().Add(2 * time.Second)
+	for callCount() == 0 && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if callCount() != 1 {
+		t.Fatalf("calls after startup = %d, want exactly 1", callCount())
+	}
+
+	// A reactive tick well inside the stale window resets it (call #2).
+	log.Append(event.Event{SessionName: "o/r-1", Type: "resource.updated"})
+	deadline = time.Now().Add(2 * time.Second)
+	for callCount() < 2 && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Millisecond)
+	}
+	if callCount() != 2 {
+		t.Fatalf("calls after reactive trigger = %d, want exactly 2", callCount())
+	}
+
+	// Within staleWhen of the reset, no extra sweep tick must fire.
+	time.Sleep(staleWhen / 2)
+	if got := callCount(); got != 2 {
+		t.Fatalf("calls within the reset window = %d, want still 2 (stale sweep must not double up)", got)
+	}
+
+	// Once a full window has elapsed since the reset, the sweep fires again.
+	deadline = time.Now().Add(2 * time.Second)
+	for callCount() < 3 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if callCount() != 3 {
+		t.Fatalf("calls after the stale window elapsed = %d, want exactly 3", callCount())
+	}
+}
+
+// TestSessionReactor_TicksSerializeAndDebounceBursts covers AC6 with a
+// deterministic (not timing-dependent) proof: a burst of rapid triggers for
+// one session coalesces into *exactly one* tick invocation, and no two
+// invocations for the same session ever run concurrently.
+//
+// Determinism, not a race against the drain loop's timing, is what makes
+// this airtight: the reactor's durable cursor is pre-committed to the log's
+// head (0) *before* the reactor ever starts, so seedCursor's "only seed a
+// birth cursor if none exists yet" no-ops — the reactor is guaranteed to
+// read every one of the n burst events, appended before it starts, in its
+// very first drain() call. drain() triggers at most once per call
+// regardless of how many matching events it read (reactor.go's `triggered`
+// accumulator), so this setup makes "one coalesced tick for the burst" a
+// certainty rather than a probable outcome of scheduling luck.
+func TestSessionReactor_TicksSerializeAndDebounceBursts(t *testing.T) {
+	r, _, log := newTestReactor(t, config.TickConfig{On: []string{"resource.*"}})
+
+	var mu sync.Mutex
+	calls := 0
+	inFlight := 0
+	maxInFlight := 0
+	r.tickFn = func(cfg *config.Config, store *state.Store, params service.TickParams) (*service.CheckResult, error) {
+		mu.Lock()
+		calls++
+		inFlight++
+		if inFlight > maxInFlight {
+			maxInFlight = inFlight
+		}
+		mu.Unlock()
+		time.Sleep(50 * time.Millisecond) // widen the window so an overlap would be observed
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+		return &service.CheckResult{}, nil
+	}
+
+	const n = 20
+	for range n {
+		log.Append(event.Event{SessionName: "o/r-1", Type: "resource.updated"})
+	}
+	// Pre-commit the cursor to 0 so seedCursor (called at the top of run())
+	// finds a cursor already present and does not seed it to the post-burst
+	// tail — the reactor's first drain() then necessarily reads all n events
+	// appended above in one batch.
+	if err := log.CommitCursor("o/r-1", reactorConsumer, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	stop := startReactor(t, r)
+	defer stop()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for func() int { mu.Lock(); defer mu.Unlock(); return calls }() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	// Give a second wake/fallback cycle a chance to run so a bug that split
+	// the burst across two drains would show up as calls == 2, not be missed
+	// by stopping too early.
+	time.Sleep(150 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if maxInFlight > 1 {
+		t.Fatalf("tick ran concurrently for the same session: maxInFlight = %d", maxInFlight)
+	}
+	if calls != 1 {
+		t.Fatalf("burst of %d rapid triggers coalesced into %d tick invocation(s), want exactly 1", n, calls)
+	}
+}
+
+func TestSupervisor_StartsAndStopsWithRunScope(t *testing.T) {
+	cfg := &config.Config{}
+	st := state.NewStore(t.TempDir())
+	if err := st.Put(&domain.Session{
+		Name: "o/r-1",
+		Tasks: map[string]*contract.TaskState{
+			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	log := eventlog.NewStore(t.TempDir())
+	hub := sessionhub.NewRegistry(log)
+	defer hub.Close()
+	sup := NewSupervisor(cfg, st, log, hub)
+	ctx := t.Context()
+	active := map[string]context.CancelFunc{}
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	defer func() {
+		for _, c := range active {
+			c()
+		}
+	}()
+
+	sup.reconcile(ctx, active, &wg)
+	if _, ok := active["o/r-1"]; !ok {
+		t.Fatal("reactor not started for an up session")
+	}
+	sup.reconcile(ctx, active, &wg) // idempotent: no duplicate
+	if len(active) != 1 {
+		t.Fatalf("expected exactly one reactor, got %d", len(active))
+	}
+
+	// Run scope goes down → supervisor cancels (suspend, not teardown).
+	if err := st.Update("o/r-1", func(s *domain.Session) error {
+		s.Tasks["claude"].Status = contract.TaskStatusCleaned
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sup.reconcile(ctx, active, &wg)
+	if len(active) != 0 {
+		t.Fatalf("reactor not stopped after run scope down: %d active", len(active))
+	}
+}
+
+// TestBackoffInterval covers the pure doubling/cap arithmetic the quiet-tick
+// backoff relies on: stale_when * 2^n, capped at max, well-defined for n far
+// beyond what would overflow a naive bit-shift.
+func TestBackoffInterval(t *testing.T) {
+	base := 15 * time.Minute
+	max := 4 * time.Hour
+	cases := []struct {
+		n    int
+		want time.Duration
+	}{
+		{0, 15 * time.Minute},
+		{1, 30 * time.Minute},
+		{2, 1 * time.Hour},
+		{4, 4 * time.Hour},   // 15m*2^4 = 4h exactly: at the cap, not over it
+		{5, 4 * time.Hour},   // would be 8h uncapped
+		{100, 4 * time.Hour}, // far beyond overflow of a naive 1<<n
+	}
+	for _, c := range cases {
+		if got := backoffInterval(base, max, c.n); got != c.want {
+			t.Errorf("backoffInterval(n=%d) = %v, want %v", c.n, got, c.want)
+		}
+	}
+}
+
+// TestSessionReactor_QuietTickBackoffGrows proves a session with no
+// fingerprint change and no inbound event backs off exponentially: each
+// stale sweep's tick pushes the next required interval further out, up to
+// max_stale_when.
+func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
+	const staleWhen = 10 * time.Millisecond
+	const maxStaleWhen = 40 * time.Millisecond
+	r, st, _ := newTestReactor(t, config.TickConfig{
+		StaleWhen:    config.Duration{Duration: staleWhen},
+		MaxStaleWhen: config.Duration{Duration: maxStaleWhen},
+	})
+	tickCount := 0
+	r.tickFn = func(cfg *config.Config, store *state.Store, params service.TickParams) (*service.CheckResult, error) {
+		tickCount++
+		return service.TickSession(cfg, store, params)
+	}
+	ctx := context.Background()
+
+	// Round 1: never ticked (LastTickAt zero) → ticks immediately. There is no
+	// prior fingerprint/inbound baseline, so the empty-vs-empty comparison
+	// reads as "unchanged" and ConsecutiveUnchanged becomes 1.
+	r.checkStale(ctx)
+	if tickCount != 1 {
+		t.Fatalf("round 1: tickCount = %d, want 1", tickCount)
+	}
+	if n := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged; n != 1 {
+		t.Fatalf("round 1: ConsecutiveUnchanged = %d, want 1", n)
+	}
+
+	// Force each subsequent round's elapsed time past the *current* backoff
+	// interval by rewinding LastTickAt, so the test doesn't wait real
+	// wall-clock multiples of stale_when.
+	rewindAndSweep := func(n int) {
+		interval := backoffInterval(staleWhen, maxStaleWhen, n)
+		if err := st.Update("o/r-1", func(s *domain.Session) error {
+			s.LastTickAt = time.Now().Add(-interval - time.Millisecond)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		r.checkStale(ctx)
+	}
+
+	rewindAndSweep(1)
+	if tickCount != 2 {
+		t.Fatalf("round 2: tickCount = %d, want 2", tickCount)
+	}
+	n2 := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged
+	if n2 != 2 {
+		t.Fatalf("round 2: ConsecutiveUnchanged = %d, want 2 (still quiet)", n2)
+	}
+
+	rewindAndSweep(n2)
+	if tickCount != 3 {
+		t.Fatalf("round 3: tickCount = %d, want 3", tickCount)
+	}
+	n3 := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged
+	if n3 != 3 {
+		t.Fatalf("round 3: ConsecutiveUnchanged = %d, want 3", n3)
+	}
+
+	// Before the backed-off interval elapses, a sweep must not tick.
+	tickCount = 0
+	r.checkStale(ctx)
+	if tickCount != 0 {
+		t.Fatalf("sweep before interval elapsed ticked (tickCount=%d)", tickCount)
+	}
+}
+
+// TestSessionReactor_QuietTickBackoffResetsOnInbound proves AC3/AC5: an
+// inbound event since the last sweep resets ConsecutiveUnchanged to 0 even
+// though nothing else changed, so the next interval is stale_when again.
+func TestSessionReactor_QuietTickBackoffResetsOnInbound(t *testing.T) {
+	const staleWhen = 10 * time.Millisecond
+	r, st, log := newTestReactor(t, config.TickConfig{StaleWhen: config.Duration{Duration: staleWhen}})
+	r.tickFn = service.TickSession
+	ctx := context.Background()
+
+	// Seed a few quiet rounds so ConsecutiveUnchanged > 0.
+	r.checkStale(ctx)
+	for range 2 {
+		n := 0
+		if s := st.Get("o/r-1"); s.TickBackoff != nil {
+			n = s.TickBackoff.ConsecutiveUnchanged
+		}
+		interval := backoffInterval(staleWhen, defaultMaxStaleWhen, n)
+		if err := st.Update("o/r-1", func(s *domain.Session) error {
+			s.LastTickAt = time.Now().Add(-interval - time.Millisecond)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		r.checkStale(ctx)
+	}
+	if n := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged; n == 0 {
+		t.Fatalf("expected backoff to have grown before the inbound event, got n=%d", n)
+	}
+
+	// An inbound event lands (e.g. a subscribed github.* change or another
+	// session's publish) — direction normalization guarantees these are
+	// Inbound, never a same-session self-publish.
+	if _, _, _, err := log.Append(event.Event{
+		SessionName: "o/r-1",
+		Type:        "github.state",
+		Source:      event.SourceGitHub,
+		Direction:   event.Inbound,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	n := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged
+	interval := backoffInterval(staleWhen, defaultMaxStaleWhen, n)
+	if err := st.Update("o/r-1", func(s *domain.Session) error {
+		s.LastTickAt = time.Now().Add(-interval - time.Millisecond)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.checkStale(ctx)
+	if got := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged; got != 0 {
+		t.Fatalf("ConsecutiveUnchanged = %d after inbound event, want 0 (reset)", got)
+	}
+}
+
+// TestSessionReactor_DrainTriggeredInboundTickResetsBackoff proves a tick
+// fired by drain's reactive path (a declared `on` pattern matching an inbound
+// event, not the stale sweep) also resets ConsecutiveUnchanged. doTick is the
+// single actuation point for both paths, so a reactive tick must not leave
+// stale backoff bookkeeping in place — otherwise the next checkStale computes
+// its interval off an inflated n despite the inbound arrival that should have
+// reset it — backoff bookkeeping previously lived only in checkStale, so
+// drain-triggered ticks skipped it entirely.
+func TestSessionReactor_DrainTriggeredInboundTickResetsBackoff(t *testing.T) {
+	const staleWhen = 20 * time.Millisecond
+	r, st, log := newTestReactor(t, config.TickConfig{
+		On:        []string{"resource.*"},
+		StaleWhen: config.Duration{Duration: staleWhen},
+	})
+	r.tickFn = service.TickSession
+	stop := startReactor(t, r)
+	defer stop()
+	time.Sleep(50 * time.Millisecond) // let run() seed, Watch, and reach its select
+
+	// Seed a grown backoff and a recent LastTickAt, as if several quiet stale
+	// sweeps already happened — the stale sweep alone would not fire again
+	// for a long while.
+	floor := time.Now()
+	if err := st.Update("o/r-1", func(s *domain.Session) error {
+		s.LastTickAt = time.Now()
+		s.TickBackoff = &contract.TickBackoff{ConsecutiveUnchanged: 5}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A declared-pattern event that direction normalization guarantees is
+	// Inbound for an externally-originated publish triggers a reactive tick
+	// via drain, independent of the stale sweep's cadence.
+	log.Append(event.Event{SessionName: "o/r-1", Type: "resource.updated", Direction: event.Inbound})
+	waitLastTickAt(t, st, "o/r-1", floor)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if n := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged; n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("ConsecutiveUnchanged never reset after a drain-triggered inbound tick, still %d", st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
