@@ -143,3 +143,25 @@ func TestCmdGhAPI_DataDirRoutesGuardState(t *testing.T) {
 		t.Errorf("expected rate-budget.json under --data-dir, got: %v", err)
 	}
 }
+
+// serve and gh-api must resolve the same on-disk budget file when given the
+// same --data-dir (explicit or, via XDG defaulting, empty) — otherwise the
+// watcher daemon and config-layer gh calls back off independently instead of
+// sharing one budget.
+func TestGhAPIDataDir_MatchesAcrossServeAndGhAPIInvocations(t *testing.T) {
+	t.Run("explicit --data-dir", func(t *testing.T) {
+		dir := t.TempDir()
+		if got := ghAPIDataDir(dir); got != dir {
+			t.Errorf("ghAPIDataDir(%q) = %q, want %q", dir, got, dir)
+		}
+	})
+
+	t.Run("default (XDG) --data-dir is stable across calls", func(t *testing.T) {
+		t.Setenv("XDG_DATA_HOME", t.TempDir())
+		serveGuardPath := ghAPIDataDir("")
+		ghAPIGuardPath := ghAPIDataDir("")
+		if serveGuardPath != ghAPIGuardPath {
+			t.Errorf("serve resolved %q, gh-api resolved %q; must match", serveGuardPath, ghAPIGuardPath)
+		}
+	})
+}

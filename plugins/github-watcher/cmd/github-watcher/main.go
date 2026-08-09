@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/plect/plugins/github-watcher/internal/ratebudget"
 	"github.com/kecbigmt/plect/plugins/github-watcher/internal/watcher"
 )
 
@@ -126,6 +127,9 @@ func cmdServe(args []string) error {
 	poller := &watcher.Poller{
 		Store:  watcher.NewStore(*dataDir),
 		Logger: logger,
+		// Same data-dir resolution as `gh-api`, so poll and config-layer gh
+		// calls back off against one shared budget.
+		Guard: ratebudget.NewGuard(ghAPIDataDir(*dataDir)),
 	}
 
 	busSocket := os.Getenv("TWS_BUS_SOCKET")
