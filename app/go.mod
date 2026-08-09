@@ -7,7 +7,6 @@ require (
 	github.com/kecbigmt/plect/contracts/atomicfile v0.0.0
 	github.com/kecbigmt/plect/contracts/channel-protocol v0.0.0
 	github.com/kecbigmt/plect/contracts/event v0.0.0
-	github.com/kecbigmt/plect/contracts/hook v0.0.0
 	github.com/kecbigmt/plect/contracts/state v0.0.0
 	github.com/mark3labs/mcp-go v0.48.0
 	github.com/oklog/ulid/v2 v2.1.0
@@ -30,6 +29,5 @@ replace (
 	github.com/kecbigmt/plect/contracts/atomicfile => ../contracts/atomicfile
 	github.com/kecbigmt/plect/contracts/channel-protocol => ../contracts/channel-protocol
 	github.com/kecbigmt/plect/contracts/event => ../contracts/event
-	github.com/kecbigmt/plect/contracts/hook => ../contracts/hook
 	github.com/kecbigmt/plect/contracts/state => ../contracts/state
 )

@@ -614,7 +614,6 @@ type RenderContext struct {
 type SessionVars struct {
 	Name          string
 	ResourceID    string
-	StreamID      string
 	ParentSession string
 	WorktreePath  string
 	URL           string
@@ -753,7 +752,6 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		SessionInputs map[string]any
 		SessionName   string
 		ResourceID    string
-		StreamID      string
 		ParentSession string
 		WorktreePath  string
 		URL           string
@@ -770,7 +768,6 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		SessionInputs: normalizeOutputs(ctx.Session.Inputs),
 		SessionName:   ctx.Session.Name,
 		ResourceID:    ctx.Session.ResourceID,
-		StreamID:      ctx.Session.StreamID,
 		ParentSession: ctx.Session.ParentSession,
 		WorktreePath:  ctx.Session.WorktreePath,
 		URL:           ctx.Session.URL,
@@ -955,7 +952,7 @@ func observerOr(o Observer) Observer {
 // retried after a partial failure. Tasks in any other state (absent,
 // "failed", "cleaned") are re-run with a fresh setup attempt. Task authors
 // must make their setup scripts cope with this by verifying the desired
-// state rather than blindly recreating; see README "Task Model" section.
+// state rather than blindly recreating; see README "Task model" section.
 //
 // envExecutor is optional (variadic so every pre-existing call site keeps
 // compiling unchanged): when supplied, a node whose resolved Execution is

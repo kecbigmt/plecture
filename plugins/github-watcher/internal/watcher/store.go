@@ -32,10 +32,6 @@ type Subscription struct {
 	// Branch is the session's working branch; used to discover the linked PR
 	// for issue resources. Optional.
 	Branch string `json:"branch,omitempty"`
-	// StreamID is the session's opaque work-stream id, stamped onto the github.*
-	// events this subscription produces so they join the cross-session stream
-	// view. Optional.
-	StreamID string `json:"stream_id,omitempty"`
 	// Last holds the most recent observed values, used for change detection
 	// across daemon restarts.
 	Last map[string]string `json:"last,omitempty"`
@@ -74,7 +70,7 @@ func NewStore(dir string) *Store {
 }
 
 // Subscribe upserts a (session, resource) subscription. Re-subscribing the same
-// pair refreshes branch/stream but keeps the observed baseline so a task
+// pair refreshes branch but keeps the observed baseline so a task
 // retry doesn't replay old notifications.
 func (s *Store) Subscribe(sub Subscription) error {
 	return s.update(func(r *registry) error {
@@ -87,9 +83,6 @@ func (s *Store) Subscribe(sub Subscription) error {
 			// losing it would break an issue session's linked-PR resolution.
 			if sub.Branch != "" {
 				existing.Branch = sub.Branch
-			}
-			if sub.StreamID != "" {
-				existing.StreamID = sub.StreamID
 			}
 			return nil
 		}

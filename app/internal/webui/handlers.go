@@ -144,25 +144,25 @@ func selectedFromCurrentURL(r *http.Request) string {
 }
 
 // handleSessionEvents renders the event timeline partial, newest first. The
-// scope is exactly one of session (one log), subtree (the tree rooted at a
-// session — canonical cross-session view), or stream (the stream_id compat
-// view), mirroring tws_event_list; it rides as a query param (a session name's
-// "/" would otherwise collide with the {name...} detail route).
+// scope is exactly one of session (one log) or subtree (the tree rooted at a
+// session — the canonical cross-session view), mirroring tws_event_list; it
+// rides as a query param (a session name's "/" would otherwise collide with
+// the {name...} detail route).
 func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	session, subtree, stream := q.Get("session"), q.Get("subtree"), q.Get("stream")
+	session, subtree := q.Get("session"), q.Get("subtree")
 	scopes := 0
-	for _, v := range []string{session, subtree, stream} {
+	for _, v := range []string{session, subtree} {
 		if v != "" {
 			scopes++
 		}
 	}
 	if scopes == 0 {
-		http.Error(w, "session, subtree, or stream is required", http.StatusBadRequest)
+		http.Error(w, "session or subtree is required", http.StatusBadRequest)
 		return
 	}
 	if scopes > 1 {
-		http.Error(w, "session, subtree, and stream are mutually exclusive", http.StatusBadRequest)
+		http.Error(w, "session and subtree are mutually exclusive", http.StatusBadRequest)
 		return
 	}
 	var evs []event.Event
@@ -170,8 +170,6 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case subtree != "":
 		evs, err = s.svc.EventsSubtree(subtree)
-	case stream != "":
-		evs, err = s.svc.EventsStream(stream)
 	default:
 		evs, err = s.svc.Events(session)
 		slices.Reverse(evs) // the single-session tail is oldest-first
@@ -183,12 +181,11 @@ func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "event-rows", evs)
 }
 
-// timelineView is the data for a cross-session timeline page: the scope, the
+// timelineView is the data for the cross-session timeline page: the scope, the
 // initial rows (newest first), and the partial URL the page polls to refresh.
-// Root is the subtree's root session; Stream is the compat view's stream id.
+// Root is the subtree's root session.
 type timelineView struct {
 	Root    string
-	Stream  string
 	PollURL string
 	Events  []event.Event
 }
@@ -206,24 +203,6 @@ func (s *Server) handleSubtreeTimeline(w http.ResponseWriter, r *http.Request) {
 	s.render(w, "timeline", timelineView{
 		Root:    name,
 		PollURL: "/events?subtree=" + url.QueryEscape(name),
-		Events:  evs,
-	})
-}
-
-// handleStreamTimeline serves the stream_id compat timeline: every session
-// carrying the id, merged in event-id order (`tws event list --stream`). The
-// id needs no state entry — a stream survives its sessions — so any id renders,
-// possibly empty.
-func (s *Server) handleStreamTimeline(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	evs, err := s.svc.EventsStream(id)
-	if err != nil {
-		s.renderStatusError(w, httpStatusForError(err), err.Error())
-		return
-	}
-	s.render(w, "timeline", timelineView{
-		Stream:  id,
-		PollURL: "/events?stream=" + url.QueryEscape(id),
 		Events:  evs,
 	})
 }
@@ -263,7 +242,6 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		Tag:        strings.TrimSpace(r.FormValue("tag")),
 		Workflow:   strings.TrimSpace(r.FormValue("workflow")),
 		Inputs:     inputs,
-		StreamID:   strings.TrimSpace(r.FormValue("stream")),
 	})
 	if err != nil {
 		s.renderStatusError(w, httpStatusForError(err), err.Error())

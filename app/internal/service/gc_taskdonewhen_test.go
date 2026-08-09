@@ -5,7 +5,6 @@ import (
 
 	"github.com/kecbigmt/plect/app/internal/config"
 	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/ghcache"
 	"github.com/kecbigmt/plect/app/internal/task"
 	contract "github.com/kecbigmt/plect/contracts/state"
 )
@@ -141,8 +140,7 @@ func TestAggregateTaskDoneWhen(t *testing.T) {
 	}
 }
 
-// The aggregate is the primary basis: all instances satisfied → done even when
-// the legacy merged cache (here: still open) would say otherwise.
+// The aggregate is the primary basis: all instances satisfied → done.
 func TestClassifySession_TaskDoneWhenAggregatesToDone(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
@@ -157,14 +155,8 @@ func TestClassifySession_TaskDoneWhenAggregatesToDone(t *testing.T) {
 			"review#2": produced("review", map[string]any{"checks_status": "SUCCESS"}),
 		},
 	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-50": {CacheEntryBase: ghcache.CacheEntryBase{State: "open"}},
-		},
-	}
 
-	entry, warn := classifySession(s, cache, reviewDefs(), map[string]*domain.Session{s.Name: s})
+	entry, warn := classifySession(s, reviewDefs(), map[string]*domain.Session{s.Name: s})
 	if warn != "" {
 		t.Errorf("unexpected warning: %s", warn)
 	}
@@ -174,8 +166,7 @@ func TestClassifySession_TaskDoneWhenAggregatesToDone(t *testing.T) {
 }
 
 // Per-instance independence: one PR's checks pass, another's are not yet
-// observed → the session is not done. The merged cache (which would delete
-// under the legacy basis) must not override a pending work unit.
+// observed → the session is not done.
 func TestClassifySession_TaskDoneWhenPerInstancePendingBlocks(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
@@ -190,20 +181,14 @@ func TestClassifySession_TaskDoneWhenPerInstancePendingBlocks(t *testing.T) {
 			"review#2": produced("review", map[string]any{}),
 		},
 	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-51": {CacheEntryBase: ghcache.CacheEntryBase{State: "merged"}},
-		},
-	}
 
-	entry, _ := classifySession(s, cache, reviewDefs(), map[string]*domain.Session{s.Name: s})
+	entry, _ := classifySession(s, reviewDefs(), map[string]*domain.Session{s.Name: s})
 	if entry != nil && entry.Action == GCActionDelete {
 		t.Error("a pending per-instance done_when must block completion (fail closed)")
 	}
 }
 
-// One PR's checks fail → unsatisfied → session not done regardless of the cache.
+// One PR's checks fail → unsatisfied → session not done.
 func TestClassifySession_TaskDoneWhenPerInstanceUnsatisfiedBlocks(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
@@ -218,23 +203,17 @@ func TestClassifySession_TaskDoneWhenPerInstanceUnsatisfiedBlocks(t *testing.T) 
 			"review#2": produced("review", map[string]any{"checks_status": "FAILURE"}),
 		},
 	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-53": {CacheEntryBase: ghcache.CacheEntryBase{State: "merged"}},
-		},
-	}
 
-	entry, _ := classifySession(s, cache, reviewDefs(), map[string]*domain.Session{s.Name: s})
+	entry, _ := classifySession(s, reviewDefs(), map[string]*domain.Session{s.Name: s})
 	if entry != nil && entry.Action == GCActionDelete {
 		t.Error("an unsatisfied per-instance done_when must block completion")
 	}
 }
 
 // Fail-open guard: a dynamic work instance whose task def vanished (config
-// drift) must not let a merged+clean session fall through to the legacy
-// merged-PR delete with its work unaccounted for. It blocks and warns instead.
-func TestClassifySession_MissingDynamicDefBlocksMergedDelete(t *testing.T) {
+// drift) must not let a session fall through to an auto-delete with its work
+// unaccounted for. It blocks and warns instead.
+func TestClassifySession_MissingDynamicDefBlocksDelete(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
 		Name:         "owner/repo-54",
@@ -247,23 +226,19 @@ func TestClassifySession_MissingDynamicDefBlocksMergedDelete(t *testing.T) {
 			"gone#1": {TaskID: "gone", Dynamic: true, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 		},
 	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-54": {CacheEntryBase: ghcache.CacheEntryBase{State: "merged"}},
-		},
-	}
 
-	entry, warn := classifySession(s, cache, reviewDefs(), map[string]*domain.Session{s.Name: s})
+	entry, warn := classifySession(s, reviewDefs(), map[string]*domain.Session{s.Name: s})
 	if warn == "" {
 		t.Error("expected a config-drift warning for the missing task def")
 	}
 	if entry != nil && entry.Action == GCActionDelete {
-		t.Error("a vanished work-task def must block the merged-PR fallback delete")
+		t.Error("a vanished work-task def must block auto-delete")
 	}
 }
 
-func TestClassifySession_NoTaskDoneWhenFallsBackToMerged(t *testing.T) {
+// A session with no done_when-bearing task instances has nothing for GC to
+// evaluate — it is never auto-deleted on that basis alone.
+func TestClassifySession_NoTaskDoneWhenIsNeverDeleted(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
 		Name:         "owner/repo-52",
@@ -276,18 +251,12 @@ func TestClassifySession_NoTaskDoneWhenFallsBackToMerged(t *testing.T) {
 			"tmux": produced("tmux", nil),
 		},
 	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-52": {CacheEntryBase: ghcache.CacheEntryBase{State: "merged"}},
-		},
-	}
 
-	entry, warn := classifySession(s, cache, reviewDefs(), map[string]*domain.Session{s.Name: s})
+	entry, warn := classifySession(s, reviewDefs(), map[string]*domain.Session{s.Name: s})
 	if warn != "" {
 		t.Errorf("unexpected warning: %s", warn)
 	}
-	if entry == nil || entry.Action != GCActionDelete || entry.Reason != GCReasonMergedClean {
-		t.Fatalf("no done_when task → legacy merged fallback, got %+v", entry)
+	if entry != nil {
+		t.Fatalf("no done_when task should not be auto-deleted, got %+v", entry)
 	}
 }

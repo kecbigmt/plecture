@@ -162,7 +162,6 @@ type TaskState struct {
 type Session struct {
 	Name          string                `json:"session_name"`
 	ResourceID    string                `json:"resource_id,omitempty"`
-	StreamID      string                `json:"stream_id,omitempty"` // opaque work-stream id; groups events across sessions (B-2). Empty = none.
 	ParentSession string                `json:"parent_session,omitempty"`
 	Children      []string              `json:"children,omitempty"`
 	Alias         string                `json:"alias,omitempty"`

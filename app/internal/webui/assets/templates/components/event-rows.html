@@ -7,7 +7,7 @@
     <span class="font-mono text-foreground">{{ .Type }}</span>
     <span>{{ .Source }}</span>
     {{- if .Direction }}<span>{{ .Direction }}</span>{{ end }}
-    {{- /* The merged subtree/stream timelines interleave several sessions, so
+    {{- /* The merged subtree timeline interleaves several sessions, so
            each row names (and links) its session; the single-session timeline
            carries it too rather than forking the partial. */}}
     {{- if .SessionName }}<a class="break-all rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ sessionPath .SessionName }}">{{ .SessionName }}</a>{{ end }}

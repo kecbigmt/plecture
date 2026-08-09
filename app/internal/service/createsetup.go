@@ -87,9 +87,9 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	}
 
 	// Legacy compat fields (URL/URLType/OwnerRepo/Number) stay populated for
-	// GitHub-shaped resources so existing consumers (ghcache shim,
-	// web UI) keep working; non-GitHub resources leave them at their zero
-	// values and consumers fall back to ResourceID.
+	// GitHub-shaped resources so existing consumers (web UI) keep working;
+	// non-GitHub resources leave them at their zero values and consumers
+	// fall back to ResourceID.
 	var parsed *gh.ParsedURL
 	if p, err := gh.ParseURL(resource); err == nil {
 		parsed = p
@@ -140,16 +140,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	}
 	session.ResourceID = resource
 	session.Alias = alias
-	// Stream is the session's identity: set once from --stream (or inherited
-	// TWS_STREAM_ID), never overwritten on retry. A provider may instead supply
-	// it via setup output, adopted below — but that lands AFTER provider
-	// setup, so a provider that both emits stream_id and self-subscribes with
-	// {{.StreamID}} at setup would subscribe streamless (none does today).
-	if session.StreamID == "" {
-		if sid := resolveStreamID(params.StreamID); sid != "" {
-			session.StreamID = sid
-		}
-	}
 	if parsed != nil {
 		session.URL = parsed.URL()
 		session.URLType = string(parsed.Type)
@@ -186,18 +176,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		}
 		if branch, ok := outputs["branch"].(string); ok && branch != "" {
 			session.Branch = branch
-		}
-		// Adopt a provider-generated stream as the session's own when none was
-		// set explicitly (no --stream, no inherited TWS_STREAM_ID). This makes
-		// session.StreamID the single source of the stream for the orchestrator
-		// route too — the provider emits stream_id from setup, core stamps it
-		// here, and the claude task exports {{.StreamID}}. Write-once:
-		// an existing StreamID (flag/env/prior create) is never overwritten, so
-		// dispatched children keep inheriting their parent's stream.
-		if session.StreamID == "" {
-			if sid, ok := outputs["stream_id"].(string); ok && sid != "" {
-				session.StreamID = sid
-			}
 		}
 	}
 	if err := store.Put(session); err != nil {

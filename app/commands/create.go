@@ -17,7 +17,6 @@ var (
 	createInputs     string
 	createInputsFile string
 	createTask       string
-	createStream     string
 	createParent     string
 )
 
@@ -68,7 +67,6 @@ session's initial task without hand-writing JSON. Workflows that declare
 			Tag:           createTag,
 			Workflow:      createWorkflow,
 			Inputs:        inputs,
-			StreamID:      createStream,
 			ParentSession: createParent,
 			Observer:      newTaskObserver(cfg),
 		})
@@ -91,7 +89,6 @@ func init() {
 	createCmd.Flags().StringVar(&createInputs, "inputs", "", "Session inputs as a JSON object string")
 	createCmd.Flags().StringVar(&createInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object")
 	createCmd.Flags().StringVar(&createTask, "task", "", "Shorthand for --inputs '{\"task\":\"<id>\"}'. Pass \"none\" for no initial task.")
-	createCmd.Flags().StringVar(&createStream, "stream", "", "Opaque work-stream id to tag this session and its events (cross-session view); falls back to $TWS_STREAM_ID")
 	createCmd.Flags().StringVar(&createParent, "parent", "", "Parent session name for the session tree, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $TWS_SESSION_NAME when it names an existing session")
 	rootCmd.AddCommand(createCmd)
 }

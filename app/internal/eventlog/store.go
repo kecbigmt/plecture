@@ -417,8 +417,7 @@ func (s *Store) Follow(ctx context.Context, session string, since int64, fn func
 // Sessions returns the names of every session that has a log directory, decoding
 // each dir name back to its opaque session name (the inverse of encodeSession).
 // Returned sorted for deterministic iteration. Missing root → empty, no error
-// (nothing has been logged yet). This is the enumeration the cross-session
-// (stream) views fan out over.
+// (nothing has been logged yet).
 func (s *Store) Sessions() ([]string, error) {
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
@@ -445,12 +444,11 @@ func (s *Store) Sessions() ([]string, error) {
 // ListAcross merges every event from the named sessions matching f into one
 // slice sorted by event id (a ULID — lexicographic order is time order, and ids
 // are globally unique, so this is a stable total order across sessions). It is
-// the merge primitive behind both cross-session views: the stream compat bridge
-// (names = every session carrying a stream id) and the canonical subtree view
-// (names = a session tree's root + descendants). f.Limit is ignored — paging is
-// the caller's job (the service applies the ULID keyset cursor and page size). A
-// per-session log that has rotated does not break the merge — ordering is by id,
-// not by any per-session byte offset.
+// the merge primitive behind the session-tree view (names = a session tree's
+// root + descendants). f.Limit is ignored — paging is the caller's job (the
+// service applies the ULID keyset cursor and page size). A per-session log
+// that has rotated does not break the merge — ordering is by id, not by any
+// per-session byte offset.
 func (s *Store) ListAcross(names []string, f event.Filter) ([]event.Event, error) {
 	lf := f
 	lf.Limit = 0
@@ -466,28 +464,10 @@ func (s *Store) ListAcross(names []string, f event.Filter) ([]event.Event, error
 	return all, nil
 }
 
-// ListStream returns every event across all sessions whose stream_id equals
-// streamID and which matches f's other selectors, merged in id order. This is
-// the stream compat read model; the canonical scope is the session tree
-// (ListAcross over a subtree). f.StreamID and f.Limit are ignored: streamID is
-// authoritative and paging/limiting is the caller's job.
-func (s *Store) ListStream(streamID string, f event.Filter) ([]event.Event, error) {
-	if streamID == "" {
-		return nil, fmt.Errorf("eventlog: stream id is required")
-	}
-	sessions, err := s.Sessions()
-	if err != nil {
-		return nil, err
-	}
-	sf := f
-	sf.StreamID = streamID
-	return s.ListAcross(sessions, sf)
-}
-
 // FollowAcross delivers events as they land across a dynamic set of sessions,
 // then keeps polling until ctx ends. It re-resolves membership each tick via
-// namesFn so a session that joins later — a freshly spawned subtree child, a new
-// session carrying the stream — starts being followed automatically, and tracks
+// namesFn so a session that joins later — a freshly spawned subtree child —
+// starts being followed automatically, and tracks
 // a per-session byte offset so each record is delivered once. Within a tick new
 // records are sorted by id before delivery so the merged order stays
 // chronological; across ticks ordering is monotonic at poll granularity.
@@ -519,17 +499,6 @@ func (s *Store) FollowAcross(ctx context.Context, namesFn func() ([]string, erro
 		case <-time.After(pollInterval):
 		}
 	}
-}
-
-// FollowStream delivers stream events live across every session carrying
-// streamID; the stream compat counterpart of FollowAcross.
-func (s *Store) FollowStream(ctx context.Context, streamID string, f event.Filter, fn func(event.Event)) error {
-	if streamID == "" {
-		return fmt.Errorf("eventlog: stream id is required")
-	}
-	sf := f
-	sf.StreamID = streamID
-	return s.FollowAcross(ctx, s.Sessions, sf, fn)
 }
 
 // HasCursor reports whether a consumer has ever committed an offset. It lets a
@@ -594,7 +563,7 @@ func flock(path string, how int) (func(), error) {
 // entropy is a monotonic ULID source: for two ids minted in the same
 // millisecond it strictly increases the random component, so ids sort in
 // mint order, not by a random tiebreak. This matters for the cross-session
-// (stream) view, whose merge and keyset cursor order events by id — without
+// (subtree) view, whose merge and keyset cursor order events by id — without
 // monotonicity, two events appended in the same millisecond (even in different
 // sessions, as long as one process writes them) could sort either way. It is
 // stateful and not safe for concurrent use, so every mint goes through entMu.

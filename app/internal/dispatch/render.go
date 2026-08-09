@@ -40,7 +40,6 @@ func channelInputs(s *domain.Session, ch config.EventChannel) (map[string]any, e
 	return task.RenderInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
 		Name:         s.Name,
 		ResourceID:   s.ResourceID,
-		StreamID:     s.StreamID,
 		WorktreePath: s.WorktreePath,
 		URL:          s.URL,
 		OwnerRepo:    s.OwnerRepo,

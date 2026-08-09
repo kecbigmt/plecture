@@ -12,13 +12,11 @@ import (
 // SubscribeHookVars is the template surface for a provider's `subscribe` hook.
 // Like WorkflowHookVars it is deliberately minimal — subscribe is a runtime
 // verb that runs from an arbitrary cwd with no working directory or task DAG
-// in scope. It forwards only the current session, the opaque resource being
-// subscribed, and the session's work-stream (so the provider can stamp the
-// events it produces).
+// in scope. It forwards only the current session and the opaque resource
+// being subscribed.
 type SubscribeHookVars struct {
 	ResourceID  string
 	SessionName string
-	StreamID    string
 }
 
 // RunProviderSubscribe renders and runs the provider's `subscribe` hook. The

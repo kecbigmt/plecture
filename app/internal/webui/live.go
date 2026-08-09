@@ -57,19 +57,6 @@ func (l *LiveService) EventsSubtree(root string) ([]event.Event, error) {
 	return page.Events, nil
 }
 
-// EventsStream returns the most recent events carrying streamID (newest first),
-// via EventPageStream — the compat cross-session read shared with CLI/MCP.
-func (l *LiveService) EventsStream(streamID string) ([]event.Event, error) {
-	page, err := service.EventPageStream(l.store, streamID, service.EventPageParams{
-		Order:  event.OrderDesc,
-		Filter: event.Filter{Limit: eventTimelineLimit},
-	})
-	if err != nil {
-		return nil, err
-	}
-	return page.Events, nil
-}
-
 // PublishEvent appends an event to the session's log. The bus tailer fans the
 // appended event to the live SSE stream, so an open timeline updates without a
 // round-trip from this handler.

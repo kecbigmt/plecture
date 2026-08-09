@@ -10,7 +10,6 @@ import (
 
 	"github.com/kecbigmt/plect/app/internal/config"
 	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/ghcache"
 	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
@@ -23,12 +22,7 @@ func TestClassifySession_WorktreeMissing(t *testing.T) {
 		Number:       1,
 		WorktreePath: "/nonexistent/path",
 	}
-	cache := &ghcache.CacheFile{
-		Issues:       make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: make(map[string]*ghcache.PRCacheEntry),
-	}
-
-	entry, _ := classifySession(s, cache, nil, map[string]*domain.Session{s.Name: s})
+	entry, _ := classifySession(s, nil, map[string]*domain.Session{s.Name: s})
 	if entry == nil {
 		t.Fatal("expected GC entry for missing worktree")
 	}
@@ -37,48 +31,6 @@ func TestClassifySession_WorktreeMissing(t *testing.T) {
 	}
 	if entry.Reason != GCReasonWorktreeMissing {
 		t.Errorf("Reason = %q, want %q", entry.Reason, GCReasonWorktreeMissing)
-	}
-}
-
-func TestClassifySession_MergedClean(t *testing.T) {
-	// Create a clean git worktree (temp dir with git init)
-	tmpDir := t.TempDir()
-	wtPath := filepath.Join(tmpDir, "wt")
-	if err := os.MkdirAll(wtPath, 0755); err != nil {
-		t.Fatal(err)
-	}
-	// Initialize a git repo so GetWorktreeStatus works
-	runCmd(t, wtPath, "git", "init")
-	runCmd(t, wtPath, "git", "commit", "--allow-empty", "-m", "init")
-
-	s := &domain.Session{
-		Name:         "owner/repo-10",
-		URL:          "https://github.com/owner/repo/pull/10",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       10,
-		WorktreePath: wtPath,
-	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-10": {
-				CacheEntryBase: ghcache.CacheEntryBase{
-					State: "merged",
-				},
-			},
-		},
-	}
-
-	entry, _ := classifySession(s, cache, nil, map[string]*domain.Session{s.Name: s})
-	if entry == nil {
-		t.Fatal("expected GC entry for merged+clean session")
-	}
-	if entry.Action != GCActionDelete {
-		t.Errorf("Action = %q, want %q", entry.Action, GCActionDelete)
-	}
-	if entry.Reason != GCReasonMergedClean {
-		t.Errorf("Reason = %q, want %q", entry.Reason, GCReasonMergedClean)
 	}
 }
 
@@ -95,7 +47,7 @@ func producedRuntimeTask() *contract.TaskState {
 	return &contract.TaskState{Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}
 }
 
-func TestClassifySession_MergedDirty_Unhealthy(t *testing.T) {
+func TestClassifySession_DirtyWorktree_Unhealthy(t *testing.T) {
 	// Create a dirty worktree
 	tmpDir := t.TempDir()
 	wtPath := filepath.Join(tmpDir, "wt")
@@ -116,21 +68,10 @@ func TestClassifySession_MergedDirty_Unhealthy(t *testing.T) {
 		WorktreePath: wtPath,
 		Tasks:        map[string]*contract.TaskState{"runtime": producedRuntimeTask()},
 	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-11": {
-				CacheEntryBase: ghcache.CacheEntryBase{
-					State: "merged",
-				},
-			},
-		},
-	}
-
-	// declared healthcheck fails → unhealthy + merged + dirty → manual
-	entry, _ := classifySession(s, cache, runtimeTaskDefs("false"), map[string]*domain.Session{s.Name: s})
+	// declared healthcheck fails + dirty worktree → manual
+	entry, _ := classifySession(s, runtimeTaskDefs("false"), map[string]*domain.Session{s.Name: s})
 	if entry == nil {
-		t.Fatal("expected GC entry for merged+dirty session with unhealthy runtime")
+		t.Fatal("expected GC entry for dirty session with unhealthy runtime")
 	}
 	if entry.Action != GCActionManual {
 		t.Errorf("Action = %q, want %q", entry.Action, GCActionManual)
@@ -140,7 +81,7 @@ func TestClassifySession_MergedDirty_Unhealthy(t *testing.T) {
 	}
 }
 
-func TestClassifySession_NotMerged_Unhealthy(t *testing.T) {
+func TestClassifySession_Unhealthy_CleanWorktree(t *testing.T) {
 	tmpDir := t.TempDir()
 	wtPath := filepath.Join(tmpDir, "wt")
 	if err := os.MkdirAll(wtPath, 0755); err != nil {
@@ -158,21 +99,10 @@ func TestClassifySession_NotMerged_Unhealthy(t *testing.T) {
 		WorktreePath: wtPath,
 		Tasks:        map[string]*contract.TaskState{"runtime": producedRuntimeTask()},
 	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-12": {
-				CacheEntryBase: ghcache.CacheEntryBase{
-					State: "open",
-				},
-			},
-		},
-	}
-
-	// declared healthcheck fails + not merged + clean → manual
-	entry, _ := classifySession(s, cache, runtimeTaskDefs("false"), map[string]*domain.Session{s.Name: s})
+	// declared healthcheck fails + clean worktree → manual
+	entry, _ := classifySession(s, runtimeTaskDefs("false"), map[string]*domain.Session{s.Name: s})
 	if entry == nil {
-		t.Fatal("expected GC entry for open session with unhealthy runtime")
+		t.Fatal("expected GC entry for session with unhealthy runtime")
 	}
 	if entry.Action != GCActionManual {
 		t.Errorf("Action = %q, want %q", entry.Action, GCActionManual)
@@ -200,106 +130,10 @@ func TestClassifySession_Healthy_PassingHealthcheck(t *testing.T) {
 		WorktreePath: wtPath,
 		Tasks:        map[string]*contract.TaskState{"runtime": producedRuntimeTask()},
 	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-13": {CacheEntryBase: ghcache.CacheEntryBase{State: "open"}},
-		},
-	}
-
-	// declared healthcheck passes + not merged → healthy, skipped by GC
-	entry, _ := classifySession(s, cache, runtimeTaskDefs("true"), map[string]*domain.Session{s.Name: s})
+	// declared healthcheck passes → healthy, skipped by GC
+	entry, _ := classifySession(s, runtimeTaskDefs("true"), map[string]*domain.Session{s.Name: s})
 	if entry != nil {
 		t.Errorf("expected nil entry for healthy session, got %+v", entry)
-	}
-}
-
-func TestIsMerged_PR(t *testing.T) {
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-5": {CacheEntryBase: ghcache.CacheEntryBase{State: "merged"}},
-			"owner/repo-6": {CacheEntryBase: ghcache.CacheEntryBase{State: "open"}},
-		},
-	}
-
-	tests := []struct {
-		name    string
-		session *domain.Session
-		want    bool
-	}{
-		{
-			name:    "merged PR",
-			session: &domain.Session{OwnerRepo: "owner/repo", Number: 5, URLType: "pr"},
-			want:    true,
-		},
-		{
-			name:    "open PR",
-			session: &domain.Session{OwnerRepo: "owner/repo", Number: 6, URLType: "pr"},
-			want:    false,
-		},
-		{
-			name:    "PR not in cache",
-			session: &domain.Session{OwnerRepo: "owner/repo", Number: 99, URLType: "pr"},
-			want:    false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isMerged(tt.session, cache)
-			if got != tt.want {
-				t.Errorf("isMerged() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestIsMerged_Issue(t *testing.T) {
-	cache := &ghcache.CacheFile{
-		Issues: map[string]*ghcache.IssueCacheEntry{
-			"owner/repo-1": {
-				CacheEntryBase: ghcache.CacheEntryBase{State: "closed"},
-				LinkedPR:       &ghcache.PRCacheEntry{CacheEntryBase: ghcache.CacheEntryBase{State: "merged"}},
-			},
-			"owner/repo-2": {
-				CacheEntryBase: ghcache.CacheEntryBase{State: "open"},
-			},
-			"owner/repo-3": {
-				CacheEntryBase: ghcache.CacheEntryBase{State: "closed"},
-				LinkedPR:       &ghcache.PRCacheEntry{CacheEntryBase: ghcache.CacheEntryBase{State: "open"}},
-			},
-		},
-		PullRequests: make(map[string]*ghcache.PRCacheEntry),
-	}
-
-	tests := []struct {
-		name    string
-		session *domain.Session
-		want    bool
-	}{
-		{
-			name:    "issue with merged linked PR",
-			session: &domain.Session{OwnerRepo: "owner/repo", Number: 1, URLType: "issue"},
-			want:    true,
-		},
-		{
-			name:    "issue without linked PR",
-			session: &domain.Session{OwnerRepo: "owner/repo", Number: 2, URLType: "issue"},
-			want:    false,
-		},
-		{
-			name:    "issue with open linked PR",
-			session: &domain.Session{OwnerRepo: "owner/repo", Number: 3, URLType: "issue"},
-			want:    false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isMerged(tt.session, cache)
-			if got != tt.want {
-				t.Errorf("isMerged() = %v, want %v", got, tt.want)
-			}
-		})
 	}
 }
 
@@ -443,7 +277,9 @@ func cleanGitWorktree(t *testing.T) string {
 	return wtPath
 }
 
-func TestClassifySession_WorkflowDoneWhenNoLongerDrivesGC(t *testing.T) {
+// A session with no done_when tasks has nothing for GC to evaluate — it must
+// not be auto-deleted just because the worktree happens to be clean.
+func TestClassifySession_NoTaskDoneWhenIsNeverAutoDeleted(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
 		Name:         "owner/repo-20",
@@ -453,45 +289,13 @@ func TestClassifySession_WorkflowDoneWhenNoLongerDrivesGC(t *testing.T) {
 		WorktreePath: wtPath,
 		Workflow:     "wf",
 	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-20": {CacheEntryBase: ghcache.CacheEntryBase{State: "merged"}},
-		},
-	}
 
-	entry, warn := classifySession(s, cache, nil, map[string]*domain.Session{s.Name: s})
+	entry, warn := classifySession(s, nil, map[string]*domain.Session{s.Name: s})
 	if warn != "" {
 		t.Errorf("unexpected warning: %s", warn)
 	}
-	if entry == nil || entry.Action != GCActionDelete || entry.Reason != GCReasonMergedClean {
-		t.Fatalf("workflow.done_when must not be the GC reason, got %+v", entry)
-	}
-}
-
-func TestClassifySession_NoTaskDoneWhenUsesMergedFallback(t *testing.T) {
-	wtPath := cleanGitWorktree(t)
-	s := &domain.Session{
-		Name:         "owner/repo-21",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       21,
-		WorktreePath: wtPath,
-		Workflow:     "wf",
-	}
-	cache := &ghcache.CacheFile{
-		Issues: make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-21": {CacheEntryBase: ghcache.CacheEntryBase{State: "merged"}},
-		},
-	}
-
-	entry, warn := classifySession(s, cache, nil, map[string]*domain.Session{s.Name: s})
-	if warn != "" {
-		t.Errorf("unexpected warning: %s", warn)
-	}
-	if entry == nil || entry.Action != GCActionDelete || entry.Reason != GCReasonMergedClean {
-		t.Fatalf("no-task sessions should use merged fallback, got %+v", entry)
+	if entry != nil {
+		t.Fatalf("expected no GC verdict without done_when tasks, got %+v", entry)
 	}
 }
 
@@ -704,10 +508,6 @@ func TestGC_MissingFrozenWorkflowIsManual(t *testing.T) {
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	})
-	// Cache says merged — under the legacy fallback this would read deletable.
-	cache := ghcache.NewCacheStore(t.TempDir())
-	_ = cache
-
 	result, err := GC(cfg, store, GCParams{Execute: true})
 	if err != nil {
 		t.Fatal(err)

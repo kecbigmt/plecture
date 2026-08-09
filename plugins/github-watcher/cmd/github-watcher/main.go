@@ -47,7 +47,7 @@ func main() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `usage:
-  github-watcher subscribe --session <name> --resource <id> [--branch <branch>] [--stream <id>]
+  github-watcher subscribe --session <name> --resource <id> [--branch <branch>]
   github-watcher unsubscribe --session <name> [--resource <id>]
   github-watcher list
   github-watcher serve [--interval 60s] [--allow-legacy-notify [--notify-url http://127.0.0.1:7890/notify]]`)
@@ -58,7 +58,6 @@ func cmdSubscribe(args []string) error {
 	session := fs.String("session", "", "tws session name (required)")
 	resource := fs.String("resource", "", "resource identifier (required)")
 	branch := fs.String("branch", "", "session branch (optional; linked-PR discovery for issues)")
-	stream := fs.String("stream", "", "opaque work-stream id stamped on this resource's events (optional)")
 	dataDir := fs.String("data-dir", "", "override data directory")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -70,7 +69,6 @@ func cmdSubscribe(args []string) error {
 		SessionName: *session,
 		Resource:    *resource,
 		Branch:      *branch,
-		StreamID:    *stream,
 	})
 }
 

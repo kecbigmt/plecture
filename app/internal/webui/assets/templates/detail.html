@@ -48,11 +48,11 @@
     <form hx-post="/sessions/destroy" hx-target="#action-error" hx-swap="innerHTML" hx-disabled-elt="find button" hx-on::after-request="this.closest('dialog').close()" class="grid gap-4 p-6">
       <div class="grid gap-1.5">
         <h2 id="destroy-dialog-title" class="text-heading font-semibold text-foreground">Destroy this session?</h2>
-        <p class="text-body text-muted-foreground">Runs task cleanup and deletes the worktree and state entry. This cannot be undone.</p>
+        <p class="text-body text-muted-foreground">Runs task cleanup and removes the worktree and state entry. This cannot be undone.</p>
       </div>
       <input type="hidden" name="name" value="{{ .Identity.SessionName }}">
-      <label class="flex items-start gap-2 text-body"><input type="checkbox" name="force" value="1" class="mt-1"><span>Force — downgrades cleanup errors to warnings and continues teardown, removing even a dirty worktree</span></label>
-      <label class="flex items-start gap-2 text-body"><input type="checkbox" name="delete_branch" value="1" class="mt-1"><span>Also delete local branch</span></label>
+      <label class="flex items-start gap-2 text-body"><input type="checkbox" name="force" value="1" class="mt-1"><span>Force — demote cleanup errors to warnings and remove a dirty worktree too, continuing teardown</span></label>
+      <label class="flex items-start gap-2 text-body"><input type="checkbox" name="delete_branch" value="1" class="mt-1"><span>Also delete the local branch</span></label>
       <div class="flex items-center justify-end gap-2">
         <span class="htmx-indicator mr-auto text-label text-muted-foreground">Running…</span>
         <button type="button" onclick="this.closest('dialog').close()" class="{{ buttonClass "outline" }}">Cancel</button>
@@ -75,9 +75,7 @@
       {{- if .Identity.Branch }}<dt class="text-muted-foreground">branch</dt><dd class="break-all">{{ .Identity.Branch }}</dd>{{ end }}
       <dt class="text-muted-foreground">created</dt><dd>{{ .Identity.CreatedAt.Format "2006-01-02 15:04" }}</dd>
       {{- /* Session tree projection: parent/children link across the tree, and
-             the subtree link below opens its merged timeline. stream is the
-             compat cross-session grouping (retirement path) — shown, and linked
-             to its compat timeline, only when the session carries one. */}}
+             the subtree link below opens its merged timeline. */}}
       {{- if .Identity.ParentSession }}
       <dt class="text-muted-foreground">parent</dt>
       <dd class="break-all"><a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ sessionPath .Identity.ParentSession }}">{{ .Identity.ParentSession }}</a></dd>
@@ -85,10 +83,6 @@
       {{- if .Identity.Children }}
       <dt class="text-muted-foreground">children</dt>
       <dd class="break-all">{{ range $i, $c := .Identity.Children }}{{ if $i }}, {{ end }}<a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ sessionPath $c }}">{{ $c }}</a>{{ end }}</dd>
-      {{- end }}
-      {{- if .Identity.StreamID }}
-      <dt class="text-muted-foreground">stream</dt>
-      <dd class="break-all font-mono"><a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ streamPath .Identity.StreamID }}">{{ .Identity.StreamID }}</a> <span class="font-sans text-muted-foreground">(compat view)</span></dd>
       {{- end }}
     </dl>
   </section>
@@ -208,7 +202,7 @@
   <div role="alert" class="flex items-start gap-2 rounded-md border border-yellow-300 bg-yellow-50 p-3 text-body text-yellow-900">
     {{ template "icon-triangle-alert" "size-4 shrink-0 mt-0.5" }}
     <div>Session not found: <span class="font-mono break-all">{{ . }}</span>
-      <div class="mt-1 text-muted-foreground">Session not found. <a class="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="/">Back to list</a></div>
+      <div class="mt-1 text-muted-foreground">Session not found.<a class="rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="/">Back to list</a></div>
     </div>
   </div>
 </div>{{end}}

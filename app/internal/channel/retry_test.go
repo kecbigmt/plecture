@@ -99,7 +99,7 @@ func TestDeliverWithRetry_ExhaustsOnBadSocket(t *testing.T) {
 }
 
 func TestChannelErrorEvent(t *testing.T) {
-	orig := event.Event{ID: "01ABC", SessionName: "o/r-1", StreamID: "s", Type: event.TypeInstruction}
+	orig := event.Event{ID: "01ABC", SessionName: "o/r-1", Type: event.TypeInstruction}
 	ce := ChannelErrorEvent(orig, "runtime", 3, errors.New("tmux exited 1"))
 	if ce.Type != event.TypeChannelError {
 		t.Errorf("Type = %q, want %q", ce.Type, event.TypeChannelError)
@@ -107,8 +107,8 @@ func TestChannelErrorEvent(t *testing.T) {
 	if ce.Source != event.SourceTWS || ce.Direction != event.Internal {
 		t.Errorf("source/direction = %q/%q", ce.Source, ce.Direction)
 	}
-	if ce.SessionName != "o/r-1" || ce.StreamID != "s" {
-		t.Errorf("session/stream not carried: %+v", ce)
+	if ce.SessionName != "o/r-1" {
+		t.Errorf("session not carried: %+v", ce)
 	}
 	if ce.Metadata["channel"] != "runtime" || ce.Metadata["event_id"] != "01ABC" || ce.Metadata["attempts"] != "3" {
 		t.Errorf("metadata = %+v", ce.Metadata)

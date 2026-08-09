@@ -99,73 +99,6 @@ func TestLoad_NoConfigFile(t *testing.T) {
 	}
 }
 
-func TestLoadRepoConfig_ReadsRepoFile(t *testing.T) {
-	repoDir := t.TempDir()
-	twsDir := filepath.Join(repoDir, ".tws")
-	if err := os.MkdirAll(twsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cfgContent := `
-[[hooks.post_sync_change]]
-command = "./scripts/notify.sh"
-`
-	if err := os.WriteFile(filepath.Join(twsDir, "config.toml"), []byte(cfgContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	got := LoadRepoConfig(repoDir)
-
-	if len(got.Hooks.PostSyncChange) != 1 || got.Hooks.PostSyncChange[0].Command != "./scripts/notify.sh" {
-		t.Errorf("Hooks.PostSyncChange = %+v, want one entry with ./scripts/notify.sh", got.Hooks.PostSyncChange)
-	}
-}
-
-func TestLoadRepoConfig_MissingFile(t *testing.T) {
-	got := LoadRepoConfig(t.TempDir())
-	if len(got.Hooks.PostSyncChange) != 0 {
-		t.Errorf("expected empty RepoConfig, got %+v", got)
-	}
-}
-
-func TestLoadRepoConfig_EmptyArg(t *testing.T) {
-	if got := LoadRepoConfig(""); len(got.Hooks.PostSyncChange) != 0 {
-		t.Errorf("expected empty when repoDir is empty")
-	}
-}
-
-func TestMergedHooks_GlobalThenRepo(t *testing.T) {
-	repoDir := t.TempDir()
-	twsDir := filepath.Join(repoDir, ".tws")
-	if err := os.MkdirAll(twsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cfgContent := `
-[[hooks.post_sync_change]]
-command = "repo-notify"
-`
-	if err := os.WriteFile(filepath.Join(twsDir, "config.toml"), []byte(cfgContent), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg := &Config{
-		Hooks: HooksConfig{
-			PostSyncChange: []HookConfig{{Command: "global-notify"}},
-		},
-	}
-
-	merged := cfg.MergedHooks(repoDir)
-
-	if len(merged.PostSyncChange) != 2 {
-		t.Fatalf("PostSyncChange length = %d, want 2", len(merged.PostSyncChange))
-	}
-	if merged.PostSyncChange[0].Command != "global-notify" {
-		t.Errorf("PostSyncChange[0] = %q, want global-notify (global runs first)", merged.PostSyncChange[0].Command)
-	}
-	if merged.PostSyncChange[1].Command != "repo-notify" {
-		t.Errorf("PostSyncChange[1] = %q, want repo-notify (repo runs second)", merged.PostSyncChange[1].Command)
-	}
-}
-
 func TestLoad_PopulatesBaseDir(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -234,18 +167,6 @@ func TestResolvedInputsSchemaPath(t *testing.T) {
 				t.Errorf("got %q, want %q", got, c.want)
 			}
 		})
-	}
-}
-
-func TestMergedHooks_NoRepoOverlay(t *testing.T) {
-	cfg := &Config{
-		Hooks: HooksConfig{
-			PostSyncChange: []HookConfig{{Command: "global-only"}},
-		},
-	}
-	merged := cfg.MergedHooks(t.TempDir())
-	if len(merged.PostSyncChange) != 1 || merged.PostSyncChange[0].Command != "global-only" {
-		t.Errorf("PostSyncChange = %+v, want one global-only entry", merged.PostSyncChange)
 	}
 }
 

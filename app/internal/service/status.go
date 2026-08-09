@@ -8,7 +8,6 @@ import (
 
 	"github.com/kecbigmt/plect/app/internal/config"
 	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/ghcache"
 	"github.com/kecbigmt/plect/app/internal/state"
 	"github.com/kecbigmt/plect/app/internal/task"
 	"github.com/kecbigmt/plect/contracts/event"
@@ -29,7 +28,6 @@ type StatusIdentity struct {
 	Branch        string    `json:"branch,omitempty"`
 	Workflow      string    `json:"workflow,omitempty"`
 	Tag           string    `json:"tag,omitempty"`
-	StreamID      string    `json:"stream_id,omitempty"`
 	ParentSession string    `json:"parent_session,omitempty"`
 	Children      []string  `json:"children,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -135,7 +133,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	runState := sessionRunState(session)
 	healthState := sessionHealthState(cfg, store, sessionName)
 
-	cache := ghcacheDisplayTitle(cfg, session)
+	displayTitle := sessionDisplayTitle(cfg, session)
 
 	_, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, sessionName, false)
 	if err != nil {
@@ -170,11 +168,10 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 		Identity: StatusIdentity{
 			SessionName:   sessionName,
 			ResourceID:    identityResourceID(session),
-			Title:         cache,
+			Title:         displayTitle,
 			Branch:        session.Branch,
 			Workflow:      session.Workflow,
 			Tag:           sessionTag(sessionName),
-			StreamID:      session.StreamID,
 			ParentSession: session.ParentSession,
 			Children:      childNames(sessions, sessionName),
 			CreatedAt:     session.CreatedAt,
@@ -218,19 +215,17 @@ func attachCommandFor(cfg *config.Config, session *domain.Session) string {
 	return cmdStr
 }
 
-// ghcacheDisplayTitle resolves the session's display title from the same
-// generic sources `tws show` used (workflow [display] templates, falling back
-// to the transitional ghcache shim) without pulling the GitHub-shaped status
+// sessionDisplayTitle resolves the session's display title from the
+// workflow's [display] templates, without pulling the GitHub-shaped status
 // fields alongside it.
-func ghcacheDisplayTitle(cfg *config.Config, session *domain.Session) string {
-	cache := ghcache.NewCacheStore("").Load()
-	cached := lookupCache(cache, session)
-	applyDisplay(loadDisplayWorkflows(cfg), cache, session, &cached)
+func sessionDisplayTitle(cfg *config.Config, session *domain.Session) string {
+	var cached cachedInfo
+	applyDisplay(loadDisplayWorkflows(cfg), session, &cached)
 	return cached.Title
 }
 
 // runtimeTaskViews projects the session's run-scoped task instances — the
-// "produced state of run-scoped tasks" layer-2 fact.
+// "run-scoped task produced state" layer-2 fact.
 func runtimeTaskViews(session *domain.Session) []StatusRuntimeTask {
 	var out []StatusRuntimeTask
 	for _, key := range sortedTaskKeys(session.Tasks) {
@@ -318,7 +313,6 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 			ResourceID:    identityResourceID(&tomb.Session),
 			Workflow:      tomb.Workflow,
 			Tag:           sessionTag(tomb.Name),
-			StreamID:      tomb.StreamID,
 			ParentSession: tomb.ParentSession,
 			CreatedAt:     tomb.CreatedAt,
 		},

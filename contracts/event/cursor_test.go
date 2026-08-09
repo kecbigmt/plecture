@@ -71,42 +71,6 @@ func TestCursorValidate(t *testing.T) {
 	}
 }
 
-func TestStreamCursorEncodeDecodeRoundTrip(t *testing.T) {
-	c := StreamCursor{V: CursorVersion, Stream: "stream-abc", After: "01JXEVENTID", Ord: OrderAsc}
-	got, err := DecodeStreamCursor(c.Encode())
-	if err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if got != c {
-		t.Fatalf("round trip = %+v, want %+v", got, c)
-	}
-	if c.Encode() == "" {
-		t.Fatalf("encode produced empty token")
-	}
-}
-
-func TestStreamCursorValidate(t *testing.T) {
-	const stream = "stream-abc"
-	base := StreamCursor{V: CursorVersion, Stream: stream, After: "01JX", Ord: OrderAsc}
-
-	if err := base.Validate(stream, OrderAsc); err != nil {
-		t.Fatalf("matching cursor should validate: %v", err)
-	}
-	// stream mismatch: a token must never be replayed against another stream.
-	if err := base.Validate("other-stream", OrderAsc); err == nil {
-		t.Fatalf("expected stream-mismatch error")
-	}
-	// order mismatch.
-	if err := base.Validate(stream, OrderDesc); err == nil {
-		t.Fatalf("expected order-mismatch error")
-	}
-	// version mismatch.
-	old := StreamCursor{V: CursorVersion - 1, Stream: stream, After: "01JX", Ord: OrderAsc}
-	if err := old.Validate(stream, OrderAsc); err == nil {
-		t.Fatalf("expected version-mismatch error")
-	}
-}
-
 func TestSubtreeCursorEncodeDecodeRoundTrip(t *testing.T) {
 	c := SubtreeCursor{V: CursorVersion, Root: "owner/repo-1", After: "01JXEVENTID", Ord: OrderAsc}
 	got, err := DecodeSubtreeCursor(c.Encode())

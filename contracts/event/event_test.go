@@ -1,9 +1,7 @@
 package event
 
 import (
-	"encoding/json"
 	"slices"
-	"strings"
 	"testing"
 )
 
@@ -49,29 +47,6 @@ func TestFilterMatch(t *testing.T) {
 	}
 	for _, c := range cases {
 		if got := c.f.Match(ev); got != c.want {
-			t.Errorf("%s: Match = %v, want %v", c.name, got, c.want)
-		}
-	}
-}
-
-func TestFilterMatchStreamID(t *testing.T) {
-	tagged := Event{Type: "claude.reply", StreamID: "stream-abc"}
-	untagged := Event{Type: "claude.reply"}
-
-	cases := []struct {
-		name string
-		f    Filter
-		ev   Event
-		want bool
-	}{
-		{"empty stream filter matches tagged", Filter{}, tagged, true},
-		{"empty stream filter matches untagged", Filter{}, untagged, true},
-		{"stream hit", Filter{StreamID: "stream-abc"}, tagged, true},
-		{"stream miss (different)", Filter{StreamID: "stream-xyz"}, tagged, false},
-		{"stream miss (untagged event)", Filter{StreamID: "stream-abc"}, untagged, false},
-	}
-	for _, c := range cases {
-		if got := c.f.Match(c.ev); got != c.want {
 			t.Errorf("%s: Match = %v, want %v", c.name, got, c.want)
 		}
 	}
@@ -140,33 +115,5 @@ func TestSplitCSV(t *testing.T) {
 				t.Errorf("SplitCSV(%q) = %#v, want %#v", c.in, got, c.want)
 			}
 		})
-	}
-}
-
-func TestStreamIDJSONRoundTrip(t *testing.T) {
-	// omitempty: an unset StreamID must not emit the key.
-	out, err := json.Marshal(Event{ID: "01", Type: "t"})
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if strings.Contains(string(out), "stream_id") {
-		t.Errorf("empty StreamID should omit the key, got %s", out)
-	}
-
-	// A set StreamID survives a marshal/unmarshal round trip.
-	in := Event{ID: "02", Type: "t", StreamID: "stream-abc"}
-	out, err = json.Marshal(in)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if !strings.Contains(string(out), `"stream_id":"stream-abc"`) {
-		t.Errorf("set StreamID missing from JSON: %s", out)
-	}
-	var back Event
-	if err := json.Unmarshal(out, &back); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if back.StreamID != "stream-abc" {
-		t.Errorf("round trip lost StreamID: got %q", back.StreamID)
 	}
 }

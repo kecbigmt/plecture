@@ -112,7 +112,6 @@ func publishTerminalTo(cfg *config.Config, store *state.Store, origin, target st
 	}
 	stored, _, _, aerr := eventlog.NewStore(store.Dir()).Append(event.Event{
 		SessionName:  target,
-		StreamID:     streamForSession(store, target),
 		Type:         p.Type,
 		Source:       event.SourceTWS,
 		Direction:    event.Inbound,

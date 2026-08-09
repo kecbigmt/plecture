@@ -75,27 +75,9 @@ func TestEventsPartial_SubtreeScope(t *testing.T) {
 	}
 }
 
-func TestEventsPartial_StreamScope(t *testing.T) {
-	svc := &fakeService{streamEvents: []event.Event{
-		{SessionName: "o/r-1", Type: "user.emit", Summary: "hello", Time: time.Now()},
-	}}
-	rr := get(t, svc, "/events?stream=abc123")
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
-	if svc.gotStream != "abc123" {
-		t.Errorf("stream id = %q, want abc123", svc.gotStream)
-	}
-	if !strings.Contains(rr.Body.String(), "user.emit") {
-		t.Errorf("stream rows missing event")
-	}
-}
-
 func TestEventsPartial_ScopesMutuallyExclusive(t *testing.T) {
 	for _, path := range []string{
-		"/events?session=o/r-1&stream=abc",
 		"/events?session=o/r-1&subtree=o/r-1",
-		"/events?subtree=o/r-1&stream=abc",
 	} {
 		if rr := get(t, &fakeService{}, path); rr.Code != http.StatusBadRequest {
 			t.Errorf("%s: status = %d, want 400", path, rr.Code)
@@ -134,34 +116,10 @@ func TestSubtreeTimelinePage_RootNotFound(t *testing.T) {
 	}
 }
 
-func TestStreamTimelinePage_CompatWording(t *testing.T) {
-	svc := &fakeService{streamEvents: []event.Event{
-		{SessionName: "o/r-1", Type: "github.ci_status", Summary: "checks green", Time: time.Now()},
-	}}
-	rr := get(t, svc, "/streams/abc123")
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rr.Code)
-	}
-	body := rr.Body.String()
-	for _, want := range []string{
-		"Stream timeline",
-		"compat",  // the view is presented as the compatibility one
-		"subtree", // and points at the canonical view
-		"abc123",
-		`hx-get="/events?stream=abc123"`,
-		"checks green",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("stream page missing %q", want)
-		}
-	}
-}
-
-// The detail page projects the session tree (parent/children), the stream id
-// with its compat timeline link, and the canonical subtree timeline link.
-func TestDetail_ShowsTreeAndStream(t *testing.T) {
+// The detail page projects the session tree (parent/children) and the
+// canonical subtree timeline link.
+func TestDetail_ShowsTree(t *testing.T) {
 	status := sampleShow()
-	status.Identity.StreamID = "deadbeef01"
 	status.Identity.ParentSession = "owner/repo-1"
 	status.Identity.Children = []string{"owner/repo-8", "owner/repo-9"}
 	rr := get(t, &fakeService{status: status}, "/sessions/owner/repo-7")
@@ -170,8 +128,6 @@ func TestDetail_ShowsTreeAndStream(t *testing.T) {
 	}
 	body := rr.Body.String()
 	for _, want := range []string{
-		`href="/streams/deadbeef01"`,
-		"deadbeef01",
 		`href="/sessions/owner/repo-1"`,
 		`href="/sessions/owner/repo-8"`,
 		`href="/sessions/owner/repo-9"`,
@@ -180,15 +136,6 @@ func TestDetail_ShowsTreeAndStream(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("detail page missing %q", want)
 		}
-	}
-}
-
-// A session without a stream id renders no stream row (stream_id is optional
-// and on a retirement path — absence is the steady state).
-func TestDetail_NoStreamRowWithoutStreamID(t *testing.T) {
-	rr := get(t, &fakeService{status: sampleShow()}, "/sessions/owner/repo-7")
-	if strings.Contains(rr.Body.String(), "/streams/") {
-		t.Errorf("detail page should not render a stream link without a stream id")
 	}
 }
 

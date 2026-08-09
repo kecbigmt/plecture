@@ -6,8 +6,6 @@ import (
 
 	"github.com/kecbigmt/plect/app/internal/config"
 	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/ghcache"
-	gh "github.com/kecbigmt/plect/app/internal/github"
 	"github.com/kecbigmt/plect/app/internal/state"
 	"github.com/kecbigmt/plect/app/internal/task"
 	"github.com/kecbigmt/plect/app/internal/workspace"
@@ -34,8 +32,6 @@ const (
 	GCReasonWorkflowMissing GCReason = "workflow_missing"
 	// GCReasonDone means all task-level done_when predicates hold.
 	GCReasonDone GCReason = "done"
-	// GCReasonMergedClean is the legacy basis for sessions without work tasks.
-	GCReasonMergedClean GCReason = "merged_clean"
 	// GCReasonUnhealthy means the session has a produced run-scoped task
 	// whose declared healthcheck fails.
 	GCReasonUnhealthy GCReason = "unhealthy"
@@ -68,7 +64,6 @@ type GCParams struct {
 // GC identifies and optionally removes stale sessions.
 func GC(cfg *config.Config, store *state.Store, params GCParams) (*GCResult, error) {
 	sessions := store.All()
-	cache := ghcache.NewCacheStore("").Load()
 	mgr := workspace.NewManager(cfg.WorktreesRoot)
 
 	result := &GCResult{Executed: params.Execute}
@@ -95,7 +90,7 @@ func GC(cfg *config.Config, store *state.Store, params GCParams) (*GCResult, err
 		if warn != "" {
 			result.Warnings = append(result.Warnings, warn)
 		}
-		entry, warn := classifySession(s, cache, taskDefs, sessions)
+		entry, warn := classifySession(s, taskDefs, sessions)
 		if warn != "" {
 			result.Warnings = append(result.Warnings, warn)
 		}
@@ -142,7 +137,7 @@ func taskDefsForSession(cfg *config.Config, s *domain.Session) (map[string]confi
 	return defs, ""
 }
 
-func classifySession(s *domain.Session, cache *ghcache.CacheFile, taskDefs map[string]config.TaskDefinition, sessions map[string]*domain.Session) (*GCEntry, string) {
+func classifySession(s *domain.Session, taskDefs map[string]config.TaskDefinition, sessions map[string]*domain.Session) (*GCEntry, string) {
 	wtExists := fileExists(s.WorktreePath)
 	runtimeAlive := sessionRuntimeAlive(s, taskDefs)
 
@@ -165,7 +160,7 @@ func classifySession(s *domain.Session, cache *ghcache.CacheFile, taskDefs map[s
 		}, ""
 	}
 
-	done, doneDesc, reason, warn := evaluateDone(s, cache, taskDefs, sessions)
+	done, doneDesc, reason, warn := evaluateDone(s, taskDefs, sessions)
 
 	if done {
 		if isWorktreeClean(s.WorktreePath) {
@@ -219,7 +214,7 @@ func sessionRuntimeAlive(s *domain.Session, taskDefs map[string]config.TaskDefin
 	return !report.Declared || report.Healthy
 }
 
-func evaluateDone(s *domain.Session, cache *ghcache.CacheFile, taskDefs map[string]config.TaskDefinition, sessions map[string]*domain.Session) (bool, string, GCReason, string) {
+func evaluateDone(s *domain.Session, taskDefs map[string]config.TaskDefinition, sessions map[string]*domain.Session) (bool, string, GCReason, string) {
 	status, count, warnings := aggregateTaskDoneWhen(s, taskDefs, sessions)
 	warn := strings.Join(warnings, "; ")
 	if count > 0 {
@@ -233,10 +228,7 @@ func evaluateDone(s *domain.Session, cache *ghcache.CacheFile, taskDefs map[stri
 		}
 	}
 
-	if isMerged(s, cache) {
-		return true, "no done_when tasks; PR is merged", GCReasonMergedClean, warn
-	}
-	return false, "no done_when tasks; PR is not merged", GCReasonMergedClean, warn
+	return false, "no done_when tasks; nothing to evaluate", GCReasonDone, warn
 }
 
 // aggregateTaskDoneWhen treats unknown dynamic instances as pending so they
@@ -294,26 +286,6 @@ func taskIDForInstance(key string, st *contract.TaskState) string {
 		return st.TaskID
 	}
 	return key
-}
-
-// isMerged checks the github_cache to determine if the session's PR is merged.
-func isMerged(s *domain.Session, cache *ghcache.CacheFile) bool {
-	key := ghcache.CacheKey(s.OwnerRepo, s.Number)
-
-	if s.URLType == string(gh.URLTypePR) {
-		if entry, ok := cache.PullRequests[key]; ok {
-			return entry.State == "merged"
-		}
-		return false
-	}
-
-	// Issue: check linked PR
-	if entry, ok := cache.Issues[key]; ok {
-		if entry.LinkedPR != nil {
-			return entry.LinkedPR.State == "merged"
-		}
-	}
-	return false
 }
 
 // isWorktreeClean checks if a worktree has no uncommitted changes or untracked files.

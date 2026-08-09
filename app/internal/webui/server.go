@@ -35,7 +35,6 @@ var templates = template.Must(
 			"dict":            dict,
 			"sessionPath":     sessionPath,
 			"subtreePath":     subtreePath,
-			"streamPath":      streamPath,
 			"queryEscape":     url.QueryEscape,
 			"isWebURL":        isWebURL,
 			"doneStatusClass": doneStatusClass,
@@ -91,11 +90,10 @@ type SessionService interface {
 	List() ([]service.ListEntry, error)
 	Status(name string) (*service.StatusResult, error)
 	Events(name string) ([]event.Event, error)
-	// EventsSubtree and EventsStream return newest-first (unlike Events, which
-	// is a raw oldest-first tail): the service-layer desc page is already the
+	// EventsSubtree returns newest-first (unlike Events, which is a raw
+	// oldest-first tail): the service-layer desc page is already the
 	// timeline's display order, so handlers must not reverse it.
 	EventsSubtree(root string) ([]event.Event, error)
-	EventsStream(streamID string) ([]event.Event, error)
 	PublishEvent(name string, p service.EventPublishParams) (event.Event, error)
 	Create(service.CreateParams) (*service.CreateResult, error)
 	Up(service.UpParams) (*service.UpResult, error)
@@ -140,12 +138,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /sessions/{name...}", s.handleSessionDetail)
 	// Event timeline partial. Session names contain "/", which collides with a
 	// {name...} sub-route, so the scope rides as a query param instead
-	// (session=, or the cross-session scopes subtree= / stream=).
+	// (session=, or the cross-session scope subtree=).
 	mux.HandleFunc("GET /events", s.handleSessionEvents)
-	// Cross-session timeline pages: subtree (canonical, the session tree rooted
-	// at a session) and stream (the stream_id compat view).
+	// Cross-session timeline page: the session tree rooted at a session.
 	mux.HandleFunc("GET /subtrees/{name...}", s.handleSubtreeTimeline)
-	mux.HandleFunc("GET /streams/{id}", s.handleStreamTimeline)
 	// Live timeline: tws-web opens the bus SSE stream server-side and relays it
 	// to the browser (same-origin, so the browser holds no bus token / UDS).
 	mux.HandleFunc("GET /events/stream", s.handleSessionEventsStream)
@@ -234,11 +230,6 @@ func sessionPath(name string) string {
 // subtreePath builds the subtree-timeline URL for the tree rooted at a session.
 func subtreePath(name string) string {
 	return "/subtrees/" + escapeSegments(name)
-}
-
-// streamPath builds the compat stream-timeline URL for a stream id.
-func streamPath(id string) string {
-	return "/streams/" + url.PathEscape(id)
 }
 
 func escapeSegments(name string) string {

@@ -52,7 +52,7 @@ func TestStore_SubscribeUnsubscribe(t *testing.T) {
 	}
 }
 
-// A re-subscribe with empty Branch/StreamID must NOT wipe values a prior
+// A re-subscribe with an empty Branch must NOT wipe a value a prior
 // subscribe stored: runtime `tws subscribe` omits --branch, and re-subscribing
 // a resource a dispatch-time auto-subscribe already recorded (with branch) must
 // keep that branch — else an issue session loses its linked-PR resolution.
@@ -60,10 +60,10 @@ func TestStore_SubscribeUnsubscribe(t *testing.T) {
 func TestStore_ResubscribePreservesNonEmptyFields(t *testing.T) {
 	store := NewStore(t.TempDir())
 	const res = "https://github.com/org/repo/issues/1"
-	if err := store.Subscribe(Subscription{SessionName: "org/repo-1", Resource: res, Branch: "issue/1", StreamID: "stream-A"}); err != nil {
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-1", Resource: res, Branch: "issue/1"}); err != nil {
 		t.Fatal(err)
 	}
-	// Runtime re-subscribe of the same resource: no branch, no stream.
+	// Runtime re-subscribe of the same resource: no branch.
 	if err := store.Subscribe(Subscription{SessionName: "org/repo-1", Resource: res}); err != nil {
 		t.Fatal(err)
 	}
@@ -71,9 +71,6 @@ func TestStore_ResubscribePreservesNonEmptyFields(t *testing.T) {
 	got := subs[subKey("org/repo-1", res)]
 	if got.Branch != "issue/1" {
 		t.Errorf("Branch = %q, want preserved issue/1", got.Branch)
-	}
-	if got.StreamID != "stream-A" {
-		t.Errorf("StreamID = %q, want preserved stream-A", got.StreamID)
 	}
 	// A non-empty incoming value is authoritative and updates.
 	if err := store.Subscribe(Subscription{SessionName: "org/repo-1", Resource: res, Branch: "issue/1+rework"}); err != nil {
@@ -92,16 +89,13 @@ func TestStore_MultipleResourcesPerSession(t *testing.T) {
 	const pr1 = "https://github.com/org/repo/pull/1"
 	const pr2 = "https://github.com/org/repo/pull/2"
 	for _, r := range []string{pr1, pr2} {
-		if err := store.Subscribe(Subscription{SessionName: "org/repo-1", Resource: r, StreamID: "s"}); err != nil {
+		if err := store.Subscribe(Subscription{SessionName: "org/repo-1", Resource: r}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	subs, _ := store.All()
 	if len(subs) != 2 {
 		t.Fatalf("want 2 subscriptions for one session, got %+v", subs)
-	}
-	if subs[subKey("org/repo-1", pr1)].StreamID != "s" {
-		t.Errorf("stream not stored: %+v", subs[subKey("org/repo-1", pr1)])
 	}
 
 	// Per-resource baselines are independent.
@@ -175,9 +169,8 @@ type ghRoute struct {
 
 // fakeGh writes a `gh` stub that answers the first matching route. This
 // replaces the single porcelain `gh pr view`/`gh issue view` call the old
-// watcher made with the several independent `gh api` REST probes fetch is
-// now split into (the watcher's GraphQL dependency has been removed
-// entirely) — each test wires up only the
+// watcher made with several independent `gh api` REST probes (the watcher's
+// GraphQL dependency was removed entirely) — each test wires up only the
 // routes its scenario needs; anything unmatched prints nothing and exits 0
 // (an empty, not a failed, response). When log is non-empty, every
 // invocation's arguments are appended to that file (one line each) for
@@ -315,7 +308,7 @@ func TestPoller_TickPublishesToBus(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 	resource := "https://github.com/org/repo/pull/7"
-	if err := store.Subscribe(Subscription{SessionName: "org/repo-7", Resource: resource, StreamID: "stream-xyz"}); err != nil {
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-7", Resource: resource}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetLast("org/repo-7", resource, map[string]string{
@@ -367,9 +360,6 @@ func TestPoller_TickPublishesToBus(t *testing.T) {
 		if ev.Metadata["resource"] != resource {
 			t.Errorf("metadata resource = %q, want %q", ev.Metadata["resource"], resource)
 		}
-		if ev.StreamID != "stream-xyz" {
-			t.Errorf("event must carry the subscription's stream, got %q", ev.StreamID)
-		}
 		if ev.Direction != event.Inbound {
 			t.Errorf("direction = %q, want inbound", ev.Direction)
 		}
@@ -381,7 +371,7 @@ func TestPoller_TickPublishesToBus(t *testing.T) {
 	}
 }
 
-// The watcher.* event contract (5 event types) is minimal: type, summary, and
+// The watcher.* event contract is minimal: type, summary, and
 // metadata.url/metadata.resource only. No factual value (checks_status,
 // mergeable_state, ...) may ride in the payload — consumers re-read current
 // values from resource observe / dynamic outputs, never from this event.
@@ -389,7 +379,7 @@ func TestPoller_PublishedEventPayloadIsMinimal(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 	resource := "https://github.com/org/repo/pull/7"
-	if err := store.Subscribe(Subscription{SessionName: "org/repo-7", Resource: resource, StreamID: "stream-xyz"}); err != nil {
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-7", Resource: resource}); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetLast("org/repo-7", resource, map[string]string{
@@ -439,13 +429,13 @@ func TestPoller_PublishedEventPayloadIsMinimal(t *testing.T) {
 	}
 }
 
-func TestPoller_SamePRPublishesPerSubscriberStream(t *testing.T) {
+func TestPoller_SamePRPublishesPerSubscriber(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
 	resource := "https://github.com/org/repo/pull/7"
 	subs := []Subscription{
-		{SessionName: "org/repo-7", Resource: resource, StreamID: "stream-a"},
-		{SessionName: "reviewer/sess", Resource: resource, StreamID: "stream-b"},
+		{SessionName: "org/repo-7", Resource: resource},
+		{SessionName: "reviewer/sess", Resource: resource},
 	}
 	for _, sub := range subs {
 		if err := store.Subscribe(sub); err != nil {
@@ -501,7 +491,6 @@ func TestPoller_SamePRPublishesPerSubscriberStream(t *testing.T) {
 	if len(published) != 2 {
 		t.Fatalf("expected one state event per subscriber, got %d: %+v", len(published), published)
 	}
-	streams := map[string]bool{}
 	sessions := map[string]bool{}
 	for _, ev := range published {
 		if ev.Type != event.TypeGitHubPrefix+"state" {
@@ -510,13 +499,7 @@ func TestPoller_SamePRPublishesPerSubscriberStream(t *testing.T) {
 		if ev.Metadata["resource"] != resource || ev.Metadata["url"] != resource {
 			t.Errorf("metadata = %+v, want resource/url %q", ev.Metadata, resource)
 		}
-		streams[ev.StreamID] = true
 		sessions[ev.SessionName] = true
-	}
-	for _, want := range []string{"stream-a", "stream-b"} {
-		if !streams[want] {
-			t.Errorf("missing stream %q in events %+v", want, published)
-		}
 	}
 	for _, want := range []string{"org/repo-7", "reviewer/sess"} {
 		if !sessions[want] {
@@ -583,8 +566,8 @@ func TestPoller_DoesNotPruneSubscriptionsDuringPoll(t *testing.T) {
 }
 
 // A new head commit fires new_commits (github.new_comments/new_review_comments
-// were removed — GitHub comments have no
-// machine-consumer, so the watcher no longer fetches them at all).
+// were removed — GitHub comments have no machine-consumer, so the watcher no
+// longer fetches them at all).
 func TestPoller_NewCommitsNotifies(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
@@ -631,8 +614,8 @@ func TestPoller_NewCommitsNotifies(t *testing.T) {
 
 func TestChecksRollup(t *testing.T) {
 	// Zero entries is a real PR whose checks haven't started (PENDING), not
-	// the watcher's old empty-string "no CI at all" sentinel — this keeps the
-	// watcher aligned with resources/github.toml's checks_rollup semantics.
+	// the watcher's old empty-string "no CI at all" sentinel — this is the
+	// resources/github.toml checks_rollup alignment requires.
 	if got := checksRollup(nil); got != "PENDING" {
 		t.Errorf("empty = %q, want PENDING", got)
 	}
@@ -759,8 +742,8 @@ func TestPoller_SamePRDifferentBranchesShareOneFetch(t *testing.T) {
 
 // A PR whose checks reset after a new push (the REST check-runs/status probes
 // now return nothing) resolves to PENDING per resources/github.toml's
-// checks_rollup — a real, notify-worthy transition, not a silent
-// "no CI at all" retraction.
+// checks_rollup — a real, notify-worthy transition, not the watcher's old
+// silent "no CI at all" retraction.
 func TestPoller_ChecksResetToPendingNotifies(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
@@ -806,8 +789,9 @@ func TestPoller_ChecksResetToPendingNotifies(t *testing.T) {
 }
 
 // A mergeable_state transition (clean → dirty, e.g. a conflicting rebase)
-// fires github.mergeable — a signal that covers the blind spot where a
-// conflicting PR gets no CI run at all and so never fires github.ci_status.
+// fires github.mergeable — the signal added to cover the known blind spot
+// where a conflicting PR gets no CI run at all and
+// so never fires github.ci_status.
 func TestPoller_MergeableStateTransitionNotifies(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)

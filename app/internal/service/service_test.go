@@ -9,7 +9,6 @@ import (
 
 	"github.com/kecbigmt/plect/app/internal/config"
 	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/ghcache"
 	"github.com/kecbigmt/plect/app/internal/state"
 	"github.com/kecbigmt/plect/app/internal/task"
 	contract "github.com/kecbigmt/plect/contracts/state"
@@ -223,9 +222,8 @@ func TestStatus_DestroyedSessionWithoutTombstoneStillErrors(t *testing.T) {
 }
 
 // Status projects the session tree (parent + children, derived from the parent
-// pointers Subtree walks) and the stream id, so the web detail can link across
-// the tree and to the compat stream view.
-func TestStatus_ProjectsTreeAndStream(t *testing.T) {
+// pointers Subtree walks), so the web detail can link across the tree.
+func TestStatus_ProjectsTree(t *testing.T) {
 	cfg := &config.Config{}
 	store := testStore(t)
 	now := time.Now()
@@ -233,7 +231,7 @@ func TestStatus_ProjectsTreeAndStream(t *testing.T) {
 	for _, n := range []string{"org/repo-1", "org/repo-2", "org/repo-3"} {
 		if err := store.Put(&domain.Session{
 			Name: n, OwnerRepo: "org/repo", CreatedAt: now, UpdatedAt: now,
-			WorktreePath: wt, StreamID: "beefcafe01",
+			WorktreePath: wt,
 		}); err != nil {
 			t.Fatalf("seed %s: %v", n, err)
 		}
@@ -244,9 +242,6 @@ func TestStatus_ProjectsTreeAndStream(t *testing.T) {
 	root, err := Status(cfg, store, "org/repo-1")
 	if err != nil {
 		t.Fatalf("Status(root): %v", err)
-	}
-	if root.Identity.StreamID != "beefcafe01" {
-		t.Errorf("StreamID = %q, want beefcafe01", root.Identity.StreamID)
 	}
 	if root.Identity.ParentSession != "" {
 		t.Errorf("root ParentSession = %q, want empty", root.Identity.ParentSession)
@@ -325,8 +320,8 @@ func TestSetConversation_SessionNotFound(t *testing.T) {
 }
 
 // SetConversation is a per-session write path (hook scripts call it to attach
-// a Slack thread), so it must honor SessionGuard like Create/Destroy/EventPublish —
-// otherwise a guarded orchestrator could still relabel another owner's
+// a Slack thread), so it must honor SessionGuard like Create/Destroy/EventPublish
+// — otherwise a guarded orchestrator could still relabel another owner's
 // session's conversation.
 func TestSetConversation_SessionGuardBlocksCrossOwner(t *testing.T) {
 	store := testStore(t)
@@ -423,140 +418,6 @@ func TestSetMessage_SessionGuardBlocksCrossOwner(t *testing.T) {
 	}
 }
 
-func TestLookupCache_IssueWithLinkedPR(t *testing.T) {
-	cache := &ghcache.CacheFile{
-		Issues: map[string]*ghcache.IssueCacheEntry{
-			"owner/repo-1": {
-				CacheEntryBase: ghcache.CacheEntryBase{
-					Title:     "test issue",
-					State:     "open",
-					FetchedAt: time.Now(),
-				},
-				LinkedPR: &ghcache.PRCacheEntry{
-					CacheEntryBase: ghcache.CacheEntryBase{
-						Number: 42,
-						Title:  "fix: something",
-						State:  "open",
-					},
-					ReviewDecision: "APPROVED",
-					ChecksStatus:   "SUCCESS",
-				},
-			},
-		},
-		PullRequests: map[string]*ghcache.PRCacheEntry{},
-	}
-
-	session := &domain.Session{
-		Name:      "owner/repo-1",
-		URLType:   "issue",
-		OwnerRepo: "owner/repo",
-		Number:    1,
-	}
-
-	info := lookupCache(cache, session)
-	if info.LinkedPR == nil {
-		t.Fatal("expected LinkedPR to be set")
-	}
-	if info.LinkedPR.Number != 42 {
-		t.Errorf("LinkedPR.Number = %d, want 42", info.LinkedPR.Number)
-	}
-	if info.LinkedPR.Title != "fix: something" {
-		t.Errorf("LinkedPR.Title = %q, want %q", info.LinkedPR.Title, "fix: something")
-	}
-	if info.LinkedPR.State != "open" {
-		t.Errorf("LinkedPR.State = %q, want %q", info.LinkedPR.State, "open")
-	}
-	if info.LinkedPR.ReviewDecision != "APPROVED" {
-		t.Errorf("LinkedPR.ReviewDecision = %q, want %q", info.LinkedPR.ReviewDecision, "APPROVED")
-	}
-	if info.LinkedPR.ChecksStatus != "SUCCESS" {
-		t.Errorf("LinkedPR.ChecksStatus = %q, want %q", info.LinkedPR.ChecksStatus, "SUCCESS")
-	}
-	if info.LinkedPR.URL != "https://github.com/owner/repo/pull/42" {
-		t.Errorf("LinkedPR.URL = %q, want %q", info.LinkedPR.URL, "https://github.com/owner/repo/pull/42")
-	}
-}
-
-func TestLookupCache_IssueWithoutLinkedPR(t *testing.T) {
-	cache := &ghcache.CacheFile{
-		Issues: map[string]*ghcache.IssueCacheEntry{
-			"owner/repo-1": {
-				CacheEntryBase: ghcache.CacheEntryBase{
-					Title:     "test issue",
-					State:     "open",
-					FetchedAt: time.Now(),
-				},
-			},
-		},
-		PullRequests: map[string]*ghcache.PRCacheEntry{},
-	}
-
-	session := &domain.Session{
-		Name:      "owner/repo-1",
-		URLType:   "issue",
-		OwnerRepo: "owner/repo",
-		Number:    1,
-	}
-
-	info := lookupCache(cache, session)
-	if info.LinkedPR != nil {
-		t.Errorf("expected LinkedPR to be nil, got %+v", info.LinkedPR)
-	}
-	if info.Title != "test issue" {
-		t.Errorf("Title = %q, want %q", info.Title, "test issue")
-	}
-}
-
-func TestLookupCache_PRSession(t *testing.T) {
-	cache := &ghcache.CacheFile{
-		Issues: map[string]*ghcache.IssueCacheEntry{},
-		PullRequests: map[string]*ghcache.PRCacheEntry{
-			"owner/repo-10": {
-				CacheEntryBase: ghcache.CacheEntryBase{
-					Title:     "test PR",
-					State:     "open",
-					FetchedAt: time.Now(),
-				},
-				ReviewDecision: "CHANGES_REQUESTED",
-				ChecksStatus:   "FAILURE",
-			},
-		},
-	}
-
-	session := &domain.Session{
-		Name:      "owner/repo-10",
-		URLType:   "pr",
-		OwnerRepo: "owner/repo",
-		Number:    10,
-	}
-
-	info := lookupCache(cache, session)
-	if info.LinkedPR != nil {
-		t.Errorf("expected LinkedPR to be nil for PR sessions, got %+v", info.LinkedPR)
-	}
-	if info.ReviewDecision != "CHANGES_REQUESTED" {
-		t.Errorf("ReviewDecision = %q, want %q", info.ReviewDecision, "CHANGES_REQUESTED")
-	}
-}
-
-func TestFormatReviewDecision(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"APPROVED", "approved"},
-		{"CHANGES_REQUESTED", "changes requested"},
-		{"REVIEW_REQUIRED", "review required"},
-		{"", ""},
-	}
-	for _, tt := range tests {
-		got := FormatReviewDecision(tt.input)
-		if got != tt.want {
-			t.Errorf("FormatReviewDecision(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestApplyDisplay_OverridesFromOutputs(t *testing.T) {
 	workflows := map[string]config.WorkflowFile{
 		"wf": {
@@ -577,12 +438,8 @@ func TestApplyDisplay_OverridesFromOutputs(t *testing.T) {
 			},
 		},
 	}
-	cache := &ghcache.CacheFile{
-		Issues:       make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: make(map[string]*ghcache.PRCacheEntry),
-	}
 	cached := cachedInfo{Title: "from-cache", GitHubStatus: "cache-status"}
-	applyDisplay(workflows, cache, s, &cached)
+	applyDisplay(workflows, s, &cached)
 	if cached.Title != "Fix the bug" {
 		t.Errorf("Title = %q, want display override", cached.Title)
 	}
@@ -595,16 +452,12 @@ func TestApplyDisplay_EmptyRenderKeepsFallback(t *testing.T) {
 	workflows := map[string]config.WorkflowFile{
 		"wf": {ID: "wf", Display: map[string]string{"title": "{{.Workflow.outputs.title}}"}},
 	}
-	// No outputs at all → template renders empty → ghcache fallback survives.
+	// No outputs at all → template renders empty → prior title survives.
 	s := &domain.Session{Name: "org/repo-2", Workflow: "wf"}
-	cache := &ghcache.CacheFile{
-		Issues:       make(map[string]*ghcache.IssueCacheEntry),
-		PullRequests: make(map[string]*ghcache.PRCacheEntry),
-	}
 	cached := cachedInfo{Title: "from-cache"}
-	applyDisplay(workflows, cache, s, &cached)
+	applyDisplay(workflows, s, &cached)
 	if cached.Title != "from-cache" {
-		t.Errorf("Title = %q, want ghcache fallback", cached.Title)
+		t.Errorf("Title = %q, want unchanged fallback", cached.Title)
 	}
 }
 

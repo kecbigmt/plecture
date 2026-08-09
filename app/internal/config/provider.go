@@ -51,9 +51,9 @@ type ProviderConfig struct {
 	// `tws subscribe` verb), the counterpart to the dispatch-time
 	// auto-subscribe task. Optional: a provider without it cannot be
 	// subscribed to after dispatch. The hook's template surface is the
-	// current session (.SessionName), the opaque resource (.ResourceID),
-	// and the session's work-stream (.StreamID) — everything
-	// resource-specific (for github: the watcher registry) stays here.
+	// current session (.SessionName) and the opaque resource (.ResourceID) —
+	// everything resource-specific (for github: the watcher registry) stays
+	// here.
 	Subscribe string `toml:"subscribe"`
 	// OutputsSchema is the @workflow pseudo-node contract: what setup emits and
 	// which keys trusted side paths may explicitly update (`mutable = true`).

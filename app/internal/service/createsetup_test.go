@@ -180,9 +180,9 @@ echo '{"workdir":"%s"}'
 	}
 }
 
-// Regression: the workflow-setup create path must record
-// lifecycle.created for a new session (the legacy path did, this one didn't),
-// and a recovery/re-run must not append a duplicate.
+// The workflow-setup create path must record lifecycle.created for a new
+// session (the legacy path did, this one didn't), and a recovery/re-run
+// must not append a duplicate.
 func TestCreate_WorkflowSetupRecordsLifecycleCreated(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -219,92 +219,6 @@ echo '{"workdir":"%s"}'
 	}
 	if n := countCreated(); n != 1 {
 		t.Fatalf("lifecycle.created after re-run = %d, want 1 (no duplicate)", n)
-	}
-}
-
-// Stream is a create-time identity: the first create sets it, and an idempotent
-// retry with a different --stream must NOT overwrite it (that would split the
-// session's later events into another cross-session stream). Mirrors the Up
-// contract documented on UpParams.StreamID.
-func TestCreate_StreamIDIsWriteOnce(t *testing.T) {
-	store := testStore(t)
-	workdir := filepath.Join(t.TempDir(), "wd")
-
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
-		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
-echo '{"workdir":"%s"}'
-'''
-`, workdir, workdir))
-
-	url := "https://github.com/org/repo/issues/8"
-	if _, err := Create(cfg, store, CreateParams{URL: url, StreamID: "stream-first"}); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if got := store.Get("org/repo-8").StreamID; got != "stream-first" {
-		t.Fatalf("StreamID after create = %q, want stream-first", got)
-	}
-
-	// Idempotent retry carrying a different stream must keep the original.
-	if _, err := Create(cfg, store, CreateParams{URL: url, StreamID: "stream-second"}); err != nil {
-		t.Fatalf("re-create: %v", err)
-	}
-	if got := store.Get("org/repo-8").StreamID; got != "stream-first" {
-		t.Fatalf("StreamID after retry = %q, want stream-first (write-once identity)", got)
-	}
-}
-
-// With no --stream, core adopts a stream_id from the provider's setup
-// output as the session's own StreamID — the single source for the
-// orchestrator route. The claude task then exports it from {{.StreamID}}.
-func TestCreate_AdoptsProviderStreamID(t *testing.T) {
-	t.Setenv("TWS_STREAM_ID", "") // no inherited stream; the provider supplies it
-	store := testStore(t)
-	workdir := filepath.Join(t.TempDir(), "wd")
-
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
-		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
-echo '{"workdir":"%s","stream_id":"provider-stream"}'
-'''
-`, workdir, workdir))
-
-	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/9"}); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if got := store.Get("org/repo-9").StreamID; got != "provider-stream" {
-		t.Fatalf("StreamID = %q, want provider-stream (adopted from setup output)", got)
-	}
-}
-
-// The explicit --stream (and the inherited TWS_STREAM_ID env behind it)
-// is the session's identity and must win over the provider's stream_id output,
-// so a dispatched child keeps the parent's stream.
-func TestCreate_ExplicitStreamWinsOverProviderOutput(t *testing.T) {
-	store := testStore(t)
-	workdir := filepath.Join(t.TempDir(), "wd")
-
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
-		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
-echo '{"workdir":"%s","stream_id":"provider-stream"}'
-'''
-`, workdir, workdir))
-
-	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/10", StreamID: "explicit-stream"}); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	if got := store.Get("org/repo-10").StreamID; got != "explicit-stream" {
-		t.Fatalf("StreamID = %q, want explicit-stream (flag wins over provider output)", got)
 	}
 }
 

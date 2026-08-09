@@ -27,7 +27,6 @@ type CreateParams struct {
 	Tag           string
 	Workflow      string         // workflow name from --workflow; empty = auto-select
 	Inputs        map[string]any // frozen at create time; passing to an existing session returns ErrInvalidInput
-	StreamID      string         // opaque work-stream id (B-2); empty falls back to TWS_STREAM_ID. Stamps the session and its events.
 	ParentSession string         // parent session name; empty falls back to TWS_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
 }
@@ -249,14 +248,6 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	// migration (which only backfills, and only on the next reload).
 	session.ResourceID = parsed.URL()
 	session.Alias = params.URL
-	// Stream is the session's identity in the cross-session view: set once when
-	// the session first gets one, never overwritten on an idempotent retry
-	// (changing it would split the session's later events into another stream).
-	if session.StreamID == "" {
-		if sid := resolveStreamID(params.StreamID); sid != "" {
-			session.StreamID = sid
-		}
-	}
 	session.UpdatedAt = now
 
 	wf, wfErr := loadSessionWorkflow(cfg, worktreeDir, session)
@@ -315,7 +306,6 @@ type UpParams struct {
 	Tag           string
 	Workflow      string         // forwarded to auto-create; rejected when state already exists
 	Inputs        map[string]any // forwarded to auto-create; rejected when state already exists
-	StreamID      string         // opaque work-stream id (B-2); empty falls back to TWS_STREAM_ID. Applies on the auto-create path only — stream is a create-time identity, so up never changes an existing session's stream.
 	ParentSession string         // forwarded to auto-create; empty falls back to TWS_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
 }
@@ -373,7 +363,6 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 				Tag:           tag,
 				Workflow:      params.Workflow,
 				Inputs:        params.Inputs,
-				StreamID:      params.StreamID,
 				ParentSession: params.ParentSession,
 				Observer:      params.Observer,
 			}); err != nil {
@@ -409,7 +398,6 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 				Tag:           params.Tag,
 				Workflow:      params.Workflow,
 				Inputs:        params.Inputs,
-				StreamID:      params.StreamID,
 				ParentSession: params.ParentSession,
 				Observer:      params.Observer,
 			}); err != nil {
@@ -455,15 +443,6 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		return nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
 	}
 
-	// Stream is a create-time identity, not set here: up runs only run-scoped
-	// tasks, but the watcher learns the stream through the session-scoped
-	// github_watch task (which subscribes with --stream {{.StreamID}}). That
-	// task already produced at create, so backfilling the stream onto an
-	// existing session here would update state but leave the watcher publishing
-	// streamless github.* events — invisible to the cross-session view. The
-	// --stream flag still applies on up's auto-create path, where github_watch
-	// runs with the stream in hand.
-	//
 	// Up does not re-run environment setup — @environment is session-scoped
 	// (like @workflow) and already produced during Create; environmentExecutorForSession
 	// just reads its persisted outputs.
@@ -835,9 +814,9 @@ func resolveURL(url string) (*gh.ParsedURL, error) {
 
 // buildPlanForSession honors the workflow name frozen on the session so
 // up/down/destroy replay against the same plan create saw. A session without a
-// frozen workflow is impossible now that sessions always freeze one at create
-// time, but we surface it as an error rather than panicking so a stale state
-// entry from before workflows existed doesn't crash the binary.
+// frozen workflow is impossible now that the inline `[[tasks]]`
+// path is gone, but we surface it as an error rather than panicking so a stale state
+// entry from before the migration doesn't crash the binary.
 func buildPlanForSession(cfg *config.Config, worktreeDir string, session *domain.Session) (*task.Plan, error) {
 	if session == nil || session.Workflow == "" {
 		return nil, fmt.Errorf("session has no frozen workflow; destroy and recreate it with --workflow")
@@ -872,7 +851,7 @@ func buildWorkflowPlan(cfg *config.Config, worktreeDir, name string) (*task.Plan
 //  2. With exactly one workflow on disk, default to it. Single-workflow
 //     setups shouldn't need to type the name.
 //  3. With zero workflows on disk, error — every session needs a workflow
-//     to freeze, and there is no inline-tasks fallback to fall back to.
+//     (there is no more inline-tasks fallback).
 //  4. Multiple workflows on disk without a flag is ambiguous — error so the
 //     user picks one explicitly.
 func selectWorkflow(cfg *config.Config, worktreeDir, flag string) (string, *Error) {
@@ -928,17 +907,6 @@ func mergeTasks(store *state.Store, sessionName string, session *domain.Session)
 	})
 }
 
-// resolveStreamID picks the work-stream id for a create/up: the explicit flag
-// wins, else the inherited TWS_STREAM_ID env (how an orchestrator propagates its
-// stream into a dispatched `tws up` — see config/tws/tasks/claude.toml). Empty
-// means the session belongs to no stream.
-func resolveStreamID(flag string) string {
-	if flag != "" {
-		return flag
-	}
-	return os.Getenv("TWS_STREAM_ID")
-}
-
 func resolveParentSession(store *state.Store, sessionName, explicit string) (string, *Error) {
 	candidate := explicit
 	explicitSet := candidate != ""
@@ -970,7 +938,6 @@ func sessionVars(s *domain.Session) task.SessionVars {
 	return task.SessionVars{
 		Name:          s.Name,
 		ResourceID:    s.ResourceID,
-		StreamID:      s.StreamID,
 		ParentSession: s.ParentSession,
 		WorktreePath:  s.WorktreePath,
 		URL:           s.URL,

@@ -53,24 +53,20 @@ func TestCreate_Success(t *testing.T) {
 }
 
 // The create form is the only entry point for resolver-less identifiers, so
-// workflow/stream must reach UpParams exactly like the CLI/MCP surfaces —
-// a resolver-less resource id fails auto-create without an
-// explicit workflow.
-func TestCreate_ForwardsWorkflowAndStream(t *testing.T) {
+// workflow must reach UpParams exactly like the CLI/MCP surfaces — a
+// resolver-less resource id fails auto-create without an explicit
+// workflow.
+func TestCreate_ForwardsWorkflow(t *testing.T) {
 	svc := &fakeService{upResult: &service.UpResult{SessionName: "owner/repo-1"}}
 	postForm(t, New(svc).Routes(), "/sessions", url.Values{
 		"url":      {"https://github.com/owner/repo/issues/1"},
 		"workflow": {"custom-workflow"},
-		"stream":   {"sprint-42"},
 	})
 	if svc.gotUp == nil {
 		t.Fatal("Up was not called")
 	}
 	if svc.gotUp.Workflow != "custom-workflow" {
 		t.Errorf("Workflow = %q, want custom-workflow", svc.gotUp.Workflow)
-	}
-	if svc.gotUp.StreamID != "sprint-42" {
-		t.Errorf("StreamID = %q, want sprint-42", svc.gotUp.StreamID)
 	}
 }
 

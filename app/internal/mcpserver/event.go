@@ -13,15 +13,12 @@ import (
 )
 
 var eventListTool = mcp.NewTool("tws_event_list",
-	mcp.WithDescription("List events recorded for a session's durable timeline (GitHub changes, lifecycle, messages, replies, notes). Works for destroyed sessions too — history is retained. Pass subtree to see a session tree (root + descendants) merged in time order — the canonical cross-session scope — or stream for the compat work-stream view. session, subtree, and stream are mutually exclusive."),
+	mcp.WithDescription("List events recorded for a session's durable timeline (GitHub changes, lifecycle, messages, replies, notes). Works for destroyed sessions too — history is retained. Pass subtree to see a session tree (root + descendants) merged in time order — the canonical cross-session scope. session and subtree are mutually exclusive."),
 	mcp.WithString("session",
-		mcp.Description("GitHub Issue or PR URL, or session name (e.g. owner/repo-123). Omit when using subtree or stream."),
+		mcp.Description("GitHub Issue or PR URL, or session name (e.g. owner/repo-123). Omit when using subtree."),
 	),
 	mcp.WithString("subtree",
-		mcp.Description("Root session (URL or name): list events for the session tree rooted there (root + descendants), in time order. Mutually exclusive with session and stream."),
-	),
-	mcp.WithString("stream",
-		mcp.Description("Opaque work-stream id: list events across every session carrying it, in time order. Mutually exclusive with session and subtree."),
+		mcp.Description("Root session (URL or name): list events for the session tree rooted there (root + descendants), in time order. Mutually exclusive with session."),
 	),
 	mcp.WithString("types", mcp.Description("Comma-separated type globs to include (e.g. \"github.*,claude.reply\")")),
 	mcp.WithString("source", mcp.Description("Comma-separated sources to include (e.g. \"github,slack\")")),
@@ -64,18 +61,17 @@ func handleEventList(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	store := state.NewStore("")
 	session := request.GetString("session", "")
 	subtree := request.GetString("subtree", "")
-	stream := request.GetString("stream", "")
 	scopes := 0
-	for _, s := range []string{session, subtree, stream} {
+	for _, s := range []string{session, subtree} {
 		if s != "" {
 			scopes++
 		}
 	}
 	if scopes == 0 {
-		return mcp.NewToolResultError("session, subtree, or stream is required"), nil
+		return mcp.NewToolResultError("session or subtree is required"), nil
 	}
 	if scopes > 1 {
-		return mcp.NewToolResultError("session, subtree, and stream are mutually exclusive; each names a different scope"), nil
+		return mcp.NewToolResultError("session and subtree are mutually exclusive; each names a different scope"), nil
 	}
 	order, err := event.NormalizeOrder(request.GetString("order", ""))
 	if err != nil {
@@ -97,8 +93,6 @@ func handleEventList(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	switch {
 	case subtree != "":
 		page, err = service.EventPageSubtree(config.Load(), store, subtree, params)
-	case stream != "":
-		page, err = service.EventPageStream(store, stream, params)
 	default:
 		page, err = service.EventPage(config.Load(), store, session, params)
 	}

@@ -14,13 +14,12 @@ import (
 
 // SubscribeParams are the inputs to Subscribe. ResourceID is the opaque
 // resource the caller wants this session to receive events from. SessionName
-// and StreamID default to the ambient pane env ($TWS_SESSION_NAME /
-// $TWS_STREAM_ID, exported by the claude task) when left empty, so a running
-// agent can `tws subscribe <url>` without naming itself.
+// defaults to the ambient pane env ($TWS_SESSION_NAME, exported by the claude
+// task) when left empty, so a running agent can `tws subscribe <url>` without
+// naming itself.
 type SubscribeParams struct {
 	ResourceID  string
 	SessionName string
-	StreamID    string
 }
 
 // Subscribe binds the current session to an opaque resource so the session
@@ -31,9 +30,9 @@ type SubscribeParams struct {
 //
 // core stays provider-agnostic: it matches the resource against each
 // provider's resolver to pick the owning provider, fills in the current
-// session/stream from the ambient env, and runs that provider's `subscribe`
-// hook. Everything resource-specific (for github: registering with the
-// resident watcher) lives in the hook — core never parses the resource.
+// session from the ambient env, and runs that provider's `subscribe` hook.
+// Everything resource-specific (for github: registering with the resident
+// watcher) lives in the hook — core never parses the resource.
 func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) error {
 	if strings.TrimSpace(params.ResourceID) == "" {
 		return &Error{Code: ErrInvalidInput, Message: "resource id is required"}
@@ -62,11 +61,9 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 		return err
 	}
 
-	streamID := resolveStreamID(params.StreamID)
 	if hookErr := task.RunProviderSubscribe(prov, task.SubscribeHookVars{
 		ResourceID:  params.ResourceID,
 		SessionName: sessionName,
-		StreamID:    streamID,
 	}); hookErr != nil {
 		return &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
 	}

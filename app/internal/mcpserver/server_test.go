@@ -65,15 +65,14 @@ func decodeJSONResult(t *testing.T, result *mcp.CallToolResult) map[string]any {
 	return out
 }
 
-// A resolver-less workflow requires an explicit --workflow — tws_create
-// can now supply it just like the CLI can.
+// A resolver-less workflow requires an explicit --workflow, and tws_create
+// can now supply it.
 func TestHandleCreate_ResolverLessWorkflow(t *testing.T) {
 	setUpConfigHome(t)
 
 	result, err := handleCreate(context.Background(), reqWith(map[string]any{
 		"url":      "my-session",
 		"workflow": "plain",
-		"stream":   "sprint-42",
 	}))
 	if err != nil {
 		t.Fatalf("handleCreate: %v", err)
@@ -91,9 +90,6 @@ func TestHandleCreate_ResolverLessWorkflow(t *testing.T) {
 	if s.Workflow != "plain" {
 		t.Errorf("Workflow = %q, want plain", s.Workflow)
 	}
-	if s.StreamID != "sprint-42" {
-		t.Errorf("StreamID = %q, want sprint-42", s.StreamID)
-	}
 }
 
 // A resolver-less workflow's identifier isn't a URL, so tws_up's
@@ -108,7 +104,6 @@ func TestHandleUp_ResolverLessWorkflowExistingSession(t *testing.T) {
 	if _, err := handleCreate(context.Background(), reqWith(map[string]any{
 		"url":      "my-session",
 		"workflow": "plain",
-		"stream":   "sprint-42",
 	})); err != nil {
 		t.Fatalf("handleCreate: %v", err)
 	}
@@ -133,16 +128,13 @@ func TestHandleUp_ResolverLessWorkflowExistingSession(t *testing.T) {
 	if s.Workflow != "plain" {
 		t.Errorf("Workflow = %q, want plain", s.Workflow)
 	}
-	if s.StreamID != "sprint-42" {
-		t.Errorf("StreamID = %q, want sprint-42 (create-time identity preserved)", s.StreamID)
-	}
 }
 
-// The tool schemas must expose workflow/stream/task so a client can discover
-// the arguments without reading the handler source.
-func TestCreateAndUpTools_ExposeWorkflowAndStream(t *testing.T) {
+// The tool schemas must expose workflow/task so a client can discover the
+// arguments without reading the handler source.
+func TestCreateAndUpTools_ExposeWorkflowAndTask(t *testing.T) {
 	for _, tool := range []mcp.Tool{createTool, upTool} {
-		for _, name := range []string{"workflow", "stream", "task"} {
+		for _, name := range []string{"workflow", "task"} {
 			if _, ok := tool.InputSchema.Properties[name]; !ok {
 				t.Errorf("%s: missing %q in InputSchema.Properties", tool.Name, name)
 			}

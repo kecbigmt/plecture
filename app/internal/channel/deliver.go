@@ -52,7 +52,6 @@ func eventMap(ev event.Event) map[string]any {
 	return map[string]any{
 		"id":           ev.ID,
 		"session_name": ev.SessionName,
-		"stream_id":    ev.StreamID,
 		"time":         ev.Time.Format(time.RFC3339Nano),
 		"type":         ev.Type,
 		"source":       ev.Source,

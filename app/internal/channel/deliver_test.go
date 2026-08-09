@@ -252,14 +252,14 @@ func TestDeliverWithExecutor_NilExecutorFailsClosed(t *testing.T) {
 
 func TestDeliver_EmptyOptionalFieldRendersEmpty(t *testing.T) {
 	dir := t.TempDir()
-	// An event whose optional fields (body/stream_id) are unset must still
+	// An event whose optional fields (body) are unset must still
 	// deliver — {{.Event.body}} renders empty, not an error.
 	def := config.ChannelDefinition{
 		Type:    config.ChannelTypeExec,
 		Command: "touch",
-		Args:    []string{"{{.Inputs.dir}}/got-{{.Event.body}}{{.Event.stream_id}}"},
+		Args:    []string{"{{.Inputs.dir}}/got-{{.Event.body}}"},
 	}
-	ev := event.Event{Type: "github.state", Summary: "CI failed"} // Body/StreamID empty
+	ev := event.Event{Type: "github.state", Summary: "CI failed"} // Body empty
 	if err := Deliver(context.Background(), def, map[string]any{"dir": dir}, ev); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}

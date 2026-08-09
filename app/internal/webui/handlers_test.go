@@ -27,9 +27,6 @@ type fakeService struct {
 	subtreeEvents []event.Event
 	subtreeErr    error
 	gotSubtree    string
-	streamEvents  []event.Event
-	streamErr     error
-	gotStream     string
 
 	createResult  *service.CreateResult
 	upResult      *service.UpResult
@@ -58,11 +55,6 @@ func (f *fakeService) Events(string) ([]event.Event, error) { return f.events, f
 func (f *fakeService) EventsSubtree(root string) ([]event.Event, error) {
 	f.gotSubtree = root
 	return f.subtreeEvents, f.subtreeErr
-}
-
-func (f *fakeService) EventsStream(id string) ([]event.Event, error) {
-	f.gotStream = id
-	return f.streamEvents, f.streamErr
 }
 
 func (f *fakeService) PublishEvent(name string, p service.EventPublishParams) (event.Event, error) {

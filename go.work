@@ -5,7 +5,6 @@ use (
 	./contracts/atomicfile
 	./contracts/channel-protocol
 	./contracts/event
-	./contracts/hook
 	./contracts/state
 	./plugins/channel-server
 	./plugins/github-watcher

@@ -20,7 +20,6 @@ var (
 	upInputs     string
 	upInputsFile string
 	upTask       string
-	upStream     string
 	upParent     string
 	upDetach     bool
 )
@@ -69,7 +68,6 @@ path; see 'tws create --help' for the required/none semantics.`,
 			Tag:           upTag,
 			Workflow:      upWorkflow,
 			Inputs:        inputs,
-			StreamID:      upStream,
 			ParentSession: upParent,
 			Observer:      newTaskObserver(cfg),
 		})
@@ -121,7 +119,6 @@ func init() {
 	upCmd.Flags().StringVar(&upInputs, "inputs", "", "Session inputs as a JSON object string (auto-create path only)")
 	upCmd.Flags().StringVar(&upInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object (auto-create path only)")
 	upCmd.Flags().StringVar(&upTask, "task", "", "Shorthand for --inputs '{\"task\":\"<id>\"}' (auto-create path only). Pass \"none\" for no initial task.")
-	upCmd.Flags().StringVar(&upStream, "stream", "", "Opaque work-stream id for the session and its events (auto-create path only; an existing session keeps its create-time stream). Falls back to $TWS_STREAM_ID")
 	upCmd.Flags().StringVar(&upParent, "parent", "", "Parent session name for auto-created sessions, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $TWS_SESSION_NAME when it names an existing session")
 	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Return after setup instead of attaching (docker-compose-style up -d)")
 	rootCmd.AddCommand(upCmd)

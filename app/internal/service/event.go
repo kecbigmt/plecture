@@ -51,7 +51,6 @@ func EventPublish(cfg *config.Config, store *state.Store, identifier string, p E
 	direction, meta := normalizePublishDirection(name, p.Direction, p.Metadata)
 	stored, _, _, err := eventlog.NewStore(store.Dir()).Append(event.Event{
 		SessionName: name,
-		StreamID:    streamForSession(store, name),
 		Type:        p.Type,
 		Source:      source,
 		Direction:   direction,
@@ -176,54 +175,15 @@ func EventPage(cfg *config.Config, store *state.Store, identifier string, p Even
 	return res, nil
 }
 
-// EventPageStream returns one page of a stream's events, merged across every
-// session that carries streamID, in time order (by event id / ULID). asc
-// (default) pages forward via a ULID keyset cursor and returns a resume
-// watermark cursor whenever the page has events (see EventPageResult.NextCursor);
-// desc returns the most recent page and does not paginate in v1 — mirroring
-// EventPage's single-session contract. The cross-session view reads the logs directly (not the bus): the
-// eventlog is the source of truth and the bus is only the single-session SSE
-// optimization, so this works whether or not a bus is running.
-func EventPageStream(store *state.Store, streamID string, p EventPageParams) (EventPageResult, error) {
-	if streamID == "" {
-		return EventPageResult{}, &Error{Code: ErrInvalidInput, Message: "stream id is required"}
-	}
-	order := p.Order
-	if order == "" {
-		order = event.OrderAsc
-	}
-	var after string
-	if p.Cursor != "" {
-		cur, derr := event.DecodeStreamCursor(p.Cursor)
-		if derr != nil {
-			return EventPageResult{}, &Error{Code: ErrInvalidInput, Message: derr.Error()}
-		}
-		if verr := cur.Validate(streamID, order); verr != nil {
-			return EventPageResult{}, &Error{Code: ErrInvalidInput, Message: verr.Error()}
-		}
-		after = cur.After
-	}
-
-	all, lerr := eventlog.NewStore(store.Dir()).ListStream(streamID, p.Filter)
-	if lerr != nil {
-		return EventPageResult{}, &Error{Code: ErrExecutionFailed, Message: lerr.Error()}
-	}
-
-	events, lastID := pageMerged(all, order, after, p.Filter.Limit)
-	res := EventPageResult{Events: events}
-	if lastID != "" {
-		res.NextCursor = event.StreamCursor{V: event.CursorVersion, Stream: streamID, After: lastID, Ord: event.OrderAsc}.Encode()
-	}
-	return res, nil
-}
-
 // EventPageSubtree returns one page of the merged event timeline for the subtree
 // rooted at identifier (the root session plus all its descendants), in time
-// order by event id. It mirrors EventPageStream's keyset paging and asc/desc
-// contract but scopes membership by the canonical session tree (ADR §7) rather
-// than a stream id, which the design keeps only as a compat read model. The root
-// must exist in state: a subtree is a tree fact, so a destroyed root (its log
-// survives, its tree does not) has no subtree to page.
+// order by event id. asc (default) pages forward via a ULID keyset cursor and
+// returns a resume watermark cursor whenever the page has events (see
+// EventPageResult.NextCursor); desc returns the most recent page and does not
+// paginate in v1 — mirroring EventPage's single-session contract. Membership is
+// the canonical session tree (ADR §7). The root must exist in state: a subtree
+// is a tree fact, so a destroyed root (its log survives, its tree does not) has
+// no subtree to page.
 func EventPageSubtree(cfg *config.Config, store *state.Store, identifier string, p EventPageParams) (EventPageResult, error) {
 	name, err := resolveSessionName(cfg, store, identifier)
 	if err != nil {
@@ -294,17 +254,6 @@ func pageMerged(all []event.Event, order event.Order, after string, limit int) (
 		return all, all[len(all)-1].ID
 	}
 	return all, ""
-}
-
-// EventTailStream follows a stream's events live across every session carrying
-// streamID, invoking fn for each event matching f, until ctx is done. Like the
-// page view it reads the logs directly and picks up newly dispatched sessions as
-// they appear.
-func EventTailStream(ctx context.Context, store *state.Store, streamID string, f event.Filter, fn func(event.Event)) error {
-	if streamID == "" {
-		return &Error{Code: ErrInvalidInput, Message: "stream id is required"}
-	}
-	return eventlog.NewStore(store.Dir()).FollowStream(ctx, streamID, f, fn)
 }
 
 // EventTailSubtree follows the events of the subtree rooted at identifier live,
@@ -407,7 +356,6 @@ func recordLifecycle(store *state.Store, sessionName, phase, summary string) {
 	}
 	_, _, _, _ = eventlog.NewStore(store.Dir()).Append(event.Event{
 		SessionName: sessionName,
-		StreamID:    streamForSession(store, sessionName),
 		Type:        event.TypeLifecyclePrefix + phase,
 		Source:      event.SourceTWS,
 		Direction:   event.Internal,
@@ -426,7 +374,6 @@ func recordJudgeRecorded(store *state.Store, sessionName string, judge *contract
 	}
 	_, _, _, _ = eventlog.NewStore(store.Dir()).Append(event.Event{
 		SessionName: sessionName,
-		StreamID:    streamForSession(store, sessionName),
 		Type:        event.TypeJudgeRecorded,
 		Source:      event.SourceTWS,
 		Direction:   event.Internal,
@@ -461,7 +408,6 @@ func appendInstruction(store *state.Store, sessionName, taskKey, resource, instr
 	}
 	_, _, _, _ = eventlog.NewStore(store.Dir()).Append(event.Event{
 		SessionName: sessionName,
-		StreamID:    streamForSession(store, sessionName),
 		Type:        event.TypeInstruction,
 		Source:      event.SourceTWS,
 		Direction:   event.Inbound,
@@ -469,18 +415,6 @@ func appendInstruction(store *state.Store, sessionName, taskKey, resource, instr
 		Body:        instruction,
 		Metadata:    meta,
 	})
-}
-
-// streamForSession returns the session's opaque work-stream id from state, or ""
-// if the session has none or no longer exists. Stamping at append time (rather
-// than threading the stream through every caller) keeps every tws-core event —
-// lifecycle, user.note, claude.reply via hooks — consistently tagged with the
-// session's stream as long as the session is in state.
-func streamForSession(store *state.Store, sessionName string) string {
-	if s := store.Get(sessionName); s != nil {
-		return s.StreamID
-	}
-	return ""
 }
 
 // resolveSessionName maps an identifier (session name, alias, URL, or resource

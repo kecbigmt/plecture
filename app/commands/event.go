@@ -26,7 +26,6 @@ var (
 	eventSource    string
 	eventDirection string
 	eventLimit     int
-	eventStream    string
 	eventSubtree   string
 	eventDelivery  string
 
@@ -45,13 +44,11 @@ var eventCmd = &cobra.Command{
 
 var eventListCmd = &cobra.Command{
 	Use:   "list [url|session]",
-	Short: "List events for a session, its subtree (--subtree), or a stream (--stream)",
+	Short: "List events for a session or its subtree (--subtree)",
 	Long: `List events for one session; with --subtree <root> the session tree rooted
-there (root + descendants) merged in time order; or with --stream <id> the whole
-work stream merged across every session carrying it. --subtree is the
-canonical cross-session scope; --stream is a compat read model. The session
-argument, --subtree, and --stream are mutually exclusive: a cross-session view
-spans sessions, so it takes no single session argument.`,
+there (root + descendants) merged in time order — the canonical cross-session
+scope. The session argument and --subtree are mutually exclusive: a
+cross-session view spans sessions, so it takes no single session argument.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store := state.NewStore("")
@@ -71,8 +68,6 @@ spans sessions, so it takes no single session argument.`,
 		switch {
 		case eventSubtree != "":
 			page, err = service.EventPageSubtree(config.Load(), store, eventSubtree, params)
-		case eventStream != "":
-			page, err = service.EventPageStream(store, eventStream, params)
 		default:
 			page, err = service.EventPage(config.Load(), store, args[0], params)
 		}
@@ -137,11 +132,10 @@ var eventPublishCmd = &cobra.Command{
 
 var eventTailCmd = &cobra.Command{
 	Use:   "tail [url|session]",
-	Short: "Follow events for a session, its subtree (--subtree), or a stream (--stream)",
+	Short: "Follow events for a session or its subtree (--subtree)",
 	Long: `Follow events for one session; with --subtree <root> the session tree rooted
-there (root + descendants), children spawned later included; or with --stream
-<id> the whole work stream live across every session carrying it. The
-session argument, --subtree, and --stream are mutually exclusive.`,
+there (root + descendants), children spawned later included. The session
+argument and --subtree are mutually exclusive.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store := state.NewStore("")
@@ -165,8 +159,6 @@ session argument, --subtree, and --stream are mutually exclusive.`,
 		switch {
 		case eventSubtree != "":
 			err = service.EventTailSubtree(ctx, config.Load(), store, eventSubtree, f, emit)
-		case eventStream != "":
-			err = service.EventTailStream(ctx, store, eventStream, f, emit)
 		default:
 			err = service.EventTail(ctx, config.Load(), store, args[0], eventSince, f, emit)
 		}
@@ -178,21 +170,18 @@ session argument, --subtree, and --stream are mutually exclusive.`,
 }
 
 // validateScopeArgs enforces that the event scope is unambiguous: a session
-// argument, --subtree, and --stream each name a different scope, so at most one
-// may be set. A cross-session view (--subtree/--stream) spans sessions and takes
-// no session argument; the single-session view requires exactly one.
+// argument and --subtree name different scopes, so at most one may be set. A
+// cross-session view (--subtree) spans sessions and takes no session
+// argument; the single-session view requires exactly one.
 func validateScopeArgs(args []string) error {
-	if eventSubtree != "" && eventStream != "" {
-		return fmt.Errorf("--subtree and --stream are mutually exclusive; each names a different cross-session scope")
-	}
-	if eventSubtree != "" || eventStream != "" {
+	if eventSubtree != "" {
 		if len(args) > 0 {
 			return fmt.Errorf("a cross-session view spans sessions; do not also pass a session argument (%q)", args[0])
 		}
 		return nil
 	}
 	if len(args) != 1 {
-		return fmt.Errorf("a session (url or name) is required, or use --subtree <root> / --stream <id> for a cross-session view")
+		return fmt.Errorf("a session (url or name) is required, or use --subtree <root> for a cross-session view")
 	}
 	return nil
 }
@@ -263,7 +252,6 @@ func init() {
 	eventListCmd.Flags().StringVar(&eventDelivery, "delivery-mode", "", "Filter by delivery mode (push|pull)")
 	eventListCmd.Flags().IntVar(&eventLimit, "limit", 0, "Max events to return (0 = all)")
 	eventListCmd.Flags().StringVar(&eventSubtree, "subtree", "", "Cross-session view: list events for the session tree rooted at this url|session (root + descendants), in time order (no session arg)")
-	eventListCmd.Flags().StringVar(&eventStream, "stream", "", "Cross-session view: list events across every session carrying this opaque stream id (no session arg)")
 
 	eventPublishCmd.Flags().StringVar(&evPubType, "type", "", "Event type (required, e.g. user.emit)")
 	eventPublishCmd.Flags().StringVar(&evPubSource, "source", "", "Event source (default: cli)")
@@ -281,7 +269,6 @@ func init() {
 	eventTailCmd.Flags().StringVar(&eventDirection, "direction", "", "Filter by direction")
 	eventTailCmd.Flags().StringVar(&eventDelivery, "delivery-mode", "", "Filter by delivery mode (push|pull)")
 	eventTailCmd.Flags().StringVar(&eventSubtree, "subtree", "", "Cross-session view: follow events for the session tree rooted at this url|session (root + descendants), later children included (no session arg)")
-	eventTailCmd.Flags().StringVar(&eventStream, "stream", "", "Cross-session view: follow events across every session carrying this opaque stream id (no session arg)")
 
 	eventCmd.AddCommand(eventListCmd, eventShowCmd, eventPublishCmd, eventTailCmd)
 	rootCmd.AddCommand(eventCmd)

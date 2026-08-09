@@ -10,14 +10,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/ghcache"
 	"github.com/kecbigmt/plect/app/internal/service"
 	"github.com/kecbigmt/plect/app/internal/state"
 )
 
 var (
 	lsJSON   bool
-	lsSync   bool
 	lsParent string
 )
 
@@ -28,14 +26,6 @@ var lsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()
 		store := state.NewStore("")
-
-		if lsSync {
-			cacheStore := ghcache.NewCacheStore("")
-			fetcher := ghcache.NewFetcher()
-			if _, err := service.Sync(cfg, store, cacheStore, fetcher, service.SyncParams{}); err != nil {
-				return fmt.Errorf("sync failed: %w", err)
-			}
-		}
 
 		entries, err := service.List(cfg, store)
 		if err != nil {
@@ -117,7 +107,6 @@ func formatLastActive(t time.Time) string {
 
 func init() {
 	lsCmd.Flags().BoolVar(&lsJSON, "json", false, "Output as JSON")
-	lsCmd.Flags().BoolVar(&lsSync, "sync", false, "Sync all sessions before listing (deprecated: legacy ghcache, retiring)")
 	lsCmd.Flags().StringVar(&lsParent, "parent", "", "List only the direct children of this session")
 	rootCmd.AddCommand(lsCmd)
 }

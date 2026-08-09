@@ -122,44 +122,6 @@ func TestAppendAndList(t *testing.T) {
 	}
 }
 
-func TestListFiltersByStreamID(t *testing.T) {
-	s := NewStore(t.TempDir())
-	const session = "owner/repo-3"
-
-	// Two events tagged with stream "a", one with "b", one untagged.
-	appends := []event.Event{
-		{SessionName: session, Type: "claude.reply", StreamID: "a", Summary: "a1"},
-		{SessionName: session, Type: "slack.message", StreamID: "b", Summary: "b1"},
-		{SessionName: session, Type: "claude.reply", StreamID: "a", Summary: "a2"},
-		{SessionName: session, Type: "user.note", Summary: "none"},
-	}
-	for _, ev := range appends {
-		if _, _, _, err := s.Append(ev); err != nil {
-			t.Fatalf("append: %v", err)
-		}
-	}
-
-	// stream_id filter returns only matching events, in append order.
-	got, _, _, err := s.List(session, 0, event.Filter{StreamID: "a"})
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(got) != 2 || got[0].Summary != "a1" || got[1].Summary != "a2" {
-		t.Fatalf("stream a filter = %v", summaries(got))
-	}
-
-	// The persisted StreamID survives the JSON round trip through the log.
-	if got[0].StreamID != "a" {
-		t.Errorf("stream_id not persisted: got %q", got[0].StreamID)
-	}
-
-	// Empty filter is unchanged: all four events.
-	all, _, _, err := s.List(session, 0, event.Filter{})
-	if err != nil || len(all) != 4 {
-		t.Fatalf("empty filter = %d events (err=%v), want 4", len(all), err)
-	}
-}
-
 func TestSessionsEnumeratesLogDirs(t *testing.T) {
 	s := NewStore(t.TempDir())
 
@@ -189,59 +151,9 @@ func TestSessionsEnumeratesLogDirs(t *testing.T) {
 	}
 }
 
-func TestListStreamMergesAcrossSessions(t *testing.T) {
-	s := NewStore(t.TempDir())
-
-	// Two sessions in stream "a", one in stream "b", one untagged. Interleave the
-	// appends so chronological (ULID) order spans sessions.
-	seq := []struct{ session, stream, summary string }{
-		{"o/r-1", "a", "a1"},
-		{"o/r-2", "b", "b1"},
-		{"o/r-3", "a", "a2"},  // different session, same stream as a1
-		{"o/r-1", "", "none"}, // untagged
-		{"o/r-2", "a", "a3"},  // session that also has a "b" event
-	}
-	for _, e := range seq {
-		if _, _, _, err := s.Append(event.Event{SessionName: e.session, StreamID: e.stream, Type: "t", Summary: e.summary}); err != nil {
-			t.Fatalf("append: %v", err)
-		}
-	}
-
-	got, err := s.ListStream("a", event.Filter{})
-	if err != nil {
-		t.Fatalf("liststream: %v", err)
-	}
-	// Stream "a" spans o/r-1, o/r-3, o/r-2, returned in append (ULID) order as
-	// one timeline; "b" and the untagged event must not appear.
-	want := []string{"a1", "a2", "a3"}
-	if len(got) != len(want) {
-		t.Fatalf("stream a = %v, want %v", summaries(got), want)
-	}
-	for i := range want {
-		if got[i].Summary != want[i] {
-			t.Fatalf("stream a[%d] = %q, want %q", i, got[i].Summary, want[i])
-		}
-		if got[i].StreamID != "a" {
-			t.Fatalf("event %d not in stream a: %q", i, got[i].StreamID)
-		}
-	}
-
-	// ids must be ascending (the cross-session keyset relies on it).
-	for i := 1; i < len(got); i++ {
-		if got[i-1].ID >= got[i].ID {
-			t.Fatalf("ids not ascending across sessions: %q then %q", got[i-1].ID, got[i].ID)
-		}
-	}
-
-	// An empty stream id is rejected (no accidental "all sessions" sweep).
-	if _, err := s.ListStream("", event.Filter{}); err == nil {
-		t.Fatalf("expected error for empty stream id")
-	}
-}
-
-// ListAcross is the merge primitive behind both cross-session views: it merges
-// the named sessions' events in id order regardless of stream id, applying the
-// filter's other selectors. Sessions not named are excluded.
+// ListAcross is the merge primitive behind the subtree cross-session view: it
+// merges the named sessions' events in id order, applying the filter's other
+// selectors. Sessions not named are excluded.
 func TestListAcrossMergesNamedSessions(t *testing.T) {
 	s := NewStore(t.TempDir())
 
@@ -276,43 +188,6 @@ func TestListAcrossMergesNamedSessions(t *testing.T) {
 	// An empty name set yields no events, not an error (an empty subtree is valid).
 	if evs, err := s.ListAcross(nil, event.Filter{}); err != nil || len(evs) != 0 {
 		t.Fatalf("empty name set = (%v, %v), want (nil, nil)", summaries(evs), err)
-	}
-}
-
-func TestFollowStreamPicksUpNewSessions(t *testing.T) {
-	s := NewStore(t.TempDir())
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-
-	got := make(chan event.Event, 8)
-	go func() { _ = s.FollowStream(ctx, "a", event.Filter{}, func(ev event.Event) { got <- ev }) }()
-
-	time.Sleep(50 * time.Millisecond)
-	// First event in an existing session…
-	if _, _, _, err := s.Append(event.Event{SessionName: "o/r-1", StreamID: "a", Type: "t", Summary: "first"}); err != nil {
-		t.Fatal(err)
-	}
-	// …then a brand-new session joins the same stream and must be picked up.
-	if _, _, _, err := s.Append(event.Event{SessionName: "o/r-2", StreamID: "a", Type: "t", Summary: "second"}); err != nil {
-		t.Fatal(err)
-	}
-	// An event in a different stream must never be delivered.
-	if _, _, _, err := s.Append(event.Event{SessionName: "o/r-3", StreamID: "b", Type: "t", Summary: "other"}); err != nil {
-		t.Fatal(err)
-	}
-
-	want := map[string]bool{"first": true, "second": true}
-	deadline := time.After(3 * time.Second)
-	for len(want) > 0 {
-		select {
-		case ev := <-got:
-			if ev.Summary == "other" {
-				t.Fatalf("event from a different stream leaked into the follow")
-			}
-			delete(want, ev.Summary)
-		case <-deadline:
-			t.Fatalf("FollowStream did not deliver: still waiting for %v", want)
-		}
 	}
 }
 

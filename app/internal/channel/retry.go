@@ -97,7 +97,6 @@ func ChannelErrorEvent(orig event.Event, channelName string, attempts int, cause
 	}
 	return event.Event{
 		SessionName: orig.SessionName,
-		StreamID:    orig.StreamID,
 		Type:        event.TypeChannelError,
 		Source:      event.SourceTWS,
 		Direction:   event.Internal,

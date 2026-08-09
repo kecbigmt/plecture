@@ -76,9 +76,6 @@ var createTool = mcp.NewTool("tws_create",
 	mcp.WithString("workflow",
 		mcp.Description("Workflow id (filename stem of .tws/workflows/<id>.toml). Required when the identifier has no matching [resolver]; with a resolver-less workflow the identifier itself becomes the session id."),
 	),
-	mcp.WithString("stream",
-		mcp.Description("Opaque work-stream id to tag this session and its events (cross-session view). Falls back to $TWS_STREAM_ID."),
-	),
 	mcp.WithString("task",
 		mcp.Description("Shorthand for inputs.task — sets the session's initial task id (e.g. \"work\", \"review\"). Merged into inputs; conflicts with a different \"task\" already set there. Workflows that declare task as required (e.g. claude, codex) reject create without it; pass \"none\" for an ad-hoc session with no initial instruction."),
 	),
@@ -101,9 +98,6 @@ var upTool = mcp.NewTool("tws_up",
 	),
 	mcp.WithString("workflow",
 		mcp.Description("Workflow id forwarded to the auto-create path (resolver-less workflows need this). Rejected when the session already exists."),
-	),
-	mcp.WithString("stream",
-		mcp.Description("Opaque work-stream id forwarded to the auto-create path; falls back to $TWS_STREAM_ID. An existing session keeps its create-time stream."),
 	),
 	mcp.WithString("task",
 		mcp.Description("Shorthand for inputs.task, forwarded to the auto-create path; see tws_create's task parameter. Rejected when the session already exists."),
@@ -269,7 +263,6 @@ func handleCreate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 		Workflow:      request.GetString("workflow", ""),
 		ParentSession: request.GetString("parent", ""),
 		Inputs:        inputs,
-		StreamID:      request.GetString("stream", ""),
 	})
 	if err != nil {
 		return errorResult(err), nil
@@ -305,7 +298,6 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 		Workflow:      request.GetString("workflow", ""),
 		ParentSession: request.GetString("parent", ""),
 		Inputs:        inputs,
-		StreamID:      request.GetString("stream", ""),
 	})
 	if err != nil {
 		return errorResult(err), nil

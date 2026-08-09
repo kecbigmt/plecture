@@ -48,7 +48,7 @@ const (
 // the namespaces tws itself produces. Subscribers filter with globs ("github.*").
 const (
 	TypeLifecyclePrefix = "lifecycle." // lifecycle.created|up|down|destroyed
-	TypeGitHubPrefix    = "github."    // github.<ghcache.ChangeType>
+	TypeGitHubPrefix    = "github."    // github.<change type>
 	TypeSlackMessage    = "slack.message"
 	TypeClaudeReply     = "claude.reply"
 	TypeClaudePermReq   = "claude.permission_request"
@@ -125,12 +125,11 @@ func (m DeliveryMode) Normalize() DeliveryMode {
 // out-of-band (SSE id frame / List offsets) — never a field here. ID is the
 // identity/dedup key, not the cursor.
 type Event struct {
-	ID          string            `json:"id"`                  // ULID: global uniqueness + dedup
-	SessionName string            `json:"session_name"`        // opaque session id; the log partition + routing key
-	StreamID    string            `json:"stream_id,omitempty"` // opaque work-stream id; groups events across sessions (unset = none)
-	Time        time.Time         `json:"time"`                // RFC3339Nano
-	Type        string            `json:"type"`                // free-form dotted topic
-	Source      string            `json:"source"`              // tws|github|slack|claude|web|cli|mcp
+	ID          string            `json:"id"`           // ULID: global uniqueness + dedup
+	SessionName string            `json:"session_name"` // opaque session id; the log partition + routing key
+	Time        time.Time         `json:"time"`         // RFC3339Nano
+	Type        string            `json:"type"`         // free-form dotted topic
+	Source      string            `json:"source"`       // tws|github|slack|claude|web|cli|mcp
 	Direction   Direction         `json:"direction"`
 	Summary     string            `json:"summary"`        // one-line render for timelines / Slack
 	Body        string            `json:"body,omitempty"` // full text payload
@@ -147,12 +146,11 @@ type Filter struct {
 	Types        []string     // glob patterns; empty = any
 	Sources      []string     // exact; empty = any
 	Direction    Direction    // exact; empty = any
-	StreamID     string       // exact; empty = any
 	DeliveryMode DeliveryMode // exact; empty = any
 	Limit        int          // 0 = no limit (caller-applied)
 }
 
-// Match reports whether ev satisfies the filter's Types/Sources/Direction/StreamID/DeliveryMode.
+// Match reports whether ev satisfies the filter's Types/Sources/Direction/DeliveryMode.
 func (f Filter) Match(ev Event) bool {
 	if len(f.Types) > 0 {
 		ok := false
@@ -170,9 +168,6 @@ func (f Filter) Match(ev Event) bool {
 		return false
 	}
 	if f.Direction != "" && ev.Direction != f.Direction {
-		return false
-	}
-	if f.StreamID != "" && ev.StreamID != f.StreamID {
 		return false
 	}
 	if f.DeliveryMode != "" && ev.DeliveryMode.Normalize() != f.DeliveryMode.Normalize() {

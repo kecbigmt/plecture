@@ -27,8 +27,8 @@ var resourceRE = regexp.MustCompile(`^https://github\.com/([^/]+)/([^/]+)/(issue
 
 // Observed is the set of GitHub values the watcher uses to detect meaningful
 // transitions for notification delivery. Each *Resolved flag gates a value
-// fetched by its own gh/REST call (each value comes from an independent
-// probe rather than one combined `gh pr view`/`gh issue view` call): a
+// fetched by its own gh/REST call, split into several independent probes
+// instead of one `gh pr view`/`gh issue view` call: a
 // failed probe must leave its value out of outputsFor entirely so a transient
 // error can never retract or falsely seed a baseline — only a resolved fetch
 // is authoritative.
@@ -199,7 +199,7 @@ func (p *Poller) fetchPR(sub *Subscription, owner, repo, kind, number string) *O
 }
 
 // fetchIssue mirrors fetchPR for issue resources, additionally resolving the
-// linked PR (via sub.Branch) the same way the legacy ghcache semantics did.
+// linked PR via sub.Branch.
 func (p *Poller) fetchIssue(sub *Subscription, owner, repo, kind, number string) *Observed {
 	state, ok := p.fetchIssueCore(owner, repo, number)
 	if !ok {
@@ -221,8 +221,8 @@ func (p *Poller) fetchIssue(sub *Subscription, owner, repo, kind, number string)
 	obs.LinkedPRFound = found
 	if !found {
 		// A successful lookup finding no PR is authoritative: every PR-scoped
-		// field retracts to its empty/zero value — a since-unlinked PR must not
-		// freeze its last-observed checks/mergeable/draft forever.
+		// field retracts to its empty/zero value — a since-unlinked PR must
+		// not freeze its last-observed checks/mergeable/draft forever.
 		obs.LinkedPRStateResolved = true
 		obs.LinkedPRChecksResolved = true
 		obs.LinkedPRMergeableResolved = true
@@ -230,7 +230,8 @@ func (p *Poller) fetchIssue(sub *Subscription, owner, repo, kind, number string)
 		return obs
 	}
 	// mergeable_state/draft aren't in the pulls?head= list response, so the
-	// linked-PR path needs one more REST call to the single-PR endpoint.
+	// linked-PR path needs one more REST call to the single-PR endpoint
+	// — accepted per the revised evidence.
 	prState, prHeadSHA, mergeableState, draft, ok := p.fetchPRCore(owner, repo, prNumber)
 	if !ok {
 		return obs
@@ -247,8 +248,8 @@ func (p *Poller) fetchIssue(sub *Subscription, owner, repo, kind, number string)
 }
 
 // fetchPRCore is the primary REST probe: state/head sha/mergeable_state/draft
-// in one `gh api` call, replacing the GraphQL-backed `gh pr view`. REST only
-// reports open/closed, so a merged PR is recovered from
+// in one `gh api` call, replacing the GraphQL-backed `gh pr view`.
+// REST only reports open/closed, so a merged PR is recovered from
 // the `merged` flag to keep the same lowercase open/closed/merged vocabulary
 // the rest of the package (and its consumers) already use.
 func (p *Poller) fetchPRCore(owner, repo, number string) (state, headSHA, mergeableState string, draft bool, ok bool) {
@@ -596,8 +597,7 @@ func (p *Poller) notify(sub *Subscription, c change) {
 // type suffix carries the change kind (the slack-adapter subscriber recovers it
 // and applies the same emoji/"[GitHub …]" framing the old /notify did); the
 // resource URL rides in metadata so a session funneling several PRs identifies
-// which one changed. The event is stamped with the session's stream so it joins
-// the cross-session stream view. Direction is inbound — the origin
+// which one changed. Direction is inbound — the origin
 // (GitHub) is outside this session, the same "external origin" rule
 // service.EventPublish applies via TWS_SESSION_NAME — so a quiet standing
 // goal's tick backoff resets when a subscribed resource changes. A
@@ -615,7 +615,6 @@ func (p *Poller) publish(sub *Subscription, c change) {
 	defer cancel()
 	_, _, err := p.Bus.Publish(ctx, event.Event{
 		SessionName: sub.SessionName,
-		StreamID:    sub.StreamID,
 		Type:        event.TypeGitHubPrefix + c.Type,
 		Source:      event.SourceGitHub,
 		Direction:   event.Inbound,

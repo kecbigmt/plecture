@@ -14,8 +14,8 @@ import (
 )
 
 // writeSubscribeProvider drops a provider with a resolver + a subscribe hook
-// that records its rendered SessionName/ResourceID/StreamID to recordPath, so
-// a test can assert what core forwarded.
+// that records its rendered SessionName/ResourceID to recordPath, so a test
+// can assert what core forwarded.
 func writeSubscribeProvider(t *testing.T, id, match, recordPath string) *config.Config {
 	t.Helper()
 	baseDir := t.TempDir()
@@ -28,7 +28,7 @@ setup = "echo '{\"workdir\":\"/tmp/x\"}'"
 match = %q
 name  = "{{.owner}}/{{.repo}}-{{.number}}"
 subscribe = '''
-printf '%%s\n%%s\n%%s\n' "{{.SessionName}}" "{{.ResourceID}}" "{{.StreamID}}" > %s
+printf '%%s\n%%s\n' "{{.SessionName}}" "{{.ResourceID}}" > %s
 '''
 `, match, recordPath)
 	if err := os.WriteFile(filepath.Join(providersDir, id+".toml"), []byte(body), 0o644); err != nil {
@@ -53,7 +53,7 @@ func subscribeStore(t *testing.T, names ...string) *state.Store {
 
 const ghMatch = `^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issues|pull)/(?P<number>\d+)`
 
-func TestSubscribe_RunsProviderHookWithEnvAndStream(t *testing.T) {
+func TestSubscribe_RunsProviderHookWithEnv(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeProvider(t, "github", ghMatch, rec)
 	store := subscribeStore(t, "org/repo-7")
@@ -61,7 +61,6 @@ func TestSubscribe_RunsProviderHookWithEnvAndStream(t *testing.T) {
 	err := Subscribe(cfg, store, SubscribeParams{
 		ResourceID:  "https://github.com/org/repo/pull/7",
 		SessionName: "org/repo-7",
-		StreamID:    "stream-A",
 	})
 	if err != nil {
 		t.Fatalf("Subscribe: %v", err)
@@ -70,25 +69,24 @@ func TestSubscribe_RunsProviderHookWithEnvAndStream(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("read record: %v", readErr)
 	}
-	want := "org/repo-7\nhttps://github.com/org/repo/pull/7\nstream-A\n"
+	want := "org/repo-7\nhttps://github.com/org/repo/pull/7\n"
 	if string(got) != want {
 		t.Errorf("hook recorded %q, want %q", got, want)
 	}
 }
 
-func TestSubscribe_DefaultsSessionAndStreamFromEnv(t *testing.T) {
+func TestSubscribe_DefaultsSessionFromEnv(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeProvider(t, "github", ghMatch, rec)
 	store := subscribeStore(t, "env/session-9")
 	t.Setenv("TWS_SESSION_NAME", "env/session-9")
-	t.Setenv("TWS_STREAM_ID", "env-stream")
 
 	err := Subscribe(cfg, store, SubscribeParams{ResourceID: "https://github.com/org/repo/issues/9"})
 	if err != nil {
 		t.Fatalf("Subscribe: %v", err)
 	}
 	got, _ := os.ReadFile(rec)
-	want := "env/session-9\nhttps://github.com/org/repo/issues/9\nenv-stream\n"
+	want := "env/session-9\nhttps://github.com/org/repo/issues/9\n"
 	if string(got) != want {
 		t.Errorf("hook recorded %q, want %q", got, want)
 	}

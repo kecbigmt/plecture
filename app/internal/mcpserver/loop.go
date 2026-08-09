@@ -147,9 +147,6 @@ var subscribeTool = mcp.NewTool("tws_subscribe",
 	mcp.WithString("session",
 		mcp.Description("Subscriber session name (defaults to TWS_SESSION_NAME)"),
 	),
-	mcp.WithString("stream",
-		mcp.Description("Work-stream id stamped on the resource's events (defaults to TWS_STREAM_ID)"),
-	),
 )
 
 func handleTaskSetup(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -338,7 +335,6 @@ func handleSubscribe(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	if err := service.Subscribe(config.Load(), state.NewStore(""), service.SubscribeParams{
 		ResourceID:  resource,
 		SessionName: request.GetString("session", ""),
-		StreamID:    request.GetString("stream", ""),
 	}); err != nil {
 		return errorResult(err), nil
 	}

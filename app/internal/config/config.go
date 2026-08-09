@@ -11,16 +11,6 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// HookConfig represents a single hook command configuration.
-type HookConfig struct {
-	Command string `toml:"command"`
-}
-
-// HooksConfig holds all hook configurations by hook point.
-type HooksConfig struct {
-	PostSyncChange []HookConfig `toml:"post_sync_change"`
-}
-
 // Duration wraps time.Duration with a TOML UnmarshalText implementation so
 // users can write strings like "7d" / "30m" in config.toml.
 type Duration struct {
@@ -87,7 +77,6 @@ type Config struct {
 	PluginDirs       []string       `toml:"plugin_dirs"`
 	Detached         bool           `toml:"detached"`
 	Channels         []string       `toml:"channels"`
-	Hooks            HooksConfig    `toml:"hooks"`
 	InputsSchema     map[string]any `toml:"inputs_schema"`
 	InputsSchemaFile string         `toml:"inputs_schema_file"`
 	BaseDir          string         `toml:"-"`
@@ -104,13 +93,6 @@ type Config struct {
 	// resource identifier's owner/URL structure — knowing that names are
 	// owner-prefixed is the provider's job, encoded in the pattern it emits.
 	SessionGuard string `toml:"-"`
-}
-
-// RepoConfig is the per-repo configuration read from <repoDir>/.tws/config.toml.
-// Scalar fields (e.g. base_branch) are reserved for future use; only Hooks is
-// currently consumed.
-type RepoConfig struct {
-	Hooks HooksConfig `toml:"hooks"`
 }
 
 func DefaultConfig() *Config {
@@ -175,42 +157,6 @@ func configFileDir(path string) string {
 		return filepath.Dir(real)
 	}
 	return filepath.Dir(path)
-}
-
-// LoadRepoConfig reads per-repo config at <repoDir>/.tws/config.toml.
-// Returns a zero RepoConfig if repoDir is empty or the file is missing/unreadable.
-func LoadRepoConfig(repoDir string) RepoConfig {
-	var rc RepoConfig
-	if repoDir == "" {
-		return rc
-	}
-	path := filepath.Join(repoDir, ".tws", "config.toml")
-	if _, err := os.Stat(path); err != nil {
-		return rc
-	}
-	if _, err := toml.DecodeFile(path, &rc); err != nil {
-		return rc
-	}
-	return rc
-}
-
-// MergedHooks returns hooks for each hook point with global config hooks first
-// followed by repo-specific overlay hooks. Both are executed in order.
-func (c *Config) MergedHooks(repoDir string) HooksConfig {
-	repo := LoadRepoConfig(repoDir)
-	return HooksConfig{
-		PostSyncChange: concatHooks(c.Hooks.PostSyncChange, repo.Hooks.PostSyncChange),
-	}
-}
-
-func concatHooks(a, b []HookConfig) []HookConfig {
-	if len(a) == 0 && len(b) == 0 {
-		return nil
-	}
-	out := make([]HookConfig, 0, len(a)+len(b))
-	out = append(out, a...)
-	out = append(out, b...)
-	return out
 }
 
 // IsRepoAllowed checks if the given owner/repo is in the allowlist.

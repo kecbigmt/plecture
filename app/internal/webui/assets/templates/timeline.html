@@ -1,43 +1,31 @@
-{{- /* timeline: a cross-session event timeline page. Arg is a timelineView —
-       Root set = subtree scope (canonical: the session tree rooted there),
-       Stream set = stream_id scope (compat view on a retirement path). The
-       rows poll via htmx (like the session list); the per-session SSE relay
-       stays on the detail page, so this page is read-only refresh. */ -}}
+{{- /* timeline: a cross-session event timeline page for the session tree
+       rooted at .Root (the canonical subtree scope). The rows poll via htmx
+       (like the session list); the per-session SSE relay stays on the detail
+       page, so this page is read-only refresh. */ -}}
 {{define "timeline"}}<!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="htmx-config" content='{"responseHandling":[{"code":".*","swap":true}]}'>
-<title>{{ if .Root }}subtree {{ .Root }}{{ else }}stream {{ .Stream }}{{ end }} — tws events</title>
+<title>subtree {{ .Root }} — tws events</title>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/htmx.min.js"></script>
 </head>
 <body class="min-h-screen bg-background text-foreground">
 <header class="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card p-4">
   <div class="flex min-w-0 flex-wrap items-center gap-2">
-    <h1 class="min-w-0 break-all text-heading font-semibold">
-      {{- if .Root }}Subtree timeline{{ else }}Stream timeline{{ end }}</h1>
-    {{- if .Stream }}<span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-label text-yellow-800">compat</span>{{ end }}
+    <h1 class="min-w-0 break-all text-heading font-semibold">Subtree timeline</h1>
   </div>
-  <a href="/" class="rounded-sm text-label text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Session list</a>
+  <a href="/" class="rounded-sm text-label text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Sessions</a>
 </header>
 <main class="mx-auto max-w-3xl space-y-4 p-4">
   <section class="rounded-lg border border-border bg-card p-3 text-card-foreground">
     <dl class="grid grid-cols-1 gap-x-4 gap-y-1 text-body sm:grid-cols-[8rem_1fr]">
-      {{- if .Root }}
       <dt class="text-muted-foreground">root session</dt>
       <dd class="break-all"><a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ sessionPath .Root }}">{{ .Root }}</a></dd>
-      {{- else }}
-      <dt class="text-muted-foreground">stream_id</dt>
-      <dd class="break-all font-mono">{{ .Stream }}</dd>
-      {{- end }}
     </dl>
-    {{- if .Root }}
-    <p class="mt-2 text-label text-muted-foreground">A cross-session timeline that merges events of the session tree rooted at this session (root + descendants) in chronological order (by event id).</p>
-    {{- else }}
-    <p class="mt-2 text-label text-muted-foreground">A compatibility view spanning all sessions sharing a stream_id. The canonical cross-session view is the session-tree-based subtree timeline, reachable from the root session's detail page.</p>
-    {{- end }}
+    <p class="mt-2 text-label text-muted-foreground">A cross-session timeline merging events from the session tree rooted at this session (root + descendants) in chronological order (by event id).</p>
   </section>
   {{- /* The rows refresh whole (no cursor): the desc page is capped to the
          recent window, matching the detail timeline's polling contract. */}}

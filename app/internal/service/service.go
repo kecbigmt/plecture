@@ -14,7 +14,6 @@ import (
 	"github.com/kecbigmt/plect/app/internal/config"
 	"github.com/kecbigmt/plect/app/internal/domain"
 	"github.com/kecbigmt/plect/app/internal/eventlog"
-	"github.com/kecbigmt/plect/app/internal/ghcache"
 	gh "github.com/kecbigmt/plect/app/internal/github"
 	"github.com/kecbigmt/plect/app/internal/state"
 	"github.com/kecbigmt/plect/app/internal/task"
@@ -285,7 +284,6 @@ type ListEntry struct {
 	Run           domain.RunState    `json:"run"`
 	Health        domain.HealthState `json:"health,omitempty"`
 	GitHubStatus  string             `json:"github_status"`
-	LinkedPR      *LinkedPRInfo      `json:"linked_pr,omitempty"`
 	URL           string             `json:"url"`
 	Tracked       bool               `json:"tracked"`
 	LastActiveAt  *time.Time         `json:"last_active_at,omitempty"`
@@ -302,14 +300,12 @@ type ListEntry struct {
 // List returns all sessions with their statuses.
 func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	sessions := store.All()
-	cache := ghcache.NewCacheStore("").Load()
 	displayWorkflows := loadDisplayWorkflows(cfg)
 	displayTasks := loadDisplayTasks(cfg)
 
-	// Each session may need healthcheck and git subprocesses; GitHub data comes
-	// from the on-disk cache loaded above. Doing 50+ serially is the dominant
-	// cost, so fan out over a bounded pool and fill a preallocated slice by
-	// index; the sort below restores order.
+	// Each session may need healthcheck and git subprocesses. Doing 50+
+	// serially is the dominant cost, so fan out over a bounded pool and fill a
+	// preallocated slice by index; the sort below restores order.
 	tracked := make([]*domain.Session, 0, len(sessions))
 	for _, s := range sessions {
 		tracked = append(tracked, s)
@@ -323,7 +319,7 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 		go func(i int) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			entries[i] = buildListEntry(cfg, store, displayWorkflows, displayTasks, cache, tracked[i], sessions)
+			entries[i] = buildListEntry(cfg, store, displayWorkflows, displayTasks, tracked[i], sessions)
 		}(i)
 	}
 	wg.Wait()
@@ -341,11 +337,11 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 const listConcurrency = 16
 
 // buildListEntry gathers one session's runtime status. Safe to call
-// concurrently: it only reads the shared cache/workflows and spawns its own
+// concurrently: it only reads the shared workflows and spawns its own
 // subprocesses.
-func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map[string]config.WorkflowFile, displayTasks map[string]config.TaskDefinition, cache *ghcache.CacheFile, s *domain.Session, sessions map[string]*domain.Session) ListEntry {
-	cached := lookupCache(cache, s)
-	applyDisplay(displayWorkflows, cache, s, &cached)
+func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map[string]config.WorkflowFile, displayTasks map[string]config.TaskDefinition, s *domain.Session, sessions map[string]*domain.Session) ListEntry {
+	var cached cachedInfo
+	applyDisplay(displayWorkflows, s, &cached)
 
 	entry := ListEntry{
 		SessionName:   s.Name,
@@ -353,7 +349,6 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 		Run:           sessionRunState(s),
 		Health:        sessionHealthState(cfg, store, s.Name),
 		GitHubStatus:  cached.GitHubStatus,
-		LinkedPR:      cached.LinkedPR,
 		URL:           s.URL,
 		Tracked:       true,
 		LastActiveAt:  &s.UpdatedAt,
@@ -410,65 +405,10 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// LinkedPRInfo holds summary information about a PR linked to an issue session.
-type LinkedPRInfo struct {
-	Number         int    `json:"number"`
-	Title          string `json:"title,omitempty"`
-	State          string `json:"state"`
-	ReviewDecision string `json:"review_decision,omitempty"`
-	ChecksStatus   string `json:"checks_status,omitempty"`
-	URL            string `json:"url,omitempty"`
-}
-
-// cachedInfo holds GitHub information extracted from the cache for display.
+// cachedInfo holds a session's display projection (title, status line).
 type cachedInfo struct {
-	Title          string
-	GitHubStatus   string
-	ReviewDecision string
-	ChecksStatus   string
-	CacheAge       string
-	LinkedPR       *LinkedPRInfo
-}
-
-// lookupCache reads cached GitHub data for a session from a pre-loaded cache.
-func lookupCache(cache *ghcache.CacheFile, session *domain.Session) cachedInfo {
-	key := ghcache.CacheKey(session.OwnerRepo, session.Number)
-
-	if session.URLType == string(gh.URLTypePR) {
-		if entry, ok := cache.PullRequests[key]; ok {
-			ghStatus := entry.State
-			if entry.ReviewDecision != "" {
-				ghStatus += " (" + FormatReviewDecision(entry.ReviewDecision) + ")"
-			}
-			return cachedInfo{
-				Title:          entry.Title,
-				GitHubStatus:   ghStatus,
-				ReviewDecision: entry.ReviewDecision,
-				ChecksStatus:   entry.ChecksStatus,
-				CacheAge:       formatCacheAge(entry.FetchedAt),
-			}
-		}
-	} else {
-		if entry, ok := cache.Issues[key]; ok {
-			info := cachedInfo{
-				Title:        entry.Title,
-				GitHubStatus: entry.State,
-				CacheAge:     formatCacheAge(entry.FetchedAt),
-			}
-			if entry.LinkedPR != nil {
-				info.LinkedPR = &LinkedPRInfo{
-					Number:         entry.LinkedPR.Number,
-					Title:          entry.LinkedPR.Title,
-					State:          entry.LinkedPR.State,
-					ReviewDecision: entry.LinkedPR.ReviewDecision,
-					ChecksStatus:   entry.LinkedPR.ChecksStatus,
-					URL:            fmt.Sprintf("https://github.com/%s/pull/%d", session.OwnerRepo, entry.LinkedPR.Number),
-				}
-			}
-			return info
-		}
-	}
-	return cachedInfo{}
+	Title        string
+	GitHubStatus string
 }
 
 // Workdir resolves an identifier to the session's working directory using
@@ -518,11 +458,10 @@ func loadDisplayWorkflows(cfg *config.Config) map[string]config.WorkflowFile {
 	return workflows
 }
 
-// applyDisplay overrides the ghcache-derived display values with the
-// workflow's [display] templates when they render non-empty. Evaluation is
-// state-only (pseudo-node outputs + the transitional ghcache shim) — no
-// network.
-func applyDisplay(workflows map[string]config.WorkflowFile, cache *ghcache.CacheFile, s *domain.Session, cached *cachedInfo) {
+// applyDisplay renders the workflow's [display] templates into cached when
+// they produce a non-empty value. Evaluation is state-only (pseudo-node
+// outputs) — no network.
+func applyDisplay(workflows map[string]config.WorkflowFile, s *domain.Session, cached *cachedInfo) {
 	if s.Workflow == "" {
 		return
 	}
@@ -530,7 +469,7 @@ func applyDisplay(workflows map[string]config.WorkflowFile, cache *ghcache.Cache
 	if !ok || len(wf.Display) == 0 {
 		return
 	}
-	outputs := workflowDisplayOutputs(s, cache)
+	outputs := workflowDisplayOutputs(s)
 	if expr, ok := wf.Display["title"]; ok {
 		if v, err := task.RenderOutputsTemplate(expr, outputs, s.Tasks); err == nil && v != "" {
 			cached.Title = v
@@ -543,50 +482,12 @@ func applyDisplay(workflows map[string]config.WorkflowFile, cache *ghcache.Cache
 	}
 }
 
-func workflowDisplayOutputs(s *domain.Session, cache *ghcache.CacheFile) map[string]any {
+func workflowDisplayOutputs(s *domain.Session) map[string]any {
 	out := map[string]any{}
 	if ws, ok := s.Tasks[contract.WorkflowPseudoNodeID]; ok && ws != nil {
 		maps.Copy(out, ws.Outputs)
 	}
-	key := ghcache.CacheKey(s.OwnerRepo, s.Number)
-	if s.URLType == string(gh.URLTypePR) {
-		if e, ok := cache.PullRequests[key]; ok {
-			out["title"] = e.Title
-			out["pr_state"] = e.State
-			out["checks_status"] = e.ChecksStatus
-			out["review_decision"] = e.ReviewDecision
-		}
-	} else if e, ok := cache.Issues[key]; ok {
-		out["title"] = e.Title
-		out["issue_state"] = e.State
-		if e.LinkedPR != nil {
-			out["pr_state"] = e.LinkedPR.State
-			out["checks_status"] = e.LinkedPR.ChecksStatus
-			out["review_decision"] = e.LinkedPR.ReviewDecision
-		}
-	}
 	return out
-}
-
-// FormatReviewDecision converts a GitHub review decision (e.g. "CHANGES_REQUESTED")
-// to a human-readable form (e.g. "changes requested").
-func FormatReviewDecision(rd string) string {
-	return strings.ToLower(strings.ReplaceAll(rd, "_", " "))
-}
-
-func formatCacheAge(fetchedAt time.Time) string {
-	if fetchedAt.IsZero() {
-		return ""
-	}
-	d := time.Since(fetchedAt)
-	switch {
-	case d < time.Minute:
-		return fmt.Sprintf("%ds ago", int(d.Seconds()))
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	default:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	}
 }
 
 // SetConversation updates the Conversation field of an existing session.
