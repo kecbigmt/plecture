@@ -6,6 +6,12 @@ import (
 	"testing"
 )
 
+// resolve_test.go additions below intentionally shell out to the real gh
+// binary against a nonexistent item ID: no fixture can be authoritative on
+// exactly which error path gh's `api graphql` takes when unauthenticated
+// versus when the ID simply doesn't resolve, so the test only pins the
+// wrapping message ResolveProjectItemID adds, not gh's own output.
+
 func TestParseProjectItemResponse(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -124,5 +130,19 @@ func TestParseProjectItemResponse(t *testing.T) {
 				t.Errorf("Number = %d, want %d", got.Number, tt.want.Number)
 			}
 		})
+	}
+}
+
+// TestResolveProjectItemID_GhFailureWrapsError characterizes the current gap:
+// a failing/hung `gh api graphql` call has no way to be cancelled today
+// because ResolveProjectItemID takes no context. It also pins the
+// error-wrapping message callers currently depend on.
+func TestResolveProjectItemID_GhFailureWrapsError(t *testing.T) {
+	_, err := ResolveProjectItemID("PVTI_this_id_does_not_exist")
+	if err == nil {
+		t.Fatal("expected error for a nonexistent project item, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to resolve project item") {
+		t.Errorf("error = %v, want it to contain %q", err, "failed to resolve project item")
 	}
 }
