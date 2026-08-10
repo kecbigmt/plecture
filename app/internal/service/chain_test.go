@@ -689,7 +689,7 @@ all = [ { judge_pending = "ac-met" } ]
 	}
 }
 
-// Issue #6: a work session tracked by an issue in one repository can open its
+// A work session tracked by an issue in one repository can open its
 // pull request in a different repository. Resource observation stays
 // VCS-agnostic at the core level (it never searches a second repository on
 // the work session's behalf) — instead, an explicit `pr_url` recorded via
