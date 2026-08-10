@@ -368,7 +368,15 @@ func (p *Poller) ghAPI(cacheKey, apiPath string, jqArgs ...string) ([]byte, bool
 	if hasCache && etag != "" {
 		args = append(args, "-H", "If-None-Match: "+etag)
 	}
-	out, _ := exec.Command(p.gh(), args...).Output()
+	out, runErr := exec.Command(p.gh(), args...).Output()
+	if runErr != nil {
+		// A non-2xx `gh api` response still writes a parsable HTTP response
+		// to stdout (handled below via ParseHTTPResponse), so this branch is
+		// reserved for failures to run gh at all (binary missing, killed,
+		// etc.) — those deserve a warning since they're otherwise invisible
+		// and distinct from an ordinary API error.
+		p.Logger.Warn("gh api invocation failed", "path", apiPath, "error", runErr)
+	}
 	resp, ok := ratebudget.ParseHTTPResponse(out)
 	if !ok {
 		return nil, false

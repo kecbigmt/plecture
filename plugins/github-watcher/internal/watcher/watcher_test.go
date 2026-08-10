@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -545,6 +546,30 @@ func TestPoller_InitialObservationDoesNotNotify(t *testing.T) {
 	subs, _ := store.All()
 	if subs[subKey("org/repo-8", "https://github.com/org/repo/pull/8")].Last["pr_state"] != "open" {
 		t.Errorf("baseline = %+v", subs)
+	}
+}
+
+func TestPoller_GhInvocationFailureLogsWarning(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-9", Resource: "https://github.com/org/repo/pull/9"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	p := &Poller{
+		Store:  store,
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		// A nonexistent binary makes exec.Command's Output() fail before any
+		// process runs at all, exercising the "gh itself could not be
+		// invoked" branch rather than an ordinary non-2xx API response.
+		GhBin: filepath.Join(t.TempDir(), "gh-does-not-exist"),
+		Guard: ratebudget.NewGuard(t.TempDir()),
+	}
+	p.Tick()
+
+	if !bytes.Contains(logs.Bytes(), []byte("gh api invocation failed")) {
+		t.Errorf("expected a warning about the failed gh invocation, got log output: %q", logs.String())
 	}
 }
 

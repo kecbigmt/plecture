@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -10,6 +12,25 @@ import (
 	"github.com/kecbigmt/sennit/contracts/event"
 	contract "github.com/kecbigmt/sennit/contracts/state"
 )
+
+func TestPersistWatchdogState_UpdateFailureLogsWarning(t *testing.T) {
+	store := testStore(t)
+	// No session named this in the store, so store.Update fails with "no
+	// state entry" — this pins the best-effort swallow at
+	// persistWatchdogState: the tick must not abort (that path is exercised
+	// by the WatchdogTick tests below), but the failure must not be silent
+	// either.
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	persistWatchdogState(store, "owner/does-not-exist", HealthReport{SessionName: "owner/does-not-exist", Healthy: true})
+
+	if !bytes.Contains(logs.Bytes(), []byte("persist watchdog state failed")) {
+		t.Errorf("expected a warning about the failed persist, got log output: %q", logs.String())
+	}
+}
 
 // healthcheckFixtureConfig declares one run-scoped task "runner" whose
 // healthcheck is the given shell command, plus a bare (no-outputs-required)

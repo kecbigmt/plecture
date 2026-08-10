@@ -1,6 +1,7 @@
 package webui
 
 import (
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -33,7 +34,14 @@ func LoadConfig() *Config {
 	cfg := &Config{ListenAddr: "127.0.0.1:8787"}
 	if home, err := os.UserHomeDir(); err == nil {
 		path := filepath.Join(home, ".config", "sennit-web", "config.toml")
-		_, _ = toml.DecodeFile(path, cfg) // missing/invalid file => defaults
+		if _, statErr := os.Stat(path); statErr == nil {
+			// An absent config.toml is a normal defaults-only setup, but a
+			// present-and-unparsable one is a user mistake that would
+			// otherwise silently fall back to defaults with no signal at all.
+			if _, decodeErr := toml.DecodeFile(path, cfg); decodeErr != nil {
+				slog.Warn("config.toml present but failed to parse; using defaults", "path", path, "error", decodeErr)
+			}
+		}
 	}
 	if cfg.BusSocket == "" {
 		cfg.BusSocket = defaultBusSocket()

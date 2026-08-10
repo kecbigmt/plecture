@@ -1,8 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +18,29 @@ import (
 	"github.com/kecbigmt/sennit/app/internal/state"
 	contract "github.com/kecbigmt/sennit/contracts/state"
 )
+
+func TestPutBestEffort_PutFailureLogsWarningWithoutPanicking(t *testing.T) {
+	dir := t.TempDir()
+	// state.json exists as a directory, so Store.Put's read/write of it fails
+	// — this pins the best-effort swallow at putBestEffort: a broken store
+	// must not panic or block the caller, but the failure must not be
+	// invisible either.
+	if err := os.MkdirAll(filepath.Join(dir, "state.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := state.NewStore(dir)
+
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	putBestEffort(store, &domain.Session{Name: "owner/repo-1"}, "test context")
+
+	if !bytes.Contains(logs.Bytes(), []byte("best-effort session state persist failed")) {
+		t.Errorf("expected a warning about the failed persist, got log output: %q", logs.String())
+	}
+}
 
 func seedSession(t *testing.T, store interface {
 	Put(*domain.Session) error

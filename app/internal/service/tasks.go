@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
@@ -62,6 +63,16 @@ type CreateResult struct {
 // the worktree + state entry and retries the workflow setup and any
 // session-scoped tasks that have not yet reached "produced". This is the
 // recovery path for a previous create that partially failed.
+// putBestEffort persists session after a step whose own error already takes
+// priority in the caller's return path (e.g. mid-lifecycle checkpoints, or
+// cleanup that reports via CleanupWarnings/Force). A failure here must not
+// override that primary error, but must not be invisible either.
+func putBestEffort(store *state.Store, session *domain.Session, context string) {
+	if err := store.Put(session); err != nil {
+		slog.Warn("best-effort session state persist failed", "session", session.Name, "context", context, "error", err)
+	}
+}
+
 func Create(cfg *config.Config, store *state.Store, params CreateParams) (*CreateResult, error) {
 	resource := params.URL
 	// PVTI project-item ids need a network resolve to a canonical URL before
@@ -262,7 +273,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	// environment setup failure must not let task setup start.
 	if envSetupErr := runEnvironmentSetupForSession(cfg, wf, session, params.Observer); envSetupErr != nil {
 		session.UpdatedAt = time.Now()
-		_ = store.Put(session)
+		putBestEffort(store, session, "environment setup failure")
 		return nil, &Error{Code: ErrExecutionFailed, Message: envSetupErr.Error()}
 	}
 
@@ -653,7 +664,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	}
 	if cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(session), session.Tasks, params.Observer, envExecutor); cleanupErr != nil {
 		session.UpdatedAt = time.Now()
-		_ = store.Put(session)
+		putBestEffort(store, session, "run cleanup failure")
 		if !params.Force {
 			return nil, &Error{Code: ErrExecutionFailed, Message: cleanupErr.Error()}
 		}
@@ -664,14 +675,14 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	// delete the entry, in case worktree removal fails and the user wants
 	// to inspect state.json post hoc.
 	session.UpdatedAt = time.Now()
-	_ = store.Put(session)
+	putBestEffort(store, session, "post-run-cleanup checkpoint")
 
 	// Environment cleanup: after run+session task cleanup, before provider
 	// cleanup (tasks -> environment -> provider). A no-op when the workflow
 	// declares no environment, or its setup never ran.
 	if envCleanupErr := runEnvironmentCleanupForSession(cfg, wf, session, params.Observer); envCleanupErr != nil {
 		session.UpdatedAt = time.Now()
-		_ = store.Put(session)
+		putBestEffort(store, session, "environment cleanup failure")
 		if !params.Force {
 			return nil, &Error{Code: ErrExecutionFailed, Message: envCleanupErr.Error()}
 		}
@@ -685,7 +696,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 		// decision; setup/cleanup symmetry is the author's contract.)
 		cleanupErr := runWorkflowCleanupForDestroy(cfg, session, params.Observer)
 		session.UpdatedAt = time.Now()
-		_ = store.Put(session)
+		putBestEffort(store, session, "workflow cleanup for destroy")
 		if cleanupErr != nil {
 			if !params.Force {
 				return nil, &Error{

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -96,6 +98,33 @@ func TestLoad_NoConfigFile(t *testing.T) {
 	// Should return defaults
 	if cfg.Detached != true {
 		t.Errorf("Detached = %v, want true", cfg.Detached)
+	}
+}
+
+func TestLoad_MalformedConfigFileFallsBackAndWarns(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	configDir := filepath.Join(tmpHome, ".config", "sennit")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("not = [valid toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	cfg := Load()
+
+	if cfg.Detached != true {
+		t.Errorf("Detached = %v, want true (defaults)", cfg.Detached)
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("config.toml present but failed to parse")) {
+		t.Errorf("expected a warning about the unparsable config.toml, got log output: %q", logs.String())
 	}
 }
 
