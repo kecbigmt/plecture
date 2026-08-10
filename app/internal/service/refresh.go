@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"time"
 
 	"github.com/kecbigmt/sennit/app/internal/config"
@@ -90,7 +91,7 @@ func RefreshInstanceOutputs(cfg *config.Config, store *state.Store, sessionName,
 	fetched := map[string]any{}
 	var results []OutputRefreshResult
 	for _, src := range def.DynamicOutputs {
-		values, ferr := task.FetchOutput(cfg, src, ctx)
+		values, ferr := task.FetchOutput(context.Background(), cfg, src, ctx)
 		for _, name := range src.OutputNames() {
 			if ferr != nil {
 				results = append(results, OutputRefreshResult{Name: name, Error: ferr.Error()})

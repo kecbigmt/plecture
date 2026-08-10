@@ -12,6 +12,7 @@ package task
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -129,12 +130,12 @@ func RenderAttach(cmd string, selfOutputs map[string]any, session SessionVars) (
 // .Self), and session vars (mirroring RenderAttach). Runs via bash -c. A
 // non-zero exit or a render failure is returned as an error carrying stderr;
 // nil means the probe reported healthy.
-func RunHealthcheck(cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars) error {
+func RunHealthcheck(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars) error {
 	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Inputs: nodeInputs, Session: session})
 	if err != nil {
 		return err
 	}
-	_, stderr, err := execHostScript(rendered, session.WorktreePath)
+	_, stderr, err := execHostScript(goCtx, rendered, session.WorktreePath)
 	if err != nil {
 		if len(stderr) > 0 {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -150,12 +151,12 @@ func RunHealthcheck(cmd string, selfOutputs map[string]any, nodeInputs map[strin
 // stdout is never JSON-parsed. A non-zero exit or a render failure is
 // returned as an error carrying stderr (e.g. a pane that no longer exists),
 // so an orphaned channel never succeeds with empty output.
-func RunCapture(cmd string, selfOutputs map[string]any, session SessionVars) (string, error) {
+func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, session SessionVars) (string, error) {
 	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Session: session})
 	if err != nil {
 		return "", err
 	}
-	stdout, stderr, err := execHostScript(rendered, session.WorktreePath)
+	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorktreePath)
 	if err != nil {
 		if len(stderr) > 0 {
 			return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -889,14 +890,14 @@ func firstExecutor(envExecutor []Executor) Executor {
 // silent fallback to host: a node declaring execution="environment" must
 // never run outside the environment it asked for, since a caller might rely
 // on that isolation for credentials, tools, or a container-only filesystem.
-func execForNode(execution string, envExecutor Executor, cmdStr, workDir string) (stdout, stderr []byte, err error) {
+func execForNode(goCtx context.Context, execution string, envExecutor Executor, cmdStr, workDir string) (stdout, stderr []byte, err error) {
 	if execution == config.ExecutionEnvironment {
 		if envExecutor == nil {
 			return nil, nil, fmt.Errorf("execution = %q but no environment executor is available (environment setup may have failed, not run yet, or been torn down)", config.ExecutionEnvironment)
 		}
-		return envExecutor.Run(ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir})
+		return envExecutor.Run(goCtx, ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir})
 	}
-	return execHostScript(cmdStr, workDir)
+	return execHostScript(goCtx, cmdStr, workDir)
 }
 
 // runShell executes the given (already-rendered) command via "bash -c" on
@@ -905,8 +906,12 @@ func execForNode(execution string, envExecutor Executor, cmdStr, workDir string)
 // captured separately so the caller can decide when to surface it —
 // streaming it during the run would interleave with the progress spinner.
 // If workDir is non-empty and exists, it is used as the command's cwd.
+// runShell's callers (provider setup/cleanup/subscribe, workflow and
+// environment hooks, resource observe/finalize) have no caller-supplied
+// context to thread through yet, so it always runs with context.Background();
+// giving those paths a cancellable context is separate follow-up work.
 func runShell(cmdStr, workDir string) (stdout, stderr []byte, err error) {
-	return alwaysHostExecutor.Run(ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir})
+	return alwaysHostExecutor.Run(context.Background(), ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir})
 }
 
 // Observer receives lifecycle events from RunSetup / RunCleanup. The runner
@@ -957,7 +962,7 @@ func observerOr(o Observer) Observer {
 // envExecutor is optional (variadic so every pre-existing call site keeps
 // compiling unchanged): when supplied, a node whose resolved Execution is
 // "environment" runs through it instead of the host.
-func RunSetup(ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer, envExecutor ...Executor) error {
+func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer, envExecutor ...Executor) error {
 	obs := observerOr(observer)
 	ee := firstExecutor(envExecutor)
 	for _, r := range ordered {
@@ -1011,7 +1016,7 @@ func RunSetup(ordered []Resolved, session SessionVars, tasks map[string]*contrac
 		outputs := map[string]any{}
 		var stderrCaptured []byte
 		if strings.TrimSpace(cmdStr) != "" {
-			stdout, stderr, runErr := execForNode(r.Execution, ee, cmdStr, session.WorktreePath)
+			stdout, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorktreePath)
 			stderrCaptured = stderr
 			if runErr != nil {
 				tasks[r.NodeID] = failedState(r, now, runErr.Error(), prev, resolvedInputs)
@@ -1117,7 +1122,7 @@ func toJSONShape(m map[string]any) map[string]any {
 // envExecutor is optional (variadic so every pre-existing call site keeps
 // compiling unchanged): when supplied, a node whose resolved Execution is
 // "environment" runs through it instead of the host.
-func RunCleanup(ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer, envExecutor ...Executor) error {
+func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer, envExecutor ...Executor) error {
 	obs := observerOr(observer)
 	ee := firstExecutor(envExecutor)
 	var firstErr error
@@ -1172,7 +1177,7 @@ func RunCleanup(ordered []Resolved, session SessionVars, tasks map[string]*contr
 			obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
 			continue
 		}
-		_, stderr, runErr := execForNode(r.Execution, ee, cmdStr, session.WorktreePath)
+		_, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorktreePath)
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = runErr.Error()

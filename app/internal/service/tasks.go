@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -274,7 +275,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 		return nil, &Error{Code: ErrExecutionFailed, Message: envExecErr.Error()}
 	}
 
-	setupErr := task.RunSetup(plan.Session, sessionVars(session), session.Tasks, params.Observer, envExecutor)
+	setupErr := task.RunSetup(context.Background(), plan.Session, sessionVars(session), session.Tasks, params.Observer, envExecutor)
 	if err := store.Put(session); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
@@ -446,7 +447,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	// Up does not re-run environment setup — @environment is session-scoped
 	// (like @workflow) and already produced during Create; environmentExecutorForSession
 	// just reads its persisted outputs.
-	setupErr := task.RunSetup(plan.Run, sessionVars(session), session.Tasks, params.Observer, envExecutor)
+	setupErr := task.RunSetup(context.Background(), plan.Run, sessionVars(session), session.Tasks, params.Observer, envExecutor)
 	session.UpdatedAt = time.Now()
 	// A run-scope node's setup script can itself shell out to a nested `sennit
 	// task setup` against this same session (e.g. goal_bootstrap re-deriving
@@ -549,7 +550,7 @@ func Down(cfg *config.Config, store *state.Store, params DownParams) (*DownResul
 	}
 	// Down never touches @environment itself (only Destroy does) — the
 	// environment stays alive across down/up, same as @workflow.
-	cleanupErr := task.RunCleanup(teardown, sessionVars(session), session.Tasks, params.Observer, envExecutor)
+	cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(session), session.Tasks, params.Observer, envExecutor)
 	session.UpdatedAt = time.Now()
 	if err := store.Put(session); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
@@ -650,7 +651,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	if envErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
 	}
-	if cleanupErr := task.RunCleanup(teardown, sessionVars(session), session.Tasks, params.Observer, envExecutor); cleanupErr != nil {
+	if cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(session), session.Tasks, params.Observer, envExecutor); cleanupErr != nil {
 		session.UpdatedAt = time.Now()
 		_ = store.Put(session)
 		if !params.Force {

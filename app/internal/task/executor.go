@@ -2,9 +2,12 @@ package task
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/kecbigmt/sennit/app/internal/config"
 )
@@ -21,11 +24,13 @@ type ExecRequest struct {
 }
 
 // Executor runs an ExecRequest and returns its captured stdout/stderr. It is
-// the seam a future environment-aware dispatch (docker exec, etc.) plugs
-// into; this PR ships only the host implementation, which reproduces
-// runShell's exact semantics byte-for-byte (see hostExecutor).
+// the seam an environment-aware dispatch (docker exec, etc.) plugs into; the
+// only implementation today is the host one, which reproduces runShell's
+// exact semantics byte-for-byte (see hostExecutor). ctx governs the lifetime
+// of the underlying child process: a cancelled ctx must terminate it and
+// surface an error, not merely stop waiting on it.
 type Executor interface {
-	Run(req ExecRequest) (stdout, stderr []byte, err error)
+	Run(ctx context.Context, req ExecRequest) (stdout, stderr []byte, err error)
 }
 
 // hostExecutor runs argv directly as a host process — the extraction of what
@@ -33,8 +38,8 @@ type Executor interface {
 // below; argv directly for everyone else).
 type hostExecutor struct{}
 
-func (hostExecutor) Run(req ExecRequest) (stdout, stderr []byte, err error) {
-	cmd := exec.Command(req.Argv[0], req.Argv[1:]...)
+func (hostExecutor) Run(ctx context.Context, req ExecRequest) (stdout, stderr []byte, err error) {
+	cmd := exec.CommandContext(ctx, req.Argv[0], req.Argv[1:]...)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
@@ -49,6 +54,20 @@ func (hostExecutor) Run(req ExecRequest) (stdout, stderr []byte, err error) {
 	if len(req.Env) > 0 {
 		cmd.Env = append(os.Environ(), req.Env...)
 	}
+	// Put the child in its own process group and, on cancellation, kill the
+	// whole group rather than just the direct child. A shell script's own
+	// children (e.g. "sleep 5" spawned by "bash -c") don't die with their
+	// parent: exec.CommandContext's default Cancel only signals the direct
+	// child, so a grandchild holding the stdout/stderr pipes open would keep
+	// cmd.Wait blocked until it exits on its own, defeating cancellation
+	// entirely. WaitDelay bounds how long Wait keeps waiting after Cancel runs before
+	// forcibly closing the I/O pipes, so a runaway grandchild can't hang the
+	// call forever even if the group kill somehow fails to reach it.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+	cmd.WaitDelay = 5 * time.Second
 	err = cmd.Run()
 	return outBuf.Bytes(), errBuf.Bytes(), err
 }
@@ -74,8 +93,8 @@ var defaultExecutor Executor = hostExecutor{}
 // execHostScript renders down to the same host semantics as runShell, but
 // through the swappable defaultExecutor rather than the pinned
 // alwaysHostExecutor — see the two vars' docs for why the distinction matters.
-func execHostScript(cmdStr, workDir string) (stdout, stderr []byte, err error) {
-	return defaultExecutor.Run(ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir})
+func execHostScript(ctx context.Context, cmdStr, workDir string) (stdout, stderr []byte, err error) {
+	return defaultExecutor.Run(ctx, ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir})
 }
 
 // EnvironmentExecutor routes an ExecRequest through an environment's `exec`
@@ -97,12 +116,12 @@ func NewEnvironmentExecutor(env config.EnvironmentConfig, outputs map[string]any
 	return &EnvironmentExecutor{Env: env, Outputs: outputs}
 }
 
-func (e *EnvironmentExecutor) Run(req ExecRequest) (stdout, stderr []byte, err error) {
+func (e *EnvironmentExecutor) Run(ctx context.Context, req ExecRequest) (stdout, stderr []byte, err error) {
 	// "sennit-env-exec" becomes $0 inside the exec script (bash -c's first
 	// trailing arg), so req.Argv is exactly what the script's "$@" expands to.
 	argv := append([]string{"bash", "-c", e.Env.Exec, "sennit-env-exec"}, req.Argv...)
 	env := append(environmentExecEnv(e.Env.ID, e.Outputs), req.Env...)
-	return alwaysHostExecutor.Run(ExecRequest{Argv: argv, Dir: req.Dir, Stdin: req.Stdin, Env: env})
+	return alwaysHostExecutor.Run(ctx, ExecRequest{Argv: argv, Dir: req.Dir, Stdin: req.Stdin, Env: env})
 }
 
 // environmentExecEnv exposes the environment id and its setup outputs' string

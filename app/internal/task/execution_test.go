@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -98,7 +99,7 @@ func TestEnvironmentExecutor_ForwardsArgvAsPositionalParamsAndExposesOutputsAsEn
 	ex := NewEnvironmentExecutor(env, map[string]any{"workdir": "/env/wd"})
 	// A shell metacharacter in the target argv must survive untouched: it is
 	// forwarded as a single argv element via "$@", never re-parsed by a shell.
-	stdout, _, err := ex.Run(ExecRequest{Argv: []string{"echo", "payload;with;semicolons"}})
+	stdout, _, err := ex.Run(context.Background(), ExecRequest{Argv: []string{"echo", "payload;with;semicolons"}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -120,7 +121,7 @@ func TestExecutor_RunSetupRoutesEnvironmentExecutionThroughEnvExecutor(t *testin
 	envSpy := &spyExecutor{stdout: []byte("{}")}
 	hostSpy := withSpyExecutor(t)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil, envSpy); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil, envSpy); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
 	if len(envSpy.requests) != 1 {
@@ -147,7 +148,7 @@ func TestExecutor_RunSetupNilEnvExecutorFailsClosed(t *testing.T) {
 	)
 	hostSpy := withSpyExecutor(t)
 	tasks := map[string]*contract.TaskState{}
-	err := RunSetup(plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil)
+	err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil)
 	if err == nil {
 		t.Fatal("expected fail-closed error, got nil")
 	}
@@ -173,7 +174,7 @@ func TestExecutor_RunCleanupRoutesEnvironmentExecutionThroughEnvExecutor(t *test
 		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	}
 	envSpy := &spyExecutor{stdout: []byte("{}")}
-	if err := RunCleanup(plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil, envSpy); err != nil {
+	if err := RunCleanup(context.Background(), plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil, envSpy); err != nil {
 		t.Fatalf("RunCleanup: %v", err)
 	}
 	if len(envSpy.requests) != 1 {

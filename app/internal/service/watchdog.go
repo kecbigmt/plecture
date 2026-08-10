@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"time"
@@ -76,7 +77,7 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 			continue
 		}
 		declared = true
-		if hcErr := task.RunHealthcheck(def.Healthcheck, st.Outputs, st.Inputs, vars); hcErr != nil {
+		if hcErr := task.RunHealthcheck(context.Background(), def.Healthcheck, st.Outputs, st.Inputs, vars); hcErr != nil {
 			return HealthReport{SessionName: name, Healthy: false, Declared: true, Reason: fmt.Sprintf("%s: %v", key, hcErr)}
 		}
 	}

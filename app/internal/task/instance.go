@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -73,7 +74,7 @@ func NextInstanceNumber(taskID string, tasks map[string]*contract.TaskState) int
 // envExecutor is optional (variadic so every pre-existing call site keeps
 // compiling unchanged): when supplied, a resolved Execution of "environment"
 // runs through it instead of the host.
-func ExecuteTaskSetup(r Resolved, inputs map[string]any, session SessionVars, workflowTasks map[string]*contract.TaskState, envExecutor ...Executor) (map[string]any, []byte, error) {
+func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, session SessionVars, workflowTasks map[string]*contract.TaskState, envExecutor ...Executor) (map[string]any, []byte, error) {
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
@@ -97,7 +98,7 @@ func ExecuteTaskSetup(r Resolved, inputs map[string]any, session SessionVars, wo
 	outputs := map[string]any{}
 	var stderr []byte
 	if strings.TrimSpace(cmdStr) != "" {
-		stdout, capturedStderr, runErr := execForNode(r.Execution, firstExecutor(envExecutor), cmdStr, session.WorktreePath)
+		stdout, capturedStderr, runErr := execForNode(goCtx, r.Execution, firstExecutor(envExecutor), cmdStr, session.WorktreePath)
 		stderr = capturedStderr
 		if runErr != nil {
 			return nil, stderr, fmt.Errorf("setup: %w", runErr)

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -197,7 +198,7 @@ func TestRunSetup_ExposesEnvironmentOutputs(t *testing.T) {
 			Outputs: map[string]any{"socket_dir": "/env/sockets"},
 		},
 	}
-	if err := RunSetup(resolved, SessionVars{}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), resolved, SessionVars{}, tasks, nil); err != nil {
 		t.Fatal(err)
 	}
 	st := tasks["echoer"]

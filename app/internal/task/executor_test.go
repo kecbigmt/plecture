@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -17,7 +18,7 @@ type spyExecutor struct {
 	err      error
 }
 
-func (s *spyExecutor) Run(req ExecRequest) (stdout, stderr []byte, err error) {
+func (s *spyExecutor) Run(ctx context.Context, req ExecRequest) (stdout, stderr []byte, err error) {
 	s.requests = append(s.requests, req)
 	return s.stdout, s.stderr, s.err
 }
@@ -44,7 +45,7 @@ func TestExecutor_RunSetupIssuesExpectedExecRequest(t *testing.T) {
 		[]nodeStub{{id: "a"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if len(spy.requests) != 1 {
@@ -65,7 +66,7 @@ func TestExecutor_RunCleanupIssuesExpectedExecRequest(t *testing.T) {
 		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	}
 	spy := withSpyExecutor(t)
-	if err := RunCleanup(plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil); err != nil {
+	if err := RunCleanup(context.Background(), plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
 	if len(spy.requests) != 1 {
@@ -81,7 +82,7 @@ func TestExecutor_RunHealthcheckIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte("ok")
 	session := SessionVars{Name: "x", WorktreePath: "/work/x"}
-	if err := RunHealthcheck(`echo ok`, map[string]any{}, map[string]any{}, session); err != nil {
+	if err := RunHealthcheck(context.Background(), `echo ok`, map[string]any{}, map[string]any{}, session); err != nil {
 		t.Fatalf("healthcheck: %v", err)
 	}
 	if len(spy.requests) != 1 {
@@ -97,7 +98,7 @@ func TestExecutor_RunCaptureIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte("pane contents")
 	session := SessionVars{Name: "x", WorktreePath: "/work/x"}
-	out, err := RunCapture(`tmux capture-pane`, map[string]any{}, session)
+	out, err := RunCapture(context.Background(), `tmux capture-pane`, map[string]any{}, session)
 	if err != nil {
 		t.Fatalf("capture: %v", err)
 	}
@@ -119,7 +120,7 @@ func TestExecutor_FetchOutputIssuesExpectedExecRequest(t *testing.T) {
 	cfg := &config.Config{}
 	src := config.DynamicOutput{Name: "count", Script: `echo 42`}
 	ctx := RenderContext{Session: SessionVars{Name: "x", WorktreePath: "/work/x"}}
-	values, err := FetchOutput(cfg, src, ctx)
+	values, err := FetchOutput(context.Background(), cfg, src, ctx)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -141,7 +142,7 @@ func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: `echo '{"ready":"yes"}'`}
 	r := resolveDef(t, def, "review#1")
 	session := SessionVars{Name: "x", WorktreePath: "/work/x"}
-	outputs, _, err := ExecuteTaskSetup(r, nil, session, map[string]*contract.TaskState{})
+	outputs, _, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{})
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
@@ -183,7 +184,7 @@ func TestExecutor_RunShellIsNeverRoutedThroughDefaultExecutor(t *testing.T) {
 // exactly like it (bash -c, cwd only if it exists).
 func TestExecutor_HostExecutorReproducesRunShellSemantics(t *testing.T) {
 	var exec Executor = hostExecutor{}
-	stdout, stderr, err := exec.Run(ExecRequest{Argv: []string{"bash", "-c", `echo out; echo err >&2`}})
+	stdout, stderr, err := exec.Run(context.Background(), ExecRequest{Argv: []string{"bash", "-c", `echo out; echo err >&2`}})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -193,7 +194,7 @@ func TestExecutor_HostExecutorReproducesRunShellSemantics(t *testing.T) {
 
 	// A Dir that doesn't exist must be silently ignored, not surfaced as an
 	// error — the exact behavior runShell has always had.
-	stdout, _, err = exec.Run(ExecRequest{Argv: []string{"bash", "-c", "pwd"}, Dir: "/nonexistent/does-not-exist"})
+	stdout, _, err = exec.Run(context.Background(), ExecRequest{Argv: []string{"bash", "-c", "pwd"}, Dir: "/nonexistent/does-not-exist"})
 	if err != nil {
 		t.Fatalf("Run with missing Dir: %v", err)
 	}

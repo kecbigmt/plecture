@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -12,7 +13,7 @@ import (
 // the instance's bound resource) and returns the values keyed by output name.
 // A produced key the JSON/state omits stays unset, and any failure returns an
 // error — both leave a check pending, not unsatisfied.
-func FetchOutput(cfg *config.Config, src config.DynamicOutput, ctx RenderContext) (map[string]string, error) {
+func FetchOutput(goCtx context.Context, cfg *config.Config, src config.DynamicOutput, ctx RenderContext) (map[string]string, error) {
 	if src.FromResourceStatus {
 		return fetchFromResourceStatus(cfg, src, ctx)
 	}
@@ -20,7 +21,7 @@ func FetchOutput(cfg *config.Config, src config.DynamicOutput, ctx RenderContext
 	if rerr != nil {
 		return nil, fmt.Errorf("output %v: script template: %w", src.OutputNames(), rerr)
 	}
-	stdout, stderr, runErr := execHostScript(cmdStr, ctx.Session.WorktreePath)
+	stdout, stderr, runErr := execHostScript(goCtx, cmdStr, ctx.Session.WorktreePath)
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {
 			return nil, fmt.Errorf("output %v: %w: %s", src.OutputNames(), runErr, msg)

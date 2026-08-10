@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -39,10 +40,10 @@ func TestHostEnvironment_ExplicitMatchesUnspecified(t *testing.T) {
 	session := SessionVars{Name: "x", WorktreePath: t.TempDir()}
 	tasksUnspecified := map[string]*contract.TaskState{}
 	tasksExplicitHost := map[string]*contract.TaskState{}
-	if err := RunSetup(planUnspecified.Run, session, tasksUnspecified, nil); err != nil {
+	if err := RunSetup(context.Background(), planUnspecified.Run, session, tasksUnspecified, nil); err != nil {
 		t.Fatalf("setup unspecified: %v", err)
 	}
-	if err := RunSetup(planExplicitHost.Run, session, tasksExplicitHost, nil); err != nil {
+	if err := RunSetup(context.Background(), planExplicitHost.Run, session, tasksExplicitHost, nil); err != nil {
 		t.Fatalf("setup explicit host: %v", err)
 	}
 

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -326,7 +327,7 @@ func TestRunSetup_CapturesOutputsAndRespectsDeps(t *testing.T) {
 		},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Run, SessionVars{Name: "x"}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "x"}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if tasks["a"].Outputs["value"] != "first" {
@@ -353,7 +354,7 @@ func TestRunSetup_SkipsProduced(t *testing.T) {
 	tasks := map[string]*contract.TaskState{
 		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{"value": "preserved"}},
 	}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if _, statErr := exec.Command("bash", "-c", "test -f "+marker).CombinedOutput(); statErr == nil {
@@ -375,7 +376,7 @@ func TestRunSetup_RetriesFailed(t *testing.T) {
 	tasks := map[string]*contract.TaskState{
 		"a": {Scope: "run", Status: contract.TaskStatusFailed, Error: "first attempt"},
 	}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if tasks["a"].Status != contract.TaskStatusProduced {
@@ -397,7 +398,7 @@ func TestRunSetup_RetriesCleaned(t *testing.T) {
 	tasks := map[string]*contract.TaskState{
 		"a": {Scope: "run", Status: contract.TaskStatusCleaned},
 	}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if tasks["a"].Status != contract.TaskStatusProduced {
@@ -427,7 +428,7 @@ func TestRunSetup_PrevCarriesPreviousOutputs(t *testing.T) {
 			Outputs: map[string]any{"session_id": "kept-across-down"},
 		},
 	}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	got, _ := tasks["claude"].Outputs["session_id"].(string)
@@ -450,7 +451,7 @@ func TestRunSetup_PrevEmptyOnFirstRun(t *testing.T) {
 		[]nodeStub{{id: "claude"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	got, _ := tasks["claude"].Outputs["session_id"].(string)
@@ -481,7 +482,7 @@ func TestRunSetup_FailurePreservesPrevOutputs(t *testing.T) {
 			Outputs: map[string]any{"session_id": "kept-across-retry", "pid": float64(12345)},
 		},
 	}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err == nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err == nil {
 		t.Fatal("expected setup error")
 	}
 	if tasks["a"].Status != contract.TaskStatusFailed {
@@ -560,7 +561,7 @@ func TestRunSetup_FailureMarksFailed(t *testing.T) {
 		[]nodeStub{{id: "a"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err == nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err == nil {
 		t.Fatal("expected error")
 	}
 	if tasks["a"].Status != contract.TaskStatusFailed {
@@ -586,7 +587,7 @@ func TestRunCleanup_ReverseOrder(t *testing.T) {
 		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 		"b": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	}
-	if err := RunCleanup(plan.Run, SessionVars{}, tasks, nil); err != nil {
+	if err := RunCleanup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
 	if tasks["a"].Status != contract.TaskStatusCleaned {
@@ -616,7 +617,7 @@ func TestRunCleanup_FailedSetupRendersZeroes(t *testing.T) {
 	tasks := map[string]*contract.TaskState{
 		"a": {Scope: "run", Status: contract.TaskStatusFailed, Outputs: nil},
 	}
-	if err := RunCleanup(plan.Run, SessionVars{}, tasks, nil); err != nil {
+	if err := RunCleanup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err != nil {
 		t.Fatalf("cleanup should not fail when Self keys are missing: %v", err)
 	}
 	if tasks["a"].Status != contract.TaskStatusCleaned {
@@ -639,7 +640,7 @@ func TestRunCleanup_FailureFlipsToFailed(t *testing.T) {
 	tasks := map[string]*contract.TaskState{
 		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	}
-	if err := RunCleanup(plan.Run, SessionVars{}, tasks, nil); err == nil {
+	if err := RunCleanup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err == nil {
 		t.Fatal("expected cleanup error")
 	}
 	if tasks["a"].Status != contract.TaskStatusFailed {
@@ -704,7 +705,7 @@ func TestRunSetup_ValidatesOutputsAgainstSchema_Valid(t *testing.T) {
 		[]nodeStub{{id: "envfile"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Session, SessionVars{}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Session, SessionVars{}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if tasks["envfile"].Status != contract.TaskStatusProduced {
@@ -725,7 +726,7 @@ func TestRunSetup_SchemaRejectsMissingRequired(t *testing.T) {
 		[]nodeStub{{id: "envfile"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	runErr := RunSetup(plan.Session, SessionVars{}, tasks, nil)
+	runErr := RunSetup(context.Background(), plan.Session, SessionVars{}, tasks, nil)
 	if runErr == nil {
 		t.Fatal("expected validation error")
 	}
@@ -751,7 +752,7 @@ func TestRunSetup_EmptySetupValidatesOutputsAgainstSchema(t *testing.T) {
 		[]nodeStub{{id: "envfile"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	runErr := RunSetup(plan.Session, SessionVars{}, tasks, nil)
+	runErr := RunSetup(context.Background(), plan.Session, SessionVars{}, tasks, nil)
 	if runErr == nil {
 		t.Fatal("expected validation error")
 	}
@@ -777,7 +778,7 @@ func TestRunSetup_SchemaRejectsWrongType(t *testing.T) {
 		[]nodeStub{{id: "p"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err == nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err == nil {
 		t.Fatal("expected schema validation error")
 	}
 	if tasks["p"].Status != contract.TaskStatusFailed {
@@ -795,7 +796,7 @@ func TestRunSetup_SchemaRejectsAdditionalProperties(t *testing.T) {
 		[]nodeStub{{id: "e"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err == nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err == nil {
 		t.Fatal("expected schema validation error")
 	}
 	if tasks["e"].Status != contract.TaskStatusFailed {
@@ -813,7 +814,7 @@ func TestRunSetup_NoSchemaAcceptsAnyObject(t *testing.T) {
 		[]nodeStub{{id: "free"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if tasks["free"].Status != contract.TaskStatusProduced {
@@ -865,7 +866,7 @@ func TestRunSetup_InlineSchemaRejectsMissingRequired(t *testing.T) {
 		[]nodeStub{{id: "tmux"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(plan.Run, SessionVars{}, tasks, nil); err == nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{}, tasks, nil); err == nil {
 		t.Fatal("expected schema validation error")
 	}
 	if tasks["tmux"].Status != contract.TaskStatusFailed {
@@ -901,7 +902,7 @@ func TestRunCleanup_EmptyCleanupFiresOnSuccess(t *testing.T) {
 		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	}
 	obs := &recordingObserver{}
-	if err := RunCleanup(plan.Run, SessionVars{}, tasks, obs); err != nil {
+	if err := RunCleanup(context.Background(), plan.Run, SessionVars{}, tasks, obs); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
 	if tasks["a"].Status != contract.TaskStatusCleaned {
@@ -1029,7 +1030,7 @@ func TestPlan_CaptureTaskAmbiguousWhenMultipleDeclare(t *testing.T) {
 }
 
 func TestRenderCapture_ExpandsSelfAndSessionVars(t *testing.T) {
-	out, err := RunCapture(
+	out, err := RunCapture(context.Background(),
 		"echo -n 'view of {{.Self.session_name}} ({{.SessionName}})'",
 		map[string]any{"session_name": "owner/repo-1"},
 		SessionVars{Name: "owner/repo-1"},
@@ -1044,7 +1045,7 @@ func TestRenderCapture_ExpandsSelfAndSessionVars(t *testing.T) {
 }
 
 func TestRunCapture_MissingSelfKeyErrors(t *testing.T) {
-	_, err := RunCapture(
+	_, err := RunCapture(context.Background(),
 		"echo {{.Self.session_name}}",
 		map[string]any{},
 		SessionVars{},
@@ -1057,7 +1058,7 @@ func TestRunCapture_MissingSelfKeyErrors(t *testing.T) {
 func TestRunCapture_SurfacesStderrOnFailure(t *testing.T) {
 	// An orphaned pane (script exits non-zero) must be a hard error, not a
 	// success with empty output.
-	_, err := RunCapture(
+	_, err := RunCapture(context.Background(),
 		`echo "can't find pane" >&2; exit 1`,
 		map[string]any{},
 		SessionVars{},

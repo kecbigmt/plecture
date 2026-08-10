@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -88,7 +89,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	// RunCleanup mutates st (the snapshot's entry) in place. Persist only that one
 	// key under the lock — a blind Put of the whole snapshot would clobber an
 	// instance a concurrent TaskSetup reserved during this (unlocked) cleanup.
-	cleanupErr := task.RunCleanup([]task.Resolved{r}, sessionVars(session), session.Tasks, params.Observer, envExecutor)
+	cleanupErr := task.RunCleanup(context.Background(), []task.Resolved{r}, sessionVars(session), session.Tasks, params.Observer, envExecutor)
 	if cleanupErr != nil {
 		// Keep the failed status inspectable for retry, scoped to this key. A
 		// persist failure here means that inspectable status never lands, so it's
