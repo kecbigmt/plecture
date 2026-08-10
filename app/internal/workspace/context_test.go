@@ -95,3 +95,33 @@ func TestGetWorktreeStatus_ContextCancellationKillsHungGit(t *testing.T) {
 		t.Errorf("GetWorktreeStatus took %v; the hung git process was not terminated promptly", elapsed)
 	}
 }
+
+// TestManager_Remove_CancelledDuringRegistrationCheck_DoesNotBypassGitRemove
+// is a regression test for a safety bug: isRegisteredWorktree used to return
+// a bare bool, so any failure of the `git worktree list` check — including
+// one caused by a cancelled/expired ctx — was indistinguishable from "not a
+// registered worktree" and fell through to a raw os.RemoveAll, bypassing
+// git's own worktree-remove data-loss guard entirely. Remove must instead
+// fail the whole operation when it cannot determine registration status.
+func TestManager_Remove_CancelledDuringRegistrationCheck_DoesNotBypassGitRemove(t *testing.T) {
+	worktreesRoot, ownerRepo := setupTestRepo(t)
+	mgr := NewManager(worktreesRoot)
+	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypeIssue, Number: 90}
+
+	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/90", SessionName: gh.SessionName(ownerRepo, 90)})
+	if err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled before the registration check even runs
+
+	err = mgr.Remove(ctx, parsed, "issue/90", false, false)
+	if err == nil {
+		t.Fatal("expected Remove() to fail when the registration check itself cannot run, got nil")
+	}
+
+	if _, statErr := os.Stat(info.WorktreePath); statErr != nil {
+		t.Errorf("worktree path was removed despite the registration check failing; Remove() must not fall back to a raw filesystem delete: stat error = %v", statErr)
+	}
+}

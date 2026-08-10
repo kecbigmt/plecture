@@ -318,28 +318,40 @@ func (m *Manager) removeWorktree(ctx context.Context, gitDir, wtPath string, for
 	_, pathErr := os.Stat(wtPath)
 	pathExists := pathErr == nil
 
-	if pathExists && m.isRegisteredWorktree(ctx, gitDir, wtPath) {
-		// Normal case: directory exists and is registered
-		args := []string{"worktree", "remove"}
-		if force {
-			args = append(args, "--force")
+	if pathExists {
+		registered, err := m.isRegisteredWorktree(ctx, gitDir, wtPath)
+		if err != nil {
+			// The registration check itself failed (including context
+			// cancellation/timeout): we cannot tell whether wtPath is a real
+			// worktree, so we must not fall through to a raw filesystem
+			// delete — that would bypass git's own data-loss guard on an
+			// operation we couldn't actually verify.
+			return fmt.Errorf("failed to check worktree registration for %s: %w", wtPath, err)
 		}
-		args = append(args, wtPath)
-		if err := m.runGit(ctx, gitDir, args...); err != nil {
-			// Without --force, propagate git's refusal; falling back to
-			// os.RemoveAll would defeat its data-loss guard.
-			if !force {
-				return err
+
+		if registered {
+			// Normal case: directory exists and is registered
+			args := []string{"worktree", "remove"}
+			if force {
+				args = append(args, "--force")
 			}
-			if rmErr := os.RemoveAll(wtPath); rmErr != nil {
-				return fmt.Errorf("git worktree remove failed: %w (manual cleanup also failed: %v)", err, rmErr)
+			args = append(args, wtPath)
+			if err := m.runGit(ctx, gitDir, args...); err != nil {
+				// Without --force, propagate git's refusal; falling back to
+				// os.RemoveAll would defeat its data-loss guard.
+				if !force {
+					return err
+				}
+				if rmErr := os.RemoveAll(wtPath); rmErr != nil {
+					return fmt.Errorf("git worktree remove failed: %w (manual cleanup also failed: %v)", err, rmErr)
+				}
+				_ = m.runGit(ctx, gitDir, "worktree", "prune")
 			}
-			_ = m.runGit(ctx, gitDir, "worktree", "prune")
-		}
-	} else if pathExists {
-		// Directory exists but is not a registered worktree — remove it directly
-		if err := os.RemoveAll(wtPath); err != nil {
-			return fmt.Errorf("failed to remove directory %s: %w", wtPath, err)
+		} else {
+			// Directory exists but is not a registered worktree — remove it directly
+			if err := os.RemoveAll(wtPath); err != nil {
+				return fmt.Errorf("failed to remove directory %s: %w", wtPath, err)
+			}
 		}
 	} else {
 		// Directory is gone — prune stale worktree entries
@@ -348,22 +360,25 @@ func (m *Manager) removeWorktree(ctx context.Context, gitDir, wtPath string, for
 	return nil
 }
 
-// isRegisteredWorktree checks if wtPath is listed in `git worktree list`.
-func (m *Manager) isRegisteredWorktree(ctx context.Context, gitDir, wtPath string) bool {
+// isRegisteredWorktree reports whether wtPath is listed in `git worktree
+// list`. A non-nil error (including one caused by ctx cancellation or
+// timeout) means the check could not be performed at all — the caller must
+// treat that as "unknown", never as "not registered".
+func (m *Manager) isRegisteredWorktree(ctx context.Context, gitDir, wtPath string) (bool, error) {
 	out, _, err := m.runnerOrDefault().Run(ctx, gitDir, false, "git", "worktree", "list", "--porcelain")
 	if err != nil {
-		return false
+		return false, err
 	}
 	cleanPath := filepath.Clean(wtPath)
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.HasPrefix(line, "worktree ") {
 			registered := filepath.Clean(strings.TrimPrefix(line, "worktree "))
 			if registered == cleanPath {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }
 
 // worktreeAddError wraps a git worktree add error with a user-friendly message.

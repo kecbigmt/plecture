@@ -1,6 +1,6 @@
-// Package procexec provides a context-aware seam for running external
-// processes (git, gh, and similar host tools) so that callers who cancel or
-// time out their context reliably terminate the child rather than leaking it.
+// Package procexec provides a context-aware seam for running external host
+// processes so that callers who cancel or time out their context reliably
+// terminate the child rather than leaking it.
 package procexec
 
 import (
@@ -40,8 +40,8 @@ func (Host) Run(ctx context.Context, dir string, mirror bool, name string, args 
 	}
 
 	// Put the child in its own process group and, on cancellation, kill the
-	// whole group rather than just the direct child. git and gh sometimes
-	// spawn helper processes (credential helpers, pagers) that would
+	// whole group rather than just the direct child. A command may spawn its
+	// own helper processes (e.g. credential prompts, pagers) that would
 	// otherwise keep the stdout/stderr pipes open and block cmd.Wait even
 	// after the direct child is gone. WaitDelay bounds how long Wait keeps
 	// waiting after Cancel runs before forcibly closing the I/O pipes, so a
