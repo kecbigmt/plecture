@@ -57,6 +57,23 @@ type CheckAction struct {
 	ReviewerCommand string           `json:"reviewer_command,omitempty"`
 	JudgeCommands   []string         `json:"judge_commands,omitempty"`
 	Fingerprint     string           `json:"fingerprint,omitempty"`
+	// RevivalRevision is non-empty when this action was produced by the
+	// automatic post-exhaustion revival path (issue #5): rounds were
+	// exhausted, the resource observed a new revision, and at least one
+	// judge leaf went stale as a result. Set, it both resets the round
+	// budget (Round/MaxRounds no longer read as exhausted) and marks the
+	// dedup id the actuator persists so the same revision never revives
+	// twice. RevivalReviewers names which recorded reviewer session(s) get
+	// the automatic re-evaluation kick.
+	RevivalRevision  string            `json:"revival_revision,omitempty"`
+	RevivalReviewers []RevivalReviewer `json:"revival_reviewers,omitempty"`
+}
+
+// RevivalReviewer names one judge leaf's recorded reviewer session, targeted
+// by the automatic post-exhaustion revival kick (issue #5).
+type RevivalReviewer struct {
+	LeafID  string `json:"leaf_id"`
+	Session string `json:"session"`
 }
 
 type CheckResult struct {
@@ -328,12 +345,37 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 	maxRounds := doneWhenBudgetMaxRounds(dw)
 	rounds := 0
 	lastFingerprint := ""
+	wasEscalated := false
+	lastAutoRevivalRevision := ""
 	if st.DoneWhen != nil {
 		rounds = st.DoneWhen.Rounds
 		lastFingerprint = st.DoneWhen.LastFingerprint
+		wasEscalated = st.DoneWhen.LastAction == "escalate"
+		lastAutoRevivalRevision = st.DoneWhen.LastAutoRevivalRevision
 	}
 	fingerprint := checkFingerprint(result)
 	sameDoneWhenState := fingerprint != "" && fingerprint == lastFingerprint
+
+	// Automatic post-exhaustion revival (issue #5): a prior escalation exhausted
+	// the round budget, but the resource has since observed a new revision that
+	// left one or more judge leaves stale. Rather than re-escalating forever,
+	// grant a fresh round budget so the tick can act again, and let the caller
+	// (TickSession) deliver the standard re-evaluation kick to each stale
+	// leaf's recorded reviewer session. Deduplicated by revision id: the same
+	// revision never revives the budget (or kicks a reviewer) twice.
+	var revivalRevision string
+	var revivalReviewers []RevivalReviewer
+	if maxRounds > 0 && wasEscalated && rounds >= maxRounds {
+		if rev := currentRevisionFromResult(result); rev != "" && rev != lastAutoRevivalRevision {
+			if reviewers := staleJudgeReviewers(result); len(reviewers) > 0 {
+				revivalRevision = rev
+				revivalReviewers = reviewers
+				rounds = 0
+				sameDoneWhenState = false
+			}
+		}
+	}
+
 	if result.Overall == task.DoneSatisfied {
 		return CheckAction{
 			SessionName: sessionName,
@@ -383,19 +425,21 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 		}
 		body := reviewRequiredBody(instance, nextRound, maxRounds, cmd, unmetItems, judgeCmds, warnings)
 		return CheckAction{
-			SessionName:     sessionName,
-			Instance:        instance,
-			Action:          "review_required",
-			Round:           nextRound,
-			MaxRounds:       maxRounds,
-			Items:           items,
-			UnmetItems:      unmetItems,
-			Warnings:        warnings,
-			Summary:         fmt.Sprintf("done_when review required for %s", instance),
-			Body:            body,
-			ReviewerCommand: cmd,
-			JudgeCommands:   judgeCmds,
-			Fingerprint:     fingerprint,
+			SessionName:      sessionName,
+			Instance:         instance,
+			Action:           "review_required",
+			Round:            nextRound,
+			MaxRounds:        maxRounds,
+			Items:            items,
+			UnmetItems:       unmetItems,
+			Warnings:         warnings,
+			Summary:          fmt.Sprintf("done_when review required for %s", instance),
+			Body:             body,
+			ReviewerCommand:  cmd,
+			JudgeCommands:    judgeCmds,
+			Fingerprint:      fingerprint,
+			RevivalRevision:  revivalRevision,
+			RevivalReviewers: revivalReviewers,
 		}
 	}
 	body := fmt.Sprintf("done_when is unsatisfied for %s (round %s).\n\nAddress these unmet items:\n%s", instance, roundText(nextRound, maxRounds), unmetItemBulletList(unmetItems))
@@ -403,17 +447,46 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 		body += "\n\n" + hint
 	}
 	return CheckAction{
-		SessionName: sessionName,
-		Instance:    instance,
-		Action:      "kick",
-		Round:       nextRound,
-		MaxRounds:   maxRounds,
-		Items:       items,
-		UnmetItems:  unmetItems,
-		Summary:     fmt.Sprintf("done_when unsatisfied for %s", instance),
-		Body:        body,
-		Fingerprint: fingerprint,
+		SessionName:      sessionName,
+		Instance:         instance,
+		Action:           "kick",
+		Round:            nextRound,
+		MaxRounds:        maxRounds,
+		Items:            items,
+		UnmetItems:       unmetItems,
+		Summary:          fmt.Sprintf("done_when unsatisfied for %s", instance),
+		Body:             body,
+		Fingerprint:      fingerprint,
+		RevivalRevision:  revivalRevision,
+		RevivalReviewers: revivalReviewers,
 	}
+}
+
+// currentRevisionFromResult reads the current resource revision off any judge
+// leaf's evaluation (every judge leaf in one instance's result carries the
+// same DoneWhenEvalContext.CurrentRevision).
+func currentRevisionFromResult(result task.DoneWhenResult) string {
+	for _, leaf := range result.Leaves {
+		if leaf.Kind == "judge" && leaf.CurrentRevision != "" {
+			return leaf.CurrentRevision
+		}
+	}
+	return ""
+}
+
+// staleJudgeReviewers collects the recorded reviewer session for every judge
+// leaf that is pending because its verdict predates the current revision
+// (evalJudgeLeaf's "stale_judge" reason) — the sessions the automatic revival
+// kick (issue #5) targets.
+func staleJudgeReviewers(result task.DoneWhenResult) []RevivalReviewer {
+	var out []RevivalReviewer
+	for _, leaf := range result.Leaves {
+		if leaf.Kind != "judge" || leaf.PendingReason != "stale_judge" || leaf.ReviewerSession == "" {
+			continue
+		}
+		out = append(out, RevivalReviewer{LeafID: leaf.ID, Session: leaf.ReviewerSession})
+	}
+	return out
 }
 
 func sessionResourceForCheck(session *domain.Session, st *contract.TaskState) string {
