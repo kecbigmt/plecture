@@ -1,0 +1,24 @@
+{
+  "name": "webui",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "tokens": "design.md lint DESIGN.md && design.md export DESIGN.md --format css-tailwind > theme.generated.css",
+    "icons": "node scripts/gen-icons.mjs",
+    "build": "pnpm icons && pnpm tokens && tailwindcss -i input.css -o assets/static/app.css --minify && cp node_modules/htmx.org/dist/htmx.min.js assets/static/htmx.min.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "@google/design.md": "^0.2.0",
+    "@tailwindcss/cli": "^4.3.0",
+    "htmx.org": "2.0.4",
+    "lucide-static": "^1.17.0",
+    "tailwindcss": "^4.3.0"
+  },
+  "private": true
+}

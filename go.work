@@ -1,0 +1,12 @@
+go 1.25.6
+
+use (
+	./app
+	./contracts/atomicfile
+	./contracts/channel-protocol
+	./contracts/event
+	./contracts/state
+	./plugins/channel-server
+	./plugins/github-watcher
+	./plugins/slack-adapter
+)

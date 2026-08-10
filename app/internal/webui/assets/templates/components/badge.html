@@ -1,0 +1,4 @@
+{{- /* badge: status pill. Arg is a domain.RunState or domain.HealthState;
+       color comes from statusClass (Tailwind palette, kept in code per
+       DESIGN.md), structure stays here. */ -}}
+{{define "badge"}}<span class="inline-flex items-center rounded-full px-2 py-0.5 text-label font-medium {{ statusClass . }}">{{ . }}</span>{{end}}

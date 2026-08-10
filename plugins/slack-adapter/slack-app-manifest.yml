@@ -1,0 +1,32 @@
+display_information:
+  name: Claude Code Relay
+  description: Relays messages between Slack threads and Claude Code sessions
+  background_color: "#DE7356"
+
+features:
+  bot_user:
+    display_name: claude-relay
+    always_online: true
+
+oauth_config:
+  scopes:
+    bot:
+      - channels:history
+      - groups:history
+      - im:history
+      - mpim:history
+      - chat:write
+      - users:read
+
+settings:
+  event_subscriptions:
+    bot_events:
+      - message.channels
+      - message.groups
+      - message.im
+      - message.mpim
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

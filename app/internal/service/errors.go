@@ -1,0 +1,27 @@
+package service
+
+// Error codes for machine-readable error identification.
+const (
+	ErrInvalidURL         = "invalid_url"
+	ErrRepoNotAllowed     = "repo_not_allowed"
+	ErrWorkspaceNotFound  = "workspace_not_found"
+	ErrInvalidTag         = "invalid_tag"
+	ErrInvalidInput       = "invalid_input"
+	ErrExecutionFailed    = "execution_failed"
+	ErrNotAttachable      = "not_attachable"
+	ErrNotProduced        = "not_produced"
+	ErrNotCapturable      = "not_capturable"
+	ErrAmbiguousCapture   = "ambiguous_capture"
+	ErrHasChildren        = "has_children"
+	ErrRelationNotAllowed = "relation_not_allowed"
+)
+
+// Error is a structured error with a machine-readable code.
+type Error struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *Error) Error() string {
+	return e.Message
+}
