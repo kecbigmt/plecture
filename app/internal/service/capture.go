@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/kecbigmt/sennit/app/internal/config"
@@ -53,7 +54,7 @@ func Capture(cfg *config.Config, store *state.Store, params CaptureParams) (*Cap
 		}
 	}
 
-	content, err := task.RunCapture(target.Capture, st.Outputs, sessionVars(session))
+	content, err := task.RunCapture(context.Background(), target.Capture, st.Outputs, sessionVars(session))
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture failed for %q: %v", sessionName, err)}
 	}

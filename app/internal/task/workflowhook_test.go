@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,7 +206,7 @@ func TestRunSetup_ExposesWorkflowOutputs(t *testing.T) {
 			Outputs: map[string]any{"workdir": "/tmp/wd", "branch": "issue/9"},
 		},
 	}
-	if err := RunSetup(resolved, SessionVars{}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), resolved, SessionVars{}, tasks, nil); err != nil {
 		t.Fatal(err)
 	}
 	st := tasks["echoer"]

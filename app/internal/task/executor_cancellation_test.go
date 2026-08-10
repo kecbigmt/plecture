@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,106 +11,118 @@ import (
 	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
-// These tests characterize today's behavior for the five task exec paths
-// (setup, cleanup, healthcheck, capture, dynamic-output fetch) when the
-// underlying child process takes a while to finish: none of these entry
-// points accept anything resembling a cancellation signal, so a caller that
-// wants to give up early has no way to do so — the call always blocks until
-// the child process exits on its own and the child always runs to
-// completion. Each subtest runs a script that sleeps briefly and then writes
-// a marker file, and asserts the marker exists once the call returns,
-// pinning down that the child is never interrupted mid-flight.
+// These tests cover cancellation for the five task exec paths (setup,
+// cleanup, healthcheck, capture, dynamic-output fetch): each accepts a
+// context.Context, and cancelling it must terminate the child process (so
+// the marker file it would otherwise write never appears) and the error
+// must surface to the caller promptly instead of the call blocking for the
+// child's full lifetime.
 
 const cancellationCharSleep = 150 * time.Millisecond
 
-func TestCharacterization_RunSetup_NoWayToCancelHungChild(t *testing.T) {
+func TestCharacterization_RunSetup_CancelledContextKillsHungChild(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "marker")
 	plan := buildPlan(t,
-		[]taskStub{{id: "a", scope: "run", setup: "sleep 0.15; touch '" + marker + "'; echo '{}'"}},
+		[]taskStub{{id: "a", scope: "run", setup: "sleep 5; touch '" + marker + "'; echo '{}'"}},
 		[]nodeStub{{id: "a"}},
 	)
 	tasks := map[string]*contract.TaskState{}
+	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
 	start := time.Now()
-	if err := RunSetup(plan.Run, SessionVars{Name: "x", WorktreePath: dir}, tasks, nil); err != nil {
-		t.Fatalf("RunSetup: %v", err)
+	err := RunSetup(goCtx, plan.Run, SessionVars{Name: "x", WorktreePath: dir}, tasks, nil)
+	if err == nil {
+		t.Fatalf("RunSetup: want an error surfaced from the cancelled context, got nil")
 	}
-	if elapsed := time.Since(start); elapsed < cancellationCharSleep {
-		t.Errorf("RunSetup returned after %v, want it to block for the full child lifetime (>= %v)", elapsed, cancellationCharSleep)
+	if elapsed := time.Since(start); elapsed >= cancellationCharSleep {
+		t.Errorf("RunSetup took %v, want it to return promptly once the context is cancelled", elapsed)
 	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Errorf("marker file missing: the child ran to completion despite no cancellation signal ever being possible: %v", err)
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Errorf("marker file exists: the child ran to completion despite the context being cancelled")
 	}
 }
 
-func TestCharacterization_RunCleanup_NoWayToCancelHungChild(t *testing.T) {
+func TestCharacterization_RunCleanup_CancelledContextKillsHungChild(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "marker")
 	plan := buildPlan(t,
-		[]taskStub{{id: "a", scope: "run", setup: "echo '{}'", cleanup: "sleep 0.15; touch '" + marker + "'"}},
+		[]taskStub{{id: "a", scope: "run", setup: "echo '{}'", cleanup: "sleep 5; touch '" + marker + "'"}},
 		[]nodeStub{{id: "a"}},
 	)
 	tasks := map[string]*contract.TaskState{
 		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	}
+	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
 	start := time.Now()
-	if err := RunCleanup(plan.Run, SessionVars{Name: "x", WorktreePath: dir}, tasks, nil); err != nil {
-		t.Fatalf("RunCleanup: %v", err)
+	err := RunCleanup(goCtx, plan.Run, SessionVars{Name: "x", WorktreePath: dir}, tasks, nil)
+	if err == nil {
+		t.Fatalf("RunCleanup: want an error surfaced from the cancelled context, got nil")
 	}
-	if elapsed := time.Since(start); elapsed < cancellationCharSleep {
-		t.Errorf("RunCleanup returned after %v, want it to block for the full child lifetime (>= %v)", elapsed, cancellationCharSleep)
+	if elapsed := time.Since(start); elapsed >= cancellationCharSleep {
+		t.Errorf("RunCleanup took %v, want it to return promptly once the context is cancelled", elapsed)
 	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Errorf("marker file missing: the child ran to completion despite no cancellation signal ever being possible: %v", err)
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Errorf("marker file exists: the child ran to completion despite the context being cancelled")
 	}
 }
 
-func TestCharacterization_RunHealthcheck_NoWayToCancelHungChild(t *testing.T) {
+func TestCharacterization_RunHealthcheck_CancelledContextKillsHungChild(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "marker")
 	session := SessionVars{Name: "x", WorktreePath: dir}
+	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
 	start := time.Now()
-	if err := RunHealthcheck("sleep 0.15; touch '"+marker+"'", map[string]any{}, map[string]any{}, session); err != nil {
-		t.Fatalf("RunHealthcheck: %v", err)
+	err := RunHealthcheck(goCtx, "sleep 5; touch '"+marker+"'", map[string]any{}, map[string]any{}, session)
+	if err == nil {
+		t.Fatalf("RunHealthcheck: want an error surfaced from the cancelled context, got nil")
 	}
-	if elapsed := time.Since(start); elapsed < cancellationCharSleep {
-		t.Errorf("RunHealthcheck returned after %v, want it to block for the full child lifetime (>= %v)", elapsed, cancellationCharSleep)
+	if elapsed := time.Since(start); elapsed >= cancellationCharSleep {
+		t.Errorf("RunHealthcheck took %v, want it to return promptly once the context is cancelled", elapsed)
 	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Errorf("marker file missing: the child ran to completion despite no cancellation signal ever being possible: %v", err)
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Errorf("marker file exists: the child ran to completion despite the context being cancelled")
 	}
 }
 
-func TestCharacterization_RunCapture_NoWayToCancelHungChild(t *testing.T) {
+func TestCharacterization_RunCapture_CancelledContextKillsHungChild(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "marker")
 	session := SessionVars{Name: "x", WorktreePath: dir}
+	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
 	start := time.Now()
-	if _, err := RunCapture("sleep 0.15; touch '"+marker+"'; echo done", map[string]any{}, session); err != nil {
-		t.Fatalf("RunCapture: %v", err)
+	_, err := RunCapture(goCtx, "sleep 5; touch '"+marker+"'; echo done", map[string]any{}, session)
+	if err == nil {
+		t.Fatalf("RunCapture: want an error surfaced from the cancelled context, got nil")
 	}
-	if elapsed := time.Since(start); elapsed < cancellationCharSleep {
-		t.Errorf("RunCapture returned after %v, want it to block for the full child lifetime (>= %v)", elapsed, cancellationCharSleep)
+	if elapsed := time.Since(start); elapsed >= cancellationCharSleep {
+		t.Errorf("RunCapture took %v, want it to return promptly once the context is cancelled", elapsed)
 	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Errorf("marker file missing: the child ran to completion despite no cancellation signal ever being possible: %v", err)
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Errorf("marker file exists: the child ran to completion despite the context being cancelled")
 	}
 }
 
-func TestCharacterization_FetchOutput_NoWayToCancelHungChild(t *testing.T) {
+func TestCharacterization_FetchOutput_CancelledContextKillsHungChild(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "marker")
 	cfg := &config.Config{}
-	src := config.DynamicOutput{Name: "count", Script: "sleep 0.15; touch '" + marker + "'; echo 42"}
-	ctx := RenderContext{Session: SessionVars{Name: "x", WorktreePath: dir}}
+	src := config.DynamicOutput{Name: "count", Script: "sleep 5; touch '" + marker + "'; echo 42"}
+	renderCtx := RenderContext{Session: SessionVars{Name: "x", WorktreePath: dir}}
+	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
 	start := time.Now()
-	if _, err := FetchOutput(cfg, src, ctx); err != nil {
-		t.Fatalf("FetchOutput: %v", err)
+	_, err := FetchOutput(goCtx, cfg, src, renderCtx)
+	if err == nil {
+		t.Fatalf("FetchOutput: want an error surfaced from the cancelled context, got nil")
 	}
-	if elapsed := time.Since(start); elapsed < cancellationCharSleep {
-		t.Errorf("FetchOutput returned after %v, want it to block for the full child lifetime (>= %v)", elapsed, cancellationCharSleep)
+	if elapsed := time.Since(start); elapsed >= cancellationCharSleep {
+		t.Errorf("FetchOutput took %v, want it to return promptly once the context is cancelled", elapsed)
 	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Errorf("marker file missing: the child ran to completion despite no cancellation signal ever being possible: %v", err)
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Errorf("marker file exists: the child ran to completion despite the context being cancelled")
 	}
 }

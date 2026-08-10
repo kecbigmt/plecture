@@ -1,6 +1,7 @@
 package dispatch
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/kecbigmt/sennit/app/internal/channel"
@@ -17,7 +18,9 @@ import (
 type taskExecutorAdapter struct{ ex task.Executor }
 
 func (a taskExecutorAdapter) Run(argv []string) (stdout, stderr []byte, err error) {
-	return a.ex.Run(task.ExecRequest{Argv: argv})
+	// channel.Executor's Run signature carries no context, so there is no
+	// caller context to forward.
+	return a.ex.Run(context.Background(), task.ExecRequest{Argv: argv})
 }
 
 // buildChannelEnvironmentExecutor resolves the Executor an exec channel

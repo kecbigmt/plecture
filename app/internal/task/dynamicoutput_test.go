@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 
 func TestFetchOutput_Single(t *testing.T) {
 	ctx := RenderContext{Session: SessionVars{ResourceID: "pr5", WorktreePath: t.TempDir()}}
-	v, err := FetchOutput(&config.Config{}, config.DynamicOutput{Name: "res", Script: "printf '  {{.ResourceID}} \\n'"}, ctx)
+	v, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Name: "res", Script: "printf '  {{.ResourceID}} \\n'"}, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +26,7 @@ func TestFetchOutput_Produces(t *testing.T) {
 		Produces: []string{"pr_state", "review_decision", "checks"},
 		Script:   `echo '{"pr_state":"OPEN","review_decision":"APPROVED","checks":3}'`,
 	}
-	v, err := FetchOutput(&config.Config{}, src, ctx)
+	v, err := FetchOutput(context.Background(), &config.Config{}, src, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +38,7 @@ func TestFetchOutput_Produces(t *testing.T) {
 // A produced key the JSON omits is left unset (→ check pending), not an error.
 func TestFetchOutput_ProducesMissingKeyUnset(t *testing.T) {
 	ctx := RenderContext{Session: SessionVars{WorktreePath: t.TempDir()}}
-	v, err := FetchOutput(&config.Config{}, config.DynamicOutput{Produces: []string{"a", "b"}, Script: `echo '{"a":"x"}'`}, ctx)
+	v, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Produces: []string{"a", "b"}, Script: `echo '{"a":"x"}'`}, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +49,7 @@ func TestFetchOutput_ProducesMissingKeyUnset(t *testing.T) {
 
 func TestFetchOutput_NonZeroExitIsFetchFailure(t *testing.T) {
 	ctx := RenderContext{Session: SessionVars{WorktreePath: t.TempDir()}}
-	v, err := FetchOutput(&config.Config{}, config.DynamicOutput{Name: "x", Script: "echo boom >&2; exit 3"}, ctx)
+	v, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Name: "x", Script: "echo boom >&2; exit 3"}, ctx)
 	if v != nil || err == nil {
 		t.Errorf("fetch failure must yield nil values + error, got v=%v err=%v", v, err)
 	}
@@ -56,14 +57,14 @@ func TestFetchOutput_NonZeroExitIsFetchFailure(t *testing.T) {
 
 func TestFetchOutput_ProducesNonObjectIsError(t *testing.T) {
 	ctx := RenderContext{Session: SessionVars{WorktreePath: t.TempDir()}}
-	if _, err := FetchOutput(&config.Config{}, config.DynamicOutput{Produces: []string{"a"}, Script: "echo not-json"}, ctx); err == nil {
+	if _, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Produces: []string{"a"}, Script: "echo not-json"}, ctx); err == nil {
 		t.Error("non-JSON stdout for a produces group must error")
 	}
 }
 
 func TestFetchOutput_TemplateError(t *testing.T) {
 	ctx := RenderContext{Session: SessionVars{WorktreePath: t.TempDir()}}
-	if _, err := FetchOutput(&config.Config{}, config.DynamicOutput{Name: "x", Script: "echo {{.Bogus}}"}, ctx); err == nil {
+	if _, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Name: "x", Script: "echo {{.Bogus}}"}, ctx); err == nil {
 		t.Error("a bad template must error before running")
 	}
 }
@@ -81,7 +82,7 @@ observe = "echo '{\"checks_status\":\"SUCCESS\",\"issue_status\":\"NULL\"}'"
 	}
 	ctx := RenderContext{Session: SessionVars{ResourceID: "https://github.com/o/r/pull/5"}}
 	src := config.DynamicOutput{Produces: []string{"checks_status", "issue_status"}, FromResourceStatus: true}
-	v, err := FetchOutput(cfg, src, ctx)
+	v, err := FetchOutput(context.Background(), cfg, src, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +104,7 @@ observe = "printf '{\"branch\":\"%s\"}' '{{.Branch}}'"
 	}
 	ctx := RenderContext{Session: SessionVars{ResourceID: "x", Branch: "issue/632+claude"}}
 	src := config.DynamicOutput{Produces: []string{"branch"}, FromResourceStatus: true}
-	v, err := FetchOutput(cfg, src, ctx)
+	v, err := FetchOutput(context.Background(), cfg, src, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +127,7 @@ observe = "printf '{\"worktree_path\":\"%s\"}' '{{.WorktreePath}}'"
 	worktree := t.TempDir()
 	ctx := RenderContext{Session: SessionVars{ResourceID: "x", WorktreePath: worktree}}
 	src := config.DynamicOutput{Produces: []string{"worktree_path"}, FromResourceStatus: true}
-	v, err := FetchOutput(cfg, src, ctx)
+	v, err := FetchOutput(context.Background(), cfg, src, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestFetchOutput_FromResourceStatus_NoBoundResourceIsError(t *testing.T) {
 	cfg := &config.Config{}
 	ctx := RenderContext{}
 	src := config.DynamicOutput{Produces: []string{"a"}, FromResourceStatus: true}
-	if _, err := FetchOutput(cfg, src, ctx); err == nil {
+	if _, err := FetchOutput(context.Background(), cfg, src, ctx); err == nil {
 		t.Error("expected an error when the instance has no bound resource")
 	}
 }
@@ -148,7 +149,7 @@ func TestFetchOutput_FromResourceStatus_NoDefinitionIsError(t *testing.T) {
 	cfg := &config.Config{}
 	ctx := RenderContext{Session: SessionVars{ResourceID: "x"}}
 	src := config.DynamicOutput{Produces: []string{"a"}, FromResourceStatus: true}
-	if _, err := FetchOutput(cfg, src, ctx); err == nil {
+	if _, err := FetchOutput(context.Background(), cfg, src, ctx); err == nil {
 		t.Error("expected an error when no resource definition recognizes the bound resource")
 	}
 }

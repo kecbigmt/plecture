@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -192,7 +193,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 
 	// Phase 2 — run setup WITHOUT the lock (it may shell out for a while). The
 	// @workflow outputs come from the pre-reservation snapshot (stable).
-	outputs, stderr, setupErr := task.ExecuteTaskSetup(resolved, inputs, vars, session.Tasks, envExecutor)
+	outputs, stderr, setupErr := task.ExecuteTaskSetup(context.Background(), resolved, inputs, vars, session.Tasks, envExecutor)
 
 	// Phase 3 — merge the result back into the reserved key under the lock,
 	// touching only that key (a blind store.Put would clobber concurrent writes
