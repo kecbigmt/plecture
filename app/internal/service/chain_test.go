@@ -688,3 +688,99 @@ all = [ { judge_pending = "ac-met" } ]
 		t.Fatalf("expected one warning naming the ignored file, got %+v", res.Warnings)
 	}
 }
+
+// Issue #6: a work session tracked by an issue in one repository can open its
+// pull request in a different repository. Resource observation stays
+// VCS-agnostic at the core level (it never searches a second repository on
+// the work session's behalf) — instead, an explicit `pr_url` recorded via
+// `sennit state set-output` takes precedence over resource-derived
+// resolution, and a refresh that finds nothing for `pr_url` leaves that
+// explicit value untouched. This lets the chain's wired `pr_url` output
+// resolve and the reviewer chain fire without orchestrator involvement.
+func TestTickSession_ChainFiresOnExplicitPRURLAcrossRepos(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{
+			id:    "work",
+			scope: "session",
+			setup: "echo '{}'",
+			extra: `
+[outputs_schema]
+type = "object"
+[outputs_schema.properties.revision]
+type = "string"
+[outputs_schema.properties.checks_status]
+type = "string"
+[outputs_schema.properties.pr_url]
+type    = "string"
+mutable = true
+
+[done_when]
+all = [
+  { check = "checks_status", in = ["SUCCESS"] },
+  { judge = "ac met", id = "ac-met" },
+]
+
+[[outputs]]
+produces           = ["pr_url"]
+from_resource_status = true
+
+[[chains]]
+id       = "review"
+workflow = "codex"
+[chains.when]
+all = [ { judge_pending = "ac-met" } ]
+[chains.inputs]
+revision = "{{.Work.outputs.revision}}"
+pr_url   = "{{.Work.outputs.pr_url}}"
+`,
+		}},
+		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
+	// The resource definition observes the tracked issue but, by design,
+	// never searches a second repository for its pull request — it reports
+	// only what same-repo observation can see.
+	writeResourceDefFixture(t, cfg.BaseDir, "github", `
+match   = '^https://github\.com/'
+observe = "echo '{\"checks_status\":\"SUCCESS\"}'"
+`)
+
+	const crossRepoPRURL = "https://github.com/owner/repo-2/pull/42"
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "wf", map[string]*contract.TaskState{
+		"work": {
+			Scope:   contract.TaskScopeSession,
+			TaskID:  "work",
+			Status:  contract.TaskStatusProduced,
+			// Tracked by an issue in a different repository than the PR.
+			Resource: "https://github.com/owner/repo/issues/1",
+			Outputs:  map[string]any{"revision": "sha1", "checks_status": "SUCCESS"},
+		},
+	})
+
+	// The work session records the PR itself, in the other repository.
+	if _, err := SetOutput(cfg, store, SetOutputParams{
+		Identifier: "owner/repo-1",
+		Node:       "work",
+		Outputs:    map[string]any{"pr_url": crossRepoPRURL},
+	}); err != nil {
+		t.Fatalf("SetOutput: %v", err)
+	}
+
+	res, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	if err != nil {
+		t.Fatalf("TickSession: %v", err)
+	}
+
+	sp, _ := findSpawn(res.Chains, "review")
+	if !sp.Fired {
+		t.Fatalf("expected the review chain to fire, got %+v", sp)
+	}
+	if sp.Inputs["pr_url"] != crossRepoPRURL {
+		t.Fatalf("pr_url input = %v, want %q", sp.Inputs["pr_url"], crossRepoPRURL)
+	}
+
+	s := store.Get("owner/repo-1")
+	if got := s.Tasks["work"].Outputs["pr_url"]; got != crossRepoPRURL {
+		t.Fatalf("persisted pr_url = %v, want %q (refresh must not clobber an explicit value it found nothing to replace)", got, crossRepoPRURL)
+	}
+}
