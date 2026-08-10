@@ -195,10 +195,6 @@ echo '{"workdir":"`+workdir+`"}'
 	if s.ResourceID != url || s.Alias != url {
 		t.Errorf("ResourceID/Alias = %q/%q, want both %q", s.ResourceID, s.Alias, url)
 	}
-	// Legacy compat fields stay populated for GitHub-shaped resources.
-	if s.OwnerRepo != "org/repo" || s.Number != 42 || s.URLType != "issue" {
-		t.Errorf("compat fields = %q/%d/%q", s.OwnerRepo, s.Number, s.URLType)
-	}
 }
 
 func TestCreate_IdentityPath(t *testing.T) {
@@ -226,9 +222,6 @@ echo '{"workdir":"`+workdir+`"}'
 	s := store.Get("my-experiment+scratch")
 	if s.ResourceID != "my-experiment" {
 		t.Errorf("ResourceID = %q", s.ResourceID)
-	}
-	if s.OwnerRepo != "" || s.Number != 0 {
-		t.Errorf("non-GitHub resource must leave compat fields empty: %q/%d", s.OwnerRepo, s.Number)
 	}
 }
 
@@ -287,21 +280,6 @@ setup = "echo '{\"workdir\":\"/tmp/x\"}'"
 	svcErr, ok := err.(*Error)
 	if !ok || svcErr.Code != ErrRepoNotAllowed {
 		t.Errorf("want ErrRepoNotAllowed, got %v", err)
-	}
-}
-
-func TestCreate_RepoAllowlistCompatGatesResolverPath(t *testing.T) {
-	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
-		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
-		[]nodeFixture{{id: "noop"}})
-	cfg.RepoAllowlist = []string{"allowed-org/repo"}
-	writeSetupWorkflow(t, cfg, "gh", `
-setup = "echo '{\"workdir\":\"/tmp/x\"}'"
-`+githubResolver)
-
-	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/evil-org/repo/issues/1"}); err == nil {
-		t.Fatal("legacy repo_allowlist must keep gating the resolver path")
 	}
 }
 
@@ -425,11 +403,8 @@ func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 	}
 }
 
-// Legacy-path creates must satisfy the state v3 identity contract too.
-func TestCreate_LegacyPathSetsResourceIDAndAlias(t *testing.T) {
-	// No setup, no resolver → legacy core path with real git fixtures is
-	// exercised in the integration suite; here use the GitHub-URL bridge
-	// (setup, no resolver) which shares the same identity-filling contract.
+// Every create path must satisfy the session identity contract.
+func TestCreate_SetsResourceIDAndAlias(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
 	cfg := writeWorkflowFixture(t, t.TempDir(), "bridge",
@@ -440,12 +415,12 @@ setup = '''
 mkdir -p `+workdir+`
 echo '{"workdir":"`+workdir+`"}'
 '''
-`)
+`+githubResolver)
 	url := "https://github.com/org/repo/issues/55"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatal(err)
 	}
-	s := store.Get("org/repo-55")
+	s := store.Get("org/repo-55+bridge")
 	if s.ResourceID != url || s.Alias != url {
 		t.Errorf("ResourceID/Alias = %q/%q, want %q", s.ResourceID, s.Alias, url)
 	}

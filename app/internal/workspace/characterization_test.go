@@ -6,43 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 )
 
 // These tests pin down behavior that predates context plumbing: they must
-// keep passing unchanged once ResolveBranch and GetWorktreeStatus gain a
-// context.Context parameter.
-
-func TestResolveBranch_Issue_DerivesBranchWithoutShellingOut(t *testing.T) {
-	mgr := NewManager(t.TempDir())
-	parsed := &gh.ParsedURL{Type: gh.URLTypeIssue, Number: 42, OwnerRepo: "acme/widgets"}
-
-	branch, err := mgr.ResolveBranch(context.Background(), parsed)
-	if err != nil {
-		t.Fatalf("ResolveBranch() error = %v", err)
-	}
-	if branch != "issue/42" {
-		t.Errorf("branch = %q, want %q", branch, "issue/42")
-	}
-}
-
-// TestResolveBranch_PR_GhFailureWrapsError characterizes the current gap: a
-// failing/hung `gh pr view` has no way to be cancelled today because
-// ResolveBranch takes no context. It also pins the error-wrapping message
-// callers currently depend on.
-func TestResolveBranch_PR_GhFailureWrapsError(t *testing.T) {
-	mgr := NewManager(t.TempDir())
-	parsed := &gh.ParsedURL{Type: gh.URLTypePR, Number: 1, OwnerRepo: "sennit-test/does-not-exist-repo"}
-
-	_, err := mgr.ResolveBranch(context.Background(), parsed)
-	if err == nil {
-		t.Fatal("expected error for a nonexistent repository, got nil")
-	}
-	if !strings.Contains(err.Error(), "failed to get PR info") {
-		t.Errorf("error = %v, want it to contain %q", err, "failed to get PR info")
-	}
-}
+// keep passing unchanged once GetWorktreeStatus gains a context.Context
+// parameter.
 
 func TestGetWorktreeStatus_NonexistentPath(t *testing.T) {
 	_, err := GetWorktreeStatus(context.Background(), filepath.Join(t.TempDir(), "does-not-exist"))
@@ -66,9 +34,8 @@ func TestRunGitCapture_PreservesStderrOnFailure(t *testing.T) {
 func TestManager_Add_WorktreeAddErrorPreservesHint(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
-	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypeIssue, Number: 7}
 
-	if _, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/7", SessionName: gh.SessionName(ownerRepo, 7)}); err != nil {
+	if _, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/7", SessionName: sessionID(ownerRepo, 7)}); err != nil {
 		t.Fatalf("first Add() error = %v", err)
 	}
 
@@ -90,7 +57,7 @@ func TestManager_Add_WorktreeAddErrorPreservesHint(t *testing.T) {
 		t.Fatalf("setup worktree add error = %v", err)
 	}
 
-	_, err = mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/7", SessionName: gh.SessionName(ownerRepo, 7)})
+	_, err = mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/7", SessionName: sessionID(ownerRepo, 7)})
 	if err == nil {
 		t.Fatal("expected error re-adding an already checked out branch, got nil")
 	}

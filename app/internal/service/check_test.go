@@ -717,7 +717,6 @@ func TestCheckSession_StableOrderSkipsFailedAndReportsMissingReviewerCommand(t *
 		},
 	})
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
-		s.URL = ""
 		s.ResourceID = ""
 		return nil
 	}); err != nil {

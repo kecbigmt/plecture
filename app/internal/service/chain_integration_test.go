@@ -21,7 +21,7 @@ func TestIntegration_TickSpawnsReviewer(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{
 				id:    "work",
@@ -59,7 +59,7 @@ revision = "{{.Work.outputs.revision}}"
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/55"
-	work := "testowner/testrepo-55"
+	work := "testowner/testrepo-55+default"
 	reviewer := "testowner/testrepo-55+review-work"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
@@ -120,7 +120,7 @@ func TestIntegration_LegacyChainsFileIsIgnored(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{
 				id:    "work",
@@ -152,7 +152,7 @@ revision = "{{.Work.outputs.revision}}"
 	}
 
 	url := "https://github.com/testowner/testrepo/issues/55"
-	work := "testowner/testrepo-55"
+	work := "testowner/testrepo-55+default"
 	reviewer := "testowner/testrepo-55+review-work"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {

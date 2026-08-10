@@ -84,8 +84,8 @@ Listed for manual attention:
 			}
 			fmt.Fprintf(os.Stderr, "  %s%s\n", e.SessionName, status)
 			fmt.Fprintf(os.Stderr, "    %s\n", e.Description)
-			if e.URL != "" {
-				fmt.Fprintf(os.Stderr, "    URL: %s\n", e.URL)
+			if e.ResourceID != "" {
+				fmt.Fprintf(os.Stderr, "    URL: %s\n", e.ResourceID)
 			}
 			for _, w := range e.DeleteWarnings {
 				fmt.Fprintf(os.Stderr, "    warning: %s\n", w)
@@ -107,8 +107,8 @@ Listed for manual attention:
 			}
 			fmt.Fprintf(os.Stderr, "  %s\n", e.SessionName)
 			fmt.Fprintf(os.Stderr, "    %s\n", e.Description)
-			if e.URL != "" {
-				fmt.Fprintf(os.Stderr, "    URL: %s\n", e.URL)
+			if e.ResourceID != "" {
+				fmt.Fprintf(os.Stderr, "    URL: %s\n", e.ResourceID)
 			}
 		}
 

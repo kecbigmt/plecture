@@ -42,7 +42,7 @@ const (
 // GCEntry describes one session's GC classification and result.
 type GCEntry struct {
 	SessionName    string   `json:"session_name"`
-	URL            string   `json:"url"`
+	ResourceID     string   `json:"resource_id"`
 	Action         GCAction `json:"action"`
 	Reason         GCReason `json:"reason"`
 	Description    string   `json:"description"`
@@ -81,7 +81,7 @@ func GC(cfg *config.Config, store *state.Store, params GCParams) (*GCResult, err
 			result.Warnings = append(result.Warnings, fmt.Sprintf("session %s: frozen workflow %q not found; restore the workflow file or clean up manually", s.Name, s.Workflow))
 			result.Entries = append(result.Entries, GCEntry{
 				SessionName: s.Name,
-				URL:         s.URL,
+				ResourceID:  s.ResourceID,
 				Action:      GCActionManual,
 				Reason:      GCReasonWorkflowMissing,
 				Description: fmt.Sprintf("frozen workflow %q not found in any config layer", s.Workflow),
@@ -155,7 +155,7 @@ func classifySession(s *domain.Session, taskDefs map[string]config.TaskDefinitio
 		}
 		return &GCEntry{
 			SessionName: s.Name,
-			URL:         s.URL,
+			ResourceID:  s.ResourceID,
 			Action:      GCActionDelete,
 			Reason:      GCReasonWorktreeMissing,
 			Description: desc,
@@ -179,7 +179,7 @@ func classifySession(s *domain.Session, taskDefs map[string]config.TaskDefinitio
 			}
 			return &GCEntry{
 				SessionName: s.Name,
-				URL:         s.URL,
+				ResourceID:  s.ResourceID,
 				Action:      GCActionDelete,
 				Reason:      reason,
 				Description: desc,
@@ -196,7 +196,7 @@ func classifySession(s *domain.Session, taskDefs map[string]config.TaskDefinitio
 		}
 		return &GCEntry{
 			SessionName: s.Name,
-			URL:         s.URL,
+			ResourceID:  s.ResourceID,
 			Action:      GCActionManual,
 			Reason:      GCReasonUnhealthy,
 			Description: desc,
@@ -337,7 +337,7 @@ func executeGCDelete(s *domain.Session, mgr *workspace.Manager, store *state.Sto
 
 	// Remove worktree if it exists
 	if wtExists {
-		repoDir := mgr.RepoDir(s.OwnerRepo)
+		repoDir := workspace.ContainerDir(s.WorktreePath)
 		gitDir, err := mgr.FindGitDir(repoDir, s.WorktreePath)
 		if err != nil {
 			entry.DeleteWarnings = append(entry.DeleteWarnings, fmt.Sprintf("worktree removal skipped: %v", err))

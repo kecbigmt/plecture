@@ -1,14 +1,14 @@
 ---
 description: Implement a fix or feature for an issue and create a PR
 ---
-Resolve the issue {{.OwnerRepo}}#{{.Number}}.
+Resolve the issue {{.Workflow.outputs.owner_repo}}#{{.Workflow.outputs.number}}.
 
-URL: {{.URL}}
+URL: {{.ResourceID}}
 
 Steps:
 
-1. Understand the issue (`gh issue view {{.Number}}`)
-2. Move the issue to "In Progress" on the project board using kbn MCP tools: `kbn_list` (owner from {{.OwnerRepo}}) → `kbn_list_items` → find this issue → `kbn_update_item_field` (field_name: "Status", value: "In Progress")
+1. Understand the issue (`gh issue view {{.Workflow.outputs.number}}`)
+2. Move the issue to "In Progress" on the project board using kbn MCP tools: `kbn_list` (owner from {{.Workflow.outputs.owner_repo}}) → `kbn_list_items` → find this issue → `kbn_update_item_field` (field_name: "Status", value: "In Progress")
 3. Investigate the relevant code
 4. Decide on an implementation approach
 5. Implement the changes

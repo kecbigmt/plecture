@@ -145,9 +145,6 @@ func TestClassifySession_TaskDoneWhenAggregatesToDone(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
 		Name:         "owner/repo-50",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       50,
 		WorktreePath: wtPath,
 		Workflow:     "wf",
 		Tasks: map[string]*contract.TaskState{
@@ -171,9 +168,6 @@ func TestClassifySession_TaskDoneWhenPerInstancePendingBlocks(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
 		Name:         "owner/repo-51",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       51,
 		WorktreePath: wtPath,
 		Workflow:     "wf",
 		Tasks: map[string]*contract.TaskState{
@@ -193,9 +187,6 @@ func TestClassifySession_TaskDoneWhenPerInstanceUnsatisfiedBlocks(t *testing.T) 
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
 		Name:         "owner/repo-53",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       53,
 		WorktreePath: wtPath,
 		Workflow:     "wf",
 		Tasks: map[string]*contract.TaskState{
@@ -217,9 +208,6 @@ func TestClassifySession_MissingDynamicDefBlocksDelete(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
 		Name:         "owner/repo-54",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       54,
 		WorktreePath: wtPath,
 		Workflow:     "wf",
 		Tasks: map[string]*contract.TaskState{
@@ -242,9 +230,6 @@ func TestClassifySession_NoTaskDoneWhenIsNeverDeleted(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
 		Name:         "owner/repo-52",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       52,
 		WorktreePath: wtPath,
 		Workflow:     "wf",
 		Tasks: map[string]*contract.TaskState{

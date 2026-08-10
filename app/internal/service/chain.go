@@ -8,7 +8,6 @@ import (
 	"github.com/kecbigmt/sennit/app/internal/chain"
 	"github.com/kecbigmt/sennit/app/internal/config"
 	"github.com/kecbigmt/sennit/app/internal/domain"
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/app/internal/task"
 )
@@ -233,10 +232,9 @@ func sanitizeTag(s string) string {
 }
 
 // resolveSpawnSessionName derives, offline, the session name a fire's spawn
-// would resolve to — mirroring Up's two name-derivation branches (provider
-// resolver, then the GitHub-URL bridge) so the idempotency check sees the same
-// name Up will. An identity (non-URL) resource has no tag space, so its name is
-// the resource itself.
+// would resolve to — mirroring Up's name derivation (the provider resolver) so
+// the idempotency check sees the same name Up will. A resource no resolver
+// matches is an identity dispatch, whose name is the resource itself.
 func resolveSpawnSessionName(cfg *config.Config, resource, workflow, tag string) (string, error) {
 	disp, matched, err := dispatchResource(cfg, workflow, resource)
 	if err != nil {
@@ -248,16 +246,6 @@ func resolveSpawnSessionName(cfg *config.Config, resource, workflow, tag string)
 			name = name + "+" + tag
 		}
 		return name, nil
-	}
-	if gh.IsURL(resource) {
-		parsed, err := gh.ParseURL(resource)
-		if err != nil {
-			return "", err
-		}
-		if tag != "" {
-			return gh.SessionNameWithTag(parsed.OwnerRepo, parsed.Number, tag), nil
-		}
-		return gh.SessionName(parsed.OwnerRepo, parsed.Number), nil
 	}
 	return resource, nil
 }

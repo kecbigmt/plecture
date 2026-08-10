@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 	"github.com/kecbigmt/sennit/app/internal/procexec"
 )
 
@@ -78,31 +77,37 @@ func (m *Manager) SrcDir(repoDir string) string {
 	return filepath.Join(root, rel)
 }
 
-// ResolveBranch resolves the branch name for the given parsed URL. ctx bounds
-// the `gh pr view` invocation issued for PR URLs; issue URLs derive the
-// branch name locally and never shell out.
-func (m *Manager) ResolveBranch(ctx context.Context, parsed *gh.ParsedURL) (string, error) {
-	if parsed.Type == gh.URLTypePR {
-		out, _, err := m.runnerOrDefault().Run(ctx, "", false, "gh", "pr", "view", fmt.Sprintf("%d", parsed.Number),
-			"--repo", parsed.OwnerRepo,
-			"--json", "headRefName", "--jq", ".headRefName")
-		if err != nil {
-			return "", fmt.Errorf("failed to get PR info (is gh authenticated?): %w", err)
-		}
-		return strings.TrimSpace(string(out)), nil
+// RepoDir returns the container directory holding every worktree of a
+// repository. repo is the repository's path relative to the worktrees root,
+// an opaque slug the caller supplies (sennit never derives it from the shape
+// of a resource identifier).
+func (m *Manager) RepoDir(repo string) string {
+	return filepath.Join(m.WorktreesRoot, filepath.FromSlash(repo))
+}
+
+// WorktreePath returns the worktree path for the given repository slug and
+// branch.
+func (m *Manager) WorktreePath(repo, branch string) string {
+	return filepath.Join(m.RepoDir(repo), SanitizeBranch(branch))
+}
+
+// ContainerDir maps a worktree back to the repository container that holds
+// it, which the path convention makes the worktree's parent directory. It
+// exists so teardown can find the container from a recorded worktree path
+// alone, without knowing how the repository slug was derived.
+func ContainerDir(worktreePath string) string {
+	if worktreePath == "" {
+		return ""
 	}
-	return fmt.Sprintf("issue/%d", parsed.Number), nil
+	return filepath.Dir(worktreePath)
 }
 
-// RepoDir returns the repository root directory for the given owner/repo.
-func (m *Manager) RepoDir(ownerRepo string) string {
-	return filepath.Join(m.WorktreesRoot, "github.com", ownerRepo)
-}
-
-// WorktreePath returns the worktree path for the given owner/repo and branch.
-func (m *Manager) WorktreePath(ownerRepo, branch string) string {
-	sanitized := gh.SanitizeBranch(branch)
-	return filepath.Join(m.WorktreesRoot, "github.com", ownerRepo, sanitized)
+// SanitizeBranch turns a branch name into a single path segment by replacing
+// the separators that would otherwise create nested directories or confuse
+// path handling.
+func SanitizeBranch(branch string) string {
+	r := strings.NewReplacer("/", "-", ":", "-", "+", "-")
+	return r.Replace(branch)
 }
 
 // FindGitDir resolves the directory to use as the `git -C` target for the repo,
@@ -162,19 +167,24 @@ func (m *Manager) FindGitDir(repoDir string, excludePaths ...string) (string, er
 	return "", fmt.Errorf("no existing worktree found in %s", repoDir)
 }
 
-// AddParams holds parameters for workspace Add operation.
+// AddParams holds parameters for the workspace Add operation.
 type AddParams struct {
-	Parsed      *gh.ParsedURL
+	// Repo is the repository's path relative to the worktrees root.
+	Repo        string
 	Branch      string // target branch (may include suffix)
 	BaseBranch  string // original branch before suffix (empty = same as Branch)
 	SessionName string // session name (may include suffix)
+	// FallbackRefspec is fetched when fetching BaseBranch by name fails,
+	// which is how a caller acquires a branch whose remote head no longer
+	// exists. Empty means the base branch is fetched from the remote in the
+	// ordinary way and no fallback is attempted.
+	FallbackRefspec string
 }
 
 // Add creates a worktree and returns workspace info. ctx bounds every git
 // invocation Add issues (fetch, worktree add); a cancelled or expired ctx
 // terminates the in-flight process and Add returns its error.
 func (m *Manager) Add(ctx context.Context, params AddParams) (*WorkspaceInfo, error) {
-	parsed := params.Parsed
 	branch := params.Branch
 	baseBranch := params.BaseBranch
 	if baseBranch == "" {
@@ -182,7 +192,7 @@ func (m *Manager) Add(ctx context.Context, params AddParams) (*WorkspaceInfo, er
 	}
 	sessionName := params.SessionName
 
-	repoDir := m.RepoDir(parsed.OwnerRepo)
+	repoDir := m.RepoDir(params.Repo)
 	if _, err := os.Stat(repoDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("repository not found at %s\nClone it first", repoDir)
 	}
@@ -192,7 +202,7 @@ func (m *Manager) Add(ctx context.Context, params AddParams) (*WorkspaceInfo, er
 		return nil, err
 	}
 
-	wtPath := m.WorktreePath(parsed.OwnerRepo, branch)
+	wtPath := m.WorktreePath(params.Repo, branch)
 
 	info := &WorkspaceInfo{
 		SessionName:  sessionName,
@@ -206,13 +216,12 @@ func (m *Manager) Add(ctx context.Context, params AddParams) (*WorkspaceInfo, er
 	if _, err := os.Stat(wtPath); err == nil {
 		info.ReusedWorktree = true
 	} else {
-		if parsed.Type == gh.URLTypePR {
-			// Try fetching the branch by name first; if the remote branch has been
-			// deleted (e.g. merged PR), fall back to the PR ref.
+		if params.FallbackRefspec != "" {
+			// Try fetching the branch by name first; if the remote branch has
+			// been deleted, fall back to the refspec the caller supplied.
 			if err := m.runGit(ctx, gitDir, "fetch", "origin", baseBranch); err != nil {
-				prRef := fmt.Sprintf("pull/%d/head:%s", parsed.Number, baseBranch)
-				if err2 := m.runGit(ctx, gitDir, "fetch", "origin", prRef); err2 != nil {
-					return nil, fmt.Errorf("git fetch failed (branch: %v, PR ref: %w)", err, err2)
+				if err2 := m.runGit(ctx, gitDir, "fetch", "origin", params.FallbackRefspec); err2 != nil {
+					return nil, fmt.Errorf("git fetch failed (branch: %v, fallback refspec: %w)", err, err2)
 				}
 			}
 			if branch != baseBranch {
@@ -234,9 +243,9 @@ func (m *Manager) Add(ctx context.Context, params AddParams) (*WorkspaceInfo, er
 					}
 				}
 			} else {
-				// When branch == baseBranch, the PR ref fetch above created a local
-				// branch named baseBranch (via pull/<number>/head:<baseBranch>),
-				// so "git worktree add wtPath branch" works even without a remote ref.
+				// When branch == baseBranch, the fallback refspec fetched above
+				// created a local branch named baseBranch, so
+				// "git worktree add wtPath branch" works even without a remote ref.
 				if stderr, err := m.runGitCapture(ctx, gitDir, "worktree", "add", wtPath, branch); err != nil {
 					return nil, worktreeAddError(err, stderr)
 				}
@@ -263,12 +272,12 @@ func (m *Manager) Add(ctx context.Context, params AddParams) (*WorkspaceInfo, er
 	return info, nil
 }
 
-// Remove removes a worktree and optionally deletes the branch. ctx bounds
-// every git invocation Remove issues.
+// Remove removes the worktree of repo/branch and optionally deletes the
+// branch. ctx bounds every git invocation Remove issues.
 // If the worktree directory is already gone, it uses `git worktree prune` to clean up stale entries.
-func (m *Manager) Remove(ctx context.Context, parsed *gh.ParsedURL, branch string, force, deleteBranch bool) error {
-	wtPath := m.WorktreePath(parsed.OwnerRepo, branch)
-	repoDir := m.RepoDir(parsed.OwnerRepo)
+func (m *Manager) Remove(ctx context.Context, repo, branch string, force, deleteBranch bool) error {
+	wtPath := m.WorktreePath(repo, branch)
+	repoDir := m.RepoDir(repo)
 
 	// Exclude the worktree being removed so FindGitDir doesn't return it as gitDir.
 	gitDir, err := m.FindGitDir(repoDir, wtPath)
@@ -289,8 +298,8 @@ func (m *Manager) Remove(ctx context.Context, parsed *gh.ParsedURL, branch strin
 	return nil
 }
 
-// RemoveByPath removes a worktree by its path (for use when no URL is
-// provided). ctx bounds every git invocation it issues.
+// RemoveByPath removes a worktree by its path, for callers that already know
+// where it lives. ctx bounds every git invocation it issues.
 func (m *Manager) RemoveByPath(ctx context.Context, wtPath, gitDir, branch string, force, deleteBranch bool) error {
 	if err := m.removeWorktree(ctx, gitDir, wtPath, force); err != nil {
 		return err
@@ -306,8 +315,8 @@ func (m *Manager) RemoveByPath(ctx context.Context, wtPath, gitDir, branch strin
 }
 
 // WorktreeExists checks if a worktree path exists.
-func (m *Manager) WorktreeExists(ownerRepo, branch string) bool {
-	wtPath := m.WorktreePath(ownerRepo, branch)
+func (m *Manager) WorktreeExists(repo, branch string) bool {
+	wtPath := m.WorktreePath(repo, branch)
 	_, err := os.Stat(wtPath)
 	return err == nil
 }
@@ -387,7 +396,7 @@ func (m *Manager) isRegisteredWorktree(ctx context.Context, gitDir, wtPath strin
 // human-readable message rather than the exit status.
 func worktreeAddError(err error, stderr string) error {
 	if strings.Contains(stderr, "already checked out") || strings.Contains(stderr, "already used by worktree") {
-		return fmt.Errorf("git worktree add failed: %w\nHint: a worktree for this branch already exists. To start a separate session, use a tag:\n  sennit create <url> --tag <tag>", err)
+		return fmt.Errorf("git worktree add failed: %w\nHint: a worktree for this branch already exists. To start a separate session, use a tag:\n  sennit create <resource> --tag <tag>", err)
 	}
 	return fmt.Errorf("git worktree add failed: %w", err)
 }

@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 )
 
 // writeFakeBin creates an executable at dir/name that just runs body as a
@@ -25,31 +23,11 @@ func writeFakeBin(t *testing.T, name, body string) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-func TestResolveBranch_PR_ContextCancellationKillsHungGh(t *testing.T) {
-	writeFakeBin(t, "gh", "sleep 30")
-	mgr := NewManager(t.TempDir())
-	parsed := &gh.ParsedURL{Type: gh.URLTypePR, Number: 1, OwnerRepo: "acme/widgets"}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	defer cancel()
-
-	start := time.Now()
-	_, err := mgr.ResolveBranch(ctx, parsed)
-	elapsed := time.Since(start)
-
-	if err == nil {
-		t.Fatal("expected error from a timed-out ResolveBranch, got nil")
-	}
-	if elapsed > 5*time.Second {
-		t.Errorf("ResolveBranch took %v; the hung gh process was not terminated promptly", elapsed)
-	}
-}
-
 func TestManager_Add_ContextCancellationKillsHungGit(t *testing.T) {
 	writeFakeBin(t, "git", "sleep 30")
 	worktreesRoot := t.TempDir()
 	ownerRepo := "testowner/testrepo"
-	repoDir := filepath.Join(worktreesRoot, "github.com", ownerRepo, "main")
+	repoDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo), "main")
 	if err := os.MkdirAll(repoDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -61,13 +39,12 @@ func TestManager_Add_ContextCancellationKillsHungGit(t *testing.T) {
 	}
 
 	mgr := NewManager(worktreesRoot)
-	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypeIssue, Number: 1}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	_, err := mgr.Add(ctx, AddParams{Parsed: parsed, Branch: "issue/1", SessionName: gh.SessionName(ownerRepo, 1)})
+	_, err := mgr.Add(ctx, AddParams{Repo: ownerRepo, Branch: "issue/1", SessionName: sessionID(ownerRepo, 1)})
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -106,9 +83,8 @@ func TestGetWorktreeStatus_ContextCancellationKillsHungGit(t *testing.T) {
 func TestManager_Remove_CancelledDuringRegistrationCheck_DoesNotBypassGitRemove(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
-	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypeIssue, Number: 90}
 
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/90", SessionName: gh.SessionName(ownerRepo, 90)})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/90", SessionName: sessionID(ownerRepo, 90)})
 	if err != nil {
 		t.Fatalf("Add() error = %v", err)
 	}
@@ -116,7 +92,7 @@ func TestManager_Remove_CancelledDuringRegistrationCheck_DoesNotBypassGitRemove(
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // already cancelled before the registration check even runs
 
-	err = mgr.Remove(ctx, parsed, "issue/90", false, false)
+	err = mgr.Remove(ctx, ownerRepo, "issue/90", false, false)
 	if err == nil {
 		t.Fatal("expected Remove() to fail when the registration check itself cannot run, got nil")
 	}

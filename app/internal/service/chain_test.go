@@ -54,13 +54,25 @@ func seedReviewWork(t *testing.T, store *state.Store, name string, outputs map[s
 	})
 }
 
+// writeWorkflowFile writes a spawnable workflow plus the provider that backs
+// it. A workflow a chain can spawn into must be provider-backed, since the
+// provider is what resolves the resource to a session id and acquires the
+// working directory.
 func writeWorkflowFile(t *testing.T, cfg *config.Config, id, body string) {
 	t.Helper()
 	dir := filepath.Join(cfg.BaseDir, "workflows")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte("provider = \""+id+"\"\n"+body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	providersDir := filepath.Join(cfg.BaseDir, "providers")
+	if err := os.MkdirAll(providersDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	prov := "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n" + githubResolver
+	if err := os.WriteFile(filepath.Join(providersDir, id+".toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

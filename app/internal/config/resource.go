@@ -21,10 +21,9 @@ import (
 // `--resource` an instance carries, independent of the session it lives in)
 // an id syntax and an observation contract: which ids it recognizes (Match),
 // how to read its current state (Observe), and the shape that state must
-// have (StateSchema). Both may recognize overlapping id spaces (e.g. a
-// GitHub PR url is both a session resource identifier and an instance
-// resource) without being the same declaration — they answer different
-// questions.
+// have (StateSchema). Both may recognize overlapping id spaces (one url may
+// be both a session resource identifier and an instance resource) without
+// being the same declaration — they answer different questions.
 type ResourceDef struct {
 	ID string `toml:"-"`
 	// Match is a regex a resource id must satisfy to be this kind. Required —

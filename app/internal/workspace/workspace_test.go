@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 )
 
 // setupTestRepo creates a git repo structure that mimics what sennit expects:
@@ -18,8 +16,8 @@ import (
 func setupTestRepo(t *testing.T) (worktreesRoot string, ownerRepo string) {
 	t.Helper()
 	worktreesRoot = t.TempDir()
-	ownerRepo = "testowner/testrepo"
-	repoDir := filepath.Join(worktreesRoot, "github.com", ownerRepo)
+	ownerRepo = "github.com/testowner/testrepo"
+	repoDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo))
 	mainDir := filepath.Join(repoDir, "main")
 	bareDir := filepath.Join(t.TempDir(), "origin.git")
 	if err := os.MkdirAll(mainDir, 0o755); err != nil {
@@ -55,14 +53,7 @@ func TestAdd_NewBranch(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    42,
-	}
-
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/42", SessionName: gh.SessionName(ownerRepo, 42)})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/42", SessionName: sessionID(ownerRepo, 42)})
 	if err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
@@ -80,7 +71,7 @@ func TestAdd_NewBranch(t *testing.T) {
 func TestAdd_ExistingBranch(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
-	gitDir := filepath.Join(worktreesRoot, "github.com", ownerRepo, "main")
+	gitDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo), "main")
 
 	// Pre-create the branch in the git repo
 	cmd := exec.Command("git", "branch", "issue/99")
@@ -89,14 +80,7 @@ func TestAdd_ExistingBranch(t *testing.T) {
 		t.Fatalf("failed to create branch: %v", err)
 	}
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    99,
-	}
-
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/99", SessionName: gh.SessionName(ownerRepo, 99)})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/99", SessionName: sessionID(ownerRepo, 99)})
 	if err != nil {
 		t.Fatalf("Add should succeed when branch already exists, got: %v", err)
 	}
@@ -114,21 +98,14 @@ func TestAdd_ExistingWorktree(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    7,
-	}
-
 	// First add: creates worktree
-	_, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/7", SessionName: gh.SessionName(ownerRepo, 7)})
+	_, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/7", SessionName: sessionID(ownerRepo, 7)})
 	if err != nil {
 		t.Fatalf("first Add failed: %v", err)
 	}
 
 	// Second add: should reuse existing worktree
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/7", SessionName: gh.SessionName(ownerRepo, 7)})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/7", SessionName: sessionID(ownerRepo, 7)})
 	if err != nil {
 		t.Fatalf("second Add failed: %v", err)
 	}
@@ -142,21 +119,14 @@ func TestAdd_TaggedBranch(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    42,
-	}
-
 	// Create base worktree
-	info1, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/42", SessionName: gh.SessionName(ownerRepo, 42)})
+	info1, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/42", SessionName: sessionID(ownerRepo, 42)})
 	if err != nil {
 		t.Fatalf("Add base failed: %v", err)
 	}
 
 	// Create tagged worktree
-	info2, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/42+review", SessionName: gh.SessionNameWithTag(ownerRepo, 42, "review")})
+	info2, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/42+review", SessionName: taggedSessionID(ownerRepo, 42, "review")})
 	if err != nil {
 		t.Fatalf("Add tagged failed: %v", err)
 	}
@@ -164,8 +134,8 @@ func TestAdd_TaggedBranch(t *testing.T) {
 	if info1.WorktreePath == info2.WorktreePath {
 		t.Error("expected different worktree paths for base and tagged")
 	}
-	if info2.SessionName != gh.SessionNameWithTag(ownerRepo, 42, "review") {
-		t.Errorf("SessionName = %q, want %q", info2.SessionName, gh.SessionNameWithTag(ownerRepo, 42, "review"))
+	if info2.SessionName != taggedSessionID(ownerRepo, 42, "review") {
+		t.Errorf("SessionName = %q, want %q", info2.SessionName, taggedSessionID(ownerRepo, 42, "review"))
 	}
 	if info2.Branch != "issue/42+review" {
 		t.Errorf("Branch = %q, want %q", info2.Branch, "issue/42+review")
@@ -175,7 +145,7 @@ func TestAdd_TaggedBranch(t *testing.T) {
 func TestAdd_PRTag(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
-	gitDir := filepath.Join(worktreesRoot, "github.com", ownerRepo, "main")
+	gitDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo), "main")
 
 	// Create a branch to simulate a PR branch
 	run := func(dir string, args ...string) {
@@ -192,32 +162,25 @@ func TestAdd_PRTag(t *testing.T) {
 	// Push the branch to origin
 	run(gitDir, "git", "push", "origin", "feat/login")
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypePR,
-		Number:    10,
-	}
-
 	// Create base worktree for PR
-	_, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "feat/login", SessionName: gh.SessionName(ownerRepo, 10)})
+	_, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "feat/login", SessionName: sessionID(ownerRepo, 10)})
 	if err != nil {
 		t.Fatalf("Add PR base failed: %v", err)
 	}
 
 	// Create tagged worktree for PR - should create new branch from remote base
 	info, err := mgr.Add(context.Background(), AddParams{
-		Parsed:      parsed,
+		Repo:        ownerRepo,
 		Branch:      "feat/login+review",
 		BaseBranch:  "feat/login",
-		SessionName: gh.SessionNameWithTag(ownerRepo, 10, "review"),
+		SessionName: taggedSessionID(ownerRepo, 10, "review"),
 	})
 	if err != nil {
 		t.Fatalf("Add PR tagged failed: %v", err)
 	}
 
-	if info.SessionName != gh.SessionNameWithTag(ownerRepo, 10, "review") {
-		t.Errorf("SessionName = %q, want %q", info.SessionName, gh.SessionNameWithTag(ownerRepo, 10, "review"))
+	if info.SessionName != taggedSessionID(ownerRepo, 10, "review") {
+		t.Errorf("SessionName = %q, want %q", info.SessionName, taggedSessionID(ownerRepo, 10, "review"))
 	}
 	if info.Branch != "feat/login+review" {
 		t.Errorf("Branch = %q, want %q", info.Branch, "feat/login+review")
@@ -227,7 +190,7 @@ func TestAdd_PRTag(t *testing.T) {
 func TestAdd_PRFallbackToRef(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
-	gitDir := filepath.Join(worktreesRoot, "github.com", ownerRepo, "main")
+	gitDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo), "main")
 
 	run := func(dir string, args ...string) {
 		t.Helper()
@@ -253,18 +216,11 @@ func TestAdd_PRFallbackToRef(t *testing.T) {
 	run(gitDir, "git", "checkout", "main")
 	run(gitDir, "git", "branch", "-D", "feat/deleted")
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypePR,
-		Number:    99,
-	}
-
 	// Add should succeed by falling back to pull/99/head
 	info, err := mgr.Add(context.Background(), AddParams{
-		Parsed:      parsed,
+		Repo:        ownerRepo,
 		Branch:      "feat/deleted",
-		SessionName: gh.SessionName(ownerRepo, 99),
+		SessionName: sessionID(ownerRepo, 99),
 	})
 	if err != nil {
 		t.Fatalf("Add should fall back to PR ref when branch is deleted, got: %v", err)
@@ -282,7 +238,7 @@ func TestAdd_PRFallbackToRef(t *testing.T) {
 func TestAdd_PRFallbackToRef_WithTag(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
-	gitDir := filepath.Join(worktreesRoot, "github.com", ownerRepo, "main")
+	gitDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo), "main")
 
 	run := func(dir string, args ...string) {
 		t.Helper()
@@ -304,19 +260,12 @@ func TestAdd_PRFallbackToRef_WithTag(t *testing.T) {
 	run(gitDir, "git", "checkout", "main")
 	run(gitDir, "git", "branch", "-D", "feat/deleted2")
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypePR,
-		Number:    100,
-	}
-
 	// Add with tag should succeed using local ref from PR fetch as startPoint
 	info, err := mgr.Add(context.Background(), AddParams{
-		Parsed:      parsed,
+		Repo:        ownerRepo,
 		Branch:      "feat/deleted2+review",
 		BaseBranch:  "feat/deleted2",
-		SessionName: gh.SessionNameWithTag(ownerRepo, 100, "review"),
+		SessionName: taggedSessionID(ownerRepo, 100, "review"),
 	})
 	if err != nil {
 		t.Fatalf("Add PR tag with deleted branch should fall back to PR ref, got: %v", err)
@@ -335,15 +284,8 @@ func TestRemove_WorktreeAlreadyGone(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    50,
-	}
-
 	// Create a worktree
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/50", SessionName: gh.SessionName(ownerRepo, 50)})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/50", SessionName: sessionID(ownerRepo, 50)})
 	if err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
@@ -354,7 +296,7 @@ func TestRemove_WorktreeAlreadyGone(t *testing.T) {
 	}
 
 	// Remove should succeed (prune stale entry) instead of failing
-	if err := mgr.Remove(context.Background(), parsed, "issue/50", false, false); err != nil {
+	if err := mgr.Remove(context.Background(), ownerRepo, "issue/50", false, false); err != nil {
 		t.Fatalf("Remove should succeed when worktree is already gone, got: %v", err)
 	}
 }
@@ -363,13 +305,6 @@ func TestRemove_WorktreeNotRegistered(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    51,
-	}
-
 	// Create a directory that looks like a worktree but is not registered
 	wtPath := mgr.WorktreePath(ownerRepo, "issue/51")
 	if err := os.MkdirAll(wtPath, 0o755); err != nil {
@@ -377,7 +312,7 @@ func TestRemove_WorktreeNotRegistered(t *testing.T) {
 	}
 
 	// Remove should succeed (remove directory directly)
-	if err := mgr.Remove(context.Background(), parsed, "issue/51", false, false); err != nil {
+	if err := mgr.Remove(context.Background(), ownerRepo, "issue/51", false, false); err != nil {
 		t.Fatalf("Remove should succeed for unregistered worktree dir, got: %v", err)
 	}
 
@@ -391,14 +326,7 @@ func TestRemove_WorktreeWithUntrackedFiles_NoForceFails(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    52,
-	}
-
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/52", SessionName: gh.SessionName(ownerRepo, 52)})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/52", SessionName: sessionID(ownerRepo, 52)})
 	if err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
@@ -408,7 +336,7 @@ func TestRemove_WorktreeWithUntrackedFiles_NoForceFails(t *testing.T) {
 		t.Fatalf("failed to create untracked file: %v", err)
 	}
 
-	if err := mgr.Remove(context.Background(), parsed, "issue/52", false, false); err == nil {
+	if err := mgr.Remove(context.Background(), ownerRepo, "issue/52", false, false); err == nil {
 		t.Fatal("Remove without --force should fail when worktree has untracked files")
 	}
 
@@ -424,14 +352,7 @@ func TestRemove_WorktreeWithUntrackedFiles_ForceSucceeds(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    53,
-	}
-
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/53", SessionName: gh.SessionName(ownerRepo, 53)})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/53", SessionName: sessionID(ownerRepo, 53)})
 	if err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
@@ -441,7 +362,7 @@ func TestRemove_WorktreeWithUntrackedFiles_ForceSucceeds(t *testing.T) {
 		t.Fatalf("failed to create untracked file: %v", err)
 	}
 
-	if err := mgr.Remove(context.Background(), parsed, "issue/53", true, false); err != nil {
+	if err := mgr.Remove(context.Background(), ownerRepo, "issue/53", true, false); err != nil {
 		t.Fatalf("Remove with --force should succeed even with untracked files, got: %v", err)
 	}
 
@@ -454,15 +375,8 @@ func TestFindGitDir_ExcludesPath(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    60,
-	}
-
 	// Create a second worktree
-	_, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/60", SessionName: gh.SessionName(ownerRepo, 60)})
+	_, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/60", SessionName: sessionID(ownerRepo, 60)})
 	if err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
@@ -533,15 +447,8 @@ func TestWorktreeAddError_AlreadyCheckedOutHint(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
 
-	parsed := &gh.ParsedURL{
-		OwnerRepo: ownerRepo,
-		Repo:      "testrepo",
-		Type:      gh.URLTypeIssue,
-		Number:    70,
-	}
-
 	// Create a worktree for issue/70
-	_, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/70", SessionName: gh.SessionName(ownerRepo, 70)})
+	_, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "issue/70", SessionName: sessionID(ownerRepo, 70)})
 	if err != nil {
 		t.Fatalf("first Add failed: %v", err)
 	}
@@ -566,7 +473,7 @@ func TestWorktreeAddError_AlreadyCheckedOutHint(t *testing.T) {
 	if !strings.Contains(msg, "git worktree add failed") {
 		t.Errorf("expected 'git worktree add failed' prefix in error, got: %s", msg)
 	}
-	if !strings.Contains(msg, "sennit create <url> --tag <tag>") {
+	if !strings.Contains(msg, "sennit create <resource> --tag <tag>") {
 		t.Errorf("expected tag hint in error, got: %s", msg)
 	}
 }
@@ -619,11 +526,10 @@ func TestAdd_TaggedWorktreeDerivesFromSessionName(t *testing.T) {
 	mgr := NewManager(worktreesRoot)
 
 	const tag = "review"
-	sessionName := gh.SessionNameWithTag(ownerRepo, 42, tag)
-	branch := gh.BranchWithTag("issue/42", tag)
-	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypeIssue, Number: 42}
+	sessionName := taggedSessionID(ownerRepo, 42, tag)
+	branch := "issue/42+" + tag
 
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: branch, SessionName: sessionName})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: branch, SessionName: sessionName})
 	if err != nil {
 		t.Fatalf("Add tagged: %v", err)
 	}
@@ -635,8 +541,8 @@ func TestAdd_TaggedWorktreeDerivesFromSessionName(t *testing.T) {
 	if info.WorktreePath != wantPath {
 		t.Errorf("WorktreePath = %q, want %q", info.WorktreePath, wantPath)
 	}
-	if !strings.Contains(info.WorktreePath, gh.SanitizeBranch(branch)) {
-		t.Errorf("worktree path %q must encode the sanitized tagged branch %q", info.WorktreePath, gh.SanitizeBranch(branch))
+	if !strings.Contains(info.WorktreePath, SanitizeBranch(branch)) {
+		t.Errorf("worktree path %q must encode the sanitized tagged branch %q", info.WorktreePath, SanitizeBranch(branch))
 	}
 }
 
@@ -647,16 +553,15 @@ func TestAdd_TaggedWorktreeDerivesFromSessionName(t *testing.T) {
 func TestAdd_ReusesOrphanTaggedPRBranch(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
-	gitDir := filepath.Join(worktreesRoot, "github.com", ownerRepo, "main")
+	gitDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo), "main")
 
 	runGitT(t, gitDir, "branch", "feat/login")
 	runGitT(t, gitDir, "push", "origin", "feat/login")
 
-	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypePR, Number: 10}
 	taggedBranch := "feat/login+review"
 
 	// First dispatch: materialize the tagged workspace.
-	first, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: taggedBranch, BaseBranch: "feat/login", SessionName: gh.SessionNameWithTag(ownerRepo, 10, "review")})
+	first, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: taggedBranch, BaseBranch: "feat/login", SessionName: taggedSessionID(ownerRepo, 10, "review")})
 	if err != nil {
 		t.Fatalf("first Add: %v", err)
 	}
@@ -671,7 +576,7 @@ func TestAdd_ReusesOrphanTaggedPRBranch(t *testing.T) {
 	}
 
 	// Re-dispatch must converge: the orphan branch is reused, not fatal.
-	second, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: taggedBranch, BaseBranch: "feat/login", SessionName: gh.SessionNameWithTag(ownerRepo, 10, "review")})
+	second, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: taggedBranch, BaseBranch: "feat/login", SessionName: taggedSessionID(ownerRepo, 10, "review")})
 	if err != nil {
 		t.Fatalf("re-dispatch over orphan tagged branch should reuse it, got: %v", err)
 	}
@@ -686,11 +591,10 @@ func TestAdd_ReusesOrphanTaggedPRBranch(t *testing.T) {
 func TestRemoveByPath_ReclaimsTaggedBranch(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
-	gitDir := filepath.Join(worktreesRoot, "github.com", ownerRepo, "main")
+	gitDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo), "main")
 
-	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypeIssue, Number: 42}
 	branch := "issue/42+review"
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: branch, SessionName: gh.SessionNameWithTag(ownerRepo, 42, "review")})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: branch, SessionName: taggedSessionID(ownerRepo, 42, "review")})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -704,4 +608,15 @@ func TestRemoveByPath_ReclaimsTaggedBranch(t *testing.T) {
 	if mgr.branchExists(context.Background(), gitDir, branch) {
 		t.Errorf("tagged branch %q should be reclaimed", branch)
 	}
+}
+
+// sessionID / taggedSessionID build opaque session identifiers for the tests.
+// The manager treats them as strings, so their shape only has to be stable,
+// not meaningful.
+func sessionID(repo string, number int) string {
+	return fmt.Sprintf("%s-%d", repo, number)
+}
+
+func taggedSessionID(repo string, number int, tag string) string {
+	return fmt.Sprintf("%s-%d+%s", repo, number, tag)
 }

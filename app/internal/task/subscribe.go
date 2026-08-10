@@ -22,8 +22,8 @@ type SubscribeHookVars struct {
 // RunProviderSubscribe renders and runs the provider's `subscribe` hook. The
 // hook is fire-and-forget: it has no outputs contract and no persisted state —
 // it binds the current session to the resource in whatever delivery mechanism
-// the provider owns (for github, the resident watcher's subscription
-// registry). stderr is folded into the error on failure for diagnosis.
+// the provider owns (a resident watcher's subscription registry, say).
+// stderr is folded into the error on failure for diagnosis.
 func RunProviderSubscribe(prov config.ProviderConfig, vars SubscribeHookVars) error {
 	if strings.TrimSpace(prov.Subscribe) == "" {
 		return fmt.Errorf("provider %q declares no subscribe hook", prov.ID)

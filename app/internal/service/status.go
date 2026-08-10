@@ -216,8 +216,8 @@ func attachCommandFor(cfg *config.Config, session *domain.Session) string {
 }
 
 // sessionDisplayTitle resolves the session's display title from the
-// workflow's [display] templates, without pulling the GitHub-shaped status
-// fields alongside it.
+// workflow's [display] templates, without pulling the display status line
+// alongside it.
 func sessionDisplayTitle(cfg *config.Config, session *domain.Session) string {
 	var cached cachedInfo
 	applyDisplay(loadDisplayWorkflows(cfg), session, &cached)
@@ -322,18 +322,14 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 	}
 }
 
-// identityResourceID prefers the canonical ResourceID (backfilled at state
-// migration); URL is the pre-migration fallback for sessions that predate it.
+// identityResourceID is the session's canonical resource identifier.
 func identityResourceID(s *domain.Session) string {
-	if s.ResourceID != "" {
-		return s.ResourceID
-	}
-	return s.URL
+	return s.ResourceID
 }
 
 // sessionTag extracts the workspace-identity tag from a session name's
 // "<resource>+<tag>" convention (effectiveTag, chainSpawnTag) — provider-
-// agnostic string parsing, not a GitHub-specific concept.
+// agnostic string parsing over a name sennit itself produced.
 func sessionTag(name string) string {
 	if idx := strings.LastIndex(name, "+"); idx >= 0 {
 		return name[idx+1:]

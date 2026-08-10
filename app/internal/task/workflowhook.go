@@ -21,6 +21,11 @@ type WorkflowHookVars struct {
 	ResourceID    string
 	SessionName   string
 	SessionInputs map[string]any
+	// Force mirrors the caller's --force intent into the cleanup template so a
+	// provider's cleanup script can decide for itself whether to force-remove
+	// a dirty workdir; core has no opinion on what a provider's release step
+	// does with it. Setup never sets this — force only applies to teardown.
+	Force bool
 }
 
 // workflowHookScope is the Observer scope label for pseudo-node events.
@@ -200,12 +205,14 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 		SessionInputs map[string]any
 		Prev          map[string]any
 		Self          map[string]any
+		Force         bool
 	}{
 		ResourceID:    vars.ResourceID,
 		SessionName:   vars.SessionName,
 		SessionInputs: normalizeOutputs(vars.SessionInputs),
 		Prev:          normalizeOutputs(prev),
 		Self:          normalizeOutputs(self),
+		Force:         vars.Force,
 	}
 	if data.SessionInputs == nil {
 		data.SessionInputs = map[string]any{}

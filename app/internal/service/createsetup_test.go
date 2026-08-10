@@ -52,7 +52,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s","branch":"issue/5","title":"T"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 
 	result, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/5"})
 	if err != nil {
@@ -65,7 +65,7 @@ echo '{"workdir":"%s","branch":"issue/5","title":"T"}'
 		t.Errorf("Branch = %q, want issue/5", result.Branch)
 	}
 
-	s := store.Get("org/repo-5")
+	s := store.Get("org/repo-5+wf")
 	if s == nil {
 		t.Fatal("session not persisted")
 	}
@@ -102,7 +102,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 
 	if _, err := Create(cfg, store, CreateParams{
 		URL:           "https://github.com/org/repo/issues/6",
@@ -111,7 +111,7 @@ echo '{"workdir":"%s"}'
 		t.Fatalf("Create: %v", err)
 	}
 
-	child := store.Get("org/repo-6")
+	child := store.Get("org/repo-6+wf")
 	if child == nil {
 		t.Fatal("child session not persisted")
 	}
@@ -125,7 +125,7 @@ echo '{"workdir":"%s"}'
 	if parent == nil {
 		t.Fatal("parent session missing")
 	}
-	if got, want := parent.Children, []string{"org/repo-6"}; fmt.Sprint(got) != fmt.Sprint(want) {
+	if got, want := parent.Children, []string{"org/repo-6+wf"}; fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("parent.Children = %v, want %v", got, want)
 	}
 }
@@ -145,7 +145,7 @@ func TestCreate_SessionNodeNestedWriteSurvives(t *testing.T) {
 
 	// dispatcher writes a sibling "initial" key to disk (mimicking the nested
 	// `sennit task setup`), then produces normally.
-	dispatcher := `jq '.sessions["org/repo-11"].tasks.initial={"scope":"session","status":"produced","dynamic":true,"task_id":"work","name":"initial","outputs":{"instruction":"start work"}}' "$SP" > "$SP.tmp" && mv "$SP.tmp" "$SP"
+	dispatcher := `jq '.sessions["org/repo-11+claude"].tasks.initial={"scope":"session","status":"produced","dynamic":true,"task_id":"work","name":"initial","outputs":{"instruction":"start work"}}' "$SP" > "$SP.tmp" && mv "$SP.tmp" "$SP"
 echo '{}'`
 	cfg := writeWorkflowFixture(t, t.TempDir(), "claude",
 		[]taskFixture{{id: "dispatcher", scope: "session", setup: dispatcher}},
@@ -155,14 +155,14 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 
 	url := "https://github.com/org/repo/issues/11"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	session := store.Get("org/repo-11")
+	session := store.Get("org/repo-11+claude")
 	if session == nil {
 		t.Fatal("session not persisted")
 	}
@@ -195,7 +195,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 
 	url := "https://github.com/org/repo/issues/7"
 	countCreated := func() int {
@@ -237,13 +237,13 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, gate, workdir, workdir))
+`, gate, workdir, workdir)+githubResolver)
 
 	url := "https://github.com/org/repo/issues/6"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err == nil {
 		t.Fatal("expected first create to fail")
 	}
-	s := store.Get("org/repo-6")
+	s := store.Get("org/repo-6+wf")
 	if s == nil {
 		t.Fatal("failed setup must still leave an inspectable state entry")
 	}
@@ -257,7 +257,7 @@ echo '{"workdir":"%s"}'
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("retry should succeed: %v", err)
 	}
-	s = store.Get("org/repo-6")
+	s = store.Get("org/repo-6+wf")
 	if st := s.Tasks[contract.WorkflowPseudoNodeID]; st == nil || st.Status != contract.TaskStatusProduced {
 		t.Fatalf("pseudo-node after retry = %+v, want produced", st)
 	}
@@ -291,14 +291,14 @@ cleanup = '''
 rm -rf "{{.Self.workdir}}"
 touch %s
 '''
-`, workdir, workdir, marker))
+`, workdir, workdir, marker)+githubResolver)
 
 	url := "https://github.com/org/repo/issues/7"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	result, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-7"})
+	result, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-7+wf"})
 	if err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
@@ -308,7 +308,7 @@ touch %s
 	if !result.RemovedWorktree {
 		t.Error("workdir was removed by cleanup; result should report it")
 	}
-	if store.Get("org/repo-7") != nil {
+	if store.Get("org/repo-7+wf") != nil {
 		t.Error("state entry should be deleted")
 	}
 }
@@ -326,32 +326,32 @@ mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
 cleanup = "exit 9"
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 
 	url := "https://github.com/org/repo/issues/8"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	_, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-8"})
+	_, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-8+wf"})
 	if err == nil {
 		t.Fatal("expected destroy to fail-fast on cleanup error")
 	}
 	if !strings.Contains(err.Error(), "--force") {
 		t.Errorf("error should hint at --force: %v", err)
 	}
-	if store.Get("org/repo-8") == nil {
+	if store.Get("org/repo-8+wf") == nil {
 		t.Error("state entry must survive a blocked destroy")
 	}
 
-	result, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-8", Force: true})
+	result, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-8+wf", Force: true})
 	if err != nil {
 		t.Fatalf("forced destroy: %v", err)
 	}
 	if len(result.CleanupWarnings) == 0 {
 		t.Error("forced destroy should surface the cleanup failure as a warning")
 	}
-	if store.Get("org/repo-8") != nil {
+	if store.Get("org/repo-8+wf") != nil {
 		t.Error("forced destroy should delete the state entry")
 	}
 }
@@ -370,7 +370,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, gate, workdir, workdir))
+`, gate, workdir, workdir)+githubResolver)
 
 	url := "https://github.com/org/repo/issues/9"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err == nil {
@@ -383,7 +383,7 @@ echo '{"workdir":"%s"}'
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
 		t.Fatalf("Up should recover the partial create: %v", err)
 	}
-	s := store.Get("org/repo-9")
+	s := store.Get("org/repo-9+wf")
 	if st := s.Tasks[contract.WorkflowPseudoNodeID]; st == nil || st.Status != contract.TaskStatusProduced {
 		t.Fatalf("pseudo-node = %+v, want produced after Up recovery", st)
 	}

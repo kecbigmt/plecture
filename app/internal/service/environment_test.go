@@ -50,12 +50,12 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 
 	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/1"}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	s := store.Get("org/repo-1")
+	s := store.Get("org/repo-1+wf")
 	if s == nil {
 		t.Fatal("session not persisted")
 	}
@@ -80,7 +80,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
 setup = '''
 [ -d "{{.WorktreePath}}" ] && vis=yes || vis=no
@@ -95,7 +95,7 @@ required = ["marker"]
 	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/2"}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	s := store.Get("org/repo-2")
+	s := store.Get("org/repo-2+wf")
 	if s == nil {
 		t.Fatal("session not persisted")
 	}
@@ -135,7 +135,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
 setup = "exit 7"
 exec  = '"$@"'
@@ -145,7 +145,7 @@ exec  = '"$@"'
 	if err == nil {
 		t.Fatal("expected environment setup failure to abort Create")
 	}
-	s := store.Get("org/repo-3")
+	s := store.Get("org/repo-3+wf")
 	if s == nil {
 		t.Fatal("session should still be persisted (inspectable/retryable)")
 	}
@@ -173,7 +173,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
 setup = "echo '{}'"
 exec  = '"$@"'
@@ -189,7 +189,7 @@ required = ["marker"]
 	if !strings.Contains(err.Error(), "schema") {
 		t.Errorf("unexpected error: %v", err)
 	}
-	s := store.Get("org/repo-6")
+	s := store.Get("org/repo-6+wf")
 	if s == nil {
 		t.Fatal("session should still be persisted")
 	}
@@ -220,7 +220,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", fmt.Sprintf(`
 setup = "echo '{}'"
 exec  = '''
@@ -232,7 +232,7 @@ echo via-wrapper >> %s
 	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/4"}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	s := store.Get("org/repo-4")
+	s := store.Get("org/repo-4+wf")
 	probe := s.Tasks["probe"]
 	if probe == nil || probe.Status != contract.TaskStatusProduced || probe.Outputs["ok"] != "yes" {
 		t.Fatalf("probe = %+v, want produced with ok=yes (proves argv still ran correctly through the wrapper)", probe)
@@ -265,7 +265,7 @@ echo '{"workdir":"%s"}'
 cleanup = '''
 echo provider >> %s
 '''
-`, workdir, workdir, order))
+`, workdir, workdir, order)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", fmt.Sprintf(`
 setup   = "echo '{}'"
 exec    = '"$@"'
@@ -277,7 +277,7 @@ echo environment >> %s
 	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/5"}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-5"}); err != nil {
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-5+wf"}); err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
 	data, err := os.ReadFile(order)
@@ -315,7 +315,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
 setup = "exit 7"
 exec  = '"$@"'
@@ -324,7 +324,7 @@ exec  = '"$@"'
 	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/8"}); err == nil {
 		t.Fatal("expected Create to fail at environment setup")
 	}
-	s := store.Get("org/repo-8")
+	s := store.Get("org/repo-8+wf")
 	if s == nil {
 		t.Fatal("session should still be persisted (inspectable/retryable)")
 	}
@@ -332,14 +332,14 @@ exec  = '"$@"'
 		t.Fatalf("environment pseudo-node = %+v, want failed", envState)
 	}
 
-	_, upErr := Up(cfg, store, UpParams{Identifier: "org/repo-8"})
+	_, upErr := Up(cfg, store, UpParams{Identifier: "org/repo-8+wf"})
 	if upErr == nil {
 		t.Fatal("expected Up to fail closed against a session whose environment previously failed")
 	}
 	if !strings.Contains(upErr.Error(), "environment executor") {
 		t.Errorf("unexpected error: %v", upErr)
 	}
-	s = store.Get("org/repo-8")
+	s = store.Get("org/repo-8+wf")
 	// The task is recorded failed (RunSetup's normal fail-closed bookkeeping)
 	// — the point being tested is that it never reached TaskStatusProduced,
 	// i.e. its setup script never actually ran (on host or otherwise).
@@ -371,7 +371,7 @@ setup = '''
 mkdir -p %s
 echo '{"workdir":"%s"}'
 '''
-`, workdir, workdir))
+`, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
 setup = "exit 7"
 exec  = '"$@"'
@@ -381,7 +381,7 @@ exec  = '"$@"'
 		t.Fatal("expected Create to fail at environment setup")
 	}
 
-	_, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "dynamic_worker", SessionName: "org/repo-9"})
+	_, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "dynamic_worker", SessionName: "org/repo-9+wf"})
 	if err == nil {
 		t.Fatal("expected TaskSetup to fail closed against a session whose environment previously failed")
 	}

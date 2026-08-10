@@ -19,7 +19,7 @@ var subscribeCmd = &cobra.Command{
 	Use:   "subscribe <resource-id>",
 	Short: "Subscribe the current session to a resource's events",
 	Long: `Subscribe the current session to an opaque resource so its events arrive
-in its own event log (for GitHub PRs/issues: CI status, review decisions,
+in its own event log (for a code review resource: CI status, review decisions,
 state changes — readable with 'sennit event list').
 
 This is the runtime counterpart to the auto-subscribe that runs at dispatch

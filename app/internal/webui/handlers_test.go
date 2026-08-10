@@ -101,7 +101,7 @@ func get(t *testing.T, svc SessionService, path string) *httptest.ResponseRecord
 // 1. List view: GET / renders session_name, status, branch, github status.
 func TestIndex_ShowsSessions(t *testing.T) {
 	svc := &fakeService{entries: []service.ListEntry{
-		{SessionName: "acme/mm-123", Run: domain.RunUp, Health: domain.HealthHealthy, Branch: "issue/123", GitHubStatus: "open"},
+		{SessionName: "acme/mm-123", Run: domain.RunUp, Health: domain.HealthHealthy, Branch: "issue/123", DisplayStatus: "open"},
 		{SessionName: "acme/mm-456", Run: domain.RunDown, Branch: "issue/456"},
 	}}
 	rec := get(t, svc, "/")

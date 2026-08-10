@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -15,25 +14,57 @@ import (
 	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
-// shippedGithubProvider loads the real config/sennit/providers/github.toml so the
-// invariant/convergence tests exercise the scripts that ship, not a fixture.
+// shippedGithubProvider loads the provider config that ships with the GitHub
+// provider plugin, so the invariant/convergence tests exercise the hooks that
+// ship rather than a fixture. It also builds the binaries those hooks invoke
+// and puts them on PATH, since the hooks are what is under test here.
 func shippedGithubProvider(t *testing.T) config.ProviderConfig {
 	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..")
-	cfg := &config.Config{BaseDir: filepath.Join(root, "config", "sennit")}
-	provs, err := cfg.LoadProviders()
+	root := repoRoot(t)
+	buildProviderBinaries(t, root)
+	return loadShippedProvider(t, "github-provider", "github")
+}
+
+// goToolCaches holds the module and build cache locations resolved before any
+// test rewrites HOME. Without them, a build issued from a test whose HOME is a
+// temp directory would populate a throwaway module cache on every run.
+var goToolCaches = resolveGoToolCaches()
+
+func resolveGoToolCaches() []string {
+	out, err := exec.Command("go", "env", "GOMODCACHE", "GOCACHE").Output()
 	if err != nil {
-		t.Fatalf("load shipped providers: %v", err)
+		return nil
 	}
-	p, ok := provs["github"]
-	if !ok {
-		t.Fatal("shipped github provider not found")
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) != 2 {
+		return nil
 	}
-	return p
+	return []string{"GOMODCACHE=" + lines[0], "GOCACHE=" + lines[1]}
+}
+
+// buildProviderBinaries compiles the sennit CLI and the GitHub provider
+// executable into a temp directory that is prepended to PATH, so the shipped
+// hooks resolve to the code in this working tree.
+func buildProviderBinaries(t *testing.T, root string) {
+	t.Helper()
+	binDir := filepath.Join(t.TempDir(), "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	build := func(moduleDir, pkg, out string) {
+		t.Helper()
+		cmd := exec.Command("go", "build", "-o", filepath.Join(binDir, out), pkg)
+		cmd.Dir = filepath.Join(root, moduleDir)
+		cmd.Env = append(os.Environ(), goToolCaches...)
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("build %s: %v", out, err)
+		}
+	}
+	build("app", "./cmd/sennit", "sennit")
+	build(filepath.Join("plugins", "github-provider"), "./cmd/sennit-github-provider", "sennit-github-provider")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 // setupHomeRepo builds the bare-ish layout the github provider expects under

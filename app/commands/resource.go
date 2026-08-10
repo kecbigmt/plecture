@@ -31,7 +31,7 @@ dynamic output reads from ('sennit task setup --resource'); this command lets it
 be read outside any one task instance.
 
 Example:
-  sennit resource status https://github.com/o/r/pull/5`,
+  sennit resource status <resource-id>`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()

@@ -29,7 +29,7 @@ tasks. Does not auto-start the runtime — use 'sennit up' next to launch
 run-scoped tasks.
 
 The resource identifier is any string. A workflow whose [resolver] matches
-is auto-selected (GitHub issue/PR URLs and PVTI_xxx project items today);
+is auto-selected;
 otherwise pass --workflow — with a resolver-less workflow the identifier
 itself becomes the session id.
 
@@ -37,7 +37,7 @@ itself becomes the session id.
 the workflow id, so two tools acting on one resource (e.g. claude work and
 codex review) get distinct, non-colliding workspaces without the caller having
 to spell out a tag. Pass --tag explicitly to label a retry/experiment/parallel
-session. The label is provider-agnostic; the GitHub provider materializes it as
+session. The label is provider-agnostic; a provider may materialize it as
 a branch/worktree suffix, but that mapping is an implementation detail.
 
 Pass session inputs via --inputs '{"key":"value"}' or --inputs-file <path>.
@@ -84,7 +84,7 @@ session's initial task without hand-writing JSON. Workflows that declare
 }
 
 func init() {
-	createCmd.Flags().StringVar(&createTag, "tag", "", "Workspace-identity label for the session (e.g. review). Defaults to the workflow id, so two tools on one resource get separate workspaces. Provider-agnostic: the GitHub provider maps it to a branch/worktree suffix, but that is an implementation detail.")
+	createCmd.Flags().StringVar(&createTag, "tag", "", "Workspace-identity label for the session (e.g. review). Defaults to the workflow id, so two tools on one resource get separate workspaces. Provider-agnostic: a provider may map it to a branch/worktree suffix, but that is an implementation detail.")
 	createCmd.Flags().StringVarP(&createWorkflow, "workflow", "w", "", "Workflow id — filename stem of .sennit/workflows/<id>.toml")
 	createCmd.Flags().StringVar(&createInputs, "inputs", "", "Session inputs as a JSON object string")
 	createCmd.Flags().StringVar(&createInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object")

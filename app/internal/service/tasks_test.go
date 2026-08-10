@@ -48,16 +48,13 @@ func seedSession(t *testing.T, store interface {
 	t.Helper()
 	now := time.Now()
 	session := &domain.Session{
-		Name:      sessionName,
-		URL:       "https://github.com/" + ownerRepo + "/issues/1",
-		URLType:   "issue",
-		OwnerRepo: ownerRepo,
-		Number:    number,
-		Branch:    "issue/1",
-		Workflow:  workflow,
-		Tasks:     tasks,
-		CreatedAt: now,
-		UpdatedAt: now,
+		Name:       sessionName,
+		ResourceID: fmt.Sprintf("https://github.com/%s/issues/%d", ownerRepo, number),
+		Branch:     "issue/1",
+		Workflow:   workflow,
+		Tasks:      tasks,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	if err := store.Put(session); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -122,8 +119,7 @@ func TestUp_RejectsInputWhenSessionExists(t *testing.T) {
 	sessionName := "org/repo-9"
 	seedSession(t, store, sessionName, "org/repo", 9, "", nil)
 
-	url := "https://github.com/org/repo/issues/9"
-	_, err := Up(cfg, store, UpParams{Identifier: url, Inputs: map[string]any{"template": "review"}})
+	_, err := Up(cfg, store, UpParams{Identifier: sessionName, Inputs: map[string]any{"template": "review"}})
 	if err == nil {
 		t.Fatal("expected error when --input is passed against an existing session")
 	}
@@ -133,9 +129,6 @@ func TestUp_RejectsInputWhenSessionExists(t *testing.T) {
 	}
 	if svcErr.Code != ErrInvalidInput {
 		t.Errorf("Code = %q, want %q", svcErr.Code, ErrInvalidInput)
-	}
-	if !strings.Contains(svcErr.Message, "destroy and recreate") {
-		t.Errorf("Message should hint at destroy+recreate, got %q", svcErr.Message)
 	}
 }
 

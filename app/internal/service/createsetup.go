@@ -9,64 +9,10 @@ import (
 	"github.com/kecbigmt/sennit/app/internal/dispatch"
 	"github.com/kecbigmt/sennit/app/internal/domain"
 	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/app/internal/task"
 	contract "github.com/kecbigmt/sennit/contracts/state"
 )
-
-// setupWorkflowFor decides whether a GitHub-URL create (no resolver matched)
-// should still go through the workflow setup path, returning the resolved
-// workflow when so. This is the bridge for workflows that declare `setup`
-// but no `[resolver]`: session naming stays the legacy owner/repo-<number>
-// derivation while workdir acquisition already runs through the hook.
-//
-// The decision must happen before any working directory exists, so only the
-// trusted base layers (plugin + global) are consulted — the ancestor overlay
-// chain is anchored at the workdir, which doesn't exist yet. Selection:
-//
-//  1. an existing session's frozen workflow wins
-//  2. then the --workflow flag
-//  3. then auto-select when the trusted cascade has exactly one workflow
-//
-// Any failure to resolve (unknown name, ambiguity, no setup declared) falls
-// back to the legacy path, which re-runs the old selection logic against the
-// post-Add worktree and surfaces its own errors.
-func setupWorkflowFor(cfg *config.Config, store *state.Store, params CreateParams, parsed *gh.ParsedURL) (config.WorkflowFile, config.ProviderConfig, bool) {
-	name := params.Workflow
-	sessionName := gh.SessionName(parsed.OwnerRepo, parsed.Number)
-	if params.Tag != "" {
-		sessionName = gh.SessionNameWithTag(parsed.OwnerRepo, parsed.Number, params.Tag)
-	}
-	if existing := store.Get(sessionName); existing != nil && existing.Workflow != "" {
-		name = existing.Workflow
-	}
-	workflows, err := cfg.LoadWorkflows("")
-	if err != nil {
-		return config.WorkflowFile{}, config.ProviderConfig{}, false
-	}
-	if name == "" {
-		if len(workflows) != 1 {
-			return config.WorkflowFile{}, config.ProviderConfig{}, false
-		}
-		for n := range workflows {
-			name = n
-		}
-	}
-	wf, ok := workflows[name]
-	if !ok || wf.Provider == "" {
-		return config.WorkflowFile{}, config.ProviderConfig{}, false
-	}
-	providers, err := cfg.LoadProviders()
-	if err != nil {
-		return config.WorkflowFile{}, config.ProviderConfig{}, false
-	}
-	prov, ok, provErr := providerFor(wf, providers)
-	if provErr != nil || !ok {
-		return config.WorkflowFile{}, config.ProviderConfig{}, false
-	}
-	return wf, prov, true
-}
 
 // createWithWorkflowSetup is the workflow-setup create path:
 //
@@ -85,15 +31,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	}
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
-	}
-
-	// Legacy compat fields (URL/URLType/OwnerRepo/Number) stay populated for
-	// GitHub-shaped resources so existing consumers (web UI) keep working;
-	// non-GitHub resources leave them at their zero values and consumers
-	// fall back to ResourceID.
-	var parsed *gh.ParsedURL
-	if p, err := gh.ParseURL(resource); err == nil {
-		parsed = p
 	}
 
 	now := time.Now()
@@ -141,15 +78,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	}
 	session.ResourceID = resource
 	session.Alias = alias
-	if parsed != nil {
-		session.URL = parsed.URL()
-		session.URLType = string(parsed.Type)
-		session.OwnerRepo = parsed.OwnerRepo
-		session.Number = parsed.Number
-	} else if session.URL == "" {
-		// Display compat: surfaces (ls/show/web UI) render URL today.
-		session.URL = resource
-	}
 	session.UpdatedAt = now
 
 	// Record the session before setup so partial failures stay visible.
@@ -171,8 +99,8 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	session.UpdatedAt = time.Now()
 	if outputs != nil {
 		if workdir, ok := outputs[contract.OutputKeyWorkdir].(string); ok {
-			// Mirror into the legacy field so every existing consumer
-			// (cd/attach/ls/web UI/hooks) keeps working unchanged.
+			// The session's own working-directory field is the one every
+			// consumer (cd/attach/ls/web UI/hooks) reads, so mirror it here.
 			session.WorktreePath = workdir
 		}
 		if branch, ok := outputs["branch"].(string); ok && branch != "" {

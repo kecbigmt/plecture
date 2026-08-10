@@ -1,0 +1,39 @@
+# GitHub provider: maps issue and pull request URLs to session ids, and owns
+# the git worktree those sessions work in.
+#
+# The resolver is pure regex plus template, so a session id is derived
+# offline and never depends on the GitHub API being reachable. Acquisition
+# and release run through sennit-github-provider, which resolves the branch
+# for the resource and then calls `sennit workspace add` / `sennit workspace
+# remove` for the generic worktree handling.
+
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
+name = "{{.owner}}/{{.repo}}-{{.number}}"
+
+setup = 'sennit-github-provider setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}}'
+cleanup = 'sennit-github-provider cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --force={{.Force}}'
+
+[outputs_schema]
+type = "object"
+required = ["workdir", "branch"]
+
+[outputs_schema.properties.workdir]
+type = "string"
+
+[outputs_schema.properties.branch]
+type = "string"
+
+[outputs_schema.properties.url]
+type = "string"
+
+[outputs_schema.properties.owner_repo]
+type = "string"
+
+[outputs_schema.properties.owner]
+type = "string"
+
+[outputs_schema.properties.repo]
+type = "string"
+
+[outputs_schema.properties.number]
+type = "integer"

@@ -364,13 +364,10 @@ func removeSessionName(names []string, remove string) []string {
 	return uniqueSessionNames(out)
 }
 
-// migrateResourceID backfills the v3 identity fields from the legacy URL.
-// Pre-v3 sessions were always GitHub-URL-derived, so the URL is both the
-// canonical resource id and the string the user originally typed.
+// migrateResourceID backfills the create-time alias from the canonical
+// resource id, which is what a session created without an explicit alias
+// was looked up by.
 func migrateResourceID(session *domain.Session) {
-	if session.ResourceID == "" && session.URL != "" {
-		session.ResourceID = session.URL
-	}
 	if session.Alias == "" && session.ResourceID != "" {
 		session.Alias = session.ResourceID
 	}

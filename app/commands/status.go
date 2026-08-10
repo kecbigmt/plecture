@@ -42,8 +42,8 @@ Observation-only: by default it reads whatever was last persisted. Pass
 
 No provider-specific field exists here — a PR's review decision or checks
 status appears under "work" only when the workflow's task publishes it as an
-output (most github-provider workflows do, for done_when). "sennit ls" still
-carries the legacy GitHub summary line for sessions predating that.`,
+output (most workflows do, for done_when). "sennit ls" still carries the
+workflow's own display status line.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if statusFull && !statusJSON {

@@ -16,10 +16,6 @@ import (
 func TestClassifySession_WorktreeMissing(t *testing.T) {
 	s := &domain.Session{
 		Name:         "owner/repo-1",
-		URL:          "https://github.com/owner/repo/issues/1",
-		URLType:      "issue",
-		OwnerRepo:    "owner/repo",
-		Number:       1,
 		WorktreePath: "/nonexistent/path",
 	}
 	entry, _ := classifySession(s, nil, map[string]*domain.Session{s.Name: s})
@@ -61,10 +57,6 @@ func TestClassifySession_DirtyWorktree_Unhealthy(t *testing.T) {
 
 	s := &domain.Session{
 		Name:         "owner/repo-11",
-		URL:          "https://github.com/owner/repo/pull/11",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       11,
 		WorktreePath: wtPath,
 		Tasks:        map[string]*contract.TaskState{"runtime": producedRuntimeTask()},
 	}
@@ -92,10 +84,6 @@ func TestClassifySession_Unhealthy_CleanWorktree(t *testing.T) {
 
 	s := &domain.Session{
 		Name:         "owner/repo-12",
-		URL:          "https://github.com/owner/repo/pull/12",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       12,
 		WorktreePath: wtPath,
 		Tasks:        map[string]*contract.TaskState{"runtime": producedRuntimeTask()},
 	}
@@ -123,10 +111,6 @@ func TestClassifySession_Healthy_PassingHealthcheck(t *testing.T) {
 
 	s := &domain.Session{
 		Name:         "owner/repo-13",
-		URL:          "https://github.com/owner/repo/pull/13",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       13,
 		WorktreePath: wtPath,
 		Tasks:        map[string]*contract.TaskState{"runtime": producedRuntimeTask()},
 	}
@@ -158,10 +142,6 @@ func TestGC_DryRun_WorktreeMissing(t *testing.T) {
 	now := time.Now()
 	store.Put(&domain.Session{
 		Name:         "owner/repo-1",
-		URL:          "https://github.com/owner/repo/issues/1",
-		URLType:      "issue",
-		OwnerRepo:    "owner/repo",
-		Number:       1,
 		WorktreePath: "/nonexistent/path",
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -198,20 +178,12 @@ func TestGC_ExecuteWorktreeMissing_SkipsWhenChildrenExist(t *testing.T) {
 	now := time.Now()
 	store.Put(&domain.Session{
 		Name:         "owner/repo-1",
-		URL:          "https://github.com/owner/repo/issues/1",
-		URLType:      "issue",
-		OwnerRepo:    "owner/repo",
-		Number:       1,
 		WorktreePath: "/nonexistent/path",
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	})
 	store.Put(&domain.Session{
 		Name:          "owner/repo-2",
-		URL:           "https://github.com/owner/repo/issues/2",
-		URLType:       "issue",
-		OwnerRepo:     "owner/repo",
-		Number:        2,
 		ParentSession: "owner/repo-1",
 		CreatedAt:     now,
 		UpdatedAt:     now,
@@ -283,9 +255,6 @@ func TestClassifySession_NoTaskDoneWhenIsNeverAutoDeleted(t *testing.T) {
 	wtPath := cleanGitWorktree(t)
 	s := &domain.Session{
 		Name:         "owner/repo-20",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       20,
 		WorktreePath: wtPath,
 		Workflow:     "wf",
 	}
@@ -324,10 +293,6 @@ func TestGC_ExecuteDone_DestroysViaTaskCleanup(t *testing.T) {
 	now := time.Now()
 	store.Put(&domain.Session{
 		Name:         "owner/repo-30",
-		URL:          "https://github.com/owner/repo/pull/30",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       30,
 		WorktreePath: wtPath,
 		Workflow:     "wf",
 		Tasks: map[string]*contract.TaskState{
@@ -409,10 +374,6 @@ func TestGC_ExecuteDone_SkipsWhenChildrenExist(t *testing.T) {
 	now := time.Now()
 	store.Put(&domain.Session{
 		Name:         "owner/repo-30",
-		URL:          "https://github.com/owner/repo/pull/30",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       30,
 		WorktreePath: wtPath,
 		Workflow:     "wf",
 		Tasks: map[string]*contract.TaskState{
@@ -431,10 +392,6 @@ func TestGC_ExecuteDone_SkipsWhenChildrenExist(t *testing.T) {
 	// isolating this test to the parent's own skip-when-children behavior.
 	store.Put(&domain.Session{
 		Name:          "owner/repo-31",
-		URL:           "https://github.com/owner/repo/issues/31",
-		URLType:       "issue",
-		OwnerRepo:     "owner/repo",
-		Number:        31,
 		WorktreePath:  childWtPath,
 		ParentSession: "owner/repo-30",
 		CreatedAt:     now,
@@ -499,10 +456,6 @@ func TestGC_MissingFrozenWorkflowIsManual(t *testing.T) {
 	now := time.Now()
 	store.Put(&domain.Session{
 		Name:         "owner/repo-40",
-		URL:          "https://github.com/owner/repo/pull/40",
-		URLType:      "pr",
-		OwnerRepo:    "owner/repo",
-		Number:       40,
 		WorktreePath: wtPath,
 		Workflow:     "renamed-away",
 		CreatedAt:    now,
@@ -538,10 +491,6 @@ func TestGC_WorktreeMissingWinsOverMissingWorkflow(t *testing.T) {
 	now := time.Now()
 	store.Put(&domain.Session{
 		Name:         "owner/repo-41",
-		URL:          "https://github.com/owner/repo/issues/41",
-		URLType:      "issue",
-		OwnerRepo:    "owner/repo",
-		Number:       41,
 		WorktreePath: "/nonexistent/owner/repo/issue-41",
 		Workflow:     "repo-local-workflow",
 		CreatedAt:    now,

@@ -38,7 +38,7 @@ func TestLoad_UserGlobalOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	customContent := "Custom work template for {{.OwnerRepo}}"
+	customContent := "Custom work template for {{.SessionName}}"
 	if err := os.WriteFile(filepath.Join(templateDir, "work.md"), []byte(customContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -77,12 +77,14 @@ func TestLoad_RepoSpecificOverride(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
+	// Isolate the user-global template layer so the embedded defaults are
+	// what gets rendered.
+	t.Setenv("HOME", t.TempDir())
+
 	vars := Vars{
-		URL:       "https://github.com/org/repo/issues/42",
-		Number:    42,
-		Repo:      "repo",
-		OwnerRepo: "org/repo",
-		Mode:      "work",
+		Workflow:   map[string]any{"owner_repo": "org/repo", "number": 42},
+		ResourceID: "https://example.test/org/repo/items/42",
+		Mode:       "work",
 	}
 
 	result, err := Render("work", "", vars)
@@ -93,17 +95,19 @@ func TestRender(t *testing.T) {
 	if !strings.Contains(result, "org/repo#42") {
 		t.Errorf("Render() result does not contain 'org/repo#42': %s", result)
 	}
-	if !strings.Contains(result, vars.URL) {
-		t.Errorf("Render() result does not contain URL: %s", result)
+	if !strings.Contains(result, vars.ResourceID) {
+		t.Errorf("Render() result does not contain the resource id: %s", result)
 	}
 }
 
 func TestRender_WithInstruction(t *testing.T) {
+	// Isolate the user-global template layer so the embedded defaults are
+	// what gets rendered.
+	t.Setenv("HOME", t.TempDir())
+
 	vars := Vars{
-		URL:         "https://github.com/org/repo/issues/1",
-		Number:      1,
-		Repo:        "repo",
-		OwnerRepo:   "org/repo",
+		Workflow:    map[string]any{"owner_repo": "org/repo", "number": 42},
+		ResourceID:  "https://example.test/org/repo/items/42",
 		Mode:        "work",
 		Instruction: "Use Japanese comments",
 	}
@@ -119,15 +123,17 @@ func TestRender_WithInstruction(t *testing.T) {
 }
 
 func TestRender_DefaultTemplates(t *testing.T) {
+	// Isolate the user-global template layer so the embedded defaults are
+	// what gets rendered.
+	t.Setenv("HOME", t.TempDir())
+
 	modes := []string{"review", "respond", "work", "investigate"}
 	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			vars := Vars{
-				URL:       "https://github.com/org/repo/issues/10",
-				Number:    10,
-				Repo:      "repo",
-				OwnerRepo: "org/repo",
-				Mode:      mode,
+				Workflow:   map[string]any{"owner_repo": "org/repo", "number": 42},
+				ResourceID: "https://example.test/org/repo/items/42",
+				Mode:       mode,
 			}
 			result, err := Render(mode, "", vars)
 			if err != nil {
@@ -141,12 +147,14 @@ func TestRender_DefaultTemplates(t *testing.T) {
 }
 
 func TestRender_UnknownTemplate(t *testing.T) {
+	// Isolate the user-global template layer so the embedded defaults are
+	// what gets rendered.
+	t.Setenv("HOME", t.TempDir())
+
 	vars := Vars{
-		URL:       "https://github.com/org/repo/issues/1",
-		Number:    1,
-		Repo:      "repo",
-		OwnerRepo: "org/repo",
-		Mode:      "nonexistent",
+		Workflow:   map[string]any{"owner_repo": "org/repo", "number": 42},
+		ResourceID: "https://example.test/org/repo/items/42",
+		Mode:       "nonexistent",
 	}
 	_, err := Render("nonexistent", "", vars)
 	if err == nil {
@@ -158,10 +166,8 @@ func TestRender_VarsExpansion(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	vars := Vars{
-		URL:         "https://github.com/myorg/myrepo/pull/99",
-		Number:      99,
-		Repo:        "myrepo",
-		OwnerRepo:   "myorg/myrepo",
+		Workflow:    map[string]any{"owner_repo": "myorg/myrepo", "number": 99},
+		ResourceID:  "https://example.test/myorg/myrepo/items/99",
 		Mode:        "review",
 		Instruction: "Focus on security",
 	}
@@ -175,8 +181,8 @@ func TestRender_VarsExpansion(t *testing.T) {
 		label string
 		want  string
 	}{
-		{"URL", vars.URL},
-		{"OwnerRepo#Number", "myorg/myrepo#99"},
+		{"resource id", vars.ResourceID},
+		{"repository and number", "myorg/myrepo#99"},
 	}
 	for _, c := range checks {
 		if !strings.Contains(result, c.want) {
@@ -185,11 +191,11 @@ func TestRender_VarsExpansion(t *testing.T) {
 	}
 }
 
-func TestRender_SessionVarsNoURL(t *testing.T) {
+func TestRender_SessionVarsWithoutProviderOutputs(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	// Workdir overlay rooted at the session's working tree (not a GitHub repo).
+	// Workdir overlay rooted at the session's working tree, not a repository.
 	workdir := t.TempDir()
 	sennitDir := filepath.Join(workdir, ".sennit", "templates")
 	if err := os.MkdirAll(sennitDir, 0o755); err != nil {
@@ -329,18 +335,20 @@ func TestLoadWithMetadata(t *testing.T) {
 	if strings.Contains(body, "---") {
 		t.Error("body should not contain frontmatter delimiters")
 	}
-	if !strings.Contains(body, "{{.OwnerRepo}}") {
+	if !strings.Contains(body, "{{.Workflow.outputs.owner_repo}}") {
 		t.Error("body should contain template variables")
 	}
 }
 
 func TestRender_StripsFrontmatter(t *testing.T) {
+	// Isolate the user-global template layer so the embedded defaults are
+	// what gets rendered.
+	t.Setenv("HOME", t.TempDir())
+
 	vars := Vars{
-		URL:       "https://github.com/org/repo/pull/1",
-		Number:    1,
-		Repo:      "repo",
-		OwnerRepo: "org/repo",
-		Mode:      "review",
+		Workflow:   map[string]any{"owner_repo": "org/repo", "number": 42},
+		ResourceID: "https://example.test/org/repo/items/42",
+		Mode:       "review",
 	}
 	result, err := Render("review", "", vars)
 	if err != nil {

@@ -61,7 +61,7 @@ from --input first, then the workflow/provider outputs, then the session inputs.
 
 Examples:
   sennit task setup work --input instruction="fix the flaky test"
-  sennit task setup review --name initial --resource https://github.com/o/r/pull/5
+  sennit task setup review --name initial --resource <resource-id>
   sennit task setup work --done-when-json '{"all":[{"judge":"Codex review approved","id":"codex-review","relation":["sibling"]}]}'`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

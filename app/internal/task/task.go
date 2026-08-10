@@ -117,7 +117,7 @@ func (p *Plan) CaptureTask() (*Resolved, error) {
 }
 
 // RenderAttach expands the attach template against the task's own outputs
-// and session vars (.Self / .SessionName / .WorktreePath / .URL / ...).
+// and session vars (.Self / .SessionName / .WorktreePath / .ResourceID / ...).
 // Uses the same strict missingkey semantics as setup — an unset .Self.<key>
 // is a contract violation, surfaced as an error instead of an empty arg.
 func RenderAttach(cmd string, selfOutputs map[string]any, session SessionVars) (string, error) {
@@ -617,8 +617,6 @@ type SessionVars struct {
 	ResourceID    string
 	ParentSession string
 	WorktreePath  string
-	URL           string
-	OwnerRepo     string
 	Branch        string
 	Inputs        map[string]any
 }
@@ -634,6 +632,17 @@ var templateFuncs = template.FuncMap{
 			return v
 		}
 		return ""
+	},
+	// shellQuote renders a value as a single-quoted POSIX shell word, so a
+	// hook author can interpolate a resource id, session name, or persisted
+	// output into a command string without the shell that runs it treating
+	// embedded quotes, semicolons, or command substitution as syntax. Every
+	// value crossing this template boundary is attacker-influenced at some
+	// remove (resource ids and session tags both come from create's caller),
+	// so a hook command must quote each templated value it interpolates
+	// rather than rely on surrounding literal quotes in the command string.
+	"shellQuote": func(v any) string {
+		return "'" + strings.ReplaceAll(fmt.Sprint(v), "'", `'\''`) + "'"
 	},
 }
 
@@ -755,8 +764,6 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		ResourceID    string
 		ParentSession string
 		WorktreePath  string
-		URL           string
-		OwnerRepo     string
 		Branch        string
 	}{
 		Self:          normalizeOutputs(ctx.Self),
@@ -771,8 +778,6 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		ResourceID:    ctx.Session.ResourceID,
 		ParentSession: ctx.Session.ParentSession,
 		WorktreePath:  ctx.Session.WorktreePath,
-		URL:           ctx.Session.URL,
-		OwnerRepo:     ctx.Session.OwnerRepo,
 		Branch:        ctx.Session.Branch,
 	}
 	if data.Self == nil {

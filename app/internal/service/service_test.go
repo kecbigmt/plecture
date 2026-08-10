@@ -87,18 +87,18 @@ func TestResolveSession_BySessionName(t *testing.T) {
 	}
 }
 
-func TestResolveSession_InvalidURL(t *testing.T) {
+func TestResolveSession_UnknownIdentifier(t *testing.T) {
 	store := testStore(t)
-	_, _, err := resolveSession(nil, store, "https://not-github.com/org/repo")
+	_, _, err := resolveSession(nil, store, "https://example.test/org/repo")
 	if err == nil {
-		t.Fatal("expected error for invalid URL")
+		t.Fatal("expected error for an identifier with no state entry")
 	}
 	svcErr, ok := err.(*Error)
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrInvalidURL {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrInvalidURL)
+	if svcErr.Code != ErrWorkspaceNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
 	}
 }
 
@@ -129,19 +129,19 @@ func TestValidTag(t *testing.T) {
 	}
 }
 
-func TestStatus_InvalidURL(t *testing.T) {
+func TestStatus_UnknownIdentifier(t *testing.T) {
 	cfg := &config.Config{}
 	store := testStore(t)
-	_, err := Status(cfg, store, "https://not-github.com/org/repo")
+	_, err := Status(cfg, store, "https://example.test/org/repo")
 	if err == nil {
-		t.Fatal("expected error for invalid URL")
+		t.Fatal("expected error for an identifier with no state entry")
 	}
 	svcErr, ok := err.(*Error)
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrInvalidURL {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrInvalidURL)
+	if svcErr.Code != ErrWorkspaceNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
 	}
 }
 
@@ -230,7 +230,7 @@ func TestStatus_ProjectsTree(t *testing.T) {
 	wt := t.TempDir()
 	for _, n := range []string{"org/repo-1", "org/repo-2", "org/repo-3"} {
 		if err := store.Put(&domain.Session{
-			Name: n, OwnerRepo: "org/repo", CreatedAt: now, UpdatedAt: now,
+			Name: n, CreatedAt: now, UpdatedAt: now,
 			WorktreePath: wt,
 		}); err != nil {
 			t.Fatalf("seed %s: %v", n, err)
@@ -267,10 +267,6 @@ func TestSetConversation(t *testing.T) {
 	now := time.Now()
 	store.Put(&domain.Session{
 		Name:      "owner/repo-1",
-		URL:       "https://github.com/owner/repo/issues/1",
-		URLType:   "issue",
-		OwnerRepo: "owner/repo",
-		Number:    1,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
@@ -280,7 +276,7 @@ func TestSetConversation(t *testing.T) {
 		URL:      "https://exampleorg.slack.com/archives/C123/p456",
 		Metadata: map[string]string{"thread_ts": "456", "channel_id": "C123"},
 	}
-	err := SetConversation(nil, store, "https://github.com/owner/repo/issues/1", conv)
+	err := SetConversation(nil, store, "owner/repo-1", conv)
 	if err != nil {
 		t.Fatalf("SetConversation() error: %v", err)
 	}
@@ -348,10 +344,6 @@ func TestSetMessage(t *testing.T) {
 	now := time.Now()
 	store.Put(&domain.Session{
 		Name:      "owner/repo-1",
-		URL:       "https://github.com/owner/repo/issues/1",
-		URLType:   "issue",
-		OwnerRepo: "owner/repo",
-		Number:    1,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})
@@ -438,13 +430,13 @@ func TestApplyDisplay_OverridesFromOutputs(t *testing.T) {
 			},
 		},
 	}
-	cached := cachedInfo{Title: "from-cache", GitHubStatus: "cache-status"}
+	cached := cachedInfo{Title: "from-cache", DisplayStatus: "cache-status"}
 	applyDisplay(workflows, s, &cached)
 	if cached.Title != "Fix the bug" {
 		t.Errorf("Title = %q, want display override", cached.Title)
 	}
-	if cached.GitHubStatus != "open" {
-		t.Errorf("GitHubStatus = %q, want open", cached.GitHubStatus)
+	if cached.DisplayStatus != "open" {
+		t.Errorf("GitHubStatus = %q, want open", cached.DisplayStatus)
 	}
 }
 

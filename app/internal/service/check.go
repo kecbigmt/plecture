@@ -493,10 +493,7 @@ func sessionResourceForCheck(session *domain.Session, st *contract.TaskState) st
 	if st.Resource != "" {
 		return st.Resource
 	}
-	if session.ResourceID != "" {
-		return session.ResourceID
-	}
-	return session.URL
+	return session.ResourceID
 }
 
 func reviewerDispatchCommand(resource, instance string) string {
@@ -776,11 +773,11 @@ func unmetItemSummary(item CheckUnmetItem) string {
 }
 
 // mergeableStateHint surfaces a PR merge conflict as an advisory kick note
-// rather than a done_when leaf: GitHub never runs CI on a dirty PR, so
-// checks_status would otherwise sit PENDING forever and the session would
-// wait indefinitely for CI that will never arrive. "unknown" (GitHub
-// still computing mergeability) and "NULL" (no PR to read it from) are
-// intentionally silent.
+// rather than a done_when leaf: a review host generally does not run CI on a
+// change with merge conflicts, so checks_status would otherwise sit PENDING
+// forever and the session would wait indefinitely for CI that will never
+// arrive. "unknown" (mergeability still being computed) and "NULL" (nothing
+// to read it from) are intentionally silent.
 func mergeableStateHint(outputs map[string]any) string {
 	v, ok := outputs[outputKeyMergeableState]
 	if !ok {

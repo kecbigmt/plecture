@@ -32,9 +32,9 @@ var templateFuncs = template.FuncMap{
 // Vars is the variable bundle for prompt templates. The session-derived fields
 // mirror the task render context (SessionName / ResourceID / WorktreePath /
 // Workflow outputs / SessionInputs) so a template authored for a task reads
-// the same way here. The GitHub fields (URL / Number / Repo / OwnerRepo) are an
-// optional compatibility layer: populated for GitHub-shaped sessions (or a
-// legacy `--url`), left zero otherwise.
+// the same way here. Anything resource-shaped a template needs beyond the
+// resource id comes from the provider's setup outputs, exposed as
+// .Workflow.outputs.<key>.
 type Vars struct {
 	Mode        string
 	Instruction string
@@ -45,12 +45,6 @@ type Vars struct {
 	WorktreePath  string
 	Workflow      map[string]any // provider setup outputs, exposed as .Workflow.outputs.<key>
 	SessionInputs map[string]any // session inputs + explicit --var, exposed as .SessionInputs.<key>
-
-	// GitHub compatibility (optional).
-	URL       string
-	Number    int
-	Repo      string
-	OwnerRepo string
 }
 
 // Metadata holds frontmatter fields parsed from a template.
@@ -113,7 +107,7 @@ func LoadWithMetadata(mode, searchDir string) (Metadata, string, error) {
 //  2. ~/.config/sennit/templates/<mode>.md (user global)
 //  3. embedded defaults
 //
-// searchDir is the session's workdir, not a GitHub repo path: the overlay is
+// searchDir is the session's workdir, not a repository path: the overlay is
 // rooted at the working tree so it works for any provider.
 func Load(mode, searchDir string) (string, error) {
 	filename := mode + ".md"
@@ -204,10 +198,6 @@ func Render(mode, searchDir string, vars Vars) (string, error) {
 		WorktreePath  string
 		Workflow      map[string]any
 		SessionInputs map[string]any
-		URL           string
-		Number        int
-		Repo          string
-		OwnerRepo     string
 	}{
 		Mode:          vars.Mode,
 		Instruction:   vars.Instruction,
@@ -216,10 +206,6 @@ func Render(mode, searchDir string, vars Vars) (string, error) {
 		WorktreePath:  vars.WorktreePath,
 		Workflow:      map[string]any{"outputs": outputs},
 		SessionInputs: inputs,
-		URL:           vars.URL,
-		Number:        vars.Number,
-		Repo:          vars.Repo,
-		OwnerRepo:     vars.OwnerRepo,
 	}
 
 	var buf bytes.Buffer

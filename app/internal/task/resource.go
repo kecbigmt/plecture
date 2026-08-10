@@ -49,10 +49,9 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (co
 // means no resource definition recognizes this id — the Resource contract is
 // optional, most instance-local resources have no declared kind. branch and
 // worktreePath describe the owning session (both empty for a standalone
-// `sennit resource status` call, which has no owning session) —
-// resources/github.toml's observe derives the current branch from
-// worktreePath as its primary PR-identity signal and falls back to
-// closing-PR discovery.
+// `sennit resource status` call, which has no owning session) — an observe
+// script may derive the current branch from worktreePath as its primary
+// identity signal for the resource.
 func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branch string, worktreePath string) (map[string]any, config.ResourceDef, bool, error) {
 	def, ok, err := MatchResourceDef(defs, resourceID)
 	if err != nil || !ok {

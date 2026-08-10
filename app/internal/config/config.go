@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -60,16 +59,12 @@ const (
 
 type Config struct {
 	WorktreesRoot string `toml:"worktrees_root"`
-	// RepoAllowlist is the legacy GitHub-shaped allowlist (owner/repo exact
-	// match). Superseded by ResourceAllowlist; kept as a compat alias —
-	// entries are honored for inputs that look like GitHub URLs.
-	RepoAllowlist []string `toml:"repo_allowlist"`
 	// ResourceAllowlist is the security boundary for `sennit create`: regex
 	// patterns the resource identifier must match. The boundary exists
 	// because agents (MCP) can invoke sennit with arbitrary input, and a
 	// session create executes trusted-layer shell against that input.
-	// Only the user-owned global config can declare it. Empty (together
-	// with RepoAllowlist) means allow all.
+	// Only the user-owned global config can declare it. Empty means allow
+	// all.
 	ResourceAllowlist []string `toml:"resource_allowlist"`
 	// PluginDirs lists plugin config roots (each containing workflows/ and
 	// tasks/ subdirectories). Plugins form the base cascade layer: the
@@ -100,7 +95,6 @@ func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
 		WorktreesRoot: filepath.Join(home, "worktrees"),
-		RepoAllowlist: nil,
 		Detached:      true,
 		SessionGuard:  os.Getenv("SENNIT_SESSION_GUARD"),
 	}
@@ -180,19 +174,6 @@ func configFileDir(path string) string {
 	return filepath.Dir(path)
 }
 
-// IsRepoAllowed checks if the given owner/repo is in the allowlist.
-// If the allowlist is empty, all repos are allowed.
-//
-// Note the asymmetry with IsResourceAllowed: a non-empty ResourceAllowlist
-// alone does not make this stricter — legacy callers that already hold an
-// owner/repo keep their existing semantics.
-func (c *Config) IsRepoAllowed(ownerRepo string) bool {
-	if len(c.RepoAllowlist) == 0 {
-		return true
-	}
-	return slices.Contains(c.RepoAllowlist, ownerRepo)
-}
-
 // IsSessionNameAllowed enforces the per-session SessionGuard boundary against
 // a *resolved* session name. It is orthogonal to the allowlist: the allowlist
 // is a static user-owned ceiling on resource identifiers, while SessionGuard
@@ -215,22 +196,14 @@ func (c *Config) IsSessionNameAllowed(sessionName string) (bool, error) {
 	return re.MatchString(sessionName), nil
 }
 
-// githubResourceRE extracts owner/repo from GitHub-shaped resource ids so
-// legacy repo_allowlist entries keep gating the resolver path. Pure regex —
-// no dependency on the github package.
-var githubResourceRE = regexp.MustCompile(`^https://github\.com/([^/]+)/([^/]+)(/|$)`)
-
 // IsResourceAllowed checks the resource identifier against the allowlist
-// boundary before dispatch. Allow when:
-//   - both allowlists are empty (boundary disabled), or
-//   - any resource_allowlist regex matches, or
-//   - the input is a GitHub URL whose owner/repo is in repo_allowlist
-//     (compat with pre-resolver configs).
+// boundary before dispatch. Allow when the allowlist is empty (boundary
+// disabled) or any resource_allowlist regex matches.
 //
 // Invalid patterns surface as errors — a silently-skipped pattern would
 // fail open on exactly the inputs it was meant to block.
 func (c *Config) IsResourceAllowed(resource string) (bool, error) {
-	if len(c.ResourceAllowlist) == 0 && len(c.RepoAllowlist) == 0 {
+	if len(c.ResourceAllowlist) == 0 {
 		return true, nil
 	}
 	for _, pat := range c.ResourceAllowlist {
@@ -239,11 +212,6 @@ func (c *Config) IsResourceAllowed(resource string) (bool, error) {
 			return false, fmt.Errorf("resource_allowlist pattern %q: %w", pat, err)
 		}
 		if re.MatchString(resource) {
-			return true, nil
-		}
-	}
-	if m := githubResourceRE.FindStringSubmatch(resource); m != nil {
-		if len(c.RepoAllowlist) > 0 && slices.Contains(c.RepoAllowlist, m[1]+"/"+m[2]) {
 			return true, nil
 		}
 	}
