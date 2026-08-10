@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/kecbigmt/sennit/app/internal/domain"
 	"github.com/kecbigmt/sennit/app/internal/service"
 	"github.com/kecbigmt/sennit/app/internal/task"
 )
@@ -105,5 +107,101 @@ func TestStatusCmd_FullRequiresJSON(t *testing.T) {
 	err := statusCmd.RunE(statusCmd, []string{"whatever"})
 	if err == nil || !strings.Contains(err.Error(), "--full") {
 		t.Fatalf("err = %v, want an error naming --full", err)
+	}
+}
+
+// A run=down session has nothing evaluated (the watchdog only probes
+// run=up sessions), so Run shows the bare state and Health shows "-"
+// rather than a stale or misleading value.
+func TestFormatRunLine_AndFormatHealthLine_RunDown(t *testing.T) {
+	rt := service.StatusRuntime{Run: domain.RunDown, Health: domain.HealthHealthy}
+	if got := formatRunLine(rt); got != "down" {
+		t.Errorf("formatRunLine() = %q, want %q", got, "down")
+	}
+	if got := formatHealthLine(rt); got != "-" {
+		t.Errorf("formatHealthLine() = %q, want %q", got, "-")
+	}
+}
+
+// A run=up session with a produced run-scoped task shows the task's status
+// as a parenthetical hint, and its actual health value.
+func TestFormatRunLine_AndFormatHealthLine_RunUpWithProducedTask(t *testing.T) {
+	rt := service.StatusRuntime{
+		Run:    domain.RunUp,
+		Health: domain.HealthHealthy,
+		Tasks:  []service.StatusRuntimeTask{{Instance: "claude", Status: "produced"}},
+	}
+	if got := formatRunLine(rt); got != "up (produced)" {
+		t.Errorf("formatRunLine() = %q, want %q", got, "up (produced)")
+	}
+	if got := formatHealthLine(rt); got != "healthy" {
+		t.Errorf("formatHealthLine() = %q, want %q", got, "healthy")
+	}
+}
+
+// A run=up session with no produced task shows the bare run state — no
+// parenthetical, since there is nothing to attribute it to.
+func TestFormatRunLine_RunUpWithNoProducedTask(t *testing.T) {
+	rt := service.StatusRuntime{Run: domain.RunUp, Tasks: []service.StatusRuntimeTask{{Instance: "claude", Status: "pending"}}}
+	if got := formatRunLine(rt); got != "up" {
+		t.Errorf("formatRunLine() = %q, want %q", got, "up")
+	}
+}
+
+// renderStatus prints the identity, run/health, and message facts, and
+// prints the destroyed-session view instead when the session is a
+// tombstone.
+func TestRenderStatus_LiveSession(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := statusCmd
+	cmd.SetOut(&buf)
+	renderStatus(cmd, &service.StatusResult{
+		Identity: service.StatusIdentity{SessionName: "owner/repo-1", ResourceID: "https://github.com/owner/repo/issues/1", Workflow: "claude"},
+		Runtime:  service.StatusRuntime{Run: domain.RunUp, Health: domain.HealthHealthy},
+	})
+	out := buf.String()
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	got := make(map[string]string, len(lines))
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		got[strings.TrimSuffix(fields[0], ":")] = strings.Join(fields[1:], " ")
+	}
+	want := map[string]string{
+		"Session":  "owner/repo-1",
+		"Resource": "https://github.com/owner/repo/issues/1",
+		"Workflow": "claude",
+		"Run":      "up",
+		"Health":   "healthy",
+		"Message":  "-",
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("field %q = %q, want %q; full output:\n%s", k, got[k], v, out)
+		}
+	}
+}
+
+func TestRenderStatus_DestroyedSession(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := statusCmd
+	cmd.SetOut(&buf)
+	created := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	destroyed := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	renderStatus(cmd, &service.StatusResult{
+		Identity:    service.StatusIdentity{SessionName: "owner/repo-1", ResourceID: "id-1", CreatedAt: created},
+		Destroyed:   true,
+		DestroyedAt: destroyed,
+	})
+	out := buf.String()
+	for _, want := range []string{"Status:", "destroyed (tombstone)", "Created:", "2026-01-01 00:00:00", "Destroyed:", "2026-01-02 00:00:00"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q; got:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Health:") {
+		t.Errorf("destroyed view must not print live-session facts; got:\n%s", out)
 	}
 }
