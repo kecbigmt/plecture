@@ -1,11 +1,16 @@
 // Package migrate implements the one-time rewrite of on-disk sennit state
-// and config data from legacy forms to their current forms, ahead of the
-// removal of the legacy compatibility code that reads those old forms.
+// and config data from legacy, GitHub-shaped forms to their current forms,
+// ahead of the removal of the legacy compatibility code that reads those
+// old forms.
 //
-// This is an operator tool, not a runtime shim: it runs once, out of band,
-// against a data directory. It is deliberately narrow — it only knows the
-// four old-form shapes named by the refactor plan — rather than a generic
-// pluggable migration framework, because no second use case exists yet.
+// This is a standalone operator tool, not runtime dispatch code: it runs
+// once, out of band, against a data directory. It is deliberately narrow —
+// it only knows the four old-form shapes named by the refactor plan —
+// rather than a generic pluggable migration framework, because no second
+// use case exists yet. Its provider-specific field mapping (GitHub identity
+// fields, GitHub-shaped repo allowlist entries) lives here, outside sennit's
+// core, because that knowledge is retired together with this tool once the
+// migration has run.
 package migrate
 
 import (

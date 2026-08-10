@@ -1,9 +1,14 @@
 # Legacy state/config migration
 
-`sennit migrate` rewrites `state.json` and `config.toml` from the legacy
-forms produced by earlier sennit releases into the current forms, ahead of
-the follow-up changes that remove the code which still reads the legacy
-forms. Run it once per data directory before upgrading past that removal.
+The `legacy-migration` plugin (`plugins/legacy-migration`) rewrites
+`state.json` and `config.toml` from the legacy forms produced by earlier
+sennit releases into the current forms, ahead of the follow-up changes that
+remove the code which still reads the legacy forms. Run it once per data
+directory before upgrading past that removal.
+
+This is a standalone, throwaway operator tool, not part of the core
+`sennit` CLI: once every data directory that needs it has been migrated,
+this plugin (and the legacy field knowledge it embeds) can be deleted.
 
 ## What is migrated
 
@@ -52,7 +57,7 @@ covers persisted state/config forms.
 
 ## Backup
 
-Before rewriting anything, `sennit migrate` copies the current
+Before rewriting anything, `legacy-migration` copies the current
 `state.json` and `config.toml` byte-for-byte into a new timestamped
 subdirectory of `<data-dir>/migration-backups/` (e.g.
 `migration-backups/20260101T000000.000000000/`). A run that changes
@@ -60,8 +65,17 @@ nothing (data already in the current form) creates no backup.
 
 ## Running it
 
+Build the binary once, then run it:
+
 ```bash
-sennit migrate
+go build -o legacy-migration ./plugins/legacy-migration/cmd/legacy-migration
+./legacy-migration
+```
+
+or, for a one-off run without keeping the binary around:
+
+```bash
+go run ./plugins/legacy-migration/cmd/legacy-migration
 ```
 
 By default this reads/writes `state.json` under `$XDG_DATA_HOME/sennit`
@@ -78,7 +92,7 @@ applied otherwise.
 After running, confirm the rewritten files parse and look as expected:
 
 ```bash
-sennit migrate            # re-run: should print "nothing to do"
+./legacy-migration        # re-run: should print "nothing to do"
 jq . "$XDG_DATA_HOME/sennit/state.json" | grep -E 'url"|url_type|owner_repo|effects|"slack"'
 # ^ should print nothing — no legacy keys remain
 grep repo_allowlist ~/.config/sennit/config.toml
