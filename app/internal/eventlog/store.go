@@ -4,7 +4,7 @@
 //
 // The log is provider-agnostic: it treats session_name as an opaque string and
 // only encodes it to a filesystem-safe directory name. It never interprets the
-// name's structure (owner/repo, tags) or an event's Type.
+// name's structure (workspace, tags) or an event's Type.
 package eventlog
 
 import (
@@ -68,7 +68,7 @@ func (s *Store) sessionDir(session string) string {
 }
 
 // encodeSession maps the opaque session name to one filesystem-safe path
-// segment (e.g. "octocat/hello-world-42" -> "octocat%2Fhello-world-42"). Each
+// segment (e.g. a session name containing "/" is percent-escaped). Each
 // log record also carries session_name, so this need not be reversed.
 func encodeSession(session string) string {
 	return url.PathEscape(session)

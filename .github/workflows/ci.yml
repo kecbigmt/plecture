@@ -30,6 +30,16 @@ jobs:
             exit 1
           fi
 
+  provider-boundary:
+    name: provider-boundary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove the checker catches a seeded violation
+        run: ./scripts/check-provider-boundary_selftest.sh
+      - name: Check core provider-neutrality
+        run: ./scripts/check-provider-boundary.sh
+
   build-test:
     name: build-test (${{ matrix.module }})
     runs-on: ubuntu-latest

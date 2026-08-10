@@ -31,7 +31,7 @@ type Manager struct {
 	// SrcRoot holds the primary checkouts (~/src). Empty falls back to
 	// ~/src, so a Manager built by an older call site still resolves them.
 	SrcRoot string
-	// runner executes git/gh child processes. Tests substitute a fake
+	// runner executes git child processes. Tests substitute a fake
 	// binary via PATH rather than swapping this; it defaults to
 	// procexec.Default so production Managers need not set it.
 	runner procexec.Runner

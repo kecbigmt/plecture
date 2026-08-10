@@ -525,7 +525,7 @@ func TestSessionReactor_QuietTickBackoffResetsOnInbound(t *testing.T) {
 	if _, _, _, err := log.Append(event.Event{
 		SessionName: "o/r-1",
 		Type:        "github.state",
-		Source:      event.SourceGitHub,
+		Source:      "github",
 		Direction:   event.Inbound,
 	}); err != nil {
 		t.Fatal(err)
@@ -572,7 +572,7 @@ func TestSessionReactor_QuietTickBackoffResetsOnInbound_WithoutForcedElapse(t *t
 	if _, _, _, err := log.Append(event.Event{
 		SessionName: "o/r-1",
 		Type:        "github.state",
-		Source:      event.SourceGitHub,
+		Source:      "github",
 		Direction:   event.Inbound,
 	}); err != nil {
 		t.Fatal(err)

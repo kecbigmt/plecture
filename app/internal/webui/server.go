@@ -220,7 +220,7 @@ func httpStatusForError(err error) int {
 	return http.StatusInternalServerError
 }
 
-// sessionPath builds the detail URL for a session. Names are owner/repo-N, so
+// sessionPath builds the detail URL for a session. Names are workspace-N, so
 // each "/"-separated segment is path-escaped while the separators are kept,
 // yielding /sessions/<owner>/<name> that the {name...} route reverses.
 func sessionPath(name string) string {

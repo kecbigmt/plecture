@@ -36,7 +36,7 @@ func TestClientPublish(t *testing.T) {
 	})
 	client.Token = "secret"
 
-	ev := Event{SessionName: "owner/repo-1", Type: "github.ci_status", Source: SourceGitHub}
+	ev := Event{SessionName: "workspace-1", Type: "acme.ci_status", Source: "example"}
 	id, off, err := client.Publish(context.Background(), ev)
 	if err != nil {
 		t.Fatalf("Publish: %v", err)
@@ -92,14 +92,14 @@ func TestClientList(t *testing.T) {
 		gotQuery = r.URL.Query()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(listResponse{
-			Events:     []Event{{ID: "1", SessionName: "owner/repo-1"}},
+			Events:     []Event{{ID: "1", SessionName: "workspace-1"}},
 			NextCursor: "cursortoken",
 		})
 	})
 
-	evs, next, err := client.List(context.Background(), "owner/repo-1", OrderDesc, "prevcursor", Filter{
-		Types:   []string{"github.*"},
-		Sources: []string{SourceGitHub},
+	evs, next, err := client.List(context.Background(), "workspace-1", OrderDesc, "prevcursor", Filter{
+		Types:   []string{"acme.*"},
+		Sources: []string{"example"},
 		Limit:   10,
 	})
 	if err != nil {
@@ -112,8 +112,8 @@ func TestClientList(t *testing.T) {
 		t.Fatalf("List next cursor = %q, want %q", next, "cursortoken")
 	}
 
-	if gotQuery.Get("session") != "owner/repo-1" {
-		t.Errorf("session query = %q, want owner/repo-1", gotQuery.Get("session"))
+	if gotQuery.Get("session") != "workspace-1" {
+		t.Errorf("session query = %q, want workspace-1", gotQuery.Get("session"))
 	}
 	if gotQuery.Get("order") != "desc" {
 		t.Errorf("order query = %q, want desc", gotQuery.Get("order"))
@@ -121,11 +121,11 @@ func TestClientList(t *testing.T) {
 	if gotQuery.Get("cursor") != "prevcursor" {
 		t.Errorf("cursor query = %q, want prevcursor", gotQuery.Get("cursor"))
 	}
-	if gotQuery.Get("types") != "github.*" {
-		t.Errorf("types query = %q, want github.*", gotQuery.Get("types"))
+	if gotQuery.Get("types") != "acme.*" {
+		t.Errorf("types query = %q, want acme.*", gotQuery.Get("types"))
 	}
-	if gotQuery.Get("source") != SourceGitHub {
-		t.Errorf("source query = %q, want %q", gotQuery.Get("source"), SourceGitHub)
+	if gotQuery.Get("source") != "example" {
+		t.Errorf("source query = %q, want %q", gotQuery.Get("source"), "example")
 	}
 	if gotQuery.Get("limit") != "10" {
 		t.Errorf("limit query = %q, want 10", gotQuery.Get("limit"))
@@ -305,15 +305,15 @@ func TestClientSubscribeErrorStatusTriggersRetry(t *testing.T) {
 
 func TestFilterQueryAndListQueryEncoding(t *testing.T) {
 	f := Filter{
-		Types:        []string{"github.*", "claude.*"},
-		Sources:      []string{SourceGitHub, SourceSlack},
+		Types:        []string{"acme.*", "claude.*"},
+		Sources:      []string{"example", SourceSlack},
 		Direction:    Inbound,
 		DeliveryMode: DeliveryModePush,
 		Limit:        5,
 	}
 
-	lq := listQuery("owner/repo-1", OrderDesc, "abc", f)
-	if lq.Get("session") != "owner/repo-1" {
+	lq := listQuery("workspace-1", OrderDesc, "abc", f)
+	if lq.Get("session") != "workspace-1" {
 		t.Errorf("listQuery session = %q", lq.Get("session"))
 	}
 	if lq.Get("order") != "desc" {
@@ -328,12 +328,12 @@ func TestFilterQueryAndListQueryEncoding(t *testing.T) {
 	if lq.Get("delivery_mode") != string(DeliveryModePush) {
 		t.Errorf("listQuery delivery_mode = %q", lq.Get("delivery_mode"))
 	}
-	if !strings.Contains(lq.Get("types"), "github.*") {
+	if !strings.Contains(lq.Get("types"), "acme.*") {
 		t.Errorf("listQuery types = %q", lq.Get("types"))
 	}
 
-	sq := filterQuery("owner/repo-1", 42, f)
-	if sq.Get("session") != "owner/repo-1" {
+	sq := filterQuery("workspace-1", 42, f)
+	if sq.Get("session") != "workspace-1" {
 		t.Errorf("filterQuery session = %q", sq.Get("session"))
 	}
 	if sq.Get("since") != "42" {
@@ -341,7 +341,7 @@ func TestFilterQueryAndListQueryEncoding(t *testing.T) {
 	}
 
 	// since <= 0 is omitted: an unset resume position, not offset zero.
-	sq0 := filterQuery("owner/repo-1", 0, Filter{})
+	sq0 := filterQuery("workspace-1", 0, Filter{})
 	if sq0.Has("since") {
 		t.Errorf("filterQuery since should be omitted for since=0, got %q", sq0.Get("since"))
 	}
