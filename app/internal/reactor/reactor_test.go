@@ -545,6 +545,52 @@ func TestSessionReactor_QuietTickBackoffResetsOnInbound(t *testing.T) {
 	}
 }
 
+// TestSessionReactor_QuietTickBackoffResetsOnInbound_WithoutForcedElapse
+// proves inbound is detected on the next sweep even when only stale_when
+// (not the capped interval) has elapsed — unlike the sibling test above,
+// which forces the elapsed time past whatever interval is already current.
+func TestSessionReactor_QuietTickBackoffResetsOnInbound_WithoutForcedElapse(t *testing.T) {
+	const staleWhen = 10 * time.Millisecond
+	const maxStaleWhen = 40 * time.Millisecond
+	r, st, log := newTestReactor(t, config.TickConfig{
+		StaleWhen:    config.Duration{Duration: staleWhen},
+		MaxStaleWhen: config.Duration{Duration: maxStaleWhen},
+	})
+	r.tickFn = service.TickSession
+	ctx := context.Background()
+
+	// Force the backoff straight to the capped interval, as a long-quiet
+	// production session would reach after many sweeps.
+	if err := st.Update("o/r-1", func(s *domain.Session) error {
+		s.LastTickAt = time.Now()
+		s.TickBackoff = &contract.TickBackoff{ConsecutiveUnchanged: 10}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, _, err := log.Append(event.Event{
+		SessionName: "o/r-1",
+		Type:        "github.state",
+		Source:      event.SourceGitHub,
+		Direction:   event.Inbound,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Only stale_when has elapsed, not the capped interval.
+	if err := st.Update("o/r-1", func(s *domain.Session) error {
+		s.LastTickAt = time.Now().Add(-staleWhen - time.Millisecond)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r.checkStale(ctx)
+	if got := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged; got != 0 {
+		t.Fatalf("ConsecutiveUnchanged = %d after inbound event with only stale_when elapsed, want 0 (reset, tick fired)", got)
+	}
+}
+
 // TestSessionReactor_DrainTriggeredInboundTickResetsBackoff proves a tick
 // fired by drain's reactive path (a declared `on` pattern matching an inbound
 // event, not the stale sweep) also resets ConsecutiveUnchanged. doTick is the

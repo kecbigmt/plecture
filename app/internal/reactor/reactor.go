@@ -224,8 +224,17 @@ func (r *sessionReactor) checkStale(ctx context.Context) {
 	}
 	if !s.LastTickAt.IsZero() {
 		n := 0
+		var lastLogPosition int64
 		if s.TickBackoff != nil {
 			n = s.TickBackoff.ConsecutiveUnchanged
+			lastLogPosition = s.TickBackoff.LastLogPosition
+		}
+		// Peek for inbound before gating: inbound is otherwise only observed
+		// inside updateBackoff, which runs only after a tick fires — so a
+		// capped interval would hide inbound for the full cap instead of
+		// stale_when.
+		if inbound, _ := r.hasInboundSince(lastLogPosition); inbound {
+			n = 0
 		}
 		if time.Since(s.LastTickAt) < backoffInterval(r.tick.StaleWhen.Duration, r.maxStaleWhen(), n) {
 			return
