@@ -748,9 +748,9 @@ observe = "echo '{\"checks_status\":\"SUCCESS\"}'"
 	const crossRepoPRURL = "https://github.com/owner/repo-2/pull/42"
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "wf", map[string]*contract.TaskState{
 		"work": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
+			Scope:  contract.TaskScopeSession,
+			TaskID: "work",
+			Status: contract.TaskStatusProduced,
 			// Tracked by an issue in a different repository than the PR.
 			Resource: "https://github.com/owner/repo/issues/1",
 			Outputs:  map[string]any{"revision": "sha1", "checks_status": "SUCCESS"},
