@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,7 +18,7 @@ func TestResolveBranch_Issue_DerivesBranchWithoutShellingOut(t *testing.T) {
 	mgr := NewManager(t.TempDir())
 	parsed := &gh.ParsedURL{Type: gh.URLTypeIssue, Number: 42, OwnerRepo: "acme/widgets"}
 
-	branch, err := mgr.ResolveBranch(parsed)
+	branch, err := mgr.ResolveBranch(context.Background(), parsed)
 	if err != nil {
 		t.Fatalf("ResolveBranch() error = %v", err)
 	}
@@ -34,7 +35,7 @@ func TestResolveBranch_PR_GhFailureWrapsError(t *testing.T) {
 	mgr := NewManager(t.TempDir())
 	parsed := &gh.ParsedURL{Type: gh.URLTypePR, Number: 1, OwnerRepo: "sennit-test/does-not-exist-repo"}
 
-	_, err := mgr.ResolveBranch(parsed)
+	_, err := mgr.ResolveBranch(context.Background(), parsed)
 	if err == nil {
 		t.Fatal("expected error for a nonexistent repository, got nil")
 	}
@@ -44,15 +45,16 @@ func TestResolveBranch_PR_GhFailureWrapsError(t *testing.T) {
 }
 
 func TestGetWorktreeStatus_NonexistentPath(t *testing.T) {
-	_, err := GetWorktreeStatus(filepath.Join(t.TempDir(), "does-not-exist"))
+	_, err := GetWorktreeStatus(context.Background(), filepath.Join(t.TempDir(), "does-not-exist"))
 	if err == nil {
 		t.Fatal("expected error for a nonexistent worktree path, got nil")
 	}
 }
 
 func TestRunGitCapture_PreservesStderrOnFailure(t *testing.T) {
+	mgr := NewManager(t.TempDir())
 	dir := t.TempDir()
-	stderr, err := runGitCapture(dir, "status")
+	stderr, err := mgr.runGitCapture(context.Background(), dir, "status")
 	if err == nil {
 		t.Fatal("expected error running git in a non-repo directory, got nil")
 	}
@@ -66,7 +68,7 @@ func TestManager_Add_WorktreeAddErrorPreservesHint(t *testing.T) {
 	mgr := NewManager(worktreesRoot)
 	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypeIssue, Number: 7}
 
-	if _, err := mgr.Add(AddParams{Parsed: parsed, Branch: "issue/7", SessionName: gh.SessionName(ownerRepo, 7)}); err != nil {
+	if _, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/7", SessionName: gh.SessionName(ownerRepo, 7)}); err != nil {
 		t.Fatalf("first Add() error = %v", err)
 	}
 
@@ -81,14 +83,14 @@ func TestManager_Add_WorktreeAddErrorPreservesHint(t *testing.T) {
 	if err := os.RemoveAll(wtPath); err != nil {
 		t.Fatalf("RemoveAll() error = %v", err)
 	}
-	if err := runGit(gitDir, "worktree", "prune"); err != nil {
+	if err := mgr.runGit(context.Background(), gitDir, "worktree", "prune"); err != nil {
 		t.Fatalf("worktree prune error = %v", err)
 	}
-	if _, err := runGitCapture(gitDir, "worktree", "add", filepath.Join(t.TempDir(), "other"), "issue/7"); err != nil {
+	if _, err := mgr.runGitCapture(context.Background(), gitDir, "worktree", "add", filepath.Join(t.TempDir(), "other"), "issue/7"); err != nil {
 		t.Fatalf("setup worktree add error = %v", err)
 	}
 
-	_, err = mgr.Add(AddParams{Parsed: parsed, Branch: "issue/7", SessionName: gh.SessionName(ownerRepo, 7)})
+	_, err = mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "issue/7", SessionName: gh.SessionName(ownerRepo, 7)})
 	if err == nil {
 		t.Fatal("expected error re-adding an already checked out branch, got nil")
 	}

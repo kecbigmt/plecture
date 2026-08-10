@@ -1,9 +1,12 @@
 package github
 
 import (
+	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // resolve_test.go additions below intentionally shell out to the real gh
@@ -138,11 +141,39 @@ func TestParseProjectItemResponse(t *testing.T) {
 // because ResolveProjectItemID takes no context. It also pins the
 // error-wrapping message callers currently depend on.
 func TestResolveProjectItemID_GhFailureWrapsError(t *testing.T) {
-	_, err := ResolveProjectItemID("PVTI_this_id_does_not_exist")
+	_, err := ResolveProjectItemID(context.Background(), "PVTI_this_id_does_not_exist")
 	if err == nil {
 		t.Fatal("expected error for a nonexistent project item, got nil")
 	}
 	if !strings.Contains(err.Error(), "failed to resolve project item") {
 		t.Errorf("error = %v, want it to contain %q", err, "failed to resolve project item")
+	}
+}
+
+// TestResolveProjectItemID_ContextCancellationKillsHungGh regression-tests
+// the fix for the gap TestResolveProjectItemID_GhFailureWrapsError's comment
+// documents: ResolveProjectItemID now takes a context.Context, and a
+// cancelled/expired one terminates a hung `gh` invocation instead of
+// blocking forever.
+func TestResolveProjectItemID_ContextCancellationKillsHungGh(t *testing.T) {
+	dir := t.TempDir()
+	fakeGh := dir + "/gh"
+	if err := os.WriteFile(fakeGh, []byte("#!/usr/bin/env sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatalf("failed to write fake gh: %v", err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := ResolveProjectItemID(ctx, "PVTI_abc")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error from a timed-out ResolveProjectItemID, got nil")
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("ResolveProjectItemID took %v; the hung gh process was not terminated promptly", elapsed)
 	}
 }

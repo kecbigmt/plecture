@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -361,7 +362,7 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 
 	// Git dirty state, only if the worktree exists.
 	if s.WorktreePath != "" && fileExists(s.WorktreePath) {
-		if gitStatus, err := workspace.GetWorktreeStatus(s.WorktreePath); err == nil {
+		if gitStatus, err := workspace.GetWorktreeStatus(context.Background(), s.WorktreePath); err == nil {
 			dirty := gitStatus.Dirty || gitStatus.UntrackedFiles > 0
 			entry.GitDirty = &dirty
 		}
@@ -433,7 +434,7 @@ func Workdir(cfg *config.Config, store *state.Store, identifier string) (string,
 			return "", &Error{Code: ErrInvalidURL, Message: err.Error()}
 		}
 		mgr := workspace.NewManager(cfg.WorktreesRoot)
-		branch, err := mgr.ResolveBranch(parsed)
+		branch, err := mgr.ResolveBranch(context.Background(), parsed)
 		if err != nil {
 			return "", &Error{Code: ErrExecutionFailed, Message: err.Error()}
 		}

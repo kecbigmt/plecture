@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"context"
+
 	"github.com/kecbigmt/sennit/app/internal/config"
 	"github.com/kecbigmt/sennit/app/internal/domain"
 	"github.com/kecbigmt/sennit/app/internal/state"
@@ -290,7 +292,7 @@ func taskIDForInstance(key string, st *contract.TaskState) string {
 
 // isWorktreeClean checks if a worktree has no uncommitted changes or untracked files.
 func isWorktreeClean(wtPath string) bool {
-	status, err := workspace.GetWorktreeStatus(wtPath)
+	status, err := workspace.GetWorktreeStatus(context.Background(), wtPath)
 	if err != nil {
 		return false
 	}
@@ -340,7 +342,7 @@ func executeGCDelete(s *domain.Session, mgr *workspace.Manager, store *state.Sto
 		if err != nil {
 			entry.DeleteWarnings = append(entry.DeleteWarnings, fmt.Sprintf("worktree removal skipped: %v", err))
 		} else {
-			if err := mgr.RemoveByPath(s.WorktreePath, gitDir, s.Branch, true, deleteBranch); err != nil {
+			if err := mgr.RemoveByPath(context.Background(), s.WorktreePath, gitDir, s.Branch, true, deleteBranch); err != nil {
 				entry.DeleteWarnings = append(entry.DeleteWarnings, fmt.Sprintf("worktree removal failed: %v", err))
 			}
 		}

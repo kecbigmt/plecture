@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -38,9 +39,9 @@ func setupGitRepo(t *testing.T) string {
 func TestGetWorktreeStatus_Clean(t *testing.T) {
 	dir := setupGitRepo(t)
 
-	status, err := GetWorktreeStatus(dir)
+	status, err := GetWorktreeStatus(context.Background(), dir)
 	if err != nil {
-		t.Fatalf("GetWorktreeStatus() error: %v", err)
+		t.Fatalf("GetWorktreeStatus(context.Background(), ) error: %v", err)
 	}
 	if status.Dirty {
 		t.Error("expected clean worktree, got dirty")
@@ -75,9 +76,9 @@ func TestGetWorktreeStatus_Dirty(t *testing.T) {
 	// Modify the tracked file
 	os.WriteFile(f, []byte("modified"), 0o644)
 
-	status, err := GetWorktreeStatus(dir)
+	status, err := GetWorktreeStatus(context.Background(), dir)
 	if err != nil {
-		t.Fatalf("GetWorktreeStatus() error: %v", err)
+		t.Fatalf("GetWorktreeStatus(context.Background(), ) error: %v", err)
 	}
 	if !status.Dirty {
 		t.Error("expected dirty worktree, got clean")
@@ -91,9 +92,9 @@ func TestGetWorktreeStatus_UntrackedFiles(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "untracked1.txt"), []byte("a"), 0o644)
 	os.WriteFile(filepath.Join(dir, "untracked2.txt"), []byte("b"), 0o644)
 
-	status, err := GetWorktreeStatus(dir)
+	status, err := GetWorktreeStatus(context.Background(), dir)
 	if err != nil {
-		t.Fatalf("GetWorktreeStatus() error: %v", err)
+		t.Fatalf("GetWorktreeStatus(context.Background(), ) error: %v", err)
 	}
 	if status.UntrackedFiles != 2 {
 		t.Errorf("UntrackedFiles = %d, want 2", status.UntrackedFiles)
@@ -108,9 +109,9 @@ func TestGetWorktreeStatus_Ahead(t *testing.T) {
 	cmd.Dir = dir
 	cmd.Run()
 
-	status, err := GetWorktreeStatus(dir)
+	status, err := GetWorktreeStatus(context.Background(), dir)
 	if err != nil {
-		t.Fatalf("GetWorktreeStatus() error: %v", err)
+		t.Fatalf("GetWorktreeStatus(context.Background(), ) error: %v", err)
 	}
 	if status.Ahead != 1 {
 		t.Errorf("Ahead = %d, want 1", status.Ahead)

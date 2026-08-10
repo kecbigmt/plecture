@@ -157,7 +157,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	}
 
 	mgr := workspace.NewManager(cfg.WorktreesRoot)
-	baseBranch, err := mgr.ResolveBranch(parsed)
+	baseBranch, err := mgr.ResolveBranch(context.Background(), parsed)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to resolve branch: %v", err)}
 	}
@@ -182,7 +182,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	// mgr.Add is itself idempotent (reuses an existing worktree) and the
 	// session lookup below decides whether we're creating a fresh state
 	// entry or recovering an existing one.
-	info, err := mgr.Add(workspace.AddParams{
+	info, err := mgr.Add(context.Background(), workspace.AddParams{
 		Parsed:      parsed,
 		Branch:      branch,
 		BaseBranch:  baseBranch,
@@ -701,7 +701,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 		gitDir, findErr := mgr.FindGitDir(repoDir, session.WorktreePath)
 		if findErr != nil {
 			result.WorktreeWarning = fmt.Sprintf("worktree removal failed: %v", findErr)
-		} else if err := mgr.RemoveByPath(session.WorktreePath, gitDir, session.Branch, params.Force, params.DeleteBranch); err != nil {
+		} else if err := mgr.RemoveByPath(context.Background(), session.WorktreePath, gitDir, session.Branch, params.Force, params.DeleteBranch); err != nil {
 			result.WorktreeWarning = fmt.Sprintf("worktree removal failed: %v", err)
 		} else {
 			result.RemovedWorktree = true
@@ -800,7 +800,7 @@ func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*Attac
 // resolveURL accepts URLs and PVTI ids, returning the parsed form.
 func resolveURL(url string) (*gh.ParsedURL, error) {
 	if gh.IsProjectItemID(url) {
-		parsed, err := gh.ResolveProjectItemID(url)
+		parsed, err := gh.ResolveProjectItemID(context.Background(), url)
 		if err != nil {
 			return nil, &Error{Code: ErrInvalidURL, Message: err.Error()}
 		}
