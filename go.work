@@ -8,5 +8,6 @@ use (
 	./contracts/state
 	./plugins/channel-server
 	./plugins/github-watcher
+	./plugins/legacy-migration
 	./plugins/slack-adapter
 )
