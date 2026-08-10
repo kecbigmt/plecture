@@ -3,7 +3,7 @@ package domain
 import (
 	"slices"
 
-	contract "github.com/kecbigmt/plect/contracts/state"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // RunState reports whether a session's run-scoped task is produced — a plain

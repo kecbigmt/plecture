@@ -16,7 +16,7 @@ import (
 // In TTY mode it animates a Braille spinner while a task runs, then
 // rewrites the line with the final status. In non-TTY mode it stays quiet
 // during the run and writes a single line per task when it finishes —
-// safe for `tws up ... | cat` and CI logs.
+// safe for `sennit up ... | cat` and CI logs.
 //
 // Task script stderr does not stream live: the runner captures it and
 // hands it to OnSuccess/OnFailure, and this reporter dumps it (indented)

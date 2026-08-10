@@ -12,10 +12,10 @@ import (
 // Cookie / header names for the two independent defenses: CSRF (always on) and
 // auth_token (on only when configured).
 const (
-	csrfCookieName = "tws_csrf"
+	csrfCookieName = "sennit_csrf"
 	csrfHeaderName = "X-CSRF-Token"
 	csrfFormField  = "csrf_token"
-	authCookieName = "tws_auth"
+	authCookieName = "sennit_auth"
 )
 
 // ensureCSRFToken returns the request's CSRF token, minting and setting a

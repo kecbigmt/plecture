@@ -3,11 +3,11 @@ package service
 import (
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/task"
 )
 
-// ResourceStatusParams are the inputs to ResourceStatus (`tws resource
+// ResourceStatusParams are the inputs to ResourceStatus (`sennit resource
 // status`).
 type ResourceStatusParams struct {
 	ResourceID string
@@ -23,7 +23,7 @@ type ResourceStatusResult struct {
 // ResourceStatus observes an external resource by resource id: it finds the
 // trusted resource definition (resources/*.toml) whose `match` recognizes the
 // id and runs its `observe` script. This is the same observation contract a
-// task instance's from_resource_status dynamic output reads from — 'tws
+// task instance's from_resource_status dynamic output reads from — 'sennit
 // resource status' just lets it be read standalone (ADR "goal-as-task" D1:
 // core only knows that a resource id maps to a JSON state snapshot, never the
 // storage it came from).

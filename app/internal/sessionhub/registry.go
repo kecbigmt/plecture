@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	"github.com/kecbigmt/sennit/contracts/event"
 )
 
 const pollInterval = 500 * time.Millisecond

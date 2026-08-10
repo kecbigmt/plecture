@@ -79,7 +79,7 @@ func parseProjectItemResponse(itemID string, resp *projectItemResponse) (*Parsed
 	case "ISSUE":
 		urlType = URLTypeIssue
 	case "DRAFT_ISSUE":
-		return nil, fmt.Errorf("project item %s is a draft issue and cannot be used with tws create", itemID)
+		return nil, fmt.Errorf("project item %s is a draft issue and cannot be used with sennit create", itemID)
 	default:
 		return nil, fmt.Errorf("project item %s has unknown type: %s", itemID, node.Type)
 	}

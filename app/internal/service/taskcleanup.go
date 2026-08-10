@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
 )
 
-// TaskCleanupParams are the inputs to TaskCleanup (the `tws task cleanup`
+// TaskCleanupParams are the inputs to TaskCleanup (the `sennit task cleanup`
 // path). Instance is the key to reclaim — a `--name` (e.g. `initial`) or a
 // numbered `<task>#<n>`. SessionName defaults to the ambient pane env.
 type TaskCleanupParams struct {
@@ -47,10 +47,10 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 
 	sessionName := params.SessionName
 	if sessionName == "" {
-		sessionName = os.Getenv("TWS_SESSION_NAME")
+		sessionName = os.Getenv("SENNIT_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a tws session pane (TWS_SESSION_NAME) or pass --session"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a sennit session pane (SENNIT_SESSION_NAME) or pass --session"}
 	}
 
 	resolvedName, session, err := resolveSession(cfg, store, sessionName)

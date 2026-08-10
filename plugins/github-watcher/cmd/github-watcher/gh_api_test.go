@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/plugins/github-watcher/internal/ratebudget"
+	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/ratebudget"
 )
 
 // fakeGhBin writes an executable `gh` stub into a temp dir and prepends it to

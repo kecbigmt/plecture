@@ -17,9 +17,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	protocol "github.com/kecbigmt/plect/contracts/channel-protocol"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	protocol "github.com/kecbigmt/sennit/contracts/channel-protocol"
+	"github.com/kecbigmt/sennit/contracts/event"
 )
 
 // renderContext is what a channel template sees: the event as a map keyed by the

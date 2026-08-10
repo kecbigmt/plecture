@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	gh "github.com/kecbigmt/plect/app/internal/github"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	"github.com/kecbigmt/plect/app/internal/workspace"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	gh "github.com/kecbigmt/sennit/app/internal/github"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/sennit/app/internal/workspace"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 var validTag = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
@@ -103,7 +103,7 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 // ResolveSession is the exported entry point for resolving an identifier
 // (session name, create-time alias, or resource id) to a session, using the
 // same lookup order as the internal resolver. Commands that need the raw
-// session (e.g. `tws template render --session`) call this.
+// session (e.g. `sennit template render --session`) call this.
 func ResolveSession(cfg *config.Config, store *state.Store, identifier string) (string, *domain.Session, error) {
 	return resolveSession(cfg, store, identifier)
 }
@@ -123,13 +123,13 @@ type TaskInstanceView struct {
 	Name              string                  `json:"name,omitempty"`
 	Resource          string                  `json:"resource,omitempty"`
 	DoneWhen          *task.DoneWhenResult    `json:"done_when,omitempty"`
-	Finalized         bool                    `json:"finalized,omitempty"` // set once `tws task finalize` has recorded completion; cleanup still pending
+	Finalized         bool                    `json:"finalized,omitempty"` // set once `sennit task finalize` has recorded completion; cleanup still pending
 	Outputs           map[string]any          `json:"outputs,omitempty"`
 	PersistedDoneWhen *contract.DoneWhenState `json:"persisted_done_when,omitempty"`
 }
 
 // sessionTaskItem is the shared per-instance projection both taskViews
-// (ls/List's legacy `tasks` display) and statusTaskViews (tws status's `work`
+// (ls/List's legacy `tasks` display) and statusTaskViews (sennit status's `work`
 // layer) build from — instance identity, the dynamic-or-done_when filter, and
 // the done_when evaluation itself live in exactly one place so the two
 // display surfaces cannot silently drift apart.
@@ -325,7 +325,7 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	wg.Wait()
 
 	// store.All ranges a map, so sort by name to make List deterministic —
-	// callers (tws ls, MCP, web UI auto-refresh) get a stable order.
+	// callers (sennit ls, MCP, web UI auto-refresh) get a stable order.
 	slices.SortFunc(entries, func(a, b ListEntry) int {
 		return strings.Compare(a.SessionName, b.SessionName)
 	})
@@ -415,7 +415,7 @@ type cachedInfo struct {
 // the full state v3 lookup order (name → alias → legacy URL derivation →
 // resolver derivation). For GitHub URLs with no state entry, it falls back
 // to the legacy path-convention computation (gh branch resolve) so
-// `tws cd <url>` keeps working for worktrees that predate state tracking.
+// `sennit cd <url>` keeps working for worktrees that predate state tracking.
 func Workdir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
 	if _, session, err := resolveSession(cfg, store, identifier); err == nil {
 		if session.WorktreePath == "" {

@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	"github.com/kecbigmt/plect/contracts/event"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	"github.com/kecbigmt/sennit/contracts/event"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // healthcheckFixtureConfig declares one run-scoped task "runner" whose

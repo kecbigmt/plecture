@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/template"
-	contractstate "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/template"
+	contractstate "github.com/kecbigmt/sennit/contracts/state"
 )
 
 func TestParseTemplateVars(t *testing.T) {

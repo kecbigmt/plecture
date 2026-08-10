@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
-// shippedGithubProvider loads the real config/tws/providers/github.toml so the
+// shippedGithubProvider loads the real config/sennit/providers/github.toml so the
 // invariant/convergence tests exercise the scripts that ship, not a fixture.
 func shippedGithubProvider(t *testing.T) config.ProviderConfig {
 	t.Helper()
@@ -24,7 +24,7 @@ func shippedGithubProvider(t *testing.T) config.ProviderConfig {
 		t.Fatal("runtime.Caller failed")
 	}
 	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..")
-	cfg := &config.Config{BaseDir: filepath.Join(root, "config", "tws")}
+	cfg := &config.Config{BaseDir: filepath.Join(root, "config", "sennit")}
 	provs, err := cfg.LoadProviders()
 	if err != nil {
 		t.Fatalf("load shipped providers: %v", err)

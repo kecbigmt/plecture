@@ -1,10 +1,10 @@
-# Plect
+# Sennit
 
 **Weave work into structure.**
 
-Plect exists to let individuals and teams compose their own systems for
+Sennit exists to let individuals and teams compose their own systems for
 autonomous work without committing to a particular agent, VCS, execution
-environment, workspace technology, or communication tool. Plect owns the
+environment, workspace technology, or communication tool. Sennit owns the
 durable structure of work: identity, lifecycle, relationships, observation,
 verification, and handoff.
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/contracts/event"
 )
 
 func fastPolicy(maxAttempts int) RetryPolicy {
@@ -104,7 +104,7 @@ func TestChannelErrorEvent(t *testing.T) {
 	if ce.Type != event.TypeChannelError {
 		t.Errorf("Type = %q, want %q", ce.Type, event.TypeChannelError)
 	}
-	if ce.Source != event.SourceTWS || ce.Direction != event.Internal {
+	if ce.Source != event.SourceSennit || ce.Direction != event.Internal {
 		t.Errorf("source/direction = %q/%q", ce.Source, ce.Direction)
 	}
 	if ce.SessionName != "o/r-1" {

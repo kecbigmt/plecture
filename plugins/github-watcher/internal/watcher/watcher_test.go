@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/contracts/event"
-	"github.com/kecbigmt/plect/plugins/github-watcher/internal/ratebudget"
+	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/ratebudget"
 )
 
 func TestStore_SubscribeUnsubscribe(t *testing.T) {
@@ -55,7 +55,7 @@ func TestStore_SubscribeUnsubscribe(t *testing.T) {
 }
 
 // A re-subscribe with an empty Branch must NOT wipe a value a prior
-// subscribe stored: runtime `tws subscribe` omits --branch, and re-subscribing
+// subscribe stored: runtime `sennit subscribe` omits --branch, and re-subscribing
 // a resource a dispatch-time auto-subscribe already recorded (with branch) must
 // keep that branch — else an issue session loses its linked-PR resolution
 // A non-empty incoming field still updates.
@@ -132,7 +132,7 @@ func TestStore_MultipleResourcesPerSession(t *testing.T) {
 }
 
 // A subscriptions file from the pre-N:1 format (version 1) is discarded on load,
-// not migrated — the task re-subscribes on the next `tws up`.
+// not migrated — the task re-subscribes on the next `sennit up`.
 func TestStore_DiscardsOldFormat(t *testing.T) {
 	dir := t.TempDir()
 	// version 1, keyed by session name (the old shape).
@@ -253,8 +253,8 @@ func TestPoller_TickNotifiesAndAdvancesBaseline(t *testing.T) {
 		{match: "/status", stdout: ""},
 		prCoreRouteFull("7", "closed", true, "deadbeef1", "dirty", false),
 	})
-	twsLog := filepath.Join(t.TempDir(), "tws.log")
-	fakeBin(t, binDir, "tws", `echo "$@" >> `+twsLog)
+	sennitLog := filepath.Join(t.TempDir(), "sennit.log")
+	fakeBin(t, binDir, "sennit", `echo "$@" >> `+sennitLog)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	var notified []map[string]any
@@ -275,8 +275,8 @@ func TestPoller_TickNotifiesAndAdvancesBaseline(t *testing.T) {
 	}
 	p.Tick()
 
-	if _, err := os.Stat(twsLog); !os.IsNotExist(err) {
-		t.Fatalf("poll must not invoke tws state set-output, stat err=%v", err)
+	if _, err := os.Stat(sennitLog); !os.IsNotExist(err) {
+		t.Fatalf("poll must not invoke sennit state set-output, stat err=%v", err)
 	}
 
 	// state + ci_status + mergeable transitions → notifications.
@@ -565,7 +565,7 @@ func TestPoller_DoesNotPruneSubscriptionsDuringPoll(t *testing.T) {
 	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
-	// Polling no longer probes tws state as a side task. Session teardown is
+	// Polling no longer probes sennit state as a side task. Session teardown is
 	// responsible for explicit unsubscribe, keeping watcher delivery decoupled
 	// from the removed output-writing path.
 	subs, _ := store.All()
@@ -713,7 +713,7 @@ esac
 }
 
 // Two sessions subscribing the SAME PR with different branches (dispatch-time
-// auto-subscribe carries the PR's head branch; runtime `tws subscribe` carries
+// auto-subscribe carries the PR's head branch; runtime `sennit subscribe` carries
 // none) must still poll once: a PR fetch ignores branch, so it is keyed on the
 // resource alone. Guards the AC7 "poll dedup independent of branch" contract
 // Guards poll dedup independent of branch.

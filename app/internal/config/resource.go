@@ -12,7 +12,7 @@ import (
 // (plugin dirs + global config) — the same non-cascading rule as
 // ProviderConfig (ADR "goal-as-task" D6: a resource's observation is
 // arbitrary shell, so only user/machine-owned layers may supply it, never a
-// cloned workdir's `.tws/`).
+// cloned workdir's `.sennit/`).
 //
 // A ResourceDef is deliberately a different, narrower concept than
 // ProviderConfig. ProviderConfig resolves a *session's* resource identifier
@@ -39,15 +39,15 @@ type ResourceDef struct {
 	// Finalize is optional: it runs once, after a task instance's done_when is
 	// reconfirmed satisfied at the current revision, to record completion
 	// against the resource (e.g. writing a frontmatter status). A definition
-	// without one has no finalization step — `tws task finalize` then skips
-	// straight to `tws task cleanup` (ADR D4: cleanup itself never gains
+	// without one has no finalization step — `sennit task finalize` then skips
+	// straight to `sennit task cleanup` (ADR D4: cleanup itself never gains
 	// completion semantics).
 	Finalize        string         `toml:"finalize"`
 	StateSchema     map[string]any `toml:"state_schema"`
 	StateSchemaFile string         `toml:"state_schema_file"`
 	// Execution names the desired execution plane ("host" default, or
 	// "environment") but is not yet consulted: resource observe/finalize
-	// always run on host, since they may be called standalone (`tws resource
+	// always run on host, since they may be called standalone (`sennit resource
 	// status`) with no session — and so no environment — in scope. Parsed and
 	// validated so config authors can declare it ahead of that wiring.
 	Execution  string `toml:"execution"`

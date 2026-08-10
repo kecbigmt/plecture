@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/contracts/event"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/contracts/event"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // writeSetupWorkflow gives the fixture workflow a resource provider: the
@@ -131,10 +131,10 @@ echo '{"workdir":"%s"}'
 }
 
 // The initial_task dispatcher is a session node whose setup shells out to a
-// nested `tws task setup … --name initial` that writes its instance straight
+// nested `sennit task setup … --name initial` that writes its instance straight
 // to state.json. Create's session-tasks persist must overlay (mergeTasks),
 // not blind-Put, or that nested write is clobbered. This stands in for the real
-// dispatcher with a jq writer so the merge is exercised without a tws binary.
+// dispatcher with a jq writer so the merge is exercised without a sennit binary.
 func TestCreate_SessionNodeNestedWriteSurvives(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq not available")
@@ -144,7 +144,7 @@ func TestCreate_SessionNodeNestedWriteSurvives(t *testing.T) {
 	t.Setenv("SP", filepath.Join(store.Dir(), "state.json"))
 
 	// dispatcher writes a sibling "initial" key to disk (mimicking the nested
-	// `tws task setup`), then produces normally.
+	// `sennit task setup`), then produces normally.
 	dispatcher := `jq '.sessions["org/repo-11"].tasks.initial={"scope":"session","status":"produced","dynamic":true,"task_id":"work","name":"initial","outputs":{"instruction":"start work"}}' "$SP" > "$SP.tmp" && mv "$SP.tmp" "$SP"
 echo '{}'`
 	cfg := writeWorkflowFixture(t, t.TempDir(), "claude",

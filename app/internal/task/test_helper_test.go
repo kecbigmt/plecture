@@ -3,7 +3,7 @@ package task
 import (
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/config"
 )
 
 // taskStub is a terse spec for one task definition used by buildPlan.

@@ -8,8 +8,8 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/kecbigmt/plect/app/internal/github"
-	"github.com/kecbigmt/plect/app/internal/traceid"
+	"github.com/kecbigmt/sennit/app/internal/github"
+	"github.com/kecbigmt/sennit/app/internal/traceid"
 )
 
 type traceIDKey struct{}
@@ -46,7 +46,7 @@ func instrumentHandler(toolName string, handler server.ToolHandlerFunc) server.T
 		}
 
 		// Derive session name and url from either the "url" or "session"
-		// argument. New lifecycle tools (tws_up/down/destroy) use "session"
+		// argument. New lifecycle tools (sennit_up/down/destroy) use "session"
 		// — accept either a URL or a bare session name there.
 		session := ""
 		urlParam := request.GetString("url", "")
@@ -69,7 +69,7 @@ func instrumentHandler(toolName string, handler server.ToolHandlerFunc) server.T
 
 		// Build slog attributes.
 		attrs := []slog.Attr{
-			slog.String("component", "tws-mcp"),
+			slog.String("component", "sennit-mcp"),
 			slog.String("event", "mcp_call"),
 			slog.String("tool", toolName),
 			slog.String("status", status),

@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// Client talks to a tws bus server over its HTTP/SSE API. The transport is set
+// Client talks to a sennit bus server over its HTTP/SSE API. The transport is set
 // by BaseURL + HTTP: NewUDSClient dials a Unix domain socket; tests inject an
 // httptest base URL. The bus speaks session_name only — Slack/GitHub specifics
 // ride opaquely in Event.Metadata.

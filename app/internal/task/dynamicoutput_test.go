@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/config"
 )
 
 func TestFetchOutput_Single(t *testing.T) {

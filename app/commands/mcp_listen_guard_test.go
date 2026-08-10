@@ -13,16 +13,16 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/plect/app/internal/mcpserver"
-	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/sennit/app/internal/mcpserver"
+	"github.com/kecbigmt/sennit/app/internal/service"
 )
 
 // helperProcessEnv is the sentinel that makes this test binary double as the
-// `self` executable mcpserver.Listen re-execs as "tws mcp serve" — go test
-// has no separate tws binary to point mcpListenCmd's os.Executable() lookup
+// `self` executable mcpserver.Listen re-execs as "sennit mcp serve" — go test
+// has no separate sennit binary to point mcpListenCmd's os.Executable() lookup
 // at, so the test binary re-execs itself (the same helper-process pattern
 // os/exec_test.go uses).
-const helperProcessEnv = "TWS_MCP_LISTEN_TEST_HELPER_PROCESS"
+const helperProcessEnv = "SENNIT_MCP_LISTEN_TEST_HELPER_PROCESS"
 
 func TestMain(m *testing.M) {
 	if os.Getenv(helperProcessEnv) == "1" {
@@ -113,7 +113,7 @@ func (c *mcpTestClient) callTool(t *testing.T, name string, args map[string]any)
 }
 
 // TestMCPListen_ScopesSessionGuardToOwnSession runs the listener with no
-// TWS_SESSION_GUARD of its own, so a rejection can only come from the
+// SENNIT_SESSION_GUARD of its own, so a rejection can only come from the
 // injected per-connection guard.
 func TestMCPListen_ScopesSessionGuardToOwnSession(t *testing.T) {
 	home := t.TempDir()
@@ -153,7 +153,7 @@ func TestMCPListen_ScopesSessionGuardToOwnSession(t *testing.T) {
 	}
 
 	t.Run("in scope: own session", func(t *testing.T) {
-		body := connect().callTool(t, "tws_event_publish", map[string]any{
+		body := connect().callTool(t, "sennit_event_publish", map[string]any{
 			"session": "ownerA/session-a",
 			"type":    "test.probe",
 		})
@@ -163,7 +163,7 @@ func TestMCPListen_ScopesSessionGuardToOwnSession(t *testing.T) {
 	})
 
 	t.Run("in scope: own subtree", func(t *testing.T) {
-		body := connect().callTool(t, "tws_event_publish", map[string]any{
+		body := connect().callTool(t, "sennit_event_publish", map[string]any{
 			"session": "ownerA/session-a/child",
 			"type":    "test.probe",
 		})
@@ -173,7 +173,7 @@ func TestMCPListen_ScopesSessionGuardToOwnSession(t *testing.T) {
 	})
 
 	t.Run("out of scope: sibling owner", func(t *testing.T) {
-		body := connect().callTool(t, "tws_event_publish", map[string]any{
+		body := connect().callTool(t, "sennit_event_publish", map[string]any{
 			"session": "ownerB/other-session",
 			"type":    "test.probe",
 		})

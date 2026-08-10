@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // reviewFixtureWithOutput is a fixture task whose checks_status output is

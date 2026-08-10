@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/state"
 )
 
 // writeSubscribeProvider drops a provider with a resolver + a subscribe hook
@@ -79,7 +79,7 @@ func TestSubscribe_DefaultsSessionFromEnv(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeProvider(t, "github", ghMatch, rec)
 	store := subscribeStore(t, "env/session-9")
-	t.Setenv("TWS_SESSION_NAME", "env/session-9")
+	t.Setenv("SENNIT_SESSION_NAME", "env/session-9")
 
 	err := Subscribe(cfg, store, SubscribeParams{ResourceID: "https://github.com/org/repo/issues/9"})
 	if err != nil {
@@ -96,7 +96,7 @@ func TestSubscribe_ParamSessionOverridesEnv(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeProvider(t, "github", ghMatch, rec)
 	store := subscribeStore(t, "flag/session")
-	t.Setenv("TWS_SESSION_NAME", "env/session")
+	t.Setenv("SENNIT_SESSION_NAME", "env/session")
 
 	if err := Subscribe(cfg, store, SubscribeParams{
 		ResourceID:  "https://github.com/org/repo/pull/1",
@@ -112,7 +112,7 @@ func TestSubscribe_ParamSessionOverridesEnv(t *testing.T) {
 
 func TestSubscribe_NoSessionInScope(t *testing.T) {
 	cfg := writeSubscribeProvider(t, "github", ghMatch, filepath.Join(t.TempDir(), "rec"))
-	t.Setenv("TWS_SESSION_NAME", "")
+	t.Setenv("SENNIT_SESSION_NAME", "")
 
 	err := Subscribe(cfg, subscribeStore(t), SubscribeParams{ResourceID: "https://github.com/org/repo/pull/1"})
 	assertErrCode(t, err, ErrInvalidInput)

@@ -7,19 +7,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
-// TestMain unsets TWS_SESSION_NAME before any test runs, so the suite stays
-// hermetic when `go test` itself runs inside a tws pane (this repo's own
+// TestMain unsets SENNIT_SESSION_NAME before any test runs, so the suite stays
+// hermetic when `go test` itself runs inside a sennit pane (this repo's own
 // dev loop) rather than depending on the invoking shell being ambient-free.
 // Tests that want to simulate a caller opt back in with t.Setenv.
 func TestMain(m *testing.M) {
-	os.Unsetenv("TWS_SESSION_NAME")
+	os.Unsetenv("SENNIT_SESSION_NAME")
 	os.Exit(m.Run())
 }
 

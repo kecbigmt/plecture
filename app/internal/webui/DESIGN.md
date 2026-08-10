@@ -1,7 +1,7 @@
 ---
 version: alpha
-name: tws-web
-description: shadcn-aligned neutral design system for the tws session web UI
+name: sennit-web
+description: shadcn-aligned neutral design system for the sennit session web UI
 colors:
   background: "#ffffff"
   foreground: "#0a0a0a"

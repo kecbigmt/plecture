@@ -3,10 +3,10 @@ package service
 import (
 	"fmt"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // CaptureParams holds parameters for Capture.
@@ -49,7 +49,7 @@ func Capture(cfg *config.Config, store *state.Store, params CaptureParams) (*Cap
 	if !ok || st == nil || st.Status != contract.TaskStatusProduced {
 		return nil, &Error{
 			Code:    ErrNotProduced,
-			Message: fmt.Sprintf("task %q is not produced; run 'tws up %s' first", target.NodeID, sessionName),
+			Message: fmt.Sprintf("task %q is not produced; run 'sennit up %s' first", target.NodeID, sessionName),
 		}
 	}
 

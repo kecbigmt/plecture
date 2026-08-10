@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	gh "github.com/kecbigmt/plect/app/internal/github"
+	gh "github.com/kecbigmt/sennit/app/internal/github"
 )
 
 type WorkspaceInfo struct {
@@ -356,7 +356,7 @@ func isRegisteredWorktree(gitDir, wtPath string) bool {
 // human-readable message rather than the exit status.
 func worktreeAddError(err error, stderr string) error {
 	if strings.Contains(stderr, "already checked out") || strings.Contains(stderr, "already used by worktree") {
-		return fmt.Errorf("git worktree add failed: %w\nHint: a worktree for this branch already exists. To start a separate session, use a tag:\n  tws create <url> --tag <tag>", err)
+		return fmt.Errorf("git worktree add failed: %w\nHint: a worktree for this branch already exists. To start a separate session, use a tag:\n  sennit create <url> --tag <tag>", err)
 	}
 	return fmt.Errorf("git worktree add failed: %w", err)
 }

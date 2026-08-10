@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	gh "github.com/kecbigmt/plect/app/internal/github"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	"github.com/kecbigmt/plect/app/internal/workspace"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	gh "github.com/kecbigmt/sennit/app/internal/github"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/sennit/app/internal/workspace"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // CreateParams holds parameters for Create — the task-aware counterpart of Add.
@@ -27,7 +27,7 @@ type CreateParams struct {
 	Tag           string
 	Workflow      string         // workflow name from --workflow; empty = auto-select
 	Inputs        map[string]any // frozen at create time; passing to an existing session returns ErrInvalidInput
-	ParentSession string         // parent session name; empty falls back to TWS_SESSION_NAME when it exists and is not self.
+	ParentSession string         // parent session name; empty falls back to SENNIT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
 }
 
@@ -116,7 +116,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 		}
 		wf, ok := workflows[params.Workflow]
 		if !ok {
-			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .tws/workflows/%s.toml", params.Workflow, params.Workflow)}
+			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .sennit/workflows/%s.toml", params.Workflow, params.Workflow)}
 		}
 		providers, err := cfg.LoadProviders()
 		if err != nil {
@@ -306,7 +306,7 @@ type UpParams struct {
 	Tag           string
 	Workflow      string         // forwarded to auto-create; rejected when state already exists
 	Inputs        map[string]any // forwarded to auto-create; rejected when state already exists
-	ParentSession string         // forwarded to auto-create; empty falls back to TWS_SESSION_NAME when it exists and is not self.
+	ParentSession string         // forwarded to auto-create; empty falls back to SENNIT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
 }
 
@@ -323,7 +323,7 @@ type UpResult struct {
 // is absent OR any declared session-scoped task has not reached
 // "produced". Since Create is idempotent (already-produced session
 // tasks are skipped), this also recovers partial-create state without
-// the user having to remember to re-run `tws create`. A bare session name
+// the user having to remember to re-run `sennit create`. A bare session name
 // without a state entry still errors out — Create needs URL information
 // to resolve owner/repo/branch, so the asymmetry is intentional.
 func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
@@ -332,8 +332,8 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	if dispErr != nil {
 		// Ambiguous resolver match / invalid resolver / explicit --workflow
 		// mismatch must fail here exactly as Create would — falling through
-		// to the legacy path would let `tws up` silently disagree with
-		// `tws create` for the same resource.
+		// to the legacy path would let `sennit up` silently disagree with
+		// `sennit create` for the same resource.
 		if svcErr, ok := dispErr.(*Error); ok {
 			return nil, svcErr
 		}
@@ -422,7 +422,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	}
 	// Bringing up an existing session runs run-scoped tasks against it; clamp
 	// it to the active guard. The auto-create paths above already guard
-	// via Create — this catches `tws up <bare-existing-session>`, which skips it.
+	// via Create — this catches `sennit up <bare-existing-session>`, which skips it.
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
 	}
@@ -448,9 +448,9 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	// just reads its persisted outputs.
 	setupErr := task.RunSetup(plan.Run, sessionVars(session), session.Tasks, params.Observer, envExecutor)
 	session.UpdatedAt = time.Now()
-	// A run-scope node's setup script can itself shell out to a nested `tws
+	// A run-scope node's setup script can itself shell out to a nested `sennit
 	// task setup` against this same session (e.g. goal_bootstrap re-deriving
-	// pursue_goal instances, config/tws/tasks/goal_bootstrap.toml) while this
+	// pursue_goal instances, config/sennit/tasks/goal_bootstrap.toml) while this
 	// call's own RunSetup is still in flight. That nested call persists its
 	// instance straight to disk under its own store.Update. A blind Put here
 	// would then overwrite disk with our in-memory map, taken before the
@@ -474,11 +474,11 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 // checkLifecycleRelationGuard authorizes a destructive lifecycle operation
 // (down/destroy) by tree relation: only the target session itself or one of
 // its descendants (its own dispatched subtree) may act on it. The caller
-// identity is the ambient TWS_SESSION_NAME; its absence means a human is
+// identity is the ambient SENNIT_SESSION_NAME; its absence means a human is
 // running the raw CLI outside any session pane, which stays exempt so manual
 // recovery is never blocked by this guard.
 func checkLifecycleRelationGuard(store *state.Store, targetName, op string) *Error {
-	caller := os.Getenv("TWS_SESSION_NAME")
+	caller := os.Getenv("SENNIT_SESSION_NAME")
 	if caller == "" {
 		return nil
 	}
@@ -595,7 +595,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	}
 	// Tearing down an existing session is a per-session write; clamp it to the
 	// active guard so a guarded orchestrator can't destroy another owner's
-	// session it can see via `tws ls`. Create guards on the way in; this
+	// session it can see via `sennit ls`. Create guards on the way in; this
 	// closes the symmetric teardown vector.
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
@@ -610,7 +610,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	result := &DestroyResult{SessionName: sessionName}
 
 	// Fail-closed before any teardown side effect: store.Delete unconditionally
-	// clears ParentSession on every child, and tws up never re-adopts an
+	// clears ParentSession on every child, and sennit up never re-adopts an
 	// orphan, so a silent destroy permanently severs the tree. --force makes
 	// that orphaning an explicit, reported choice instead.
 	if children := childNames(store.All(), sessionName); len(children) > 0 {
@@ -618,7 +618,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 			return nil, &Error{
 				Code: ErrHasChildren,
 				Message: fmt.Sprintf(
-					"session %s has %d child session(s) that would be orphaned: %s\nUse `tws down %s` + `tws up %s` to reset without orphaning them, or re-run with `tws destroy %s --force` to destroy and orphan them.",
+					"session %s has %d child session(s) that would be orphaned: %s\nUse `sennit down %s` + `sennit up %s` to reset without orphaning them, or re-run with `sennit destroy %s --force` to destroy and orphan them.",
 					sessionName, len(children), strings.Join(children, ", "), sessionName, sessionName, sessionName,
 				),
 			}
@@ -689,7 +689,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 			if !params.Force {
 				return nil, &Error{
 					Code:    ErrExecutionFailed,
-					Message: fmt.Sprintf("%v (session %s)\nRe-run with `tws destroy %s --force` to delete the state entry anyway.", cleanupErr, sessionName, sessionName),
+					Message: fmt.Sprintf("%v (session %s)\nRe-run with `sennit destroy %s --force` to delete the state entry anyway.", cleanupErr, sessionName, sessionName),
 				}
 			}
 			result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow cleanup: %v", cleanupErr))
@@ -708,11 +708,11 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	}
 
 	// Without --force, abort before store.Delete so the user can retry —
-	// otherwise the worktree is orphaned on disk while tws forgets about it.
+	// otherwise the worktree is orphaned on disk while sennit forgets about it.
 	if result.WorktreeWarning != "" && !params.Force {
 		return nil, &Error{
 			Code:    ErrExecutionFailed,
-			Message: fmt.Sprintf("%s (session %s)\nRe-run with `tws destroy %s --force` to delete the worktree and state entry anyway.", result.WorktreeWarning, sessionName, sessionName),
+			Message: fmt.Sprintf("%s (session %s)\nRe-run with `sennit destroy %s --force` to delete the worktree and state entry anyway.", result.WorktreeWarning, sessionName, sessionName),
 		}
 	}
 
@@ -780,7 +780,7 @@ func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*Attac
 	if !ok || st == nil || st.Status != contract.TaskStatusProduced {
 		return nil, &Error{
 			Code:    ErrNotProduced,
-			Message: fmt.Sprintf("task %q is not produced; run 'tws up %s' first", target.NodeID, sessionName),
+			Message: fmt.Sprintf("task %q is not produced; run 'sennit up %s' first", target.NodeID, sessionName),
 		}
 	}
 
@@ -824,7 +824,7 @@ func buildPlanForSession(cfg *config.Config, worktreeDir string, session *domain
 	return buildWorkflowPlan(cfg, worktreeDir, session.Workflow)
 }
 
-// buildWorkflowPlan loads `.tws/workflows/<name>.toml` (+ referenced task
+// buildWorkflowPlan loads `.sennit/workflows/<name>.toml` (+ referenced task
 // definitions) and compiles it. Returns a clear "not found" error when the
 // named workflow is missing so the CLI surfaces "did you forget to add the
 // file?" instead of an empty plan that silently does nothing.
@@ -835,7 +835,7 @@ func buildWorkflowPlan(cfg *config.Config, worktreeDir, name string) (*task.Plan
 	}
 	wf, ok := workflows[name]
 	if !ok {
-		return nil, fmt.Errorf("workflow %q not found in .tws/workflows or global config", name)
+		return nil, fmt.Errorf("workflow %q not found in .sennit/workflows or global config", name)
 	}
 	defs, err := cfg.LoadTaskDefinitions(worktreeDir)
 	if err != nil {
@@ -861,7 +861,7 @@ func selectWorkflow(cfg *config.Config, worktreeDir, flag string) (string, *Erro
 	}
 	if flag != "" {
 		if _, ok := workflows[flag]; !ok {
-			return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .tws/workflows/%s.toml", flag, flag)}
+			return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .sennit/workflows/%s.toml", flag, flag)}
 		}
 		return flag, nil
 	}
@@ -869,7 +869,7 @@ func selectWorkflow(cfg *config.Config, worktreeDir, flag string) (string, *Erro
 	case 0:
 		return "", &Error{
 			Code:    ErrInvalidInput,
-			Message: "no workflows found; add .tws/workflows/<name>.toml or pass --workflow",
+			Message: "no workflows found; add .sennit/workflows/<name>.toml or pass --workflow",
 		}
 	case 1:
 		for name := range workflows {
@@ -888,7 +888,7 @@ func selectWorkflow(cfg *config.Config, worktreeDir, flag string) (string, *Erro
 
 // mergeTasks persists the session by overlaying its in-memory task entries
 // onto the freshly-read on-disk session under the state lock, rather than a blind
-// Put. A nested `tws task setup` subprocess (the initial_task dispatcher) may
+// Put. A nested `sennit task setup` subprocess (the initial_task dispatcher) may
 // have written instances straight to disk during the parent's setup pass; a blind
 // Put of the parent's stale map would drop them. Overlaying keeps both: disk-only
 // keys survive, our keys win on overlap. Non-task fields the parent owns are
@@ -911,7 +911,7 @@ func resolveParentSession(store *state.Store, sessionName, explicit string) (str
 	candidate := explicit
 	explicitSet := candidate != ""
 	if candidate == "" {
-		candidate = os.Getenv("TWS_SESSION_NAME")
+		candidate = os.Getenv("SENNIT_SESSION_NAME")
 	}
 	if candidate == "" || candidate == sessionName {
 		return "", nil
@@ -957,7 +957,7 @@ func inputsOnExistingSessionMessage() string {
 // schema is declared, so required-field configs fail fast instead of silently
 // accepting `{}`.
 func resolveSessionInputs(cfg *config.Config, worktreeDir, workflowName string, raw map[string]any) (map[string]any, *Error) {
-	inline, file, sourceID := cfg.InputsSchema, cfg.ResolvedInputsSchemaPath(), "tws:config:inputs"
+	inline, file, sourceID := cfg.InputsSchema, cfg.ResolvedInputsSchemaPath(), "sennit:config:inputs"
 	if workflowName != "" {
 		workflows, err := cfg.LoadWorkflows(worktreeDir)
 		if err != nil {
@@ -969,7 +969,7 @@ func resolveSessionInputs(cfg *config.Config, worktreeDir, workflowName string, 
 			if len(wf.InputsSchema) > 0 || wf.InputsSchemaFile != "" {
 				inline = wf.InputsSchema
 				file = wf.ResolvedInputsSchemaPath()
-				sourceID = "tws:workflow:" + workflowName + ":inputs"
+				sourceID = "sennit:workflow:" + workflowName + ":inputs"
 			}
 		}
 	}
@@ -1116,7 +1116,7 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 		// no schema / requires / done_when validation (that runs at create / up /
 		// task run). Teardown must stay resilient to a def whose config drifted
 		// to invalid after the instance was created: a present-but-invalid def
-		// must be no more fatal than a disappeared one, so `tws destroy --force`
+		// must be no more fatal than a disappeared one, so `sennit destroy --force`
 		// can still reclaim the session. Cleanup needs only the script plus the
 		// persisted inputs/outputs.
 		r := task.Resolved{NodeID: key, TaskID: taskID, Scope: st.Scope}

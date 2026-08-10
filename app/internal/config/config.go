@@ -63,9 +63,9 @@ type Config struct {
 	// match). Superseded by ResourceAllowlist; kept as a compat alias —
 	// entries are honored for inputs that look like GitHub URLs.
 	RepoAllowlist []string `toml:"repo_allowlist"`
-	// ResourceAllowlist is the security boundary for `tws create`: regex
+	// ResourceAllowlist is the security boundary for `sennit create`: regex
 	// patterns the resource identifier must match. The boundary exists
-	// because agents (MCP) can invoke tws with arbitrary input, and a
+	// because agents (MCP) can invoke sennit with arbitrary input, and a
 	// session create executes trusted-layer shell against that input.
 	// Only the user-owned global config can declare it. Empty (together
 	// with RepoAllowlist) means allow all.
@@ -81,15 +81,15 @@ type Config struct {
 	InputsSchemaFile string         `toml:"inputs_schema_file"`
 	BaseDir          string         `toml:"-"`
 	// SessionGuard is a per-session dispatch boundary sourced from the
-	// TWS_SESSION_GUARD environment variable (not config.toml). When set, a
-	// `tws create`/`up` may only produce a *resolved session name* that
+	// SENNIT_SESSION_GUARD environment variable (not config.toml). When set, a
+	// `sennit create`/`up` may only produce a *resolved session name* that
 	// matches this regex. The orchestrator's claude pane exports it from the
 	// provider's `session_guard` output (e.g. "^acme/"), so a
 	// prompt-injected board body cannot make the orchestrator dispatch work
 	// outside its own session-name space. Empty = disabled.
 	//
 	// The guard is intentionally an opaque regex over the resolved session
-	// name: tws core stays provider-agnostic (ADR-002) and never parses the
+	// name: sennit core stays provider-agnostic (ADR-002) and never parses the
 	// resource identifier's owner/URL structure — knowing that names are
 	// owner-prefixed is the provider's job, encoded in the pattern it emits.
 	SessionGuard string `toml:"-"`
@@ -101,7 +101,7 @@ func DefaultConfig() *Config {
 		WorktreesRoot: filepath.Join(home, "worktrees"),
 		RepoAllowlist: nil,
 		Detached:      true,
-		SessionGuard:  os.Getenv("TWS_SESSION_GUARD"),
+		SessionGuard:  os.Getenv("SENNIT_SESSION_GUARD"),
 	}
 }
 
@@ -113,7 +113,7 @@ func Load() *Config {
 		return cfg
 	}
 
-	configPath := filepath.Join(home, ".config", "tws", "config.toml")
+	configPath := filepath.Join(home, ".config", "sennit", "config.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return cfg
 	}

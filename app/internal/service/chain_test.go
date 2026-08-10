@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/contracts/event"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/contracts/event"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // workTaskWithChain is a "work" task fixture: green-checks + pending-judge
@@ -119,7 +119,7 @@ revision = "{{.Work.outputs.revision}}"
 }
 
 // A chain's `workflow` field can be a template over `.Work.workflow` (the work
-// session's own workflow) — the cross-tool review-chain shape config/tws
+// session's own workflow) — the cross-tool review-chain shape config/sennit
 // ships: whichever tool wrote the code, the reviewer is the other one.
 func TestCheckSession_ChainWorkflowTemplateCrossTool(t *testing.T) {
 	const crossToolTmpl = `{{if eq .Work.workflow "claude"}}codex{{else}}claude{{end}}`
@@ -249,7 +249,7 @@ judge_ids    = "{{.Work.done_when.pending_judge_ids}}"
 // fire rather than spawning a reviewer with contract-violating inputs. Unlike
 // an undeclared-upstream-output wiring (now rejected at config load time by
 // validateTaskChains), the downstream workflow's inputs_schema is a separate
-// contract tws does not cross-check until fire time.
+// contract sennit does not cross-check until fire time.
 func TestCheckSession_ChainBlockedDownstreamInputsContract(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
@@ -391,7 +391,7 @@ all = [ { judge_pending = "ac-met" } ]
 	}
 }
 
-// tws tick spawns a fired, not-already-active chain; a chain whose target
+// sennit tick spawns a fired, not-already-active chain; a chain whose target
 // session already exists is reported already-active rather than re-spawned.
 func TestTickSession_ChainAlreadyActiveSkips(t *testing.T) {
 	store := testStore(t)
@@ -496,8 +496,8 @@ all = [ { judge_pending = "ac-met" } ]
 }
 
 // AC1: a chain resolving (statically or via its `workflow` template) to a
-// workflow ID with no `.tws/workflows/<id>.toml` definition must not report
-// fired — that would let tws tick attempt (and identically fail) the same
+// workflow ID with no `.sennit/workflows/<id>.toml` definition must not report
+// fired — that would let sennit tick attempt (and identically fail) the same
 // spawn every tick, which reads as a silent repeating failure rather than the
 // explicit error AC1 requires. It blocks instead, with a reason a caller can
 // distinguish from every other blocked reason.

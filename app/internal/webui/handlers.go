@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/service"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/kecbigmt/sennit/contracts/event"
 )
 
 // appView is the data for the two-pane shell (list on the left, detail on the
@@ -145,7 +145,7 @@ func selectedFromCurrentURL(r *http.Request) string {
 
 // handleSessionEvents renders the event timeline partial, newest first. The
 // scope is exactly one of session (one log) or subtree (the tree rooted at a
-// session — the canonical cross-session view), mirroring tws_event_list; it
+// session — the canonical cross-session view), mirroring sennit_event_list; it
 // rides as a query param (a session name's "/" would otherwise collide with
 // the {name...} detail route).
 func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +192,7 @@ type timelineView struct {
 
 // handleSubtreeTimeline serves the canonical cross-session timeline for the
 // session tree rooted at the named session (the root plus its descendants,
-// merged in event-id order — the same read as `tws event list --subtree`).
+// merged in event-id order — the same read as `sennit event list --subtree`).
 func (s *Server) handleSubtreeTimeline(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	evs, err := s.svc.EventsSubtree(name)
@@ -218,7 +218,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 //
 // workflow is forwarded like the CLI/MCP surfaces, but service.Up only
 // auto-creates for a resolver-matched or URL-shaped identifier — so unlike
-// `tws create`/`tws_create`, this form cannot create a resolver-less session
+// `sennit create`/`sennit_create`, this form cannot create a resolver-less session
 // from a bare identifier. Here workflow only disambiguates multiple
 // workflows matching the same resolver.
 func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {

@@ -11,7 +11,7 @@ import (
 // TestCapture_NoTmuxKnowledgeInCore locks in the capture design's core
 // premise (mirroring attach): tmux knowledge — e.g. the "capture-pane"
 // verb — must live only in declared task config
-// (config/tws/tasks/tmux.toml), never hardcoded in tws core Go source. Core
+// (config/sennit/tasks/tmux.toml), never hardcoded in sennit core Go source. Core
 // only renders whatever template a task definition declares and executes it
 // via bash -c (RunCapture); it never knows it might be talking to tmux.
 func TestCapture_NoTmuxKnowledgeInCore(t *testing.T) {

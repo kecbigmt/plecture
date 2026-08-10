@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/sennit/contracts/event"
 )
 
 // withBus builds a webui Server whose live-timeline handler talks to the given

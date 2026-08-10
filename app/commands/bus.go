@@ -14,13 +14,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/dispatch"
-	"github.com/kecbigmt/plect/app/internal/eventbus"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	"github.com/kecbigmt/plect/app/internal/reactor"
-	"github.com/kecbigmt/plect/app/internal/sessionhub"
-	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/dispatch"
+	"github.com/kecbigmt/sennit/app/internal/eventbus"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	"github.com/kecbigmt/sennit/app/internal/reactor"
+	"github.com/kecbigmt/sennit/app/internal/sessionhub"
+	"github.com/kecbigmt/sennit/app/internal/state"
 )
 
 var busSocket string
@@ -37,7 +37,7 @@ var busServeCmd = &cobra.Command{
 POST /v1/events (append), GET /v1/events (list), GET /v1/stream (SSE replay+live).
 
 The socket is created 0600, so same-user processes need no token; set
-TWS_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).`,
+SENNIT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		socket := busSocket
@@ -59,14 +59,14 @@ TWS_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).`,
 		}
 
 		// Resolve the log dir the same way writers do (eventlog.NewStore("") =>
-		// $XDG_DATA_HOME/tws/events, matching service.EventPublish). Log it so a
+		// $XDG_DATA_HOME/sennit/events, matching service.EventPublish). Log it so a
 		// daemon/writer env mismatch (different XDG_DATA_HOME) is visible rather
 		// than silently appending to a different tree.
 		store := eventlog.NewStore("")
 		// One per-session reader shared by SSE subscribers (and, with the channel
 		// dispatcher onto it, the single follow loop per session).
 		hub := sessionhub.NewRegistry(store)
-		srv := eventbus.New(store, os.Getenv("TWS_BUS_TOKEN"), hub)
+		srv := eventbus.New(store, os.Getenv("SENNIT_BUS_TOKEN"), hub)
 		httpSrv := &http.Server{
 			Handler:           srv.Routes(),
 			ReadHeaderTimeout: 10 * time.Second,
@@ -88,7 +88,7 @@ TWS_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).`,
 		// The tick reactor is dispatch's sibling: one per active session,
 		// ticking on a declared `[tick]` pattern, the judge builtin, or a
 		// `stale_when` sweep (docs/wiki/verification-gate.md), instead of
-		// leaving `tws tick` to an orchestrator's judgment or memory.
+		// leaving `sennit tick` to an orchestrator's judgment or memory.
 		react := reactor.NewSupervisor(cfg, stateStore, store, hub)
 		var reactWG sync.WaitGroup
 		reactWG.Go(func() { react.Run(ctx) })
@@ -98,7 +98,7 @@ TWS_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).`,
 			_ = httpSrv.Close()
 		}()
 
-		fmt.Fprintf(cmd.ErrOrStderr(), "tws bus serving on %s (events: %s)\n", socket, store.Root())
+		fmt.Fprintf(cmd.ErrOrStderr(), "sennit bus serving on %s (events: %s)\n", socket, store.Root())
 		serveErr := httpSrv.Serve(ln)
 		stop()         // cancel ctx so the supervisors tear down even if Serve failed without a signal
 		supWG.Wait()   // let the dispatch supervisor cancel and join its dispatchers
@@ -111,16 +111,16 @@ TWS_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).`,
 	},
 }
 
-// defaultBusSocket mirrors the tws-mcp convention (%t/tws/... = $XDG_RUNTIME_DIR).
+// defaultBusSocket mirrors the sennit-mcp convention (%t/sennit/... = $XDG_RUNTIME_DIR).
 func defaultBusSocket() string {
 	if rt := os.Getenv("XDG_RUNTIME_DIR"); rt != "" {
-		return filepath.Join(rt, "tws", "bus.sock")
+		return filepath.Join(rt, "sennit", "bus.sock")
 	}
-	return filepath.Join(os.TempDir(), "tws", "bus.sock")
+	return filepath.Join(os.TempDir(), "sennit", "bus.sock")
 }
 
 func init() {
-	busServeCmd.Flags().StringVar(&busSocket, "socket", "", "Unix socket path (default $XDG_RUNTIME_DIR/tws/bus.sock)")
+	busServeCmd.Flags().StringVar(&busSocket, "socket", "", "Unix socket path (default $XDG_RUNTIME_DIR/sennit/bus.sock)")
 	busCmd.AddCommand(busServeCmd)
 	rootCmd.AddCommand(busCmd)
 }

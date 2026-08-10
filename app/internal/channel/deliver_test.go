@@ -14,20 +14,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	protocol "github.com/kecbigmt/plect/contracts/channel-protocol"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	protocol "github.com/kecbigmt/sennit/contracts/channel-protocol"
+	"github.com/kecbigmt/sennit/contracts/event"
 )
 
 // TestShippedChannelDefsRender renders every shipped channel definition's
-// template fields against a sample event, so a typo in config/tws/channels (e.g.
+// template fields against a sample event, so a typo in config/sennit/channels (e.g.
 // the slack_thread curl -d JSON body) fails CI, not only at delivery.
 func TestShippedChannelDefsRender(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	cfgDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..", "config", "tws")
+	cfgDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..", "config", "sennit")
 	if _, err := os.Stat(cfgDir); err != nil {
 		t.Skipf("shipped config not found at %s: %v", cfgDir, err)
 	}
@@ -289,13 +289,13 @@ func TestRenderField_OptionalEventFieldEmpty(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 
-	rctx = newRenderContext(nil, event.Event{Type: "tws.instruction", Body: "do it"})
+	rctx = newRenderContext(nil, event.Event{Type: "sennit.instruction", Body: "do it"})
 	got, err = renderField("arg", arg, rctx)
 	if err != nil {
 		t.Fatalf("renderField (no url): %v", err)
 	}
-	if got != "[tws.instruction] do it" {
-		t.Errorf("got %q, want %q", got, "[tws.instruction] do it")
+	if got != "[sennit.instruction] do it" {
+		t.Errorf("got %q, want %q", got, "[sennit.instruction] do it")
 	}
 }
 

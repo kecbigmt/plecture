@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/state"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // dependsOn returns an `inputs` map that wires a node to upstream nodes so
@@ -27,7 +27,7 @@ func dependsOn(upstreams ...string) map[string]string {
 }
 
 // TestIntegration_UpAutoCreatesFromURL verifies the docker compose-style ergonomic:
-// `tws up <URL>` on a never-before-seen URL creates the worktree + state
+// `sennit up <URL>` on a never-before-seen URL creates the worktree + state
 // entry and runs both session-scoped and run-scoped setup in one shot.
 func TestIntegration_UpAutoCreatesFromURL(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -71,9 +71,9 @@ func TestIntegration_UpAutoCreatesFromURL(t *testing.T) {
 
 // TestIntegration_UpRecoversIncompleteSessionTask verifies that when state exists
 // but a session-scoped task is not yet "produced" (failed/cleaned/absent),
-// `tws up <URL>` invokes Create to retry the session-scoped setup before
+// `sennit up <URL>` invokes Create to retry the session-scoped setup before
 // running run-scoped tasks. This guards the case where a previous
-// `tws create` partially failed and the user retries with `tws up <URL>`.
+// `sennit create` partially failed and the user retries with `sennit up <URL>`.
 func TestIntegration_UpRecoversIncompleteSessionTask(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
@@ -122,7 +122,7 @@ func TestIntegration_UpRecoversIncompleteSessionTask(t *testing.T) {
 }
 
 // TestIntegration_UpWithTagDerivesTaggedSession verifies the symmetry of
-// `tws create --tag X` and `tws up --tag X`: passing the same URL + tag to Up
+// `sennit create --tag X` and `sennit up --tag X`: passing the same URL + tag to Up
 // resolves to the tagged session, and auto-create propagates the tag so the
 // docker-compose ergonomic works for tag variants too.
 func TestIntegration_UpWithTagDerivesTaggedSession(t *testing.T) {
@@ -264,7 +264,7 @@ func TestIntegration_CreateIdempotent(t *testing.T) {
 }
 
 // TestIntegration_DownUpPreservesPrev verifies that run-scoped task outputs survive
-// `tws down → up` so setup scripts can read .Prev to keep stable identity
+// `sennit down → up` so setup scripts can read .Prev to keep stable identity
 // (the claude task's `--resume <session_id>` mechanism, in practice).
 func TestIntegration_DownUpPreservesPrev(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -320,7 +320,7 @@ func TestIntegration_DownUpPreservesPrev(t *testing.T) {
 // TestIntegration_DownSurvivesPartialSetup verifies that a setup that fails before
 // populating outputs does not strand the session: cleanup of that task
 // renders its missing-key references as empty rather than aborting, so
-// `tws down` can still flip all tasks to `cleaned`.
+// `sennit down` can still flip all tasks to `cleaned`.
 func TestIntegration_DownSurvivesPartialSetup(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
@@ -505,10 +505,10 @@ func TestIntegration_DestroyRefusesWhenWorktreeDirty(t *testing.T) {
 }
 
 // TestIntegration_DestroyAutoDownsLiveRunTask locks in the auto-down
-// behavior: calling `tws destroy` on an `up` session — one with a
+// behavior: calling `sennit destroy` on an `up` session — one with a
 // run-scoped task in `produced` status — must run run-scoped cleanup
 // *before* session-scoped cleanup, then remove the worktree and delete
-// the state entry, without the user having to `tws down` first.
+// the state entry, without the user having to `sennit down` first.
 func TestIntegration_DestroyAutoDownsLiveRunTask(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
@@ -621,7 +621,7 @@ func TestIntegration_DestroyForcePartialFailureContinuesTeardown(t *testing.T) {
 }
 
 // TestIntegration_AttachResolvesRenderedCommand verifies the full happy path
-// for `tws attach`: a create → up sequence produces the attach task's
+// for `sennit attach`: a create → up sequence produces the attach task's
 // outputs, and Attach renders the declared template against those outputs to
 // produce the exact command the CLI will exec.
 func TestIntegration_AttachResolvesRenderedCommand(t *testing.T) {
@@ -670,7 +670,7 @@ func TestIntegration_AttachResolvesRenderedCommand(t *testing.T) {
 
 // TestIntegration_AttachAbortsWhenTaskNotProduced verifies the "no auto-up"
 // stance: Attach against a never-produced (or downed) task returns
-// ErrNotProduced with a hint pointing at `tws up`, instead of silently
+// ErrNotProduced with a hint pointing at `sennit up`, instead of silently
 // invoking setup.
 func TestIntegration_AttachAbortsWhenTaskNotProduced(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -702,8 +702,8 @@ func TestIntegration_AttachAbortsWhenTaskNotProduced(t *testing.T) {
 	if !ok || svcErr.Code != ErrNotProduced {
 		t.Fatalf("err = %v (%T), want code=%q", err, err, ErrNotProduced)
 	}
-	if !strings.Contains(svcErr.Message, "tws up") {
-		t.Fatalf("error message %q should hint at 'tws up'", svcErr.Message)
+	if !strings.Contains(svcErr.Message, "sennit up") {
+		t.Fatalf("error message %q should hint at 'sennit up'", svcErr.Message)
 	}
 }
 
@@ -737,7 +737,7 @@ func TestIntegration_AttachWithoutDeclarationFails(t *testing.T) {
 }
 
 // TestIntegration_CaptureResolvesRenderedOutput verifies the full happy path
-// for `tws capture`: a create → up sequence produces the capture task's
+// for `sennit capture`: a create → up sequence produces the capture task's
 // outputs, and Capture renders the declared template against those outputs
 // and returns its stdout unmodified.
 func TestIntegration_CaptureResolvesRenderedOutput(t *testing.T) {
@@ -787,7 +787,7 @@ func TestIntegration_CaptureResolvesRenderedOutput(t *testing.T) {
 
 // TestIntegration_CaptureAbortsWhenTaskNotProduced mirrors the "no auto-up"
 // stance from Attach: capture against a never-produced (or downed) task
-// returns ErrNotProduced with a hint pointing at `tws up`, instead of an
+// returns ErrNotProduced with a hint pointing at `sennit up`, instead of an
 // empty snapshot.
 func TestIntegration_CaptureAbortsWhenTaskNotProduced(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -819,8 +819,8 @@ func TestIntegration_CaptureAbortsWhenTaskNotProduced(t *testing.T) {
 	if !ok || svcErr.Code != ErrNotProduced {
 		t.Fatalf("err = %v (%T), want code=%q", err, err, ErrNotProduced)
 	}
-	if !strings.Contains(svcErr.Message, "tws up") {
-		t.Fatalf("error message %q should hint at 'tws up'", svcErr.Message)
+	if !strings.Contains(svcErr.Message, "sennit up") {
+		t.Fatalf("error message %q should hint at 'sennit up'", svcErr.Message)
 	}
 }
 
@@ -928,8 +928,8 @@ func TestIntegration_CaptureSurfacesScriptFailure(t *testing.T) {
 }
 
 // TestIntegration_WorkflowFile_NodeWiring exercises the workflow file path end
-// to end: a workflow at .tws/workflows/<name>.toml referencing task
-// definitions at .tws/tasks/<id>.toml, with the DAG derived from
+// to end: a workflow at .sennit/workflows/<name>.toml referencing task
+// definitions at .sennit/tasks/<id>.toml, with the DAG derived from
 // `.Nodes.<id>.outputs.<key>` references in the node input bindings.
 //
 // Asserts that:
@@ -943,27 +943,27 @@ func TestIntegration_WorkflowFile_NodeWiring(t *testing.T) {
 
 	ownerRepo := "testowner/testrepo"
 	repoDir := worktreesRoot + "/github.com/" + ownerRepo
-	if err := os.MkdirAll(repoDir+"/.tws/tasks", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.sennit/tasks", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.tws/tasks/tmux.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.sennit/tasks/tmux.toml", []byte(`
 id    = "tmux"
 scope = "run"
 setup = "echo '{\"session_name\":\"abc\"}'"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.tws/tasks/agent.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.sennit/tasks/agent.toml", []byte(`
 id    = "agent"
 scope = "run"
 setup = "echo \"{\\\"target\\\":\\\"$(echo {{.Inputs.session_name}})\\\"}\""
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(repoDir+"/.tws/workflows", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.sennit/workflows", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.tws/workflows/coding.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.sennit/workflows/coding.toml", []byte(`
 name = "coding"
 
 [[nodes]]
@@ -1019,7 +1019,7 @@ session_name = "{{.Nodes.tmux.outputs.session_name}}"
 }
 
 // TestIntegration_WorkflowFrozenOnSession verifies that once a workflow is
-// chosen at create time, `tws up --workflow X` against the existing session
+// chosen at create time, `sennit up --workflow X` against the existing session
 // returns ErrInvalidInput when X differs — the plan must not silently switch
 // out from under a session.
 func TestIntegration_WorkflowFrozenOnSession(t *testing.T) {
@@ -1029,20 +1029,20 @@ func TestIntegration_WorkflowFrozenOnSession(t *testing.T) {
 
 	ownerRepo := "testowner/testrepo"
 	repoDir := worktreesRoot + "/github.com/" + ownerRepo
-	if err := os.MkdirAll(repoDir+"/.tws/workflows", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.sennit/workflows", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(repoDir+"/.tws/tasks", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.sennit/tasks", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.tws/tasks/noop.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.sennit/tasks/noop.toml", []byte(`
 id    = "noop"
 scope = "session"
 setup = "echo '{}'"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.tws/workflows/a.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.sennit/workflows/a.toml", []byte(`
 name = "a"
 [[nodes]]
 id = "noop"
@@ -1050,7 +1050,7 @@ uses = "noop"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.tws/workflows/b.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.sennit/workflows/b.toml", []byte(`
 name = "b"
 [[nodes]]
 id = "noop"
@@ -1078,7 +1078,7 @@ uses = "noop"
 // TestIntegration_AttachUnderWorkflowPath guards against the regression where
 // Attach reached for Resolved.Config (empty under the workflow path) and
 // looked up session.Tasks[""]. Exercises a workflow file whose tmux node
-// declares `attach`, runs `tws up`, then verifies Attach resolves the right
+// declares `attach`, runs `sennit up`, then verifies Attach resolves the right
 // task id and renders the command using the node's own outputs.
 func TestIntegration_AttachUnderWorkflowPath(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -1087,13 +1087,13 @@ func TestIntegration_AttachUnderWorkflowPath(t *testing.T) {
 
 	ownerRepo := "testowner/testrepo"
 	repoDir := worktreesRoot + "/github.com/" + ownerRepo
-	if err := os.MkdirAll(repoDir+"/.tws/tasks", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.sennit/tasks", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(repoDir+"/.tws/workflows", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.sennit/workflows", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.tws/tasks/tmux.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.sennit/tasks/tmux.toml", []byte(`
 id     = "tmux"
 scope  = "run"
 attach = "tmux attach -t {{.Self.session_name}}"
@@ -1101,7 +1101,7 @@ setup  = "echo '{\"session_name\":\"abc\"}'"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.tws/workflows/coding.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.sennit/workflows/coding.toml", []byte(`
 name = "coding"
 
 [[nodes]]

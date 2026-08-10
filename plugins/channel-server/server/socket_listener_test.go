@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/sennit/contracts/channel-protocol"
 )
 
 func testLogger() *slog.Logger {

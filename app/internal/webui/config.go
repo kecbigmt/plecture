@@ -8,8 +8,8 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Config controls how tws-web binds and (later) authenticates. Loaded from
-// ~/.config/tws-web/config.toml; missing file falls back to defaults.
+// Config controls how sennit-web binds and (later) authenticates. Loaded from
+// ~/.config/sennit-web/config.toml; missing file falls back to defaults.
 type Config struct {
 	// ListenAddr defaults to loopback so the control plane is not exposed on
 	// every interface by accident. To reach it from a phone over a private network/VPN,
@@ -19,41 +19,41 @@ type Config struct {
 	// Authorization: Bearer header or the login cookie (defense in depth for
 	// exposing the control plane over a private network/VPN). Empty = network trust.
 	AuthToken string `toml:"auth_token"`
-	// BusSocket is the tws bus server's Unix socket. The live timeline opens its
+	// BusSocket is the sennit bus server's Unix socket. The live timeline opens its
 	// SSE stream over this socket and relays frames to the browser (which can
 	// neither dial a UDS nor hold the bus token). Empty falls back to the
-	// TWS_BUS_SOCKET env var, then $XDG_RUNTIME_DIR/tws/bus.sock.
+	// SENNIT_BUS_SOCKET env var, then $XDG_RUNTIME_DIR/sennit/bus.sock.
 	BusSocket string `toml:"bus_socket"`
 	// BusToken authenticates to the bus when it requires one. Empty falls back to
-	// the TWS_BUS_TOKEN env var (same-user UDS needs none).
+	// the SENNIT_BUS_TOKEN env var (same-user UDS needs none).
 	BusToken string `toml:"bus_token"`
 }
 
 func LoadConfig() *Config {
 	cfg := &Config{ListenAddr: "127.0.0.1:8787"}
 	if home, err := os.UserHomeDir(); err == nil {
-		path := filepath.Join(home, ".config", "tws-web", "config.toml")
+		path := filepath.Join(home, ".config", "sennit-web", "config.toml")
 		_, _ = toml.DecodeFile(path, cfg) // missing/invalid file => defaults
 	}
 	if cfg.BusSocket == "" {
 		cfg.BusSocket = defaultBusSocket()
 	}
 	if cfg.BusToken == "" {
-		cfg.BusToken = os.Getenv("TWS_BUS_TOKEN")
+		cfg.BusToken = os.Getenv("SENNIT_BUS_TOKEN")
 	}
 	return cfg
 }
 
-// defaultBusSocket mirrors `tws bus serve`'s convention: the TWS_BUS_SOCKET env
-// var if set, else %t/tws/bus.sock ($XDG_RUNTIME_DIR), else a tmp fallback.
+// defaultBusSocket mirrors `sennit bus serve`'s convention: the SENNIT_BUS_SOCKET env
+// var if set, else %t/sennit/bus.sock ($XDG_RUNTIME_DIR), else a tmp fallback.
 func defaultBusSocket() string {
-	if s := os.Getenv("TWS_BUS_SOCKET"); s != "" {
+	if s := os.Getenv("SENNIT_BUS_SOCKET"); s != "" {
 		return s
 	}
 	if rt := os.Getenv("XDG_RUNTIME_DIR"); rt != "" {
-		return filepath.Join(rt, "tws", "bus.sock")
+		return filepath.Join(rt, "sennit", "bus.sock")
 	}
-	return filepath.Join(os.TempDir(), "tws", "bus.sock")
+	return filepath.Join(os.TempDir(), "sennit", "bus.sock")
 }
 
 // Addr resolves the bind address from ListenAddr, applying optional host/port

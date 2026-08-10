@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // writeEnvironmentWorkflow gives the fixture workflow an environment: envToml
@@ -300,7 +300,7 @@ echo environment >> %s
 // TestUp_EnvironmentSetupFailedFailsClosed is the direct regression test for
 // the fail-closed gap a reviewer flagged: a session whose Create already
 // failed at environment setup (persisted, retryable, @environment == failed)
-// must not let a later bare-name `tws up` silently run an
+// must not let a later bare-name `sennit up` silently run an
 // execution="environment" run-scoped task on host using stale/missing
 // environment outputs.
 func TestUp_EnvironmentSetupFailedFailsClosed(t *testing.T) {
@@ -349,7 +349,7 @@ exec  = '"$@"'
 }
 
 // TestTaskSetup_EnvironmentSetupFailedFailsClosed mirrors
-// TestUp_EnvironmentSetupFailedFailsClosed for the dynamic `tws task setup`
+// TestUp_EnvironmentSetupFailedFailsClosed for the dynamic `sennit task setup`
 // path: a task declaring execution="environment" must not silently
 // instantiate against the host when the session's environment previously
 // failed.

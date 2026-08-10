@@ -6,7 +6,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/config"
 )
 
 // SubscribeHookVars is the template surface for a provider's `subscribe` hook.
