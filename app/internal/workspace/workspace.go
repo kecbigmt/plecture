@@ -1,16 +1,15 @@
 package workspace
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	gh "github.com/kecbigmt/sennit/app/internal/github"
+	"github.com/kecbigmt/sennit/app/internal/procexec"
 )
 
 type WorkspaceInfo struct {
@@ -33,10 +32,23 @@ type Manager struct {
 	// SrcRoot holds the primary checkouts (~/src). Empty falls back to
 	// ~/src, so a Manager built by an older call site still resolves them.
 	SrcRoot string
+	// runner executes git/gh child processes. Tests substitute a fake
+	// binary via PATH rather than swapping this; it defaults to
+	// procexec.Default so production Managers need not set it.
+	runner procexec.Runner
 }
 
 func NewManager(worktreesRoot string) *Manager {
-	return &Manager{WorktreesRoot: worktreesRoot}
+	return &Manager{WorktreesRoot: worktreesRoot, runner: procexec.Default}
+}
+
+// runner returns m.runner with its default applied, so a Manager built via
+// struct literal (as some tests do) still works.
+func (m *Manager) runnerOrDefault() procexec.Runner {
+	if m.runner != nil {
+		return m.runner
+	}
+	return procexec.Default
 }
 
 // srcRoot is SrcRoot with its default applied.
@@ -66,12 +78,14 @@ func (m *Manager) SrcDir(repoDir string) string {
 	return filepath.Join(root, rel)
 }
 
-// ResolveBranch resolves the branch name for the given parsed URL.
-func (m *Manager) ResolveBranch(parsed *gh.ParsedURL) (string, error) {
+// ResolveBranch resolves the branch name for the given parsed URL. ctx bounds
+// the `gh pr view` invocation issued for PR URLs; issue URLs derive the
+// branch name locally and never shell out.
+func (m *Manager) ResolveBranch(ctx context.Context, parsed *gh.ParsedURL) (string, error) {
 	if parsed.Type == gh.URLTypePR {
-		out, err := exec.Command("gh", "pr", "view", fmt.Sprintf("%d", parsed.Number),
+		out, _, err := m.runnerOrDefault().Run(ctx, "", false, "gh", "pr", "view", fmt.Sprintf("%d", parsed.Number),
 			"--repo", parsed.OwnerRepo,
-			"--json", "headRefName", "--jq", ".headRefName").Output()
+			"--json", "headRefName", "--jq", ".headRefName")
 		if err != nil {
 			return "", fmt.Errorf("failed to get PR info (is gh authenticated?): %w", err)
 		}
@@ -156,8 +170,10 @@ type AddParams struct {
 	SessionName string // session name (may include suffix)
 }
 
-// Add creates a worktree and returns workspace info.
-func (m *Manager) Add(params AddParams) (*WorkspaceInfo, error) {
+// Add creates a worktree and returns workspace info. ctx bounds every git
+// invocation Add issues (fetch, worktree add); a cancelled or expired ctx
+// terminates the in-flight process and Add returns its error.
+func (m *Manager) Add(ctx context.Context, params AddParams) (*WorkspaceInfo, error) {
 	parsed := params.Parsed
 	branch := params.Branch
 	baseBranch := params.BaseBranch
@@ -193,9 +209,9 @@ func (m *Manager) Add(params AddParams) (*WorkspaceInfo, error) {
 		if parsed.Type == gh.URLTypePR {
 			// Try fetching the branch by name first; if the remote branch has been
 			// deleted (e.g. merged PR), fall back to the PR ref.
-			if err := runGit(gitDir, "fetch", "origin", baseBranch); err != nil {
+			if err := m.runGit(ctx, gitDir, "fetch", "origin", baseBranch); err != nil {
 				prRef := fmt.Sprintf("pull/%d/head:%s", parsed.Number, baseBranch)
-				if err2 := runGit(gitDir, "fetch", "origin", prRef); err2 != nil {
+				if err2 := m.runGit(ctx, gitDir, "fetch", "origin", prRef); err2 != nil {
 					return nil, fmt.Errorf("git fetch failed (branch: %v, PR ref: %w)", err, err2)
 				}
 			}
@@ -204,16 +220,16 @@ func (m *Manager) Add(params AddParams) (*WorkspaceInfo, error) {
 				// (destroy removes the worktree but a non-force destroy may keep
 				// the branch) so an orphan never blocks re-dispatch; otherwise
 				// create it from the fetched base.
-				if branchExists(gitDir, branch) {
-					if stderr, err := runGitCapture(gitDir, "worktree", "add", wtPath, branch); err != nil {
+				if m.branchExists(ctx, gitDir, branch) {
+					if stderr, err := m.runGitCapture(ctx, gitDir, "worktree", "add", wtPath, branch); err != nil {
 						return nil, worktreeAddError(err, stderr)
 					}
 				} else {
 					startPoint := "origin/" + baseBranch
-					if !refExists(gitDir, startPoint) {
+					if !m.refExists(ctx, gitDir, startPoint) {
 						startPoint = baseBranch // use local ref from PR fetch
 					}
-					if stderr, err := runGitCapture(gitDir, "worktree", "add", "-b", branch, wtPath, startPoint); err != nil {
+					if stderr, err := m.runGitCapture(ctx, gitDir, "worktree", "add", "-b", branch, wtPath, startPoint); err != nil {
 						return nil, worktreeAddError(err, stderr)
 					}
 				}
@@ -221,23 +237,23 @@ func (m *Manager) Add(params AddParams) (*WorkspaceInfo, error) {
 				// When branch == baseBranch, the PR ref fetch above created a local
 				// branch named baseBranch (via pull/<number>/head:<baseBranch>),
 				// so "git worktree add wtPath branch" works even without a remote ref.
-				if stderr, err := runGitCapture(gitDir, "worktree", "add", wtPath, branch); err != nil {
+				if stderr, err := m.runGitCapture(ctx, gitDir, "worktree", "add", wtPath, branch); err != nil {
 					return nil, worktreeAddError(err, stderr)
 				}
 			}
 		} else {
-			if err := runGit(gitDir, "fetch", "origin"); err != nil {
+			if err := m.runGit(ctx, gitDir, "fetch", "origin"); err != nil {
 				return nil, fmt.Errorf("git fetch failed: %w", err)
 			}
-			if branchExists(gitDir, branch) {
+			if m.branchExists(ctx, gitDir, branch) {
 				// Branch already exists: reuse it
-				if stderr, err := runGitCapture(gitDir, "worktree", "add", wtPath, branch); err != nil {
+				if stderr, err := m.runGitCapture(ctx, gitDir, "worktree", "add", wtPath, branch); err != nil {
 					return nil, worktreeAddError(err, stderr)
 				}
 			} else {
 				// Branch does not exist: create new branch from default branch
-				defaultBranch := resolveDefaultBranch(gitDir)
-				if stderr, err := runGitCapture(gitDir, "worktree", "add", "-b", branch, wtPath, "origin/"+defaultBranch); err != nil {
+				defaultBranch := m.resolveDefaultBranch(ctx, gitDir)
+				if stderr, err := m.runGitCapture(ctx, gitDir, "worktree", "add", "-b", branch, wtPath, "origin/"+defaultBranch); err != nil {
 					return nil, worktreeAddError(err, stderr)
 				}
 			}
@@ -247,9 +263,10 @@ func (m *Manager) Add(params AddParams) (*WorkspaceInfo, error) {
 	return info, nil
 }
 
-// Remove removes a worktree and optionally deletes the branch.
+// Remove removes a worktree and optionally deletes the branch. ctx bounds
+// every git invocation Remove issues.
 // If the worktree directory is already gone, it uses `git worktree prune` to clean up stale entries.
-func (m *Manager) Remove(parsed *gh.ParsedURL, branch string, force, deleteBranch bool) error {
+func (m *Manager) Remove(ctx context.Context, parsed *gh.ParsedURL, branch string, force, deleteBranch bool) error {
 	wtPath := m.WorktreePath(parsed.OwnerRepo, branch)
 	repoDir := m.RepoDir(parsed.OwnerRepo)
 
@@ -259,12 +276,12 @@ func (m *Manager) Remove(parsed *gh.ParsedURL, branch string, force, deleteBranc
 		return err
 	}
 
-	if err := removeWorktree(gitDir, wtPath, force); err != nil {
+	if err := m.removeWorktree(ctx, gitDir, wtPath, force); err != nil {
 		return err
 	}
 
 	if deleteBranch {
-		if err := runGit(gitDir, "branch", "-D", branch); err != nil {
+		if err := m.runGit(ctx, gitDir, "branch", "-D", branch); err != nil {
 			return fmt.Errorf("git branch delete failed: %w", err)
 		}
 	}
@@ -272,14 +289,15 @@ func (m *Manager) Remove(parsed *gh.ParsedURL, branch string, force, deleteBranc
 	return nil
 }
 
-// RemoveByPath removes a worktree by its path (for use when no URL is provided).
-func (m *Manager) RemoveByPath(wtPath, gitDir, branch string, force, deleteBranch bool) error {
-	if err := removeWorktree(gitDir, wtPath, force); err != nil {
+// RemoveByPath removes a worktree by its path (for use when no URL is
+// provided). ctx bounds every git invocation it issues.
+func (m *Manager) RemoveByPath(ctx context.Context, wtPath, gitDir, branch string, force, deleteBranch bool) error {
+	if err := m.removeWorktree(ctx, gitDir, wtPath, force); err != nil {
 		return err
 	}
 
 	if deleteBranch {
-		if err := runGit(gitDir, "branch", "-D", branch); err != nil {
+		if err := m.runGit(ctx, gitDir, "branch", "-D", branch); err != nil {
 			return fmt.Errorf("git branch delete failed: %w", err)
 		}
 	}
@@ -296,58 +314,71 @@ func (m *Manager) WorktreeExists(ownerRepo, branch string) bool {
 
 // removeWorktree removes a worktree, handling the case where the directory is already gone
 // or the worktree is not registered with git.
-func removeWorktree(gitDir, wtPath string, force bool) error {
+func (m *Manager) removeWorktree(ctx context.Context, gitDir, wtPath string, force bool) error {
 	_, pathErr := os.Stat(wtPath)
 	pathExists := pathErr == nil
 
-	if pathExists && isRegisteredWorktree(gitDir, wtPath) {
-		// Normal case: directory exists and is registered
-		args := []string{"worktree", "remove"}
-		if force {
-			args = append(args, "--force")
+	if pathExists {
+		registered, err := m.isRegisteredWorktree(ctx, gitDir, wtPath)
+		if err != nil {
+			// The registration check itself failed (including context
+			// cancellation/timeout): we cannot tell whether wtPath is a real
+			// worktree, so we must not fall through to a raw filesystem
+			// delete — that would bypass git's own data-loss guard on an
+			// operation we couldn't actually verify.
+			return fmt.Errorf("failed to check worktree registration for %s: %w", wtPath, err)
 		}
-		args = append(args, wtPath)
-		if err := runGit(gitDir, args...); err != nil {
-			// Without --force, propagate git's refusal; falling back to
-			// os.RemoveAll would defeat its data-loss guard.
-			if !force {
-				return err
+
+		if registered {
+			// Normal case: directory exists and is registered
+			args := []string{"worktree", "remove"}
+			if force {
+				args = append(args, "--force")
 			}
-			if rmErr := os.RemoveAll(wtPath); rmErr != nil {
-				return fmt.Errorf("git worktree remove failed: %w (manual cleanup also failed: %v)", err, rmErr)
+			args = append(args, wtPath)
+			if err := m.runGit(ctx, gitDir, args...); err != nil {
+				// Without --force, propagate git's refusal; falling back to
+				// os.RemoveAll would defeat its data-loss guard.
+				if !force {
+					return err
+				}
+				if rmErr := os.RemoveAll(wtPath); rmErr != nil {
+					return fmt.Errorf("git worktree remove failed: %w (manual cleanup also failed: %v)", err, rmErr)
+				}
+				_ = m.runGit(ctx, gitDir, "worktree", "prune")
 			}
-			_ = runGit(gitDir, "worktree", "prune")
-		}
-	} else if pathExists {
-		// Directory exists but is not a registered worktree — remove it directly
-		if err := os.RemoveAll(wtPath); err != nil {
-			return fmt.Errorf("failed to remove directory %s: %w", wtPath, err)
+		} else {
+			// Directory exists but is not a registered worktree — remove it directly
+			if err := os.RemoveAll(wtPath); err != nil {
+				return fmt.Errorf("failed to remove directory %s: %w", wtPath, err)
+			}
 		}
 	} else {
 		// Directory is gone — prune stale worktree entries
-		_ = runGit(gitDir, "worktree", "prune")
+		_ = m.runGit(ctx, gitDir, "worktree", "prune")
 	}
 	return nil
 }
 
-// isRegisteredWorktree checks if wtPath is listed in `git worktree list`.
-func isRegisteredWorktree(gitDir, wtPath string) bool {
-	cmd := exec.Command("git", "worktree", "list", "--porcelain")
-	cmd.Dir = gitDir
-	out, err := cmd.Output()
+// isRegisteredWorktree reports whether wtPath is listed in `git worktree
+// list`. A non-nil error (including one caused by ctx cancellation or
+// timeout) means the check could not be performed at all — the caller must
+// treat that as "unknown", never as "not registered".
+func (m *Manager) isRegisteredWorktree(ctx context.Context, gitDir, wtPath string) (bool, error) {
+	out, _, err := m.runnerOrDefault().Run(ctx, gitDir, false, "git", "worktree", "list", "--porcelain")
 	if err != nil {
-		return false
+		return false, err
 	}
 	cleanPath := filepath.Clean(wtPath)
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.HasPrefix(line, "worktree ") {
 			registered := filepath.Clean(strings.TrimPrefix(line, "worktree "))
 			if registered == cleanPath {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }
 
 // worktreeAddError wraps a git worktree add error with a user-friendly message.
@@ -365,42 +396,33 @@ func worktreeAddError(err error, stderr string) error {
 // progress and failure reasons in real time. The returned error is the raw
 // exit-status — callers add their own context, which avoids the prefix
 // stuttering you'd otherwise get in chains like "worktree add failed: git
-// worktree add ...: exit status N".
-func runGit(dir string, args ...string) error {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+// worktree add ...: exit status N". ctx bounds the invocation: cancellation
+// or a deadline terminates the process and surfaces as the returned error.
+func (m *Manager) runGit(ctx context.Context, dir string, args ...string) error {
+	_, _, err := m.runnerOrDefault().Run(ctx, dir, true, "git", args...)
+	return err
 }
 
 // runGitCapture is runGit plus stderr capture, for callers that need to inspect
 // git's message (e.g. detecting "already checked out" to add a tag hint).
 // Stderr is still streamed so the user sees it live.
-func runGitCapture(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	var stderrBuf bytes.Buffer
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
-	err := cmd.Run()
-	return stderrBuf.String(), err
+func (m *Manager) runGitCapture(ctx context.Context, dir string, args ...string) (string, error) {
+	_, stderr, err := m.runnerOrDefault().Run(ctx, dir, true, "git", args...)
+	return string(stderr), err
 }
 
-func branchExists(gitDir, branch string) bool {
-	cmd := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
-	cmd.Dir = gitDir
-	return cmd.Run() == nil
+func (m *Manager) branchExists(ctx context.Context, gitDir, branch string) bool {
+	_, _, err := m.runnerOrDefault().Run(ctx, gitDir, false, "git", "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
+	return err == nil
 }
 
-func refExists(gitDir, ref string) bool {
-	cmd := exec.Command("git", "rev-parse", "--verify", "--quiet", ref)
-	cmd.Dir = gitDir
-	return cmd.Run() == nil
+func (m *Manager) refExists(ctx context.Context, gitDir, ref string) bool {
+	_, _, err := m.runnerOrDefault().Run(ctx, gitDir, false, "git", "rev-parse", "--verify", "--quiet", ref)
+	return err == nil
 }
 
-func resolveDefaultBranch(gitDir string) string {
-	out, err := exec.Command("git", "-C", gitDir, "symbolic-ref", "refs/remotes/origin/HEAD").Output()
+func (m *Manager) resolveDefaultBranch(ctx context.Context, gitDir string) string {
+	out, _, err := m.runnerOrDefault().Run(ctx, gitDir, false, "git", "symbolic-ref", "refs/remotes/origin/HEAD")
 	if err != nil {
 		return "main"
 	}

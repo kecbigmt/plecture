@@ -1,10 +1,12 @@
 package github
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
+
+	"github.com/kecbigmt/sennit/app/internal/procexec"
 )
 
 // projectItemResponse is the GraphQL response structure for resolving a project item.
@@ -26,7 +28,9 @@ type projectItemResponse struct {
 // ResolveProjectItemID resolves a GitHub Projects v2 item ID (PVTI_xxx) to a
 // ParsedURL by querying the item's content via `gh api graphql`.
 // This requires a token with repo permissions (the standard gh CLI token).
-func ResolveProjectItemID(itemID string) (*ParsedURL, error) {
+// ctx bounds the `gh` invocation: a cancelled or expired ctx terminates the
+// process and ResolveProjectItemID returns its error.
+func ResolveProjectItemID(ctx context.Context, itemID string) (*ParsedURL, error) {
 	const query = `query($id: ID!) {
 		node(id: $id) {
 			... on ProjectV2Item {
@@ -47,15 +51,13 @@ func ResolveProjectItemID(itemID string) (*ParsedURL, error) {
 		}
 	}`
 
-	cmd := exec.Command("gh", "api", "graphql",
+	out, stderr, err := procexec.Default.Run(ctx, "", false, "gh", "api", "graphql",
 		"-f", fmt.Sprintf("query=%s", query),
 		"-f", fmt.Sprintf("id=%s", itemID),
 	)
-
-	out, err := cmd.Output()
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			return nil, fmt.Errorf("failed to resolve project item %s: %s", itemID, string(ee.Stderr))
+		if len(stderr) > 0 {
+			return nil, fmt.Errorf("failed to resolve project item %s: %s", itemID, string(stderr))
 		}
 		return nil, fmt.Errorf("failed to resolve project item %s: %w", itemID, err)
 	}
