@@ -85,9 +85,9 @@ type Config struct {
 	// outside its own session-name space. Empty = disabled.
 	//
 	// The guard is intentionally an opaque regex over the resolved session
-	// name: sennit core stays provider-agnostic (ADR-002) and never parses the
-	// resource identifier's owner/URL structure — knowing that names are
-	// owner-prefixed is the provider's job, encoded in the pattern it emits.
+	// name: sennit core stays provider-agnostic (ADR-002) and never parses
+	// the resource identifier's internal structure — knowing how names are
+	// shaped is the provider's job, encoded in the pattern it emits.
 	SessionGuard string `toml:"-"`
 }
 

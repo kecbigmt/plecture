@@ -164,7 +164,7 @@ type UpResult struct {
 // tasks are skipped), this also recovers partial-create state without
 // the user having to remember to re-run `sennit create`. A bare session name
 // without a state entry still errors out — Create needs URL information
-// to resolve owner/repo/branch, so the asymmetry is intentional.
+// to resolve workspace/branch, so the asymmetry is intentional.
 func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
 	identifier := params.Identifier
 	disp, matched, dispErr := dispatchResource(cfg, params.Workflow, params.Identifier)

@@ -72,7 +72,7 @@ func TestCursorValidate(t *testing.T) {
 }
 
 func TestSubtreeCursorEncodeDecodeRoundTrip(t *testing.T) {
-	c := SubtreeCursor{V: CursorVersion, Root: "owner/repo-1", After: "01JXEVENTID", Ord: OrderAsc}
+	c := SubtreeCursor{V: CursorVersion, Root: "workspace-1", After: "01JXEVENTID", Ord: OrderAsc}
 	got, err := DecodeSubtreeCursor(c.Encode())
 	if err != nil {
 		t.Fatalf("decode: %v", err)
@@ -86,14 +86,14 @@ func TestSubtreeCursorEncodeDecodeRoundTrip(t *testing.T) {
 }
 
 func TestSubtreeCursorValidate(t *testing.T) {
-	const root = "owner/repo-1"
+	const root = "workspace-1"
 	base := SubtreeCursor{V: CursorVersion, Root: root, After: "01JX", Ord: OrderAsc}
 
 	if err := base.Validate(root, OrderAsc); err != nil {
 		t.Fatalf("matching cursor should validate: %v", err)
 	}
 	// root mismatch: a token must never be replayed against another subtree root.
-	if err := base.Validate("owner/repo-2", OrderAsc); err == nil {
+	if err := base.Validate("workspace-2", OrderAsc); err == nil {
 		t.Fatalf("expected root-mismatch error")
 	}
 	// order mismatch.

@@ -21,6 +21,14 @@ import (
 	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/ratebudget"
 )
 
+// sourceGitHub and typeGitHubPrefix are this plugin's own values for the
+// generic event.Source/event.Type fields — the shared contracts/event
+// package stays provider-agnostic and does not know these names.
+const (
+	sourceGitHub     = "github"
+	typeGitHubPrefix = "github." // github.<change type>
+)
+
 // resourceRE parses the GitHub issue/PR resource identifiers the watcher
 // understands. Anything else is skipped with a warning (the subscription
 // stays; a future watcher version may learn the shape).
@@ -700,8 +708,8 @@ func (p *Poller) publish(sub *Subscription, c change) {
 	defer cancel()
 	_, _, err := p.Bus.Publish(ctx, event.Event{
 		SessionName: sub.SessionName,
-		Type:        event.TypeGitHubPrefix + c.Type,
-		Source:      event.SourceGitHub,
+		Type:        typeGitHubPrefix + c.Type,
+		Source:      sourceGitHub,
 		Direction:   event.Inbound,
 		Summary:     c.Summary,
 		Metadata:    map[string]string{"url": sub.Resource, "resource": sub.Resource},

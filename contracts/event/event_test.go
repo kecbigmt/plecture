@@ -10,13 +10,13 @@ func TestMatchType(t *testing.T) {
 		pattern, typ string
 		want         bool
 	}{
-		{"*", "github.ci_status", true},
-		{"github.ci_status", "github.ci_status", true},
-		{"github.ci_status", "github.state", false},
-		{"github.*", "github.ci_status", true},
-		{"github.*", "github.", true},
-		{"github.*", "github", false}, // prefix is "github." — bare "github" excluded
-		{"github.*", "slack.message", false},
+		{"*", "acme.ci_status", true},
+		{"acme.ci_status", "acme.ci_status", true},
+		{"acme.ci_status", "acme.state", false},
+		{"acme.*", "acme.ci_status", true},
+		{"acme.*", "acme.", true},
+		{"acme.*", "acme", false}, // prefix is "acme." — bare "acme" excluded
+		{"acme.*", "slack.message", false},
 		{"claude.*", "claude.reply", true},
 	}
 	for _, c := range cases {
@@ -27,7 +27,7 @@ func TestMatchType(t *testing.T) {
 }
 
 func TestFilterMatch(t *testing.T) {
-	ev := Event{Type: "github.ci_status", Source: SourceGitHub, Direction: Internal}
+	ev := Event{Type: "acme.ci_status", Source: "example", Direction: Internal}
 
 	cases := []struct {
 		name string
@@ -35,15 +35,15 @@ func TestFilterMatch(t *testing.T) {
 		want bool
 	}{
 		{"zero filter matches all", Filter{}, true},
-		{"type glob hit", Filter{Types: []string{"github.*"}}, true},
+		{"type glob hit", Filter{Types: []string{"acme.*"}}, true},
 		{"type glob miss", Filter{Types: []string{"claude.*"}}, false},
-		{"type multi any-hit", Filter{Types: []string{"claude.*", "github.*"}}, true},
-		{"source hit", Filter{Sources: []string{SourceGitHub}}, true},
+		{"type multi any-hit", Filter{Types: []string{"claude.*", "acme.*"}}, true},
+		{"source hit", Filter{Sources: []string{"example"}}, true},
 		{"source miss", Filter{Sources: []string{SourceSlack}}, false},
 		{"direction hit", Filter{Direction: Internal}, true},
 		{"direction miss", Filter{Direction: Inbound}, false},
-		{"combined hit", Filter{Types: []string{"github.*"}, Sources: []string{SourceGitHub}, Direction: Internal}, true},
-		{"combined one miss", Filter{Types: []string{"github.*"}, Direction: Outbound}, false},
+		{"combined hit", Filter{Types: []string{"acme.*"}, Sources: []string{"example"}, Direction: Internal}, true},
+		{"combined one miss", Filter{Types: []string{"acme.*"}, Direction: Outbound}, false},
 	}
 	for _, c := range cases {
 		if got := c.f.Match(ev); got != c.want {
@@ -54,7 +54,7 @@ func TestFilterMatch(t *testing.T) {
 
 func TestFilterMatchDeliveryMode(t *testing.T) {
 	pushed := Event{Type: TypeTerminalDone, DeliveryMode: DeliveryModePush}
-	pulled := Event{Type: "github.ci_status"}
+	pulled := Event{Type: "acme.ci_status"}
 
 	cases := []struct {
 		name string
@@ -101,11 +101,11 @@ func TestSplitCSV(t *testing.T) {
 	}{
 		{"empty", "", nil},
 		{"blank", "   ", nil},
-		{"single", "github", []string{"github"}},
-		{"comma no space", "github,slack", []string{"github", "slack"}},
-		{"comma with space", "github, slack", []string{"github", "slack"}},
-		{"leading/trailing space", "  github , slack  ", []string{"github", "slack"}},
-		{"empty element dropped", "github,,slack", []string{"github", "slack"}},
+		{"single", "acme", []string{"acme"}},
+		{"comma no space", "acme,slack", []string{"acme", "slack"}},
+		{"comma with space", "acme, slack", []string{"acme", "slack"}},
+		{"leading/trailing space", "  acme , slack  ", []string{"acme", "slack"}},
+		{"empty element dropped", "acme,,slack", []string{"acme", "slack"}},
 		{"all-blank elements", " , , ", nil},
 	}
 	for _, c := range cases {

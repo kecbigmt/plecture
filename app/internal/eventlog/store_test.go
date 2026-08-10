@@ -71,7 +71,7 @@ func TestAppendAndList(t *testing.T) {
 	const session = "octocat/hello-world-42"
 
 	want := []struct{ typ, src string }{
-		{"github.ci_status", event.SourceGitHub},
+		{"github.ci_status", "github"},
 		{"slack.message", event.SourceSlack},
 		{"claude.reply", event.SourceClaude},
 	}

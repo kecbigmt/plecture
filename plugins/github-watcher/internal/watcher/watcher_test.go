@@ -356,7 +356,7 @@ func TestPoller_TickPublishesToBus(t *testing.T) {
 	types := map[string]bool{}
 	for _, ev := range published {
 		types[ev.Type] = true
-		if ev.Source != event.SourceGitHub {
+		if ev.Source != sourceGitHub {
 			t.Errorf("source = %q, want github", ev.Source)
 		}
 		if ev.SessionName != "org/repo-7" {
@@ -503,7 +503,7 @@ func TestPoller_SamePRPublishesPerSubscriber(t *testing.T) {
 	}
 	sessions := map[string]bool{}
 	for _, ev := range published {
-		if ev.Type != event.TypeGitHubPrefix+"state" {
+		if ev.Type != typeGitHubPrefix+"state" {
 			t.Errorf("event type = %q, want github.state", ev.Type)
 		}
 		if ev.Metadata["resource"] != resource || ev.Metadata["url"] != resource {

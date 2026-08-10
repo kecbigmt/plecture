@@ -220,9 +220,9 @@ func httpStatusForError(err error) int {
 	return http.StatusInternalServerError
 }
 
-// sessionPath builds the detail URL for a session. Names are owner/repo-N, so
+// sessionPath builds the detail URL for a session. Names are workspace-N, so
 // each "/"-separated segment is path-escaped while the separators are kept,
-// yielding /sessions/<owner>/<name> that the {name...} route reverses.
+// yielding /sessions/<segment>/<segment> that the {name...} route reverses.
 func sessionPath(name string) string {
 	return "/sessions/" + escapeSegments(name)
 }
@@ -242,7 +242,7 @@ func escapeSegments(name string) string {
 
 // isWebURL reports whether a resource identifier is a navigable http(s) URL.
 // Resource ids are arbitrary strings (resolver-less ids like "my-experiment",
-// or schemes like "owner:foo"), so the detail view only renders an anchor when
+// or schemes like "acme:foo"), so the detail view only renders an anchor when
 // the value is actually a web link — otherwise it shows plain text.
 func isWebURL(s string) bool {
 	u, err := url.Parse(s)
