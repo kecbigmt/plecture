@@ -53,6 +53,50 @@ go test ./app/...
 
 and likewise for each module under `contracts/` and `plugins/`.
 
+## Development workflow
+
+This section is the source of truth for how changes get made. If the
+repository later adopts agent skills or checklists, they must derive from
+these rules, not replace them.
+
+### TDD as the default flow
+
+For any behavior change or bug fix, write the failing test first (red),
+make it pass with the minimal implementation (green), then refactor. A bug
+fix PR must contain a regression test that fails against the pre-fix code
+and passes after the fix.
+
+### Refactoring discipline
+
+Refactoring commits are behavior-neutral and must not be mixed with
+behavior changes in the same commit. Before refactoring code that lacks
+test coverage, add characterization tests first so the existing behavior
+is protected before it is moved or restructured. The required order is:
+characterization tests, then refactor, then behavior changes as separate,
+later commits.
+
+Coverage means error branches and failure paths are tested, not just the
+happy path. A change that only exercises success cases is incomplete.
+
+### Test placement and speed
+
+Prefer table-driven tests where idiomatic to the case being tested.
+Per-module tests must stay fast enough to run on every CI matrix job;
+push slow or environment-dependent cases behind an explicit opt-in rather
+than letting them slow down the default run. Integration-style tests live
+next to the module they exercise, not in a separate top-level tree.
+
+### Definition of done
+
+A PR is done when:
+
+- CI is green, and CI is the mechanism that enforces this, not manual
+  confirmation.
+- New or changed behavior is covered by tests that were written before
+  the implementation that satisfies them.
+- There is no formatting or vet debt (`gofmt`, `go vet` clean) in any
+  module touched by the change.
+
 ## Compatibility policy
 
 Sennit is pre-1.0. Do not add backward-compatibility code paths. Breaking
