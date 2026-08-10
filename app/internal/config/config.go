@@ -106,15 +106,24 @@ func DefaultConfig() *Config {
 	}
 }
 
+// DefaultPath returns the path Load reads config.toml from. Callers outside
+// the normal load path (e.g. the migration command, which must locate the
+// same file Load would) use this instead of duplicating the join.
+func DefaultPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "sennit", "config.toml")
+}
+
 func Load() *Config {
 	cfg := DefaultConfig()
 
-	home, err := os.UserHomeDir()
-	if err != nil {
+	configPath := DefaultPath()
+	if configPath == "" {
 		return cfg
 	}
-
-	configPath := filepath.Join(home, ".config", "sennit", "config.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		return cfg
 	}
@@ -131,6 +140,10 @@ func Load() *Config {
 	}
 
 	// Expand ~ in path configs
+	home, homeErr := os.UserHomeDir()
+	if homeErr != nil {
+		return cfg
+	}
 	if len(cfg.WorktreesRoot) > 0 && cfg.WorktreesRoot[0] == '~' {
 		cfg.WorktreesRoot = filepath.Join(home, cfg.WorktreesRoot[1:])
 	}
