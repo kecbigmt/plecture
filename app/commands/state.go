@@ -107,6 +107,16 @@ with ` + "`mutable = true`" + ` in the target's outputs schema are writable; the
 Intended for external updaters (e.g. a watcher daemon refreshing observed
 values like pr_state) — resources created by setup stay immutable.
 
+An explicit value set here takes precedence over resource-derived resolution
+(a dynamic output with from_resource_status = true): a later refresh only
+overwrites a key it actually fetched a value for, so it never clobbers a key
+its resource observation found nothing for. This is how a cross-repository
+pull request gets wired to a chain's pr_url input — a work session tracked
+by an issue in one repository can record the PR opened in another by calling
+this command, since core resource observation only ever inspects the tracked
+resource itself and never searches a second repository on the work
+session's behalf.
+
 Note: validation is against the target's CURRENT outputs schema. If a def drifts
 after instantiation (a key made immutable or dropped from properties, or a new
 required output added), the merge is rejected and the observed value silently
