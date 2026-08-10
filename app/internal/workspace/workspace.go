@@ -126,7 +126,7 @@ func SanitizeBranch(branch string) string {
 // The latter two remain so sessions predating the ~/src migration keep
 // resolving; they retire once no such repo layout is left on the machine.
 func (m *Manager) FindGitDir(repoDir string, excludePaths ...string) (string, error) {
-	// Primary checkout: <srcRoot>/<host>/<owner>/<repo>/.git as a directory
+	// Primary checkout: <srcRoot>/<host>/<namespace>/<name>/.git as a directory
 	if srcDir := m.SrcDir(repoDir); srcDir != "" {
 		if st, err := os.Stat(filepath.Join(srcDir, ".git")); err == nil && st.IsDir() {
 			return srcDir, nil
