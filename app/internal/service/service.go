@@ -434,11 +434,11 @@ func Workdir(cfg *config.Config, store *state.Store, identifier string) (string,
 			return "", &Error{Code: ErrInvalidURL, Message: err.Error()}
 		}
 		mgr := workspace.NewManager(cfg.WorktreesRoot)
-		branch, err := mgr.ResolveBranch(context.Background(), parsed)
+		branch, err := gh.ResolveBranch(context.Background(), parsed)
 		if err != nil {
 			return "", &Error{Code: ErrExecutionFailed, Message: err.Error()}
 		}
-		return mgr.WorktreePath(parsed.OwnerRepo, branch), nil
+		return mgr.WorktreePath(gh.RepoSlug(parsed.OwnerRepo), branch), nil
 	}
 
 	return "", &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("no state entry for session %q", identifier)}

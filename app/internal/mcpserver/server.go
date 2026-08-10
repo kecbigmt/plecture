@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/github"
 	"github.com/kecbigmt/sennit/app/internal/service"
 	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/app/internal/template"
@@ -230,7 +231,7 @@ func handleTemplateList(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	repoDir := ""
 	if repo != "" {
 		mgr := workspace.NewManager(cfg.WorktreesRoot)
-		repoDir = mgr.RepoDir(repo)
+		repoDir = mgr.RepoDir(github.RepoSlug(repo))
 	}
 	templates, err := template.List(repoDir)
 	if err != nil {

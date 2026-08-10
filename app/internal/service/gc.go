@@ -337,7 +337,7 @@ func executeGCDelete(s *domain.Session, mgr *workspace.Manager, store *state.Sto
 
 	// Remove worktree if it exists
 	if wtExists {
-		repoDir := mgr.RepoDir(s.OwnerRepo)
+		repoDir := workspace.ContainerDir(s.WorktreePath)
 		gitDir, err := mgr.FindGitDir(repoDir, s.WorktreePath)
 		if err != nil {
 			entry.DeleteWarnings = append(entry.DeleteWarnings, fmt.Sprintf("worktree removal skipped: %v", err))

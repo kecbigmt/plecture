@@ -168,7 +168,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	}
 
 	mgr := workspace.NewManager(cfg.WorktreesRoot)
-	baseBranch, err := mgr.ResolveBranch(context.Background(), parsed)
+	baseBranch, err := gh.ResolveBranch(context.Background(), parsed)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to resolve branch: %v", err)}
 	}
@@ -193,12 +193,16 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	// mgr.Add is itself idempotent (reuses an existing worktree) and the
 	// session lookup below decides whether we're creating a fresh state
 	// entry or recovering an existing one.
-	info, err := mgr.Add(context.Background(), workspace.AddParams{
-		Parsed:      parsed,
+	addParams := workspace.AddParams{
+		Repo:        gh.RepoSlug(parsed.OwnerRepo),
 		Branch:      branch,
 		BaseBranch:  baseBranch,
 		SessionName: sessionName,
-	})
+	}
+	if parsed.Type == gh.URLTypePR {
+		addParams.FallbackRefspec = gh.PullRefspec(parsed.Number, baseBranch)
+	}
+	info, err := mgr.Add(context.Background(), addParams)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to create worktree: %v", err)}
 	}
@@ -708,7 +712,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 		}
 		result.RemovedWorktree = session.WorktreePath != "" && !fileExists(session.WorktreePath)
 	} else if session.WorktreePath != "" {
-		repoDir := mgr.RepoDir(session.OwnerRepo)
+		repoDir := workspace.ContainerDir(session.WorktreePath)
 		gitDir, findErr := mgr.FindGitDir(repoDir, session.WorktreePath)
 		if findErr != nil {
 			result.WorktreeWarning = fmt.Sprintf("worktree removal failed: %v", findErr)

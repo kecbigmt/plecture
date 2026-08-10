@@ -97,7 +97,7 @@ The template name corresponds to files in the template search path:
 			vars.Repo = parsed.Repo
 			vars.OwnerRepo = parsed.OwnerRepo
 			mgr := workspace.NewManager(cfg.WorktreesRoot)
-			searchDir = mgr.RepoDir(parsed.OwnerRepo)
+			searchDir = mgr.RepoDir(github.RepoSlug(parsed.OwnerRepo))
 		}
 
 		// --resource rebinds the resource-derived vars to a resource other than the
@@ -112,7 +112,7 @@ The template name corresponds to files in the template search path:
 			vars.OwnerRepo = templateRenderRepo
 			if !resolved {
 				mgr := workspace.NewManager(cfg.WorktreesRoot)
-				searchDir = mgr.RepoDir(templateRenderRepo)
+				searchDir = mgr.RepoDir(github.RepoSlug(templateRenderRepo))
 			}
 		}
 
@@ -204,7 +204,7 @@ var templateListCmd = &cobra.Command{
 		repoDir := ""
 		if templateListRepo != "" {
 			mgr := workspace.NewManager(cfg.WorktreesRoot)
-			repoDir = mgr.RepoDir(templateListRepo)
+			repoDir = mgr.RepoDir(github.RepoSlug(templateListRepo))
 		}
 		templates, err := template.List(repoDir)
 		if err != nil {

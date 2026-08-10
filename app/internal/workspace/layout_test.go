@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 )
 
 // TestLayout_RepoDirAndWorktreePath pins the on-disk path convention the
@@ -15,8 +13,8 @@ import (
 func TestLayout_RepoDirAndWorktreePath(t *testing.T) {
 	mgr := NewManager("/roots/worktrees")
 
-	repoDir := mgr.RepoDir("testowner/testrepo")
-	if want := filepath.Join("/roots/worktrees", "github.com", "testowner", "testrepo"); repoDir != want {
+	repoDir := mgr.RepoDir("example.test/testowner/testrepo")
+	if want := filepath.Join("/roots/worktrees", "example.test", "testowner", "testrepo"); repoDir != want {
 		t.Errorf("RepoDir = %q, want %q", repoDir, want)
 	}
 
@@ -32,7 +30,7 @@ func TestLayout_RepoDirAndWorktreePath(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := mgr.WorktreePath("testowner/testrepo", tt.branch)
+			got := mgr.WorktreePath("example.test/testowner/testrepo", tt.branch)
 			if want := filepath.Join(repoDir, tt.want); got != want {
 				t.Errorf("WorktreePath = %q, want %q", got, want)
 			}
@@ -49,8 +47,7 @@ func TestLayout_WorktreeExists(t *testing.T) {
 	if mgr.WorktreeExists(ownerRepo, "item/12") {
 		t.Fatal("worktree should not exist before acquisition")
 	}
-	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypeIssue, Number: 12}
-	if _, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "item/12", SessionName: "s"}); err != nil {
+	if _, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "item/12", SessionName: "s"}); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 	if !mgr.WorktreeExists(ownerRepo, "item/12") {
@@ -63,9 +60,8 @@ func TestLayout_WorktreeExists(t *testing.T) {
 // than creating an empty directory tree.
 func TestLayout_AddMissingRepoContainer(t *testing.T) {
 	mgr := NewManager(t.TempDir())
-	parsed := &gh.ParsedURL{OwnerRepo: "absent/repo", Repo: "repo", Type: gh.URLTypeIssue, Number: 1}
 
-	_, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "item/1", SessionName: "s"})
+	_, err := mgr.Add(context.Background(), AddParams{Repo: "absent/repo", Branch: "item/1", SessionName: "s"})
 	if err == nil {
 		t.Fatal("expected an error when the repository container is absent")
 	}
@@ -79,9 +75,8 @@ func TestLayout_AddMissingRepoContainer(t *testing.T) {
 func TestLayout_AddDefaultsBaseBranchToBranch(t *testing.T) {
 	worktreesRoot, ownerRepo := setupTestRepo(t)
 	mgr := NewManager(worktreesRoot)
-	parsed := &gh.ParsedURL{OwnerRepo: ownerRepo, Repo: "testrepo", Type: gh.URLTypeIssue, Number: 3}
 
-	info, err := mgr.Add(context.Background(), AddParams{Parsed: parsed, Branch: "item/3", SessionName: "s"})
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "item/3", SessionName: "s"})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
