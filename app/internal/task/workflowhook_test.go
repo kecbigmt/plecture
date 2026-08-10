@@ -53,6 +53,38 @@ func TestRunWorkflowSetup_TemplateVars(t *testing.T) {
 	}
 }
 
+// TestRunWorkflowSetup_ShellQuoteNeutralizesMetacharacters pins the
+// shellQuote template func as the fix for hook authors interpolating
+// attacker-influenced values (resource ids, session names) into a command
+// string that runs under bash -c: a value carrying shell metacharacters must
+// reach the invoked command as one literal argument, not be re-parsed as
+// shell syntax.
+func TestRunWorkflowSetup_ShellQuoteNeutralizesMetacharacters(t *testing.T) {
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "pwned")
+	out := filepath.Join(dir, "out")
+	prov := config.ProviderConfig{
+		ID: "wf",
+		Setup: `printf '%s' {{.ResourceID | shellQuote}} > ` + out + ` && ` +
+			`echo "{\"workdir\":\"` + dir + `\",\"branch\":\"issue/1\"}"`,
+	}
+	malicious := `x"; touch ` + marker + `; echo "`
+	tasks := map[string]*contract.TaskState{}
+	if _, err := RunWorkflowSetup(prov, WorkflowHookVars{ResourceID: malicious, SessionName: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunWorkflowSetup: %v", err)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("shellQuote did not prevent shell interpretation: injected command executed")
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read out: %v", err)
+	}
+	if string(got) != malicious {
+		t.Errorf("downstream command received %q, want the literal resource id %q", got, malicious)
+	}
+}
+
 func TestRunWorkflowSetup_MissingWorkdirFails(t *testing.T) {
 	prov := config.ProviderConfig{ID: "wf", Setup: `echo '{"branch":"b"}'`}
 	tasks := map[string]*contract.TaskState{}

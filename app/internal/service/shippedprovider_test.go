@@ -1,11 +1,14 @@
 package service
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
 	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // repoRoot locates the repository root from this test file's own path, so a
@@ -70,6 +73,53 @@ func TestShippedProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
 				t.Errorf("name = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestShippedProvider_SetupHookDoesNotShellInjectResourceID pins that a
+// resource id carrying shell metacharacters is passed to the setup hook
+// literally rather than being interpreted by the shell that renders it. The
+// injected command runs (if unescaped) regardless of whether
+// sennit-github-provider is even on PATH, since bash executes every
+// semicolon-separated command in "cmd1; cmd2" independent of cmd1's exit
+// status — so this test needs no built binaries.
+func TestShippedProvider_SetupHookDoesNotShellInjectResourceID(t *testing.T) {
+	prov := loadShippedProvider(t, "github-provider", "github")
+	marker := filepath.Join(t.TempDir(), "pwned")
+	malicious := `https://github.com/acme/widgets/issues/1"; touch ` + marker + `; echo "`
+
+	tasks := map[string]*contract.TaskState{}
+	vars := task.WorkflowHookVars{ResourceID: malicious, SessionName: "acme/widgets-1"}
+	// Setup is expected to fail (sennit-github-provider is not on PATH in this
+	// test and the resource id is not a valid URL); only the absence of the
+	// injected side effect is under test.
+	_, _ = task.RunWorkflowSetup(prov, vars, tasks, nil)
+
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("resource id was shell-interpreted: injected command executed")
+	}
+}
+
+// TestShippedProvider_CleanupHookDoesNotShellInjectWorkdirOrBranch mirrors the
+// setup case for cleanup, whose template interpolates the persisted workdir
+// and branch (sourced from setup's own outputs, which in turn derive from the
+// session's tag — not fully outside user control).
+func TestShippedProvider_CleanupHookDoesNotShellInjectWorkdirOrBranch(t *testing.T) {
+	prov := loadShippedProvider(t, "github-provider", "github")
+	marker := filepath.Join(t.TempDir(), "pwned")
+	maliciousBranch := `issue/1"; touch ` + marker + `; echo "`
+
+	tasks := map[string]*contract.TaskState{
+		contract.WorkflowPseudoNodeID: {
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"workdir": "/tmp/does-not-matter", "branch": maliciousBranch},
+		},
+	}
+	vars := task.WorkflowHookVars{ResourceID: "https://github.com/acme/widgets/issues/1", SessionName: "acme/widgets-1"}
+	_ = task.RunWorkflowCleanup(prov, vars, tasks, nil)
+
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("branch was shell-interpreted: injected command executed")
 	}
 }
 
