@@ -9,14 +9,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/github"
-	"github.com/kecbigmt/plect/app/internal/service"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/template"
-	"github.com/kecbigmt/plect/app/internal/workspace"
-	contractstate "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/github"
+	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/template"
+	"github.com/kecbigmt/sennit/app/internal/workspace"
+	contractstate "github.com/kecbigmt/sennit/contracts/state"
 )
 
 var (
@@ -51,8 +51,8 @@ Guard optional vars with {{get .SessionInputs "key"}} (returns "" when absent)
 instead of {{.SessionInputs.key}} (renders "<no value>").
 
 The template name corresponds to files in the template search path:
-  1. <workdir>/.tws/templates/<name>.md  (session working-directory overlay)
-  2. ~/.config/tws/templates/<name>.md
+  1. <workdir>/.sennit/templates/<name>.md  (session working-directory overlay)
+  2. ~/.config/sennit/templates/<name>.md
   3. Built-in defaults (review, respond, work, investigate)`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

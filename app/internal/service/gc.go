@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	"github.com/kecbigmt/plect/app/internal/workspace"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/sennit/app/internal/workspace"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // GCAction describes what action should be taken for a session.
@@ -205,7 +205,7 @@ func classifySession(s *domain.Session, taskDefs map[string]config.TaskDefinitio
 }
 
 // sessionRuntimeAlive reports whether the session's runtime is alive, derived
-// from the same declarative healthcheck EvaluateHealth uses for `tws status`.
+// from the same declarative healthcheck EvaluateHealth uses for `sennit status`.
 // A session with no produced run-scoped task declaring a healthcheck has
 // nothing to probe and is treated as alive — GC's dead-runtime detection only
 // fires when a healthcheck is declared and fails.

@@ -3,10 +3,10 @@ package service
 import (
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 func strp(s string) *string { return &s }

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 const outputKeyRevision = "revision"
@@ -63,7 +63,7 @@ type CheckResult struct {
 	Actions []CheckAction `json:"actions,omitempty"`
 	// Chains is the [[chains]] evaluation for this same tick/check — fired /
 	// already-active / blocked, with the reason — evaluated against the same
-	// facts as Actions. CheckSession (and tws status, which shares the same
+	// facts as Actions. CheckSession (and sennit status, which shares the same
 	// evaluation) always reports it as a dry-run plan (Spawned is always
 	// false); TickSession spawns each fired, not-already-active entry.
 	Chains []ChainSpawn `json:"chains,omitempty"`
@@ -106,10 +106,10 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 	}
 	sessionName := params.SessionName
 	if sessionName == "" {
-		sessionName = os.Getenv("TWS_SESSION_NAME")
+		sessionName = os.Getenv("SENNIT_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass --session or run inside a tws session pane"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass --session or run inside a sennit session pane"}
 	}
 	resolvedName, session, err := resolveSession(cfg, store, sessionName)
 	if err != nil {
@@ -128,10 +128,10 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 	}
 	reviewer := params.ReviewerSession
 	if reviewer == "" {
-		reviewer = os.Getenv("TWS_SESSION_NAME")
+		reviewer = os.Getenv("SENNIT_SESSION_NAME")
 	}
 	if reviewer == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: "reviewer session is required: pass --reviewer-session or run inside a reviewer tws session pane"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "reviewer session is required: pass --reviewer-session or run inside a reviewer sennit session pane"}
 	}
 	allSessions := store.All()
 	reviewerWorkflow := ""
@@ -190,7 +190,7 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 
 	// Builtin tick trigger (wiki verification-gate.md): a recorded judge ticks
 	// the *target* session even with no `[tick]` declared, because judge is
-	// tws's own concept. Best-effort like recordLifecycle — a failed append
+	// sennit's own concept. Best-effort like recordLifecycle — a failed append
 	// must not unwind the verdict that was already durably recorded above.
 	recordJudgeRecorded(store, resolvedName, judge)
 
@@ -205,7 +205,7 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 }
 
 // computedAction bundles one instance's done_when evaluation with the
-// record-time facts needed only by the actuator (tws tick): whether the last
+// record-time facts needed only by the actuator (sennit tick): whether the last
 // persisted action was already "satisfied" (so a repeated `done` push can be
 // skipped) and which instance key it belongs to. CheckSession discards these
 // extras and reports only the action; TickSession consumes all three. result
@@ -218,8 +218,8 @@ type computedAction struct {
 	result           task.DoneWhenResult
 }
 
-// evaluateSessionActions runs the read-only half shared by CheckSession (tws
-// status / tws_check) and TickSession (tws tick): optionally refresh outputs,
+// evaluateSessionActions runs the read-only half shared by CheckSession (sennit
+// status / sennit_check) and TickSession (sennit tick): optionally refresh outputs,
 // resolve the session, and evaluate
 // done_when — and, against those same facts, [[chains]] — for every produced
 // task instance. It never writes state, spawns a session, or publishes events:
@@ -231,10 +231,10 @@ type computedAction struct {
 // refreshes dynamic outputs.
 func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName string, refresh bool) (string, []computedAction, []ChainSpawn, []string, error) {
 	if sessionName == "" {
-		sessionName = os.Getenv("TWS_SESSION_NAME")
+		sessionName = os.Getenv("SENNIT_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass a session or run inside a tws session pane"}
+		return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass a session or run inside a sennit session pane"}
 	}
 	if refresh {
 		if _, err := RefreshSessionOutputs(cfg, store, sessionName); err != nil {
@@ -310,7 +310,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 // is woken or spawned, and no dynamic output is refreshed — it reads whatever
 // tick (or the initial produce) last persisted. Calling it any number of
 // times leaves state, event log, and session list unchanged (story PR-C #4;
-// wiki verification-gate.md: "the target session's state does not change"). Use tws tick
+// wiki verification-gate.md: "the target session's state does not change"). Use sennit tick
 // to actually advance the gate, refresh outputs, and fire chains.
 func CheckSession(cfg *config.Config, store *state.Store, params CheckParams) (*CheckResult, error) {
 	_, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, false)
@@ -432,7 +432,7 @@ func reviewerDispatchCommand(resource, instance string) string {
 	}
 	// Which reviewer workflow runs is a chaining concern, not a judge-leaf field;
 	// this advisory suggestion defaults to claude until chaining (slice 6) owns it.
-	return fmt.Sprintf("tws up %q --workflow claude --task review --tag %s", resource, reviewerTag(instance))
+	return fmt.Sprintf("sennit up %q --workflow claude --task review --tag %s", resource, reviewerTag(instance))
 }
 
 func judgeCommands(sessionName, instance string, items []CheckUnmetItem) []string {
@@ -450,7 +450,7 @@ func judgeCommands(sessionName, instance string, items []CheckUnmetItem) []strin
 }
 
 func judgeCommand(action, sessionName, instance, id string) string {
-	return fmt.Sprintf("tws judge %s %q %q %q --reason %q", action, sessionName, instance, id, "<reason>")
+	return fmt.Sprintf("sennit judge %s %q %q %q --reason %q", action, sessionName, instance, id, "<reason>")
 }
 
 func reviewerTag(instance string) string {

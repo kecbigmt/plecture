@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	gh "github.com/kecbigmt/plect/app/internal/github"
+	gh "github.com/kecbigmt/sennit/app/internal/github"
 )
 
-// setupTestRepo creates a git repo structure that mimics what tws expects:
+// setupTestRepo creates a git repo structure that mimics what sennit expects:
 // worktreesRoot/github.com/owner/repo/main is a real git repo (acts as gitDir).
 // A bare repo is used as a local "origin" remote so git fetch works.
 func setupTestRepo(t *testing.T) (worktreesRoot string, ownerRepo string) {
@@ -563,7 +563,7 @@ func TestWorktreeAddError_AlreadyCheckedOutHint(t *testing.T) {
 	if !strings.Contains(msg, "git worktree add failed") {
 		t.Errorf("expected 'git worktree add failed' prefix in error, got: %s", msg)
 	}
-	if !strings.Contains(msg, "tws create <url> --tag <tag>") {
+	if !strings.Contains(msg, "sennit create <url> --tag <tag>") {
 		t.Errorf("expected tag hint in error, got: %s", msg)
 	}
 }

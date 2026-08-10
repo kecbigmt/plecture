@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/service"
-	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/kecbigmt/sennit/app/internal/state"
 )
 
 var (
@@ -25,7 +25,7 @@ var createCmd = &cobra.Command{
 	Short: "Create a session for a resource and run session-scoped tasks",
 	Long: `Create a session: derive the session id from the resource identifier,
 acquire the working directory (workflow setup), and run session-scoped
-tasks. Does not auto-start the runtime — use 'tws up' next to launch
+tasks. Does not auto-start the runtime — use 'sennit up' next to launch
 run-scoped tasks.
 
 The resource identifier is any string. A workflow whose [resolver] matches
@@ -85,10 +85,10 @@ session's initial task without hand-writing JSON. Workflows that declare
 
 func init() {
 	createCmd.Flags().StringVar(&createTag, "tag", "", "Workspace-identity label for the session (e.g. review). Defaults to the workflow id, so two tools on one resource get separate workspaces. Provider-agnostic: the GitHub provider maps it to a branch/worktree suffix, but that is an implementation detail.")
-	createCmd.Flags().StringVarP(&createWorkflow, "workflow", "w", "", "Workflow id — filename stem of .tws/workflows/<id>.toml")
+	createCmd.Flags().StringVarP(&createWorkflow, "workflow", "w", "", "Workflow id — filename stem of .sennit/workflows/<id>.toml")
 	createCmd.Flags().StringVar(&createInputs, "inputs", "", "Session inputs as a JSON object string")
 	createCmd.Flags().StringVar(&createInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object")
 	createCmd.Flags().StringVar(&createTask, "task", "", "Shorthand for --inputs '{\"task\":\"<id>\"}'. Pass \"none\" for no initial task.")
-	createCmd.Flags().StringVar(&createParent, "parent", "", "Parent session name for the session tree, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $TWS_SESSION_NAME when it names an existing session")
+	createCmd.Flags().StringVar(&createParent, "parent", "", "Parent session name for the session tree, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $SENNIT_SESSION_NAME when it names an existing session")
 	rootCmd.AddCommand(createCmd)
 }

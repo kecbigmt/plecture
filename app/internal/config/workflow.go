@@ -11,11 +11,11 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/domain"
 )
 
-// WorkflowFile is loaded from `.tws/workflows/<id>.toml` (per-repo) or from
-// `~/.config/tws/workflows/<id>.toml` (global). Per-repo wins on id conflict.
+// WorkflowFile is loaded from `.sennit/workflows/<id>.toml` (per-repo) or from
+// `~/.config/sennit/workflows/<id>.toml` (global). Per-repo wins on id conflict.
 //
 // A workflow is a named bundle of nodes. Each node selects a task definition
 // via `uses` and binds its inputs as Go templates. The setup/cleanup DAG is
@@ -25,7 +25,7 @@ import (
 // ID is derived from the filename stem and is *not* read from TOML — the
 // filename is the single source of truth (renaming a workflow is `mv`, not
 // `mv` + TOML edit). `name` is the human-readable display label (separate from
-// identity); `description` is a short summary used by `tws workflow list/show`
+// identity); `description` is a short summary used by `sennit workflow list/show`
 // and the MCP discovery tools.
 type WorkflowFile struct {
 	ID          string `toml:"-"`
@@ -60,7 +60,7 @@ type WorkflowFile struct {
 	//	[environment_inputs]
 	//	image = "myimage:latest"
 	EnvironmentInputs map[string]any `toml:"environment_inputs"`
-	// Display declares the values shown by `tws ls` / `show` / the web UI as
+	// Display declares the values shown by `sennit ls` / `show` / the web UI as
 	// templates over the session's persisted outputs:
 	//
 	//	[display]
@@ -79,7 +79,7 @@ type WorkflowFile struct {
 	// shallower layer's wholesale (see mergeWorkflowLayers) — the same
 	// deeper-wins policy as TaskDefinition, not the additive/no-redeclare
 	// policy the rest of this struct uses. Nil means no declaration: the
-	// session advances only via manual `tws tick` and the judge builtin.
+	// session advances only via manual `sennit tick` and the judge builtin.
 	Tick             *TickConfig    `toml:"tick"`
 	InputsSchema     map[string]any `toml:"inputs_schema"`
 	InputsSchemaFile string         `toml:"inputs_schema_file"`
@@ -94,7 +94,7 @@ type WorkflowFile struct {
 // (docs/wiki/verification-gate.md). Both fields are optional and independent:
 // On alone is pure reactive tick; StaleWhen alone is pure periodic refresh;
 // both together means notification-driven with a staleness backstop; neither
-// means manual `tws tick` and the judge builtin are the only drivers.
+// means manual `sennit tick` and the judge builtin are the only drivers.
 //
 //	[tick]
 //	on         = ["resource.*"] # event type globs; a match ticks the session
@@ -145,7 +145,7 @@ type WorkflowEvent struct {
 //	name = "runtime"
 //	uses = "claude_channel"
 //	inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
-//	include = ["tws.instruction", "github.*", "user.emit"]
+//	include = ["sennit.instruction", "github.*", "user.emit"]
 type EventChannel struct {
 	Name    string            `toml:"name"`
 	Uses    string            `toml:"uses"`
@@ -153,8 +153,8 @@ type EventChannel struct {
 	Include []string          `toml:"include"`
 }
 
-// TaskDefinition is loaded from `.tws/tasks/<id>.toml` (per-repo) or
-// `~/.config/tws/tasks/<id>.toml` (global). Task definitions are reusable —
+// TaskDefinition is loaded from `.sennit/tasks/<id>.toml` (per-repo) or
+// `~/.config/sennit/tasks/<id>.toml` (global). Task definitions are reusable —
 // multiple workflows may reference the same definition via `uses`, and a single
 // workflow may instantiate the same definition under different node ids.
 //
@@ -180,7 +180,7 @@ type TaskDefinition struct {
 	Execution string `toml:"execution"`
 	// Capture declares a read-only template that snapshots what the task's
 	// channel currently shows, declared on the same task that declares
-	// attach (see config/tws/tasks/tmux.toml, the built-in runtime task).
+	// attach (see config/sennit/tasks/tmux.toml, the built-in runtime task).
 	// Symmetric with Attach — attach
 	// hands the terminal over, capture only reads it — so the channel's own
 	// identity stays inside the task definition; core never references it.
@@ -222,7 +222,7 @@ type TaskDefinition struct {
 // declare. It is a conjunction of leaves (All) plus an optional Budget.
 //
 // done_when has two leaf kinds: check leaves compare observed outputs, while
-// judge leaves wait for independent reviewer input recorded by `tws judge`.
+// judge leaves wait for independent reviewer input recorded by `sennit judge`.
 type DoneWhen struct {
 	All    []DoneWhenLeaf `toml:"all" json:"all"`
 	Budget map[string]any `toml:"budget" json:"budget,omitempty"`
@@ -338,7 +338,7 @@ type DynamicOutput struct {
 	// resource (--resource) instead of a script: it looks up the resource
 	// definition (resources/*.toml) matching .ResourceID, runs its `observe`,
 	// and copies the named keys from the result. The declarative alternative
-	// to a task writing its own `tws resource status "{{.ResourceID}}"`
+	// to a task writing its own `sennit resource status "{{.ResourceID}}"`
 	// wrapper (ADR "goal-as-task" D1/D2 resolution face). Mutually exclusive
 	// with Script.
 	FromResourceStatus bool `toml:"from_resource_status"`
@@ -466,16 +466,16 @@ func resolveSchemaPath(file, baseDir string) string {
 }
 
 // layerDir pairs a cascade search directory with its trust classification.
-// The workdir layer (`.tws/` inside the working directory itself) is clone
+// The workdir layer (`.sennit/` inside the working directory itself) is clone
 // content — an attacker-controlled repository must not be able to introduce
-// shell that tws would execute. Every other layer (plugin, global, ancestor
+// shell that sennit would execute. Every other layer (plugin, global, ancestor
 // overlays above the worktree) is machine-owned and trusted.
 type layerDir struct {
 	dir     string
 	workdir bool
 }
 
-// LoadWorkflows merges plugin + global + ancestor `.tws/workflows/` layers so
+// LoadWorkflows merges plugin + global + ancestor `.sennit/workflows/` layers so
 // projects can extend (not fork) shared workflows. Same-stem files append
 // nodes; duplicating a node id across layers is rejected so a deeper layer
 // can't silently stomp a base node.
@@ -562,18 +562,18 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 		offending = append(offending, "tick")
 	}
 	if len(offending) > 0 {
-		return fmt.Errorf("workflow %s: a `.tws/workflows/` file inside the working directory may only add [[nodes]]; %v must move to a trusted layer (global config, plugin, or a directory above the worktree)", wf.SourcePath, offending)
+		return fmt.Errorf("workflow %s: a `.sennit/workflows/` file inside the working directory may only add [[nodes]]; %v must move to a trusted layer (global config, plugin, or a directory above the worktree)", wf.SourcePath, offending)
 	}
 	return nil
 }
 
-// LoadTaskDefinitions merges plugin + global + ancestor `.tws/tasks/`
+// LoadTaskDefinitions merges plugin + global + ancestor `.sennit/tasks/`
 // layers. Same-id deeper layer wins because setup/cleanup is atomic —
 // appending two shell scripts doesn't have a sensible meaning the way
 // appending nodes does.
 //
 // Trust restriction: task definitions are arbitrary shell, so the workdir
-// layer (clone content) must not contribute any. A `.tws/tasks/*.toml`
+// layer (clone content) must not contribute any. A `.sennit/tasks/*.toml`
 // inside the working directory is a load error rather than a silent skip —
 // silently ignoring it would make the author think the task is active.
 func (c *Config) LoadTaskDefinitions(worktreeDir string) (map[string]TaskDefinition, error) {
@@ -585,7 +585,7 @@ func (c *Config) LoadTaskDefinitions(worktreeDir string) (map[string]TaskDefinit
 			return nil, err
 		}
 		if layer.workdir && len(entries) > 0 {
-			return nil, fmt.Errorf("task definitions inside the working directory are not loaded (clone content must not carry shell): %s; move them to the global layer (~/.config/tws/tasks/), a plugin, or a repo overlay above the worktree", entries[0])
+			return nil, fmt.Errorf("task definitions inside the working directory are not loaded (clone content must not carry shell): %s; move them to the global layer (~/.config/sennit/tasks/), a plugin, or a repo overlay above the worktree", entries[0])
 		}
 		for _, path := range entries {
 			def, err := loadTaskDefinitionFile(path)
@@ -622,7 +622,7 @@ func (c *Config) searchDirs(worktreeDir, kind string) []layerDir {
 	}
 	for _, anc := range cascadeAncestors(worktreeDir) {
 		dirs = append(dirs, layerDir{
-			dir:     filepath.Join(anc, ".tws", kind),
+			dir:     filepath.Join(anc, ".sennit", kind),
 			workdir: anc == cleanWorktree,
 		})
 	}
@@ -631,7 +631,7 @@ func (c *Config) searchDirs(worktreeDir, kind string) []layerDir {
 
 // cascadeAncestors walks up from worktreeDir, ordered outermost-first.
 // $HOME is the exclusive upper bound because the user's global config lives
-// at `~/.config/tws/` and `$HOME/.tws/` would collide with that.
+// at `~/.config/sennit/` and `$HOME/.sennit/` would collide with that.
 func cascadeAncestors(worktreeDir string) []string {
 	if worktreeDir == "" {
 		return nil

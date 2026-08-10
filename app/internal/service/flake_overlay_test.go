@@ -6,17 +6,17 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/task"
 )
 
 // TestFlakeOverlays_ClaudeCodexCompile guards every repo-specific claude.toml /
-// codex.toml overlay under flakes/github.com/*/*/tws/workflows/ against a
+// codex.toml overlay under flakes/github.com/*/*/sennit/workflows/ against a
 // `blocks` entry naming a node id that doesn't exist in the merged (global +
-// overlay) graph. That only surfaces at `tws up` time for whichever repo
+// overlay) graph. That only surfaces at `sennit up` time for whichever repo
 // someone happens to be dispatching in, so a stale overlay (e.g. a node
 // renamed upstream) can sit broken for every other repo indefinitely. This
-// compiles the real deploy shape: a `.tws` symlink at the repo base dir, one
+// compiles the real deploy shape: a `.sennit` symlink at the repo base dir, one
 // layer above the worktree, exactly as scripts/repo-clone sets it up.
 func TestFlakeOverlays_ClaudeCodexCompile(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -24,7 +24,7 @@ func TestFlakeOverlays_ClaudeCodexCompile(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..")
-	cfgDir := filepath.Join(root, "config", "tws")
+	cfgDir := filepath.Join(root, "config", "sennit")
 	flakesHostDir := filepath.Join(root, "flakes", "github.com")
 	if _, err := os.Stat(flakesHostDir); err != nil {
 		t.Skipf("flakes dir not found at %s: %v", flakesHostDir, err)
@@ -47,17 +47,17 @@ func TestFlakeOverlays_ClaudeCodexCompile(t *testing.T) {
 			if !repo.IsDir() {
 				continue
 			}
-			twsDir := filepath.Join(ownerDir, repo.Name(), "tws")
-			workflowsDir := filepath.Join(twsDir, "workflows")
+			sennitDir := filepath.Join(ownerDir, repo.Name(), "sennit")
+			workflowsDir := filepath.Join(sennitDir, "workflows")
 			for _, id := range []string{"claude", "codex"} {
 				if _, err := os.Stat(filepath.Join(workflowsDir, id+".toml")); err != nil {
 					continue
 				}
 				t.Run(owner.Name()+"/"+repo.Name()+"/"+id, func(t *testing.T) {
 					repoBase := t.TempDir()
-					twsLink := filepath.Join(repoBase, ".tws")
-					if err := os.Symlink(twsDir, twsLink); err != nil {
-						t.Fatalf("symlink .tws: %v", err)
+					sennitLink := filepath.Join(repoBase, ".sennit")
+					if err := os.Symlink(sennitDir, sennitLink); err != nil {
+						t.Fatalf("symlink .sennit: %v", err)
 					}
 					worktreeDir := filepath.Join(repoBase, "worktree")
 

@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/dispatch"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	gh "github.com/kecbigmt/plect/app/internal/github"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/dispatch"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	gh "github.com/kecbigmt/sennit/app/internal/github"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // setupWorkflowFor decides whether a GitHub-URL create (no resolver matched)
@@ -211,7 +211,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	tasksErr := task.RunSetup(plan.Session, sessionVars(session), session.Tasks, params.Observer, envExecutor)
 	session.UpdatedAt = time.Now()
 	// A session node (the initial_task dispatcher) can shell out to a nested
-	// `tws task setup` subprocess that writes its instance straight to disk.
+	// `sennit task setup` subprocess that writes its instance straight to disk.
 	// Overlay our in-memory task entries onto the freshly-read session instead
 	// of a blind Put so that nested write (e.g. the `initial` task) survives.
 	if err := mergeTasks(store, sessionName, session); err != nil {

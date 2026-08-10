@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 func TestResolveExecution(t *testing.T) {
@@ -93,7 +93,7 @@ func TestCompileWorkflow_ExecutionEnvironmentWithoutWorkflowEnvironmentErrors(t 
 func TestEnvironmentExecutor_ForwardsArgvAsPositionalParamsAndExposesOutputsAsEnvVars(t *testing.T) {
 	env := config.EnvironmentConfig{
 		ID:   "docker",
-		Exec: `echo "id=$TWS_ENV_ID workdir=$TWS_ENV_WORKDIR"; "$@"`,
+		Exec: `echo "id=$SENNIT_ENV_ID workdir=$SENNIT_ENV_WORKDIR"; "$@"`,
 	}
 	ex := NewEnvironmentExecutor(env, map[string]any{"workdir": "/env/wd"})
 	// A shell metacharacter in the target argv must survive untouched: it is
@@ -104,7 +104,7 @@ func TestEnvironmentExecutor_ForwardsArgvAsPositionalParamsAndExposesOutputsAsEn
 	}
 	got := string(stdout)
 	if !strings.Contains(got, "id=docker workdir=/env/wd") {
-		t.Errorf("output = %q, want TWS_ENV_* vars exposed", got)
+		t.Errorf("output = %q, want SENNIT_ENV_* vars exposed", got)
 	}
 	if !strings.Contains(got, "payload;with;semicolons") {
 		t.Errorf("output = %q, want target argv forwarded literally", got)

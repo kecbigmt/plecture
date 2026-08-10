@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/contracts/event"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/contracts/event"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // terminalScanLimit bounds the reverse scan a dedup check uses against the
@@ -72,7 +72,7 @@ func PublishTerminalToParent(cfg *config.Config, store *state.Store, origin stri
 // own log (D1: push routing writes into the *receiving* session's partition,
 // not the origin's, so the receiver's own dispatcher — which only ever reads
 // its own log — delivers it once the receiver's workflow channels include
-// the tws.terminal.* type). Metadata carries the origin session and its
+// the sennit.terminal.* type). Metadata carries the origin session and its
 // relation to target so readers don't need a second tree lookup.
 //
 // When wakeIfDown is true and target's run scope is currently down, this also
@@ -113,7 +113,7 @@ func publishTerminalTo(cfg *config.Config, store *state.Store, origin, target st
 	stored, _, _, aerr := eventlog.NewStore(store.Dir()).Append(event.Event{
 		SessionName:  target,
 		Type:         p.Type,
-		Source:       event.SourceTWS,
+		Source:       event.SourceSennit,
 		Direction:    event.Inbound,
 		Summary:      summary,
 		Body:         p.Body,

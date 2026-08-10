@@ -60,7 +60,7 @@ func TestLoad_WithConfigFile(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	configDir := filepath.Join(tmpHome, ".config", "tws")
+	configDir := filepath.Join(tmpHome, ".config", "sennit")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestLoad_NoConfigFile(t *testing.T) {
 func TestLoad_PopulatesBaseDir(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	configDir := filepath.Join(tmpHome, ".config", "tws")
+	configDir := filepath.Join(tmpHome, ".config", "sennit")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestLoad_PopulatesBaseDir(t *testing.T) {
 func TestLoad_InlineInputsSchema(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	configDir := filepath.Join(tmpHome, ".config", "tws")
+	configDir := filepath.Join(tmpHome, ".config", "sennit")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

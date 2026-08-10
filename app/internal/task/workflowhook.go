@@ -7,8 +7,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // WorkflowHookVars is the template surface for workflow-level setup/cleanup.
@@ -99,7 +99,7 @@ func RunWorkflowSetup(prov config.ProviderConfig, vars WorkflowHookVars, tasks m
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, stderr)
 		return nil, wrapped
 	}
-	schema, err := CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "tws:provider:"+prov.ID+":outputs")
+	schema, err := CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "sennit:provider:"+prov.ID+":outputs")
 	if err != nil {
 		fail(err.Error())
 		wrapped := fmt.Errorf("provider %q outputs schema: %w", prov.ID, err)

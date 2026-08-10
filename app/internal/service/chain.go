@@ -5,12 +5,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/chain"
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	gh "github.com/kecbigmt/plect/app/internal/github"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/sennit/app/internal/chain"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	gh "github.com/kecbigmt/sennit/app/internal/github"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
 )
 
 // Blocked-reason values for a chain that did not fire this evaluation.
@@ -22,9 +22,9 @@ const (
 )
 
 // ChainSpawn is one (chain, instance) evaluation: whether the chain fired and,
-// if so, the spawned reviewer's placement and identity. CheckSession (tws
-// status / tws_check) reports it as a dry-run plan (Spawned always false);
-// TickSession (tws tick) spawns each fired, not-already-active entry and
+// if so, the spawned reviewer's placement and identity. CheckSession (sennit
+// status / sennit_check) reports it as a dry-run plan (Spawned always false);
+// TickSession (sennit tick) spawns each fired, not-already-active entry and
 // fills Spawned/TargetSession in with the result.
 type ChainSpawn struct {
 	ChainID        string         `json:"chain_id"`
@@ -148,7 +148,7 @@ func evalChain(cfg *config.Config, store *state.Store, def config.ChainDefinitio
 	}
 	if _, ok := workflows[workflow]; !ok {
 		sp.BlockedReason = chainBlockedWorkflowUnresolved
-		sp.Warnings = append(sp.Warnings, fmt.Sprintf("chain %q resolves to workflow %q, which is not defined (add .tws/workflows/%s.toml)", def.ID, workflow, workflow))
+		sp.Warnings = append(sp.Warnings, fmt.Sprintf("chain %q resolves to workflow %q, which is not defined (add .sennit/workflows/%s.toml)", def.ID, workflow, workflow))
 		return sp
 	}
 

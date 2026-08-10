@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/service"
-	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/kecbigmt/sennit/app/internal/task"
 )
 
 // renderDoneWhenSections omits any task instance without a done_when — its

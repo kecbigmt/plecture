@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // spyExecutor records every ExecRequest it receives and returns a canned

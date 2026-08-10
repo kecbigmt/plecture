@@ -100,7 +100,7 @@ func TestChannelDefinition_Validate(t *testing.T) {
 func TestLoadChannels(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "tws")
+	globalDir := filepath.Join(tmpHome, ".config", "sennit")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ session = { type = "string", required = true }
 func TestLoadChannels_RejectsInvalid(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "tws")
+	globalDir := filepath.Join(tmpHome, ".config", "sennit")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestValidateWorkflowChannels(t *testing.T) {
 		{
 			name: "ok multiple channels",
 			wf: chan1(
-				EventChannel{Name: "runtime", Uses: "claude_channel", Inputs: map[string]string{"path": "p"}, Include: []string{"tws.instruction"}},
+				EventChannel{Name: "runtime", Uses: "claude_channel", Inputs: map[string]string{"path": "p"}, Include: []string{"sennit.instruction"}},
 				EventChannel{Name: "slack", Uses: "slack_thread", Inputs: map[string]string{"channel_id": "c"}, Include: []string{"github.*", "user.emit"}},
 			),
 		},
@@ -257,7 +257,7 @@ func TestValidateWorkflowChannels(t *testing.T) {
 
 func TestLoadWorkflows_ParsesEventChannel(t *testing.T) {
 	repoDir := t.TempDir()
-	writeFile(t, filepath.Join(repoDir, ".config", "tws", "workflows", "coding.toml"), `
+	writeFile(t, filepath.Join(repoDir, ".config", "sennit", "workflows", "coding.toml"), `
 [[nodes]]
 uses = "tmux"
 
@@ -265,7 +265,7 @@ uses = "tmux"
 name        = "runtime"
 uses        = "claude_channel"
 inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
-include     = ["tws.instruction", "github.*"]
+include     = ["sennit.instruction", "github.*"]
 
 [[event.channel]]
 name           = "slack"
@@ -273,7 +273,7 @@ uses           = "slack_thread"
 inputs.channel_id = "{{.Nodes.slack_thread.outputs.channel_id}}"
 include        = ["github.*"]
 `)
-	cfg := &Config{BaseDir: filepath.Join(repoDir, ".config", "tws")}
+	cfg := &Config{BaseDir: filepath.Join(repoDir, ".config", "sennit")}
 	got, err := cfg.LoadWorkflows("")
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
@@ -289,7 +289,7 @@ include        = ["github.*"]
 	if runtime.Inputs["path"] != "{{.Nodes.claude.outputs.socket_path}}" {
 		t.Errorf("channel[0] inputs not preserved: %+v", runtime.Inputs)
 	}
-	if len(runtime.Include) != 2 || runtime.Include[0] != "tws.instruction" {
+	if len(runtime.Include) != 2 || runtime.Include[0] != "sennit.instruction" {
 		t.Errorf("channel[0] include = %+v", runtime.Include)
 	}
 }
@@ -297,7 +297,7 @@ include        = ["github.*"]
 func TestLoadWorkflows_CascadeAppendsChannels(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "tws")
+	globalDir := filepath.Join(tmpHome, ".config", "sennit")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ include = ["github.*"]
 	// worktree (not the worktree itself, which the workdir guard forbids).
 	orgDir := filepath.Join(tmpHome, "worktrees", "org")
 	worktreeDir := filepath.Join(orgDir, "repo", "session")
-	writeFile(t, filepath.Join(orgDir, ".tws", "workflows", "shared.toml"), `
+	writeFile(t, filepath.Join(orgDir, ".sennit", "workflows", "shared.toml"), `
 [[event.channel]]
 name = "slack"
 uses = "slack_thread"
@@ -337,7 +337,7 @@ include = ["github.*"]
 func TestLoadWorkflows_CascadeRejectsDuplicateChannelName(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "tws")
+	globalDir := filepath.Join(tmpHome, ".config", "sennit")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +354,7 @@ include = ["github.*"]
 	// workdir guard (which would reject any event.channel in the worktree).
 	orgDir := filepath.Join(tmpHome, "worktrees", "org")
 	worktreeDir := filepath.Join(orgDir, "repo", "session")
-	writeFile(t, filepath.Join(orgDir, ".tws", "workflows", "shared.toml"), `
+	writeFile(t, filepath.Join(orgDir, ".sennit", "workflows", "shared.toml"), `
 [[event.channel]]
 name = "runtime"
 uses = "tmux_send_keys"
@@ -369,7 +369,7 @@ include = ["github.*"]
 
 func TestLoadWorkflows_RejectsDuplicateChannelNameInFile(t *testing.T) {
 	repoDir := t.TempDir()
-	writeFile(t, filepath.Join(repoDir, ".config", "tws", "workflows", "coding.toml"), `
+	writeFile(t, filepath.Join(repoDir, ".config", "sennit", "workflows", "coding.toml"), `
 [[event.channel]]
 name = "runtime"
 uses = "claude_channel"
@@ -380,14 +380,14 @@ name = "runtime"
 uses = "tmux_send_keys"
 include = ["github.*"]
 `)
-	cfg := &Config{BaseDir: filepath.Join(repoDir, ".config", "tws")}
+	cfg := &Config{BaseDir: filepath.Join(repoDir, ".config", "sennit")}
 	_, err := cfg.LoadWorkflows("")
 	if err == nil || !strings.Contains(err.Error(), "declared more than once") {
 		t.Fatalf("LoadWorkflows = %v, want duplicate channel name error", err)
 	}
 }
 
-// TestShippedConfig_ChannelsValidate guards the real config/tws against typos:
+// TestShippedConfig_ChannelsValidate guards the real config/sennit against typos:
 // the workflow↔channel cross-check otherwise runs only on the `show` path, so a
 // renamed channel or dropped input would slip through CI.
 func TestShippedConfig_ChannelsValidate(t *testing.T) {
@@ -396,7 +396,7 @@ func TestShippedConfig_ChannelsValidate(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	root := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..")
-	cfgDir := filepath.Join(root, "config", "tws")
+	cfgDir := filepath.Join(root, "config", "sennit")
 	if _, err := os.Stat(cfgDir); err != nil {
 		t.Skipf("shipped config not found at %s: %v", cfgDir, err)
 	}
@@ -427,7 +427,7 @@ func TestLoadWorkflows_WorkdirLayerRejectsEventChannel(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	worktreeDir := filepath.Join(tmpHome, "worktrees", "session")
-	writeFile(t, filepath.Join(worktreeDir, ".tws", "workflows", "evil.toml"), `
+	writeFile(t, filepath.Join(worktreeDir, ".sennit", "workflows", "evil.toml"), `
 [[event.channel]]
 name = "runtime"
 uses = "tmux_send_keys"

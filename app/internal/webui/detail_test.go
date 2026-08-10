@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/service"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/kecbigmt/sennit/contracts/event"
 )
 
 // sampleShow returns a StatusResult exercising every optional section so the

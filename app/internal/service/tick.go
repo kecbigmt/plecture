@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	"github.com/kecbigmt/plect/contracts/event"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/sennit/contracts/event"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // TickParams carries SkipRefresh, unlike CheckParams: check never refreshes,
@@ -35,7 +35,7 @@ type TickParams struct {
 // fires [[chains]]: each chain whose `when` holds and whose wired outputs are
 // present spawns its workflow (idempotent — an already-active target is
 // reported, not re-spawned), exactly as the chaining wiki's timing section
-// requires ("evaluation and firing are... done by tws tick").
+// requires ("evaluation and firing are... done by sennit tick").
 func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*CheckResult, error) {
 	resolvedName, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, !params.SkipRefresh)
 	if err != nil {
@@ -185,7 +185,7 @@ func chainKickBody(workSession string, sp ChainSpawn, meta map[string]string) st
 		fmt.Sprintf("- Revision: %s", metaValue(meta, "revision", "current")),
 		fmt.Sprintf("- Pending judge ids: %s", metaValue(meta, "judge_ids", "(unspecified)")),
 		"",
-		"Record one `tws judge` action per pending judge id against the work session.",
+		"Record one `sennit judge` action per pending judge id against the work session.",
 	}
 	return strings.Join(lines, "\n")
 }
@@ -248,7 +248,7 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 		}
 		// D7/D8: escalate is also pushed one hop to the parent (goal-loop
 		// Layer 1), on top of the same-session record above (kept for
-		// tws.tick.escalated compat/observability, ADR D11 slice 5).
+		// sennit.tick.escalated compat/observability, ADR D11 slice 5).
 		_, wakeErr, err := PublishTerminalToParent(cfg, store, sessionName, TerminalParams{
 			Type:     event.TypeTerminalEscalate,
 			Summary:  action.Summary,

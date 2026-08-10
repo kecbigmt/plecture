@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 const githubResolver = `
@@ -385,7 +385,7 @@ echo '{"workdir":"`+workdir+`"}'
 }
 
 // Up must surface dispatch errors exactly as Create does — falling through
-// to the legacy path on ambiguity would let `tws up` and `tws create`
+// to the legacy path on ambiguity would let `sennit up` and `sennit create`
 // disagree about the same resource.
 func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 	store := testStore(t)
@@ -451,7 +451,7 @@ echo '{"workdir":"`+workdir+`"}'
 	}
 }
 
-// `tws cd` rides the same state v3 lookup contract as show/down/destroy:
+// `sennit cd` rides the same state v3 lookup contract as show/down/destroy:
 // resolver-derived resource ids and aliases must resolve.
 func TestWorkdir_ResolverAndAliasLookup(t *testing.T) {
 	store := testStore(t)

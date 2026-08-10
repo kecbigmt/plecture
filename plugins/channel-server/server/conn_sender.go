@@ -5,7 +5,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/kecbigmt/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/sennit/contracts/channel-protocol"
 )
 
 // ConnSenderStore is a MessageSender that sends replies via a Unix socket connection.

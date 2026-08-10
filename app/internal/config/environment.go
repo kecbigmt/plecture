@@ -28,7 +28,7 @@ type EnvironmentConfig struct {
 	// runs Exec against something already running) may leave this empty.
 	Setup string `toml:"setup"`
 	// Exec is the host-run script that launches its trailing argv inside
-	// the environment (e.g. `docker exec -i -w "$TWS_ENV_WORKDIR" ... "$@"`).
+	// the environment (e.g. `docker exec -i -w "$SENNIT_ENV_WORKDIR" ... "$@"`).
 	// Required — running argv inside the environment is its reason to exist.
 	Exec string `toml:"exec"`
 	// Cleanup releases whatever Setup acquired. Optional, mirroring

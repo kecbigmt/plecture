@@ -6,7 +6,7 @@
 {{- /* Swap on every status code so mapped error banners (400/403/404/500) land
        in their target; success carries HX-Redirect, which htmx honors first. */}}
 <meta name="htmx-config" content='{"responseHandling":[{"code":".*","swap":true}]}'>
-<title>tws sessions</title>
+<title>Sennit sessions</title>
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/htmx.min.js"></script>
 </head>
@@ -16,7 +16,7 @@
        Projects style); mobile keeps a normal scrolling page. */}}
 <body class="flex min-h-screen flex-col bg-background text-foreground md:h-screen md:overflow-hidden" hx-headers='{"X-CSRF-Token":"{{ .CSRFToken }}"}'>
 <header class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card p-4">
-  <h1 class="text-heading font-semibold">tws sessions</h1>
+  <h1 class="text-heading font-semibold">Sennit sessions</h1>
   <nav class="text-label" aria-label="Sort order" hx-boost="true">
     <a href="/?order=recent" {{if eq .Order "recent"}}aria-current="page" {{end}}class="rounded-sm px-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {{if eq .Order "recent"}}font-semibold text-foreground{{else}}text-muted-foreground{{end}}">Newest first</a>
     <span class="text-border" aria-hidden="true">/</span>
@@ -75,17 +75,17 @@ document.addEventListener("click", function (e) {
 });
 
 // Live event timeline: one EventSource per open session. The detail pane carries
-// a hidden #event-stream with the SSE URL; tws-web relays the bus stream there as
+// a hidden #event-stream with the SSE URL; sennit-web relays the bus stream there as
 // rendered <li> fragments, which we prepend (newest first). The connection is
 // tied to the detail pane — reconnect when it swaps, leave it alone on the list's
 // 5s refresh (which targets #sessions, not #detail-pane).
-var _twsEventStream = null;
+var _sennitEventStream = null;
 function connectEventStream() {
-  if (_twsEventStream) { _twsEventStream.close(); _twsEventStream = null; }
+  if (_sennitEventStream) { _sennitEventStream.close(); _sennitEventStream = null; }
   var el = document.getElementById("event-stream");
   if (!el || !el.dataset.url) return;
-  _twsEventStream = new EventSource(el.dataset.url);
-  _twsEventStream.onmessage = function (e) {
+  _sennitEventStream = new EventSource(el.dataset.url);
+  _sennitEventStream.onmessage = function (e) {
     var list = document.getElementById("event-list");
     if (!list) return;
     var ph = list.querySelector("[data-placeholder]");
@@ -94,7 +94,7 @@ function connectEventStream() {
   };
   // The bus may be down (502) or restarting; EventSource retries on its own, but
   // surface the degraded state instead of leaving a silent "Waiting…" forever.
-  _twsEventStream.onerror = function () {
+  _sennitEventStream.onerror = function () {
     var ph = document.querySelector("#event-list [data-placeholder]");
     if (ph) ph.textContent = "Reconnecting to live updates…";
   };

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/kecbigmt/plect/app/commands"
+	"github.com/kecbigmt/sennit/app/commands"
 )
 
 func main() {

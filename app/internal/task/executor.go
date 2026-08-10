@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/config"
 )
 
 // ExecRequest is a single host-process invocation: Argv[0] is the command,
@@ -63,7 +63,7 @@ var alwaysHostExecutor Executor = hostExecutor{}
 
 // defaultExecutor backs execHostScript, the path used by task
 // setup/cleanup/healthcheck/capture, dynamic output fetch, and dynamic
-// instance setup (`tws task setup --resource`) — every exec point that runs
+// instance setup (`sennit task setup --resource`) — every exec point that runs
 // inside a session's task DAG, static or dynamically instantiated. It is the
 // seam a later PR will make Environment-aware; today it is always
 // hostExecutor, so behavior is identical to before this abstraction existed.
@@ -92,32 +92,32 @@ type EnvironmentExecutor struct {
 }
 
 // NewEnvironmentExecutor builds an EnvironmentExecutor for env, exposing its
-// setup outputs to the exec script as TWS_ENV_* environment variables.
+// setup outputs to the exec script as SENNIT_ENV_* environment variables.
 func NewEnvironmentExecutor(env config.EnvironmentConfig, outputs map[string]any) *EnvironmentExecutor {
 	return &EnvironmentExecutor{Env: env, Outputs: outputs}
 }
 
 func (e *EnvironmentExecutor) Run(req ExecRequest) (stdout, stderr []byte, err error) {
-	// "tws-env-exec" becomes $0 inside the exec script (bash -c's first
+	// "sennit-env-exec" becomes $0 inside the exec script (bash -c's first
 	// trailing arg), so req.Argv is exactly what the script's "$@" expands to.
-	argv := append([]string{"bash", "-c", e.Env.Exec, "tws-env-exec"}, req.Argv...)
+	argv := append([]string{"bash", "-c", e.Env.Exec, "sennit-env-exec"}, req.Argv...)
 	env := append(environmentExecEnv(e.Env.ID, e.Outputs), req.Env...)
 	return alwaysHostExecutor.Run(ExecRequest{Argv: argv, Dir: req.Dir, Stdin: req.Stdin, Env: env})
 }
 
 // environmentExecEnv exposes the environment id and its setup outputs' string
-// values as TWS_ENV_* shell variables (e.g. `docker exec -w
-// "$TWS_ENV_WORKDIR" "$TWS_ENV_ID" "$@"`) rather than Go template holes: exec
+// values as SENNIT_ENV_* shell variables (e.g. `docker exec -w
+// "$SENNIT_ENV_WORKDIR" "$SENNIT_ENV_ID" "$@"`) rather than Go template holes: exec
 // runs once per task invocation and the outputs are stable for the session's
 // whole lifetime, so there is no per-call templating to do.
 func environmentExecEnv(id string, outputs map[string]any) []string {
-	env := []string{"TWS_ENV_ID=" + id}
+	env := []string{"SENNIT_ENV_ID=" + id}
 	for k, v := range outputs {
 		s, ok := v.(string)
 		if !ok {
 			continue
 		}
-		env = append(env, "TWS_ENV_"+strings.ToUpper(k)+"="+s)
+		env = append(env, "SENNIT_ENV_"+strings.ToUpper(k)+"="+s)
 	}
 	return env
 }

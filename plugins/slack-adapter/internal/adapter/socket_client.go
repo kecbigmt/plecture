@@ -9,7 +9,7 @@ import (
 	"net"
 	"sync"
 
-	"github.com/kecbigmt/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/sennit/contracts/channel-protocol"
 )
 
 // SocketClient connects to a channel-server Unix socket and exchanges messages.

@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
-// TaskSetupParams are the inputs to TaskSetup (the `tws task setup` path).
-// SessionName defaults to the ambient pane env ($TWS_SESSION_NAME) so a running
+// TaskSetupParams are the inputs to TaskSetup (the `sennit task setup` path).
+// SessionName defaults to the ambient pane env ($SENNIT_SESSION_NAME) so a running
 // agent can instantiate a task without naming itself.
 type TaskSetupParams struct {
 	TaskID      string
@@ -73,10 +73,10 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 
 	sessionName := params.SessionName
 	if sessionName == "" {
-		sessionName = os.Getenv("TWS_SESSION_NAME")
+		sessionName = os.Getenv("SENNIT_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a tws session pane (TWS_SESSION_NAME) or pass --session"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a sennit session pane (SENNIT_SESSION_NAME) or pass --session"}
 	}
 
 	resolvedName, session, err := resolveSession(cfg, store, sessionName)
@@ -118,7 +118,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	}
 
 	if resolved.Scope == config.TaskScopeRun && !hasLiveRunTask(session.Tasks) {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q is run-scoped but the session's run scope is not up; run `tws up %s` first", params.TaskID, resolvedName)}
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q is run-scoped but the session's run scope is not up; run `sennit up %s` first", params.TaskID, resolvedName)}
 	}
 
 	inputs, bindErr := bindDynamicInputs(def, params.Inputs, session)
@@ -181,7 +181,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to reserve instance: %v", reserveErr)}
 	}
 	if collision {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q already exists in session %s; run `tws task cleanup %s` first to recreate it", key, resolvedName, key)}
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q already exists in session %s; run `sennit task cleanup %s` first to recreate it", key, resolvedName, key)}
 	}
 
 	obs := params.Observer
@@ -248,7 +248,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	}
 
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
-	// Turn an `instruction` output into the tws.instruction event its workflow
+	// Turn an `instruction` output into the sennit.instruction event its workflow
 	// [[event.channel]] delivers.
 	appendInstruction(store, resolvedName, key, params.Resource, instructionOutput(resultOutputs))
 

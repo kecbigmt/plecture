@@ -107,10 +107,10 @@ func LoadWithMetadata(mode, searchDir string) (Metadata, string, error) {
 }
 
 // Load reads a template for the given mode with the following priority:
-//  1. <searchDir>/.tws/templates/<mode>.md and its ancestors, innermost wins
-//     (bare layout: .tws lives in the repo container, one level above the
+//  1. <searchDir>/.sennit/templates/<mode>.md and its ancestors, innermost wins
+//     (bare layout: .sennit lives in the repo container, one level above the
 //     branch worktree)
-//  2. ~/.config/tws/templates/<mode>.md (user global)
+//  2. ~/.config/sennit/templates/<mode>.md (user global)
 //  3. embedded defaults
 //
 // searchDir is the session's workdir, not a GitHub repo path: the overlay is
@@ -120,7 +120,7 @@ func Load(mode, searchDir string) (string, error) {
 
 	// 1. Working-directory overlay, walked up through ancestors
 	for _, dir := range ancestorDirs(searchDir) {
-		repoPath := filepath.Join(dir, ".tws", "templates", filename)
+		repoPath := filepath.Join(dir, ".sennit", "templates", filename)
 		if data, err := os.ReadFile(repoPath); err == nil {
 			return string(data), nil
 		}
@@ -128,7 +128,7 @@ func Load(mode, searchDir string) (string, error) {
 
 	// 2. User global template
 	home, _ := os.UserHomeDir()
-	userPath := filepath.Join(home, ".config", "tws", "templates", filename)
+	userPath := filepath.Join(home, ".config", "sennit", "templates", filename)
 	if data, err := os.ReadFile(userPath); err == nil {
 		return string(data), nil
 	}
@@ -143,7 +143,7 @@ func Load(mode, searchDir string) (string, error) {
 
 // ancestorDirs walks up from searchDir, innermost first, so the closest
 // override wins. $HOME is the exclusive upper bound because the user's
-// global config lives at ~/.config/tws/ and ~/.tws/ would collide with it.
+// global config lives at ~/.config/sennit/ and ~/.sennit/ would collide with it.
 // Mirrors config.cascadeAncestors (outermost-first, for layer merging); this
 // package needs the reverse order for first-match-wins lookup.
 func ancestorDirs(searchDir string) []string {
@@ -171,7 +171,7 @@ func ancestorDirs(searchDir string) []string {
 }
 
 // Render loads and renders a template with the given variables. searchDir is
-// the session's working directory whose `.tws/templates/` overlay is consulted
+// the session's working directory whose `.sennit/templates/` overlay is consulted
 // first (empty falls back to user-global + embedded). Frontmatter is stripped
 // before rendering.
 //
@@ -264,7 +264,7 @@ func List(repoDir string) ([]TemplateInfo, error) {
 
 	// 1. Repo-specific, walked up through ancestors (innermost wins via seen-dedup)
 	for _, anc := range ancestorDirs(repoDir) {
-		dir := filepath.Join(anc, ".tws", "templates")
+		dir := filepath.Join(anc, ".sennit", "templates")
 		addFromDir(
 			func() ([]fs.DirEntry, error) { return os.ReadDir(dir) },
 			func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(dir, name)) },
@@ -273,7 +273,7 @@ func List(repoDir string) ([]TemplateInfo, error) {
 
 	// 2. User global
 	home, _ := os.UserHomeDir()
-	userDir := filepath.Join(home, ".config", "tws", "templates")
+	userDir := filepath.Join(home, ".config", "sennit", "templates")
 	addFromDir(
 		func() ([]fs.DirEntry, error) { return os.ReadDir(userDir) },
 		func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(userDir, name)) },

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/config"
 )
 
 // MatchResourceDef finds the resource definition whose `match` recognizes
@@ -49,7 +49,7 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (co
 // means no resource definition recognizes this id — the Resource contract is
 // optional, most instance-local resources have no declared kind. branch and
 // worktreePath describe the owning session (both empty for a standalone
-// `tws resource status` call, which has no owning session) —
+// `sennit resource status` call, which has no owning session) —
 // resources/github.toml's observe derives the current branch from
 // worktreePath as its primary PR-identity signal and falls back to
 // closing-PR discovery.
@@ -127,7 +127,7 @@ type finalizeTemplateData struct {
 // recognizes this resource id" and "the definition declares no finalize" —
 // every resource kind until a later ADR slice adds one (e.g. local-okf). Core
 // commits to nothing beyond "there was no completion record to write";
-// `tws task finalize` treats that as expected, not an error.
+// `sennit task finalize` treats that as expected, not an error.
 func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourceParams) (ran bool, def config.ResourceDef, err error) {
 	def, ok, merr := MatchResourceDef(defs, params.ResourceID)
 	if merr != nil {

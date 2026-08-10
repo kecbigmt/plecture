@@ -10,18 +10,18 @@ Generic message delivery to Claude Code. **It has no knowledge of message source
 
 ## Dependency rules
 
-- Must not import `slack-adapter` or `tws` code
+- Must not import `slack-adapter` or `sennit` code
 - Must not call the Slack API directly
-- Protocol types are defined in the `tws/contracts/channel-protocol` module and must stay source-independent
+- Protocol types are defined in the `sennit/contracts/channel-protocol` module and must stay source-independent
 
 ## Package exposure
 
 - `server/` is a public package (not `internal/`). `slack-adapter`'s tests use `server.NewSocketListener` etc.
-- Protocol types have already been split out into the `tws/contracts/channel-protocol` module; they are not channel-server-specific.
+- Protocol types have already been split out into the `sennit/contracts/channel-protocol` module; they are not channel-server-specific.
 
 ## Protocol
 
-Framing over the Unix socket is a 4-byte big-endian length prefix + JSON payload. Message types are defined in the `tws/contracts/channel-protocol` module.
+Framing over the Unix socket is a 4-byte big-endian length prefix + JSON payload. Message types are defined in the `sennit/contracts/channel-protocol` module.
 
 | Message type | Direction | Purpose |
 |---|---|---|

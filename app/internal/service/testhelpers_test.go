@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// setupE2ERepo creates a git repo structure that mimics what tws expects.
+// setupE2ERepo creates a git repo structure that mimics what sennit expects.
 // Returns worktreesRoot.
 func setupE2ERepo(t *testing.T) string {
 	t.Helper()

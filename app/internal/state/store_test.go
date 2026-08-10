@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/domain"
 )
 
 func TestStore_PutAndGet(t *testing.T) {
@@ -295,7 +295,7 @@ func TestStore_ConcurrentPutAcrossProcesses(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			cmd := exec.Command(os.Args[0], "-test.run=TestStorePutHelperProcess", "--", dir, strconv.Itoa(i))
-			cmd.Env = append(os.Environ(), "TWS_STATE_PUT_HELPER=1")
+			cmd.Env = append(os.Environ(), "SENNIT_STATE_PUT_HELPER=1")
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				errs <- fmt.Errorf("helper %d: %w: %s", i, err, out)
@@ -323,7 +323,7 @@ func TestStore_ConcurrentPutAcrossProcesses(t *testing.T) {
 }
 
 func TestStorePutHelperProcess(t *testing.T) {
-	if os.Getenv("TWS_STATE_PUT_HELPER") != "1" {
+	if os.Getenv("SENNIT_STATE_PUT_HELPER") != "1" {
 		return
 	}
 	args := os.Args

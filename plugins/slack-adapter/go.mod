@@ -1,12 +1,12 @@
-module github.com/kecbigmt/plect/plugins/slack-adapter
+module github.com/kecbigmt/sennit/plugins/slack-adapter
 
 go 1.25.6
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/kecbigmt/plect/contracts/channel-protocol v0.0.0
-	github.com/kecbigmt/plect/contracts/event v0.0.0
-	github.com/kecbigmt/plect/plugins/channel-server v0.0.0
+	github.com/kecbigmt/sennit/contracts/channel-protocol v0.0.0
+	github.com/kecbigmt/sennit/contracts/event v0.0.0
+	github.com/kecbigmt/sennit/plugins/channel-server v0.0.0
 	github.com/slack-go/slack v0.22.0
 )
 
@@ -20,7 +20,7 @@ require (
 )
 
 replace (
-	github.com/kecbigmt/plect/contracts/channel-protocol => ../../contracts/channel-protocol
-	github.com/kecbigmt/plect/contracts/event => ../../contracts/event
-	github.com/kecbigmt/plect/plugins/channel-server => ../channel-server
+	github.com/kecbigmt/sennit/contracts/channel-protocol => ../../contracts/channel-protocol
+	github.com/kecbigmt/sennit/contracts/event => ../../contracts/event
+	github.com/kecbigmt/sennit/plugins/channel-server => ../channel-server
 )

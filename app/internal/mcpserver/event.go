@@ -6,13 +6,13 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/service"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/contracts/event"
 )
 
-var eventListTool = mcp.NewTool("tws_event_list",
+var eventListTool = mcp.NewTool("sennit_event_list",
 	mcp.WithDescription("List events recorded for a session's durable timeline (GitHub changes, lifecycle, messages, replies, notes). Works for destroyed sessions too — history is retained. Pass subtree to see a session tree (root + descendants) merged in time order — the canonical cross-session scope. session and subtree are mutually exclusive."),
 	mcp.WithString("session",
 		mcp.Description("GitHub Issue or PR URL, or session name (e.g. owner/repo-123). Omit when using subtree."),
@@ -30,7 +30,7 @@ var eventListTool = mcp.NewTool("tws_event_list",
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
-var eventShowTool = mcp.NewTool("tws_event_show",
+var eventShowTool = mcp.NewTool("sennit_event_show",
 	mcp.WithDescription("Show a single event by id from a session's durable timeline. Works for destroyed sessions too — history is retained."),
 	mcp.WithString("session",
 		mcp.Required(),
@@ -38,12 +38,12 @@ var eventShowTool = mcp.NewTool("tws_event_show",
 	),
 	mcp.WithString("event_id",
 		mcp.Required(),
-		mcp.Description("Event id, as returned by tws_event_list"),
+		mcp.Description("Event id, as returned by sennit_event_list"),
 	),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
-var eventPublishTool = mcp.NewTool("tws_event_publish",
+var eventPublishTool = mcp.NewTool("sennit_event_publish",
 	mcp.WithDescription("Publish an event to a session's timeline (durably recorded). Workflow channels deliver subscribed event types such as user.emit to the session runtime and Slack thread."),
 	mcp.WithString("session",
 		mcp.Required(),

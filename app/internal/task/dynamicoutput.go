@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/config"
 )
 
 // FetchOutput runs the script (or, when FromResourceStatus is set, observes

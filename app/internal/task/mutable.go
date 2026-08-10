@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // MutableOutputKeys extracts the output keys declared `mutable = true` from an
@@ -39,7 +39,7 @@ func MutableOutputKeys(inline map[string]any, filePath string) ([]string, error)
 }
 
 // SchemaPropertyNames returns the declared `properties` keys of a schema
-// (inline map or schema file), sorted. Used by the dynamic `tws task setup`
+// (inline map or schema file), sorted. Used by the dynamic `sennit task setup`
 // path to know which inputs to bind from the --input / outputs / session
 // precedence. Returns nil when the schema declares no properties.
 func SchemaPropertyNames(inline map[string]any, filePath string) ([]string, error) {

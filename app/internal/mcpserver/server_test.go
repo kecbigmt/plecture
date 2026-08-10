@@ -9,14 +9,14 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/state"
 )
 
 // setUpConfigHome points config.Load()/state.NewStore("") at a scratch config
 // home with a resolver-less workflow ("plain": no [resolver], so dispatch
 // treats the identifier as the session id directly — see
 // TestDispatchResource_FlagWithoutResolverIsIdentityForCaller in the service
-// package). MCP tws_create/tws_up previously had no "workflow" argument, so
+// package). MCP sennit_create/sennit_up previously had no "workflow" argument, so
 // this workflow was unreachable from MCP.
 func setUpConfigHome(t *testing.T) {
 	t.Helper()
@@ -24,7 +24,7 @@ func setUpConfigHome(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 
-	baseDir := filepath.Join(home, ".config", "tws")
+	baseDir := filepath.Join(home, ".config", "sennit")
 	for _, dir := range []string{"workflows", "tasks", "providers"} {
 		if err := os.MkdirAll(filepath.Join(baseDir, dir), 0o755); err != nil {
 			t.Fatal(err)
@@ -65,7 +65,7 @@ func decodeJSONResult(t *testing.T, result *mcp.CallToolResult) map[string]any {
 	return out
 }
 
-// A resolver-less workflow requires an explicit --workflow, and tws_create
+// A resolver-less workflow requires an explicit --workflow, and sennit_create
 // can now supply it.
 func TestHandleCreate_ResolverLessWorkflow(t *testing.T) {
 	setUpConfigHome(t)
@@ -92,11 +92,11 @@ func TestHandleCreate_ResolverLessWorkflow(t *testing.T) {
 	}
 }
 
-// A resolver-less workflow's identifier isn't a URL, so tws_up's
+// A resolver-less workflow's identifier isn't a URL, so sennit_up's
 // docker-compose-up-style auto-create only kicks in for resolver-matched or
 // URL identifiers (service.Up); a bare resolver-less identifier must already
-// have a session (created via tws_create). Once it exists, tws_up must still
-// resolve and run it — exercising the same "workflow" argument tws_up now
+// have a session (created via sennit_create). Once it exists, sennit_up must still
+// resolve and run it — exercising the same "workflow" argument sennit_up now
 // accepts.
 func TestHandleUp_ResolverLessWorkflowExistingSession(t *testing.T) {
 	setUpConfigHome(t)
@@ -142,7 +142,7 @@ func TestCreateAndUpTools_ExposeWorkflowAndTask(t *testing.T) {
 	}
 }
 
-// task is pure syntax sugar over inputs.task — tws_create must merge
+// task is pure syntax sugar over inputs.task — sennit_create must merge
 // it into the session's persisted inputs like the CLI's --task.
 func TestHandleCreate_TaskShorthand(t *testing.T) {
 	setUpConfigHome(t)

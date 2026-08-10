@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/service"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/kecbigmt/sennit/contracts/event"
 )
 
 func TestEventsPartial_RendersNewestFirst(t *testing.T) {

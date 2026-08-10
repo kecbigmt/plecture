@@ -1,16 +1,16 @@
 // Package dispatch is the session dispatcher: one per active session, hosted in
-// the resident `tws bus serve` process. It reads a session's event log from a
+// the resident `sennit bus serve` process. It reads a session's event log from a
 // durable read cursor (so it survives session down/up) and fans each event out
 // to the workflow's [[event.channel]] workers whose include filter matches,
-// delivering via app/internal/channel and recording a tws.channel.error when a
+// delivering via app/internal/channel and recording a sennit.channel.error when a
 // channel exhausts its retries.
 package dispatch
 
 import (
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	contract "github.com/kecbigmt/sennit/contracts/state"
 )
 
 // channelInputs renders an [[event.channel]]'s input templates against the
