@@ -1,13 +1,13 @@
 ---
 description: Investigate an issue and summarize feasible approaches
 ---
-Investigate the issue {{.OwnerRepo}}#{{.Number}}.
+Investigate the issue {{.Workflow.outputs.owner_repo}}#{{.Workflow.outputs.number}}.
 
-URL: {{.URL}}
+URL: {{.ResourceID}}
 
 Steps:
 
-1. Understand the issue (`gh issue view {{.Number}}`)
+1. Understand the issue (`gh issue view {{.Workflow.outputs.number}}`)
 2. Research the relevant code and design
 3. Identify the scope of impact
 4. List feasible approaches

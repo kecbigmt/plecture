@@ -35,8 +35,8 @@ type WorkflowFile struct {
 	// trusted base layers) this workflow runs on. The provider owns the
 	// resource-kind knowledge — resolver, workdir setup/cleanup, the
 	// @workflow outputs contract; the workflow owns the task shape on top
-	// (nodes, inputs, done_when, display). Empty means the legacy core
-	// create path (GitHub URLs, core-managed worktree).
+	// (nodes, inputs, done_when, display). A workflow without one cannot
+	// acquire a working directory, so it cannot back a session.
 	Provider string `toml:"provider"`
 	// Environment names the environment definition (environments/<id>.toml in
 	// the trusted base layers) this workflow's task Executor runs in. Empty
@@ -100,10 +100,10 @@ type WorkflowFile struct {
 //	on         = ["resource.*"] # event type globs; a match ticks the session
 //	stale_when = "15m"          # tick if this long has passed since the last tick
 //
-// On deliberately carries no provider-shaped default in core (a GitHub
+// On deliberately carries no provider-shaped default in core (any one
 // watcher's event types are just one possible value): which event namespaces
 // mean "an external resource changed" is a workflow-configuration concern,
-// the same way wiring a GitHub watcher's channel is.
+// the same way wiring that watcher's channel is.
 type TickConfig struct {
 	On        []string `toml:"on"`
 	StaleWhen Duration `toml:"stale_when"`
@@ -145,7 +145,7 @@ type WorkflowEvent struct {
 //	name = "runtime"
 //	uses = "claude_channel"
 //	inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
-//	include = ["sennit.instruction", "github.*", "user.emit"]
+//	include = ["sennit.instruction", "resource.*", "user.emit"]
 type EventChannel struct {
 	Name    string            `toml:"name"`
 	Uses    string            `toml:"uses"`

@@ -18,7 +18,7 @@ around, not a feature gate for v1.
 ```
 app/         CLI + MCP server: session lifecycle, task DAG, state, dispatch
 contracts/   Shared data contracts between the CLI and plugins
-plugins/     Standalone processes (channel relay, GitHub watcher, Slack adapter)
+plugins/     Standalone processes (channel relay, GitHub provider and watcher, Slack adapter)
 ```
 
 `app`, `contracts/*`, and `plugins/*` are independent Go modules wired

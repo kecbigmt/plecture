@@ -11,7 +11,6 @@ import (
 	"github.com/kecbigmt/sennit/app/internal/config"
 	"github.com/kecbigmt/sennit/app/internal/domain"
 	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/contracts/event"
 	contract "github.com/kecbigmt/sennit/contracts/state"
@@ -417,10 +416,10 @@ func appendInstruction(store *state.Store, sessionName, taskKey, resource, instr
 	})
 }
 
-// resolveSessionName maps an identifier (session name, alias, URL, or resource
+// resolveSessionName maps an identifier (session name, alias, or resource
 // id) to the canonical session name used as the event-log key. It mirrors the
-// core resolveSession precedence — exact name, alias, GitHub-URL bridge, then
-// provider resolver dispatch — so event commands resolve the same way as
+// core resolveSession precedence — exact name, alias, then provider resolver
+// dispatch — so event commands resolve the same way as
 // create/up/show. Unlike resolveSession it does NOT require the session to
 // exist (destroyed sessions retain their log), so a non-matching identifier
 // falls back to itself rather than erroring.
@@ -438,14 +437,6 @@ func resolveSessionName(cfg *config.Config, store *state.Store, identifier strin
 		}
 		slices.Sort(names)
 		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("identifier %q matches multiple sessions (%s); use the session name", identifier, strings.Join(names, ", "))}
-	}
-
-	if gh.IsURL(identifier) {
-		parsed, err := gh.ParseURL(identifier)
-		if err != nil {
-			return "", &Error{Code: ErrInvalidURL, Message: err.Error()}
-		}
-		return gh.SessionName(parsed.OwnerRepo, parsed.Number), nil
 	}
 
 	// Provider resolver dispatch (pure/offline). cfg is nil in some unit tests.

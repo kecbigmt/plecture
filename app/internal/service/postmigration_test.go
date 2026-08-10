@@ -132,3 +132,64 @@ func TestPostMigrationState_WorkdirFromSession(t *testing.T) {
 		t.Errorf("Workdir = %q", got)
 	}
 }
+
+// TestPostMigrationState_ResolverDispatchOverPostMigrationState is the
+// end-to-end check that the current code operates on a state directory in
+// post-migration shape: a session recorded there is found by the same
+// resolver dispatch a fresh create would use, so a migrated session is
+// reused rather than duplicated.
+func TestPostMigrationState_ResolverDispatchOverPostMigrationState(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	migrated := `{
+  "version": 5,
+  "sessions": {
+    "acme/widgets-42+gh": {
+      "session_name": "acme/widgets-42+gh",
+      "resource_id": "https://github.com/acme/widgets/issues/42",
+      "alias": "https://github.com/acme/widgets/issues/42",
+      "workflow": "gh",
+      "branch": "issue/42+gh",
+      "worktree_path": "/tmp/worktrees/issue-42-gh",
+      "tasks": {
+        "@workflow": {
+          "scope": "session",
+          "status": "produced",
+          "outputs": {"workdir": "/tmp/worktrees/issue-42-gh"}
+        }
+      },
+      "created_at": "2024-01-01T00:00:00Z",
+      "updated_at": "2024-01-01T00:00:00Z"
+    }
+  }
+}`
+	if err := os.WriteFile(statePath, []byte(migrated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := state.NewStore(dir)
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	writeSetupWorkflow(t, cfg, "gh", "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n"+githubResolver)
+
+	disp, matched, err := dispatchResource(cfg, "", "https://github.com/acme/widgets/issues/42")
+	if err != nil || !matched {
+		t.Fatalf("dispatch: matched=%v err=%v", matched, err)
+	}
+	name := disp.Name + "+gh"
+	if store.Get(name) == nil {
+		t.Fatalf("resolver-derived name %q does not address the migrated session", name)
+	}
+
+	// Every identity lookup a command performs must land on the same session.
+	for _, identifier := range []string{name, "https://github.com/acme/widgets/issues/42"} {
+		got, _, err := ResolveSession(cfg, store, identifier)
+		if err != nil {
+			t.Fatalf("ResolveSession(%q): %v", identifier, err)
+		}
+		if got != name {
+			t.Errorf("ResolveSession(%q) = %q, want %q", identifier, got, name)
+		}
+	}
+}

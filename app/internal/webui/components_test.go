@@ -79,7 +79,7 @@ func TestInput_LabelAssociatedAndFocusRing(t *testing.T) {
 func TestCard_SessionRow(t *testing.T) {
 	out := exec(t, "card", cardView{ListEntry: service.ListEntry{
 		SessionName: "owner/repo-1", Title: "fix things",
-		Run: domain.RunUp, Health: domain.HealthHealthy, Branch: "issue/1", GitHubStatus: "open",
+		Run: domain.RunUp, Health: domain.HealthHealthy, Branch: "issue/1", DisplayStatus: "open",
 	}})
 	for _, want := range []string{
 		`data-run="up"`, `data-health="healthy"`, "owner/repo-1", "fix things", "issue/1", "open",

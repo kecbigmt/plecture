@@ -36,7 +36,7 @@ comment.
 |---------------|----------------------------------------------------------------|
 | `app/`        | CLI + MCP server: session lifecycle, task DAG, state, dispatch |
 | `contracts/`  | Shared data contracts between the CLI and plugins               |
-| `plugins/`    | Standalone processes (channel relay, GitHub watcher, Slack adapter) |
+| `plugins/`    | Standalone processes (channel relay, GitHub provider and watcher, Slack adapter) |
 
 Core (`app/`, `contracts/*`) never imports `plugins/*`.
 

@@ -34,7 +34,7 @@ func TestIntegration_UpAutoCreatesFromURL(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{"path":".env"}'`, cleanup: "true"},
 			{id: "tmux", scope: "run", setup: `echo '{"session_name":"t"}'`, cleanup: "true"},
@@ -43,7 +43,7 @@ func TestIntegration_UpAutoCreatesFromURL(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/55"
-	sessionName := "testowner/testrepo-55"
+	sessionName := "testowner/testrepo-55+default"
 
 	if store.Get(sessionName) != nil {
 		t.Fatal("precondition: state should be empty")
@@ -82,7 +82,7 @@ func TestIntegration_UpRecoversIncompleteSessionTask(t *testing.T) {
 	markerDir := t.TempDir()
 	envMarker := markerDir + "/env-ok"
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			// envfile: succeeds only when the marker exists. First create
 			// attempt → marker absent → setup creates it then exits 1 →
@@ -96,7 +96,7 @@ func TestIntegration_UpRecoversIncompleteSessionTask(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/66"
-	sessionName := "testowner/testrepo-66"
+	sessionName := "testowner/testrepo-66+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err == nil {
 		t.Fatal("expected first Create to error")
@@ -130,7 +130,7 @@ func TestIntegration_UpWithTagDerivesTaggedSession(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run", setup: `echo '{}'`, cleanup: "true"},
@@ -151,7 +151,7 @@ func TestIntegration_UpWithTagDerivesTaggedSession(t *testing.T) {
 	if store.Get(taggedSession) == nil {
 		t.Fatal("expected tagged state entry created by Up")
 	}
-	if store.Get("testowner/testrepo-111") != nil {
+	if store.Get("testowner/testrepo-111+default") != nil {
 		t.Fatal("untagged session was created unexpectedly")
 	}
 
@@ -172,7 +172,7 @@ func TestIntegration_UpTagRejectedWithSessionName(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	cfg := &config.Config{WorktreesRoot: t.TempDir()}
 
-	_, err := Up(cfg, store, UpParams{Identifier: "testowner/testrepo-111", Tag: "failtest"})
+	_, err := Up(cfg, store, UpParams{Identifier: "testowner/testrepo-111+default", Tag: "failtest"})
 	if err == nil {
 		t.Fatal("expected ErrInvalidTag when --tag is combined with a session name")
 	}
@@ -193,7 +193,7 @@ func TestIntegration_UpRejectsUnknownSessionName(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	cfg := &config.Config{WorktreesRoot: t.TempDir()}
 
-	_, err := Up(cfg, store, UpParams{Identifier: "testowner/testrepo-999"})
+	_, err := Up(cfg, store, UpParams{Identifier: "testowner/testrepo-999+default"})
 	if err == nil {
 		t.Fatal("expected error for unknown session name")
 	}
@@ -221,7 +221,7 @@ func TestIntegration_CreateIdempotent(t *testing.T) {
 	markerA := markerDir + "/a-ran"
 	markerB := markerDir + "/b-ran"
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "a", scope: "session", setup: "touch " + markerA + " && echo '{}'", cleanup: "true"},
 			{id: "b", scope: "session",
@@ -231,7 +231,7 @@ func TestIntegration_CreateIdempotent(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/77"
-	sessionName := "testowner/testrepo-77"
+	sessionName := "testowner/testrepo-77+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err == nil {
 		t.Fatal("expected first Create to error on b's setup failure")
@@ -274,7 +274,7 @@ func TestIntegration_DownUpPreservesPrev(t *testing.T) {
 	// claude_like (task filenames disallow hyphens): on first setup emit a
 	// fresh id, on subsequent runs emit whatever id was in .Prev. Mirrors the
 	// production claude script.
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{
@@ -288,7 +288,7 @@ func TestIntegration_DownUpPreservesPrev(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/88"
-	sessionName := "testowner/testrepo-88"
+	sessionName := "testowner/testrepo-88+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -326,7 +326,7 @@ func TestIntegration_DownSurvivesPartialSetup(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "broken", scope: "run",
@@ -336,7 +336,7 @@ func TestIntegration_DownSurvivesPartialSetup(t *testing.T) {
 		[]nodeFixture{{id: "envfile"}, {id: "broken"}},
 	)
 	url := "https://github.com/testowner/testrepo/issues/99"
-	sessionName := "testowner/testrepo-99"
+	sessionName := "testowner/testrepo-99+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -361,7 +361,7 @@ func TestIntegration_CreatePropagatesInputToTemplates(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session",
 				setup:   `echo "{\"template\":\"{{.SessionInputs.template}}\"}"`,
@@ -371,7 +371,7 @@ func TestIntegration_CreatePropagatesInputToTemplates(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/200"
-	sessionName := "testowner/testrepo-200"
+	sessionName := "testowner/testrepo-200+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url, Inputs: map[string]any{"template": "review"}}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -398,7 +398,7 @@ func TestIntegration_CreateRejectsInputAgainstSchema(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
@@ -429,7 +429,7 @@ func TestIntegration_UpAutoCreateWithInput(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session",
 				setup: `echo "{\"template\":\"{{.SessionInputs.template}}\"}"`},
@@ -439,7 +439,7 @@ func TestIntegration_UpAutoCreateWithInput(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/202"
-	sessionName := "testowner/testrepo-202"
+	sessionName := "testowner/testrepo-202+default"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url, Inputs: map[string]any{"template": "respond"}}); err != nil {
 		t.Fatalf("up auto-create: %v", err)
@@ -458,13 +458,13 @@ func TestIntegration_DestroyRefusesWhenWorktreeDirty(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/256"
-	sessionName := "testowner/testrepo-256"
+	sessionName := "testowner/testrepo-256+default"
 
 	createResult, err := Create(cfg, store, CreateParams{URL: url})
 	if err != nil {
@@ -493,14 +493,22 @@ func TestIntegration_DestroyRefusesWhenWorktreeDirty(t *testing.T) {
 		t.Fatalf("untracked file should remain on disk after refusal, stat err: %v", err)
 	}
 
-	if _, err := Destroy(cfg, store, DestroyParams{Identifier: sessionName, Force: true}); err != nil {
+	// --force is sennit's own "delete the state entry anyway" switch. It does
+	// not rewrite the provider's release script, so a release the provider
+	// refuses stays refused and is reported as a warning instead of silently
+	// discarding the user's uncommitted work.
+	result, err := Destroy(cfg, store, DestroyParams{Identifier: sessionName, Force: true})
+	if err != nil {
 		t.Fatalf("Destroy --force failed: %v", err)
 	}
 	if store.Get(sessionName) != nil {
 		t.Fatal("state entry should be deleted after --force")
 	}
-	if _, err := os.Stat(createResult.WorktreePath); !os.IsNotExist(err) {
-		t.Errorf("worktree should be removed after --force, stat err: %v", err)
+	if len(result.CleanupWarnings) == 0 {
+		t.Error("a refused release must be reported as a warning")
+	}
+	if _, err := os.Stat(untracked); err != nil {
+		t.Errorf("uncommitted work must survive a refused release, stat err: %v", err)
 	}
 }
 
@@ -516,7 +524,7 @@ func TestIntegration_DestroyAutoDownsLiveRunTask(t *testing.T) {
 
 	logFile := t.TempDir() + "/cleanup.log"
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`,
 				cleanup: "echo session >> " + logFile},
@@ -527,7 +535,7 @@ func TestIntegration_DestroyAutoDownsLiveRunTask(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/300"
-	sessionName := "testowner/testrepo-300"
+	sessionName := "testowner/testrepo-300+default"
 
 	createResult, err := Create(cfg, store, CreateParams{URL: url})
 	if err != nil {
@@ -574,7 +582,7 @@ func TestIntegration_DestroyForcePartialFailureContinuesTeardown(t *testing.T) {
 	markerDir := t.TempDir()
 	sessionCleanupMarker := markerDir + "/session-cleanup-ran"
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`,
 				cleanup: "touch " + sessionCleanupMarker},
@@ -584,7 +592,7 @@ func TestIntegration_DestroyForcePartialFailureContinuesTeardown(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/301"
-	sessionName := "testowner/testrepo-301"
+	sessionName := "testowner/testrepo-301+default"
 
 	createResult, err := Create(cfg, store, CreateParams{URL: url})
 	if err != nil {
@@ -629,7 +637,7 @@ func TestIntegration_AttachResolvesRenderedCommand(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{
@@ -644,7 +652,7 @@ func TestIntegration_AttachResolvesRenderedCommand(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/7"
-	sessionName := "testowner/testrepo-7"
+	sessionName := "testowner/testrepo-7+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -677,7 +685,7 @@ func TestIntegration_AttachAbortsWhenTaskNotProduced(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run",
@@ -689,7 +697,7 @@ func TestIntegration_AttachAbortsWhenTaskNotProduced(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/8"
-	sessionName := "testowner/testrepo-8"
+	sessionName := "testowner/testrepo-8+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -715,13 +723,13 @@ func TestIntegration_AttachWithoutDeclarationFails(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/9"
-	sessionName := "testowner/testrepo-9"
+	sessionName := "testowner/testrepo-9+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -745,7 +753,7 @@ func TestIntegration_CaptureResolvesRenderedOutput(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{
@@ -761,7 +769,7 @@ func TestIntegration_CaptureResolvesRenderedOutput(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/701"
-	sessionName := "testowner/testrepo-701"
+	sessionName := "testowner/testrepo-701+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -794,7 +802,7 @@ func TestIntegration_CaptureAbortsWhenTaskNotProduced(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run",
@@ -806,7 +814,7 @@ func TestIntegration_CaptureAbortsWhenTaskNotProduced(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/702"
-	sessionName := "testowner/testrepo-702"
+	sessionName := "testowner/testrepo-702+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -832,13 +840,13 @@ func TestIntegration_CaptureWithoutDeclarationFails(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/703"
-	sessionName := "testowner/testrepo-703"
+	sessionName := "testowner/testrepo-703+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -861,7 +869,7 @@ func TestIntegration_CaptureAmbiguousWhenMultipleDeclare(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run", setup: `echo '{"session_name":"s"}'`, cleanup: "true", capture: "echo a"},
@@ -871,7 +879,7 @@ func TestIntegration_CaptureAmbiguousWhenMultipleDeclare(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/704"
-	sessionName := "testowner/testrepo-704"
+	sessionName := "testowner/testrepo-704+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -897,7 +905,7 @@ func TestIntegration_CaptureSurfacesScriptFailure(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeWorkflowFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run",
@@ -909,7 +917,7 @@ func TestIntegration_CaptureSurfacesScriptFailure(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/705"
-	sessionName := "testowner/testrepo-705"
+	sessionName := "testowner/testrepo-705+default"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
 		t.Fatalf("up: %v", err)
@@ -942,7 +950,7 @@ func TestIntegration_WorkflowFile_NodeWiring(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 
 	ownerRepo := "testowner/testrepo"
-	repoDir := worktreesRoot + "/github.com/" + ownerRepo
+	repoDir := t.TempDir() + "/config"
 	if err := os.MkdirAll(repoDir+"/.sennit/tasks", 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -980,9 +988,10 @@ session_name = "{{.Nodes.tmux.outputs.session_name}}"
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{WorktreesRoot: worktreesRoot}
+	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.sennit"}
+	attachGithubProvider(t, cfg, "coding")
 	url := "https://github.com/" + ownerRepo + "/issues/99"
-	sessionName := "testowner/testrepo-99"
+	sessionName := "testowner/testrepo-99+coding"
 
 	result, err := Up(cfg, store, UpParams{Identifier: url, Workflow: "coding"})
 	if err != nil {
@@ -1028,7 +1037,7 @@ func TestIntegration_WorkflowFrozenOnSession(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 
 	ownerRepo := "testowner/testrepo"
-	repoDir := worktreesRoot + "/github.com/" + ownerRepo
+	repoDir := t.TempDir() + "/config"
 	if err := os.MkdirAll(repoDir+"/.sennit/workflows", 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1059,13 +1068,18 @@ uses = "noop"
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{WorktreesRoot: worktreesRoot}
+	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.sennit"}
+	attachGithubProvider(t, cfg, "a")
+	attachGithubProvider(t, cfg, "b")
 	url := "https://github.com/" + ownerRepo + "/issues/77"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url, Workflow: "a"}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	_, err := Up(cfg, store, UpParams{Identifier: url, Workflow: "b"})
+	// The frozen workflow is checked against the session, so the mismatch has
+	// to be raised on the session itself: a different workflow on the resource
+	// resolves to a different (tagged) session name entirely.
+	_, err := Up(cfg, store, UpParams{Identifier: "testowner/testrepo-77+a", Workflow: "b"})
 	if err == nil {
 		t.Fatal("expected ErrInvalidInput when --workflow mismatches frozen workflow")
 	}
@@ -1086,7 +1100,7 @@ func TestIntegration_AttachUnderWorkflowPath(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 
 	ownerRepo := "testowner/testrepo"
-	repoDir := worktreesRoot + "/github.com/" + ownerRepo
+	repoDir := t.TempDir() + "/config"
 	if err := os.MkdirAll(repoDir+"/.sennit/tasks", 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1111,9 +1125,10 @@ uses = "tmux"
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{WorktreesRoot: worktreesRoot}
+	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.sennit"}
+	attachGithubProvider(t, cfg, "coding")
 	url := "https://github.com/" + ownerRepo + "/issues/300"
-	sessionName := "testowner/testrepo-300"
+	sessionName := "testowner/testrepo-300+coding"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url, Workflow: "coding"}); err != nil {
 		t.Fatalf("Up: %v", err)

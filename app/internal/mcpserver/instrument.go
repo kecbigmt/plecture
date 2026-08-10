@@ -8,7 +8,6 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/kecbigmt/sennit/app/internal/github"
 	"github.com/kecbigmt/sennit/app/internal/traceid"
 )
 
@@ -45,27 +44,13 @@ func instrumentHandler(toolName string, handler server.ToolHandlerFunc) server.T
 			errMsg = extractErrorText(result)
 		}
 
-		// Derive session name and url from either the "url" or "session"
-		// argument. New lifecycle tools (sennit_up/down/destroy) use "session"
-		// — accept either a URL or a bare session name there.
-		session := ""
-		urlParam := request.GetString("url", "")
-		sessionParam := request.GetString("session", "")
-		switch {
-		case urlParam != "":
-			if parsed, parseErr := github.ParseURL(urlParam); parseErr == nil {
-				session = github.SessionName(parsed.OwnerRepo, parsed.Number)
-			}
-		case sessionParam != "":
-			if github.IsURL(sessionParam) {
-				if parsed, parseErr := github.ParseURL(sessionParam); parseErr == nil {
-					session = github.SessionName(parsed.OwnerRepo, parsed.Number)
-					urlParam = sessionParam
-				}
-			} else {
-				session = sessionParam
-			}
-		}
+		// Label the log line with whatever identity the call carried. The
+		// "url" argument is a resource identifier and the "session" argument
+		// is a session identifier; both are logged verbatim, because turning
+		// a resource identifier into a session name is the provider
+		// resolver's job and must not be duplicated here.
+		resource := request.GetString("url", "")
+		session := request.GetString("session", "")
 
 		// Build slog attributes.
 		attrs := []slog.Attr{
@@ -79,8 +64,8 @@ func instrumentHandler(toolName string, handler server.ToolHandlerFunc) server.T
 		if session != "" {
 			attrs = append(attrs, slog.String("session", session))
 		}
-		if urlParam != "" {
-			attrs = append(attrs, slog.String("url", urlParam))
+		if resource != "" {
+			attrs = append(attrs, slog.String("resource", resource))
 		}
 		if errMsg != "" {
 			attrs = append(attrs, slog.String("error", errMsg))

@@ -426,18 +426,3 @@ func TestEventPageSubtreeUnknownRootErrors(t *testing.T) {
 		t.Fatalf("want ErrWorkspaceNotFound for unknown root, got %v", err)
 	}
 }
-
-func TestEventListResolvesURL(t *testing.T) {
-	store := state.NewStore(t.TempDir())
-	// publish by session name, list by the equivalent GitHub URL
-	if _, err := EventPublish(nil, store, "octocat/Hello-World-42", EventPublishParams{Type: event.TypeUserNote}); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	evs, _, _, err := EventList(nil, store, "https://github.com/octocat/Hello-World/issues/42", 0, event.Filter{})
-	if err != nil {
-		t.Fatalf("list by url: %v", err)
-	}
-	if len(evs) != 1 {
-		t.Fatalf("url did not resolve to the same session: got %d events", len(evs))
-	}
-}

@@ -25,10 +25,7 @@ func TestAcceptance_SessionAppearsInList(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	sess := &domain.Session{
 		Name:         "acceptance/web-1",
-		URL:          "https://github.com/acceptance/web/issues/1",
-		URLType:      "issue",
-		OwnerRepo:    "acceptance/web",
-		Number:       1,
+		ResourceID:   "https://github.com/acceptance/web/issues/1",
 		Branch:       "issue/1",
 		WorktreePath: "/nonexistent/worktree",
 		CreatedAt:    time.Now(),
@@ -60,10 +57,7 @@ func TestAcceptance_SessionDetail(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	sess := &domain.Session{
 		Name:         "acceptance/web-2",
-		URL:          "https://github.com/acceptance/web/issues/2",
-		URLType:      "issue",
-		OwnerRepo:    "acceptance/web",
-		Number:       2,
+		ResourceID:   "https://github.com/acceptance/web/issues/2",
 		Branch:       "issue/2",
 		WorktreePath: "/nonexistent/worktree",
 		CreatedAt:    time.Now(),
@@ -83,7 +77,7 @@ func TestAcceptance_SessionDetail(t *testing.T) {
 	if !strings.Contains(body, "acceptance/web-2") || !strings.Contains(body, "issue/2") {
 		t.Errorf("detail missing session fields; body:\n%s", body)
 	}
-	if !strings.Contains(body, "worktree is missing") {
+	if !strings.Contains(body, "(missing)") {
 		t.Errorf("detail should surface the missing-worktree diagnostic; body:\n%s", body)
 	}
 }
@@ -112,12 +106,12 @@ func acceptancePost(t *testing.T, h http.Handler, path string, form url.Values) 
 	return rec
 }
 
-// Acceptance: a create for a repo outside the allowlist is a 403 through the
-// real stack — the allowlist check fires before any git work.
-func TestAcceptance_CreateRepoNotAllowed(t *testing.T) {
+// Acceptance: a create for a resource outside the allowlist is a 403 through
+// the real stack — the allowlist check fires before any provider work.
+func TestAcceptance_CreateResourceNotAllowed(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	cfg := config.Load()
-	cfg.RepoAllowlist = []string{"only/allowed"}
+	cfg.ResourceAllowlist = []string{`^https://github\.com/only/allowed/`}
 
 	h := New(newLiveService(cfg, store)).Routes()
 	rec := acceptancePost(t, h, "/sessions", url.Values{

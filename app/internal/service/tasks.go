@@ -13,7 +13,6 @@ import (
 	"github.com/kecbigmt/sennit/app/internal/config"
 	"github.com/kecbigmt/sennit/app/internal/domain"
 	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/app/internal/task"
 	"github.com/kecbigmt/sennit/app/internal/workspace"
@@ -48,16 +47,12 @@ type CreateResult struct {
 // Dispatch order for the resource identifier (any string):
 //
 //  1. Resolver dispatch — the workflow whose `[resolver]` matches (or the
-//     --workflow flag's resolver) derives the session id purely; workflow
-//     setup then acquires the workdir. The core performs no git/gh work.
-//  2. GitHub-URL bridge — URL/PVTI inputs with no matching resolver keep the
-//     legacy owner/repo-<number> naming; workdir acquisition still goes
-//     through workflow setup when the workflow declares one.
-//  3. Identity — a non-URL input with an explicit --workflow whose workflow
-//     declares setup: the input string IS the session id.
-//  4. Legacy core path — the core resolves the branch (gh) and creates the
-//     worktree itself, exactly as before. Kept until every shipped workflow
-//     declares setup.
+//     --workflow flag's resolver) derives the session id purely; the
+//     provider's setup then acquires the workdir. The core performs no
+//     version-control or provider-API work of its own.
+//  2. Identity — an identifier no resolver matches, with an explicit
+//     --workflow whose provider declares setup: the input string IS the
+//     session id.
 //
 // Create is idempotent: re-running it against an existing session reuses
 // the worktree + state entry and retries the workflow setup and any
@@ -75,15 +70,6 @@ func putBestEffort(store *state.Store, session *domain.Session, context string) 
 
 func Create(cfg *config.Config, store *state.Store, params CreateParams) (*CreateResult, error) {
 	resource := params.URL
-	// PVTI project-item ids need a network resolve to a canonical URL before
-	// any pure dispatch can happen. GitHub-specific; rides the legacy bridge.
-	if gh.IsProjectItemID(resource) {
-		parsed, err := resolveURL(resource)
-		if err != nil {
-			return nil, err
-		}
-		resource = parsed.URL()
-	}
 
 	allowed, allowErr := cfg.IsResourceAllowed(resource)
 	if allowErr != nil {
@@ -116,200 +102,37 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 		return createWithWorkflowSetup(cfg, store, params, disp.Workflow, disp.Provider, sessionName, resource, params.URL)
 	}
 
-	// 3. Identity (non-URL input, explicit workflow with setup). Checked
-	// before the GitHub bridge because a non-URL input can't parse anyway.
-	if !gh.IsURL(resource) {
-		if params.Workflow == "" {
-			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workflow resolver matches %q; pass --workflow to create a session with this identifier", resource)}
-		}
-		workflows, err := cfg.LoadWorkflows("")
-		if err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
-		}
-		wf, ok := workflows[params.Workflow]
-		if !ok {
-			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .sennit/workflows/%s.toml", params.Workflow, params.Workflow)}
-		}
-		providers, err := cfg.LoadProviders()
-		if err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load providers: %v", err)}
-		}
-		prov, ok, provErr := providerFor(wf, providers)
-		if provErr != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
-		}
-		if !ok {
-			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no provider; only the GitHub URL path can create sessions without one", wf.ID)}
-		}
-		tag, tagErr := effectiveTag(params.Tag, wf.ID)
-		if tagErr != nil {
-			return nil, tagErr
-		}
-		sessionName := resource + "+" + tag
-		return createWithWorkflowSetup(cfg, store, params, wf, prov, sessionName, resource, params.URL)
+	// 2. Identity: the resource identifier IS the session id. Requires an
+	// explicit workflow, since an identity dispatch on arbitrary input would
+	// otherwise shadow every resolver.
+	if params.Workflow == "" {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workflow resolver matches %q; pass --workflow to create a session with this identifier", resource)}
 	}
-
-	// 2./4. GitHub-URL bridge and legacy core path.
-	parsed, err := resolveURL(resource)
+	workflows, err := cfg.LoadWorkflows("")
 	if err != nil {
-		return nil, err
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 	}
-
-	if !cfg.IsRepoAllowed(parsed.OwnerRepo) {
-		return nil, &Error{Code: ErrRepoNotAllowed, Message: fmt.Sprintf("repository %s is not in the allowlist", parsed.OwnerRepo)}
+	wf, ok := workflows[params.Workflow]
+	if !ok {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .sennit/workflows/%s.toml", params.Workflow, params.Workflow)}
 	}
-
-	if wf, prov, ok := setupWorkflowFor(cfg, store, params, parsed); ok {
-		sessionName := gh.SessionName(parsed.OwnerRepo, parsed.Number)
-		if params.Tag != "" {
-			sessionName = gh.SessionNameWithTag(parsed.OwnerRepo, parsed.Number, params.Tag)
-		}
-		return createWithWorkflowSetup(cfg, store, params, wf, prov, sessionName, parsed.URL(), params.URL)
-	}
-
-	mgr := workspace.NewManager(cfg.WorktreesRoot)
-	baseBranch, err := gh.ResolveBranch(context.Background(), parsed)
+	providers, err := cfg.LoadProviders()
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to resolve branch: %v", err)}
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load providers: %v", err)}
 	}
-
-	sessionName := gh.SessionName(parsed.OwnerRepo, parsed.Number)
-	branch := baseBranch
-	if params.Tag != "" {
-		if err := validateTagFormat(params.Tag); err != nil {
-			return nil, err
-		}
-		sessionName = gh.SessionNameWithTag(parsed.OwnerRepo, parsed.Number, params.Tag)
-		branch = gh.BranchWithTag(baseBranch, params.Tag)
+	prov, ok, provErr := providerFor(wf, providers)
+	if provErr != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
 	}
-
-	// Session-name guard (the provider paths apply it inside
-	// createWithWorkflowSetup; the legacy path has no setup chokepoint, so
-	// guard here before any worktree side task).
-	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
-		return nil, guardErr
+	if !ok {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no provider; a session needs one to acquire its working directory", wf.ID)}
 	}
-
-	// mgr.Add is itself idempotent (reuses an existing worktree) and the
-	// session lookup below decides whether we're creating a fresh state
-	// entry or recovering an existing one.
-	addParams := workspace.AddParams{
-		Repo:        gh.RepoSlug(parsed.OwnerRepo),
-		Branch:      branch,
-		BaseBranch:  baseBranch,
-		SessionName: sessionName,
+	tag, tagErr := effectiveTag(params.Tag, wf.ID)
+	if tagErr != nil {
+		return nil, tagErr
 	}
-	if parsed.Type == gh.URLTypePR {
-		addParams.FallbackRefspec = gh.PullRefspec(parsed.Number, baseBranch)
-	}
-	info, err := mgr.Add(context.Background(), addParams)
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to create worktree: %v", err)}
-	}
-
-	now := time.Now()
-	// Resolved via mgr.Add so cascade lookup works before the session struct
-	// exists; we can't read session.WorktreePath yet in the create-new branch.
-	worktreeDir := info.WorktreePath
-	var session *domain.Session
-	if existing := store.Get(sessionName); existing != nil {
-		if params.Inputs != nil {
-			return nil, &Error{Code: ErrInvalidInput, Message: inputsOnExistingSessionMessage()}
-		}
-		if params.Workflow != "" && params.Workflow != existing.Workflow {
-			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q; destroy and recreate to switch", params.Workflow, existing.Workflow)}
-		}
-		session = existing
-		if session.Tasks == nil {
-			session.Tasks = make(map[string]*contract.TaskState)
-		}
-		// Refresh fields that may have drifted; the URL/sessionName
-		// pair is stable but worktree path could move across migrations.
-		session.URL = parsed.URL()
-		session.URLType = string(parsed.Type)
-		session.OwnerRepo = parsed.OwnerRepo
-		session.Number = parsed.Number
-		session.Branch = branch
-		session.WorktreePath = info.WorktreePath
-	} else {
-		parentSession, parentErr := resolveParentSession(store, info.SessionName, params.ParentSession)
-		if parentErr != nil {
-			return nil, parentErr
-		}
-		workflowName, selectErr := selectWorkflow(cfg, worktreeDir, params.Workflow)
-		if selectErr != nil {
-			return nil, selectErr
-		}
-		input, validateErr := resolveSessionInputs(cfg, worktreeDir, workflowName, params.Inputs)
-		if validateErr != nil {
-			return nil, validateErr
-		}
-		session = &domain.Session{
-			Name:          info.SessionName,
-			ParentSession: parentSession,
-			URL:           parsed.URL(),
-			URLType:       string(parsed.Type),
-			OwnerRepo:     parsed.OwnerRepo,
-			Number:        parsed.Number,
-			Branch:        branch,
-			WorktreePath:  info.WorktreePath,
-			Workflow:      workflowName,
-			Inputs:        input,
-			Tasks:         make(map[string]*contract.TaskState),
-			CreatedAt:     now,
-		}
-	}
-	// State v3 identity fields — mirror the setup path so legacy-path
-	// sessions satisfy the same contract without waiting for a load-time
-	// migration (which only backfills, and only on the next reload).
-	session.ResourceID = parsed.URL()
-	session.Alias = params.URL
-	session.UpdatedAt = now
-
-	wf, wfErr := loadSessionWorkflow(cfg, worktreeDir, session)
-	if wfErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
-	}
-
-	// Environment lifecycle: after the worktree exists (mgr.Add already ran
-	// above), before session task setup. A no-op when the workflow declares
-	// no environment. Fail-closed like the workflow-setup path — an
-	// environment setup failure must not let task setup start.
-	if envSetupErr := runEnvironmentSetupForSession(cfg, wf, session, params.Observer); envSetupErr != nil {
-		session.UpdatedAt = time.Now()
-		putBestEffort(store, session, "environment setup failure")
-		return nil, &Error{Code: ErrExecutionFailed, Message: envSetupErr.Error()}
-	}
-
-	plan, err := buildPlanForSession(cfg, worktreeDir, session)
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
-	}
-	envExecutor, envExecErr := environmentExecutorForSession(cfg, wf, session)
-	if envExecErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: envExecErr.Error()}
-	}
-
-	setupErr := task.RunSetup(context.Background(), plan.Session, sessionVars(session), session.Tasks, params.Observer, envExecutor)
-	if err := store.Put(session); err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
-	}
-	if setupErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
-	}
-	if refreshed := store.Get(info.SessionName); refreshed != nil {
-		session = refreshed
-	}
-
-	recordSessionCreated(store, info.SessionName)
-
-	return &CreateResult{
-		SessionName:    info.SessionName,
-		WorktreePath:   info.WorktreePath,
-		Branch:         branch,
-		ReusedWorktree: info.ReusedWorktree,
-		Tasks:          session.Tasks,
-	}, nil
+	sessionName := resource + "+" + tag
+	return createWithWorkflowSetup(cfg, store, params, wf, prov, sessionName, resource, params.URL)
 }
 
 // UpParams holds parameters for Up.
@@ -386,49 +209,12 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 			}
 		}
 		identifier = sessionName
-	} else if gh.IsURL(params.Identifier) {
-		parsed, parseErr := gh.ParseURL(params.Identifier)
-		if parseErr != nil {
-			return nil, &Error{Code: ErrInvalidURL, Message: parseErr.Error()}
-		}
-		// SessionName is derived from owner/repo+number alone (no network
-		// call), so we can decide whether to invoke Create without
-		// triggering its branch-resolution first.
-		sessionName := gh.SessionName(parsed.OwnerRepo, parsed.Number)
-		if params.Tag != "" {
-			if err := validateTagFormat(params.Tag); err != nil {
-				return nil, err
-			}
-			sessionName = gh.SessionNameWithTag(parsed.OwnerRepo, parsed.Number, params.Tag)
-		}
-		existing := store.Get(sessionName)
-		if params.Inputs != nil && existing != nil {
-			return nil, &Error{Code: ErrInvalidInput, Message: inputsOnExistingSessionMessage()}
-		}
-		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
-			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
-		}
-		if existing == nil || hasIncompleteSessionTask(cfg, existing) {
-			if _, err := Create(cfg, store, CreateParams{
-				URL:           params.Identifier,
-				Tag:           params.Tag,
-				Workflow:      params.Workflow,
-				Inputs:        params.Inputs,
-				ParentSession: params.ParentSession,
-				Observer:      params.Observer,
-			}); err != nil {
-				return nil, err
-			}
-		}
-		// Use the derived session name for resolveSession below — the URL
-		// alone doesn't disambiguate tag variants.
-		identifier = sessionName
 	} else {
 		if params.Tag != "" {
-			return nil, &Error{Code: ErrInvalidTag, Message: "--tag is only valid when the identifier is a URL; the session name already encodes the tag"}
+			return nil, &Error{Code: ErrInvalidTag, Message: "--tag is only valid when the identifier is a resource a workflow resolver matches; a session name already encodes the tag"}
 		}
 		if params.Inputs != nil {
-			return nil, &Error{Code: ErrInvalidInput, Message: "--input is only valid when the identifier is a URL (auto-create path); bare session name implies an existing session"}
+			return nil, &Error{Code: ErrInvalidInput, Message: "--input is only valid on the auto-create path; a bare session name implies an existing session"}
 		}
 	}
 
@@ -812,22 +598,6 @@ func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*Attac
 	}, nil
 }
 
-// resolveURL accepts URLs and PVTI ids, returning the parsed form.
-func resolveURL(url string) (*gh.ParsedURL, error) {
-	if gh.IsProjectItemID(url) {
-		parsed, err := gh.ResolveProjectItemID(context.Background(), url)
-		if err != nil {
-			return nil, &Error{Code: ErrInvalidURL, Message: err.Error()}
-		}
-		return parsed, nil
-	}
-	parsed, err := gh.ParseURL(url)
-	if err != nil {
-		return nil, &Error{Code: ErrInvalidURL, Message: err.Error()}
-	}
-	return parsed, nil
-}
-
 // buildPlanForSession honors the workflow name frozen on the session so
 // up/down/destroy replay against the same plan create saw. A session without a
 // frozen workflow is impossible now that the inline `[[tasks]]`
@@ -956,8 +726,6 @@ func sessionVars(s *domain.Session) task.SessionVars {
 		ResourceID:    s.ResourceID,
 		ParentSession: s.ParentSession,
 		WorktreePath:  s.WorktreePath,
-		URL:           s.URL,
-		OwnerRepo:     s.OwnerRepo,
 		Branch:        s.Branch,
 		Inputs:        s.Inputs,
 	}

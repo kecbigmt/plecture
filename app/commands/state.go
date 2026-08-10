@@ -123,7 +123,7 @@ required output added), the merge is rejected and the observed value silently
 stops updating — check the watcher's logs if a done_when stalls.
 
 Example:
-  sennit state set-output owner/repo-1 --node github_watch '{"pr_state":"merged"}'
+  sennit state set-output owner/repo-1 --node watch '{"pr_state":"merged"}'
   sennit state set-output owner/repo-1 --workflow '{"title":"New title"}'
   sennit state set-output owner/repo-1 --task review#1 '{"checks_status":"SUCCESS"}'`,
 	Args: cobra.ExactArgs(2),

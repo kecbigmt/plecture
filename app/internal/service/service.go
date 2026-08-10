@@ -15,7 +15,6 @@ import (
 	"github.com/kecbigmt/sennit/app/internal/config"
 	"github.com/kecbigmt/sennit/app/internal/domain"
 	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	gh "github.com/kecbigmt/sennit/app/internal/github"
 	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/app/internal/task"
 	"github.com/kecbigmt/sennit/app/internal/workspace"
@@ -59,8 +58,7 @@ func effectiveTag(tag, workflowID string) (string, *Error) {
 //  1. exact session name
 //  2. create-time alias (survives resolver rule changes; ambiguous when tag
 //     variants share the alias)
-//  3. legacy GitHub URL → owner/repo-<number> derivation
-//  4. resolver derivation (pure, offline — works during provider outages)
+//  3. resolver derivation (pure, offline — works during provider outages)
 func resolveSession(cfg *config.Config, store *state.Store, identifier string) (string, *domain.Session, error) {
 	if session := store.Get(identifier); session != nil {
 		return identifier, session, nil
@@ -78,17 +76,6 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 	}
 
 	sessionName := identifier
-	if gh.IsURL(identifier) {
-		parsed, err := gh.ParseURL(identifier)
-		if err != nil {
-			return "", nil, &Error{Code: ErrInvalidURL, Message: err.Error()}
-		}
-		sessionName = gh.SessionName(parsed.OwnerRepo, parsed.Number)
-		if session := store.Get(sessionName); session != nil {
-			return sessionName, session, nil
-		}
-	}
-
 	if cfg != nil {
 		if disp, matched, err := dispatchResource(cfg, "", identifier); err == nil && matched {
 			if session := store.Get(disp.Name); session != nil {
@@ -284,8 +271,8 @@ type ListEntry struct {
 	Title         string             `json:"title,omitempty"`
 	Run           domain.RunState    `json:"run"`
 	Health        domain.HealthState `json:"health,omitempty"`
-	GitHubStatus  string             `json:"github_status"`
-	URL           string             `json:"url"`
+	DisplayStatus string             `json:"display_status"`
+	ResourceID    string             `json:"resource_id"`
 	Tracked       bool               `json:"tracked"`
 	LastActiveAt  *time.Time         `json:"last_active_at,omitempty"`
 	Message       *domain.Message    `json:"message,omitempty"`
@@ -349,8 +336,8 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 		Title:         cached.Title,
 		Run:           sessionRunState(s),
 		Health:        sessionHealthState(cfg, store, s.Name),
-		GitHubStatus:  cached.GitHubStatus,
-		URL:           s.URL,
+		DisplayStatus: cached.DisplayStatus,
+		ResourceID:    s.ResourceID,
 		Tracked:       true,
 		LastActiveAt:  &s.UpdatedAt,
 		Message:       s.Message,
@@ -408,15 +395,14 @@ func fileExists(path string) bool {
 
 // cachedInfo holds a session's display projection (title, status line).
 type cachedInfo struct {
-	Title        string
-	GitHubStatus string
+	Title         string
+	DisplayStatus string
 }
 
 // Workdir resolves an identifier to the session's working directory using
-// the full state v3 lookup order (name → alias → legacy URL derivation →
-// resolver derivation). For GitHub URLs with no state entry, it falls back
-// to the legacy path-convention computation (gh branch resolve) so
-// `sennit cd <url>` keeps working for worktrees that predate state tracking.
+// the full lookup order (name -> alias -> resolver derivation). The working
+// directory is whatever the provider's setup recorded; sennit never recomputes
+// it from the shape of the identifier.
 func Workdir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
 	if _, session, err := resolveSession(cfg, store, identifier); err == nil {
 		if session.WorktreePath == "" {
@@ -424,21 +410,8 @@ func Workdir(cfg *config.Config, store *state.Store, identifier string) (string,
 		}
 		return session.WorktreePath, nil
 	} else if svcErr, ok := err.(*Error); ok && svcErr.Code != ErrWorkspaceNotFound {
-		// Ambiguous alias / invalid URL — surface, don't fall through.
+		// An ambiguous alias must surface rather than fall through.
 		return "", err
-	}
-
-	if gh.IsURL(identifier) {
-		parsed, err := gh.ParseURL(identifier)
-		if err != nil {
-			return "", &Error{Code: ErrInvalidURL, Message: err.Error()}
-		}
-		mgr := workspace.NewManager(cfg.WorktreesRoot)
-		branch, err := gh.ResolveBranch(context.Background(), parsed)
-		if err != nil {
-			return "", &Error{Code: ErrExecutionFailed, Message: err.Error()}
-		}
-		return mgr.WorktreePath(gh.RepoSlug(parsed.OwnerRepo), branch), nil
 	}
 
 	return "", &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("no state entry for session %q", identifier)}
@@ -478,7 +451,7 @@ func applyDisplay(workflows map[string]config.WorkflowFile, s *domain.Session, c
 	}
 	if expr, ok := wf.Display["status"]; ok {
 		if v, err := task.RenderOutputsTemplate(expr, outputs, s.Tasks); err == nil && v != "" {
-			cached.GitHubStatus = v
+			cached.DisplayStatus = v
 		}
 	}
 }

@@ -123,7 +123,7 @@ func tryResolveName(prov config.ProviderConfig, resource string) (string, bool, 
 }
 
 // providerFor resolves a workflow's provider reference. ok=false when the
-// workflow declares no provider (legacy core path / not provider-backed).
+// workflow declares no provider, which leaves it unable to back a session.
 // A dangling reference is an error — silently ignoring it would route the
 // create to the wrong path.
 func providerFor(wf config.WorkflowFile, providers map[string]config.ProviderConfig) (config.ProviderConfig, bool, error) {
@@ -148,7 +148,7 @@ func workflowAutoSelect(wf config.WorkflowFile) bool {
 //	flag == "" — every trusted-layer workflow whose provider has a resolver
 //	             tries to match. Exactly one match wins; several is an
 //	             ambiguity error; zero returns ok=false so the caller can
-//	             fall back to the legacy GitHub path. Workflows without a
+//	             fall back to identity dispatch. Workflows without a
 //	             resolver never participate — identity dispatch on arbitrary
 //	             input would shadow every other workflow.
 //
@@ -167,9 +167,9 @@ func dispatchResource(cfg *config.Config, flag, resource string) (dispatchResult
 	if flag != "" {
 		wf, ok := workflows[flag]
 		if !ok {
-			// Not in the trusted base layers — it may still live in a repo
-			// overlay that only the legacy path (post-worktree cascade) can
-			// see. Fall through; the legacy path surfaces its own not-found.
+			// Not in the trusted base layers. Fall through so the identity
+			// branch surfaces its own not-found message, which can name the
+			// file the user needs to add.
 			return dispatchResult{}, false, nil
 		}
 		prov, ok, provErr := providerFor(wf, providers)
@@ -178,8 +178,7 @@ func dispatchResource(cfg *config.Config, flag, resource string) (dispatchResult
 		}
 		if !ok || !prov.HasResolver() {
 			// Identity is the caller's branch — it needs context (is the
-			// input a URL? is the workflow provider-backed at all?) that
-			// dispatch doesn't have.
+			// workflow provider-backed at all?) that dispatch doesn't have.
 			return dispatchResult{}, false, nil
 		}
 		name, err := resolveName(prov, resource)

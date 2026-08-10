@@ -20,10 +20,7 @@ func TestStore_PutAndGet(t *testing.T) {
 	now := time.Now()
 	session := &domain.Session{
 		Name:         "owner/repo-123",
-		URL:          "https://github.com/owner/repo/issues/123",
-		URLType:      "issue",
-		OwnerRepo:    "owner/repo",
-		Number:       123,
+		ResourceID:   "https://example.test/owner/repo/items/123",
 		Branch:       "issue/123",
 		WorktreePath: "/tmp/worktrees/github.com/owner/repo/issue-123",
 		Conversation: &domain.Conversation{
@@ -50,8 +47,8 @@ func TestStore_PutAndGet(t *testing.T) {
 	if got.Name != session.Name {
 		t.Errorf("Name = %q, want %q", got.Name, session.Name)
 	}
-	if got.URL != session.URL {
-		t.Errorf("URL = %q, want %q", got.URL, session.URL)
+	if got.ResourceID != session.ResourceID {
+		t.Errorf("ResourceID = %q, want %q", got.ResourceID, session.ResourceID)
 	}
 	if got.Conversation == nil || got.Conversation.Source != "Slack" {
 		t.Errorf("Conversation not persisted correctly")
@@ -265,8 +262,6 @@ func TestStore_ConcurrentPut(t *testing.T) {
 			now := time.Now()
 			err := store.Put(&domain.Session{
 				Name:      name,
-				OwnerRepo: "owner/repo",
-				Number:    i,
 				CreatedAt: now,
 				UpdatedAt: now,
 			})
@@ -344,8 +339,6 @@ func TestStorePutHelperProcess(t *testing.T) {
 	name := fmt.Sprintf("owner/repo-process-%d", i)
 	if err := NewStore(dir).Put(&domain.Session{
 		Name:      name,
-		OwnerRepo: "owner/repo",
-		Number:    i,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}); err != nil {
@@ -374,22 +367,21 @@ func TestStore_Persistence(t *testing.T) {
 	}
 }
 
-func TestLoad_MigratesResourceIDFromURL(t *testing.T) {
+func TestLoad_BackfillsAliasFromResourceID(t *testing.T) {
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "state.json")
-	v2 := `{
-  "version": 2,
+	// A session written without an explicit alias was looked up by its
+	// resource id, so loading must make that lookup keep working.
+	state := `{
+  "version": 5,
   "sessions": {
     "org/repo-1": {
       "session_name": "org/repo-1",
-      "url": "https://github.com/org/repo/issues/1",
-      "url_type": "issue",
-      "owner_repo": "org/repo",
-      "number": 1
+      "resource_id": "https://example.test/org/repo/items/1"
     }
   }
 }`
-	if err := os.WriteFile(statePath, []byte(v2), 0o644); err != nil {
+	if err := os.WriteFile(statePath, []byte(state), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := NewStore(dir)
@@ -397,11 +389,8 @@ func TestLoad_MigratesResourceIDFromURL(t *testing.T) {
 	if s == nil {
 		t.Fatal("session not loaded")
 	}
-	if s.ResourceID != "https://github.com/org/repo/issues/1" {
-		t.Errorf("ResourceID = %q (v2→v3 migration must backfill from URL)", s.ResourceID)
-	}
-	if s.Alias != "https://github.com/org/repo/issues/1" {
-		t.Errorf("Alias = %q", s.Alias)
+	if s.Alias != "https://example.test/org/repo/items/1" {
+		t.Errorf("Alias = %q, want it backfilled from the resource id", s.Alias)
 	}
 }
 

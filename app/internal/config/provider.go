@@ -21,7 +21,7 @@ import (
 //   - the outputs contract those scripts expose (outputs_schema, incl. which
 //     keys may be explicitly updated through trusted side paths)
 //
-// Workflows reference a provider by id (`provider = "github"`) and own the
+// Workflows reference a provider by id (`provider = "<id>"`) and own the
 // task shape on top of it: task nodes, inputs, done_when, display.
 //
 // Providers deliberately do NOT participate in the per-worktree cascade:
@@ -52,8 +52,7 @@ type ProviderConfig struct {
 	// auto-subscribe task. Optional: a provider without it cannot be
 	// subscribed to after dispatch. The hook's template surface is the
 	// current session (.SessionName) and the opaque resource (.ResourceID) —
-	// everything resource-specific (for github: the watcher registry) stays
-	// here.
+	// everything resource-specific (a watcher registry, say) stays here.
 	Subscribe string `toml:"subscribe"`
 	// OutputsSchema is the @workflow pseudo-node contract: what setup emits and
 	// which keys trusted side paths may explicitly update (`mutable = true`).

@@ -159,21 +159,16 @@ type TaskState struct {
 // changes. Empty means the legacy inline-`[[tasks]]` path was used.
 //
 // ResourceID is the canonical external resource this session works on (any
-// string — a GitHub URL today, a Jira/Linear URL tomorrow); Alias preserves
-// the original create-time input so lookups survive resolver rule changes.
-// URL / URLType / OwnerRepo / Number are the legacy GitHub-shaped identity
-// fields, kept populated for backward compatibility with external consumers
-// (web UI); new code should read ResourceID and task outputs.
+// string — the provider that resolved it decides what the string means);
+// Alias preserves the original create-time input so lookups survive resolver
+// rule changes. Anything resource-shaped beyond those two (a repository, a
+// number, a permalink) is a provider setup output, not a session field.
 type Session struct {
 	Name          string                `json:"session_name"`
 	ResourceID    string                `json:"resource_id,omitempty"`
 	ParentSession string                `json:"parent_session,omitempty"`
 	Children      []string              `json:"children,omitempty"`
 	Alias         string                `json:"alias,omitempty"`
-	URL           string                `json:"url"`
-	URLType       string                `json:"url_type"` // "pr" or "issue"
-	OwnerRepo     string                `json:"owner_repo"`
-	Number        int                   `json:"number"`
 	Branch        string                `json:"branch"`
 	WorktreePath  string                `json:"worktree_path"`
 	Conversation  *Conversation         `json:"conversation,omitempty"`

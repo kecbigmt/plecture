@@ -41,8 +41,6 @@ func channelInputs(s *domain.Session, ch config.EventChannel) (map[string]any, e
 		Name:         s.Name,
 		ResourceID:   s.ResourceID,
 		WorktreePath: s.WorktreePath,
-		URL:          s.URL,
-		OwnerRepo:    s.OwnerRepo,
 		Branch:       s.Branch,
 		Inputs:       s.Inputs,
 	}, envOutputs)

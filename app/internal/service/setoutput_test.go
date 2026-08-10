@@ -252,7 +252,7 @@ mutable = true
 
 [outputs_schema.properties.workdir]
 type = "string"
-`)
+`+githubResolver)
 
 	// Simulate a Phase 3 session: workflow pseudo-node already produced.
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{

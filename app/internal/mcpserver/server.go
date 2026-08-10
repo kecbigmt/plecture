@@ -10,7 +10,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/github"
 	"github.com/kecbigmt/sennit/app/internal/service"
 	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/app/internal/template"
@@ -60,13 +59,13 @@ func NewServer() *server.MCPServer {
 }
 
 var createTool = mcp.NewTool("sennit_create",
-	mcp.WithDescription("Create a session for a resource identifier and run session-scoped tasks. A workflow whose [resolver] matches the identifier is auto-selected (GitHub issue/PR URLs and PVTI_xxx project items today); other identifiers need an explicit workflow. Does not start the runtime — call sennit_up to launch run-scoped tasks."),
+	mcp.WithDescription("Create a session for a resource identifier and run session-scoped tasks. A workflow whose [resolver] matches the identifier is auto-selected; other identifiers need an explicit workflow. Does not start the runtime — call sennit_up to launch run-scoped tasks."),
 	mcp.WithString("url",
 		mcp.Required(),
-		mcp.Description("Resource identifier the active workflow's [resolver] accepts. GitHub Issue/PR URLs (e.g. https://github.com/owner/repo/pull/123) and project item IDs (e.g. PVTI_xxx) resolve out of the box; other identifiers need an explicit workflow. The JSON key stays \"url\" for backward compatibility."),
+		mcp.Description("Resource identifier the active workflow's [resolver] accepts. Which identifiers resolve out of the box depends on the providers installed; an identifier no resolver matches needs an explicit workflow. The JSON key stays \"url\" for historical reasons."),
 	),
 	mcp.WithString("tag",
-		mcp.Description("Workspace-identity label for the session. Omit it to default to the workflow id, so two tools on one resource (e.g. claude work, codex review) get separate workspaces automatically; pass it to label a retry/parallel session (e.g. \"review\" → owner/repo-123+review). Provider-agnostic — the GitHub provider maps it to a branch/worktree suffix."),
+		mcp.Description("Workspace-identity label for the session. Omit it to default to the workflow id, so two tools on one resource (e.g. claude work, codex review) get separate workspaces automatically; pass it to label a retry/parallel session (e.g. \"review\" → owner/repo-123+review). Provider-agnostic — a provider may map it to a branch/worktree suffix."),
 	),
 	mcp.WithString("parent",
 		mcp.Description("Parent session name for the session tree. Defaults to SENNIT_SESSION_NAME when it names an existing session."),
@@ -86,7 +85,7 @@ var upTool = mcp.NewTool("sennit_up",
 	mcp.WithDescription("Run run-scoped tasks for a session, in dependency-respecting order. When the identifier is a resource identifier and no state entry exists (or a session-scoped task has not yet reached \"produced\"), sennit_create is invoked first (docker compose up-style auto-create)."),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier (e.g. a GitHub Issue/PR URL) or session name (e.g. owner/repo-123)"),
+		mcp.Description("Resource identifier or session name (e.g. owner/repo-123)"),
 	),
 	mcp.WithString("tag",
 		mcp.Description("Workspace-identity label of the session to resolve/auto-create (resource-identifier only, not a bare session name). Defaults to the workflow id, matching sennit_create."),
@@ -109,7 +108,7 @@ var downTool = mcp.NewTool("sennit_down",
 	mcp.WithDescription("Run run-scoped cleanup for a session in reverse dependency order. Session-scoped tasks are preserved."),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier (e.g. a GitHub Issue/PR URL) or session name (e.g. owner/repo-123)"),
+		mcp.Description("Resource identifier or session name (e.g. owner/repo-123)"),
 	),
 )
 
@@ -118,7 +117,7 @@ var destroyTool = mcp.NewTool("sennit_destroy",
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier (e.g. a GitHub Issue/PR URL) or session name (e.g. owner/repo-123)"),
+		mcp.Description("Resource identifier or session name (e.g. owner/repo-123)"),
 	),
 	mcp.WithBoolean("force",
 		mcp.Description("Demote cleanup errors to warnings so teardown continues through worktree + state deletion; also passes --force to git worktree remove so a dirty worktree can be removed; and proceeds when the session has child sessions, orphaning them instead of aborting"),
@@ -133,7 +132,7 @@ var statusTool = mcp.NewTool("sennit_status",
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("url",
 		mcp.Required(),
-		mcp.Description("Resource identifier (e.g. a GitHub Issue/PR URL) or session name (e.g. owner/repo-123)"),
+		mcp.Description("Resource identifier or session name (e.g. owner/repo-123)"),
 	),
 	mcp.WithBoolean("refresh",
 		mcp.Description("Re-fetch dynamic outputs from the source of truth before reporting, so the reported done_when reflects current state rather than the last persisted value."),
@@ -145,12 +144,12 @@ var captureTool = mcp.NewTool("sennit_capture",
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier (e.g. a GitHub Issue/PR URL) or session name (e.g. owner/repo-123)"),
+		mcp.Description("Resource identifier or session name (e.g. owner/repo-123)"),
 	),
 )
 
 var listTool = mcp.NewTool("sennit_list",
-	mcp.WithDescription("List all sessions with lifecycle status and provider-specific status (GitHub status when present)"),
+	mcp.WithDescription("List all sessions with lifecycle status and the workflow's own display status when present"),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
@@ -231,7 +230,7 @@ func handleTemplateList(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	repoDir := ""
 	if repo != "" {
 		mgr := workspace.NewManager(cfg.WorktreesRoot)
-		repoDir = mgr.RepoDir(github.RepoSlug(repo))
+		repoDir = mgr.RepoDir(repo)
 	}
 	templates, err := template.List(repoDir)
 	if err != nil {

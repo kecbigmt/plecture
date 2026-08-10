@@ -14,46 +14,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Detached != true {
 		t.Errorf("Detached = %v, want true", cfg.Detached)
 	}
-	if cfg.RepoAllowlist != nil {
-		t.Errorf("RepoAllowlist = %v, want nil", cfg.RepoAllowlist)
-	}
-}
-
-func TestIsRepoAllowed(t *testing.T) {
-	tests := []struct {
-		name      string
-		allowlist []string
-		repo      string
-		want      bool
-	}{
-		{
-			name:      "empty allowlist allows all",
-			allowlist: nil,
-			repo:      "any/repo",
-			want:      true,
-		},
-		{
-			name:      "repo in allowlist",
-			allowlist: []string{"org/repo-a", "org/repo-b"},
-			repo:      "org/repo-a",
-			want:      true,
-		},
-		{
-			name:      "repo not in allowlist",
-			allowlist: []string{"org/repo-a"},
-			repo:      "org/repo-b",
-			want:      false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &Config{RepoAllowlist: tt.allowlist}
-			got := cfg.IsRepoAllowed(tt.repo)
-			if got != tt.want {
-				t.Errorf("IsRepoAllowed(%q) = %v, want %v", tt.repo, got, tt.want)
-			}
-		})
+	if cfg.ResourceAllowlist != nil {
+		t.Errorf("ResourceAllowlist = %v, want nil", cfg.ResourceAllowlist)
 	}
 }
 
@@ -69,7 +31,7 @@ func TestLoad_WithConfigFile(t *testing.T) {
 
 	configContent := `
 worktrees_root = "~/my-worktrees"
-repo_allowlist = ["org/repo-a", "org/repo-b"]
+resource_allowlist = ["^https://example\\.test/org/", "^https://example\\.test/other/"]
 detached = false
 `
 	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(configContent), 0o644); err != nil {
@@ -81,8 +43,8 @@ detached = false
 	if cfg.WorktreesRoot != filepath.Join(tmpHome, "my-worktrees") {
 		t.Errorf("WorktreesRoot = %q, want %q", cfg.WorktreesRoot, filepath.Join(tmpHome, "my-worktrees"))
 	}
-	if len(cfg.RepoAllowlist) != 2 {
-		t.Errorf("RepoAllowlist length = %d, want 2", len(cfg.RepoAllowlist))
+	if len(cfg.ResourceAllowlist) != 2 {
+		t.Errorf("ResourceAllowlist length = %d, want 2", len(cfg.ResourceAllowlist))
 	}
 	if cfg.Detached != false {
 		t.Errorf("Detached = %v, want false", cfg.Detached)
@@ -218,24 +180,6 @@ func TestIsResourceAllowed(t *testing.T) {
 			name:     "resource pattern rejects",
 			cfg:      Config{ResourceAllowlist: []string{`^https://github\.com/org/`}},
 			resource: "https://github.com/evil/repo/issues/1",
-			want:     false,
-		},
-		{
-			name:     "legacy repo_allowlist gates github urls",
-			cfg:      Config{RepoAllowlist: []string{"org/repo"}},
-			resource: "https://github.com/org/repo/pull/3",
-			want:     true,
-		},
-		{
-			name:     "legacy repo_allowlist rejects other repos",
-			cfg:      Config{RepoAllowlist: []string{"org/repo"}},
-			resource: "https://github.com/org/other/pull/3",
-			want:     false,
-		},
-		{
-			name:     "legacy repo_allowlist rejects non-url resources",
-			cfg:      Config{RepoAllowlist: []string{"org/repo"}},
-			resource: "jira-PROJ-1",
 			want:     false,
 		},
 		{

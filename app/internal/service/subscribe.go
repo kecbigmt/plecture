@@ -24,15 +24,15 @@ type SubscribeParams struct {
 
 // Subscribe binds the current session to an opaque resource so the session
 // starts receiving that resource's events. It is the runtime counterpart to
-// the dispatch-time auto-subscribe (the github_watch task): additive, never
+// the dispatch-time auto-subscribe task: additive, never
 // replacing — subscribing a resource another session already watches does not
 // take it over.
 //
 // core stays provider-agnostic: it matches the resource against each
 // provider's resolver to pick the owning provider, fills in the current
 // session from the ambient env, and runs that provider's `subscribe` hook.
-// Everything resource-specific (for github: registering with the resident
-// watcher) lives in the hook — core never parses the resource.
+// Everything resource-specific (registering with a resident watcher, say)
+// lives in the hook — core never parses the resource.
 func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) error {
 	if strings.TrimSpace(params.ResourceID) == "" {
 		return &Error{Code: ErrInvalidInput, Message: "resource id is required"}
