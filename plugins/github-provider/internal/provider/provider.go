@@ -98,6 +98,9 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 type CleanupOptions struct {
 	Workdir string
 	Branch  string
+	// Force removes the worktree even when it carries uncommitted changes,
+	// mirroring the caller's `sennit destroy --force` intent.
+	Force bool
 	// Runner executes the sennit workspace calls. Nil uses the real CLI.
 	Runner Runner
 }
@@ -114,6 +117,9 @@ func Cleanup(ctx context.Context, opts CleanupOptions) error {
 	args := []string{"workspace", "remove", "--path", opts.Workdir}
 	if opts.Branch != "" {
 		args = append(args, "--branch", opts.Branch, "--delete-branch")
+	}
+	if opts.Force {
+		args = append(args, "--force")
 	}
 	if _, err := run(ctx, opts.Runner, args...); err != nil {
 		return fmt.Errorf("release worktree: %w", err)

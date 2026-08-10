@@ -194,6 +194,27 @@ func TestCleanup_ReleasesWorktreeAndReclaimsBranch(t *testing.T) {
 	}
 }
 
+func TestCleanup_ForcePassesForceFlagToWorkspaceRemove(t *testing.T) {
+	var calls [][]string
+	if err := Cleanup(context.Background(), CleanupOptions{
+		Workdir: "/roots/wt/issue-42-review",
+		Force:   true,
+		Runner:  recordingRunner("", nil, &calls),
+	}); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+	args := calls[0]
+	found := false
+	for _, a := range args {
+		if a == "--force" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("call = %v, want --force passed through to workspace remove", args)
+	}
+}
+
 func TestCleanup_NoWorkdirIsANoOp(t *testing.T) {
 	var calls [][]string
 	if err := Cleanup(context.Background(), CleanupOptions{Runner: recordingRunner("", nil, &calls)}); err != nil {

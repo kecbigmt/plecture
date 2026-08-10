@@ -484,7 +484,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 		// owns its release — the core performs no worktree removal here.
 		// (Whether the workdir is actually deleted is the cleanup script's
 		// decision; setup/cleanup symmetry is the author's contract.)
-		cleanupErr := runWorkflowCleanupForDestroy(cfg, session, params.Observer)
+		cleanupErr := runWorkflowCleanupForDestroy(cfg, session, params.Force, params.Observer)
 		session.UpdatedAt = time.Now()
 		putBestEffort(store, session, "workflow cleanup for destroy")
 		if cleanupErr != nil {
@@ -806,7 +806,7 @@ func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool 
 // runs its cleanup hook. The definition comes from the trusted layers (the
 // workdir layer cannot declare hooks), so resolving against the session's
 // worktree path is safe even though that path is clone content.
-func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, observer task.Observer) error {
+func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, observer task.Observer) error {
 	workflows, err := cfg.LoadWorkflows(session.WorktreePath)
 	if err != nil {
 		return fmt.Errorf("load workflows: %w", err)
@@ -830,6 +830,7 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, o
 		ResourceID:    session.ResourceID,
 		SessionName:   session.Name,
 		SessionInputs: session.Inputs,
+		Force:         force,
 	}
 	return task.RunWorkflowCleanup(prov, vars, session.Tasks, observer)
 }

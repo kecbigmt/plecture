@@ -11,7 +11,7 @@ match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(
 name = "{{.owner}}/{{.repo}}-{{.number}}"
 
 setup = 'sennit-github-provider setup --resource "{{.ResourceID}}" --session "{{.SessionName}}"'
-cleanup = 'sennit-github-provider cleanup --workdir "{{.Self.workdir}}" --branch "{{.Self.branch}}"'
+cleanup = 'sennit-github-provider cleanup --workdir "{{.Self.workdir}}" --branch "{{.Self.branch}}" --force={{.Force}}'
 
 [outputs_schema]
 type = "object"
