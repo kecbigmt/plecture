@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -121,7 +122,7 @@ func WatchdogTick(cfg *config.Config, store *state.Store) ([]HealthReport, error
 
 func persistWatchdogState(store *state.Store, name string, report HealthReport) {
 	now := time.Now()
-	_ = store.Update(name, func(s *domain.Session) error {
+	err := store.Update(name, func(s *domain.Session) error {
 		ws := s.Watchdog
 		if ws == nil {
 			ws = &contract.WatchdogState{}
@@ -138,6 +139,13 @@ func persistWatchdogState(store *state.Store, name string, report HealthReport) 
 		s.UpdatedAt = now
 		return nil
 	})
+	if err != nil {
+		// Best-effort: the watchdog tick's next pass will retry this write, so
+		// a transient store failure here must not abort the whole tick (other
+		// sessions' health still needs evaluating) — but it must not be
+		// invisible either.
+		slog.Warn("persist watchdog state failed", "session", name, "error", err)
+	}
 }
 
 // pushDeadReport pushes `dead` up the ancestor chain, skipping any ancestor

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -119,6 +120,13 @@ func Load() *Config {
 	}
 
 	if _, err := toml.DecodeFile(configPath, cfg); err != nil {
+		// A present but unparsable config.toml is a user mistake, not an
+		// absent-config no-op: silently falling back to defaults here would
+		// hide a typo behind seemingly-ignored settings, so this warns
+		// (disposition: surfaced) while still returning usable defaults
+		// (Load has no error return in its signature, so a hard failure
+		// would require a wider API change out of scope for this fix).
+		slog.Warn("config.toml present but failed to parse; using defaults", "path", configPath, "error", err)
 		return cfg
 	}
 

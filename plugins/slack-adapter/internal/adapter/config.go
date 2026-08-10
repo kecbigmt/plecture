@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +27,15 @@ func LoadConfig() *Config {
 	home, err := os.UserHomeDir()
 	if err == nil {
 		configPath := filepath.Join(home, ".config", "slack-adapter", "config.toml")
-		_, _ = toml.DecodeFile(configPath, cfg)
+		if _, statErr := os.Stat(configPath); statErr == nil {
+			// An absent config.toml is a normal all-env-vars setup, but a
+			// present-and-unparsable one is a user mistake that would
+			// otherwise silently fall back to an empty (deny-all) config —
+			// warn so it isn't mistaken for "everything is configured".
+			if _, decodeErr := toml.DecodeFile(configPath, cfg); decodeErr != nil {
+				slog.Warn("config.toml present but failed to parse; using defaults", "path", configPath, "error", decodeErr)
+			}
+		}
 	}
 
 	return cfg
