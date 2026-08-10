@@ -62,6 +62,11 @@ type DoneWhenState struct {
 	LastBody        string                    `json:"last_body,omitempty"`
 	EscalatedAt     time.Time                 `json:"escalated_at,omitzero"`
 	EscalateReason  string                    `json:"escalate_reason,omitempty"`
+	// LastAutoRevivalRevision is the revision id of the most recent automatic
+	// re-evaluation kick issued after rounds were exhausted (see
+	// checkActionForResult's revival path). Dedup key: a revision already
+	// recorded here never triggers a second automatic kick.
+	LastAutoRevivalRevision string `json:"last_auto_revival_revision,omitempty"`
 }
 
 // Task lifecycle status values for TaskState.Status. Task is a runtime

@@ -147,6 +147,77 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 	return true, nil
 }
 
+// publishAutoRevivalKicks delivers the automatic post-exhaustion re-evaluation
+// kick (issue #5) to each stale judge leaf's recorded reviewer session. It is
+// deduplicated per (work session, reviewer, instance, leaf, revision) by
+// scanning the reviewer's own log for a prior kick carrying the same dedup
+// key — belt-and-suspenders alongside the round-state dedup
+// (DoneWhenState.LastAutoRevivalRevision) persistTickAction records, so a
+// retried tick (e.g. after a partial failure) never double-kicks a reviewer
+// that already got this revision's prompt.
+func publishAutoRevivalKicks(cfg *config.Config, store *state.Store, workSession, instance string, action CheckAction) ([]string, error) {
+	var warnings []string
+	log := eventlog.NewStore(store.Dir())
+	for _, rr := range action.RevivalReviewers {
+		if rr.Session == "" {
+			continue
+		}
+		dedupKey := autoRevivalDedupKey(workSession, rr.Session, instance, rr.LeafID, action.RevivalRevision)
+		evs, _, _, err := log.List(rr.Session, 0, event.Filter{
+			Types:   []string{event.TypeUserEmit},
+			Sources: []string{event.SourceTick},
+		})
+		if err != nil {
+			return nil, err
+		}
+		alreadyDelivered := false
+		for _, ev := range evs {
+			if ev.Metadata["revival_dedup_key"] == dedupKey {
+				alreadyDelivered = true
+				break
+			}
+		}
+		if alreadyDelivered {
+			continue
+		}
+		meta := map[string]string{
+			"work_session":      workSession,
+			"instance":          instance,
+			"judge_id":          rr.LeafID,
+			"revision":          action.RevivalRevision,
+			"revival_dedup_key": dedupKey,
+		}
+		_, err = EventPublish(cfg, store, rr.Session, EventPublishParams{
+			Type:      event.TypeUserEmit,
+			Source:    event.SourceTick,
+			Direction: event.Outbound,
+			Summary:   fmt.Sprintf("Re-evaluate %s at revision %s", workSession, action.RevivalRevision),
+			Body:      autoRevivalKickBody(workSession, instance, rr.LeafID, action.RevivalRevision),
+			Metadata:  meta,
+		})
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("auto revival kick to %s failed: %v", rr.Session, err))
+		}
+	}
+	return warnings, nil
+}
+
+func autoRevivalDedupKey(workSession, reviewerSession, instance, leafID, revision string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{workSession, reviewerSession, instance, leafID, revision}, "\x00")))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func autoRevivalKickBody(workSession, instance, leafID, revision string) string {
+	return strings.Join([]string{
+		fmt.Sprintf("Re-evaluate `%s` (instance `%s`) — a new revision landed after review rounds were exhausted.", workSession, instance),
+		"",
+		fmt.Sprintf("- Revision: %s", revision),
+		fmt.Sprintf("- Judge leaf: %s", leafID),
+		"",
+		"Record `sennit judge` for this leaf against the work session once you've re-reviewed.",
+	}, "\n")
+}
+
 func chainKickDedupKey(workSession string, sp ChainSpawn) string {
 	sum := sha256.Sum256([]byte(strings.Join([]string{
 		workSession,
@@ -223,6 +294,9 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 			Metadata:  unmetItemsMetadata(instance, action.UnmetItems),
 		}); err != nil {
 			return nil, err
+		}
+		if action.RevivalRevision != "" {
+			return publishAutoRevivalKicks(cfg, store, sessionName, instance, action)
 		}
 	case "kick":
 		if _, err := EventPublish(cfg, store, sessionName, EventPublishParams{
@@ -319,7 +393,16 @@ func persistTickAction(store *state.Store, sessionName, instance string, action 
 		st.DoneWhen.LastReason = action.Summary
 		st.DoneWhen.LastUnsatisfied = append([]string(nil), action.Items...)
 		st.DoneWhen.LastBody = action.Body
-		if action.Round > st.DoneWhen.Rounds {
+		if action.RevivalRevision != "" {
+			// Revival explicitly resets the budget (checkActionForResult
+			// computed Round off a zeroed round counter), so it must win even
+			// though Round is now numerically below the exhausted Rounds this
+			// overwrites. Stamping the revision here is the dedup record: the
+			// same revision can never revive the budget (or kick a reviewer)
+			// again.
+			st.DoneWhen.Rounds = action.Round
+			st.DoneWhen.LastAutoRevivalRevision = action.RevivalRevision
+		} else if action.Round > st.DoneWhen.Rounds {
 			st.DoneWhen.Rounds = action.Round
 		}
 		if action.Action == "escalate" {

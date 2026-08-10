@@ -990,6 +990,97 @@ func TestTickSession_EscalatesAfterMaxRounds_PushesToParent(t *testing.T) {
 	}
 }
 
+// TestTickSession_AutoRevivalAfterExhaustion covers issue #5: once rounds are
+// exhausted and a judge verdict has gone stale (a new revision landed), tick
+// must revive the round budget on its own and deliver the standard
+// re-evaluation kick to the recorded reviewer session, with no orchestrator
+// involvement — and must never deliver a second kick for the same revision.
+func TestTickSession_AutoRevivalAfterExhaustion(t *testing.T) {
+	store := testStore(t)
+	cfg := checkScenarioConfig(t, 1)
+	reviewer := "owner/repo-1+review"
+	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Resource: "https://github.com/owner/repo/pull/1",
+			Outputs:  map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			DoneWhen: &contract.DoneWhenState{
+				Rounds:     1,
+				LastAction: "escalate",
+				Judges: map[string]*contract.DoneWhenJudge{
+					"ac-met": {
+						LeafID:          "ac-met",
+						Action:          "request_changes",
+						Reason:          "needs more work",
+						Revision:        "sha1",
+						ReviewerSession: reviewer,
+						Relation:        string(domain.RelationSibling),
+					},
+				},
+			},
+		},
+	})
+	seedSession(t, store, reviewer, "owner/repo", 1, "", nil)
+	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
+	setParent(t, store, reviewer, "owner/repo-orchestrator")
+
+	// A new revision lands: the recorded verdict is now stale.
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Tasks["initial"].Outputs["revision"] = "sha2"
+		return nil
+	}); err != nil {
+		t.Fatalf("update revision: %v", err)
+	}
+
+	first, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	if err != nil {
+		t.Fatalf("first TickSession: %v", err)
+	}
+	if len(first.Actions) != 1 || first.Actions[0].Action != "review_required" {
+		t.Fatalf("first actions = %+v, want revived review_required instead of a repeat escalate", first.Actions)
+	}
+	if first.Actions[0].RevivalRevision != "sha2" {
+		t.Fatalf("first action revival_revision = %q, want sha2", first.Actions[0].RevivalRevision)
+	}
+
+	log := eventlog.NewStore(store.Dir())
+	kicks, _, _, err := log.List(reviewer, 0, event.Filter{Types: []string{event.TypeUserEmit}, Sources: []string{event.SourceTick}})
+	if err != nil {
+		t.Fatalf("list reviewer kicks: %v", err)
+	}
+	if len(kicks) != 1 {
+		t.Fatalf("reviewer kicks = %d, want exactly 1 for revision sha2", len(kicks))
+	}
+	if !strings.Contains(kicks[0].Body, "sha2") {
+		t.Fatalf("kick body = %q, want it to mention the new revision", kicks[0].Body)
+	}
+
+	st := store.Get("owner/repo-1").Tasks["initial"]
+	if st.DoneWhen.Rounds >= 1 && st.DoneWhen.LastAction == "escalate" {
+		t.Fatalf("done_when state did not revive: %+v", st.DoneWhen)
+	}
+	if st.DoneWhen.LastAutoRevivalRevision != "sha2" {
+		t.Fatalf("last_auto_revival_revision = %q, want sha2 (dedup marker)", st.DoneWhen.LastAutoRevivalRevision)
+	}
+
+	// Ticking again at the same revision (repeated observation) must not
+	// deliver a second kick.
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
+		t.Fatalf("second TickSession: %v", err)
+	}
+	kicksAfter, _, _, err := log.List(reviewer, 0, event.Filter{Types: []string{event.TypeUserEmit}, Sources: []string{event.SourceTick}})
+	if err != nil {
+		t.Fatalf("list reviewer kicks after second tick: %v", err)
+	}
+	if len(kicksAfter) != 1 {
+		t.Fatalf("reviewer kicks after repeated observation = %d, want still 1 (deduped)", len(kicksAfter))
+	}
+}
+
 func checkStatusOnlyConfig(t *testing.T, maxRounds int) *config.Config {
 	t.Helper()
 	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
