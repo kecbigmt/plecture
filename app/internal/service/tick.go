@@ -152,11 +152,19 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 // deduplicated per (work session, reviewer, instance, leaf, revision) by
 // scanning the reviewer's own log for a prior kick carrying the same dedup
 // key — belt-and-suspenders alongside the round-state dedup
-// (DoneWhenState.LastAutoRevivalRevision) persistTickAction records, so a
-// retried tick (e.g. after a partial failure) never double-kicks a reviewer
-// that already got this revision's prompt.
+// (DoneWhenState.LastAutoRevivalRevision) persistTickAction records.
+//
+// A delivery failure to any reviewer is a hard error, not a warning: unlike
+// the chain kick path (whose failure only affects that one chain entry's
+// report), a swallowed failure here would let persistTickAction stamp
+// LastAutoRevivalRevision anyway — the revival's dedup marker for this
+// revision — and the reviewer would then never be retried for a revision it
+// never actually received. Returning an error instead leaves the marker
+// unset (publishTickAction's caller skips persistTickAction on error, exactly
+// like every other action in this switch), so the next tick retries; already-
+// delivered reviewers are skipped via the per-reviewer dedup scan above, so a
+// retry after a partial failure only re-attempts the ones that failed.
 func publishAutoRevivalKicks(cfg *config.Config, store *state.Store, workSession, instance string, action CheckAction) ([]string, error) {
-	var warnings []string
 	log := eventlog.NewStore(store.Dir())
 	for _, rr := range action.RevivalReviewers {
 		if rr.Session == "" {
@@ -187,19 +195,18 @@ func publishAutoRevivalKicks(cfg *config.Config, store *state.Store, workSession
 			"revision":          action.RevivalRevision,
 			"revival_dedup_key": dedupKey,
 		}
-		_, err = EventPublish(cfg, store, rr.Session, EventPublishParams{
+		if _, err := EventPublish(cfg, store, rr.Session, EventPublishParams{
 			Type:      event.TypeUserEmit,
 			Source:    event.SourceTick,
 			Direction: event.Outbound,
 			Summary:   fmt.Sprintf("Re-evaluate %s at revision %s", workSession, action.RevivalRevision),
 			Body:      autoRevivalKickBody(workSession, instance, rr.LeafID, action.RevivalRevision),
 			Metadata:  meta,
-		})
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("auto revival kick to %s failed: %v", rr.Session, err))
+		}); err != nil {
+			return nil, fmt.Errorf("auto revival kick to %s: %w", rr.Session, err)
 		}
 	}
-	return warnings, nil
+	return nil, nil
 }
 
 func autoRevivalDedupKey(workSession, reviewerSession, instance, leafID, revision string) string {
