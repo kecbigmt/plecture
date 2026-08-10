@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25.6"
+
+jobs:
+  gofmt:
+    name: gofmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Check gofmt
+        run: |
+          unformatted=$(gofmt -l $(find . -name '*.go' -not -path './app/internal/webui/*'))
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  build-test:
+    name: build-test (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - app
+          - contracts/atomicfile
+          - contracts/channel-protocol
+          - contracts/event
+          - contracts/state
+          - plugins/channel-server
+          - plugins/github-watcher
+          - plugins/slack-adapter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go build
+        run: go build ./...
+        working-directory: ${{ matrix.module }}
+      - name: go vet
+        run: go vet ./...
+        working-directory: ${{ matrix.module }}
+      - name: go test
+        run: go test ./...
+        working-directory: ${{ matrix.module }}
+
+  readme-verify:
+    name: readme-verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Run README build commands
+        run: |
+          go build ./app/...
+          go build ./contracts/atomicfile/...
+          go build ./contracts/channel-protocol/...
+          go build ./contracts/event/...
+          go build ./contracts/state/...
+          go build ./plugins/channel-server/...
+          go build ./plugins/github-watcher/...
+          go build ./plugins/slack-adapter/...
+      - name: Run README test commands
+        run: |
+          go test ./app/...
+          go test ./contracts/atomicfile/...
+          go test ./contracts/channel-protocol/...
+          go test ./contracts/event/...
+          go test ./contracts/state/...
+          go test ./plugins/channel-server/...
+          go test ./plugins/github-watcher/...
+          go test ./plugins/slack-adapter/...
