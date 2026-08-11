@@ -91,12 +91,11 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 // ResolveSession is the exported entry point for resolving an identifier
 // (session name, create-time alias, or resource id) to a session, using the
 // same lookup order as the internal resolver. It hands back the raw
-// mutating-lifecycle-owned session, so it is reserved for code that itself
-// lives in this package (or genuinely needs to mutate the session, e.g.
-// SetConversation/SetMessage above). A surface adapter that only needs the
-// canonical name — `sennit ls --parent`, for instance — calls
-// ResolveSessionName instead; one that needs a read-only projection of
-// session fields calls a dedicated projection like ResolveTemplateVars.
+// mutating-lifecycle-owned session, so a caller that mutates the session
+// (e.g. to update its conversation or message) can call this directly, but a
+// caller that only needs the canonical name should call ResolveSessionName
+// instead, and one that needs read-only session fields should call a
+// dedicated projection function instead of reading the raw struct.
 func ResolveSession(cfg *config.Config, store *state.Store, identifier string) (string, *domain.Session, error) {
 	return resolveSession(cfg, store, identifier)
 }
