@@ -4,7 +4,9 @@
 # an external tracker rots the moment the comment is relocated or the
 # tracker is renumbered; the comment must stand on its own.
 #
-# Scope decision: only text inside `//` comments is scanned, not string
+# Scope decision: every *.go file is scanned, including *_test.go — the
+# standing rule applies to all Go code comments, not just production code.
+# Only text inside `//` comments is scanned, not string
 # literals (a CLI help string embedding "review#1" as an example, or a URL
 # containing a digit, is not a code comment) and not block comments (this
 # codebase has none in doc-comment position; `/*` only appears inside glob
@@ -75,7 +77,7 @@ while IFS= read -r f; do
       fail=1
     fi
   done < <(extract_comments "$f")
-done < <(find app contracts plugins -name '*.go' -not -name '*_test.go' | sort)
+done < <(find app contracts plugins -name '*.go' | sort)
 
 if [ "$fail" -ne 0 ]; then
   echo

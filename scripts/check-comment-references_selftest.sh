@@ -18,7 +18,7 @@ run_against() {
 
 # Dirty fixture: a seeded "#<digits>" issue reference must be caught.
 dirty=$(mktemp -d)
-trap 'rm -rf "$dirty" "$dirty2" "$dirty3" "$clean"' EXIT
+trap 'rm -rf "$dirty" "$dirty2" "$dirty3" "$dirty4" "$clean"' EXIT
 mkdir -p "$dirty/app/commands"
 cat > "$dirty/app/commands/seeded.go" <<'EOF'
 package commands
@@ -84,6 +84,29 @@ if ! grep -q "app/commands/seeded_mixed.go" /tmp/comment-ref-selftest-dirty3.log
   exit 1
 fi
 echo "ok: checker fails on a bare issue reference even beside an instance-id example"
+
+# Dirty fixture #4: a seeded reference inside a *_test.go file must be caught
+# too — the standing rule applies to all Go code comments, tests included.
+dirty4=$(mktemp -d)
+mkdir -p "$dirty4/app/commands"
+cat > "$dirty4/app/commands/seeded_test.go" <<'EOF'
+package commands
+
+// Regression test for #39.
+func TestSeededViolation(t *testing.T) {}
+EOF
+
+if run_against "$dirty4" >/tmp/comment-ref-selftest-dirty4.log 2>&1; then
+  echo "FAIL: checker passed against a fixture with a seeded reference in a _test.go file" >&2
+  cat /tmp/comment-ref-selftest-dirty4.log >&2
+  exit 1
+fi
+if ! grep -q "app/commands/seeded_test.go" /tmp/comment-ref-selftest-dirty4.log; then
+  echo "FAIL: checker did not name the offending _test.go file" >&2
+  cat /tmp/comment-ref-selftest-dirty4.log >&2
+  exit 1
+fi
+echo "ok: checker fails and names the file on a seeded reference in a _test.go file"
 
 # Clean fixture: task-instance-id examples, string literals, and an
 # allowlisted line must all pass without report.
