@@ -139,6 +139,15 @@ func TestFormatRunLine_AndFormatHealthLine_RunUpWithProducedTask(t *testing.T) {
 	}
 }
 
+// formatHealthLine renders every health value verbatim, including stalled,
+// distinct from the agent's self-reported message.
+func TestFormatHealthLine_Stalled(t *testing.T) {
+	rt := service.StatusRuntime{Run: domain.RunUp, Health: domain.HealthStalled}
+	if got := formatHealthLine(rt); got != "stalled" {
+		t.Errorf("formatHealthLine() = %q, want %q", got, "stalled")
+	}
+}
+
 // A run=up session with no produced task shows the bare run state — no
 // parenthetical, since there is nothing to attribute it to.
 func TestFormatRunLine_RunUpWithNoProducedTask(t *testing.T) {

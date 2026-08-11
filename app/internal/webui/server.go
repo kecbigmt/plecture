@@ -269,6 +269,8 @@ func statusClass(s any) string {
 			return "bg-green-100 text-green-800"
 		case domain.HealthUnhealthy:
 			return "bg-red-100 text-red-800"
+		case domain.HealthStalled:
+			return "bg-orange-100 text-orange-800"
 		case domain.HealthUndeclared:
 			return "bg-yellow-100 text-yellow-800"
 		}
