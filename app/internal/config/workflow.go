@@ -115,11 +115,10 @@ type TickConfig struct {
 	// ProgressSource declares a session-scoped dynamic output (the same
 	// script-execution plumbing task.FetchOutput gives task-instance
 	// outputs) whose fetched value core treats as an opaque progress
-	// fingerprint (docs/wiki/verification-gate.md, PR-E). Core never
-	// interprets what the source actually observed (a transcript, a VCS
-	// worktree, an agent-specific log, ...) — it only compares the fetched
-	// string against the last one it persisted for this session. Nil means
-	// no progress source is declared for this workflow.
+	// fingerprint (docs/wiki/verification-gate.md). Core never interprets
+	// what the fingerprint string means or how it was produced — it only
+	// compares the fetched value against the last one it persisted for this
+	// session. Nil means no progress source is declared for this workflow.
 	ProgressSource *DynamicOutput `toml:"progress_source"`
 }
 

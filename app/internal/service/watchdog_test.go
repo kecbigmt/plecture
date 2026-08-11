@@ -485,8 +485,9 @@ func progressSourceFixtureConfig(t *testing.T, script string) *config.Config {
 }
 
 // progressSourceCmd is a stub progress-source script whose entire stdout is
-// the given opaque fingerprint — standing in for whatever concrete source a
-// devbox-side script (transcript mtime, VCS state, ...) would fetch.
+// the given opaque fingerprint string, standing in for a concrete source
+// declared entirely in config — core never interprets what the fingerprint
+// means or how it was produced.
 func progressSourceCmd(fingerprint string) string {
 	return fmt.Sprintf("echo %q", fingerprint)
 }

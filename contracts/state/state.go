@@ -193,9 +193,8 @@ type Session struct {
 	TickBackoff *TickBackoff `json:"tick_backoff,omitempty"`
 	// Progress is the last progress fingerprint core observed for this
 	// session's declared progress source, plus when core itself last saw
-	// that fingerprint change (docs/wiki/verification-gate.md, PR-E). Nil
-	// until the first evaluation that successfully fetches a declared
-	// source.
+	// that fingerprint change (docs/wiki/verification-gate.md). Nil until
+	// the first evaluation that successfully fetches a declared source.
 	Progress  *ProgressState `json:"progress,omitempty"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
