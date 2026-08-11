@@ -10,12 +10,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
 	"github.com/kecbigmt/sennit/app/internal/service"
 	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/app/internal/template"
 	"github.com/kecbigmt/sennit/app/internal/workspace"
-	contractstate "github.com/kecbigmt/sennit/contracts/state"
 )
 
 var (
@@ -68,12 +66,18 @@ The template name corresponds to files in the template search path:
 		// template overlay at its working directory.
 		if templateRenderSession != "" {
 			store := state.NewStore("")
-			name, sess, rerr := service.ResolveSession(cfg, store, templateRenderSession)
+			tv, rerr := service.ResolveTemplateVars(cfg, store, templateRenderSession)
 			if rerr != nil {
 				return rerr
 			}
-			vars = templateVarsFromSession(name, sess)
-			searchDir = sess.WorktreePath
+			vars = template.Vars{
+				SessionName:   tv.SessionName,
+				ResourceID:    tv.ResourceID,
+				WorktreePath:  tv.WorktreePath,
+				Workflow:      tv.Workflow,
+				SessionInputs: tv.SessionInputs,
+			}
+			searchDir = tv.WorktreePath
 			resolved = true
 		}
 
@@ -110,27 +114,6 @@ func parseTemplateVars(pairs []string) (map[string]any, error) {
 		out[k] = v
 	}
 	return out, nil
-}
-
-// templateVarsFromSession builds template vars from a resolved session.
-func templateVarsFromSession(name string, s *domain.Session) template.Vars {
-	var outputs map[string]any
-	if s.Tasks != nil {
-		if wf := s.Tasks[contractstate.WorkflowPseudoNodeID]; wf != nil {
-			outputs = wf.Outputs
-		}
-	}
-	inputs := maps.Clone(s.Inputs)
-	if inputs == nil {
-		inputs = map[string]any{}
-	}
-	return template.Vars{
-		SessionName:   name,
-		ResourceID:    s.ResourceID,
-		WorktreePath:  s.WorktreePath,
-		Workflow:      outputs,
-		SessionInputs: inputs,
-	}
 }
 
 var templateListCmd = &cobra.Command{
