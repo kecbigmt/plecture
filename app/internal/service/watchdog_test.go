@@ -292,6 +292,34 @@ func TestEvaluateHealth_WedgedButHealthcheckPassingReadsStalled(t *testing.T) {
 	}
 }
 
+// TestEvaluateHealth_SignalNarrowsProgressExpectedToHealthy pins the signal's
+// own progress_expected contribution: done_when leaves unmet work, but the
+// declared signal itself reports progress_expected=false (e.g. "the turn
+// already ended") with stale evidence. The signal can only narrow — never
+// widen — done_when's expectation, so this instance's contribution drops out
+// and the session reads healthy, not stalled.
+func TestEvaluateHealth_SignalNarrowsProgressExpectedToHealthy(t *testing.T) {
+	store := testStore(t)
+	longAgo := time.Now().Add(-24 * time.Hour)
+	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, false, "fp-1", longAgo))
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("report = %+v, state = %q, want healthy (signal narrowed progress_expected despite unmet done_when work)", report, report.State())
+	}
+}
+
 // TestEvaluateHealth_NoProgressSignalDeclaredStaysUndeclaredNotStalled pins
 // the explicit no-signal path: unmet done_when work exists (progress is
 // expected) but no progress signal is declared to judge it, so evaluation

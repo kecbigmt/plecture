@@ -154,31 +154,42 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 			}
 		}
 
-		// progress_expected is derived only from done_when/task state
-		// (never Message): unmet work exists for this instance and the
-		// session has not handed it off (e.g. by escalating to an
-		// independent reviewer), in which case it is legitimately not this
-		// session's turn to act.
+		// instanceExpected is this instance's own contribution to
+		// progress_expected, derived only from done_when/task state (never
+		// Message): unmet work exists for this instance and the session has
+		// not handed it off (e.g. by escalating to an independent
+		// reviewer), in which case it is legitimately not this session's
+		// turn to act.
+		instanceExpected := false
 		if def.DoneWhen != nil {
 			handedOff := st.DoneWhen != nil && st.DoneWhen.LastAction == "escalate"
 			if !handedOff && task.EvaluateTaskDoneWhen(def.DoneWhen, st.Outputs).Overall != task.DoneSatisfied {
-				progressExpected = true
+				instanceExpected = true
 			}
 		}
 
-		if def.ProgressSignal == "" {
-			continue
-		}
-		sig, sigErr := task.RunProgressSignal(context.Background(), def.ProgressSignal, st.Outputs, st.Inputs, vars)
-		if sigErr != nil || !sig.Supported {
+		if def.ProgressSignal != "" {
+			sig, sigErr := task.RunProgressSignal(context.Background(), def.ProgressSignal, st.Outputs, st.Inputs, vars)
+			if sigErr == nil && sig.Supported {
+				progressDeclared = true
+				// A supported signal's own ProgressExpected can only narrow
+				// this instance's contribution (e.g. "the turn already
+				// ended"), never manufacture an expectation done_when does
+				// not already see.
+				if !sig.ProgressExpected {
+					instanceExpected = false
+				}
+				if !sig.ObservedAt.IsZero() && now.Sub(sig.ObservedAt) <= window {
+					progressFresh = true
+				}
+			}
 			// A failed run or an explicit "supported: false" both mean this
 			// instance has no basis to contribute progress evidence right
 			// now — the same as if no progress signal were declared.
-			continue
 		}
-		progressDeclared = true
-		if !sig.ObservedAt.IsZero() && now.Sub(sig.ObservedAt) <= window {
-			progressFresh = true
+
+		if instanceExpected {
+			progressExpected = true
 		}
 	}
 
