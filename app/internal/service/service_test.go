@@ -102,6 +102,37 @@ func TestResolveSession_UnknownIdentifier(t *testing.T) {
 	}
 }
 
+func TestResolveSessionName_BySessionName(t *testing.T) {
+	store := testStore(t)
+	now := time.Now()
+	if err := store.Put(&domain.Session{Name: "org/repo-1", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	name, err := ResolveSessionName(&config.Config{}, store, "org/repo-1")
+	if err != nil {
+		t.Fatalf("ResolveSessionName: %v", err)
+	}
+	if name != "org/repo-1" {
+		t.Errorf("name = %q, want %q", name, "org/repo-1")
+	}
+}
+
+func TestResolveSessionName_UnknownIdentifier(t *testing.T) {
+	store := testStore(t)
+	_, err := ResolveSessionName(&config.Config{}, store, "org/missing")
+	if err == nil {
+		t.Fatal("expected error for missing session")
+	}
+	svcErr, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if svcErr.Code != ErrWorkspaceNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	}
+}
+
 func TestValidTag(t *testing.T) {
 	tests := []struct {
 		tag   string

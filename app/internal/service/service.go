@@ -90,10 +90,23 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 
 // ResolveSession is the exported entry point for resolving an identifier
 // (session name, create-time alias, or resource id) to a session, using the
-// same lookup order as the internal resolver. Commands that need the raw
-// session (e.g. `sennit template render --session`) call this.
+// same lookup order as the internal resolver. It hands back the raw
+// mutating-lifecycle-owned session, so a caller that mutates the session
+// (e.g. to update its conversation or message) can call this directly, but a
+// caller that only needs the canonical name should call ResolveSessionName
+// instead, and one that needs read-only session fields should call a
+// dedicated projection function instead of reading the raw struct.
 func ResolveSession(cfg *config.Config, store *state.Store, identifier string) (string, *domain.Session, error) {
 	return resolveSession(cfg, store, identifier)
+}
+
+// ResolveSessionName resolves an identifier to its canonical session name,
+// using the same lookup order as ResolveSession, without handing back the
+// raw session for callers that only need the name (e.g. `sennit ls --parent`
+// filtering entries by ParentSession).
+func ResolveSessionName(cfg *config.Config, store *state.Store, identifier string) (string, error) {
+	name, _, err := resolveSession(cfg, store, identifier)
+	return name, err
 }
 
 // TaskInstanceView is the display projection of one task instance: its

@@ -33,17 +33,11 @@ var lsCmd = &cobra.Command{
 		}
 
 		if lsParent != "" {
-			parentName, _, err := service.ResolveSession(cfg, store, lsParent)
+			parentName, err := service.ResolveSessionName(cfg, store, lsParent)
 			if err != nil {
 				return err
 			}
-			filtered := entries[:0]
-			for _, e := range entries {
-				if e.ParentSession == parentName {
-					filtered = append(filtered, e)
-				}
-			}
-			entries = filtered
+			entries = filterByParent(entries, parentName)
 		}
 
 		if lsJSON {
@@ -71,6 +65,18 @@ var lsCmd = &cobra.Command{
 		}
 		return w.Flush()
 	},
+}
+
+// filterByParent keeps only the entries whose ParentSession matches
+// parentName, for `sennit ls --parent`.
+func filterByParent(entries []service.ListEntry, parentName string) []service.ListEntry {
+	filtered := entries[:0]
+	for _, e := range entries {
+		if e.ParentSession == parentName {
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered
 }
 
 // formatMessage renders the MESSAGE column: self-reported text + age,

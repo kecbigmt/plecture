@@ -8,6 +8,38 @@ import (
 	"github.com/kecbigmt/sennit/app/internal/service"
 )
 
+func TestFilterByParent(t *testing.T) {
+	entries := []service.ListEntry{
+		{SessionName: "org/repo-1", ParentSession: "org/repo-root"},
+		{SessionName: "org/repo-2", ParentSession: "org/repo-other"},
+		{SessionName: "org/repo-3", ParentSession: "org/repo-root"},
+		{SessionName: "org/repo-4"},
+	}
+
+	got := filterByParent(entries, "org/repo-root")
+
+	var names []string
+	for _, e := range got {
+		names = append(names, e.SessionName)
+	}
+	want := []string{"org/repo-1", "org/repo-3"}
+	if len(names) != len(want) || names[0] != want[0] || names[1] != want[1] {
+		t.Errorf("filterByParent() = %v, want %v", names, want)
+	}
+}
+
+func TestFilterByParent_NoMatches(t *testing.T) {
+	entries := []service.ListEntry{
+		{SessionName: "org/repo-1", ParentSession: "org/repo-other"},
+	}
+
+	got := filterByParent(entries, "org/repo-root")
+
+	if len(got) != 0 {
+		t.Errorf("filterByParent() = %v, want empty", got)
+	}
+}
+
 func TestFormatMessage_UnsetRendersDash(t *testing.T) {
 	if got := formatMessage(service.ListEntry{}); got != "-" {
 		t.Errorf("formatMessage() = %q, want %q", got, "-")
