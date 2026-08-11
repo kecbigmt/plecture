@@ -1,0 +1,195 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/sennit/app/internal/workspace"
+	contract "github.com/kecbigmt/sennit/contracts/state"
+)
+
+// DestroyParams holds parameters for Destroy.
+type DestroyParams struct {
+	Identifier   string
+	Force        bool
+	DeleteBranch bool
+	Observer     task.Observer
+}
+
+// DestroyResult holds the outcome of Destroy.
+type DestroyResult struct {
+	SessionName     string `json:"session_name"`
+	RemovedWorktree bool   `json:"removed_worktree"`
+	WorktreeWarning string `json:"worktree_warning,omitempty"`
+	// CleanupWarnings carries task cleanup errors that were downgraded to
+	// warnings by --force. Without --force a cleanup error aborts Destroy and
+	// returns the error directly; this field is only populated when the user
+	// explicitly opted into best-effort teardown.
+	CleanupWarnings []string `json:"cleanup_warnings,omitempty"`
+}
+
+// Destroy is the task-aware teardown path. fail-fast by default so a
+// cleanup error leaves the partial state inspectable for retry; --force
+// demotes cleanup errors to warnings so a stuck session can be freed
+// without manual cleanup. State is persisted before each subsequent step
+// so a mid-teardown crash stays inspectable. State-delete failures error
+// even under --force — silent partial teardown would be worse than a
+// noisy one.
+func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*DestroyResult, error) {
+	sessionName, session, err := resolveSession(cfg, store, params.Identifier)
+	if err != nil {
+		return nil, err
+	}
+	// Tearing down an existing session is a per-session write; clamp it to the
+	// active guard so a guarded orchestrator can't destroy another owner's
+	// session it can see via `sennit ls`. Create guards on the way in; this
+	// closes the symmetric teardown vector.
+	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
+		return nil, guardErr
+	}
+	if guardErr := checkLifecycleRelationGuard(store, sessionName, "destroy"); guardErr != nil {
+		return nil, guardErr
+	}
+	if session.Tasks == nil {
+		session.Tasks = make(map[string]*contract.TaskState)
+	}
+
+	result := &DestroyResult{SessionName: sessionName}
+
+	// Fail-closed before any teardown side effect: store.Delete unconditionally
+	// clears ParentSession on every child, and sennit up never re-adopts an
+	// orphan, so a silent destroy permanently severs the tree. --force makes
+	// that orphaning an explicit, reported choice instead.
+	if children := childNames(store.All(), sessionName); len(children) > 0 {
+		if !params.Force {
+			return nil, &Error{
+				Code: ErrHasChildren,
+				Message: fmt.Sprintf(
+					"session %s has %d child session(s) that would be orphaned: %s\nUse `sennit down %s` + `sennit up %s` to reset without orphaning them, or re-run with `sennit destroy %s --force` to destroy and orphan them.",
+					sessionName, len(children), strings.Join(children, ", "), sessionName, sessionName, sessionName,
+				),
+			}
+		}
+		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("orphaned %d child session(s): %s", len(children), strings.Join(children, ", ")))
+	}
+
+	mgr := workspace.NewManager(cfg.WorktreesRoot)
+	plan, err := buildPlanForSession(cfg, session.WorktreePath, session)
+	if err != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+
+	// A single reverse-instantiation teardown over every non-@workflow task —
+	// static plan nodes (run + session) and dynamic instances merged into one
+	// seq-descending pass. This is strictly the reverse of the instantiation
+	// stack, so a static node instantiated after a dynamic one is still
+	// cleaned first regardless of scope. @workflow (workdir) is released
+	// last, below.
+	teardown, teardownErr := unifiedTeardownList(cfg, session, plan, false)
+	if teardownErr != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
+	}
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorktreePath, session)
+	if wfErr != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
+	}
+	envExecutor, envErr := environmentExecutorForSession(cfg, wf, session)
+	if envErr != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
+	}
+	if cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(session), session.Tasks, params.Observer, envExecutor); cleanupErr != nil {
+		session.UpdatedAt = time.Now()
+		putBestEffort(store, session, "run cleanup failure")
+		if !params.Force {
+			return nil, &Error{Code: ErrExecutionFailed, Message: cleanupErr.Error()}
+		}
+		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("cleanup: %v", cleanupErr))
+	}
+
+	// Persist any TaskState changes (status flips to cleaned) before we
+	// delete the entry, in case worktree removal fails and the user wants
+	// to inspect state.json post hoc.
+	session.UpdatedAt = time.Now()
+	putBestEffort(store, session, "post-run-cleanup checkpoint")
+
+	// Environment cleanup: after run+session task cleanup, before provider
+	// cleanup (tasks -> environment -> provider). A no-op when the workflow
+	// declares no environment, or its setup never ran.
+	if envCleanupErr := runEnvironmentCleanupForSession(cfg, wf, session, params.Observer); envCleanupErr != nil {
+		session.UpdatedAt = time.Now()
+		putBestEffort(store, session, "environment cleanup failure")
+		if !params.Force {
+			return nil, &Error{Code: ErrExecutionFailed, Message: envCleanupErr.Error()}
+		}
+		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("environment cleanup: %v", envCleanupErr))
+	}
+
+	if wfState, ok := session.Tasks[contract.WorkflowPseudoNodeID]; ok && wfState != nil {
+		// Workflow setup acquired the working directory, so workflow cleanup
+		// owns its release — the core performs no worktree removal here.
+		// (Whether the workdir is actually deleted is the cleanup script's
+		// decision; setup/cleanup symmetry is the author's contract.)
+		cleanupErr := runWorkflowCleanupForDestroy(cfg, session, params.Force, params.Observer)
+		session.UpdatedAt = time.Now()
+		putBestEffort(store, session, "workflow cleanup for destroy")
+		if cleanupErr != nil {
+			if !params.Force {
+				return nil, &Error{
+					Code:    ErrExecutionFailed,
+					Message: fmt.Sprintf("%v (session %s)\nRe-run with `sennit destroy %s --force` to delete the state entry anyway.", cleanupErr, sessionName, sessionName),
+				}
+			}
+			result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow cleanup: %v", cleanupErr))
+		}
+		result.RemovedWorktree = session.WorktreePath != "" && !fileExists(session.WorktreePath)
+	} else if session.WorktreePath != "" {
+		repoDir := workspace.ContainerDir(session.WorktreePath)
+		gitDir, findErr := mgr.FindGitDir(repoDir, session.WorktreePath)
+		if findErr != nil {
+			result.WorktreeWarning = fmt.Sprintf("worktree removal failed: %v", findErr)
+		} else if err := mgr.RemoveByPath(context.Background(), session.WorktreePath, gitDir, session.Branch, params.Force, params.DeleteBranch); err != nil {
+			result.WorktreeWarning = fmt.Sprintf("worktree removal failed: %v", err)
+		} else {
+			result.RemovedWorktree = true
+		}
+	}
+
+	// Without --force, abort before store.Delete so the user can retry —
+	// otherwise the worktree is orphaned on disk while sennit forgets about it.
+	if result.WorktreeWarning != "" && !params.Force {
+		return nil, &Error{
+			Code:    ErrExecutionFailed,
+			Message: fmt.Sprintf("%s (session %s)\nRe-run with `sennit destroy %s --force` to delete the worktree and state entry anyway.", result.WorktreeWarning, sessionName, sessionName),
+		}
+	}
+
+	// Snapshot the state entry as a tombstone in the event log directory
+	// before it's deleted, so resource mapping / judge records / final
+	// outputs survive destroy. Fail-closed and unconditional on --force:
+	// a lost tombstone is exactly the silent context loss this exists to prevent.
+	destroyedAt := time.Now()
+	tombstone := contract.Tombstone{Session: *session, DestroyedAt: destroyedAt}
+	tombstoneData, merr := json.Marshal(tombstone)
+	if merr != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to marshal tombstone: %v", merr)}
+	}
+	if werr := eventlog.NewStore(store.Dir()).WriteTombstone(sessionName, tombstoneData); werr != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to write tombstone: %v", werr)}
+	}
+
+	// Record after the tombstone succeeds; otherwise a failed destroy would
+	// leave a lifecycle event claiming the session was destroyed.
+	recordLifecycle(store, sessionName, "destroyed", "session destroyed")
+
+	if err := store.Delete(sessionName); err != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to delete state entry: %v", err)}
+	}
+	return result, nil
+}
