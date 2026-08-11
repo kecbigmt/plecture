@@ -28,16 +28,16 @@ const reactorConsumer = "tick-reactor"
 // this only bounds worst-case latency, not delivery.
 const fallbackDrain = 5 * time.Second
 
-// staleCheckInterval is the cadence of the periodic `stale_when` sweep. It is
-// deliberately coarse relative to typical `stale_when` values (minutes), and
+// heartbeatInterval is the cadence of the periodic `heartbeat` sweep. It is
+// deliberately coarse relative to typical `heartbeat` values (minutes), and
 // checked once immediately at startup so a bus restart sweeps any
-// already-overdue session promptly rather than waiting a full interval
-// (ADR amendment 2026-07-04 §2/§3: "on recovery, whatever exceeds the
-// freshness ceiling gets swept").
-const staleCheckInterval = time.Minute
+// already-overdue session promptly rather than waiting a full interval:
+// whatever exceeds the freshness ceiling while the bus was down must be
+// swept on recovery, not left waiting for the next regular tick.
+const heartbeatInterval = time.Minute
 
 // sessionReactor follows one session's event log and ticks it when a
-// declared event pattern matches, the judge builtin fires, or `stale_when`
+// declared event pattern matches, the judge builtin fires, or `heartbeat`
 // has elapsed since the session's last tick. Static config (tick) is
 // resolved once by the supervisor, matching dispatch's sessionDispatcher.
 type sessionReactor struct {
@@ -53,9 +53,9 @@ type sessionReactor struct {
 	// invocation count/concurrency (AC6) without weakening production
 	// behavior — buildReactor never sets it.
 	tickFn func(*config.Config, *state.Store, service.TickParams) (*service.CheckResult, error)
-	// staleCheckEvery defaults to staleCheckInterval; overridable in tests so
-	// AC4's stale-sweep cases don't need to wait a full minute of wall clock.
-	staleCheckEvery time.Duration
+	// heartbeatEvery defaults to heartbeatInterval; overridable in tests so
+	// the heartbeat-sweep test cases don't need to wait a full minute of wall clock.
+	heartbeatEvery time.Duration
 }
 
 func (r *sessionReactor) run(ctx context.Context) {
@@ -65,17 +65,17 @@ func (r *sessionReactor) run(ctx context.Context) {
 	defer wake.Close()
 	fallback := time.NewTicker(fallbackDrain)
 	defer fallback.Stop()
-	interval := r.staleCheckEvery
+	interval := r.heartbeatEvery
 	if interval <= 0 {
-		interval = staleCheckInterval
+		interval = heartbeatInterval
 	}
-	staleCheck := time.NewTicker(interval)
-	defer staleCheck.Stop()
+	heartbeat := time.NewTicker(interval)
+	defer heartbeat.Stop()
 
-	// Immediate check, not just on the first tick of staleCheck: a bus that
-	// was down past `stale_when` must sweep the backlog on restart, not wait
+	// Immediate check, not just on the first tick of heartbeat: a bus that
+	// was down past `heartbeat` must sweep the backlog on restart, not wait
 	// up to another full interval.
-	r.checkStale(ctx)
+	r.checkHeartbeat(ctx)
 	for {
 		if ctx.Err() != nil {
 			return
@@ -92,8 +92,8 @@ func (r *sessionReactor) run(ctx context.Context) {
 			return
 		case <-wake.Wake():
 		case <-fallback.C:
-		case <-staleCheck.C:
-			r.checkStale(ctx)
+		case <-heartbeat.C:
+			r.checkHeartbeat(ctx)
 		}
 	}
 }
@@ -203,19 +203,19 @@ func isSelfEmitted(ev event.Event) bool {
 	return strings.HasPrefix(ev.Type, event.TypeLifecyclePrefix)
 }
 
-// defaultMaxStaleWhen caps the quiet-tick backoff interval when a workflow's
-// `[tick]` declares no `max_stale_when`: standing goals must
+// defaultMaxHeartbeat caps the quiet-tick backoff interval when a workflow's
+// `[tick]` declares no `max_heartbeat`: standing goals must
 // keep observing at some ceiling even after many quiet sweeps, so backoff
 // never fully suppresses ticking.
-const defaultMaxStaleWhen = 8 * time.Hour
+const defaultMaxHeartbeat = 8 * time.Hour
 
-// checkStale ticks the session when `stale_when` (scaled by the quiet-tick
+// checkHeartbeat ticks the session when `heartbeat` (scaled by the quiet-tick
 // backoff) has elapsed since LastTickAt. A zero LastTickAt (never ticked)
-// counts as infinitely stale, so a freshly produced instance with
-// `stale_when` gets its first observation on the next sweep rather than
+// counts as infinitely overdue, so a freshly produced instance with
+// `heartbeat` gets its first observation on the next sweep rather than
 // waiting a full period.
-func (r *sessionReactor) checkStale(ctx context.Context) {
-	if r.tick.StaleWhen.Duration <= 0 {
+func (r *sessionReactor) checkHeartbeat(ctx context.Context) {
+	if r.tick.Heartbeat.Duration <= 0 {
 		return
 	}
 	s := r.state.Get(r.session)
@@ -232,27 +232,27 @@ func (r *sessionReactor) checkStale(ctx context.Context) {
 		// Peek for inbound before gating: inbound is otherwise only observed
 		// inside updateBackoff, which runs only after a tick fires — so a
 		// capped interval would hide inbound for the full cap instead of
-		// stale_when.
+		// heartbeat.
 		if inbound, _ := r.hasInboundSince(lastLogPosition); inbound {
 			n = 0
 		}
-		if time.Since(s.LastTickAt) < backoffInterval(r.tick.StaleWhen.Duration, r.maxStaleWhen(), n) {
+		if time.Since(s.LastTickAt) < backoffInterval(r.tick.Heartbeat.Duration, r.maxHeartbeat(), n) {
 			return
 		}
 	}
 	r.doTick(ctx)
 }
 
-// maxStaleWhen returns the declared `max_stale_when` cap, falling back to
-// defaultMaxStaleWhen when the workflow declares none.
-func (r *sessionReactor) maxStaleWhen() time.Duration {
-	if r.tick.MaxStaleWhen.Duration > 0 {
-		return r.tick.MaxStaleWhen.Duration
+// maxHeartbeat returns the declared `max_heartbeat` cap, falling back to
+// defaultMaxHeartbeat when the workflow declares none.
+func (r *sessionReactor) maxHeartbeat() time.Duration {
+	if r.tick.MaxHeartbeat.Duration > 0 {
+		return r.tick.MaxHeartbeat.Duration
 	}
-	return defaultMaxStaleWhen
+	return defaultMaxHeartbeat
 }
 
-// backoffInterval computes stale_when * 2^n capped at max. Doubling
+// backoffInterval computes heartbeat * 2^n capped at max. Doubling
 // iteratively (rather than shifting n) keeps this well-defined for large n
 // without overflowing time.Duration.
 func backoffInterval(base, max time.Duration, n int) time.Duration {
@@ -267,7 +267,7 @@ func backoffInterval(base, max time.Duration, n int) time.Duration {
 }
 
 // updateBackoff runs right after any tick (doTick, regardless of trigger) and
-// decides whether the next interval resets to stale_when (a change occurred)
+// decides whether the next interval resets to heartbeat (a change occurred)
 // or keeps growing (quiet). "Change" is fingerprint diff or an inbound event
 // since the last sweep — self-emitted events are never
 // Inbound (see direction normalization in service.EventPublish), so an
@@ -325,8 +325,8 @@ func (r *sessionReactor) hasInboundSince(since int64) (bool, int64) {
 
 // compositeFingerprint joins every produced instance's done_when fingerprint
 // (computed the same way tick/check dedup keys are) into one string
-// representing the whole session's observed state — the stale sweep operates
-// at session granularity, not per instance.
+// representing the whole session's observed state — the heartbeat sweep
+// operates at session granularity, not per instance.
 func (r *sessionReactor) compositeFingerprint() string {
 	result, err := service.CheckSession(r.cfg, r.state, service.CheckParams{SessionName: r.session})
 	if err != nil {
@@ -342,14 +342,14 @@ func (r *sessionReactor) compositeFingerprint() string {
 }
 
 // doTick actuates a tick regardless of what triggered it (declared `on`
-// pattern, judge builtin, or the stale sweep) and always refreshes the
-// backoff bookkeeping afterward. This must not live only in checkStale's
+// pattern, judge builtin, or the heartbeat sweep) and always refreshes the
+// backoff bookkeeping afterward. This must not live only in checkHeartbeat's
 // caller: a reactively-triggered tick (drain, e.g. an inbound event matching
-// a declared pattern) advances LastTickAt exactly like a stale-sweep tick, so
-// it must reset ConsecutiveUnchanged the same way — otherwise the next
-// checkStale computes its interval off a stale, inflated n and the backoff
-// never actually shortens back to stale_when despite the inbound arrival
-// that should have reset it.
+// a declared pattern) advances LastTickAt exactly like a heartbeat-sweep
+// tick, so it must reset ConsecutiveUnchanged the same way — otherwise the
+// next checkHeartbeat computes its interval off a stale, inflated n and the
+// backoff never actually shortens back to heartbeat despite the inbound
+// arrival that should have reset it.
 func (r *sessionReactor) doTick(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
@@ -362,7 +362,7 @@ func (r *sessionReactor) doTick(ctx context.Context) {
 		slog.Default().Warn("reactor: tick failed", "session", r.session, "error", err)
 		return
 	}
-	if r.tick.StaleWhen.Duration > 0 {
+	if r.tick.Heartbeat.Duration > 0 {
 		r.updateBackoff(ctx)
 	}
 }

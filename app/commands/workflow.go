@@ -151,8 +151,8 @@ func printWorkflowDetail(out io.Writer, d *service.WorkflowDetail) error {
 		if len(d.Tick.On) > 0 {
 			fmt.Fprintf(w, "Tick on:\t%s\n", strings.Join(d.Tick.On, ", "))
 		}
-		if d.Tick.StaleWhen.Duration > 0 {
-			fmt.Fprintf(w, "Tick stale_when:\t%s\n", d.Tick.StaleWhen.Duration)
+		if d.Tick.Heartbeat.Duration > 0 {
+			fmt.Fprintf(w, "Tick heartbeat:\t%s\n", d.Tick.Heartbeat.Duration)
 		}
 	}
 	if len(d.Display) > 0 {

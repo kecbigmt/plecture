@@ -797,9 +797,66 @@ id = "r"
 	}
 }
 
-// TestLoadWorkflows_TickCascadeDeeperWinsWholeTable covers story AC8: a
+// TestLoadWorkflows_TickStaleWhenKeyRejected proves the retired `stale_when`
+// / `max_stale_when` TOML keys fail fast with a clear message instead of
+// being silently dropped by the decoder (which would leave a workflow's
+// heartbeat quietly inactive).
+func TestLoadWorkflows_TickStaleWhenKeyRejected(t *testing.T) {
+	tests := []struct {
+		name string
+		toml string
+		want string
+	}{
+		{
+			name: "stale_when",
+			toml: `
+[tick]
+stale_when = "15m"
+`,
+			want: "tick.stale_when",
+		},
+		{
+			name: "max_stale_when",
+			toml: `
+[tick]
+heartbeat      = "15m"
+max_stale_when = "1h"
+`,
+			want: "tick.max_stale_when",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpHome := t.TempDir()
+			t.Setenv("HOME", tmpHome)
+			globalDir := filepath.Join(tmpHome, ".config", "sennit")
+			if err := os.MkdirAll(globalDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
+			writeFile(t, filepath.Join(repoDir, ".sennit", "workflows", "shared.toml"), tt.toml)
+			worktreeDir := filepath.Join(repoDir, "session")
+			if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			cfg := Load()
+			_, err := cfg.LoadWorkflows(worktreeDir)
+			if err == nil {
+				t.Fatalf("expected error: %s is retired", tt.name)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("unexpected message: %v", err)
+			}
+		})
+	}
+}
+
+// TestLoadWorkflows_TickCascadeDeeperWinsWholeTable proves that a
 // deeper layer's `[tick]` replaces a shallower layer's wholesale — no
-// partial merge of `on`/`stale_when` across layers, unlike the additive/
+// partial merge of `on`/`heartbeat` across layers, unlike the additive/
 // no-redeclare fields (name, done_when, provider, ...).
 func TestLoadWorkflows_TickCascadeDeeperWinsWholeTable(t *testing.T) {
 	tmpHome := t.TempDir()
@@ -813,13 +870,13 @@ func TestLoadWorkflows_TickCascadeDeeperWinsWholeTable(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
 [tick]
-on         = ["resource.*"]
-stale_when = "15m"
+on        = ["resource.*"]
+heartbeat = "15m"
 `)
 	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".sennit", "workflows", "shared.toml"), `
 [tick]
-stale_when = "5m"
+heartbeat = "5m"
 `)
 	worktreeDir := filepath.Join(repoDir, "session")
 	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
@@ -835,10 +892,10 @@ stale_when = "5m"
 		t.Fatal("expected a merged [tick] table")
 	}
 	if len(tick.On) != 0 {
-		t.Errorf("on = %v, want empty — the deeper layer replaces the whole table, not just stale_when", tick.On)
+		t.Errorf("on = %v, want empty — the deeper layer replaces the whole table, not just heartbeat", tick.On)
 	}
-	if tick.StaleWhen.Duration != 5*time.Minute {
-		t.Errorf("stale_when = %v, want 5m from the deeper layer", tick.StaleWhen.Duration)
+	if tick.Heartbeat.Duration != 5*time.Minute {
+		t.Errorf("heartbeat = %v, want 5m from the deeper layer", tick.Heartbeat.Duration)
 	}
 }
 
@@ -864,7 +921,7 @@ on = ["resource.*"]
 	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".sennit", "workflows", "shared.toml"), `
 [tick]
-stale_when = "30m"
+heartbeat = "30m"
 `)
 	worktreeDir := filepath.Join(repoDir, "session")
 	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
@@ -876,7 +933,7 @@ stale_when = "30m"
 		t.Fatal(err)
 	}
 	tick := got["shared"].Tick
-	if tick == nil || tick.StaleWhen.Duration != 30*time.Minute || len(tick.On) != 0 {
+	if tick == nil || tick.Heartbeat.Duration != 30*time.Minute || len(tick.On) != 0 {
 		t.Fatalf("tick = %+v, want the deeper (ancestor) layer's declaration to win wholesale", tick)
 	}
 }
