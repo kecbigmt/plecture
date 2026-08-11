@@ -990,7 +990,7 @@ func TestTickSession_EscalatesAfterMaxRounds_PushesToParent(t *testing.T) {
 	}
 }
 
-// TestTickSession_AutoRevivalAfterExhaustion covers issue #5: once rounds are
+// TestTickSession_AutoRevivalAfterExhaustion covers auto-revival: once rounds are
 // exhausted and a judge verdict has gone stale (a new revision landed), tick
 // must revive the round budget on its own and deliver the standard
 // re-evaluation kick to the recorded reviewer session, with no orchestrator
@@ -1097,9 +1097,9 @@ func blockSessionEventsDir(t *testing.T, store *state.Store, session string) {
 	}
 }
 
-// TestTickSession_AutoRevivalReviewerPublishFailureRetries covers the review
-// feedback on issue #5's first PR: a reviewer-kick delivery failure must not
-// let the revision dedup marker (LastAutoRevivalRevision) get stamped, or the
+// TestTickSession_AutoRevivalReviewerPublishFailureRetries covers a
+// reviewer-kick delivery failure: it must not let the revision dedup marker
+// (LastAutoRevivalRevision) get stamped, or the
 // reviewer would never be retried for a revision it never actually received.
 func TestTickSession_AutoRevivalReviewerPublishFailureRetries(t *testing.T) {
 	store := testStore(t)
@@ -1353,7 +1353,7 @@ func TestTickSession_SatisfiedWakeFailureIsWarnedNotFatal(t *testing.T) {
 	}
 }
 
-// CheckSession is the story PR-C #4 contract: same evaluation as tick, zero
+// CheckSession keeps the same observation-only contract: same evaluation as tick, zero
 // side effects. Calling it repeatedly on a kicked instance must not advance
 // the round, append events, wake sessions, or push a terminal event even once
 // the instance is actually satisfied.

@@ -26,8 +26,9 @@ func produced(taskID string, outputs map[string]any) *contract.TaskState {
 	return &contract.TaskState{TaskID: taskID, Status: contract.TaskStatusProduced, Outputs: outputs}
 }
 
-// ADR-003 step 4: completion is the aggregate of the session's done_when-bearing
-// task instances — each judged against its own per-instance outputs.
+// Aggregate task done_when completion is the aggregate of the session's
+// done_when-bearing task instances — each judged against its own
+// per-instance outputs.
 func TestAggregateTaskDoneWhen(t *testing.T) {
 	defs := reviewDefs()
 	tests := []struct {

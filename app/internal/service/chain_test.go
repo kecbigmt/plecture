@@ -19,7 +19,7 @@ import (
 // `[[chains]]` (and any other extra TOML) appended. Every chain test now
 // declares its chain this way — a task-embedded [[chains]] is the only
 // source a chain can come from since the legacy chains/*.toml dual-read was
-// retired (story PR-D #5).
+// retired.
 func workTaskWithChain(extraChain string) taskFixture {
 	return taskFixture{
 		id:    "work",

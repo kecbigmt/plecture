@@ -244,7 +244,7 @@ func TestSessionReactor_ReactiveTickResetsStaleWindow(t *testing.T) {
 	defer stop()
 
 	// Wait past the startup stale check (immediate, since LastTickAt starts
-	// zero) — this is call #1, establishing a real reset point.
+	// zero) — this is the first call, establishing a real reset point.
 	deadline := time.Now().Add(2 * time.Second)
 	for callCount() == 0 && time.Now().Before(deadline) {
 		time.Sleep(2 * time.Millisecond)
@@ -253,7 +253,7 @@ func TestSessionReactor_ReactiveTickResetsStaleWindow(t *testing.T) {
 		t.Fatalf("calls after startup = %d, want exactly 1", callCount())
 	}
 
-	// A reactive tick well inside the stale window resets it (call #2).
+	// A reactive tick well inside the stale window resets it (the second call).
 	log.Append(event.Event{SessionName: "o/r-1", Type: "resource.updated"})
 	deadline = time.Now().Add(2 * time.Second)
 	for callCount() < 2 && time.Now().Before(deadline) {

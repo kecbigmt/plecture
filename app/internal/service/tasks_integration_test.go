@@ -609,7 +609,7 @@ func TestIntegration_DestroyForcePartialFailureContinuesTeardown(t *testing.T) {
 	if len(result.CleanupWarnings) == 0 {
 		t.Fatal("expected CleanupWarnings to record run cleanup failure")
 	}
-	// Single reverse-instantiation teardown (ADR-003): warnings are prefixed
+	// Single reverse-instantiation teardown: warnings are prefixed
 	// "cleanup:" and name the failing task (tmux) rather than a per-scope label.
 	if joined := strings.Join(result.CleanupWarnings, "|"); !strings.Contains(joined, "tmux") {
 		t.Fatalf("expected tmux cleanup failure in warnings, got %q", joined)
