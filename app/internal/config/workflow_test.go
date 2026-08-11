@@ -854,7 +854,7 @@ max_stale_when = "1h"
 	}
 }
 
-// TestLoadWorkflows_TickCascadeDeeperWinsWholeTable covers story AC8: a
+// TestLoadWorkflows_TickCascadeDeeperWinsWholeTable proves that a
 // deeper layer's `[tick]` replaces a shallower layer's wholesale — no
 // partial merge of `on`/`heartbeat` across layers, unlike the additive/
 // no-redeclare fields (name, done_when, provider, ...).

@@ -31,9 +31,9 @@ const fallbackDrain = 5 * time.Second
 // heartbeatInterval is the cadence of the periodic `heartbeat` sweep. It is
 // deliberately coarse relative to typical `heartbeat` values (minutes), and
 // checked once immediately at startup so a bus restart sweeps any
-// already-overdue session promptly rather than waiting a full interval
-// (ADR amendment 2026-07-04 §2/§3: "on recovery, whatever exceeds the
-// freshness ceiling gets swept").
+// already-overdue session promptly rather than waiting a full interval:
+// whatever exceeds the freshness ceiling while the bus was down must be
+// swept on recovery, not left waiting for the next regular tick.
 const heartbeatInterval = time.Minute
 
 // sessionReactor follows one session's event log and ticks it when a
