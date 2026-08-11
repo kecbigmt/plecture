@@ -72,9 +72,9 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 		}); err != nil {
 			return nil, err
 		}
-		// D7/D8: escalate is also pushed one hop to the parent (goal-loop
-		// Layer 1), on top of the same-session record above (kept for
-		// sennit.tick.escalated compat/observability, ADR D11 slice 5).
+		// Escalate is also pushed one hop to the parent (the goal loop's
+		// actuator layer), on top of the same-session record above (kept
+		// for sennit.tick.escalated compatibility and observability).
 		_, wakeErr, err := PublishTerminalToParent(cfg, store, sessionName, TerminalParams{
 			Type:     event.TypeTerminalEscalate,
 			Summary:  action.Summary,

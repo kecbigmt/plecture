@@ -152,8 +152,9 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 			continue
 		}
 		// Captured before a tick's persist overwrites LastAction, so the
-		// `done` push it may issue fires exactly once per instance (ADR D8:
-		// goal-loop Layer 1 owns `done` emission) rather than on every poll.
+		// `done` push it may issue fires exactly once per instance (the goal
+		// loop's actuator layer owns `done` emission) rather than on every
+		// poll.
 		alreadySatisfied := st.DoneWhen != nil && st.DoneWhen.LastAction == "satisfied"
 		eval := task.EvaluateTaskDoneWhenWithContext(dw, st.Outputs, doneWhenEvalContext(resolvedName, st, allSessions))
 		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval)
