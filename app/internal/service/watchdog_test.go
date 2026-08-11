@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -220,24 +221,61 @@ func TestEvaluateHealth_MessageDoesNotAffectHealthOutcome(t *testing.T) {
 	}
 }
 
-// TestEvaluateHealth_WedgedButHealthcheckPassingReadsHealthy pins today's
-// known gap: a session whose agent turn is not actually progressing (no
-// ticks, message never updated, i.e. "wedged") still reads healthy as long
-// as its declared execution-surface healthcheck passes. Health evaluation
-// has no notion of turn progress — it only runs the declared healthcheck.
-// This test exists to be revisited, not defeated, by the upcoming
-// health-deepening waves.
-func TestEvaluateHealth_WedgedButHealthcheckPassingReadsHealthy(t *testing.T) {
+// progressSignalFixtureConfig declares one run-scoped task "runner" whose
+// healthcheck is fixed at "true" and whose progress_signal command is the
+// given shell snippet, plus a bare "initial" node so LoadTaskDefinitions has
+// a workflow to resolve against. The task's done_when has a single check
+// leaf against the "done" output, so seeding it as anything but "yes" leaves
+// unmet work (progress_expected=true).
+func progressSignalFixtureConfig(t *testing.T, progressSignal string) *config.Config {
+	t.Helper()
+	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
+		id:             "runner",
+		scope:          contract.TaskScopeRun,
+		healthcheck:    "true",
+		progressSignal: progressSignal,
+		extra:          "[[done_when.all]]\ncheck = \"done\"\neq = \"yes\"\n",
+	}}, []nodeFixture{{id: "initial", uses: "runner"}})
+}
+
+// progressSignalCmd renders a fixed JSON progress-signal fact as the
+// command's entire behavior — a fake/stub signal source, standing in for
+// whatever concrete provider a later PR wires up.
+func progressSignalCmd(t *testing.T, supported, progressExpected bool, fingerprint string, observedAt time.Time) string {
+	t.Helper()
+	observed := ""
+	if !observedAt.IsZero() {
+		observed = observedAt.UTC().Format(time.RFC3339)
+	}
+	return fmt.Sprintf(
+		`echo '{"supported":%t,"progress_expected":%t,"fingerprint":%q,"observed_at":%q}'`,
+		supported, progressExpected, fingerprint, observed,
+	)
+}
+
+// TestEvaluateHealth_WedgedButHealthcheckPassingReadsStalled replaces the
+// prior known gap this test used to pin: once a progress signal is declared
+// and reports stale evidence while unmet done_when work remains, evaluation
+// now reads stalled rather than healthy — a present-but-wedged session is
+// finally distinguishable from a genuinely healthy one.
+func TestEvaluateHealth_WedgedButHealthcheckPassingReadsStalled(t *testing.T) {
 	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "true")
 	longAgo := time.Now().Add(-24 * time.Hour)
+	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, true, "fp-1", longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
 	})
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
 		// LastTickAt far in the past and a stale "waiting" message stand in
-		// for a wedged-but-present execution surface: nothing is actually
-		// progressing, yet the declared healthcheck still passes.
+		// for a wedged-but-present execution surface. Neither is read by
+		// health evaluation (see TestEvaluateHealth_MessageDoesNotAffectHealthOutcome)
+		// — the stale progress-signal evidence is what actually drives the
+		// stalled outcome here.
 		s.LastTickAt = longAgo
 		s.Message = &domain.Message{Text: "waiting", UpdatedAt: longAgo}
 		return nil
@@ -249,8 +287,140 @@ func TestEvaluateHealth_WedgedButHealthcheckPassingReadsHealthy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
-	if !report.Healthy {
-		t.Fatalf("report = %+v, want healthy (today's evaluation ignores turn progress entirely)", report)
+	if report.State() != domain.HealthStalled {
+		t.Fatalf("report = %+v, state = %q, want stalled (surface present, progress expected, evidence stale)", report, report.State())
+	}
+}
+
+// TestEvaluateHealth_NoProgressSignalDeclaredStaysUndeclaredNotStalled pins
+// the explicit no-signal path: unmet done_when work exists (progress is
+// expected) but no progress signal is declared to judge it, so evaluation
+// has no basis to call the session either healthy or stalled.
+func TestEvaluateHealth_NoProgressSignalDeclaredStaysUndeclaredNotStalled(t *testing.T) {
+	store := testStore(t)
+	cfg := progressSignalFixtureConfig(t, "") // no progress_signal declared at all
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthUndeclared {
+		t.Fatalf("report = %+v, state = %q, want undeclared (progress expected, nothing declared to judge it)", report, report.State())
+	}
+}
+
+// TestEvaluateHealth_ExplicitNoSignalDeclarationStaysUndeclared covers the
+// second no-basis path: a progress-signal command is declared but explicitly
+// reports "supported": false at evaluation time — the same as if nothing
+// were declared, not a stale/fresh judgment either way.
+func TestEvaluateHealth_ExplicitNoSignalDeclarationStaysUndeclared(t *testing.T) {
+	store := testStore(t)
+	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, false, true, "fp-1", time.Now()))
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthUndeclared {
+		t.Fatalf("report = %+v, state = %q, want undeclared (explicit no-signal declaration)", report, report.State())
+	}
+}
+
+// TestEvaluateHealth_FreshProgressEvidenceReadsHealthy is the positive
+// counterpart to the stalled test: the same unmet work, but the declared
+// progress signal reports evidence timestamped within the freshness window.
+func TestEvaluateHealth_FreshProgressEvidenceReadsHealthy(t *testing.T) {
+	store := testStore(t)
+	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, true, "fp-1", time.Now()))
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("report = %+v, state = %q, want healthy (fresh progress evidence)", report, report.State())
+	}
+}
+
+// TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal is the
+// orchestrator-idle-between-ticks case: done_when is already satisfied, so
+// progress is not currently expected of this session at all. It must read
+// healthy even though a progress signal is declared and its evidence is
+// stale — the session legitimately has nothing to progress right now, and
+// must never be flagged stalled for that.
+func TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal(t *testing.T) {
+	store := testStore(t)
+	longAgo := time.Now().Add(-24 * time.Hour)
+	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, true, "fp-1", longAgo))
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "yes"}, // done_when already satisfied
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("report = %+v, state = %q, want healthy (no unmet work, progress not expected)", report, report.State())
+	}
+}
+
+// TestEvaluateHealth_EscalatedWorkIsNotExpectedFromThisSession covers the
+// other "not expected to act" path: done_when is unsatisfied but this
+// session has escalated to an independent reviewer, so it is not this
+// session's turn to progress — it must read healthy, not stalled, even with
+// stale progress-signal evidence.
+func TestEvaluateHealth_EscalatedWorkIsNotExpectedFromThisSession(t *testing.T) {
+	store := testStore(t)
+	longAgo := time.Now().Add(-24 * time.Hour)
+	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, true, "fp-1", longAgo))
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+			DoneWhen: &contract.DoneWhenState{
+				LastAction: "escalate",
+			},
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("report = %+v, state = %q, want healthy (escalated: not this session's turn to progress)", report, report.State())
 	}
 }
 

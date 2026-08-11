@@ -212,7 +212,7 @@ func classifySession(s *domain.Session, taskDefs map[string]config.TaskDefinitio
 // nothing to probe and is treated as alive — GC's dead-runtime detection only
 // fires when a healthcheck is declared and fails.
 func sessionRuntimeAlive(s *domain.Session, taskDefs map[string]config.TaskDefinition) bool {
-	report := evaluateHealthFor(s.Name, s.Tasks, taskDefs, sessionVars(s))
+	report := evaluateHealthFor(s.Name, s.Tasks, taskDefs, sessionVars(s), 0)
 	return !report.Declared || report.Healthy
 }
 

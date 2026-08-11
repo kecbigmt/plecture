@@ -14,16 +14,17 @@ import (
 // "run". Empty fields are omitted from the generated TOML. extra is raw TOML
 // appended verbatim (e.g. an [outputs_schema] block).
 type taskFixture struct {
-	id          string
-	scope       string
-	setup       string
-	cleanup     string
-	healthcheck string
-	attach      string
-	capture     string
-	primary     bool
-	execution   string
-	extra       string
+	id             string
+	scope          string
+	setup          string
+	cleanup        string
+	healthcheck    string
+	progressSignal string
+	attach         string
+	capture        string
+	primary        bool
+	execution      string
+	extra          string
 }
 
 // nodeFixture mirrors WorkflowNode for fixture authoring. ID defaults to Uses;
@@ -65,6 +66,9 @@ func writeWorkflowFixture(t *testing.T, worktreesRoot, wfID string, defs []taskF
 		}
 		if d.healthcheck != "" {
 			fmt.Fprintf(&b, "healthcheck = %q\n", d.healthcheck)
+		}
+		if d.progressSignal != "" {
+			fmt.Fprintf(&b, "progress_signal = %q\n", d.progressSignal)
 		}
 		if d.attach != "" {
 			fmt.Fprintf(&b, "attach = %q\n", d.attach)
