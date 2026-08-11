@@ -33,7 +33,7 @@ var lsCmd = &cobra.Command{
 		}
 
 		if lsParent != "" {
-			parentName, _, err := service.ResolveSession(cfg, store, lsParent)
+			parentName, err := service.ResolveSessionName(cfg, store, lsParent)
 			if err != nil {
 				return err
 			}
