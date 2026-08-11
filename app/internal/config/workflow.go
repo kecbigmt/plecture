@@ -112,6 +112,14 @@ type TickConfig struct {
 	// see no fingerprint change and no inbound event. Zero means the
 	// reactor's default (4h) applies — declaring it is optional.
 	MaxHeartbeat Duration `toml:"max_heartbeat"`
+	// ProgressSource declares a session-scoped dynamic output (the same
+	// script-execution plumbing task.FetchOutput gives task-instance
+	// outputs) whose fetched value core treats as an opaque progress
+	// fingerprint (docs/wiki/verification-gate.md). Core never interprets
+	// what the fingerprint string means or how it was produced — it only
+	// compares the fetched value against the last one it persisted for this
+	// session. Nil means no progress source is declared for this workflow.
+	ProgressSource *DynamicOutput `toml:"progress_source"`
 }
 
 // WorkflowNode is a single instantiation of a task definition within a

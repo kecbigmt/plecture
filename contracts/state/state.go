@@ -191,8 +191,13 @@ type Session struct {
 	// TickBackoff is nil until the first heartbeat sweep decides a tick, so a
 	// session that has never backed off keeps a clean state.json.
 	TickBackoff *TickBackoff `json:"tick_backoff,omitempty"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	// Progress is the last progress fingerprint core observed for this
+	// session's declared progress source, plus when core itself last saw
+	// that fingerprint change (docs/wiki/verification-gate.md). Nil until
+	// the first evaluation that successfully fetches a declared source.
+	Progress  *ProgressState `json:"progress,omitempty"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
 }
 
 // WatchdogState is the last-known result of a Layer-2 liveness probe. A
@@ -202,6 +207,16 @@ type WatchdogState struct {
 	CheckedAt time.Time `json:"checked_at,omitzero"`
 	DeadAt    time.Time `json:"dead_at,omitzero"`
 	Reason    string    `json:"reason,omitempty"`
+}
+
+// ProgressState is core's own record of the last opaque progress fingerprint
+// fetched from a session's declared progress source, and when core last saw
+// that fingerprint change. ObservedAt is core's own clock, not any timestamp
+// a source script may report — core only ever compares Fingerprint values it
+// has fetched itself.
+type ProgressState struct {
+	Fingerprint string    `json:"fingerprint,omitempty"`
+	ObservedAt  time.Time `json:"observed_at,omitzero"`
 }
 
 // TickBackoff is the quiet-tick exponential backoff bookkeeping the tick
