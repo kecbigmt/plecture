@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/sennit/app/internal/config"
 	"github.com/kecbigmt/sennit/app/internal/domain"
@@ -176,6 +177,80 @@ func TestSessionRunAndHealthState_HealthcheckBacked(t *testing.T) {
 				t.Errorf("sessionHealthState = %q, want %q", gotHealth, tt.wantHealth)
 			}
 		})
+	}
+}
+
+// TestEvaluateHealth_MessageDoesNotAffectHealthOutcome characterizes the
+// current gap the health-deepening plan targets: message is a latched
+// self-report that health evaluation never reads. A session that reports
+// "working" and one that reports "waiting" (or none at all) with the same
+// healthcheck outcome must produce the same health report, because
+// evaluateHealthFor only consults the declared healthcheck, never Message.
+func TestEvaluateHealth_MessageDoesNotAffectHealthOutcome(t *testing.T) {
+	messages := []*domain.Message{
+		nil,
+		{Text: "working"},
+		{Text: "waiting"},
+		{Text: "anything at all"},
+	}
+
+	for _, healthcheck := range []string{"true", "false"} {
+		for _, msg := range messages {
+			store := testStore(t)
+			cfg := healthcheckFixtureConfig(t, healthcheck)
+			seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+				"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+			})
+			if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+				s.Message = msg
+				return nil
+			}); err != nil {
+				t.Fatalf("set message: %v", err)
+			}
+
+			report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+			if err != nil {
+				t.Fatalf("EvaluateHealth: %v", err)
+			}
+			wantHealthy := healthcheck == "true"
+			if report.Healthy != wantHealthy {
+				t.Fatalf("healthcheck=%q message=%+v: report.Healthy = %v, want %v (message must not influence health)", healthcheck, msg, report.Healthy, wantHealthy)
+			}
+		}
+	}
+}
+
+// TestEvaluateHealth_WedgedButHealthcheckPassingReadsHealthy pins today's
+// known gap: a session whose agent turn is not actually progressing (no
+// ticks, message never updated, i.e. "wedged") still reads healthy as long
+// as its declared execution-surface healthcheck passes. Health evaluation
+// has no notion of turn progress — it only runs the declared healthcheck.
+// This test exists to be revisited, not defeated, by the upcoming
+// health-deepening waves.
+func TestEvaluateHealth_WedgedButHealthcheckPassingReadsHealthy(t *testing.T) {
+	store := testStore(t)
+	cfg := healthcheckFixtureConfig(t, "true")
+	longAgo := time.Now().Add(-24 * time.Hour)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		// LastTickAt far in the past and a stale "waiting" message stand in
+		// for a wedged-but-present execution surface: nothing is actually
+		// progressing, yet the declared healthcheck still passes.
+		s.LastTickAt = longAgo
+		s.Message = &domain.Message{Text: "waiting", UpdatedAt: longAgo}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed wedged state: %v", err)
+	}
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if !report.Healthy {
+		t.Fatalf("report = %+v, want healthy (today's evaluation ignores turn progress entirely)", report)
 	}
 }
 
