@@ -97,7 +97,7 @@ func MissingOutputs(inputs map[string]string, outputs map[string]any) ([]string,
 
 // UndeclaredWiredOutputs returns the wired output keys that the upstream node's
 // published output contract does not declare. `declared` is the upstream
-// outputs-schema property set (ADR-004 per-instance outputs contract). An empty
+// outputs-schema property set. An empty
 // `declared` means the upstream publishes no contract, so wiring is then
 // unconstrained — matching how set-output and `sennit task setup` treat a
 // schema-less target. A non-empty result is a binding that names an output the

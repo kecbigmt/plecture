@@ -14,7 +14,8 @@ import (
 // MatchResourceDef finds the resource definition whose `match` recognizes
 // resourceID. Ok=false with a nil error means no definition claims this id —
 // a legitimate, common case: most instance-local resources have no declared
-// kind, and stay the opaque passthrough ADR-003 already provides. More than
+// kind, and stay the opaque passthrough dynamic instantiation already
+// provides. More than
 // one match is a config error surfaced here rather than resolved by picking
 // one, since a silent pick would let two definitions silently race for the
 // same id space.

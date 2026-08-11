@@ -189,7 +189,7 @@ type TaskDefinition struct {
 	OutputsSchemaFile string         `toml:"outputs_schema_file"`
 	InputsSchema      map[string]any `toml:"inputs_schema"`
 	InputsSchemaFile  string         `toml:"inputs_schema_file"`
-	// DoneWhen is the task's Definition of Done (ADR-003): a structured
+	// DoneWhen is the task's Definition of Done: a structured
 	// completion predicate evaluated per instance. Nil for pure lifecycle-only
 	// tasks (the runtime task, the agent launcher, chat notifications); set for
 	// work units (work / review /
@@ -484,7 +484,7 @@ type layerDir struct {
 // Declaring anything else there (setup/cleanup shell, identity, schemas) is a
 // load error. Declaring `done_when` at the workflow level, in any layer, is
 // also a load error — the completion predicate lives on the task definition's
-// `[done_when]` (ADR-003).
+// `[done_when]`.
 func (c *Config) LoadWorkflows(worktreeDir string) (map[string]WorkflowFile, error) {
 	dirs := c.workflowSearchDirs(worktreeDir)
 	layered := make(map[string][]WorkflowFile)

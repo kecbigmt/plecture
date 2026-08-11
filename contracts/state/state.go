@@ -114,7 +114,7 @@ const OutputKeyWorkdir = "workdir"
 // resolved input bindings persisted at setup time so cleanup can run without
 // the original CLI invocation. Empty for legacy tasks with no input mapping.
 //
-// Seq / Dynamic / Resource support ADR-003 dynamic instantiation:
+// Seq / Dynamic / Resource support dynamic instantiation:
 //
 //   - Seq is the monotonically increasing instantiation order across every
 //     task in the session (workflow pseudo-node, static DAG nodes, and
@@ -138,7 +138,7 @@ type TaskState struct {
 	Status        string          `json:"status"`             // "produced" | "failed" | "cleaned"
 	Inputs        map[string]any  `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
 	Outputs       map[string]any  `json:"outputs,omitempty"`  // parsed JSON from setup stdout
-	Seq           int             `json:"seq,omitempty"`      // instantiation order (ADR-003); 0 = legacy/unset
+	Seq           int             `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
 	Dynamic       bool            `json:"dynamic,omitempty"`  // true for runtime `sennit task setup` instances
 	Resource      string          `json:"resource,omitempty"` // bound --resource at instantiation
 	Name          string          `json:"name,omitempty"`     // --name instance identity (key == name when set)

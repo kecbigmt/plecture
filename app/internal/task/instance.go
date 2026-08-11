@@ -10,7 +10,7 @@ import (
 )
 
 // InstanceKey derives the session.Tasks key for the numbered form of a dynamic
-// task instance (ADR-003): "<taskID>#<instanceID>", where instanceID is a
+// task instance: "<taskID>#<instanceID>", where instanceID is a
 // per-task sequential number (see NextInstanceNumber). This is the `--name`-
 // less form; a `--name` instance keys on the name alone (ValidInstanceName), so
 // the two namespaces are disjoint (the named form carries no `#`). A blank

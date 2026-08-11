@@ -584,7 +584,7 @@ func TestDestroy_ForceContinuesOnCleanupError(t *testing.T) {
 	if len(result.CleanupWarnings) == 0 {
 		t.Fatal("expected CleanupWarnings to record run cleanup failure")
 	}
-	// The teardown is a single reverse-instantiation pass (ADR-003), so the
+	// The teardown is a single reverse-instantiation pass, so the
 	// warning is prefixed "cleanup:" rather than the old per-scope label; the
 	// failing task (tmux) is named in it.
 	if joined := strings.Join(result.CleanupWarnings, "|"); !strings.Contains(joined, "tmux") {

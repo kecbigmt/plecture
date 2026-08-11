@@ -52,7 +52,7 @@ type Resolved struct {
 	// `sennit state set-output`; everything else is immutable (safe by default).
 	MutableOutputs []string
 	DependsOn      []string
-	// DoneWhen is the task's per-instance Definition of Done (ADR-003);
+	// DoneWhen is the task's per-instance Definition of Done;
 	// nil for pure lifecycle-only tasks. Evaluated against the instance's own
 	// outputs for `sennit status` / `ls` display.
 	DoneWhen *config.DoneWhen
@@ -1156,7 +1156,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 		}
 		obs.OnStart(r.Scope, r.NodeID)
 		// A dynamic instance's cleanup must see its OWN resource as .ResourceID,
-		// the same one its setup bound (ADR-003) — not the session's. SessionVars
+		// the same one its setup bound — not the session's. SessionVars
 		// is a value, so copying and overriding is local to this task.
 		sess := session
 		if state.Resource != "" {

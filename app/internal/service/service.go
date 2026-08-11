@@ -111,7 +111,7 @@ func ResolveSessionName(cfg *config.Config, store *state.Store, identifier strin
 
 // TaskInstanceView is the display projection of one task instance: its
 // identity, scope, and status, plus — when the task declares a done_when —
-// the per-instance evaluation against the instance's own outputs (ADR-003).
+// the per-instance evaluation against the instance's own outputs.
 // Only dynamic instances and done_when-bearing tasks are projected; pure
 // lifecycle-only static nodes (the runtime task, the agent launcher) are
 // omitted to keep show/ls focused.
@@ -294,7 +294,7 @@ type ListEntry struct {
 	WorktreePath  string             `json:"worktree_path,omitempty"`
 	ParentSession string             `json:"parent_session,omitempty"`
 	// Tasks projects the session's dynamic instances and done_when-bearing
-	// tasks with their per-instance done_when status (ADR-003).
+	// tasks with their per-instance done_when status.
 	Tasks []TaskInstanceView `json:"tasks,omitempty"`
 }
 
