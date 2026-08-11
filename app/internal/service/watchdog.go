@@ -23,25 +23,64 @@ type HealthReport struct {
 	// Declared reports whether any produced run-scoped task instance declares
 	// a healthcheck at all — distinguishes "ran and passed" from "nothing to
 	// evaluate" (State() surfaces the latter as HealthUndeclared).
-	Declared   bool   `json:"declared"`
-	Reason     string `json:"reason,omitempty"`
-	Pushed     bool   `json:"pushed,omitempty"`
-	PushTarget string `json:"push_target,omitempty"`
+	Declared bool `json:"declared"`
+	// ProgressExpected reports whether unmet run-scoped work exists that
+	// this session is expected to act on next, derived from declared
+	// done_when/task state — never from Message. False both when there is
+	// no unmet work and when the session has handed the remaining work off
+	// (e.g. escalated to an independent reviewer), since in either case the
+	// session legitimately has nothing to progress right now.
+	ProgressExpected bool `json:"progress_expected,omitempty"`
+	// ProgressDeclared reports whether at least one produced run-scoped
+	// task instance declared a progress signal that reported itself
+	// supported. False when no progress signal is declared at all, or when
+	// every declared one explicitly reports unsupported (or fails to run) —
+	// both read as "no basis to judge progress."
+	ProgressDeclared bool `json:"progress_declared,omitempty"`
+	// ProgressFresh reports whether any supported progress signal reported
+	// evidence timestamped within the freshness window. Meaningless unless
+	// ProgressDeclared and ProgressExpected are both true.
+	ProgressFresh bool   `json:"progress_fresh,omitempty"`
+	Reason        string `json:"reason,omitempty"`
+	Pushed        bool   `json:"pushed,omitempty"`
+	PushTarget    string `json:"push_target,omitempty"`
 	// WakeWarning is set when the dead event was recorded on PushTarget but
 	// best-effort waking it (Up) failed — the push itself still succeeded.
 	WakeWarning string `json:"wake_warning,omitempty"`
 }
 
-// State projects the report to the three-value display fact `sennit status`
-// reports: undeclared beats healthy/unhealthy since there was nothing to run.
+// State projects the report to the four-value display fact `sennit status`
+// reports.
+//
+//   - Undeclared beats everything else when there is no declared healthcheck
+//     to evaluate at all — nothing to run.
+//   - Unhealthy beats progress: a failing surface check is reported as such
+//     regardless of progress evidence.
+//   - When no progress is currently expected, a passing surface check is
+//     healthy outright — most sessions never declare a progress signal and
+//     must not regress to undeclared just because one doesn't exist for work
+//     that was never expected of them.
+//   - When progress is expected but no progress signal is declared to judge
+//     it, there is no basis to call it either healthy or stalled: undeclared.
+//   - Otherwise, fresh progress evidence is healthy and its absence is
+//     stalled — the surface is present but wedged.
 func (r HealthReport) State() domain.HealthState {
 	if !r.Declared {
 		return domain.HealthUndeclared
 	}
-	if r.Healthy {
+	if !r.Healthy {
+		return domain.HealthUnhealthy
+	}
+	if !r.ProgressExpected {
 		return domain.HealthHealthy
 	}
-	return domain.HealthUnhealthy
+	if !r.ProgressDeclared {
+		return domain.HealthUndeclared
+	}
+	if r.ProgressFresh {
+		return domain.HealthHealthy
+	}
+	return domain.HealthStalled
 }
 
 // EvaluateHealth runs every produced run-scoped task's declared healthcheck
@@ -59,30 +98,109 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	if err != nil {
 		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
-	return evaluateHealthFor(name, s.Tasks, defs, sessionVars(s)), nil
+	return evaluateHealthFor(name, s.Tasks, defs, sessionVars(s), progressFreshnessWindow(cfg, s.Workflow, s.WorktreePath)), nil
+}
+
+// defaultProgressFreshnessWindow applies when a workflow declares no
+// `[tick].heartbeat` — a session with no heartbeat has no natural cadence to
+// derive a window from, so this is a fixed fallback rather than an unbounded
+// (always-fresh) window.
+const defaultProgressFreshnessWindow = 30 * time.Minute
+
+// progressFreshnessWindow derives the progress-evidence freshness window
+// from the workflow's declared `[tick].heartbeat` rather than introducing a
+// dedicated config key: a session already declares how often it expects to
+// be revisited, and evidence older than a couple of those cycles is by
+// definition evidence the session's own cadence should have refreshed.
+// Doubling the heartbeat tolerates one missed cycle before calling a session
+// stalled. A workflow that cannot be loaded (or declares no tick/heartbeat)
+// falls back to defaultProgressFreshnessWindow.
+func progressFreshnessWindow(cfg *config.Config, workflowID, worktreePath string) time.Duration {
+	workflows, err := cfg.LoadWorkflows(worktreePath)
+	if err != nil {
+		return defaultProgressFreshnessWindow
+	}
+	wf, ok := workflows[workflowID]
+	if !ok || wf.Tick == nil || wf.Tick.Heartbeat.Duration <= 0 {
+		return defaultProgressFreshnessWindow
+	}
+	return 2 * wf.Tick.Heartbeat.Duration
 }
 
 // evaluateHealthFor is EvaluateHealth's pure core, taking already-loaded task
 // state/defs instead of fetching them from store/cfg. Shared with GC, which
 // loads taskDefs once per session for done_when aggregation and reuses it here
-// rather than probing the runtime directly.
-func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs map[string]config.TaskDefinition, vars task.SessionVars) HealthReport {
+// rather than probing the runtime directly. window is the progress-evidence
+// freshness window; GC's caller passes zero since it only reads
+// Healthy/Declared, never the progress fields.
+func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs map[string]config.TaskDefinition, vars task.SessionVars, window time.Duration) HealthReport {
 	declared := false
+	progressExpected := false
+	progressDeclared := false
+	progressFresh := false
+	now := time.Now()
+
 	for _, key := range sortedTaskKeys(tasks) {
 		st := tasks[key]
 		if st == nil || st.Scope != contract.TaskScopeRun || st.Status != contract.TaskStatusProduced {
 			continue
 		}
 		def := defs[taskIDForInstance(key, st)]
-		if def.Healthcheck == "" {
-			continue
+
+		if def.Healthcheck != "" {
+			declared = true
+			if hcErr := task.RunHealthcheck(context.Background(), def.Healthcheck, st.Outputs, st.Inputs, vars); hcErr != nil {
+				return HealthReport{SessionName: name, Healthy: false, Declared: true, Reason: fmt.Sprintf("%s: %v", key, hcErr)}
+			}
 		}
-		declared = true
-		if hcErr := task.RunHealthcheck(context.Background(), def.Healthcheck, st.Outputs, st.Inputs, vars); hcErr != nil {
-			return HealthReport{SessionName: name, Healthy: false, Declared: true, Reason: fmt.Sprintf("%s: %v", key, hcErr)}
+
+		// instanceExpected is this instance's own contribution to
+		// progress_expected, derived only from done_when/task state (never
+		// Message): unmet work exists for this instance and the session has
+		// not handed it off (e.g. by escalating to an independent
+		// reviewer), in which case it is legitimately not this session's
+		// turn to act.
+		instanceExpected := false
+		if def.DoneWhen != nil {
+			handedOff := st.DoneWhen != nil && st.DoneWhen.LastAction == "escalate"
+			if !handedOff && task.EvaluateTaskDoneWhen(def.DoneWhen, st.Outputs).Overall != task.DoneSatisfied {
+				instanceExpected = true
+			}
+		}
+
+		if def.ProgressSignal != "" {
+			sig, sigErr := task.RunProgressSignal(context.Background(), def.ProgressSignal, st.Outputs, st.Inputs, vars)
+			if sigErr == nil && sig.Supported {
+				progressDeclared = true
+				// A supported signal's own ProgressExpected can only narrow
+				// this instance's contribution (e.g. "the turn already
+				// ended"), never manufacture an expectation done_when does
+				// not already see.
+				if !sig.ProgressExpected {
+					instanceExpected = false
+				}
+				if !sig.ObservedAt.IsZero() && now.Sub(sig.ObservedAt) <= window {
+					progressFresh = true
+				}
+			}
+			// A failed run or an explicit "supported: false" both mean this
+			// instance has no basis to contribute progress evidence right
+			// now — the same as if no progress signal were declared.
+		}
+
+		if instanceExpected {
+			progressExpected = true
 		}
 	}
-	return HealthReport{SessionName: name, Healthy: true, Declared: declared}
+
+	return HealthReport{
+		SessionName:      name,
+		Healthy:          true,
+		Declared:         declared,
+		ProgressExpected: progressExpected,
+		ProgressDeclared: progressDeclared,
+		ProgressFresh:    progressFresh,
+	}
 }
 
 // WatchdogTick probes every session with a produced run-scoped task and

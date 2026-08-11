@@ -164,14 +164,25 @@ type EventChannel struct {
 //
 // Definitions intentionally have no `depends_on`: wiring is the workflow's job.
 type TaskDefinition struct {
-	ID          string   `toml:"-"`
-	Scope       string   `toml:"scope"`
-	Setup       string   `toml:"setup"`
-	Cleanup     string   `toml:"cleanup"`
-	Healthcheck string   `toml:"healthcheck"`
-	Primary     bool     `toml:"primary"`
-	IdleAfter   Duration `toml:"idle_after"`
-	Attach      string   `toml:"attach"`
+	ID          string `toml:"-"`
+	Scope       string `toml:"scope"`
+	Setup       string `toml:"setup"`
+	Cleanup     string `toml:"cleanup"`
+	Healthcheck string `toml:"healthcheck"`
+	// ProgressSignal declares a provider-neutral command that reports opaque
+	// progress facts as JSON on stdout: {"supported": bool,
+	// "progress_expected": bool, "fingerprint": string, "observed_at":
+	// RFC3339 string}. Core never interprets what the command actually
+	// checked (a terminal pane, an agent transcript, a VCS worktree, ...) —
+	// it only compares the fingerprint and timestamp the command reports.
+	// Empty means no progress signal is declared for this task; a command
+	// that runs but reports "supported": false is an explicit declaration
+	// that this instance has no basis to judge progress right now, which
+	// evaluates the same as if nothing were declared.
+	ProgressSignal string   `toml:"progress_signal"`
+	Primary        bool     `toml:"primary"`
+	IdleAfter      Duration `toml:"idle_after"`
+	Attach         string   `toml:"attach"`
 	// Execution selects the execution plane for this task's setup/cleanup:
 	// "host" or "environment". Empty defaults to the workflow's own
 	// Environment (environment when declared, host otherwise) — see
