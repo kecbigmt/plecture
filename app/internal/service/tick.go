@@ -16,8 +16,8 @@ type TickParams struct {
 	Observer    task.Observer
 }
 
-// TickSession is the Goal Loop actuator (ADR amendment 2026-07-03, story
-// PR-C/PR-D): it refreshes outputs (unless SkipRefresh), evaluates done_when
+// TickSession is the Goal Loop actuator: it refreshes outputs (unless
+// SkipRefresh), evaluates done_when
 // for each produced task instance, and — unlike CheckSession — carries out
 // the result. A round advances only when the observed facts actually changed
 // since the last tick (checkActionForResult's fingerprint compare);

@@ -25,7 +25,7 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 	fingerprint := checkFingerprint(result)
 	sameDoneWhenState := fingerprint != "" && fingerprint == lastFingerprint
 
-	// Automatic post-exhaustion revival (issue #5): a prior escalation exhausted
+	// Automatic post-exhaustion revival: a prior escalation exhausted
 	// the round budget, but the resource has since observed a new revision that
 	// left one or more judge leaves stale. Rather than re-escalating forever,
 	// grant a fresh round budget so the tick can act again, and let the caller
@@ -145,8 +145,8 @@ func currentRevisionFromResult(result task.DoneWhenResult) string {
 
 // staleJudgeReviewers collects the recorded reviewer session for every judge
 // leaf that is pending because its verdict predates the current revision
-// (evalJudgeLeaf's "stale_judge" reason) — the sessions the automatic revival
-// kick (issue #5) targets.
+// (evalJudgeLeaf's "stale_judge" reason) — the sessions the automatic
+// post-exhaustion revival kick targets.
 func staleJudgeReviewers(result task.DoneWhenResult) []RevivalReviewer {
 	var out []RevivalReviewer
 	for _, leaf := range result.Leaves {

@@ -33,7 +33,7 @@ type CheckAction struct {
 	JudgeCommands   []string         `json:"judge_commands,omitempty"`
 	Fingerprint     string           `json:"fingerprint,omitempty"`
 	// RevivalRevision is non-empty when this action was produced by the
-	// automatic post-exhaustion revival path (issue #5): rounds were
+	// automatic post-exhaustion revival path: rounds were
 	// exhausted, the resource observed a new revision, and at least one
 	// judge leaf went stale as a result. Set, it both resets the round
 	// budget (Round/MaxRounds no longer read as exhausted) and marks the
@@ -45,7 +45,7 @@ type CheckAction struct {
 }
 
 // RevivalReviewer names one judge leaf's recorded reviewer session, targeted
-// by the automatic post-exhaustion revival kick (issue #5).
+// by the automatic post-exhaustion revival kick.
 type RevivalReviewer struct {
 	LeafID  string `json:"leaf_id"`
 	Session string `json:"session"`
@@ -106,8 +106,8 @@ type computedAction struct {
 // TickSession additionally publishes/persists per action and spawns each
 // fired, not-already-active chain. refresh is false for every CheckSession
 // call: check reads persisted state only, so that repeated calls cannot
-// themselves change what a session reports (story PR-C #4). Only tick
-// refreshes dynamic outputs.
+// themselves change what a session reports. Only tick refreshes dynamic
+// outputs.
 func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName string, refresh bool) (string, []computedAction, []ChainSpawn, []string, error) {
 	if sessionName == "" {
 		sessionName = os.Getenv("SENNIT_SESSION_NAME")
@@ -188,8 +188,8 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 // but only reports it: no round advances, no event is published, no session
 // is woken or spawned, and no dynamic output is refreshed — it reads whatever
 // tick (or the initial produce) last persisted. Calling it any number of
-// times leaves state, event log, and session list unchanged (story PR-C #4;
-// wiki verification-gate.md: "the target session's state does not change"). Use sennit tick
+// times leaves state, event log, and session list unchanged (the target
+// session's state does not change). Use sennit tick
 // to actually advance the gate, refresh outputs, and fire chains.
 func CheckSession(cfg *config.Config, store *state.Store, params CheckParams) (*CheckResult, error) {
 	_, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, false)

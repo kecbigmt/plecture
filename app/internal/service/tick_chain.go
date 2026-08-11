@@ -56,7 +56,7 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 }
 
 // publishAutoRevivalKicks delivers the automatic post-exhaustion re-evaluation
-// kick (issue #5) to each stale judge leaf's recorded reviewer session. It is
+// kick to each stale judge leaf's recorded reviewer session. It is
 // deduplicated per (work session, reviewer, instance, leaf, revision) by
 // scanning the reviewer's own log for a prior kick carrying the same dedup
 // key — belt-and-suspenders alongside the round-state dedup
