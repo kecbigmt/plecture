@@ -197,9 +197,9 @@ func TestSessionReactor_HeartbeatSweepTicksAfterElapsed(t *testing.T) {
 	waitLastTickAt(t, st, "o/r-1", floor)
 }
 
-// TestSessionReactor_UndeclaredHeartbeatNeverSweeps covers the second half of
-// AC4: with no `heartbeat` declared, the passage of time alone must never
-// tick a session (only a declared `on` match or the judge builtin can).
+// TestSessionReactor_UndeclaredHeartbeatNeverSweeps proves that with no
+// `heartbeat` declared, the passage of time alone must never tick a session
+// (only a declared `on` match or the judge builtin can).
 // heartbeatEvery is shortened so several sweep cycles fit in a fast test.
 func TestSessionReactor_UndeclaredHeartbeatNeverSweeps(t *testing.T) {
 	r, st, _ := newTestReactor(t, config.TickConfig{})
@@ -213,9 +213,9 @@ func TestSessionReactor_UndeclaredHeartbeatNeverSweeps(t *testing.T) {
 	}
 }
 
-// TestSessionReactor_ReactiveTickResetsHeartbeatWindow covers the other half of
-// AC4: a reactive tick resets the heartbeat clock, so a `heartbeat` sweep
-// due to fire soon after it must not fire an extra, redundant tick within
+// TestSessionReactor_ReactiveTickResetsHeartbeatWindow proves that a reactive
+// tick resets the heartbeat clock, so a `heartbeat` sweep due to fire soon
+// after it must not fire an extra, redundant tick within
 // that same window — but the sweep must still fire once a full window has
 // elapsed since the reset.
 func TestSessionReactor_ReactiveTickResetsHeartbeatWindow(t *testing.T) {

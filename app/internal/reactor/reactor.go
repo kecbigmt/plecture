@@ -54,7 +54,7 @@ type sessionReactor struct {
 	// behavior — buildReactor never sets it.
 	tickFn func(*config.Config, *state.Store, service.TickParams) (*service.CheckResult, error)
 	// heartbeatEvery defaults to heartbeatInterval; overridable in tests so
-	// AC4's heartbeat-sweep cases don't need to wait a full minute of wall clock.
+	// the heartbeat-sweep test cases don't need to wait a full minute of wall clock.
 	heartbeatEvery time.Duration
 }
 
