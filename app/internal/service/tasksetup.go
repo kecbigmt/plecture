@@ -48,7 +48,7 @@ type TaskSetupResult struct {
 }
 
 // TaskSetup instantiates a task definition at runtime against a live
-// session (ADR-003 dynamic instantiation). The same definition reachable as a
+// session. The same definition reachable as a
 // workflow DAG node is instantiated here on demand: setup runs, the instance
 // (outputs + cleanup + scope) is registered in session state, and teardown
 // reclaims it in reverse-instantiation order.

@@ -129,7 +129,7 @@ func (p *Poller) guard() *ratebudget.Guard {
 
 // Tick polls every subscription once, deduplicating fetches per fetchKey
 // (see that func for why branch is part of the key for issues but not PRs).
-// Per-repo GraphQL batching is a future optimization (see ADR-001).
+// Per-repo GraphQL batching is a future optimization.
 func (p *Poller) Tick() {
 	subs, err := p.Store.All()
 	if err != nil {

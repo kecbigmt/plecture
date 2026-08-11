@@ -81,7 +81,7 @@ type DoneWhenResult struct {
 	Leaves  []DoneLeafResult `json:"leaves,omitempty"`
 }
 
-// validateTaskRequires enforces the `requires` contract (ADR-003): when an
+// validateTaskRequires enforces the `requires` contract: when an
 // task declares `requires`, every done_when check leaf must read a required
 // output, and every required output must be a property of the task's outputs
 // schema. This makes the done_when ↔ observed-output wiring explicit and catches
