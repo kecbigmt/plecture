@@ -92,13 +92,13 @@ type WorkflowFile struct {
 // TickConfig declares when the tick reactor (internal/reactor) ticks a
 // session produced by this workflow, on top of the judge builtin trigger
 // (docs/wiki/verification-gate.md). Both fields are optional and independent:
-// On alone is pure reactive tick; StaleWhen alone is pure periodic refresh;
-// both together means notification-driven with a staleness backstop; neither
+// On alone is pure reactive tick; Heartbeat alone is pure periodic refresh;
+// both together means notification-driven with a heartbeat backstop; neither
 // means manual `sennit tick` and the judge builtin are the only drivers.
 //
 //	[tick]
-//	on         = ["resource.*"] # event type globs; a match ticks the session
-//	stale_when = "15m"          # tick if this long has passed since the last tick
+//	on        = ["resource.*"] # event type globs; a match ticks the session
+//	heartbeat = "15m"          # tick if this long has passed since the last tick
 //
 // On deliberately carries no provider-shaped default in core (any one
 // watcher's event types are just one possible value): which event namespaces
@@ -106,12 +106,12 @@ type WorkflowFile struct {
 // the same way wiring that watcher's channel is.
 type TickConfig struct {
 	On        []string `toml:"on"`
-	StaleWhen Duration `toml:"stale_when"`
-	// MaxStaleWhen caps the quiet-tick exponential backoff interval
-	// (stale_when * 2^n) the reactor applies when consecutive stale sweeps see
-	// no fingerprint change and no inbound event. Zero means the
+	Heartbeat Duration `toml:"heartbeat"`
+	// MaxHeartbeat caps the quiet-tick exponential backoff interval
+	// (heartbeat * 2^n) the reactor applies when consecutive heartbeat sweeps
+	// see no fingerprint change and no inbound event. Zero means the
 	// reactor's default (4h) applies — declaring it is optional.
-	MaxStaleWhen Duration `toml:"max_stale_when"`
+	MaxHeartbeat Duration `toml:"max_heartbeat"`
 }
 
 // WorkflowNode is a single instantiation of a task definition within a
@@ -889,6 +889,12 @@ func loadWorkflowFile(path string) (WorkflowFile, error) {
 	for _, key := range md.Undecoded() {
 		if len(key) == 1 && key[0] == "done_when" {
 			return wf, fmt.Errorf("workflow %s: `done_when` is retired at the workflow level; declare the completion predicate on the task definition's `[done_when]` instead", path)
+		}
+		if len(key) == 2 && key[0] == "tick" && key[1] == "stale_when" {
+			return wf, fmt.Errorf("workflow %s: `tick.stale_when` was renamed to `tick.heartbeat`; update the workflow file", path)
+		}
+		if len(key) == 2 && key[0] == "tick" && key[1] == "max_stale_when" {
+			return wf, fmt.Errorf("workflow %s: `tick.max_stale_when` was renamed to `tick.max_heartbeat`; update the workflow file", path)
 		}
 	}
 	wf.ID = stem

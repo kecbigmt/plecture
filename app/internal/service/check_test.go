@@ -505,7 +505,7 @@ func TestTickSession_KickCarriesStructuredUnmetItemsInEventMetadata(t *testing.T
 	}
 }
 
-// TestTickSession_StampsLastTickAt covers the reactor's `stale_when` sweep
+// TestTickSession_StampsLastTickAt covers the reactor's `heartbeat` sweep
 // precondition: every tick resets the session-level watermark, even for an
 // instance with no done_when leaves to evaluate.
 func TestTickSession_StampsLastTickAt(t *testing.T) {

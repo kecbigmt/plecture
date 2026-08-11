@@ -35,7 +35,7 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 	}
 
 	// Stamp unconditionally (even when no instance has a computed action): a
-	// tick always resets the `stale_when` staleness clock the reactor tracks,
+	// tick always resets the `heartbeat` clock the reactor tracks,
 	// whether or not anything was found unsatisfied this round.
 	if err := stampLastTick(store, resolvedName); err != nil {
 		return nil, err

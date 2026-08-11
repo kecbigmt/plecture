@@ -165,12 +165,12 @@ func TestSessionReactor_JudgeRecordedAlwaysTriggers(t *testing.T) {
 	waitLastTickAt(t, st, "o/r-1", floor)
 }
 
-// TestSessionReactor_StaleWhenSweepTicksAfterElapsed proves a session with no
-// `on` declared still ticks once `stale_when` has elapsed since its last
-// tick, using a shortened staleCheckInterval so the test doesn't wait a full
+// TestSessionReactor_HeartbeatSweepTicksAfterElapsed proves a session with no
+// `on` declared still ticks once `heartbeat` has elapsed since its last
+// tick, using a shortened heartbeatInterval so the test doesn't wait a full
 // minute.
-func TestSessionReactor_StaleWhenSweepTicksAfterElapsed(t *testing.T) {
-	r, st, _ := newTestReactor(t, config.TickConfig{StaleWhen: config.Duration{Duration: 20 * time.Millisecond}})
+func TestSessionReactor_HeartbeatSweepTicksAfterElapsed(t *testing.T) {
+	r, st, _ := newTestReactor(t, config.TickConfig{Heartbeat: config.Duration{Duration: 20 * time.Millisecond}})
 
 	floor := time.Now()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -178,9 +178,9 @@ func TestSessionReactor_StaleWhenSweepTicksAfterElapsed(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		// Drive checkStale directly on a short interval instead of running the
+		// Drive checkHeartbeat directly on a short interval instead of running the
 		// full 1-minute-cadence loop, so the test stays fast without weakening
-		// the assertion: checkStale is exactly what staleCheck.C invokes.
+		// the assertion: checkHeartbeat is exactly what heartbeat.C invokes.
 		ticker := time.NewTicker(5 * time.Millisecond)
 		defer ticker.Stop()
 		for {
@@ -188,7 +188,7 @@ func TestSessionReactor_StaleWhenSweepTicksAfterElapsed(t *testing.T) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				r.checkStale(ctx)
+				r.checkHeartbeat(ctx)
 			}
 		}
 	}()
@@ -197,34 +197,34 @@ func TestSessionReactor_StaleWhenSweepTicksAfterElapsed(t *testing.T) {
 	waitLastTickAt(t, st, "o/r-1", floor)
 }
 
-// TestSessionReactor_UndeclaredStaleWhenNeverSweeps covers the second half of
-// AC4: with no `stale_when` declared, the passage of time alone must never
+// TestSessionReactor_UndeclaredHeartbeatNeverSweeps covers the second half of
+// AC4: with no `heartbeat` declared, the passage of time alone must never
 // tick a session (only a declared `on` match or the judge builtin can).
-// staleCheckEvery is shortened so several sweep cycles fit in a fast test.
-func TestSessionReactor_UndeclaredStaleWhenNeverSweeps(t *testing.T) {
+// heartbeatEvery is shortened so several sweep cycles fit in a fast test.
+func TestSessionReactor_UndeclaredHeartbeatNeverSweeps(t *testing.T) {
 	r, st, _ := newTestReactor(t, config.TickConfig{})
-	r.staleCheckEvery = 5 * time.Millisecond
+	r.heartbeatEvery = 5 * time.Millisecond
 	stop := startReactor(t, r)
 	defer stop()
 
 	time.Sleep(80 * time.Millisecond) // several sweep cycles' worth
 	if s := st.Get("o/r-1"); s != nil && !s.LastTickAt.IsZero() {
-		t.Fatalf("session was ticked (LastTickAt = %s) with no stale_when declared", s.LastTickAt)
+		t.Fatalf("session was ticked (LastTickAt = %s) with no heartbeat declared", s.LastTickAt)
 	}
 }
 
-// TestSessionReactor_ReactiveTickResetsStaleWindow covers the other half of
-// AC4: a reactive tick resets the staleness clock, so a `stale_when` sweep
+// TestSessionReactor_ReactiveTickResetsHeartbeatWindow covers the other half of
+// AC4: a reactive tick resets the heartbeat clock, so a `heartbeat` sweep
 // due to fire soon after it must not fire an extra, redundant tick within
 // that same window — but the sweep must still fire once a full window has
 // elapsed since the reset.
-func TestSessionReactor_ReactiveTickResetsStaleWindow(t *testing.T) {
-	const staleWhen = 120 * time.Millisecond
+func TestSessionReactor_ReactiveTickResetsHeartbeatWindow(t *testing.T) {
+	const heartbeat = 120 * time.Millisecond
 	r, _, log := newTestReactor(t, config.TickConfig{
 		On:        []string{"resource.*"},
-		StaleWhen: config.Duration{Duration: staleWhen},
+		Heartbeat: config.Duration{Duration: heartbeat},
 	})
-	r.staleCheckEvery = 10 * time.Millisecond
+	r.heartbeatEvery = 10 * time.Millisecond
 
 	var mu sync.Mutex
 	var calls []time.Time
@@ -243,7 +243,7 @@ func TestSessionReactor_ReactiveTickResetsStaleWindow(t *testing.T) {
 	stop := startReactor(t, r)
 	defer stop()
 
-	// Wait past the startup stale check (immediate, since LastTickAt starts
+	// Wait past the startup heartbeat check (immediate, since LastTickAt starts
 	// zero) — this is the first call, establishing a real reset point.
 	deadline := time.Now().Add(2 * time.Second)
 	for callCount() == 0 && time.Now().Before(deadline) {
@@ -253,7 +253,7 @@ func TestSessionReactor_ReactiveTickResetsStaleWindow(t *testing.T) {
 		t.Fatalf("calls after startup = %d, want exactly 1", callCount())
 	}
 
-	// A reactive tick well inside the stale window resets it (the second call).
+	// A reactive tick well inside the heartbeat window resets it (the second call).
 	log.Append(event.Event{SessionName: "o/r-1", Type: "resource.updated"})
 	deadline = time.Now().Add(2 * time.Second)
 	for callCount() < 2 && time.Now().Before(deadline) {
@@ -263,10 +263,10 @@ func TestSessionReactor_ReactiveTickResetsStaleWindow(t *testing.T) {
 		t.Fatalf("calls after reactive trigger = %d, want exactly 2", callCount())
 	}
 
-	// Within staleWhen of the reset, no extra sweep tick must fire.
-	time.Sleep(staleWhen / 2)
+	// Within heartbeat of the reset, no extra sweep tick must fire.
+	time.Sleep(heartbeat / 2)
 	if got := callCount(); got != 2 {
-		t.Fatalf("calls within the reset window = %d, want still 2 (stale sweep must not double up)", got)
+		t.Fatalf("calls within the reset window = %d, want still 2 (heartbeat sweep must not double up)", got)
 	}
 
 	// Once a full window has elapsed since the reset, the sweep fires again.
@@ -275,7 +275,7 @@ func TestSessionReactor_ReactiveTickResetsStaleWindow(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	if callCount() != 3 {
-		t.Fatalf("calls after the stale window elapsed = %d, want exactly 3", callCount())
+		t.Fatalf("calls after the heartbeat window elapsed = %d, want exactly 3", callCount())
 	}
 }
 
@@ -398,7 +398,7 @@ func TestSupervisor_StartsAndStopsWithRunScope(t *testing.T) {
 }
 
 // TestBackoffInterval covers the pure doubling/cap arithmetic the quiet-tick
-// backoff relies on: stale_when * 2^n, capped at max, well-defined for n far
+// backoff relies on: heartbeat * 2^n, capped at max, well-defined for n far
 // beyond what would overflow a naive bit-shift.
 func TestBackoffInterval(t *testing.T) {
 	base := 15 * time.Minute
@@ -423,14 +423,14 @@ func TestBackoffInterval(t *testing.T) {
 
 // TestSessionReactor_QuietTickBackoffGrows proves a session with no
 // fingerprint change and no inbound event backs off exponentially: each
-// stale sweep's tick pushes the next required interval further out, up to
-// max_stale_when.
+// heartbeat sweep's tick pushes the next required interval further out, up to
+// max_heartbeat.
 func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
-	const staleWhen = 10 * time.Millisecond
-	const maxStaleWhen = 40 * time.Millisecond
+	const heartbeat = 10 * time.Millisecond
+	const maxHeartbeat = 40 * time.Millisecond
 	r, st, _ := newTestReactor(t, config.TickConfig{
-		StaleWhen:    config.Duration{Duration: staleWhen},
-		MaxStaleWhen: config.Duration{Duration: maxStaleWhen},
+		Heartbeat:    config.Duration{Duration: heartbeat},
+		MaxHeartbeat: config.Duration{Duration: maxHeartbeat},
 	})
 	tickCount := 0
 	r.tickFn = func(cfg *config.Config, store *state.Store, params service.TickParams) (*service.CheckResult, error) {
@@ -442,7 +442,7 @@ func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
 	// Round 1: never ticked (LastTickAt zero) → ticks immediately. There is no
 	// prior fingerprint/inbound baseline, so the empty-vs-empty comparison
 	// reads as "unchanged" and ConsecutiveUnchanged becomes 1.
-	r.checkStale(ctx)
+	r.checkHeartbeat(ctx)
 	if tickCount != 1 {
 		t.Fatalf("round 1: tickCount = %d, want 1", tickCount)
 	}
@@ -452,16 +452,16 @@ func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
 
 	// Force each subsequent round's elapsed time past the *current* backoff
 	// interval by rewinding LastTickAt, so the test doesn't wait real
-	// wall-clock multiples of stale_when.
+	// wall-clock multiples of heartbeat.
 	rewindAndSweep := func(n int) {
-		interval := backoffInterval(staleWhen, maxStaleWhen, n)
+		interval := backoffInterval(heartbeat, maxHeartbeat, n)
 		if err := st.Update("o/r-1", func(s *domain.Session) error {
 			s.LastTickAt = time.Now().Add(-interval - time.Millisecond)
 			return nil
 		}); err != nil {
 			t.Fatal(err)
 		}
-		r.checkStale(ctx)
+		r.checkHeartbeat(ctx)
 	}
 
 	rewindAndSweep(1)
@@ -484,7 +484,7 @@ func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
 
 	// Before the backed-off interval elapses, a sweep must not tick.
 	tickCount = 0
-	r.checkStale(ctx)
+	r.checkHeartbeat(ctx)
 	if tickCount != 0 {
 		t.Fatalf("sweep before interval elapsed ticked (tickCount=%d)", tickCount)
 	}
@@ -492,28 +492,28 @@ func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
 
 // TestSessionReactor_QuietTickBackoffResetsOnInbound proves AC3/AC5: an
 // inbound event since the last sweep resets ConsecutiveUnchanged to 0 even
-// though nothing else changed, so the next interval is stale_when again.
+// though nothing else changed, so the next interval is heartbeat again.
 func TestSessionReactor_QuietTickBackoffResetsOnInbound(t *testing.T) {
-	const staleWhen = 10 * time.Millisecond
-	r, st, log := newTestReactor(t, config.TickConfig{StaleWhen: config.Duration{Duration: staleWhen}})
+	const heartbeat = 10 * time.Millisecond
+	r, st, log := newTestReactor(t, config.TickConfig{Heartbeat: config.Duration{Duration: heartbeat}})
 	r.tickFn = service.TickSession
 	ctx := context.Background()
 
 	// Seed a few quiet rounds so ConsecutiveUnchanged > 0.
-	r.checkStale(ctx)
+	r.checkHeartbeat(ctx)
 	for range 2 {
 		n := 0
 		if s := st.Get("o/r-1"); s.TickBackoff != nil {
 			n = s.TickBackoff.ConsecutiveUnchanged
 		}
-		interval := backoffInterval(staleWhen, defaultMaxStaleWhen, n)
+		interval := backoffInterval(heartbeat, defaultMaxHeartbeat, n)
 		if err := st.Update("o/r-1", func(s *domain.Session) error {
 			s.LastTickAt = time.Now().Add(-interval - time.Millisecond)
 			return nil
 		}); err != nil {
 			t.Fatal(err)
 		}
-		r.checkStale(ctx)
+		r.checkHeartbeat(ctx)
 	}
 	if n := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged; n == 0 {
 		t.Fatalf("expected backoff to have grown before the inbound event, got n=%d", n)
@@ -532,29 +532,29 @@ func TestSessionReactor_QuietTickBackoffResetsOnInbound(t *testing.T) {
 	}
 
 	n := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged
-	interval := backoffInterval(staleWhen, defaultMaxStaleWhen, n)
+	interval := backoffInterval(heartbeat, defaultMaxHeartbeat, n)
 	if err := st.Update("o/r-1", func(s *domain.Session) error {
 		s.LastTickAt = time.Now().Add(-interval - time.Millisecond)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	r.checkStale(ctx)
+	r.checkHeartbeat(ctx)
 	if got := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged; got != 0 {
 		t.Fatalf("ConsecutiveUnchanged = %d after inbound event, want 0 (reset)", got)
 	}
 }
 
 // TestSessionReactor_QuietTickBackoffResetsOnInbound_WithoutForcedElapse
-// proves inbound is detected on the next sweep even when only stale_when
+// proves inbound is detected on the next sweep even when only heartbeat
 // (not the capped interval) has elapsed — unlike the sibling test above,
 // which forces the elapsed time past whatever interval is already current.
 func TestSessionReactor_QuietTickBackoffResetsOnInbound_WithoutForcedElapse(t *testing.T) {
-	const staleWhen = 10 * time.Millisecond
-	const maxStaleWhen = 40 * time.Millisecond
+	const heartbeat = 10 * time.Millisecond
+	const maxHeartbeat = 40 * time.Millisecond
 	r, st, log := newTestReactor(t, config.TickConfig{
-		StaleWhen:    config.Duration{Duration: staleWhen},
-		MaxStaleWhen: config.Duration{Duration: maxStaleWhen},
+		Heartbeat:    config.Duration{Duration: heartbeat},
+		MaxHeartbeat: config.Duration{Duration: maxHeartbeat},
 	})
 	r.tickFn = service.TickSession
 	ctx := context.Background()
@@ -578,40 +578,40 @@ func TestSessionReactor_QuietTickBackoffResetsOnInbound_WithoutForcedElapse(t *t
 		t.Fatal(err)
 	}
 
-	// Only stale_when has elapsed, not the capped interval.
+	// Only heartbeat has elapsed, not the capped interval.
 	if err := st.Update("o/r-1", func(s *domain.Session) error {
-		s.LastTickAt = time.Now().Add(-staleWhen - time.Millisecond)
+		s.LastTickAt = time.Now().Add(-heartbeat - time.Millisecond)
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	r.checkStale(ctx)
+	r.checkHeartbeat(ctx)
 	if got := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged; got != 0 {
-		t.Fatalf("ConsecutiveUnchanged = %d after inbound event with only stale_when elapsed, want 0 (reset, tick fired)", got)
+		t.Fatalf("ConsecutiveUnchanged = %d after inbound event with only heartbeat elapsed, want 0 (reset, tick fired)", got)
 	}
 }
 
 // TestSessionReactor_DrainTriggeredInboundTickResetsBackoff proves a tick
 // fired by drain's reactive path (a declared `on` pattern matching an inbound
-// event, not the stale sweep) also resets ConsecutiveUnchanged. doTick is the
+// event, not the heartbeat sweep) also resets ConsecutiveUnchanged. doTick is the
 // single actuation point for both paths, so a reactive tick must not leave
-// stale backoff bookkeeping in place — otherwise the next checkStale computes
+// heartbeat backoff bookkeeping in place — otherwise the next checkHeartbeat computes
 // its interval off an inflated n despite the inbound arrival that should have
-// reset it — backoff bookkeeping previously lived only in checkStale, so
+// reset it — backoff bookkeeping previously lived only in checkHeartbeat, so
 // drain-triggered ticks skipped it entirely.
 func TestSessionReactor_DrainTriggeredInboundTickResetsBackoff(t *testing.T) {
-	const staleWhen = 20 * time.Millisecond
+	const heartbeat = 20 * time.Millisecond
 	r, st, log := newTestReactor(t, config.TickConfig{
 		On:        []string{"resource.*"},
-		StaleWhen: config.Duration{Duration: staleWhen},
+		Heartbeat: config.Duration{Duration: heartbeat},
 	})
 	r.tickFn = service.TickSession
 	stop := startReactor(t, r)
 	defer stop()
 	time.Sleep(50 * time.Millisecond) // let run() seed, Watch, and reach its select
 
-	// Seed a grown backoff and a recent LastTickAt, as if several quiet stale
-	// sweeps already happened — the stale sweep alone would not fire again
+	// Seed a grown backoff and a recent LastTickAt, as if several quiet heartbeat
+	// sweeps already happened — the heartbeat sweep alone would not fire again
 	// for a long while.
 	floor := time.Now()
 	if err := st.Update("o/r-1", func(s *domain.Session) error {
@@ -624,7 +624,7 @@ func TestSessionReactor_DrainTriggeredInboundTickResetsBackoff(t *testing.T) {
 
 	// A declared-pattern event that direction normalization guarantees is
 	// Inbound for an externally-originated publish triggers a reactive tick
-	// via drain, independent of the stale sweep's cadence.
+	// via drain, independent of the heartbeat sweep's cadence.
 	log.Append(event.Event{SessionName: "o/r-1", Type: "resource.updated", Direction: event.Inbound})
 	waitLastTickAt(t, st, "o/r-1", floor)
 

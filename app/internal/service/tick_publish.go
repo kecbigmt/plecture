@@ -118,7 +118,7 @@ func wakeWarnings(wakeErr error) []string {
 }
 
 // stampLastTick records the session-level tick watermark the reactor's
-// `stale_when` sweep reads (wiki verification-gate.md: "once tick runs, the
+// `heartbeat` sweep reads (wiki verification-gate.md: "once tick runs, the
 // baseline is reset"). It is session-scoped, not per-instance, because tick
 // evaluates every produced instance of a session in one pass.
 func stampLastTick(store *state.Store, sessionName string) error {

@@ -101,7 +101,7 @@ func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReac
 	if s.Workflow != "" {
 		workflows, err := sup.cfg.LoadWorkflows(s.WorktreePath)
 		if err != nil {
-			sup.logger.Warn("reactor: load workflows failed; declared [tick]/stale_when inactive, judge builtin still active", "session", name, "error", err)
+			sup.logger.Warn("reactor: load workflows failed; declared [tick]/heartbeat inactive, judge builtin still active", "session", name, "error", err)
 		} else if wf, ok := workflows[s.Workflow]; ok && wf.Tick != nil {
 			tc = *wf.Tick
 		}

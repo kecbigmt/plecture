@@ -184,11 +184,11 @@ type Session struct {
 	Watchdog *WatchdogState `json:"watchdog,omitempty"`
 	// LastTickAt is the session-level watermark `sennit tick` stamps every time
 	// it runs (regardless of instance/action outcome). The tick reactor's
-	// `stale_when` sweep reads it to decide whether observation has gone
+	// `heartbeat` sweep reads it to decide whether observation has gone
 	// stale; a tick always resets it, so a session with a live notification
 	// path never accrues an extra sweep.
 	LastTickAt time.Time `json:"last_tick_at,omitzero"`
-	// TickBackoff is nil until the first stale sweep decides a tick, so a
+	// TickBackoff is nil until the first heartbeat sweep decides a tick, so a
 	// session that has never backed off keeps a clean state.json.
 	TickBackoff *TickBackoff `json:"tick_backoff,omitempty"`
 	CreatedAt   time.Time    `json:"created_at"`
@@ -205,19 +205,19 @@ type WatchdogState struct {
 }
 
 // TickBackoff is the quiet-tick exponential backoff bookkeeping the tick
-// reactor's `stale_when` sweep persists per session. It is
-// session-scoped like LastTickAt, not per-instance, because a stale sweep
-// evaluates every produced instance of a session in one pass and the backoff
-// applies to that combined observation.
+// reactor's `heartbeat` sweep persists per session. It is
+// session-scoped like LastTickAt, not per-instance, because a heartbeat
+// sweep evaluates every produced instance of a session in one pass and the
+// backoff applies to that combined observation.
 type TickBackoff struct {
 	// LastFingerprint is the composite done_when fingerprint (across every
-	// instance) as of the last stale sweep; a change resets ConsecutiveUnchanged.
+	// instance) as of the last heartbeat sweep; a change resets ConsecutiveUnchanged.
 	LastFingerprint string `json:"last_fingerprint,omitempty"`
 	// LastLogPosition is the event-log byte offset up to which inbound events
 	// have been scanned; an inbound event past it resets ConsecutiveUnchanged.
 	LastLogPosition int64 `json:"last_log_position,omitempty"`
-	// ConsecutiveUnchanged counts stale sweeps in a row with neither a
-	// fingerprint change nor an inbound event; interval = stale_when * 2^n.
+	// ConsecutiveUnchanged counts heartbeat sweeps in a row with neither a
+	// fingerprint change nor an inbound event; interval = heartbeat * 2^n.
 	ConsecutiveUnchanged int `json:"consecutive_unchanged,omitempty"`
 }
 

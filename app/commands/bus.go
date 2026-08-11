@@ -87,7 +87,7 @@ SENNIT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser)
 
 		// The tick reactor is dispatch's sibling: one per active session,
 		// ticking on a declared `[tick]` pattern, the judge builtin, or a
-		// `stale_when` sweep (docs/wiki/verification-gate.md), instead of
+		// `heartbeat` sweep (docs/wiki/verification-gate.md), instead of
 		// leaving `sennit tick` to an orchestrator's judgment or memory.
 		react := reactor.NewSupervisor(cfg, stateStore, store, hub)
 		var reactWG sync.WaitGroup
