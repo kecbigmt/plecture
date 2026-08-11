@@ -44,8 +44,8 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 }
 
 // unifiedTeardownList builds the single cleanup-ordered Resolved list for a
-// teardown phase (ADR-003): static plan nodes and dynamic instances merged into
-// one slice sorted by ascending instantiation Seq. RunCleanup reclaims in
+// teardown phase: static plan nodes and dynamic instances merged into one
+// slice sorted by ascending instantiation Seq. RunCleanup reclaims in
 // reverse, so the result is strictly the reverse of the instantiation stack —
 // a static node instantiated after a dynamic one (e.g. a re-`up` that re-stamps
 // run nodes) is still cleaned first. The @workflow pseudo-node is excluded; it

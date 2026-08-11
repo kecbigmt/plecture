@@ -86,11 +86,11 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
 
-	// ADR-003: a single reverse-instantiation teardown over every non-@workflow
-	// task — static plan nodes (run + session) and dynamic instances merged
-	// into one seq-descending pass. This is strictly the reverse of the
-	// instantiation stack, so a static node instantiated after a dynamic one is
-	// still cleaned first regardless of scope. @workflow (workdir) is released
+	// A single reverse-instantiation teardown over every non-@workflow task —
+	// static plan nodes (run + session) and dynamic instances merged into one
+	// seq-descending pass. This is strictly the reverse of the instantiation
+	// stack, so a static node instantiated after a dynamic one is still
+	// cleaned first regardless of scope. @workflow (workdir) is released
 	// last, below.
 	teardown, teardownErr := unifiedTeardownList(cfg, session, plan, false)
 	if teardownErr != nil {

@@ -46,9 +46,9 @@ func Down(cfg *config.Config, store *state.Store, params DownParams) (*DownResul
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
 
-	// ADR-003: a single reverse-instantiation teardown over the run-scoped
-	// tasks — static run nodes and run-scoped dynamic instances merged into
-	// one seq-descending pass, so a static node instantiated after a dynamic
+	// A single reverse-instantiation teardown over the run-scoped tasks —
+	// static run nodes and run-scoped dynamic instances merged into one
+	// seq-descending pass, so a static node instantiated after a dynamic
 	// one is still cleaned ahead of it.
 	teardown, teardownErr := unifiedTeardownList(cfg, session, plan, true)
 	if teardownErr != nil {
