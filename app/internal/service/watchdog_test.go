@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/kecbigmt/sennit/app/internal/config"
 	"github.com/kecbigmt/sennit/app/internal/domain"
 	"github.com/kecbigmt/sennit/app/internal/eventlog"
+	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/contracts/event"
 	contract "github.com/kecbigmt/sennit/contracts/state"
 )
@@ -449,6 +452,168 @@ func TestEvaluateHealth_EscalatedWorkIsNotExpectedFromThisSession(t *testing.T) 
 	}
 	if report.State() != domain.HealthHealthy {
 		t.Fatalf("report = %+v, state = %q, want healthy (escalated: not this session's turn to progress)", report, report.State())
+	}
+}
+
+// progressSourceFixtureConfig declares one run-scoped task "runner" with a
+// fixed-passing healthcheck and unmet done_when (so progress_expected is
+// true), plus a workflow-level `[tick]` heartbeat of 1m (freshness window
+// 2m) and a `[tick.progress_source]` dynamic output whose script is the
+// given shell snippet — the session-scoped analog of progressSignalCmd,
+// fetched via task.FetchOutput/task.RenderContext instead of a per-task
+// progress_signal command.
+func progressSourceFixtureConfig(t *testing.T, script string) *config.Config {
+	t.Helper()
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
+		id:          "runner",
+		scope:       contract.TaskScopeRun,
+		healthcheck: "true",
+		extra:       "[[done_when.all]]\ncheck = \"done\"\neq = \"yes\"\n",
+	}}, []nodeFixture{{id: "initial", uses: "runner"}})
+
+	path := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
+	extra := fmt.Sprintf("\n[tick]\nheartbeat = \"1m\"\n\n[tick.progress_source]\nname = \"fp\"\nscript = %q\n", script)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("open workflow fixture: %v", err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(extra); err != nil {
+		t.Fatalf("append tick.progress_source: %v", err)
+	}
+	return cfg
+}
+
+// progressSourceCmd is a stub progress-source script whose entire stdout is
+// the given opaque fingerprint — standing in for whatever concrete source a
+// devbox-side script (transcript mtime, VCS state, ...) would fetch.
+func progressSourceCmd(fingerprint string) string {
+	return fmt.Sprintf("echo %q", fingerprint)
+}
+
+// setProgressState seeds the session's persisted ProgressState directly,
+// standing in for a prior tick's fetch having already advanced (or not) the
+// fingerprint core has on record.
+func setProgressState(t *testing.T, store *state.Store, name, fingerprint string, observedAt time.Time) {
+	t.Helper()
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.Progress = &contract.ProgressState{Fingerprint: fingerprint, ObservedAt: observedAt}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed progress state: %v", err)
+	}
+}
+
+// TestEvaluateHealth_ProgressSourceFingerprintUnchangedPastWindowReadsStalled
+// pins the core-side comparison the issue asks for: the declared progress
+// source keeps reporting the same fingerprint core already has on record,
+// and core's own ObservedAt for that fingerprint is far outside the
+// freshness window — unmet done_when work makes this stalled, not healthy.
+func TestEvaluateHealth_ProgressSourceFingerprintUnchangedPastWindowReadsStalled(t *testing.T) {
+	store := testStore(t)
+	longAgo := time.Now().Add(-24 * time.Hour)
+	cfg := progressSourceFixtureConfig(t, progressSourceCmd("fp-1"))
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+	setProgressState(t, store, "owner/repo-1", "fp-1", longAgo)
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthStalled {
+		t.Fatalf("report = %+v, state = %q, want stalled (fingerprint unchanged past freshness window)", report, report.State())
+	}
+}
+
+// TestEvaluateHealth_ProgressSourceFingerprintAdvancedReadsHealthy is the
+// positive counterpart: the source now reports a fingerprint different from
+// the one core has on record, even though the record is stale — an advance
+// always reads healthy and resets core's own ObservedAt clock for it.
+func TestEvaluateHealth_ProgressSourceFingerprintAdvancedReadsHealthy(t *testing.T) {
+	store := testStore(t)
+	longAgo := time.Now().Add(-24 * time.Hour)
+	cfg := progressSourceFixtureConfig(t, progressSourceCmd("fp-2"))
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+	setProgressState(t, store, "owner/repo-1", "fp-1", longAgo)
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("report = %+v, state = %q, want healthy (fingerprint advanced)", report, report.State())
+	}
+
+	s := store.Get("owner/repo-1")
+	if s == nil || s.Progress == nil || s.Progress.Fingerprint != "fp-2" {
+		t.Fatalf("persisted progress = %+v, want fingerprint %q", s.Progress, "fp-2")
+	}
+	if s.Progress.ObservedAt.Before(longAgo.Add(23 * time.Hour)) {
+		t.Fatalf("persisted ObservedAt = %v, want reset to roughly now on advance", s.Progress.ObservedAt)
+	}
+}
+
+// TestEvaluateHealth_ProgressSourceFingerprintUnchangedWithinWindowReadsHealthy
+// pins the within-window boundary: same fingerprint core already has on
+// record, but core's own ObservedAt for it is recent — still healthy.
+func TestEvaluateHealth_ProgressSourceFingerprintUnchangedWithinWindowReadsHealthy(t *testing.T) {
+	store := testStore(t)
+	cfg := progressSourceFixtureConfig(t, progressSourceCmd("fp-1"))
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+	setProgressState(t, store, "owner/repo-1", "fp-1", time.Now())
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("report = %+v, state = %q, want healthy (fingerprint unchanged but within freshness window)", report, report.State())
+	}
+}
+
+// TestEvaluateHealth_NoProgressSourceDeclaredFallsBackToUndeclared confirms a
+// workflow declaring no `[tick.progress_source]` at all behaves exactly like
+// no progress signal being declared: undeclared, not stalled, despite unmet
+// done_when work — the dynamic-output source is optional, not mandatory.
+func TestEvaluateHealth_NoProgressSourceDeclaredFallsBackToUndeclared(t *testing.T) {
+	store := testStore(t)
+	cfg := progressSignalFixtureConfig(t, "") // no progress_signal, no progress_source
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthUndeclared {
+		t.Fatalf("report = %+v, state = %q, want undeclared (no progress source declared)", report, report.State())
 	}
 }
 

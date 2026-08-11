@@ -98,7 +98,85 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	if err != nil {
 		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
-	return evaluateHealthFor(name, s.Tasks, defs, sessionVars(s), progressFreshnessWindow(cfg, s.Workflow, s.WorktreePath)), nil
+	tick := sessionTickConfig(cfg, s.Workflow, s.WorktreePath)
+	window := progressFreshnessWindow(tick)
+	report := evaluateHealthFor(name, s.Tasks, defs, sessionVars(s), window)
+	applyProgressSource(cfg, store, s, tick, window, &report)
+	return report, nil
+}
+
+// sessionTickConfig loads the workflow this session was produced from and
+// returns its declared `[tick]` (nil if the workflow cannot be loaded or
+// declares none).
+func sessionTickConfig(cfg *config.Config, workflowID, worktreePath string) *config.TickConfig {
+	workflows, err := cfg.LoadWorkflows(worktreePath)
+	if err != nil {
+		return nil
+	}
+	wf, ok := workflows[workflowID]
+	if !ok {
+		return nil
+	}
+	return wf.Tick
+}
+
+// applyProgressSource layers a declared session-scoped progress source on
+// top of the per-task progress-signal evidence evaluateHealthFor already
+// computed. Fetched via the same task.FetchOutput plumbing a task instance's
+// dynamic outputs use, scoped to the session rather than any instance. Core
+// only compares the fetched value as an opaque fingerprint against the last
+// one it persisted for this session (ProgressState) — it never interprets
+// what the source script actually observed, and freshness is judged against
+// core's own ObservedAt clock, never a timestamp the script might report.
+func applyProgressSource(cfg *config.Config, store *state.Store, s *domain.Session, tick *config.TickConfig, window time.Duration, report *HealthReport) {
+	if tick == nil || tick.ProgressSource == nil {
+		return
+	}
+	src := *tick.ProgressSource
+	names := src.OutputNames()
+	if len(names) == 0 {
+		return
+	}
+	values, err := task.FetchOutput(context.Background(), cfg, src, task.RenderContext{Session: sessionVars(s)})
+	if err != nil {
+		// A fetch failure leaves this source with no basis to contribute
+		// right now — the same as if nothing were declared, not a stale
+		// judgment either way.
+		return
+	}
+	fingerprint := values[names[0]]
+	if fingerprint == "" {
+		return
+	}
+	report.ProgressDeclared = true
+
+	now := time.Now()
+	prev := s.Progress
+	advanced := prev == nil || prev.Fingerprint != fingerprint
+	observedAt := now
+	if !advanced {
+		observedAt = prev.ObservedAt
+	}
+	if advanced || now.Sub(observedAt) <= window {
+		report.ProgressFresh = true
+	}
+	if advanced {
+		persistProgressState(store, s.Name, fingerprint, now)
+	}
+}
+
+// persistProgressState records a progress source's fingerprint advancing.
+// Best-effort like persistWatchdogState: a transient store failure here must
+// not abort health evaluation, but must not be invisible either.
+func persistProgressState(store *state.Store, name, fingerprint string, observedAt time.Time) {
+	err := store.Update(name, func(s *domain.Session) error {
+		s.Progress = &contract.ProgressState{Fingerprint: fingerprint, ObservedAt: observedAt}
+		s.UpdatedAt = observedAt
+		return nil
+	})
+	if err != nil {
+		slog.Warn("persist progress state failed", "session", name, "error", err)
+	}
 }
 
 // defaultProgressFreshnessWindow applies when a workflow declares no
@@ -113,18 +191,13 @@ const defaultProgressFreshnessWindow = 30 * time.Minute
 // be revisited, and evidence older than a couple of those cycles is by
 // definition evidence the session's own cadence should have refreshed.
 // Doubling the heartbeat tolerates one missed cycle before calling a session
-// stalled. A workflow that cannot be loaded (or declares no tick/heartbeat)
-// falls back to defaultProgressFreshnessWindow.
-func progressFreshnessWindow(cfg *config.Config, workflowID, worktreePath string) time.Duration {
-	workflows, err := cfg.LoadWorkflows(worktreePath)
-	if err != nil {
+// stalled. A workflow that declares no tick/heartbeat (tick nil) falls back
+// to defaultProgressFreshnessWindow.
+func progressFreshnessWindow(tick *config.TickConfig) time.Duration {
+	if tick == nil || tick.Heartbeat.Duration <= 0 {
 		return defaultProgressFreshnessWindow
 	}
-	wf, ok := workflows[workflowID]
-	if !ok || wf.Tick == nil || wf.Tick.Heartbeat.Duration <= 0 {
-		return defaultProgressFreshnessWindow
-	}
-	return 2 * wf.Tick.Heartbeat.Duration
+	return 2 * tick.Heartbeat.Duration
 }
 
 // evaluateHealthFor is EvaluateHealth's pure core, taking already-loaded task
