@@ -68,7 +68,7 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 			Source:    event.SourceTick,
 			Summary:   action.Summary,
 			Body:      action.Body,
-			Metadata:  unmetItemsMetadata(instance, action.UnmetItems),
+			Metadata:  escalationMetadata(instance, action),
 		}); err != nil {
 			return nil, err
 		}
@@ -79,7 +79,7 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 			Type:     event.TypeTerminalEscalate,
 			Summary:  action.Summary,
 			Body:     action.Body,
-			Metadata: map[string]string{event.MetaInstance: instance},
+			Metadata: escalationMetadata(instance, action),
 			DedupKey: instance + "|escalate|" + action.Fingerprint,
 		})
 		if err != nil {
@@ -91,6 +91,14 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 		return wakeWarnings(wakeErr), nil
 	}
 	return nil, nil
+}
+
+func escalationMetadata(instance string, action CheckAction) map[string]string {
+	meta := unmetItemsMetadata(instance, action.UnmetItems)
+	if action.EscalationClass != "" {
+		meta["escalation_class"] = action.EscalationClass
+	}
+	return meta
 }
 
 // unmetItemsMetadata carries a kick/review_required/escalate event's unmet

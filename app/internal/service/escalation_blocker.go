@@ -77,6 +77,7 @@ func upsertEscalationBlockerForParent(store *state.Store, child, instance string
 			"child_fingerprint": action.Fingerprint,
 			"child_summary":     action.Summary,
 			"child_body":        action.Body,
+			"escalation_class":  action.EscalationClass,
 			"max_rounds":        action.MaxRounds,
 		}
 		s.UpdatedAt = now
@@ -201,6 +202,9 @@ func blockerBody(st *contract.TaskState, summary string) string {
 	child := outputString(st.Outputs, "child_session")
 	instance := outputString(st.Outputs, "child_instance")
 	fmt.Fprintf(&b, "Child: %s\nInstance: %s\nCurrent state: %s", child, instance, summary)
+	if class := outputString(st.Outputs, "escalation_class"); class != "" {
+		fmt.Fprintf(&b, "\nEscalation class: %s", class)
+	}
 	if original := outputString(st.Outputs, "child_body"); original != "" {
 		fmt.Fprintf(&b, "\n\nOriginal escalation:\n%s", original)
 	}

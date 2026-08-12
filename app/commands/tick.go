@@ -35,7 +35,11 @@ ticks and transfers blocker removal to the parent as a core-owned task. Event
 ticks still evaluate the child, so new revisions, judge verdicts, subscribed
 resource events, and chain firing remain live. Automatic revival handles stale
 judge verdicts after a new revision, stall observation handles runtime health,
-and escalation transfer handles round exhaustion.
+and escalation transfer handles round exhaustion. A current judge verdict
+recorded after a review request does not consume another round by itself; it
+unblocks the next worker or completion action on the same round. Escalations
+carry an escalation_class so the parent can distinguish external blockers
+from exhaustion during an active review loop.
 
 JSON actions are one of satisfied, wait, review_required, kick, escalate, or
 sleep. Each action carries max_rounds (0 means unbounded), a fingerprint for

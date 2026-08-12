@@ -588,6 +588,9 @@ func TestTickSession_NewDoneWhenStateCanEscalateAfterMaxRounds(t *testing.T) {
 	if len(result.Actions) != 1 || result.Actions[0].Action != "escalate" {
 		t.Fatalf("actions = %+v, want escalation on new done_when state after max rounds", result.Actions)
 	}
+	if result.Actions[0].EscalationClass != "blocked_on_external_actor" {
+		t.Fatalf("escalation_class = %q, want blocked_on_external_actor", result.Actions[0].EscalationClass)
+	}
 }
 
 func TestCheckSession_MaxRoundsZeroIsUnbounded(t *testing.T) {
@@ -663,6 +666,10 @@ func TestTickSession_EscalatesWhenJudgeKeepsRequestingChanges(t *testing.T) {
 			Outputs:  map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
 		},
 	})
+	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
+	seedSession(t, store, "owner/repo-1+review", "owner/repo", 1, "", nil)
+	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
+	setParent(t, store, "owner/repo-1+review", "owner/repo-orchestrator")
 	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
 		t.Fatalf("first TickSession: %v", err)
 	}
@@ -681,12 +688,29 @@ func TestTickSession_EscalatesWhenJudgeKeepsRequestingChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second TickSession: %v", err)
 	}
-	if len(result.Actions) != 1 || result.Actions[0].Action != "escalate" {
-		t.Fatalf("actions = %+v, want escalation after judge request_changes", result.Actions)
+	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" || result.Actions[0].Round != 1 {
+		t.Fatalf("actions = %+v, want same-round kick after judge request_changes", result.Actions)
 	}
 	state := store.Get("owner/repo-1").Tasks["initial"].DoneWhen
-	if state == nil || state.EscalateReason == "" || state.Judges["ac-met"].Action != "request_changes" {
-		t.Fatalf("done_when state = %+v", state)
+	if state == nil || state.Rounds != 1 || state.Judges["ac-met"].Action != "request_changes" {
+		t.Fatalf("done_when state = %+v, want judge verdict without a new round", state)
+	}
+
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Tasks["initial"].Outputs["checks_status"] = "FAILURE"
+		return nil
+	}); err != nil {
+		t.Fatalf("update checks_status: %v", err)
+	}
+	escalated, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	if err != nil {
+		t.Fatalf("third TickSession: %v", err)
+	}
+	if len(escalated.Actions) != 1 || escalated.Actions[0].Action != "escalate" {
+		t.Fatalf("actions = %+v, want escalation after a later non-judge fact change", escalated.Actions)
+	}
+	if escalated.Actions[0].EscalationClass != "budget_exhausted_while_converging" {
+		t.Fatalf("escalation_class = %q, want budget_exhausted_while_converging", escalated.Actions[0].EscalationClass)
 	}
 }
 
@@ -1025,6 +1049,9 @@ func TestTickSession_EscalationTransfersBlockerToParentAndResolves(t *testing.T)
 	if blocker.Outputs["child_fingerprint"] == "" {
 		t.Fatalf("blocker outputs = %+v, want child fingerprint recorded", blocker.Outputs)
 	}
+	if blocker.Outputs["escalation_class"] != "budget_exhausted" {
+		t.Fatalf("blocker escalation_class = %v, want budget_exhausted", blocker.Outputs["escalation_class"])
+	}
 
 	parentTick, err := TickSession(cfg, store, TickParams{SessionName: parent})
 	if err != nil {
@@ -1032,6 +1059,27 @@ func TestTickSession_EscalationTransfersBlockerToParentAndResolves(t *testing.T)
 	}
 	if len(parentTick.Actions) != 1 || parentTick.Actions[0].Action != "kick" || parentTick.Actions[0].Instance != blockerKey {
 		t.Fatalf("parent actions = %+v, want blocker kick", parentTick.Actions)
+	}
+
+	firstFingerprint := outputString(blocker.Outputs, "child_fingerprint")
+	if err := store.Update(child, func(s *domain.Session) error {
+		s.Tasks["initial"].Outputs["checks_status"] = "ERROR"
+		return nil
+	}); err != nil {
+		t.Fatalf("update child: %v", err)
+	}
+	if _, err := TickSession(cfg, store, TickParams{SessionName: child}); err != nil {
+		t.Fatalf("child re-escalation TickSession: %v", err)
+	}
+	updatedBlocker := store.Get(parent).Tasks[blockerKey]
+	if updatedBlocker == nil {
+		t.Fatalf("blocker %s missing after re-escalation", blockerKey)
+	}
+	if got := outputString(updatedBlocker.Outputs, "child_fingerprint"); got == "" || got == firstFingerprint {
+		t.Fatalf("updated child_fingerprint = %q, want changed from %q", got, firstFingerprint)
+	}
+	if updatedBlocker.DoneWhen != nil {
+		t.Fatalf("updated blocker done_when = %+v, want reset after re-escalation", updatedBlocker.DoneWhen)
 	}
 
 	if err := store.Update(child, func(s *domain.Session) error {

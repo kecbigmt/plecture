@@ -32,6 +32,7 @@ type CheckAction struct {
 	ReviewerCommand string           `json:"reviewer_command,omitempty"`
 	JudgeCommands   []string         `json:"judge_commands,omitempty"`
 	Fingerprint     string           `json:"fingerprint,omitempty"`
+	EscalationClass string           `json:"escalation_class,omitempty"`
 	// RevivalRevision is non-empty when this action was produced by the
 	// automatic post-exhaustion revival path: rounds were
 	// exhausted, the resource observed a new revision, and at least one

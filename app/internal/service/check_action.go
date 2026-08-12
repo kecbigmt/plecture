@@ -24,6 +24,7 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 	}
 	fingerprint := checkFingerprint(result)
 	sameDoneWhenState := fingerprint != "" && fingerprint == lastFingerprint
+	roundConsumesChange := doneWhenChangeConsumesRound(st, result)
 
 	// Automatic post-exhaustion revival: a prior escalation exhausted
 	// the round budget, but the resource has since observed a new revision that
@@ -78,23 +79,24 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 			Fingerprint: fingerprint,
 		}
 	}
-	if maxRounds > 0 && !sameDoneWhenState && rounds >= maxRounds {
+	if maxRounds > 0 && !sameDoneWhenState && roundConsumesChange && rounds >= maxRounds {
 		body := fmt.Sprintf("done_when exhausted after %d/%d round(s) for %s.\n\nUnmet items:\n%s", rounds, maxRounds, instance, unmetItemBulletList(unmetItems))
 		return CheckAction{
-			SessionName: sessionName,
-			Instance:    instance,
-			Action:      "escalate",
-			Round:       rounds,
-			MaxRounds:   maxRounds,
-			Items:       items,
-			UnmetItems:  unmetItems,
-			Summary:     fmt.Sprintf("done_when exhausted for %s", instance),
-			Body:        body,
-			Fingerprint: fingerprint,
+			SessionName:     sessionName,
+			Instance:        instance,
+			Action:          "escalate",
+			Round:           rounds,
+			MaxRounds:       maxRounds,
+			Items:           items,
+			UnmetItems:      unmetItems,
+			Summary:         fmt.Sprintf("done_when exhausted for %s", instance),
+			Body:            body,
+			Fingerprint:     fingerprint,
+			EscalationClass: escalationClassForResult(result),
 		}
 	}
 	nextRound := rounds
-	if !sameDoneWhenState {
+	if !sameDoneWhenState && roundConsumesChange {
 		nextRound = rounds + 1
 	}
 	if result.Overall == task.DonePending {
@@ -142,6 +144,55 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 		RevivalRevision:  revivalRevision,
 		RevivalReviewers: revivalReviewers,
 	}
+}
+
+func doneWhenChangeConsumesRound(st *contract.TaskState, result task.DoneWhenResult) bool {
+	if st.DoneWhen == nil || st.DoneWhen.LastAction != "review_required" {
+		return true
+	}
+	for _, leaf := range result.Leaves {
+		if leaf.Kind == "judge" && leaf.Action != "" && leaf.Revision == leaf.CurrentRevision {
+			return false
+		}
+	}
+	return true
+}
+
+func escalationClassForResult(result task.DoneWhenResult) string {
+	if hasCurrentJudgeVerdict(result) || hasStaleJudge(result) {
+		return "budget_exhausted_while_converging"
+	}
+	if hasPendingJudge(result) {
+		return "blocked_on_external_actor"
+	}
+	return "budget_exhausted"
+}
+
+func hasCurrentJudgeVerdict(result task.DoneWhenResult) bool {
+	for _, leaf := range result.Leaves {
+		if leaf.Kind == "judge" && leaf.Action != "" && leaf.Revision == leaf.CurrentRevision {
+			return true
+		}
+	}
+	return false
+}
+
+func hasStaleJudge(result task.DoneWhenResult) bool {
+	for _, leaf := range result.Leaves {
+		if leaf.Kind == "judge" && leaf.PendingReason == "stale_judge" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasPendingJudge(result task.DoneWhenResult) bool {
+	for _, leaf := range result.Leaves {
+		if leaf.Kind == "judge" && leaf.Status == task.DonePending {
+			return true
+		}
+	}
+	return false
 }
 
 // currentRevisionFromResult reads the current resource revision off any judge
