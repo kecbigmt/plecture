@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 func TestCompileWorkflow_DerivesDAGFromInputs(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 func TestHandleResourceStatus_ObservesMatchingDefinition(t *testing.T) {
 	setUpConfigHome(t)
 	home := os.Getenv("HOME")
-	resourcesDir := filepath.Join(home, ".config", "plecture", "resources")
+	resourcesDir := filepath.Join(home, ".config", "plect", "resources")
 	if err := os.MkdirAll(resourcesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

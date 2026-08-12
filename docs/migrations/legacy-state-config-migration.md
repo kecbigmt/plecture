@@ -2,12 +2,12 @@
 
 The `legacy-migration` plugin (`plugins/legacy-migration`) rewrites
 `state.json` and `config.toml` from the legacy forms produced by earlier
-plecture releases into the current forms, ahead of the follow-up changes that
+plect releases into the current forms, ahead of the follow-up changes that
 remove the code which still reads the legacy forms. Run it once per data
 directory before upgrading past that removal.
 
 This is a standalone, throwaway operator tool, not part of the core
-`plecture` CLI: once every data directory that needs it has been migrated,
+`plect` CLI: once every data directory that needs it has been migrated,
 this plugin (and the legacy field knowledge it embeds) can be deleted.
 
 ## What is migrated
@@ -48,7 +48,7 @@ this plugin (and the legacy field knowledge it embeds) can be deleted.
 
 ### Out of scope: `template render --url`
 
-The issue also names `plecture template render`'s `--url` flag. That flag is
+The issue also names `plect template render`'s `--url` flag. That flag is
 a CLI invocation argument, not persisted data — there is no "old form" of
 it sitting in a data directory for a migration script to rewrite. Removing
 the flag itself is left to the follow-up PR that deletes the legacy
@@ -78,9 +78,9 @@ or, for a one-off run without keeping the binary around:
 go run ./plugins/legacy-migration/cmd/legacy-migration
 ```
 
-By default this reads/writes `state.json` under `$XDG_DATA_HOME/plecture`
-(or `~/.local/share/plecture`) and `config.toml` at
-`~/.config/plecture/config.toml`. Override either location with
+By default this reads/writes `state.json` under `$XDG_DATA_HOME/plect`
+(or `~/.local/share/plect`) and `config.toml` at
+`~/.config/plect/config.toml`. Override either location with
 `--data-dir <dir>` or `--config <path>`.
 
 The command prints `nothing to do: ...` when both files are already in the
@@ -93,13 +93,13 @@ After running, confirm the rewritten files parse and look as expected:
 
 ```bash
 ./legacy-migration        # re-run: should print "nothing to do"
-jq . "$XDG_DATA_HOME/plecture/state.json" | grep -E 'url"|url_type|owner_repo|effects|"slack"'
+jq . "$XDG_DATA_HOME/plect/state.json" | grep -E 'url"|url_type|owner_repo|effects|"slack"'
 # ^ should print nothing — no legacy keys remain
-grep repo_allowlist ~/.config/plecture/config.toml
+grep repo_allowlist ~/.config/plect/config.toml
 # ^ should print nothing
 ```
 
-Then exercise the normal `plecture ls` / `plecture status` commands against the
+Then exercise the normal `plect ls` / `plect status` commands against the
 migrated data directory and confirm sessions still resolve correctly.
 
 ## Rollback
@@ -109,11 +109,11 @@ over the current ones:
 
 ```bash
 BACKUP_DIR=<path printed by the migrate run, e.g. .../migration-backups/20260101T000000.000000000>
-cp "$BACKUP_DIR/state.json" "$XDG_DATA_HOME/plecture/state.json"
-cp "$BACKUP_DIR/config.toml" ~/.config/plecture/config.toml
+cp "$BACKUP_DIR/state.json" "$XDG_DATA_HOME/plect/state.json"
+cp "$BACKUP_DIR/config.toml" ~/.config/plect/config.toml
 ```
 
 This restores both files byte-identical to their pre-migration state. No
-plecture process should be running against the data directory while the
+plect process should be running against the data directory while the
 rollback is applied, since a concurrent write could otherwise interleave
 with the copy.

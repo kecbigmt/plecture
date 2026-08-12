@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // InstanceKey derives the session.Tasks key for the numbered form of a dynamic
@@ -40,7 +40,7 @@ func ValidInstanceName(name string) bool {
 //
 // The session is single-machine and the key is session-local (not a capability,
 // so it need not be unguessable); the caller allocates the number under the
-// state lock so concurrent `plecture task setup`s cannot collide.
+// state lock so concurrent `plect task setup`s cannot collide.
 func NextInstanceNumber(taskID string, tasks map[string]*contract.TaskState) int {
 	prefix := taskID + "#"
 	max := 0

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kecbigmt/plecture/app/internal/procexec"
+	"github.com/kecbigmt/plect/app/internal/procexec"
 )
 
 type WorkspaceInfo struct {
@@ -79,7 +79,7 @@ func (m *Manager) SrcDir(repoDir string) string {
 
 // RepoDir returns the container directory holding every worktree of a
 // repository. repo is the repository's path relative to the worktrees root,
-// an opaque slug the caller supplies (plecture never derives it from the shape
+// an opaque slug the caller supplies (plect never derives it from the shape
 // of a resource identifier).
 func (m *Manager) RepoDir(repo string) string {
 	return filepath.Join(m.WorktreesRoot, filepath.FromSlash(repo))
@@ -396,7 +396,7 @@ func (m *Manager) isRegisteredWorktree(ctx context.Context, gitDir, wtPath strin
 // human-readable message rather than the exit status.
 func worktreeAddError(err error, stderr string) error {
 	if strings.Contains(stderr, "already checked out") || strings.Contains(stderr, "already used by worktree") {
-		return fmt.Errorf("git worktree add failed: %w\nHint: a worktree for this branch already exists. To start a separate session, use a tag:\n  plecture up <resource> --tag <tag>", err)
+		return fmt.Errorf("git worktree add failed: %w\nHint: a worktree for this branch already exists. To start a separate session, use a tag:\n  plect up <resource> --tag <tag>", err)
 	}
 	return fmt.Errorf("git worktree add failed: %w", err)
 }

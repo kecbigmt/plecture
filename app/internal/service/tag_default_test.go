@@ -86,7 +86,7 @@ func TestCreate_ExplicitTagOverridesDefault(t *testing.T) {
 	}
 }
 
-// TestUpCreateConvergeOnDefaultTag locks in the up/create symmetry: `plecture up`
+// TestUpCreateConvergeOnDefaultTag locks in the up/create symmetry: `plect up`
 // with no tag derives the same workflow-id-tagged name Create does, so the
 // auto-create reuses one session instead of forking a second.
 func TestUpCreateConvergeOnDefaultTag(t *testing.T) {

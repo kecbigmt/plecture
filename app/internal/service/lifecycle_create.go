@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // CreateParams holds parameters for Create — the task-aware counterpart of Add.
@@ -20,7 +20,7 @@ type CreateParams struct {
 	Tag           string
 	Workflow      string         // workflow name from --workflow; empty = auto-select
 	Inputs        map[string]any // frozen at create time; passing to an existing session returns ErrInvalidInput
-	ParentSession string         // parent session name; empty falls back to PLECTURE_SESSION_NAME when it exists and is not self.
+	ParentSession string         // parent session name; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
 }
 
@@ -106,7 +106,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	}
 	wf, ok := workflows[params.Workflow]
 	if !ok {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .plecture/workflows/%s.toml", params.Workflow, params.Workflow)}
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .plect/workflows/%s.toml", params.Workflow, params.Workflow)}
 	}
 	providers, err := cfg.LoadProviders()
 	if err != nil {

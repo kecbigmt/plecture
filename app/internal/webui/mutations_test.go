@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/service"
 )
 
 // postForm drives a same-origin htmx POST: it carries the matching CSRF cookie

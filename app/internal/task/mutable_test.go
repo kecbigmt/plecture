@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 func TestMutableOutputKeys_ExtractsAnnotatedKeys(t *testing.T) {
@@ -105,7 +105,7 @@ func TestCompileSchema_ToleratesMutableAnnotation(t *testing.T) {
 			"pr_state": map[string]any{"type": "string", "mutable": true},
 		},
 	}
-	compiled, err := CompileSchema(schema, "", "plecture:test:outputs")
+	compiled, err := CompileSchema(schema, "", "plect:test:outputs")
 	if err != nil {
 		t.Fatalf("CompileSchema: %v", err)
 	}

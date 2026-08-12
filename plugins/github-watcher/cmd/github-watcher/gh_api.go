@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/ratebudget"
+	"github.com/kecbigmt/plect/plugins/github-watcher/internal/ratebudget"
 )
 
 // cmdGhAPI is `github-watcher gh-api [--data-dir <dir>] <gh api args...>`:
@@ -23,7 +23,7 @@ import (
 // secondary rate limit. --data-dir, when given, must come first and must
 // match the poll loop's own --data-dir; there is no other flag of gh-api's
 // own to parse, since every remaining argument belongs to `gh api` and must
-// reach it unexamined (gh's own flags must never be parsed by plecture code).
+// reach it unexamined (gh's own flags must never be parsed by plect code).
 func cmdGhAPI(args []string) error {
 	dataDir := ""
 	if len(args) >= 2 && args[0] == "--data-dir" {

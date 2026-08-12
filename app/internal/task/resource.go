@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 // MatchResourceDef finds the resource definition whose `match` recognizes
@@ -50,7 +50,7 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (co
 // means no resource definition recognizes this id — the Resource contract is
 // optional, most instance-local resources have no declared kind. branch and
 // worktreePath describe the owning session (both empty for a standalone
-// `plecture resource status` call, which has no owning session) — an observe
+// `plect resource status` call, which has no owning session) — an observe
 // script may derive the current branch from worktreePath as its primary
 // identity signal for the resource.
 func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branch string, worktreePath string) (map[string]any, config.ResourceDef, bool, error) {
@@ -127,7 +127,7 @@ type finalizeTemplateData struct {
 // recognizes this resource id" and "the definition declares no finalize" —
 // every resource kind until a later ADR slice adds one (e.g. local-okf). Core
 // commits to nothing beyond "there was no completion record to write";
-// `plecture task finalize` treats that as expected, not an error.
+// `plect task finalize` treats that as expected, not an error.
 func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourceParams) (ran bool, def config.ResourceDef, err error) {
 	def, ok, merr := MatchResourceDef(defs, params.ResourceID)
 	if merr != nil {

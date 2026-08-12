@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/sessionhub"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/contracts/event"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/sessionhub"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/contracts/event"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // newTestReactor builds a sessionReactor over a fast-poll hub so tests don't
@@ -111,13 +111,13 @@ func TestSessionReactor_UndeclaredWorkflowDoesNotReactiveTick(t *testing.T) {
 // indistinguishable from a genuine externally published user.emit.
 func TestSessionReactor_SelfEmittedEventsNeverTrigger(t *testing.T) {
 	selfEmitted := []event.Event{
-		{Type: event.TypeTerminalDone, Source: event.SourcePlecture},
-		{Type: event.TypeTerminalEscalate, Source: event.SourcePlecture},
-		{Type: event.TypeTerminalDead, Source: event.SourcePlecture},
+		{Type: event.TypeTerminalDone, Source: event.SourcePlect},
+		{Type: event.TypeTerminalEscalate, Source: event.SourcePlect},
+		{Type: event.TypeTerminalDead, Source: event.SourcePlect},
 		{Type: event.TypeTickReviewRequired, Source: event.SourceTick},
 		{Type: event.TypeTickEscalated, Source: event.SourceTick},
 		{Type: event.TypeUserEmit, Source: event.SourceTick}, // tick's own kick output
-		{Type: event.TypeLifecyclePrefix + "created", Source: event.SourcePlecture},
+		{Type: event.TypeLifecyclePrefix + "created", Source: event.SourcePlect},
 	}
 	for _, fixture := range selfEmitted {
 		t.Run(fixture.Type+"/"+fixture.Source, func(t *testing.T) {
@@ -153,7 +153,7 @@ func TestSessionReactor_GenuineUserEmitStillTriggersWhenDeclared(t *testing.T) {
 
 // TestSessionReactor_JudgeRecordedAlwaysTriggers proves the judge builtin
 // trigger (AC2) fires with no `[tick].on` declared at all — the trigger is
-// plecture's own concept, not a declaration.
+// plect's own concept, not a declaration.
 func TestSessionReactor_JudgeRecordedAlwaysTriggers(t *testing.T) {
 	r, st, log := newTestReactor(t, config.TickConfig{})
 	stop := startReactor(t, r)

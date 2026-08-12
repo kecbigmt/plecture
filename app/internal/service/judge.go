@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 const outputKeyRevision = "revision"
@@ -51,10 +51,10 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 	}
 	sessionName := params.SessionName
 	if sessionName == "" {
-		sessionName = os.Getenv("PLECTURE_SESSION_NAME")
+		sessionName = os.Getenv("PLECT_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass --session or run inside a plecture session pane"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass --session or run inside a plect session pane"}
 	}
 	resolvedName, session, err := resolveSession(cfg, store, sessionName)
 	if err != nil {
@@ -73,10 +73,10 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 	}
 	reviewer := params.ReviewerSession
 	if reviewer == "" {
-		reviewer = os.Getenv("PLECTURE_SESSION_NAME")
+		reviewer = os.Getenv("PLECT_SESSION_NAME")
 	}
 	if reviewer == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: "reviewer session is required: pass --reviewer-session or run inside a reviewer plecture session pane"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "reviewer session is required: pass --reviewer-session or run inside a reviewer plect session pane"}
 	}
 	allSessions := store.All()
 	reviewerWorkflow := ""
@@ -135,7 +135,7 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 
 	// Builtin tick trigger (wiki verification-gate.md): a recorded judge ticks
 	// the *target* session even with no `[tick]` declared, because judge is
-	// plecture's own concept. Best-effort like recordLifecycle — a failed append
+	// plect's own concept. Best-effort like recordLifecycle — a failed append
 	// must not unwind the verdict that was already durably recorded above.
 	recordJudgeRecorded(store, resolvedName, judge)
 

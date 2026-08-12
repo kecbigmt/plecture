@@ -1,3 +1,3 @@
-module github.com/kecbigmt/plecture/contracts/state
+module github.com/kecbigmt/plect/contracts/state
 
 go 1.25.6

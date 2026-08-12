@@ -4,7 +4,7 @@
 # structure of work; a provider commitment belongs in plugins/ instead.
 #
 # Scope decision: an "owner/repo"-shaped identifier is treated as leakage,
-# not as plecture's own vocabulary. Session/resource names are opaque strings
+# not as plect's own vocabulary. Session/resource names are opaque strings
 # to core (contracts/event's own doc comment says as much) — an "owner/repo"
 # example is always borrowing a specific hosting provider's naming
 # convention, so it is caught alongside literal provider names.
@@ -19,7 +19,7 @@ cd "$root"
 # Each alternative targets a distinct leak:
 #   - a provider name (github/gh/pvti);
 #   - a session/resource-id EXAMPLE shaped like a GitHub-style "owner/repo"
-#     slug — plecture's own session names are opaque strings core never
+#     slug — plect's own session names are opaque strings core never
 #     interprets (see contracts/event doc comment), so a literal "owner/repo"
 #     or "<owner>/<repo>" placeholder in core is always a leaked assumption
 #     about a specific host's naming convention, never core's own vocabulary.

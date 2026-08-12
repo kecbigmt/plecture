@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/procexec"
+	"github.com/kecbigmt/plect/plugins/github-provider/internal/procexec"
 )
 
-// defaultRunner shells out to the real plecture CLI. Stdout is the JSON the
+// defaultRunner shells out to the real plect CLI. Stdout is the JSON the
 // workspace subcommands print, so it is captured rather than streamed; a
 // failure carries the child's stderr into the returned error, which is where
 // the caller surfaces it.

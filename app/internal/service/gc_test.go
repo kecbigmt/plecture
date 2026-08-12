@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 func TestClassifySession_WorktreeMissing(t *testing.T) {

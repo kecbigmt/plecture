@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
-// TaskCleanupParams are the inputs to TaskCleanup (the `plecture task cleanup`
+// TaskCleanupParams are the inputs to TaskCleanup (the `plect task cleanup`
 // path). Instance is the key to reclaim — a `--name` (e.g. `initial`) or a
 // numbered `<task>#<n>`. SessionName defaults to the ambient pane env.
 type TaskCleanupParams struct {
@@ -48,10 +48,10 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 
 	sessionName := params.SessionName
 	if sessionName == "" {
-		sessionName = os.Getenv("PLECTURE_SESSION_NAME")
+		sessionName = os.Getenv("PLECT_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a plecture session pane (PLECTURE_SESSION_NAME) or pass --session"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a plect session pane (PLECT_SESSION_NAME) or pass --session"}
 	}
 
 	resolvedName, session, err := resolveSession(cfg, store, sessionName)

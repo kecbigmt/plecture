@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/service"
 )
 
 var (
@@ -30,7 +30,7 @@ var workflowListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List available workflows",
-	Long: `List workflows discoverable from the cascade (global + ancestor .plecture/workflows/).
+	Long: `List workflows discoverable from the cascade (global + ancestor .plect/workflows/).
 
 Default output is a space-aligned table with ID / NAME / DESCRIPTION columns.
 Use --json for a fully structured listing; --no-header switches to tab-separated

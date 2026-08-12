@@ -1,3 +1,3 @@
-module github.com/kecbigmt/plecture/contracts/channel-protocol
+module github.com/kecbigmt/plect/contracts/channel-protocol
 
 go 1.25.6

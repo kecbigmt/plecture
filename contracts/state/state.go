@@ -1,8 +1,8 @@
-// Package state defines the shared contract types for plecture state.json.
+// Package state defines the shared contract types for plect state.json.
 //
 // These types represent the boundary data that other components
 // (slack-adapter) may read from state.json.
-// plecture owns and writes these; consumers read only.
+// plect owns and writes these; consumers read only.
 package state
 
 import (
@@ -19,15 +19,15 @@ type Conversation struct {
 }
 
 // Message is a session-level, self-reported free-text status line (e.g. an
-// agent's turn-boundary "working"/"waiting" self-report). plecture does not
-// interpret Text; it is a slot for external updaters, not a plecture concept.
+// agent's turn-boundary "working"/"waiting" self-report). plect does not
+// interpret Text; it is a slot for external updaters, not a plect concept.
 type Message struct {
 	Text      string    `json:"text"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // DoneWhenJudge is the reviewer-owned verdict for one done_when judge leaf.
-// Revision is an opaque provider value; plecture only compares it for exact equality
+// Revision is an opaque provider value; plect only compares it for exact equality
 // with the instance's current revision output.
 //
 // The record is self-contained: TargetSession / Instance name the work it
@@ -104,7 +104,7 @@ const EnvironmentPseudoNodeID = "@environment"
 
 // OutputKeyWorkdir is the reserved output key naming the session's working
 // directory. It is always immutable: declaring it `mutable = true` in an
-// outputs schema is a load error, and `plecture state set-output` rejects it.
+// outputs schema is a load error, and `plect state set-output` rejects it.
 const OutputKeyWorkdir = "workdir"
 
 // TaskState records the persisted outcome of a task's setup/cleanup.
@@ -118,11 +118,11 @@ const OutputKeyWorkdir = "workdir"
 //
 //   - Seq is the monotonically increasing instantiation order across every
 //     task in the session (workflow pseudo-node, static DAG nodes, and
-//     dynamic `plecture task setup` instances). Teardown reclaims tasks in
+//     dynamic `plect task setup` instances). Teardown reclaims tasks in
 //     descending Seq — the reverse of the single instantiation stack — so an
 //     task always outlives anything that depends on it. Zero on legacy state
 //     written before this field existed (such entries fall back to plan order).
-//   - Dynamic marks instances created at runtime via `plecture task setup` (as
+//   - Dynamic marks instances created at runtime via `plect task setup` (as
 //     opposed to static workflow DAG nodes). Dynamic instances are not in the
 //     compiled plan, so teardown reconstructs their cleanup from the task
 //     definition keyed by TaskID.
@@ -131,7 +131,7 @@ const OutputKeyWorkdir = "workdir"
 //   - Name is a `--name` instance identity for a dynamic instance: when set, the
 //     instance key IS the name (session-global unique, no `<task>#` prefix), so
 //     a second `setup --name <name>` collides. Empty for the numbered
-//     `<task>#<n>` form. Shown by `plecture status` / `ls`.
+//     `<task>#<n>` form. Shown by `plect status` / `ls`.
 type TaskState struct {
 	Scope         string          `json:"scope"`              // "session" | "run"
 	TaskID        string          `json:"task_id,omitempty"`  // workflow node's `uses` target; omitted when node id == task id (legacy)
@@ -139,7 +139,7 @@ type TaskState struct {
 	Inputs        map[string]any  `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
 	Outputs       map[string]any  `json:"outputs,omitempty"`  // parsed JSON from setup stdout
 	Seq           int             `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
-	Dynamic       bool            `json:"dynamic,omitempty"`  // true for runtime `plecture task setup` instances
+	Dynamic       bool            `json:"dynamic,omitempty"`  // true for runtime `plect task setup` instances
 	Resource      string          `json:"resource,omitempty"` // bound --resource at instantiation
 	Name          string          `json:"name,omitempty"`     // --name instance identity (key == name when set)
 	DoneWhen      *DoneWhenState  `json:"done_when,omitempty"`
@@ -147,11 +147,11 @@ type TaskState struct {
 	SetupAt       time.Time       `json:"setup_at,omitzero"`
 	FailedAt      time.Time       `json:"failed_at,omitzero"`
 	CleanedAt     time.Time       `json:"cleaned_at,omitzero"`
-	FinalizedAt   time.Time       `json:"finalized_at,omitzero"` // set by `plecture task finalize`; instance still awaits `plecture task cleanup`
+	FinalizedAt   time.Time       `json:"finalized_at,omitzero"` // set by `plect task finalize`; instance still awaits `plect task cleanup`
 	Error         string          `json:"error,omitempty"`
 }
 
-// Session is the shared representation of a plecture session in state.json.
+// Session is the shared representation of a plect session in state.json.
 // This contains all fields that external consumers may read.
 //
 // Workflow is the chosen workflow name (e.g. "coding-claude"). Frozen at create
@@ -182,7 +182,7 @@ type Session struct {
 	// is to turn "dead" into an explicit, propagated fact instead of
 	// something only discovered by whoever happens to poll next.
 	Watchdog *WatchdogState `json:"watchdog,omitempty"`
-	// LastTickAt is the session-level watermark `plecture tick` stamps every time
+	// LastTickAt is the session-level watermark `plect tick` stamps every time
 	// it runs (regardless of instance/action outcome). The tick reactor's
 	// `heartbeat` sweep reads it to decide whether observation has gone
 	// stale; a tick always resets it, so a session with a live notification
@@ -237,7 +237,7 @@ type TickBackoff struct {
 }
 
 // Tombstone is the durable snapshot a session leaves behind in its event log
-// directory when `plecture destroy` deletes its state.json entry. It embeds the
+// directory when `plect destroy` deletes its state.json entry. It embeds the
 // full Session (resource mapping, task outputs, done_when/judge records) so
 // that context survives destroy instead of being lost alongside the state
 // entry.

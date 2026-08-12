@@ -2,7 +2,9 @@
 
 **Give autonomous work a place to go.**
 
-Plecture is a local-first runtime that gives autonomous work durable structure: **identity**, **lifecycle**, **relationships**, **observation**, **verification**, and **handoff**. Work lives in inspectable, portable state that you own — a place to exist outside any single agent's context, and a place to move on from: back to a worker, on to a reviewer, up to a human, through verification to done.
+Plecture is the project: a local-first system for giving autonomous work durable structure. The tool is **plect**.
+
+`plect` gives autonomous work **identity**, **lifecycle**, **relationships**, **observation**, **verification**, and **handoff**. Work lives in inspectable, portable state that you own — a place to exist outside any single agent's context, and a place to move on from: back to a worker, on to a reviewer, up to a human, through verification to done.
 
 It is not an agent framework. It is not a workflow engine that dictates execution. It does not hide your tools behind a common abstraction. Plecture owns the semantics of work; the mechanisms that carry it out remain yours to choose and to swap. Claude Code or Codex. Git or another VCS. Worktrees or containers. tmux or another process host. These are choices at the edge, not assumptions at the core.
 

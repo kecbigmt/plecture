@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -23,7 +23,7 @@ func setupWorkflowFixture(t *testing.T) (*config.Config, string) {
 	t.Helper()
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plecture")
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestWorkflowShow_ReturnsCompiledDAG(t *testing.T) {
 func TestWorkflowShow_PopulatesChannels(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plecture")
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ uses = "tmux"
 name        = "runtime"
 uses        = "claude_channel"
 inputs.path = "{{.Nodes.tmux.outputs.session_name}}"
-include     = ["plecture.instruction", "github.*"]
+include     = ["plect.instruction", "github.*"]
 `)
 	cfg := config.Load()
 	got, err := WorkflowShow(cfg, filepath.Join(tmpHome, "worktrees", "session"), "withchan")
@@ -136,7 +136,7 @@ include     = ["plecture.instruction", "github.*"]
 	if ch.Name != "runtime" || ch.Uses != "claude_channel" || ch.Type != "unix_socket" {
 		t.Errorf("channel view = %+v", ch)
 	}
-	if len(ch.Include) != 2 || ch.Include[0] != "plecture.instruction" {
+	if len(ch.Include) != 2 || ch.Include[0] != "plect.instruction" {
 		t.Errorf("channel include = %+v", ch.Include)
 	}
 }
@@ -144,7 +144,7 @@ include     = ["plecture.instruction", "github.*"]
 func TestWorkflowShow_ChannelLoadErrorIsWrapped(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plecture")
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ include     = ["github.*"]
 func TestWorkflowShow_InvalidChannelReturnsInvalidInput(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plecture")
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestWorkflowShow_UnknownIDReturnsInvalidInput(t *testing.T) {
 func TestResolveSessionInputs_RejectsUnknownTask(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plecture")
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
 [inputs_schema]
@@ -272,7 +272,7 @@ uses = "noop"
 func TestResolveSessionInputs_MissingRequiredTaskListsChoices(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plecture")
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
 [inputs_schema]

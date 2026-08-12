@@ -6,7 +6,7 @@
 // Everything GitHub-specific lives here — how a resource identifier is
 // parsed, which branch a resource maps to, and how a repository's worktrees
 // are laid out under the worktrees root. The generic half (creating and
-// removing the worktree itself) is delegated to the plecture CLI's workspace
+// removing the worktree itself) is delegated to the plect CLI's workspace
 // subcommands, so this package never reimplements branch reuse, fetch
 // fallback, or primary-checkout resolution.
 package provider
@@ -17,15 +17,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/github"
+	"github.com/kecbigmt/plect/plugins/github-provider/internal/github"
 )
 
-// PlectureBinary is the plecture CLI the workspace calls are issued against. It
+// PlectBinary is the plect CLI the workspace calls are issued against. It
 // is a variable so tests can point it at a stub.
-var PlectureBinary = "plecture"
+var PlectBinary = "plect"
 
 // Runner executes a command and returns its stdout. It exists so the tests
-// can observe the workspace calls without a real plecture binary or a real
+// can observe the workspace calls without a real plect binary or a real
 // repository.
 type Runner func(ctx context.Context, name string, args ...string) ([]byte, error)
 
@@ -38,7 +38,7 @@ type SetupOptions struct {
 	// "<name>+<tag>" suffix, when present, is what separates one tool's
 	// workspace on a resource from another's.
 	SessionName string
-	// Runner executes the plecture workspace calls. Nil uses the real CLI.
+	// Runner executes the plect workspace calls. Nil uses the real CLI.
 	Runner Runner
 }
 
@@ -99,9 +99,9 @@ type CleanupOptions struct {
 	Workdir string
 	Branch  string
 	// Force removes the worktree even when it carries uncommitted changes,
-	// mirroring the caller's `plecture destroy --force` intent.
+	// mirroring the caller's `plect destroy --force` intent.
 	Force bool
-	// Runner executes the plecture workspace calls. Nil uses the real CLI.
+	// Runner executes the plect workspace calls. Nil uses the real CLI.
 	Runner Runner
 }
 
@@ -150,5 +150,5 @@ func run(ctx context.Context, runner Runner, args ...string) ([]byte, error) {
 	if runner == nil {
 		runner = defaultRunner
 	}
-	return runner(ctx, PlectureBinary, args...)
+	return runner(ctx, PlectBinary, args...)
 }

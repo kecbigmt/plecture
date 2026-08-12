@@ -7,12 +7,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	"github.com/kecbigmt/plecture/contracts/event"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/plect/contracts/event"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // HealthReport is the outcome of one Layer-2 liveness probe (ADR: cross-session
@@ -49,7 +49,7 @@ type HealthReport struct {
 	WakeWarning string `json:"wake_warning,omitempty"`
 }
 
-// State projects the report to the four-value display fact `plecture status`
+// State projects the report to the four-value display fact `plect status`
 // reports.
 //
 //   - Undeclared beats everything else when there is no declared healthcheck
@@ -84,7 +84,7 @@ func (r HealthReport) State() domain.HealthState {
 }
 
 // EvaluateHealth runs every produced run-scoped task's declared healthcheck
-// for name. A session with no produced run-scoped tasks (already `plecture down`,
+// for name. A session with no produced run-scoped tasks (already `plect down`,
 // or a purely session-scoped resource) has nothing to probe and reports
 // healthy — L2 only detects a process/runtime/subscription that died while it
 // was supposed to be up, not a session that was deliberately brought down.
@@ -284,7 +284,7 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 // same rule recursively (D4). When no ancestor in the chain is healthy, the
 // `dead` fact is recorded on the origin session's own log instead — core has
 // no generic owner-notification primitive; surfacing an undeliverable dead
-// fact to a human is a policy decision that lives above plecture (an owner's own
+// fact to a human is a policy decision that lives above plect (an owner's own
 // orchestrator loop noticing the record on its next poll, for instance).
 func WatchdogTick(cfg *config.Config, store *state.Store) ([]HealthReport, error) {
 	all := store.All()

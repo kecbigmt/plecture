@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/contracts/event"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/contracts/event"
+	contract "github.com/kecbigmt/plect/contracts/state"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 // publishTickAction delivers the side effect for a computed action (terminal
@@ -74,7 +74,7 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 		}
 		// Escalate is also pushed one hop to the parent (the goal loop's
 		// actuator layer), on top of the same-session record above (kept
-		// for plecture.tick.escalated compatibility and observability).
+		// for plect.tick.escalated compatibility and observability).
 		_, wakeErr, err := PublishTerminalToParent(cfg, store, sessionName, TerminalParams{
 			Type:     event.TypeTerminalEscalate,
 			Summary:  action.Summary,

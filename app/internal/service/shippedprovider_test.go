@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/task"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // repoRoot locates the repository root from this test file's own path, so a
@@ -80,7 +80,7 @@ func TestShippedProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
 // resource id carrying shell metacharacters is passed to the setup hook
 // literally rather than being interpreted by the shell that renders it. The
 // injected command runs (if unescaped) regardless of whether
-// plecture-github-provider is even on PATH, since bash executes every
+// plect-github-provider is even on PATH, since bash executes every
 // semicolon-separated command in "cmd1; cmd2" independent of cmd1's exit
 // status — so this test needs no built binaries.
 func TestShippedProvider_SetupHookDoesNotShellInjectResourceID(t *testing.T) {
@@ -90,7 +90,7 @@ func TestShippedProvider_SetupHookDoesNotShellInjectResourceID(t *testing.T) {
 
 	tasks := map[string]*contract.TaskState{}
 	vars := task.WorkflowHookVars{ResourceID: malicious, SessionName: "acme/widgets-1"}
-	// Setup is expected to fail (plecture-github-provider is not on PATH in this
+	// Setup is expected to fail (plect-github-provider is not on PATH in this
 	// test and the resource id is not a valid URL); only the absence of the
 	// injected side effect is under test.
 	_, _ = task.RunWorkflowSetup(prov, vars, tasks, nil)

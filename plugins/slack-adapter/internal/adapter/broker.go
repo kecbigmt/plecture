@@ -145,7 +145,7 @@ func (b *Broker) load() {
 }
 
 // persist writes subs to b.path atomically (tmp → rename), deliberately
-// without the fsync that contracts/atomicfile applies to plecture's durable paths
+// without the fsync that contracts/atomicfile applies to plect's durable paths
 // (state, subscription registries, event cursors): losing the last write
 // before a crash just means a stale reload, self-healed by producers
 // re-registering, so paying an fsync on every subscribe/unsubscribe isn't

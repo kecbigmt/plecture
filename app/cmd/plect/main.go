@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/kecbigmt/plecture/app/commands"
+	"github.com/kecbigmt/plect/app/commands"
 )
 
 func main() {

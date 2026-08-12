@@ -1,10 +1,10 @@
 package webui
 
 import (
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 // LiveService is the production SessionService: it calls service.* against the

@@ -3,9 +3,9 @@ package service
 import (
 	"fmt"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 // buildPlanForSession honors the workflow name frozen on the session so
@@ -20,7 +20,7 @@ func buildPlanForSession(cfg *config.Config, worktreeDir string, session *domain
 	return buildWorkflowPlan(cfg, worktreeDir, session.Workflow)
 }
 
-// buildWorkflowPlan loads `.plecture/workflows/<name>.toml` (+ referenced task
+// buildWorkflowPlan loads `.plect/workflows/<name>.toml` (+ referenced task
 // definitions) and compiles it. Returns a clear "not found" error when the
 // named workflow is missing so the CLI surfaces "did you forget to add the
 // file?" instead of an empty plan that silently does nothing.
@@ -31,7 +31,7 @@ func buildWorkflowPlan(cfg *config.Config, worktreeDir, name string) (*task.Plan
 	}
 	wf, ok := workflows[name]
 	if !ok {
-		return nil, fmt.Errorf("workflow %q not found in .plecture/workflows or global config", name)
+		return nil, fmt.Errorf("workflow %q not found in .plect/workflows or global config", name)
 	}
 	defs, err := cfg.LoadTaskDefinitions(worktreeDir)
 	if err != nil {
@@ -57,7 +57,7 @@ func selectWorkflow(cfg *config.Config, worktreeDir, flag string) (string, *Erro
 	}
 	if flag != "" {
 		if _, ok := workflows[flag]; !ok {
-			return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .plecture/workflows/%s.toml", flag, flag)}
+			return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .plect/workflows/%s.toml", flag, flag)}
 		}
 		return flag, nil
 	}
@@ -65,7 +65,7 @@ func selectWorkflow(cfg *config.Config, worktreeDir, flag string) (string, *Erro
 	case 0:
 		return "", &Error{
 			Code:    ErrInvalidInput,
-			Message: "no workflows found; add .plecture/workflows/<name>.toml or pass --workflow",
+			Message: "no workflows found; add .plect/workflows/<name>.toml or pass --workflow",
 		}
 	case 1:
 		for name := range workflows {

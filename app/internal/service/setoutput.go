@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
+	contract "github.com/kecbigmt/plect/contracts/state"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -141,7 +141,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		}
 		wf, ok := workflows[session.Workflow]
 		if !ok {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q not found in .plecture/workflows or global config", session.Workflow)}
+			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q not found in .plect/workflows or global config", session.Workflow)}
 		}
 		providers, loadErr := cfg.LoadProviders()
 		if loadErr != nil {
@@ -158,7 +158,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		if mErr != nil {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("provider %q: outputs schema: %v", prov.ID, mErr)}
 		}
-		compiled, cErr := task.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plecture:provider:"+prov.ID+":outputs")
+		compiled, cErr := task.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:provider:"+prov.ID+":outputs")
 		if cErr != nil {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("provider %q: outputs schema: %v", prov.ID, cErr)}
 		}
@@ -187,7 +187,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		if mErr != nil {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, mErr)}
 		}
-		compiled, cErr := task.CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plecture:task:"+taskID+":outputs")
+		compiled, cErr := task.CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plect:task:"+taskID+":outputs")
 		if cErr != nil {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, cErr)}
 		}

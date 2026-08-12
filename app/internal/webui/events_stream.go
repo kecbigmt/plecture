@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 // busClient builds a fresh bus client per request from the configured socket
@@ -35,7 +35,7 @@ const streamTailLimit = eventTimelineLimit
 
 // handleSessionEventsStream is the browser-facing SSE endpoint for the live
 // timeline. The browser's EventSource cannot dial the bus's Unix socket nor
-// send a bearer header, so plecture-web opens the bus stream server-side and relays
+// send a bearer header, so plect-web opens the bus stream server-side and relays
 // each event as a rendered <li> fragment (same-origin, no token in the browser).
 //
 // A fresh connect replays the most recent streamTailLimit events then follows

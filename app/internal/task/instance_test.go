@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 func TestInstanceKey(t *testing.T) {

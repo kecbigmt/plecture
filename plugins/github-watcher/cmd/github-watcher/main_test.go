@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/watcher"
+	"github.com/kecbigmt/plect/plugins/github-watcher/internal/watcher"
 )
 
 func TestConfigureDeliveryRequiresBusUnlessLegacyOptIn(t *testing.T) {
 	var poller watcher.Poller
 	delivery, err := configureDelivery(&poller, "", "", "http://127.0.0.1:7890/notify", false)
 	if err == nil {
-		t.Fatal("expected missing PLECTURE_BUS_SOCKET to fail without legacy opt-in")
+		t.Fatal("expected missing PLECT_BUS_SOCKET to fail without legacy opt-in")
 	}
 	if delivery != "" {
 		t.Errorf("delivery = %q, want empty", delivery)
@@ -26,7 +26,7 @@ func TestConfigureDeliveryRequiresBusUnlessLegacyOptIn(t *testing.T) {
 
 func TestConfigureDeliveryUsesBusWhenSocketIsSet(t *testing.T) {
 	var poller watcher.Poller
-	delivery, err := configureDelivery(&poller, "/tmp/plecture-bus.sock", "secret", "http://127.0.0.1:7890/notify", true)
+	delivery, err := configureDelivery(&poller, "/tmp/plect-bus.sock", "secret", "http://127.0.0.1:7890/notify", true)
 	if err != nil {
 		t.Fatal(err)
 	}

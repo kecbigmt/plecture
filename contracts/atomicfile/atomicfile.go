@@ -23,7 +23,7 @@ import (
 //
 // Write does not fsync the parent directory after rename. That would
 // additionally guarantee the rename survives a bare power-loss crash, not
-// just a process crash — a stronger bound none of plecture's current durable
+// just a process crash — a stronger bound none of plect's current durable
 // paths need, since losing the last write immediately before power loss
 // degrades to "reload/resubscribe from the last durable point", not
 // corruption. Add a directory fsync at the call site if a future path needs

@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/state"
 )
 
 var (
@@ -33,16 +33,16 @@ in dependency-respecting order. Outputs from session-scoped tasks (already
 set up during auto-create) are available to run-scoped tasks via {{.Tasks.<id>.<key>}}.
 
 After setup, docker-compose-style: on a TTY 'up' hands off to the workflow's
-attach target by replacing the plecture process via syscall.Exec.
+attach target by replacing the plect process via syscall.Exec.
 Pass -d/--detach to skip the hand-off and return after setup, the way 'up'
 behaved before. Non-TTY stdout (MCP, cron, scripts) is treated as --detach
-automatically; the MCP plecture_up tool is always detached. Workflows without an
+automatically; the MCP plect_up tool is always detached. Workflows without an
 attach target return after setup regardless of TTY.
 
 --tag selects the session's workspace-identity label. Omitted, it defaults to
-the workflow id, so repeated 'plecture up <resource-id> --workflow X' calls
+the workflow id, so repeated 'plect up <resource-id> --workflow X' calls
 converge on the same session. Pass --tag to
-resolve a specifically-labelled session (e.g. 'plecture up <resource-id> --tag X'
+resolve a specifically-labelled session (e.g. 'plect up <resource-id> --tag X'
 reuses that tagged session). --tag is only valid with a
 resource identifier, not a bare session name (the name already encodes the tag).
 
@@ -92,7 +92,7 @@ state so the next setup cannot resume from .Prev, then runs setup again.`,
 }
 
 // autoAttach resolves the workflow's attach target and hands the TTY over via
-// syscall.Exec, mirroring `plecture attach`. A workflow without an attach target
+// syscall.Exec, mirroring `plect attach`. A workflow without an attach target
 // returns nil so `up` exits cleanly — the no-attach case is not an error,
 // it's just the detached path.
 func autoAttach(cfg *config.Config, store *state.Store, sessionName string) error {
@@ -127,7 +127,7 @@ func init() {
 	upCmd.Flags().StringVar(&upInputs, "inputs", "", "Session inputs as a JSON object string (auto-create path only)")
 	upCmd.Flags().StringVar(&upInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object (auto-create path only)")
 	upCmd.Flags().StringVar(&upTask, "task", "", "Shorthand for --inputs '{\"task\":\"<id>\"}' (auto-create path only). Pass \"none\" for no initial task.")
-	upCmd.Flags().StringVar(&upParent, "parent", "", "Parent session name for auto-created sessions, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $PLECTURE_SESSION_NAME when it names an existing session")
+	upCmd.Flags().StringVar(&upParent, "parent", "", "Parent session name for auto-created sessions, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $PLECT_SESSION_NAME when it names an existing session")
 	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Return after setup instead of attaching (docker-compose-style up -d)")
 	upCmd.Flags().BoolVar(&upRecreate, "force-recreate", false, "Rebuild the session runtime instead of resuming existing task outputs")
 	rootCmd.AddCommand(upCmd)

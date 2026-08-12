@@ -46,7 +46,7 @@ mkdir -p "$dirty2/app/commands" "$dirty2/contracts"
 cat > "$dirty2/app/commands/seeded_ownerrepo.go" <<'EOF'
 package commands
 
-// Example: plecture cd owner/repo
+// Example: plect cd owner/repo
 const seededExample = "owner/repo"
 EOF
 

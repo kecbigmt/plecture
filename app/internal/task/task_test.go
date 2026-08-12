@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // recordingObserver captures observer events for assertions.
@@ -407,7 +407,7 @@ func TestRunSetup_RetriesCleaned(t *testing.T) {
 }
 
 // Setup must see the previous run's outputs via .Prev when a cleaned state
-// is replayed (e.g. `plecture down` followed by `plecture up`). This is what enables
+// is replayed (e.g. `plect down` followed by `plect up`). This is what enables
 // tasks like claude to keep a stable session_id across restarts.
 func TestRunSetup_PrevCarriesPreviousOutputs(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
@@ -628,7 +628,7 @@ func TestRunCleanup_FailedSetupRendersZeroes(t *testing.T) {
 // A cleanup script that errors must flip the task's Status to failed.
 // The status table treats "failed" as covering both setup and cleanup
 // errors — leaving the entity at "produced" after a failed teardown would
-// hide the broken state from later `plecture up` (which skips produced tasks).
+// hide the broken state from later `plect up` (which skips produced tasks).
 func TestRunCleanup_FailureFlipsToFailed(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")

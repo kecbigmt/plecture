@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	"github.com/kecbigmt/plecture/contracts/event"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/plect/contracts/event"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 func TestTaskSetup_AppendsInstructionEvent(t *testing.T) {
@@ -31,10 +31,10 @@ func TestTaskSetup_AppendsInstructionEvent(t *testing.T) {
 
 	evs, _, _, err := eventlog.NewStore(store.Dir()).List("o/r-1", 0, event.Filter{Types: []string{event.TypeInstruction}})
 	if err != nil || len(evs) != 1 {
-		t.Fatalf("want one plecture.instruction event, got %d (err=%v)", len(evs), err)
+		t.Fatalf("want one plect.instruction event, got %d (err=%v)", len(evs), err)
 	}
 	ev := evs[0]
-	if ev.Body != "resolve the issue" || ev.Direction != event.Inbound || ev.Source != event.SourcePlecture {
+	if ev.Body != "resolve the issue" || ev.Direction != event.Inbound || ev.Source != event.SourcePlect {
 		t.Errorf("instruction event = %+v", ev)
 	}
 	if ev.Metadata["task"] != "work#1" || ev.Metadata["resource"] != "https://github.com/o/r/issues/1" {
@@ -520,7 +520,7 @@ func TestDestroy_ReclaimsDynamicSessionInstance(t *testing.T) {
 	}
 }
 
-// Concurrent `plecture task run`s against one session must all survive with
+// Concurrent `plect task run`s against one session must all survive with
 // distinct keys (the under-lock reservation prevents two runs allocating the
 // same sequential number) and distinct Seq (the merge re-reads under the lock).
 func TestTaskSetup_ConcurrentInstancesDistinctSeq(t *testing.T) {

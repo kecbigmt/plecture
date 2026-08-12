@@ -3,8 +3,8 @@ package service
 import (
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 func TestProjectTemplateVars(t *testing.T) {

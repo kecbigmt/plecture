@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/task"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 func checkActionForResult(sessionName, instance, resource string, dw *config.DoneWhen, st *contract.TaskState, result task.DoneWhenResult) CheckAction {
@@ -164,7 +164,7 @@ func reviewerDispatchCommand(resource, instance string) string {
 	}
 	// Which reviewer workflow runs is a chaining concern, not a judge-leaf field;
 	// this advisory suggestion defaults to claude until chaining (slice 6) owns it.
-	return fmt.Sprintf("plecture up %q --workflow claude --task review --tag %s", resource, reviewerTag(instance))
+	return fmt.Sprintf("plect up %q --workflow claude --task review --tag %s", resource, reviewerTag(instance))
 }
 
 func judgeCommands(sessionName, instance string, items []CheckUnmetItem) []string {
@@ -182,7 +182,7 @@ func judgeCommands(sessionName, instance string, items []CheckUnmetItem) []strin
 }
 
 func judgeCommand(action, sessionName, instance, id string) string {
-	return fmt.Sprintf("plecture judge %s %q %q %q --reason %q", action, sessionName, instance, id, "<reason>")
+	return fmt.Sprintf("plect judge %s %q %q %q --reason %q", action, sessionName, instance, id, "<reason>")
 }
 
 func reviewerTag(instance string) string {

@@ -17,8 +17,8 @@ Steps:
 8. Create a PR (`gh pr create`)
 9. Move the issue to "In Review" on the project board using `kbn_update_item_field` (field_name: "Status", value: "In Review")
 
-To track a related PR (one you opened, or a dependency you're waiting on), run `plecture subscribe <pr-url>` — its CI / review / merge events then arrive in this session (`plecture event list`).
-To ask another session to act (e.g. request a re-review after pushing fixes), publish an event to it (`plecture event publish <target-session> --type user.emit ...`) — a GitHub PR comment is a public mirror, not a delivery channel, and may never reach it.
+To track a related PR (one you opened, or a dependency you're waiting on), run `plect subscribe <pr-url>` — its CI / review / merge events then arrive in this session (`plect event list`).
+To ask another session to act (e.g. request a re-review after pushing fixes), publish an event to it (`plect event publish <target-session> --type user.emit ...`) — a GitHub PR comment is a public mirror, not a delivery channel, and may never reach it.
 
 **Note for unattended sessions:** this session cannot ask the user interactive
 questions. If a judgment call is needed, write the question as an issue/PR

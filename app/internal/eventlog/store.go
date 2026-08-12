@@ -1,5 +1,5 @@
 // Package eventlog is the durable, append-only per-session event log that backs
-// the plecture event bus. It is the source of truth: a session's log.jsonl is the
+// the plect event bus. It is the source of truth: a session's log.jsonl is the
 // authoritative queue; the bus server tails it to fan out to subscribers.
 //
 // The log is provider-agnostic: it treats session_name as an opaque string and
@@ -27,8 +27,8 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
-	"github.com/kecbigmt/plecture/contracts/atomicfile"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/kecbigmt/plect/contracts/atomicfile"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 // pollInterval is how often Follow checks the log for new records. A poll
@@ -47,7 +47,7 @@ type Store struct {
 // e.g. confirming the bus daemon and writers resolve the same log tree).
 func (s *Store) Root() string { return s.root }
 
-// NewStore creates a Store. If dir is empty it defaults to ~/.local/share/plecture
+// NewStore creates a Store. If dir is empty it defaults to ~/.local/share/plect
 // (honoring XDG_DATA_HOME), matching state.NewStore so both live side by side.
 func NewStore(dir string) *Store {
 	if dir == "" {
@@ -56,7 +56,7 @@ func NewStore(dir string) *Store {
 			home, _ := os.UserHomeDir()
 			dataHome = filepath.Join(home, ".local", "share")
 		}
-		dir = filepath.Join(dataHome, "plecture")
+		dir = filepath.Join(dataHome, "plect")
 	}
 	return &Store{root: filepath.Join(dir, "events"), logger: slog.Default()}
 }
@@ -147,7 +147,7 @@ func (s *Store) Append(ev event.Event) (stored event.Event, off, next int64, err
 
 // WriteTombstone durably persists a session's tombstone snapshot (atomic
 // write + fsync) into its event log directory, so the snapshot survives
-// `plecture destroy` deleting the session's state.json entry. data is an opaque
+// `plect destroy` deleting the session's state.json entry. data is an opaque
 // blob (the caller owns its schema — this package stays provider-agnostic);
 // a pre-existing tombstone is overwritten.
 func (s *Store) WriteTombstone(session string, data []byte) error {

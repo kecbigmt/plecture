@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // OutputRefreshResult is one dynamic output's refresh outcome.
@@ -56,8 +56,8 @@ func RefreshSessionOutputs(cfg *config.Config, store *state.Store, sessionName s
 }
 
 // RefreshInstanceOutputs runs an instance's dynamic-output scripts and persists
-// the fetched values into its outputs. `plecture tick`, `plecture status --refresh`, and
-// `plecture task finalize` call this at a decision point; GC and display never do —
+// the fetched values into its outputs. `plect tick`, `plect status --refresh`, and
+// `plect task finalize` call this at a decision point; GC and display never do —
 // they read the persisted values, so a sweep can't shell out per session and
 // hit the rate limit. A fetch failure leaves the
 // prior value untouched and is surfaced in the result.

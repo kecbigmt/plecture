@@ -3,10 +3,10 @@ package service
 import (
 	"fmt"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // AttachParams holds parameters for Attach.
@@ -49,7 +49,7 @@ func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*Attac
 	if !ok || st == nil || st.Status != contract.TaskStatusProduced {
 		return nil, &Error{
 			Code:    ErrNotProduced,
-			Message: fmt.Sprintf("task %q is not produced; run 'plecture up %s' first", target.NodeID, sessionName),
+			Message: fmt.Sprintf("task %q is not produced; run 'plect up %s' first", target.NodeID, sessionName),
 		}
 	}
 

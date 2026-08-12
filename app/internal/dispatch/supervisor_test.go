@@ -7,12 +7,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/sessionhub"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/sessionhub"
+	"github.com/kecbigmt/plect/app/internal/state"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -28,7 +28,7 @@ func writeFile(t *testing.T, path, content string) {
 func TestSupervisor_StartsAndStopsWithRunScope(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plecture")
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ path = { type = "string", required = true }
 name        = "runtime"
 uses        = "claude_channel"
 inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
-include     = ["plecture.instruction"]
+include     = ["plect.instruction"]
 `)
 	cfg := config.Load()
 

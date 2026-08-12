@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/state"
 )
 
 var (
@@ -32,9 +32,9 @@ steps and the state entry is kept so you can inspect and retry. Use
 --force to switch to best-effort teardown (see flag description).
 
 If the session has child sessions, destroy fails before any teardown step
-runs: deleting it would orphan them (plecture up never re-adopts an orphan). Use
+runs: deleting it would orphan them (plect up never re-adopts an orphan). Use
 --force to destroy anyway and orphan the children, or reset with
-` + "`plecture down`" + ` + ` + "`plecture up`" + ` instead, which keeps the state entry and its
+` + "`plect down`" + ` + ` + "`plect up`" + ` instead, which keeps the state entry and its
 children intact.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

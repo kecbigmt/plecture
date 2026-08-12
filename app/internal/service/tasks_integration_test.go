@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/state"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // dependsOn returns an `inputs` map that wires a node to upstream nodes so
@@ -27,7 +27,7 @@ func dependsOn(upstreams ...string) map[string]string {
 }
 
 // TestIntegration_UpAutoCreatesFromURL verifies the docker compose-style ergonomic:
-// `plecture up <URL>` on a never-before-seen URL creates the worktree + state
+// `plect up <URL>` on a never-before-seen URL creates the worktree + state
 // entry and runs both session-scoped and run-scoped setup in one shot.
 func TestIntegration_UpAutoCreatesFromURL(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -71,9 +71,9 @@ func TestIntegration_UpAutoCreatesFromURL(t *testing.T) {
 
 // TestIntegration_UpRecoversIncompleteSessionTask verifies that when state exists
 // but a session-scoped task is not yet "produced" (failed/cleaned/absent),
-// `plecture up <URL>` invokes Create to retry the session-scoped setup before
+// `plect up <URL>` invokes Create to retry the session-scoped setup before
 // running run-scoped tasks. This guards the case where a previous auto-create
-// partially failed and the user retries with `plecture up <URL>`.
+// partially failed and the user retries with `plect up <URL>`.
 func TestIntegration_UpRecoversIncompleteSessionTask(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
@@ -263,7 +263,7 @@ func TestIntegration_CreateIdempotent(t *testing.T) {
 }
 
 // TestIntegration_DownUpPreservesPrev verifies that run-scoped task outputs survive
-// `plecture down → up` so setup scripts can read .Prev to keep stable identity
+// `plect down → up` so setup scripts can read .Prev to keep stable identity
 // (the claude task's `--resume <session_id>` mechanism, in practice).
 func TestIntegration_DownUpPreservesPrev(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -319,7 +319,7 @@ func TestIntegration_DownUpPreservesPrev(t *testing.T) {
 // TestIntegration_DownSurvivesPartialSetup verifies that a setup that fails before
 // populating outputs does not strand the session: cleanup of that task
 // renders its missing-key references as empty rather than aborting, so
-// `plecture down` can still flip all tasks to `cleaned`.
+// `plect down` can still flip all tasks to `cleaned`.
 func TestIntegration_DownSurvivesPartialSetup(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
@@ -492,7 +492,7 @@ func TestIntegration_DestroyRefusesWhenWorktreeDirty(t *testing.T) {
 		t.Fatalf("untracked file should remain on disk after refusal, stat err: %v", err)
 	}
 
-	// --force is plecture's own "delete the state entry anyway" switch. It does
+	// --force is plect's own "delete the state entry anyway" switch. It does
 	// not rewrite the provider's release script, so a release the provider
 	// refuses stays refused and is reported as a warning instead of silently
 	// discarding the user's uncommitted work.
@@ -512,10 +512,10 @@ func TestIntegration_DestroyRefusesWhenWorktreeDirty(t *testing.T) {
 }
 
 // TestIntegration_DestroyAutoDownsLiveRunTask locks in the auto-down
-// behavior: calling `plecture destroy` on an `up` session — one with a
+// behavior: calling `plect destroy` on an `up` session — one with a
 // run-scoped task in `produced` status — must run run-scoped cleanup
 // *before* session-scoped cleanup, then remove the worktree and delete
-// the state entry, without the user having to `plecture down` first.
+// the state entry, without the user having to `plect down` first.
 func TestIntegration_DestroyAutoDownsLiveRunTask(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
@@ -628,7 +628,7 @@ func TestIntegration_DestroyForcePartialFailureContinuesTeardown(t *testing.T) {
 }
 
 // TestIntegration_AttachResolvesRenderedCommand verifies the full happy path
-// for `plecture attach`: a create → up sequence produces the attach task's
+// for `plect attach`: a create → up sequence produces the attach task's
 // outputs, and Attach renders the declared template against those outputs to
 // produce the exact command the CLI will exec.
 func TestIntegration_AttachResolvesRenderedCommand(t *testing.T) {
@@ -677,7 +677,7 @@ func TestIntegration_AttachResolvesRenderedCommand(t *testing.T) {
 
 // TestIntegration_AttachAbortsWhenTaskNotProduced verifies the "no auto-up"
 // stance: Attach against a never-produced (or downed) task returns
-// ErrNotProduced with a hint pointing at `plecture up`, instead of silently
+// ErrNotProduced with a hint pointing at `plect up`, instead of silently
 // invoking setup.
 func TestIntegration_AttachAbortsWhenTaskNotProduced(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -709,8 +709,8 @@ func TestIntegration_AttachAbortsWhenTaskNotProduced(t *testing.T) {
 	if !ok || svcErr.Code != ErrNotProduced {
 		t.Fatalf("err = %v (%T), want code=%q", err, err, ErrNotProduced)
 	}
-	if !strings.Contains(svcErr.Message, "plecture up") {
-		t.Fatalf("error message %q should hint at 'plecture up'", svcErr.Message)
+	if !strings.Contains(svcErr.Message, "plect up") {
+		t.Fatalf("error message %q should hint at 'plect up'", svcErr.Message)
 	}
 }
 
@@ -744,7 +744,7 @@ func TestIntegration_AttachWithoutDeclarationFails(t *testing.T) {
 }
 
 // TestIntegration_CaptureResolvesRenderedOutput verifies the full happy path
-// for `plecture capture`: a create → up sequence produces the capture task's
+// for `plect capture`: a create → up sequence produces the capture task's
 // outputs, and Capture renders the declared template against those outputs
 // and returns its stdout unmodified.
 func TestIntegration_CaptureResolvesRenderedOutput(t *testing.T) {
@@ -794,7 +794,7 @@ func TestIntegration_CaptureResolvesRenderedOutput(t *testing.T) {
 
 // TestIntegration_CaptureAbortsWhenTaskNotProduced mirrors the "no auto-up"
 // stance from Attach: capture against a never-produced (or downed) task
-// returns ErrNotProduced with a hint pointing at `plecture up`, instead of an
+// returns ErrNotProduced with a hint pointing at `plect up`, instead of an
 // empty snapshot.
 func TestIntegration_CaptureAbortsWhenTaskNotProduced(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -826,8 +826,8 @@ func TestIntegration_CaptureAbortsWhenTaskNotProduced(t *testing.T) {
 	if !ok || svcErr.Code != ErrNotProduced {
 		t.Fatalf("err = %v (%T), want code=%q", err, err, ErrNotProduced)
 	}
-	if !strings.Contains(svcErr.Message, "plecture up") {
-		t.Fatalf("error message %q should hint at 'plecture up'", svcErr.Message)
+	if !strings.Contains(svcErr.Message, "plect up") {
+		t.Fatalf("error message %q should hint at 'plect up'", svcErr.Message)
 	}
 }
 
@@ -935,8 +935,8 @@ func TestIntegration_CaptureSurfacesScriptFailure(t *testing.T) {
 }
 
 // TestIntegration_WorkflowFile_NodeWiring exercises the workflow file path end
-// to end: a workflow at .plecture/workflows/<name>.toml referencing task
-// definitions at .plecture/tasks/<id>.toml, with the DAG derived from
+// to end: a workflow at .plect/workflows/<name>.toml referencing task
+// definitions at .plect/tasks/<id>.toml, with the DAG derived from
 // `.Nodes.<id>.outputs.<key>` references in the node input bindings.
 //
 // Asserts that:
@@ -950,27 +950,27 @@ func TestIntegration_WorkflowFile_NodeWiring(t *testing.T) {
 
 	ownerRepo := "testowner/testrepo"
 	repoDir := t.TempDir() + "/config"
-	if err := os.MkdirAll(repoDir+"/.plecture/tasks", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.plect/tasks", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.plecture/tasks/tmux.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.plect/tasks/tmux.toml", []byte(`
 id    = "tmux"
 scope = "run"
 setup = "echo '{\"session_name\":\"abc\"}'"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.plecture/tasks/agent.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.plect/tasks/agent.toml", []byte(`
 id    = "agent"
 scope = "run"
 setup = "echo \"{\\\"target\\\":\\\"$(echo {{.Inputs.session_name}})\\\"}\""
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(repoDir+"/.plecture/workflows", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.plect/workflows", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.plecture/workflows/coding.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.plect/workflows/coding.toml", []byte(`
 name = "coding"
 
 [[nodes]]
@@ -987,7 +987,7 @@ session_name = "{{.Nodes.tmux.outputs.session_name}}"
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.plecture"}
+	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.plect"}
 	attachGithubProvider(t, cfg, "coding")
 	url := "https://github.com/" + ownerRepo + "/issues/99"
 	sessionName := "testowner/testrepo-99+coding"
@@ -1027,7 +1027,7 @@ session_name = "{{.Nodes.tmux.outputs.session_name}}"
 }
 
 // TestIntegration_WorkflowFrozenOnSession verifies that once a workflow is
-// chosen at create time, `plecture up --workflow X` against the existing session
+// chosen at create time, `plect up --workflow X` against the existing session
 // returns ErrInvalidInput when X differs — the plan must not silently switch
 // out from under a session.
 func TestIntegration_WorkflowFrozenOnSession(t *testing.T) {
@@ -1037,20 +1037,20 @@ func TestIntegration_WorkflowFrozenOnSession(t *testing.T) {
 
 	ownerRepo := "testowner/testrepo"
 	repoDir := t.TempDir() + "/config"
-	if err := os.MkdirAll(repoDir+"/.plecture/workflows", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.plect/workflows", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(repoDir+"/.plecture/tasks", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.plect/tasks", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.plecture/tasks/noop.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.plect/tasks/noop.toml", []byte(`
 id    = "noop"
 scope = "session"
 setup = "echo '{}'"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.plecture/workflows/a.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.plect/workflows/a.toml", []byte(`
 name = "a"
 [[nodes]]
 id = "noop"
@@ -1058,7 +1058,7 @@ uses = "noop"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.plecture/workflows/b.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.plect/workflows/b.toml", []byte(`
 name = "b"
 [[nodes]]
 id = "noop"
@@ -1067,7 +1067,7 @@ uses = "noop"
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.plecture"}
+	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.plect"}
 	attachGithubProvider(t, cfg, "a")
 	attachGithubProvider(t, cfg, "b")
 	url := "https://github.com/" + ownerRepo + "/issues/77"
@@ -1091,7 +1091,7 @@ uses = "noop"
 // TestIntegration_AttachUnderWorkflowPath guards against the regression where
 // Attach reached for Resolved.Config (empty under the workflow path) and
 // looked up session.Tasks[""]. Exercises a workflow file whose tmux node
-// declares `attach`, runs `plecture up`, then verifies Attach resolves the right
+// declares `attach`, runs `plect up`, then verifies Attach resolves the right
 // task id and renders the command using the node's own outputs.
 func TestIntegration_AttachUnderWorkflowPath(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
@@ -1100,13 +1100,13 @@ func TestIntegration_AttachUnderWorkflowPath(t *testing.T) {
 
 	ownerRepo := "testowner/testrepo"
 	repoDir := t.TempDir() + "/config"
-	if err := os.MkdirAll(repoDir+"/.plecture/tasks", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.plect/tasks", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(repoDir+"/.plecture/workflows", 0o755); err != nil {
+	if err := os.MkdirAll(repoDir+"/.plect/workflows", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.plecture/tasks/tmux.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.plect/tasks/tmux.toml", []byte(`
 id     = "tmux"
 scope  = "run"
 attach = "tmux attach -t {{.Self.session_name}}"
@@ -1114,7 +1114,7 @@ setup  = "echo '{\"session_name\":\"abc\"}'"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(repoDir+"/.plecture/workflows/coding.toml", []byte(`
+	if err := os.WriteFile(repoDir+"/.plect/workflows/coding.toml", []byte(`
 name = "coding"
 
 [[nodes]]
@@ -1124,7 +1124,7 @@ uses = "tmux"
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.plecture"}
+	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.plect"}
 	attachGithubProvider(t, cfg, "coding")
 	url := "https://github.com/" + ownerRepo + "/issues/300"
 	sessionName := "testowner/testrepo-300+coding"

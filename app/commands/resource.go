@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/service"
 )
 
 var resourceStatusJSON bool
@@ -27,11 +27,11 @@ script, and reports the result. A resource id with no matching definition is
 an error — declare one (ADR "goal-as-task" D1) before observing it standalone.
 
 This is the same observation contract a task instance's from_resource_status
-dynamic output reads from ('plecture task setup --resource'); this command lets it
+dynamic output reads from ('plect task setup --resource'); this command lets it
 be read outside any one task instance.
 
 Example:
-  plecture resource status <resource-id>`,
+  plect resource status <resource-id>`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()

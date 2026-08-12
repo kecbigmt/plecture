@@ -61,7 +61,7 @@ type Config struct {
 	WorktreesRoot string `toml:"worktrees_root"`
 	// ResourceAllowlist is the security boundary for session creation: regex
 	// patterns the resource identifier must match. The boundary exists
-	// because agents (MCP) can invoke plecture with arbitrary input, and a
+	// because agents (MCP) can invoke plect with arbitrary input, and a
 	// session create executes trusted-layer shell against that input.
 	// Only the user-owned global config can declare it. Empty means allow
 	// all.
@@ -77,15 +77,15 @@ type Config struct {
 	InputsSchemaFile string         `toml:"inputs_schema_file"`
 	BaseDir          string         `toml:"-"`
 	// SessionGuard is a per-session dispatch boundary sourced from the
-	// PLECTURE_SESSION_GUARD environment variable (not config.toml). When set, a
-	// `plecture up` may only produce a *resolved session name* that
+	// PLECT_SESSION_GUARD environment variable (not config.toml). When set, a
+	// `plect up` may only produce a *resolved session name* that
 	// matches this regex. The orchestrator's claude pane exports it from the
 	// provider's `session_guard` output (e.g. "^acme/"), so a
 	// prompt-injected board body cannot make the orchestrator dispatch work
 	// outside its own session-name space. Empty = disabled.
 	//
 	// The guard is intentionally an opaque regex over the resolved session
-	// name: plecture core stays provider-agnostic and never parses the
+	// name: plect core stays provider-agnostic and never parses the
 	// resource identifier's internal structure — knowing how names are
 	// shaped is the provider's job, encoded in the pattern it emits.
 	SessionGuard string `toml:"-"`
@@ -96,7 +96,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		WorktreesRoot: filepath.Join(home, "worktrees"),
 		Detached:      true,
-		SessionGuard:  os.Getenv("PLECTURE_SESSION_GUARD"),
+		SessionGuard:  os.Getenv("PLECT_SESSION_GUARD"),
 	}
 }
 
@@ -108,7 +108,7 @@ func DefaultPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".config", "plecture", "config.toml")
+	return filepath.Join(home, ".config", "plect", "config.toml")
 }
 
 func Load() *Config {

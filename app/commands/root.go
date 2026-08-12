@@ -8,19 +8,19 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "plecture",
+	Use:   "plect",
 	Short: "Manage runtime sessions and git worktrees for resource-driven workflows",
-	Long: `plecture manages runtime sessions and git worktrees for workflows keyed by a
+	Long: `plect manages runtime sessions and git worktrees for workflows keyed by a
 resource identifier.
 
 A workflow's [resolver] maps the resource identifier to a session id and
-working directory; plecture then runs the workflow's tasks (worktree setup, runtime
+working directory; plect then runs the workflow's tasks (worktree setup, runtime
 session, agent launch) and manages the full session lifecycle.
 
 The resource identifier is any string a workflow resolver accepts. Which
 identifiers resolve out of the box depends on the providers installed; an
 identifier no resolver matches selects a workflow explicitly (see
-'plecture workflow list').`,
+'plect workflow list').`,
 	// Cobra prints usage after any RunE error by default, which is noise for
 	// runtime failures (a failed task is not an argument-parsing mistake).
 	// We still want the "Error: ..." line that Cobra prints, just not the
@@ -47,7 +47,7 @@ func removedLifecycleCommandHint(args []string) string {
 	}
 	switch args[0] {
 	case "create":
-		return "Use `plecture up <resource-id>` instead."
+		return "Use `plect up <resource-id>` instead."
 	default:
 		return ""
 	}
