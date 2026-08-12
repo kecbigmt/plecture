@@ -22,6 +22,7 @@ var (
 	upTask       string
 	upParent     string
 	upDetach     bool
+	upRecreate   bool
 )
 
 var upCmd = &cobra.Command{
@@ -50,7 +51,12 @@ the session does not yet exist; passing them against an already-created
 session returns an error (session inputs are set once, at create time).
 
 --task <id> is shorthand for --inputs '{"task":"<id>"}' on the auto-create
-path; see 'sennit create --help' for the required/none semantics.`,
+path; see 'sennit create --help' for the required/none semantics.
+
+--force-recreate rebuilds the session runtime for an existing session while
+keeping its durable identity and event log. It cleans and forgets workflow
+node state, dynamic task instances, environment state, and runtime observation
+state so the next setup cannot resume from .Prev, then runs setup again.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		inputs, err := resolveInputsFlags(upInputs, upInputsFile)
@@ -70,6 +76,7 @@ path; see 'sennit create --help' for the required/none semantics.`,
 			Inputs:        inputs,
 			ParentSession: upParent,
 			Observer:      newTaskObserver(cfg),
+			ForceRecreate: upRecreate,
 		})
 		if err != nil {
 			return err
@@ -121,5 +128,6 @@ func init() {
 	upCmd.Flags().StringVar(&upTask, "task", "", "Shorthand for --inputs '{\"task\":\"<id>\"}' (auto-create path only). Pass \"none\" for no initial task.")
 	upCmd.Flags().StringVar(&upParent, "parent", "", "Parent session name for auto-created sessions, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $SENNIT_SESSION_NAME when it names an existing session")
 	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Return after setup instead of attaching (docker-compose-style up -d)")
+	upCmd.Flags().BoolVar(&upRecreate, "force-recreate", false, "Rebuild the session runtime instead of resuming existing task outputs")
 	rootCmd.AddCommand(upCmd)
 }

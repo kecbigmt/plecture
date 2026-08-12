@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/domain"
 	"github.com/kecbigmt/sennit/app/internal/state"
 	"github.com/kecbigmt/sennit/app/internal/task"
 	contract "github.com/kecbigmt/sennit/contracts/state"
@@ -23,6 +24,9 @@ type UpParams struct {
 	Inputs        map[string]any // forwarded to auto-create; rejected when state already exists
 	ParentSession string         // forwarded to auto-create; empty falls back to SENNIT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
+	// ForceRecreate rebuilds the runtime for an existing session while
+	// preserving durable identity and event log state.
+	ForceRecreate bool
 }
 
 // UpResult holds the outcome of Up.
@@ -43,6 +47,7 @@ type UpResult struct {
 // to resolve workspace/branch, so the asymmetry is intentional.
 func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
 	identifier := params.Identifier
+	forceRecreateExisting := false
 	disp, matched, dispErr := dispatchResource(cfg, params.Workflow, params.Identifier)
 	if dispErr != nil {
 		// Ambiguous resolver match / invalid resolver / explicit --workflow
@@ -66,6 +71,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		}
 		sessionName := disp.Name + "+" + tag
 		existing := store.Get(sessionName)
+		forceRecreateExisting = existing != nil
 		if params.Inputs != nil && existing != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: inputsOnExistingSessionMessage()}
 		}
@@ -104,6 +110,14 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
 	}
+	if params.ForceRecreate && !matched {
+		forceRecreateExisting = true
+	}
+	if params.ForceRecreate && forceRecreateExisting {
+		if guardErr := checkLifecycleRelationGuard(store, sessionName, "up --force-recreate"); guardErr != nil {
+			return nil, guardErr
+		}
+	}
 	if session.Tasks == nil {
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
@@ -121,9 +135,16 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		return nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
 	}
 
-	// Up does not re-run environment setup — @environment is session-scoped
-	// (like @workflow) and already produced during Create; environmentExecutorForSession
-	// just reads its persisted outputs.
+	// Plain Up does not re-run environment setup — @environment is
+	// session-scoped and already produced during Create. ForceRecreate resets
+	// that state before the run-scoped setup below.
+	if params.ForceRecreate && forceRecreateExisting {
+		var recreateErr error
+		plan, envExecutor, recreateErr = recreateSessionRuntime(cfg, store, sessionName, session, wf, plan, params.Observer, envExecutor)
+		if recreateErr != nil {
+			return nil, recreateErr
+		}
+	}
 	setupErr := task.RunSetup(context.Background(), plan.Run, sessionVars(session), session.Tasks, params.Observer, envExecutor)
 	session.UpdatedAt = time.Now()
 	// A run-scope node's setup script can itself shell out to a nested `sennit
@@ -147,4 +168,122 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	}
 	recordLifecycle(store, sessionName, "up", "run-scoped tasks produced")
 	return &UpResult{SessionName: sessionName, Tasks: session.Tasks}, nil
+}
+
+func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, wf config.WorkflowFile, teardownPlan *task.Plan, observer task.Observer, envExecutor task.Executor) (*task.Plan, task.Executor, error) {
+	teardown, teardownErr := unifiedTeardownList(cfg, session, teardownPlan, false)
+	if teardownErr != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
+	}
+	cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(session), session.Tasks, observer, envExecutor)
+	session.UpdatedAt = time.Now()
+	if cleanupErr != nil {
+		if err := mergeTasks(store, sessionName, session); err != nil {
+			return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+		}
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: cleanupErr.Error()}
+	}
+
+	if envCleanupErr := runEnvironmentCleanupForSession(cfg, wf, session, observer); envCleanupErr != nil {
+		session.UpdatedAt = time.Now()
+		if err := mergeTasks(store, sessionName, session); err != nil {
+			return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+		}
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: envCleanupErr.Error()}
+	}
+
+	if wfState, ok := session.Tasks[contract.WorkflowPseudoNodeID]; ok && wfState != nil {
+		if workflowCleanupErr := runWorkflowCleanupForDestroy(cfg, session, true, observer); workflowCleanupErr != nil {
+			session.UpdatedAt = time.Now()
+			if err := mergeTasks(store, sessionName, session); err != nil {
+				return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+			}
+			return nil, nil, &Error{Code: ErrExecutionFailed, Message: workflowCleanupErr.Error()}
+		}
+	}
+
+	session.Branch = ""
+	session.WorktreePath = ""
+	session.Conversation = nil
+	session.Message = nil
+	session.Tasks = make(map[string]*contract.TaskState)
+	session.Watchdog = nil
+	session.LastTickAt = time.Time{}
+	session.TickBackoff = nil
+	session.Progress = nil
+	session.UpdatedAt = time.Now()
+	if err := replaceRuntimeState(store, sessionName, session); err != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+	}
+
+	outputs, setupErr := runWorkflowSetupForSession(cfg, wf, session, observer)
+	session.UpdatedAt = time.Now()
+	if outputs != nil {
+		if workdir, ok := outputs[contract.OutputKeyWorkdir].(string); ok {
+			session.WorktreePath = workdir
+		}
+		if branch, ok := outputs["branch"].(string); ok && branch != "" {
+			session.Branch = branch
+		}
+	}
+	if err := replaceRuntimeState(store, sessionName, session); err != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+	}
+	if setupErr != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
+	}
+
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorktreePath, session)
+	if wfErr != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
+	}
+	setupPlan, planErr := buildPlanForSession(cfg, session.WorktreePath, session)
+	if planErr != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
+	}
+
+	if envSetupErr := runEnvironmentSetupForSession(cfg, wf, session, observer); envSetupErr != nil {
+		session.UpdatedAt = time.Now()
+		if err := replaceRuntimeState(store, sessionName, session); err != nil {
+			return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+		}
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: envSetupErr.Error()}
+	}
+	session.UpdatedAt = time.Now()
+	if err := replaceRuntimeState(store, sessionName, session); err != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+	}
+	envExecutor, envErr := environmentExecutorForSession(cfg, wf, session)
+	if envErr != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
+	}
+	setupErr = task.RunSetup(context.Background(), setupPlan.Session, sessionVars(session), session.Tasks, observer, envExecutor)
+	session.UpdatedAt = time.Now()
+	if err := mergeTasks(store, sessionName, session); err != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+	}
+	if setupErr != nil {
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
+	}
+	return setupPlan, envExecutor, nil
+}
+
+func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, session *domain.Session, observer task.Observer) (map[string]any, error) {
+	providers, err := cfg.LoadProviders()
+	if err != nil {
+		return nil, fmt.Errorf("load providers: %w", err)
+	}
+	prov, ok, provErr := providerFor(wf, providers)
+	if provErr != nil {
+		return nil, provErr
+	}
+	if !ok {
+		return nil, fmt.Errorf("workflow %q declares no provider; its setup hook cannot run", wf.ID)
+	}
+	vars := task.WorkflowHookVars{
+		ResourceID:    session.ResourceID,
+		SessionName:   session.Name,
+		SessionInputs: session.Inputs,
+	}
+	return task.RunWorkflowSetup(prov, vars, session.Tasks, observer)
 }

@@ -33,6 +33,22 @@ func mergeTasks(store *state.Store, sessionName string, session *domain.Session)
 	})
 }
 
+func replaceRuntimeState(store *state.Store, sessionName string, session *domain.Session) error {
+	return store.Update(sessionName, func(s *domain.Session) error {
+		s.Branch = session.Branch
+		s.WorktreePath = session.WorktreePath
+		s.Conversation = session.Conversation
+		s.Message = session.Message
+		s.Tasks = session.Tasks
+		s.Watchdog = session.Watchdog
+		s.LastTickAt = session.LastTickAt
+		s.TickBackoff = session.TickBackoff
+		s.Progress = session.Progress
+		s.UpdatedAt = session.UpdatedAt
+		return nil
+	})
+}
+
 func resolveParentSession(store *state.Store, sessionName, explicit string) (string, *Error) {
 	candidate := explicit
 	explicitSet := candidate != ""
