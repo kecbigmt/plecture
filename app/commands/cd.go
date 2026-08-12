@@ -31,7 +31,7 @@ var cdCmd = &cobra.Command{
 		}
 
 		if _, err := os.Stat(wtPath); os.IsNotExist(err) {
-			return fmt.Errorf("worktree not found: %s\nRun 'sennit create' first", wtPath)
+			return fmt.Errorf("worktree not found: %s\nRun 'sennit up' first", wtPath)
 		}
 
 		fmt.Println(wtPath)

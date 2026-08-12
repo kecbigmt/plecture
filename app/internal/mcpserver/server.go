@@ -29,7 +29,6 @@ func NewServer() *server.MCPServer {
 	}
 
 	s.AddTools(
-		server.ServerTool{Tool: createTool, Handler: wrap("sennit_create", handleCreate)},
 		server.ServerTool{Tool: upTool, Handler: wrap("sennit_up", handleUp)},
 		server.ServerTool{Tool: downTool, Handler: wrap("sennit_down", handleDown)},
 		server.ServerTool{Tool: destroyTool, Handler: wrap("sennit_destroy", handleDestroy)},
@@ -58,37 +57,14 @@ func NewServer() *server.MCPServer {
 	return s
 }
 
-var createTool = mcp.NewTool("sennit_create",
-	mcp.WithDescription("Create a session for a resource identifier and run session-scoped tasks. A workflow whose [resolver] matches the identifier is auto-selected; other identifiers need an explicit workflow. Does not start the runtime — call sennit_up to launch run-scoped tasks."),
-	mcp.WithString("url",
-		mcp.Required(),
-		mcp.Description("Resource identifier the active workflow's [resolver] accepts. Which identifiers resolve out of the box depends on the providers installed; an identifier no resolver matches needs an explicit workflow. The JSON key stays \"url\" for historical reasons."),
-	),
-	mcp.WithString("tag",
-		mcp.Description("Workspace-identity label for the session. Omit it to default to the workflow id, so two tools on one resource (e.g. claude work, codex review) get separate workspaces automatically; pass it to label a retry/parallel session (e.g. \"review\" → workspace-123+review). Provider-agnostic — a provider may map it to a branch/worktree suffix."),
-	),
-	mcp.WithString("parent",
-		mcp.Description("Parent session name for the session tree. Defaults to SENNIT_SESSION_NAME when it names an existing session."),
-	),
-	mcp.WithObject("inputs",
-		mcp.Description("Session inputs as a JSON object. Validated against [inputs_schema] in the active workflow file (or top-level config.toml for the legacy inline-tasks path), frozen at create time, and exposed to task templates as {{.Inputs.<key>}}."),
-	),
-	mcp.WithString("workflow",
-		mcp.Description("Workflow id (filename stem of .sennit/workflows/<id>.toml). Required when the identifier has no matching [resolver]; with a resolver-less workflow the identifier itself becomes the session id."),
-	),
-	mcp.WithString("task",
-		mcp.Description("Shorthand for inputs.task — sets the session's initial task id (e.g. \"work\", \"review\"). Merged into inputs; conflicts with a different \"task\" already set there. Workflows that declare task as required (e.g. claude, codex) reject create without it; pass \"none\" for an ad-hoc session with no initial instruction."),
-	),
-)
-
 var upTool = mcp.NewTool("sennit_up",
-	mcp.WithDescription("Run run-scoped tasks for a session, in dependency-respecting order. When the identifier is a resource identifier and no state entry exists (or a session-scoped task has not yet reached \"produced\"), sennit_create is invoked first (docker compose up-style auto-create)."),
+	mcp.WithDescription("Run run-scoped tasks for a session, in dependency-respecting order. When the identifier is a resource identifier and no state entry exists (or a session-scoped task has not yet reached \"produced\"), the session is created first (docker compose up-style auto-create)."),
 	mcp.WithString("session",
 		mcp.Required(),
 		mcp.Description("Resource identifier or session name (e.g. workspace-123)"),
 	),
 	mcp.WithString("tag",
-		mcp.Description("Workspace-identity label of the session to resolve/auto-create (resource-identifier only, not a bare session name). Defaults to the workflow id, matching sennit_create."),
+		mcp.Description("Workspace-identity label of the session to resolve/auto-create (resource-identifier only, not a bare session name). Defaults to the workflow id."),
 	),
 	mcp.WithString("parent",
 		mcp.Description("Parent session name for auto-created sessions. Defaults to SENNIT_SESSION_NAME when it names an existing session."),
@@ -100,7 +76,7 @@ var upTool = mcp.NewTool("sennit_up",
 		mcp.Description("Workflow id forwarded to the auto-create path (resolver-less workflows need this). Rejected when the session already exists."),
 	),
 	mcp.WithString("task",
-		mcp.Description("Shorthand for inputs.task, forwarded to the auto-create path; see sennit_create's task parameter. Rejected when the session already exists."),
+		mcp.Description("Shorthand for inputs.task, forwarded to the auto-create path. Rejected when the session already exists."),
 	),
 	mcp.WithBoolean("force_recreate",
 		mcp.Description("Rebuild the session runtime for an existing session instead of resuming existing task outputs."),
@@ -176,12 +152,12 @@ var templateListTool = mcp.NewTool("sennit_template_list",
 )
 
 var workflowListTool = mcp.NewTool("sennit_workflow_list",
-	mcp.WithDescription("List workflows discoverable via the .sennit/workflows cascade. Each entry surfaces id/name/description so an agent can pick the right workflow before calling sennit_workflow_show or sennit_create."),
+	mcp.WithDescription("List workflows discoverable via the .sennit/workflows cascade. Each entry surfaces id/name/description so an agent can pick the right workflow before calling sennit_workflow_show or sennit_up."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
 var workflowShowTool = mcp.NewTool("sennit_workflow_show",
-	mcp.WithDescription("Return full details for a single workflow: id, name, description, the (merged) inputs_schema, and the compiled DAG of nodes. Use inputs_schema to build the --inputs payload for sennit_create / sennit_up."),
+	mcp.WithDescription("Return full details for a single workflow: id, name, description, the (merged) inputs_schema, and the compiled DAG of nodes. Use inputs_schema to build the --inputs payload for sennit_up."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("id",
 		mcp.Required(),
@@ -243,41 +219,6 @@ func handleTemplateList(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	return jsonResult(map[string]any{
 		"ok":        true,
 		"templates": templates,
-	})
-}
-
-func handleCreate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
-	store := state.NewStore("")
-
-	url := request.GetString("url", "")
-	if url == "" {
-		return mcp.NewToolResultError("url is required"), nil
-	}
-
-	inputs, err := service.MergeTaskInput(getObjectArg(request, "inputs"), request.GetString("task", ""))
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	result, err := service.Create(cfg, store, service.CreateParams{
-		URL:           url,
-		Tag:           request.GetString("tag", ""),
-		Workflow:      request.GetString("workflow", ""),
-		ParentSession: request.GetString("parent", ""),
-		Inputs:        inputs,
-	})
-	if err != nil {
-		return errorResult(err), nil
-	}
-
-	return jsonResult(map[string]any{
-		"ok":              true,
-		"session_name":    result.SessionName,
-		"worktree_path":   result.WorktreePath,
-		"branch":          result.Branch,
-		"reused_worktree": result.ReusedWorktree,
-		"tasks":           result.Tasks,
 	})
 }
 

@@ -59,7 +59,7 @@ const (
 
 type Config struct {
 	WorktreesRoot string `toml:"worktrees_root"`
-	// ResourceAllowlist is the security boundary for `sennit create`: regex
+	// ResourceAllowlist is the security boundary for session creation: regex
 	// patterns the resource identifier must match. The boundary exists
 	// because agents (MCP) can invoke sennit with arbitrary input, and a
 	// session create executes trusted-layer shell against that input.
@@ -78,7 +78,7 @@ type Config struct {
 	BaseDir          string         `toml:"-"`
 	// SessionGuard is a per-session dispatch boundary sourced from the
 	// SENNIT_SESSION_GUARD environment variable (not config.toml). When set, a
-	// `sennit create`/`up` may only produce a *resolved session name* that
+	// `sennit up` may only produce a *resolved session name* that
 	// matches this regex. The orchestrator's claude pane exports it from the
 	// provider's `session_guard` output (e.g. "^acme/"), so a
 	// prompt-injected board body cannot make the orchestrator dispatch work

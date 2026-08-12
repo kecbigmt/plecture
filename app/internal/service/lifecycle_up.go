@@ -42,7 +42,7 @@ type UpResult struct {
 // is absent OR any declared session-scoped task has not reached
 // "produced". Since Create is idempotent (already-produced session
 // tasks are skipped), this also recovers partial-create state without
-// the user having to remember to re-run `sennit create`. A bare session name
+// the user having to remember a separate command. A bare session name
 // without a state entry still errors out — Create needs URL information
 // to resolve workspace/branch, so the asymmetry is intentional.
 func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
@@ -53,7 +53,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		// Ambiguous resolver match / invalid resolver / explicit --workflow
 		// mismatch must fail here exactly as Create would — falling through
 		// to the legacy path would let `sennit up` silently disagree with
-		// `sennit create` for the same resource.
+		// auto-create for the same resource.
 		if svcErr, ok := dispErr.(*Error); ok {
 			return nil, svcErr
 		}

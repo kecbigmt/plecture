@@ -363,7 +363,7 @@ echo '{"workdir":"`+workdir+`"}'
 }
 
 // Up must surface dispatch errors exactly as Create does — falling through
-// to the legacy path on ambiguity would let `sennit up` and `sennit create`
+// to the legacy path on ambiguity would let explicit and auto-created paths
 // disagree about the same resource.
 func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 	store := testStore(t)

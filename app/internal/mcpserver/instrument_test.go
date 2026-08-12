@@ -62,7 +62,7 @@ func TestInstrumentHandler_ToolError(t *testing.T) {
 		return mcp.NewToolResultError("session already exists"), nil
 	}
 
-	handler := instrumentHandler("sennit_create", inner)
+	handler := instrumentHandler("sennit_up", inner)
 
 	// Build a request with url parameter.
 	req := mcp.CallToolRequest{}
@@ -82,7 +82,7 @@ func TestInstrumentHandler_ToolError(t *testing.T) {
 	rec := parseSlogRecord(t, slogBuf.String())
 	assertField(t, rec, "component", "sennit-mcp")
 	assertField(t, rec, "event", "mcp_call")
-	assertField(t, rec, "tool", "sennit_create")
+	assertField(t, rec, "tool", "sennit_up")
 	assertField(t, rec, "status", "error")
 	assertField(t, rec, "level", "ERROR")
 	assertField(t, rec, "error", "session already exists")

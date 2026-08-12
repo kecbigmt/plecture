@@ -181,7 +181,7 @@ func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, s
 //   - more than one node declaring `attach`
 func CompileWorkflow(wf config.WorkflowFile, defs map[string]config.TaskDefinition) (*Plan, error) {
 	if len(wf.Nodes) == 0 {
-		// An empty plan would silently no-op `sennit create --workflow foo`, which
+		// An empty plan would silently no-op `sennit up --workflow foo`, which
 		// is more confusing than helpful. Force the author to either declare
 		// nodes or delete the file.
 		return nil, fmt.Errorf("workflow %q declares no nodes", wf.ID)

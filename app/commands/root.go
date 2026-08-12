@@ -1,6 +1,9 @@
 package commands
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
 )
 
@@ -22,9 +25,30 @@ identifier no resolver matches selects a workflow explicitly (see
 	// runtime failures (a failed task is not an argument-parsing mistake).
 	// We still want the "Error: ..." line that Cobra prints, just not the
 	// help dump that follows.
-	SilenceUsage: true,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 }
 
 func Execute() error {
-	return rootCmd.Execute()
+	err := rootCmd.Execute()
+	if err == nil {
+		return nil
+	}
+	if hint := removedLifecycleCommandHint(os.Args[1:]); hint != "" {
+		err = fmt.Errorf("%w\n%s", err, hint)
+	}
+	rootCmd.PrintErrln(rootCmd.ErrPrefix(), err.Error())
+	return err
+}
+
+func removedLifecycleCommandHint(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	switch args[0] {
+	case "create":
+		return "Use `sennit up <resource-id>` instead."
+	default:
+		return ""
+	}
 }

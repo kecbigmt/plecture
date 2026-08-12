@@ -72,8 +72,8 @@ func TestIntegration_UpAutoCreatesFromURL(t *testing.T) {
 // TestIntegration_UpRecoversIncompleteSessionTask verifies that when state exists
 // but a session-scoped task is not yet "produced" (failed/cleaned/absent),
 // `sennit up <URL>` invokes Create to retry the session-scoped setup before
-// running run-scoped tasks. This guards the case where a previous
-// `sennit create` partially failed and the user retries with `sennit up <URL>`.
+// running run-scoped tasks. This guards the case where a previous auto-create
+// partially failed and the user retries with `sennit up <URL>`.
 func TestIntegration_UpRecoversIncompleteSessionTask(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
@@ -121,10 +121,9 @@ func TestIntegration_UpRecoversIncompleteSessionTask(t *testing.T) {
 	}
 }
 
-// TestIntegration_UpWithTagDerivesTaggedSession verifies the symmetry of
-// `sennit create --tag X` and `sennit up --tag X`: passing the same URL + tag to Up
-// resolves to the tagged session, and auto-create propagates the tag so the
-// docker-compose ergonomic works for tag variants too.
+// TestIntegration_UpWithTagDerivesTaggedSession verifies that passing the same
+// URL and tag to Up resolves to the tagged session, and auto-create propagates
+// the tag so the docker-compose ergonomic works for tag variants too.
 func TestIntegration_UpWithTagDerivesTaggedSession(t *testing.T) {
 	worktreesRoot := setupE2ERepo(t)
 	setupFakeScripts(t)

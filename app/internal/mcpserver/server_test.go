@@ -13,11 +13,8 @@ import (
 )
 
 // setUpConfigHome points config.Load()/state.NewStore("") at a scratch config
-// home with a resolver-less workflow ("plain": no [resolver], so dispatch
-// treats the identifier as the session id directly — see
-// TestDispatchResource_FlagWithoutResolverIsIdentityForCaller in the service
-// package). MCP sennit_create/sennit_up previously had no "workflow" argument, so
-// this workflow was unreachable from MCP.
+// home with a resolver-less workflow, so dispatch treats the identifier as the
+// session id directly.
 func setUpConfigHome(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
@@ -65,48 +62,26 @@ func decodeJSONResult(t *testing.T, result *mcp.CallToolResult) map[string]any {
 	return out
 }
 
-// A resolver-less workflow requires an explicit --workflow, and sennit_create
-// can now supply it.
-func TestHandleCreate_ResolverLessWorkflow(t *testing.T) {
-	setUpConfigHome(t)
-
-	result, err := handleCreate(context.Background(), reqWith(map[string]any{
-		"url":      "my-session",
-		"workflow": "plain",
-	}))
-	if err != nil {
-		t.Fatalf("handleCreate: %v", err)
+func TestNewServer_RemovesCreateToolOnly(t *testing.T) {
+	tools := NewServer().ListTools()
+	if _, ok := tools["sennit_create"]; ok {
+		t.Fatal("sennit_create is still registered")
 	}
-	out := decodeJSONResult(t, result)
-	if out["session_name"] != "my-session+plain" {
-		t.Fatalf("session_name = %v, want my-session+plain (resolver-less identity, tag defaults to workflow id)", out["session_name"])
-	}
-
-	store := state.NewStore("")
-	s := store.Get("my-session+plain")
-	if s == nil {
-		t.Fatal("session not persisted")
-	}
-	if s.Workflow != "plain" {
-		t.Errorf("Workflow = %q, want plain", s.Workflow)
+	for _, name := range []string{"sennit_up", "sennit_down", "sennit_destroy"} {
+		if _, ok := tools[name]; !ok {
+			t.Fatalf("%s is not registered", name)
+		}
 	}
 }
 
 // A resolver-less workflow's identifier isn't a URL, so sennit_up's
 // docker-compose-up-style auto-create only kicks in for resolver-matched or
-// URL identifiers (service.Up); a bare resolver-less identifier must already
-// have a session (created via sennit_create). Once it exists, sennit_up must still
-// resolve and run it — exercising the same "workflow" argument sennit_up now
-// accepts.
+// URL identifiers. Once a resolver-less session exists, sennit_up must still
+// resolve and run it.
 func TestHandleUp_ResolverLessWorkflowExistingSession(t *testing.T) {
 	setUpConfigHome(t)
 
-	if _, err := handleCreate(context.Background(), reqWith(map[string]any{
-		"url":      "my-session",
-		"workflow": "plain",
-	})); err != nil {
-		t.Fatalf("handleCreate: %v", err)
-	}
+	createPlainSession(t, "my-session")
 
 	result, err := handleUp(context.Background(), reqWith(map[string]any{
 		"session":  "my-session+plain",
@@ -132,54 +107,27 @@ func TestHandleUp_ResolverLessWorkflowExistingSession(t *testing.T) {
 
 // The tool schemas must expose workflow/task so a client can discover the
 // arguments without reading the handler source.
-func TestCreateAndUpTools_ExposeWorkflowAndTask(t *testing.T) {
-	for _, tool := range []mcp.Tool{createTool, upTool} {
-		for _, name := range []string{"workflow", "task"} {
-			if _, ok := tool.InputSchema.Properties[name]; !ok {
-				t.Errorf("%s: missing %q in InputSchema.Properties", tool.Name, name)
-			}
+func TestUpTool_ExposesWorkflowAndTask(t *testing.T) {
+	for _, name := range []string{"workflow", "task"} {
+		if _, ok := upTool.InputSchema.Properties[name]; !ok {
+			t.Errorf("%s: missing %q in InputSchema.Properties", upTool.Name, name)
 		}
-	}
-}
-
-// task is pure syntax sugar over inputs.task — sennit_create must merge
-// it into the session's persisted inputs like the CLI's --task.
-func TestHandleCreate_TaskShorthand(t *testing.T) {
-	setUpConfigHome(t)
-
-	result, err := handleCreate(context.Background(), reqWith(map[string]any{
-		"url":      "my-session",
-		"workflow": "plain",
-		"task":     "review",
-	}))
-	if err != nil {
-		t.Fatalf("handleCreate: %v", err)
-	}
-	decodeJSONResult(t, result)
-
-	store := state.NewStore("")
-	s := store.Get("my-session+plain")
-	if s == nil {
-		t.Fatal("session not persisted")
-	}
-	if s.Inputs["task"] != "review" {
-		t.Errorf("Inputs[task] = %v, want review", s.Inputs["task"])
 	}
 }
 
 // A task value conflicting with inputs.task must fail rather than silently
 // picking one — same rule the CLI/Web UI shorthand follows.
-func TestHandleCreate_TaskConflictsWithInputs(t *testing.T) {
+func TestHandleUp_TaskConflictsWithInputs(t *testing.T) {
 	setUpConfigHome(t)
 
-	result, err := handleCreate(context.Background(), reqWith(map[string]any{
-		"url":      "my-session",
+	result, err := handleUp(context.Background(), reqWith(map[string]any{
+		"session":  "my-session",
 		"workflow": "plain",
 		"task":     "review",
 		"inputs":   map[string]any{"task": "work"},
 	}))
 	if err != nil {
-		t.Fatalf("handleCreate: %v", err)
+		t.Fatalf("handleUp: %v", err)
 	}
 	if !result.IsError {
 		t.Fatal("expected error result for conflicting task")

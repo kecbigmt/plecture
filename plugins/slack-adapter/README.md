@@ -6,7 +6,7 @@ Claude Code sessions (channel-server) over a Unix socket.
 ## Architecture
 
 ```
-sennit create + up
+sennit up
   ├─ POST slack-adapter:7890/threads         → create a Slack thread
   ├─ tmux + claude (run-scoped tasks)      → start claude, resolve socket_path
   └─ POST slack-adapter:7890/subscribe       → register thread_ts → socket_path with the broker

@@ -217,10 +217,9 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 // status-mapped banner swapped next to the form.
 //
 // workflow is forwarded like the CLI/MCP surfaces, but service.Up only
-// auto-creates for a resolver-matched or URL-shaped identifier — so unlike
-// `sennit create`/`sennit_create`, this form cannot create a resolver-less session
-// from a bare identifier. Here workflow only disambiguates multiple
-// workflows matching the same resolver.
+// auto-creates for a resolver-matched or URL-shaped identifier. This form
+// cannot create a resolver-less session from a bare identifier. Here workflow
+// only disambiguates multiple workflows matching the same resolver.
 func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	if rawURL == "" {

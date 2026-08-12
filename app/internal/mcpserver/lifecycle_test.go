@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/service"
 	"github.com/kecbigmt/sennit/app/internal/state"
 )
 
@@ -31,19 +33,14 @@ func setUpConfigHomeWithCapture(t *testing.T) {
 
 func createPlainSession(t *testing.T, sessionID string) string {
 	t.Helper()
-	result, err := handleCreate(context.Background(), reqWith(map[string]any{
-		"url":      sessionID,
-		"workflow": "plain",
-	}))
+	result, err := service.Create(config.Load(), state.NewStore(""), service.CreateParams{
+		URL:      sessionID,
+		Workflow: "plain",
+	})
 	if err != nil {
-		t.Fatalf("handleCreate: %v", err)
+		t.Fatalf("service.Create: %v", err)
 	}
-	out := decodeJSONResult(t, result)
-	name, _ := out["session_name"].(string)
-	if name == "" {
-		t.Fatalf("handleCreate: missing session_name in %v", out)
-	}
-	return name
+	return result.SessionName
 }
 
 // NewServer must register every declared tool exactly once under its
