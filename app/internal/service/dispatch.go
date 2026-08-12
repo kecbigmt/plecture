@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/plecture/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 // validSessionNameRE is plect's own conservative session id charset: ids

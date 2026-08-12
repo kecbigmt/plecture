@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/app/internal/service"
-	"github.com/plecture/plect/contracts/event"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 // fakeService injects canned results so handlers can be tested without

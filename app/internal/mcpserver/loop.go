@@ -6,10 +6,10 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/service"
-	"github.com/plecture/plect/app/internal/state"
-	"github.com/plecture/plect/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 // Loop-engineering surface: the typed MCP counterparts of the CLI task / gate /

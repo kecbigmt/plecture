@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	contract "github.com/plecture/plect/contracts/state"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // cleanup runs the instance's cleanup script and removes it from state so the

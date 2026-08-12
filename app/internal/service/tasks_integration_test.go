@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/state"
-	contract "github.com/plecture/plect/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/state"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // dependsOn returns an `inputs` map that wires a node to upstream nodes so

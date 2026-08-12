@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/task"
-	contract "github.com/plecture/plect/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/task"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // repoRoot locates the repository root from this test file's own path, so a

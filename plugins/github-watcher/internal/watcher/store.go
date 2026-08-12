@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/plecture/plect/contracts/atomicfile"
+	"github.com/kecbigmt/plect/contracts/atomicfile"
 )
 
 // registryVersion is the on-disk subscription format version. It was bumped to 2

@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/eventlog"
-	"github.com/plecture/plect/app/internal/state"
-	"github.com/plecture/plect/contracts/event"
-	contract "github.com/plecture/plect/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/contracts/event"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // workTaskWithChain is a "work" task fixture: green-checks + pending-judge

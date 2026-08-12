@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/service"
 )
 
 func TestFilterByParent(t *testing.T) {

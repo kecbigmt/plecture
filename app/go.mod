@@ -1,13 +1,13 @@
-module github.com/plecture/plect/app
+module github.com/kecbigmt/plect/app
 
 go 1.25.6
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/plecture/plect/contracts/atomicfile v0.0.0
-	github.com/plecture/plect/contracts/channel-protocol v0.0.0
-	github.com/plecture/plect/contracts/event v0.0.0
-	github.com/plecture/plect/contracts/state v0.0.0
+	github.com/kecbigmt/plect/contracts/atomicfile v0.0.0
+	github.com/kecbigmt/plect/contracts/channel-protocol v0.0.0
+	github.com/kecbigmt/plect/contracts/event v0.0.0
+	github.com/kecbigmt/plect/contracts/state v0.0.0
 	github.com/mark3labs/mcp-go v0.48.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
@@ -26,8 +26,8 @@ require (
 )
 
 replace (
-	github.com/plecture/plect/contracts/atomicfile => ../contracts/atomicfile
-	github.com/plecture/plect/contracts/channel-protocol => ../contracts/channel-protocol
-	github.com/plecture/plect/contracts/event => ../contracts/event
-	github.com/plecture/plect/contracts/state => ../contracts/state
+	github.com/kecbigmt/plect/contracts/atomicfile => ../contracts/atomicfile
+	github.com/kecbigmt/plect/contracts/channel-protocol => ../contracts/channel-protocol
+	github.com/kecbigmt/plect/contracts/event => ../contracts/event
+	github.com/kecbigmt/plect/contracts/state => ../contracts/state
 )

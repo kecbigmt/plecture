@@ -3,7 +3,7 @@ package task
 import (
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 func strp(s string) *string { return &s }

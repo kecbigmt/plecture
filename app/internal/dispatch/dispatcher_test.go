@@ -16,15 +16,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plecture/plect/app/internal/channel"
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/app/internal/eventlog"
-	"github.com/plecture/plect/app/internal/sessionhub"
-	"github.com/plecture/plect/app/internal/state"
-	protocol "github.com/plecture/plect/contracts/channel-protocol"
-	"github.com/plecture/plect/contracts/event"
-	contract "github.com/plecture/plect/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/channel"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/sessionhub"
+	"github.com/kecbigmt/plect/app/internal/state"
+	protocol "github.com/kecbigmt/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/plect/contracts/event"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // runTestDispatcher builds a wake-driven dispatcher over a fast-poll hub for an

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plecture/plect/contracts/channel-protocol"
-	"github.com/plecture/plect/plugins/channel-server/server"
+	"github.com/kecbigmt/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/plect/plugins/channel-server/server"
 )
 
 // withFastSubscribeRetry tightens the /subscribe connect retry loop so tests

@@ -7,12 +7,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/app/internal/eventlog"
-	"github.com/plecture/plect/app/internal/sessionhub"
-	"github.com/plecture/plect/app/internal/state"
-	contract "github.com/plecture/plect/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/sessionhub"
+	"github.com/kecbigmt/plect/app/internal/state"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 func writeFile(t *testing.T, path, content string) {

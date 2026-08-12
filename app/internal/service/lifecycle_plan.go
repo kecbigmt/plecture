@@ -3,9 +3,9 @@ package service
 import (
 	"fmt"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 // buildPlanForSession honors the workflow name frozen on the session so

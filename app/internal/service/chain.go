@@ -5,11 +5,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/plecture/plect/app/internal/chain"
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/app/internal/state"
-	"github.com/plecture/plect/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/chain"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 // Blocked-reason values for a chain that did not fire this evaluation.

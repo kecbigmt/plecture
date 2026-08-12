@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/state"
-	"github.com/plecture/plect/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 // SubscribeParams are the inputs to Subscribe. ResourceID is the opaque

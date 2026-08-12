@@ -8,8 +8,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 
-	protocol "github.com/plecture/plect/contracts/channel-protocol"
-	channelserver "github.com/plecture/plect/plugins/channel-server/server"
+	protocol "github.com/kecbigmt/plect/contracts/channel-protocol"
+	channelserver "github.com/kecbigmt/plect/plugins/channel-server/server"
 )
 
 func main() {

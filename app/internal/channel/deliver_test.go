@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
-	protocol "github.com/plecture/plect/contracts/channel-protocol"
-	"github.com/plecture/plect/contracts/event"
+	"github.com/kecbigmt/plect/app/internal/config"
+	protocol "github.com/kecbigmt/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 // TestShippedChannelDefsRender renders every shipped channel definition's

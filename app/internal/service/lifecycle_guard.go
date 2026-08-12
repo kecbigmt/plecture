@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
 )
 
 // checkLifecycleRelationGuard authorizes a destructive lifecycle operation

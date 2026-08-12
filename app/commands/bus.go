@@ -14,13 +14,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/dispatch"
-	"github.com/plecture/plect/app/internal/eventbus"
-	"github.com/plecture/plect/app/internal/eventlog"
-	"github.com/plecture/plect/app/internal/reactor"
-	"github.com/plecture/plect/app/internal/sessionhub"
-	"github.com/plecture/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/dispatch"
+	"github.com/kecbigmt/plect/app/internal/eventbus"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/reactor"
+	"github.com/kecbigmt/plect/app/internal/sessionhub"
+	"github.com/kecbigmt/plect/app/internal/state"
 )
 
 var busSocket string

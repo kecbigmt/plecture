@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/plecture/plect/app/internal/procexec"
+	"github.com/kecbigmt/plect/app/internal/procexec"
 )
 
 // WorktreeStatus holds the git status of a worktree.

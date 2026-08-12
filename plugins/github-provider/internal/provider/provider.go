@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/plecture/plect/plugins/github-provider/internal/github"
+	"github.com/kecbigmt/plect/plugins/github-provider/internal/github"
 )
 
 // PlectBinary is the plect CLI the workspace calls are issued against. It

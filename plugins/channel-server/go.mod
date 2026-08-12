@@ -1,13 +1,13 @@
-module github.com/plecture/plect/plugins/channel-server
+module github.com/kecbigmt/plect/plugins/channel-server
 
 go 1.25.6
 
 require (
-	github.com/plecture/plect/contracts/channel-protocol v0.0.0
+	github.com/kecbigmt/plect/contracts/channel-protocol v0.0.0
 	github.com/mark3labs/mcp-go v0.48.0
 )
 
-replace github.com/plecture/plect/contracts/channel-protocol => ../../contracts/channel-protocol
+replace github.com/kecbigmt/plect/contracts/channel-protocol => ../../contracts/channel-protocol
 
 require (
 	github.com/google/jsonschema-go v0.4.2 // indirect

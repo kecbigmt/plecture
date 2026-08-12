@@ -3,7 +3,7 @@ package commands
 import (
 	"testing"
 
-	"github.com/plecture/plect/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 func TestFormatDoneWhen_ShowsCurrentValues(t *testing.T) {

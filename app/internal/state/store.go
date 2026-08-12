@@ -10,9 +10,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/contracts/atomicfile"
-	contract "github.com/plecture/plect/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/contracts/atomicfile"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 const stateVersion = 5

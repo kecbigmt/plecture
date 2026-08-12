@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/service"
 )
 
 // Now that the detail page exists, each session name links to it. Names contain

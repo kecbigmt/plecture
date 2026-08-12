@@ -1,8 +1,8 @@
 package webui
 
 import (
-	"github.com/plecture/plect/app/internal/service"
-	"github.com/plecture/plect/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 // doneStatusClass maps a done_when status to badge color classes, mirroring the

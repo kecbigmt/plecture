@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/contracts/event"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 // RetryPolicy bounds a channel worker's delivery attempts. DefaultRetryPolicy is

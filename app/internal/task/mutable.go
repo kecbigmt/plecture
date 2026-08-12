@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/plecture/plect/app/internal/config"
-	contract "github.com/plecture/plect/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // MutableOutputKeys extracts the output keys declared `mutable = true` from an

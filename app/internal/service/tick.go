@@ -3,9 +3,9 @@ package service
 import (
 	"fmt"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/state"
-	"github.com/plecture/plect/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 // TickParams carries SkipRefresh, unlike CheckParams: check never refreshes,

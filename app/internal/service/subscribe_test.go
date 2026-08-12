@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/domain"
-	"github.com/plecture/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plect/app/internal/state"
 )
 
 // writeSubscribeProvider drops a provider with a resolver + a subscribe hook

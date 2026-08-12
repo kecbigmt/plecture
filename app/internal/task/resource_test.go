@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 func TestMatchResourceDef_NoMatch(t *testing.T) {

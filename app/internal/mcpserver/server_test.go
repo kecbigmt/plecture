@@ -9,7 +9,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/plecture/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/state"
 )
 
 // setUpConfigHome points config.Load()/state.NewStore("") at a scratch config

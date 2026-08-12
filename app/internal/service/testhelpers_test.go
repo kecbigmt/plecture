@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 // setupE2ERepo creates a git repo structure that mimics what plect expects.

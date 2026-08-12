@@ -1,4 +1,4 @@
-module github.com/plecture/plect/plugins/legacy-migration
+module github.com/kecbigmt/plect/plugins/legacy-migration
 
 go 1.25.6
 

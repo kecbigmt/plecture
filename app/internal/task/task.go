@@ -21,8 +21,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/plecture/plect/app/internal/config"
-	contract "github.com/plecture/plect/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/config"
+	contract "github.com/kecbigmt/plect/contracts/state"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 

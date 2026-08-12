@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/plecture/plect/plugins/github-provider/internal/procexec"
+	"github.com/kecbigmt/plect/plugins/github-provider/internal/procexec"
 )
 
 // defaultRunner shells out to the real plect CLI. Stdout is the JSON the

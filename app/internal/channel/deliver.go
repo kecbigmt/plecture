@@ -17,9 +17,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/plecture/plect/app/internal/config"
-	protocol "github.com/plecture/plect/contracts/channel-protocol"
-	"github.com/plecture/plect/contracts/event"
+	"github.com/kecbigmt/plect/app/internal/config"
+	protocol "github.com/kecbigmt/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 // renderContext is what a channel template sees: the event as a map keyed by the

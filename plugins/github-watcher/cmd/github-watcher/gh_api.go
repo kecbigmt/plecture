@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/plecture/plect/plugins/github-watcher/internal/ratebudget"
+	"github.com/kecbigmt/plect/plugins/github-watcher/internal/ratebudget"
 )
 
 // cmdGhAPI is `github-watcher gh-api [--data-dir <dir>] <gh api args...>`:

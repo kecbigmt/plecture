@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 // taskFixture is a terse spec for one task definition. Scope defaults to

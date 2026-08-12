@@ -11,8 +11,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 // JudgeFact is the raw-fact view of one judge leaf at the current revision,

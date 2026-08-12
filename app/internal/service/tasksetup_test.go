@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plecture/plect/app/internal/eventlog"
-	"github.com/plecture/plect/app/internal/task"
-	"github.com/plecture/plect/contracts/event"
-	contract "github.com/plecture/plect/contracts/state"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/plect/contracts/event"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 func TestTaskSetup_AppendsInstructionEvent(t *testing.T) {

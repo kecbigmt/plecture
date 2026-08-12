@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/contracts/event"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 func fastPolicy(maxAttempts int) RetryPolicy {

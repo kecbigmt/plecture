@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"sort"
 
-	protocol "github.com/plecture/plect/contracts/channel-protocol"
+	protocol "github.com/kecbigmt/plect/contracts/channel-protocol"
 )
 
 // Conversation capture: slack-adapter mirrors the Slack↔Claude traffic that

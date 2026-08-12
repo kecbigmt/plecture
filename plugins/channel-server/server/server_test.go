@@ -8,7 +8,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/plecture/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/plect/contracts/channel-protocol"
 )
 
 // newPermissionRequestNotification builds the MCP notification channel-server

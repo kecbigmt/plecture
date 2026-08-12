@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/plecture/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 // MatchResourceDef finds the resource definition whose `match` recognizes

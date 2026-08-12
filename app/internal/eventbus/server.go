@@ -24,9 +24,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/plecture/plect/app/internal/eventlog"
-	"github.com/plecture/plect/app/internal/sessionhub"
-	"github.com/plecture/plect/contracts/event"
+	"github.com/kecbigmt/plect/app/internal/eventlog"
+	"github.com/kecbigmt/plect/app/internal/sessionhub"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 // keepAliveInterval bounds how long a stream stays silent: after this much idle

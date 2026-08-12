@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/config"
 )
 
 func TestFetchOutput_Single(t *testing.T) {

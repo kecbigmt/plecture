@@ -9,11 +9,11 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/service"
-	"github.com/plecture/plect/app/internal/state"
-	"github.com/plecture/plect/app/internal/template"
-	"github.com/plecture/plect/app/internal/workspace"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plect/app/internal/template"
+	"github.com/kecbigmt/plect/app/internal/workspace"
 )
 
 // NewServer creates a new MCP server with plect tools registered.

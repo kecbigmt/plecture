@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	contract "github.com/plecture/plect/contracts/state"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // recordingObserver captures observer events for assertions.

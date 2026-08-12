@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/plecture/plect/app/internal/config"
-	"github.com/plecture/plect/app/internal/task"
+	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plect/app/internal/task"
 )
 
 // TestFlakeOverlays_ClaudeCodexCompile guards every repo-specific claude.toml /

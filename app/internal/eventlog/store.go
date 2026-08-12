@@ -27,8 +27,8 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
-	"github.com/plecture/plect/contracts/atomicfile"
-	"github.com/plecture/plect/contracts/event"
+	"github.com/kecbigmt/plect/contracts/atomicfile"
+	"github.com/kecbigmt/plect/contracts/event"
 )
 
 // pollInterval is how often Follow checks the log for new records. A poll
