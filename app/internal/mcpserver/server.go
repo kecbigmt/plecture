@@ -102,6 +102,9 @@ var upTool = mcp.NewTool("sennit_up",
 	mcp.WithString("task",
 		mcp.Description("Shorthand for inputs.task, forwarded to the auto-create path; see sennit_create's task parameter. Rejected when the session already exists."),
 	),
+	mcp.WithBoolean("force_recreate",
+		mcp.Description("Rebuild the session runtime for an existing session instead of resuming existing task outputs."),
+	),
 )
 
 var downTool = mcp.NewTool("sennit_down",
@@ -298,6 +301,7 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 		Workflow:      request.GetString("workflow", ""),
 		ParentSession: request.GetString("parent", ""),
 		Inputs:        inputs,
+		ForceRecreate: request.GetBool("force_recreate", false),
 	})
 	if err != nil {
 		return errorResult(err), nil
