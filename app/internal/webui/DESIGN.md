@@ -1,7 +1,7 @@
 ---
 version: alpha
-name: plecture-web
-description: shadcn-aligned neutral design system for the plecture session web UI
+name: plect-web
+description: shadcn-aligned neutral design system for the plect session web UI
 colors:
   background: "#ffffff"
   foreground: "#0a0a0a"

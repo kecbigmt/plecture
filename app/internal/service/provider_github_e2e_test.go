@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/task"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // shippedGithubProvider loads the provider config that ships with the GitHub
@@ -42,7 +42,7 @@ func resolveGoToolCaches() []string {
 	return []string{"GOMODCACHE=" + lines[0], "GOCACHE=" + lines[1]}
 }
 
-// buildProviderBinaries compiles the plecture CLI and the GitHub provider
+// buildProviderBinaries compiles the plect CLI and the GitHub provider
 // executable into a temp directory that is prepended to PATH, so the shipped
 // hooks resolve to the code in this working tree.
 func buildProviderBinaries(t *testing.T, root string) {
@@ -62,8 +62,8 @@ func buildProviderBinaries(t *testing.T, root string) {
 			t.Fatalf("build %s: %v", out, err)
 		}
 	}
-	build("app", "./cmd/plecture", "plecture")
-	build(filepath.Join("plugins", "github-provider"), "./cmd/plecture-github-provider", "plecture-github-provider")
+	build("app", "./cmd/plect", "plect")
+	build(filepath.Join("plugins", "github-provider"), "./cmd/plect-github-provider", "plect-github-provider")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 

@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/service"
+	"github.com/plecture/plect/app/internal/state"
 )
 
 var (
@@ -68,7 +68,7 @@ var lsCmd = &cobra.Command{
 }
 
 // filterByParent keeps only the entries whose ParentSession matches
-// parentName, for `plecture ls --parent`.
+// parentName, for `plect ls --parent`.
 func filterByParent(entries []service.ListEntry, parentName string) []service.ListEntry {
 	filtered := entries[:0]
 	for _, e := range entries {

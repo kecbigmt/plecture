@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/service"
+	"github.com/plecture/plect/app/internal/state"
 )
 
 var (
@@ -20,7 +20,7 @@ var subscribeCmd = &cobra.Command{
 	Short: "Subscribe the current session to a resource's events",
 	Long: `Subscribe the current session to an opaque resource so its events arrive
 in its own event log (for a code review resource: CI status, review decisions,
-state changes — readable with 'plecture event list').
+state changes — readable with 'plect event list').
 
 This is the runtime counterpart to the auto-subscribe that runs at dispatch
 time: it ADDS a subscription to a live session without recreating it, and
@@ -29,8 +29,8 @@ already watching does not take it over — each subscriber receives its own
 copy of the events in its own log.
 
 The subscriber session is taken from the ambient pane environment
-($PLECTURE_SESSION_NAME, exported into the agent's shell), so a running agent can
-simply 'plecture subscribe <url>'. --session overrides it.`,
+($PLECT_SESSION_NAME, exported into the agent's shell), so a running agent can
+simply 'plect subscribe <url>'. --session overrides it.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()
@@ -47,6 +47,6 @@ simply 'plecture subscribe <url>'. --session overrides it.`,
 }
 
 func init() {
-	subscribeCmd.Flags().StringVar(&subscribeSession, "session", "", "Subscriber session (defaults to $PLECTURE_SESSION_NAME)")
+	subscribeCmd.Flags().StringVar(&subscribeSession, "session", "", "Subscriber session (defaults to $PLECT_SESSION_NAME)")
 	rootCmd.AddCommand(subscribeCmd)
 }

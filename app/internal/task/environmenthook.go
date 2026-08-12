@@ -7,8 +7,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // EnvironmentHookVars is the template surface for environment setup/cleanup.
@@ -88,7 +88,7 @@ func RunEnvironmentSetup(env config.EnvironmentConfig, vars EnvironmentHookVars,
 		}
 		outputs = parsed
 	}
-	schema, err := CompileSchema(env.OutputsSchema, env.ResolvedOutputsSchemaPath(), "plecture:environment:"+env.ID+":outputs")
+	schema, err := CompileSchema(env.OutputsSchema, env.ResolvedOutputsSchemaPath(), "plect:environment:"+env.ID+":outputs")
 	if err != nil {
 		fail(err.Error())
 		wrapped := fmt.Errorf("environment %q outputs schema: %w", env.ID, err)

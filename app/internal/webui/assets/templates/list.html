@@ -75,17 +75,17 @@ document.addEventListener("click", function (e) {
 });
 
 // Live event timeline: one EventSource per open session. The detail pane carries
-// a hidden #event-stream with the SSE URL; plecture-web relays the bus stream there as
+// a hidden #event-stream with the SSE URL; plect-web relays the bus stream there as
 // rendered <li> fragments, which we prepend (newest first). The connection is
 // tied to the detail pane — reconnect when it swaps, leave it alone on the list's
 // 5s refresh (which targets #sessions, not #detail-pane).
-var _plectureEventStream = null;
+var _plectEventStream = null;
 function connectEventStream() {
-  if (_plectureEventStream) { _plectureEventStream.close(); _plectureEventStream = null; }
+  if (_plectEventStream) { _plectEventStream.close(); _plectEventStream = null; }
   var el = document.getElementById("event-stream");
   if (!el || !el.dataset.url) return;
-  _plectureEventStream = new EventSource(el.dataset.url);
-  _plectureEventStream.onmessage = function (e) {
+  _plectEventStream = new EventSource(el.dataset.url);
+  _plectEventStream.onmessage = function (e) {
     var list = document.getElementById("event-list");
     if (!list) return;
     var ph = list.querySelector("[data-placeholder]");
@@ -94,7 +94,7 @@ function connectEventStream() {
   };
   // The bus may be down (502) or restarting; EventSource retries on its own, but
   // surface the degraded state instead of leaving a silent "Waiting…" forever.
-  _plectureEventStream.onerror = function () {
+  _plectEventStream.onerror = function () {
     var ph = document.querySelector("#event-list [data-placeholder]");
     if (ph) ph.textContent = "Reconnecting to live updates…";
   };

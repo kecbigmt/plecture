@@ -6,15 +6,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/service"
+	"github.com/plecture/plect/app/internal/state"
 )
 
 var cdCmd = &cobra.Command{
 	Use:   "cd <resource-id|session>",
 	Short: "Print the working directory for a session",
-	Long:  "Print the working directory to stdout. Use with: cd $(plecture cd <resource-id|session>)",
+	Long:  "Print the working directory to stdout. Use with: cd $(plect cd <resource-id|session>)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()
@@ -31,7 +31,7 @@ var cdCmd = &cobra.Command{
 		}
 
 		if _, err := os.Stat(wtPath); os.IsNotExist(err) {
-			return fmt.Errorf("worktree not found: %s\nRun 'plecture up' first", wtPath)
+			return fmt.Errorf("worktree not found: %s\nRun 'plect up' first", wtPath)
 		}
 
 		fmt.Println(wtPath)

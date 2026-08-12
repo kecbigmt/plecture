@@ -5,11 +5,11 @@ import (
 	"os"
 	"slices"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/app/internal/task"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // CheckParams has no refresh option: check always reads persisted state (see
@@ -55,7 +55,7 @@ type CheckResult struct {
 	Actions []CheckAction `json:"actions,omitempty"`
 	// Chains is the [[chains]] evaluation for this same tick/check — fired /
 	// already-active / blocked, with the reason — evaluated against the same
-	// facts as Actions. CheckSession (and plecture status, which shares the same
+	// facts as Actions. CheckSession (and plect status, which shares the same
 	// evaluation) always reports it as a dry-run plan (Spawned is always
 	// false); TickSession spawns each fired, not-already-active entry.
 	Chains []ChainSpawn `json:"chains,omitempty"`
@@ -84,7 +84,7 @@ type CheckUnmetItem struct {
 }
 
 // computedAction bundles one instance's done_when evaluation with the
-// record-time facts needed only by the actuator (plecture tick): whether the last
+// record-time facts needed only by the actuator (plect tick): whether the last
 // persisted action was already "satisfied" (so a repeated `done` push can be
 // skipped) and which instance key it belongs to. CheckSession discards these
 // extras and reports only the action; TickSession consumes all three. result
@@ -97,8 +97,8 @@ type computedAction struct {
 	result           task.DoneWhenResult
 }
 
-// evaluateSessionActions runs the read-only half shared by CheckSession (plecture
-// status / plecture_check) and TickSession (plecture tick): optionally refresh outputs,
+// evaluateSessionActions runs the read-only half shared by CheckSession (plect
+// status / plect_check) and TickSession (plect tick): optionally refresh outputs,
 // resolve the session, and evaluate
 // done_when — and, against those same facts, [[chains]] — for every produced
 // task instance. It never writes state, spawns a session, or publishes events:
@@ -110,10 +110,10 @@ type computedAction struct {
 // outputs.
 func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName string, refresh bool) (string, []computedAction, []ChainSpawn, []string, error) {
 	if sessionName == "" {
-		sessionName = os.Getenv("PLECTURE_SESSION_NAME")
+		sessionName = os.Getenv("PLECT_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass a session or run inside a plecture session pane"}
+		return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass a session or run inside a plect session pane"}
 	}
 	if refresh {
 		if _, err := RefreshSessionOutputs(cfg, store, sessionName); err != nil {
@@ -190,7 +190,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 // is woken or spawned, and no dynamic output is refreshed — it reads whatever
 // tick (or the initial produce) last persisted. Calling it any number of
 // times leaves state, event log, and session list unchanged (the target
-// session's state does not change). Use plecture tick
+// session's state does not change). Use plect tick
 // to actually advance the gate, refresh outputs, and fire chains.
 func CheckSession(cfg *config.Config, store *state.Store, params CheckParams) (*CheckResult, error) {
 	_, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, false)

@@ -48,7 +48,7 @@ type ProviderConfig struct {
 	// the author's contract).
 	Cleanup string `toml:"cleanup"`
 	// Subscribe binds a session to a resource of this kind at runtime (the
-	// `plecture subscribe` verb), the counterpart to the dispatch-time
+	// `plect subscribe` verb), the counterpart to the dispatch-time
 	// auto-subscribe task. Optional: a provider without it cannot be
 	// subscribed to after dispatch. The hook's template surface is the
 	// current session (.SessionName) and the opaque resource (.ResourceID) —

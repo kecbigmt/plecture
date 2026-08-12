@@ -7,13 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/state"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/state"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // TestIntegration_TickSpawnsReviewer drives the full fire path: a work
 // session with a pending judge leaf and green checks, a task-embedded
-// [[chains]] that wires `revision`, and plecture tick (TickSession) spawning the
+// [[chains]] that wires `revision`, and plect tick (TickSession) spawning the
 // reviewer workflow as a sibling under the work session's parent as part of
 // the same tick that advances the Goal Loop. Re-ticking is idempotent.
 func TestIntegration_TickSpawnsReviewer(t *testing.T) {

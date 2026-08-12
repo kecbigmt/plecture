@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/contracts/event"
 )
 
 func fastPolicy(maxAttempts int) RetryPolicy {
@@ -104,7 +104,7 @@ func TestChannelErrorEvent(t *testing.T) {
 	if ce.Type != event.TypeChannelError {
 		t.Errorf("Type = %q, want %q", ce.Type, event.TypeChannelError)
 	}
-	if ce.Source != event.SourcePlecture || ce.Direction != event.Internal {
+	if ce.Source != event.SourcePlect || ce.Direction != event.Internal {
 		t.Errorf("source/direction = %q/%q", ce.Source, ce.Direction)
 	}
 	if ce.SessionName != "o/r-1" {

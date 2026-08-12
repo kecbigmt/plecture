@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // watchTaskSchema declares pr_state/checks_status as mutable, title immutable.

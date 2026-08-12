@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/plecture/plect/app/internal/task"
 )
 
 // taskDisplayName shows the instance key. A named instance keys on the name

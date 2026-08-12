@@ -21,8 +21,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	contract "github.com/plecture/plect/contracts/state"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -49,17 +49,17 @@ type Resolved struct {
 	OutputsSchema *jsonschema.Schema
 	// MutableOutputs lists output keys declared `mutable = true` in the
 	// outputs schema. Only these may be updated post-setup via
-	// `plecture state set-output`; everything else is immutable (safe by default).
+	// `plect state set-output`; everything else is immutable (safe by default).
 	MutableOutputs []string
 	DependsOn      []string
 	// DoneWhen is the task's per-instance Definition of Done;
 	// nil for pure lifecycle-only tasks. Evaluated against the instance's own
-	// outputs for `plecture status` / `ls` display.
+	// outputs for `plect status` / `ls` display.
 	DoneWhen *config.DoneWhen
 	// Execution is the resolved execution plane ("host" or "environment") —
 	// always one of those two after ResolveExecution runs, never the raw
 	// possibly-empty TaskDefinition.Execution. CompileWorkflow resolves it for
-	// static nodes; the dynamic `plecture task setup` path resolves it separately
+	// static nodes; the dynamic `plect task setup` path resolves it separately
 	// (ResolveDefinition has no workflow to consult).
 	Execution string
 }
@@ -89,7 +89,7 @@ func (p *Plan) AttachTask() *Resolved {
 // CaptureTask returns the resolved node that declares capture, or nil if none
 // does. Unlike attach (validated to at most one at compile time, see
 // assemblePlan), any number of task definitions may declare capture — a
-// session simply never resolves to one until `plecture capture` is called on it —
+// session simply never resolves to one until `plect capture` is called on it —
 // so ambiguity across the resolved plan is reported here as an error instead.
 func (p *Plan) CaptureTask() (*Resolved, error) {
 	var found []*Resolved
@@ -181,7 +181,7 @@ func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, s
 //   - more than one node declaring `attach`
 func CompileWorkflow(wf config.WorkflowFile, defs map[string]config.TaskDefinition) (*Plan, error) {
 	if len(wf.Nodes) == 0 {
-		// An empty plan would silently no-op `plecture up --workflow foo`, which
+		// An empty plan would silently no-op `plect up --workflow foo`, which
 		// is more confusing than helpful. Force the author to either declare
 		// nodes or delete the file.
 		return nil, fmt.Errorf("workflow %q declares no nodes", wf.ID)
@@ -210,7 +210,7 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 		}
 		if !nodeIDRE.MatchString(nodeID) {
 			// Reject hyphens etc. up front. Otherwise the user discovers the
-			// problem at `plecture up` time via a template parse error inside a
+			// problem at `plect up` time via a template parse error inside a
 			// downstream node's input binding.
 			return nil, fmt.Errorf("workflow %q: node id %q is not a valid Go template identifier (must match %s); rename it to use underscores", wf.ID, nodeID, nodeIDRE.String())
 		}
@@ -247,7 +247,7 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 // the given node id: scope validation, input/output schema compilation, mutable
 // key extraction, and done_when template validation. It does not populate
 // workflow-specific fields (Inputs / DependsOn) — the workflow compiler sets
-// those, and the dynamic `plecture task setup` path leaves them empty (it binds
+// those, and the dynamic `plect task setup` path leaves them empty (it binds
 // input values directly rather than via node templates).
 func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, error) {
 	scope := def.EffectiveScope()
@@ -255,7 +255,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		return Resolved{}, fmt.Errorf("task %q: invalid scope %q (want %q or %q)",
 			def.ID, def.Scope, config.TaskScopeSession, config.TaskScopeRun)
 	}
-	outputsSchema, err := CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plecture:task:"+def.ID+":outputs")
+	outputsSchema, err := CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plect:task:"+def.ID+":outputs")
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: outputs schema: %w", def.ID, err)
 	}
@@ -263,7 +263,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: outputs schema: %w", def.ID, err)
 	}
-	inputsSchema, err := CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "plecture:task:"+def.ID+":inputs")
+	inputsSchema, err := CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "plect:task:"+def.ID+":inputs")
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: input schema: %w", def.ID, err)
 	}
@@ -293,7 +293,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		DoneWhen:       def.DoneWhen,
 		// Execution starts as the raw declared value (possibly empty); callers
 		// resolve it against the workflow's Environment via ResolveExecution.
-		// CompileWorkflow does so for static nodes; the dynamic `plecture task
+		// CompileWorkflow does so for static nodes; the dynamic `plect task
 		// setup` path (which has no Resolved.Inputs/DependsOn either) does the
 		// same against the session's frozen workflow.
 		Execution: def.Execution,

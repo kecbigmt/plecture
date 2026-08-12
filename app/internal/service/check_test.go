@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/contracts/event"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/contracts/event"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
@@ -60,7 +60,7 @@ func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
 
 // TestRecordJudge_AppendsJudgeRecordedEvent covers the tick reactor's judge
 // builtin trigger (AC2, ADR amendment 2026-07-04 §1): recording a judge must
-// append plecture.judge.recorded to the *target* work session's own log, not the
+// append plect.judge.recorded to the *target* work session's own log, not the
 // reviewer's, since the reactor ticks the judged session, not the recorder.
 func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 	store := testStore(t)
@@ -94,7 +94,7 @@ func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 		t.Fatalf("list target events: %v", err)
 	}
 	if len(onTarget) != 1 {
-		t.Fatalf("target session events = %+v, want exactly one plecture.judge.recorded", onTarget)
+		t.Fatalf("target session events = %+v, want exactly one plect.judge.recorded", onTarget)
 	}
 	onReviewer, _, _, err := log.List(reviewer, 0, event.Filter{Types: []string{event.TypeJudgeRecorded}})
 	if err != nil {
@@ -225,7 +225,7 @@ func TestRecordJudge_RequiresRevision(t *testing.T) {
 }
 
 func TestRecordJudge_RequiresReviewerSession(t *testing.T) {
-	t.Setenv("PLECTURE_SESSION_NAME", "")
+	t.Setenv("PLECT_SESSION_NAME", "")
 	store := testStore(t)
 	cfg := &config.Config{WorktreesRoot: t.TempDir()}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", map[string]*contract.TaskState{
@@ -775,14 +775,14 @@ func TestTickScenario_RequestChangesStaleThenApproved(t *testing.T) {
 	if len(first.Actions[0].UnmetItems) != 1 || first.Actions[0].UnmetItems[0].ID != "ac-met" || first.Actions[0].UnmetItems[0].PendingReason != "missing_judge" {
 		t.Fatalf("first unmet_items = %+v", first.Actions[0].UnmetItems)
 	}
-	if len(first.Actions[0].JudgeCommands) != 2 || !strings.Contains(first.Actions[0].Body, "plecture judge approve") || !strings.Contains(first.Actions[0].Body, "plecture judge request-changes") {
+	if len(first.Actions[0].JudgeCommands) != 2 || !strings.Contains(first.Actions[0].Body, "plect judge approve") || !strings.Contains(first.Actions[0].Body, "plect judge request-changes") {
 		t.Fatalf("first judge command contract = commands %+v body %q", first.Actions[0].JudgeCommands, first.Actions[0].Body)
 	}
-	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{"plecture.tick.review_required"}})
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{"plect.tick.review_required"}})
 	if err != nil {
 		t.Fatalf("event list: %v", err)
 	}
-	if len(evs) != 1 || !strings.Contains(evs[0].Body, "plecture judge approve") {
+	if len(evs) != 1 || !strings.Contains(evs[0].Body, "plect judge approve") {
 		t.Fatalf("review_required events = %+v, want reviewer instruction body", evs)
 	}
 
@@ -942,7 +942,7 @@ func TestTickSession_SatisfiedWithNoParentDoesNotError(t *testing.T) {
 }
 
 // The escalate action pushes an `escalate` terminal event one hop to the
-// parent, on top of the existing same-session plecture.tick.escalated record
+// parent, on top of the existing same-session plect.tick.escalated record
 // (kept for compat/observability, ADR D11 slice 5).
 func TestTickSession_EscalatesAfterMaxRounds_PushesToParent(t *testing.T) {
 	store := testStore(t)
@@ -970,12 +970,12 @@ func TestTickSession_EscalatesAfterMaxRounds_PushesToParent(t *testing.T) {
 		t.Fatalf("actions = %+v", result.Actions)
 	}
 
-	sameSession, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{"plecture.tick.escalated"}})
+	sameSession, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{"plect.tick.escalated"}})
 	if err != nil {
 		t.Fatalf("list same-session: %v", err)
 	}
 	if len(sameSession) != 1 {
-		t.Fatalf("same-session plecture.tick.escalated events = %d, want 1 (compat record kept)", len(sameSession))
+		t.Fatalf("same-session plect.tick.escalated events = %d, want 1 (compat record kept)", len(sameSession))
 	}
 
 	pushed, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-orchestrator", 0, event.Filter{Types: []string{event.TypeTerminalEscalate}})

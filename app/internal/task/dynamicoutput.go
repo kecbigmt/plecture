@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/plecture/plect/app/internal/config"
 )
 
 // FetchOutput runs the script (or, when FromResourceStatus is set, observes

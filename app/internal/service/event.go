@@ -8,12 +8,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/contracts/event"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/contracts/event"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // EventPublishParams describes an event to publish to a session's log.
@@ -36,7 +36,7 @@ func EventPublish(cfg *config.Config, store *state.Store, identifier string, p E
 	// Writing into a session's log (and, with --relay, injecting a message into
 	// its agent) is a per-session write: clamp it to the active session guard so
 	// a guarded orchestrator can't publish into another owner's session it can
-	// merely see via `plecture ls`.
+	// merely see via `plect ls`.
 	if guardErr := checkSessionGuard(cfg, name); guardErr != nil {
 		return event.Event{}, guardErr
 	}
@@ -63,7 +63,7 @@ func EventPublish(cfg *config.Config, store *state.Store, identifier string, p E
 	return stored, nil
 }
 
-// normalizePublishDirection stamps the publishing session (`PLECTURE_SESSION_NAME`)
+// normalizePublishDirection stamps the publishing session (`PLECT_SESSION_NAME`)
 // as event.MetaOriginSession and forces Inbound whenever the origin differs
 // from the target session — "direction = whether the origin is outside this
 // session" is the single condition the tick reactor's quiet-tick backoff
@@ -74,7 +74,7 @@ func EventPublish(cfg *config.Config, store *state.Store, identifier string, p E
 // plain CLI invocation outside a pane, or a caller that already resolved
 // direction itself, e.g. the MCP/CLI --direction flag with no env session).
 func normalizePublishDirection(target string, requested event.Direction, metadata map[string]string) (event.Direction, map[string]string) {
-	origin := os.Getenv("PLECTURE_SESSION_NAME")
+	origin := os.Getenv("PLECT_SESSION_NAME")
 	if origin == "" {
 		return requested, metadata
 	}
@@ -294,12 +294,12 @@ func EventTail(ctx context.Context, cfg *config.Config, store *state.Store, iden
 	if err != nil {
 		return err
 	}
-	// Prefer the live bus when one is configured (PLECTURE_BUS_SOCKET): it follows the
+	// Prefer the live bus when one is configured (PLECT_BUS_SOCKET): it follows the
 	// same log via SSE with automatic reconnect, and exercises the bus stream
 	// path end-to-end. Without it, read the log directly. The bus applies the
 	// filter server-side, so only the local path needs to Match.
-	if socket := os.Getenv("PLECTURE_BUS_SOCKET"); socket != "" {
-		client := event.NewUDSClient(socket, os.Getenv("PLECTURE_BUS_TOKEN"))
+	if socket := os.Getenv("PLECT_BUS_SOCKET"); socket != "" {
+		client := event.NewUDSClient(socket, os.Getenv("PLECT_BUS_TOKEN"))
 		return client.Subscribe(ctx, name, since, f, func(ev event.Event, _ int64) {
 			fn(ev)
 		})
@@ -356,13 +356,13 @@ func recordLifecycle(store *state.Store, sessionName, phase, summary string) {
 	_, _, _, _ = eventlog.NewStore(store.Dir()).Append(event.Event{
 		SessionName: sessionName,
 		Type:        event.TypeLifecyclePrefix + phase,
-		Source:      event.SourcePlecture,
+		Source:      event.SourcePlect,
 		Direction:   event.Internal,
 		Summary:     summary,
 	})
 }
 
-// recordJudgeRecorded appends the plecture.judge.recorded builtin trigger to the
+// recordJudgeRecorded appends the plect.judge.recorded builtin trigger to the
 // *target* session's own log (not the reviewer's) — RecordJudge already
 // resolved judge.TargetSession as sessionName. The tick reactor always ticks
 // on this event regardless of any `[tick]` declaration; best-effort like
@@ -374,7 +374,7 @@ func recordJudgeRecorded(store *state.Store, sessionName string, judge *contract
 	_, _, _, _ = eventlog.NewStore(store.Dir()).Append(event.Event{
 		SessionName: sessionName,
 		Type:        event.TypeJudgeRecorded,
-		Source:      event.SourcePlecture,
+		Source:      event.SourcePlect,
 		Direction:   event.Internal,
 		Summary:     fmt.Sprintf("judge %s recorded (%s) by %s", judge.LeafID, judge.Action, judge.ReviewerSession),
 		Metadata: map[string]string{
@@ -392,7 +392,7 @@ func instructionOutput(outputs map[string]any) string {
 	return ""
 }
 
-// appendInstruction records a task's `instruction` output as a plecture.instruction
+// appendInstruction records a task's `instruction` output as a plect.instruction
 // event so the session dispatcher's runtime channel delivers it — TaskSetup keeps
 // producing outputs and never delivers to a runtime itself. Best-effort like
 // recordLifecycle: the instance already succeeded, so a failed append must not
@@ -408,7 +408,7 @@ func appendInstruction(store *state.Store, sessionName, taskKey, resource, instr
 	_, _, _, _ = eventlog.NewStore(store.Dir()).Append(event.Event{
 		SessionName: sessionName,
 		Type:        event.TypeInstruction,
-		Source:      event.SourcePlecture,
+		Source:      event.SourcePlect,
 		Direction:   event.Inbound,
 		Summary:     fmt.Sprintf("%s instruction", taskKey),
 		Body:        instruction,

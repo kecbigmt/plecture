@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/plecture/plect/app/internal/service"
 )
 
 func TestWriteWorkflowList_NoHeaderUsesLiteralTabs(t *testing.T) {
@@ -61,10 +61,10 @@ func TestWriteNodesByScope_AnnotatesAliasUses(t *testing.T) {
 func TestWriteChannels_ShowsTypeAndDelivers(t *testing.T) {
 	var buf bytes.Buffer
 	writeChannels(&buf, []service.WorkflowChannel{
-		{Name: "runtime", Uses: "claude_channel", Type: "unix_socket", Include: []string{"plecture.instruction", "github.*"}},
+		{Name: "runtime", Uses: "claude_channel", Type: "unix_socket", Include: []string{"plect.instruction", "github.*"}},
 	})
 	got := buf.String()
-	want := "  runtime (uses claude_channel, unix_socket)\n    delivers: plecture.instruction, github.*\n"
+	want := "  runtime (uses claude_channel, unix_socket)\n    delivers: plect.instruction, github.*\n"
 	if got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}

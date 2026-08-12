@@ -6,13 +6,13 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/service"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/contracts/event"
 )
 
-var eventListTool = mcp.NewTool("plecture_event_list",
+var eventListTool = mcp.NewTool("plect_event_list",
 	mcp.WithDescription("List events recorded for a session's durable timeline (resource changes, lifecycle, messages, replies, notes). Works for destroyed sessions too — history is retained. Pass subtree to see a session tree (root + descendants) merged in time order — the canonical cross-session scope. session and subtree are mutually exclusive."),
 	mcp.WithString("session",
 		mcp.Description("Resource identifier, or session name (e.g. workspace-123). Omit when using subtree."),
@@ -30,7 +30,7 @@ var eventListTool = mcp.NewTool("plecture_event_list",
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
-var eventShowTool = mcp.NewTool("plecture_event_show",
+var eventShowTool = mcp.NewTool("plect_event_show",
 	mcp.WithDescription("Show a single event by id from a session's durable timeline. Works for destroyed sessions too — history is retained."),
 	mcp.WithString("session",
 		mcp.Required(),
@@ -38,12 +38,12 @@ var eventShowTool = mcp.NewTool("plecture_event_show",
 	),
 	mcp.WithString("event_id",
 		mcp.Required(),
-		mcp.Description("Event id, as returned by plecture_event_list"),
+		mcp.Description("Event id, as returned by plect_event_list"),
 	),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
-var eventPublishTool = mcp.NewTool("plecture_event_publish",
+var eventPublishTool = mcp.NewTool("plect_event_publish",
 	mcp.WithDescription("Publish an event to a session's timeline (durably recorded). Workflow channels deliver subscribed event types such as user.emit to the session runtime and Slack thread."),
 	mcp.WithString("session",
 		mcp.Required(),

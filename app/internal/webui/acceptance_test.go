@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/state"
 )
 
 // Acceptance: the real service stack (state.Store + service.List), driven

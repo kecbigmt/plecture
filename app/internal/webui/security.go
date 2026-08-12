@@ -12,10 +12,10 @@ import (
 // Cookie / header names for the two independent defenses: CSRF (always on) and
 // auth_token (on only when configured).
 const (
-	csrfCookieName = "plecture_csrf"
+	csrfCookieName = "plect_csrf"
 	csrfHeaderName = "X-CSRF-Token"
 	csrfFormField  = "csrf_token"
-	authCookieName = "plecture_auth"
+	authCookieName = "plect_auth"
 )
 
 // ensureCSRFToken returns the request's CSRF token, minting and setting a

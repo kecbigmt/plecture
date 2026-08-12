@@ -3,7 +3,7 @@ package task
 import (
 	"testing"
 
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 func TestRenderOutputsTemplate_WorkflowOutputs(t *testing.T) {

@@ -3,7 +3,7 @@
 // notifications to the configured delivery path.
 //
 // Component boundaries (see this repository's CLAUDE.md/AGENTS.md): the
-// watcher imports no plecture core internals.
+// watcher imports no plect core internals.
 package watcher
 
 import (
@@ -13,17 +13,17 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/kecbigmt/plecture/contracts/atomicfile"
+	"github.com/plecture/plect/contracts/atomicfile"
 )
 
 // registryVersion is the on-disk subscription format version. It was bumped to 2
 // when the key changed from session-only (1:1) to (session, resource) so one
 // session can funnel several PRs. A file at any other version is
-// discarded on load: the github_watch task re-subscribes on the next `plecture up`,
+// discarded on load: the github_watch task re-subscribes on the next `plect up`,
 // so there is nothing to migrate.
 const registryVersion = 2
 
-// Subscription is one watched resource bound to a plecture session. A session may
+// Subscription is one watched resource bound to a plect session. A session may
 // have several (one per resource), so the registry is keyed by (session,
 // resource), not session alone.
 type Subscription struct {
@@ -87,7 +87,7 @@ func (s *Store) Subscribe(sub Subscription) error {
 		if existing, ok := r.Subscriptions[key]; ok {
 			// Re-subscribe is additive/idempotent: a non-empty field updates,
 			// an empty one preserves what's stored. This keeps a runtime
-			// `plecture subscribe` (which omits --branch) from wiping the branch a
+			// `plect subscribe` (which omits --branch) from wiping the branch a
 			// dispatch-time auto-subscribe recorded for the same resource —
 			// losing it would break an issue session's linked-PR resolution.
 			if sub.Branch != "" {
@@ -181,7 +181,7 @@ func (s *Store) load() (*registry, error) {
 		return nil, fmt.Errorf("parse %s: %w", s.path, err)
 	}
 	// A file from an older (or newer) format is discarded, not migrated: the
-	// task re-subscribes on the next `plecture up`. Return a fresh empty registry
+	// task re-subscribes on the next `plect up`. Return a fresh empty registry
 	// at the current version so the next write persists the upgrade.
 	if r.Version != registryVersion {
 		return &registry{Version: registryVersion, Subscriptions: map[string]*Subscription{}}, nil

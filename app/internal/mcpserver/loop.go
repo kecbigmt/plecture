@@ -6,10 +6,10 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/service"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/app/internal/task"
 )
 
 // Loop-engineering surface: the typed MCP counterparts of the CLI task / gate /
@@ -18,14 +18,14 @@ import (
 // interface. Sessions default to the ambient pane env in the service
 // layer, so an agent may omit `session` when acting on its own session.
 
-var taskSetupTool = mcp.NewTool("plecture_task_setup",
-	mcp.WithDescription("Instantiate a task definition against a live session at runtime (ADR-003 dynamic instantiation): its setup runs, the instance (outputs + cleanup + scope) is registered in session state and shown by plecture_status, and teardown reclaims it. run-scoped tasks may only be instantiated while the run scope is up; session-scoped tasks any time. Without `name` each setup creates a fresh numbered instance (<task>#<n>); with `name` it pins a session-global singleton that collides on re-setup."),
+var taskSetupTool = mcp.NewTool("plect_task_setup",
+	mcp.WithDescription("Instantiate a task definition against a live session at runtime (ADR-003 dynamic instantiation): its setup runs, the instance (outputs + cleanup + scope) is registered in session state and shown by plect_status, and teardown reclaims it. run-scoped tasks may only be instantiated while the run scope is up; session-scoped tasks any time. Without `name` each setup creates a fresh numbered instance (<task>#<n>); with `name` it pins a session-global singleton that collides on re-setup."),
 	mcp.WithString("task_id",
 		mcp.Required(),
 		mcp.Description("Task definition id to instantiate (matches the task .toml stem)"),
 	),
 	mcp.WithString("session",
-		mcp.Description("Target session name (defaults to PLECTURE_SESSION_NAME)"),
+		mcp.Description("Target session name (defaults to PLECT_SESSION_NAME)"),
 	),
 	mcp.WithString("name",
 		mcp.Description("Instance identity: the key becomes the name (session-global singleton); a second setup of the same name is a collision error. Omit for a fresh numbered <task>#<n>."),
@@ -41,37 +41,37 @@ var taskSetupTool = mcp.NewTool("plecture_task_setup",
 	),
 )
 
-var taskCleanupTool = mcp.NewTool("plecture_task_cleanup",
-	mcp.WithDescription("Reclaim one dynamic task instance: run its cleanup script and remove it from session state. The single-instance counterpart of plecture_down / plecture_destroy. Addressed by its key alone (a name or a numbered <task>#<n>) and reclaimed regardless of which task produced it. A missing instance is a no-op success, so cleanup-then-setup is a safe recreate idiom."),
+var taskCleanupTool = mcp.NewTool("plect_task_cleanup",
+	mcp.WithDescription("Reclaim one dynamic task instance: run its cleanup script and remove it from session state. The single-instance counterpart of plect_down / plect_destroy. Addressed by its key alone (a name or a numbered <task>#<n>) and reclaimed regardless of which task produced it. A missing instance is a no-op success, so cleanup-then-setup is a safe recreate idiom."),
 	mcp.WithString("instance",
 		mcp.Required(),
 		mcp.Description("Instance key to reclaim (a name, e.g. \"initial\", or a numbered key, e.g. \"review#1\")"),
 	),
 	mcp.WithString("session",
-		mcp.Description("Target session name (defaults to PLECTURE_SESSION_NAME)"),
+		mcp.Description("Target session name (defaults to PLECT_SESSION_NAME)"),
 	),
 )
 
-var taskFinalizeTool = mcp.NewTool("plecture_task_finalize",
-	mcp.WithDescription("Finalize a task instance (ADR \"goal-as-task\" D4): reconfirm its done_when is satisfied at the current revision (refusing, with no record made, if it is not), then let the bound --resource's definition record completion via its finalize script if it declares one. Gate + record only — the instance is left in place; run plecture_task_cleanup separately afterward to reclaim it. A resource definition without a finalize script is a no-op step, not an error."),
+var taskFinalizeTool = mcp.NewTool("plect_task_finalize",
+	mcp.WithDescription("Finalize a task instance (ADR \"goal-as-task\" D4): reconfirm its done_when is satisfied at the current revision (refusing, with no record made, if it is not), then let the bound --resource's definition record completion via its finalize script if it declares one. Gate + record only — the instance is left in place; run plect_task_cleanup separately afterward to reclaim it. A resource definition without a finalize script is a no-op step, not an error."),
 	mcp.WithString("instance",
 		mcp.Required(),
 		mcp.Description("Instance key to finalize (a name, e.g. \"initial\", or a numbered key, e.g. \"review#1\")"),
 	),
 	mcp.WithString("session",
-		mcp.Description("Target session name (defaults to PLECTURE_SESSION_NAME)"),
+		mcp.Description("Target session name (defaults to PLECT_SESSION_NAME)"),
 	),
 )
 
-var checkTool = mcp.NewTool("plecture_check",
-	mcp.WithDescription("Observation-only: evaluate each done_when-bearing task instance for a session — and, against those same facts, its [[chains]] — and report the result, with zero side effects — no round advance, no event published, no session woken or spawned, and no dynamic output refresh (reads whatever plecture_tick, or the initial produce, last persisted). Repeated calls never change session state. Returns one action per instance: satisfied, wait, review_required, kick, or escalate — each with max_rounds, a fingerprint for unchanged-poll detection, and unmet_items carrying machine-readable check/judge state. Also returns one chains[] entry per (chain, instance): fired/already-active/blocked (with blocked_reason), never spawned. Use plecture_tick to actually advance the gate, refresh outputs, and fire chains."),
+var checkTool = mcp.NewTool("plect_check",
+	mcp.WithDescription("Observation-only: evaluate each done_when-bearing task instance for a session — and, against those same facts, its [[chains]] — and report the result, with zero side effects — no round advance, no event published, no session woken or spawned, and no dynamic output refresh (reads whatever plect_tick, or the initial produce, last persisted). Repeated calls never change session state. Returns one action per instance: satisfied, wait, review_required, kick, or escalate — each with max_rounds, a fingerprint for unchanged-poll detection, and unmet_items carrying machine-readable check/judge state. Also returns one chains[] entry per (chain, instance): fired/already-active/blocked (with blocked_reason), never spawned. Use plect_tick to actually advance the gate, refresh outputs, and fire chains."),
 	mcp.WithString("session",
 		mcp.Required(),
 		mcp.Description("Resource identifier, or session name (e.g. workspace-123)"),
 	),
 )
 
-var tickTool = mcp.NewTool("plecture_tick",
+var tickTool = mcp.NewTool("plect_tick",
 	mcp.WithDescription("The Goal Loop actuator: evaluate each done_when-bearing task instance for a session and act on the result — advance its round, publish the resulting kickback/review/escalation event, and push a done/escalate terminal event to the parent exactly once per instance. A round only advances when the observed facts actually changed since the last tick (idempotent on unchanged state). Against that same fact set, also fires [[chains]]: a chain whose when holds and whose wired outputs are present spawns its workflow (idempotent — an already-active target is reported, not re-spawned). Returns one action per instance: satisfied, wait, review_required, kick, or escalate — each with max_rounds, a fingerprint for unchanged-poll detection, and unmet_items carrying machine-readable check/judge state. Also returns one chains[] entry per (chain, instance) with its fired/spawned/already-active/blocked outcome."),
 	mcp.WithString("session",
 		mcp.Required(),
@@ -82,11 +82,11 @@ var tickTool = mcp.NewTool("plecture_tick",
 	),
 )
 
-var watchdogCheckTool = mcp.NewTool("plecture_watchdog_check",
+var watchdogCheckTool = mcp.NewTool("plect_watchdog_check",
 	mcp.WithDescription("Layer-2 liveness probe (ADR: cross-session terminal event propagation): runs every produced run-scoped task's declared healthcheck for every session with a run scope up, and pushes a dead terminal event one hop to the immediate parent for each unhealthy one — skipping over a dead intermediate parent to the next live ancestor. Idempotent per unhealthy session (event id dedup)."),
 )
 
-var judgeApproveTool = mcp.NewTool("plecture_judge_approve",
+var judgeApproveTool = mcp.NewTool("plect_judge_approve",
 	mcp.WithDescription("Record an approve action for one done_when judge leaf (verification gate). Records against the instance revision so a later revision reopens the gate. Provenance-constrained judges require reviewer_session to match the ambient reviewer pane."),
 	mcp.WithString("session",
 		mcp.Required(),
@@ -108,11 +108,11 @@ var judgeApproveTool = mcp.NewTool("plecture_judge_approve",
 		mcp.Description("Opaque revision reviewed (defaults to the instance revision output)"),
 	),
 	mcp.WithString("reviewer_session",
-		mcp.Description("Reviewer session name (defaults to PLECTURE_SESSION_NAME; provenance-constrained judges require it to match the ambient reviewer pane)"),
+		mcp.Description("Reviewer session name (defaults to PLECT_SESSION_NAME; provenance-constrained judges require it to match the ambient reviewer pane)"),
 	),
 )
 
-var judgeRequestChangesTool = mcp.NewTool("plecture_judge_request_changes",
+var judgeRequestChangesTool = mcp.NewTool("plect_judge_request_changes",
 	mcp.WithDescription("Record a request-changes action for one done_when judge leaf (verification gate). Holds the gate unsatisfied until a new revision is approved. Provenance-constrained judges require reviewer_session to match the ambient reviewer pane."),
 	mcp.WithString("session",
 		mcp.Required(),
@@ -134,18 +134,18 @@ var judgeRequestChangesTool = mcp.NewTool("plecture_judge_request_changes",
 		mcp.Description("Opaque revision reviewed (defaults to the instance revision output)"),
 	),
 	mcp.WithString("reviewer_session",
-		mcp.Description("Reviewer session name (defaults to PLECTURE_SESSION_NAME; provenance-constrained judges require it to match the ambient reviewer pane)"),
+		mcp.Description("Reviewer session name (defaults to PLECT_SESSION_NAME; provenance-constrained judges require it to match the ambient reviewer pane)"),
 	),
 )
 
-var subscribeTool = mcp.NewTool("plecture_subscribe",
-	mcp.WithDescription("Subscribe a live session to an opaque resource so its events (for a code review resource: CI status, review decisions, state changes) arrive in this session's event stream, readable with plecture_event_list. Additive — never replaces existing subscriptions, and subscribing a resource another session already watches does not take it over."),
+var subscribeTool = mcp.NewTool("plect_subscribe",
+	mcp.WithDescription("Subscribe a live session to an opaque resource so its events (for a code review resource: CI status, review decisions, state changes) arrive in this session's event stream, readable with plect_event_list. Additive — never replaces existing subscriptions, and subscribing a resource another session already watches does not take it over."),
 	mcp.WithString("resource",
 		mcp.Required(),
 		mcp.Description("Resource id to subscribe to"),
 	),
 	mcp.WithString("session",
-		mcp.Description("Subscriber session name (defaults to PLECTURE_SESSION_NAME)"),
+		mcp.Description("Subscriber session name (defaults to PLECT_SESSION_NAME)"),
 	),
 )
 
@@ -222,7 +222,7 @@ func handleTaskFinalize(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 		"resource_id":         result.ResourceID,
 		"resource_definition": result.Definition,
 		"finalized":           result.Finalized,
-		"next_step":           fmt.Sprintf("run plecture_task_cleanup on %q to reclaim it", result.Instance),
+		"next_step":           fmt.Sprintf("run plect_task_cleanup on %q to reclaim it", result.Instance),
 	})
 }
 

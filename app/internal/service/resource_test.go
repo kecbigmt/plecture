@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/plecture/plect/app/internal/config"
 )
 
 func writeResourceDefFixture(t *testing.T, baseDir, id, toml string) {

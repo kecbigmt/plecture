@@ -9,11 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/template"
-	"github.com/kecbigmt/plecture/app/internal/workspace"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/service"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/app/internal/template"
+	"github.com/plecture/plect/app/internal/workspace"
 )
 
 var (
@@ -45,8 +45,8 @@ Guard optional vars with {{get .SessionInputs "key"}} (returns "" when absent)
 instead of {{.SessionInputs.key}} (renders "<no value>").
 
 The template name corresponds to files in the template search path:
-  1. <workdir>/.plecture/templates/<name>.md  (session working-directory overlay)
-  2. ~/.config/plecture/templates/<name>.md
+  1. <workdir>/.plect/templates/<name>.md  (session working-directory overlay)
+  2. ~/.config/plect/templates/<name>.md
   3. Built-in defaults (review, respond, work, investigate)`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

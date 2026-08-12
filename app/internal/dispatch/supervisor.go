@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/channel"
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/sessionhub"
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/plecture/plect/app/internal/channel"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/app/internal/sessionhub"
+	"github.com/plecture/plect/app/internal/state"
 )
 
 // Supervisor keeps at most one dispatcher per active session. It is the single

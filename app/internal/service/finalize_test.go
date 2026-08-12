@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // FinalizeTask must refuse — no cleanup attempted, instance left in place —
@@ -145,7 +145,7 @@ func TestFinalizeTask_SatisfiedNoResourceLeavesInstanceForCleanup(t *testing.T) 
 
 // Satisfied + a bound resource whose definition declares a finalize script:
 // the script runs (seeing the instance/resource/revision as evidence); the
-// instance itself is left in place for a separate `plecture task cleanup`.
+// instance itself is left in place for a separate `plect task cleanup`.
 func TestFinalizeTask_RunsResourceFinalizeAndLeavesInstance(t *testing.T) {
 	cfg := checkStatusOnlyConfig(t, 0)
 	out := filepath.Join(t.TempDir(), "finalize.out")

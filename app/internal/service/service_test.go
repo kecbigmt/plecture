@@ -7,19 +7,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/app/internal/task"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
-// TestMain unsets PLECTURE_SESSION_NAME before any test runs, so the suite stays
-// hermetic when `go test` itself runs inside a plecture pane (this repo's own
+// TestMain unsets PLECT_SESSION_NAME before any test runs, so the suite stays
+// hermetic when `go test` itself runs inside a plect pane (this repo's own
 // dev loop) rather than depending on the invoking shell being ambient-free.
 // Tests that want to simulate a caller opt back in with t.Setenv.
 func TestMain(m *testing.M) {
-	os.Unsetenv("PLECTURE_SESSION_NAME")
+	os.Unsetenv("PLECT_SESSION_NAME")
 	os.Exit(m.Run())
 }
 

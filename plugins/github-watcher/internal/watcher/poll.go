@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plecture/contracts/event"
-	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/ratebudget"
+	"github.com/plecture/plect/contracts/event"
+	"github.com/plecture/plect/plugins/github-watcher/internal/ratebudget"
 )
 
 // sourceGitHub and typeGitHubPrefix are this plugin's own values for the
@@ -91,9 +91,9 @@ type Observed struct {
 type Poller struct {
 	Store  *Store
 	Logger *slog.Logger
-	// Bus, when set, is the plecture event bus the watcher publishes github.* events
+	// Bus, when set, is the plect event bus the watcher publishes github.* events
 	// to (the P4 delivery path). When set it takes precedence over NotifyURL:
-	// the plecture session dispatcher, not POST /notify, fans the change out through
+	// the plect session dispatcher, not POST /notify, fans the change out through
 	// workflow channels. Leaving it nil keeps the legacy /notify path.
 	Bus       *event.Client
 	NotifyURL string // slack-adapter /notify endpoint; empty disables delivery
@@ -102,7 +102,7 @@ type Poller struct {
 	// Guard is the shared cross-process GitHub API rate budget:
 	// every gh api call below checks it before running and reports 403/429
 	// responses to it, so a burst hit by one poll tick backs off every other
-	// plecture surface sharing the same token, not just this process.
+	// plect surface sharing the same token, not just this process.
 	Guard *ratebudget.Guard
 }
 
@@ -170,7 +170,7 @@ func (p *Poller) Tick() {
 // subscriber of one PR shares the same set of `gh` calls no matter what
 // branch (if any) it carries. This is what makes poll dedup independent of
 // how the subscription was created: dispatch-time auto-subscribe (branch set)
-// and runtime `plecture subscribe` (branch empty) of the same PR collapse to one
+// and runtime `plect subscribe` (branch empty) of the same PR collapse to one
 // fetch.
 func fetchKey(sub *Subscription) string {
 	if m := resourceRE.FindStringSubmatch(sub.Resource); m != nil && m[3] == "pull" {
@@ -656,7 +656,7 @@ func shortSHA(sha string) string {
 }
 
 // notify delivers one change. With Bus set it publishes a github.* event to the
-// plecture event bus (P4); otherwise it POSTs to slack-adapter's /notify (legacy).
+// plect event bus (P4); otherwise it POSTs to slack-adapter's /notify (legacy).
 // Either way the resulting Slack-thread + channel-server delivery is the same;
 // the bus path just removes the direct adapter coupling (and the hook chain).
 func (p *Poller) notify(sub *Subscription, c change) {
@@ -692,7 +692,7 @@ func (p *Poller) notify(sub *Subscription, c change) {
 // resource URL rides in metadata so a session funneling several PRs identifies
 // which one changed. Direction is inbound — the origin
 // (GitHub) is outside this session, the same "external origin" rule
-// service.EventPublish applies via PLECTURE_SESSION_NAME — so a quiet standing
+// service.EventPublish applies via PLECT_SESSION_NAME — so a quiet standing
 // goal's tick backoff resets when a subscribed resource changes. A
 // publish failure is logged, not fatal: the baseline still advances, matching
 // the at-most-once /notify behavior (the durable log, not a retry, is the

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 func TestRunEnvironmentSetup_ProducesOutputs(t *testing.T) {

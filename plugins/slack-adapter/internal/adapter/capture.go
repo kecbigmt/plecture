@@ -5,22 +5,22 @@ import (
 	"os/exec"
 	"sort"
 
-	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
+	protocol "github.com/plecture/plect/contracts/channel-protocol"
 )
 
 // Conversation capture: slack-adapter mirrors the Slack↔Claude traffic that
-// flows through it into plecture's per-session event log, so a session's timeline
+// flows through it into plect's per-session event log, so a session's timeline
 // shows the actual back-and-forth, not just GitHub/lifecycle events.
 //
 // Both directions pass through this adapter (inbound Slack messages here;
 // Claude replies / permission prompts via the channel-server socket callbacks),
-// and the adapter already knows the plecture session_name via its broker — so all
+// and the adapter already knows the plect session_name via its broker — so all
 // capture lives here and channel-server stays source-independent (it must not
-// know about plecture sessions). Recording is done by exec'ing the `plecture` CLI (no
-// import of plecture/app) and is best-effort: a failure is logged, never blocking
+// know about plect sessions). Recording is done by exec'ing the `plect` CLI (no
+// import of plect/app) and is best-effort: a failure is logged, never blocking
 // delivery.
 
-// captureArgs builds the `plecture event publish` argument vector. Captured event
+// captureArgs builds the `plect event publish` argument vector. Captured event
 // types are intentionally outside workflow channel includes so Slack/Claude
 // traffic is recorded without echoing back out.
 // Meta keys are sorted for deterministic output (and tests).
@@ -55,10 +55,10 @@ func (a *Adapter) publishEvent(sessionName, eventType, source, direction, summar
 	if sessionName == "" {
 		return // no session context to key the log on
 	}
-	cmd := exec.Command("plecture", captureArgs(sessionName, eventType, source, direction, summary, body, meta)...)
+	cmd := exec.Command("plect", captureArgs(sessionName, eventType, source, direction, summary, body, meta)...)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		a.logger.Warn("plecture event capture failed",
+		a.logger.Warn("plect event capture failed",
 			"component", "slack-adapter", "event", "capture_failed",
 			"session_name", sessionName, "type", eventType, "error", err)
 	}

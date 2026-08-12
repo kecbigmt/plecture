@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/plecture/plect/app/internal/domain"
 )
 
 func TestStore_PutAndGet(t *testing.T) {
@@ -64,7 +64,7 @@ func TestStore_DefaultDirUsesPlectureDataDir(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "")
 
 	store := NewStore("")
-	want := filepath.Join(tmpHome, ".local", "share", "plecture")
+	want := filepath.Join(tmpHome, ".local", "share", "plect")
 	if got := store.Dir(); got != want {
 		t.Fatalf("Dir() = %q, want %q", got, want)
 	}
@@ -302,7 +302,7 @@ func TestStore_ConcurrentPutAcrossProcesses(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			cmd := exec.Command(os.Args[0], "-test.run=TestStorePutHelperProcess", "--", dir, strconv.Itoa(i))
-			cmd.Env = append(os.Environ(), "PLECTURE_STATE_PUT_HELPER=1")
+			cmd.Env = append(os.Environ(), "PLECT_STATE_PUT_HELPER=1")
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				errs <- fmt.Errorf("helper %d: %w: %s", i, err, out)
@@ -330,7 +330,7 @@ func TestStore_ConcurrentPutAcrossProcesses(t *testing.T) {
 }
 
 func TestStorePutHelperProcess(t *testing.T) {
-	if os.Getenv("PLECTURE_STATE_PUT_HELPER") != "1" {
+	if os.Getenv("PLECT_STATE_PUT_HELPER") != "1" {
 		return
 	}
 	args := os.Args

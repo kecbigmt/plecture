@@ -9,12 +9,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/service"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/app/internal/task"
+	"github.com/plecture/plect/contracts/event"
 )
 
 var (
@@ -34,7 +34,7 @@ provider-specific interpretation:
             runtime liveness, worktree existence
   work      each task instance's outputs (dynamic and mutable alike),
             done_when evaluation, round budget, and chain plan — the same
-            facts "plecture tick" acts on and "plecture check" used to report
+            facts "plect tick" acts on and "plect check" used to report
   flow      the most recent inbound/outbound events
 
 Observation-only: by default it reads whatever was last persisted. Pass
@@ -42,7 +42,7 @@ Observation-only: by default it reads whatever was last persisted. Pass
 
 No provider-specific field exists here — a PR's review decision or checks
 status appears under "work" only when the workflow's task publishes it as an
-output (most workflows do, for done_when). "plecture ls" still carries the
+output (most workflows do, for done_when). "plect ls" still carries the
 workflow's own display status line.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -66,7 +66,7 @@ workflow's own display status line.`,
 
 		if statusJSON {
 			// Warnings stay out of stderr in --json mode: scripts that capture
-			// this command's output with `2>&1` (e.g. config/plecture/providers/
+			// this command's output with `2>&1` (e.g. config/plect/providers/
 			// local-okf.toml) feed it straight to jq, and a warning line ahead
 			// of the JSON breaks that parse.
 			var payload any = result

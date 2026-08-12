@@ -1,4 +1,4 @@
-// Package migrate implements the one-time rewrite of on-disk plecture state
+// Package migrate implements the one-time rewrite of on-disk plect state
 // and config data from legacy, GitHub-shaped forms to their current forms,
 // ahead of the removal of the legacy compatibility code that reads those
 // old forms.
@@ -8,7 +8,7 @@
 // it only knows the four old-form shapes named by the refactor plan —
 // rather than a generic pluggable migration framework, because no second
 // use case exists yet. Its provider-specific field mapping (GitHub identity
-// fields, GitHub-shaped repo allowlist entries) lives here, outside plecture's
+// fields, GitHub-shaped repo allowlist entries) lives here, outside plect's
 // core, because that knowledge is retired together with this tool once the
 // migration has run.
 package migrate

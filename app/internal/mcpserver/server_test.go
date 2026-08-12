@@ -9,7 +9,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/plecture/plect/app/internal/state"
 )
 
 // setUpConfigHome points config.Load()/state.NewStore("") at a scratch config
@@ -21,7 +21,7 @@ func setUpConfigHome(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 
-	baseDir := filepath.Join(home, ".config", "plecture")
+	baseDir := filepath.Join(home, ".config", "plect")
 	for _, dir := range []string{"workflows", "tasks", "providers"} {
 		if err := os.MkdirAll(filepath.Join(baseDir, dir), 0o755); err != nil {
 			t.Fatal(err)
@@ -64,19 +64,19 @@ func decodeJSONResult(t *testing.T, result *mcp.CallToolResult) map[string]any {
 
 func TestNewServer_RemovesCreateToolOnly(t *testing.T) {
 	tools := NewServer().ListTools()
-	if _, ok := tools["plecture_create"]; ok {
-		t.Fatal("plecture_create is still registered")
+	if _, ok := tools["plect_create"]; ok {
+		t.Fatal("plect_create is still registered")
 	}
-	for _, name := range []string{"plecture_up", "plecture_down", "plecture_destroy"} {
+	for _, name := range []string{"plect_up", "plect_down", "plect_destroy"} {
 		if _, ok := tools[name]; !ok {
 			t.Fatalf("%s is not registered", name)
 		}
 	}
 }
 
-// A resolver-less workflow's identifier isn't a URL, so plecture_up's
+// A resolver-less workflow's identifier isn't a URL, so plect_up's
 // docker-compose-up-style auto-create only kicks in for resolver-matched or
-// URL identifiers. Once a resolver-less session exists, plecture_up must still
+// URL identifiers. Once a resolver-less session exists, plect_up must still
 // resolve and run it.
 func TestHandleUp_ResolverLessWorkflowExistingSession(t *testing.T) {
 	setUpConfigHome(t)

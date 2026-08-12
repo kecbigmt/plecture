@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/workspace"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/workspace"
 )
 
 var (

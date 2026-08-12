@@ -1,6 +1,6 @@
-# plecture-web (webui)
+# plect-web (webui)
 
-A control-plane web UI for plecture session management. The `plecture-web` command
+A control-plane web UI for plect session management. The `plect-web` command
 embeds this directory's `assets/` via `//go:embed` and serves them.
 
 - **Stack**: Go `html/template` + [htmx](https://htmx.org/) + [Tailwind v4](https://tailwindcss.com/). No React, single binary.
@@ -19,12 +19,12 @@ pnpm install            # dev dependencies only
 ## Running
 
 ```bash
-go run ./app/cmd/plecture-web                          # http://127.0.0.1:8787 (default: loopback)
-go run ./app/cmd/plecture-web --host 0.0.0.0 -p 8799   # expose on a private network / VPN
+go run ./app/cmd/plect-web                          # http://127.0.0.1:8787 (default: loopback)
+go run ./app/cmd/plect-web --host 0.0.0.0 -p 8799   # expose on a private network / VPN
 ```
 
 The bind address is set via `--host` / `--port` (`-p`), or `listen_addr` in
-`~/.config/plecture-web/config.toml`. It defaults to loopback so a fresh install
+`~/.config/plect-web/config.toml`. It defaults to loopback so a fresh install
 doesn't accidentally expose itself on every interface.
 
 ## Security (mutating operations)
@@ -32,7 +32,7 @@ doesn't accidentally expose itself on every interface.
 create / up / down / destroy change state. Defense in depth lives in `security.go`:
 
 - **CSRF** (always on): mutating POSTs require **same-origin** (Origin/Referer
-  host == Host) and a **double-submit token** (`plecture_csrf` cookie ==
+  host == Host) and a **double-submit token** (`plect_csrf` cookie ==
   `X-CSRF-Token` header). The token is issued when a GET page renders and baked
   into `<body hx-headers>` so every htmx request carries it automatically. The
   cookie is SameSite=Strict + HttpOnly. `/login` is exempt from CSRF since it's
@@ -63,7 +63,7 @@ input.css + templates ──────────────────┘
 
 Generated artifacts (`assets/static/app.css` / `htmx.min.js` /
 `theme.generated.css` / `components/icons/`) are committed to the repo. The
-`plecture-web` CI workflow runs `pnpm build` and fails if it produces an
+`plect-web` CI workflow runs `pnpm build` and fails if it produces an
 uncommitted diff. The Go build itself never invokes pnpm/node — it only embeds
 the committed assets.
 

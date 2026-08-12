@@ -12,13 +12,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	taskpkg "github.com/kecbigmt/plecture/app/internal/task"
-	"github.com/kecbigmt/plecture/contracts/event"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/app/internal/state"
+	taskpkg "github.com/plecture/plect/app/internal/task"
+	"github.com/plecture/plect/contracts/event"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 func TestPutBestEffort_PutFailureLogsWarningWithoutPanicking(t *testing.T) {
@@ -148,14 +148,14 @@ func TestResolveSessionInput_NoSchemaAcceptsAnyObject(t *testing.T) {
 // Regression: the schema source-id used to be "inline://workflow:<name>",
 // which the URL parser inside jsonschema/v6 read as host + invalid port.
 // Any workflow with a hyphenated name (e.g. "coding-claude") triggered it.
-// IDs now use a custom `plecture:` scheme (RFC 3986 `scheme:opaque`, no `//`),
+// IDs now use a custom `plect:` scheme (RFC 3986 `scheme:opaque`, no `//`),
 // so the parser never tries to find a host.
 func TestResolveSessionInputs_WorkflowSchemaCompilesWithHyphenatedName(t *testing.T) {
 	repoDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(repoDir, ".plecture", "workflows"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoDir, ".plect", "workflows"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(repoDir, ".plecture", "workflows", "coding-claude.toml"), []byte(`
+	if err := os.WriteFile(filepath.Join(repoDir, ".plect", "workflows", "coding-claude.toml"), []byte(`
 name = "coding-claude"
 
 [inputs_schema]
@@ -292,7 +292,7 @@ func TestCheckLifecycleRelationGuard(t *testing.T) {
 
 	t.Run("self is allowed", func(t *testing.T) {
 		store := newTreeStore(t)
-		t.Setenv("PLECTURE_SESSION_NAME", "org/repo-parent")
+		t.Setenv("PLECT_SESSION_NAME", "org/repo-parent")
 		if err := checkLifecycleRelationGuard(store, "org/repo-parent", "destroy"); err != nil {
 			t.Fatalf("want nil, got %v", err)
 		}
@@ -300,7 +300,7 @@ func TestCheckLifecycleRelationGuard(t *testing.T) {
 
 	t.Run("direct parent destroying direct child is allowed", func(t *testing.T) {
 		store := newTreeStore(t)
-		t.Setenv("PLECTURE_SESSION_NAME", "org/repo-parent")
+		t.Setenv("PLECT_SESSION_NAME", "org/repo-parent")
 		if err := checkLifecycleRelationGuard(store, "org/repo-child", "destroy"); err != nil {
 			t.Fatalf("want nil, got %v", err)
 		}
@@ -308,7 +308,7 @@ func TestCheckLifecycleRelationGuard(t *testing.T) {
 
 	t.Run("ancestor destroying a multi-level descendant is allowed", func(t *testing.T) {
 		store := newTreeStore(t)
-		t.Setenv("PLECTURE_SESSION_NAME", "org/repo-parent")
+		t.Setenv("PLECT_SESSION_NAME", "org/repo-parent")
 		if err := checkLifecycleRelationGuard(store, "org/repo-grandchild", "destroy"); err != nil {
 			t.Fatalf("want nil, got %v", err)
 		}
@@ -316,7 +316,7 @@ func TestCheckLifecycleRelationGuard(t *testing.T) {
 
 	t.Run("child destroying its parent is rejected", func(t *testing.T) {
 		store := newTreeStore(t)
-		t.Setenv("PLECTURE_SESSION_NAME", "org/repo-child")
+		t.Setenv("PLECT_SESSION_NAME", "org/repo-child")
 		svcErr := checkLifecycleRelationGuard(store, "org/repo-parent", "destroy")
 		if svcErr == nil || svcErr.Code != ErrRelationNotAllowed {
 			t.Fatalf("want ErrRelationNotAllowed, got %v", svcErr)
@@ -325,7 +325,7 @@ func TestCheckLifecycleRelationGuard(t *testing.T) {
 
 	t.Run("unrelated session is rejected", func(t *testing.T) {
 		store := newTreeStore(t)
-		t.Setenv("PLECTURE_SESSION_NAME", "org/repo-unrelated")
+		t.Setenv("PLECT_SESSION_NAME", "org/repo-unrelated")
 		svcErr := checkLifecycleRelationGuard(store, "org/repo-parent", "destroy")
 		if svcErr == nil || svcErr.Code != ErrRelationNotAllowed {
 			t.Fatalf("want ErrRelationNotAllowed, got %v", svcErr)
@@ -337,7 +337,7 @@ func TestCheckLifecycleRelationGuard(t *testing.T) {
 		seedSession(t, store, "org/repo-owner", "org/repo", 1, "default", nil) // parentless
 		seedSession(t, store, "org/repo-reviewer", "org/repo", 2, "default", nil)
 		setParent(t, store, "org/repo-reviewer", "root:org/repo-owner")
-		t.Setenv("PLECTURE_SESSION_NAME", "org/repo-reviewer")
+		t.Setenv("PLECT_SESSION_NAME", "org/repo-reviewer")
 		svcErr := checkLifecycleRelationGuard(store, "org/repo-owner", "destroy")
 		if svcErr == nil || svcErr.Code != ErrRelationNotAllowed {
 			t.Fatalf("want ErrRelationNotAllowed (sibling via implicit root), got %v", svcErr)
@@ -346,7 +346,7 @@ func TestCheckLifecycleRelationGuard(t *testing.T) {
 
 	t.Run("no ambient session is exempt (human CLI recovery path)", func(t *testing.T) {
 		store := newTreeStore(t)
-		t.Setenv("PLECTURE_SESSION_NAME", "")
+		t.Setenv("PLECT_SESSION_NAME", "")
 		if err := checkLifecycleRelationGuard(store, "org/repo-unrelated", "destroy"); err != nil {
 			t.Fatalf("want nil (no ambient session is exempt), got %v", err)
 		}
@@ -356,14 +356,14 @@ func TestCheckLifecycleRelationGuard(t *testing.T) {
 // TestDestroy_RelationGuardBlocksUnrelatedCaller and TestDown_RelationGuardBlocksUnrelatedCaller
 // exercise the guard through the service entry points: an orchestrator must
 // not destroy/down a session outside its own subtree, even one it can see
-// via `plecture ls`.
+// via `plect ls`.
 func TestDestroy_RelationGuardBlocksUnrelatedCaller(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{}
 	sessionName := "org/repo-1"
 	seedSession(t, store, sessionName, "org/repo", 1, "default", nil)
 	seedSession(t, store, "org/repo-caller", "org/repo", 2, "default", nil)
-	t.Setenv("PLECTURE_SESSION_NAME", "org/repo-caller")
+	t.Setenv("PLECT_SESSION_NAME", "org/repo-caller")
 
 	_, err := Destroy(cfg, store, DestroyParams{Identifier: sessionName})
 	svcErr, ok := err.(*Error)
@@ -381,7 +381,7 @@ func TestDown_RelationGuardBlocksUnrelatedCaller(t *testing.T) {
 	sessionName := "org/repo-1"
 	seedSession(t, store, sessionName, "org/repo", 1, "default", nil)
 	seedSession(t, store, "org/repo-caller", "org/repo", 2, "default", nil)
-	t.Setenv("PLECTURE_SESSION_NAME", "org/repo-caller")
+	t.Setenv("PLECT_SESSION_NAME", "org/repo-caller")
 
 	_, err := Down(cfg, store, DownParams{Identifier: sessionName})
 	svcErr, ok := err.(*Error)
@@ -405,7 +405,7 @@ func TestDestroy_RelationGuardAllowsSelf(t *testing.T) {
 	seedSession(t, store, sessionName, "org/repo", 1, "default", map[string]*contract.TaskState{
 		"envfile": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	})
-	t.Setenv("PLECTURE_SESSION_NAME", sessionName)
+	t.Setenv("PLECT_SESSION_NAME", sessionName)
 
 	if _, err := Destroy(cfg, store, DestroyParams{Identifier: sessionName}); err != nil {
 		t.Fatalf("Destroy (self): %v", err)
@@ -415,7 +415,7 @@ func TestDestroy_RelationGuardAllowsSelf(t *testing.T) {
 	}
 }
 
-// `plecture up <bare-existing-session>` skips the guarded auto-create path, so the
+// `plect up <bare-existing-session>` skips the guarded auto-create path, so the
 // guard at the existing-session resolution must catch it too.
 func TestUp_SessionGuardBlocksCrossOwner(t *testing.T) {
 	store := testStore(t)
@@ -436,7 +436,7 @@ func TestUp_ForceRecreateRelationGuardBlocksUnrelatedCaller(t *testing.T) {
 	sessionName := "org/repo-1"
 	seedSession(t, store, sessionName, "org/repo", 1, "default", nil)
 	seedSession(t, store, "org/repo-caller", "org/repo", 2, "default", nil)
-	t.Setenv("PLECTURE_SESSION_NAME", "org/repo-caller")
+	t.Setenv("PLECT_SESSION_NAME", "org/repo-caller")
 
 	_, err := Up(cfg, store, UpParams{Identifier: sessionName, ForceRecreate: true})
 	svcErr, ok := err.(*Error)
@@ -446,9 +446,9 @@ func TestUp_ForceRecreateRelationGuardBlocksUnrelatedCaller(t *testing.T) {
 }
 
 // A run-scope node's setup script (e.g. goal_bootstrap re-deriving
-// `pursue_goal` instances during `plecture up`, see
-// config/plecture/tasks/goal_bootstrap.toml) can itself shell out to a nested
-// `plecture task setup`, which writes its instance straight to state.json while
+// `pursue_goal` instances during `plect up`, see
+// config/plect/tasks/goal_bootstrap.toml) can itself shell out to a nested
+// `plect task setup`, which writes its instance straight to state.json while
 // this Up call's own RunSetup is still in flight. Up's persist must overlay
 // (mergeTasks), not blind-Put, or that nested write is clobbered — the same
 // hazard TestCreate_SessionNodeNestedWriteSurvives covers for Create's
@@ -461,7 +461,7 @@ func TestUp_RunScopeNestedWriteSurvives(t *testing.T) {
 	sessionName := "org/repo-12"
 	t.Setenv("SP", filepath.Join(store.Dir(), "state.json"))
 
-	// dispatcher mimics a nested `plecture task setup`: writes a sibling "goal_x"
+	// dispatcher mimics a nested `plect task setup`: writes a sibling "goal_x"
 	// key straight to disk, then produces normally.
 	dispatcher := fmt.Sprintf(`jq '.sessions["%s"].tasks.goal_x={"scope":"session","status":"produced","dynamic":true,"task_id":"pursue_goal","name":"goal_x","outputs":{}}' "$SP" > "$SP.tmp" && mv "$SP.tmp" "$SP"
 echo '{}'`, sessionName)

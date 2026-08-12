@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/contracts/event"
 )
 
 func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workSession string, sp ChainSpawn) (bool, error) {
@@ -129,7 +129,7 @@ func autoRevivalKickBody(workSession, instance, leafID, revision string) string 
 		fmt.Sprintf("- Revision: %s", revision),
 		fmt.Sprintf("- Judge leaf: %s", leafID),
 		"",
-		"Record `plecture judge` for this leaf against the work session once you've re-reviewed.",
+		"Record `plect judge` for this leaf against the work session once you've re-reviewed.",
 	}, "\n")
 }
 
@@ -171,7 +171,7 @@ func chainKickBody(workSession string, sp ChainSpawn, meta map[string]string) st
 		fmt.Sprintf("- Revision: %s", metaValue(meta, "revision", "current")),
 		fmt.Sprintf("- Pending judge ids: %s", metaValue(meta, "judge_ids", "(unspecified)")),
 		"",
-		"Record one `plecture judge` action per pending judge id against the work session.",
+		"Record one `plect judge` action per pending judge id against the work session.",
 	}
 	return strings.Join(lines, "\n")
 }

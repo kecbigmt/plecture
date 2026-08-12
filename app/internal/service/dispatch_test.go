@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 const githubResolver = `
@@ -426,7 +426,7 @@ echo '{"workdir":"`+workdir+`"}'
 	}
 }
 
-// `plecture cd` rides the same state v3 lookup contract as show/down/destroy:
+// `plect cd` rides the same state v3 lookup contract as show/down/destroy:
 // resolver-derived resource ids and aliases must resolve.
 func TestWorkdir_ResolverAndAliasLookup(t *testing.T) {
 	store := testStore(t)

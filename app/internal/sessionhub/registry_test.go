@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/contracts/event"
 )
 
 func newFastRegistry(store *eventlog.Store) *Registry {

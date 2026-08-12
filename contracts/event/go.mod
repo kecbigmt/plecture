@@ -1,3 +1,3 @@
-module github.com/kecbigmt/plecture/contracts/event
+module github.com/plecture/plect/contracts/event
 
 go 1.25.6

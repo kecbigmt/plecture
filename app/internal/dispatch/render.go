@@ -1,16 +1,16 @@
 // Package dispatch is the session dispatcher: one per active session, hosted in
-// the resident `plecture bus serve` process. It reads a session's event log from a
+// the resident `plect bus serve` process. It reads a session's event log from a
 // durable read cursor (so it survives session down/up) and fans each event out
 // to the workflow's [[event.channel]] workers whose include filter matches,
-// delivering via app/internal/channel and recording a plecture.channel.error when a
+// delivering via app/internal/channel and recording a plect.channel.error when a
 // channel exhausts its retries.
 package dispatch
 
 import (
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/task"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // channelInputs renders an [[event.channel]]'s input templates against the

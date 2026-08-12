@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kecbigmt/plecture/app/internal/channel"
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/channel"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/domain"
+	"github.com/plecture/plect/app/internal/task"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // taskExecutorAdapter narrows a task.Executor (ExecRequest-shaped) to the

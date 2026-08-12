@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
-	"github.com/kecbigmt/plecture/app/internal/workspace"
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/app/internal/task"
+	"github.com/plecture/plect/app/internal/workspace"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // DestroyParams holds parameters for Destroy.
@@ -49,7 +49,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	}
 	// Tearing down an existing session is a per-session write; clamp it to the
 	// active guard so a guarded orchestrator can't destroy another owner's
-	// session it can see via `plecture ls`. Create guards on the way in; this
+	// session it can see via `plect ls`. Create guards on the way in; this
 	// closes the symmetric teardown vector.
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
@@ -64,7 +64,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	result := &DestroyResult{SessionName: sessionName}
 
 	// Fail-closed before any teardown side effect: store.Delete unconditionally
-	// clears ParentSession on every child, and plecture up never re-adopts an
+	// clears ParentSession on every child, and plect up never re-adopts an
 	// orphan, so a silent destroy permanently severs the tree. --force makes
 	// that orphaning an explicit, reported choice instead.
 	if children := childNames(store.All(), sessionName); len(children) > 0 {
@@ -72,7 +72,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 			return nil, &Error{
 				Code: ErrHasChildren,
 				Message: fmt.Sprintf(
-					"session %s has %d child session(s) that would be orphaned: %s\nUse `plecture down %s` + `plecture up %s` to reset without orphaning them, or re-run with `plecture destroy %s --force` to destroy and orphan them.",
+					"session %s has %d child session(s) that would be orphaned: %s\nUse `plect down %s` + `plect up %s` to reset without orphaning them, or re-run with `plect destroy %s --force` to destroy and orphan them.",
 					sessionName, len(children), strings.Join(children, ", "), sessionName, sessionName, sessionName,
 				),
 			}
@@ -143,7 +143,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 			if !params.Force {
 				return nil, &Error{
 					Code:    ErrExecutionFailed,
-					Message: fmt.Sprintf("%v (session %s)\nRe-run with `plecture destroy %s --force` to delete the state entry anyway.", cleanupErr, sessionName, sessionName),
+					Message: fmt.Sprintf("%v (session %s)\nRe-run with `plect destroy %s --force` to delete the state entry anyway.", cleanupErr, sessionName, sessionName),
 				}
 			}
 			result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow cleanup: %v", cleanupErr))
@@ -162,11 +162,11 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	}
 
 	// Without --force, abort before store.Delete so the user can retry —
-	// otherwise the worktree is orphaned on disk while plecture forgets about it.
+	// otherwise the worktree is orphaned on disk while plect forgets about it.
 	if result.WorktreeWarning != "" && !params.Force {
 		return nil, &Error{
 			Code:    ErrExecutionFailed,
-			Message: fmt.Sprintf("%s (session %s)\nRe-run with `plecture destroy %s --force` to delete the worktree and state entry anyway.", result.WorktreeWarning, sessionName, sessionName),
+			Message: fmt.Sprintf("%s (session %s)\nRe-run with `plect destroy %s --force` to delete the worktree and state entry anyway.", result.WorktreeWarning, sessionName, sessionName),
 		}
 	}
 

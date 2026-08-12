@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/plecture/plect/app/internal/config"
 )
 
-// setupE2ERepo creates a git repo structure that mimics what plecture expects.
-// The worktrees root is HOME-based so a `plecture` subprocess spawned by a
+// setupE2ERepo creates a git repo structure that mimics what plect expects.
+// The worktrees root is HOME-based so a `plect` subprocess spawned by a
 // provider hook resolves the same root from its own config defaults.
 // Returns worktreesRoot.
 func setupE2ERepo(t *testing.T) string {
@@ -99,7 +99,7 @@ func writeIntegrationFixture(t *testing.T, worktreesRoot, wfID string, defs []ta
 }
 
 // attachGithubProvider points a workflow at a provider whose hooks are the
-// shipped GitHub provider executable, and puts that executable (and the plecture
+// shipped GitHub provider executable, and puts that executable (and the plect
 // CLI it calls) on PATH.
 func attachGithubProvider(t *testing.T, cfg *config.Config, wfID string) {
 	t.Helper()

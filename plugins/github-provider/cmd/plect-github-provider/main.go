@@ -1,4 +1,4 @@
-// Command plecture-github-provider is the executable the shipped GitHub
+// Command plect-github-provider is the executable the shipped GitHub
 // provider config invokes for its setup and cleanup hooks. Setup prints the
 // provider outputs contract (a JSON object carrying the reserved `workdir`
 // key) on stdout; cleanup prints nothing and reports failure via its exit
@@ -12,19 +12,19 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/provider"
+	"github.com/plecture/plect/plugins/github-provider/internal/provider"
 )
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "plecture-github-provider:", err)
+		fmt.Fprintln(os.Stderr, "plect-github-provider:", err)
 		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: plecture-github-provider <setup|cleanup> [flags]")
+		return fmt.Errorf("usage: plect-github-provider <setup|cleanup> [flags]")
 	}
 	ctx := context.Background()
 	switch args[0] {

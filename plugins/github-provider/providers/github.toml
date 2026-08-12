@@ -3,15 +3,15 @@
 #
 # The resolver is pure regex plus template, so a session id is derived
 # offline and never depends on the GitHub API being reachable. Acquisition
-# and release run through plecture-github-provider, which resolves the branch
-# for the resource and then calls `plecture workspace add` / `plecture workspace
+# and release run through plect-github-provider, which resolves the branch
+# for the resource and then calls `plect workspace add` / `plect workspace
 # remove` for the generic worktree handling.
 
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
 name = "{{.owner}}/{{.repo}}-{{.number}}"
 
-setup = 'plecture-github-provider setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}}'
-cleanup = 'plecture-github-provider cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --force={{.Force}}'
+setup = 'plect-github-provider setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}}'
+cleanup = 'plect-github-provider cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --force={{.Force}}'
 
 [outputs_schema]
 type = "object"

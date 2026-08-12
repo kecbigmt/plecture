@@ -9,17 +9,17 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/template"
-	"github.com/kecbigmt/plecture/app/internal/workspace"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/service"
+	"github.com/plecture/plect/app/internal/state"
+	"github.com/plecture/plect/app/internal/template"
+	"github.com/plecture/plect/app/internal/workspace"
 )
 
-// NewServer creates a new MCP server with plecture tools registered.
+// NewServer creates a new MCP server with plect tools registered.
 func NewServer() *server.MCPServer {
 	s := server.NewMCPServer(
-		"plecture",
+		"plect",
 		"1.0.0",
 		server.WithToolCapabilities(true),
 	)
@@ -29,35 +29,35 @@ func NewServer() *server.MCPServer {
 	}
 
 	s.AddTools(
-		server.ServerTool{Tool: upTool, Handler: wrap("plecture_up", handleUp)},
-		server.ServerTool{Tool: downTool, Handler: wrap("plecture_down", handleDown)},
-		server.ServerTool{Tool: destroyTool, Handler: wrap("plecture_destroy", handleDestroy)},
-		server.ServerTool{Tool: statusTool, Handler: wrap("plecture_status", handleStatus)},
-		server.ServerTool{Tool: captureTool, Handler: wrap("plecture_capture", handleCapture)},
-		server.ServerTool{Tool: listTool, Handler: wrap("plecture_list", handleList)},
-		server.ServerTool{Tool: templateListTool, Handler: wrap("plecture_template_list", handleTemplateList)},
-		server.ServerTool{Tool: workflowListTool, Handler: wrap("plecture_workflow_list", handleWorkflowList)},
-		server.ServerTool{Tool: workflowShowTool, Handler: wrap("plecture_workflow_show", handleWorkflowShow)},
-		server.ServerTool{Tool: gcTool, Handler: wrap("plecture_gc", handleGC)},
-		server.ServerTool{Tool: eventListTool, Handler: wrap("plecture_event_list", handleEventList)},
-		server.ServerTool{Tool: eventShowTool, Handler: wrap("plecture_event_show", handleEventShow)},
-		server.ServerTool{Tool: eventPublishTool, Handler: wrap("plecture_event_publish", handleEventPublish)},
-		server.ServerTool{Tool: taskSetupTool, Handler: wrap("plecture_task_setup", handleTaskSetup)},
-		server.ServerTool{Tool: taskCleanupTool, Handler: wrap("plecture_task_cleanup", handleTaskCleanup)},
-		server.ServerTool{Tool: taskFinalizeTool, Handler: wrap("plecture_task_finalize", handleTaskFinalize)},
-		server.ServerTool{Tool: resourceStatusTool, Handler: wrap("plecture_resource_status", handleResourceStatus)},
-		server.ServerTool{Tool: checkTool, Handler: wrap("plecture_check", handleCheck)},
-		server.ServerTool{Tool: tickTool, Handler: wrap("plecture_tick", handleTick)},
-		server.ServerTool{Tool: watchdogCheckTool, Handler: wrap("plecture_watchdog_check", handleWatchdogCheck)},
-		server.ServerTool{Tool: judgeApproveTool, Handler: wrap("plecture_judge_approve", handleJudgeApprove)},
-		server.ServerTool{Tool: judgeRequestChangesTool, Handler: wrap("plecture_judge_request_changes", handleJudgeRequestChanges)},
-		server.ServerTool{Tool: subscribeTool, Handler: wrap("plecture_subscribe", handleSubscribe)},
+		server.ServerTool{Tool: upTool, Handler: wrap("plect_up", handleUp)},
+		server.ServerTool{Tool: downTool, Handler: wrap("plect_down", handleDown)},
+		server.ServerTool{Tool: destroyTool, Handler: wrap("plect_destroy", handleDestroy)},
+		server.ServerTool{Tool: statusTool, Handler: wrap("plect_status", handleStatus)},
+		server.ServerTool{Tool: captureTool, Handler: wrap("plect_capture", handleCapture)},
+		server.ServerTool{Tool: listTool, Handler: wrap("plect_list", handleList)},
+		server.ServerTool{Tool: templateListTool, Handler: wrap("plect_template_list", handleTemplateList)},
+		server.ServerTool{Tool: workflowListTool, Handler: wrap("plect_workflow_list", handleWorkflowList)},
+		server.ServerTool{Tool: workflowShowTool, Handler: wrap("plect_workflow_show", handleWorkflowShow)},
+		server.ServerTool{Tool: gcTool, Handler: wrap("plect_gc", handleGC)},
+		server.ServerTool{Tool: eventListTool, Handler: wrap("plect_event_list", handleEventList)},
+		server.ServerTool{Tool: eventShowTool, Handler: wrap("plect_event_show", handleEventShow)},
+		server.ServerTool{Tool: eventPublishTool, Handler: wrap("plect_event_publish", handleEventPublish)},
+		server.ServerTool{Tool: taskSetupTool, Handler: wrap("plect_task_setup", handleTaskSetup)},
+		server.ServerTool{Tool: taskCleanupTool, Handler: wrap("plect_task_cleanup", handleTaskCleanup)},
+		server.ServerTool{Tool: taskFinalizeTool, Handler: wrap("plect_task_finalize", handleTaskFinalize)},
+		server.ServerTool{Tool: resourceStatusTool, Handler: wrap("plect_resource_status", handleResourceStatus)},
+		server.ServerTool{Tool: checkTool, Handler: wrap("plect_check", handleCheck)},
+		server.ServerTool{Tool: tickTool, Handler: wrap("plect_tick", handleTick)},
+		server.ServerTool{Tool: watchdogCheckTool, Handler: wrap("plect_watchdog_check", handleWatchdogCheck)},
+		server.ServerTool{Tool: judgeApproveTool, Handler: wrap("plect_judge_approve", handleJudgeApprove)},
+		server.ServerTool{Tool: judgeRequestChangesTool, Handler: wrap("plect_judge_request_changes", handleJudgeRequestChanges)},
+		server.ServerTool{Tool: subscribeTool, Handler: wrap("plect_subscribe", handleSubscribe)},
 	)
 
 	return s
 }
 
-var upTool = mcp.NewTool("plecture_up",
+var upTool = mcp.NewTool("plect_up",
 	mcp.WithDescription("Run run-scoped tasks for a session, in dependency-respecting order. When the identifier is a resource identifier and no state entry exists (or a session-scoped task has not yet reached \"produced\"), the session is created first (docker compose up-style auto-create)."),
 	mcp.WithString("session",
 		mcp.Required(),
@@ -67,7 +67,7 @@ var upTool = mcp.NewTool("plecture_up",
 		mcp.Description("Workspace-identity label of the session to resolve/auto-create (resource-identifier only, not a bare session name). Defaults to the workflow id."),
 	),
 	mcp.WithString("parent",
-		mcp.Description("Parent session name for auto-created sessions. Defaults to PLECTURE_SESSION_NAME when it names an existing session."),
+		mcp.Description("Parent session name for auto-created sessions. Defaults to PLECT_SESSION_NAME when it names an existing session."),
 	),
 	mcp.WithObject("inputs",
 		mcp.Description("Session inputs forwarded to the auto-create path. Rejected when the session already exists."),
@@ -83,7 +83,7 @@ var upTool = mcp.NewTool("plecture_up",
 	),
 )
 
-var downTool = mcp.NewTool("plecture_down",
+var downTool = mcp.NewTool("plect_down",
 	mcp.WithDescription("Run run-scoped cleanup for a session in reverse dependency order. Session-scoped tasks are preserved."),
 	mcp.WithString("session",
 		mcp.Required(),
@@ -91,7 +91,7 @@ var downTool = mcp.NewTool("plecture_down",
 	),
 )
 
-var destroyTool = mcp.NewTool("plecture_destroy",
+var destroyTool = mcp.NewTool("plect_destroy",
 	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → worktree removal → state entry deletion. Fail-fast by default; --force demotes cleanup errors to warnings so a stuck session can be freed. Also fails closed (code has_children) if the session has child sessions, since deleting it would orphan them; --force orphans them instead, reported via cleanup_warnings."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
 	mcp.WithString("session",
@@ -106,7 +106,7 @@ var destroyTool = mcp.NewTool("plecture_destroy",
 	),
 )
 
-var statusTool = mcp.NewTool("plecture_status",
+var statusTool = mcp.NewTool("plect_status",
 	mcp.WithDescription("Report a session's four fact layers: identity (resource id / workflow / tag / tree position), runtime (declared-healthcheck liveness, worktree existence, run-scoped task state), work (each task instance's outputs, done_when evaluation, round budget, and chain plan), and flow (recent events). No provider-specific field — everything renders generically from outputs / done_when / events."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("url",
@@ -118,7 +118,7 @@ var statusTool = mcp.NewTool("plecture_status",
 	),
 )
 
-var captureTool = mcp.NewTool("plecture_capture",
+var captureTool = mcp.NewTool("plect_capture",
 	mcp.WithDescription("Read-only snapshot of a session's channel: resolves the task declaring 'capture' (symmetric with attach's 'attach' declaration) and returns its rendered template's output as-is. No interpretation — the raw view is left for the caller to judge. Session state never changes."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("session",
@@ -127,12 +127,12 @@ var captureTool = mcp.NewTool("plecture_capture",
 	),
 )
 
-var listTool = mcp.NewTool("plecture_list",
+var listTool = mcp.NewTool("plect_list",
 	mcp.WithDescription("List all sessions with lifecycle status and the workflow's own display status when present"),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
-var gcTool = mcp.NewTool("plecture_gc",
+var gcTool = mcp.NewTool("plect_gc",
 	mcp.WithDescription("Identify and remove stale sessions. By default returns a dry-run preview. Set execute=true to perform cleanup. Completion is judged by each session's done_when-bearing task instances over persisted outputs; sessions without such tasks are left alone. Dynamic outputs are refreshed explicitly before decision points, not by gc. Deletion goes through a non-force destroy, so task cleanups run and a dirty worktree blocks it."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
 	mcp.WithBoolean("execute",
@@ -143,7 +143,7 @@ var gcTool = mcp.NewTool("plecture_gc",
 	),
 )
 
-var templateListTool = mcp.NewTool("plecture_template_list",
+var templateListTool = mcp.NewTool("plect_template_list",
 	mcp.WithDescription("List available prompt templates with descriptions. Use this to discover templates before composing task inputs."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("repo",
@@ -151,13 +151,13 @@ var templateListTool = mcp.NewTool("plecture_template_list",
 	),
 )
 
-var workflowListTool = mcp.NewTool("plecture_workflow_list",
-	mcp.WithDescription("List workflows discoverable via the .plecture/workflows cascade. Each entry surfaces id/name/description so an agent can pick the right workflow before calling plecture_workflow_show or plecture_up."),
+var workflowListTool = mcp.NewTool("plect_workflow_list",
+	mcp.WithDescription("List workflows discoverable via the .plect/workflows cascade. Each entry surfaces id/name/description so an agent can pick the right workflow before calling plect_workflow_show or plect_up."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
-var workflowShowTool = mcp.NewTool("plecture_workflow_show",
-	mcp.WithDescription("Return full details for a single workflow: id, name, description, the (merged) inputs_schema, and the compiled DAG of nodes. Use inputs_schema to build the --inputs payload for plecture_up."),
+var workflowShowTool = mcp.NewTool("plect_workflow_show",
+	mcp.WithDescription("Return full details for a single workflow: id, name, description, the (merged) inputs_schema, and the compiled DAG of nodes. Use inputs_schema to build the --inputs payload for plect_up."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("id",
 		mcp.Required(),

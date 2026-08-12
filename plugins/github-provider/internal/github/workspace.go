@@ -6,7 +6,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/procexec"
+	"github.com/plecture/plect/plugins/github-provider/internal/procexec"
 )
 
 // RepoSlug is the repository's path relative to the worktrees root for a

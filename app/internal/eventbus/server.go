@@ -1,4 +1,4 @@
-// Package eventbus is the live pub/sub fan-out server behind `plecture bus serve`.
+// Package eventbus is the live pub/sub fan-out server behind `plect bus serve`.
 //
 // The durable per-session log (app/internal/eventlog) is the source of truth;
 // this server is a thin HTTP/SSE face over it:
@@ -10,7 +10,7 @@
 // session rides as a query param (not a path segment) to avoid the %2F-in-path
 // problem for names like "workspace-1". The log is the only fan-out path —
 // every subscriber follows it by polling from its cursor — so events appended
-// via POST here OR directly by another plecture process (CLI/sync/web/capture) are
+// via POST here OR directly by another plect process (CLI/sync/web/capture) are
 // delivered exactly once, with no separate in-memory broadcast to double-deliver.
 package eventbus
 
@@ -24,9 +24,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/sessionhub"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/app/internal/sessionhub"
+	"github.com/plecture/plect/contracts/event"
 )
 
 // keepAliveInterval bounds how long a stream stays silent: after this much idle

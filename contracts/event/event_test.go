@@ -93,9 +93,9 @@ func TestDeliveryModeNormalize(t *testing.T) {
 	}
 }
 
-func TestPlectureEventNamespaceConstants(t *testing.T) {
+func TestPlectEventNamespaceConstants(t *testing.T) {
 	cases := map[string]string{
-		"source":          SourcePlecture,
+		"source":          SourcePlect,
 		"tick source":     SourceTick,
 		"instruction":     TypeInstruction,
 		"channel error":   TypeChannelError,
@@ -108,14 +108,14 @@ func TestPlectureEventNamespaceConstants(t *testing.T) {
 	}
 	for name, got := range cases {
 		if got == "" {
-			t.Fatalf("%s = %q, want plecture namespace", name, got)
+			t.Fatalf("%s = %q, want plect namespace", name, got)
 		}
 	}
-	if SourcePlecture != "plecture" {
-		t.Fatalf("SourcePlecture = %q, want plecture", SourcePlecture)
+	if SourcePlect != "plect" {
+		t.Fatalf("SourcePlect = %q, want plect", SourcePlect)
 	}
-	if TypeInstruction != "plecture.instruction" {
-		t.Fatalf("TypeInstruction = %q, want plecture.instruction", TypeInstruction)
+	if TypeInstruction != "plect.instruction" {
+		t.Fatalf("TypeInstruction = %q, want plect.instruction", TypeInstruction)
 	}
 }
 

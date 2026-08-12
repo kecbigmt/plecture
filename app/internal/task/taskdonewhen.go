@@ -6,7 +6,7 @@ import (
 	"strings"
 	"text/template"
 
-	contract "github.com/kecbigmt/plecture/contracts/state"
+	contract "github.com/plecture/plect/contracts/state"
 )
 
 // RenderOutputsTemplate renders a template over the session's persisted

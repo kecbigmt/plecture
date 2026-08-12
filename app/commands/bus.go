@@ -14,13 +14,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/dispatch"
-	"github.com/kecbigmt/plecture/app/internal/eventbus"
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/app/internal/reactor"
-	"github.com/kecbigmt/plecture/app/internal/sessionhub"
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/dispatch"
+	"github.com/plecture/plect/app/internal/eventbus"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/app/internal/reactor"
+	"github.com/plecture/plect/app/internal/sessionhub"
+	"github.com/plecture/plect/app/internal/state"
 )
 
 var busSocket string
@@ -37,7 +37,7 @@ var busServeCmd = &cobra.Command{
 POST /v1/events (append), GET /v1/events (list), GET /v1/stream (SSE replay+live).
 
 The socket is created 0600, so same-user processes need no token; set
-PLECTURE_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).`,
+PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		socket := busSocket
@@ -59,14 +59,14 @@ PLECTURE_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browse
 		}
 
 		// Resolve the log dir the same way writers do (eventlog.NewStore("") =>
-		// $XDG_DATA_HOME/plecture/events, matching service.EventPublish). Log it so a
+		// $XDG_DATA_HOME/plect/events, matching service.EventPublish). Log it so a
 		// daemon/writer env mismatch (different XDG_DATA_HOME) is visible rather
 		// than silently appending to a different tree.
 		store := eventlog.NewStore("")
 		// One per-session reader shared by SSE subscribers (and, with the channel
 		// dispatcher onto it, the single follow loop per session).
 		hub := sessionhub.NewRegistry(store)
-		srv := eventbus.New(store, os.Getenv("PLECTURE_BUS_TOKEN"), hub)
+		srv := eventbus.New(store, os.Getenv("PLECT_BUS_TOKEN"), hub)
 		httpSrv := &http.Server{
 			Handler:           srv.Routes(),
 			ReadHeaderTimeout: 10 * time.Second,
@@ -88,7 +88,7 @@ PLECTURE_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browse
 		// The tick reactor is dispatch's sibling: one per active session,
 		// ticking on a declared `[tick]` pattern, the judge builtin, or a
 		// `heartbeat` sweep (docs/wiki/verification-gate.md), instead of
-		// leaving `plecture tick` to an orchestrator's judgment or memory.
+		// leaving `plect tick` to an orchestrator's judgment or memory.
 		react := reactor.NewSupervisor(cfg, stateStore, store, hub)
 		var reactWG sync.WaitGroup
 		reactWG.Go(func() { react.Run(ctx) })
@@ -98,7 +98,7 @@ PLECTURE_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browse
 			_ = httpSrv.Close()
 		}()
 
-		fmt.Fprintf(cmd.ErrOrStderr(), "plecture bus serving on %s (events: %s)\n", socket, store.Root())
+		fmt.Fprintf(cmd.ErrOrStderr(), "plect bus serving on %s (events: %s)\n", socket, store.Root())
 		serveErr := httpSrv.Serve(ln)
 		stop()         // cancel ctx so the supervisors tear down even if Serve failed without a signal
 		supWG.Wait()   // let the dispatch supervisor cancel and join its dispatchers
@@ -111,16 +111,16 @@ PLECTURE_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browse
 	},
 }
 
-// defaultBusSocket mirrors the plecture-mcp convention (%t/plecture/... = $XDG_RUNTIME_DIR).
+// defaultBusSocket mirrors the plect-mcp convention (%t/plect/... = $XDG_RUNTIME_DIR).
 func defaultBusSocket() string {
 	if rt := os.Getenv("XDG_RUNTIME_DIR"); rt != "" {
-		return filepath.Join(rt, "plecture", "bus.sock")
+		return filepath.Join(rt, "plect", "bus.sock")
 	}
-	return filepath.Join(os.TempDir(), "plecture", "bus.sock")
+	return filepath.Join(os.TempDir(), "plect", "bus.sock")
 }
 
 func init() {
-	busServeCmd.Flags().StringVar(&busSocket, "socket", "", "Unix socket path (default $XDG_RUNTIME_DIR/plecture/bus.sock)")
+	busServeCmd.Flags().StringVar(&busSocket, "socket", "", "Unix socket path (default $XDG_RUNTIME_DIR/plect/bus.sock)")
 	busCmd.AddCommand(busServeCmd)
 	rootCmd.AddCommand(busCmd)
 }

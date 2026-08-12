@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kecbigmt/plecture/app/internal/eventlog"
-	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/plecture/plect/app/internal/eventlog"
+	"github.com/plecture/plect/contracts/event"
 )
 
 const pollInterval = 500 * time.Millisecond

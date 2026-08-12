@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/config"
-	"github.com/kecbigmt/plecture/app/internal/service"
-	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/plecture/plect/app/internal/config"
+	"github.com/plecture/plect/app/internal/service"
+	"github.com/plecture/plect/app/internal/state"
 )
 
 var (
@@ -27,7 +27,7 @@ parent exactly once per instance. Against that same fact set it also fires
 [[chains]]: a chain whose when holds and whose wired outputs are present
 spawns its workflow (idempotent — an already-active target is reported, not
 re-spawned). Idempotent — safe to call repeatedly on unchanged state. Use
-"plecture status" to read the same evaluation (including the chain plan) without
+"plect status" to read the same evaluation (including the chain plan) without
 acting on it.
 
 JSON actions are one of satisfied, wait, review_required, kick, or escalate.
@@ -69,7 +69,7 @@ poll detection, and unmet_items with machine-readable check/judge state.`,
 }
 
 // chainSpawnStatus renders one ChainSpawn's outcome as a single word/phrase
-// for "plecture tick"'s tab-separated text output.
+// for "plect tick"'s tab-separated text output.
 func chainSpawnStatus(sp service.ChainSpawn) string {
 	switch {
 	case sp.Spawned:
