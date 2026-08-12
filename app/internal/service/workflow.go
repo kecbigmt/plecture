@@ -5,8 +5,8 @@ import (
 	"maps"
 	"sort"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // WorkflowSummary is a row in WorkflowList output: just enough to pick the
@@ -18,8 +18,8 @@ type WorkflowSummary struct {
 	AutoSelect  bool   `json:"auto_select"`
 }
 
-// WorkflowDetail is the full picture for `sennit workflow show <id>` and
-// `sennit_workflow_show`: identity, the merged inputs_schema (so callers can build
+// WorkflowDetail is the full picture for `plecture workflow show <id>` and
+// `plecture_workflow_show`: identity, the merged inputs_schema (so callers can build
 // `--inputs`), and the DAG (so agents can reason about node ordering).
 type WorkflowDetail struct {
 	ID          string `json:"id"`
@@ -83,7 +83,7 @@ func WorkflowList(cfg *config.Config, worktreeDir string) ([]WorkflowSummary, er
 }
 
 // WorkflowShow resolves a single workflow and compiles it so the returned
-// DAG matches what `sennit up` would actually execute. Returns an ErrInvalidInput
+// DAG matches what `plecture up` would actually execute. Returns an ErrInvalidInput
 // service error when the id isn't present in the cascade (mirrors the
 // "workflow not found" path in tasks.go's buildWorkflowPlan).
 func WorkflowShow(cfg *config.Config, worktreeDir, id string) (*WorkflowDetail, error) {

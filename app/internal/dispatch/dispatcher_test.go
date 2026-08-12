@@ -16,15 +16,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/channel"
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	protocol "github.com/kecbigmt/sennit/contracts/channel-protocol"
-	"github.com/kecbigmt/sennit/contracts/event"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/channel"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/sessionhub"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
+	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // runTestDispatcher builds a wake-driven dispatcher over a fast-poll hub for an
@@ -44,7 +44,7 @@ func runTestDispatcher(t *testing.T, log *eventlog.Store, sock string) (*session
 	}
 	d := &sessionDispatcher{
 		session:  "o/r-1",
-		channels: []config.EventChannel{{Name: "runtime", Uses: "claude_channel", Inputs: map[string]string{"path": "{{.Nodes.claude.outputs.socket_path}}"}, Include: []string{"sennit.instruction"}}},
+		channels: []config.EventChannel{{Name: "runtime", Uses: "claude_channel", Inputs: map[string]string{"path": "{{.Nodes.claude.outputs.socket_path}}"}, Include: []string{"plecture.instruction"}}},
 		defs:     map[string]config.ChannelDefinition{"claude_channel": {Type: config.ChannelTypeUnixSocket, Path: "{{.Inputs.path}}", Body: "{{ json .Event }}"}},
 		log:      log,
 		state:    st,
@@ -237,7 +237,7 @@ func assertNoDelivery(t *testing.T, recv <-chan protocol.MessagePayload) {
 func TestDispatcher_DeliversIncludedEvents(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
-	d, s := runtimeDispatcher("o/r-1", log, sock, "sennit.instruction", "github.*")
+	d, s := runtimeDispatcher("o/r-1", log, sock, "plecture.instruction", "github.*")
 
 	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction, Body: "do it"})
 	log.Append(event.Event{SessionName: "o/r-1", Type: "github.ci_status", Summary: "CI failed"})
@@ -257,7 +257,7 @@ func TestDispatcher_DeliversIncludedEvents(t *testing.T) {
 func TestDispatcher_IncludeFilters(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
-	d, s := runtimeDispatcher("o/r-1", log, sock, "sennit.instruction")
+	d, s := runtimeDispatcher("o/r-1", log, sock, "plecture.instruction")
 
 	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeUserNote, Body: "ignored"})
 	drainOnce(d, s)
@@ -271,14 +271,14 @@ func TestDispatcher_IncludeFilters(t *testing.T) {
 func TestDispatcher_FinalFailureAppendsChannelError(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	dead := filepath.Join(t.TempDir(), "absent.sock") // never listened
-	d, s := runtimeDispatcher("o/r-1", log, dead, "sennit.instruction")
+	d, s := runtimeDispatcher("o/r-1", log, dead, "plecture.instruction")
 
 	orig, _, _, _ := log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction, Body: "do it"})
 	drainOnce(d, s)
 
 	errs, _, _, _ := log.List("o/r-1", 0, event.Filter{Types: []string{event.TypeChannelError}})
 	if len(errs) != 1 {
-		t.Fatalf("want exactly one sennit.channel.error, got %d", len(errs))
+		t.Fatalf("want exactly one plecture.channel.error, got %d", len(errs))
 	}
 	ce := errs[0]
 	if ce.Metadata["channel"] != "runtime" || ce.Metadata["event_id"] != orig.ID || ce.Metadata["attempts"] != "2" {
@@ -289,7 +289,7 @@ func TestDispatcher_FinalFailureAppendsChannelError(t *testing.T) {
 func TestDispatcher_ChannelErrorNotRedelivered(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	dead := filepath.Join(t.TempDir(), "absent.sock")
-	d, s := runtimeDispatcher("o/r-1", log, dead, "sennit.instruction", "github.*")
+	d, s := runtimeDispatcher("o/r-1", log, dead, "plecture.instruction", "github.*")
 
 	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction})
 	drainOnce(d, s) // fails → appends one channel.error
@@ -309,8 +309,8 @@ func TestDispatcher_MultiChannelFanOut(t *testing.T) {
 	d := &sessionDispatcher{
 		session: "o/r-1",
 		channels: []config.EventChannel{
-			{Name: "live", Uses: "sock", Inputs: map[string]string{"path": sock}, Include: []string{"sennit.instruction"}},
-			{Name: "dead", Uses: "sock", Inputs: map[string]string{"path": dead}, Include: []string{"sennit.instruction"}},
+			{Name: "live", Uses: "sock", Inputs: map[string]string{"path": sock}, Include: []string{"plecture.instruction"}},
+			{Name: "dead", Uses: "sock", Inputs: map[string]string{"path": dead}, Include: []string{"plecture.instruction"}},
 		},
 		defs:   map[string]config.ChannelDefinition{"sock": def},
 		log:    log,
@@ -334,7 +334,7 @@ func TestDispatcher_CancelMidEventLeavesCursorForReplay(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	d := &sessionDispatcher{
 		session:  "o/r-1",
-		channels: []config.EventChannel{{Name: "slow", Uses: "slow", Include: []string{"sennit.instruction"}}},
+		channels: []config.EventChannel{{Name: "slow", Uses: "slow", Include: []string{"plecture.instruction"}}},
 		defs:     map[string]config.ChannelDefinition{"slow": {Type: config.ChannelTypeExec, Command: "sleep", Args: []string{"5"}}},
 		log:      log,
 		policy:   channel.RetryPolicy{MaxAttempts: 1, Timeout: 10 * time.Second},
@@ -383,7 +383,7 @@ func TestDispatcher_ChannelErrorNotDeliveredUnderWildcard(t *testing.T) {
 func TestDispatcher_SeedsCursorToTailOnFirstStart(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
-	d, s := runtimeDispatcher("o/r-1", log, sock, "sennit.instruction")
+	d, s := runtimeDispatcher("o/r-1", log, sock, "plecture.instruction")
 
 	// History predating the dispatcher must not be re-flooded to the runtime.
 	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction, Body: "old"})
@@ -402,7 +402,7 @@ func TestDispatcher_SeedsCursorToTailOnFirstStart(t *testing.T) {
 func TestSeedCursor_AtBirthDeliversFirstInstruction(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
-	d, s := runtimeDispatcher("o/r-1", log, sock, "sennit.instruction")
+	d, s := runtimeDispatcher("o/r-1", log, sock, "plecture.instruction")
 
 	// Seed at the session's empty birth tail (as service.Create does), before the
 	// initial instruction exists. The dispatcher then starts after the run scope
@@ -421,13 +421,13 @@ func TestDispatcher_ReplaysFromCursorAcrossRestart(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
 
-	d1, s := runtimeDispatcher("o/r-1", log, sock, "sennit.instruction")
+	d1, s := runtimeDispatcher("o/r-1", log, sock, "plecture.instruction")
 	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction, Body: "first"})
 	drainOnce(d1, s)
 	recvType(t, recv) // delivered once
 
 	// A fresh dispatcher over the same log must not re-deliver the committed event.
-	d2, _ := runtimeDispatcher("o/r-1", log, sock, "sennit.instruction")
+	d2, _ := runtimeDispatcher("o/r-1", log, sock, "plecture.instruction")
 	drainOnce(d2, s)
 	assertNoDelivery(t, recv)
 
@@ -448,7 +448,7 @@ func TestDispatcher_ReplaysFromCursorAcrossRestart(t *testing.T) {
 func TestDispatcher_CommitCursorFailureIsLoggedAndEventRedelivers(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
-	d, s := runtimeDispatcher("o/r-1", log, sock, "sennit.instruction")
+	d, s := runtimeDispatcher("o/r-1", log, sock, "plecture.instruction")
 
 	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction, Body: "first"})
 	drainOnce(d, s)

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // runWorkflowCleanupForDestroy resolves the session's workflow definition and
@@ -109,7 +109,7 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 		// no schema / requires / done_when validation (that runs at create / up /
 		// task run). Teardown must stay resilient to a def whose config drifted
 		// to invalid after the instance was created: a present-but-invalid def
-		// must be no more fatal than a disappeared one, so `sennit destroy --force`
+		// must be no more fatal than a disappeared one, so `plecture destroy --force`
 		// can still reclaim the session. Cleanup needs only the script plus the
 		// persisted inputs/outputs.
 		r := task.Resolved{NodeID: key, TaskID: taskID, Scope: st.Scope}

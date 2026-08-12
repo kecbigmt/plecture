@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 var (
@@ -52,7 +52,7 @@ func init() {
 	for _, cmd := range []*cobra.Command{approveCmd, requestChangesCmd} {
 		cmd.Flags().StringVar(&judgeReason, "reason", "", "Reason for this judge action")
 		cmd.Flags().StringVar(&judgeRevision, "revision", "", "Opaque revision reviewed (defaults to the instance revision output)")
-		cmd.Flags().StringVar(&judgeReviewerSession, "reviewer-session", "", "Reviewer session name (defaults to $SENNIT_SESSION_NAME; provenance-constrained judges require it to match the ambient reviewer pane)")
+		cmd.Flags().StringVar(&judgeReviewerSession, "reviewer-session", "", "Reviewer session name (defaults to $PLECTURE_SESSION_NAME; provenance-constrained judges require it to match the ambient reviewer pane)")
 		cmd.MarkFlagRequired("reason")
 		judgeCmd.AddCommand(cmd)
 	}

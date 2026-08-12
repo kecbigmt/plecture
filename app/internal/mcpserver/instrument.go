@@ -8,7 +8,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/kecbigmt/sennit/app/internal/traceid"
+	"github.com/kecbigmt/plecture/app/internal/traceid"
 )
 
 type traceIDKey struct{}
@@ -54,7 +54,7 @@ func instrumentHandler(toolName string, handler server.ToolHandlerFunc) server.T
 
 		// Build slog attributes.
 		attrs := []slog.Attr{
-			slog.String("component", "sennit-mcp"),
+			slog.String("component", "plecture-mcp"),
 			slog.String("event", "mcp_call"),
 			slog.String("tool", toolName),
 			slog.String("status", status),

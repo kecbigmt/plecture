@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// setupTestRepo creates a git repo structure that mimics what sennit expects:
+// setupTestRepo creates a git repo structure that mimics what plecture expects:
 // worktreesRoot/github.com/owner/repo/main is a real git repo (acts as gitDir).
 // A bare repo is used as a local "origin" remote so git fetch works.
 func setupTestRepo(t *testing.T) (worktreesRoot string, ownerRepo string) {
@@ -473,7 +473,7 @@ func TestWorktreeAddError_AlreadyCheckedOutHint(t *testing.T) {
 	if !strings.Contains(msg, "git worktree add failed") {
 		t.Errorf("expected 'git worktree add failed' prefix in error, got: %s", msg)
 	}
-	if !strings.Contains(msg, "sennit up <resource> --tag <tag>") {
+	if !strings.Contains(msg, "plecture up <resource> --tag <tag>") {
 		t.Errorf("expected tag hint in error, got: %s", msg)
 	}
 }

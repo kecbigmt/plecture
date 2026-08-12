@@ -39,7 +39,7 @@ func TestManager_Add_WorktreeAddErrorPreservesHint(t *testing.T) {
 		t.Fatalf("first Add() error = %v", err)
 	}
 
-	// Manually check the worktree out again outside sennit's own bookkeeping
+	// Manually check the worktree out again outside plecture's own bookkeeping
 	// so a second Add() collides with git's own "already checked out" guard.
 	repoDir := mgr.RepoDir(ownerRepo)
 	wtPath := mgr.WorktreePath(ownerRepo, "issue/7")

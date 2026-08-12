@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // CaptureParams holds parameters for Capture.
@@ -50,7 +50,7 @@ func Capture(cfg *config.Config, store *state.Store, params CaptureParams) (*Cap
 	if !ok || st == nil || st.Status != contract.TaskStatusProduced {
 		return nil, &Error{
 			Code:    ErrNotProduced,
-			Message: fmt.Sprintf("task %q is not produced; run 'sennit up %s' first", target.NodeID, sessionName),
+			Message: fmt.Sprintf("task %q is not produced; run 'plecture up %s' first", target.NodeID, sessionName),
 		}
 	}
 

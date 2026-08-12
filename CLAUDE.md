@@ -1,8 +1,8 @@
 # Standing rules for coding agents
 
-Sennit lets individuals and teams compose their own systems for autonomous
+Plecture lets individuals and teams compose their own systems for autonomous
 work without committing to a particular agent, VCS, execution environment,
-workspace technology, or communication tool. Sennit owns the durable
+workspace technology, or communication tool. Plecture owns the durable
 structure of work: identity, lifecycle, relationships, observation,
 verification, and handoff.
 
@@ -99,7 +99,7 @@ A PR is done when:
 
 ## Compatibility policy
 
-Sennit is pre-1.0. Do not add backward-compatibility code paths. Breaking
+Plecture is pre-1.0. Do not add backward-compatibility code paths. Breaking
 changes ship with a one-time migration (script or documented procedure,
 including a backup step), not a compatibility shim.
 

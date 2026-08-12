@@ -15,7 +15,7 @@ Steps:
 6. Commit and push
 7. Summarize what was addressed
 
-To follow this PR's progress while you work, run `sennit subscribe {{.ResourceID}}` — its CI / review / merge events then arrive in this session (`sennit event list`).
+To follow this PR's progress while you work, run `plecture subscribe {{.ResourceID}}` — its CI / review / merge events then arrive in this session (`plecture event list`).
 
 **Note for unattended sessions:** this session cannot ask the user interactive
 questions. If a judgment call is needed, write the question as an issue/PR

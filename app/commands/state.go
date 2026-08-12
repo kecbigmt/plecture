@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
 var (
@@ -33,7 +33,7 @@ var setConversationCmd = &cobra.Command{
 	Long: `Set or update the conversation (e.g., Slack thread) linked to a session.
 
 Example:
-  sennit state set-conversation workspace-1 \
+  plecture state set-conversation workspace-1 \
     --source Slack \
     --url "https://exampleorg.slack.com/archives/C.../p..." \
     --meta thread_ts=1234567890.123456 \
@@ -70,15 +70,15 @@ Example:
 var setMessageCmd = &cobra.Command{
 	Use:   "set-message <session-or-url> <text>",
 	Short: "Set the session's self-reported status message",
-	Long: `Set or clear the session-level status message. sennit does not interpret
+	Long: `Set or clear the session-level status message. plecture does not interpret
 the text — it is a slot for external self-reports (e.g. an agent's
 turn-boundary hook announcing "working" / "waiting").
 
 An empty string clears the message.
 
 Example:
-  sennit state set-message workspace-1 "working"
-  sennit state set-message workspace-1 ""`,
+  plecture state set-message workspace-1 "working"
+  plecture state set-message workspace-1 ""`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()
@@ -123,9 +123,9 @@ required output added), the merge is rejected and the observed value silently
 stops updating — check the watcher's logs if a done_when stalls.
 
 Example:
-  sennit state set-output workspace-1 --node watch '{"pr_state":"merged"}'
-  sennit state set-output workspace-1 --workflow '{"title":"New title"}'
-  sennit state set-output workspace-1 --task review#1 '{"checks_status":"SUCCESS"}'`,
+  plecture state set-output workspace-1 --node watch '{"pr_state":"merged"}'
+  plecture state set-output workspace-1 --workflow '{"title":"New title"}'
+  plecture state set-output workspace-1 --task review#1 '{"checks_status":"SUCCESS"}'`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var payload map[string]any

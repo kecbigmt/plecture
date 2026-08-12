@@ -33,7 +33,7 @@ func TestLoad_UserGlobalOverride(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	templateDir := filepath.Join(tmpHome, ".config", "sennit", "templates")
+	templateDir := filepath.Join(tmpHome, ".config", "plecture", "templates")
 	if err := os.MkdirAll(templateDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestLoad_RepoSpecificOverride(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	repoDir := t.TempDir()
-	templateDir := filepath.Join(repoDir, ".sennit", "templates")
+	templateDir := filepath.Join(repoDir, ".plecture", "templates")
 	if err := os.MkdirAll(templateDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -197,13 +197,13 @@ func TestRender_SessionVarsWithoutProviderOutputs(t *testing.T) {
 
 	// Workdir overlay rooted at the session's working tree, not a repository.
 	workdir := t.TempDir()
-	sennitDir := filepath.Join(workdir, ".sennit", "templates")
-	if err := os.MkdirAll(sennitDir, 0o755); err != nil {
+	plectureDir := filepath.Join(workdir, ".plecture", "templates")
+	if err := os.MkdirAll(plectureDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := "owner={{.Workflow.outputs.owner}} session={{.SessionName}} " +
 		"workdir={{.WorktreePath}} focus={{.SessionInputs.focus}} res={{.ResourceID}}"
-	if err := os.WriteFile(filepath.Join(sennitDir, "kick.md"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(plectureDir, "kick.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -232,13 +232,13 @@ func TestRender_EmptyVars(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	workdir := t.TempDir()
-	sennitDir := filepath.Join(workdir, ".sennit", "templates")
-	if err := os.MkdirAll(sennitDir, 0o755); err != nil {
+	plectureDir := filepath.Join(workdir, ".plecture", "templates")
+	if err := os.MkdirAll(plectureDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// Missing Workflow output / session input must not error or panic; absent
 	// keys render as Go's default "<no value>".
-	if err := os.WriteFile(filepath.Join(sennitDir, "bare.md"), []byte("[{{.Workflow.outputs.missing}}]"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(plectureDir, "bare.md"), []byte("[{{.Workflow.outputs.missing}}]"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -256,13 +256,13 @@ func TestRender_GetGuardsOptionalVars(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	workdir := t.TempDir()
-	sennitDir := filepath.Join(workdir, ".sennit", "templates")
-	if err := os.MkdirAll(sennitDir, 0o755); err != nil {
+	plectureDir := filepath.Join(workdir, ".plecture", "templates")
+	if err := os.MkdirAll(plectureDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// `get` returns "" for a missing key instead of "<no value>".
 	body := "[{{get .SessionInputs \"missing\"}}][{{get .SessionInputs \"focus\"}}]"
-	if err := os.WriteFile(filepath.Join(sennitDir, "guard.md"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(plectureDir, "guard.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -396,20 +396,20 @@ func TestList_RepoSpecificAndDedup(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	repoDir := t.TempDir()
-	sennitDir := filepath.Join(repoDir, ".sennit", "templates")
-	if err := os.MkdirAll(sennitDir, 0o755); err != nil {
+	plectureDir := filepath.Join(repoDir, ".plecture", "templates")
+	if err := os.MkdirAll(plectureDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	// Repo-specific template that overrides embedded "work"
 	repoContent := "---\ndescription: Custom work\n---\nBody"
-	if err := os.WriteFile(filepath.Join(sennitDir, "work.md"), []byte(repoContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(plectureDir, "work.md"), []byte(repoContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Repo-specific template that is unique
 	customContent := "---\ndescription: Deploy to staging\n---\nDeploy"
-	if err := os.WriteFile(filepath.Join(sennitDir, "deploy.md"), []byte(customContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(plectureDir, "deploy.md"), []byte(customContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -444,13 +444,13 @@ func TestList_NoFrontmatter(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	repoDir := t.TempDir()
-	sennitDir := filepath.Join(repoDir, ".sennit", "templates")
-	if err := os.MkdirAll(sennitDir, 0o755); err != nil {
+	plectureDir := filepath.Join(repoDir, ".plecture", "templates")
+	if err := os.MkdirAll(plectureDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	// Template without frontmatter
-	if err := os.WriteFile(filepath.Join(sennitDir, "plain.md"), []byte("Just a template"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(plectureDir, "plain.md"), []byte("Just a template"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -471,19 +471,19 @@ func TestList_NoFrontmatter(t *testing.T) {
 	}
 }
 
-// TestLoad_AncestorOverlay covers the bare layout: .sennit/templates lives in the
+// TestLoad_AncestorOverlay covers the bare layout: .plecture/templates lives in the
 // repo container, one level above the branch worktree searchDir points at.
 func TestLoad_AncestorOverlay(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
 	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
-	sennitDir := filepath.Join(repoDir, ".sennit", "templates")
-	if err := os.MkdirAll(sennitDir, 0o755); err != nil {
+	plectureDir := filepath.Join(repoDir, ".plecture", "templates")
+	if err := os.MkdirAll(plectureDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	ancestorContent := "ANCESTOR REPO-LAYER TEMPLATE"
-	if err := os.WriteFile(filepath.Join(sennitDir, "work.md"), []byte(ancestorContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(plectureDir, "work.md"), []byte(ancestorContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -508,20 +508,20 @@ func TestLoad_AncestorOverlay_InnerWins(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
-	if err := os.MkdirAll(filepath.Join(repoDir, ".sennit", "templates"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(repoDir, ".plecture", "templates"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	outerContent := "OUTER (REPO CONTAINER) TEMPLATE"
-	if err := os.WriteFile(filepath.Join(repoDir, ".sennit", "templates", "work.md"), []byte(outerContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repoDir, ".plecture", "templates", "work.md"), []byte(outerContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	worktreeDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(filepath.Join(worktreeDir, ".sennit", "templates"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(worktreeDir, ".plecture", "templates"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	innerContent := "INNER (WORKTREE) TEMPLATE"
-	if err := os.WriteFile(filepath.Join(worktreeDir, ".sennit", "templates", "work.md"), []byte(innerContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(worktreeDir, ".plecture", "templates", "work.md"), []byte(innerContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -540,12 +540,12 @@ func TestList_AncestorOverlay(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
-	sennitDir := filepath.Join(repoDir, ".sennit", "templates")
-	if err := os.MkdirAll(sennitDir, 0o755); err != nil {
+	plectureDir := filepath.Join(repoDir, ".plecture", "templates")
+	if err := os.MkdirAll(plectureDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	customContent := "---\ndescription: Ancestor deploy\n---\nDeploy"
-	if err := os.WriteFile(filepath.Join(sennitDir, "deploy.md"), []byte(customContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(plectureDir, "deploy.md"), []byte(customContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -573,18 +573,18 @@ func TestLoad_Priority(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	repoDir := t.TempDir()
-	sennitDir := filepath.Join(repoDir, ".sennit", "templates")
-	if err := os.MkdirAll(sennitDir, 0o755); err != nil {
+	plectureDir := filepath.Join(repoDir, ".plecture", "templates")
+	if err := os.MkdirAll(plectureDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	repoContent := "REPO SPECIFIC TEMPLATE"
-	if err := os.WriteFile(filepath.Join(sennitDir, "work.md"), []byte(repoContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(plectureDir, "work.md"), []byte(repoContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	// Also create a user-global template
-	userDir := filepath.Join(tmpHome, ".config", "sennit", "templates")
+	userDir := filepath.Join(tmpHome, ".config", "plecture", "templates")
 	if err := os.MkdirAll(userDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
 var attachCmd = &cobra.Command{
@@ -18,11 +18,11 @@ var attachCmd = &cobra.Command{
 	Aliases: []string{"a"},
 	Short:   "Attach to the workflow's declared attach target",
 	Long: `Resolve the session, find the task declaring 'attach', and exec into
-its runtime — the sennit process is replaced so the TTY is fully handed over.
+its runtime — the plecture process is replaced so the TTY is fully handed over.
 
 No auto-up: a session whose attach task is not 'produced' aborts with a
-hint to run 'sennit up <session>' first. Compose with the shell when you want
-both: 'sennit up <name> && sennit attach <name>'.`,
+hint to run 'plecture up <session>' first. Compose with the shell when you want
+both: 'plecture up <name> && plecture attach <name>'.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()

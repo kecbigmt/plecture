@@ -3,13 +3,13 @@ package service
 import (
 	"maps"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// TemplateVars is the read-only projection of a session that `sennit template
+// TemplateVars is the read-only projection of a session that `plecture template
 // render --session` needs: just enough to populate a template's session vars,
 // without handing the raw mutating-lifecycle-owned *domain.Session to a
 // surface adapter that only wants to render text.

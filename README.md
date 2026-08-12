@@ -1,17 +1,12 @@
-# Sennit
+# Plecture
 
-**Weave work into structure.**
+**Give autonomous work a place to go.**
 
-Sennit exists to let individuals and teams compose their own systems for
-autonomous work without committing to a particular agent, VCS, execution
-environment, workspace technology, or communication tool. Sennit owns the
-durable structure of work: identity, lifecycle, relationships, observation,
-verification, and handoff.
+Plecture is a local-first runtime that gives autonomous work durable structure: **identity**, **lifecycle**, **relationships**, **observation**, **verification**, and **handoff**. Work lives in inspectable, portable state that you own — a place to exist outside any single agent's context, and a place to move on from: back to a worker, on to a reviewer, up to a human, through verification to done.
 
-This identity is a target, not a description of the current code: the first
-release ships with a concrete set of providers (tmux, git worktrees, GitHub,
-Slack) baked in. Independence is the boundary this project is extracted
-around, not a feature gate for v1.
+It is not an agent framework. It is not a workflow engine that dictates execution. It does not hide your tools behind a common abstraction. Plecture owns the semantics of work; the mechanisms that carry it out remain yours to choose and to swap. Claude Code or Codex. Git or another VCS. Worktrees or containers. tmux or another process host. These are choices at the edge, not assumptions at the core.
+
+The name is coined from Latin *plectere*, to braid — the way *texere*, to weave, gave English *texture*. In a braided structure every strand stays itself: humans stay human, agents stay agents, tools stay tools. Plecture connects them without replacing them.
 
 ## Layout
 

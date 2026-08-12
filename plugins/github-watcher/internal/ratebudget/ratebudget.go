@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kecbigmt/sennit/contracts/atomicfile"
+	"github.com/kecbigmt/plecture/contracts/atomicfile"
 )
 
 // minBackoff/maxBackoff bound the exponential fallback used when a 403/429

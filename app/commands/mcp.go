@@ -11,8 +11,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/sennit/app/internal/mcpserver"
-	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/mcpserver"
+	"github.com/kecbigmt/plecture/app/internal/service"
 )
 
 var mcpCmd = &cobra.Command{
@@ -38,7 +38,7 @@ var mcpListenCmd = &cobra.Command{
 	Use:   "listen",
 	Short: "Listen on a Unix socket, spawning a stdio MCP session per connection",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// --session injects SENNIT_SESSION_GUARD into every spawned connection
+		// --session injects PLECTURE_SESSION_GUARD into every spawned connection
 		// rather than relying on whatever the listener process itself
 		// inherited, and derives --socket's default so a task setup script
 		// needn't compute one itself.
@@ -94,12 +94,12 @@ func defaultSessionMcpListenSocket(sessionName string) string {
 	if rt == "" {
 		rt = os.TempDir()
 	}
-	return filepath.Join(rt, "sennit-mcp", sessionName+".sock")
+	return filepath.Join(rt, "plecture-mcp", sessionName+".sock")
 }
 
 func init() {
 	mcpListenCmd.Flags().StringVar(&mcpListenSocket, "socket", "", "Unix socket path to listen on (default: the --session convention path)")
-	mcpListenCmd.Flags().StringVar(&mcpListenSession, "session", "", "Scope this socket to a session: injects SENNIT_SESSION_GUARD for it and its own name-space into every spawned connection, and derives --socket's default")
+	mcpListenCmd.Flags().StringVar(&mcpListenSession, "session", "", "Scope this socket to a session: injects PLECTURE_SESSION_GUARD for it and its own name-space into every spawned connection, and derives --socket's default")
 
 	mcpCmd.AddCommand(mcpServeCmd)
 	mcpCmd.AddCommand(mcpListenCmd)

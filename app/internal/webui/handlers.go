@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 // appView is the data for the two-pane shell (list on the left, detail on the
@@ -145,7 +145,7 @@ func selectedFromCurrentURL(r *http.Request) string {
 
 // handleSessionEvents renders the event timeline partial, newest first. The
 // scope is exactly one of session (one log) or subtree (the tree rooted at a
-// session — the canonical cross-session view), mirroring sennit_event_list; it
+// session — the canonical cross-session view), mirroring plecture_event_list; it
 // rides as a query param (a session name's "/" would otherwise collide with
 // the {name...} detail route).
 func (s *Server) handleSessionEvents(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +192,7 @@ type timelineView struct {
 
 // handleSubtreeTimeline serves the canonical cross-session timeline for the
 // session tree rooted at the named session (the root plus its descendants,
-// merged in event-id order — the same read as `sennit event list --subtree`).
+// merged in event-id order — the same read as `plecture event list --subtree`).
 func (s *Server) handleSubtreeTimeline(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	evs, err := s.svc.EventsSubtree(name)

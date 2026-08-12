@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
 // setUpConfigHomeWithCapture is setUpConfigHome plus a capture-bearing
@@ -18,12 +18,12 @@ import (
 func setUpConfigHomeWithCapture(t *testing.T) {
 	t.Helper()
 	setUpConfigHome(t)
-	// Down/Destroy clamp to the ambient SENNIT_SESSION_NAME as a lifecycle
+	// Down/Destroy clamp to the ambient PLECTURE_SESSION_NAME as a lifecycle
 	// guard; clear it so the test process's own session name doesn't make
 	// every other session "unrelated".
-	t.Setenv("SENNIT_SESSION_NAME", "")
+	t.Setenv("PLECTURE_SESSION_NAME", "")
 	home := os.Getenv("HOME")
-	baseDir := filepath.Join(home, ".config", "sennit")
+	baseDir := filepath.Join(home, ".config", "plecture")
 
 	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"),
 		[]byte("scope = \"session\"\nsetup = \"echo '{}'\"\ncleanup = \"true\"\ncapture = \"echo -n hello\"\n"), 0o644); err != nil {
@@ -44,7 +44,7 @@ func createPlainSession(t *testing.T, sessionID string) string {
 }
 
 // NewServer must register every declared tool exactly once under its
-// canonical sennit_-prefixed name, since that's the surface MCP clients see.
+// canonical plecture_-prefixed name, since that's the surface MCP clients see.
 func TestNewServer_RegistersTools(t *testing.T) {
 	s := NewServer()
 	if s == nil {

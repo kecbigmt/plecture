@@ -1,4 +1,4 @@
-// Package event defines the shared contract types for the sennit event bus:
+// Package event defines the shared contract types for the plecture event bus:
 // a per-session, append-only, durable pub/sub log.
 //
 // The bus core (eventlog, bus server) treats SessionName and Type as opaque
@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-// Direction is the flow of an event relative to the sennit session.
+// Direction is the flow of an event relative to the plecture session.
 type Direction string
 
 const (
@@ -31,23 +31,23 @@ const (
 // Source identifies who produced the event. These are conventions for
 // producers; the core does not interpret them.
 const (
-	SourceSennit = "sennit"
-	SourceSlack  = "slack"
-	SourceClaude = "claude"
-	SourceWeb    = "web"
-	SourceCLI    = "cli"
-	SourceMCP    = "mcp"
-	// SourceTick marks every same-session event sennit tick itself publishes
+	SourcePlecture = "plecture"
+	SourceSlack    = "slack"
+	SourceClaude   = "claude"
+	SourceWeb      = "web"
+	SourceCLI      = "cli"
+	SourceMCP      = "mcp"
+	// SourceTick marks every same-session event plecture tick itself publishes
 	// (review_required, kick's user.emit, escalated). The tick reactor
 	// excludes anything carrying this source from its trigger set by
 	// provenance rather than by enumerating types, so a kick's user.emit —
 	// which otherwise looks like an ordinary user.emit — cannot retrigger
 	// tick under a broad declared pattern (e.g. "*" or "user.emit").
-	SourceTick = "sennit.tick"
+	SourceTick = "plecture.tick"
 )
 
 // Type prefixes / well-known types. Type is a free-form dotted topic; these are
-// the namespaces sennit itself produces. Subscribers filter with globs (e.g.
+// the namespaces plecture itself produces. Subscribers filter with globs (e.g.
 // a resource provider's own change-type prefix, "slack.message").
 const (
 	TypeLifecyclePrefix = "lifecycle." // lifecycle.created|up|down|destroyed
@@ -59,32 +59,32 @@ const (
 	TypeUserEmit        = "user.emit"
 	// TypeInstruction is a task instruction appended to a session's stream for
 	// delivery to its runtime via a workflow channel (not sent from TaskSetup).
-	TypeInstruction = "sennit.instruction"
+	TypeInstruction = "plecture.instruction"
 	// TypeChannelError records a channel worker exhausting its retries. It rides
 	// the log for observability but is never itself a channel `include` target,
 	// so a failed delivery cannot loop.
-	TypeChannelError = "sennit.channel.error"
+	TypeChannelError = "plecture.channel.error"
 	// TypeTerminalPrefix namespaces the cross-session terminal signals defined
 	// by the terminal-event-propagation ADR: done, escalate, dead. A terminal
 	// event is pushed one hop into the *receiving* session's own log (D1-D3),
 	// so its SessionName is the receiver, not the emitter — MetaOriginSession
 	// names the emitter.
-	TypeTerminalPrefix   = "sennit.terminal."
-	TypeTerminalDone     = "sennit.terminal.done"
-	TypeTerminalEscalate = "sennit.terminal.escalate"
-	TypeTerminalDead     = "sennit.terminal.dead"
-	// TypeTickReviewRequired and TypeTickEscalated are sennit tick's own
+	TypeTerminalPrefix   = "plecture.terminal."
+	TypeTerminalDone     = "plecture.terminal.done"
+	TypeTerminalEscalate = "plecture.terminal.escalate"
+	TypeTerminalDead     = "plecture.terminal.dead"
+	// TypeTickReviewRequired and TypeTickEscalated are plecture tick's own
 	// same-session progress markers (internal/service/tick.go). Neither is a
 	// terminal event nor an external-resource signal; both are excluded from
 	// the tick reactor's trigger set so a declared `[tick].on` pattern broad
 	// enough to match them (e.g. "*") cannot make tick re-trigger itself.
-	TypeTickReviewRequired = "sennit.tick.review_required"
-	TypeTickEscalated      = "sennit.tick.escalated"
+	TypeTickReviewRequired = "plecture.tick.review_required"
+	TypeTickEscalated      = "plecture.tick.escalated"
 	// TypeJudgeRecorded is a same-session builtin signal appended to the
 	// *target* work session's log (not the reviewer's) whenever a judge
 	// verdict is recorded, independent of any `[tick]` declaration — the tick
 	// reactor always reacts to it by ticking that target session.
-	TypeJudgeRecorded = "sennit.judge.recorded"
+	TypeJudgeRecorded = "plecture.judge.recorded"
 )
 
 // Metadata keys stamped on a pushed terminal event (TypeTerminalDone /
@@ -131,7 +131,7 @@ type Event struct {
 	SessionName string            `json:"session_name"` // opaque session id; the log partition + routing key
 	Time        time.Time         `json:"time"`         // RFC3339Nano
 	Type        string            `json:"type"`         // free-form dotted topic
-	Source      string            `json:"source"`       // sennit|slack|claude|web|cli|mcp|<provider>
+	Source      string            `json:"source"`       // plecture|slack|claude|web|cli|mcp|<provider>
 	Direction   Direction         `json:"direction"`
 	Summary     string            `json:"summary"`        // one-line render for timelines / Slack
 	Body        string            `json:"body,omitempty"` // full text payload

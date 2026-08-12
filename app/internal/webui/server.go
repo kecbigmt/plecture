@@ -1,4 +1,4 @@
-// Package webui serves a read-only-plus-lifecycle web UI over the sennit service
+// Package webui serves a read-only-plus-lifecycle web UI over the plecture service
 // layer. Handlers depend on SessionService (not service.* directly) so they can
 // be exercised without git/runtime side tasks.
 package webui
@@ -14,9 +14,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 //go:embed assets
@@ -82,7 +82,7 @@ func dict(pairs ...any) (map[string]any, error) {
 	return m, nil
 }
 
-// SessionService is the seam between HTTP handlers and the sennit service layer.
+// SessionService is the seam between HTTP handlers and the plecture service layer.
 // The live implementation wraps service.*; tests inject a fake. The lifecycle
 // methods take the service.*Params structs directly (Observer left nil — the
 // web has no progress spinner to drive), so the seam stays a thin pass-through.
@@ -142,7 +142,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /events", s.handleSessionEvents)
 	// Cross-session timeline page: the session tree rooted at a session.
 	mux.HandleFunc("GET /subtrees/{name...}", s.handleSubtreeTimeline)
-	// Live timeline: sennit-web opens the bus SSE stream server-side and relays it
+	// Live timeline: plecture-web opens the bus SSE stream server-side and relays it
 	// to the browser (same-origin, so the browser holds no bus token / UDS).
 	mux.HandleFunc("GET /events/stream", s.handleSessionEventsStream)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)

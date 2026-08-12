@@ -1,4 +1,4 @@
-// Command sennit-web serves the sennit session management web UI (control plane).
+// Command plecture-web serves the plecture session management web UI (control plane).
 package main
 
 import (
@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/webui"
+	"github.com/kecbigmt/plecture/app/internal/webui"
 )
 
 func main() {
@@ -23,7 +23,7 @@ func main() {
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).
-		With("component", "sennit-web")
+		With("component", "plecture-web")
 
 	cfg := webui.LoadConfig()
 	addr := cfg.Addr(*host, port)

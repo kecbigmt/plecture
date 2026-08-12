@@ -93,6 +93,32 @@ func TestDeliveryModeNormalize(t *testing.T) {
 	}
 }
 
+func TestPlectureEventNamespaceConstants(t *testing.T) {
+	cases := map[string]string{
+		"source":          SourcePlecture,
+		"tick source":     SourceTick,
+		"instruction":     TypeInstruction,
+		"channel error":   TypeChannelError,
+		"terminal prefix": TypeTerminalPrefix,
+		"terminal done":   TypeTerminalDone,
+		"terminal dead":   TypeTerminalDead,
+		"tick review":     TypeTickReviewRequired,
+		"tick escalated":  TypeTickEscalated,
+		"judge recorded":  TypeJudgeRecorded,
+	}
+	for name, got := range cases {
+		if got == "" {
+			t.Fatalf("%s = %q, want plecture namespace", name, got)
+		}
+	}
+	if SourcePlecture != "plecture" {
+		t.Fatalf("SourcePlecture = %q, want plecture", SourcePlecture)
+	}
+	if TypeInstruction != "plecture.instruction" {
+		t.Fatalf("TypeInstruction = %q, want plecture.instruction", TypeInstruction)
+	}
+}
+
 func TestSplitCSV(t *testing.T) {
 	cases := []struct {
 		name string

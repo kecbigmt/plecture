@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/contracts/event"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/sessionhub"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // newE2EConfig writes a task definition with a real done_when (not the tests
@@ -43,8 +43,8 @@ all = [
 // TestSessionReactor_ReactiveTickReachesDoneWhenConsequence is the AC1 E2E:
 // a declared-pattern event delivered to a session with a generated,
 // done_when-bearing task instance reaches the done_when consequence (here,
-// `satisfied` → a `sennit.terminal.done` pushed to the parent) with no manual
-// `sennit tick` call — the reactor alone drives it, exactly mirroring "PR turns
+// `satisfied` → a `plecture.terminal.done` pushed to the parent) with no manual
+// `plecture tick` call — the reactor alone drives it, exactly mirroring "PR turns
 // CI green → the review chain fires unattended".
 func TestSessionReactor_ReactiveTickReachesDoneWhenConsequence(t *testing.T) {
 	cfg := newE2EConfig(t)
@@ -103,5 +103,5 @@ func TestSessionReactor_ReactiveTickReachesDoneWhenConsequence(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatal("declared event never drove the reactor to push sennit.terminal.done to the parent")
+	t.Fatal("declared event never drove the reactor to push plecture.terminal.done to the parent")
 }

@@ -9,11 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/template"
-	"github.com/kecbigmt/sennit/app/internal/workspace"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/template"
+	"github.com/kecbigmt/plecture/app/internal/workspace"
 )
 
 var (
@@ -45,8 +45,8 @@ Guard optional vars with {{get .SessionInputs "key"}} (returns "" when absent)
 instead of {{.SessionInputs.key}} (renders "<no value>").
 
 The template name corresponds to files in the template search path:
-  1. <workdir>/.sennit/templates/<name>.md  (session working-directory overlay)
-  2. ~/.config/sennit/templates/<name>.md
+  1. <workdir>/.plecture/templates/<name>.md  (session working-directory overlay)
+  2. ~/.config/plecture/templates/<name>.md
   3. Built-in defaults (review, respond, work, investigate)`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {

@@ -1,4 +1,4 @@
-// Package reactor drives `sennit tick` mechanically instead of leaving it to an
+// Package reactor drives `plecture tick` mechanically instead of leaving it to an
 // orchestrator's judgment or memory (docs/wiki/verification-gate.md). It is
 // the tick-side sibling of internal/dispatch (channel delivery): both are
 // per-session followers of the same durable event log, started and stopped
@@ -18,13 +18,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/sessionhub"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // Supervisor keeps at most one sessionReactor per active session, starting

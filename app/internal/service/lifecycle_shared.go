@@ -5,16 +5,16 @@ import (
 	"os"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // mergeTasks persists the session by overlaying its in-memory task entries
 // onto the freshly-read on-disk session under the state lock, rather than a blind
-// Put. A nested `sennit task setup` subprocess (the initial_task dispatcher) may
+// Put. A nested `plecture task setup` subprocess (the initial_task dispatcher) may
 // have written instances straight to disk during the parent's setup pass; a blind
 // Put of the parent's stale map would drop them. Overlaying keeps both: disk-only
 // keys survive, our keys win on overlap. Non-task fields the parent owns are
@@ -53,7 +53,7 @@ func resolveParentSession(store *state.Store, sessionName, explicit string) (str
 	candidate := explicit
 	explicitSet := candidate != ""
 	if candidate == "" {
-		candidate = os.Getenv("SENNIT_SESSION_NAME")
+		candidate = os.Getenv("PLECTURE_SESSION_NAME")
 	}
 	if candidate == "" || candidate == sessionName {
 		return "", nil
@@ -97,7 +97,7 @@ func inputsOnExistingSessionMessage() string {
 // schema is declared, so required-field configs fail fast instead of silently
 // accepting `{}`.
 func resolveSessionInputs(cfg *config.Config, worktreeDir, workflowName string, raw map[string]any) (map[string]any, *Error) {
-	inline, file, sourceID := cfg.InputsSchema, cfg.ResolvedInputsSchemaPath(), "sennit:config:inputs"
+	inline, file, sourceID := cfg.InputsSchema, cfg.ResolvedInputsSchemaPath(), "plecture:config:inputs"
 	if workflowName != "" {
 		workflows, err := cfg.LoadWorkflows(worktreeDir)
 		if err != nil {
@@ -109,7 +109,7 @@ func resolveSessionInputs(cfg *config.Config, worktreeDir, workflowName string, 
 			if len(wf.InputsSchema) > 0 || wf.InputsSchemaFile != "" {
 				inline = wf.InputsSchema
 				file = wf.ResolvedInputsSchemaPath()
-				sourceID = "sennit:workflow:" + workflowName + ":inputs"
+				sourceID = "plecture:workflow:" + workflowName + ":inputs"
 			}
 		}
 	}

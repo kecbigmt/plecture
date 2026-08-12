@@ -69,13 +69,13 @@ func TestGetStringMapArg(t *testing.T) {
 // and instrumentation key on.
 func TestLoopTools_Names(t *testing.T) {
 	want := map[*mcp.Tool]string{
-		&taskSetupTool:           "sennit_task_setup",
-		&taskCleanupTool:         "sennit_task_cleanup",
-		&checkTool:               "sennit_check",
-		&tickTool:                "sennit_tick",
-		&judgeApproveTool:        "sennit_judge_approve",
-		&judgeRequestChangesTool: "sennit_judge_request_changes",
-		&subscribeTool:           "sennit_subscribe",
+		&taskSetupTool:           "plecture_task_setup",
+		&taskCleanupTool:         "plecture_task_cleanup",
+		&checkTool:               "plecture_check",
+		&tickTool:                "plecture_tick",
+		&judgeApproveTool:        "plecture_judge_approve",
+		&judgeRequestChangesTool: "plecture_judge_request_changes",
+		&subscribeTool:           "plecture_subscribe",
 	}
 	for tool, name := range want {
 		if tool.Name != name {

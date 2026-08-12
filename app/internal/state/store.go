@@ -10,9 +10,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/contracts/atomicfile"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/contracts/atomicfile"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 const stateVersion = 5
@@ -29,7 +29,7 @@ type Store struct {
 }
 
 // NewStore creates a Store using the given directory for state.json.
-// If dir is empty, defaults to ~/.local/share/sennit.
+// If dir is empty, defaults to ~/.local/share/plecture.
 func NewStore(dir string) *Store {
 	if dir == "" {
 		dataHome := os.Getenv("XDG_DATA_HOME")
@@ -37,7 +37,7 @@ func NewStore(dir string) *Store {
 			home, _ := os.UserHomeDir()
 			dataHome = filepath.Join(home, ".local", "share")
 		}
-		dir = filepath.Join(dataHome, "sennit")
+		dir = filepath.Join(dataHome, "plecture")
 	}
 	return &Store{path: filepath.Join(dir, "state.json")}
 }
@@ -69,7 +69,7 @@ func (s *Store) Put(session *domain.Session) error {
 
 // Update atomically applies fn to the named session under the file lock and
 // persists the result. This is the read-modify-write primitive for callers
-// that may race with other sennit processes (e.g. a watcher daemon merging
+// that may race with other plecture processes (e.g. a watcher daemon merging
 // task outputs while a lifecycle command runs). fn returning an error
 // aborts without writing.
 func (s *Store) Update(name string, fn func(*domain.Session) error) error {

@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
-// FinalizeTaskParams are the inputs to FinalizeTask (`sennit task finalize`).
+// FinalizeTaskParams are the inputs to FinalizeTask (`plecture task finalize`).
 type FinalizeTaskParams struct {
 	Instance    string
 	SessionName string
@@ -33,7 +33,7 @@ type FinalizeTaskResult struct {
 // revision, then let the bound resource's definition record completion (if it
 // declares a `finalize` script — no OKF/local-okf definition exists yet, so
 // today this is almost always a no-op outside tests). It is "gate + record"
-// only — it never tears the instance down; the caller runs `sennit task cleanup`
+// only — it never tears the instance down; the caller runs `plecture task cleanup`
 // separately once it's done observing the finalized instance. `cleanup`
 // itself stays unaware of any of this (it never gains completion semantics —
 // abort/destroy must still just tear down).
@@ -52,10 +52,10 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 	}
 	sessionName := params.SessionName
 	if sessionName == "" {
-		sessionName = os.Getenv("SENNIT_SESSION_NAME")
+		sessionName = os.Getenv("PLECTURE_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a sennit session pane (SENNIT_SESSION_NAME) or pass --session"}
+		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a plecture session pane (PLECTURE_SESSION_NAME) or pass --session"}
 	}
 
 	// A failed individual output fetch is not a top-level error (tick/check

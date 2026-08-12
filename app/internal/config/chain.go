@@ -26,7 +26,7 @@ const (
 )
 
 // Chain judge-action vocabulary. These match the recorded judge action values
-// (`sennit judge approve` / `request-changes`); config validation rejects anything
+// (`plecture judge approve` / `request-changes`); config validation rejects anything
 // else so a `judge_action` fact can never silently never-match. Duplicated here
 // rather than imported from the task package because task imports config, not
 // the reverse.

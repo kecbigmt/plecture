@@ -19,12 +19,22 @@ func TestDefaultConfig(t *testing.T) {
 	}
 }
 
+func TestDefaultPathUsesPlectureConfigDir(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	want := filepath.Join(tmpHome, ".config", "plecture", "config.toml")
+	if got := DefaultPath(); got != want {
+		t.Fatalf("DefaultPath() = %q, want %q", got, want)
+	}
+}
+
 func TestLoad_WithConfigFile(t *testing.T) {
 	// Create a temp home directory with a config file
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	configDir := filepath.Join(tmpHome, ".config", "sennit")
+	configDir := filepath.Join(tmpHome, ".config", "plecture")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +77,7 @@ func TestLoad_MalformedConfigFileFallsBackAndWarns(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	configDir := filepath.Join(tmpHome, ".config", "sennit")
+	configDir := filepath.Join(tmpHome, ".config", "plecture")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +103,7 @@ func TestLoad_MalformedConfigFileFallsBackAndWarns(t *testing.T) {
 func TestLoad_PopulatesBaseDir(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	configDir := filepath.Join(tmpHome, ".config", "sennit")
+	configDir := filepath.Join(tmpHome, ".config", "plecture")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +125,7 @@ func TestLoad_PopulatesBaseDir(t *testing.T) {
 func TestLoad_InlineInputsSchema(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	configDir := filepath.Join(tmpHome, ".config", "sennit")
+	configDir := filepath.Join(tmpHome, ".config", "plecture")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

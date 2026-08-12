@@ -1,7 +1,7 @@
 ---
 version: alpha
-name: sennit-web
-description: shadcn-aligned neutral design system for the sennit session web UI
+name: plecture-web
+description: shadcn-aligned neutral design system for the plecture session web UI
 colors:
   background: "#ffffff"
   foreground: "#0a0a0a"

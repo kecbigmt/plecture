@@ -23,7 +23,7 @@ func TestListenSetsSocketPermissions(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	socket := filepath.Join(t.TempDir(), "sennit.sock")
+	socket := filepath.Join(t.TempDir(), "plecture.sock")
 	done := runTestListener(t, ctx, socket)
 	waitForSocketMode(t, socket, 0o666)
 
@@ -38,7 +38,7 @@ func TestListenAcceptsConcurrentConnections(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	socket := filepath.Join(t.TempDir(), "sennit.sock")
+	socket := filepath.Join(t.TempDir(), "plecture.sock")
 	done := runTestListener(t, ctx, socket)
 	waitForSocketMode(t, socket, 0o666)
 
@@ -87,7 +87,7 @@ func TestListenReapsChildAfterDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	socket := filepath.Join(t.TempDir(), "sennit.sock")
+	socket := filepath.Join(t.TempDir(), "plecture.sock")
 	done := runTestListener(t, ctx, socket)
 	waitForSocketMode(t, socket, 0o666)
 
@@ -109,7 +109,7 @@ func TestListenReapsChildAfterDisconnect(t *testing.T) {
 }
 
 func TestMCPListenHelperProcess(t *testing.T) {
-	if os.Getenv("SENNIT_MCP_LISTEN_HELPER") != "1" {
+	if os.Getenv("PLECTURE_MCP_LISTEN_HELPER") != "1" {
 		return
 	}
 	serveHelperMCP()
@@ -128,8 +128,8 @@ func runTestListener(t *testing.T, ctx context.Context, socket string) <-chan er
 
 func writeHelperExecutable(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "sennit-helper")
-	script := fmt.Sprintf("#!/bin/sh\nSENNIT_MCP_LISTEN_HELPER=1 exec %q -test.run=TestMCPListenHelperProcess -- \"$@\"\n", os.Args[0])
+	path := filepath.Join(t.TempDir(), "plecture-helper")
+	script := fmt.Sprintf("#!/bin/sh\nPLECTURE_MCP_LISTEN_HELPER=1 exec %q -test.run=TestMCPListenHelperProcess -- \"$@\"\n", os.Args[0])
 	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
 		t.Fatalf("write helper: %v", err)
 	}

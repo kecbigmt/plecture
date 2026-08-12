@@ -6,7 +6,7 @@ Claude Code sessions (channel-server) over a Unix socket.
 ## Architecture
 
 ```
-sennit up
+plecture up
   ├─ POST slack-adapter:7890/threads         → create a Slack thread
   ├─ tmux + claude (run-scoped tasks)      → start claude, resolve socket_path
   └─ POST slack-adapter:7890/subscribe       → register thread_ts → socket_path with the broker
@@ -21,7 +21,7 @@ sennit up
           Slack
 ```
 
-slack-adapter never reads sennit's state.json. Every subscription is registered
+slack-adapter never reads plecture's state.json. Every subscription is registered
 and torn down explicitly through the HTTP API.
 
 ## Configuration
@@ -87,14 +87,14 @@ pre-connects to channel-server, so claude's replies flow to Slack right away.
 
 ### DELETE /subscribe?thread_ts=...
 
-Unsubscribes. A missing `thread_ts` is a no-op (`204`). Called from `sennit
+Unsubscribes. A missing `thread_ts` is a no-op (`204`). Called from `plecture
 down` / `destroy` cleanup.
 
 ### GET /subscribers
 
 Returns the current subscription list. Used by the task's healthcheck to
 determine whether its own `thread_ts` is still registered with the broker. If
-a broker restart dropped it, the healthcheck goes non-zero and the next `sennit
+a broker restart dropped it, the healthcheck goes non-zero and the next `plecture
 up` re-runs setup.
 
 ```json
@@ -110,7 +110,7 @@ The map is persisted to `$XDG_STATE_HOME/slack-adapter/subscribers.json`
 (default `~/.local/state/slack-adapter/subscribers.json`) with an atomic write
 (tmp → rename) on every subscribe/unsubscribe. Restarting slack-adapter reads
 it back at startup, so subscriptions survive a restart and routing continues
-without any action on the sennit side. A failed read-back (missing or corrupt
+without any action on the plecture side. A failed read-back (missing or corrupt
 file) logs a warning and starts with an empty map, which the next `/subscribe`
 repopulates.
 
@@ -198,7 +198,7 @@ post status updates to the Slack thread. Add the following to `settings.json`
 ```
 
 The hook script no-ops for sessions without `SLACK_THREAD_TS` set (i.e.
-non-sennit sessions).
+non-plecture sessions).
 
 ## Running as a service
 
