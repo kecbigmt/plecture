@@ -26,17 +26,17 @@ func TestRenderDoneWhenSections_NoDoneWhenInstancesProduceNoSection(t *testing.T
 }
 
 // A done_when-bearing instance renders a "Done when (<instance>)" block with
-// round/action, one line per condition, and one line per chain — no raw
+// heartbeat budget/action, one line per condition, and one line per chain — no raw
 // outputs dump, no per-task "Task <name> <status>" line.
 func TestRenderDoneWhenSections_UnsatisfiedJudgeBlock(t *testing.T) {
 	var buf bytes.Buffer
 	renderDoneWhenSections(&buf, []service.StatusTask{
 		{
-			Instance:  "initial",
-			Status:    "produced",
-			Rounds:    3,
-			MaxRounds: 3,
-			Action:    "review_required",
+			Instance:        "initial",
+			Status:          "produced",
+			HeartbeatTicks:  3,
+			HeartbeatBudget: 3,
+			Action:          "review_required",
 			DoneWhen: &task.DoneWhenResult{
 				Overall: task.DonePending,
 				Leaves: []task.DoneLeafResult{
@@ -54,7 +54,7 @@ func TestRenderDoneWhenSections_UnsatisfiedJudgeBlock(t *testing.T) {
 
 	for _, want := range []string{
 		"Done when (initial)",
-		"round: 3/3",
+		"heartbeat budget: 3/3",
 		"action: review_required",
 		"conditions",
 		"✓ checks_status=SUCCESS",

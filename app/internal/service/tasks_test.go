@@ -597,10 +597,9 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 		s.Branch = "old-branch"
 		s.Conversation = &contract.Conversation{Source: "chat", URL: "https://example.invalid/old"}
 		s.Message = &contract.Message{Text: "old", UpdatedAt: time.Now()}
-		s.Watchdog = &contract.WatchdogState{CheckedAt: time.Now(), Reason: "old"}
+		s.Health = &contract.HealthState{LastCheckedAt: time.Now(), LastReason: "old"}
 		s.LastTickAt = time.Now()
 		s.TickBackoff = &contract.TickBackoff{LastFingerprint: "old"}
-		s.Progress = &contract.ProgressState{Fingerprint: "old", ObservedAt: time.Now()}
 		return nil
 	}); err != nil {
 		t.Fatalf("update session: %v", err)
@@ -658,7 +657,7 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if persisted.Branch != "new-branch" {
 		t.Fatalf("Branch = %q, want provider output", persisted.Branch)
 	}
-	if persisted.Conversation != nil || persisted.Message != nil || persisted.Watchdog != nil || !persisted.LastTickAt.IsZero() || persisted.TickBackoff != nil || persisted.Progress != nil {
+	if persisted.Conversation != nil || persisted.Message != nil || persisted.Health != nil || !persisted.LastTickAt.IsZero() || persisted.TickBackoff != nil {
 		t.Fatalf("runtime observation fields were not cleared: %+v", persisted)
 	}
 	evs, _, _, err := logStore.List(sessionName, 0, event.Filter{})
@@ -775,10 +774,9 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 		s.Branch = "old-branch"
 		s.Conversation = &contract.Conversation{Source: "chat", URL: "https://example.invalid/old"}
 		s.Message = &contract.Message{Text: "old", UpdatedAt: time.Now()}
-		s.Watchdog = &contract.WatchdogState{CheckedAt: time.Now(), Reason: "old"}
+		s.Health = &contract.HealthState{LastCheckedAt: time.Now(), LastReason: "old"}
 		s.LastTickAt = time.Now()
 		s.TickBackoff = &contract.TickBackoff{LastFingerprint: "old"}
-		s.Progress = &contract.ProgressState{Fingerprint: "old", ObservedAt: time.Now()}
 		return nil
 	}); err != nil {
 		t.Fatalf("update session: %v", err)
@@ -815,7 +813,7 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 	if persisted.WorktreePath != oldWorktreePath || persisted.Branch != "old-branch" {
 		t.Fatalf("runtime workspace state = (%q, %q), want preserved before reset", persisted.WorktreePath, persisted.Branch)
 	}
-	if persisted.Conversation == nil || persisted.Message == nil || persisted.Watchdog == nil || persisted.LastTickAt.IsZero() || persisted.TickBackoff == nil || persisted.Progress == nil {
+	if persisted.Conversation == nil || persisted.Message == nil || persisted.Health == nil || persisted.LastTickAt.IsZero() || persisted.TickBackoff == nil {
 		t.Fatalf("runtime observation fields were reset after cleanup failure: %+v", persisted)
 	}
 	if !fileExists(oldWorktreePath) {

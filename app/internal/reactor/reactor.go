@@ -41,21 +41,24 @@ const heartbeatInterval = time.Minute
 // has elapsed since the session's last tick. Static config (tick) is
 // resolved once by the supervisor, matching dispatch's sessionDispatcher.
 type sessionReactor struct {
-	session  string
-	cfg      *config.Config
-	state    *state.Store
-	log      *eventlog.Store
-	hub      *sessionhub.Registry
-	tick     config.TickConfig
-	observer task.Observer
-	logger   *slog.Logger
+	session     string
+	cfg         *config.Config
+	state       *state.Store
+	log         *eventlog.Store
+	hub         *sessionhub.Registry
+	tick        config.TickConfig
+	healthcheck config.HealthcheckConfig
+	observer    task.Observer
+	logger      *slog.Logger
 	// tickFn defaults to service.TickSession; overridable in tests to observe
 	// invocation count/concurrency (AC6) without weakening production
 	// behavior — buildReactor never sets it.
-	tickFn func(*config.Config, *state.Store, service.TickParams) (*service.CheckResult, error)
+	tickFn        func(*config.Config, *state.Store, service.TickParams) (*service.CheckResult, error)
+	healthcheckFn func(*config.Config, *state.Store, service.HealthcheckParams) (*service.HealthReport, error)
 	// heartbeatEvery defaults to heartbeatInterval; overridable in tests so
 	// the heartbeat-sweep test cases don't need to wait a full minute of wall clock.
-	heartbeatEvery time.Duration
+	heartbeatEvery   time.Duration
+	healthcheckEvery time.Duration
 }
 
 func (r *sessionReactor) run(ctx context.Context) {
@@ -71,6 +74,18 @@ func (r *sessionReactor) run(ctx context.Context) {
 	}
 	heartbeat := time.NewTicker(interval)
 	defer heartbeat.Stop()
+	healthInterval := r.healthcheckEvery
+	if healthInterval <= 0 {
+		healthInterval = r.healthcheck.Period.Duration
+	}
+	var healthcheck <-chan time.Time
+	var healthTicker *time.Ticker
+	if healthInterval > 0 {
+		healthTicker = time.NewTicker(healthInterval)
+		defer healthTicker.Stop()
+		healthcheck = healthTicker.C
+		r.checkHealth(ctx)
+	}
 
 	// Immediate check, not just on the first tick of heartbeat: a bus that
 	// was down past `heartbeat` must sweep the backlog on restart, not wait
@@ -94,6 +109,8 @@ func (r *sessionReactor) run(ctx context.Context) {
 		case <-fallback.C:
 		case <-heartbeat.C:
 			r.checkHeartbeat(ctx)
+		case <-healthcheck:
+			r.checkHealth(ctx)
 		}
 	}
 }
@@ -155,18 +172,16 @@ func (r *sessionReactor) drain(ctx context.Context, startGen *string) {
 		slog.Default().Warn("reactor: commit cursor failed; batch may re-scan on next drain", "session", r.session, "error", err)
 	}
 	if triggered {
-		r.doTick(ctx)
+		r.doTick(ctx, service.TickTriggerEvent)
 	}
 }
 
 // shouldTrigger decides whether ev should cause a tick. The judge builtin is
-// checked first because it is declaration-independent (AC2). The
-// self-emitted exclusion is checked next and wins over any declared `on`
-// pattern — a workflow that declares an overly broad pattern (e.g. "*") must
-// not make tick re-trigger on its own output (AC5, ADR amendment 2026-07-04
-// §3: "the self-excitation-prevention whitelist overrides the declaration").
-// Only events that clear both
-// checks are matched against the declared patterns (AC1/AC3).
+// checked first because it is declaration-independent. The self-emitted
+// exclusion is checked next and wins over any declared `on` pattern, so a
+// workflow that declares an overly broad pattern must not make tick re-trigger
+// on its own output. Only events that clear both checks are matched against
+// the declared patterns.
 func (r *sessionReactor) shouldTrigger(ev event.Event) bool {
 	if ev.Type == event.TypeJudgeRecorded {
 		return true
@@ -240,7 +255,24 @@ func (r *sessionReactor) checkHeartbeat(ctx context.Context) {
 			return
 		}
 	}
-	r.doTick(ctx)
+	r.doTick(ctx, service.TickTriggerHeartbeat)
+}
+
+func (r *sessionReactor) checkHealth(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	s := r.state.Get(r.session)
+	if s == nil || !hasRunScopeUp(s.Tasks) {
+		return
+	}
+	fn := r.healthcheckFn
+	if fn == nil {
+		fn = service.HealthcheckSession
+	}
+	if _, err := fn(r.cfg, r.state, service.HealthcheckParams{SessionName: r.session, Config: r.healthcheck}); err != nil {
+		slog.Default().Warn("reactor: healthcheck failed", "session", r.session, "error", err)
+	}
 }
 
 // maxHeartbeat returns the declared `max_heartbeat` cap, falling back to
@@ -350,7 +382,7 @@ func (r *sessionReactor) compositeFingerprint() string {
 // next checkHeartbeat computes its interval off a stale, inflated n and the
 // backoff never actually shortens back to heartbeat despite the inbound
 // arrival that should have reset it.
-func (r *sessionReactor) doTick(ctx context.Context) {
+func (r *sessionReactor) doTick(ctx context.Context, trigger service.TickTrigger) {
 	if ctx.Err() != nil {
 		return
 	}
@@ -358,7 +390,7 @@ func (r *sessionReactor) doTick(ctx context.Context) {
 	if fn == nil {
 		fn = service.TickSession
 	}
-	if _, err := fn(r.cfg, r.state, service.TickParams{SessionName: r.session, Observer: r.observer}); err != nil {
+	if _, err := fn(r.cfg, r.state, service.TickParams{SessionName: r.session, Observer: r.observer, Trigger: trigger}); err != nil {
 		slog.Default().Warn("reactor: tick failed", "session", r.session, "error", err)
 		return
 	}

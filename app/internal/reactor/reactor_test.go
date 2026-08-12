@@ -213,6 +213,53 @@ func TestSessionReactor_UndeclaredHeartbeatNeverSweeps(t *testing.T) {
 	}
 }
 
+func TestSessionReactor_HealthcheckRunsWithoutTickDeclaration(t *testing.T) {
+	r, _, _ := newTestReactor(t, config.TickConfig{})
+	r.healthcheck = config.HealthcheckConfig{
+		Period:         config.Duration{Duration: 20 * time.Millisecond},
+		StallThreshold: config.Duration{Duration: time.Minute},
+		RenotifyEvery:  3,
+	}
+	r.healthcheckEvery = 5 * time.Millisecond
+
+	var mu sync.Mutex
+	healthchecks := 0
+	ticks := 0
+	r.healthcheckFn = func(cfg *config.Config, store *state.Store, params service.HealthcheckParams) (*service.HealthReport, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		healthchecks++
+		return &service.HealthReport{SessionName: params.SessionName, Healthy: true, Declared: true}, nil
+	}
+	r.tickFn = func(cfg *config.Config, store *state.Store, params service.TickParams) (*service.CheckResult, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		ticks++
+		return &service.CheckResult{}, nil
+	}
+
+	stop := startReactor(t, r)
+	defer stop()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		gotHealthchecks := healthchecks
+		gotTicks := ticks
+		mu.Unlock()
+		if gotHealthchecks > 0 {
+			if gotTicks != 0 {
+				t.Fatalf("tick calls = %d, want 0 while healthcheck runs without a tick declaration", gotTicks)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("healthcheck was not called")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // TestSessionReactor_ReactiveTickResetsHeartbeatWindow proves that a reactive
 // tick resets the heartbeat clock, so a `heartbeat` sweep due to fire soon
 // after it must not fire an extra, redundant tick within
@@ -439,18 +486,18 @@ func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Round 1: never ticked (LastTickAt zero) → ticks immediately. There is no
+	// First sweep: never ticked (LastTickAt zero) → ticks immediately. There is no
 	// prior fingerprint/inbound baseline, so the empty-vs-empty comparison
 	// reads as "unchanged" and ConsecutiveUnchanged becomes 1.
 	r.checkHeartbeat(ctx)
 	if tickCount != 1 {
-		t.Fatalf("round 1: tickCount = %d, want 1", tickCount)
+		t.Fatalf("first sweep: tickCount = %d, want 1", tickCount)
 	}
 	if n := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged; n != 1 {
-		t.Fatalf("round 1: ConsecutiveUnchanged = %d, want 1", n)
+		t.Fatalf("first sweep: ConsecutiveUnchanged = %d, want 1", n)
 	}
 
-	// Force each subsequent round's elapsed time past the *current* backoff
+	// Force each subsequent sweep's elapsed time past the current backoff
 	// interval by rewinding LastTickAt, so the test doesn't wait real
 	// wall-clock multiples of heartbeat.
 	rewindAndSweep := func(n int) {
@@ -466,20 +513,20 @@ func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
 
 	rewindAndSweep(1)
 	if tickCount != 2 {
-		t.Fatalf("round 2: tickCount = %d, want 2", tickCount)
+		t.Fatalf("second sweep: tickCount = %d, want 2", tickCount)
 	}
 	n2 := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged
 	if n2 != 2 {
-		t.Fatalf("round 2: ConsecutiveUnchanged = %d, want 2 (still quiet)", n2)
+		t.Fatalf("second sweep: ConsecutiveUnchanged = %d, want 2 (still quiet)", n2)
 	}
 
 	rewindAndSweep(n2)
 	if tickCount != 3 {
-		t.Fatalf("round 3: tickCount = %d, want 3", tickCount)
+		t.Fatalf("third sweep: tickCount = %d, want 3", tickCount)
 	}
 	n3 := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged
 	if n3 != 3 {
-		t.Fatalf("round 3: ConsecutiveUnchanged = %d, want 3", n3)
+		t.Fatalf("third sweep: ConsecutiveUnchanged = %d, want 3", n3)
 	}
 
 	// Before the backed-off interval elapses, a sweep must not tick.
@@ -499,7 +546,7 @@ func TestSessionReactor_QuietTickBackoffResetsOnInbound(t *testing.T) {
 	r.tickFn = service.TickSession
 	ctx := context.Background()
 
-	// Seed a few quiet rounds so ConsecutiveUnchanged > 0.
+	// Seed a few quiet sweeps so ConsecutiveUnchanged > 0.
 	r.checkHeartbeat(ctx)
 	for range 2 {
 		n := 0

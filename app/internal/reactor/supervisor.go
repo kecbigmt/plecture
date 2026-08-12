@@ -98,23 +98,28 @@ func (sup *Supervisor) reconcile(ctx context.Context, active map[string]context.
 // workflow config cannot be resolved.
 func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReactor {
 	var tc config.TickConfig
+	hc := config.DefaultHealthcheckConfig()
 	if s.Workflow != "" {
 		workflows, err := sup.cfg.LoadWorkflows(s.WorktreePath)
 		if err != nil {
 			sup.logger.Warn("reactor: load workflows failed; declared [tick]/heartbeat inactive, judge builtin still active", "session", name, "error", err)
-		} else if wf, ok := workflows[s.Workflow]; ok && wf.Tick != nil {
-			tc = *wf.Tick
+		} else if wf, ok := workflows[s.Workflow]; ok {
+			if wf.Tick != nil {
+				tc = *wf.Tick
+			}
+			hc = config.NormalizeHealthcheckConfig(wf.Healthcheck)
 		}
 	}
 	return &sessionReactor{
-		session:  name,
-		cfg:      sup.cfg,
-		state:    sup.state,
-		log:      sup.log,
-		hub:      sup.hub,
-		tick:     tc,
-		observer: sup.observer,
-		logger:   sup.logger,
+		session:     name,
+		cfg:         sup.cfg,
+		state:       sup.state,
+		log:         sup.log,
+		hub:         sup.hub,
+		tick:        tc,
+		healthcheck: hc,
+		observer:    sup.observer,
+		logger:      sup.logger,
 	}
 }
 

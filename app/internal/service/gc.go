@@ -1,10 +1,10 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strings"
-
-	"context"
+	"time"
 
 	"github.com/kecbigmt/plect/app/internal/config"
 	"github.com/kecbigmt/plect/app/internal/domain"
@@ -212,7 +212,7 @@ func classifySession(s *domain.Session, taskDefs map[string]config.TaskDefinitio
 // nothing to probe and is treated as alive — GC's dead-runtime detection only
 // fires when a healthcheck is declared and fails.
 func sessionRuntimeAlive(s *domain.Session, taskDefs map[string]config.TaskDefinition) bool {
-	report := evaluateHealthFor(s.Name, s.Tasks, taskDefs, sessionVars(s), 0)
+	report := evaluateHealthFor(s.Name, s.Tasks, taskDefs, sessionVars(s), 0, s.Health, time.Now())
 	return !report.Declared || report.Healthy
 }
 

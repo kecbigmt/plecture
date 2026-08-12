@@ -938,6 +938,45 @@ heartbeat = "30m"
 	}
 }
 
+func TestLoadWorkflows_HealthcheckCascadeDeeperWinsWholeTable(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
+[healthcheck]
+period = "10m"
+stall_threshold = "30m"
+renotify_every = 4
+`)
+	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
+	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
+[healthcheck]
+period = "2m"
+`)
+	worktreeDir := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Load()
+	got, err := cfg.LoadWorkflows(worktreeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	healthcheck := NormalizeHealthcheckConfig(got["shared"].Healthcheck)
+	if healthcheck.Period.Duration != 2*time.Minute {
+		t.Fatalf("period = %v, want 2m from the deeper layer", healthcheck.Period.Duration)
+	}
+	if healthcheck.StallThreshold.Duration != 6*time.Minute || healthcheck.RenotifyEvery != 3 {
+		t.Fatalf("healthcheck = %+v, want deeper table plus defaults", healthcheck)
+	}
+}
+
 // TestLoadWorkflows_WorkdirLayerRejectsTick covers the trust boundary: a
 // `[tick]` declaration produces automatic execution, so clone content (the
 // workdir layer) must not be able to supply one, same as setup/cleanup shell
@@ -966,6 +1005,34 @@ id = "s"
 		t.Fatal("expected error: workdir layer may not declare [tick]")
 	}
 	if !strings.Contains(err.Error(), "tick") {
+		t.Errorf("unexpected message: %v", err)
+	}
+}
+
+func TestLoadWorkflows_WorkdirLayerRejectsHealthcheck(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	worktreeDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo", "session")
+	writeFile(t, filepath.Join(worktreeDir, ".plect", "workflows", "shared.toml"), `
+[healthcheck]
+period = "1s"
+
+[[nodes]]
+id = "s"
+`)
+	cfg := Load()
+	_, err := cfg.LoadWorkflows(worktreeDir)
+	if err == nil {
+		t.Fatal("expected error: workdir layer may not declare [healthcheck]")
+	}
+	if !strings.Contains(err.Error(), "healthcheck") {
 		t.Errorf("unexpected message: %v", err)
 	}
 }

@@ -40,10 +40,9 @@ func replaceRuntimeState(store *state.Store, sessionName string, session *domain
 		s.Conversation = session.Conversation
 		s.Message = session.Message
 		s.Tasks = session.Tasks
-		s.Watchdog = session.Watchdog
+		s.Health = session.Health
 		s.LastTickAt = session.LastTickAt
 		s.TickBackoff = session.TickBackoff
-		s.Progress = session.Progress
 		s.UpdatedAt = session.UpdatedAt
 		return nil
 	})

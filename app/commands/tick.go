@@ -20,10 +20,11 @@ var tickCmd = &cobra.Command{
 	Use:   "tick <url|session>",
 	Short: "Advance the Goal Loop for a session (actuator)",
 	Long: `The Goal Loop actuator: evaluate each done_when-bearing task instance for
-a session and act on the result. Advances the round when observed facts
-actually changed since the last tick, publishes the resulting kickback/
-review/escalation event, and pushes a done/escalate terminal event to the
-parent exactly once per instance. Against that same fact set it also fires
+a session and act on the result. Heartbeat-triggered ticks consume the
+heartbeat budget; event and manual ticks can act immediately without consuming
+that budget. It publishes the resulting kickback/review/escalation event, and
+pushes a done/escalate terminal event to the parent exactly once per instance.
+Against that same fact set it also fires
 [[chains]]: a chain whose when holds and whose wired outputs are present
 spawns its workflow (idempotent — an already-active target is reported, not
 re-spawned). Idempotent — safe to call repeatedly on unchanged state. Use
@@ -31,8 +32,9 @@ re-spawned). Idempotent — safe to call repeatedly on unchanged state. Use
 acting on it.
 
 JSON actions are one of satisfied, wait, review_required, kick, or escalate.
-Each action carries max_rounds (0 means unbounded), a fingerprint for unchanged
-poll detection, and unmet_items with machine-readable check/judge state.`,
+Each action carries heartbeat_budget (0 means unbounded), heartbeat_ticks, a
+fingerprint for unchanged-poll detection, and unmet_items with machine-readable
+check/judge state.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()

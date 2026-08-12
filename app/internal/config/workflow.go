@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -80,9 +81,13 @@ type WorkflowFile struct {
 	// deeper-wins policy as TaskDefinition, not the additive/no-redeclare
 	// policy the rest of this struct uses. Nil means no declaration: the
 	// session advances only via manual `plect tick` and the judge builtin.
-	Tick             *TickConfig    `toml:"tick"`
-	InputsSchema     map[string]any `toml:"inputs_schema"`
-	InputsSchemaFile string         `toml:"inputs_schema_file"`
+	Tick *TickConfig `toml:"tick"`
+	// Healthcheck declares the dedicated health sampling clock for sessions
+	// produced by this workflow. Like `[tick]`, `[healthcheck]` is a
+	// deeper-wins whole-table runtime tuning declaration.
+	Healthcheck      *HealthcheckConfig `toml:"healthcheck"`
+	InputsSchema     map[string]any     `toml:"inputs_schema"`
+	InputsSchemaFile string             `toml:"inputs_schema_file"`
 	// BaseDir anchors InputsSchemaFile (and node-relative paths) so the
 	// resolved location is independent of where the workflow file lives.
 	BaseDir    string `toml:"-"`
@@ -112,14 +117,55 @@ type TickConfig struct {
 	// see no fingerprint change and no inbound event. Zero means the
 	// reactor's default (4h) applies — declaring it is optional.
 	MaxHeartbeat Duration `toml:"max_heartbeat"`
-	// ProgressSource declares a session-scoped dynamic output (the same
+	// MovementSource declares a session-scoped dynamic output (the same
 	// script-execution plumbing task.FetchOutput gives task-instance
-	// outputs) whose fetched value core treats as an opaque progress
+	// outputs) whose fetched value core treats as an opaque movement
 	// fingerprint (docs/wiki/verification-gate.md). Core never interprets
 	// what the fingerprint string means or how it was produced — it only
 	// compares the fetched value against the last one it persisted for this
-	// session. Nil means no progress source is declared for this workflow.
-	ProgressSource *DynamicOutput `toml:"progress_source"`
+	// session. Nil means no movement source is declared for this workflow.
+	MovementSource *DynamicOutput `toml:"movement_source"`
+}
+
+// HealthcheckConfig declares the dedicated healthcheck cycle for a workflow.
+// Unlike `[tick].heartbeat`, this clock has no quiet backoff: it is the
+// health side's stall accelerator, so it keeps sampling even when the
+// done_when brake has backed off.
+type HealthcheckConfig struct {
+	Period         Duration `toml:"period"`
+	StallThreshold Duration `toml:"stall_threshold"`
+	RenotifyEvery  int      `toml:"renotify_every"`
+}
+
+// DefaultHealthcheckConfig returns the workflow healthcheck defaults.
+func DefaultHealthcheckConfig() HealthcheckConfig {
+	period := 5 * time.Minute
+	return HealthcheckConfig{
+		Period:         Duration{Duration: period},
+		StallThreshold: Duration{Duration: 3 * period},
+		RenotifyEvery:  3,
+	}
+}
+
+// NormalizeHealthcheckConfig applies defaults to an optional workflow
+// healthcheck declaration.
+func NormalizeHealthcheckConfig(in *HealthcheckConfig) HealthcheckConfig {
+	out := DefaultHealthcheckConfig()
+	if in == nil {
+		return out
+	}
+	if in.Period.Duration > 0 {
+		out.Period = in.Period
+	}
+	if in.StallThreshold.Duration > 0 {
+		out.StallThreshold = in.StallThreshold
+	} else {
+		out.StallThreshold = Duration{Duration: 3 * out.Period.Duration}
+	}
+	if in.RenotifyEvery > 0 {
+		out.RenotifyEvery = in.RenotifyEvery
+	}
+	return out
 }
 
 // WorkflowNode is a single instantiation of a task definition within a
@@ -177,17 +223,17 @@ type TaskDefinition struct {
 	Setup       string `toml:"setup"`
 	Cleanup     string `toml:"cleanup"`
 	Healthcheck string `toml:"healthcheck"`
-	// ProgressSignal declares a provider-neutral command that reports opaque
-	// progress facts as JSON on stdout: {"supported": bool,
-	// "progress_expected": bool, "fingerprint": string, "observed_at":
+	// MovementSignal declares a provider-neutral command that reports opaque
+	// movement facts as JSON on stdout: {"supported": bool,
+	// "movement_expected": bool, "fingerprint": string, "observed_at":
 	// RFC3339 string}. Core never interprets what the command actually
 	// checked (a terminal pane, an agent transcript, a VCS worktree, ...) —
 	// it only compares the fingerprint and timestamp the command reports.
-	// Empty means no progress signal is declared for this task; a command
+	// Empty means no movement signal is declared for this task; a command
 	// that runs but reports "supported": false is an explicit declaration
-	// that this instance has no basis to judge progress right now, which
+	// that this instance has no basis to judge movement right now, which
 	// evaluates the same as if nothing were declared.
-	ProgressSignal string   `toml:"progress_signal"`
+	MovementSignal string   `toml:"movement_signal"`
 	Primary        bool     `toml:"primary"`
 	IdleAfter      Duration `toml:"idle_after"`
 	Attach         string   `toml:"attach"`
@@ -580,6 +626,9 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 	if wf.Tick != nil {
 		offending = append(offending, "tick")
 	}
+	if wf.Healthcheck != nil {
+		offending = append(offending, "healthcheck")
+	}
 	if len(offending) > 0 {
 		return fmt.Errorf("workflow %s: a `.plect/workflows/` file inside the working directory may only add [[nodes]]; %v must move to a trusted layer (global config, plugin, or a directory above the worktree)", wf.SourcePath, offending)
 	}
@@ -778,15 +827,14 @@ func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
 			merged.Display = layer.Display
 			displaySource = layer.SourcePath
 		}
-		// [tick] is deeper-wins whole-table replacement (like TaskDefinition),
-		// not additive/no-redeclare like the fields above: it is a runtime
-		// tuning knob (CI length, API quota), not an identity field, so a
-		// deeper layer's local judgment should be free to override it outright
-		// (docs/wiki/workflow-provider-config.md). A global default declared
-		// after a deeper layer already has `[tick]` must not become a load
-		// error, so redeclaration is silently allowed here.
+		// Runtime tuning tables are deeper-wins whole-table replacements, not
+		// additive/no-redeclare like identity fields. A local trusted layer's
+		// judgment should be free to override a global default outright.
 		if layer.Tick != nil {
 			merged.Tick = layer.Tick
+		}
+		if layer.Healthcheck != nil {
+			merged.Healthcheck = layer.Healthcheck
 		}
 		for _, n := range layer.Nodes {
 			if n.ID != "" {

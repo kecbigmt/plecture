@@ -18,21 +18,20 @@ import (
 	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
-func TestPersistWatchdogState_UpdateFailureLogsWarning(t *testing.T) {
+func TestPersistHealthState_UpdateFailureLogsWarning(t *testing.T) {
 	store := testStore(t)
 	// No session named this in the store, so store.Update fails with "no
 	// state entry" — this pins the best-effort swallow at
-	// persistWatchdogState: the tick must not abort (that path is exercised
-	// by the WatchdogTick tests below), but the failure must not be silent
-	// either.
+	// persistHealthState: the healthcheck cycle must not abort, but the
+	// failure must not be silent either.
 	var logs bytes.Buffer
 	prev := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	defer slog.SetDefault(prev)
 
-	persistWatchdogState(store, "owner/does-not-exist", HealthReport{SessionName: "owner/does-not-exist", Healthy: true})
+	persistHealthState(store, "owner/does-not-exist", HealthReport{SessionName: "owner/does-not-exist", Healthy: true}, time.Now())
 
-	if !bytes.Contains(logs.Bytes(), []byte("persist watchdog state failed")) {
+	if !bytes.Contains(logs.Bytes(), []byte("persist health state failed")) {
 		t.Errorf("expected a warning about the failed persist, got log output: %q", logs.String())
 	}
 }
@@ -224,47 +223,47 @@ func TestEvaluateHealth_MessageDoesNotAffectHealthOutcome(t *testing.T) {
 	}
 }
 
-// progressSignalFixtureConfig declares one run-scoped task "runner" whose
-// healthcheck is fixed at "true" and whose progress_signal command is the
+// movementSignalFixtureConfig declares one run-scoped task "runner" whose
+// healthcheck is fixed at "true" and whose movement_signal command is the
 // given shell snippet, plus a bare "initial" node so LoadTaskDefinitions has
 // a workflow to resolve against. The task's done_when has a single check
 // leaf against the "done" output, so seeding it as anything but "yes" leaves
-// unmet work (progress_expected=true).
-func progressSignalFixtureConfig(t *testing.T, progressSignal string) *config.Config {
+// unmet work.
+func movementSignalFixtureConfig(t *testing.T, movementSignal string) *config.Config {
 	t.Helper()
 	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
 		id:             "runner",
 		scope:          contract.TaskScopeRun,
 		healthcheck:    "true",
-		progressSignal: progressSignal,
+		movementSignal: movementSignal,
 		extra:          "[[done_when.all]]\ncheck = \"done\"\neq = \"yes\"\n",
 	}}, []nodeFixture{{id: "initial", uses: "runner"}})
 }
 
-// progressSignalCmd renders a fixed JSON progress-signal fact as the
+// movementSignalCmd renders a fixed JSON movement-signal fact as the
 // command's entire behavior — a fake/stub signal source, standing in for
 // whatever concrete provider a later PR wires up.
-func progressSignalCmd(t *testing.T, supported, progressExpected bool, fingerprint string, observedAt time.Time) string {
+func movementSignalCmd(t *testing.T, supported, movementExpected bool, fingerprint string, observedAt time.Time) string {
 	t.Helper()
 	observed := ""
 	if !observedAt.IsZero() {
 		observed = observedAt.UTC().Format(time.RFC3339)
 	}
 	return fmt.Sprintf(
-		`echo '{"supported":%t,"progress_expected":%t,"fingerprint":%q,"observed_at":%q}'`,
-		supported, progressExpected, fingerprint, observed,
+		`echo '{"supported":%t,"movement_expected":%t,"fingerprint":%q,"observed_at":%q}'`,
+		supported, movementExpected, fingerprint, observed,
 	)
 }
 
 // TestEvaluateHealth_WedgedButHealthcheckPassingReadsStalled replaces the
-// prior known gap this test used to pin: once a progress signal is declared
+// prior known gap this test used to pin: once a movement signal is declared
 // and reports stale evidence while unmet done_when work remains, evaluation
 // now reads stalled rather than healthy — a present-but-wedged session is
 // finally distinguishable from a genuinely healthy one.
 func TestEvaluateHealth_WedgedButHealthcheckPassingReadsStalled(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, true, "fp-1", longAgo))
+	cfg := movementSignalFixtureConfig(t, movementSignalCmd(t, true, true, "fp-1", longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -277,10 +276,11 @@ func TestEvaluateHealth_WedgedButHealthcheckPassingReadsStalled(t *testing.T) {
 		// LastTickAt far in the past and a stale "waiting" message stand in
 		// for a wedged-but-present execution surface. Neither is read by
 		// health evaluation (see TestEvaluateHealth_MessageDoesNotAffectHealthOutcome)
-		// — the stale progress-signal evidence is what actually drives the
+		// — the stale movement-signal evidence is what actually drives the
 		// stalled outcome here.
 		s.LastTickAt = longAgo
 		s.Message = &domain.Message{Text: "waiting", UpdatedAt: longAgo}
+		s.Health = &contract.HealthState{LastFingerprint: "initial:fp-1", LastMovementAt: longAgo}
 		return nil
 	}); err != nil {
 		t.Fatalf("seed wedged state: %v", err)
@@ -291,20 +291,20 @@ func TestEvaluateHealth_WedgedButHealthcheckPassingReadsStalled(t *testing.T) {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthStalled {
-		t.Fatalf("report = %+v, state = %q, want stalled (surface present, progress expected, evidence stale)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want stalled (surface present, movement expected, evidence stale)", report, report.State())
 	}
 }
 
-// TestEvaluateHealth_SignalNarrowsProgressExpectedToHealthy pins the signal's
-// own progress_expected contribution: done_when leaves unmet work, but the
-// declared signal itself reports progress_expected=false (e.g. "the turn
+// TestEvaluateHealth_SignalNarrowsMovementExpectedToHealthy pins the signal's
+// own movement_expected contribution: done_when leaves unmet work, but the
+// declared signal itself reports movement_expected=false (e.g. "the turn
 // already ended") with stale evidence. The signal can only narrow — never
 // widen — done_when's expectation, so this instance's contribution drops out
 // and the session reads healthy, not stalled.
-func TestEvaluateHealth_SignalNarrowsProgressExpectedToHealthy(t *testing.T) {
+func TestEvaluateHealth_SignalNarrowsMovementExpectedToHealthy(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, false, "fp-1", longAgo))
+	cfg := movementSignalFixtureConfig(t, movementSignalCmd(t, true, false, "fp-1", longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -319,17 +319,17 @@ func TestEvaluateHealth_SignalNarrowsProgressExpectedToHealthy(t *testing.T) {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthHealthy {
-		t.Fatalf("report = %+v, state = %q, want healthy (signal narrowed progress_expected despite unmet done_when work)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want healthy (signal narrowed movement_expected despite unmet done_when work)", report, report.State())
 	}
 }
 
-// TestEvaluateHealth_NoProgressSignalDeclaredStaysUndeclaredNotStalled pins
+// TestEvaluateHealth_NoMovementSignalDeclaredStaysUndeclaredNotStalled pins
 // the explicit no-signal path: unmet done_when work exists (progress is
-// expected) but no progress signal is declared to judge it, so evaluation
+// expected) but no movement signal is declared to judge it, so evaluation
 // has no basis to call the session either healthy or stalled.
-func TestEvaluateHealth_NoProgressSignalDeclaredStaysUndeclaredNotStalled(t *testing.T) {
+func TestEvaluateHealth_NoMovementSignalDeclaredStaysUndeclaredNotStalled(t *testing.T) {
 	store := testStore(t)
-	cfg := progressSignalFixtureConfig(t, "") // no progress_signal declared at all
+	cfg := movementSignalFixtureConfig(t, "") // no movement_signal declared at all
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -344,17 +344,17 @@ func TestEvaluateHealth_NoProgressSignalDeclaredStaysUndeclaredNotStalled(t *tes
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthUndeclared {
-		t.Fatalf("report = %+v, state = %q, want undeclared (progress expected, nothing declared to judge it)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want undeclared (movement expected, nothing declared to judge it)", report, report.State())
 	}
 }
 
 // TestEvaluateHealth_ExplicitNoSignalDeclarationStaysUndeclared covers the
-// second no-basis path: a progress-signal command is declared but explicitly
+// second no-basis path: a movement-signal command is declared but explicitly
 // reports "supported": false at evaluation time — the same as if nothing
 // were declared, not a stale/fresh judgment either way.
 func TestEvaluateHealth_ExplicitNoSignalDeclarationStaysUndeclared(t *testing.T) {
 	store := testStore(t)
-	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, false, true, "fp-1", time.Now()))
+	cfg := movementSignalFixtureConfig(t, movementSignalCmd(t, false, true, "fp-1", time.Now()))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -373,12 +373,12 @@ func TestEvaluateHealth_ExplicitNoSignalDeclarationStaysUndeclared(t *testing.T)
 	}
 }
 
-// TestEvaluateHealth_FreshProgressEvidenceReadsHealthy is the positive
+// TestEvaluateHealth_FreshMovementEvidenceReadsHealthy is the positive
 // counterpart to the stalled test: the same unmet work, but the declared
-// progress signal reports evidence timestamped within the freshness window.
-func TestEvaluateHealth_FreshProgressEvidenceReadsHealthy(t *testing.T) {
+// movement signal reports evidence timestamped within the stall threshold.
+func TestEvaluateHealth_FreshMovementEvidenceReadsHealthy(t *testing.T) {
 	store := testStore(t)
-	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, true, "fp-1", time.Now()))
+	cfg := movementSignalFixtureConfig(t, movementSignalCmd(t, true, true, "fp-1", time.Now()))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -393,20 +393,20 @@ func TestEvaluateHealth_FreshProgressEvidenceReadsHealthy(t *testing.T) {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthHealthy {
-		t.Fatalf("report = %+v, state = %q, want healthy (fresh progress evidence)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want healthy (fresh movement evidence)", report, report.State())
 	}
 }
 
 // TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal is the
 // orchestrator-idle-between-ticks case: done_when is already satisfied, so
-// progress is not currently expected of this session at all. It must read
-// healthy even though a progress signal is declared and its evidence is
-// stale — the session legitimately has nothing to progress right now, and
+// movement is not currently expected of this session at all. It must read
+// healthy even though a movement signal is declared and its evidence is
+// stale — the session legitimately has nothing to move on right now, and
 // must never be flagged stalled for that.
 func TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, true, "fp-1", longAgo))
+	cfg := movementSignalFixtureConfig(t, movementSignalCmd(t, true, true, "fp-1", longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -421,19 +421,17 @@ func TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal(t *testing.T) 
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthHealthy {
-		t.Fatalf("report = %+v, state = %q, want healthy (no unmet work, progress not expected)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want healthy (no unmet work, movement not expected)", report, report.State())
 	}
 }
 
-// TestEvaluateHealth_EscalatedWorkIsNotExpectedFromThisSession covers the
-// other "not expected to act" path: done_when is unsatisfied but this
-// session has escalated to an independent reviewer, so it is not this
-// session's turn to progress — it must read healthy, not stalled, even with
-// stale progress-signal evidence.
-func TestEvaluateHealth_EscalatedWorkIsNotExpectedFromThisSession(t *testing.T) {
+// TestEvaluateHealth_EscalatedWorkStillExpectsMovement covers the watchdog
+// interaction from the rewritten issue: done_when escalation must not make the
+// child disappear from stall monitoring.
+func TestEvaluateHealth_EscalatedWorkStillExpectsMovement(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := progressSignalFixtureConfig(t, progressSignalCmd(t, true, true, "fp-1", longAgo))
+	cfg := movementSignalFixtureConfig(t, movementSignalCmd(t, true, true, "fp-1", longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -445,24 +443,27 @@ func TestEvaluateHealth_EscalatedWorkIsNotExpectedFromThisSession(t *testing.T) 
 			},
 		},
 	})
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Health = &contract.HealthState{LastFingerprint: "initial:fp-1", LastMovementAt: longAgo}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed movement state: %v", err)
+	}
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
 	if err != nil {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
-	if report.State() != domain.HealthHealthy {
-		t.Fatalf("report = %+v, state = %q, want healthy (escalated: not this session's turn to progress)", report, report.State())
+	if report.State() != domain.HealthStalled {
+		t.Fatalf("report = %+v, state = %q, want stalled (escalation must not suppress movement expectation)", report, report.State())
 	}
 }
 
-// progressSourceFixtureConfig declares one run-scoped task "runner" with a
-// fixed-passing healthcheck and unmet done_when (so progress_expected is
-// true), plus a workflow-level `[tick]` heartbeat of 1m (freshness window
-// 2m) and a `[tick.progress_source]` dynamic output whose script is the
-// given shell snippet — the session-scoped analog of progressSignalCmd,
-// fetched via task.FetchOutput/task.RenderContext instead of a per-task
-// progress_signal command.
-func progressSourceFixtureConfig(t *testing.T, script string) *config.Config {
+// movementSourceFixtureConfig declares one run-scoped task "runner" with a
+// fixed-passing healthcheck and unmet done_when, plus a workflow-level
+// `[tick.movement_source]` dynamic output whose script is the given shell
+// snippet.
+func movementSourceFixtureConfig(t *testing.T, script string) *config.Config {
 	t.Helper()
 	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
 		id:          "runner",
@@ -472,48 +473,48 @@ func progressSourceFixtureConfig(t *testing.T, script string) *config.Config {
 	}}, []nodeFixture{{id: "initial", uses: "runner"}})
 
 	path := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
-	extra := fmt.Sprintf("\n[tick]\nheartbeat = \"1m\"\n\n[tick.progress_source]\nname = \"fp\"\nscript = %q\n", script)
+	extra := fmt.Sprintf("\n[tick]\nheartbeat = \"1m\"\n\n[tick.movement_source]\nname = \"fp\"\nscript = %q\n", script)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		t.Fatalf("open workflow fixture: %v", err)
 	}
 	defer f.Close()
 	if _, err := f.WriteString(extra); err != nil {
-		t.Fatalf("append tick.progress_source: %v", err)
+		t.Fatalf("append tick.movement_source: %v", err)
 	}
 	return cfg
 }
 
-// progressSourceCmd is a stub progress-source script whose entire stdout is
+// movementSourceCmd is a stub movement-source script whose entire stdout is
 // the given opaque fingerprint string, standing in for a concrete source
 // declared entirely in config — core never interprets what the fingerprint
 // means or how it was produced.
-func progressSourceCmd(fingerprint string) string {
+func movementSourceCmd(fingerprint string) string {
 	return fmt.Sprintf("echo %q", fingerprint)
 }
 
-// setProgressState seeds the session's persisted ProgressState directly,
+// setMovementState seeds the session's persisted HealthState movement fields,
 // standing in for a prior tick's fetch having already advanced (or not) the
 // fingerprint core has on record.
-func setProgressState(t *testing.T, store *state.Store, name, fingerprint string, observedAt time.Time) {
+func setMovementState(t *testing.T, store *state.Store, name, fingerprint string, observedAt time.Time) {
 	t.Helper()
 	if err := store.Update(name, func(s *domain.Session) error {
-		s.Progress = &contract.ProgressState{Fingerprint: fingerprint, ObservedAt: observedAt}
+		s.Health = &contract.HealthState{LastFingerprint: "workflow:" + fingerprint, LastMovementAt: observedAt}
 		return nil
 	}); err != nil {
-		t.Fatalf("seed progress state: %v", err)
+		t.Fatalf("seed movement state: %v", err)
 	}
 }
 
-// TestEvaluateHealth_ProgressSourceFingerprintUnchangedPastWindowReadsStalled
-// pins the core-side comparison the issue asks for: the declared progress
+// TestEvaluateHealth_MovementSourceFingerprintUnchangedPastWindowReadsStalled
+// pins the core-side comparison the issue asks for: the declared movement
 // source keeps reporting the same fingerprint core already has on record,
 // and core's own ObservedAt for that fingerprint is far outside the
 // freshness window — unmet done_when work makes this stalled, not healthy.
-func TestEvaluateHealth_ProgressSourceFingerprintUnchangedPastWindowReadsStalled(t *testing.T) {
+func TestEvaluateHealth_MovementSourceFingerprintUnchangedPastWindowReadsStalled(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := progressSourceFixtureConfig(t, progressSourceCmd("fp-1"))
+	cfg := movementSourceFixtureConfig(t, movementSourceCmd("fp-1"))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -522,7 +523,7 @@ func TestEvaluateHealth_ProgressSourceFingerprintUnchangedPastWindowReadsStalled
 			Outputs: map[string]any{"done": "no"},
 		},
 	})
-	setProgressState(t, store, "owner/repo-1", "fp-1", longAgo)
+	setMovementState(t, store, "owner/repo-1", "fp-1", longAgo)
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
 	if err != nil {
@@ -533,14 +534,14 @@ func TestEvaluateHealth_ProgressSourceFingerprintUnchangedPastWindowReadsStalled
 	}
 }
 
-// TestEvaluateHealth_ProgressSourceFingerprintAdvancedReadsHealthy is the
+// TestEvaluateHealth_MovementSourceFingerprintAdvancedReadsHealthy is the
 // positive counterpart: the source now reports a fingerprint different from
 // the one core has on record, even though the record is stale — an advance
 // always reads healthy and resets core's own ObservedAt clock for it.
-func TestEvaluateHealth_ProgressSourceFingerprintAdvancedReadsHealthy(t *testing.T) {
+func TestEvaluateHealth_MovementSourceFingerprintAdvancedReadsHealthy(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := progressSourceFixtureConfig(t, progressSourceCmd("fp-2"))
+	cfg := movementSourceFixtureConfig(t, movementSourceCmd("fp-2"))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -549,7 +550,7 @@ func TestEvaluateHealth_ProgressSourceFingerprintAdvancedReadsHealthy(t *testing
 			Outputs: map[string]any{"done": "no"},
 		},
 	})
-	setProgressState(t, store, "owner/repo-1", "fp-1", longAgo)
+	setMovementState(t, store, "owner/repo-1", "fp-1", longAgo)
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
 	if err != nil {
@@ -560,20 +561,20 @@ func TestEvaluateHealth_ProgressSourceFingerprintAdvancedReadsHealthy(t *testing
 	}
 
 	s := store.Get("owner/repo-1")
-	if s == nil || s.Progress == nil || s.Progress.Fingerprint != "fp-2" {
-		t.Fatalf("persisted progress = %+v, want fingerprint %q", s.Progress, "fp-2")
+	if s == nil || s.Health == nil || s.Health.LastFingerprint != "workflow:fp-2" {
+		t.Fatalf("persisted health = %+v, want fingerprint %q", s.Health, "workflow:fp-2")
 	}
-	if s.Progress.ObservedAt.Before(longAgo.Add(23 * time.Hour)) {
-		t.Fatalf("persisted ObservedAt = %v, want reset to roughly now on advance", s.Progress.ObservedAt)
+	if s.Health.LastMovementAt.Before(longAgo.Add(23 * time.Hour)) {
+		t.Fatalf("persisted LastMovementAt = %v, want reset to roughly now on advance", s.Health.LastMovementAt)
 	}
 }
 
-// TestEvaluateHealth_ProgressSourceFingerprintUnchangedWithinWindowReadsHealthy
+// TestEvaluateHealth_MovementSourceFingerprintUnchangedWithinWindowReadsHealthy
 // pins the within-window boundary: same fingerprint core already has on
 // record, but core's own ObservedAt for it is recent — still healthy.
-func TestEvaluateHealth_ProgressSourceFingerprintUnchangedWithinWindowReadsHealthy(t *testing.T) {
+func TestEvaluateHealth_MovementSourceFingerprintUnchangedWithinWindowReadsHealthy(t *testing.T) {
 	store := testStore(t)
-	cfg := progressSourceFixtureConfig(t, progressSourceCmd("fp-1"))
+	cfg := movementSourceFixtureConfig(t, movementSourceCmd("fp-1"))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -582,7 +583,7 @@ func TestEvaluateHealth_ProgressSourceFingerprintUnchangedWithinWindowReadsHealt
 			Outputs: map[string]any{"done": "no"},
 		},
 	})
-	setProgressState(t, store, "owner/repo-1", "fp-1", time.Now())
+	setMovementState(t, store, "owner/repo-1", "fp-1", time.Now())
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
 	if err != nil {
@@ -593,13 +594,13 @@ func TestEvaluateHealth_ProgressSourceFingerprintUnchangedWithinWindowReadsHealt
 	}
 }
 
-// TestEvaluateHealth_NoProgressSourceDeclaredFallsBackToUndeclared confirms a
-// workflow declaring no `[tick.progress_source]` at all behaves exactly like
-// no progress signal being declared: undeclared, not stalled, despite unmet
+// TestEvaluateHealth_NoMovementSourceDeclaredFallsBackToUndeclared confirms a
+// workflow declaring no `[tick.movement_source]` at all behaves exactly like
+// no movement signal being declared: undeclared, not stalled, despite unmet
 // done_when work — the dynamic-output source is optional, not mandatory.
-func TestEvaluateHealth_NoProgressSourceDeclaredFallsBackToUndeclared(t *testing.T) {
+func TestEvaluateHealth_NoMovementSourceDeclaredFallsBackToUndeclared(t *testing.T) {
 	store := testStore(t)
-	cfg := progressSignalFixtureConfig(t, "") // no progress_signal, no progress_source
+	cfg := movementSignalFixtureConfig(t, "") // no movement_signal, no movement_source
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -614,7 +615,7 @@ func TestEvaluateHealth_NoProgressSourceDeclaredFallsBackToUndeclared(t *testing
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthUndeclared {
-		t.Fatalf("report = %+v, state = %q, want undeclared (no progress source declared)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want undeclared (no movement source declared)", report, report.State())
 	}
 }
 
@@ -646,9 +647,114 @@ func TestWatchdogTick_PushesDeadToHealthyParent(t *testing.T) {
 		t.Fatalf("parent dead events = %+v", evs)
 	}
 
-	ws := store.Get("owner/repo-1").Watchdog
-	if ws == nil || ws.DeadAt.IsZero() || ws.CheckedAt.IsZero() {
-		t.Fatalf("origin WatchdogState = %+v, want persisted dead result", ws)
+	hs := store.Get("owner/repo-1").Health
+	if hs == nil || hs.LastCheckedAt.IsZero() || hs.LastState != string(domain.HealthUnhealthy) {
+		t.Fatalf("origin HealthState = %+v, want persisted unhealthy result", hs)
+	}
+}
+
+func TestHealthcheckSession_PushesHealthEscalationAndRenotifies(t *testing.T) {
+	store := testStore(t)
+	cfg := healthcheckFixtureConfig(t, "false")
+	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
+	healthCfg := config.HealthcheckConfig{
+		Period:         config.Duration{Duration: time.Minute},
+		StallThreshold: config.Duration{Duration: 3 * time.Minute},
+		RenotifyEvery:  2,
+	}
+
+	report, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: "owner/repo-1", Config: healthCfg})
+	if err != nil {
+		t.Fatalf("HealthcheckSession: %v", err)
+	}
+	if report.State() != domain.HealthUnhealthy || !report.Pushed {
+		t.Fatalf("report = %+v, want pushed unhealthy report", report)
+	}
+	assertHealthEscalations := func(want int) []event.Event {
+		t.Helper()
+		evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-orchestrator", 0, event.Filter{Types: []string{event.TypeTerminalEscalate}})
+		if err != nil {
+			t.Fatalf("list health escalations: %v", err)
+		}
+		if len(evs) != want {
+			t.Fatalf("health escalation events = %+v, want %d", evs, want)
+		}
+		return evs
+	}
+	evs := assertHealthEscalations(1)
+	if evs[0].Metadata["escalation_kind"] != "health.unhealthy" || evs[0].Metadata["health_state"] != "unhealthy" || evs[0].Metadata["last_checked_at"] == "" {
+		t.Fatalf("health escalation metadata = %+v", evs[0].Metadata)
+	}
+
+	report, err = HealthcheckSession(cfg, store, HealthcheckParams{SessionName: "owner/repo-1", Config: healthCfg})
+	if err != nil {
+		t.Fatalf("second HealthcheckSession: %v", err)
+	}
+	if report.Pushed {
+		t.Fatalf("second report = %+v, want immediate duplicate suppressed", report)
+	}
+	assertHealthEscalations(1)
+
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Health.LastNotifiedAt = time.Now().Add(-3 * time.Minute)
+		return nil
+	}); err != nil {
+		t.Fatalf("age notification state: %v", err)
+	}
+	report, err = HealthcheckSession(cfg, store, HealthcheckParams{SessionName: "owner/repo-1", Config: healthCfg})
+	if err != nil {
+		t.Fatalf("renotify HealthcheckSession: %v", err)
+	}
+	if !report.Pushed {
+		t.Fatalf("renotify report = %+v, want pushed report after renotify window", report)
+	}
+	assertHealthEscalations(2)
+}
+
+func TestHealthcheckSession_PushesStalledEscalationWithMovementTimestamp(t *testing.T) {
+	store := testStore(t)
+	longAgo := time.Now().Add(-24 * time.Hour)
+	cfg := movementSourceFixtureConfig(t, movementSourceCmd("fp-1"))
+	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
+	setMovementState(t, store, "owner/repo-1", "fp-1", longAgo)
+
+	report, err := HealthcheckSession(cfg, store, HealthcheckParams{
+		SessionName: "owner/repo-1",
+		Config: config.HealthcheckConfig{
+			Period:         config.Duration{Duration: time.Minute},
+			StallThreshold: config.Duration{Duration: 5 * time.Minute},
+			RenotifyEvery:  3,
+		},
+	})
+	if err != nil {
+		t.Fatalf("HealthcheckSession: %v", err)
+	}
+	if report.State() != domain.HealthStalled || !report.Pushed {
+		t.Fatalf("report = %+v, want pushed stalled report", report)
+	}
+
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-orchestrator", 0, event.Filter{Types: []string{event.TypeTerminalEscalate}})
+	if err != nil {
+		t.Fatalf("list health escalations: %v", err)
+	}
+	if len(evs) != 1 {
+		t.Fatalf("health escalation events = %+v, want 1", evs)
+	}
+	if evs[0].Metadata["escalation_kind"] != "health.stalled" || evs[0].Metadata["health_state"] != "stalled" || evs[0].Metadata["last_movement_at"] == "" {
+		t.Fatalf("stalled health escalation metadata = %+v", evs[0].Metadata)
 	}
 }
 

@@ -43,6 +43,8 @@ type StatusRuntimeTask struct {
 type StatusRuntime struct {
 	Run            domain.RunState      `json:"run"`
 	Health         domain.HealthState   `json:"health,omitempty"`
+	LastCheckedAt  time.Time            `json:"last_checked_at,omitzero"`
+	LastMovementAt time.Time            `json:"last_movement_at,omitzero"`
 	Tasks          []StatusRuntimeTask  `json:"tasks,omitempty"`
 	WorktreePath   string               `json:"worktree_path,omitempty"`
 	WorktreeExists bool                 `json:"worktree_exists"`
@@ -66,7 +68,7 @@ type StatusChain struct {
 
 // StatusTask is layer 3: one task instance's work — its outputs (dynamic and
 // mutable alike, rendered generically) and, when it declares a done_when, the
-// gate's evaluation, round budget, and chain plan. Action/Summary/Body/
+// gate's evaluation, heartbeat budget, and chain plan. Action/Summary/Body/
 // ReviewerCommand/JudgeCommands/UnmetItems/Fingerprint carry the same
 // decision-making material the retired `plect check` used to report per
 // instance, so orchestrator consumers reading `plect status --json` lose
@@ -82,8 +84,8 @@ type StatusTask struct {
 	Outputs           map[string]any          `json:"outputs,omitempty"`
 	DoneWhen          *task.DoneWhenResult    `json:"done_when,omitempty"`
 	Action            string                  `json:"action,omitempty"` // satisfied|wait|review_required|kick|escalate
-	Rounds            int                     `json:"rounds,omitempty"`
-	MaxRounds         int                     `json:"max_rounds,omitempty"`
+	HeartbeatTicks    int                     `json:"heartbeat_ticks,omitempty"`
+	HeartbeatBudget   int                     `json:"heartbeat_budget,omitempty"`
 	Summary           string                  `json:"summary,omitempty"`
 	Body              string                  `json:"body,omitempty"`
 	ReviewerCommand   string                  `json:"reviewer_command,omitempty"`
@@ -131,11 +133,11 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 
 	wtExists := fileExists(session.WorktreePath)
 	runState := sessionRunState(session)
-	healthState := sessionHealthState(cfg, store, sessionName)
+	healthReport, healthState := sessionHealthReport(cfg, store, sessionName)
 
 	displayTitle := sessionDisplayTitle(cfg, session)
 
-	_, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, sessionName, false)
+	_, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, sessionName, false, "")
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +181,8 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 		Runtime: StatusRuntime{
 			Run:            runState,
 			Health:         healthState,
+			LastCheckedAt:  healthReport.LastCheckedAt,
+			LastMovementAt: healthReport.LastMovementAt,
 			Tasks:          runtimeTaskViews(session),
 			WorktreePath:   session.WorktreePath,
 			WorktreeExists: wtExists,
@@ -240,7 +244,7 @@ func runtimeTaskViews(session *domain.Session) []StatusRuntimeTask {
 
 // statusTaskViews projects a session's task instances for the "work" layer:
 // outputs (dynamic and mutable rendered identically), the done_when
-// evaluation, its round budget, and its chain plan. actions supplies the
+// evaluation, its heartbeat budget, and its chain plan. actions supplies the
 // already-evaluated done_when result per produced instance (from
 // evaluateSessionActions, the same evaluation `plect check`/`plect tick` act on),
 // so sessionTaskItems reuses it instead of evaluating done_when a second time.
@@ -270,8 +274,8 @@ func statusTaskViews(defs map[string]config.TaskDefinition, session *domain.Sess
 		}
 		if a, ok := actions[it.instance]; ok {
 			v.Action = a.action.Action
-			v.Rounds = a.action.Round
-			v.MaxRounds = a.action.MaxRounds
+			v.HeartbeatTicks = a.action.HeartbeatTicks
+			v.HeartbeatBudget = a.action.HeartbeatBudget
 			v.Summary = a.action.Summary
 			v.Body = a.action.Body
 			v.ReviewerCommand = a.action.ReviewerCommand
@@ -354,12 +358,12 @@ type StatusSummaryIdentity struct {
 }
 
 type StatusSummaryWork struct {
-	Instance      string                 `json:"instance"`
-	Action        string                 `json:"action,omitempty"`
-	Round         string                 `json:"round,omitempty"`
-	DoneWhen      *StatusSummaryDoneWhen `json:"done_when,omitempty"`
-	Chains        []StatusSummaryChain   `json:"chains,omitempty"`
-	JudgeCommands []string               `json:"judge_commands,omitempty"`
+	Instance        string                 `json:"instance"`
+	Action          string                 `json:"action,omitempty"`
+	HeartbeatBudget string                 `json:"heartbeat_budget,omitempty"`
+	DoneWhen        *StatusSummaryDoneWhen `json:"done_when,omitempty"`
+	Chains          []StatusSummaryChain   `json:"chains,omitempty"`
+	JudgeCommands   []string               `json:"judge_commands,omitempty"`
 }
 
 type StatusSummaryDoneWhen struct {
@@ -409,10 +413,10 @@ func Summarize(result *StatusResult) *StatusSummary {
 			continue
 		}
 		w := StatusSummaryWork{
-			Instance:      t.Instance,
-			Action:        t.Action,
-			Round:         RoundString(t.Rounds, t.MaxRounds),
-			JudgeCommands: t.JudgeCommands,
+			Instance:        t.Instance,
+			Action:          t.Action,
+			HeartbeatBudget: HeartbeatBudgetString(t.HeartbeatTicks, t.HeartbeatBudget),
+			JudgeCommands:   t.JudgeCommands,
 		}
 		dw := &StatusSummaryDoneWhen{Overall: t.DoneWhen.Overall}
 		for _, leaf := range t.DoneWhen.Leaves {
@@ -457,14 +461,14 @@ func summarizeDoneLeaf(leaf task.DoneLeafResult) StatusSummaryDoneLeaf {
 	return out
 }
 
-// RoundString renders a round budget as "r/max", or just "r" when unbounded
-// (MaxRounds == 0); "" when neither has ever advanced (no done_when action yet).
-func RoundString(rounds, maxRounds int) string {
+// HeartbeatBudgetString renders a heartbeat budget as "ticks/budget", or just
+// "ticks" when unbounded; "" when no heartbeat tick has been consumed yet.
+func HeartbeatBudgetString(ticks, budget int) string {
 	switch {
-	case maxRounds > 0:
-		return fmt.Sprintf("%d/%d", rounds, maxRounds)
-	case rounds > 0:
-		return fmt.Sprintf("%d", rounds)
+	case budget > 0:
+		return fmt.Sprintf("%d/%d", ticks, budget)
+	case ticks > 0:
+		return fmt.Sprintf("%d", ticks)
 	default:
 		return ""
 	}

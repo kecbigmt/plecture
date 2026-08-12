@@ -19,7 +19,7 @@ type taskFixture struct {
 	setup          string
 	cleanup        string
 	healthcheck    string
-	progressSignal string
+	movementSignal string
 	attach         string
 	capture        string
 	primary        bool
@@ -67,8 +67,8 @@ func writeWorkflowFixture(t *testing.T, worktreesRoot, wfID string, defs []taskF
 		if d.healthcheck != "" {
 			fmt.Fprintf(&b, "healthcheck = %q\n", d.healthcheck)
 		}
-		if d.progressSignal != "" {
-			fmt.Fprintf(&b, "progress_signal = %q\n", d.progressSignal)
+		if d.movementSignal != "" {
+			fmt.Fprintf(&b, "movement_signal = %q\n", d.movementSignal)
 		}
 		if d.attach != "" {
 			fmt.Fprintf(&b, "attach = %q\n", d.attach)

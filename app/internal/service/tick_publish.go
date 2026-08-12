@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/kecbigmt/plect/app/internal/domain"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/kecbigmt/plect/app/internal/config"
 )
+
+const escalationKindDoneWhenNonConvergence = "done_when.non_convergence"
 
 // publishTickAction delivers the side effect for a computed action (terminal
 // push and/or same-session event) before its marker is persisted, so a
@@ -47,9 +50,6 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 		}); err != nil {
 			return nil, err
 		}
-		if action.RevivalRevision != "" {
-			return publishAutoRevivalKicks(cfg, store, sessionName, instance, action)
-		}
 	case "kick":
 		if _, err := EventPublish(cfg, store, sessionName, EventPublishParams{
 			Type:      event.TypeUserEmit,
@@ -62,13 +62,23 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 			return nil, err
 		}
 	case "escalate":
+		meta := unmetItemsMetadata(instance, action.UnmetItems)
+		if action.EscalationKind != "" {
+			meta["escalation_kind"] = action.EscalationKind
+		}
+		if action.HeartbeatTicks > 0 {
+			meta["heartbeat_ticks"] = strconv.Itoa(action.HeartbeatTicks)
+		}
+		if action.HeartbeatBudget > 0 {
+			meta["heartbeat_budget"] = strconv.Itoa(action.HeartbeatBudget)
+		}
 		if _, err := EventPublish(cfg, store, sessionName, EventPublishParams{
 			Type:      event.TypeTickEscalated,
 			Direction: event.Internal,
 			Source:    event.SourceTick,
 			Summary:   action.Summary,
 			Body:      action.Body,
-			Metadata:  unmetItemsMetadata(instance, action.UnmetItems),
+			Metadata:  meta,
 		}); err != nil {
 			return nil, err
 		}
@@ -79,8 +89,8 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 			Type:     event.TypeTerminalEscalate,
 			Summary:  action.Summary,
 			Body:     action.Body,
-			Metadata: map[string]string{event.MetaInstance: instance},
-			DedupKey: instance + "|escalate|" + action.Fingerprint,
+			Metadata: meta,
+			DedupKey: tickEscalationDedupKey(instance, action),
 		})
 		if err != nil {
 			return nil, err
@@ -88,6 +98,13 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 		return wakeWarnings(wakeErr), nil
 	}
 	return nil, nil
+}
+
+func tickEscalationDedupKey(instance string, action CheckAction) string {
+	if action.EscalationKind == escalationKindDoneWhenNonConvergence && action.HeartbeatEscalation > 0 {
+		return fmt.Sprintf("%s|non_convergence|%d", instance, action.HeartbeatEscalation)
+	}
+	return instance + "|escalate|" + action.Fingerprint
 }
 
 // unmetItemsMetadata carries a kick/review_required/escalate event's unmet
@@ -145,21 +162,16 @@ func persistTickAction(store *state.Store, sessionName, instance string, action 
 		st.DoneWhen.LastReason = action.Summary
 		st.DoneWhen.LastUnsatisfied = append([]string(nil), action.Items...)
 		st.DoneWhen.LastBody = action.Body
-		if action.RevivalRevision != "" {
-			// Revival explicitly resets the budget (checkActionForResult
-			// computed Round off a zeroed round counter), so it must win even
-			// though Round is now numerically below the exhausted Rounds this
-			// overwrites. Stamping the revision here is the dedup record: the
-			// same revision can never revive the budget (or kick a reviewer)
-			// again.
-			st.DoneWhen.Rounds = action.Round
-			st.DoneWhen.LastAutoRevivalRevision = action.RevivalRevision
-		} else if action.Round > st.DoneWhen.Rounds {
-			st.DoneWhen.Rounds = action.Round
+		if action.HeartbeatChanged {
+			st.DoneWhen.HeartbeatTicks = action.HeartbeatTicks
 		}
 		if action.Action == "escalate" {
 			st.DoneWhen.EscalatedAt = now
 			st.DoneWhen.EscalateReason = action.Body
+			if action.EscalationKind == escalationKindDoneWhenNonConvergence {
+				st.DoneWhen.HeartbeatTicks = 0
+				st.DoneWhen.HeartbeatEscalations = action.HeartbeatEscalation
+			}
 		}
 		s.UpdatedAt = now
 		return nil
