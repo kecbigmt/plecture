@@ -990,6 +990,142 @@ func TestTickSession_EscalatesAfterMaxRounds_PushesToParent(t *testing.T) {
 	}
 }
 
+func TestTickSession_EscalationTransfersBlockerToParentAndResolves(t *testing.T) {
+	store := testStore(t)
+	cfg := checkStatusOnlyConfig(t, 1)
+	parent := "owner/repo-orchestrator"
+	child := "owner/repo-1"
+	seedSession(t, store, parent, "owner/repo", 1, "default", nil)
+	seedSession(t, store, child, "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeSession,
+			TaskID:  "work",
+			Status:  contract.TaskStatusProduced,
+			Dynamic: true,
+			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			DoneWhen: &contract.DoneWhenState{
+				Rounds: 1,
+			},
+		},
+	})
+	setParent(t, store, child, parent)
+
+	first, err := TickSession(cfg, store, TickParams{SessionName: child})
+	if err != nil {
+		t.Fatalf("child TickSession: %v", err)
+	}
+	if len(first.Actions) != 1 || first.Actions[0].Action != "escalate" {
+		t.Fatalf("child actions = %+v, want escalation", first.Actions)
+	}
+
+	blockerKey, blocker := findEscalationBlocker(t, store.Get(parent), child, "initial")
+	if blocker.Status != contract.TaskStatusProduced || !blocker.Dynamic {
+		t.Fatalf("blocker = %+v, want produced dynamic task", blocker)
+	}
+	if blocker.Outputs["child_fingerprint"] == "" {
+		t.Fatalf("blocker outputs = %+v, want child fingerprint recorded", blocker.Outputs)
+	}
+
+	parentTick, err := TickSession(cfg, store, TickParams{SessionName: parent})
+	if err != nil {
+		t.Fatalf("parent TickSession: %v", err)
+	}
+	if len(parentTick.Actions) != 1 || parentTick.Actions[0].Action != "kick" || parentTick.Actions[0].Instance != blockerKey {
+		t.Fatalf("parent actions = %+v, want blocker kick", parentTick.Actions)
+	}
+
+	if err := store.Update(child, func(s *domain.Session) error {
+		s.Tasks["initial"].Outputs["checks_status"] = "SUCCESS"
+		return nil
+	}); err != nil {
+		t.Fatalf("satisfy child: %v", err)
+	}
+
+	resolved, err := TickSession(cfg, store, TickParams{SessionName: parent})
+	if err != nil {
+		t.Fatalf("parent TickSession after child satisfied: %v", err)
+	}
+	if len(resolved.Actions) != 1 || resolved.Actions[0].Action != "satisfied" || resolved.Actions[0].Instance != blockerKey {
+		t.Fatalf("resolved actions = %+v, want blocker satisfied", resolved.Actions)
+	}
+	if got := store.Get(parent).Tasks[blockerKey]; got != nil {
+		t.Fatalf("blocker task still present after resolution: %+v", got)
+	}
+}
+
+func TestTickSession_ParentBlockerEscalatesUpwardAfterBudget(t *testing.T) {
+	store := testStore(t)
+	cfg := checkStatusOnlyConfig(t, 1)
+	grandparent := "owner/repo-root"
+	parent := "owner/repo-orchestrator"
+	child := "owner/repo-1"
+	seedSession(t, store, grandparent, "owner/repo", 1, "default", nil)
+	seedSession(t, store, parent, "owner/repo", 1, "default", nil)
+	seedSession(t, store, child, "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeSession,
+			TaskID:  "work",
+			Status:  contract.TaskStatusProduced,
+			Dynamic: true,
+			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			DoneWhen: &contract.DoneWhenState{
+				Rounds: 1,
+			},
+		},
+	})
+	setParent(t, store, parent, grandparent)
+	setParent(t, store, child, parent)
+
+	if _, err := TickSession(cfg, store, TickParams{SessionName: child}); err != nil {
+		t.Fatalf("child TickSession: %v", err)
+	}
+	blockerKey, _ := findEscalationBlocker(t, store.Get(parent), child, "initial")
+
+	first, err := TickSession(cfg, store, TickParams{SessionName: parent})
+	if err != nil {
+		t.Fatalf("first parent TickSession: %v", err)
+	}
+	if len(first.Actions) != 1 || first.Actions[0].Action != "kick" {
+		t.Fatalf("first parent actions = %+v, want blocker kick", first.Actions)
+	}
+
+	second, err := TickSession(cfg, store, TickParams{SessionName: parent})
+	if err != nil {
+		t.Fatalf("second parent TickSession: %v", err)
+	}
+	if len(second.Actions) != 1 || second.Actions[0].Action != "escalate" || second.Actions[0].Instance != blockerKey {
+		t.Fatalf("second parent actions = %+v, want blocker escalation", second.Actions)
+	}
+
+	pushed, _, _, err := eventlog.NewStore(store.Dir()).List(grandparent, 0, event.Filter{Types: []string{event.TypeTerminalEscalate}})
+	if err != nil {
+		t.Fatalf("list grandparent: %v", err)
+	}
+	if len(pushed) != 1 {
+		t.Fatalf("escalate events on grandparent = %d, want 1", len(pushed))
+	}
+	if pushed[0].Metadata[event.MetaOriginSession] != parent || pushed[0].Metadata[event.MetaInstance] != blockerKey {
+		t.Fatalf("pushed escalation = %+v", pushed[0])
+	}
+}
+
+func findEscalationBlocker(t *testing.T, s *domain.Session, child, instance string) (string, *contract.TaskState) {
+	t.Helper()
+	if s == nil {
+		t.Fatal("session is nil")
+	}
+	for key, st := range s.Tasks {
+		if st == nil || st.TaskID != "escalation_blocker" {
+			continue
+		}
+		if st.Outputs["child_session"] == child && st.Outputs["child_instance"] == instance {
+			return key, st
+		}
+	}
+	t.Fatalf("no escalation blocker for %s/%s in tasks %+v", child, instance, s.Tasks)
+	return "", nil
+}
+
 // TestTickSession_AutoRevivalAfterExhaustion covers auto-revival: once rounds are
 // exhausted and a judge verdict has gone stale (a new revision landed), tick
 // must revive the round budget on its own and deliver the standard

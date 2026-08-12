@@ -44,6 +44,10 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 	var actions []CheckAction
 	for _, c := range computed {
 		action := c.action
+		if action.Action == "sleep" {
+			actions = append(actions, action)
+			continue
+		}
 		// Publish before persisting the marker: a publish failure must leave
 		// LastAction/fingerprint unadvanced so the next tick retries this same
 		// action instead of silently skipping delivery.

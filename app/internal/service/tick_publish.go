@@ -85,6 +85,9 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 		if err != nil {
 			return nil, err
 		}
+		if err := upsertEscalationBlockerForParent(store, sessionName, instance, action); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+		}
 		return wakeWarnings(wakeErr), nil
 	}
 	return nil, nil
@@ -136,6 +139,11 @@ func persistTickAction(store *state.Store, sessionName, instance string, action 
 		st := s.Tasks[instance]
 		if st == nil {
 			return fmt.Errorf("instance %q not found in session %s", instance, sessionName)
+		}
+		if isEscalationBlockerTask(st) && action.Action == "satisfied" {
+			delete(s.Tasks, instance)
+			s.UpdatedAt = now
+			return nil
 		}
 		if st.DoneWhen == nil {
 			st.DoneWhen = &contract.DoneWhenState{}

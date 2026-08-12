@@ -65,6 +65,19 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 			return CheckAction{SessionName: sessionName, Instance: instance, Action: "wait", MaxRounds: maxRounds, Fingerprint: fingerprint}
 		}
 	}
+	if maxRounds > 0 && wasEscalated && rounds >= maxRounds && sameDoneWhenState {
+		return CheckAction{
+			SessionName: sessionName,
+			Instance:    instance,
+			Action:      "sleep",
+			Round:       rounds,
+			MaxRounds:   maxRounds,
+			Items:       items,
+			UnmetItems:  unmetItems,
+			Summary:     fmt.Sprintf("done_when escalation sleeping for %s", instance),
+			Fingerprint: fingerprint,
+		}
+	}
 	if maxRounds > 0 && !sameDoneWhenState && rounds >= maxRounds {
 		body := fmt.Sprintf("done_when exhausted after %d/%d round(s) for %s.\n\nUnmet items:\n%s", rounds, maxRounds, instance, unmetItemBulletList(unmetItems))
 		return CheckAction{

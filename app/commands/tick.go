@@ -30,9 +30,17 @@ re-spawned). Idempotent — safe to call repeatedly on unchanged state. Use
 "plect status" to read the same evaluation (including the chain plan) without
 acting on it.
 
-JSON actions are one of satisfied, wait, review_required, kick, or escalate.
-Each action carries max_rounds (0 means unbounded), a fingerprint for unchanged
-poll detection, and unmet_items with machine-readable check/judge state.`,
+After escalation, unchanged exhausted done_when state sleeps for heartbeat
+ticks and transfers blocker removal to the parent as a core-owned task. Event
+ticks still evaluate the child, so new revisions, judge verdicts, subscribed
+resource events, and chain firing remain live. Automatic revival handles stale
+judge verdicts after a new revision, stall observation handles runtime health,
+and escalation transfer handles round exhaustion.
+
+JSON actions are one of satisfied, wait, review_required, kick, escalate, or
+sleep. Each action carries max_rounds (0 means unbounded), a fingerprint for
+unchanged poll detection, and unmet_items with machine-readable check/judge
+state.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()

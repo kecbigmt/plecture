@@ -222,6 +222,9 @@ func (r *sessionReactor) checkHeartbeat(ctx context.Context) {
 	if s == nil || !hasRunScopeUp(s.Tasks) {
 		return
 	}
+	if r.heartbeatSleeping() {
+		return
+	}
 	if !s.LastTickAt.IsZero() {
 		n := 0
 		var lastLogPosition int64
@@ -241,6 +244,23 @@ func (r *sessionReactor) checkHeartbeat(ctx context.Context) {
 		}
 	}
 	r.doTick(ctx)
+}
+
+func (r *sessionReactor) heartbeatSleeping() bool {
+	result, err := service.CheckSession(r.cfg, r.state, service.CheckParams{SessionName: r.session})
+	if err != nil {
+		slog.Default().Warn("reactor: check heartbeat sleep state failed", "session", r.session, "error", err)
+		return false
+	}
+	if len(result.Actions) == 0 {
+		return false
+	}
+	for _, action := range result.Actions {
+		if action.Action != "sleep" {
+			return false
+		}
+	}
+	return true
 }
 
 // maxHeartbeat returns the declared `max_heartbeat` cap, falling back to

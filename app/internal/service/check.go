@@ -142,6 +142,13 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		if st == nil || st.Status != contract.TaskStatusProduced || key == contract.WorkflowPseudoNodeID {
 			continue
 		}
+		if isEscalationBlockerTask(st) {
+			action := checkEscalationBlockerAction(cfg, store, resolvedName, key, st)
+			if action.Action != "" {
+				computed = append(computed, computedAction{instance: key, action: action})
+			}
+			continue
+		}
 		taskID := taskIDForInstance(key, st)
 		def := defs[taskID]
 		dw, err := effectiveDoneWhen(def.DoneWhen, st)

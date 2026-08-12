@@ -2,6 +2,9 @@ package reactor
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -197,6 +200,71 @@ func TestSessionReactor_HeartbeatSweepTicksAfterElapsed(t *testing.T) {
 	waitLastTickAt(t, st, "o/r-1", floor)
 }
 
+func TestSessionReactor_HeartbeatSleepsAfterEscalationButEventsStillTrigger(t *testing.T) {
+	const sessionName = "o/r-1"
+	cfg := writeReactorCheckConfig(t, 1)
+	r, st, log := newTestReactor(t, config.TickConfig{
+		On:        []string{"resource.*"},
+		Heartbeat: config.Duration{Duration: 10 * time.Millisecond},
+	})
+	r.cfg = cfg
+	if err := st.Update(sessionName, func(s *domain.Session) error {
+		s.Workflow = "default"
+		s.Tasks["initial"] = &contract.TaskState{
+			Scope:   contract.TaskScopeSession,
+			TaskID:  "work",
+			Status:  contract.TaskStatusProduced,
+			Dynamic: true,
+			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			DoneWhen: &contract.DoneWhenState{
+				Rounds:     1,
+				LastAction: "escalate",
+			},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.CheckSession(cfg, st, service.CheckParams{SessionName: sessionName})
+	if err != nil {
+		t.Fatalf("seed fingerprint check: %v", err)
+	}
+	if len(result.Actions) != 1 || result.Actions[0].Action != "escalate" {
+		t.Fatalf("seed actions = %+v, want escalation", result.Actions)
+	}
+	if err := st.Update(sessionName, func(s *domain.Session) error {
+		s.Tasks["initial"].DoneWhen.LastFingerprint = result.Actions[0].Fingerprint
+		s.LastTickAt = time.Now().Add(-time.Hour)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	calls := 0
+	r.tickFn = func(cfg *config.Config, store *state.Store, params service.TickParams) (*service.CheckResult, error) {
+		calls++
+		return &service.CheckResult{}, nil
+	}
+
+	ctx := context.Background()
+	r.checkHeartbeat(ctx)
+	if calls != 0 {
+		t.Fatalf("heartbeat tick calls = %d, want 0 while escalated state is unchanged", calls)
+	}
+
+	if err := log.CommitCursor(sessionName, reactorConsumer, 0); err != nil {
+		t.Fatal(err)
+	}
+	startGen, _ := log.Gen(sessionName)
+	if _, _, _, err := log.Append(event.Event{SessionName: sessionName, Type: "resource.updated", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	r.drain(ctx, &startGen)
+	if calls != 1 {
+		t.Fatalf("event-driven tick calls = %d, want 1", calls)
+	}
+}
+
 // TestSessionReactor_UndeclaredHeartbeatNeverSweeps proves that with no
 // `heartbeat` declared, the passage of time alone must never tick a session
 // (only a declared `on` match or the judge builtin can).
@@ -211,6 +279,44 @@ func TestSessionReactor_UndeclaredHeartbeatNeverSweeps(t *testing.T) {
 	if s := st.Get("o/r-1"); s != nil && !s.LastTickAt.IsZero() {
 		t.Fatalf("session was ticked (LastTickAt = %s) with no heartbeat declared", s.LastTickAt)
 	}
+}
+
+func writeReactorCheckConfig(t *testing.T, maxRounds int) *config.Config {
+	t.Helper()
+	baseDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(baseDir, "tasks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(baseDir, "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	taskBody := fmt.Sprintf(`
+scope = "session"
+requires = ["checks_status"]
+
+[done_when]
+all = [
+  { check = "checks_status", eq = "SUCCESS" },
+]
+
+[done_when.budget]
+max_rounds = %d
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+checks_status = { type = "string", mutable = true }
+revision = { type = "string", mutable = true }
+`, maxRounds)
+	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "work.toml"), []byte(taskBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workflowBody := "[[nodes]]\nid = \"initial\"\nuses = \"work\"\n"
+	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "default.toml"), []byte(workflowBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return &config.Config{WorktreesRoot: t.TempDir(), BaseDir: baseDir}
 }
 
 // TestSessionReactor_ReactiveTickResetsHeartbeatWindow proves that a reactive
