@@ -14,9 +14,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/service"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 //go:embed assets
@@ -142,7 +142,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /events", s.handleSessionEvents)
 	// Cross-session timeline page: the session tree rooted at a session.
 	mux.HandleFunc("GET /subtrees/{name...}", s.handleSubtreeTimeline)
-	// Live timeline: sennit-web opens the bus SSE stream server-side and relays it
+	// Live timeline: cradel-web opens the bus SSE stream server-side and relays it
 	// to the browser (same-origin, so the browser holds no bus token / UDS).
 	mux.HandleFunc("GET /events/stream", s.handleSessionEventsStream)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)

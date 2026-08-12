@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kecbigmt/sennit/contracts/event"
-	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/ratebudget"
-	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/watcher"
+	"github.com/cradel-dev/cradel/contracts/event"
+	"github.com/cradel-dev/cradel/plugins/github-watcher/internal/ratebudget"
+	"github.com/cradel-dev/cradel/plugins/github-watcher/internal/watcher"
 )
 
 func main() {

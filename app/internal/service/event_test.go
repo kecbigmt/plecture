@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 func TestEventPublishListShow(t *testing.T) {

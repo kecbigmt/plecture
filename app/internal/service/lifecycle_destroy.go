@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	"github.com/kecbigmt/sennit/app/internal/workspace"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/eventlog"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/workspace"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // DestroyParams holds parameters for Destroy.

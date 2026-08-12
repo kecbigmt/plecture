@@ -11,8 +11,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/task"
 )
 
 // JudgeFact is the raw-fact view of one judge leaf at the current revision,

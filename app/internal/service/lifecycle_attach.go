@@ -3,10 +3,10 @@ package service
 import (
 	"fmt"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/task"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // AttachParams holds parameters for Attach.

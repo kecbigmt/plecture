@@ -3,7 +3,7 @@ package webui
 import (
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/domain"
 )
 
 // statusClass must return a distinct, non-empty class per known Run/Health

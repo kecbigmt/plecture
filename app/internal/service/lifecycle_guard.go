@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/state"
 )
 
 // checkLifecycleRelationGuard authorizes a destructive lifecycle operation

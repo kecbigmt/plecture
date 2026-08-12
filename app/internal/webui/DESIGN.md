@@ -1,6 +1,6 @@
 ---
 version: alpha
-name: sennit-web
+name: cradel-web
 description: shadcn-aligned neutral design system for the sennit session web UI
 colors:
   background: "#ffffff"

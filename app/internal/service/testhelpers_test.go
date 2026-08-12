@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 // setupE2ERepo creates a git repo structure that mimics what sennit expects.

@@ -8,8 +8,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 
-	protocol "github.com/kecbigmt/sennit/contracts/channel-protocol"
-	channelserver "github.com/kecbigmt/sennit/plugins/channel-server/server"
+	protocol "github.com/cradel-dev/cradel/contracts/channel-protocol"
+	channelserver "github.com/cradel-dev/cradel/plugins/channel-server/server"
 )
 
 func main() {

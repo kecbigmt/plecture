@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/task"
 )
 
 // FinalizeTaskParams are the inputs to FinalizeTask (`sennit task finalize`).

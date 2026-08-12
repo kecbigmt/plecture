@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/watcher"
+	"github.com/cradel-dev/cradel/plugins/github-watcher/internal/watcher"
 )
 
 func TestConfigureDeliveryRequiresBusUnlessLegacyOptIn(t *testing.T) {

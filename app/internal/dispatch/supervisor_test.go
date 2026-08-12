@@ -7,12 +7,12 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/eventlog"
+	"github.com/cradel-dev/cradel/app/internal/sessionhub"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 func writeFile(t *testing.T, path, content string) {

@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/sennit/contracts/event"
-	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/ratebudget"
+	"github.com/cradel-dev/cradel/contracts/event"
+	"github.com/cradel-dev/cradel/plugins/github-watcher/internal/ratebudget"
 )
 
 // sourceGitHub and typeGitHubPrefix are this plugin's own values for the

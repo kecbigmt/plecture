@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 func TestHandleEventShow_ReturnsPublishedEvent(t *testing.T) {

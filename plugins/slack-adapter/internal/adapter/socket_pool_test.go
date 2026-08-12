@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/contracts/channel-protocol"
-	"github.com/kecbigmt/sennit/plugins/channel-server/server"
+	"github.com/cradel-dev/cradel/contracts/channel-protocol"
+	"github.com/cradel-dev/cradel/plugins/channel-server/server"
 )
 
 func testLogger() *slog.Logger {

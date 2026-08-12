@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/kecbigmt/sennit/plugins/github-provider/internal/procexec"
+	"github.com/cradel-dev/cradel/plugins/github-provider/internal/procexec"
 )
 
-// defaultRunner shells out to the real sennit CLI. Stdout is the JSON the
+// defaultRunner shells out to the real Cradel CLI. Stdout is the JSON the
 // workspace subcommands print, so it is captured rather than streamed; a
 // failure carries the child's stderr into the returned error, which is where
 // the caller surfaces it.

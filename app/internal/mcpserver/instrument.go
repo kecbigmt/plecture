@@ -8,7 +8,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/kecbigmt/sennit/app/internal/traceid"
+	"github.com/cradel-dev/cradel/app/internal/traceid"
 )
 
 type traceIDKey struct{}

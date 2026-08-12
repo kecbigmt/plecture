@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 func writeResourceDefFixture(t *testing.T, baseDir, id, toml string) {

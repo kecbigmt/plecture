@@ -8,12 +8,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/contracts/event"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/eventlog"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	"github.com/cradel-dev/cradel/contracts/event"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // EventPublishParams describes an event to publish to a session's log.

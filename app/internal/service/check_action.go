@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/task"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 func checkActionForResult(sessionName, instance, resource string, dw *config.DoneWhen, st *contract.TaskState, result task.DoneWhenResult) CheckAction {

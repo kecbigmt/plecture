@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/cradel-dev/cradel/app/internal/service"
 )
 
 // postForm drives a same-origin htmx POST: it carries the matching CSRF cookie

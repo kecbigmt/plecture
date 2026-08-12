@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/domain"
 )
 
 func TestStore_PutAndGet(t *testing.T) {

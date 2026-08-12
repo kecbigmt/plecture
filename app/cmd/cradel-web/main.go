@@ -1,4 +1,4 @@
-// Command sennit-web serves the sennit session management web UI (control plane).
+// Command cradel-web serves the Cradel session management web UI (control plane).
 package main
 
 import (
@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/webui"
+	"github.com/cradel-dev/cradel/app/internal/webui"
 )
 
 func main() {
@@ -23,7 +23,7 @@ func main() {
 	flag.Parse()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).
-		With("component", "sennit-web")
+		With("component", "cradel-web")
 
 	cfg := webui.LoadConfig()
 	addr := cfg.Addr(*host, port)

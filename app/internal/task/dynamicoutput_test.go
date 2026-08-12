@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 func TestFetchOutput_Single(t *testing.T) {

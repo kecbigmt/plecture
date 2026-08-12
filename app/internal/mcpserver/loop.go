@@ -6,10 +6,10 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/service"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/task"
 )
 
 // Loop-engineering surface: the typed MCP counterparts of the CLI task / gate /

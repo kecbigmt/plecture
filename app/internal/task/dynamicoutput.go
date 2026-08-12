@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 // FetchOutput runs the script (or, when FromResourceStatus is set, observes

@@ -9,7 +9,7 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Config controls how sennit-web binds and (later) authenticates. Loaded from
+// Config controls how cradel-web binds and (later) authenticates. Loaded from
 // ~/.config/sennit-web/config.toml; missing file falls back to defaults.
 type Config struct {
 	// ListenAddr defaults to loopback so the control plane is not exposed on

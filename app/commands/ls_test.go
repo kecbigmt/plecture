@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/service"
 )
 
 func TestFilterByParent(t *testing.T) {

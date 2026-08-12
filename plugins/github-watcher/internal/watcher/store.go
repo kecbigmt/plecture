@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/kecbigmt/sennit/contracts/atomicfile"
+	"github.com/cradel-dev/cradel/contracts/atomicfile"
 )
 
 // registryVersion is the on-disk subscription format version. It was bumped to 2

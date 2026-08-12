@@ -10,7 +10,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/kecbigmt/sennit/contracts/channel-protocol"
+	"github.com/cradel-dev/cradel/contracts/channel-protocol"
 )
 
 // MessageHandler is called when a message is received from a connected client.

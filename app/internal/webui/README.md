@@ -1,6 +1,6 @@
-# sennit-web (webui)
+# cradel-web (webui)
 
-A control-plane web UI for sennit session management. The `sennit-web` command
+A control-plane web UI for Cradel session management. The `cradel-web` command
 embeds this directory's `assets/` via `//go:embed` and serves them.
 
 - **Stack**: Go `html/template` + [htmx](https://htmx.org/) + [Tailwind v4](https://tailwindcss.com/). No React, single binary.
@@ -19,8 +19,8 @@ pnpm install            # dev dependencies only
 ## Running
 
 ```bash
-go run ./app/cmd/sennit-web                          # http://127.0.0.1:8787 (default: loopback)
-go run ./app/cmd/sennit-web --host 0.0.0.0 -p 8799   # expose on a private network / VPN
+go run ./app/cmd/cradel-web                          # http://127.0.0.1:8787 (default: loopback)
+go run ./app/cmd/cradel-web --host 0.0.0.0 -p 8799   # expose on a private network / VPN
 ```
 
 The bind address is set via `--host` / `--port` (`-p`), or `listen_addr` in
@@ -63,7 +63,7 @@ input.css + templates ──────────────────┘
 
 Generated artifacts (`assets/static/app.css` / `htmx.min.js` /
 `theme.generated.css` / `components/icons/`) are committed to the repo. The
-`sennit-web` CI workflow runs `pnpm build` and fails if it produces an
+`cradel-web` CI workflow runs `pnpm build` and fails if it produces an
 uncommitted diff. The Go build itself never invokes pnpm/node — it only embeds
 the committed assets.
 

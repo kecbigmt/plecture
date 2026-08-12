@@ -1,12 +1,12 @@
-module github.com/kecbigmt/sennit/plugins/slack-adapter
+module github.com/cradel-dev/cradel/plugins/slack-adapter
 
 go 1.25.6
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/kecbigmt/sennit/contracts/channel-protocol v0.0.0
-	github.com/kecbigmt/sennit/contracts/event v0.0.0
-	github.com/kecbigmt/sennit/plugins/channel-server v0.0.0
+	github.com/cradel-dev/cradel/contracts/channel-protocol v0.0.0
+	github.com/cradel-dev/cradel/contracts/event v0.0.0
+	github.com/cradel-dev/cradel/plugins/channel-server v0.0.0
 	github.com/slack-go/slack v0.22.0
 )
 
@@ -20,7 +20,7 @@ require (
 )
 
 replace (
-	github.com/kecbigmt/sennit/contracts/channel-protocol => ../../contracts/channel-protocol
-	github.com/kecbigmt/sennit/contracts/event => ../../contracts/event
-	github.com/kecbigmt/sennit/plugins/channel-server => ../channel-server
+	github.com/cradel-dev/cradel/contracts/channel-protocol => ../../contracts/channel-protocol
+	github.com/cradel-dev/cradel/contracts/event => ../../contracts/event
+	github.com/cradel-dev/cradel/plugins/channel-server => ../channel-server
 )

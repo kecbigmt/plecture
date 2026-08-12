@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // InstanceKey derives the session.Tasks key for the numbered form of a dynamic

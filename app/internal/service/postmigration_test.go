@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/state"
 )
 
 // postMigrationStateJSON is a state directory in the shape the one-time

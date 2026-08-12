@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // cleanup runs the instance's cleanup script and removes it from state so the

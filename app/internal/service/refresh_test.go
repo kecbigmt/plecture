@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // reviewFixtureWithOutput is a fixture task whose checks_status output is

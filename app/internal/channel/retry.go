@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 // RetryPolicy bounds a channel worker's delivery attempts. DefaultRetryPolicy is

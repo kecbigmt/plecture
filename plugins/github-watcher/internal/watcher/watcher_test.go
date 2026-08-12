@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/contracts/event"
-	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/ratebudget"
+	"github.com/cradel-dev/cradel/contracts/event"
+	"github.com/cradel-dev/cradel/plugins/github-watcher/internal/ratebudget"
 )
 
 func TestStore_SubscribeUnsubscribe(t *testing.T) {
@@ -255,7 +255,7 @@ func TestPoller_TickNotifiesAndAdvancesBaseline(t *testing.T) {
 		prCoreRouteFull("7", "closed", true, "deadbeef1", "dirty", false),
 	})
 	sennitLog := filepath.Join(t.TempDir(), "sennit.log")
-	fakeBin(t, binDir, "sennit", `echo "$@" >> `+sennitLog)
+	fakeBin(t, binDir, "cradel", `echo "$@" >> `+sennitLog)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	var notified []map[string]any

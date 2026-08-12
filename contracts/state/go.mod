@@ -1,3 +1,3 @@
-module github.com/kecbigmt/sennit/contracts/state
+module github.com/cradel-dev/cradel/contracts/state
 
 go 1.25.6

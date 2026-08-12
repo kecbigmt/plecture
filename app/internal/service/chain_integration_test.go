@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/state"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // TestIntegration_TickSpawnsReviewer drives the full fire path: a work

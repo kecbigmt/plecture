@@ -60,6 +60,9 @@ func TestSetup_IssueAcquiresTaggedWorktree(t *testing.T) {
 		t.Fatalf("issued %d workspace calls, want 1", len(calls))
 	}
 	args := calls[0]
+	if args[0] != "cradel" {
+		t.Errorf("binary = %q, want cradel", args[0])
+	}
 	if args[1] != "workspace" || args[2] != "add" {
 		t.Errorf("call = %v, want a workspace add", args)
 	}

@@ -13,8 +13,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/sennit/app/internal/mcpserver"
-	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/cradel-dev/cradel/app/internal/mcpserver"
+	"github.com/cradel-dev/cradel/app/internal/service"
 )
 
 // helperProcessEnv is the sentinel that makes this test binary double as the

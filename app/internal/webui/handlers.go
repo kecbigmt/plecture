@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/app/internal/service"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 // appView is the data for the two-pane shell (list on the left, detail on the

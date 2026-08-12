@@ -6,7 +6,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/kecbigmt/sennit/plugins/github-provider/internal/procexec"
+	"github.com/cradel-dev/cradel/plugins/github-provider/internal/procexec"
 )
 
 // RepoSlug is the repository's path relative to the worktrees root for a

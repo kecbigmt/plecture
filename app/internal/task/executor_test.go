@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // spyExecutor records every ExecRequest it receives and returns a canned

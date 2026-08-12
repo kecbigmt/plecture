@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/task"
 )
 
 // TestFlakeOverlays_ClaudeCodexCompile guards every repo-specific claude.toml /

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 func TestMatchResourceDef_NoMatch(t *testing.T) {

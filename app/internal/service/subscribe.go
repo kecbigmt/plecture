@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/task"
 )
 
 // SubscribeParams are the inputs to Subscribe. ResourceID is the opaque

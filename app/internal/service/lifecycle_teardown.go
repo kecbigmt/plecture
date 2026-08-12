@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/task"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // runWorkflowCleanupForDestroy resolves the session's workflow definition and

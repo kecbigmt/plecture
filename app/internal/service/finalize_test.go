@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // FinalizeTask must refuse — no cleanup attempted, instance left in place —

@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	"github.com/kecbigmt/sennit/contracts/event"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/task"
+	"github.com/cradel-dev/cradel/contracts/event"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // statusFlowLimit bounds the "flow" layer to the most recent events — status

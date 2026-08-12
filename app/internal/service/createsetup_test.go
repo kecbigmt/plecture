@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/contracts/event"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/contracts/event"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // writeSetupWorkflow gives the fixture workflow a resource provider: the

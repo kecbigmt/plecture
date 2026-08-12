@@ -5,8 +5,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/service"
 )
 
 var resourceStatusTool = mcp.NewTool("sennit_resource_status",

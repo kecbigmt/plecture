@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 // ExecRequest is a single host-process invocation: Argv[0] is the command,

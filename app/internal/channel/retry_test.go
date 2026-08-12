@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 func fastPolicy(maxAttempts int) RetryPolicy {

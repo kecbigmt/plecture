@@ -5,22 +5,22 @@ import (
 	"os/exec"
 	"sort"
 
-	protocol "github.com/kecbigmt/sennit/contracts/channel-protocol"
+	protocol "github.com/cradel-dev/cradel/contracts/channel-protocol"
 )
 
 // Conversation capture: slack-adapter mirrors the Slack↔Claude traffic that
-// flows through it into sennit's per-session event log, so a session's timeline
+// flows through it into Cradel's per-session event log, so a session's timeline
 // shows the actual back-and-forth, not just GitHub/lifecycle events.
 //
 // Both directions pass through this adapter (inbound Slack messages here;
 // Claude replies / permission prompts via the channel-server socket callbacks),
-// and the adapter already knows the sennit session_name via its broker — so all
+// and the adapter already knows the Cradel session name via its broker, so all
 // capture lives here and channel-server stays source-independent (it must not
-// know about sennit sessions). Recording is done by exec'ing the `sennit` CLI (no
-// import of sennit/app) and is best-effort: a failure is logged, never blocking
+// know about Cradel sessions). Recording is done by exec'ing the `cradel` CLI
+// with no app import and is best-effort: a failure is logged, never blocking
 // delivery.
 
-// captureArgs builds the `sennit event publish` argument vector. Captured event
+// captureArgs builds the `cradel event publish` argument vector. Captured event
 // types are intentionally outside workflow channel includes so Slack/Claude
 // traffic is recorded without echoing back out.
 // Meta keys are sorted for deterministic output (and tests).
@@ -55,10 +55,10 @@ func (a *Adapter) publishEvent(sessionName, eventType, source, direction, summar
 	if sessionName == "" {
 		return // no session context to key the log on
 	}
-	cmd := exec.Command("sennit", captureArgs(sessionName, eventType, source, direction, summary, body, meta)...)
+	cmd := exec.Command("cradel", captureArgs(sessionName, eventType, source, direction, summary, body, meta)...)
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		a.logger.Warn("sennit event capture failed",
+		a.logger.Warn("cradel event capture failed",
 			"component", "slack-adapter", "event", "capture_failed",
 			"session_name", sessionName, "type", eventType, "error", err)
 	}

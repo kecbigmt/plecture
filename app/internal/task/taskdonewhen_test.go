@@ -3,7 +3,7 @@ package task
 import (
 	"testing"
 
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 func TestRenderOutputsTemplate_WorkflowOutputs(t *testing.T) {

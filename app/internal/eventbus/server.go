@@ -24,9 +24,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/app/internal/eventlog"
+	"github.com/cradel-dev/cradel/app/internal/sessionhub"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 // keepAliveInterval bounds how long a stream stays silent: after this much idle

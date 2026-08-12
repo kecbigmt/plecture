@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/app/internal/eventlog"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 const pollInterval = 500 * time.Millisecond

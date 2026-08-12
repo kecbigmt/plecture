@@ -3,10 +3,10 @@ package service
 import (
 	"maps"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // TemplateVars is the read-only projection of a session that `sennit template

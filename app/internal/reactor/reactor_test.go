@@ -6,14 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/contracts/event"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/eventlog"
+	"github.com/cradel-dev/cradel/app/internal/service"
+	"github.com/cradel-dev/cradel/app/internal/sessionhub"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	"github.com/cradel-dev/cradel/contracts/event"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // newTestReactor builds a sessionReactor over a fast-poll hub so tests don't

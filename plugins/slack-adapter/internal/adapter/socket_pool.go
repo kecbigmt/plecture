@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/kecbigmt/sennit/contracts/channel-protocol"
+	"github.com/cradel-dev/cradel/contracts/channel-protocol"
 )
 
 // SocketPool manages connections to channel-server instances via Unix socket.

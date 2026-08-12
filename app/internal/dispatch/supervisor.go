@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/channel"
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/channel"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/eventlog"
+	"github.com/cradel-dev/cradel/app/internal/sessionhub"
+	"github.com/cradel-dev/cradel/app/internal/state"
 )
 
 // Supervisor keeps at most one dispatcher per active session. It is the single

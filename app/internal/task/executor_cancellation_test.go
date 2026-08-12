@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // These tests cover cancellation for the five task exec paths (setup,

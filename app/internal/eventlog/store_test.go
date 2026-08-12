@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 // TestMain lets a test re-exec itself as a child appender so we can exercise the

@@ -11,7 +11,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
+	"github.com/cradel-dev/cradel/app/internal/domain"
 )
 
 // WorkflowFile is loaded from `.sennit/workflows/<id>.toml` (per-repo) or from

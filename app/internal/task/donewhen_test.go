@@ -3,7 +3,7 @@ package task
 import (
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 func strp(s string) *string { return &s }

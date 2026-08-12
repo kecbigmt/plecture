@@ -14,13 +14,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/dispatch"
-	"github.com/kecbigmt/sennit/app/internal/eventbus"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/reactor"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/dispatch"
+	"github.com/cradel-dev/cradel/app/internal/eventbus"
+	"github.com/cradel-dev/cradel/app/internal/eventlog"
+	"github.com/cradel-dev/cradel/app/internal/reactor"
+	"github.com/cradel-dev/cradel/app/internal/sessionhub"
+	"github.com/cradel-dev/cradel/app/internal/state"
 )
 
 var busSocket string

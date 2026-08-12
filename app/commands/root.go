@@ -5,7 +5,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "sennit",
+	Use:   "cradel",
 	Short: "Manage runtime sessions and git worktrees for resource-driven workflows",
 	Long: `sennit manages runtime sessions and git worktrees for workflows keyed by a
 resource identifier.

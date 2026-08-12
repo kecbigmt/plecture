@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	"github.com/kecbigmt/sennit/contracts/event"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/eventlog"
+	"github.com/cradel-dev/cradel/app/internal/task"
+	"github.com/cradel-dev/cradel/contracts/event"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 func TestTaskSetup_AppendsInstructionEvent(t *testing.T) {

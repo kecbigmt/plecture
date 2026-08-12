@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/state"
 )
 
 // setUpConfigHomeWithCapture is setUpConfigHome plus a capture-bearing

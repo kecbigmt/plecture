@@ -16,7 +16,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kecbigmt/sennit/plugins/legacy-migration/internal/migrate"
+	"github.com/cradel-dev/cradel/plugins/legacy-migration/internal/migrate"
 )
 
 func main() {

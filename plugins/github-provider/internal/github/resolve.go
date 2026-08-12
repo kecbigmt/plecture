@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/sennit/plugins/github-provider/internal/procexec"
+	"github.com/cradel-dev/cradel/plugins/github-provider/internal/procexec"
 )
 
 // projectItemResponse is the GraphQL response structure for resolving a project item.

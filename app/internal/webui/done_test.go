@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/service"
+	"github.com/cradel-dev/cradel/app/internal/task"
 )
 
 // sampleTasks returns a done_when-bearing task with one satisfied check leaf and

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/cradel-dev/cradel/app/internal/service"
 )
 
 func TestWriteWorkflowList_NoHeaderUsesLiteralTabs(t *testing.T) {

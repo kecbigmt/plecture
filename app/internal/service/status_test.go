@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/task"
 )
 
 // Status's "work" layer must carry the same decision-making material the

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/state"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // dependsOn returns an `inputs` map that wires a node to upstream nodes so

@@ -10,9 +10,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/contracts/atomicfile"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	"github.com/cradel-dev/cradel/contracts/atomicfile"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 const stateVersion = 5

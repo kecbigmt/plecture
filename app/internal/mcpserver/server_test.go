@@ -9,7 +9,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/cradel-dev/cradel/app/internal/state"
 )
 
 // setUpConfigHome points config.Load()/state.NewStore("") at a scratch config

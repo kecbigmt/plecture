@@ -1,13 +1,13 @@
-module github.com/kecbigmt/sennit/app
+module github.com/cradel-dev/cradel/app
 
 go 1.25.6
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/kecbigmt/sennit/contracts/atomicfile v0.0.0
-	github.com/kecbigmt/sennit/contracts/channel-protocol v0.0.0
-	github.com/kecbigmt/sennit/contracts/event v0.0.0
-	github.com/kecbigmt/sennit/contracts/state v0.0.0
+	github.com/cradel-dev/cradel/contracts/atomicfile v0.0.0
+	github.com/cradel-dev/cradel/contracts/channel-protocol v0.0.0
+	github.com/cradel-dev/cradel/contracts/event v0.0.0
+	github.com/cradel-dev/cradel/contracts/state v0.0.0
 	github.com/mark3labs/mcp-go v0.48.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
@@ -26,8 +26,8 @@ require (
 )
 
 replace (
-	github.com/kecbigmt/sennit/contracts/atomicfile => ../contracts/atomicfile
-	github.com/kecbigmt/sennit/contracts/channel-protocol => ../contracts/channel-protocol
-	github.com/kecbigmt/sennit/contracts/event => ../contracts/event
-	github.com/kecbigmt/sennit/contracts/state => ../contracts/state
+	github.com/cradel-dev/cradel/contracts/atomicfile => ../contracts/atomicfile
+	github.com/cradel-dev/cradel/contracts/channel-protocol => ../contracts/channel-protocol
+	github.com/cradel-dev/cradel/contracts/event => ../contracts/event
+	github.com/cradel-dev/cradel/contracts/state => ../contracts/state
 )

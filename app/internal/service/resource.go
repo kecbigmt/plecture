@@ -3,8 +3,8 @@ package service
 import (
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/task"
 )
 
 // ResourceStatusParams are the inputs to ResourceStatus (`sennit resource

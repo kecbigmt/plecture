@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 func TestMutableOutputKeys_ExtractsAnnotatedKeys(t *testing.T) {

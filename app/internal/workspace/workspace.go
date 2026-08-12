@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/procexec"
+	"github.com/cradel-dev/cradel/app/internal/procexec"
 )
 
 type WorkspaceInfo struct {

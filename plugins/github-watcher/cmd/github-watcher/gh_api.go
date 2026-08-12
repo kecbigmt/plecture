@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/ratebudget"
+	"github.com/cradel-dev/cradel/plugins/github-watcher/internal/ratebudget"
 )
 
 // cmdGhAPI is `github-watcher gh-api [--data-dir <dir>] <gh api args...>`:

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 // recordingObserver captures observer events for assertions.

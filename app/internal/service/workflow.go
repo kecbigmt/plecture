@@ -5,8 +5,8 @@ import (
 	"maps"
 	"sort"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/task"
 )
 
 // WorkflowSummary is a row in WorkflowList output: just enough to pick the

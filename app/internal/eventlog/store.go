@@ -27,8 +27,8 @@ import (
 
 	"github.com/oklog/ulid/v2"
 
-	"github.com/kecbigmt/sennit/contracts/atomicfile"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/contracts/atomicfile"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 // pollInterval is how often Follow checks the log for new records. A poll

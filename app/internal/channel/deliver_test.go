@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	protocol "github.com/kecbigmt/sennit/contracts/channel-protocol"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/app/internal/config"
+	protocol "github.com/cradel-dev/cradel/contracts/channel-protocol"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 // TestShippedChannelDefsRender renders every shipped channel definition's

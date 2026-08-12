@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 func TestCompileWorkflow_DerivesDAGFromInputs(t *testing.T) {

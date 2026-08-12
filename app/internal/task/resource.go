@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/cradel-dev/cradel/app/internal/config"
 )
 
 // MatchResourceDef finds the resource definition whose `match` recognizes

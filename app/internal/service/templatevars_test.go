@@ -3,8 +3,8 @@ package service
 import (
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/cradel-dev/cradel/app/internal/domain"
+	contract "github.com/cradel-dev/cradel/contracts/state"
 )
 
 func TestProjectTemplateVars(t *testing.T) {

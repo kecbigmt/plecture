@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/cradel-dev/cradel/app/internal/service"
+	"github.com/cradel-dev/cradel/contracts/event"
 )
 
 func TestEventsPartial_RendersNewestFirst(t *testing.T) {
