@@ -42,7 +42,7 @@ var taskSetupTool = mcp.NewTool("sennit_task_setup",
 )
 
 var taskCleanupTool = mcp.NewTool("sennit_task_cleanup",
-	mcp.WithDescription("Reclaim one dynamic task instance: run its cleanup script and remove it from session state. The single-instance counterpart of sennit_down / sennit_destroy. Addressed by its key alone (a name or a numbered <task>#<n>) and reclaimed regardless of which task produced it. A missing instance is a no-op success, so cleanup-then-setup is a safe recreate idiom."),
+	mcp.WithDescription("Reclaim one dynamic task instance: run its cleanup script and remove it from session state. The single-instance counterpart of sennit_down. Addressed by its key alone (a name or a numbered <task>#<n>) and reclaimed regardless of which task produced it. A missing instance is a no-op success, so cleanup-then-setup is a safe recreate idiom."),
 	mcp.WithString("instance",
 		mcp.Required(),
 		mcp.Description("Instance key to reclaim (a name, e.g. \"initial\", or a numbered key, e.g. \"review#1\")"),

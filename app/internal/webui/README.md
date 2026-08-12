@@ -29,7 +29,7 @@ doesn't accidentally expose itself on every interface.
 
 ## Security (mutating operations)
 
-create / up / down / destroy change state. Defense in depth lives in `security.go`:
+start / up / down / remove change state. Defense in depth lives in `security.go`:
 
 - **CSRF** (always on): mutating POSTs require **same-origin** (Origin/Referer
   host == Host) and a **double-submit token** (`sennit_csrf` cookie ==

@@ -30,7 +30,7 @@ var upCmd = &cobra.Command{
 	Short: "Run run-scoped tasks for a session",
 	Long: `Run setup commands for all run-scoped tasks declared in config.toml,
 in dependency-respecting order. Outputs from session-scoped tasks (already
-set up by 'sennit create') are available to run-scoped tasks via {{.Tasks.<id>.<key>}}.
+set up during auto-create) are available to run-scoped tasks via {{.Tasks.<id>.<key>}}.
 
 After setup, docker-compose-style: on a TTY 'up' hands off to the workflow's
 attach target by replacing the sennit process via syscall.Exec.
@@ -40,10 +40,10 @@ automatically; the MCP sennit_up tool is always detached. Workflows without an
 attach target return after setup regardless of TTY.
 
 --tag selects the session's workspace-identity label. Omitted, it defaults to
-the workflow id (the same default 'sennit create' applies), so 'sennit up <resource-id>
---workflow X' converges on the session 'sennit create' would make. Pass --tag to
+the workflow id, so repeated 'sennit up <resource-id> --workflow X' calls
+converge on the same session. Pass --tag to
 resolve a specifically-labelled session (e.g. 'sennit up <resource-id> --tag X'
-matches 'sennit create <resource-id> --tag X'). --tag is only valid with a
+reuses that tagged session). --tag is only valid with a
 resource identifier, not a bare session name (the name already encodes the tag).
 
 --inputs / --inputs-file forward session inputs to the auto-create path when
@@ -51,7 +51,8 @@ the session does not yet exist; passing them against an already-created
 session returns an error (session inputs are set once, at create time).
 
 --task <id> is shorthand for --inputs '{"task":"<id>"}' on the auto-create
-path; see 'sennit create --help' for the required/none semantics.
+path. Workflows that require a task reject auto-create without it; pass
+--task none for an ad-hoc session with no initial instruction.
 
 --force-recreate rebuilds the session runtime for an existing session while
 keeping its durable identity and event log. It cleans and forgets workflow
@@ -121,7 +122,7 @@ func stdoutIsTerminal() bool {
 }
 
 func init() {
-	upCmd.Flags().StringVar(&upTag, "tag", "", "Workspace-identity label of the session to resolve/auto-create (resource-identifier only). Defaults to the workflow id, matching `sennit create`.")
+	upCmd.Flags().StringVar(&upTag, "tag", "", "Workspace-identity label of the session to resolve/auto-create (resource-identifier only). Defaults to the workflow id.")
 	upCmd.Flags().StringVarP(&upWorkflow, "workflow", "w", "", "Workflow id (auto-create path only; must match session's frozen workflow)")
 	upCmd.Flags().StringVar(&upInputs, "inputs", "", "Session inputs as a JSON object string (auto-create path only)")
 	upCmd.Flags().StringVar(&upInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object (auto-create path only)")

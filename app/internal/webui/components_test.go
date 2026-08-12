@@ -39,10 +39,10 @@ func TestBadge_RendersStatus(t *testing.T) {
 // "button", and name/value are emitted when provided.
 func TestButton_VariantAndAttrs(t *testing.T) {
 	out := exec(t, "button", map[string]any{
-		"variant": "destructive", "label": "Destroy", "name": "action", "value": "destroy",
+		"variant": "destructive", "label": "Remove", "name": "action", "value": "remove",
 	})
 	for _, want := range []string{
-		`type="button"`, `name="action"`, `value="destroy"`, ">Destroy<",
+		`type="button"`, `name="action"`, `value="remove"`, ">Remove<",
 		"bg-destructive", "focus-visible:ring-ring",
 	} {
 		if !strings.Contains(out, want) {
@@ -121,13 +121,13 @@ func TestCard_ActiveHighlighted(t *testing.T) {
 // destructive variant.
 func TestDialog_NativeAndLabelled(t *testing.T) {
 	out := exec(t, "dialog", map[string]any{
-		"id": "destroy", "title": "Destroy session?", "message": "This cannot be undone.",
-		"confirmLabel": "Destroy",
+		"id": "remove", "title": "Remove session?", "message": "This cannot be undone.",
+		"confirmLabel": "Remove",
 	})
 	for _, want := range []string{
-		"<dialog", `id="destroy"`, `aria-labelledby="destroy-title"`,
-		`id="destroy-title"`, "Destroy session?", "This cannot be undone.",
-		`method="dialog"`, ">Cancel<", ">Destroy<", "bg-destructive",
+		"<dialog", `id="remove"`, `aria-labelledby="remove-title"`,
+		`id="remove-title"`, "Remove session?", "This cannot be undone.",
+		`method="dialog"`, ">Cancel<", ">Remove<", "bg-destructive",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dialog missing %q: %s", want, out)

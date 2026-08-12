@@ -473,7 +473,7 @@ func TestWorktreeAddError_AlreadyCheckedOutHint(t *testing.T) {
 	if !strings.Contains(msg, "git worktree add failed") {
 		t.Errorf("expected 'git worktree add failed' prefix in error, got: %s", msg)
 	}
-	if !strings.Contains(msg, "sennit create <resource> --tag <tag>") {
+	if !strings.Contains(msg, "sennit up <resource> --tag <tag>") {
 		t.Errorf("expected tag hint in error, got: %s", msg)
 	}
 }

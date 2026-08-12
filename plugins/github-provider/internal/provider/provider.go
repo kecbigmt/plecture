@@ -99,7 +99,7 @@ type CleanupOptions struct {
 	Workdir string
 	Branch  string
 	// Force removes the worktree even when it carries uncommitted changes,
-	// mirroring the caller's `sennit destroy --force` intent.
+	// mirroring the caller's `sennit down --rm --force` intent.
 	Force bool
 	// Runner executes the sennit workspace calls. Nil uses the real CLI.
 	Runner Runner

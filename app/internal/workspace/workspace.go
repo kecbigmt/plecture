@@ -396,7 +396,7 @@ func (m *Manager) isRegisteredWorktree(ctx context.Context, gitDir, wtPath strin
 // human-readable message rather than the exit status.
 func worktreeAddError(err error, stderr string) error {
 	if strings.Contains(stderr, "already checked out") || strings.Contains(stderr, "already used by worktree") {
-		return fmt.Errorf("git worktree add failed: %w\nHint: a worktree for this branch already exists. To start a separate session, use a tag:\n  sennit create <resource> --tag <tag>", err)
+		return fmt.Errorf("git worktree add failed: %w\nHint: a worktree for this branch already exists. To start a separate session, use a tag:\n  sennit up <resource> --tag <tag>", err)
 	}
 	return fmt.Errorf("git worktree add failed: %w", err)
 }

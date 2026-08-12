@@ -29,10 +29,8 @@ func NewServer() *server.MCPServer {
 	}
 
 	s.AddTools(
-		server.ServerTool{Tool: createTool, Handler: wrap("sennit_create", handleCreate)},
 		server.ServerTool{Tool: upTool, Handler: wrap("sennit_up", handleUp)},
 		server.ServerTool{Tool: downTool, Handler: wrap("sennit_down", handleDown)},
-		server.ServerTool{Tool: destroyTool, Handler: wrap("sennit_destroy", handleDestroy)},
 		server.ServerTool{Tool: statusTool, Handler: wrap("sennit_status", handleStatus)},
 		server.ServerTool{Tool: captureTool, Handler: wrap("sennit_capture", handleCapture)},
 		server.ServerTool{Tool: listTool, Handler: wrap("sennit_list", handleList)},
@@ -58,37 +56,14 @@ func NewServer() *server.MCPServer {
 	return s
 }
 
-var createTool = mcp.NewTool("sennit_create",
-	mcp.WithDescription("Create a session for a resource identifier and run session-scoped tasks. A workflow whose [resolver] matches the identifier is auto-selected; other identifiers need an explicit workflow. Does not start the runtime — call sennit_up to launch run-scoped tasks."),
-	mcp.WithString("url",
-		mcp.Required(),
-		mcp.Description("Resource identifier the active workflow's [resolver] accepts. Which identifiers resolve out of the box depends on the providers installed; an identifier no resolver matches needs an explicit workflow. The JSON key stays \"url\" for historical reasons."),
-	),
-	mcp.WithString("tag",
-		mcp.Description("Workspace-identity label for the session. Omit it to default to the workflow id, so two tools on one resource (e.g. claude work, codex review) get separate workspaces automatically; pass it to label a retry/parallel session (e.g. \"review\" → workspace-123+review). Provider-agnostic — a provider may map it to a branch/worktree suffix."),
-	),
-	mcp.WithString("parent",
-		mcp.Description("Parent session name for the session tree. Defaults to SENNIT_SESSION_NAME when it names an existing session."),
-	),
-	mcp.WithObject("inputs",
-		mcp.Description("Session inputs as a JSON object. Validated against [inputs_schema] in the active workflow file (or top-level config.toml for the legacy inline-tasks path), frozen at create time, and exposed to task templates as {{.Inputs.<key>}}."),
-	),
-	mcp.WithString("workflow",
-		mcp.Description("Workflow id (filename stem of .sennit/workflows/<id>.toml). Required when the identifier has no matching [resolver]; with a resolver-less workflow the identifier itself becomes the session id."),
-	),
-	mcp.WithString("task",
-		mcp.Description("Shorthand for inputs.task — sets the session's initial task id (e.g. \"work\", \"review\"). Merged into inputs; conflicts with a different \"task\" already set there. Workflows that declare task as required (e.g. claude, codex) reject create without it; pass \"none\" for an ad-hoc session with no initial instruction."),
-	),
-)
-
 var upTool = mcp.NewTool("sennit_up",
-	mcp.WithDescription("Run run-scoped tasks for a session, in dependency-respecting order. When the identifier is a resource identifier and no state entry exists (or a session-scoped task has not yet reached \"produced\"), sennit_create is invoked first (docker compose up-style auto-create)."),
+	mcp.WithDescription("Run run-scoped tasks for a session, in dependency-respecting order. When the identifier is a resource identifier and no state entry exists, sennit_up auto-creates the session first."),
 	mcp.WithString("session",
 		mcp.Required(),
 		mcp.Description("Resource identifier or session name (e.g. workspace-123)"),
 	),
 	mcp.WithString("tag",
-		mcp.Description("Workspace-identity label of the session to resolve/auto-create (resource-identifier only, not a bare session name). Defaults to the workflow id, matching sennit_create."),
+		mcp.Description("Workspace-identity label of the session to resolve/auto-create (resource-identifier only, not a bare session name). Defaults to the workflow id."),
 	),
 	mcp.WithString("parent",
 		mcp.Description("Parent session name for auto-created sessions. Defaults to SENNIT_SESSION_NAME when it names an existing session."),
@@ -100,7 +75,7 @@ var upTool = mcp.NewTool("sennit_up",
 		mcp.Description("Workflow id forwarded to the auto-create path (resolver-less workflows need this). Rejected when the session already exists."),
 	),
 	mcp.WithString("task",
-		mcp.Description("Shorthand for inputs.task, forwarded to the auto-create path; see sennit_create's task parameter. Rejected when the session already exists."),
+		mcp.Description("Shorthand for inputs.task, forwarded to the auto-create path. Rejected when the session already exists."),
 	),
 	mcp.WithBoolean("force_recreate",
 		mcp.Description("Rebuild the session runtime for an existing session instead of resuming existing task outputs."),
@@ -108,25 +83,20 @@ var upTool = mcp.NewTool("sennit_up",
 )
 
 var downTool = mcp.NewTool("sennit_down",
-	mcp.WithDescription("Run run-scoped cleanup for a session in reverse dependency order. Session-scoped tasks are preserved."),
+	mcp.WithDescription("Run run-scoped cleanup for a session in reverse dependency order. Session-scoped tasks are preserved unless rm=true requests full removal."),
 	mcp.WithString("session",
 		mcp.Required(),
 		mcp.Description("Resource identifier or session name (e.g. workspace-123)"),
 	),
-)
-
-var destroyTool = mcp.NewTool("sennit_destroy",
-	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → worktree removal → state entry deletion. Fail-fast by default; --force demotes cleanup errors to warnings so a stuck session can be freed. Also fails closed (code has_children) if the session has child sessions, since deleting it would orphan them; --force orphans them instead, reported via cleanup_warnings."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
-	mcp.WithString("session",
-		mcp.Required(),
-		mcp.Description("Resource identifier or session name (e.g. workspace-123)"),
+	mcp.WithBoolean("rm",
+		mcp.Description("Remove the session after cleanup, including session-scoped tasks and state."),
 	),
 	mcp.WithBoolean("force",
-		mcp.Description("Demote cleanup errors to warnings so teardown continues through worktree + state deletion; also passes --force to git worktree remove so a dirty worktree can be removed; and proceeds when the session has child sessions, orphaning them instead of aborting"),
+		mcp.Description("With rm=true, demote cleanup errors to warnings so teardown continues, and proceed when child sessions would be orphaned."),
 	),
 	mcp.WithBoolean("delete_branch",
-		mcp.Description("Also delete the local branch after removing the worktree"),
+		mcp.Description("With rm=true, also delete the local branch after removing the worktree."),
 	),
 )
 
@@ -157,7 +127,7 @@ var listTool = mcp.NewTool("sennit_list",
 )
 
 var gcTool = mcp.NewTool("sennit_gc",
-	mcp.WithDescription("Identify and remove stale sessions. By default returns a dry-run preview. Set execute=true to perform cleanup. Completion is judged by each session's done_when-bearing task instances over persisted outputs; sessions without such tasks are left alone. Dynamic outputs are refreshed explicitly before decision points, not by gc. Deletion goes through a non-force destroy, so task cleanups run and a dirty worktree blocks it."),
+	mcp.WithDescription("Identify and remove stale sessions. By default returns a dry-run preview. Set execute=true to perform cleanup. Completion is judged by each session's done_when-bearing task instances over persisted outputs; sessions without such tasks are left alone. Dynamic outputs are refreshed explicitly before decision points, not by gc. Deletion goes through non-force down removal, so task cleanups run and a dirty worktree blocks it."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
 	mcp.WithBoolean("execute",
 		mcp.Description("Actually perform cleanup. When false (default), returns what would be deleted without making changes."),
@@ -176,12 +146,12 @@ var templateListTool = mcp.NewTool("sennit_template_list",
 )
 
 var workflowListTool = mcp.NewTool("sennit_workflow_list",
-	mcp.WithDescription("List workflows discoverable via the .sennit/workflows cascade. Each entry surfaces id/name/description so an agent can pick the right workflow before calling sennit_workflow_show or sennit_create."),
+	mcp.WithDescription("List workflows discoverable via the .sennit/workflows cascade. Each entry surfaces id/name/description so an agent can pick the right workflow before calling sennit_workflow_show or sennit_up."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
 var workflowShowTool = mcp.NewTool("sennit_workflow_show",
-	mcp.WithDescription("Return full details for a single workflow: id, name, description, the (merged) inputs_schema, and the compiled DAG of nodes. Use inputs_schema to build the --inputs payload for sennit_create / sennit_up."),
+	mcp.WithDescription("Return full details for a single workflow: id, name, description, the (merged) inputs_schema, and the compiled DAG of nodes. Use inputs_schema to build the inputs payload for sennit_up."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("id",
 		mcp.Required(),
@@ -246,41 +216,6 @@ func handleTemplateList(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	})
 }
 
-func handleCreate(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
-	store := state.NewStore("")
-
-	url := request.GetString("url", "")
-	if url == "" {
-		return mcp.NewToolResultError("url is required"), nil
-	}
-
-	inputs, err := service.MergeTaskInput(getObjectArg(request, "inputs"), request.GetString("task", ""))
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	result, err := service.Create(cfg, store, service.CreateParams{
-		URL:           url,
-		Tag:           request.GetString("tag", ""),
-		Workflow:      request.GetString("workflow", ""),
-		ParentSession: request.GetString("parent", ""),
-		Inputs:        inputs,
-	})
-	if err != nil {
-		return errorResult(err), nil
-	}
-
-	return jsonResult(map[string]any{
-		"ok":              true,
-		"session_name":    result.SessionName,
-		"worktree_path":   result.WorktreePath,
-		"branch":          result.Branch,
-		"reused_worktree": result.ReusedWorktree,
-		"tasks":           result.Tasks,
-	})
-}
-
 func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	cfg := config.Load()
 	store := state.NewStore("")
@@ -323,6 +258,33 @@ func handleDown(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 		return mcp.NewToolResultError("session is required"), nil
 	}
 
+	if request.GetBool("rm", false) {
+		result, err := service.Destroy(cfg, store, service.DestroyParams{
+			Identifier:   identifier,
+			Force:        request.GetBool("force", false),
+			DeleteBranch: request.GetBool("delete_branch", false),
+		})
+		if err != nil {
+			return errorResult(err), nil
+		}
+
+		resp := map[string]any{
+			"ok":               true,
+			"session_name":     result.SessionName,
+			"removed_worktree": result.RemovedWorktree,
+		}
+		if result.WorktreeWarning != "" {
+			resp["worktree_warning"] = result.WorktreeWarning
+		}
+		if len(result.CleanupWarnings) > 0 {
+			resp["cleanup_warnings"] = result.CleanupWarnings
+		}
+		return jsonResult(resp)
+	}
+	if request.GetBool("force", false) || request.GetBool("delete_branch", false) {
+		return mcp.NewToolResultError("force and delete_branch require rm=true"), nil
+	}
+
 	result, err := service.Down(cfg, store, service.DownParams{Identifier: identifier})
 	if err != nil {
 		return errorResult(err), nil
@@ -333,38 +295,6 @@ func handleDown(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 		"session_name": result.SessionName,
 		"tasks":        result.Tasks,
 	})
-}
-
-func handleDestroy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
-	store := state.NewStore("")
-
-	identifier := request.GetString("session", "")
-	if identifier == "" {
-		return mcp.NewToolResultError("session is required"), nil
-	}
-
-	result, err := service.Destroy(cfg, store, service.DestroyParams{
-		Identifier:   identifier,
-		Force:        request.GetBool("force", false),
-		DeleteBranch: request.GetBool("delete_branch", false),
-	})
-	if err != nil {
-		return errorResult(err), nil
-	}
-
-	resp := map[string]any{
-		"ok":               true,
-		"session_name":     result.SessionName,
-		"removed_worktree": result.RemovedWorktree,
-	}
-	if result.WorktreeWarning != "" {
-		resp["worktree_warning"] = result.WorktreeWarning
-	}
-	if len(result.CleanupWarnings) > 0 {
-		resp["cleanup_warnings"] = result.CleanupWarnings
-	}
-	return jsonResult(resp)
 }
 
 func handleCapture(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

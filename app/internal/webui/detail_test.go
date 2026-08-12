@@ -120,7 +120,6 @@ func (n nameCapture) EventsSubtree(string) ([]event.Event, error) { return nil, 
 func (n nameCapture) PublishEvent(string, service.EventPublishParams) (event.Event, error) {
 	return event.Event{}, nil
 }
-func (n nameCapture) Create(service.CreateParams) (*service.CreateResult, error)    { return nil, nil }
 func (n nameCapture) Up(service.UpParams) (*service.UpResult, error)                { return nil, nil }
 func (n nameCapture) Down(service.DownParams) (*service.DownResult, error)          { return nil, nil }
 func (n nameCapture) Destroy(service.DestroyParams) (*service.DestroyResult, error) { return nil, nil }

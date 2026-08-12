@@ -31,7 +31,7 @@ Auto-deleted:
   - Worktree missing: state entry removed; no plan can be built without a
     worktree, so a still-running runtime is left alive for manual cleanup
   - Done + clean worktree with a frozen workflow: removed via non-force
-    destroy, so task cleanups (including the runtime) run in order and any
+    down --rm, so task cleanups (including the runtime) run in order and any
     failure blocks the deletion; without a frozen workflow the same "state
     only, runtime left alive" caveat as worktree-missing applies
 

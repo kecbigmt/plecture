@@ -6,19 +6,21 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/sennit/app/internal/service"
 	"github.com/kecbigmt/sennit/app/internal/state"
 )
 
 // setUpConfigHomeWithCapture is setUpConfigHome plus a capture-bearing
 // session-scoped task, wired into the "plain" workflow's node list, so
-// handleDown/handleDestroy/handleCapture have something to observe beyond
-// the bare workflow lifecycle.
+// handleDown and handleCapture have something to observe beyond the bare
+// workflow lifecycle.
 func setUpConfigHomeWithCapture(t *testing.T) {
 	t.Helper()
 	setUpConfigHome(t)
-	// Down/Destroy clamp to the ambient SENNIT_SESSION_NAME as a lifecycle
-	// guard; clear it so the test process's own session name doesn't make
-	// every other session "unrelated".
+	// Down clamps to the ambient SENNIT_SESSION_NAME as a lifecycle guard; clear
+	// it so the test process's own session name doesn't make every other
+	// session unrelated.
 	t.Setenv("SENNIT_SESSION_NAME", "")
 	home := os.Getenv("HOME")
 	baseDir := filepath.Join(home, ".config", "sennit")
@@ -31,19 +33,11 @@ func setUpConfigHomeWithCapture(t *testing.T) {
 
 func createPlainSession(t *testing.T, sessionID string) string {
 	t.Helper()
-	result, err := handleCreate(context.Background(), reqWith(map[string]any{
-		"url":      sessionID,
-		"workflow": "plain",
-	}))
+	result, err := service.Create(config.Load(), state.NewStore(""), service.CreateParams{URL: sessionID, Workflow: "plain"})
 	if err != nil {
-		t.Fatalf("handleCreate: %v", err)
+		t.Fatalf("Create: %v", err)
 	}
-	out := decodeJSONResult(t, result)
-	name, _ := out["session_name"].(string)
-	if name == "" {
-		t.Fatalf("handleCreate: missing session_name in %v", out)
-	}
-	return name
+	return result.SessionName
 }
 
 // NewServer must register every declared tool exactly once under its
@@ -90,13 +84,13 @@ func TestHandleDown_UnknownSession(t *testing.T) {
 	}
 }
 
-func TestHandleDestroy_RemovesSession(t *testing.T) {
+func TestHandleDownWithRemoval_RemovesSession(t *testing.T) {
 	setUpConfigHomeWithCapture(t)
-	name := createPlainSession(t, "destroy-session")
+	name := createPlainSession(t, "remove-session")
 
-	result, err := handleDestroy(context.Background(), reqWith(map[string]any{"session": name}))
+	result, err := handleDown(context.Background(), reqWith(map[string]any{"session": name, "rm": true}))
 	if err != nil {
-		t.Fatalf("handleDestroy: %v", err)
+		t.Fatalf("handleDown: %v", err)
 	}
 	out := decodeJSONResult(t, result)
 	if out["session_name"] != name {
@@ -105,31 +99,22 @@ func TestHandleDestroy_RemovesSession(t *testing.T) {
 
 	store := state.NewStore("")
 	if s := store.Get(name); s != nil {
-		t.Fatalf("session %q still present after destroy", name)
+		t.Fatalf("session %q still present after removal", name)
 	}
 }
 
-func TestHandleDestroy_MissingSessionArg(t *testing.T) {
-	result, err := handleDestroy(context.Background(), reqWith(map[string]any{}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("expected error result for missing session")
-	}
-}
-
-func TestHandleDestroy_ForceFlagsForwarded(t *testing.T) {
+func TestHandleDownWithRemoval_ForceFlagsForwarded(t *testing.T) {
 	setUpConfigHomeWithCapture(t)
-	name := createPlainSession(t, "destroy-force-session")
+	name := createPlainSession(t, "remove-force-session")
 
-	result, err := handleDestroy(context.Background(), reqWith(map[string]any{
+	result, err := handleDown(context.Background(), reqWith(map[string]any{
 		"session":       name,
+		"rm":            true,
 		"force":         true,
 		"delete_branch": true,
 	}))
 	if err != nil {
-		t.Fatalf("handleDestroy: %v", err)
+		t.Fatalf("handleDown: %v", err)
 	}
 	decodeJSONResult(t, result)
 }

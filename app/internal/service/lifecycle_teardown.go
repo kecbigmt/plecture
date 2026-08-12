@@ -109,7 +109,7 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 		// no schema / requires / done_when validation (that runs at create / up /
 		// task run). Teardown must stay resilient to a def whose config drifted
 		// to invalid after the instance was created: a present-but-invalid def
-		// must be no more fatal than a disappeared one, so `sennit destroy --force`
+		// must be no more fatal than a disappeared one, so forced removal
 		// can still reclaim the session. Cleanup needs only the script plus the
 		// persisted inputs/outputs.
 		r := task.Resolved{NodeID: key, TaskID: taskID, Scope: st.Scope}

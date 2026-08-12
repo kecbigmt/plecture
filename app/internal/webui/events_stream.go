@@ -29,7 +29,7 @@ func (s *Server) busClient() *event.Client {
 
 // streamTailLimit caps how many recent events a fresh live stream replays (it
 // reuses the polling timeline's cap). A reconnect resumes from its cursor and
-// ignores this. The durable log is unbounded and survives destroy, so an
+// ignores this. The durable log is unbounded and survives removal, so an
 // unscoped replay could flood a newly-opened pane.
 const streamTailLimit = eventTimelineLimit
 

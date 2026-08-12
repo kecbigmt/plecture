@@ -155,7 +155,7 @@ type TaskState struct {
 // This contains all fields that external consumers may read.
 //
 // Workflow is the chosen workflow name (e.g. "coding-claude"). Frozen at create
-// time so subsequent up/down/destroy use a stable plan regardless of config
+// time so subsequent up/down/removal use a stable plan regardless of config
 // changes. Empty means the legacy inline-`[[tasks]]` path was used.
 //
 // ResourceID is the canonical external resource this session works on (any
@@ -237,9 +237,9 @@ type TickBackoff struct {
 }
 
 // Tombstone is the durable snapshot a session leaves behind in its event log
-// directory when `sennit destroy` deletes its state.json entry. It embeds the
+// directory when removal deletes its state.json entry. It embeds the
 // full Session (resource mapping, task outputs, done_when/judge records) so
-// that context survives destroy instead of being lost alongside the state
+// that context survives removal instead of being lost alongside the state
 // entry.
 type Tombstone struct {
 	Session
