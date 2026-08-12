@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 func TestHandleEventShow_ReturnsPublishedEvent(t *testing.T) {
@@ -70,7 +70,7 @@ func TestHandleEventShow_UnknownIDReturnsError(t *testing.T) {
 	}
 }
 
-// sennit_event_list's types/source params must split on comma and trim
+// plecture_event_list's types/source params must split on comma and trim
 // whitespace exactly like the CLI's --type/--source flags (event.SplitCSV is
 // the shared implementation for both).
 func TestHandleEventList_FiltersTypesAndSourceWithCommaAndWhitespace(t *testing.T) {

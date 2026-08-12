@@ -1,13 +1,13 @@
-module github.com/kecbigmt/sennit/plugins/github-watcher
+module github.com/kecbigmt/plecture/plugins/github-watcher
 
 go 1.25.6
 
 require (
-	github.com/kecbigmt/sennit/contracts/atomicfile v0.0.0
-	github.com/kecbigmt/sennit/contracts/event v0.0.0
+	github.com/kecbigmt/plecture/contracts/atomicfile v0.0.0
+	github.com/kecbigmt/plecture/contracts/event v0.0.0
 )
 
 replace (
-	github.com/kecbigmt/sennit/contracts/atomicfile => ../../contracts/atomicfile
-	github.com/kecbigmt/sennit/contracts/event => ../../contracts/event
+	github.com/kecbigmt/plecture/contracts/atomicfile => ../../contracts/atomicfile
+	github.com/kecbigmt/plecture/contracts/event => ../../contracts/event
 )

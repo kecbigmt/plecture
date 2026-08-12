@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // Status's "work" layer must carry the same decision-making material the
-// retired `sennit check` used to report per instance: the done_when evaluation,
+// retired `plecture check` used to report per instance: the done_when evaluation,
 // the round budget, the classified action, and the chain plan for that same
 // instance.
 func TestStatus_WorkCarriesActionRoundsAndChains(t *testing.T) {
@@ -62,7 +62,7 @@ revision = "{{.Work.outputs.revision}}"
 	}
 }
 
-// Summarize is the default `sennit status --json` projection: only instances
+// Summarize is the default `plecture status --json` projection: only instances
 // with a done_when, and only the leaf/chain fields an orchestrator needs —
 // never the instance's full (unfiltered) outputs map.
 func TestSummarize_FiltersToDoneWhenInstancesAndOmitsRawOutputs(t *testing.T) {

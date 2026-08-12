@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
 func TestSessionGuardForOwnSession(t *testing.T) {

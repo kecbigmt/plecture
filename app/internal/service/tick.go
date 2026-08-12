@@ -3,9 +3,9 @@ package service
 import (
 	"fmt"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // TickParams carries SkipRefresh, unlike CheckParams: check never refreshes,
@@ -27,7 +27,7 @@ type TickParams struct {
 // fires [[chains]]: each chain whose `when` holds and whose wired outputs are
 // present spawns its workflow (idempotent — an already-active target is
 // reported, not re-spawned), exactly as the chaining wiki's timing section
-// requires ("evaluation and firing are... done by sennit tick").
+// requires ("evaluation and firing are... done by plecture tick").
 func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*CheckResult, error) {
 	resolvedName, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, !params.SkipRefresh)
 	if err != nil {

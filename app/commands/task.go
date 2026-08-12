@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
 var (
@@ -36,33 +36,33 @@ var taskSetupCmd = &cobra.Command{
 
 The same task definition that a workflow can wire as a static DAG node is
 instantiated here on demand: its setup runs, the instance (outputs + cleanup +
-scope) is registered in session state and shown by 'sennit status', and teardown
+scope) is registered in session state and shown by 'plecture status', and teardown
 reclaims it in reverse-instantiation order.
 
 Scope governs the lifecycle:
   - run-scoped tasks may only be instantiated while the run scope is up
-    (after 'sennit up'); they are cleaned at 'sennit down'.
+    (after 'plecture up'); they are cleaned at 'plecture down'.
   - session-scoped tasks may be instantiated any time and are cleaned at
-    'sennit destroy'.
+    'plecture destroy'.
 
-The session defaults to the ambient pane environment ($SENNIT_SESSION_NAME,
+The session defaults to the ambient pane environment ($PLECTURE_SESSION_NAME,
 exported into the agent's shell), so a running agent can simply
-'sennit task setup <id>'. --session overrides it.
+'plecture task setup <id>'. --session overrides it.
 
 Without --name, each setup creates a fresh numbered instance (<task>#<n>), so
 the same task can be instantiated any number of times. --name pins a
 session-global singleton: the instance key IS the name and a second
 'setup --name <name>' is a collision error — recreate it by running
-'sennit task cleanup <name>' first. --resource binds the external resource this
+'plecture task cleanup <name>' first. --resource binds the external resource this
 instance works on (exposed to its setup/done_when as .ResourceID); it is
 decoupled from the instance's identity. Inputs the task declares are bound
 from --input first, then the workflow/provider outputs, then the session inputs.
 --done-when-json appends additional done_when leaves to this instance only.
 
 Examples:
-  sennit task setup work --input instruction="fix the flaky test"
-  sennit task setup review --name initial --resource <resource-id>
-  sennit task setup work --done-when-json '{"all":[{"judge":"Codex review approved","id":"codex-review","relation":["sibling"]}]}'`,
+  plecture task setup work --input instruction="fix the flaky test"
+  plecture task setup review --name initial --resource <resource-id>
+  plecture task setup work --done-when-json '{"all":[{"judge":"Codex review approved","id":"codex-review","relation":["sibling"]}]}'`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		inputs, err := parseKeyValues(taskSetupInputs)
@@ -92,7 +92,7 @@ var taskCleanupCmd = &cobra.Command{
 	Use:   "cleanup <instance>",
 	Short: "Reclaim a single dynamic task instance",
 	Long: `Tear down one dynamic task instance: run its cleanup script and remove it
-from session state. The single-instance counterpart of 'sennit down' / 'sennit
+from session state. The single-instance counterpart of 'plecture down' / 'plecture
 destroy'.
 
 The instance is addressed by its key alone — a --name (e.g. 'initial') or a
@@ -101,11 +101,11 @@ numbered '<task>#<n>' — and reclaimed regardless of which task produced it
 missing instance is a no-op (exit 0), so 'cleanup <name>; setup … --name <name>'
 is a safe recreate idiom.
 
-The session defaults to $SENNIT_SESSION_NAME; --session overrides it.
+The session defaults to $PLECTURE_SESSION_NAME; --session overrides it.
 
 Examples:
-  sennit task cleanup initial
-  sennit task cleanup review#1`,
+  plecture task cleanup initial
+  plecture task cleanup review#1`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()
@@ -139,12 +139,12 @@ its 'finalize' script if it declares one. A resource definition without a
 OKF goal) is a no-op step, not an error.
 
 Finalize is "gate + record" only: it never tears the instance down. Run
-'sennit task cleanup <instance>' separately once you're done observing it.
+'plecture task cleanup <instance>' separately once you're done observing it.
 
-The session defaults to $SENNIT_SESSION_NAME; --session overrides it.
+The session defaults to $PLECTURE_SESSION_NAME; --session overrides it.
 
 Example:
-  sennit task finalize goal_flaky-tests`,
+  plecture task finalize goal_flaky-tests`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()
@@ -157,9 +157,9 @@ Example:
 			return err
 		}
 		if result.Finalized {
-			fmt.Fprintf(os.Stderr, "Finalized %s (resource %s via %s). Run 'sennit task cleanup %s' to reclaim it.\n", result.Instance, result.ResourceID, result.Definition, result.Instance)
+			fmt.Fprintf(os.Stderr, "Finalized %s (resource %s via %s). Run 'plecture task cleanup %s' to reclaim it.\n", result.Instance, result.ResourceID, result.Definition, result.Instance)
 		} else {
-			fmt.Fprintf(os.Stderr, "Finalized %s (no resource finalize step declared). Run 'sennit task cleanup %s' to reclaim it.\n", result.Instance, result.Instance)
+			fmt.Fprintf(os.Stderr, "Finalized %s (no resource finalize step declared). Run 'plecture task cleanup %s' to reclaim it.\n", result.Instance, result.Instance)
 		}
 		return nil
 	},
@@ -183,13 +183,13 @@ func parseKeyValues(pairs []string) (map[string]string, error) {
 }
 
 func init() {
-	taskSetupCmd.Flags().StringVar(&taskSetupSession, "session", "", "Target session (defaults to $SENNIT_SESSION_NAME)")
+	taskSetupCmd.Flags().StringVar(&taskSetupSession, "session", "", "Target session (defaults to $PLECTURE_SESSION_NAME)")
 	taskSetupCmd.Flags().StringVar(&taskSetupName, "name", "", "Instance identity: the key becomes the name (session-global singleton); collides on re-setup")
 	taskSetupCmd.Flags().StringVar(&taskSetupResource, "resource", "", "External resource bound to the instance (exposed as .ResourceID; not part of the key)")
 	taskSetupCmd.Flags().StringArrayVar(&taskSetupInputs, "input", nil, "Input binding key=value (repeatable)")
 	taskSetupCmd.Flags().StringVar(&taskSetupDoneWhenJSON, "done-when-json", "", "Additional done_when JSON appended to this dynamic instance")
-	taskCleanupCmd.Flags().StringVar(&taskCleanupSession, "session", "", "Target session (defaults to $SENNIT_SESSION_NAME)")
-	taskFinalizeCmd.Flags().StringVar(&taskFinalizeSession, "session", "", "Target session (defaults to $SENNIT_SESSION_NAME)")
+	taskCleanupCmd.Flags().StringVar(&taskCleanupSession, "session", "", "Target session (defaults to $PLECTURE_SESSION_NAME)")
+	taskFinalizeCmd.Flags().StringVar(&taskFinalizeSession, "session", "", "Target session (defaults to $PLECTURE_SESSION_NAME)")
 	taskCmd.AddCommand(taskSetupCmd)
 	taskCmd.AddCommand(taskCleanupCmd)
 	taskCmd.AddCommand(taskFinalizeCmd)

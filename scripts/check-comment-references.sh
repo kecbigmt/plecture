@@ -19,7 +19,7 @@
 #   - a bare "#<digits>" not glued to a preceding identifier character, e.g.
 #     "#39" or "PR #12". This deliberately excludes task-instance-id examples
 #     like "review#1" or "<task>#<n>", where the "#" is glued to a word —
-#     those describe sennit's own instance-numbering syntax, not an issue or
+#     those describe plecture's own instance-numbering syntax, not an issue or
 #     PR reference.
 #
 # A line that genuinely needs to keep such a reference can allowlist itself

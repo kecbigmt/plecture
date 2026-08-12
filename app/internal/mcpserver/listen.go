@@ -10,8 +10,8 @@ import (
 )
 
 // Listen accepts Unix-socket MCP clients and gives each connection its own
-// stdio `sennit mcp serve` child process. A non-empty guard makes this socket's
-// scope independent of whatever SENNIT_SESSION_GUARD the listening process
+// stdio `plecture mcp serve` child process. A non-empty guard makes this socket's
+// scope independent of whatever PLECTURE_SESSION_GUARD the listening process
 // itself inherited.
 func Listen(ctx context.Context, socketPath, self, guard string) error {
 	if _, err := os.Stat(socketPath); err == nil {
@@ -62,7 +62,7 @@ func handleConnection(ctx context.Context, self string, conn net.Conn, guard str
 	cmd.Stdout = conn
 	cmd.Stderr = os.Stderr
 	if guard != "" {
-		cmd.Env = envWithOverride(os.Environ(), "SENNIT_SESSION_GUARD", guard)
+		cmd.Env = envWithOverride(os.Environ(), "PLECTURE_SESSION_GUARD", guard)
 	}
 
 	if err := cmd.Run(); err != nil {

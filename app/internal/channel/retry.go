@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 // RetryPolicy bounds a channel worker's delivery attempts. DefaultRetryPolicy is
@@ -87,7 +87,7 @@ func retry(ctx context.Context, policy RetryPolicy, perAttemptTimeout time.Durat
 	return policy.MaxAttempts, lastErr
 }
 
-// ChannelErrorEvent builds the sennit.channel.error event a worker appends after
+// ChannelErrorEvent builds the plecture.channel.error event a worker appends after
 // exhausting retries. Metadata (channel/event_id/attempts) lets a reader trace
 // the failure; it is never a channel `include` target, so it cannot loop.
 func ChannelErrorEvent(orig event.Event, channelName string, attempts int, cause error) event.Event {
@@ -98,7 +98,7 @@ func ChannelErrorEvent(orig event.Event, channelName string, attempts int, cause
 	return event.Event{
 		SessionName: orig.SessionName,
 		Type:        event.TypeChannelError,
-		Source:      event.SourceSennit,
+		Source:      event.SourcePlecture,
 		Direction:   event.Internal,
 		Summary:     fmt.Sprintf("event channel %s failed after %d attempts", channelName, attempts),
 		Body:        fmt.Sprintf("failed to deliver %s to channel %s: %s", orig.Type, channelName, reason),

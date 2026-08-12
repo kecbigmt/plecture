@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kecbigmt/sennit/plugins/slack-adapter/internal/adapter"
+	"github.com/kecbigmt/plecture/plugins/slack-adapter/internal/adapter"
 )
 
 func main() {

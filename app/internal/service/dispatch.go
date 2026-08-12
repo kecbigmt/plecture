@@ -8,10 +8,10 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
-// validSessionNameRE is sennit's own conservative session id charset: ids
+// validSessionNameRE is plecture's own conservative session id charset: ids
 // become state keys, runtime channel identifiers (whatever the declared
 // runtime task uses them for — a terminal multiplexer session name today),
 // and log labels, so it stays deliberately narrow rather than tracking any
@@ -28,11 +28,11 @@ func validateSessionName(name string) *Error {
 	return nil
 }
 
-// checkSessionGuard enforces the per-session SessionGuard (SENNIT_SESSION_GUARD)
+// checkSessionGuard enforces the per-session SessionGuard (PLECTURE_SESSION_GUARD)
 // against the resolved session name, before any worktree/setup side task.
 // The orchestrator's pane exports a guard like "^acme/" so a cross-owner
 // dispatch (which resolves to "exampleorg/...") is rejected server-side rather
-// than relying on the loop-spec prompt. sennit core never parses the owner — the
+// than relying on the loop-spec prompt. plecture core never parses the owner — the
 // guard is an opaque regex the provider supplied.
 func checkSessionGuard(cfg *config.Config, sessionName string) *Error {
 	// No config means no guard configured — allow (mirrors an empty guard).
@@ -51,9 +51,9 @@ func checkSessionGuard(cfg *config.Config, sessionName string) *Error {
 	return nil
 }
 
-// SessionGuardForOwnSession is for a per-session `sennit mcp listen` socket:
-// injecting the result into every spawned `sennit mcp serve` child's env makes
-// the socket's scope independent of whatever SENNIT_SESSION_GUARD the listening
+// SessionGuardForOwnSession is for a per-session `plecture mcp listen` socket:
+// injecting the result into every spawned `plecture mcp serve` child's env makes
+// the socket's scope independent of whatever PLECTURE_SESSION_GUARD the listening
 // process itself inherited. sessionName is quoted so its regex
 // metacharacters (e.g. the "+" tag separator) match literally.
 //

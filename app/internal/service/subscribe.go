@@ -7,15 +7,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // SubscribeParams are the inputs to Subscribe. ResourceID is the opaque
 // resource the caller wants this session to receive events from. SessionName
-// defaults to the ambient pane env ($SENNIT_SESSION_NAME, exported by the claude
-// task) when left empty, so a running agent can `sennit subscribe <url>` without
+// defaults to the ambient pane env ($PLECTURE_SESSION_NAME, exported by the claude
+// task) when left empty, so a running agent can `plecture subscribe <url>` without
 // naming itself.
 type SubscribeParams struct {
 	ResourceID  string
@@ -40,10 +40,10 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 
 	sessionName := params.SessionName
 	if sessionName == "" {
-		sessionName = os.Getenv("SENNIT_SESSION_NAME")
+		sessionName = os.Getenv("PLECTURE_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a sennit session pane (SENNIT_SESSION_NAME) or pass --session"}
+		return &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a plecture session pane (PLECTURE_SESSION_NAME) or pass --session"}
 	}
 	if err := validateSessionName(sessionName); err != nil {
 		return err

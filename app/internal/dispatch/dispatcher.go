@@ -6,14 +6,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/channel"
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/contracts/event"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/channel"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/sessionhub"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // dispatcherConsumer is this consumer's cursor name. The cursor is durable per
@@ -83,7 +83,7 @@ func (d *sessionDispatcher) run(ctx context.Context) {
 //
 //   - At session birth (service.Create, before the initial task instruction is
 //     appended), the tail is empty, so every event produced afterwards —
-//     including that first sennit.instruction — is delivered once the dispatcher
+//     including that first plecture.instruction — is delivered once the dispatcher
 //     starts. Without this, the instruction is appended during create but the
 //     dispatcher only starts ~1s later when the run scope comes up, and its own
 //     first-start seed below would land past the instruction and drop it.
@@ -190,7 +190,7 @@ func channelMatches(ch config.EventChannel, ev event.Event) bool {
 	return false
 }
 
-// recordFailure appends a sennit.channel.error, but never for a ctx cancellation —
+// recordFailure appends a plecture.channel.error, but never for a ctx cancellation —
 // a shutdown/suspend is not a delivery failure, and the event replays from the
 // uncommitted cursor on restart.
 func (d *sessionDispatcher) recordFailure(ctx context.Context, ev event.Event, channelName string, attempts int, cause error) {

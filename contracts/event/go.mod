@@ -1,3 +1,3 @@
-module github.com/kecbigmt/sennit/contracts/event
+module github.com/kecbigmt/plecture/contracts/event
 
 go 1.25.6

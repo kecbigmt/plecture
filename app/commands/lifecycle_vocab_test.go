@@ -35,7 +35,7 @@ func TestRemovedLifecycleCommandHintForCreateOnly(t *testing.T) {
 		{
 			name: "create",
 			args: []string{"create", "resource"},
-			want: "Use `sennit up <resource-id>` instead.",
+			want: "Use `plecture up <resource-id>` instead.",
 		},
 		{
 			name: "destroy",

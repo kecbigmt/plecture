@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/service"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 var (
@@ -198,7 +198,7 @@ func buildEventFilter() event.Filter {
 
 // splitTypesArg flattens repeatable --type flags, each of which may itself be
 // a comma-separated list, so "--type a,b" and "--type a --type b" behave the
-// same and match the MCP sennit_event_list "types" param's comma semantics.
+// same and match the MCP plecture_event_list "types" param's comma semantics.
 func splitTypesArg(vals []string) []string {
 	var out []string
 	for _, v := range vals {

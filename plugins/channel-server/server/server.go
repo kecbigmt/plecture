@@ -11,7 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/kecbigmt/sennit/contracts/channel-protocol"
+	"github.com/kecbigmt/plecture/contracts/channel-protocol"
 )
 
 var permissionReplyRE = regexp.MustCompile(`(?i)^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$`)

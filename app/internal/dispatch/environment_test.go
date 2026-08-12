@@ -4,9 +4,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 func writeEnvironmentFile(t *testing.T, baseDir, id, toml string) {

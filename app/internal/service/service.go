@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	"github.com/kecbigmt/sennit/app/internal/workspace"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/workspace"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 var validTag = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
@@ -102,7 +102,7 @@ func ResolveSession(cfg *config.Config, store *state.Store, identifier string) (
 
 // ResolveSessionName resolves an identifier to its canonical session name,
 // using the same lookup order as ResolveSession, without handing back the
-// raw session for callers that only need the name (e.g. `sennit ls --parent`
+// raw session for callers that only need the name (e.g. `plecture ls --parent`
 // filtering entries by ParentSession).
 func ResolveSessionName(cfg *config.Config, store *state.Store, identifier string) (string, error) {
 	name, _, err := resolveSession(cfg, store, identifier)
@@ -124,13 +124,13 @@ type TaskInstanceView struct {
 	Name              string                  `json:"name,omitempty"`
 	Resource          string                  `json:"resource,omitempty"`
 	DoneWhen          *task.DoneWhenResult    `json:"done_when,omitempty"`
-	Finalized         bool                    `json:"finalized,omitempty"` // set once `sennit task finalize` has recorded completion; cleanup still pending
+	Finalized         bool                    `json:"finalized,omitempty"` // set once `plecture task finalize` has recorded completion; cleanup still pending
 	Outputs           map[string]any          `json:"outputs,omitempty"`
 	PersistedDoneWhen *contract.DoneWhenState `json:"persisted_done_when,omitempty"`
 }
 
 // sessionTaskItem is the shared per-instance projection both taskViews
-// (ls/List's legacy `tasks` display) and statusTaskViews (sennit status's `work`
+// (ls/List's legacy `tasks` display) and statusTaskViews (plecture status's `work`
 // layer) build from — instance identity, the dynamic-or-done_when filter, and
 // the done_when evaluation itself live in exactly one place so the two
 // display surfaces cannot silently drift apart.
@@ -326,7 +326,7 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	wg.Wait()
 
 	// store.All ranges a map, so sort by name to make List deterministic —
-	// callers (sennit ls, MCP, web UI auto-refresh) get a stable order.
+	// callers (plecture ls, MCP, web UI auto-refresh) get a stable order.
 	slices.SortFunc(entries, func(a, b ListEntry) int {
 		return strings.Compare(a.SessionName, b.SessionName)
 	})
@@ -414,7 +414,7 @@ type cachedInfo struct {
 
 // Workdir resolves an identifier to the session's working directory using
 // the full lookup order (name -> alias -> resolver derivation). The working
-// directory is whatever the provider's setup recorded; sennit never recomputes
+// directory is whatever the provider's setup recorded; plecture never recomputes
 // it from the shape of the identifier.
 func Workdir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
 	if _, session, err := resolveSession(cfg, store, identifier); err == nil {

@@ -5,11 +5,11 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
 )
 
-var resourceStatusTool = mcp.NewTool("sennit_resource_status",
+var resourceStatusTool = mcp.NewTool("plecture_resource_status",
 	mcp.WithDescription("Observe a resource by resource id: finds the trusted resource definition (resources/*.toml) whose match recognizes it and runs its observe script. The same observation contract a task instance's from_resource_status dynamic output reads from — this lets it be read standalone, outside any one task instance. A resource id with no matching definition is an error."),
 	mcp.WithString("resource_id",
 		mcp.Required(),

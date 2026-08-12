@@ -11,8 +11,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // JudgeFact is the raw-fact view of one judge leaf at the current revision,
@@ -99,7 +99,7 @@ func MissingOutputs(inputs map[string]string, outputs map[string]any) ([]string,
 // published output contract does not declare. `declared` is the upstream
 // outputs-schema property set. An empty
 // `declared` means the upstream publishes no contract, so wiring is then
-// unconstrained — matching how set-output and `sennit task setup` treat a
+// unconstrained — matching how set-output and `plecture task setup` treat a
 // schema-less target. A non-empty result is a binding that names an output the
 // contract never publishes (a typo or a private value), which must surface
 // rather than wire silently.

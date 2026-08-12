@@ -13,14 +13,14 @@ import (
 // CLAUDE.md/AGENTS.md (seeded by the agent_docs task; wiring is covered by
 // TestShippedConfig_OrchestratorWorkflowCompiles in internal/task). Like
 // TestOrchestratorTemplate_RoutesActuationThroughTick, these config files live
-// outside the sennit Nix package's fileset, so resolve from the repo root and
+// outside the plecture Nix package's fileset, so resolve from the repo root and
 // skip when the checkout doesn't include them.
 func TestOrchestratorTickTemplate_IsMinimal(t *testing.T) {
 	repoRoot := orchestratorConfigRepoRoot(t)
 
-	tickPath := filepath.Join(repoRoot, "config", "sennit", "templates", "orchestrator_tick.md")
+	tickPath := filepath.Join(repoRoot, "config", "plecture", "templates", "orchestrator_tick.md")
 	tick := readOrSkip(t, tickPath)
-	fullPath := filepath.Join(repoRoot, "config", "sennit", "templates", "orchestrator.md")
+	fullPath := filepath.Join(repoRoot, "config", "plecture", "templates", "orchestrator.md")
 	full := readOrSkip(t, fullPath)
 
 	if len(tick) >= len(full) {
@@ -37,7 +37,7 @@ func orchestratorConfigRepoRoot(t *testing.T) string {
 	if !ok {
 		t.Fatal("runtime.Caller failed to resolve this test file's path")
 	}
-	// commands/ -> app/ -> sennit/ -> tools/ -> repo root
+	// commands/ -> app/ -> plecture/ -> tools/ -> repo root
 	return filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..")
 }
 

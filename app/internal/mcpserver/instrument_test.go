@@ -34,7 +34,7 @@ func TestInstrumentHandler_Success(t *testing.T) {
 		return mcp.NewToolResultText(`{"ok":true}`), nil
 	}
 
-	handler := instrumentHandler("sennit_list", inner)
+	handler := instrumentHandler("plecture_list", inner)
 	result, err := handler(context.Background(), mcp.CallToolRequest{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -45,8 +45,8 @@ func TestInstrumentHandler_Success(t *testing.T) {
 
 	// Parse slog output.
 	rec := parseSlogRecord(t, slogBuf.String())
-	assertField(t, rec, "component", "sennit-mcp")
-	assertField(t, rec, "tool", "sennit_list")
+	assertField(t, rec, "component", "plecture-mcp")
+	assertField(t, rec, "tool", "plecture_list")
 	assertField(t, rec, "status", "ok")
 	assertField(t, rec, "level", "INFO")
 	assertFieldPresent(t, rec, "trace_id")
@@ -62,7 +62,7 @@ func TestInstrumentHandler_ToolError(t *testing.T) {
 		return mcp.NewToolResultError("session already exists"), nil
 	}
 
-	handler := instrumentHandler("sennit_up", inner)
+	handler := instrumentHandler("plecture_up", inner)
 
 	// Build a request with url parameter.
 	req := mcp.CallToolRequest{}
@@ -80,9 +80,9 @@ func TestInstrumentHandler_ToolError(t *testing.T) {
 
 	// Check slog.
 	rec := parseSlogRecord(t, slogBuf.String())
-	assertField(t, rec, "component", "sennit-mcp")
+	assertField(t, rec, "component", "plecture-mcp")
 	assertField(t, rec, "event", "mcp_call")
-	assertField(t, rec, "tool", "sennit_up")
+	assertField(t, rec, "tool", "plecture_up")
 	assertField(t, rec, "status", "error")
 	assertField(t, rec, "level", "ERROR")
 	assertField(t, rec, "error", "session already exists")
@@ -104,7 +104,7 @@ func TestInstrumentHandler_TraceIDContinuity(t *testing.T) {
 		return mcp.NewToolResultError("fail"), nil
 	}
 
-	handler := instrumentHandler("sennit_destroy", inner)
+	handler := instrumentHandler("plecture_destroy", inner)
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
 		"url": "https://github.com/acme/widgets/pull/42",

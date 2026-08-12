@@ -104,10 +104,10 @@
   </section>
 
   {{- /* Work: dynamic instances and done_when-bearing static tasks, reusing the
-         service projection (.Work) so the gate state shown matches `sennit status`
+         service projection (.Work) so the gate state shown matches `plecture status`
          — the web never re-evaluates done_when. Outputs render generically
          (dynamic and mutable alike); chains show the same dry-run plan
-         `sennit status`'s CLI reports. */}}
+         `plecture status`'s CLI reports. */}}
   {{- if .Work }}
   <section class="rounded-lg border border-border bg-card p-3 text-card-foreground" aria-labelledby="work-h">
     <h3 id="work-h" class="mb-2 text-label font-semibold text-muted-foreground">Work</h3>

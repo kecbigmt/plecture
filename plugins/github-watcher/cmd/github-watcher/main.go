@@ -1,4 +1,4 @@
-// github-watcher is the resident GitHub watcher plugin for sennit.
+// github-watcher is the resident GitHub watcher plugin for plecture.
 //
 // Tasks subscribe sessions (`github-watcher subscribe`) and unsubscribe on
 // cleanup; the daemon (`github-watcher serve`) polls subscribed resources via
@@ -16,9 +16,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kecbigmt/sennit/contracts/event"
-	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/ratebudget"
-	"github.com/kecbigmt/sennit/plugins/github-watcher/internal/watcher"
+	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/ratebudget"
+	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/watcher"
 )
 
 func main() {
@@ -59,7 +59,7 @@ func usage() {
 
 func cmdSubscribe(args []string) error {
 	fs := flag.NewFlagSet("subscribe", flag.ExitOnError)
-	session := fs.String("session", "", "sennit session name (required)")
+	session := fs.String("session", "", "plecture session name (required)")
 	resource := fs.String("resource", "", "resource identifier (required)")
 	branch := fs.String("branch", "", "session branch (optional; linked-PR discovery for issues)")
 	dataDir := fs.String("data-dir", "", "override data directory")
@@ -78,7 +78,7 @@ func cmdSubscribe(args []string) error {
 
 func cmdUnsubscribe(args []string) error {
 	fs := flag.NewFlagSet("unsubscribe", flag.ExitOnError)
-	session := fs.String("session", "", "sennit session name (required)")
+	session := fs.String("session", "", "plecture session name (required)")
 	resource := fs.String("resource", "", "resource identifier (optional; removes just this one, else all of the session's)")
 	dataDir := fs.String("data-dir", "", "override data directory")
 	if err := fs.Parse(args); err != nil {
@@ -113,7 +113,7 @@ func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	interval := fs.String("interval", "60s", "polling interval (min 10s)")
 	notifyURL := fs.String("notify-url", "http://127.0.0.1:7890/notify", "slack-adapter notify endpoint for the legacy push path (requires --allow-legacy-notify)")
-	allowLegacy := fs.Bool("allow-legacy-notify", false, "opt into the deprecated POST /notify delivery when SENNIT_BUS_SOCKET is unset (dual-run rollback)")
+	allowLegacy := fs.Bool("allow-legacy-notify", false, "opt into the deprecated POST /notify delivery when PLECTURE_BUS_SOCKET is unset (dual-run rollback)")
 	dataDir := fs.String("data-dir", "", "override data directory")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -132,8 +132,8 @@ func cmdServe(args []string) error {
 		Guard: ratebudget.NewGuard(ghAPIDataDir(*dataDir)),
 	}
 
-	busSocket := os.Getenv("SENNIT_BUS_SOCKET")
-	delivery, err := configureDelivery(poller, busSocket, os.Getenv("SENNIT_BUS_TOKEN"), *notifyURL, *allowLegacy)
+	busSocket := os.Getenv("PLECTURE_BUS_SOCKET")
+	delivery, err := configureDelivery(poller, busSocket, os.Getenv("PLECTURE_BUS_TOKEN"), *notifyURL, *allowLegacy)
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func cmdServe(args []string) error {
 	case "bus":
 		logger.Info("github-watcher serving", "interval", tick.String(), "delivery", "bus", "bus_socket", busSocket)
 	case "notify":
-		logger.Warn("github-watcher serving in DEPRECATED legacy push mode (set SENNIT_BUS_SOCKET to use the event bus)",
+		logger.Warn("github-watcher serving in DEPRECATED legacy push mode (set PLECTURE_BUS_SOCKET to use the event bus)",
 			"interval", tick.String(), "delivery", "notify", "notify_url", *notifyURL)
 	}
 
@@ -172,5 +172,5 @@ func configureDelivery(poller *watcher.Poller, busSocket, busToken, notifyURL st
 		poller.NotifyURL = notifyURL
 		return "notify", nil
 	}
-	return "", fmt.Errorf("SENNIT_BUS_SOCKET is unset: set it to use the event bus, or pass --allow-legacy-notify to opt into the deprecated POST /notify path")
+	return "", fmt.Errorf("PLECTURE_BUS_SOCKET is unset: set it to use the event bus, or pass --allow-legacy-notify to opt into the deprecated POST /notify path")
 }

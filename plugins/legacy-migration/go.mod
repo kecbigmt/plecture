@@ -1,4 +1,4 @@
-module github.com/kecbigmt/sennit/plugins/legacy-migration
+module github.com/kecbigmt/plecture/plugins/legacy-migration
 
 go 1.25.6
 

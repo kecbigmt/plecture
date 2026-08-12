@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/eventlog"
-	"github.com/kecbigmt/sennit/app/internal/sessionhub"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/sessionhub"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 func newTestBus(t *testing.T, token string) (*event.Client, string, *eventlog.Store) {

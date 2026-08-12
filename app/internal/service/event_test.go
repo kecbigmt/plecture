@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/contracts/event"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 func TestEventPublishListShow(t *testing.T) {
@@ -42,7 +42,7 @@ func TestEventPublishListShow(t *testing.T) {
 }
 
 // TestEventPublishDirectionNormalization covers the direction normalization rule:
-// direction is forced to Inbound whenever SENNIT_SESSION_NAME names a session
+// direction is forced to Inbound whenever PLECTURE_SESSION_NAME names a session
 // other than the publish target, and origin_session is stamped so a later
 // reader can tell who the event came from. A same-session publish (the
 // orchestrator pattern that must not reset its own tick backoff) keeps
@@ -51,7 +51,7 @@ func TestEventPublishDirectionNormalization(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 
 	t.Run("cross-session publish forces inbound", func(t *testing.T) {
-		t.Setenv("SENNIT_SESSION_NAME", "owner/other")
+		t.Setenv("PLECTURE_SESSION_NAME", "owner/other")
 		ev, err := EventPublish(nil, store, "owner/target", EventPublishParams{
 			Type:      event.TypeUserEmit,
 			Direction: event.Internal, // caller's request must be overridden
@@ -68,7 +68,7 @@ func TestEventPublishDirectionNormalization(t *testing.T) {
 	})
 
 	t.Run("same-session publish keeps requested direction", func(t *testing.T) {
-		t.Setenv("SENNIT_SESSION_NAME", "owner/self")
+		t.Setenv("PLECTURE_SESSION_NAME", "owner/self")
 		ev, err := EventPublish(nil, store, "owner/self", EventPublishParams{
 			Type:      event.TypeUserEmit,
 			Direction: event.Internal,
@@ -85,7 +85,7 @@ func TestEventPublishDirectionNormalization(t *testing.T) {
 	})
 
 	t.Run("no ambient session leaves direction as requested", func(t *testing.T) {
-		t.Setenv("SENNIT_SESSION_NAME", "")
+		t.Setenv("PLECTURE_SESSION_NAME", "")
 		ev, err := EventPublish(nil, store, "owner/target", EventPublishParams{
 			Type:      event.TypeUserEmit,
 			Direction: event.Outbound,
@@ -102,8 +102,8 @@ func TestEventPublishDirectionNormalization(t *testing.T) {
 	})
 }
 
-// A guarded orchestrator (SENNIT_SESSION_GUARD → cfg.SessionGuard) must not be
-// able to publish into a session outside its name space, even though `sennit ls`
+// A guarded orchestrator (PLECTURE_SESSION_GUARD → cfg.SessionGuard) must not be
+// able to publish into a session outside its name space, even though `plecture ls`
 // reveals the name.
 func TestEventPublishSessionGuardBlocksCrossOwner(t *testing.T) {
 	store := state.NewStore(t.TempDir())

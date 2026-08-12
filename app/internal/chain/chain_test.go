@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
 func strp(s string) *string { return &s }
@@ -200,7 +200,7 @@ func TestRenderInputs_MissingKeyErrors(t *testing.T) {
 	}
 }
 
-// The cross-tool review-chain template (config/sennit/tasks/work.toml) resolves
+// The cross-tool review-chain template (config/plecture/tasks/work.toml) resolves
 // to the opposite tool from whichever workflow the work session itself used.
 func TestRenderWorkflow_CrossTool(t *testing.T) {
 	tmpl := `{{if eq .Work.workflow "claude"}}codex{{else}}claude{{end}}`

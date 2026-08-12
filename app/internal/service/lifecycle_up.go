@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // UpParams holds parameters for Up.
@@ -22,7 +22,7 @@ type UpParams struct {
 	Tag           string
 	Workflow      string         // forwarded to auto-create; rejected when state already exists
 	Inputs        map[string]any // forwarded to auto-create; rejected when state already exists
-	ParentSession string         // forwarded to auto-create; empty falls back to SENNIT_SESSION_NAME when it exists and is not self.
+	ParentSession string         // forwarded to auto-create; empty falls back to PLECTURE_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
 	// ForceRecreate rebuilds the runtime for an existing session while
 	// preserving durable identity and event log state.
@@ -52,7 +52,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	if dispErr != nil {
 		// Ambiguous resolver match / invalid resolver / explicit --workflow
 		// mismatch must fail here exactly as Create would — falling through
-		// to the legacy path would let `sennit up` silently disagree with
+		// to the legacy path would let `plecture up` silently disagree with
 		// auto-create for the same resource.
 		if svcErr, ok := dispErr.(*Error); ok {
 			return nil, svcErr
@@ -106,7 +106,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	}
 	// Bringing up an existing session runs run-scoped tasks against it; clamp
 	// it to the active guard. The auto-create paths above already guard
-	// via Create — this catches `sennit up <bare-existing-session>`, which skips it.
+	// via Create — this catches `plecture up <bare-existing-session>`, which skips it.
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
 	}
@@ -147,9 +147,9 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	}
 	setupErr := task.RunSetup(context.Background(), plan.Run, sessionVars(session), session.Tasks, params.Observer, envExecutor)
 	session.UpdatedAt = time.Now()
-	// A run-scope node's setup script can itself shell out to a nested `sennit
+	// A run-scope node's setup script can itself shell out to a nested `plecture
 	// task setup` against this same session (e.g. goal_bootstrap re-deriving
-	// pursue_goal instances, config/sennit/tasks/goal_bootstrap.toml) while this
+	// pursue_goal instances, config/plecture/tasks/goal_bootstrap.toml) while this
 	// call's own RunSetup is still in flight. That nested call persists its
 	// instance straight to disk under its own store.Update. A blind Put here
 	// would then overwrite disk with our in-memory map, taken before the

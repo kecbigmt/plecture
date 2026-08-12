@@ -6,7 +6,7 @@ Shared message type definitions between channel-server and adapters. Zero extern
 
 ## Dependency rules
 
-- Must not import other tools (`channel-server`, `slack-adapter`, `sennit`)
+- Must not import other tools (`channel-server`, `slack-adapter`, `plecture`)
 - Must not depend on external libraries (standard library only, e.g. `encoding/json`)
 
 ## Impact of changes

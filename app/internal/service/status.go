@@ -6,16 +6,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	"github.com/kecbigmt/sennit/app/internal/state"
-	"github.com/kecbigmt/sennit/app/internal/task"
-	"github.com/kecbigmt/sennit/contracts/event"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // statusFlowLimit bounds the "flow" layer to the most recent events — status
-// is a point-in-time snapshot, not a timeline (sennit event list serves that).
+// is a point-in-time snapshot, not a timeline (plecture event list serves that).
 const statusFlowLimit = 5
 
 // StatusIdentity is layer 1: what this session is, independent of whether it
@@ -52,7 +52,7 @@ type StatusRuntime struct {
 }
 
 // StatusChain is one [[chains]] evaluation against a task instance's facts —
-// the same dry-run report the retired `sennit check` used to give.
+// the same dry-run report the retired `plecture check` used to give.
 type StatusChain struct {
 	ChainID        string   `json:"chain_id"`
 	Workflow       string   `json:"workflow,omitempty"`
@@ -68,8 +68,8 @@ type StatusChain struct {
 // mutable alike, rendered generically) and, when it declares a done_when, the
 // gate's evaluation, round budget, and chain plan. Action/Summary/Body/
 // ReviewerCommand/JudgeCommands/UnmetItems/Fingerprint carry the same
-// decision-making material the retired `sennit check` used to report per
-// instance, so orchestrator consumers reading `sennit status --json` lose
+// decision-making material the retired `plecture check` used to report per
+// instance, so orchestrator consumers reading `plecture status --json` lose
 // nothing by that CLI's retirement.
 type StatusTask struct {
 	Instance          string                  `json:"instance"`
@@ -100,7 +100,7 @@ type StatusFlow struct {
 	Events []event.Event `json:"events,omitempty"`
 }
 
-// StatusResult is the pure fact renderer `sennit status` reports: four layers of
+// StatusResult is the pure fact renderer `plecture status` reports: four layers of
 // state, no provider-shaped field among them.
 type StatusResult struct {
 	Identity StatusIdentity `json:"identity"`
@@ -108,7 +108,7 @@ type StatusResult struct {
 	Work     []StatusTask   `json:"work,omitempty"`
 	Flow     StatusFlow     `json:"flow"`
 	// Warnings carries config-level notices unrelated to any one instance —
-	// the same session-wide notices `sennit check` used to report (e.g. a
+	// the same session-wide notices `plecture check` used to report (e.g. a
 	// surviving legacy chains/*.toml file).
 	Warnings    []string  `json:"warnings,omitempty"`
 	Destroyed   bool      `json:"destroyed,omitempty"`
@@ -117,7 +117,7 @@ type StatusResult struct {
 
 // Status returns the four-layer fact report for a session. It reads persisted
 // state only — pass refresh=true to re-fetch dynamic outputs from the source
-// of truth first (mirrors the old `sennit show --refresh`).
+// of truth first (mirrors the old `plecture show --refresh`).
 func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusResult, error) {
 	sessionName, session, err := resolveSession(cfg, store, identifier)
 	if err != nil {
@@ -194,7 +194,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 
 // attachCommandFor renders the declared attach command for display, mirroring
 // Attach's lookup but degrading to "" (no attach target, or not yet produced)
-// instead of an error — `sennit status` reports facts, it doesn't fail on them.
+// instead of an error — `plecture status` reports facts, it doesn't fail on them.
 func attachCommandFor(cfg *config.Config, session *domain.Session) string {
 	plan, err := buildPlanForSession(cfg, session.WorktreePath, session)
 	if err != nil {
@@ -242,7 +242,7 @@ func runtimeTaskViews(session *domain.Session) []StatusRuntimeTask {
 // outputs (dynamic and mutable rendered identically), the done_when
 // evaluation, its round budget, and its chain plan. actions supplies the
 // already-evaluated done_when result per produced instance (from
-// evaluateSessionActions, the same evaluation `sennit check`/`sennit tick` act on),
+// evaluateSessionActions, the same evaluation `plecture check`/`plecture tick` act on),
 // so sessionTaskItems reuses it instead of evaluating done_when a second time.
 func statusTaskViews(defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session, actions map[string]computedAction, chains map[string][]StatusChain) []StatusTask {
 	cached := make(map[string]task.DoneWhenResult, len(actions))
@@ -329,7 +329,7 @@ func identityResourceID(s *domain.Session) string {
 
 // sessionTag extracts the workspace-identity tag from a session name's
 // "<resource>+<tag>" convention (effectiveTag, chainSpawnTag) — provider-
-// agnostic string parsing over a name sennit itself produced.
+// agnostic string parsing over a name plecture itself produced.
 func sessionTag(name string) string {
 	if idx := strings.LastIndex(name, "+"); idx >= 0 {
 		return name[idx+1:]
@@ -337,7 +337,7 @@ func sessionTag(name string) string {
 	return ""
 }
 
-// StatusSummary is the default `sennit status --json` shape: identity plus, per
+// StatusSummary is the default `plecture status --json` shape: identity plus, per
 // done_when-bearing instance only, the material an orchestrator needs to pick
 // its next action — no full outputs/flow/runtime dump (that's --full).
 type StatusSummary struct {
@@ -470,7 +470,7 @@ func RoundString(rounds, maxRounds int) string {
 	}
 }
 
-// DoneWhenCell renders the `sennit ls` DONE_WHEN column: "-" when no instance
+// DoneWhenCell renders the `plecture ls` DONE_WHEN column: "-" when no instance
 // declares a done_when, the instance's own compact rendering when there is
 // exactly one, and the worst symbol's per-status counts when there are
 // several (worst order: unsatisfied > pending > satisfied).

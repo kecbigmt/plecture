@@ -3,9 +3,9 @@ package dispatch
 import (
 	"testing"
 
-	"github.com/kecbigmt/sennit/app/internal/config"
-	"github.com/kecbigmt/sennit/app/internal/domain"
-	contract "github.com/kecbigmt/sennit/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 func TestChannelInputs_ResolvesNodeOutputs(t *testing.T) {

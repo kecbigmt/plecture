@@ -21,7 +21,7 @@ func TestLoadConfig_MalformedConfigFileFallsBackAndWarns(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	configDir := filepath.Join(tmpHome, ".config", "sennit-web")
+	configDir := filepath.Join(tmpHome, ".config", "plecture-web")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
