@@ -49,24 +49,20 @@ type DoneWhenJudge struct {
 	CreatedAt        time.Time `json:"created_at,omitzero"`
 }
 
-// DoneWhenState is reviewer/checker-owned progress for one task instance's
+// DoneWhenState is reviewer/checker-owned completion state for one task instance's
 // done_when. It is separate from observed outputs so GC/display can read
 // completion state without causing dispatch, rollback, or shell-out work.
 type DoneWhenState struct {
-	Judges          map[string]*DoneWhenJudge `json:"judges,omitempty"`
-	Rounds          int                       `json:"rounds,omitempty"`
-	LastAction      string                    `json:"last_action,omitempty"`
-	LastFingerprint string                    `json:"last_fingerprint,omitempty"`
-	LastReason      string                    `json:"last_reason,omitempty"`
-	LastUnsatisfied []string                  `json:"last_unsatisfied,omitempty"`
-	LastBody        string                    `json:"last_body,omitempty"`
-	EscalatedAt     time.Time                 `json:"escalated_at,omitzero"`
-	EscalateReason  string                    `json:"escalate_reason,omitempty"`
-	// LastAutoRevivalRevision is the revision id of the most recent automatic
-	// re-evaluation kick issued after rounds were exhausted (see
-	// checkActionForResult's revival path). Dedup key: a revision already
-	// recorded here never triggers a second automatic kick.
-	LastAutoRevivalRevision string `json:"last_auto_revival_revision,omitempty"`
+	Judges               map[string]*DoneWhenJudge `json:"judges,omitempty"`
+	HeartbeatTicks       int                       `json:"heartbeat_ticks,omitempty"`
+	HeartbeatEscalations int                       `json:"heartbeat_escalations,omitempty"`
+	LastAction           string                    `json:"last_action,omitempty"`
+	LastFingerprint      string                    `json:"last_fingerprint,omitempty"`
+	LastReason           string                    `json:"last_reason,omitempty"`
+	LastUnsatisfied      []string                  `json:"last_unsatisfied,omitempty"`
+	LastBody             string                    `json:"last_body,omitempty"`
+	EscalatedAt          time.Time                 `json:"escalated_at,omitzero"`
+	EscalateReason       string                    `json:"escalate_reason,omitempty"`
 }
 
 // Task lifecycle status values for TaskState.Status. Task is a runtime
@@ -176,12 +172,11 @@ type Session struct {
 	Workflow      string                `json:"workflow,omitempty"`
 	Inputs        map[string]any        `json:"inputs,omitempty"`
 	Tasks         map[string]*TaskState `json:"tasks,omitempty"`
-	// Watchdog is the last-known result of a Layer-2 liveness probe (ADR:
-	// cross-session terminal event propagation, D4/D8). Unlike TaskState's
-	// on-demand healthcheck, this is deliberately persisted: the ADR's point
-	// is to turn "dead" into an explicit, propagated fact instead of
-	// something only discovered by whoever happens to poll next.
-	Watchdog *WatchdogState `json:"watchdog,omitempty"`
+	// Health is the last healthcheck observation and movement fingerprint
+	// core recorded for this session. It is persisted so stall judgment and
+	// parent re-notification use one durable history instead of a caller's
+	// transient poll cadence.
+	Health *HealthState `json:"health,omitempty"`
 	// LastTickAt is the session-level watermark `plect tick` stamps every time
 	// it runs (regardless of instance/action outcome). The tick reactor's
 	// `heartbeat` sweep reads it to decide whether observation has gone
@@ -191,32 +186,22 @@ type Session struct {
 	// TickBackoff is nil until the first heartbeat sweep decides a tick, so a
 	// session that has never backed off keeps a clean state.json.
 	TickBackoff *TickBackoff `json:"tick_backoff,omitempty"`
-	// Progress is the last progress fingerprint core observed for this
-	// session's declared progress source, plus when core itself last saw
-	// that fingerprint change (docs/wiki/verification-gate.md). Nil until
-	// the first evaluation that successfully fetches a declared source.
-	Progress  *ProgressState `json:"progress,omitempty"`
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
-// WatchdogState is the last-known result of a Layer-2 liveness probe. A
-// session with no WatchdogState has never been probed. DeadAt is zero while
-// the last probe found the session healthy.
-type WatchdogState struct {
-	CheckedAt time.Time `json:"checked_at,omitzero"`
-	DeadAt    time.Time `json:"dead_at,omitzero"`
-	Reason    string    `json:"reason,omitempty"`
-}
-
-// ProgressState is core's own record of the last opaque progress fingerprint
-// fetched from a session's declared progress source, and when core last saw
-// that fingerprint change. ObservedAt is core's own clock, not any timestamp
-// a source script may report — core only ever compares Fingerprint values it
-// has fetched itself.
-type ProgressState struct {
-	Fingerprint string    `json:"fingerprint,omitempty"`
-	ObservedAt  time.Time `json:"observed_at,omitzero"`
+// HealthState is core's own record of the last opaque movement fingerprint,
+// the time core last observed that fingerprint change, and the last rendered
+// health judgment. LastMovementAt is core's own clock, not any timestamp a
+// source script may report.
+type HealthState struct {
+	LastCheckedAt   time.Time `json:"last_checked_at,omitzero"`
+	LastMovementAt  time.Time `json:"last_movement_at,omitzero"`
+	LastFingerprint string    `json:"last_fingerprint,omitempty"`
+	LastState       string    `json:"last_state,omitempty"`
+	LastReason      string    `json:"last_reason,omitempty"`
+	LastNotifiedAt  time.Time `json:"last_notified_at,omitzero"`
+	NotifyCount     int       `json:"notify_count,omitempty"`
 }
 
 // TickBackoff is the quiet-tick exponential backoff bookkeeping the tick

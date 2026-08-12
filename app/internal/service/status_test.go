@@ -4,15 +4,18 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/kecbigmt/plect/app/internal/domain"
 	"github.com/kecbigmt/plect/app/internal/task"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
 // Status's "work" layer must carry the same decision-making material the
 // retired `plect check` used to report per instance: the done_when evaluation,
-// the round budget, the classified action, and the chain plan for that same
+// the heartbeat budget, the classified action, and the chain plan for that same
 // instance.
-func TestStatus_WorkCarriesActionRoundsAndChains(t *testing.T) {
+func TestStatus_WorkCarriesActionHeartbeatBudgetAndChains(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{workTaskWithChain(`
@@ -51,6 +54,9 @@ revision = "{{.Work.outputs.revision}}"
 	if w.ReviewerCommand == "" {
 		t.Error("expected a non-empty ReviewerCommand for review_required")
 	}
+	if w.HeartbeatBudget == 0 {
+		t.Error("expected heartbeat budget to be reported")
+	}
 	if len(w.Chains) != 1 || w.Chains[0].ChainID != "review" {
 		t.Fatalf("Chains = %+v, want one entry for chain \"review\"", w.Chains)
 	}
@@ -59,6 +65,37 @@ revision = "{{.Work.outputs.revision}}"
 	}
 	if w.Outputs["checks_status"] != "SUCCESS" {
 		t.Errorf("Outputs[checks_status] = %v, want SUCCESS", w.Outputs["checks_status"])
+	}
+}
+
+func TestStatus_RuntimeCarriesHealthMovementTimestamps(t *testing.T) {
+	store := testStore(t)
+	cfg := healthcheckFixtureConfig(t, "true")
+	lastCheckedAt := time.Now().Add(-time.Minute).UTC()
+	lastMovementAt := time.Now().Add(-2 * time.Minute).UTC()
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Health = &contract.HealthState{LastCheckedAt: lastCheckedAt, LastMovementAt: lastMovementAt}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed health state: %v", err)
+	}
+
+	result, err := Status(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if result.Runtime.LastCheckedAt.IsZero() || result.Runtime.LastMovementAt.IsZero() {
+		t.Fatalf("runtime = %+v, want health timestamps", result.Runtime)
+	}
+	b, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if !strings.Contains(string(b), "last_movement_at") || strings.Contains(string(b), "last_progress_at") {
+		t.Fatalf("status JSON = %s, want last_movement_at only", b)
 	}
 }
 

@@ -33,7 +33,7 @@ provider-specific interpretation:
   runtime   whether the session is actually alive: run-scoped task state,
             runtime liveness, worktree existence
   work      each task instance's outputs (dynamic and mutable alike),
-            done_when evaluation, round budget, and chain plan — the same
+            done_when evaluation, heartbeat budget, and chain plan — the same
             facts "plect tick" acts on and "plect check" used to report
   flow      the most recent inbound/outbound events
 
@@ -160,15 +160,15 @@ func renderStatusWork(out interface{ Write([]byte) (int, error) }, work []servic
 		if t.Status != "" {
 			line += " " + t.Status
 		}
-		if t.DoneWhen != nil && (t.MaxRounds > 0 || t.Rounds > 0) {
-			line += fmt.Sprintf("   round %d/%d", t.Rounds, t.MaxRounds)
+		if t.DoneWhen != nil && (t.HeartbeatBudget > 0 || t.HeartbeatTicks > 0) {
+			line += fmt.Sprintf("   heartbeat budget %d/%d", t.HeartbeatTicks, t.HeartbeatBudget)
 		}
 		fmt.Fprintln(out, line)
 		if t.DoneWhen != nil {
 			fmt.Fprintln(out, "  done: "+formatDoneWhen(t.DoneWhen))
 		}
 		if persisted && t.PersistedDoneWhen != nil {
-			fmt.Fprintf(out, "  done_when: %s (rounds %d)\n", t.PersistedDoneWhen.LastAction, t.PersistedDoneWhen.Rounds)
+			fmt.Fprintf(out, "  done_when: %s (heartbeat ticks %d)\n", t.PersistedDoneWhen.LastAction, t.PersistedDoneWhen.HeartbeatTicks)
 		}
 		for _, c := range t.Chains {
 			fmt.Fprintf(out, "  chain %s: %s\n", c.ChainID, statusChainSpawnStatus(c))
@@ -200,8 +200,8 @@ func renderDoneWhenSections(out interface{ Write([]byte) (int, error) }, work []
 		}
 		fmt.Fprintln(out)
 		fmt.Fprintf(out, "Done when (%s)\n", taskDisplayName(t.Name, t.Instance))
-		if round := service.RoundString(t.Rounds, t.MaxRounds); round != "" {
-			fmt.Fprintf(out, "  round: %s\n", round)
+		if budget := service.HeartbeatBudgetString(t.HeartbeatTicks, t.HeartbeatBudget); budget != "" {
+			fmt.Fprintf(out, "  heartbeat budget: %s\n", budget)
 		}
 		if t.Action != "" {
 			fmt.Fprintf(out, "  action: %s\n", t.Action)
@@ -315,7 +315,14 @@ func formatHealthLine(rt service.StatusRuntime) string {
 	if rt.Run != domain.RunUp {
 		return "-"
 	}
-	return string(rt.Health)
+	parts := []string{string(rt.Health)}
+	if !rt.LastCheckedAt.IsZero() {
+		parts = append(parts, "last_checked_at "+rt.LastCheckedAt.Format("2006-01-02 15:04:05"))
+	}
+	if !rt.LastMovementAt.IsZero() {
+		parts = append(parts, "last_movement_at "+rt.LastMovementAt.Format("2006-01-02 15:04:05"))
+	}
+	return strings.Join(parts, "   ")
 }
 
 // statusChainSpawnStatus renders a StatusChain the same way chainSpawnStatus

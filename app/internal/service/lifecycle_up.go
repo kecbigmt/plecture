@@ -207,10 +207,9 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	session.Conversation = nil
 	session.Message = nil
 	session.Tasks = make(map[string]*contract.TaskState)
-	session.Watchdog = nil
+	session.Health = nil
 	session.LastTickAt = time.Time{}
 	session.TickBackoff = nil
-	session.Progress = nil
 	session.UpdatedAt = time.Now()
 	if err := replaceRuntimeState(store, sessionName, session); err != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}

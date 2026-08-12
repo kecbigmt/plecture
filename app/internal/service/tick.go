@@ -14,29 +14,35 @@ type TickParams struct {
 	SessionName string
 	SkipRefresh bool
 	Observer    task.Observer
+	Trigger     TickTrigger
 }
 
-// TickSession is the Goal Loop actuator: it refreshes outputs (unless
-// SkipRefresh), evaluates done_when
-// for each produced task instance, and — unlike CheckSession — carries out
-// the result. A round advances only when the observed facts actually changed
-// since the last tick (checkActionForResult's fingerprint compare);
-// satisfied/escalate push a terminal event to the parent exactly once per
-// instance; review_required and kick publish same-session events that drive
-// the reviewer/work session. Against that same refreshed fact set, it also
-// fires [[chains]]: each chain whose `when` holds and whose wired outputs are
-// present spawns its workflow (idempotent — an already-active target is
-// reported, not re-spawned), exactly as the chaining wiki's timing section
-// requires ("evaluation and firing are... done by plect tick").
+// TickTrigger records why the actuator ran. Only heartbeat-triggered ticks
+// consume the done_when heartbeat budget.
+type TickTrigger string
+
+const (
+	TickTriggerManual    TickTrigger = "manual"
+	TickTriggerEvent     TickTrigger = "event"
+	TickTriggerHeartbeat TickTrigger = "heartbeat"
+)
+
+// TickSession is the Goal Loop actuator: it refreshes outputs unless
+// SkipRefresh, evaluates done_when for each produced task instance, and
+// carries out the result. Heartbeat-triggered ticks consume the done_when
+// heartbeat budget; event and manual ticks do not. Satisfied and escalated
+// actions push terminal events to the parent, while review_required and kick
+// publish same-session events that drive the reviewer or work session. Against
+// that same refreshed fact set, it also fires [[chains]].
 func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*CheckResult, error) {
-	resolvedName, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, !params.SkipRefresh)
+	resolvedName, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, !params.SkipRefresh, params.Trigger)
 	if err != nil {
 		return nil, err
 	}
 
 	// Stamp unconditionally (even when no instance has a computed action): a
 	// tick always resets the `heartbeat` clock the reactor tracks,
-	// whether or not anything was found unsatisfied this round.
+	// whether or not anything was found unsatisfied in this tick.
 	if err := stampLastTick(store, resolvedName); err != nil {
 		return nil, err
 	}

@@ -3,7 +3,6 @@ package service
 import (
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,9 +58,9 @@ func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
 }
 
 // TestRecordJudge_AppendsJudgeRecordedEvent covers the tick reactor's judge
-// builtin trigger (AC2, ADR amendment 2026-07-04 §1): recording a judge must
-// append plect.judge.recorded to the *target* work session's own log, not the
-// reviewer's, since the reactor ticks the judged session, not the recorder.
+// builtin trigger: recording a judge must append plect.judge.recorded to the
+// target work session's own log, not the reviewer's, since the reactor ticks
+// the judged session, not the recorder.
 func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{WorktreesRoot: t.TempDir()}
@@ -371,9 +370,9 @@ func checkActions(t *testing.T, cfg *config.Config, store *state.Store, work str
 	return result.Actions
 }
 
-func TestTickSession_KicksUnsatisfiedAndPersistsRound(t *testing.T) {
+func TestTickSession_HeartbeatKickPersistsHeartbeatTick(t *testing.T) {
 	store := testStore(t)
-	cfg := checkFixtureConfig(t)
+	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeSession,
@@ -384,18 +383,18 @@ func TestTickSession_KicksUnsatisfiedAndPersistsRound(t *testing.T) {
 		},
 	})
 
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
 	if err != nil {
 		t.Fatalf("TickSession: %v", err)
 	}
-	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" || result.Actions[0].Round != 1 {
+	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" || result.Actions[0].HeartbeatTicks != 1 {
 		t.Fatalf("actions = %+v", result.Actions)
 	}
 	if len(result.Actions[0].UnmetItems) != 1 || result.Actions[0].UnmetItems[0].Output != "checks_status" || result.Actions[0].UnmetItems[0].Value != "FAILURE" {
 		t.Fatalf("unmet_items = %+v, want checks_status failure", result.Actions[0].UnmetItems)
 	}
 	check := store.Get("owner/repo-1").Tasks["initial"].DoneWhen
-	if check == nil || check.Rounds != 1 || check.LastAction != "kick" {
+	if check == nil || check.HeartbeatTicks != 1 || check.LastAction != "kick" {
 		t.Fatalf("done_when state = %+v", check)
 	}
 	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{event.TypeUserEmit}})
@@ -413,7 +412,7 @@ func TestTickSession_KicksUnsatisfiedAndPersistsRound(t *testing.T) {
 // failure), so the rebase hint must ride along in the kick body instead.
 func TestTickSession_KickBodyAdvisesRebaseWhenMergeableStateDirty(t *testing.T) {
 	store := testStore(t)
-	cfg := checkFixtureConfig(t)
+	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeSession,
@@ -424,7 +423,7 @@ func TestTickSession_KickBodyAdvisesRebaseWhenMergeableStateDirty(t *testing.T) 
 		},
 	})
 
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
 	if err != nil {
 		t.Fatalf("TickSession: %v", err)
 	}
@@ -441,7 +440,7 @@ func TestTickSession_KickBodyAdvisesRebaseWhenMergeableStateDirty(t *testing.T) 
 // unmet-items text.
 func TestTickSession_KickBodyOmitsRebaseHintWhenMergeableStateClean(t *testing.T) {
 	store := testStore(t)
-	cfg := checkFixtureConfig(t)
+	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeSession,
@@ -452,7 +451,7 @@ func TestTickSession_KickBodyOmitsRebaseHintWhenMergeableStateClean(t *testing.T
 		},
 	})
 
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
 	if err != nil {
 		t.Fatalf("TickSession: %v", err)
 	}
@@ -470,7 +469,7 @@ func TestTickSession_KickBodyOmitsRebaseHintWhenMergeableStateClean(t *testing.T
 // a receiving agent doesn't have to parse the bullet list.
 func TestTickSession_KickCarriesStructuredUnmetItemsInEventMetadata(t *testing.T) {
 	store := testStore(t)
-	cfg := checkFixtureConfig(t)
+	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeSession,
@@ -526,7 +525,7 @@ func TestTickSession_StampsLastTickAt(t *testing.T) {
 	}
 }
 
-func TestTickSession_RepeatedPollDoesNotAdvanceRound(t *testing.T) {
+func TestTickSession_EventPollDoesNotConsumeHeartbeatBudget(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 1)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
@@ -547,19 +546,19 @@ func TestTickSession_RepeatedPollDoesNotAdvanceRound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second TickSession: %v", err)
 	}
-	if first.Actions[0].Round != 1 || second.Actions[0].Round != 1 {
-		t.Fatalf("rounds = first %d second %d, want both 1", first.Actions[0].Round, second.Actions[0].Round)
+	if first.Actions[0].HeartbeatTicks != 0 || second.Actions[0].HeartbeatTicks != 0 {
+		t.Fatalf("heartbeat ticks = first %d second %d, want both 0", first.Actions[0].HeartbeatTicks, second.Actions[0].HeartbeatTicks)
 	}
 	check := store.Get("owner/repo-1").Tasks["initial"].DoneWhen
-	if check == nil || check.Rounds != 1 {
-		t.Fatalf("done_when state = %+v, want one persisted round", check)
+	if check == nil || check.HeartbeatTicks != 0 {
+		t.Fatalf("done_when state = %+v, want no persisted heartbeat ticks", check)
 	}
 	if second.Actions[0].Action == "escalate" {
 		t.Fatalf("repeated poll escalated: %+v", second.Actions[0])
 	}
 }
 
-func TestTickSession_NewDoneWhenStateCanEscalateAfterMaxRounds(t *testing.T) {
+func TestTickSession_EventTickDoesNotEscalateAfterChangedDoneWhenState(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 1)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
@@ -581,16 +580,16 @@ func TestTickSession_NewDoneWhenStateCanEscalateAfterMaxRounds(t *testing.T) {
 		t.Fatalf("update revision: %v", err)
 	}
 
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerEvent})
 	if err != nil {
 		t.Fatalf("second TickSession: %v", err)
 	}
-	if len(result.Actions) != 1 || result.Actions[0].Action != "escalate" {
-		t.Fatalf("actions = %+v, want escalation on new done_when state after max rounds", result.Actions)
+	if len(result.Actions) != 1 || result.Actions[0].Action == "escalate" {
+		t.Fatalf("actions = %+v, want event tick without heartbeat-budget escalation", result.Actions)
 	}
 }
 
-func TestCheckSession_MaxRoundsZeroIsUnbounded(t *testing.T) {
+func TestCheckSession_HeartbeatBudgetZeroIsUnbounded(t *testing.T) {
 	store := testStore(t)
 	cfg := checkScenarioConfig(t, 0)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
@@ -601,7 +600,7 @@ func TestCheckSession_MaxRoundsZeroIsUnbounded(t *testing.T) {
 			Dynamic: true,
 			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
 			DoneWhen: &contract.DoneWhenState{
-				Rounds: 100,
+				HeartbeatTicks: 100,
 			},
 		},
 	})
@@ -610,15 +609,15 @@ func TestCheckSession_MaxRoundsZeroIsUnbounded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckSession: %v", err)
 	}
-	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" || result.Actions[0].MaxRounds != 0 {
-		t.Fatalf("actions = %+v, want unbounded kick with max_rounds=0", result.Actions)
+	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" || result.Actions[0].HeartbeatBudget != 0 {
+		t.Fatalf("actions = %+v, want unbounded kick with heartbeat_budget=0", result.Actions)
 	}
-	if !strings.Contains(result.Actions[0].Body, "101/unbounded") {
-		t.Fatalf("body = %q, want unbounded round text", result.Actions[0].Body)
+	if !strings.Contains(result.Actions[0].Body, "100/unbounded") {
+		t.Fatalf("body = %q, want unbounded heartbeat budget text", result.Actions[0].Body)
 	}
 }
 
-func TestTickSession_EscalatesAfterMaxRounds(t *testing.T) {
+func TestTickSession_EscalatesOnNthHeartbeatTick(t *testing.T) {
 	store := testStore(t)
 	cfg := checkFixtureConfig(t)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
@@ -629,23 +628,23 @@ func TestTickSession_EscalatesAfterMaxRounds(t *testing.T) {
 			Dynamic: true,
 			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
 			DoneWhen: &contract.DoneWhenState{
-				Rounds: 1,
+				HeartbeatTicks: 0,
 			},
 		},
 	})
 
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
 	if err != nil {
 		t.Fatalf("TickSession: %v", err)
 	}
 	if len(result.Actions) != 1 || result.Actions[0].Action != "escalate" {
 		t.Fatalf("actions = %+v", result.Actions)
 	}
-	if !strings.Contains(result.Actions[0].Body, "1/1 round") || !strings.Contains(result.Actions[0].Body, "observed FAILURE") {
-		t.Fatalf("escalation body = %q, want round and unmet check context", result.Actions[0].Body)
+	if !strings.Contains(result.Actions[0].Body, "1/1 heartbeat") || !strings.Contains(result.Actions[0].Body, "observed FAILURE") {
+		t.Fatalf("escalation body = %q, want heartbeat budget and unmet check context", result.Actions[0].Body)
 	}
 	check := store.Get("owner/repo-1").Tasks["initial"].DoneWhen
-	if check == nil || check.EscalateReason == "" || check.EscalatedAt.IsZero() {
+	if check == nil || check.HeartbeatTicks != 0 || check.HeartbeatEscalations != 1 || check.EscalateReason == "" || check.EscalatedAt.IsZero() {
 		t.Fatalf("done_when state = %+v", check)
 	}
 }
@@ -677,7 +676,7 @@ func TestTickSession_EscalatesWhenJudgeKeepsRequestingChanges(t *testing.T) {
 		t.Fatalf("RecordJudge: %v", err)
 	}
 
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
 	if err != nil {
 		t.Fatalf("second TickSession: %v", err)
 	}
@@ -845,7 +844,7 @@ func checkFixtureConfig(t *testing.T) *config.Config {
 	return checkScenarioConfig(t, 1)
 }
 
-func checkScenarioConfig(t *testing.T, maxRounds int) *config.Config {
+func checkScenarioConfig(t *testing.T, heartbeatBudget int) *config.Config {
 	t.Helper()
 	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
 		id:    "work",
@@ -860,7 +859,7 @@ all = [
 ]
 
 [done_when.budget]
-max_rounds = %d
+heartbeat_budget = %d
 
 [outputs_schema]
 type = "object"
@@ -868,13 +867,12 @@ type = "object"
 [outputs_schema.properties]
 checks_status = { type = "string", mutable = true }
 revision = { type = "string", mutable = true }
-`, maxRounds),
+`, heartbeatBudget),
 	}}, []nodeFixture{{id: "initial", uses: "work"}})
 }
 
-// The satisfied action pushes a `done` terminal event one hop to the parent
-// (ADR: cross-session terminal event propagation, D1/D8), exactly once even
-// across repeated polls of an already-satisfied instance.
+// The satisfied action pushes a `done` terminal event one hop to the parent,
+// exactly once even across repeated polls of an already-satisfied instance.
 func TestTickSession_PushesDoneToParentOnceOnSatisfied(t *testing.T) {
 	store := testStore(t)
 	cfg := checkStatusOnlyConfig(t, 1)
@@ -942,9 +940,9 @@ func TestTickSession_SatisfiedWithNoParentDoesNotError(t *testing.T) {
 }
 
 // The escalate action pushes an `escalate` terminal event one hop to the
-// parent, on top of the existing same-session plect.tick.escalated record
-// (kept for compat/observability, ADR D11 slice 5).
-func TestTickSession_EscalatesAfterMaxRounds_PushesToParent(t *testing.T) {
+// parent, on top of the same-session plect.tick.escalated record retained for
+// local observability.
+func TestTickSession_EscalatesAfterHeartbeatBudget_PushesToParent(t *testing.T) {
 	store := testStore(t)
 	cfg := checkFixtureConfig(t)
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
@@ -956,13 +954,13 @@ func TestTickSession_EscalatesAfterMaxRounds_PushesToParent(t *testing.T) {
 			Dynamic: true,
 			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
 			DoneWhen: &contract.DoneWhenState{
-				Rounds: 1,
+				HeartbeatTicks: 0,
 			},
 		},
 	})
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
 
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
 	if err != nil {
 		t.Fatalf("TickSession: %v", err)
 	}
@@ -988,204 +986,12 @@ func TestTickSession_EscalatesAfterMaxRounds_PushesToParent(t *testing.T) {
 	if pushed[0].Metadata[event.MetaOriginSession] != "owner/repo-1" || pushed[0].DeliveryMode != event.DeliveryModePush {
 		t.Fatalf("pushed escalate = %+v", pushed[0])
 	}
-}
-
-// TestTickSession_AutoRevivalAfterExhaustion covers auto-revival: once rounds are
-// exhausted and a judge verdict has gone stale (a new revision landed), tick
-// must revive the round budget on its own and deliver the standard
-// re-evaluation kick to the recorded reviewer session, with no orchestrator
-// involvement — and must never deliver a second kick for the same revision.
-func TestTickSession_AutoRevivalAfterExhaustion(t *testing.T) {
-	store := testStore(t)
-	cfg := checkScenarioConfig(t, 1)
-	reviewer := "owner/repo-1+review"
-	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"initial": {
-			Scope:    contract.TaskScopeSession,
-			TaskID:   "work",
-			Status:   contract.TaskStatusProduced,
-			Dynamic:  true,
-			Resource: "https://github.com/owner/repo/pull/1",
-			Outputs:  map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
-			DoneWhen: &contract.DoneWhenState{
-				Rounds:     1,
-				LastAction: "escalate",
-				Judges: map[string]*contract.DoneWhenJudge{
-					"ac-met": {
-						LeafID:          "ac-met",
-						Action:          "request_changes",
-						Reason:          "needs more work",
-						Revision:        "sha1",
-						ReviewerSession: reviewer,
-						Relation:        string(domain.RelationSibling),
-					},
-				},
-			},
-		},
-	})
-	seedSession(t, store, reviewer, "owner/repo", 1, "", nil)
-	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
-	setParent(t, store, reviewer, "owner/repo-orchestrator")
-
-	// A new revision lands: the recorded verdict is now stale.
-	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
-		s.Tasks["initial"].Outputs["revision"] = "sha2"
-		return nil
-	}); err != nil {
-		t.Fatalf("update revision: %v", err)
-	}
-
-	first, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
-	if err != nil {
-		t.Fatalf("first TickSession: %v", err)
-	}
-	if len(first.Actions) != 1 || first.Actions[0].Action != "review_required" {
-		t.Fatalf("first actions = %+v, want revived review_required instead of a repeat escalate", first.Actions)
-	}
-	if first.Actions[0].RevivalRevision != "sha2" {
-		t.Fatalf("first action revival_revision = %q, want sha2", first.Actions[0].RevivalRevision)
-	}
-
-	log := eventlog.NewStore(store.Dir())
-	kicks, _, _, err := log.List(reviewer, 0, event.Filter{Types: []string{event.TypeUserEmit}, Sources: []string{event.SourceTick}})
-	if err != nil {
-		t.Fatalf("list reviewer kicks: %v", err)
-	}
-	if len(kicks) != 1 {
-		t.Fatalf("reviewer kicks = %d, want exactly 1 for revision sha2", len(kicks))
-	}
-	if !strings.Contains(kicks[0].Body, "sha2") {
-		t.Fatalf("kick body = %q, want it to mention the new revision", kicks[0].Body)
-	}
-
-	st := store.Get("owner/repo-1").Tasks["initial"]
-	if st.DoneWhen.Rounds >= 1 && st.DoneWhen.LastAction == "escalate" {
-		t.Fatalf("done_when state did not revive: %+v", st.DoneWhen)
-	}
-	if st.DoneWhen.LastAutoRevivalRevision != "sha2" {
-		t.Fatalf("last_auto_revival_revision = %q, want sha2 (dedup marker)", st.DoneWhen.LastAutoRevivalRevision)
-	}
-
-	// Ticking again at the same revision (repeated observation) must not
-	// deliver a second kick.
-	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
-		t.Fatalf("second TickSession: %v", err)
-	}
-	kicksAfter, _, _, err := log.List(reviewer, 0, event.Filter{Types: []string{event.TypeUserEmit}, Sources: []string{event.SourceTick}})
-	if err != nil {
-		t.Fatalf("list reviewer kicks after second tick: %v", err)
-	}
-	if len(kicksAfter) != 1 {
-		t.Fatalf("reviewer kicks after repeated observation = %d, want still 1 (deduped)", len(kicksAfter))
+	if pushed[0].Metadata["escalation_kind"] != "done_when.non_convergence" || pushed[0].Metadata["heartbeat_budget"] != "1" {
+		t.Fatalf("pushed escalate metadata = %+v", pushed[0].Metadata)
 	}
 }
 
-// blockSessionEventsDir makes eventlog.Append against the given session fail
-// deterministically, by pre-creating a plain file where that session's own
-// events subdirectory needs to be (so os.MkdirAll errors) — unlike
-// blockEventsDir, it targets one session's log, leaving every other
-// session's log writable.
-func blockSessionEventsDir(t *testing.T, store *state.Store, session string) {
-	t.Helper()
-	dir := filepath.Join(store.Dir(), "events")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("blockSessionEventsDir: mkdir events root: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, url.PathEscape(session)), []byte("block"), 0o644); err != nil {
-		t.Fatalf("blockSessionEventsDir: %v", err)
-	}
-}
-
-// TestTickSession_AutoRevivalReviewerPublishFailureRetries covers a
-// reviewer-kick delivery failure: it must not let the revision dedup marker
-// (LastAutoRevivalRevision) get stamped, or the
-// reviewer would never be retried for a revision it never actually received.
-func TestTickSession_AutoRevivalReviewerPublishFailureRetries(t *testing.T) {
-	store := testStore(t)
-	cfg := checkScenarioConfig(t, 1)
-	reviewer := "owner/repo-1+review"
-	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"initial": {
-			Scope:    contract.TaskScopeSession,
-			TaskID:   "work",
-			Status:   contract.TaskStatusProduced,
-			Dynamic:  true,
-			Resource: "https://github.com/owner/repo/pull/1",
-			Outputs:  map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
-			DoneWhen: &contract.DoneWhenState{
-				Rounds:     1,
-				LastAction: "escalate",
-				Judges: map[string]*contract.DoneWhenJudge{
-					"ac-met": {
-						LeafID:          "ac-met",
-						Action:          "request_changes",
-						Reason:          "needs more work",
-						Revision:        "sha1",
-						ReviewerSession: reviewer,
-						Relation:        string(domain.RelationSibling),
-					},
-				},
-			},
-		},
-	})
-	seedSession(t, store, reviewer, "owner/repo", 1, "", nil)
-	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
-	setParent(t, store, reviewer, "owner/repo-orchestrator")
-
-	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
-		s.Tasks["initial"].Outputs["revision"] = "sha2"
-		return nil
-	}); err != nil {
-		t.Fatalf("update revision: %v", err)
-	}
-
-	// Simulate the reviewer's own log being unwritable: the auto-revival kick
-	// delivery to it fails, while the work session's own review_required event
-	// (published first) still succeeds.
-	blockSessionEventsDir(t, store, reviewer)
-
-	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err == nil {
-		t.Fatal("TickSession with a blocked reviewer log, want error (delivery failure must not be swallowed)")
-	}
-
-	st := store.Get("owner/repo-1").Tasks["initial"]
-	if st.DoneWhen.LastAutoRevivalRevision != "" {
-		t.Fatalf("last_auto_revival_revision = %q, want empty: a failed delivery must not stamp the dedup marker", st.DoneWhen.LastAutoRevivalRevision)
-	}
-	if st.DoneWhen.LastAction != "escalate" {
-		t.Fatalf("last_action = %q, want unchanged escalate: the failed tick must not have persisted the revived action either", st.DoneWhen.LastAction)
-	}
-
-	// Unblock the reviewer's log and retry: the same revision must now reach
-	// the reviewer, and the dedup marker must be recorded.
-	if err := os.Remove(filepath.Join(store.Dir(), "events", url.PathEscape(reviewer))); err != nil {
-		t.Fatalf("unblock reviewer log: %v", err)
-	}
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
-	if err != nil {
-		t.Fatalf("retry TickSession: %v", err)
-	}
-	if len(result.Actions) != 1 || result.Actions[0].Action != "review_required" || result.Actions[0].RevivalRevision != "sha2" {
-		t.Fatalf("retry actions = %+v", result.Actions)
-	}
-
-	kicks, _, _, err := eventlog.NewStore(store.Dir()).List(reviewer, 0, event.Filter{Types: []string{event.TypeUserEmit}, Sources: []string{event.SourceTick}})
-	if err != nil {
-		t.Fatalf("list reviewer kicks: %v", err)
-	}
-	if len(kicks) != 1 {
-		t.Fatalf("reviewer kicks after retry = %d, want exactly 1", len(kicks))
-	}
-
-	st = store.Get("owner/repo-1").Tasks["initial"]
-	if st.DoneWhen.LastAutoRevivalRevision != "sha2" {
-		t.Fatalf("last_auto_revival_revision = %q, want sha2 after the successful retry", st.DoneWhen.LastAutoRevivalRevision)
-	}
-}
-
-func checkStatusOnlyConfig(t *testing.T, maxRounds int) *config.Config {
+func checkStatusOnlyConfig(t *testing.T, heartbeatBudget int) *config.Config {
 	t.Helper()
 	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
 		id:    "work",
@@ -1199,7 +1005,7 @@ all = [
 ]
 
 [done_when.budget]
-max_rounds = %d
+heartbeat_budget = %d
 
 [outputs_schema]
 type = "object"
@@ -1207,7 +1013,7 @@ type = "object"
 [outputs_schema.properties]
 checks_status = { type = "string", mutable = true }
 revision = { type = "string", mutable = true }
-`, maxRounds),
+`, heartbeatBudget),
 	}}, []nodeFixture{{id: "initial", uses: "work"}})
 }
 
@@ -1228,12 +1034,12 @@ func unblockEventsDir(t *testing.T, store *state.Store) {
 	}
 }
 
-// A publish failure must leave the tick marker unadvanced (no round bump, no
-// LastAction) so a later, successful tick retries the same action rather
+// A publish failure must leave the tick marker unadvanced (no heartbeat
+// counter bump, no LastAction) so a later, successful tick retries the same action rather
 // than treating a failed delivery as handled.
 func TestTickSession_PublishFailureLeavesMarkerUnadvancedForRetry(t *testing.T) {
 	store := testStore(t)
-	cfg := checkFixtureConfig(t)
+	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeSession,
@@ -1245,7 +1051,7 @@ func TestTickSession_PublishFailureLeavesMarkerUnadvancedForRetry(t *testing.T) 
 	})
 	blockEventsDir(t, store)
 
-	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err == nil {
+	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat}); err == nil {
 		t.Fatal("expected TickSession to fail when the event publish fails")
 	}
 	if check := store.Get("owner/repo-1").Tasks["initial"].DoneWhen; check != nil && check.LastAction != "" {
@@ -1253,12 +1059,12 @@ func TestTickSession_PublishFailureLeavesMarkerUnadvancedForRetry(t *testing.T) 
 	}
 
 	unblockEventsDir(t, store)
-	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	result, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", Trigger: TickTriggerHeartbeat})
 	if err != nil {
 		t.Fatalf("retry TickSession: %v", err)
 	}
-	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" || result.Actions[0].Round != 1 {
-		t.Fatalf("retry actions = %+v, want a fresh kick at round 1 (not skipped as already-handled)", result.Actions)
+	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" || result.Actions[0].HeartbeatTicks != 1 {
+		t.Fatalf("retry actions = %+v, want a fresh kick at heartbeat tick 1 (not skipped as already-handled)", result.Actions)
 	}
 	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{event.TypeUserEmit}})
 	if err != nil {
@@ -1355,7 +1161,7 @@ func TestTickSession_SatisfiedWakeFailureIsWarnedNotFatal(t *testing.T) {
 
 // CheckSession keeps the same observation-only contract: same evaluation as tick, zero
 // side effects. Calling it repeatedly on a kicked instance must not advance
-// the round, append events, wake sessions, or push a terminal event even once
+// the heartbeat counter, append events, wake sessions, or push a terminal event even once
 // the instance is actually satisfied.
 func TestCheckSession_ObservationOnly(t *testing.T) {
 	store := testStore(t)
@@ -1382,7 +1188,7 @@ func TestCheckSession_ObservationOnly(t *testing.T) {
 			t.Fatalf("iteration %d actions = %+v, want kick reported (compat shape)", i, result.Actions)
 		}
 	}
-	if check := store.Get("owner/repo-1").Tasks["initial"].DoneWhen; check != nil && (check.Rounds != 0 || check.LastAction != "") {
+	if check := store.Get("owner/repo-1").Tasks["initial"].DoneWhen; check != nil && (check.HeartbeatTicks != 0 || check.LastAction != "") {
 		t.Fatalf("done_when state = %+v, want untouched by observation-only check", check)
 	}
 	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{})

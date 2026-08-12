@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/kecbigmt/plect/app/internal/config"
@@ -15,8 +16,7 @@ import (
 	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
-// HealthReport is the outcome of one Layer-2 liveness probe (ADR: cross-session
-// terminal event propagation, D4/D8).
+// HealthReport is the outcome of one healthcheck observation.
 type HealthReport struct {
 	SessionName string `json:"session_name"`
 	Healthy     bool   `json:"healthy"`
@@ -24,60 +24,62 @@ type HealthReport struct {
 	// a healthcheck at all — distinguishes "ran and passed" from "nothing to
 	// evaluate" (State() surfaces the latter as HealthUndeclared).
 	Declared bool `json:"declared"`
-	// ProgressExpected reports whether unmet run-scoped work exists that
+	// MovementExpected reports whether unmet run-scoped work exists that
 	// this session is expected to act on next, derived from declared
-	// done_when/task state — never from Message. False both when there is
-	// no unmet work and when the session has handed the remaining work off
-	// (e.g. escalated to an independent reviewer), since in either case the
-	// session legitimately has nothing to progress right now.
-	ProgressExpected bool `json:"progress_expected,omitempty"`
-	// ProgressDeclared reports whether at least one produced run-scoped
-	// task instance declared a progress signal that reported itself
-	// supported. False when no progress signal is declared at all, or when
+	// done_when/task state, never from Message.
+	MovementExpected bool `json:"movement_expected,omitempty"`
+	// MovementDeclared reports whether at least one produced run-scoped
+	// task instance declared a movement signal that reported itself
+	// supported. False when no movement signal is declared at all, or when
 	// every declared one explicitly reports unsupported (or fails to run) —
-	// both read as "no basis to judge progress."
-	ProgressDeclared bool `json:"progress_declared,omitempty"`
-	// ProgressFresh reports whether any supported progress signal reported
-	// evidence timestamped within the freshness window. Meaningless unless
-	// ProgressDeclared and ProgressExpected are both true.
-	ProgressFresh bool   `json:"progress_fresh,omitempty"`
-	Reason        string `json:"reason,omitempty"`
-	Pushed        bool   `json:"pushed,omitempty"`
-	PushTarget    string `json:"push_target,omitempty"`
+	// both read as "no basis to judge movement."
+	MovementDeclared bool `json:"movement_declared,omitempty"`
+	// MovementFresh reports whether any supported movement signal reported
+	// evidence within the stall threshold. Meaningless unless
+	// MovementDeclared and MovementExpected are both true.
+	MovementFresh       bool      `json:"movement_fresh,omitempty"`
+	Reason              string    `json:"reason,omitempty"`
+	LastCheckedAt       time.Time `json:"last_checked_at,omitzero"`
+	LastMovementAt      time.Time `json:"last_movement_at,omitzero"`
+	MovementFingerprint string    `json:"-"`
+	Pushed              bool      `json:"pushed,omitempty"`
+	PushTarget          string    `json:"push_target,omitempty"`
 	// WakeWarning is set when the dead event was recorded on PushTarget but
 	// best-effort waking it (Up) failed — the push itself still succeeded.
 	WakeWarning string `json:"wake_warning,omitempty"`
+}
+
+type HealthcheckParams struct {
+	SessionName string
+	Config      config.HealthcheckConfig
 }
 
 // State projects the report to the four-value display fact `plect status`
 // reports.
 //
 //   - Undeclared beats everything else when there is no declared healthcheck
-//     to evaluate at all — nothing to run.
-//   - Unhealthy beats progress: a failing surface check is reported as such
-//     regardless of progress evidence.
-//   - When no progress is currently expected, a passing surface check is
-//     healthy outright — most sessions never declare a progress signal and
-//     must not regress to undeclared just because one doesn't exist for work
-//     that was never expected of them.
-//   - When progress is expected but no progress signal is declared to judge
-//     it, there is no basis to call it either healthy or stalled: undeclared.
-//   - Otherwise, fresh progress evidence is healthy and its absence is
-//     stalled — the surface is present but wedged.
+//     to evaluate at all.
+//   - Unhealthy beats movement: a failing surface check is reported as such
+//     regardless of movement evidence.
+//   - When no movement is currently expected, a passing surface check is
+//     healthy outright.
+//   - When movement is expected but no movement signal is declared to judge it,
+//     there is no basis to call it either healthy or stalled.
+//   - Otherwise, fresh movement evidence is healthy and its absence is stalled.
 func (r HealthReport) State() domain.HealthState {
-	if !r.Declared {
+	if !r.Declared && !r.MovementDeclared {
 		return domain.HealthUndeclared
 	}
 	if !r.Healthy {
 		return domain.HealthUnhealthy
 	}
-	if !r.ProgressExpected {
+	if !r.MovementExpected {
 		return domain.HealthHealthy
 	}
-	if !r.ProgressDeclared {
+	if !r.MovementDeclared {
 		return domain.HealthUndeclared
 	}
-	if r.ProgressFresh {
+	if r.MovementFresh {
 		return domain.HealthHealthy
 	}
 	return domain.HealthStalled
@@ -98,17 +100,22 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	if err != nil {
 		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
-	tick := sessionTickConfig(cfg, s.Workflow, s.WorktreePath)
-	window := progressFreshnessWindow(tick)
-	report := evaluateHealthFor(name, s.Tasks, defs, sessionVars(s), window)
-	applyProgressSource(cfg, store, s, tick, window, &report)
+	wf := sessionWorkflowConfig(cfg, s.Workflow, s.WorktreePath)
+	healthCfg := config.DefaultHealthcheckConfig()
+	var tick *config.TickConfig
+	if wf != nil {
+		healthCfg = config.NormalizeHealthcheckConfig(wf.Healthcheck)
+		tick = wf.Tick
+	}
+	now := time.Now()
+	report := evaluateHealthFor(name, s.Tasks, defs, sessionVars(s), healthCfg.StallThreshold.Duration, s.Health, now)
+	applyMovementSource(cfg, s, tick, &report)
+	finalizeMovementObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
+	persistHealthState(store, name, report, now)
 	return report, nil
 }
 
-// sessionTickConfig loads the workflow this session was produced from and
-// returns its declared `[tick]` (nil if the workflow cannot be loaded or
-// declares none).
-func sessionTickConfig(cfg *config.Config, workflowID, worktreePath string) *config.TickConfig {
+func sessionWorkflowConfig(cfg *config.Config, workflowID, worktreePath string) *config.WorkflowFile {
 	workflows, err := cfg.LoadWorkflows(worktreePath)
 	if err != nil {
 		return nil
@@ -117,22 +124,21 @@ func sessionTickConfig(cfg *config.Config, workflowID, worktreePath string) *con
 	if !ok {
 		return nil
 	}
-	return wf.Tick
+	return &wf
 }
 
-// applyProgressSource layers a declared session-scoped progress source on
-// top of the per-task progress-signal evidence evaluateHealthFor already
+// applyMovementSource layers a declared session-scoped movement source on
+// top of the per-task movement-signal evidence evaluateHealthFor already
 // computed. Fetched via the same task.FetchOutput plumbing a task instance's
 // dynamic outputs use, scoped to the session rather than any instance. Core
 // only compares the fetched value as an opaque fingerprint against the last
-// one it persisted for this session (ProgressState) — it never interprets
-// what the source script actually observed, and freshness is judged against
-// core's own ObservedAt clock, never a timestamp the script might report.
-func applyProgressSource(cfg *config.Config, store *state.Store, s *domain.Session, tick *config.TickConfig, window time.Duration, report *HealthReport) {
-	if tick == nil || tick.ProgressSource == nil {
+// one it persisted for this session. It never interprets what the source
+// script actually observed, and freshness is judged against core's own clock.
+func applyMovementSource(cfg *config.Config, s *domain.Session, tick *config.TickConfig, report *HealthReport) {
+	if tick == nil || tick.MovementSource == nil {
 		return
 	}
-	src := *tick.ProgressSource
+	src := *tick.MovementSource
 	names := src.OutputNames()
 	if len(names) == 0 {
 		return
@@ -148,70 +154,68 @@ func applyProgressSource(cfg *config.Config, store *state.Store, s *domain.Sessi
 	if fingerprint == "" {
 		return
 	}
-	report.ProgressDeclared = true
+	report.MovementDeclared = true
+	addMovementFingerprint(report, "workflow:"+fingerprint)
+}
 
-	now := time.Now()
-	prev := s.Progress
-	advanced := prev == nil || prev.Fingerprint != fingerprint
-	observedAt := now
-	if !advanced {
-		observedAt = prev.ObservedAt
+func addMovementFingerprint(report *HealthReport, fingerprint string) {
+	if strings.TrimSpace(fingerprint) == "" {
+		return
 	}
-	if advanced || now.Sub(observedAt) <= window {
-		report.ProgressFresh = true
-	}
-	if advanced {
-		persistProgressState(store, s.Name, fingerprint, now)
+	report.MovementDeclared = true
+	if report.MovementFingerprint == "" {
+		report.MovementFingerprint = fingerprint
+	} else {
+		report.MovementFingerprint += "\x00" + fingerprint
 	}
 }
 
-// persistProgressState records a progress source's fingerprint advancing.
-// Best-effort like persistWatchdogState: a transient store failure here must
-// not abort health evaluation, but must not be invisible either.
-func persistProgressState(store *state.Store, name, fingerprint string, observedAt time.Time) {
+func persistHealthState(store *state.Store, name string, report HealthReport, checkedAt time.Time) {
 	err := store.Update(name, func(s *domain.Session) error {
-		s.Progress = &contract.ProgressState{Fingerprint: fingerprint, ObservedAt: observedAt}
-		s.UpdatedAt = observedAt
+		prev := s.Health
+		if prev == nil {
+			prev = &contract.HealthState{}
+		}
+		fingerprint := report.MovementFingerprint
+		lastMovementAt := prev.LastMovementAt
+		if report.MovementDeclared && fingerprint != "" && fingerprint != prev.LastFingerprint {
+			lastMovementAt = checkedAt
+		}
+		stateText := string(report.State())
+		s.Health = &contract.HealthState{
+			LastCheckedAt:   checkedAt,
+			LastMovementAt:  lastMovementAt,
+			LastFingerprint: fingerprint,
+			LastState:       stateText,
+			LastReason:      reportReason(report),
+			LastNotifiedAt:  prev.LastNotifiedAt,
+			NotifyCount:     prev.NotifyCount,
+		}
+		s.UpdatedAt = checkedAt
 		return nil
 	})
 	if err != nil {
-		slog.Warn("persist progress state failed", "session", name, "error", err)
+		slog.Warn("persist health state failed", "session", name, "error", err)
 	}
 }
 
-// defaultProgressFreshnessWindow applies when a workflow declares no
-// `[tick].heartbeat` — a session with no heartbeat has no natural cadence to
-// derive a window from, so this is a fixed fallback rather than an unbounded
-// (always-fresh) window.
-const defaultProgressFreshnessWindow = 30 * time.Minute
-
-// progressFreshnessWindow derives the progress-evidence freshness window
-// from the workflow's declared `[tick].heartbeat` rather than introducing a
-// dedicated config key: a session already declares how often it expects to
-// be revisited, and evidence older than a couple of those cycles is by
-// definition evidence the session's own cadence should have refreshed.
-// Doubling the heartbeat tolerates one missed cycle before calling a session
-// stalled. A workflow that declares no tick/heartbeat (tick nil) falls back
-// to defaultProgressFreshnessWindow.
-func progressFreshnessWindow(tick *config.TickConfig) time.Duration {
-	if tick == nil || tick.Heartbeat.Duration <= 0 {
-		return defaultProgressFreshnessWindow
+func reportReason(report HealthReport) string {
+	if report.State() == domain.HealthUnhealthy {
+		return report.Reason
 	}
-	return 2 * tick.Heartbeat.Duration
+	return ""
 }
 
 // evaluateHealthFor is EvaluateHealth's pure core, taking already-loaded task
 // state/defs instead of fetching them from store/cfg. Shared with GC, which
 // loads taskDefs once per session for done_when aggregation and reuses it here
-// rather than probing the runtime directly. window is the progress-evidence
-// freshness window; GC's caller passes zero since it only reads
-// Healthy/Declared, never the progress fields.
-func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs map[string]config.TaskDefinition, vars task.SessionVars, window time.Duration) HealthReport {
+// rather than probing the runtime directly. GC's caller passes a zero threshold
+// since it only reads Healthy and Declared, never the movement fields.
+func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs map[string]config.TaskDefinition, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
 	declared := false
-	progressExpected := false
-	progressDeclared := false
-	progressFresh := false
-	now := time.Now()
+	movementExpected := false
+	movementDeclared := false
+	movementFingerprintParts := []string{}
 
 	for _, key := range sortedTaskKeys(tasks) {
 		st := tasks[key]
@@ -223,69 +227,84 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		if def.Healthcheck != "" {
 			declared = true
 			if hcErr := task.RunHealthcheck(context.Background(), def.Healthcheck, st.Outputs, st.Inputs, vars); hcErr != nil {
-				return HealthReport{SessionName: name, Healthy: false, Declared: true, Reason: fmt.Sprintf("%s: %v", key, hcErr)}
+				return HealthReport{SessionName: name, Healthy: false, Declared: true, Reason: fmt.Sprintf("%s: %v", key, hcErr), LastCheckedAt: now}
 			}
 		}
 
 		// instanceExpected is this instance's own contribution to
-		// progress_expected, derived only from done_when/task state (never
-		// Message): unmet work exists for this instance and the session has
-		// not handed it off (e.g. by escalating to an independent
-		// reviewer), in which case it is legitimately not this session's
-		// turn to act.
+		// movement_expected, derived only from done_when/task state and never
+		// from the free-text message.
 		instanceExpected := false
 		if def.DoneWhen != nil {
-			handedOff := st.DoneWhen != nil && st.DoneWhen.LastAction == "escalate"
-			if !handedOff && task.EvaluateTaskDoneWhen(def.DoneWhen, st.Outputs).Overall != task.DoneSatisfied {
+			if task.EvaluateTaskDoneWhen(def.DoneWhen, st.Outputs).Overall != task.DoneSatisfied {
 				instanceExpected = true
 			}
 		}
 
-		if def.ProgressSignal != "" {
-			sig, sigErr := task.RunProgressSignal(context.Background(), def.ProgressSignal, st.Outputs, st.Inputs, vars)
+		if def.MovementSignal != "" {
+			sig, sigErr := task.RunMovementSignal(context.Background(), def.MovementSignal, st.Outputs, st.Inputs, vars)
 			if sigErr == nil && sig.Supported {
-				progressDeclared = true
-				// A supported signal's own ProgressExpected can only narrow
+				movementDeclared = true
+				// A supported signal's own MovementExpected can only narrow
 				// this instance's contribution (e.g. "the turn already
 				// ended"), never manufacture an expectation done_when does
 				// not already see.
-				if !sig.ProgressExpected {
+				if !sig.MovementExpected {
 					instanceExpected = false
 				}
-				if !sig.ObservedAt.IsZero() && now.Sub(sig.ObservedAt) <= window {
-					progressFresh = true
+				if sig.Fingerprint != "" {
+					movementFingerprintParts = append(movementFingerprintParts, key+":"+sig.Fingerprint)
 				}
 			}
 			// A failed run or an explicit "supported: false" both mean this
-			// instance has no basis to contribute progress evidence right
-			// now — the same as if no progress signal were declared.
+			// instance has no basis to contribute movement evidence right
+			// now — the same as if no movement signal were declared.
 		}
 
 		if instanceExpected {
-			progressExpected = true
+			movementExpected = true
 		}
 	}
 
-	return HealthReport{
+	report := HealthReport{
 		SessionName:      name,
 		Healthy:          true,
 		Declared:         declared,
-		ProgressExpected: progressExpected,
-		ProgressDeclared: progressDeclared,
-		ProgressFresh:    progressFresh,
+		MovementExpected: movementExpected,
+		MovementDeclared: movementDeclared,
+		LastCheckedAt:    now,
+	}
+	if len(movementFingerprintParts) > 0 {
+		slices.Sort(movementFingerprintParts)
+		report.MovementFingerprint = strings.Join(movementFingerprintParts, "\x00")
+	}
+	return report
+}
+
+func finalizeMovementObservation(report *HealthReport, prev *contract.HealthState, stallThreshold time.Duration, now time.Time) {
+	lastMovementAt := time.Time{}
+	lastFingerprint := ""
+	if prev != nil {
+		lastMovementAt = prev.LastMovementAt
+		lastFingerprint = prev.LastFingerprint
+	}
+	if report.MovementDeclared && report.MovementFingerprint != "" && report.MovementFingerprint != lastFingerprint {
+		lastMovementAt = now
+	}
+	report.LastMovementAt = lastMovementAt
+	if !report.MovementExpected || !report.MovementDeclared {
+		report.MovementFresh = true
+		return
+	}
+	if !lastMovementAt.IsZero() && now.Sub(lastMovementAt) <= stallThreshold {
+		report.MovementFresh = true
 	}
 }
 
 // WatchdogTick probes every session with a produced run-scoped task and
-// pushes a `dead` terminal event for each unhealthy one, persisting the
-// result on the session's own state (WatchdogState). Push targets the
-// immediate parent (D1); if the immediate parent is itself unhealthy, the
-// watchdog skips it and delivers to the grandparent instead, applying the
-// same rule recursively (D4). When no ancestor in the chain is healthy, the
-// `dead` fact is recorded on the origin session's own log instead — core has
-// no generic owner-notification primitive; surfacing an undeliverable dead
-// fact to a human is a policy decision that lives above plect (an owner's own
-// orchestrator loop noticing the record on its next poll, for instance).
+// pushes a `dead` terminal event for each unhealthy one. The legacy watchdog
+// path delivers to the nearest healthy ancestor, or records the fact locally
+// when no healthy ancestor exists.
 func WatchdogTick(cfg *config.Config, store *state.Store) ([]HealthReport, error) {
 	all := store.All()
 	names := make([]string, 0, len(all))
@@ -302,7 +321,6 @@ func WatchdogTick(cfg *config.Config, store *state.Store) ([]HealthReport, error
 		if err != nil {
 			return reports, err
 		}
-		persistWatchdogState(store, name, report)
 		if !report.Healthy {
 			pushDeadReport(cfg, store, name, &report)
 		}
@@ -311,44 +329,125 @@ func WatchdogTick(cfg *config.Config, store *state.Store) ([]HealthReport, error
 	return reports, nil
 }
 
-func persistWatchdogState(store *state.Store, name string, report HealthReport) {
-	now := time.Now()
-	err := store.Update(name, func(s *domain.Session) error {
-		ws := s.Watchdog
-		if ws == nil {
-			ws = &contract.WatchdogState{}
-			s.Watchdog = ws
-		}
-		ws.CheckedAt = now
-		if report.Healthy {
-			ws.DeadAt = time.Time{}
-			ws.Reason = ""
-		} else {
-			ws.DeadAt = now
-			ws.Reason = report.Reason
-		}
-		s.UpdatedAt = now
-		return nil
+func HealthcheckSession(cfg *config.Config, store *state.Store, params HealthcheckParams) (*HealthReport, error) {
+	healthCfg := config.NormalizeHealthcheckConfig(&params.Config)
+	before := store.Get(params.SessionName)
+	var prev *contract.HealthState
+	if before != nil && before.Health != nil {
+		cp := *before.Health
+		prev = &cp
+	}
+	report, err := EvaluateHealth(cfg, store, params.SessionName)
+	if err != nil {
+		return nil, err
+	}
+	stateText := string(report.State())
+	if stateText != string(domain.HealthUnhealthy) && stateText != string(domain.HealthStalled) {
+		return &report, nil
+	}
+	notify, notifyCount := shouldNotifyHealth(prev, stateText, healthCfg)
+	if !notify {
+		return &report, nil
+	}
+	report.Pushed = pushHealthEscalation(cfg, store, params.SessionName, &report, notifyCount)
+	if report.Pushed {
+		persistHealthNotification(store, params.SessionName, notifyCount)
+	}
+	return &report, nil
+}
+
+func shouldNotifyHealth(prev *contract.HealthState, stateText string, healthCfg config.HealthcheckConfig) (bool, int) {
+	if prev == nil {
+		return true, 1
+	}
+	if prev.LastState != stateText {
+		return true, prev.NotifyCount + 1
+	}
+	if prev.LastNotifiedAt.IsZero() {
+		return true, prev.NotifyCount + 1
+	}
+	renotifyEvery := healthCfg.RenotifyEvery
+	if renotifyEvery <= 0 {
+		renotifyEvery = config.DefaultHealthcheckConfig().RenotifyEvery
+	}
+	period := healthCfg.Period.Duration
+	if period <= 0 {
+		period = config.DefaultHealthcheckConfig().Period.Duration
+	}
+	if time.Since(prev.LastNotifiedAt) >= time.Duration(renotifyEvery)*period {
+		return true, prev.NotifyCount + 1
+	}
+	return false, prev.NotifyCount
+}
+
+func pushHealthEscalation(cfg *config.Config, store *state.Store, origin string, report *HealthReport, notifyCount int) bool {
+	stateText := string(report.State())
+	meta := map[string]string{
+		"escalation_kind": "health." + stateText,
+		"health_state":    stateText,
+	}
+	if !report.LastCheckedAt.IsZero() {
+		meta["last_checked_at"] = report.LastCheckedAt.UTC().Format(time.RFC3339)
+	}
+	if !report.LastMovementAt.IsZero() {
+		meta["last_movement_at"] = report.LastMovementAt.UTC().Format(time.RFC3339)
+	}
+	_, wakeErr, err := PublishTerminalToParent(cfg, store, origin, TerminalParams{
+		Type:     event.TypeTerminalEscalate,
+		Summary:  fmt.Sprintf("%s healthcheck is %s", origin, stateText),
+		Body:     healthEscalationBody(origin, report),
+		Metadata: meta,
+		DedupKey: fmt.Sprintf("%s|health|%s|%d", origin, stateText, notifyCount),
 	})
 	if err != nil {
-		// Best-effort: the watchdog tick's next pass will retry this write, so
-		// a transient store failure here must not abort the whole tick (other
-		// sessions' health still needs evaluating) — but it must not be
-		// invisible either.
-		slog.Warn("persist watchdog state failed", "session", name, "error", err)
+		slog.Warn("publish health escalation failed", "session", origin, "error", err)
+		return false
+	}
+	if wakeErr != nil {
+		report.WakeWarning = wakeErr.Error()
+	}
+	return true
+}
+
+func healthEscalationBody(origin string, report *HealthReport) string {
+	lines := []string{
+		fmt.Sprintf("%s healthcheck is %s.", origin, report.State()),
+	}
+	if report.Reason != "" {
+		lines = append(lines, "", report.Reason)
+	}
+	if !report.LastCheckedAt.IsZero() {
+		lines = append(lines, "", "last_checked_at: "+report.LastCheckedAt.UTC().Format(time.RFC3339))
+	}
+	if !report.LastMovementAt.IsZero() {
+		lines = append(lines, "last_movement_at: "+report.LastMovementAt.UTC().Format(time.RFC3339))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func persistHealthNotification(store *state.Store, name string, notifyCount int) {
+	now := time.Now()
+	if err := store.Update(name, func(s *domain.Session) error {
+		if s.Health == nil {
+			s.Health = &contract.HealthState{}
+		}
+		s.Health.LastNotifiedAt = now
+		s.Health.NotifyCount = notifyCount
+		s.UpdatedAt = now
+		return nil
+	}); err != nil {
+		slog.Warn("persist health notification failed", "session", name, "error", err)
 	}
 }
 
 // pushDeadReport pushes `dead` up the ancestor chain, skipping any ancestor
-// found unhealthy (D4's single-hop-skip rule applied recursively) until it
-// reaches a healthy one or runs out of tree. It mutates report in place with
-// the outcome.
+// found unhealthy until it reaches a healthy one or runs out of tree. It
+// mutates report in place with the outcome.
 func pushDeadReport(cfg *config.Config, store *state.Store, origin string, report *HealthReport) {
 	dedupKey := origin + "|dead|" + report.Reason
-	// recordUndeliverable: no live ancestor to deliver to, so record locally
-	// for observability. wakeIfDown=false — origin just failed its own
-	// healthcheck, so waking it would only re-run a setup Up's
-	// already-produced skip won't actually heal.
+	// No live ancestor can receive the fact, so record it locally for
+	// observability. The origin just failed its own healthcheck, so waking
+	// it would only re-run a setup that the already-produced state skips.
 	recordUndeliverable := func() {
 		_, _, _ = publishTerminalTo(cfg, store, origin, origin, false, TerminalParams{
 			Type:     event.TypeTerminalDead,
@@ -367,7 +466,7 @@ func pushDeadReport(cfg *config.Config, store *state.Store, origin string, repor
 			return
 		}
 		// resolveTerminalTarget: a "root:" pseudo-parent is not itself a
-		// session to probe/deliver into — resolve it to the real session it
+		// session to probe/deliver into. Resolve it to the real session it
 		// names (the same resolution PublishTerminalToParent applies for
 		// done/escalate), or this ancestor walk would treat "root:X" as a
 		// literal (missing) session name and fall through as undeliverable.
@@ -379,7 +478,8 @@ func pushDeadReport(cfg *config.Config, store *state.Store, origin string, repor
 		visited[parent] = true
 		parentHealth, err := EvaluateHealth(cfg, store, parent)
 		if err != nil || !parentHealth.Healthy {
-			// Parent is dead too (or unprobeable): skip one hop, per D4.
+			// Parent is dead too or unprobeable, so keep walking toward an
+			// ancestor that can receive the terminal fact.
 			target = parent
 			continue
 		}

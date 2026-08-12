@@ -19,36 +19,22 @@ type CheckParams struct {
 }
 
 type CheckAction struct {
-	SessionName     string           `json:"session_name"`
-	Instance        string           `json:"instance"`
-	Action          string           `json:"action"`
-	Round           int              `json:"round,omitempty"`
-	MaxRounds       int              `json:"max_rounds"`
-	Items           []string         `json:"items,omitempty"`
-	UnmetItems      []CheckUnmetItem `json:"unmet_items,omitempty"`
-	Warnings        []string         `json:"warnings,omitempty"`
-	Summary         string           `json:"summary,omitempty"`
-	Body            string           `json:"body,omitempty"`
-	ReviewerCommand string           `json:"reviewer_command,omitempty"`
-	JudgeCommands   []string         `json:"judge_commands,omitempty"`
-	Fingerprint     string           `json:"fingerprint,omitempty"`
-	// RevivalRevision is non-empty when this action was produced by the
-	// automatic post-exhaustion revival path: rounds were
-	// exhausted, the resource observed a new revision, and at least one
-	// judge leaf went stale as a result. Set, it both resets the round
-	// budget (Round/MaxRounds no longer read as exhausted) and marks the
-	// dedup id the actuator persists so the same revision never revives
-	// twice. RevivalReviewers names which recorded reviewer session(s) get
-	// the automatic re-evaluation kick.
-	RevivalRevision  string            `json:"revival_revision,omitempty"`
-	RevivalReviewers []RevivalReviewer `json:"revival_reviewers,omitempty"`
-}
-
-// RevivalReviewer names one judge leaf's recorded reviewer session, targeted
-// by the automatic post-exhaustion revival kick.
-type RevivalReviewer struct {
-	LeafID  string `json:"leaf_id"`
-	Session string `json:"session"`
+	SessionName         string           `json:"session_name"`
+	Instance            string           `json:"instance"`
+	Action              string           `json:"action"`
+	HeartbeatTicks      int              `json:"heartbeat_ticks,omitempty"`
+	HeartbeatBudget     int              `json:"heartbeat_budget,omitempty"`
+	HeartbeatEscalation int              `json:"heartbeat_escalation,omitempty"`
+	Items               []string         `json:"items,omitempty"`
+	UnmetItems          []CheckUnmetItem `json:"unmet_items,omitempty"`
+	Warnings            []string         `json:"warnings,omitempty"`
+	Summary             string           `json:"summary,omitempty"`
+	Body                string           `json:"body,omitempty"`
+	ReviewerCommand     string           `json:"reviewer_command,omitempty"`
+	JudgeCommands       []string         `json:"judge_commands,omitempty"`
+	Fingerprint         string           `json:"fingerprint,omitempty"`
+	EscalationKind      string           `json:"escalation_kind,omitempty"`
+	HeartbeatChanged    bool             `json:"-"`
 }
 
 type CheckResult struct {
@@ -108,7 +94,7 @@ type computedAction struct {
 // call: check reads persisted state only, so that repeated calls cannot
 // themselves change what a session reports. Only tick refreshes dynamic
 // outputs.
-func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName string, refresh bool) (string, []computedAction, []ChainSpawn, []string, error) {
+func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName string, refresh bool, trigger TickTrigger) (string, []computedAction, []ChainSpawn, []string, error) {
 	if sessionName == "" {
 		sessionName = os.Getenv("PLECT_SESSION_NAME")
 	}
@@ -157,7 +143,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		// poll.
 		alreadySatisfied := st.DoneWhen != nil && st.DoneWhen.LastAction == "satisfied"
 		eval := task.EvaluateTaskDoneWhenWithContext(dw, st.Outputs, doneWhenEvalContext(resolvedName, st, allSessions))
-		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval)
+		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger)
 		if action.Action != "" {
 			computed = append(computed, computedAction{instance: key, action: action, alreadySatisfied: alreadySatisfied, result: eval})
 		}
@@ -186,14 +172,13 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 }
 
 // CheckSession reports the same done_when/chain evaluation tick would act on,
-// but only reports it: no round advances, no event is published, no session
-// is woken or spawned, and no dynamic output is refreshed — it reads whatever
-// tick (or the initial produce) last persisted. Calling it any number of
-// times leaves state, event log, and session list unchanged (the target
-// session's state does not change). Use plect tick
-// to actually advance the gate, refresh outputs, and fire chains.
+// but only reports it: no heartbeat budget advances, no event is published,
+// no session is woken or spawned, and no dynamic output is refreshed. It reads
+// whatever tick or initial produce last persisted. Calling it any number of
+// times leaves state, event log, and session list unchanged. Use plect tick to
+// actually advance the gate, refresh outputs, and fire chains.
 func CheckSession(cfg *config.Config, store *state.Store, params CheckParams) (*CheckResult, error) {
-	_, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, false)
+	_, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, false, "")
 	if err != nil {
 		return nil, err
 	}

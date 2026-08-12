@@ -383,11 +383,16 @@ func sessionRunState(s *domain.Session) domain.RunState {
 // evaluation, independent of run state. An evaluation error surfaces as
 // unhealthy — the same treatment the old three-value collapse gave it.
 func sessionHealthState(cfg *config.Config, store *state.Store, name string) domain.HealthState {
+	_, state := sessionHealthReport(cfg, store, name)
+	return state
+}
+
+func sessionHealthReport(cfg *config.Config, store *state.Store, name string) (HealthReport, domain.HealthState) {
 	report, err := EvaluateHealth(cfg, store, name)
 	if err != nil {
-		return domain.HealthUnhealthy
+		return HealthReport{}, domain.HealthUnhealthy
 	}
-	return report.State()
+	return report, report.State()
 }
 
 func conversationJSON(conv *domain.Conversation) string {
