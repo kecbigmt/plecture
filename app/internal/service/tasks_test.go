@@ -415,30 +415,6 @@ func TestDestroy_RelationGuardAllowsSelf(t *testing.T) {
 	}
 }
 
-func TestDestroy_ChildSessionHintNamesDownRemoval(t *testing.T) {
-	store := testStore(t)
-	cfg := &config.Config{}
-	parent := "org/repo-parent"
-	child := "org/repo-child"
-	seedSession(t, store, parent, "org/repo", 1, "default", nil)
-	seedSession(t, store, child, "org/repo", 2, "default", nil)
-	setParent(t, store, child, parent)
-
-	_, err := Destroy(cfg, store, DestroyParams{Identifier: parent})
-	svcErr, ok := err.(*Error)
-	if !ok || svcErr.Code != ErrHasChildren {
-		t.Fatalf("want ErrHasChildren, got %v", err)
-	}
-	for _, want := range []string{"sennit down", "--rm --force"} {
-		if !strings.Contains(svcErr.Message, want) {
-			t.Fatalf("Message = %q, want %q", svcErr.Message, want)
-		}
-	}
-	if strings.Contains(svcErr.Message, "sennit destroy") {
-		t.Fatalf("Message = %q, must not name removed command", svcErr.Message)
-	}
-}
-
 // `sennit up <bare-existing-session>` skips the guarded auto-create path, so the
 // guard at the existing-session resolution must catch it too.
 func TestUp_SessionGuardBlocksCrossOwner(t *testing.T) {

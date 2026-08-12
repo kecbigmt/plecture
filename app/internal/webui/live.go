@@ -34,7 +34,7 @@ func (l *LiveService) Status(name string) (*service.StatusResult, error) {
 }
 
 // eventTimelineLimit caps the detail-page timeline. The log is durable and
-// unbounded (it survives removal and stores bodies), and the page re-fetches
+// unbounded (it survives destroy and stores bodies), and the page re-fetches
 // every 5s, so reading/rendering the whole history would scale poorly; the
 // newest N is what the timeline shows.
 const eventTimelineLimit = 100
@@ -62,6 +62,10 @@ func (l *LiveService) EventsSubtree(root string) ([]event.Event, error) {
 // round-trip from this handler.
 func (l *LiveService) PublishEvent(name string, p service.EventPublishParams) (event.Event, error) {
 	return service.EventPublish(l.cfg, l.store, name, p)
+}
+
+func (l *LiveService) Create(p service.CreateParams) (*service.CreateResult, error) {
+	return service.Create(l.cfg, l.store, p)
 }
 
 func (l *LiveService) Up(p service.UpParams) (*service.UpResult, error) {

@@ -12,7 +12,7 @@
   <a href="/" hx-get="/" hx-select="#detail-pane" hx-target="#detail-pane" hx-swap="outerHTML" hx-push-url="true" class="inline-flex items-center gap-1 rounded-sm text-label text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:hidden">{{ template "icon-arrow-left" "size-4" }}List</a>
 
   {{- /* Header: name + status on the left, lifecycle actions on the right.
-         up/down run run-scoped tasks; remove opens the confirm dialog. All
+         up/down run run-scoped tasks; destroy opens the confirm dialog. All
          post the session name in the body (the {name...} route can't carry an
          action suffix). Errors swap into #action-error just below. */}}
   <div class="flex flex-wrap items-center justify-between gap-3">
@@ -30,12 +30,12 @@
         <input type="hidden" name="name" value="{{ .Identity.SessionName }}">
         {{ template "button" (dict "type" "submit" "variant" "outline" "label" "Down") }}
       </form>
-      {{- /* Removal is irreversible, so it opens a native <dialog> first. The
+      {{- /* Destroy is irreversible, so it opens a native <dialog> first. The
              browser supplies focus trap / Esc; showModal needs the one-line
              handler. up/down show progress by disabling their button mid-request
              (hx-disabled-elt) — no separate spinner, which as a sibling here
              would never match htmx's descendant rule and only reserve space. */}}
-      <button type="button" onclick="document.getElementById('remove-dialog').showModal()" class="{{ buttonClass "destructive" }}">Remove…</button>
+      <button type="button" onclick="document.getElementById('destroy-dialog').showModal()" class="{{ buttonClass "destructive" }}">Destroy…</button>
     </div>
   </div>
   <div id="action-error" role="alert" aria-live="polite" class="empty:hidden"></div>
@@ -44,20 +44,19 @@
          (content clicks hit children), so target===this means the backdrop.
          Success redirects away; warnings/errors swap into #action-error, so
          close after the request to reveal them. */}}
-  <dialog id="remove-dialog" aria-labelledby="remove-dialog-title" onclick="if(event.target===this)this.close()" class="w-full max-w-md rounded-lg border border-border bg-card p-0 text-card-foreground shadow-lg backdrop:bg-foreground/50">
-    <form hx-post="/sessions/down" hx-target="#action-error" hx-swap="innerHTML" hx-disabled-elt="find button" hx-on::after-request="this.closest('dialog').close()" class="grid gap-4 p-6">
+  <dialog id="destroy-dialog" aria-labelledby="destroy-dialog-title" onclick="if(event.target===this)this.close()" class="w-full max-w-md rounded-lg border border-border bg-card p-0 text-card-foreground shadow-lg backdrop:bg-foreground/50">
+    <form hx-post="/sessions/destroy" hx-target="#action-error" hx-swap="innerHTML" hx-disabled-elt="find button" hx-on::after-request="this.closest('dialog').close()" class="grid gap-4 p-6">
       <div class="grid gap-1.5">
-        <h2 id="remove-dialog-title" class="text-heading font-semibold text-foreground">Remove this session?</h2>
+        <h2 id="destroy-dialog-title" class="text-heading font-semibold text-foreground">Destroy this session?</h2>
         <p class="text-body text-muted-foreground">Runs task cleanup and removes the worktree and state entry. This cannot be undone.</p>
       </div>
       <input type="hidden" name="name" value="{{ .Identity.SessionName }}">
-      <input type="hidden" name="rm" value="1">
       <label class="flex items-start gap-2 text-body"><input type="checkbox" name="force" value="1" class="mt-1"><span>Force — demote cleanup errors to warnings and remove a dirty worktree too, continuing teardown</span></label>
       <label class="flex items-start gap-2 text-body"><input type="checkbox" name="delete_branch" value="1" class="mt-1"><span>Also delete the local branch</span></label>
       <div class="flex items-center justify-end gap-2">
         <span class="htmx-indicator mr-auto text-label text-muted-foreground">Running…</span>
         <button type="button" onclick="this.closest('dialog').close()" class="{{ buttonClass "outline" }}">Cancel</button>
-        <button type="submit" class="{{ buttonClass "destructive" }}">Remove</button>
+        <button type="submit" class="{{ buttonClass "destructive" }}">Destroy</button>
       </div>
     </form>
   </dialog>

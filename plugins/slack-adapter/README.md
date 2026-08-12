@@ -88,7 +88,7 @@ pre-connects to channel-server, so claude's replies flow to Slack right away.
 ### DELETE /subscribe?thread_ts=...
 
 Unsubscribes. A missing `thread_ts` is a no-op (`204`). Called from `sennit
-down` and `sennit down --rm` cleanup.
+down` / `destroy` cleanup.
 
 ### GET /subscribers
 

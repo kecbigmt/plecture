@@ -72,7 +72,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 			return nil, &Error{
 				Code: ErrHasChildren,
 				Message: fmt.Sprintf(
-					"session %s has %d child session(s) that would be orphaned: %s\nUse `sennit down %s` + `sennit up %s` to reset without orphaning them, or re-run with `sennit down %s --rm --force` to remove and orphan them.",
+					"session %s has %d child session(s) that would be orphaned: %s\nUse `sennit down %s` + `sennit up %s` to reset without orphaning them, or re-run with `sennit destroy %s --force` to destroy and orphan them.",
 					sessionName, len(children), strings.Join(children, ", "), sessionName, sessionName, sessionName,
 				),
 			}
@@ -143,7 +143,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 			if !params.Force {
 				return nil, &Error{
 					Code:    ErrExecutionFailed,
-					Message: fmt.Sprintf("%v (session %s)\nRe-run with `sennit down %s --rm --force` to delete the state entry anyway.", cleanupErr, sessionName, sessionName),
+					Message: fmt.Sprintf("%v (session %s)\nRe-run with `sennit destroy %s --force` to delete the state entry anyway.", cleanupErr, sessionName, sessionName),
 				}
 			}
 			result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow cleanup: %v", cleanupErr))
@@ -166,7 +166,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	if result.WorktreeWarning != "" && !params.Force {
 		return nil, &Error{
 			Code:    ErrExecutionFailed,
-			Message: fmt.Sprintf("%s (session %s)\nRe-run with `sennit down %s --rm --force` to delete the worktree and state entry anyway.", result.WorktreeWarning, sessionName, sessionName),
+			Message: fmt.Sprintf("%s (session %s)\nRe-run with `sennit destroy %s --force` to delete the worktree and state entry anyway.", result.WorktreeWarning, sessionName, sessionName),
 		}
 	}
 

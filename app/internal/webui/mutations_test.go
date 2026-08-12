@@ -52,7 +52,7 @@ func TestCreate_Success(t *testing.T) {
 	}
 }
 
-// The start form is the only entry point for resolver-less identifiers, so
+// The create form is the only entry point for resolver-less identifiers, so
 // workflow must reach UpParams exactly like the CLI/MCP surfaces — a
 // resolver-less resource id fails auto-create without an explicit
 // workflow.
@@ -190,12 +190,11 @@ func TestUp_NotFound(t *testing.T) {
 	}
 }
 
-// 4. down removal: passes force/delete_branch through and redirects to the list.
-func TestDownRemoval_Success(t *testing.T) {
+// 4. destroy: passes force/delete_branch through and redirects to the list.
+func TestDestroy_Success(t *testing.T) {
 	svc := &fakeService{}
-	rec := postForm(t, New(svc).Routes(), "/sessions/down", url.Values{
+	rec := postForm(t, New(svc).Routes(), "/sessions/destroy", url.Values{
 		"name":          {"owner/repo-1"},
-		"rm":            {"1"},
 		"force":         {"1"},
 		"delete_branch": {"1"},
 	})
@@ -206,19 +205,18 @@ func TestDownRemoval_Success(t *testing.T) {
 		t.Errorf("HX-Redirect = %q, want /", got)
 	}
 	if svc.gotDestroy == nil || !svc.gotDestroy.Force || !svc.gotDestroy.DeleteBranch {
-		t.Errorf("removal params = %+v", svc.gotDestroy)
+		t.Errorf("Destroy params = %+v", svc.gotDestroy)
 	}
 }
 
-// 4. down removal: cleanup warnings are shown in place rather than redirected away.
-func TestDownRemoval_WithWarnings(t *testing.T) {
+// 4. destroy: cleanup warnings are shown in place rather than redirected away.
+func TestDestroy_WithWarnings(t *testing.T) {
 	svc := &fakeService{destroyResult: &service.DestroyResult{
 		SessionName:     "owner/repo-1",
 		CleanupWarnings: []string{"task foo cleanup failed"},
 	}}
-	rec := postForm(t, New(svc).Routes(), "/sessions/down", url.Values{
+	rec := postForm(t, New(svc).Routes(), "/sessions/destroy", url.Values{
 		"name":  {"owner/repo-1"},
-		"rm":    {"1"},
 		"force": {"1"},
 	})
 	if rec.Code != http.StatusOK {
@@ -236,25 +234,25 @@ func TestDownRemoval_WithWarnings(t *testing.T) {
 	}
 }
 
-// Rendering: the list page offers a start form posting to /sessions.
-func TestList_RendersStartForm(t *testing.T) {
+// Rendering: the list page offers a create form posting to /sessions.
+func TestList_RendersCreateForm(t *testing.T) {
 	body := get(t, &fakeService{}, "/").Body.String()
 	if !strings.Contains(body, `hx-post="/sessions"`) {
-		t.Error("start form missing")
+		t.Error("create form missing")
 	}
 	if !strings.Contains(body, `name="url"`) {
-		t.Error("start form URL field missing")
+		t.Error("create form URL field missing")
 	}
 }
 
-// Rendering: the detail page offers up/down/remove controls.
+// Rendering: the detail page offers up/down/destroy controls.
 func TestDetail_RendersActions(t *testing.T) {
 	body := get(t, &fakeService{status: sampleShow()}, "/sessions/owner/repo-7").Body.String()
 	for _, want := range []string{
 		`hx-post="/sessions/up"`,
 		`hx-post="/sessions/down"`,
-		`name="rm" value="1"`,
-		`id="remove-dialog"`,
+		`hx-post="/sessions/destroy"`,
+		`id="destroy-dialog"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("detail actions missing %q", want)
@@ -262,15 +260,15 @@ func TestDetail_RendersActions(t *testing.T) {
 	}
 }
 
-// removeDialogBackdropClose matches the detail page's remove <dialog> when it
+// destroyDialogBackdropClose matches the detail page's destroy <dialog> when it
 // carries a target-aware close handler (clicking the backdrop dismisses it).
-var removeDialogBackdropClose = regexp.MustCompile(`<dialog\b[^>]*\bid="remove-dialog"[^>]*\bonclick="[^"]*\.close\(\)`)
+var destroyDialogBackdropClose = regexp.MustCompile(`<dialog\b[^>]*\bid="destroy-dialog"[^>]*\bonclick="[^"]*\.close\(\)`)
 
-// Behavior: clicking outside the remove confirmation closes it.
-func TestDetail_RemoveDialogClosesOnBackdrop(t *testing.T) {
+// Behavior: clicking outside the destroy confirmation closes it.
+func TestDetail_DestroyDialogClosesOnBackdrop(t *testing.T) {
 	body := get(t, &fakeService{status: sampleShow()}, "/sessions/owner/repo-7").Body.String()
-	if !removeDialogBackdropClose.MatchString(body) {
-		t.Error("remove dialog should close on backdrop click")
+	if !destroyDialogBackdropClose.MatchString(body) {
+		t.Error("destroy dialog should close on backdrop click")
 	}
 }
 

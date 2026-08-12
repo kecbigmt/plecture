@@ -43,7 +43,7 @@ Scope governs the lifecycle:
   - run-scoped tasks may only be instantiated while the run scope is up
     (after 'sennit up'); they are cleaned at 'sennit down'.
   - session-scoped tasks may be instantiated any time and are cleaned at
-    'sennit down --rm'.
+    'sennit destroy'.
 
 The session defaults to the ambient pane environment ($SENNIT_SESSION_NAME,
 exported into the agent's shell), so a running agent can simply
@@ -92,7 +92,8 @@ var taskCleanupCmd = &cobra.Command{
 	Use:   "cleanup <instance>",
 	Short: "Reclaim a single dynamic task instance",
 	Long: `Tear down one dynamic task instance: run its cleanup script and remove it
-from session state. The single-instance counterpart of 'sennit down'.
+from session state. The single-instance counterpart of 'sennit down' / 'sennit
+destroy'.
 
 The instance is addressed by its key alone — a --name (e.g. 'initial') or a
 numbered '<task>#<n>' — and reclaimed regardless of which task produced it

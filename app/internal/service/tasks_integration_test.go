@@ -512,7 +512,7 @@ func TestIntegration_DestroyRefusesWhenWorktreeDirty(t *testing.T) {
 }
 
 // TestIntegration_DestroyAutoDownsLiveRunTask locks in the auto-down
-// behavior: removing an `up` session — one with a
+// behavior: calling `sennit destroy` on an `up` session — one with a
 // run-scoped task in `produced` status — must run run-scoped cleanup
 // *before* session-scoped cleanup, then remove the worktree and delete
 // the state entry, without the user having to `sennit down` first.

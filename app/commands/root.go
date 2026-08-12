@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"os"
-	"slices"
 
 	"github.com/spf13/cobra"
 )
@@ -49,11 +48,6 @@ func removedLifecycleCommandHint(args []string) string {
 	switch args[0] {
 	case "create":
 		return "Use `sennit up <resource-id>` instead."
-	case "destroy":
-		if slices.Contains(args[1:], "--force") || slices.Contains(args[1:], "-f") {
-			return "Use `sennit down <resource-id|session> --rm --force` instead."
-		}
-		return "Use `sennit down <resource-id|session> --rm` instead."
 	default:
 		return ""
 	}

@@ -28,6 +28,7 @@ type fakeService struct {
 	subtreeErr    error
 	gotSubtree    string
 
+	createResult  *service.CreateResult
 	upResult      *service.UpResult
 	upErr         error
 	downResult    *service.DownResult
@@ -60,6 +61,10 @@ func (f *fakeService) PublishEvent(name string, p service.EventPublishParams) (e
 	f.gotPublishFor = name
 	f.gotPublish = &p
 	return f.publishResult, f.publishErr
+}
+
+func (f *fakeService) Create(service.CreateParams) (*service.CreateResult, error) {
+	return f.createResult, nil
 }
 
 func (f *fakeService) Up(p service.UpParams) (*service.UpResult, error) {

@@ -104,7 +104,7 @@ func TestInstrumentHandler_TraceIDContinuity(t *testing.T) {
 		return mcp.NewToolResultError("fail"), nil
 	}
 
-	handler := instrumentHandler("sennit_down", inner)
+	handler := instrumentHandler("sennit_destroy", inner)
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{
 		"url": "https://github.com/acme/widgets/pull/42",

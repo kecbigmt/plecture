@@ -30,22 +30,22 @@
   <div id="session-list" class="space-y-4 md:min-h-0 md:overflow-y-auto md:pr-1">
     <details class="rounded-lg border border-border bg-card p-3 text-card-foreground">
       <summary class="cursor-pointer text-label font-semibold text-muted-foreground">New session</summary>
-      {{- /* Posts to /sessions, which starts through Up. Errors swap into
-             #start-error; success redirects to the new session via HX-Redirect. */}}
-      <form hx-post="/sessions" hx-target="#start-error" hx-swap="innerHTML" hx-disabled-elt="find button" class="mt-3 grid gap-3">
-        {{ template "input" (dict "id" "start-url" "name" "url" "label" "Resource ID" "placeholder" "e.g. https://github.com/owner/repo/issues/1" "required" true) }}
-        {{ template "input" (dict "id" "start-tag" "name" "tag" "label" "Tag (optional)" "placeholder" "experiment") }}
-        {{ template "input" (dict "id" "start-workflow" "name" "workflow" "label" "Workflow (optional)" "placeholder" "use when multiple workflows match") }}
-        {{ template "input" (dict "id" "start-task" "name" "task" "label" "Initial task (optional)" "placeholder" "work / review / respond / investigate / none") }}
+      {{- /* Posts to /sessions, which auto-creates then runs (Up). Errors swap into
+             #create-error; success redirects to the new session via HX-Redirect. */}}
+      <form hx-post="/sessions" hx-target="#create-error" hx-swap="innerHTML" hx-disabled-elt="find button" class="mt-3 grid gap-3">
+        {{ template "input" (dict "id" "create-url" "name" "url" "label" "Resource ID" "placeholder" "e.g. https://github.com/owner/repo/issues/1" "required" true) }}
+        {{ template "input" (dict "id" "create-tag" "name" "tag" "label" "Tag (optional)" "placeholder" "experiment") }}
+        {{ template "input" (dict "id" "create-workflow" "name" "workflow" "label" "Workflow (optional)" "placeholder" "use when multiple workflows match") }}
+        {{ template "input" (dict "id" "create-task" "name" "task" "label" "Initial task (optional)" "placeholder" "work / review / respond / investigate / none") }}
         <div class="grid gap-1.5">
-          <label for="start-inputs" class="text-label font-medium text-foreground">Inputs JSON (optional)</label>
-          <textarea id="start-inputs" name="inputs" rows="3" placeholder='{"key":"value"}' class="flex w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-body text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"></textarea>
+          <label for="create-inputs" class="text-label font-medium text-foreground">Inputs JSON (optional)</label>
+          <textarea id="create-inputs" name="inputs" rows="3" placeholder='{"key":"value"}' class="flex w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-body text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"></textarea>
         </div>
         <div class="flex items-center gap-3">
-          {{ template "button" (dict "type" "submit" "label" "Start") }}
+          {{ template "button" (dict "type" "submit" "label" "Create and start") }}
           <span class="htmx-indicator text-label text-muted-foreground">Running…</span>
         </div>
-        <div id="start-error" role="alert" aria-live="polite"></div>
+        <div id="create-error" role="alert" aria-live="polite"></div>
       </form>
     </details>
     <div id="sessions" hx-get="/sessions?order={{.Order}}" hx-trigger="every 5s" hx-swap="innerHTML">

@@ -147,7 +147,7 @@ func (s *Store) Append(ev event.Event) (stored event.Event, off, next int64, err
 
 // WriteTombstone durably persists a session's tombstone snapshot (atomic
 // write + fsync) into its event log directory, so the snapshot survives
-// removal deleting the session's state.json entry. data is an opaque
+// `sennit destroy` deleting the session's state.json entry. data is an opaque
 // blob (the caller owns its schema — this package stays provider-agnostic);
 // a pre-existing tombstone is overwritten.
 func (s *Store) WriteTombstone(session string, data []byte) error {

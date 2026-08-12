@@ -18,7 +18,7 @@ import (
 // right). The same shell backs both "/" and "/sessions/<name>": Detail is the
 // selected session (nil = none), NotFound names a missing one. Cards carry the
 // active flag so the selected row is highlighted, and the token feeds the
-// start form's CSRF header.
+// create form's CSRF header.
 type appView struct {
 	Cards     []cardView
 	Order     string // "recent" | "oldest"
@@ -211,15 +211,15 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, "ok")
 }
 
-// handleSessionCreate starts a session from the form's URL. Up auto-creates
-// the session before running run-scoped tasks.
+// handleSessionCreate creates and starts a session from the form's URL (the
+// docker-compose-up-style path: Up auto-creates then runs run-scoped tasks).
 // Success redirects to the new session's detail page; a service error becomes a
 // status-mapped banner swapped next to the form.
 //
 // workflow is forwarded like the CLI/MCP surfaces, but service.Up only
-// auto-creates for a resolver-matched or URL-shaped identifier — so unlike
-// the session from a bare resolver-less identifier. Here workflow only
-// disambiguates multiple workflows matching the same resolver.
+// auto-creates for a resolver-matched or URL-shaped identifier. This form
+// cannot create a resolver-less session from a bare identifier. Here workflow
+// only disambiguates multiple workflows matching the same resolver.
 func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 	rawURL := strings.TrimSpace(r.FormValue("url"))
 	if rawURL == "" {
@@ -259,26 +259,9 @@ func (s *Server) handleSessionUp(w http.ResponseWriter, r *http.Request) {
 	redirectAfterAction(w, r, sessionPath(name))
 }
 
-// handleSessionDown runs run-scoped cleanup, or full removal when rm is set.
+// handleSessionDown runs run-scoped cleanup for the named session.
 func (s *Server) handleSessionDown(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
-	if r.FormValue("rm") != "" {
-		res, err := s.svc.Destroy(service.DestroyParams{
-			Identifier:   name,
-			Force:        r.FormValue("force") != "",
-			DeleteBranch: r.FormValue("delete_branch") != "",
-		})
-		if err != nil {
-			s.renderStatusError(w, httpStatusForError(err), err.Error())
-			return
-		}
-		if len(res.CleanupWarnings) > 0 || res.WorktreeWarning != "" {
-			s.render(w, "removal-warnings", res)
-			return
-		}
-		hxRedirect(w, "/")
-		return
-	}
 	if _, err := s.svc.Down(service.DownParams{Identifier: name}); err != nil {
 		s.renderStatusError(w, httpStatusForError(err), err.Error())
 		return
@@ -286,7 +269,28 @@ func (s *Server) handleSessionDown(w http.ResponseWriter, r *http.Request) {
 	redirectAfterAction(w, r, sessionPath(name))
 }
 
-// parseInputs turns the optional inputs textarea into the start params map.
+// handleSessionDestroy tears the session down. With cleanup warnings (only
+// possible under --force) it renders them in place instead of redirecting, so
+// they are not lost; a clean teardown redirects to the list.
+func (s *Server) handleSessionDestroy(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("name")
+	res, err := s.svc.Destroy(service.DestroyParams{
+		Identifier:   name,
+		Force:        r.FormValue("force") != "",
+		DeleteBranch: r.FormValue("delete_branch") != "",
+	})
+	if err != nil {
+		s.renderStatusError(w, httpStatusForError(err), err.Error())
+		return
+	}
+	if len(res.CleanupWarnings) > 0 || res.WorktreeWarning != "" {
+		s.render(w, "destroy-warnings", res)
+		return
+	}
+	hxRedirect(w, "/")
+}
+
+// parseInputs turns the optional inputs textarea into the create params map.
 // Empty stays nil so the service distinguishes "no inputs" from "{}".
 func parseInputs(raw string) (map[string]any, error) {
 	raw = strings.TrimSpace(raw)

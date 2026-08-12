@@ -69,9 +69,9 @@ expressed through borders and tonal layers rather than heavy shadows.
 
 - **background / foreground** — page surface and primary text.
 - **card** — session rows and panels sit on `card` with a `border`.
-- **primary** — primary actions (e.g. start/up). `primary-foreground` for its text.
+- **primary** — primary actions (e.g. create/up). `primary-foreground` for its text.
 - **muted / muted-foreground** — secondary metadata (branch, GitHub status).
-- **destructive** — remove and other irreversible actions.
+- **destructive** — destroy and other irreversible actions.
 - **border / input / ring** — separators, field borders, focus ring.
 
 Session status badges reuse Tailwind's built-in palette (green/amber/red/gray)

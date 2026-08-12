@@ -95,6 +95,7 @@ type SessionService interface {
 	// timeline's display order, so handlers must not reverse it.
 	EventsSubtree(root string) ([]event.Event, error)
 	PublishEvent(name string, p service.EventPublishParams) (event.Event, error)
+	Create(service.CreateParams) (*service.CreateResult, error)
 	Up(service.UpParams) (*service.UpResult, error)
 	Down(service.DownParams) (*service.DownResult, error)
 	Destroy(service.DestroyParams) (*service.DestroyResult, error)
@@ -152,6 +153,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /sessions", s.handleSessionCreate)
 	mux.HandleFunc("POST /sessions/up", s.handleSessionUp)
 	mux.HandleFunc("POST /sessions/down", s.handleSessionDown)
+	mux.HandleFunc("POST /sessions/destroy", s.handleSessionDestroy)
 	// Emit: publish a user.* event from the detail page. The bus tailer fans the
 	// appended event back to the live stream, so the timeline updates on its own.
 	mux.HandleFunc("POST /events", s.handleSessionEventEmit)
