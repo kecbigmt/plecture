@@ -38,7 +38,6 @@ func NewServer() *server.MCPServer {
 		server.ServerTool{Tool: templateListTool, Handler: wrap("plect_template_list", handleTemplateList)},
 		server.ServerTool{Tool: workflowListTool, Handler: wrap("plect_workflow_list", handleWorkflowList)},
 		server.ServerTool{Tool: workflowShowTool, Handler: wrap("plect_workflow_show", handleWorkflowShow)},
-		server.ServerTool{Tool: gcTool, Handler: wrap("plect_gc", handleGC)},
 		server.ServerTool{Tool: eventListTool, Handler: wrap("plect_event_list", handleEventList)},
 		server.ServerTool{Tool: eventShowTool, Handler: wrap("plect_event_show", handleEventShow)},
 		server.ServerTool{Tool: eventPublishTool, Handler: wrap("plect_event_publish", handleEventPublish)},
@@ -130,17 +129,6 @@ var captureTool = mcp.NewTool("plect_capture",
 var listTool = mcp.NewTool("plect_list",
 	mcp.WithDescription("List all sessions with lifecycle status and the workflow's own display status when present"),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
-)
-
-var gcTool = mcp.NewTool("plect_gc",
-	mcp.WithDescription("Identify and remove stale sessions. By default returns a dry-run preview. Set execute=true to perform cleanup. Completion is judged by each session's done_when-bearing task instances over persisted outputs; sessions without such tasks are left alone. Dynamic outputs are refreshed explicitly before decision points, not by gc. Deletion goes through a non-force destroy, so task cleanups run and a dirty worktree blocks it."),
-	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
-	mcp.WithBoolean("execute",
-		mcp.Description("Actually perform cleanup. When false (default), returns what would be deleted without making changes."),
-	),
-	mcp.WithBoolean("delete_branch",
-		mcp.Description("Also delete local branches for auto-deleted sessions"),
-	),
 )
 
 var templateListTool = mcp.NewTool("plect_template_list",
@@ -377,25 +365,6 @@ func handleList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 	return jsonResult(map[string]any{
 		"ok":       true,
 		"sessions": entries,
-	})
-}
-
-func handleGC(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
-	store := state.NewStore("")
-
-	result, err := service.GC(cfg, store, service.GCParams{
-		Execute:      request.GetBool("execute", false),
-		DeleteBranch: request.GetBool("delete_branch", false),
-	})
-	if err != nil {
-		return errorResult(err), nil
-	}
-
-	return jsonResult(map[string]any{
-		"ok":       true,
-		"executed": result.Executed,
-		"entries":  result.Entries,
 	})
 }
 

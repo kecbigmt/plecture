@@ -56,7 +56,7 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 // enumerated session-then-run so legacy state (Seq all zero) preserves the old
 // run-before-session reverse order through the stable sort. A dynamic instance
 // whose task definition has since disappeared is reclaimed with an empty
-// cleanup (best-effort, mirroring how a missing workflow degrades GC).
+// cleanup (best-effort, since there is no definition left to run against).
 func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task.Plan, runOnly bool) ([]task.Resolved, error) {
 	type seqResolved struct {
 		seq int

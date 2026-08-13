@@ -411,6 +411,15 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
+// taskIDForInstance resolves a task instance's definition ID. Empty TaskID
+// preserves the older static-node state shape.
+func taskIDForInstance(key string, st *contract.TaskState) string {
+	if st.TaskID != "" {
+		return st.TaskID
+	}
+	return key
+}
+
 // cachedInfo holds a session's display projection (title, status line).
 type cachedInfo struct {
 	Title         string
