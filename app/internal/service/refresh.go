@@ -57,10 +57,11 @@ func RefreshSessionOutputs(cfg *config.Config, store *state.Store, sessionName s
 
 // RefreshInstanceOutputs runs an instance's dynamic-output scripts and persists
 // the fetched values into its outputs. `plect tick`, `plect status --refresh`, and
-// `plect task finalize` call this at a decision point; display never does —
-// it reads the persisted values, so a sweep can't shell out per session and
-// hit the rate limit. A fetch failure leaves the
-// prior value untouched and is surfaced in the result.
+// `plect task finalize` call this at a decision point; `plect status` (without
+// --refresh) and `plect ls` never do — they read the persisted values, so
+// listing many sessions at once doesn't shell out per session and hit the
+// rate limit. A fetch failure leaves the prior value untouched and is
+// surfaced in the result.
 func RefreshInstanceOutputs(cfg *config.Config, store *state.Store, sessionName, instanceKey string) ([]OutputRefreshResult, error) {
 	resolvedName, session, err := resolveSession(cfg, store, sessionName)
 	if err != nil {

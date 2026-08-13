@@ -50,7 +50,7 @@ type DoneWhenJudge struct {
 }
 
 // DoneWhenState is reviewer/checker-owned completion state for one task instance's
-// done_when. It is separate from observed outputs so GC/display can read
+// done_when. It is separate from observed outputs so status/display can read
 // completion state without causing dispatch, rollback, or shell-out work.
 type DoneWhenState struct {
 	Judges               map[string]*DoneWhenJudge `json:"judges,omitempty"`
