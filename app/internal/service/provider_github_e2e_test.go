@@ -137,7 +137,7 @@ func setupSrcRepo(t *testing.T) string {
 // TestE2E_GithubProviderSrcLayoutSingleWorktree covers the ~/src layout's
 // thinnest case: the session owns the container's only worktree. Cleanup has
 // no sibling worktree and no bare layout to fall back to, so resolving the
-// primary checkout is the only thing keeping destroy/gc from stranding it.
+// primary checkout is the only thing keeping destroy from stranding it.
 func TestE2E_GithubProviderSrcLayoutSingleWorktree(t *testing.T) {
 	setupFakeScripts(t)
 	setupSrcRepo(t)
@@ -208,7 +208,7 @@ func TestE2E_GithubProviderInvariant(t *testing.T) {
 	}
 }
 
-// TestE2E_GithubProviderConvergesAndReclaims covers destroy/GC convergence on
+// TestE2E_GithubProviderConvergesAndReclaims covers destroy convergence on
 // the live provider path: cleanup reclaims the tagged branch, and a re-dispatch
 // over an orphaned branch reuses it instead of failing.
 func TestE2E_GithubProviderConvergesAndReclaims(t *testing.T) {

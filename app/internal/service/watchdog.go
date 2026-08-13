@@ -207,10 +207,8 @@ func reportReason(report HealthReport) string {
 }
 
 // evaluateHealthFor is EvaluateHealth's pure core, taking already-loaded task
-// state/defs instead of fetching them from store/cfg. Shared with GC, which
-// loads taskDefs once per session for done_when aggregation and reuses it here
-// rather than probing the runtime directly. GC's caller passes a zero threshold
-// since it only reads Healthy and Declared, never the movement fields.
+// state/defs instead of fetching them from store/cfg so callers that already
+// hold that data avoid a redundant load.
 func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs map[string]config.TaskDefinition, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
 	declared := false
 	movementExpected := false
