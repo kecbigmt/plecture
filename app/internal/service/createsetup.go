@@ -93,6 +93,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	vars := task.WorkflowHookVars{
 		ResourceID:    resource,
 		SessionName:   sessionName,
+		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
 	}
 	outputs, setupErr := task.RunWorkflowSetup(prov, vars, session.Tasks, params.Observer)
@@ -101,7 +102,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if workdir, ok := outputs[contract.OutputKeyWorkdir].(string); ok {
 			// The session's own working-directory field is the one every
 			// consumer (cd/attach/ls/web UI/hooks) reads, so mirror it here.
-			session.WorktreePath = workdir
+			session.WorkdirPath = workdir
 		}
 		if branch, ok := outputs["branch"].(string); ok && branch != "" {
 			session.Branch = branch
@@ -114,7 +115,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
 
-	// Environment lifecycle: after provider setup (the worktree exists), before
+	// Environment lifecycle: after provider setup (the workdir exists), before
 	// session task setup. A no-op when the workflow declares no environment.
 	// Fail-closed like provider setup — an environment setup failure must not
 	// let task setup start.
@@ -129,7 +130,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	// The workdir now exists: resolve the full cascade (incl. overlays above
 	// and the node-only layer inside the workdir) and run session tasks.
-	plan, err := buildPlanForSession(cfg, session.WorktreePath, session)
+	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -158,10 +159,10 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	recordSessionCreated(store, sessionName)
 
 	return &CreateResult{
-		SessionName:    sessionName,
-		WorktreePath:   session.WorktreePath,
-		Branch:         session.Branch,
-		ReusedWorktree: reused,
-		Tasks:          session.Tasks,
+		SessionName:   sessionName,
+		WorkdirPath:   session.WorkdirPath,
+		Branch:        session.Branch,
+		ReusedWorkdir: reused,
+		Tasks:         session.Tasks,
 	}, nil
 }

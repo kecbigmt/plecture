@@ -67,7 +67,7 @@ var checkTool = mcp.NewTool("plect_check",
 	mcp.WithDescription("Observation-only: evaluate each done_when-bearing task instance for a session — and, against those same facts, its [[chains]] — and report the result, with zero side effects — no heartbeat budget advance, no event published, no session woken or spawned, and no dynamic output refresh (reads whatever plect_tick, or the initial produce, last persisted). Repeated calls never change session state. Returns one action per instance: satisfied, wait, review_required, kick, or escalate — each with heartbeat_budget, heartbeat_ticks, a fingerprint for unchanged-poll detection, and unmet_items carrying machine-readable check/judge state. Also returns one chains[] entry per (chain, instance): fired/already-active/blocked (with blocked_reason), never spawned. Use plect_tick to actually advance the gate, refresh outputs, and fire chains."),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier, or session name (e.g. workspace-123)"),
+		mcp.Description("Resource identifier, or session name (e.g. session-123)"),
 	),
 )
 
@@ -75,15 +75,11 @@ var tickTool = mcp.NewTool("plect_tick",
 	mcp.WithDescription("The Goal Loop actuator: evaluate each done_when-bearing task instance for a session and act on the result — heartbeat-triggered ticks consume its heartbeat budget, while event and manual ticks do not. It publishes the resulting kickback/review/escalation event, and pushes a done/escalate terminal event to the parent exactly once per instance. Against that same fact set, also fires [[chains]]: a chain whose when holds and whose wired outputs are present spawns its workflow (idempotent — an already-active target is reported, not re-spawned). Returns one action per instance: satisfied, wait, review_required, kick, or escalate — each with heartbeat_budget, heartbeat_ticks, a fingerprint for unchanged-poll detection, and unmet_items carrying machine-readable check/judge state. Also returns one chains[] entry per (chain, instance) with its fired/spawned/already-active/blocked outcome."),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier, or session name (e.g. workspace-123)"),
+		mcp.Description("Resource identifier, or session name (e.g. session-123)"),
 	),
 	mcp.WithBoolean("no_refresh",
 		mcp.Description("Read persisted outputs without refreshing dynamic outputs from the source of truth first"),
 	),
-)
-
-var watchdogCheckTool = mcp.NewTool("plect_watchdog_check",
-	mcp.WithDescription("Layer-2 liveness probe (ADR: cross-session terminal event propagation): runs every produced run-scoped task's declared healthcheck for every session with a run scope up, and pushes a dead terminal event one hop to the immediate parent for each unhealthy one — skipping over a dead intermediate parent to the next live ancestor. Idempotent per unhealthy session (event id dedup)."),
 )
 
 var judgeApproveTool = mcp.NewTool("plect_judge_approve",
@@ -266,17 +262,6 @@ func handleTick(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 		"actions":  result.Actions,
 		"chains":   result.Chains,
 		"warnings": result.Warnings,
-	})
-}
-
-func handleWatchdogCheck(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	reports, err := service.WatchdogTick(config.Load(), state.NewStore(""))
-	if err != nil {
-		return errorResult(err), nil
-	}
-	return jsonResult(map[string]any{
-		"ok":      true,
-		"reports": reports,
 	})
 }
 

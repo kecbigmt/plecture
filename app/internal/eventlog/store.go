@@ -4,7 +4,7 @@
 //
 // The log is provider-agnostic: it treats session_name as an opaque string and
 // only encodes it to a filesystem-safe directory name. It never interprets the
-// name's structure (workspace, tags) or an event's Type.
+// name's structure (session, tags) or an event's Type.
 package eventlog
 
 import (

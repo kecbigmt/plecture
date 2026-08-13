@@ -11,7 +11,6 @@ import (
 	"github.com/kecbigmt/plect/app/internal/eventlog"
 	"github.com/kecbigmt/plect/app/internal/state"
 	"github.com/kecbigmt/plect/app/internal/task"
-	"github.com/kecbigmt/plect/app/internal/workspace"
 	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
@@ -25,9 +24,8 @@ type DestroyParams struct {
 
 // DestroyResult holds the outcome of Destroy.
 type DestroyResult struct {
-	SessionName     string `json:"session_name"`
-	RemovedWorktree bool   `json:"removed_worktree"`
-	WorktreeWarning string `json:"worktree_warning,omitempty"`
+	SessionName    string `json:"session_name"`
+	RemovedWorkdir bool   `json:"removed_workdir"`
 	// CleanupWarnings carries task cleanup errors that were downgraded to
 	// warnings by --force. Without --force a cleanup error aborts Destroy and
 	// returns the error directly; this field is only populated when the user
@@ -80,8 +78,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("orphaned %d child session(s): %s", len(children), strings.Join(children, ", ")))
 	}
 
-	mgr := workspace.NewManager(cfg.WorktreesRoot)
-	plan, err := buildPlanForSession(cfg, session.WorktreePath, session)
+	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -96,7 +93,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorktreePath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorkdirPath, session)
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
@@ -114,7 +111,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	}
 
 	// Persist any TaskState changes (status flips to cleaned) before we
-	// delete the entry, in case worktree removal fails and the user wants
+	// delete the entry, in case workdir removal fails and the user wants
 	// to inspect state.json post hoc.
 	session.UpdatedAt = time.Now()
 	putBestEffort(store, session, "post-run-cleanup checkpoint")
@@ -133,7 +130,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 
 	if wfState, ok := session.Tasks[contract.WorkflowPseudoNodeID]; ok && wfState != nil {
 		// Workflow setup acquired the working directory, so workflow cleanup
-		// owns its release — the core performs no worktree removal here.
+		// owns its release — the core performs no workdir removal here.
 		// (Whether the workdir is actually deleted is the cleanup script's
 		// decision; setup/cleanup symmetry is the author's contract.)
 		cleanupErr := runWorkflowCleanupForDestroy(cfg, session, params.Force, params.Observer)
@@ -148,26 +145,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 			}
 			result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow cleanup: %v", cleanupErr))
 		}
-		result.RemovedWorktree = session.WorktreePath != "" && !fileExists(session.WorktreePath)
-	} else if session.WorktreePath != "" {
-		repoDir := workspace.ContainerDir(session.WorktreePath)
-		gitDir, findErr := mgr.FindGitDir(repoDir, session.WorktreePath)
-		if findErr != nil {
-			result.WorktreeWarning = fmt.Sprintf("worktree removal failed: %v", findErr)
-		} else if err := mgr.RemoveByPath(context.Background(), session.WorktreePath, gitDir, session.Branch, params.Force, params.DeleteBranch); err != nil {
-			result.WorktreeWarning = fmt.Sprintf("worktree removal failed: %v", err)
-		} else {
-			result.RemovedWorktree = true
-		}
-	}
-
-	// Without --force, abort before store.Delete so the user can retry —
-	// otherwise the worktree is orphaned on disk while plect forgets about it.
-	if result.WorktreeWarning != "" && !params.Force {
-		return nil, &Error{
-			Code:    ErrExecutionFailed,
-			Message: fmt.Sprintf("%s (session %s)\nRe-run with `plect destroy %s --force` to delete the worktree and state entry anyway.", result.WorktreeWarning, sessionName, sessionName),
-		}
+		result.RemovedWorkdir = session.WorkdirPath != "" && !fileExists(session.WorkdirPath)
 	}
 
 	// Snapshot the state entry as a tombstone in the event log directory

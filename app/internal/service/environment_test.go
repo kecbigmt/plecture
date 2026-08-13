@@ -83,7 +83,7 @@ echo '{"workdir":"%s"}'
 `, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
 setup = '''
-[ -d "{{.WorktreePath}}" ] && vis=yes || vis=no
+[ -d "{{.WorkdirPath}}" ] && vis=yes || vis=no
 echo "{\"marker\":\"m1\",\"workdir_visible\":\"$vis\"}"
 '''
 exec = '"$@"'
@@ -106,7 +106,7 @@ required = ["marker"]
 	if envState.Outputs["marker"] != "m1" {
 		t.Errorf("environment outputs = %v", envState.Outputs)
 	}
-	// The worktree (provider output) must already exist when environment
+	// The workdir (provider output) must already exist when environment
 	// setup runs: provider -> environment ordering.
 	if envState.Outputs["workdir_visible"] != "yes" {
 		t.Errorf("workdir_visible = %v, want yes (provider setup must run before environment setup)", envState.Outputs["workdir_visible"])

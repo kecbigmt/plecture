@@ -210,6 +210,9 @@ func migrateStateJSON(data []byte) ([]byte, []string, error) {
 		if migrateLegacyIdentity(session) {
 			notes = append(notes, fmt.Sprintf("session %q: folded legacy url/owner_repo/number identity fields into resource_id/alias", name))
 		}
+		if migrateWorkdirPath(session) {
+			notes = append(notes, fmt.Sprintf("session %q: renamed worktree_path to workdir_path", name))
+		}
 		if backfillInlineTaskIDs(session) {
 			notes = append(notes, fmt.Sprintf("session %q: backfilled task_id for legacy inline tasks", name))
 		}
@@ -331,6 +334,18 @@ func migrateLegacyIdentity(session map[string]any) bool {
 	return true
 }
 
+func migrateWorkdirPath(session map[string]any) bool {
+	value, ok := session["worktree_path"]
+	if !ok {
+		return false
+	}
+	delete(session, "worktree_path")
+	if _, exists := session["workdir_path"]; !exists {
+		session["workdir_path"] = value
+	}
+	return true
+}
+
 // backfillInlineTaskIDs makes task_id explicit for sessions created via the
 // retired inline `[[tasks]]` config path (workflow unset). Those sessions
 // have no compiled workflow node to fall back on once the "empty task_id
@@ -378,9 +393,21 @@ func migrateConfigTOML(data []byte) ([]byte, []string, error) {
 		return nil, nil, fmt.Errorf("parse config.toml: %w", err)
 	}
 
+	var notes []string
+	if root, ok := doc["worktrees_root"]; ok {
+		delete(doc, "worktrees_root")
+		if _, exists := doc["workdirs_root"]; !exists {
+			doc["workdirs_root"] = root
+		}
+		notes = append(notes, "config.toml: renamed worktrees_root to workdirs_root")
+	}
+
 	rawAllowlist, ok := doc["repo_allowlist"]
 	if !ok {
-		return nil, nil, nil
+		if len(notes) == 0 {
+			return nil, nil, nil
+		}
+		return marshalTOMLIfChanged(doc, notes)
 	}
 	entries, _ := rawAllowlist.([]any)
 	if len(entries) == 0 {
@@ -388,7 +415,8 @@ func migrateConfigTOML(data []byte) ([]byte, []string, error) {
 		// presence is the legacy key the follow-up removal drops support
 		// for, so it is removed even though there is nothing to fold in.
 		delete(doc, "repo_allowlist")
-		return marshalTOMLIfChanged(doc, []string{"config.toml: removed empty legacy repo_allowlist key"})
+		notes = append(notes, "config.toml: removed empty legacy repo_allowlist key")
+		return marshalTOMLIfChanged(doc, notes)
 	}
 
 	existing, _ := doc["resource_allowlist"].([]any)
@@ -418,7 +446,7 @@ func migrateConfigTOML(data []byte) ([]byte, []string, error) {
 	delete(doc, "repo_allowlist")
 	doc["resource_allowlist"] = existing
 
-	notes := []string{fmt.Sprintf("config.toml: folded %d legacy repo_allowlist entries into resource_allowlist", len(entries))}
+	notes = append(notes, fmt.Sprintf("config.toml: folded %d legacy repo_allowlist entries into resource_allowlist", len(entries)))
 	if len(added) > 0 {
 		sort.Strings(added)
 		notes = append(notes, fmt.Sprintf("config.toml: added resource_allowlist patterns: %v", added))

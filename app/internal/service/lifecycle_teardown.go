@@ -13,9 +13,9 @@ import (
 // runWorkflowCleanupForDestroy resolves the session's workflow definition and
 // runs its cleanup hook. The definition comes from the trusted layers (the
 // workdir layer cannot declare hooks), so resolving against the session's
-// worktree path is safe even though that path is clone content.
+// workdir path is safe even though that path is clone content.
 func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, observer task.Observer) error {
-	workflows, err := cfg.LoadWorkflows(session.WorktreePath)
+	workflows, err := cfg.LoadWorkflows(session.WorkdirPath)
 	if err != nil {
 		return fmt.Errorf("load workflows: %w", err)
 	}
@@ -37,6 +37,7 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 	vars := task.WorkflowHookVars{
 		ResourceID:    session.ResourceID,
 		SessionName:   session.Name,
+		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
 		Force:         force,
 	}
@@ -81,14 +82,14 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 	appendStatic(plan.Session)
 	appendStatic(plan.Run)
 
-	defs, err := cfg.LoadTaskDefinitions(session.WorktreePath)
+	defs, err := cfg.LoadTaskDefinitions(session.WorkdirPath)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}
 	// Best-effort: teardown must stay resilient to a workflow config that has
 	// since disappeared or broken (see the comment below), so an error here
 	// just leaves Execution at its zero value (host) rather than aborting.
-	wf, _ := loadSessionWorkflow(cfg, session.WorktreePath, session)
+	wf, _ := loadSessionWorkflow(cfg, session.WorkdirPath, session)
 	// Sort dynamic keys for a deterministic input order before the stable sort
 	// (map iteration is random; equal-seq legacy entries would otherwise vary).
 	dynKeys := make([]string, 0, len(session.Tasks))

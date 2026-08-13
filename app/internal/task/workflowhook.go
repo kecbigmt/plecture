@@ -14,12 +14,14 @@ import (
 // WorkflowHookVars is the template surface for workflow-level setup/cleanup.
 // Deliberately minimal: setup runs before the working directory (and thus the
 // full config cascade) exists, so it only gets the resource identifier, the
-// session name, and the frozen session inputs. Anything else the script needs
-// (URL parsing etc.) it derives itself — resolver captures are NOT forwarded,
-// so the resolver's regex never becomes setup's input contract.
+// session name, the configured workdirs root, and the frozen session inputs.
+// Anything else the script needs (URL parsing etc.) it derives itself —
+// resolver captures are NOT forwarded, so the resolver's regex never becomes
+// setup's input contract.
 type WorkflowHookVars struct {
 	ResourceID    string
 	SessionName   string
+	WorkdirsRoot  string
 	SessionInputs map[string]any
 	// Force mirrors the caller's --force intent into the cleanup template so a
 	// provider's cleanup script can decide for itself whether to force-remove
@@ -202,6 +204,7 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 	data := struct {
 		ResourceID    string
 		SessionName   string
+		WorkdirsRoot  string
 		SessionInputs map[string]any
 		Prev          map[string]any
 		Self          map[string]any
@@ -209,6 +212,7 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 	}{
 		ResourceID:    vars.ResourceID,
 		SessionName:   vars.SessionName,
+		WorkdirsRoot:  vars.WorkdirsRoot,
 		SessionInputs: normalizeOutputs(vars.SessionInputs),
 		Prev:          normalizeOutputs(prev),
 		Self:          normalizeOutputs(self),

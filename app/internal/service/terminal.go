@@ -14,7 +14,7 @@ import (
 
 // terminalScanLimit bounds the reverse scan a dedup check uses against the
 // target's recent terminal events (P1: event id dedup so a repeated
-// goal-loop/watchdog tick does not re-push the same fact). A session with
+// goal-loop tick does not re-push the same fact). A session with
 // more than this many terminal pushes since the one being deduped would
 // re-push — acceptable, since D1/P1 only require idempotent *handling* of a
 // duplicate, not that one can never occur.
@@ -59,7 +59,7 @@ func resolveTerminalTarget(parent string) string {
 func PublishTerminalToParent(cfg *config.Config, store *state.Store, origin string, p TerminalParams) (id string, wakeErr error, err error) {
 	s := store.Get(origin)
 	if s == nil {
-		return "", nil, &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("session %q not found", origin)}
+		return "", nil, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", origin)}
 	}
 	if s.ParentSession == "" {
 		return "", nil, nil
@@ -80,7 +80,7 @@ func PublishTerminalToParent(cfg *config.Config, store *state.Store, origin stri
 // opportunity within bounded time regardless of the receiver's run state).
 // Up is idempotent (already-produced tasks are skipped), so this is safe even
 // if another actor is concurrently bringing target up. wakeIfDown is false
-// for the watchdog's no-live-ancestor fallback (recording `dead` back onto
+// for local no-live-ancestor fallback (recording `dead` back onto
 // the origin itself) — that target is the thing that just failed its own
 // healthcheck, so waking it would just re-run a setup that Up's own
 // already-produced skip won't actually heal.

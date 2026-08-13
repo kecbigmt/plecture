@@ -55,7 +55,7 @@ include     = ["plect.instruction"]
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)
 	if err := stateStore.Put(&domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorktreePath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding", WorkdirPath: t.TempDir(),
 		Tasks: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},

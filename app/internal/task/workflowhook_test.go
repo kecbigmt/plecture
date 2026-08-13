@@ -37,18 +37,19 @@ func TestRunWorkflowSetup_ProducesWorkdir(t *testing.T) {
 func TestRunWorkflowSetup_TemplateVars(t *testing.T) {
 	prov := config.ProviderConfig{
 		ID:    "wf",
-		Setup: `echo "{\"workdir\":\"/tmp/x\",\"resource\":\"{{.ResourceID}}\",\"session\":\"{{.SessionName}}\",\"tpl\":\"{{get .SessionInputs "template"}}\"}"`,
+		Setup: `echo "{\"workdir\":\"/tmp/x\",\"resource\":\"{{.ResourceID}}\",\"session\":\"{{.SessionName}}\",\"root\":\"{{.WorkdirsRoot}}\",\"tpl\":\"{{get .SessionInputs "template"}}\"}"`,
 	}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{
 		ResourceID:    "res-1",
 		SessionName:   "sess-1",
+		WorkdirsRoot:  "/roots/workdirs",
 		SessionInputs: map[string]any{"template": "review"},
 	}, tasks, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outputs["resource"] != "res-1" || outputs["session"] != "sess-1" || outputs["tpl"] != "review" {
+	if outputs["resource"] != "res-1" || outputs["session"] != "sess-1" || outputs["root"] != "/roots/workdirs" || outputs["tpl"] != "review" {
 		t.Errorf("template vars not rendered: %v", outputs)
 	}
 }

@@ -13,19 +13,19 @@ import (
 // frozen workflow is impossible now that the inline `[[tasks]]`
 // path is gone, but we surface it as an error rather than panicking so a stale state
 // entry from before the migration doesn't crash the binary.
-func buildPlanForSession(cfg *config.Config, worktreeDir string, session *domain.Session) (*task.Plan, error) {
+func buildPlanForSession(cfg *config.Config, workdirDir string, session *domain.Session) (*task.Plan, error) {
 	if session == nil || session.Workflow == "" {
 		return nil, fmt.Errorf("session has no frozen workflow; destroy and recreate it with --workflow")
 	}
-	return buildWorkflowPlan(cfg, worktreeDir, session.Workflow)
+	return buildWorkflowPlan(cfg, workdirDir, session.Workflow)
 }
 
 // buildWorkflowPlan loads `.plect/workflows/<name>.toml` (+ referenced task
 // definitions) and compiles it. Returns a clear "not found" error when the
 // named workflow is missing so the CLI surfaces "did you forget to add the
 // file?" instead of an empty plan that silently does nothing.
-func buildWorkflowPlan(cfg *config.Config, worktreeDir, name string) (*task.Plan, error) {
-	workflows, err := cfg.LoadWorkflows(worktreeDir)
+func buildWorkflowPlan(cfg *config.Config, workdirDir, name string) (*task.Plan, error) {
+	workflows, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -33,7 +33,7 @@ func buildWorkflowPlan(cfg *config.Config, worktreeDir, name string) (*task.Plan
 	if !ok {
 		return nil, fmt.Errorf("workflow %q not found in .plect/workflows or global config", name)
 	}
-	defs, err := cfg.LoadTaskDefinitions(worktreeDir)
+	defs, err := cfg.LoadTaskDefinitions(workdirDir)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}
@@ -50,8 +50,8 @@ func buildWorkflowPlan(cfg *config.Config, worktreeDir, name string) (*task.Plan
 //     (there is no more inline-tasks fallback).
 //  4. Multiple workflows on disk without a flag is ambiguous — error so the
 //     user picks one explicitly.
-func selectWorkflow(cfg *config.Config, worktreeDir, flag string) (string, *Error) {
-	workflows, err := cfg.LoadWorkflows(worktreeDir)
+func selectWorkflow(cfg *config.Config, workdirDir, flag string) (string, *Error) {
+	workflows, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		return "", &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 	}

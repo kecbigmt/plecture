@@ -31,14 +31,14 @@ func environmentHookVars(wf config.WorkflowFile, session *domain.Session) task.E
 		ResourceID:        session.ResourceID,
 		SessionName:       session.Name,
 		SessionInputs:     session.Inputs,
-		WorktreePath:      session.WorktreePath,
+		WorkdirPath:       session.WorkdirPath,
 		EnvironmentInputs: wf.EnvironmentInputs,
 	}
 }
 
 // runEnvironmentSetupForSession runs the @environment pseudo-node's setup (a
 // no-op when the workflow declares no environment). Must run after provider
-// setup (the worktree exists) and before session task setup: provider ->
+// setup (the workdir exists) and before session task setup: provider ->
 // environment -> tasks.
 func runEnvironmentSetupForSession(cfg *config.Config, wf config.WorkflowFile, session *domain.Session, observer task.Observer) error {
 	env, ok, err := sessionEnvironment(cfg, wf)
@@ -89,11 +89,11 @@ func environmentExecutorForSession(cfg *config.Config, wf config.WorkflowFile, s
 // loadSessionWorkflow reloads the workflow a session is frozen to. Used by
 // lifecycle paths (up/down/destroy/task setup/cleanup) that only have the
 // session in hand, not an already-loaded WorkflowFile.
-func loadSessionWorkflow(cfg *config.Config, worktreeDir string, session *domain.Session) (config.WorkflowFile, error) {
+func loadSessionWorkflow(cfg *config.Config, workdirDir string, session *domain.Session) (config.WorkflowFile, error) {
 	if session == nil || session.Workflow == "" {
 		return config.WorkflowFile{}, nil
 	}
-	workflows, err := cfg.LoadWorkflows(worktreeDir)
+	workflows, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		return config.WorkflowFile{}, fmt.Errorf("load workflows: %w", err)
 	}

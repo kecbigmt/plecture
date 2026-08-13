@@ -18,7 +18,7 @@ import (
 
 func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeSession,
@@ -63,7 +63,7 @@ func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
 // the judged session, not the recorder.
 func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 	work := "owner/repo-1"
 	reviewer := "owner/repo-1+review"
 	seedSession(t, store, work, "owner/repo", 1, "", map[string]*contract.TaskState{
@@ -109,7 +109,7 @@ func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 // re-walking the tree or assuming the reviewer session still exists.
 func TestRecordJudge_StampsRelationAndWorkflow(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 	work := "owner/repo-1"
 	reviewer := "owner/repo-1+review"
 	seedSession(t, store, work, "owner/repo", 1, "", map[string]*contract.TaskState{
@@ -205,7 +205,7 @@ func TestJudgeInputs_NewRecordHonorsStampedEmptyWorkflow(t *testing.T) {
 
 func TestRecordJudge_RequiresRevision(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Dynamic: true},
 	})
@@ -226,7 +226,7 @@ func TestRecordJudge_RequiresRevision(t *testing.T) {
 func TestRecordJudge_RequiresReviewerSession(t *testing.T) {
 	t.Setenv("PLECT_SESSION_NAME", "")
 	store := testStore(t)
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeSession,
@@ -252,7 +252,7 @@ func TestRecordJudge_RequiresReviewerSession(t *testing.T) {
 // at record time, independent of any leaf relation policy.
 func TestRecordJudge_RejectsSelfReview(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 	work := "owner/repo-1"
 	seedSession(t, store, work, "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
@@ -509,7 +509,7 @@ func TestTickSession_KickCarriesStructuredUnmetItemsInEventMetadata(t *testing.T
 // instance with no done_when leaves to evaluate.
 func TestTickSession_StampsLastTickAt(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 
 	before := store.Get("owner/repo-1").LastTickAt

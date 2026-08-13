@@ -24,12 +24,12 @@ import (
 func TestAcceptance_SessionAppearsInList(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	sess := &domain.Session{
-		Name:         "acceptance/web-1",
-		ResourceID:   "https://github.com/acceptance/web/issues/1",
-		Branch:       "issue/1",
-		WorktreePath: "/nonexistent/worktree",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		Name:        "acceptance/web-1",
+		ResourceID:  "https://github.com/acceptance/web/issues/1",
+		Branch:      "issue/1",
+		WorkdirPath: "/nonexistent/workdir",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 	if err := store.Put(sess); err != nil {
 		t.Fatalf("seed session: %v", err)
@@ -52,16 +52,16 @@ func TestAcceptance_SessionAppearsInList(t *testing.T) {
 // Given a session persisted in a temp state store,
 // When GET /sessions/<name> is served by the live service,
 // Then the response shows that session's branch and a diagnostic for the
-// missing worktree (the seeded path does not exist).
+// missing workdir (the seeded path does not exist).
 func TestAcceptance_SessionDetail(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	sess := &domain.Session{
-		Name:         "acceptance/web-2",
-		ResourceID:   "https://github.com/acceptance/web/issues/2",
-		Branch:       "issue/2",
-		WorktreePath: "/nonexistent/worktree",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		Name:        "acceptance/web-2",
+		ResourceID:  "https://github.com/acceptance/web/issues/2",
+		Branch:      "issue/2",
+		WorkdirPath: "/nonexistent/workdir",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 	if err := store.Put(sess); err != nil {
 		t.Fatalf("seed session: %v", err)
@@ -78,7 +78,7 @@ func TestAcceptance_SessionDetail(t *testing.T) {
 		t.Errorf("detail missing session fields; body:\n%s", body)
 	}
 	if !strings.Contains(body, "(missing)") {
-		t.Errorf("detail should surface the missing-worktree diagnostic; body:\n%s", body)
+		t.Errorf("detail should surface the missing-workdir diagnostic; body:\n%s", body)
 	}
 }
 

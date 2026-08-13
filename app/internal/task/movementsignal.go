@@ -11,7 +11,7 @@ import (
 // MovementSignal is the opaque, provider-neutral fact a declared
 // movement-signal command reports about one task instance. Core never
 // interprets what the command actually observed (a terminal pane, an agent
-// transcript, a VCS worktree, ...) — it only compares Fingerprint and
+// transcript, a VCS workdir, ...) — it only compares Fingerprint and
 // ObservedAt across evaluations and reads Supported/MovementExpected as
 // plain booleans.
 type MovementSignal struct {
@@ -58,7 +58,7 @@ func RunMovementSignal(goCtx context.Context, cmd string, selfOutputs map[string
 	if err != nil {
 		return MovementSignal{}, err
 	}
-	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorktreePath)
+	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorkdirPath)
 	if err != nil {
 		if len(stderr) > 0 {
 			return MovementSignal{}, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))

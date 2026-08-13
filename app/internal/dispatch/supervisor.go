@@ -98,7 +98,7 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 	if s.Workflow == "" {
 		return nil, true
 	}
-	workflows, err := sup.cfg.LoadWorkflows(s.WorktreePath)
+	workflows, err := sup.cfg.LoadWorkflows(s.WorkdirPath)
 	if err != nil {
 		return nil, false
 	}

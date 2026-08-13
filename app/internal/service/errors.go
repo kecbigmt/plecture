@@ -4,7 +4,7 @@ package service
 const (
 	ErrInvalidURL         = "invalid_url"
 	ErrRepoNotAllowed     = "repo_not_allowed"
-	ErrWorkspaceNotFound  = "workspace_not_found"
+	ErrSessionNotFound    = "session_not_found"
 	ErrInvalidTag         = "invalid_tag"
 	ErrInvalidInput       = "invalid_input"
 	ErrExecutionFailed    = "execution_failed"

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -17,7 +16,6 @@ import (
 	"github.com/kecbigmt/plect/app/internal/eventlog"
 	"github.com/kecbigmt/plect/app/internal/state"
 	"github.com/kecbigmt/plect/app/internal/task"
-	"github.com/kecbigmt/plect/app/internal/workspace"
 	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
@@ -33,11 +31,11 @@ func validateTagFormat(tag string) *Error {
 	return nil
 }
 
-// effectiveTag resolves the workspace-identity tag that becomes part of a
+// effectiveTag resolves the session-identity tag that becomes part of a
 // session name. An explicit --tag wins; otherwise the workflow id is the
 // default, so two tools acting on one resource (claude work, codex review)
-// materialize distinct workspaces instead of racing for one branch/worktree.
-// The tag is never empty on the provider-dispatch paths — workspace identity
+// materialize distinct sessions instead of racing for one branch/workdir.
+// The tag is never empty on the provider-dispatch paths — session identity
 // always carries a label.
 func effectiveTag(tag, workflowID string) (string, *Error) {
 	if tag != "" {
@@ -47,7 +45,7 @@ func effectiveTag(tag, workflowID string) (string, *Error) {
 		return tag, nil
 	}
 	if err := validateTagFormat(workflowID); err != nil {
-		return "", &Error{Code: ErrInvalidTag, Message: fmt.Sprintf("workflow id %q cannot seed a workspace tag (must match [a-zA-Z0-9_-]+); pass --tag explicitly", workflowID)}
+		return "", &Error{Code: ErrInvalidTag, Message: fmt.Sprintf("workflow id %q cannot seed a session tag (must match [a-zA-Z0-9_-]+); pass --tag explicitly", workflowID)}
 	}
 	return workflowID, nil
 }
@@ -85,7 +83,7 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 		}
 	}
 
-	return "", nil, &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("no state entry for session %q", sessionName)}
+	return "", nil, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no state entry for session %q", sessionName)}
 }
 
 // ResolveSession is the exported entry point for resolving an identifier
@@ -230,7 +228,7 @@ func taskViews(defs map[string]config.TaskDefinition, session *domain.Session, s
 
 // loadDisplayTasks loads the trusted-layer task definitions once for
 // done_when display across sessions. Task definitions are trusted-layer-only
-// (the workdir layer cannot contribute shell), so the worktree-independent load
+// (the workdir layer cannot contribute shell), so the workdir-independent load
 // is sufficient — mirroring loadDisplayWorkflows.
 func loadDisplayTasks(cfg *config.Config) map[string]config.TaskDefinition {
 	if cfg == nil {
@@ -289,9 +287,8 @@ type ListEntry struct {
 	Tracked       bool               `json:"tracked"`
 	LastActiveAt  *time.Time         `json:"last_active_at,omitempty"`
 	Message       *domain.Message    `json:"message,omitempty"`
-	GitDirty      *bool              `json:"git_dirty,omitempty"`
 	Branch        string             `json:"branch,omitempty"`
-	WorktreePath  string             `json:"worktree_path,omitempty"`
+	WorkdirPath   string             `json:"workdir_path,omitempty"`
 	ParentSession string             `json:"parent_session,omitempty"`
 	// Tasks projects the session's dynamic instances and done_when-bearing
 	// tasks with their per-instance done_when status.
@@ -304,7 +301,7 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	displayWorkflows := loadDisplayWorkflows(cfg)
 	displayTasks := loadDisplayTasks(cfg)
 
-	// Each session may need healthcheck and git subprocesses. Doing 50+
+	// Each session may need a healthcheck subprocess. Doing 50+
 	// serially is the dominant cost, so fan out over a bounded pool and fill a
 	// preallocated slice by index; the sort below restores order.
 	tracked := make([]*domain.Session, 0, len(sessions))
@@ -334,7 +331,7 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	return entries, nil
 }
 
-// listConcurrency bounds the per-session healthcheck/git fan-out in List.
+// listConcurrency bounds the per-session healthcheck fan-out in List.
 const listConcurrency = 16
 
 // buildListEntry gathers one session's runtime status. Safe to call
@@ -355,18 +352,11 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 		LastActiveAt:  &s.UpdatedAt,
 		Message:       s.Message,
 		Branch:        s.Branch,
-		WorktreePath:  s.WorktreePath,
+		WorkdirPath:   s.WorkdirPath,
 		ParentSession: s.ParentSession,
 		Tasks:         taskViews(displayTasks, s, sessions),
 	}
 
-	// Git dirty state, only if the worktree exists.
-	if s.WorktreePath != "" && fileExists(s.WorktreePath) {
-		if gitStatus, err := workspace.GetWorktreeStatus(context.Background(), s.WorktreePath); err == nil {
-			dirty := gitStatus.Dirty || gitStatus.UntrackedFiles > 0
-			entry.GitDirty = &dirty
-		}
-	}
 	return entry
 }
 
@@ -432,16 +422,16 @@ type cachedInfo struct {
 // it from the shape of the identifier.
 func Workdir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
 	if _, session, err := resolveSession(cfg, store, identifier); err == nil {
-		if session.WorktreePath == "" {
-			return "", &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("session %q has no working directory recorded", session.Name)}
+		if session.WorkdirPath == "" {
+			return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q has no working directory recorded", session.Name)}
 		}
-		return session.WorktreePath, nil
-	} else if svcErr, ok := err.(*Error); ok && svcErr.Code != ErrWorkspaceNotFound {
+		return session.WorkdirPath, nil
+	} else if svcErr, ok := err.(*Error); ok && svcErr.Code != ErrSessionNotFound {
 		// An ambiguous alias must surface rather than fall through.
 		return "", err
 	}
 
-	return "", &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("no state entry for session %q", identifier)}
+	return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no state entry for session %q", identifier)}
 }
 
 // loadDisplayWorkflows loads the trusted base layers once for [display]

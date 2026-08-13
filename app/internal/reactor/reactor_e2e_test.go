@@ -37,7 +37,7 @@ all = [
 	if err := os.WriteFile(filepath.Join(tasksDir, "work.toml"), []byte(def), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return &config.Config{BaseDir: base, WorktreesRoot: t.TempDir()}
+	return &config.Config{BaseDir: base, WorkdirsRoot: t.TempDir()}
 }
 
 // TestSessionReactor_ReactiveTickReachesDoneWhenConsequence is the AC1 E2E:

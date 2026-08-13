@@ -190,7 +190,7 @@ func EventPageSubtree(cfg *config.Config, store *state.Store, identifier string,
 	}
 	sessions := store.All()
 	if sessions[name] == nil {
-		return EventPageResult{}, &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("no session %q in state; subtree views need a tree root", name)}
+		return EventPageResult{}, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no session %q in state; subtree views need a tree root", name)}
 	}
 	order := p.Order
 	if order == "" {
@@ -265,7 +265,7 @@ func EventTailSubtree(ctx context.Context, cfg *config.Config, store *state.Stor
 		return err
 	}
 	if store.Get(name) == nil {
-		return &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("no session %q in state; subtree views need a tree root", name)}
+		return &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no session %q in state; subtree views need a tree root", name)}
 	}
 	return eventlog.NewStore(store.Dir()).FollowAcross(ctx, func() ([]string, error) {
 		return domain.Subtree(store.All(), name), nil
@@ -322,7 +322,7 @@ func EventShow(cfg *config.Config, store *state.Store, identifier, id string) (*
 			return &evs[i], nil
 		}
 	}
-	return nil, &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("no event with id %q", id)}
+	return nil, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no event with id %q", id)}
 }
 
 // recordSessionCreated records lifecycle.created exactly once per session.

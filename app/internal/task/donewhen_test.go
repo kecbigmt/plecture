@@ -308,18 +308,18 @@ func TestEvaluateTaskDoneWhen_NormalizesIntegers(t *testing.T) {
 
 func TestEvaluateTaskDoneWhen_LeafCarriesObservedValue(t *testing.T) {
 	dw := &config.DoneWhen{All: []config.DoneWhenLeaf{
-		{Check: "worktree_dirty", Eq: strp("0")},
+		{Check: "workdir_dirty", Eq: strp("0")},
 		{Check: "checks_status", Eq: strp("SUCCESS")},
 		{Judge: "reviewer approved"},
 	}}
-	got := EvaluateTaskDoneWhen(dw, map[string]any{"worktree_dirty": "2"})
+	got := EvaluateTaskDoneWhen(dw, map[string]any{"workdir_dirty": "2"})
 
 	dirty := got.Leaves[0]
-	if !dirty.Observed || dirty.Value != "2" || dirty.Output != "worktree_dirty" {
-		t.Errorf("observed leaf = %+v, want output=worktree_dirty value=2 observed", dirty)
+	if !dirty.Observed || dirty.Value != "2" || dirty.Output != "workdir_dirty" {
+		t.Errorf("observed leaf = %+v, want output=workdir_dirty value=2 observed", dirty)
 	}
 	if dirty.Status != DoneUnsatisfied {
-		t.Errorf("worktree_dirty=2 eq 0 → %q, want unsatisfied", dirty.Status)
+		t.Errorf("workdir_dirty=2 eq 0 → %q, want unsatisfied", dirty.Status)
 	}
 
 	unobserved := got.Leaves[1]

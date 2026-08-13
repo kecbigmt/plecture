@@ -17,7 +17,7 @@ import (
 // someone happens to be dispatching in, so a stale overlay (e.g. a node
 // renamed upstream) can sit broken for every other repo indefinitely. This
 // compiles the real deploy shape: a `.plect` symlink at the repo base dir, one
-// layer above the worktree, exactly as scripts/repo-clone sets it up.
+// layer above the workdir, exactly as scripts/repo-clone sets it up.
 func TestFlakeOverlays_ClaudeCodexCompile(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -59,10 +59,10 @@ func TestFlakeOverlays_ClaudeCodexCompile(t *testing.T) {
 					if err := os.Symlink(plectDir, plectureLink); err != nil {
 						t.Fatalf("symlink .plect: %v", err)
 					}
-					worktreeDir := filepath.Join(repoBase, "worktree")
+					workdirDir := filepath.Join(repoBase, "workdir")
 
 					cfg := &config.Config{BaseDir: cfgDir}
-					workflows, err := cfg.LoadWorkflows(worktreeDir)
+					workflows, err := cfg.LoadWorkflows(workdirDir)
 					if err != nil {
 						t.Fatalf("LoadWorkflows: %v", err)
 					}
@@ -70,7 +70,7 @@ func TestFlakeOverlays_ClaudeCodexCompile(t *testing.T) {
 					if !ok {
 						t.Fatalf("workflow %q not found after merge", id)
 					}
-					defs, err := cfg.LoadTaskDefinitions(worktreeDir)
+					defs, err := cfg.LoadTaskDefinitions(workdirDir)
 					if err != nil {
 						t.Fatalf("LoadTaskDefinitions: %v", err)
 					}

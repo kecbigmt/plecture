@@ -53,7 +53,7 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 	// publishing to a name nothing reads. The env-default path always names
 	// the caller's own (existing) session; this guards the explicit override.
 	if store.Get(sessionName) == nil {
-		return &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("session %q does not exist", sessionName)}
+		return &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q does not exist", sessionName)}
 	}
 
 	prov, err := providerForResource(cfg, params.ResourceID)

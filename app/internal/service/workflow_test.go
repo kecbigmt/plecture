@@ -51,16 +51,16 @@ uses = "tmux"
 [[nodes]]
 uses = "tmux"
 `)
-	worktreeDir := filepath.Join(tmpHome, "worktrees", "session")
-	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
+	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return config.Load(), worktreeDir
+	return config.Load(), workdirDir
 }
 
 func TestWorkflowList_ReturnsSortedSummaries(t *testing.T) {
-	cfg, worktreeDir := setupWorkflowFixture(t)
-	got, err := WorkflowList(cfg, worktreeDir)
+	cfg, workdirDir := setupWorkflowFixture(t)
+	got, err := WorkflowList(cfg, workdirDir)
 	if err != nil {
 		t.Fatalf("WorkflowList: %v", err)
 	}
@@ -79,8 +79,8 @@ func TestWorkflowList_ReturnsSortedSummaries(t *testing.T) {
 }
 
 func TestWorkflowShow_ReturnsCompiledDAG(t *testing.T) {
-	cfg, worktreeDir := setupWorkflowFixture(t)
-	got, err := WorkflowShow(cfg, worktreeDir, "coding")
+	cfg, workdirDir := setupWorkflowFixture(t)
+	got, err := WorkflowShow(cfg, workdirDir, "coding")
 	if err != nil {
 		t.Fatalf("WorkflowShow: %v", err)
 	}
@@ -125,7 +125,7 @@ inputs.path = "{{.Nodes.tmux.outputs.session_name}}"
 include     = ["plect.instruction", "github.*"]
 `)
 	cfg := config.Load()
-	got, err := WorkflowShow(cfg, filepath.Join(tmpHome, "worktrees", "session"), "withchan")
+	got, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
 	if err != nil {
 		t.Fatalf("WorkflowShow: %v", err)
 	}
@@ -166,7 +166,7 @@ inputs.path = "p"
 include     = ["github.*"]
 `)
 	cfg := config.Load()
-	_, err := WorkflowShow(cfg, filepath.Join(tmpHome, "worktrees", "session"), "withchan")
+	_, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
 	if err == nil {
 		t.Fatal("expected error when a channel definition fails to load")
 	}
@@ -199,7 +199,7 @@ uses    = "missing_channel"
 include = ["github.*"]
 `)
 	cfg := config.Load()
-	_, err := WorkflowShow(cfg, filepath.Join(tmpHome, "worktrees", "session"), "withchan")
+	_, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
 	if err == nil {
 		t.Fatal("expected error for unknown channel definition")
 	}
@@ -213,8 +213,8 @@ include = ["github.*"]
 }
 
 func TestWorkflowShow_UnknownIDReturnsInvalidInput(t *testing.T) {
-	cfg, worktreeDir := setupWorkflowFixture(t)
-	_, err := WorkflowShow(cfg, worktreeDir, "missing")
+	cfg, workdirDir := setupWorkflowFixture(t)
+	_, err := WorkflowShow(cfg, workdirDir, "missing")
 	if err == nil {
 		t.Fatal("expected error for unknown workflow id")
 	}

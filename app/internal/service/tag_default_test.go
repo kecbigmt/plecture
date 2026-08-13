@@ -30,7 +30,7 @@ func addSetupWorkflow(t *testing.T, baseDir, wfID, workdir string) {
 
 // TestCreate_DefaultTagSeparatesWorkflows is the ADR's core guarantee: with no
 // explicit --tag, two tools dispatched at one resource land in distinct
-// workspaces because each session name carries its workflow id as the tag.
+// sessions because each session name carries its workflow id as the tag.
 func TestCreate_DefaultTagSeparatesWorkflows(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "noop-base",
@@ -56,8 +56,8 @@ func TestCreate_DefaultTagSeparatesWorkflows(t *testing.T) {
 	if review.SessionName != "org/repo-1+codex" {
 		t.Errorf("codex session = %q, want org/repo-1+codex", review.SessionName)
 	}
-	if work.WorktreePath == review.WorktreePath {
-		t.Errorf("cross-tool sessions share a workspace %q; the default tag must separate them", work.WorktreePath)
+	if work.WorkdirPath == review.WorkdirPath {
+		t.Errorf("cross-tool sessions share a session %q; the default tag must separate them", work.WorkdirPath)
 	}
 	if store.Get("org/repo-1+claude") == nil || store.Get("org/repo-1+codex") == nil {
 		t.Fatal("both tagged sessions must persist")

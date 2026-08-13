@@ -17,11 +17,11 @@ import (
 // reviewer workflow as a sibling under the work session's parent as part of
 // the same tick that advances the Goal Loop. Re-ticking is idempotent.
 func TestIntegration_TickSpawnsReviewer(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{
 				id:    "work",
@@ -116,11 +116,11 @@ revision = "{{.Work.outputs.revision}}"
 // reviewer is spawned even though the same rule would have fired before the
 // legacy path was retired.
 func TestIntegration_LegacyChainsFileIsIgnored(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{
 				id:    "work",

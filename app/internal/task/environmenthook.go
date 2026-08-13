@@ -19,7 +19,7 @@ type EnvironmentHookVars struct {
 	ResourceID        string
 	SessionName       string
 	SessionInputs     map[string]any
-	WorktreePath      string
+	WorkdirPath       string
 	EnvironmentInputs map[string]any
 }
 
@@ -71,7 +71,7 @@ func RunEnvironmentSetup(env config.EnvironmentConfig, vars EnvironmentHookVars,
 			obs.OnFailure(environmentHookScope, id, time.Since(now), wrapped, nil)
 			return nil, wrapped
 		}
-		stdout, capturedStderr, runErr := runShell(cmdStr, vars.WorktreePath)
+		stdout, capturedStderr, runErr := runShell(cmdStr, vars.WorkdirPath)
 		stderr = capturedStderr
 		if runErr != nil {
 			fail(runErr.Error())
@@ -150,7 +150,7 @@ func RunEnvironmentCleanup(env config.EnvironmentConfig, vars EnvironmentHookVar
 		obs.OnFailure(environmentHookScope, id, time.Since(now), wrapped, nil)
 		return wrapped
 	}
-	_, stderr, runErr := runShell(cmdStr, vars.WorktreePath)
+	_, stderr, runErr := runShell(cmdStr, vars.WorkdirPath)
 	if runErr != nil {
 		state.Status = contract.TaskStatusFailed
 		state.Error = runErr.Error()
@@ -181,7 +181,7 @@ func renderEnvironmentHook(cmd string, vars EnvironmentHookVars, prev, self map[
 		ResourceID        string
 		SessionName       string
 		SessionInputs     map[string]any
-		WorktreePath      string
+		WorkdirPath       string
 		EnvironmentInputs map[string]any
 		Prev              map[string]any
 		Self              map[string]any
@@ -189,7 +189,7 @@ func renderEnvironmentHook(cmd string, vars EnvironmentHookVars, prev, self map[
 		ResourceID:        vars.ResourceID,
 		SessionName:       vars.SessionName,
 		SessionInputs:     normalizeOutputs(vars.SessionInputs),
-		WorktreePath:      vars.WorktreePath,
+		WorkdirPath:       vars.WorkdirPath,
 		EnvironmentInputs: normalizeOutputs(vars.EnvironmentInputs),
 		Prev:              normalizeOutputs(prev),
 		Self:              normalizeOutputs(self),

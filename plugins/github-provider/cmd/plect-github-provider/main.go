@@ -31,14 +31,15 @@ func run(args []string) error {
 	case "setup":
 		fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 		resource := fs.String("resource", "", "resource identifier (issue URL, pull request URL, or project item id)")
-		session := fs.String("session", "", "session name the worktree is acquired for")
+		session := fs.String("session", "", "session name the workdir is acquired for")
+		workdirsRoot := fs.String("workdirs-root", "", "configured workdirs root")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		if *resource == "" || *session == "" {
 			return fmt.Errorf("setup requires --resource and --session")
 		}
-		outputs, err := provider.Setup(ctx, provider.SetupOptions{ResourceID: *resource, SessionName: *session})
+		outputs, err := provider.Setup(ctx, provider.SetupOptions{ResourceID: *resource, SessionName: *session, WorkdirsRoot: *workdirsRoot})
 		if err != nil {
 			return err
 		}
@@ -49,11 +50,12 @@ func run(args []string) error {
 		fs := flag.NewFlagSet("cleanup", flag.ContinueOnError)
 		workdir := fs.String("workdir", "", "working directory recorded by setup")
 		branch := fs.String("branch", "", "branch recorded by setup")
-		force := fs.Bool("force", false, "remove the worktree even when it carries uncommitted changes")
+		workdirsRoot := fs.String("workdirs-root", "", "configured workdirs root")
+		force := fs.Bool("force", false, "remove the workdir even when it carries uncommitted changes")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		return provider.Cleanup(ctx, provider.CleanupOptions{Workdir: *workdir, Branch: *branch, Force: *force})
+		return provider.Cleanup(ctx, provider.CleanupOptions{Workdir: *workdir, Branch: *branch, WorkdirsRoot: *workdirsRoot, Force: *force})
 	default:
 		return fmt.Errorf("unknown subcommand %q; expected setup or cleanup", args[0])
 	}

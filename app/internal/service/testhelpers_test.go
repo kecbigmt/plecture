@@ -12,16 +12,16 @@ import (
 )
 
 // setupE2ERepo creates a git repo structure that mimics what plect expects.
-// The worktrees root is HOME-based so a `plect` subprocess spawned by a
+// The workdirs root is HOME-based so a `plect` subprocess spawned by a
 // provider hook resolves the same root from its own config defaults.
-// Returns worktreesRoot.
+// Returns workdirsRoot.
 func setupE2ERepo(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	worktreesRoot := filepath.Join(home, "worktrees")
+	workdirsRoot := filepath.Join(home, "workdirs")
 	ownerRepo := "testowner/testrepo"
-	repoDir := filepath.Join(worktreesRoot, "github.com", ownerRepo)
+	repoDir := filepath.Join(workdirsRoot, "github.com", ownerRepo)
 	mainDir := filepath.Join(repoDir, "main")
 	bareDir := filepath.Join(t.TempDir(), "origin.git")
 	if err := os.MkdirAll(mainDir, 0o755); err != nil {
@@ -47,7 +47,7 @@ func setupE2ERepo(t *testing.T) string {
 	run(mainDir, "git", "remote", "add", "origin", bareDir)
 	run(mainDir, "git", "push", "-u", "origin", "main")
 
-	return worktreesRoot
+	return workdirsRoot
 }
 
 // setupFakeScripts creates a fake gh script in a temp dir and prepends it to PATH.
@@ -90,10 +90,10 @@ esac
 
 // writeIntegrationFixture is writeWorkflowFixture plus the provider that backs
 // the workflow: the real GitHub provider hooks, so an integration test
-// exercises actual worktree acquisition rather than a stub directory.
-func writeIntegrationFixture(t *testing.T, worktreesRoot, wfID string, defs []taskFixture, nodes []nodeFixture) *config.Config {
+// exercises actual workdir acquisition rather than a stub directory.
+func writeIntegrationFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFixture, nodes []nodeFixture) *config.Config {
 	t.Helper()
-	cfg := writeWorkflowFixture(t, worktreesRoot, wfID, defs, nodes)
+	cfg := writeWorkflowFixture(t, workdirsRoot, wfID, defs, nodes)
 	attachGithubProvider(t, cfg, wfID)
 	return cfg
 }

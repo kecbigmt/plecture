@@ -58,7 +58,7 @@ func TestList_SortsTrackedByName(t *testing.T) {
 
 func TestResolveSession_ByURL(t *testing.T) {
 	store := testStore(t)
-	// No session in store → should fail with workspace_not_found
+	// No session in store → should fail with session_not_found
 	_, _, err := resolveSession(nil, store, "https://github.com/org/repo/issues/1")
 	if err == nil {
 		t.Fatal("expected error for missing session")
@@ -67,8 +67,8 @@ func TestResolveSession_ByURL(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	if svcErr.Code != ErrSessionNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrSessionNotFound)
 	}
 }
 
@@ -82,8 +82,8 @@ func TestResolveSession_BySessionName(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	if svcErr.Code != ErrSessionNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrSessionNotFound)
 	}
 }
 
@@ -97,8 +97,8 @@ func TestResolveSession_UnknownIdentifier(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	if svcErr.Code != ErrSessionNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrSessionNotFound)
 	}
 }
 
@@ -128,8 +128,8 @@ func TestResolveSessionName_UnknownIdentifier(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	if svcErr.Code != ErrSessionNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrSessionNotFound)
 	}
 }
 
@@ -171,8 +171,8 @@ func TestStatus_UnknownIdentifier(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	if svcErr.Code != ErrSessionNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrSessionNotFound)
 	}
 }
 
@@ -187,8 +187,8 @@ func TestStatus_SessionNameNotFound(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	if svcErr.Code != ErrSessionNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrSessionNotFound)
 	}
 }
 
@@ -247,8 +247,8 @@ func TestStatus_DestroyedSessionWithoutTombstoneStillErrors(t *testing.T) {
 		t.Fatal("expected error for unknown session with no tombstone")
 	}
 	svcErr, ok := err.(*Error)
-	if !ok || svcErr.Code != ErrWorkspaceNotFound {
-		t.Fatalf("expected ErrWorkspaceNotFound, got %v", err)
+	if !ok || svcErr.Code != ErrSessionNotFound {
+		t.Fatalf("expected ErrSessionNotFound, got %v", err)
 	}
 }
 
@@ -262,7 +262,7 @@ func TestStatus_ProjectsTree(t *testing.T) {
 	for _, n := range []string{"org/repo-1", "org/repo-2", "org/repo-3"} {
 		if err := store.Put(&domain.Session{
 			Name: n, CreatedAt: now, UpdatedAt: now,
-			WorktreePath: wt,
+			WorkdirPath: wt,
 		}); err != nil {
 			t.Fatalf("seed %s: %v", n, err)
 		}
@@ -341,8 +341,8 @@ func TestSetConversation_SessionNotFound(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	if svcErr.Code != ErrSessionNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrSessionNotFound)
 	}
 }
 
@@ -413,8 +413,8 @@ func TestSetMessage_SessionNotFound(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	if svcErr.Code != ErrSessionNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrSessionNotFound)
 	}
 }
 

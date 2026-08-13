@@ -16,7 +16,7 @@ func TestSetOutputHelpDocumentsRuntimeTaskTarget(t *testing.T) {
 	if flag.Usage != "Target a produced runtime task such as review#1" {
 		t.Fatalf("--task usage = %q", flag.Usage)
 	}
-	if !strings.Contains(setOutputCmd.Long, "plect state set-output workspace-1 --task review#1") {
+	if !strings.Contains(setOutputCmd.Long, "plect state set-output session-1 --task review#1") {
 		t.Fatalf("set-output examples must show --task review#1; got:\n%s", setOutputCmd.Long)
 	}
 }

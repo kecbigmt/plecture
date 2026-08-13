@@ -70,14 +70,14 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	// only the script plus the persisted inputs/outputs/resource.
 	taskID := taskIDForInstance(params.Instance, st)
 	r := task.Resolved{NodeID: params.Instance, TaskID: taskID, Scope: st.Scope}
-	defs, defErr := cfg.LoadTaskDefinitions(session.WorktreePath)
+	defs, defErr := cfg.LoadTaskDefinitions(session.WorkdirPath)
 	if defErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", defErr)}
 	}
 	// Best-effort, mirroring unifiedTeardownList: teardown must stay resilient
 	// to a workflow config that has since disappeared or broken, so any error
 	// here just leaves Execution/envExecutor at their zero values (host).
-	wf, _ := loadSessionWorkflow(cfg, session.WorktreePath, session)
+	wf, _ := loadSessionWorkflow(cfg, session.WorkdirPath, session)
 	envExecutor, _ := environmentExecutorForSession(cfg, wf, session)
 	if def, ok := defs[taskID]; ok {
 		r.Cleanup = def.Cleanup

@@ -40,7 +40,7 @@ func TestLoad_WithConfigFile(t *testing.T) {
 	}
 
 	configContent := `
-worktrees_root = "~/my-worktrees"
+workdirs_root = "~/my-workdirs"
 resource_allowlist = ["^https://example\\.test/org/", "^https://example\\.test/other/"]
 detached = false
 `
@@ -50,8 +50,8 @@ detached = false
 
 	cfg := Load()
 
-	if cfg.WorktreesRoot != filepath.Join(tmpHome, "my-worktrees") {
-		t.Errorf("WorktreesRoot = %q, want %q", cfg.WorktreesRoot, filepath.Join(tmpHome, "my-worktrees"))
+	if cfg.WorkdirsRoot != filepath.Join(tmpHome, "my-workdirs") {
+		t.Errorf("WorkdirsRoot = %q, want %q", cfg.WorkdirsRoot, filepath.Join(tmpHome, "my-workdirs"))
 	}
 	if len(cfg.ResourceAllowlist) != 2 {
 		t.Errorf("ResourceAllowlist length = %d, want 2", len(cfg.ResourceAllowlist))
@@ -97,6 +97,33 @@ func TestLoad_MalformedConfigFileFallsBackAndWarns(t *testing.T) {
 	}
 	if !bytes.Contains(logs.Bytes(), []byte("config.toml present but failed to parse")) {
 		t.Errorf("expected a warning about the unparsable config.toml, got log output: %q", logs.String())
+	}
+}
+
+func TestLoad_LegacyWorktreesRootWarns(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	configDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`worktrees_root = "/legacy/worktrees"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	cfg := Load()
+
+	if cfg.WorkdirsRoot != filepath.Join(tmpHome, "workdirs") {
+		t.Errorf("WorkdirsRoot = %q, want default because legacy key is ignored", cfg.WorkdirsRoot)
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("legacy config key worktrees_root is ignored")) {
+		t.Errorf("expected a warning about worktrees_root, got log output: %q", logs.String())
 	}
 }
 

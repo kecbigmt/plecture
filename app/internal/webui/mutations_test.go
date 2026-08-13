@@ -183,7 +183,7 @@ func TestDown_Success(t *testing.T) {
 
 // 3. up: an unknown session surfaces a 404.
 func TestUp_NotFound(t *testing.T) {
-	svc := &fakeService{upErr: &service.Error{Code: service.ErrWorkspaceNotFound, Message: "no entry"}}
+	svc := &fakeService{upErr: &service.Error{Code: service.ErrSessionNotFound, Message: "no entry"}}
 	rec := postForm(t, New(svc).Routes(), "/sessions/up", url.Values{"name": {"owner/missing-1"}})
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)

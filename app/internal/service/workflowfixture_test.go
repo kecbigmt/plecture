@@ -42,7 +42,7 @@ type nodeFixture struct {
 // The fixture sits at <BaseDir>/workflows/<wfID>.toml plus
 // <BaseDir>/tasks/<id>.toml. Service tests that used to declare tasks on
 // cfg.Tasks now declare them here and freeze `wfID` onto their session.
-func writeWorkflowFixture(t *testing.T, worktreesRoot, wfID string, defs []taskFixture, nodes []nodeFixture) *config.Config {
+func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFixture, nodes []nodeFixture) *config.Config {
 	t.Helper()
 	baseDir := t.TempDir()
 	tasksDir := filepath.Join(baseDir, "tasks")
@@ -111,7 +111,7 @@ func writeWorkflowFixture(t *testing.T, worktreesRoot, wfID string, defs []taskF
 		t.Fatal(err)
 	}
 	return &config.Config{
-		WorktreesRoot: worktreesRoot,
-		BaseDir:       baseDir,
+		WorkdirsRoot: workdirsRoot,
+		BaseDir:      baseDir,
 	}
 }

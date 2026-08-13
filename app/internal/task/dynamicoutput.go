@@ -21,7 +21,7 @@ func FetchOutput(goCtx context.Context, cfg *config.Config, src config.DynamicOu
 	if rerr != nil {
 		return nil, fmt.Errorf("output %v: script template: %w", src.OutputNames(), rerr)
 	}
-	stdout, stderr, runErr := execHostScript(goCtx, cmdStr, ctx.Session.WorktreePath)
+	stdout, stderr, runErr := execHostScript(goCtx, cmdStr, ctx.Session.WorkdirPath)
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {
 			return nil, fmt.Errorf("output %v: %w: %s", src.OutputNames(), runErr, msg)
@@ -60,7 +60,7 @@ func fetchFromResourceStatus(cfg *config.Config, src config.DynamicOutput, ctx R
 	if err != nil {
 		return nil, fmt.Errorf("output %v: load resource definitions: %w", src.OutputNames(), err)
 	}
-	state, _, ok, err := ResourceStatus(defs, resourceID, ctx.Session.Branch, ctx.Session.WorktreePath)
+	state, _, ok, err := ResourceStatus(defs, resourceID, ctx.Session.Branch, ctx.Session.WorkdirPath)
 	if err != nil {
 		return nil, fmt.Errorf("output %v: %w", src.OutputNames(), err)
 	}

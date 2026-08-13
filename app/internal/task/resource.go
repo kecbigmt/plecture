@@ -49,16 +49,16 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (co
 // result against the definition's state schema. Ok=false with a nil error
 // means no resource definition recognizes this id — the Resource contract is
 // optional, most instance-local resources have no declared kind. branch and
-// worktreePath describe the owning session (both empty for a standalone
+// workdirPath describe the owning session (both empty for a standalone
 // `plect resource status` call, which has no owning session) — an observe
-// script may derive the current branch from worktreePath as its primary
+// script may derive the current branch from workdirPath as its primary
 // identity signal for the resource.
-func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branch string, worktreePath string) (map[string]any, config.ResourceDef, bool, error) {
+func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branch string, workdirPath string) (map[string]any, config.ResourceDef, bool, error) {
 	def, ok, err := MatchResourceDef(defs, resourceID)
 	if err != nil || !ok {
 		return nil, def, ok, err
 	}
-	cmdStr, rerr := render(def.Observe, RenderContext{Session: SessionVars{ResourceID: resourceID, Branch: branch, WorktreePath: worktreePath}})
+	cmdStr, rerr := render(def.Observe, RenderContext{Session: SessionVars{ResourceID: resourceID, Branch: branch, WorkdirPath: workdirPath}})
 	if rerr != nil {
 		return nil, def, true, fmt.Errorf("resource %s: observe script template: %w", def.ID, rerr)
 	}

@@ -20,7 +20,7 @@ const oldStateJSON = `{
       "owner_repo": "acme/widgets",
       "number": 1,
       "branch": "issue-1",
-      "worktree_path": "/tmp/worktrees/acme-issue-1",
+      "workdir_path": "/tmp/worktrees/acme-issue-1",
       "slack": {
         "thread_ts": "1700000000.000100",
         "channel_id": "C123"
@@ -42,7 +42,7 @@ const oldStateJSON = `{
       "owner_repo": "acme/widgets",
       "number": 2,
       "branch": "issue-2",
-      "worktree_path": "/tmp/worktrees/inline-legacy",
+      "workdir_path": "/tmp/worktrees/inline-legacy",
       "tasks": {
         "build": {
           "scope": "session",
@@ -63,7 +63,7 @@ const newStateJSON = `{
       "resource_id": "https://github.com/acme/widgets/issues/1",
       "alias": "https://github.com/acme/widgets/issues/1",
       "branch": "issue-1",
-      "worktree_path": "/tmp/worktrees/acme-issue-1",
+      "workdir_path": "/tmp/worktrees/acme-issue-1",
       "conversation": {
         "source": "Slack",
         "metadata": {
@@ -86,7 +86,7 @@ const newStateJSON = `{
       "resource_id": "https://github.com/acme/widgets/issues/2",
       "alias": "https://github.com/acme/widgets/issues/2",
       "branch": "issue-2",
-      "worktree_path": "/tmp/worktrees/inline-legacy",
+      "workdir_path": "/tmp/worktrees/inline-legacy",
       "tasks": {
         "build": {
           "scope": "session",
@@ -166,6 +166,9 @@ func TestRun_MigratesOldFormAndIsIdempotent(t *testing.T) {
 	}
 	if containsKey(t, gotConfig, "repo_allowlist") {
 		t.Fatal("expected repo_allowlist to be removed from config.toml")
+	}
+	if containsKey(t, gotConfig, "worktrees_root") || !containsKey(t, gotConfig, "workdirs_root") {
+		t.Fatalf("expected worktrees_root to be renamed to workdirs_root, got:\n%s", gotConfig)
 	}
 	patterns := decodeStringSlice(t, gotConfig, "resource_allowlist")
 	wantPatterns := map[string]bool{
@@ -291,7 +294,7 @@ func TestRun_CurrentFormDataIsNoOp(t *testing.T) {
 	if err := os.WriteFile(statePath, []byte(newStateJSON), 0644); err != nil {
 		t.Fatal(err)
 	}
-	newConfig := `worktrees_root = "/home/user/worktrees"
+	newConfig := `workdirs_root = "/home/user/workdirs"
 resource_allowlist = ["^https://github\\.com/acme/widgets(/|$)"]
 detached = true
 `

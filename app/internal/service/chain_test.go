@@ -544,7 +544,7 @@ all = [ { judge_pending = "ac-met" } ]
 
 func TestCheckSession_NoChainsIsEmpty(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{BaseDir: t.TempDir(), WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{BaseDir: t.TempDir(), WorkdirsRoot: t.TempDir()}
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 	res, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
 	if err != nil {

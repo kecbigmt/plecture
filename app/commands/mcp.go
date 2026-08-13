@@ -86,9 +86,8 @@ var mcpListenCmd = &cobra.Command{
 
 // defaultSessionMcpListenSocket mirrors channel-server's
 // $XDG_RUNTIME_DIR/claude-channel/<sid>.sock convention. sessionName often
-// contains "/" (e.g. "workspace-123"); filepath.Join turns that into nested
-// directories rather than a flat filename, same as workspace.Manager already
-// does for worktree paths.
+// contains "/" (e.g. "session-123"); filepath.Join turns that into nested
+// directories rather than a flat filename, so the name is encoded first.
 func defaultSessionMcpListenSocket(sessionName string) string {
 	rt := os.Getenv("XDG_RUNTIME_DIR")
 	if rt == "" {

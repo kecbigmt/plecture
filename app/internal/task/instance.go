@@ -98,7 +98,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 	outputs := map[string]any{}
 	var stderr []byte
 	if strings.TrimSpace(cmdStr) != "" {
-		stdout, capturedStderr, runErr := execForNode(goCtx, r.Execution, firstExecutor(envExecutor), cmdStr, session.WorktreePath)
+		stdout, capturedStderr, runErr := execForNode(goCtx, r.Execution, firstExecutor(envExecutor), cmdStr, session.WorkdirPath)
 		stderr = capturedStderr
 		if runErr != nil {
 			return nil, stderr, fmt.Errorf("setup: %w", runErr)

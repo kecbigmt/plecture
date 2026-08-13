@@ -186,8 +186,8 @@ echo '{"workdir":"`+workdir+`"}'
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// No --tag: the workflow id ("gh") is the default workspace-identity tag,
-	// so cross-tool sessions on one resource never share a workspace.
+	// No --tag: the workflow id ("gh") is the default session-identity tag,
+	// so cross-tool sessions on one resource never share a session.
 	if result.SessionName != "org/repo-42+gh" {
 		t.Errorf("SessionName = %q, want org/repo-42+gh", result.SessionName)
 	}
@@ -215,7 +215,7 @@ echo '{"workdir":"`+workdir+`"}'
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	// No --tag: the workflow id ("scratch") is the default workspace-identity tag.
+	// No --tag: the workflow id ("scratch") is the default session-identity tag.
 	if result.SessionName != "my-experiment+scratch" {
 		t.Errorf("SessionName = %q, want my-experiment+scratch (identity + default tag)", result.SessionName)
 	}
@@ -392,7 +392,7 @@ func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("setup = \"echo '{}'\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{WorktreesRoot: t.TempDir(), BaseDir: baseDir}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir(), BaseDir: baseDir}
 
 	_, err := Up(cfg, store, UpParams{Identifier: "https://github.com/org/repo/issues/1"})
 	if err == nil {
@@ -448,7 +448,7 @@ echo '{"workdir":"`+workdir+`"}'
 
 	// A tagged session resolves by its full name or its create-time alias; a
 	// bare resource base no longer resolves because it cannot disambiguate the
-	// workspace-identity tag (which workflow's session?).
+	// session-identity tag (which workflow's session?).
 	for _, id := range []string{"org/repo-66+gh", url} {
 		got, err := Workdir(cfg, store, id)
 		if err != nil {

@@ -75,7 +75,7 @@ func (s *Server) handleSessionDetail(w http.ResponseWriter, r *http.Request) {
 	res, err := s.svc.Status(name)
 	if err != nil {
 		var svcErr *service.Error
-		notFound := errors.As(err, &svcErr) && svcErr.Code == service.ErrWorkspaceNotFound
+		notFound := errors.As(err, &svcErr) && svcErr.Code == service.ErrSessionNotFound
 		switch {
 		case notFound && isHTMX(r):
 			s.renderStatus(w, http.StatusNotFound, "detail-notfound-pane", name)
@@ -283,7 +283,7 @@ func (s *Server) handleSessionDestroy(w http.ResponseWriter, r *http.Request) {
 		s.renderStatusError(w, httpStatusForError(err), err.Error())
 		return
 	}
-	if len(res.CleanupWarnings) > 0 || res.WorktreeWarning != "" {
+	if len(res.CleanupWarnings) > 0 {
 		s.render(w, "destroy-warnings", res)
 		return
 	}

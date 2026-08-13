@@ -13,31 +13,30 @@ import (
 	"github.com/kecbigmt/plect/app/internal/service"
 	"github.com/kecbigmt/plect/app/internal/state"
 	"github.com/kecbigmt/plect/app/internal/template"
-	"github.com/kecbigmt/plect/app/internal/workspace"
 )
 
 var (
 	templateRenderSession     string
-	templateRenderRepo        string
+	templateRenderWorkdir     string
 	templateRenderInstruction string
 	templateRenderVars        []string
-	templateListRepo          string
+	templateListWorkdir       string
 )
 
 var templateCmd = &cobra.Command{
 	Use:   "template",
-	Short: "Manage prompt templates",
+	Short: "Manage templates",
 }
 
 var templateRenderCmd = &cobra.Command{
 	Use:   "render <template-name>",
-	Short: "Render a prompt template to stdout",
-	Long: `Render a prompt template with the given variables and print to stdout.
+	Short: "Render a template to stdout",
+	Long: `Render a template with the given variables and print to stdout.
 
 Variables come from a session. Pass --session <identifier> (session name,
 alias, or resource id) to resolve a session and expose its vars to the
 template:
-  {{.SessionName}} {{.ResourceID}} {{.WorktreePath}}
+  {{.SessionName}} {{.ResourceID}} {{.WorkdirPath}}
   {{.Workflow.outputs.<key>}}  — provider setup outputs (workdir, branch, ...)
   {{.SessionInputs.<key>}}     — session inputs and explicit --var values
 
@@ -46,8 +45,7 @@ instead of {{.SessionInputs.key}} (renders "<no value>").
 
 The template name corresponds to files in the template search path:
   1. <workdir>/.plect/templates/<name>.md  (session working-directory overlay)
-  2. ~/.config/plect/templates/<name>.md
-  3. Built-in defaults (review, respond, work, investigate)`,
+  2. ~/.config/plect/templates/<name>.md`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		templateName := args[0]
@@ -73,17 +71,16 @@ The template name corresponds to files in the template search path:
 			vars = template.Vars{
 				SessionName:   tv.SessionName,
 				ResourceID:    tv.ResourceID,
-				WorktreePath:  tv.WorktreePath,
+				WorkdirPath:   tv.WorkdirPath,
 				Workflow:      tv.Workflow,
 				SessionInputs: tv.SessionInputs,
 			}
-			searchDir = tv.WorktreePath
+			searchDir = tv.WorkdirPath
 			resolved = true
 		}
 
-		if templateRenderRepo != "" && !resolved {
-			mgr := workspace.NewManager(cfg.WorktreesRoot)
-			searchDir = mgr.RepoDir(templateRenderRepo)
+		if templateRenderWorkdir != "" && !resolved {
+			searchDir = templateRenderWorkdir
 		}
 
 		vars.Mode = templateName
@@ -121,14 +118,11 @@ var templateListCmd = &cobra.Command{
 	Short: "List available templates with metadata",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
-
-		repoDir := ""
-		if templateListRepo != "" {
-			mgr := workspace.NewManager(cfg.WorktreesRoot)
-			repoDir = mgr.RepoDir(templateListRepo)
+		workdir := ""
+		if templateListWorkdir != "" {
+			workdir = templateListWorkdir
 		}
-		templates, err := template.List(repoDir)
+		templates, err := template.List(workdir)
 		if err != nil {
 			return err
 		}
@@ -141,11 +135,11 @@ var templateListCmd = &cobra.Command{
 
 func init() {
 	templateRenderCmd.Flags().StringVar(&templateRenderSession, "session", "", "Session identifier (name, alias, or resource id) to source vars from")
-	templateRenderCmd.Flags().StringVar(&templateRenderRepo, "repo", "", "Repository path under the worktrees root to root the template overlay at")
+	templateRenderCmd.Flags().StringVar(&templateRenderWorkdir, "workdir", "", "Working directory path to root the template overlay at")
 	templateRenderCmd.Flags().StringVar(&templateRenderInstruction, "instruction", "", "Additional instruction text")
 	templateRenderCmd.Flags().StringArrayVar(&templateRenderVars, "var", nil, "Explicit template var as key=value (repeatable; exposed as .SessionInputs.<key>)")
 
-	templateListCmd.Flags().StringVar(&templateListRepo, "repo", "", "Repository path under the worktrees root to look for repository-local templates in")
+	templateListCmd.Flags().StringVar(&templateListWorkdir, "workdir", "", "Working directory path to include templates from")
 
 	templateCmd.AddCommand(templateRenderCmd)
 	templateCmd.AddCommand(templateListCmd)

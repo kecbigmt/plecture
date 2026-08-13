@@ -3,28 +3,53 @@ package provider
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/kecbigmt/plect/plugins/github-provider/internal/workspace"
 )
 
-// recordingRunner captures the workspace calls the provider issues and
-// replays a canned stdout, so the acquisition contract can be asserted
-// without a repository on disk.
-func recordingRunner(stdout string, err error, calls *[][]string) Runner {
-	return func(ctx context.Context, name string, args ...string) ([]byte, error) {
-		*calls = append(*calls, append([]string{name}, args...))
-		return []byte(stdout), err
-	}
+type fakeManager struct {
+	adds      []workspace.AddParams
+	removes   []removeCall
+	addInfo   *workspace.WorkspaceInfo
+	addErr    error
+	findErr   error
+	removeErr error
 }
 
-func argValue(args []string, flag string) (string, bool) {
-	for i, a := range args {
-		if a == flag && i+1 < len(args) {
-			return args[i+1], true
-		}
+type removeCall struct {
+	workdir      string
+	gitDir       string
+	branch       string
+	force        bool
+	deleteBranch bool
+}
+
+func (m *fakeManager) Add(ctx context.Context, params workspace.AddParams) (*workspace.WorkspaceInfo, error) {
+	m.adds = append(m.adds, params)
+	if m.addErr != nil {
+		return nil, m.addErr
 	}
-	return "", false
+	if m.addInfo != nil {
+		return m.addInfo, nil
+	}
+	return &workspace.WorkspaceInfo{WorktreePath: "/roots/wt/issue-1"}, nil
+}
+
+func (m *fakeManager) FindGitDir(string, ...string) (string, error) {
+	if m.findErr != nil {
+		return "", m.findErr
+	}
+	return "/roots/src/acme/widgets", nil
+}
+
+func (m *fakeManager) RemoveByPath(ctx context.Context, workdir, gitDir, branch string, force, deleteBranch bool) error {
+	m.removes = append(m.removes, removeCall{workdir: workdir, gitDir: gitDir, branch: branch, force: force, deleteBranch: deleteBranch})
+	return m.removeErr
 }
 
 func TestSessionTag(t *testing.T) {
@@ -47,34 +72,23 @@ func TestSessionTag(t *testing.T) {
 }
 
 func TestSetup_IssueAcquiresTaggedWorktree(t *testing.T) {
-	var calls [][]string
+	mgr := &fakeManager{addInfo: &workspace.WorkspaceInfo{WorktreePath: "/roots/worktrees/github.com/acme/widgets/issue-42-review"}}
 	outputs, err := Setup(context.Background(), SetupOptions{
 		ResourceID:  "https://github.com/acme/widgets/issues/42",
 		SessionName: "acme/widgets-42+review",
-		Runner:      recordingRunner(`{"worktree_path":"/roots/worktrees/github.com/acme/widgets/issue-42-review"}`, nil, &calls),
+		Manager:     mgr,
 	})
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
 	}
-	if len(calls) != 1 {
-		t.Fatalf("issued %d workspace calls, want 1", len(calls))
+	if len(mgr.adds) != 1 {
+		t.Fatalf("issued %d manager adds, want 1", len(mgr.adds))
 	}
-	args := calls[0]
-	if args[1] != "workspace" || args[2] != "add" {
-		t.Errorf("call = %v, want a workspace add", args)
+	add := mgr.adds[0]
+	if add.Repo != "github.com/acme/widgets" || add.Branch != "issue/42+review" || add.BaseBranch != "issue/42" || add.SessionName != "acme/widgets-42+review" {
+		t.Errorf("add params = %+v", add)
 	}
-	for flag, want := range map[string]string{
-		"--repo":        "github.com/acme/widgets",
-		"--branch":      "issue/42+review",
-		"--base-branch": "issue/42",
-		"--session":     "acme/widgets-42+review",
-	} {
-		if got, ok := argValue(args, flag); !ok || got != want {
-			t.Errorf("%s = %q (present=%v), want %q", flag, got, ok, want)
-		}
-	}
-	// An issue has no pull request head to fall back to.
-	if _, ok := argValue(args, "--fallback-refspec"); ok {
+	if add.FallbackRefspec != "" {
 		t.Error("an issue acquisition must not pass a fallback refspec")
 	}
 
@@ -93,11 +107,11 @@ func TestSetup_IssueAcquiresTaggedWorktree(t *testing.T) {
 }
 
 func TestSetup_UntaggedSessionKeepsBaseBranch(t *testing.T) {
-	var calls [][]string
+	mgr := &fakeManager{addInfo: &workspace.WorkspaceInfo{WorktreePath: "/roots/wt/issue-7"}}
 	outputs, err := Setup(context.Background(), SetupOptions{
 		ResourceID:  "https://github.com/acme/widgets/issues/7",
 		SessionName: "acme/widgets-7",
-		Runner:      recordingRunner(`{"worktree_path":"/roots/wt/issue-7"}`, nil, &calls),
+		Manager:     mgr,
 	})
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
@@ -105,133 +119,121 @@ func TestSetup_UntaggedSessionKeepsBaseBranch(t *testing.T) {
 	if outputs["branch"] != "issue/7" {
 		t.Errorf("branch = %v, want issue/7", outputs["branch"])
 	}
-	if got, _ := argValue(calls[0], "--branch"); got != "issue/7" {
-		t.Errorf("--branch = %q, want issue/7", got)
+	if got := mgr.adds[0].Branch; got != "issue/7" {
+		t.Errorf("branch = %q, want issue/7", got)
 	}
 }
 
 func TestSetup_InvalidResource(t *testing.T) {
-	var calls [][]string
+	mgr := &fakeManager{}
 	_, err := Setup(context.Background(), SetupOptions{
 		ResourceID:  "not-a-github-resource",
 		SessionName: "s",
-		Runner:      recordingRunner("", nil, &calls),
+		Manager:     mgr,
 	})
 	if err == nil {
 		t.Fatal("expected an error for an unparsable resource identifier")
 	}
-	if len(calls) != 0 {
-		t.Errorf("an unparsable resource must not reach the workspace, got %v", calls)
+	if len(mgr.adds) != 0 {
+		t.Errorf("an unparsable resource must not reach the manager, got %v", mgr.adds)
 	}
 }
 
-func TestSetup_WorkspaceFailurePropagates(t *testing.T) {
-	var calls [][]string
+func TestSetup_AcquisitionFailurePropagates(t *testing.T) {
 	_, err := Setup(context.Background(), SetupOptions{
 		ResourceID:  "https://github.com/acme/widgets/issues/1",
 		SessionName: "acme/widgets-1",
-		Runner:      recordingRunner("", errors.New("repository not found"), &calls),
+		Manager:     &fakeManager{addErr: errors.New("repository not found")},
 	})
 	if err == nil || !strings.Contains(err.Error(), "repository not found") {
-		t.Fatalf("error = %v, want the workspace failure to propagate", err)
+		t.Fatalf("error = %v, want the acquisition failure to propagate", err)
 	}
 }
 
-func TestSetup_MissingWorktreePathIsAnError(t *testing.T) {
-	var calls [][]string
+func TestSetup_MissingWorkdirPathIsAnError(t *testing.T) {
 	_, err := Setup(context.Background(), SetupOptions{
 		ResourceID:  "https://github.com/acme/widgets/issues/1",
 		SessionName: "acme/widgets-1",
-		Runner:      recordingRunner(`{}`, nil, &calls),
+		Manager:     &fakeManager{addInfo: &workspace.WorkspaceInfo{}},
 	})
-	if err == nil || !strings.Contains(err.Error(), "worktree path") {
-		t.Fatalf("error = %v, want a missing-worktree-path error", err)
-	}
-}
-
-func TestSetup_UnparsableWorkspaceOutput(t *testing.T) {
-	var calls [][]string
-	_, err := Setup(context.Background(), SetupOptions{
-		ResourceID:  "https://github.com/acme/widgets/issues/1",
-		SessionName: "acme/widgets-1",
-		Runner:      recordingRunner("not json", nil, &calls),
-	})
-	if err == nil || !strings.Contains(err.Error(), "parse workspace details") {
-		t.Fatalf("error = %v, want a parse failure", err)
+	if err == nil || !strings.Contains(err.Error(), "workdir path") {
+		t.Fatalf("error = %v, want a missing-workdir-path error", err)
 	}
 }
 
 func TestCleanup_ReleasesWorktreeAndReclaimsBranch(t *testing.T) {
-	var calls [][]string
+	mgr := &fakeManager{}
 	if err := Cleanup(context.Background(), CleanupOptions{
 		Workdir: "/roots/wt/issue-42-review",
 		Branch:  "issue/42+review",
-		Runner:  recordingRunner("", nil, &calls),
+		Manager: mgr,
 	}); err != nil {
 		t.Fatalf("Cleanup: %v", err)
 	}
-	if len(calls) != 1 {
-		t.Fatalf("issued %d workspace calls, want 1", len(calls))
+	if len(mgr.removes) != 1 {
+		t.Fatalf("issued %d manager removes, want 1", len(mgr.removes))
 	}
-	args := calls[0]
-	if args[1] != "workspace" || args[2] != "remove" {
-		t.Errorf("call = %v, want a workspace remove", args)
+	remove := mgr.removes[0]
+	if remove.workdir != "/roots/wt/issue-42-review" || remove.branch != "issue/42+review" {
+		t.Errorf("remove = %+v", remove)
 	}
-	if got, _ := argValue(args, "--path"); got != "/roots/wt/issue-42-review" {
-		t.Errorf("--path = %q", got)
-	}
-	if got, _ := argValue(args, "--branch"); got != "issue/42+review" {
-		t.Errorf("--branch = %q", got)
-	}
-	found := false
-	for _, a := range args {
-		if a == "--delete-branch" {
-			found = true
-		}
-	}
-	if !found {
+	if !remove.deleteBranch {
 		t.Error("cleanup must reclaim the branch it acquired")
 	}
 }
 
 func TestCleanup_ForcePassesForceFlagToWorkspaceRemove(t *testing.T) {
-	var calls [][]string
+	mgr := &fakeManager{}
 	if err := Cleanup(context.Background(), CleanupOptions{
 		Workdir: "/roots/wt/issue-42-review",
 		Force:   true,
-		Runner:  recordingRunner("", nil, &calls),
+		Manager: mgr,
 	}); err != nil {
 		t.Fatalf("Cleanup: %v", err)
 	}
-	args := calls[0]
-	found := false
-	for _, a := range args {
-		if a == "--force" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("call = %v, want --force passed through to workspace remove", args)
+	if !mgr.removes[0].force {
+		t.Errorf("remove = %+v, want force passed through", mgr.removes[0])
 	}
 }
 
 func TestCleanup_NoWorkdirIsANoOp(t *testing.T) {
-	var calls [][]string
-	if err := Cleanup(context.Background(), CleanupOptions{Runner: recordingRunner("", nil, &calls)}); err != nil {
+	mgr := &fakeManager{}
+	if err := Cleanup(context.Background(), CleanupOptions{Manager: mgr}); err != nil {
 		t.Fatalf("Cleanup with no workdir: %v", err)
 	}
-	if len(calls) != 0 {
-		t.Errorf("nothing was acquired, so nothing may be released, got %v", calls)
+	if len(mgr.removes) != 0 {
+		t.Errorf("nothing was acquired, so nothing may be released, got %v", mgr.removes)
 	}
 }
 
 func TestCleanup_FailurePropagates(t *testing.T) {
-	var calls [][]string
 	err := Cleanup(context.Background(), CleanupOptions{
 		Workdir: "/roots/wt/issue-1",
-		Runner:  recordingRunner("", errors.New("worktree is dirty"), &calls),
+		Manager: &fakeManager{removeErr: errors.New("worktree is dirty")},
 	})
 	if err == nil || !strings.Contains(err.Error(), "worktree is dirty") {
 		t.Fatalf("error = %v, want the removal failure to propagate", err)
+	}
+}
+
+func TestWorkdirsRootComesFromHookArgumentNotCoreConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	configDir := filepath.Join(home, ".config", "plect")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`workdirs_root = "/configured/root"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := workdirsRoot(""), filepath.Join(home, "workdirs"); got != want {
+		t.Fatalf("workdirsRoot(\"\") = %q, want default %q instead of config.toml", got, want)
+	}
+	if got, want := workdirsRoot("~/custom"), filepath.Join(home, "custom"); got != want {
+		t.Fatalf("workdirsRoot(\"~/custom\") = %q, want %q", got, want)
+	}
+	if got := workdirsRoot("/explicit/root"); got != "/explicit/root" {
+		t.Fatalf("workdirsRoot override = %q, want /explicit/root", got)
 	}
 }

@@ -3,43 +3,42 @@
 // session name into an acquired git worktree, and releases that worktree
 // again on cleanup.
 //
-// Everything GitHub-specific lives here — how a resource identifier is
+// Everything GitHub-specific lives here: how a resource identifier is
 // parsed, which branch a resource maps to, and how a repository's worktrees
-// are laid out under the worktrees root. The generic half (creating and
-// removing the worktree itself) is delegated to the plect CLI's workspace
-// subcommands, so this package never reimplements branch reuse, fetch
-// fallback, or primary-checkout resolution.
+// are laid out under the workdirs root.
 package provider
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kecbigmt/plect/plugins/github-provider/internal/github"
+	"github.com/kecbigmt/plect/plugins/github-provider/internal/workspace"
 )
 
-// PlectBinary is the plect CLI the workspace calls are issued against. It
-// is a variable so tests can point it at a stub.
-var PlectBinary = "plect"
-
-// Runner executes a command and returns its stdout. It exists so the tests
-// can observe the workspace calls without a real plect binary or a real
-// repository.
-type Runner func(ctx context.Context, name string, args ...string) ([]byte, error)
+// WorkdirManager is the git workdir lifecycle surface Setup and Cleanup use.
+type WorkdirManager interface {
+	Add(context.Context, workspace.AddParams) (*workspace.WorkspaceInfo, error)
+	RemoveByPath(context.Context, string, string, string, bool, bool) error
+	FindGitDir(string, ...string) (string, error)
+}
 
 // SetupOptions are the inputs the provider setup hook receives.
 type SetupOptions struct {
 	// ResourceID is the canonical resource identifier: a GitHub issue or
 	// pull request URL, or a Projects v2 item id that resolves to one.
 	ResourceID string
-	// SessionName is the session the worktree is acquired for. Its
+	// SessionName is the session the workdir is acquired for. Its
 	// "<name>+<tag>" suffix, when present, is what separates one tool's
-	// workspace on a resource from another's.
+	// workdir on a resource from another's.
 	SessionName string
-	// Runner executes the plect workspace calls. Nil uses the real CLI.
-	Runner Runner
+	// WorkdirsRoot overrides the configured workdirs root.
+	WorkdirsRoot string
+	// Manager lets tests observe acquisition without a real repository.
+	Manager WorkdirManager
 }
 
 // Setup acquires the working directory for a GitHub resource and returns the
@@ -59,27 +58,25 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 		branch = github.BranchWithTag(baseBranch, tag)
 	}
 
-	args := []string{"workspace", "add",
-		"--repo", github.RepoSlug(parsed.OwnerRepo),
-		"--branch", branch,
-		"--base-branch", baseBranch,
-		"--session", opts.SessionName,
+	mgr := opts.Manager
+	if mgr == nil {
+		mgr = workspace.NewManager(workdirsRoot(opts.WorkdirsRoot))
+	}
+	params := workspace.AddParams{
+		Repo:        github.RepoSlug(parsed.OwnerRepo),
+		Branch:      branch,
+		BaseBranch:  baseBranch,
+		SessionName: opts.SessionName,
 	}
 	if parsed.Type == github.URLTypePR {
-		args = append(args, "--fallback-refspec", github.PullRefspec(parsed.Number, baseBranch))
+		params.FallbackRefspec = github.PullRefspec(parsed.Number, baseBranch)
 	}
-	out, err := run(ctx, opts.Runner, args...)
+	info, err := mgr.Add(ctx, params)
 	if err != nil {
-		return nil, fmt.Errorf("acquire worktree: %w", err)
-	}
-	var info struct {
-		WorktreePath string `json:"worktree_path"`
-	}
-	if err := json.Unmarshal(out, &info); err != nil {
-		return nil, fmt.Errorf("parse workspace details: %w", err)
+		return nil, fmt.Errorf("acquire workdir: %w", err)
 	}
 	if info.WorktreePath == "" {
-		return nil, fmt.Errorf("workspace details carried no worktree path")
+		return nil, fmt.Errorf("acquired workdir path is empty")
 	}
 
 	return map[string]any{
@@ -98,14 +95,16 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 type CleanupOptions struct {
 	Workdir string
 	Branch  string
-	// Force removes the worktree even when it carries uncommitted changes,
+	// Force removes the workdir even when it carries uncommitted changes,
 	// mirroring the caller's `plect destroy --force` intent.
 	Force bool
-	// Runner executes the plect workspace calls. Nil uses the real CLI.
-	Runner Runner
+	// WorkdirsRoot overrides the configured workdirs root.
+	WorkdirsRoot string
+	// Manager lets tests observe release without a real repository.
+	Manager WorkdirManager
 }
 
-// Cleanup releases the worktree setup acquired, reclaiming its branch so a
+// Cleanup releases the workdir setup acquired, reclaiming its branch so a
 // later dispatch on the same resource is not blocked by an orphan. A setup
 // that never produced a working directory leaves nothing to release, which
 // is a success rather than an error: cleanup must converge on a session
@@ -114,20 +113,22 @@ func Cleanup(ctx context.Context, opts CleanupOptions) error {
 	if strings.TrimSpace(opts.Workdir) == "" {
 		return nil
 	}
-	args := []string{"workspace", "remove", "--path", opts.Workdir}
-	if opts.Branch != "" {
-		args = append(args, "--branch", opts.Branch, "--delete-branch")
+	mgr := opts.Manager
+	if mgr == nil {
+		mgr = workspace.NewManager(workdirsRoot(opts.WorkdirsRoot))
 	}
-	if opts.Force {
-		args = append(args, "--force")
+	container := workspace.ContainerDir(opts.Workdir)
+	gitDir, err := mgr.FindGitDir(container, opts.Workdir)
+	if err != nil {
+		return fmt.Errorf("release workdir: %w", err)
 	}
-	if _, err := run(ctx, opts.Runner, args...); err != nil {
-		return fmt.Errorf("release worktree: %w", err)
+	if err := mgr.RemoveByPath(ctx, opts.Workdir, gitDir, opts.Branch, opts.Force, opts.Branch != ""); err != nil {
+		return fmt.Errorf("release workdir: %w", err)
 	}
 	return nil
 }
 
-// SessionTag extracts the workspace tag from a session name's
+// SessionTag extracts the session tag from a session name's
 // "<name>+<tag>" convention. An untagged name yields the empty string.
 func SessionTag(sessionName string) string {
 	if idx := strings.LastIndex(sessionName, "+"); idx >= 0 {
@@ -146,9 +147,14 @@ func resolve(ctx context.Context, resource string) (*github.ParsedURL, error) {
 	return github.ParseURL(resource)
 }
 
-func run(ctx context.Context, runner Runner, args ...string) ([]byte, error) {
-	if runner == nil {
-		runner = defaultRunner
+func workdirsRoot(override string) string {
+	home, _ := os.UserHomeDir()
+	root := filepath.Join(home, "workdirs")
+	if override != "" {
+		root = override
 	}
-	return runner(ctx, PlectBinary, args...)
+	if strings.HasPrefix(root, "~/") {
+		root = filepath.Join(home, root[2:])
+	}
+	return root
 }
