@@ -766,3 +766,44 @@ func TestHealthcheckSession_SkipsDeadIntermediateParent(t *testing.T) {
 		t.Fatalf("escalation relation = %q, want descendant", evs[0].Metadata[event.MetaRelation])
 	}
 }
+
+func TestHealthcheckSession_RecordsUndeliverableEscalationWithNoLiveAncestor(t *testing.T) {
+	store := testStore(t)
+	cfg := healthcheckFixtureConfig(t, "false")
+	seedSession(t, store, "owner/repo-parent", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+	setParent(t, store, "owner/repo-1", "owner/repo-parent")
+
+	report, err := HealthcheckSession(cfg, store, HealthcheckParams{
+		SessionName: "owner/repo-1",
+		Config: config.HealthcheckConfig{
+			Period:         config.Duration{Duration: time.Minute},
+			StallThreshold: config.Duration{Duration: 3 * time.Minute},
+			RenotifyEvery:  2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("HealthcheckSession: %v", err)
+	}
+	if !report.Pushed || report.PushTarget != "owner/repo-1" {
+		t.Fatalf("report = %+v, want local undeliverable record", report)
+	}
+
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{event.TypeTerminalDead}})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(evs) != 1 {
+		t.Fatalf("local dead events = %+v, want one", evs)
+	}
+	if evs[0].Metadata[event.MetaOriginSession] != "owner/repo-1" {
+		t.Fatalf("origin = %q, want owner/repo-1", evs[0].Metadata[event.MetaOriginSession])
+	}
+	if evs[0].Metadata["escalation_kind"] != "health.unhealthy" {
+		t.Fatalf("metadata = %+v, want health escalation kind", evs[0].Metadata)
+	}
+}

@@ -93,6 +93,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	vars := task.WorkflowHookVars{
 		ResourceID:    resource,
 		SessionName:   sessionName,
+		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
 	}
 	outputs, setupErr := task.RunWorkflowSetup(prov, vars, session.Tasks, params.Observer)

@@ -100,6 +100,33 @@ func TestLoad_MalformedConfigFileFallsBackAndWarns(t *testing.T) {
 	}
 }
 
+func TestLoad_LegacyWorktreesRootWarns(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	configDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`worktrees_root = "/legacy/worktrees"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	cfg := Load()
+
+	if cfg.WorkdirsRoot != filepath.Join(tmpHome, "workdirs") {
+		t.Errorf("WorkdirsRoot = %q, want default because legacy key is ignored", cfg.WorkdirsRoot)
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("legacy config key worktrees_root is ignored")) {
+		t.Errorf("expected a warning about worktrees_root, got log output: %q", logs.String())
+	}
+}
+
 func TestLoad_PopulatesBaseDir(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)

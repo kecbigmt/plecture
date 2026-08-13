@@ -9,8 +9,8 @@
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
 name = "{{.owner}}/{{.repo}}-{{.number}}"
 
-setup = 'plect-github-provider setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}}'
-cleanup = 'plect-github-provider cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --force={{.Force}}'
+setup = 'plect-github-provider setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}}'
+cleanup = 'plect-github-provider cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}} --force={{.Force}}'
 
 [outputs_schema]
 type = "object"

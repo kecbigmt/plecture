@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/BurntSushi/toml"
 	"github.com/kecbigmt/plect/plugins/github-provider/internal/github"
 	"github.com/kecbigmt/plect/plugins/github-provider/internal/workspace"
 )
@@ -25,10 +24,6 @@ type WorkdirManager interface {
 	Add(context.Context, workspace.AddParams) (*workspace.WorkspaceInfo, error)
 	RemoveByPath(context.Context, string, string, string, bool, bool) error
 	FindGitDir(string, ...string) (string, error)
-}
-
-type providerConfig struct {
-	WorkdirsRoot string `toml:"workdirs_root"`
 }
 
 // SetupOptions are the inputs the provider setup hook receives.
@@ -153,17 +148,10 @@ func resolve(ctx context.Context, resource string) (*github.ParsedURL, error) {
 }
 
 func workdirsRoot(override string) string {
-	if override != "" {
-		return override
-	}
 	home, _ := os.UserHomeDir()
 	root := filepath.Join(home, "workdirs")
-	cfgPath := filepath.Join(home, ".config", "plect", "config.toml")
-	var cfg providerConfig
-	if _, err := os.Stat(cfgPath); err == nil {
-		if _, err := toml.DecodeFile(cfgPath, &cfg); err == nil && cfg.WorkdirsRoot != "" {
-			root = cfg.WorkdirsRoot
-		}
+	if override != "" {
+		root = override
 	}
 	if strings.HasPrefix(root, "~/") {
 		root = filepath.Join(home, root[2:])

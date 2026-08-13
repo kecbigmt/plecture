@@ -26,7 +26,6 @@ type DestroyParams struct {
 type DestroyResult struct {
 	SessionName    string `json:"session_name"`
 	RemovedWorkdir bool   `json:"removed_workdir"`
-	WorkdirWarning string `json:"workdir_warning,omitempty"`
 	// CleanupWarnings carries task cleanup errors that were downgraded to
 	// warnings by --force. Without --force a cleanup error aborts Destroy and
 	// returns the error directly; this field is only populated when the user
@@ -147,15 +146,6 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 			result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow cleanup: %v", cleanupErr))
 		}
 		result.RemovedWorkdir = session.WorkdirPath != "" && !fileExists(session.WorkdirPath)
-	}
-
-	// Without --force, abort before store.Delete so the user can retry —
-	// otherwise the workdir is orphaned on disk while plect forgets about it.
-	if result.WorkdirWarning != "" && !params.Force {
-		return nil, &Error{
-			Code:    ErrExecutionFailed,
-			Message: fmt.Sprintf("%s (session %s)\nRe-run with `plect destroy %s --force` to delete the workdir and state entry anyway.", result.WorkdirWarning, sessionName, sessionName),
-		}
 	}
 
 	// Snapshot the state entry as a tombstone in the event log directory

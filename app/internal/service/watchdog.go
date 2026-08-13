@@ -374,7 +374,22 @@ func pushHealthEscalation(cfg *config.Config, store *state.Store, origin string,
 		return false
 	}
 	if id == "" {
-		return false
+		localID, _, localErr := publishTerminalTo(cfg, store, origin, origin, false, TerminalParams{
+			Type:     event.TypeTerminalDead,
+			Summary:  fmt.Sprintf("%s health escalation is undeliverable", origin),
+			Body:     healthEscalationBody(origin, report),
+			Metadata: meta,
+			DedupKey: fmt.Sprintf("%s|health|%s|%d|undeliverable", origin, stateText, notifyCount),
+		})
+		if localErr != nil {
+			slog.Warn("record undeliverable health escalation failed", "session", origin, "error", localErr)
+			return false
+		}
+		if localID == "" {
+			return false
+		}
+		report.PushTarget = origin
+		return true
 	}
 	if wakeErr != nil {
 		report.WakeWarning = wakeErr.Error()

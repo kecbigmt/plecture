@@ -283,7 +283,7 @@ func (s *Server) handleSessionDestroy(w http.ResponseWriter, r *http.Request) {
 		s.renderStatusError(w, httpStatusForError(err), err.Error())
 		return
 	}
-	if len(res.CleanupWarnings) > 0 || res.WorkdirWarning != "" {
+	if len(res.CleanupWarnings) > 0 {
 		s.render(w, "destroy-warnings", res)
 		return
 	}

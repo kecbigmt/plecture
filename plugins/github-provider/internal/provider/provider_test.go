@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -211,5 +213,27 @@ func TestCleanup_FailurePropagates(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "worktree is dirty") {
 		t.Fatalf("error = %v, want the removal failure to propagate", err)
+	}
+}
+
+func TestWorkdirsRootComesFromHookArgumentNotCoreConfig(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	configDir := filepath.Join(home, ".config", "plect")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`workdirs_root = "/configured/root"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := workdirsRoot(""), filepath.Join(home, "workdirs"); got != want {
+		t.Fatalf("workdirsRoot(\"\") = %q, want default %q instead of config.toml", got, want)
+	}
+	if got, want := workdirsRoot("~/custom"), filepath.Join(home, "custom"); got != want {
+		t.Fatalf("workdirsRoot(\"~/custom\") = %q, want %q", got, want)
+	}
+	if got := workdirsRoot("/explicit/root"); got != "/explicit/root" {
+		t.Fatalf("workdirsRoot override = %q, want /explicit/root", got)
 	}
 }

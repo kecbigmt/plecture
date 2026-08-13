@@ -122,7 +122,8 @@ func Load() *Config {
 		return cfg
 	}
 
-	if _, err := toml.DecodeFile(configPath, cfg); err != nil {
+	meta, err := toml.DecodeFile(configPath, cfg)
+	if err != nil {
 		// A present but unparsable config.toml is a user mistake, not an
 		// absent-config no-op: silently falling back to defaults here would
 		// hide a typo behind seemingly-ignored settings, so this warns
@@ -131,6 +132,9 @@ func Load() *Config {
 		// would require a wider API change out of scope for this fix).
 		slog.Warn("config.toml present but failed to parse; using defaults", "path", configPath, "error", err)
 		return cfg
+	}
+	if meta.IsDefined("worktrees_root") {
+		slog.Warn("legacy config key worktrees_root is ignored; rename it to workdirs_root or run the legacy migration", "path", configPath)
 	}
 
 	// Expand ~ in path configs

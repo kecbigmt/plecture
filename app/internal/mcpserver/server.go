@@ -277,9 +277,6 @@ func handleDestroy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		"session_name":    result.SessionName,
 		"removed_workdir": result.RemovedWorkdir,
 	}
-	if result.WorkdirWarning != "" {
-		resp["workdir_warning"] = result.WorkdirWarning
-	}
 	if len(result.CleanupWarnings) > 0 {
 		resp["cleanup_warnings"] = result.CleanupWarnings
 	}

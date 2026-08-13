@@ -62,10 +62,12 @@ func decodeJSONResult(t *testing.T, result *mcp.CallToolResult) map[string]any {
 	return out
 }
 
-func TestNewServer_RemovesCreateToolOnly(t *testing.T) {
+func TestNewServer_RemovesRemovedTools(t *testing.T) {
 	tools := NewServer().ListTools()
-	if _, ok := tools["plect_create"]; ok {
-		t.Fatal("plect_create is still registered")
+	for _, name := range []string{"plect_create", "plect_watchdog_check"} {
+		if _, ok := tools[name]; ok {
+			t.Fatalf("%s is still registered", name)
+		}
 	}
 	for _, name := range []string{"plect_up", "plect_down", "plect_destroy"} {
 		if _, ok := tools[name]; !ok {

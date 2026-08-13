@@ -282,6 +282,7 @@ func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, sess
 	vars := task.WorkflowHookVars{
 		ResourceID:    session.ResourceID,
 		SessionName:   session.Name,
+		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
 	}
 	return task.RunWorkflowSetup(prov, vars, session.Tasks, observer)

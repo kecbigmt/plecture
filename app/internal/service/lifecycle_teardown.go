@@ -37,6 +37,7 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 	vars := task.WorkflowHookVars{
 		ResourceID:    session.ResourceID,
 		SessionName:   session.Name,
+		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
 		Force:         force,
 	}
