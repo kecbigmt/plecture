@@ -39,7 +39,7 @@ behaved before. Non-TTY stdout (MCP, cron, scripts) is treated as --detach
 automatically; the MCP plect_up tool is always detached. Workflows without an
 attach target return after setup regardless of TTY.
 
---tag selects the session's workspace-identity label. Omitted, it defaults to
+--tag selects the session's session-identity label. Omitted, it defaults to
 the workflow id, so repeated 'plect up <resource-id> --workflow X' calls
 converge on the same session. Pass --tag to
 resolve a specifically-labelled session (e.g. 'plect up <resource-id> --tag X'
@@ -122,7 +122,7 @@ func stdoutIsTerminal() bool {
 }
 
 func init() {
-	upCmd.Flags().StringVar(&upTag, "tag", "", "Workspace-identity label of the session to resolve/auto-create (resource-identifier only). Defaults to the workflow id.")
+	upCmd.Flags().StringVar(&upTag, "tag", "", "Session-identity label of the session to resolve/auto-create (resource-identifier only). Defaults to the workflow id.")
 	upCmd.Flags().StringVarP(&upWorkflow, "workflow", "w", "", "Workflow id (auto-create path only; must match session's frozen workflow)")
 	upCmd.Flags().StringVar(&upInputs, "inputs", "", "Session inputs as a JSON object string (auto-create path only)")
 	upCmd.Flags().StringVar(&upInputsFile, "inputs-file", "", "Path to a JSON file containing the session inputs object (auto-create path only)")

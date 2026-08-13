@@ -127,7 +127,7 @@ func TestSubscribe_GhostSessionRejected(t *testing.T) {
 		ResourceID:  "https://github.com/org/repo/pull/1",
 		SessionName: "typo/sess-1",
 	})
-	assertErrCode(t, err, ErrWorkspaceNotFound)
+	assertErrCode(t, err, ErrSessionNotFound)
 	if _, statErr := os.Stat(rec); statErr == nil {
 		t.Error("subscribe hook ran for a non-existent session")
 	}

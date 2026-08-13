@@ -7,18 +7,31 @@ import (
 	"testing"
 )
 
-func TestLoad_EmbeddedDefaults(t *testing.T) {
-	modes := []string{"work", "review", "respond", "investigate"}
-	for _, mode := range modes {
-		t.Run(mode, func(t *testing.T) {
-			content, err := Load(mode, "")
-			if err != nil {
-				t.Fatalf("Load(%q) error: %v", mode, err)
-			}
-			if content == "" {
-				t.Errorf("Load(%q) returned empty content", mode)
-			}
-		})
+func TestLoad_MissingTemplateNamesSearchedPaths(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	workdir := filepath.Join(tmpHome, "projects", "repo", "session")
+	if err := os.MkdirAll(workdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load("review", workdir)
+	if err == nil {
+		t.Fatal("Load() expected a missing-template error")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		`no template found for mode "review"`,
+		filepath.Join(workdir, ".plect", "templates", "review.md"),
+		filepath.Join(tmpHome, ".config", "plect", "templates", "review.md"),
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error %q does not name searched path %q", msg, want)
+		}
+	}
+	if strings.Contains(msg, "embedded") || strings.Contains(msg, "defaults") {
+		t.Fatalf("error %q mentions an embedded fallback", msg)
 	}
 }
 
@@ -77,9 +90,17 @@ func TestLoad_RepoSpecificOverride(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	// Isolate the user-global template layer so the embedded defaults are
-	// what gets rendered.
-	t.Setenv("HOME", t.TempDir())
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	templateDir := filepath.Join(tmpHome, ".config", "plect", "templates")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{{.Workflow.outputs.owner_repo}}#{{.Workflow.outputs.number}}
+{{.ResourceID}}`
+	if err := os.WriteFile(filepath.Join(templateDir, "work.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	vars := Vars{
 		Workflow:   map[string]any{"owner_repo": "org/repo", "number": 42},
@@ -101,9 +122,15 @@ func TestRender(t *testing.T) {
 }
 
 func TestRender_WithInstruction(t *testing.T) {
-	// Isolate the user-global template layer so the embedded defaults are
-	// what gets rendered.
-	t.Setenv("HOME", t.TempDir())
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	templateDir := filepath.Join(tmpHome, ".config", "plect", "templates")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(templateDir, "work.md"), []byte(`{{.Instruction}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	vars := Vars{
 		Workflow:    map[string]any{"owner_repo": "org/repo", "number": 42},
@@ -122,33 +149,7 @@ func TestRender_WithInstruction(t *testing.T) {
 	}
 }
 
-func TestRender_DefaultTemplates(t *testing.T) {
-	// Isolate the user-global template layer so the embedded defaults are
-	// what gets rendered.
-	t.Setenv("HOME", t.TempDir())
-
-	modes := []string{"review", "respond", "work", "investigate"}
-	for _, mode := range modes {
-		t.Run(mode, func(t *testing.T) {
-			vars := Vars{
-				Workflow:   map[string]any{"owner_repo": "org/repo", "number": 42},
-				ResourceID: "https://example.test/org/repo/items/42",
-				Mode:       mode,
-			}
-			result, err := Render(mode, "", vars)
-			if err != nil {
-				t.Fatalf("Render(%q) error: %v", mode, err)
-			}
-			if result == "" {
-				t.Errorf("Render(%q) returned empty result", mode)
-			}
-		})
-	}
-}
-
 func TestRender_UnknownTemplate(t *testing.T) {
-	// Isolate the user-global template layer so the embedded defaults are
-	// what gets rendered.
 	t.Setenv("HOME", t.TempDir())
 
 	vars := Vars{
@@ -163,7 +164,17 @@ func TestRender_UnknownTemplate(t *testing.T) {
 }
 
 func TestRender_VarsExpansion(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	templateDir := filepath.Join(tmpHome, ".config", "plect", "templates")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{{.Workflow.outputs.owner_repo}}#{{.Workflow.outputs.number}}
+{{.ResourceID}}`
+	if err := os.WriteFile(filepath.Join(templateDir, "review.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	vars := Vars{
 		Workflow:    map[string]any{"owner_repo": "myorg/myrepo", "number": 99},
@@ -202,7 +213,7 @@ func TestRender_SessionVarsWithoutProviderOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := "owner={{.Workflow.outputs.owner}} session={{.SessionName}} " +
-		"workdir={{.WorktreePath}} focus={{.SessionInputs.focus}} res={{.ResourceID}}"
+		"workdir={{.WorkdirPath}} focus={{.SessionInputs.focus}} res={{.ResourceID}}"
 	if err := os.WriteFile(filepath.Join(plectDir, "kick.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +222,7 @@ func TestRender_SessionVarsWithoutProviderOutputs(t *testing.T) {
 		Mode:          "kick",
 		SessionName:   "acme/_orchestrator",
 		ResourceID:    "owner:acme",
-		WorktreePath:  workdir,
+		WorkdirPath:   workdir,
 		Workflow:      map[string]any{"owner": "acme"},
 		SessionInputs: map[string]any{"focus": "triage"},
 	}
@@ -323,14 +334,23 @@ func TestParseFrontmatter(t *testing.T) {
 }
 
 func TestLoadWithMetadata(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	templateDir := filepath.Join(tmpHome, ".config", "plect", "templates")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\ndescription: Review changes\n---\nReview {{.Workflow.outputs.owner_repo}}"
+	if err := os.WriteFile(filepath.Join(templateDir, "review.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	meta, body, err := LoadWithMetadata("review", "")
 	if err != nil {
 		t.Fatalf("LoadWithMetadata() error: %v", err)
 	}
 	if meta.Description == "" {
-		t.Error("expected non-empty description from embedded review template")
+		t.Error("expected non-empty description from user review template")
 	}
 	if strings.Contains(body, "---") {
 		t.Error("body should not contain frontmatter delimiters")
@@ -341,9 +361,16 @@ func TestLoadWithMetadata(t *testing.T) {
 }
 
 func TestRender_StripsFrontmatter(t *testing.T) {
-	// Isolate the user-global template layer so the embedded defaults are
-	// what gets rendered.
-	t.Setenv("HOME", t.TempDir())
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	templateDir := filepath.Join(tmpHome, ".config", "plect", "templates")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\ndescription: Review changes\n---\nReview {{.Workflow.outputs.owner_repo}}"
+	if err := os.WriteFile(filepath.Join(templateDir, "review.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	vars := Vars{
 		Workflow:   map[string]any{"owner_repo": "org/repo", "number": 42},
@@ -362,9 +389,24 @@ func TestRender_StripsFrontmatter(t *testing.T) {
 	}
 }
 
-func TestList_EmbeddedDefaults(t *testing.T) {
+func TestList_UserGlobalTemplates(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+	templateDir := filepath.Join(tmpHome, ".config", "plect", "templates")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, desc := range map[string]string{
+		"work":        "Work on the task",
+		"review":      "Review changes",
+		"respond":     "Respond to an event",
+		"investigate": "Investigate context",
+	} {
+		content := "---\ndescription: " + desc + "\n---\nBody"
+		if err := os.WriteFile(filepath.Join(templateDir, name+".md"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	templates, err := List("")
 	if err != nil {
@@ -401,9 +443,16 @@ func TestList_RepoSpecificAndDedup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Repo-specific template that overrides embedded "work"
+	// Workdir-specific template that overrides user-global "work".
 	repoContent := "---\ndescription: Custom work\n---\nBody"
 	if err := os.WriteFile(filepath.Join(plectDir, "work.md"), []byte(repoContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	userDir := filepath.Join(tmpHome, ".config", "plect", "templates")
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userDir, "review.md"), []byte("---\ndescription: User review\n---\nReview"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -423,7 +472,7 @@ func TestList_RepoSpecificAndDedup(t *testing.T) {
 		names[tmpl.Name] = tmpl.Description
 	}
 
-	// "work" should use repo-specific description
+	// "work" should use workdir-specific description.
 	if names["work"] != "Custom work" {
 		t.Errorf("work description = %q, want %q", names["work"], "Custom work")
 	}
@@ -433,9 +482,9 @@ func TestList_RepoSpecificAndDedup(t *testing.T) {
 		t.Errorf("deploy description = %q, want %q", names["deploy"], "Deploy to staging")
 	}
 
-	// Embedded defaults should still be present
+	// User-global templates should still be present.
 	if _, ok := names["review"]; !ok {
-		t.Error("missing embedded template 'review'")
+		t.Error("missing user-global template 'review'")
 	}
 }
 
@@ -472,12 +521,12 @@ func TestList_NoFrontmatter(t *testing.T) {
 }
 
 // TestLoad_AncestorOverlay covers the bare layout: .plect/templates lives in the
-// repo container, one level above the branch worktree searchDir points at.
+// repo container, one level above the branch workdir searchDir points at.
 func TestLoad_AncestorOverlay(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
+	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
 	plectDir := filepath.Join(repoDir, ".plect", "templates")
 	if err := os.MkdirAll(plectDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -487,12 +536,12 @@ func TestLoad_AncestorOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	worktreeDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+	workdirDir := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	content, err := Load("work", worktreeDir)
+	content, err := Load("work", workdirDir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -502,12 +551,12 @@ func TestLoad_AncestorOverlay(t *testing.T) {
 }
 
 // TestLoad_AncestorOverlay_InnerWins covers innermost-wins ordering when both
-// the worktree itself and an ancestor declare the same template.
+// the workdir itself and an ancestor declare the same template.
 func TestLoad_AncestorOverlay_InnerWins(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
+	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
 	if err := os.MkdirAll(filepath.Join(repoDir, ".plect", "templates"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -516,16 +565,16 @@ func TestLoad_AncestorOverlay_InnerWins(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	worktreeDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(filepath.Join(worktreeDir, ".plect", "templates"), 0o755); err != nil {
+	workdirDir := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(filepath.Join(workdirDir, ".plect", "templates"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	innerContent := "INNER (WORKTREE) TEMPLATE"
-	if err := os.WriteFile(filepath.Join(worktreeDir, ".plect", "templates", "work.md"), []byte(innerContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workdirDir, ".plect", "templates", "work.md"), []byte(innerContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	content, err := Load("work", worktreeDir)
+	content, err := Load("work", workdirDir)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -539,7 +588,7 @@ func TestList_AncestorOverlay(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
+	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
 	plectDir := filepath.Join(repoDir, ".plect", "templates")
 	if err := os.MkdirAll(plectDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -549,12 +598,12 @@ func TestList_AncestorOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	worktreeDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+	workdirDir := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	templates, err := List(worktreeDir)
+	templates, err := List(workdirDir)
 	if err != nil {
 		t.Fatalf("List() error: %v", err)
 	}

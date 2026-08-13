@@ -45,7 +45,7 @@ func TestExecutor_RunSetupIssuesExpectedExecRequest(t *testing.T) {
 		[]nodeStub{{id: "a"}},
 	)
 	tasks := map[string]*contract.TaskState{}
-	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil); err != nil {
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "x", WorkdirPath: "/work/x"}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if len(spy.requests) != 1 {
@@ -66,7 +66,7 @@ func TestExecutor_RunCleanupIssuesExpectedExecRequest(t *testing.T) {
 		"a": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	}
 	spy := withSpyExecutor(t)
-	if err := RunCleanup(context.Background(), plan.Run, SessionVars{Name: "x", WorktreePath: "/work/x"}, tasks, nil); err != nil {
+	if err := RunCleanup(context.Background(), plan.Run, SessionVars{Name: "x", WorkdirPath: "/work/x"}, tasks, nil); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
 	if len(spy.requests) != 1 {
@@ -81,7 +81,7 @@ func TestExecutor_RunCleanupIssuesExpectedExecRequest(t *testing.T) {
 func TestExecutor_RunHealthcheckIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte("ok")
-	session := SessionVars{Name: "x", WorktreePath: "/work/x"}
+	session := SessionVars{Name: "x", WorkdirPath: "/work/x"}
 	if err := RunHealthcheck(context.Background(), `echo ok`, map[string]any{}, map[string]any{}, session); err != nil {
 		t.Fatalf("healthcheck: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestExecutor_RunHealthcheckIssuesExpectedExecRequest(t *testing.T) {
 func TestExecutor_RunCaptureIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte("pane contents")
-	session := SessionVars{Name: "x", WorktreePath: "/work/x"}
+	session := SessionVars{Name: "x", WorkdirPath: "/work/x"}
 	out, err := RunCapture(context.Background(), `tmux capture-pane`, map[string]any{}, session)
 	if err != nil {
 		t.Fatalf("capture: %v", err)
@@ -119,7 +119,7 @@ func TestExecutor_FetchOutputIssuesExpectedExecRequest(t *testing.T) {
 	spy.stdout = []byte("42")
 	cfg := &config.Config{}
 	src := config.DynamicOutput{Name: "count", Script: `echo 42`}
-	ctx := RenderContext{Session: SessionVars{Name: "x", WorktreePath: "/work/x"}}
+	ctx := RenderContext{Session: SessionVars{Name: "x", WorkdirPath: "/work/x"}}
 	values, err := FetchOutput(context.Background(), cfg, src, ctx)
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
@@ -141,7 +141,7 @@ func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 	spy.stdout = []byte(`{"ready":"yes"}`)
 	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: `echo '{"ready":"yes"}'`}
 	r := resolveDef(t, def, "review#1")
-	session := SessionVars{Name: "x", WorktreePath: "/work/x"}
+	session := SessionVars{Name: "x", WorkdirPath: "/work/x"}
 	outputs, _, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{})
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)

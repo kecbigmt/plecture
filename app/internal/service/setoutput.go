@@ -135,7 +135,7 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 // the mutable-key set and compiled outputs schema that govern it.
 func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params SetOutputParams) (target string, mutable []string, schema *jsonschema.Schema, err *Error) {
 	if params.Workflow {
-		workflows, loadErr := cfg.LoadWorkflows(session.WorktreePath)
+		workflows, loadErr := cfg.LoadWorkflows(session.WorkdirPath)
 		if loadErr != nil {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", loadErr)}
 		}
@@ -175,7 +175,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 			return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("%q is a static workflow node, not a runtime task; use --node", handle)}
 		}
 		taskID := taskIDForInstance(handle, st)
-		defs, loadErr := cfg.LoadTaskDefinitions(session.WorktreePath)
+		defs, loadErr := cfg.LoadTaskDefinitions(session.WorkdirPath)
 		if loadErr != nil {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", loadErr)}
 		}
@@ -194,7 +194,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		return handle, mutableKeys, compiled, nil
 	}
 
-	plan, planErr := buildPlanForSession(cfg, session.WorktreePath, session)
+	plan, planErr := buildPlanForSession(cfg, session.WorkdirPath, session)
 	if planErr != nil {
 		return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
 	}

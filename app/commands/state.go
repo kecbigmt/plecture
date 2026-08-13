@@ -33,7 +33,7 @@ var setConversationCmd = &cobra.Command{
 	Long: `Set or update the conversation (e.g., Slack thread) linked to a session.
 
 Example:
-  plect state set-conversation workspace-1 \
+  plect state set-conversation session-1 \
     --source Slack \
     --url "https://exampleorg.slack.com/archives/C.../p..." \
     --meta thread_ts=1234567890.123456 \
@@ -77,8 +77,8 @@ turn-boundary hook announcing "working" / "waiting").
 An empty string clears the message.
 
 Example:
-  plect state set-message workspace-1 "working"
-  plect state set-message workspace-1 ""`,
+  plect state set-message session-1 "working"
+  plect state set-message session-1 ""`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Load()
@@ -123,9 +123,9 @@ required output added), the merge is rejected and the observed value silently
 stops updating — check the watcher's logs if a done_when stalls.
 
 Example:
-  plect state set-output workspace-1 --node watch '{"pr_state":"merged"}'
-  plect state set-output workspace-1 --workflow '{"title":"New title"}'
-  plect state set-output workspace-1 --task review#1 '{"checks_status":"SUCCESS"}'`,
+  plect state set-output session-1 --node watch '{"pr_state":"merged"}'
+  plect state set-output session-1 --workflow '{"title":"New title"}'
+  plect state set-output session-1 --task review#1 '{"checks_status":"SUCCESS"}'`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var payload map[string]any

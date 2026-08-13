@@ -175,7 +175,7 @@ func NormalizeHealthcheckConfig(in *HealthcheckConfig) HealthcheckConfig {
 // Blocks declares reverse dependency edges: each listed node id becomes a
 // dependent of this one, equivalent to writing the inverse dependency in the
 // listed node. Use it when a cascade overlay needs to insert itself ahead of
-// base nodes it cannot modify directly (e.g. a worktree-process killer that
+// base nodes it cannot modify directly (e.g. a workdir-process killer that
 // must clean up after the runtime/agent tasks).
 type WorkflowNode struct {
 	ID     string            `toml:"id"`
@@ -227,7 +227,7 @@ type TaskDefinition struct {
 	// movement facts as JSON on stdout: {"supported": bool,
 	// "movement_expected": bool, "fingerprint": string, "observed_at":
 	// RFC3339 string}. Core never interprets what the command actually
-	// checked (a terminal pane, an agent transcript, a VCS worktree, ...) —
+	// checked (a terminal pane, an agent transcript, a VCS workdir, ...) —
 	// it only compares the fingerprint and timestamp the command reports.
 	// Empty means no movement signal is declared for this task; a command
 	// that runs but reports "supported": false is an explicit declaration
@@ -454,8 +454,8 @@ func ValidateDynamicOutputs(srcs []DynamicOutput) error {
 // builtinDynamicOutputs let a local DoD ride the same script→value→check path
 // as a remote one with no per-task boilerplate.
 var builtinDynamicOutputs = []DynamicOutput{{
-	Name:   "worktree_dirty",
-	Script: "git -C {{.WorktreePath}} status --porcelain | wc -l | tr -d ' '",
+	Name:   "workdir_dirty",
+	Script: "git -C {{.WorkdirPath}} status --porcelain | wc -l | tr -d ' '",
 }}
 
 // withBuiltinOutputs injects a builtin only into tasks whose done_when names
@@ -534,7 +534,7 @@ func resolveSchemaPath(file, baseDir string) string {
 // The workdir layer (`.plect/` inside the working directory itself) is clone
 // content — an attacker-controlled repository must not be able to introduce
 // shell that plect would execute. Every other layer (plugin, global, ancestor
-// overlays above the worktree) is machine-owned and trusted.
+// overlays above the workdir) is machine-owned and trusted.
 type layerDir struct {
 	dir     string
 	workdir bool
@@ -550,8 +550,8 @@ type layerDir struct {
 // load error. Declaring `done_when` at the workflow level, in any layer, is
 // also a load error — the completion predicate lives on the task definition's
 // `[done_when]`.
-func (c *Config) LoadWorkflows(worktreeDir string) (map[string]WorkflowFile, error) {
-	dirs := c.workflowSearchDirs(worktreeDir)
+func (c *Config) LoadWorkflows(workdirDir string) (map[string]WorkflowFile, error) {
+	dirs := c.workflowSearchDirs(workdirDir)
 	layered := make(map[string][]WorkflowFile)
 	order := make([]string, 0)
 	for _, layer := range dirs {
@@ -630,7 +630,7 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 		offending = append(offending, "healthcheck")
 	}
 	if len(offending) > 0 {
-		return fmt.Errorf("workflow %s: a `.plect/workflows/` file inside the working directory may only add [[nodes]]; %v must move to a trusted layer (global config, plugin, or a directory above the worktree)", wf.SourcePath, offending)
+		return fmt.Errorf("workflow %s: a `.plect/workflows/` file inside the working directory may only add [[nodes]]; %v must move to a trusted layer (global config, plugin, or a directory above the workdir)", wf.SourcePath, offending)
 	}
 	return nil
 }
@@ -644,16 +644,16 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 // layer (clone content) must not contribute any. A `.plect/tasks/*.toml`
 // inside the working directory is a load error rather than a silent skip —
 // silently ignoring it would make the author think the task is active.
-func (c *Config) LoadTaskDefinitions(worktreeDir string) (map[string]TaskDefinition, error) {
+func (c *Config) LoadTaskDefinitions(workdirDir string) (map[string]TaskDefinition, error) {
 	out := make(map[string]TaskDefinition)
-	dirs := c.tasksSearchDirs(worktreeDir)
+	dirs := c.tasksSearchDirs(workdirDir)
 	for _, layer := range dirs {
 		entries, err := listTOMLFiles(layer.dir)
 		if err != nil {
 			return nil, err
 		}
 		if layer.workdir && len(entries) > 0 {
-			return nil, fmt.Errorf("task definitions inside the working directory are not loaded (clone content must not carry shell): %s; move them to the global layer (~/.config/plect/tasks/), a plugin, or a repo overlay above the worktree", entries[0])
+			return nil, fmt.Errorf("task definitions inside the working directory are not loaded (clone content must not carry shell): %s; move them to the global layer (~/.config/plect/tasks/), a plugin, or a repo overlay above the workdir", entries[0])
 		}
 		for _, path := range entries {
 			def, err := loadTaskDefinitionFile(path)
@@ -667,16 +667,16 @@ func (c *Config) LoadTaskDefinitions(worktreeDir string) (map[string]TaskDefinit
 }
 
 // workflowSearchDirs orders the cascade: plugins (base) → global → ancestors
-// (outermost-first, ending at the worktree itself — the only untrusted layer).
-func (c *Config) workflowSearchDirs(worktreeDir string) []layerDir {
-	return c.searchDirs(worktreeDir, "workflows")
+// (outermost-first, ending at the workdir itself — the only untrusted layer).
+func (c *Config) workflowSearchDirs(workdirDir string) []layerDir {
+	return c.searchDirs(workdirDir, "workflows")
 }
 
-func (c *Config) tasksSearchDirs(worktreeDir string) []layerDir {
-	return c.searchDirs(worktreeDir, "tasks")
+func (c *Config) tasksSearchDirs(workdirDir string) []layerDir {
+	return c.searchDirs(workdirDir, "tasks")
 }
 
-func (c *Config) searchDirs(worktreeDir, kind string) []layerDir {
+func (c *Config) searchDirs(workdirDir, kind string) []layerDir {
 	var dirs []layerDir
 	for _, plugin := range c.PluginDirs {
 		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, kind)})
@@ -684,24 +684,24 @@ func (c *Config) searchDirs(worktreeDir, kind string) []layerDir {
 	if c.BaseDir != "" {
 		dirs = append(dirs, layerDir{dir: filepath.Join(c.BaseDir, kind)})
 	}
-	cleanWorktree := ""
-	if worktreeDir != "" {
-		cleanWorktree = filepath.Clean(worktreeDir)
+	cleanWorkdir := ""
+	if workdirDir != "" {
+		cleanWorkdir = filepath.Clean(workdirDir)
 	}
-	for _, anc := range cascadeAncestors(worktreeDir) {
+	for _, anc := range cascadeAncestors(workdirDir) {
 		dirs = append(dirs, layerDir{
 			dir:     filepath.Join(anc, ".plect", kind),
-			workdir: anc == cleanWorktree,
+			workdir: anc == cleanWorkdir,
 		})
 	}
 	return dirs
 }
 
-// cascadeAncestors walks up from worktreeDir, ordered outermost-first.
+// cascadeAncestors walks up from workdirDir, ordered outermost-first.
 // $HOME is the exclusive upper bound because the user's global config lives
 // at `~/.config/plect/` and `$HOME/.plect/` would collide with that.
-func cascadeAncestors(worktreeDir string) []string {
-	if worktreeDir == "" {
+func cascadeAncestors(workdirDir string) []string {
+	if workdirDir == "" {
 		return nil
 	}
 	var cleanHome string
@@ -709,7 +709,7 @@ func cascadeAncestors(worktreeDir string) []string {
 		cleanHome = filepath.Clean(home)
 	}
 	var chain []string
-	cur := filepath.Clean(worktreeDir)
+	cur := filepath.Clean(workdirDir)
 	for {
 		if cur == cleanHome || cur == string(filepath.Separator) {
 			break

@@ -87,7 +87,7 @@ type listResponse struct {
 // f, plus the opaque token for the next page (empty when there is none). An
 // empty cursor starts from the head (asc) or the most recent page (desc).
 // session rides as a query param (not a path segment) to avoid the %2F-in-path
-// footgun for names like "workspace-1".
+// footgun for names like "session-1".
 func (c *Client) List(ctx context.Context, session string, order Order, cursor string, f Filter) (evs []Event, nextCursor string, err error) {
 	u := c.BaseURL + "/v1/events?" + listQuery(session, order, cursor, f).Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -216,7 +216,7 @@ func addFilterParams(q url.Values, f Filter) {
 
 // listQuery encodes session + order + opaque cursor + filter for GET /v1/events.
 // session rides as a query param (not a path segment) to avoid the %2F-in-path
-// footgun for names like "workspace-1".
+// footgun for names like "session-1".
 func listQuery(session string, order Order, cursor string, f Filter) url.Values {
 	q := url.Values{}
 	q.Set("session", session)

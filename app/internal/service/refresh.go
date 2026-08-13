@@ -34,7 +34,7 @@ func RefreshSessionOutputs(cfg *config.Config, store *state.Store, sessionName s
 	if err != nil {
 		return nil, err
 	}
-	defs, err := cfg.LoadTaskDefinitions(session.WorktreePath)
+	defs, err := cfg.LoadTaskDefinitions(session.WorkdirPath)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -71,7 +71,7 @@ func RefreshInstanceOutputs(cfg *config.Config, store *state.Store, sessionName,
 	if st == nil {
 		return nil, &Error{Code: ErrInvalidInput, Message: "instance " + instanceKey + " not found in session " + resolvedName}
 	}
-	defs, err := cfg.LoadTaskDefinitions(session.WorktreePath)
+	defs, err := cfg.LoadTaskDefinitions(session.WorkdirPath)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

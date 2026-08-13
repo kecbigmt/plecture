@@ -20,13 +20,13 @@ const postMigrationStateJSON = `{
       "resource_id": "https://example.test/acme/widgets/items/1",
       "alias": "https://example.test/acme/widgets/items/1",
       "branch": "item/1+claude",
-      "worktree_path": "/tmp/worktrees/acme-widgets-1-claude",
+      "workdir_path": "/tmp/workdirs/acme-widgets-1-claude",
       "workflow": "coding",
       "tasks": {
         "@workflow": {
           "scope": "session",
           "status": "produced",
-          "outputs": {"workdir": "/tmp/worktrees/acme-widgets-1-claude"}
+          "outputs": {"workdir": "/tmp/workdirs/acme-widgets-1-claude"}
         }
       },
       "created_at": "2024-01-01T00:00:00Z",
@@ -36,7 +36,7 @@ const postMigrationStateJSON = `{
       "session_name": "standalone",
       "resource_id": "standalone",
       "alias": "standalone",
-      "worktree_path": "/tmp/worktrees/standalone",
+      "workdir_path": "/tmp/workdirs/standalone",
       "created_at": "2024-01-01T00:00:00Z",
       "updated_at": "2024-01-01T00:00:00Z"
     }
@@ -72,8 +72,8 @@ func TestPostMigrationState_LoadsIdentityFields(t *testing.T) {
 	if s.Branch != "item/1+claude" {
 		t.Errorf("Branch = %q", s.Branch)
 	}
-	if s.WorktreePath != "/tmp/worktrees/acme-widgets-1-claude" {
-		t.Errorf("WorktreePath = %q", s.WorktreePath)
+	if s.WorkdirPath != "/tmp/workdirs/acme-widgets-1-claude" {
+		t.Errorf("WorkdirPath = %q", s.WorkdirPath)
 	}
 }
 
@@ -113,8 +113,8 @@ func TestPostMigrationState_UnknownIdentifier(t *testing.T) {
 
 	if _, _, err := ResolveSession(nil, store, "no-such-session"); err == nil {
 		t.Fatal("expected an error for an identifier with no state entry")
-	} else if svcErr, ok := err.(*Error); !ok || svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("error = %v, want ErrWorkspaceNotFound", err)
+	} else if svcErr, ok := err.(*Error); !ok || svcErr.Code != ErrSessionNotFound {
+		t.Errorf("error = %v, want ErrSessionNotFound", err)
 	}
 }
 
@@ -128,7 +128,7 @@ func TestPostMigrationState_WorkdirFromSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Workdir: %v", err)
 	}
-	if got != "/tmp/worktrees/acme-widgets-1-claude" {
+	if got != "/tmp/workdirs/acme-widgets-1-claude" {
 		t.Errorf("Workdir = %q", got)
 	}
 }
@@ -150,12 +150,12 @@ func TestPostMigrationState_ResolverDispatchOverPostMigrationState(t *testing.T)
       "alias": "https://github.com/acme/widgets/issues/42",
       "workflow": "gh",
       "branch": "issue/42+gh",
-      "worktree_path": "/tmp/worktrees/issue-42-gh",
+      "workdir_path": "/tmp/workdirs/issue-42-gh",
       "tasks": {
         "@workflow": {
           "scope": "session",
           "status": "produced",
-          "outputs": {"workdir": "/tmp/worktrees/issue-42-gh"}
+          "outputs": {"workdir": "/tmp/workdirs/issue-42-gh"}
         }
       },
       "created_at": "2024-01-01T00:00:00Z",

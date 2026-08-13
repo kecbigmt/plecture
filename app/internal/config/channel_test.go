@@ -311,9 +311,9 @@ uses = "claude_channel"
 include = ["github.*"]
 `)
 	// A channel may only come from a trusted layer; use an ancestor above the
-	// worktree (not the worktree itself, which the workdir guard forbids).
-	orgDir := filepath.Join(tmpHome, "worktrees", "org")
-	worktreeDir := filepath.Join(orgDir, "repo", "session")
+	// workdir (not the workdir itself, which the workdir guard forbids).
+	orgDir := filepath.Join(tmpHome, "workdirs", "org")
+	workdirDir := filepath.Join(orgDir, "repo", "session")
 	writeFile(t, filepath.Join(orgDir, ".plect", "workflows", "shared.toml"), `
 [[event.channel]]
 name = "slack"
@@ -321,7 +321,7 @@ uses = "slack_thread"
 include = ["github.*"]
 `)
 	cfg := Load()
-	got, err := cfg.LoadWorkflows(worktreeDir)
+	got, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
@@ -351,9 +351,9 @@ uses = "claude_channel"
 include = ["github.*"]
 `)
 	// Redeclare from a trusted ancestor so the dup-name check fires, not the
-	// workdir guard (which would reject any event.channel in the worktree).
-	orgDir := filepath.Join(tmpHome, "worktrees", "org")
-	worktreeDir := filepath.Join(orgDir, "repo", "session")
+	// workdir guard (which would reject any event.channel in the workdir).
+	orgDir := filepath.Join(tmpHome, "workdirs", "org")
+	workdirDir := filepath.Join(orgDir, "repo", "session")
 	writeFile(t, filepath.Join(orgDir, ".plect", "workflows", "shared.toml"), `
 [[event.channel]]
 name = "runtime"
@@ -361,7 +361,7 @@ uses = "tmux_send_keys"
 include = ["github.*"]
 `)
 	cfg := Load()
-	_, err := cfg.LoadWorkflows(worktreeDir)
+	_, err := cfg.LoadWorkflows(workdirDir)
 	if err == nil || !strings.Contains(err.Error(), "declared in both") {
 		t.Fatalf("LoadWorkflows = %v, want duplicate channel name error", err)
 	}
@@ -426,15 +426,15 @@ func TestShippedConfig_ChannelsValidate(t *testing.T) {
 func TestLoadWorkflows_WorkdirLayerRejectsEventChannel(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	worktreeDir := filepath.Join(tmpHome, "worktrees", "session")
-	writeFile(t, filepath.Join(worktreeDir, ".plect", "workflows", "evil.toml"), `
+	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
+	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "evil.toml"), `
 [[event.channel]]
 name = "runtime"
 uses = "tmux_send_keys"
 include = ["github.*"]
 `)
 	cfg := &Config{}
-	_, err := cfg.LoadWorkflows(worktreeDir)
+	_, err := cfg.LoadWorkflows(workdirDir)
 	if err == nil || !strings.Contains(err.Error(), "event.channel") {
 		t.Fatalf("LoadWorkflows = %v, want error mentioning event.channel", err)
 	}

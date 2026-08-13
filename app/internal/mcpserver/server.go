@@ -13,7 +13,6 @@ import (
 	"github.com/kecbigmt/plect/app/internal/service"
 	"github.com/kecbigmt/plect/app/internal/state"
 	"github.com/kecbigmt/plect/app/internal/template"
-	"github.com/kecbigmt/plect/app/internal/workspace"
 )
 
 // NewServer creates a new MCP server with plect tools registered.
@@ -47,7 +46,6 @@ func NewServer() *server.MCPServer {
 		server.ServerTool{Tool: resourceStatusTool, Handler: wrap("plect_resource_status", handleResourceStatus)},
 		server.ServerTool{Tool: checkTool, Handler: wrap("plect_check", handleCheck)},
 		server.ServerTool{Tool: tickTool, Handler: wrap("plect_tick", handleTick)},
-		server.ServerTool{Tool: watchdogCheckTool, Handler: wrap("plect_watchdog_check", handleWatchdogCheck)},
 		server.ServerTool{Tool: judgeApproveTool, Handler: wrap("plect_judge_approve", handleJudgeApprove)},
 		server.ServerTool{Tool: judgeRequestChangesTool, Handler: wrap("plect_judge_request_changes", handleJudgeRequestChanges)},
 		server.ServerTool{Tool: subscribeTool, Handler: wrap("plect_subscribe", handleSubscribe)},
@@ -60,10 +58,10 @@ var upTool = mcp.NewTool("plect_up",
 	mcp.WithDescription("Run run-scoped tasks for a session, in dependency-respecting order. When the identifier is a resource identifier and no state entry exists (or a session-scoped task has not yet reached \"produced\"), the session is created first (docker compose up-style auto-create)."),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier or session name (e.g. workspace-123)"),
+		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
 	mcp.WithString("tag",
-		mcp.Description("Workspace-identity label of the session to resolve/auto-create (resource-identifier only, not a bare session name). Defaults to the workflow id."),
+		mcp.Description("Session-identity label of the session to resolve/auto-create (resource-identifier only, not a bare session name). Defaults to the workflow id."),
 	),
 	mcp.WithString("parent",
 		mcp.Description("Parent session name for auto-created sessions. Defaults to PLECT_SESSION_NAME when it names an existing session."),
@@ -86,31 +84,31 @@ var downTool = mcp.NewTool("plect_down",
 	mcp.WithDescription("Run run-scoped cleanup for a session in reverse dependency order. Session-scoped tasks are preserved."),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier or session name (e.g. workspace-123)"),
+		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
 )
 
 var destroyTool = mcp.NewTool("plect_destroy",
-	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → worktree removal → state entry deletion. Fail-fast by default; --force demotes cleanup errors to warnings so a stuck session can be freed. Also fails closed (code has_children) if the session has child sessions, since deleting it would orphan them; --force orphans them instead, reported via cleanup_warnings."),
+	mcp.WithDescription("Tear down a session: run-scoped cleanup (auto-down) → session-scoped cleanup → workdir removal → state entry deletion. Fail-fast by default; --force demotes cleanup errors to warnings so a stuck session can be freed. Also fails closed (code has_children) if the session has child sessions, since deleting it would orphan them; --force orphans them instead, reported via cleanup_warnings."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{DestructiveHint: boolPtr(true)}),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier or session name (e.g. workspace-123)"),
+		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
 	mcp.WithBoolean("force",
-		mcp.Description("Demote cleanup errors to warnings so teardown continues through worktree + state deletion; also passes --force to git worktree remove so a dirty worktree can be removed; and proceeds when the session has child sessions, orphaning them instead of aborting"),
+		mcp.Description("Demote cleanup errors to warnings so teardown continues through workdir cleanup and state deletion; also passes the force intent to cleanup hooks and proceeds when the session has child sessions, orphaning them instead of aborting"),
 	),
 	mcp.WithBoolean("delete_branch",
-		mcp.Description("Also delete the local branch after removing the worktree"),
+		mcp.Description("Also delete the local branch after removing the workdir"),
 	),
 )
 
 var statusTool = mcp.NewTool("plect_status",
-	mcp.WithDescription("Report a session's four fact layers: identity (resource id / workflow / tag / tree position), runtime (declared-healthcheck liveness, worktree existence, run-scoped task state), work (each task instance's outputs, done_when evaluation, heartbeat budget, and chain plan), and flow (recent events). No provider-specific field — everything renders generically from outputs / done_when / events."),
+	mcp.WithDescription("Report a session's four fact layers: identity (resource id / workflow / tag / tree position), runtime (declared-healthcheck liveness, workdir existence, run-scoped task state), work (each task instance's outputs, done_when evaluation, heartbeat budget, and chain plan), and flow (recent events). No provider-specific field — everything renders generically from outputs / done_when / events."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("url",
 		mcp.Required(),
-		mcp.Description("Resource identifier or session name (e.g. workspace-123)"),
+		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
 	mcp.WithBoolean("refresh",
 		mcp.Description("Re-fetch dynamic outputs from the source of truth before reporting, so the reported done_when reflects current state rather than the last persisted value."),
@@ -122,7 +120,7 @@ var captureTool = mcp.NewTool("plect_capture",
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("session",
 		mcp.Required(),
-		mcp.Description("Resource identifier or session name (e.g. workspace-123)"),
+		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
 )
 
@@ -132,10 +130,10 @@ var listTool = mcp.NewTool("plect_list",
 )
 
 var templateListTool = mcp.NewTool("plect_template_list",
-	mcp.WithDescription("List available prompt templates with descriptions. Use this to discover templates before composing task inputs."),
+	mcp.WithDescription("List available templates with descriptions. Use this to discover templates before composing task inputs."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
-	mcp.WithString("repo",
-		mcp.Description("Repository slug to include repo-specific templates (e.g. myapp)"),
+	mcp.WithString("workdir",
+		mcp.Description("Working directory path to include templates from"),
 	),
 )
 
@@ -190,16 +188,8 @@ func handleWorkflowShow(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 }
 
 func handleTemplateList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
-
-	repo := request.GetString("repo", "")
-
-	repoDir := ""
-	if repo != "" {
-		mgr := workspace.NewManager(cfg.WorktreesRoot)
-		repoDir = mgr.RepoDir(repo)
-	}
-	templates, err := template.List(repoDir)
+	workdir := request.GetString("workdir", "")
+	templates, err := template.List(workdir)
 	if err != nil {
 		return errorResult(err), nil
 	}
@@ -283,12 +273,12 @@ func handleDestroy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 
 	resp := map[string]any{
-		"ok":               true,
-		"session_name":     result.SessionName,
-		"removed_worktree": result.RemovedWorktree,
+		"ok":              true,
+		"session_name":    result.SessionName,
+		"removed_workdir": result.RemovedWorkdir,
 	}
-	if result.WorktreeWarning != "" {
-		resp["worktree_warning"] = result.WorktreeWarning
+	if result.WorkdirWarning != "" {
+		resp["workdir_warning"] = result.WorkdirWarning
 	}
 	if len(result.CleanupWarnings) > 0 {
 		resp["cleanup_warnings"] = result.CleanupWarnings

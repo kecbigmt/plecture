@@ -40,7 +40,7 @@ func TestLoad_WithConfigFile(t *testing.T) {
 	}
 
 	configContent := `
-worktrees_root = "~/my-worktrees"
+workdirs_root = "~/my-workdirs"
 resource_allowlist = ["^https://example\\.test/org/", "^https://example\\.test/other/"]
 detached = false
 `
@@ -50,8 +50,8 @@ detached = false
 
 	cfg := Load()
 
-	if cfg.WorktreesRoot != filepath.Join(tmpHome, "my-worktrees") {
-		t.Errorf("WorktreesRoot = %q, want %q", cfg.WorktreesRoot, filepath.Join(tmpHome, "my-worktrees"))
+	if cfg.WorkdirsRoot != filepath.Join(tmpHome, "my-workdirs") {
+		t.Errorf("WorkdirsRoot = %q, want %q", cfg.WorkdirsRoot, filepath.Join(tmpHome, "my-workdirs"))
 	}
 	if len(cfg.ResourceAllowlist) != 2 {
 		t.Errorf("ResourceAllowlist length = %d, want 2", len(cfg.ResourceAllowlist))

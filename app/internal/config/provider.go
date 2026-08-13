@@ -24,7 +24,7 @@ import (
 // Workflows reference a provider by id (`provider = "<id>"`) and own the
 // task shape on top of it: task nodes, inputs, done_when, display.
 //
-// Providers deliberately do NOT participate in the per-worktree cascade:
+// Providers deliberately do NOT participate in the per-workdir cascade:
 // setup must be resolvable before any working directory exists, and the
 // scripts are arbitrary shell, so only user/machine-owned layers may supply
 // them. Same-id files in deeper layers win (global overrides plugin),
@@ -76,7 +76,7 @@ func (p ProviderConfig) HasResolver() bool {
 
 // LoadProviders loads `providers/*.toml` from the trusted base layers only:
 // plugin dirs first, then the global config dir; a deeper layer's same-id
-// file replaces the shallower one. The per-worktree ancestor cascade is
+// file replaces the shallower one. The per-workdir ancestor cascade is
 // deliberately excluded (see ProviderConfig).
 func (c *Config) LoadProviders() (map[string]ProviderConfig, error) {
 	out := make(map[string]ProviderConfig)

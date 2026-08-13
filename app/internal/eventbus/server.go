@@ -8,7 +8,7 @@
 //	GET  /v1/stream           SSE: replay from a cursor, then follow live
 //
 // session rides as a query param (not a path segment) to avoid the %2F-in-path
-// problem for names like "workspace-1". The log is the only fan-out path —
+// problem for names like "session-1". The log is the only fan-out path —
 // every subscriber follows it by polling from its cursor — so events appended
 // via POST here OR directly by another plect process (CLI/sync/web/capture) are
 // delivered exactly once, with no separate in-memory broadcast to double-deliver.

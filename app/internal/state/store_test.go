@@ -19,10 +19,10 @@ func TestStore_PutAndGet(t *testing.T) {
 
 	now := time.Now()
 	session := &domain.Session{
-		Name:         "owner/repo-123",
-		ResourceID:   "https://example.test/owner/repo/items/123",
-		Branch:       "issue/123",
-		WorktreePath: "/tmp/worktrees/github.com/owner/repo/issue-123",
+		Name:        "owner/repo-123",
+		ResourceID:  "https://example.test/owner/repo/items/123",
+		Branch:      "issue/123",
+		WorkdirPath: "/tmp/workdirs/github.com/owner/repo/issue-123",
 		Conversation: &domain.Conversation{
 			Source: "Slack",
 			URL:    "https://exampleorg.slack.com/archives/C01ABCDEF/p1234567890123456",
@@ -226,7 +226,7 @@ func TestStore_MigrateLegacySlack(t *testing.T) {
 				"owner_repo": "owner/repo",
 				"number": 1,
 				"branch": "issue/1",
-				"worktree_path": "/tmp/wt",
+				"workdir_path": "/tmp/wt",
 				"slack": {
 					"thread_ts": "9999999999.999999",
 					"channel_id": "COLD123"

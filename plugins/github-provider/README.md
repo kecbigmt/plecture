@@ -6,9 +6,8 @@ ids, and owns the git worktree those sessions work in.
 plect's core knows nothing about GitHub. Everything GitHub-shaped lives
 here: parsing a resource identifier, resolving the branch a resource maps to,
 and knowing that a repository's worktrees live under a `github.com/<owner>/<repo>`
-path. The generic half — creating and removing the worktree, reusing an
-existing one, finding the repository's primary checkout — stays in plect and
-is reached through the `plect workspace` subcommands.
+path. The provider executable also creates and removes the worktree, reuses an
+existing one, and finds the repository's primary checkout.
 
 ## Contents
 
@@ -47,4 +46,3 @@ them in a task or template as `.Workflow.outputs.<key>`.
 - `git`
 - the `gh` CLI, authenticated — used to resolve a pull request's head branch
   and to resolve a Projects v2 item id to its issue or pull request
-- the `plect` CLI on `PATH`

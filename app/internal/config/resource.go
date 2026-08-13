@@ -61,7 +61,7 @@ func (r ResourceDef) ResolvedStateSchemaPath() string {
 
 // LoadResourceDefs loads `resources/*.toml` from the trusted base layers only:
 // plugin dirs first, then the global config dir; a deeper layer's same-id
-// file replaces the shallower one. Mirrors LoadProviders — the per-worktree
+// file replaces the shallower one. Mirrors LoadProviders — the per-workdir
 // ancestor cascade is deliberately excluded, for the same reason.
 func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
 	out := make(map[string]ResourceDef)

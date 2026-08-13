@@ -75,7 +75,7 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 				ParentSession: sp.ParentSession,
 				Observer:      params.Observer,
 			})
-			// A spawn failure (e.g. a transient workspace/runtime error) must not
+			// A spawn failure (e.g. a transient session/runtime error) must not
 			// discard the done_when actions already published/persisted above,
 			// nor the other chains' results — it is reported on this entry only,
 			// so the next tick can retry the same (idempotent) fire.

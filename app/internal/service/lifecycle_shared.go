@@ -36,7 +36,7 @@ func mergeTasks(store *state.Store, sessionName string, session *domain.Session)
 func replaceRuntimeState(store *state.Store, sessionName string, session *domain.Session) error {
 	return store.Update(sessionName, func(s *domain.Session) error {
 		s.Branch = session.Branch
-		s.WorktreePath = session.WorktreePath
+		s.WorkdirPath = session.WorkdirPath
 		s.Conversation = session.Conversation
 		s.Message = session.Message
 		s.Tasks = session.Tasks
@@ -80,7 +80,7 @@ func sessionVars(s *domain.Session) task.SessionVars {
 		Name:          s.Name,
 		ResourceID:    s.ResourceID,
 		ParentSession: s.ParentSession,
-		WorktreePath:  s.WorktreePath,
+		WorkdirPath:   s.WorkdirPath,
 		Branch:        s.Branch,
 		Inputs:        s.Inputs,
 	}
@@ -95,10 +95,10 @@ func inputsOnExistingSessionMessage() string {
 // for the legacy inline-tasks path. nil is normalized to `{}` only when a
 // schema is declared, so required-field configs fail fast instead of silently
 // accepting `{}`.
-func resolveSessionInputs(cfg *config.Config, worktreeDir, workflowName string, raw map[string]any) (map[string]any, *Error) {
+func resolveSessionInputs(cfg *config.Config, workdirDir, workflowName string, raw map[string]any) (map[string]any, *Error) {
 	inline, file, sourceID := cfg.InputsSchema, cfg.ResolvedInputsSchemaPath(), "plect:config:inputs"
 	if workflowName != "" {
-		workflows, err := cfg.LoadWorkflows(worktreeDir)
+		workflows, err := cfg.LoadWorkflows(workdirDir)
 		if err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 		}
@@ -136,7 +136,7 @@ func resolveSessionInputs(cfg *config.Config, worktreeDir, workflowName string, 
 func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool {
 	// A provider-backed workflow needs its pseudo-node produced too —
 	// a failed/absent setup is exactly the partial-create state to recover.
-	if workflows, err := cfg.LoadWorkflows(session.WorktreePath); err == nil {
+	if workflows, err := cfg.LoadWorkflows(session.WorkdirPath); err == nil {
 		if wf, ok := workflows[session.Workflow]; ok && wf.Provider != "" {
 			st, ok := session.Tasks[contract.WorkflowPseudoNodeID]
 			if !ok || st == nil || st.Status != contract.TaskStatusProduced {
@@ -144,7 +144,7 @@ func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool 
 			}
 		}
 	}
-	plan, err := buildPlanForSession(cfg, session.WorktreePath, session)
+	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
 	if err != nil || plan == nil {
 		return false
 	}

@@ -422,7 +422,7 @@ func TestEventPageSubtreeUnknownRootErrors(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	_, err := EventPageSubtree(nil, store, "ghost/repo-1", EventPageParams{})
 	var svcErr *Error
-	if !errors.As(err, &svcErr) || svcErr.Code != ErrWorkspaceNotFound {
-		t.Fatalf("want ErrWorkspaceNotFound for unknown root, got %v", err)
+	if !errors.As(err, &svcErr) || svcErr.Code != ErrSessionNotFound {
+		t.Fatalf("want ErrSessionNotFound for unknown root, got %v", err)
 	}
 }

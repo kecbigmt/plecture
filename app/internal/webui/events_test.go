@@ -110,7 +110,7 @@ func TestSubtreeTimelinePage(t *testing.T) {
 }
 
 func TestSubtreeTimelinePage_RootNotFound(t *testing.T) {
-	svc := &fakeService{subtreeErr: &service.Error{Code: service.ErrWorkspaceNotFound, Message: "no session"}}
+	svc := &fakeService{subtreeErr: &service.Error{Code: service.ErrSessionNotFound, Message: "no session"}}
 	if rr := get(t, svc, "/subtrees/o/gone-9"); rr.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rr.Code)
 	}

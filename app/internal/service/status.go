@@ -46,8 +46,8 @@ type StatusRuntime struct {
 	LastCheckedAt  time.Time            `json:"last_checked_at,omitzero"`
 	LastMovementAt time.Time            `json:"last_movement_at,omitzero"`
 	Tasks          []StatusRuntimeTask  `json:"tasks,omitempty"`
-	WorktreePath   string               `json:"worktree_path,omitempty"`
-	WorktreeExists bool                 `json:"worktree_exists"`
+	WorkdirPath    string               `json:"workdir_path,omitempty"`
+	WorkdirExists  bool                 `json:"workdir_exists"`
 	Conversation   *domain.Conversation `json:"conversation,omitempty"`
 	Message        *domain.Message      `json:"message,omitempty"`
 	AttachCommand  string               `json:"attach_command,omitempty"`
@@ -123,7 +123,7 @@ type StatusResult struct {
 func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusResult, error) {
 	sessionName, session, err := resolveSession(cfg, store, identifier)
 	if err != nil {
-		if svcErr, ok := err.(*Error); ok && svcErr.Code == ErrWorkspaceNotFound {
+		if svcErr, ok := err.(*Error); ok && svcErr.Code == ErrSessionNotFound {
 			if tomb, tombErr := lookupTombstone(cfg, store, identifier); tombErr == nil && tomb != nil {
 				return tombstoneStatusResult(tomb), nil
 			}
@@ -131,7 +131,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 		return nil, err
 	}
 
-	wtExists := fileExists(session.WorktreePath)
+	wtExists := fileExists(session.WorkdirPath)
 	runState := sessionRunState(session)
 	healthReport, healthState := sessionHealthReport(cfg, store, sessionName)
 
@@ -184,8 +184,8 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			LastCheckedAt:  healthReport.LastCheckedAt,
 			LastMovementAt: healthReport.LastMovementAt,
 			Tasks:          runtimeTaskViews(session),
-			WorktreePath:   session.WorktreePath,
-			WorktreeExists: wtExists,
+			WorkdirPath:    session.WorkdirPath,
+			WorkdirExists:  wtExists,
 			Conversation:   session.Conversation,
 			Message:        session.Message,
 			AttachCommand:  attachCommandFor(cfg, session),
@@ -200,7 +200,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 // Attach's lookup but degrading to "" (no attach target, or not yet produced)
 // instead of an error — `plect status` reports facts, it doesn't fail on them.
 func attachCommandFor(cfg *config.Config, session *domain.Session) string {
-	plan, err := buildPlanForSession(cfg, session.WorktreePath, session)
+	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
 	if err != nil {
 		return ""
 	}
@@ -331,7 +331,7 @@ func identityResourceID(s *domain.Session) string {
 	return s.ResourceID
 }
 
-// sessionTag extracts the workspace-identity tag from a session name's
+// sessionTag extracts the session-identity tag from a session name's
 // "<resource>+<tag>" convention (effectiveTag, chainSpawnTag) — provider-
 // agnostic string parsing over a name plect itself produced.
 func sessionTag(name string) string {

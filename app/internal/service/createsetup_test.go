@@ -58,8 +58,8 @@ echo '{"workdir":"%s","branch":"issue/5","title":"T"}'
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if result.WorktreePath != workdir {
-		t.Errorf("WorktreePath = %q, want %q (mirrored from workdir output)", result.WorktreePath, workdir)
+	if result.WorkdirPath != workdir {
+		t.Errorf("WorkdirPath = %q, want %q (mirrored from workdir output)", result.WorkdirPath, workdir)
 	}
 	if result.Branch != "issue/5" {
 		t.Errorf("Branch = %q, want issue/5", result.Branch)
@@ -305,7 +305,7 @@ touch %s
 	if _, err := os.Stat(marker); err != nil {
 		t.Error("workflow cleanup did not run")
 	}
-	if !result.RemovedWorktree {
+	if !result.RemovedWorkdir {
 		t.Error("workdir was removed by cleanup; result should report it")
 	}
 	if store.Get("org/repo-7+wf") != nil {

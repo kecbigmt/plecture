@@ -24,7 +24,7 @@ var destroyCmd = &cobra.Command{
   1. run-scoped cleanup (auto-down) — skipped if no run-scoped task is
      currently in "produced" status
   2. session-scoped cleanup
-  3. worktree removal
+  3. workdir removal
   4. state entry deletion
 
 Default policy is fail-fast: the first cleanup error aborts the remaining
@@ -53,18 +53,18 @@ children intact.`,
 		for _, w := range result.CleanupWarnings {
 			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 		}
-		if result.WorktreeWarning != "" {
-			fmt.Fprintf(os.Stderr, "Warning: %s\n", result.WorktreeWarning)
+		if result.WorkdirWarning != "" {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", result.WorkdirWarning)
 		}
-		if result.RemovedWorktree {
-			fmt.Fprintln(os.Stderr, "Removed worktree")
+		if result.RemovedWorkdir {
+			fmt.Fprintln(os.Stderr, "Removed workdir")
 		}
 		return nil
 	},
 }
 
 func init() {
-	destroyCmd.Flags().BoolVarP(&destroyForce, "force", "f", false, "Demote cleanup errors to warnings (recorded in CleanupWarnings) so teardown continues through worktree + state deletion; also passes --force to git worktree remove so a dirty worktree can be removed; and proceeds when the session has child sessions, orphaning them (reported as a warning) instead of aborting")
+	destroyCmd.Flags().BoolVarP(&destroyForce, "force", "f", false, "Demote cleanup errors to warnings (recorded in CleanupWarnings) so teardown continues through workdir cleanup and state deletion; also passes the force intent to cleanup hooks and proceeds when the session has child sessions, orphaning them (reported as a warning) instead of aborting")
 	destroyCmd.Flags().BoolVarP(&destroyDeleteBranch, "delete-branch", "b", false, "Also delete the local branch")
 	rootCmd.AddCommand(destroyCmd)
 }

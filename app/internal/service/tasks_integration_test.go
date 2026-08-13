@@ -27,14 +27,14 @@ func dependsOn(upstreams ...string) map[string]string {
 }
 
 // TestIntegration_UpAutoCreatesFromURL verifies the docker compose-style ergonomic:
-// `plect up <URL>` on a never-before-seen URL creates the worktree + state
+// `plect up <URL>` on a never-before-seen URL creates the workdir + state
 // entry and runs both session-scoped and run-scoped setup in one shot.
 func TestIntegration_UpAutoCreatesFromURL(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{"path":".env"}'`, cleanup: "true"},
 			{id: "tmux", scope: "run", setup: `echo '{"session_name":"t"}'`, cleanup: "true"},
@@ -75,14 +75,14 @@ func TestIntegration_UpAutoCreatesFromURL(t *testing.T) {
 // running run-scoped tasks. This guards the case where a previous auto-create
 // partially failed and the user retries with `plect up <URL>`.
 func TestIntegration_UpRecoversIncompleteSessionTask(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
 	markerDir := t.TempDir()
 	envMarker := markerDir + "/env-ok"
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			// envfile: succeeds only when the marker exists. First create
 			// attempt → marker absent → setup creates it then exits 1 →
@@ -125,11 +125,11 @@ func TestIntegration_UpRecoversIncompleteSessionTask(t *testing.T) {
 // URL and tag to Up resolves to the tagged session, and auto-create propagates
 // the tag so the docker-compose ergonomic works for tag variants too.
 func TestIntegration_UpWithTagDerivesTaggedSession(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run", setup: `echo '{}'`, cleanup: "true"},
@@ -169,7 +169,7 @@ func TestIntegration_UpWithTagDerivesTaggedSession(t *testing.T) {
 func TestIntegration_UpTagRejectedWithSessionName(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 
 	_, err := Up(cfg, store, UpParams{Identifier: "testowner/testrepo-111+default", Tag: "failtest"})
 	if err == nil {
@@ -190,7 +190,7 @@ func TestIntegration_UpTagRejectedWithSessionName(t *testing.T) {
 func TestIntegration_UpRejectsUnknownSessionName(t *testing.T) {
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 
 	_, err := Up(cfg, store, UpParams{Identifier: "testowner/testrepo-999+default"})
 	if err == nil {
@@ -200,18 +200,18 @@ func TestIntegration_UpRejectsUnknownSessionName(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T", err)
 	}
-	if svcErr.Code != ErrWorkspaceNotFound {
-		t.Errorf("Code = %q, want %q", svcErr.Code, ErrWorkspaceNotFound)
+	if svcErr.Code != ErrSessionNotFound {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrSessionNotFound)
 	}
 }
 
 // TestIntegration_CreateIdempotent verifies that running Create twice against the
-// same URL is safe: the second call reuses the existing worktree + state
+// same URL is safe: the second call reuses the existing workdir + state
 // entry and retries any session-scoped tasks that didn't reach
 // "produced" on the first attempt. Already-produced tasks must not
 // re-run.
 func TestIntegration_CreateIdempotent(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	stateDir := t.TempDir()
 	store := state.NewStore(stateDir)
@@ -220,7 +220,7 @@ func TestIntegration_CreateIdempotent(t *testing.T) {
 	markerA := markerDir + "/a-ran"
 	markerB := markerDir + "/b-ran"
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "a", scope: "session", setup: "touch " + markerA + " && echo '{}'", cleanup: "true"},
 			{id: "b", scope: "session",
@@ -266,14 +266,14 @@ func TestIntegration_CreateIdempotent(t *testing.T) {
 // `plect down → up` so setup scripts can read .Prev to keep stable identity
 // (the claude task's `--resume <session_id>` mechanism, in practice).
 func TestIntegration_DownUpPreservesPrev(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
 	// claude_like (task filenames disallow hyphens): on first setup emit a
 	// fresh id, on subsequent runs emit whatever id was in .Prev. Mirrors the
 	// production claude script.
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{
@@ -321,11 +321,11 @@ func TestIntegration_DownUpPreservesPrev(t *testing.T) {
 // renders its missing-key references as empty rather than aborting, so
 // `plect down` can still flip all tasks to `cleaned`.
 func TestIntegration_DownSurvivesPartialSetup(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "broken", scope: "run",
@@ -356,11 +356,11 @@ func TestIntegration_DownSurvivesPartialSetup(t *testing.T) {
 }
 
 func TestIntegration_CreatePropagatesInputToTemplates(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session",
 				setup:   `echo "{\"template\":\"{{.SessionInputs.template}}\"}"`,
@@ -393,11 +393,11 @@ func TestIntegration_CreatePropagatesInputToTemplates(t *testing.T) {
 }
 
 func TestIntegration_CreateRejectsInputAgainstSchema(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
@@ -424,11 +424,11 @@ func TestIntegration_CreateRejectsInputAgainstSchema(t *testing.T) {
 }
 
 func TestIntegration_UpAutoCreateWithInput(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session",
 				setup: `echo "{\"template\":\"{{.SessionInputs.template}}\"}"`},
@@ -452,12 +452,12 @@ func TestIntegration_UpAutoCreateWithInput(t *testing.T) {
 	}
 }
 
-func TestIntegration_DestroyRefusesWhenWorktreeDirty(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+func TestIntegration_DestroyRefusesWhenWorkdirDirty(t *testing.T) {
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
@@ -470,23 +470,23 @@ func TestIntegration_DestroyRefusesWhenWorktreeDirty(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	untracked := createResult.WorktreePath + "/dirty.txt"
+	untracked := createResult.WorkdirPath + "/dirty.txt"
 	if err := os.WriteFile(untracked, []byte("uncommitted work"), 0o644); err != nil {
 		t.Fatalf("seed untracked file: %v", err)
 	}
 
 	_, destroyErr := Destroy(cfg, store, DestroyParams{Identifier: sessionName})
 	if destroyErr == nil {
-		t.Fatal("expected Destroy without --force to fail when worktree has untracked files")
+		t.Fatal("expected Destroy without --force to fail when workdir has untracked files")
 	}
 	if msg := destroyErr.Error(); strings.Contains(msg, "use --force to delete it") {
 		t.Errorf("error message duplicates git's stderr: %q", msg)
 	}
 	if store.Get(sessionName) == nil {
-		t.Fatal("state entry should be preserved when worktree removal is refused")
+		t.Fatal("state entry should be preserved when workdir removal is refused")
 	}
-	if _, err := os.Stat(createResult.WorktreePath); err != nil {
-		t.Fatalf("worktree should remain on disk after refusal, stat err: %v", err)
+	if _, err := os.Stat(createResult.WorkdirPath); err != nil {
+		t.Fatalf("workdir should remain on disk after refusal, stat err: %v", err)
 	}
 	if _, err := os.Stat(untracked); err != nil {
 		t.Fatalf("untracked file should remain on disk after refusal, stat err: %v", err)
@@ -514,16 +514,16 @@ func TestIntegration_DestroyRefusesWhenWorktreeDirty(t *testing.T) {
 // TestIntegration_DestroyAutoDownsLiveRunTask locks in the auto-down
 // behavior: calling `plect destroy` on an `up` session — one with a
 // run-scoped task in `produced` status — must run run-scoped cleanup
-// *before* session-scoped cleanup, then remove the worktree and delete
+// *before* session-scoped cleanup, then remove the workdir and delete
 // the state entry, without the user having to `plect down` first.
 func TestIntegration_DestroyAutoDownsLiveRunTask(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
 	logFile := t.TempDir() + "/cleanup.log"
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`,
 				cleanup: "echo session >> " + logFile},
@@ -564,24 +564,24 @@ func TestIntegration_DestroyAutoDownsLiveRunTask(t *testing.T) {
 	if store.Get(sessionName) != nil {
 		t.Fatal("state entry should be deleted after Destroy")
 	}
-	if _, err := os.Stat(createResult.WorktreePath); !os.IsNotExist(err) {
-		t.Errorf("worktree should be removed, stat err: %v", err)
+	if _, err := os.Stat(createResult.WorkdirPath); !os.IsNotExist(err) {
+		t.Errorf("workdir should be removed, stat err: %v", err)
 	}
 }
 
 // TestIntegration_DestroyForcePartialFailureContinuesTeardown locks in
 // the --force behavior: a cleanup script that exits 1 is demoted to a
 // CleanupWarnings entry, and the remaining teardown steps (session
-// cleanup, worktree removal, state deletion) still complete.
+// cleanup, workdir removal, state deletion) still complete.
 func TestIntegration_DestroyForcePartialFailureContinuesTeardown(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
 	markerDir := t.TempDir()
 	sessionCleanupMarker := markerDir + "/session-cleanup-ran"
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`,
 				cleanup: "touch " + sessionCleanupMarker},
@@ -616,11 +616,11 @@ func TestIntegration_DestroyForcePartialFailureContinuesTeardown(t *testing.T) {
 	if _, err := os.Stat(sessionCleanupMarker); err != nil {
 		t.Errorf("session-scoped cleanup did not run after run cleanup failure: %v", err)
 	}
-	if !result.RemovedWorktree {
-		t.Errorf("RemovedWorktree = false, want true (worktree removal must continue under --force)")
+	if !result.RemovedWorkdir {
+		t.Errorf("RemovedWorkdir = false, want true (workdir removal must continue under --force)")
 	}
-	if _, err := os.Stat(createResult.WorktreePath); !os.IsNotExist(err) {
-		t.Errorf("worktree should be removed under --force, stat err: %v", err)
+	if _, err := os.Stat(createResult.WorkdirPath); !os.IsNotExist(err) {
+		t.Errorf("workdir should be removed under --force, stat err: %v", err)
 	}
 	if store.Get(sessionName) != nil {
 		t.Fatal("state entry should be deleted under --force despite cleanup failure")
@@ -632,11 +632,11 @@ func TestIntegration_DestroyForcePartialFailureContinuesTeardown(t *testing.T) {
 // outputs, and Attach renders the declared template against those outputs to
 // produce the exact command the CLI will exec.
 func TestIntegration_AttachResolvesRenderedCommand(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{
@@ -680,11 +680,11 @@ func TestIntegration_AttachResolvesRenderedCommand(t *testing.T) {
 // ErrNotProduced with a hint pointing at `plect up`, instead of silently
 // invoking setup.
 func TestIntegration_AttachAbortsWhenTaskNotProduced(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run",
@@ -718,11 +718,11 @@ func TestIntegration_AttachAbortsWhenTaskNotProduced(t *testing.T) {
 // workflow with no attach target — the user gets a clear error rather than a
 // silent no-op or a confusing template error.
 func TestIntegration_AttachWithoutDeclarationFails(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
@@ -748,11 +748,11 @@ func TestIntegration_AttachWithoutDeclarationFails(t *testing.T) {
 // outputs, and Capture renders the declared template against those outputs
 // and returns its stdout unmodified.
 func TestIntegration_CaptureResolvesRenderedOutput(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{
@@ -797,11 +797,11 @@ func TestIntegration_CaptureResolvesRenderedOutput(t *testing.T) {
 // returns ErrNotProduced with a hint pointing at `plect up`, instead of an
 // empty snapshot.
 func TestIntegration_CaptureAbortsWhenTaskNotProduced(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run",
@@ -835,11 +835,11 @@ func TestIntegration_CaptureAbortsWhenTaskNotProduced(t *testing.T) {
 // a workflow with no capture target — the user gets a clear error rather
 // than an empty-output success.
 func TestIntegration_CaptureWithoutDeclarationFails(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
 		[]nodeFixture{{id: "envfile"}},
 	)
@@ -864,11 +864,11 @@ func TestIntegration_CaptureWithoutDeclarationFails(t *testing.T) {
 // workflow where more than one task declares capture resolves to an explicit
 // ambiguity error instead of silently picking one.
 func TestIntegration_CaptureAmbiguousWhenMultipleDeclare(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run", setup: `echo '{"session_name":"s"}'`, cleanup: "true", capture: "echo a"},
@@ -900,11 +900,11 @@ func TestIntegration_CaptureAmbiguousWhenMultipleDeclare(t *testing.T) {
 // case: the declared script failing (e.g. an orphaned tmux pane) must be a
 // hard error carrying stderr, not an empty-output success.
 func TestIntegration_CaptureSurfacesScriptFailure(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
-	cfg := writeIntegrationFixture(t, worktreesRoot, "default",
+	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{id: "envfile", scope: "session", setup: `echo '{}'`, cleanup: "true"},
 			{id: "tmux", scope: "run",
@@ -944,7 +944,7 @@ func TestIntegration_CaptureSurfacesScriptFailure(t *testing.T) {
 //   - upstream node outputs surface in downstream `.Input.<key>`
 //   - TaskState.Inputs is persisted (so cleanup can run without CLI re-entry)
 func TestIntegration_WorkflowFile_NodeWiring(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
@@ -987,7 +987,7 @@ session_name = "{{.Nodes.tmux.outputs.session_name}}"
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.plect"}
+	cfg := &config.Config{WorkdirsRoot: workdirsRoot, BaseDir: repoDir + "/.plect"}
 	attachGithubProvider(t, cfg, "coding")
 	url := "https://github.com/" + ownerRepo + "/issues/99"
 	sessionName := "testowner/testrepo-99+coding"
@@ -1031,7 +1031,7 @@ session_name = "{{.Nodes.tmux.outputs.session_name}}"
 // returns ErrInvalidInput when X differs — the plan must not silently switch
 // out from under a session.
 func TestIntegration_WorkflowFrozenOnSession(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
@@ -1067,7 +1067,7 @@ uses = "noop"
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.plect"}
+	cfg := &config.Config{WorkdirsRoot: workdirsRoot, BaseDir: repoDir + "/.plect"}
 	attachGithubProvider(t, cfg, "a")
 	attachGithubProvider(t, cfg, "b")
 	url := "https://github.com/" + ownerRepo + "/issues/77"
@@ -1094,7 +1094,7 @@ uses = "noop"
 // declares `attach`, runs `plect up`, then verifies Attach resolves the right
 // task id and renders the command using the node's own outputs.
 func TestIntegration_AttachUnderWorkflowPath(t *testing.T) {
-	worktreesRoot := setupE2ERepo(t)
+	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
 
@@ -1124,7 +1124,7 @@ uses = "tmux"
 		t.Fatal(err)
 	}
 
-	cfg := &config.Config{WorktreesRoot: worktreesRoot, BaseDir: repoDir + "/.plect"}
+	cfg := &config.Config{WorkdirsRoot: workdirsRoot, BaseDir: repoDir + "/.plect"}
 	attachGithubProvider(t, cfg, "coding")
 	url := "https://github.com/" + ownerRepo + "/issues/300"
 	sessionName := "testowner/testrepo-300+coding"

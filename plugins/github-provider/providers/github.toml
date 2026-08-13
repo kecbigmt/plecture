@@ -1,11 +1,10 @@
 # GitHub provider: maps issue and pull request URLs to session ids, and owns
-# the git worktree those sessions work in.
+# the git workdir those sessions work in.
 #
 # The resolver is pure regex plus template, so a session id is derived
 # offline and never depends on the GitHub API being reachable. Acquisition
 # and release run through plect-github-provider, which resolves the branch
-# for the resource and then calls `plect workspace add` / `plect workspace
-# remove` for the generic worktree handling.
+# for the resource and owns the git workdir lifecycle.
 
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
 name = "{{.owner}}/{{.repo}}-{{.number}}"

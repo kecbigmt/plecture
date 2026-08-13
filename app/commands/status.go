@@ -31,7 +31,7 @@ provider-specific interpretation:
 
   identity  resource id / workflow / tag / tree position (parent, children)
   runtime   whether the session is actually alive: run-scoped task state,
-            runtime liveness, worktree existence
+            runtime liveness, workdir existence
   work      each task instance's outputs (dynamic and mutable alike),
             done_when evaluation, heartbeat budget, and chain plan — the same
             facts "plect tick" acts on and "plect check" used to report
@@ -309,7 +309,7 @@ func formatRunLine(rt service.StatusRuntime) string {
 }
 
 // formatHealthLine renders the Health fact; a run=down session has nothing
-// evaluated (the watchdog only probes sessions with a produced run-scoped
+// evaluated (the healthcheck cycle only probes sessions with a produced run-scoped
 // task), so it shows "-" rather than a stale or misleading health value.
 func formatHealthLine(rt service.StatusRuntime) string {
 	if rt.Run != domain.RunUp {

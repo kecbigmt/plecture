@@ -23,12 +23,12 @@ func sampleShow() *service.StatusResult {
 			CreatedAt:   time.Now(),
 		},
 		Runtime: service.StatusRuntime{
-			Run:            domain.RunUp,
-			Health:         domain.HealthHealthy,
-			WorktreePath:   "/home/dev/worktrees/owner/repo/issue-7",
-			WorktreeExists: true,
-			Conversation:   &domain.Conversation{Source: "Slack", URL: "https://slack.example/thread/1"},
-			AttachCommand:  "some-runtime attach owner/repo-7",
+			Run:           domain.RunUp,
+			Health:        domain.HealthHealthy,
+			WorkdirPath:   "/home/dev/workdirs/owner/repo/issue-7",
+			WorkdirExists: true,
+			Conversation:  &domain.Conversation{Source: "Slack", URL: "https://slack.example/thread/1"},
+			AttachCommand: "some-runtime attach owner/repo-7",
 		},
 	}
 }
@@ -42,7 +42,7 @@ func TestDetail_ShowsSession(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		"owner/repo-7", "issue/7", "make the thing work", "Slack",
-		"/home/dev/worktrees/owner/repo/issue-7",
+		"/home/dev/workdirs/owner/repo/issue-7",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("detail body missing %q", want)
@@ -68,7 +68,7 @@ func TestDetail_NonURLResourceIsPlainText(t *testing.T) {
 
 // 2. not found: unknown session -> 404 + banner with a link back to the list.
 func TestDetail_NotFound(t *testing.T) {
-	svc := &fakeService{statusErr: &service.Error{Code: service.ErrWorkspaceNotFound, Message: "no state entry"}}
+	svc := &fakeService{statusErr: &service.Error{Code: service.ErrSessionNotFound, Message: "no state entry"}}
 	rec := get(t, svc, "/sessions/owner/missing-1")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)

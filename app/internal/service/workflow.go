@@ -62,10 +62,10 @@ type WorkflowNode struct {
 }
 
 // WorkflowList returns all discoverable workflows merged from the cascade
-// rooted at worktreeDir, sorted by id for stable output. An empty worktreeDir
+// rooted at workdirDir, sorted by id for stable output. An empty workdirDir
 // still surfaces the global layer.
-func WorkflowList(cfg *config.Config, worktreeDir string) ([]WorkflowSummary, error) {
-	workflows, err := cfg.LoadWorkflows(worktreeDir)
+func WorkflowList(cfg *config.Config, workdirDir string) ([]WorkflowSummary, error) {
+	workflows, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -86,8 +86,8 @@ func WorkflowList(cfg *config.Config, worktreeDir string) ([]WorkflowSummary, er
 // DAG matches what `plect up` would actually execute. Returns an ErrInvalidInput
 // service error when the id isn't present in the cascade (mirrors the
 // "workflow not found" path in tasks.go's buildWorkflowPlan).
-func WorkflowShow(cfg *config.Config, worktreeDir, id string) (*WorkflowDetail, error) {
-	workflows, err := cfg.LoadWorkflows(worktreeDir)
+func WorkflowShow(cfg *config.Config, workdirDir, id string) (*WorkflowDetail, error) {
+	workflows, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -95,7 +95,7 @@ func WorkflowShow(cfg *config.Config, worktreeDir, id string) (*WorkflowDetail, 
 	if !ok {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found", id)}
 	}
-	defs, err := cfg.LoadTaskDefinitions(worktreeDir)
+	defs, err := cfg.LoadTaskDefinitions(workdirDir)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}

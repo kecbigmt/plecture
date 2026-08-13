@@ -125,7 +125,7 @@ func TestShippedProvider_CleanupHookDoesNotShellInjectWorkdirOrBranch(t *testing
 
 // TestShippedProvider_DeclaresAcquisitionAndRelease pins that the shipped
 // provider owns both halves of the working-directory lifecycle, since a
-// setup with no matching cleanup would strand every worktree it creates.
+// setup with no matching cleanup would strand every workdir it creates.
 func TestShippedProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
 	prov := loadShippedProvider(t, "github-provider", "github")
 	if prov.Setup == "" {

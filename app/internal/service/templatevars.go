@@ -16,7 +16,7 @@ import (
 type TemplateVars struct {
 	SessionName   string
 	ResourceID    string
-	WorktreePath  string
+	WorkdirPath   string
 	Workflow      map[string]any
 	SessionInputs map[string]any
 }
@@ -47,7 +47,7 @@ func projectTemplateVars(name string, s *domain.Session) TemplateVars {
 	return TemplateVars{
 		SessionName:   name,
 		ResourceID:    s.ResourceID,
-		WorktreePath:  s.WorktreePath,
+		WorkdirPath:   s.WorkdirPath,
 		Workflow:      outputs,
 		SessionInputs: inputs,
 	}

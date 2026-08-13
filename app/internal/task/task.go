@@ -117,7 +117,7 @@ func (p *Plan) CaptureTask() (*Resolved, error) {
 }
 
 // RenderAttach expands the attach template against the task's own outputs
-// and session vars (.Self / .SessionName / .WorktreePath / .ResourceID / ...).
+// and session vars (.Self / .SessionName / .WorkdirPath / .ResourceID / ...).
 // Uses the same strict missingkey semantics as setup — an unset .Self.<key>
 // is a contract violation, surfaced as an error instead of an empty arg.
 func RenderAttach(cmd string, selfOutputs map[string]any, session SessionVars) (string, error) {
@@ -135,7 +135,7 @@ func RunHealthcheck(goCtx context.Context, cmd string, selfOutputs map[string]an
 	if err != nil {
 		return err
 	}
-	_, stderr, err := execHostScript(goCtx, rendered, session.WorktreePath)
+	_, stderr, err := execHostScript(goCtx, rendered, session.WorkdirPath)
 	if err != nil {
 		if len(stderr) > 0 {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -156,7 +156,7 @@ func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, s
 	if err != nil {
 		return "", err
 	}
-	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorktreePath)
+	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorkdirPath)
 	if err != nil {
 		if len(stderr) > 0 {
 			return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -616,7 +616,7 @@ type SessionVars struct {
 	Name          string
 	ResourceID    string
 	ParentSession string
-	WorktreePath  string
+	WorkdirPath   string
 	Branch        string
 	Inputs        map[string]any
 }
@@ -763,7 +763,7 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		SessionName   string
 		ResourceID    string
 		ParentSession string
-		WorktreePath  string
+		WorkdirPath   string
 		Branch        string
 	}{
 		Self:          normalizeOutputs(ctx.Self),
@@ -777,7 +777,7 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		SessionName:   ctx.Session.Name,
 		ResourceID:    ctx.Session.ResourceID,
 		ParentSession: ctx.Session.ParentSession,
-		WorktreePath:  ctx.Session.WorktreePath,
+		WorkdirPath:   ctx.Session.WorkdirPath,
 		Branch:        ctx.Session.Branch,
 	}
 	if data.Self == nil {
@@ -1021,7 +1021,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		outputs := map[string]any{}
 		var stderrCaptured []byte
 		if strings.TrimSpace(cmdStr) != "" {
-			stdout, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorktreePath)
+			stdout, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorkdirPath)
 			stderrCaptured = stderr
 			if runErr != nil {
 				tasks[r.NodeID] = failedState(r, now, runErr.Error(), prev, resolvedInputs)
@@ -1182,7 +1182,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
 			continue
 		}
-		_, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorktreePath)
+		_, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorkdirPath)
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = runErr.Error()

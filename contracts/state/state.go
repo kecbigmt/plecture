@@ -166,7 +166,7 @@ type Session struct {
 	Children      []string              `json:"children,omitempty"`
 	Alias         string                `json:"alias,omitempty"`
 	Branch        string                `json:"branch"`
-	WorktreePath  string                `json:"worktree_path"`
+	WorkdirPath   string                `json:"workdir_path"`
 	Conversation  *Conversation         `json:"conversation,omitempty"`
 	Message       *Message              `json:"message,omitempty"`
 	Workflow      string                `json:"workflow,omitempty"`

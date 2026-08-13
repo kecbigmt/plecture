@@ -18,7 +18,7 @@ func taskDisplayName(name, instance string) string {
 }
 
 // formatDoneWhen renders a per-instance done_when evaluation compactly, e.g.
-// "✓ satisfied (2/2)" / "✗ unsatisfied (1/2) [worktree_dirty=2]". A check whose
+// "✓ satisfied (2/2)" / "✗ unsatisfied (1/2) [workdir_dirty=2]". A check whose
 // value isn't observed yet shows "?" — it reads pending, not failing.
 func formatDoneWhen(dw *task.DoneWhenResult) string {
 	satisfied := 0

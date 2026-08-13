@@ -48,10 +48,10 @@
     <form hx-post="/sessions/destroy" hx-target="#action-error" hx-swap="innerHTML" hx-disabled-elt="find button" hx-on::after-request="this.closest('dialog').close()" class="grid gap-4 p-6">
       <div class="grid gap-1.5">
         <h2 id="destroy-dialog-title" class="text-heading font-semibold text-foreground">Destroy this session?</h2>
-        <p class="text-body text-muted-foreground">Runs task cleanup and removes the worktree and state entry. This cannot be undone.</p>
+        <p class="text-body text-muted-foreground">Runs task cleanup and removes the workdir and state entry. This cannot be undone.</p>
       </div>
       <input type="hidden" name="name" value="{{ .Identity.SessionName }}">
-      <label class="flex items-start gap-2 text-body"><input type="checkbox" name="force" value="1" class="mt-1"><span>Force — demote cleanup errors to warnings and remove a dirty worktree too, continuing teardown</span></label>
+      <label class="flex items-start gap-2 text-body"><input type="checkbox" name="force" value="1" class="mt-1"><span>Force — demote cleanup errors to warnings and remove a dirty workdir too, continuing teardown</span></label>
       <label class="flex items-start gap-2 text-body"><input type="checkbox" name="delete_branch" value="1" class="mt-1"><span>Also delete the local branch</span></label>
       <div class="flex items-center justify-end gap-2">
         <span class="htmx-indicator mr-auto text-label text-muted-foreground">Running…</span>
@@ -90,8 +90,8 @@
   <section class="rounded-lg border border-border bg-card p-3 text-card-foreground">
     <h3 class="mb-2 text-label font-semibold text-muted-foreground">Runtime</h3>
     <dl class="grid grid-cols-1 gap-x-4 gap-y-1 text-body sm:grid-cols-[8rem_1fr]">
-      <dt class="text-muted-foreground">worktree</dt>
-      <dd class="break-all">{{ .Runtime.WorktreePath }}{{ if not .Runtime.WorktreeExists }} <span class="text-destructive">(missing)</span>{{ end }}</dd>
+      <dt class="text-muted-foreground">workdir</dt>
+      <dd class="break-all">{{ .Runtime.WorkdirPath }}{{ if not .Runtime.WorkdirExists }} <span class="text-destructive">(missing)</span>{{ end }}</dd>
       {{- if .Runtime.Conversation }}
       <dt class="text-muted-foreground">conversation</dt>
       <dd class="break-all">{{ .Runtime.Conversation.Source }}{{ if .Runtime.Conversation.URL }} — <a class="rounded-sm underline underline-offset-2 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="{{ .Runtime.Conversation.URL }}">{{ .Runtime.Conversation.URL }}</a>{{ end }}</dd>

@@ -94,13 +94,13 @@ func (r HealthReport) State() domain.HealthState {
 func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (HealthReport, error) {
 	s := store.Get(name)
 	if s == nil {
-		return HealthReport{}, &Error{Code: ErrWorkspaceNotFound, Message: fmt.Sprintf("session %q not found", name)}
+		return HealthReport{}, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", name)}
 	}
-	defs, err := cfg.LoadTaskDefinitions(s.WorktreePath)
+	defs, err := cfg.LoadTaskDefinitions(s.WorkdirPath)
 	if err != nil {
 		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
-	wf := sessionWorkflowConfig(cfg, s.Workflow, s.WorktreePath)
+	wf := sessionWorkflowConfig(cfg, s.Workflow, s.WorkdirPath)
 	healthCfg := config.DefaultHealthcheckConfig()
 	var tick *config.TickConfig
 	if wf != nil {
@@ -115,8 +115,8 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	return report, nil
 }
 
-func sessionWorkflowConfig(cfg *config.Config, workflowID, worktreePath string) *config.WorkflowFile {
-	workflows, err := cfg.LoadWorkflows(worktreePath)
+func sessionWorkflowConfig(cfg *config.Config, workflowID, workdirPath string) *config.WorkflowFile {
+	workflows, err := cfg.LoadWorkflows(workdirPath)
 	if err != nil {
 		return nil
 	}
@@ -299,34 +299,6 @@ func finalizeMovementObservation(report *HealthReport, prev *contract.HealthStat
 	}
 }
 
-// WatchdogTick probes every session with a produced run-scoped task and
-// pushes a `dead` terminal event for each unhealthy one. The legacy watchdog
-// path delivers to the nearest healthy ancestor, or records the fact locally
-// when no healthy ancestor exists.
-func WatchdogTick(cfg *config.Config, store *state.Store) ([]HealthReport, error) {
-	all := store.All()
-	names := make([]string, 0, len(all))
-	for name, s := range all {
-		if s != nil && runScopeUp(s.Tasks) {
-			names = append(names, name)
-		}
-	}
-	slices.Sort(names)
-
-	reports := make([]HealthReport, 0, len(names))
-	for _, name := range names {
-		report, err := EvaluateHealth(cfg, store, name)
-		if err != nil {
-			return reports, err
-		}
-		if !report.Healthy {
-			pushDeadReport(cfg, store, name, &report)
-		}
-		reports = append(reports, report)
-	}
-	return reports, nil
-}
-
 func HealthcheckSession(cfg *config.Config, store *state.Store, params HealthcheckParams) (*HealthReport, error) {
 	healthCfg := config.NormalizeHealthcheckConfig(&params.Config)
 	before := store.Get(params.SessionName)
@@ -390,7 +362,7 @@ func pushHealthEscalation(cfg *config.Config, store *state.Store, origin string,
 	if !report.LastMovementAt.IsZero() {
 		meta["last_movement_at"] = report.LastMovementAt.UTC().Format(time.RFC3339)
 	}
-	_, wakeErr, err := PublishTerminalToParent(cfg, store, origin, TerminalParams{
+	id, wakeErr, err := publishHealthEscalationToLiveAncestor(cfg, store, origin, TerminalParams{
 		Type:     event.TypeTerminalEscalate,
 		Summary:  fmt.Sprintf("%s healthcheck is %s", origin, stateText),
 		Body:     healthEscalationBody(origin, report),
@@ -401,10 +373,43 @@ func pushHealthEscalation(cfg *config.Config, store *state.Store, origin string,
 		slog.Warn("publish health escalation failed", "session", origin, "error", err)
 		return false
 	}
+	if id == "" {
+		return false
+	}
 	if wakeErr != nil {
 		report.WakeWarning = wakeErr.Error()
 	}
+	report.PushTarget = id
 	return true
+}
+
+func publishHealthEscalationToLiveAncestor(cfg *config.Config, store *state.Store, origin string, p TerminalParams) (target string, wakeErr error, err error) {
+	visited := map[string]bool{origin: true}
+	current := origin
+	for {
+		s := store.Get(current)
+		if s == nil {
+			return "", nil, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", current)}
+		}
+		if s.ParentSession == "" {
+			return "", nil, nil
+		}
+		parent := resolveTerminalTarget(s.ParentSession)
+		if parent == "" || visited[parent] {
+			return "", nil, nil
+		}
+		visited[parent] = true
+		parentHealth, healthErr := EvaluateHealth(cfg, store, parent)
+		if healthErr != nil || parentHealth.State() == domain.HealthUnhealthy || parentHealth.State() == domain.HealthStalled {
+			current = parent
+			continue
+		}
+		storedID, wakeErr, publishErr := publishTerminalTo(cfg, store, origin, parent, true, p)
+		if publishErr != nil || storedID == "" {
+			return "", wakeErr, publishErr
+		}
+		return parent, wakeErr, nil
+	}
 }
 
 func healthEscalationBody(origin string, report *HealthReport) string {
@@ -435,65 +440,5 @@ func persistHealthNotification(store *state.Store, name string, notifyCount int)
 		return nil
 	}); err != nil {
 		slog.Warn("persist health notification failed", "session", name, "error", err)
-	}
-}
-
-// pushDeadReport pushes `dead` up the ancestor chain, skipping any ancestor
-// found unhealthy until it reaches a healthy one or runs out of tree. It
-// mutates report in place with the outcome.
-func pushDeadReport(cfg *config.Config, store *state.Store, origin string, report *HealthReport) {
-	dedupKey := origin + "|dead|" + report.Reason
-	// No live ancestor can receive the fact, so record it locally for
-	// observability. The origin just failed its own healthcheck, so waking
-	// it would only re-run a setup that the already-produced state skips.
-	recordUndeliverable := func() {
-		_, _, _ = publishTerminalTo(cfg, store, origin, origin, false, TerminalParams{
-			Type:     event.TypeTerminalDead,
-			Summary:  fmt.Sprintf("%s is dead: %s", origin, report.Reason),
-			Body:     report.Reason,
-			Metadata: map[string]string{"undeliverable": "true"},
-			DedupKey: dedupKey,
-		})
-	}
-	visited := map[string]bool{origin: true}
-	target := origin
-	for {
-		s := store.Get(target)
-		if s == nil || s.ParentSession == "" {
-			recordUndeliverable()
-			return
-		}
-		// resolveTerminalTarget: a "root:" pseudo-parent is not itself a
-		// session to probe/deliver into. Resolve it to the real session it
-		// names (the same resolution PublishTerminalToParent applies for
-		// done/escalate), or this ancestor walk would treat "root:X" as a
-		// literal (missing) session name and fall through as undeliverable.
-		parent := resolveTerminalTarget(s.ParentSession)
-		if parent == "" || visited[parent] {
-			recordUndeliverable()
-			return
-		}
-		visited[parent] = true
-		parentHealth, err := EvaluateHealth(cfg, store, parent)
-		if err != nil || !parentHealth.Healthy {
-			// Parent is dead too or unprobeable, so keep walking toward an
-			// ancestor that can receive the terminal fact.
-			target = parent
-			continue
-		}
-		id, wakeErr, err := publishTerminalTo(cfg, store, origin, parent, true, TerminalParams{
-			Type:     event.TypeTerminalDead,
-			Summary:  fmt.Sprintf("%s is dead: %s", origin, report.Reason),
-			Body:     report.Reason,
-			DedupKey: dedupKey,
-		})
-		if err == nil && id != "" {
-			report.Pushed = true
-			report.PushTarget = parent
-			if wakeErr != nil {
-				report.WakeWarning = wakeErr.Error()
-			}
-		}
-		return
 	}
 }

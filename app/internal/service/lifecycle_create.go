@@ -13,7 +13,7 @@ import (
 
 // CreateParams holds parameters for Create — the task-aware counterpart of Add.
 // Unlike Add, Create does not auto-start the runtime: the user opts into
-// run-scoped lifecycle via Up. session-scoped tasks run after worktree
+// run-scoped lifecycle via Up. session-scoped tasks run after workdir
 // creation.
 type CreateParams struct {
 	URL           string
@@ -26,11 +26,11 @@ type CreateParams struct {
 
 // CreateResult holds the outcome of Create.
 type CreateResult struct {
-	SessionName    string                         `json:"session_name"`
-	WorktreePath   string                         `json:"worktree_path"`
-	Branch         string                         `json:"branch"`
-	ReusedWorktree bool                           `json:"reused_worktree"`
-	Tasks          map[string]*contract.TaskState `json:"tasks,omitempty"`
+	SessionName   string                         `json:"session_name"`
+	WorkdirPath   string                         `json:"workdir_path"`
+	Branch        string                         `json:"branch"`
+	ReusedWorkdir bool                           `json:"reused_workdir"`
+	Tasks         map[string]*contract.TaskState `json:"tasks,omitempty"`
 }
 
 // Create establishes the session: state entry + working directory + session-
@@ -47,7 +47,7 @@ type CreateResult struct {
 //     session id.
 //
 // Create is idempotent: re-running it against an existing session reuses
-// the worktree + state entry and retries the workflow setup and any
+// the workdir + state entry and retries the workflow setup and any
 // session-scoped tasks that have not yet reached "produced". This is the
 // recovery path for a previous create that partially failed.
 // putBestEffort persists session after a step whose own error already takes

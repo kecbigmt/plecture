@@ -28,7 +28,7 @@ func setUpConfigHome(t *testing.T) {
 		}
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "config.toml"),
-		[]byte("worktrees_root = \""+filepath.Join(home, "worktrees")+"\"\n"), 0o644); err != nil {
+		[]byte("workdirs_root = \""+filepath.Join(home, "workdirs")+"\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	workdir := filepath.Join(home, "wd")

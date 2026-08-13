@@ -31,7 +31,7 @@ func TestCharacterization_RunSetup_CancelledContextKillsHungChild(t *testing.T) 
 	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	err := RunSetup(goCtx, plan.Run, SessionVars{Name: "x", WorktreePath: dir}, tasks, nil)
+	err := RunSetup(goCtx, plan.Run, SessionVars{Name: "x", WorkdirPath: dir}, tasks, nil)
 	if err == nil {
 		t.Fatalf("RunSetup: want an error surfaced from the cancelled context, got nil")
 	}
@@ -56,7 +56,7 @@ func TestCharacterization_RunCleanup_CancelledContextKillsHungChild(t *testing.T
 	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	err := RunCleanup(goCtx, plan.Run, SessionVars{Name: "x", WorktreePath: dir}, tasks, nil)
+	err := RunCleanup(goCtx, plan.Run, SessionVars{Name: "x", WorkdirPath: dir}, tasks, nil)
 	if err == nil {
 		t.Fatalf("RunCleanup: want an error surfaced from the cancelled context, got nil")
 	}
@@ -71,7 +71,7 @@ func TestCharacterization_RunCleanup_CancelledContextKillsHungChild(t *testing.T
 func TestCharacterization_RunHealthcheck_CancelledContextKillsHungChild(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "marker")
-	session := SessionVars{Name: "x", WorktreePath: dir}
+	session := SessionVars{Name: "x", WorkdirPath: dir}
 	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()
@@ -90,7 +90,7 @@ func TestCharacterization_RunHealthcheck_CancelledContextKillsHungChild(t *testi
 func TestCharacterization_RunCapture_CancelledContextKillsHungChild(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "marker")
-	session := SessionVars{Name: "x", WorktreePath: dir}
+	session := SessionVars{Name: "x", WorkdirPath: dir}
 	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()
@@ -111,7 +111,7 @@ func TestCharacterization_FetchOutput_CancelledContextKillsHungChild(t *testing.
 	marker := filepath.Join(dir, "marker")
 	cfg := &config.Config{}
 	src := config.DynamicOutput{Name: "count", Script: "sleep 5; touch '" + marker + "'; echo 42"}
-	renderCtx := RenderContext{Session: SessionVars{Name: "x", WorktreePath: dir}}
+	renderCtx := RenderContext{Session: SessionVars{Name: "x", WorkdirPath: dir}}
 	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()

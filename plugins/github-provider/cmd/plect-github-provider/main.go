@@ -31,7 +31,7 @@ func run(args []string) error {
 	case "setup":
 		fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 		resource := fs.String("resource", "", "resource identifier (issue URL, pull request URL, or project item id)")
-		session := fs.String("session", "", "session name the worktree is acquired for")
+		session := fs.String("session", "", "session name the workdir is acquired for")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -49,7 +49,7 @@ func run(args []string) error {
 		fs := flag.NewFlagSet("cleanup", flag.ContinueOnError)
 		workdir := fs.String("workdir", "", "working directory recorded by setup")
 		branch := fs.String("branch", "", "branch recorded by setup")
-		force := fs.Bool("force", false, "remove the worktree even when it carries uncommitted changes")
+		force := fs.Bool("force", false, "remove the workdir even when it carries uncommitted changes")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}

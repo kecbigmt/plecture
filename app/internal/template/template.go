@@ -2,7 +2,6 @@ package template
 
 import (
 	"bytes"
-	"embed"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,11 +10,8 @@ import (
 	"text/template"
 )
 
-//go:embed defaults
-var DefaultTemplates embed.FS
-
 // templateFuncs mirrors the task render context so optional vars can be
-// guarded the same way in prompt templates: `{{get .SessionInputs "focus"}}`
+// guarded the same way in templates: `{{get .SessionInputs "focus"}}`
 // returns "" when the key is absent instead of injecting "<no value>".
 var templateFuncs = template.FuncMap{
 	"get": func(m map[string]any, key string) any {
@@ -29,8 +25,8 @@ var templateFuncs = template.FuncMap{
 	},
 }
 
-// Vars is the variable bundle for prompt templates. The session-derived fields
-// mirror the task render context (SessionName / ResourceID / WorktreePath /
+// Vars is the variable bundle for templates. The session-derived fields
+// mirror the task render context (SessionName / ResourceID / WorkdirPath /
 // Workflow outputs / SessionInputs) so a template authored for a task reads
 // the same way here. Anything resource-shaped a template needs beyond the
 // resource id comes from the provider's setup outputs, exposed as
@@ -42,7 +38,7 @@ type Vars struct {
 	// Session-derived (provider-agnostic).
 	SessionName   string
 	ResourceID    string
-	WorktreePath  string
+	WorkdirPath   string
 	Workflow      map[string]any // provider setup outputs, exposed as .Workflow.outputs.<key>
 	SessionInputs map[string]any // session inputs + explicit --var, exposed as .SessionInputs.<key>
 }
@@ -102,19 +98,18 @@ func LoadWithMetadata(mode, searchDir string) (Metadata, string, error) {
 
 // Load reads a template for the given mode with the following priority:
 //  1. <searchDir>/.plect/templates/<mode>.md and its ancestors, innermost wins
-//     (bare layout: .plect lives in the repo container, one level above the
-//     branch worktree)
 //  2. ~/.config/plect/templates/<mode>.md (user global)
-//  3. embedded defaults
 //
 // searchDir is the session's workdir, not a repository path: the overlay is
 // rooted at the working tree so it works for any provider.
 func Load(mode, searchDir string) (string, error) {
 	filename := mode + ".md"
+	var searched []string
 
 	// 1. Working-directory overlay, walked up through ancestors
 	for _, dir := range ancestorDirs(searchDir) {
 		repoPath := filepath.Join(dir, ".plect", "templates", filename)
+		searched = append(searched, repoPath)
 		if data, err := os.ReadFile(repoPath); err == nil {
 			return string(data), nil
 		}
@@ -123,16 +118,12 @@ func Load(mode, searchDir string) (string, error) {
 	// 2. User global template
 	home, _ := os.UserHomeDir()
 	userPath := filepath.Join(home, ".config", "plect", "templates", filename)
+	searched = append(searched, userPath)
 	if data, err := os.ReadFile(userPath); err == nil {
 		return string(data), nil
 	}
 
-	// 3. Embedded default
-	data, err := DefaultTemplates.ReadFile("defaults/" + filename)
-	if err != nil {
-		return "", fmt.Errorf("no template found for mode %q", mode)
-	}
-	return string(data), nil
+	return "", fmt.Errorf("no template found for mode %q; searched: %s", mode, strings.Join(searched, ", "))
 }
 
 // ancestorDirs walks up from searchDir, innermost first, so the closest
@@ -166,7 +157,7 @@ func ancestorDirs(searchDir string) []string {
 
 // Render loads and renders a template with the given variables. searchDir is
 // the session's working directory whose `.plect/templates/` overlay is consulted
-// first (empty falls back to user-global + embedded). Frontmatter is stripped
+// first. Frontmatter is stripped
 // before rendering.
 //
 // Workflow outputs are exposed as `.Workflow.outputs.<key>` and session inputs
@@ -195,7 +186,7 @@ func Render(mode, searchDir string, vars Vars) (string, error) {
 		Instruction   string
 		SessionName   string
 		ResourceID    string
-		WorktreePath  string
+		WorkdirPath   string
 		Workflow      map[string]any
 		SessionInputs map[string]any
 	}{
@@ -203,7 +194,7 @@ func Render(mode, searchDir string, vars Vars) (string, error) {
 		Instruction:   vars.Instruction,
 		SessionName:   vars.SessionName,
 		ResourceID:    vars.ResourceID,
-		WorktreePath:  vars.WorktreePath,
+		WorkdirPath:   vars.WorkdirPath,
 		Workflow:      map[string]any{"outputs": outputs},
 		SessionInputs: inputs,
 	}
@@ -216,8 +207,8 @@ func Render(mode, searchDir string, vars Vars) (string, error) {
 	return buf.String(), nil
 }
 
-// List returns all available templates with metadata for the given repo.
-// Templates are deduplicated by name with repo-specific > user-global > embedded priority.
+// List returns all available templates with metadata for the given workdir.
+// Templates are deduplicated by name with workdir-specific > user-global priority.
 func List(repoDir string) ([]TemplateInfo, error) {
 	seen := make(map[string]bool)
 	var result []TemplateInfo
@@ -248,7 +239,7 @@ func List(repoDir string) ([]TemplateInfo, error) {
 		}
 	}
 
-	// 1. Repo-specific, walked up through ancestors (innermost wins via seen-dedup)
+	// 1. Workdir-specific, walked up through ancestors.
 	for _, anc := range ancestorDirs(repoDir) {
 		dir := filepath.Join(anc, ".plect", "templates")
 		addFromDir(
@@ -263,12 +254,6 @@ func List(repoDir string) ([]TemplateInfo, error) {
 	addFromDir(
 		func() ([]fs.DirEntry, error) { return os.ReadDir(userDir) },
 		func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(userDir, name)) },
-	)
-
-	// 3. Embedded defaults
-	addFromDir(
-		func() ([]fs.DirEntry, error) { return fs.ReadDir(DefaultTemplates, "defaults") },
-		func(name string) ([]byte, error) { return DefaultTemplates.ReadFile("defaults/" + name) },
 	)
 
 	return result, nil

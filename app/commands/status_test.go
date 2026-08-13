@@ -110,7 +110,7 @@ func TestStatusCmd_FullRequiresJSON(t *testing.T) {
 	}
 }
 
-// A run=down session has nothing evaluated (the watchdog only probes
+// A run=down session has nothing evaluated (the healthcheck cycle only probes
 // run=up sessions), so Run shows the bare state and Health shows "-"
 // rather than a stale or misleading value.
 func TestFormatRunLine_AndFormatHealthLine_RunDown(t *testing.T) {

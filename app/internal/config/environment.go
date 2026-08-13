@@ -16,7 +16,7 @@ import (
 // A workflow that never sets `environment` (host degeneration) never
 // consults this loader at all.
 //
-// Environments deliberately do NOT participate in the per-worktree cascade,
+// Environments deliberately do NOT participate in the per-workdir cascade,
 // for the same reason providers don't: they must be resolvable independent
 // of any working directory, and Setup/Exec/Cleanup are arbitrary shell, so
 // only user/machine-owned layers may supply them.
@@ -47,7 +47,7 @@ func (e EnvironmentConfig) ResolvedOutputsSchemaPath() string {
 
 // LoadEnvironments loads `environments/*.toml` from the trusted base layers
 // only: plugin dirs first, then the global config dir; a deeper layer's
-// same-id file replaces the shallower one. The per-worktree ancestor cascade
+// same-id file replaces the shallower one. The per-workdir ancestor cascade
 // is deliberately excluded (see EnvironmentConfig).
 func (c *Config) LoadEnvironments() (map[string]EnvironmentConfig, error) {
 	out := make(map[string]EnvironmentConfig)

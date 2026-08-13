@@ -211,7 +211,7 @@ func httpStatusForError(err error) int {
 			return http.StatusBadRequest
 		case service.ErrRepoNotAllowed:
 			return http.StatusForbidden
-		case service.ErrWorkspaceNotFound:
+		case service.ErrSessionNotFound:
 			return http.StatusNotFound
 		case service.ErrNotAttachable, service.ErrNotProduced:
 			return http.StatusConflict
@@ -220,7 +220,7 @@ func httpStatusForError(err error) int {
 	return http.StatusInternalServerError
 }
 
-// sessionPath builds the detail URL for a session. Names are workspace-N, so
+// sessionPath builds the detail URL for a session. Names are session-N, so
 // each "/"-separated segment is path-escaped while the separators are kept,
 // yielding /sessions/<segment>/<segment> that the {name...} route reverses.
 func sessionPath(name string) string {

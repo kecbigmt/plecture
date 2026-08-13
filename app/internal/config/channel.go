@@ -24,7 +24,7 @@ type ChannelInputSpec struct {
 }
 
 // ChannelDefinition binds a workflow's [[event.channel]] to a built-in delivery
-// primitive. It follows the provider trust model, not the per-worktree workflow
+// primitive. It follows the provider trust model, not the per-workdir workflow
 // cascade: an `exec` channel runs argv directly and a unix_socket channel writes
 // to a socket, so only user/machine-owned layers may declare one and event data
 // must never choose `uses`/`command`. The primitive fields (path/body,
@@ -87,7 +87,7 @@ func (d ChannelDefinition) Validate() error {
 }
 
 // LoadChannels loads `channels/*.toml` from plugin + global layers only. The
-// per-worktree cascade is excluded for the same reason as providers — a channel
+// per-workdir cascade is excluded for the same reason as providers — a channel
 // may run argv (see ChannelDefinition).
 func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
 	out := make(map[string]ChannelDefinition)

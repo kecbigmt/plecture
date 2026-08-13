@@ -68,12 +68,12 @@ func buildProviderBinaries(t *testing.T, root string) {
 }
 
 // setupHomeRepo builds the bare-ish layout the github provider expects under
-// $HOME/worktrees (the path the setup script hard-codes) and points HOME at it.
+// $HOME/workdirs (the path the setup script hard-codes) and points HOME at it.
 func setupHomeRepo(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	gitDir := filepath.Join(home, "worktrees", "github.com", "testowner", "testrepo", "main")
+	gitDir := filepath.Join(home, "workdirs", "github.com", "testowner", "testrepo", "main")
 	bareDir := filepath.Join(t.TempDir(), "origin.git")
 	if err := os.MkdirAll(gitDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func setupHomeRepo(t *testing.T) string {
 	return gitDir
 }
 
-// setupSrcRepo builds the ~/src layout: a primary checkout plus a worktree
+// setupSrcRepo builds the ~/src layout: a primary checkout plus a workdir
 // container that is deliberately NOT a repository. Returns the primary
 // checkout, which is the git dir both setup and cleanup must resolve to.
 func setupSrcRepo(t *testing.T) string {
@@ -106,7 +106,7 @@ func setupSrcRepo(t *testing.T) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	srcDir := filepath.Join(home, "src", "github.com", "testowner", "testrepo")
-	container := filepath.Join(home, "worktrees", "github.com", "testowner", "testrepo")
+	container := filepath.Join(home, "workdirs", "github.com", "testowner", "testrepo")
 	bareDir := filepath.Join(t.TempDir(), "origin.git")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -134,11 +134,11 @@ func setupSrcRepo(t *testing.T) string {
 	return srcDir
 }
 
-// TestE2E_GithubProviderSrcLayoutSingleWorktree covers the ~/src layout's
-// thinnest case: the session owns the container's only worktree. Cleanup has
-// no sibling worktree and no bare layout to fall back to, so resolving the
+// TestE2E_GithubProviderSrcLayoutSingleWorkdir covers the ~/src layout's
+// thinnest case: the session owns the container's only workdir. Cleanup has
+// no sibling workdir and no bare layout to fall back to, so resolving the
 // primary checkout is the only thing keeping destroy from stranding it.
-func TestE2E_GithubProviderSrcLayoutSingleWorktree(t *testing.T) {
+func TestE2E_GithubProviderSrcLayoutSingleWorkdir(t *testing.T) {
 	setupFakeScripts(t)
 	setupSrcRepo(t)
 	prov := shippedGithubProvider(t)
@@ -153,17 +153,17 @@ func TestE2E_GithubProviderSrcLayoutSingleWorktree(t *testing.T) {
 
 	workdir, _ := out["workdir"].(string)
 	if _, err := os.Stat(workdir); err != nil {
-		t.Fatalf("worktree not created: %v", err)
+		t.Fatalf("workdir not created: %v", err)
 	}
-	if !strings.Contains(workdir, filepath.Join("worktrees", "github.com", "testowner", "testrepo")) {
-		t.Errorf("workdir = %q, want it inside the worktree container", workdir)
+	if !strings.Contains(workdir, filepath.Join("workdirs", "github.com", "testowner", "testrepo")) {
+		t.Errorf("workdir = %q, want it inside the workdir container", workdir)
 	}
 
 	if err := task.RunWorkflowCleanup(prov, vars, tasks, nil); err != nil {
-		t.Fatalf("cleanup on the container's only worktree: %v", err)
+		t.Fatalf("cleanup on the container's only workdir: %v", err)
 	}
 	if _, err := os.Stat(workdir); !os.IsNotExist(err) {
-		t.Errorf("worktree should be removed, stat err: %v", err)
+		t.Errorf("workdir should be removed, stat err: %v", err)
 	}
 }
 
@@ -181,7 +181,7 @@ func runSetup(t *testing.T, prov config.ProviderConfig, session string) map[stri
 }
 
 // TestE2E_GithubProviderInvariant runs the shipped github setup and asserts the
-// workspace is a function of the tagged session name (branch + worktree path
+// session is a function of the tagged session name (branch + workdir path
 // both carry the tag).
 func TestE2E_GithubProviderInvariant(t *testing.T) {
 	setupFakeScripts(t)
@@ -198,13 +198,13 @@ func TestE2E_GithubProviderInvariant(t *testing.T) {
 		t.Errorf("workdir = %q, want suffix /issue-42-review", workdir)
 	}
 	if _, err := os.Stat(workdir); err != nil {
-		t.Fatalf("worktree not created: %v", err)
+		t.Fatalf("workdir not created: %v", err)
 	}
 	// A different tool's session on the same resource must land in a distinct
-	// workspace (the cross-tool separation the default tag guarantees).
+	// session (the cross-tool separation the default tag guarantees).
 	out2 := runSetup(t, prov, "testowner/testrepo-42+claude")
 	if out2["workdir"] == workdir {
-		t.Error("tagged sessions must not share a workspace")
+		t.Error("tagged sessions must not share a session")
 	}
 }
 
@@ -233,28 +233,28 @@ func TestE2E_GithubProviderConvergesAndReclaims(t *testing.T) {
 		t.Fatal("precondition: tagged branch should exist after setup")
 	}
 
-	// Cleanup reclaims worktree + branch (branch is merged into main → safe -d).
+	// Cleanup reclaims workdir + branch (branch is merged into main → safe -d).
 	if err := task.RunWorkflowCleanup(prov, vars, tasks, nil); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
 	workdir, _ := tasks[contract.WorkflowPseudoNodeID].Outputs["workdir"].(string)
 	if _, err := os.Stat(workdir); !os.IsNotExist(err) {
-		t.Errorf("worktree should be removed, stat err: %v", err)
+		t.Errorf("workdir should be removed, stat err: %v", err)
 	}
 	if branchExists() {
 		t.Error("cleanup must reclaim the tagged branch")
 	}
 
-	// Now simulate an orphan: re-create the branch + worktree, then remove only
-	// the worktree (branch survives), and re-dispatch. Setup must converge.
+	// Now simulate an orphan: re-create the branch + workdir, then remove only
+	// the workdir (branch survives), and re-dispatch. Setup must converge.
 	tasks2 := map[string]*contract.TaskState{}
 	out := runSetup(t, prov, session)
 	wd, _ := out["workdir"].(string)
-	if err := exec.Command("git", "-C", gitDir, "worktree", "remove", wd).Run(); err != nil {
-		t.Fatalf("orphan the branch (remove worktree): %v", err)
+	if err := exec.Command("git", "-C", gitDir, "workdir", "remove", wd).Run(); err != nil {
+		t.Fatalf("orphan the branch (remove workdir): %v", err)
 	}
 	if !branchExists() {
-		t.Fatal("precondition: branch should survive worktree removal")
+		t.Fatal("precondition: branch should survive workdir removal")
 	}
 	tasks2 = map[string]*contract.TaskState{}
 	if _, err := task.RunWorkflowSetup(prov, vars, tasks2, nil); err != nil {

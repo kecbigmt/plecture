@@ -44,7 +44,7 @@ type UpResult struct {
 // tasks are skipped), this also recovers partial-create state without
 // the user having to remember a separate command. A bare session name
 // without a state entry still errors out — Create needs URL information
-// to resolve workspace/branch, so the asymmetry is intentional.
+// to resolve session/branch, so the asymmetry is intentional.
 func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
 	identifier := params.Identifier
 	forceRecreateExisting := false
@@ -122,11 +122,11 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
 
-	plan, err := buildPlanForSession(cfg, session.WorktreePath, session)
+	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorktreePath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorkdirPath, session)
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
@@ -203,7 +203,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	}
 
 	session.Branch = ""
-	session.WorktreePath = ""
+	session.WorkdirPath = ""
 	session.Conversation = nil
 	session.Message = nil
 	session.Tasks = make(map[string]*contract.TaskState)
@@ -219,7 +219,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	session.UpdatedAt = time.Now()
 	if outputs != nil {
 		if workdir, ok := outputs[contract.OutputKeyWorkdir].(string); ok {
-			session.WorktreePath = workdir
+			session.WorkdirPath = workdir
 		}
 		if branch, ok := outputs["branch"].(string); ok && branch != "" {
 			session.Branch = branch
@@ -232,11 +232,11 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
 
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorktreePath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorkdirPath, session)
 	if wfErr != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
-	setupPlan, planErr := buildPlanForSession(cfg, session.WorktreePath, session)
+	setupPlan, planErr := buildPlanForSession(cfg, session.WorkdirPath, session)
 	if planErr != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
 	}

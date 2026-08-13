@@ -58,7 +58,7 @@ const (
 )
 
 type Config struct {
-	WorktreesRoot string `toml:"worktrees_root"`
+	WorkdirsRoot string `toml:"workdirs_root"`
 	// ResourceAllowlist is the security boundary for session creation: regex
 	// patterns the resource identifier must match. The boundary exists
 	// because agents (MCP) can invoke plect with arbitrary input, and a
@@ -94,9 +94,9 @@ type Config struct {
 func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
-		WorktreesRoot: filepath.Join(home, "worktrees"),
-		Detached:      true,
-		SessionGuard:  os.Getenv("PLECT_SESSION_GUARD"),
+		WorkdirsRoot: filepath.Join(home, "workdirs"),
+		Detached:     true,
+		SessionGuard: os.Getenv("PLECT_SESSION_GUARD"),
 	}
 }
 
@@ -138,8 +138,8 @@ func Load() *Config {
 	if homeErr != nil {
 		return cfg
 	}
-	if len(cfg.WorktreesRoot) > 0 && cfg.WorktreesRoot[0] == '~' {
-		cfg.WorktreesRoot = filepath.Join(home, cfg.WorktreesRoot[1:])
+	if len(cfg.WorkdirsRoot) > 0 && cfg.WorkdirsRoot[0] == '~' {
+		cfg.WorkdirsRoot = filepath.Join(home, cfg.WorkdirsRoot[1:])
 	}
 	for i, dir := range cfg.PluginDirs {
 		if len(dir) > 0 && dir[0] == '~' {

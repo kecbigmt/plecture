@@ -220,7 +220,7 @@ mutable = true
 
 func TestSetOutput_ExactlyOneTargetRequired(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorktreesRoot: t.TempDir()}
+	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
 
 	for _, p := range []SetOutputParams{
 		{Identifier: "x", Outputs: map[string]any{"a": 1}},                            // neither
@@ -234,8 +234,8 @@ func TestSetOutput_ExactlyOneTargetRequired(t *testing.T) {
 
 func TestSetOutput_WorkflowPseudoNode(t *testing.T) {
 	store := testStore(t)
-	worktreesRoot := t.TempDir()
-	cfg := writeWorkflowFixture(t, worktreesRoot, "wf",
+	workdirsRoot := t.TempDir()
+	cfg := writeWorkflowFixture(t, workdirsRoot, "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 

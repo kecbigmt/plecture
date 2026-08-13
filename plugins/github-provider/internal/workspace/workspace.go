@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/procexec"
+	"github.com/kecbigmt/plect/plugins/github-provider/internal/procexec"
 )
 
 type WorkspaceInfo struct {

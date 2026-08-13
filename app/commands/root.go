@@ -9,12 +9,12 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use:   "plect",
-	Short: "Manage runtime sessions and git worktrees for resource-driven workflows",
-	Long: `plect manages runtime sessions and git worktrees for workflows keyed by a
+	Short: "Manage runtime sessions and workdirs for resource-driven workflows",
+	Long: `plect manages runtime sessions and workdirs for workflows keyed by a
 resource identifier.
 
 A workflow's [resolver] maps the resource identifier to a session id and
-working directory; plect then runs the workflow's tasks (worktree setup, runtime
+working directory; plect then runs the workflow's tasks (workdir setup, runtime
 session, agent launch) and manages the full session lifecycle.
 
 The resource identifier is any string a workflow resolver accepts. Which

@@ -619,40 +619,6 @@ func TestEvaluateHealth_NoMovementSourceDeclaredFallsBackToUndeclared(t *testing
 	}
 }
 
-func TestWatchdogTick_PushesDeadToHealthyParent(t *testing.T) {
-	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
-	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil) // no run tasks: vacuously healthy
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
-	})
-	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
-
-	reports, err := WatchdogTick(cfg, store)
-	if err != nil {
-		t.Fatalf("WatchdogTick: %v", err)
-	}
-	if len(reports) != 1 || reports[0].Healthy {
-		t.Fatalf("reports = %+v, want one unhealthy report", reports)
-	}
-	if !reports[0].Pushed || reports[0].PushTarget != "owner/repo-orchestrator" {
-		t.Fatalf("report = %+v, want pushed to the parent", reports[0])
-	}
-
-	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-orchestrator", 0, event.Filter{Types: []string{event.TypeTerminalDead}})
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(evs) != 1 || evs[0].Metadata[event.MetaOriginSession] != "owner/repo-1" {
-		t.Fatalf("parent dead events = %+v", evs)
-	}
-
-	hs := store.Get("owner/repo-1").Health
-	if hs == nil || hs.LastCheckedAt.IsZero() || hs.LastState != string(domain.HealthUnhealthy) {
-		t.Fatalf("origin HealthState = %+v, want persisted unhealthy result", hs)
-	}
-}
-
 func TestHealthcheckSession_PushesHealthEscalationAndRenotifies(t *testing.T) {
 	store := testStore(t)
 	cfg := healthcheckFixtureConfig(t, "false")
@@ -758,42 +724,7 @@ func TestHealthcheckSession_PushesStalledEscalationWithMovementTimestamp(t *test
 	}
 }
 
-// A dead sibling reviewer whose ParentSession is a "root:X" pseudo-parent
-// (domain.ImplicitRootParent) must still deliver to the real session X, not
-// fall through as undeliverable because "root:X" isn't itself a session.
-func TestWatchdogTick_PushesDeadToRootPrefixedParent(t *testing.T) {
-	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil) // no run tasks: vacuously healthy
-	seedSession(t, store, "owner/repo-reviewer", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
-	})
-	setParent(t, store, "owner/repo-reviewer", "root:owner/repo-1")
-
-	reports, err := WatchdogTick(cfg, store)
-	if err != nil {
-		t.Fatalf("WatchdogTick: %v", err)
-	}
-	if len(reports) != 1 || reports[0].Healthy {
-		t.Fatalf("reports = %+v, want one unhealthy report", reports)
-	}
-	if !reports[0].Pushed || reports[0].PushTarget != "owner/repo-1" {
-		t.Fatalf("report = %+v, want pushed to owner/repo-1 (the root: target)", reports[0])
-	}
-
-	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{event.TypeTerminalDead}})
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(evs) != 1 || evs[0].Metadata[event.MetaOriginSession] != "owner/repo-reviewer" {
-		t.Fatalf("target dead events = %+v", evs)
-	}
-	if evs[0].Metadata["undeliverable"] == "true" {
-		t.Fatal("event recorded as undeliverable, want delivered to the resolved root: target")
-	}
-}
-
-func TestWatchdogTick_SkipsDeadIntermediateParent(t *testing.T) {
+func TestHealthcheckSession_SkipsDeadIntermediateParent(t *testing.T) {
 	store := testStore(t)
 	cfg := healthcheckFixtureConfig(t, "false")
 	seedSession(t, store, "owner/repo-grandparent", "owner/repo", 1, "", nil)
@@ -806,100 +737,32 @@ func TestWatchdogTick_SkipsDeadIntermediateParent(t *testing.T) {
 	setParent(t, store, "owner/repo-parent", "owner/repo-grandparent")
 	setParent(t, store, "owner/repo-1", "owner/repo-parent")
 
-	reports, err := WatchdogTick(cfg, store)
-	if err != nil {
-		t.Fatalf("WatchdogTick: %v", err)
-	}
-	// Both owner/repo-parent and owner/repo-1 fail the same "false"
-	// healthcheck and are each independently probed and pushed: the parent
-	// reports its own death directly to the grandparent, and owner/repo-1's
-	// death skips over its dead immediate parent (D4) straight to the
-	// grandparent too — so the grandparent ends up with two dead events.
-	if len(reports) != 2 {
-		t.Fatalf("reports = %+v, want 2", reports)
-	}
-
-	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-grandparent", 0, event.Filter{Types: []string{event.TypeTerminalDead}})
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(evs) != 2 {
-		t.Fatalf("grandparent dead events = %+v, want 2 (direct from parent + skip-delivered from origin)", evs)
-	}
-	origins := map[string]string{}
-	for _, ev := range evs {
-		origins[ev.Metadata[event.MetaOriginSession]] = ev.Metadata[event.MetaRelation]
-	}
-	if origins["owner/repo-parent"] != string(domain.RelationChild) {
-		t.Fatalf("origins = %+v, want owner/repo-parent delivered directly as child", origins)
-	}
-	if origins["owner/repo-1"] != string(domain.RelationDescendant) {
-		t.Fatalf("origins = %+v, want owner/repo-1 skip-delivered as descendant (its immediate parent was dead)", origins)
-	}
-}
-
-func TestWatchdogTick_FallsBackToLocalRecordWhenNoLiveAncestor(t *testing.T) {
-	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	report, err := HealthcheckSession(cfg, store, HealthcheckParams{
+		SessionName: "owner/repo-1",
+		Config: config.HealthcheckConfig{
+			Period:         config.Duration{Duration: time.Minute},
+			StallThreshold: config.Duration{Duration: 3 * time.Minute},
+			RenotifyEvery:  2,
+		},
 	})
-	// No parent at all.
-
-	reports, err := WatchdogTick(cfg, store)
 	if err != nil {
-		t.Fatalf("WatchdogTick: %v", err)
+		t.Fatalf("HealthcheckSession: %v", err)
 	}
-	if len(reports) != 1 || reports[0].Pushed {
-		t.Fatalf("reports = %+v, want one unpushed (no live ancestor) report", reports)
-	}
-
-	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{event.TypeTerminalDead}})
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(evs) != 1 || evs[0].Metadata["undeliverable"] != "true" {
-		t.Fatalf("local dead record = %+v, want one undeliverable record on the origin's own log", evs)
-	}
-}
-
-func TestWatchdogTick_DoesNotRepushOnRepeatedTick(t *testing.T) {
-	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
-	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
-	})
-	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
-
-	if _, err := WatchdogTick(cfg, store); err != nil {
-		t.Fatalf("first tick: %v", err)
-	}
-	if _, err := WatchdogTick(cfg, store); err != nil {
-		t.Fatalf("second tick: %v", err)
+	if !report.Pushed || report.PushTarget != "owner/repo-grandparent" {
+		t.Fatalf("report = %+v, want health escalation pushed past the dead parent", report)
 	}
 
-	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-orchestrator", 0, event.Filter{Types: []string{event.TypeTerminalDead}})
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-grandparent", 0, event.Filter{Types: []string{event.TypeTerminalEscalate}})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
 	if len(evs) != 1 {
-		t.Fatalf("dead events after 2 ticks = %d, want 1 (deduped)", len(evs))
+		t.Fatalf("grandparent escalations = %+v, want one", evs)
 	}
-}
-
-func TestWatchdogTick_SkipsSessionsWithNoRunScopeUp(t *testing.T) {
-	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
-		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusCleaned},
-	})
-
-	reports, err := WatchdogTick(cfg, store)
-	if err != nil {
-		t.Fatalf("WatchdogTick: %v", err)
+	if evs[0].Metadata[event.MetaOriginSession] != "owner/repo-1" {
+		t.Fatalf("escalation origin = %q, want owner/repo-1", evs[0].Metadata[event.MetaOriginSession])
 	}
-	if len(reports) != 0 {
-		t.Fatalf("reports = %+v, want none (session is down, not dead)", reports)
+	if evs[0].Metadata[event.MetaRelation] != string(domain.RelationDescendant) {
+		t.Fatalf("escalation relation = %q, want descendant", evs[0].Metadata[event.MetaRelation])
 	}
 }
