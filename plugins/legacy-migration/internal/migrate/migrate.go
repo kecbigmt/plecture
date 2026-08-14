@@ -25,7 +25,10 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	contract "github.com/kecbigmt/plect/contracts/state"
 )
+
+const preGuardStateVersion = 5
 
 // Options configures a migration run.
 type Options struct {
@@ -218,6 +221,12 @@ func migrateStateJSON(data []byte) ([]byte, []string, error) {
 		}
 	}
 
+	if note, err := stampStateVersion(after); err != nil {
+		return nil, nil, err
+	} else if note != "" {
+		notes = append(notes, note)
+	}
+
 	if len(notes) == 0 {
 		return nil, nil, nil
 	}
@@ -237,6 +246,30 @@ func migrateStateJSON(data []byte) ([]byte, []string, error) {
 	}
 	out = append(out, '\n')
 	return out, notes, nil
+}
+
+func stampStateVersion(state map[string]any) (string, error) {
+	raw, ok := state["version"]
+	if !ok {
+		state["version"] = float64(contract.SchemaVersion)
+		return fmt.Sprintf("state.json: stamped schema version %d", contract.SchemaVersion), nil
+	}
+	version, ok := raw.(float64)
+	if !ok || version != float64(int(version)) {
+		return "", fmt.Errorf("state.json: invalid schema version %v", raw)
+	}
+	got := int(version)
+	if got == contract.SchemaVersion {
+		return "", nil
+	}
+	if got > contract.SchemaVersion {
+		return "", fmt.Errorf("state.json: schema version %d is newer than this migration tool understands (%d)", got, contract.SchemaVersion)
+	}
+	if got != preGuardStateVersion {
+		return "", fmt.Errorf("state.json: schema version %d is not supported by this migration tool", got)
+	}
+	state["version"] = float64(contract.SchemaVersion)
+	return fmt.Sprintf("state.json: bumped schema version from %d to %d", got, contract.SchemaVersion), nil
 }
 
 func migrateSlackField(session map[string]any) bool {
@@ -340,7 +373,7 @@ func migrateWorkdirPath(session map[string]any) bool {
 		return false
 	}
 	delete(session, "worktree_path")
-	if _, exists := session["workdir_path"]; !exists {
+	if current, exists := session["workdir_path"]; !exists || current == "" {
 		session["workdir_path"] = value
 	}
 	return true

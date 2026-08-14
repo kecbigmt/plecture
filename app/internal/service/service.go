@@ -58,11 +58,15 @@ func effectiveTag(tag, workflowID string) (string, *Error) {
 //     variants share the alias)
 //  3. resolver derivation (pure, offline — works during provider outages)
 func resolveSession(cfg *config.Config, store *state.Store, identifier string) (string, *domain.Session, error) {
-	if session := store.Get(identifier); session != nil {
+	if session, err := store.GetE(identifier); err != nil {
+		return "", nil, err
+	} else if session != nil {
 		return identifier, session, nil
 	}
 
-	if hits := store.FindByAlias(identifier); len(hits) == 1 {
+	if hits, err := store.FindByAliasE(identifier); err != nil {
+		return "", nil, err
+	} else if len(hits) == 1 {
 		return hits[0].Name, hits[0], nil
 	} else if len(hits) > 1 {
 		names := make([]string, len(hits))
@@ -76,7 +80,9 @@ func resolveSession(cfg *config.Config, store *state.Store, identifier string) (
 	sessionName := identifier
 	if cfg != nil {
 		if disp, matched, err := dispatchResource(cfg, "", identifier); err == nil && matched {
-			if session := store.Get(disp.Name); session != nil {
+			if session, err := store.GetE(disp.Name); err != nil {
+				return "", nil, err
+			} else if session != nil {
 				return disp.Name, session, nil
 			}
 			sessionName = disp.Name
@@ -297,7 +303,10 @@ type ListEntry struct {
 
 // List returns all sessions with their statuses.
 func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
-	sessions := store.All()
+	sessions, err := store.AllE()
+	if err != nil {
+		return nil, err
+	}
 	displayWorkflows := loadDisplayWorkflows(cfg)
 	displayTasks := loadDisplayTasks(cfg)
 

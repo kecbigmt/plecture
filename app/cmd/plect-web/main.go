@@ -27,7 +27,12 @@ func main() {
 
 	cfg := webui.LoadConfig()
 	addr := cfg.Addr(*host, port)
-	srv := webui.NewWithConfig(webui.NewLiveService(), cfg)
+	live, err := webui.NewLiveService()
+	if err != nil {
+		logger.Error("state check failed", "error", err)
+		os.Exit(1)
+	}
+	srv := webui.NewWithConfig(live, cfg)
 	server := &http.Server{Addr: addr, Handler: srv.Routes()}
 
 	go func() {

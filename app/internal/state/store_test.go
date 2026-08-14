@@ -1,12 +1,12 @@
 package state
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -76,6 +76,15 @@ func TestStore_GetMissing(t *testing.T) {
 	got := store.Get("nonexistent")
 	if got != nil {
 		t.Errorf("Get() = %v, want nil", got)
+	}
+}
+
+func TestStore_CheckReadableAllowsMissingStateFile(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "missing")
+	store := NewStore(dir)
+
+	if err := store.CheckReadable(); err != nil {
+		t.Fatalf("CheckReadable() with no state file: %v", err)
 	}
 }
 
@@ -212,50 +221,6 @@ func TestStore_All(t *testing.T) {
 	}
 }
 
-func TestStore_MigrateLegacySlack(t *testing.T) {
-	dir := t.TempDir()
-
-	// Write old-format state.json with "slack" field
-	stateJSON := `{
-		"version": 1,
-		"sessions": {
-			"owner/repo-1": {
-				"session_name": "owner/repo-1",
-				"url": "https://github.com/owner/repo/issues/1",
-				"url_type": "issue",
-				"owner_repo": "owner/repo",
-				"number": 1,
-				"branch": "issue/1",
-				"workdir_path": "/tmp/wt",
-				"slack": {
-					"thread_ts": "9999999999.999999",
-					"channel_id": "COLD123"
-				}
-			}
-		}
-	}`
-	os.WriteFile(filepath.Join(dir, "state.json"), []byte(stateJSON), 0644)
-
-	store := NewStore(dir)
-	got := store.Get("owner/repo-1")
-	if got == nil {
-		t.Fatal("Get() returned nil")
-	}
-
-	if got.Conversation == nil {
-		t.Fatal("legacy slack field should be migrated to Conversation")
-	}
-	if got.Conversation.Source != "Slack" {
-		t.Errorf("Source = %q, want %q", got.Conversation.Source, "Slack")
-	}
-	if got.Conversation.Metadata["thread_ts"] != "9999999999.999999" {
-		t.Errorf("thread_ts = %q", got.Conversation.Metadata["thread_ts"])
-	}
-	if got.Conversation.Metadata["channel_id"] != "COLD123" {
-		t.Errorf("channel_id = %q", got.Conversation.Metadata["channel_id"])
-	}
-}
-
 // TestStore_ConcurrentPut verifies that concurrent Put calls from multiple
 // Store instances (simulating separate processes sharing the same lock file)
 // do not cause lost updates.
@@ -385,7 +350,7 @@ func TestLoad_BackfillsAliasFromResourceID(t *testing.T) {
 	// A session written without an explicit alias was looked up by its
 	// resource id, so loading must make that lookup keep working.
 	state := `{
-  "version": 5,
+  "version": 6,
   "sessions": {
     "org/repo-1": {
       "session_name": "org/repo-1",
@@ -403,70 +368,6 @@ func TestLoad_BackfillsAliasFromResourceID(t *testing.T) {
 	}
 	if s.Alias != "https://example.test/org/repo/items/1" {
 		t.Errorf("Alias = %q, want it backfilled from the resource id", s.Alias)
-	}
-}
-
-func TestLoad_MigratesEffectsToTasks(t *testing.T) {
-	dir := t.TempDir()
-	statePath := filepath.Join(dir, "state.json")
-	v3 := `{
-  "version": 3,
-  "sessions": {
-    "org/repo-1": {
-      "session_name": "org/repo-1",
-      "url": "https://github.com/org/repo/issues/1",
-      "url_type": "issue",
-      "owner_repo": "org/repo",
-      "number": 1,
-      "effects": {
-        "review#1": {
-          "scope": "session",
-          "effect_id": "review",
-          "status": "produced",
-          "dynamic": true,
-          "outputs": {"checks_status": "SUCCESS"}
-        }
-      }
-    }
-  }
-}`
-	if err := os.WriteFile(statePath, []byte(v3), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	store := NewStore(dir)
-	s := store.Get("org/repo-1")
-	if s == nil {
-		t.Fatal("session not loaded")
-	}
-	task := s.Tasks["review#1"]
-	if task == nil {
-		t.Fatalf("legacy effects were not migrated: %+v", s.Tasks)
-	}
-	if task.TaskID != "review" {
-		t.Fatalf("TaskID = %q, want review", task.TaskID)
-	}
-
-	if err := store.Put(s); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var raw map[string]any
-	if err := json.Unmarshal(data, &raw); err != nil {
-		t.Fatal(err)
-	}
-	if raw["version"] != float64(5) {
-		t.Fatalf("version = %v, want 5", raw["version"])
-	}
-	session := raw["sessions"].(map[string]any)["org/repo-1"].(map[string]any)
-	if _, ok := session["effects"]; ok {
-		t.Fatal("rewritten state must not contain legacy effects")
-	}
-	if _, ok := session["tasks"]; !ok {
-		t.Fatal("rewritten state must contain tasks")
 	}
 }
 
@@ -512,5 +413,85 @@ func TestStore_CorruptedStateFileFailsWritesInsteadOfOverwriting(t *testing.T) {
 	}
 	if string(data) != string(corrupt) {
 		t.Fatalf("corrupted state file was rewritten: got %q, want unchanged %q", data, corrupt)
+	}
+}
+
+func TestStore_StateVersionMismatchFailsWritesInsteadOfOverwriting(t *testing.T) {
+	tests := []struct {
+		name      string
+		version   int
+		wantParts []string
+	}{
+		{
+			name:    "older",
+			version: 5,
+			wantParts: []string{
+				"state schema version mismatch",
+				"got 5",
+				"want 6",
+				"go run ./plugins/legacy-migration/cmd/legacy-migration",
+			},
+		},
+		{
+			name:    "newer",
+			version: 7,
+			wantParts: []string{
+				"state schema version mismatch",
+				"got 7",
+				"want 6",
+				"newer",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			statePath := filepath.Join(dir, "state.json")
+			original := []byte(fmt.Sprintf(`{
+  "version": %d,
+  "sessions": {
+    "org/repo-1": {
+      "session_name": "org/repo-1",
+      "workdir_path": "/tmp/workdir"
+    }
+  }
+}`, tt.version))
+			if err := os.WriteFile(statePath, original, 0644); err != nil {
+				t.Fatal(err)
+			}
+			store := NewStore(dir)
+
+			if err := store.CheckReadable(); err == nil {
+				t.Fatal("CheckReadable() over a mismatched state version must fail")
+			}
+			if _, err := store.AllE(); err == nil {
+				t.Fatal("AllE() over a mismatched state version must fail")
+			}
+			if _, err := store.GetE("org/repo-1"); err == nil {
+				t.Fatal("GetE() over a mismatched state version must fail")
+			}
+			if _, err := store.FindByAliasE("https://example.test/org/repo/items/1"); err == nil {
+				t.Fatal("FindByAliasE() over a mismatched state version must fail")
+			}
+
+			err := store.Put(&domain.Session{Name: "org/repo-2"})
+			if err == nil {
+				t.Fatal("Put() over a mismatched state version must fail, not silently overwrite it")
+			}
+			for _, part := range tt.wantParts {
+				if !strings.Contains(err.Error(), part) {
+					t.Fatalf("error = %q, want it to contain %q", err.Error(), part)
+				}
+			}
+
+			data, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data) != string(original) {
+				t.Fatalf("mismatched state file was rewritten: got %q, want unchanged %q", data, original)
+			}
+		})
 	}
 }

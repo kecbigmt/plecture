@@ -13,7 +13,7 @@ import (
 // resource id and the create-time alias, with no legacy provider-shaped
 // identity keys at all.
 const postMigrationStateJSON = `{
-  "version": 5,
+  "version": 6,
   "sessions": {
     "acme/widgets-1+claude": {
       "session_name": "acme/widgets-1+claude",
@@ -142,7 +142,7 @@ func TestPostMigrationState_ResolverDispatchOverPostMigrationState(t *testing.T)
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "state.json")
 	migrated := `{
-  "version": 5,
+  "version": 6,
   "sessions": {
     "acme/widgets-42+gh": {
       "session_name": "acme/widgets-42+gh",

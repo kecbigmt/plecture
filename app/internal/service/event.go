@@ -188,7 +188,10 @@ func EventPageSubtree(cfg *config.Config, store *state.Store, identifier string,
 	if err != nil {
 		return EventPageResult{}, err
 	}
-	sessions := store.All()
+	sessions, err := store.AllE()
+	if err != nil {
+		return EventPageResult{}, err
+	}
 	if sessions[name] == nil {
 		return EventPageResult{}, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no session %q in state; subtree views need a tree root", name)}
 	}
@@ -264,11 +267,19 @@ func EventTailSubtree(ctx context.Context, cfg *config.Config, store *state.Stor
 	if err != nil {
 		return err
 	}
-	if store.Get(name) == nil {
+	session, err := store.GetE(name)
+	if err != nil {
+		return err
+	}
+	if session == nil {
 		return &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("no session %q in state; subtree views need a tree root", name)}
 	}
 	return eventlog.NewStore(store.Dir()).FollowAcross(ctx, func() ([]string, error) {
-		return domain.Subtree(store.All(), name), nil
+		sessions, err := store.AllE()
+		if err != nil {
+			return nil, err
+		}
+		return domain.Subtree(sessions, name), nil
 	}, f, fn)
 }
 
@@ -424,11 +435,15 @@ func appendInstruction(store *state.Store, sessionName, taskKey, resource, instr
 // exist (destroyed sessions retain their log), so a non-matching identifier
 // falls back to itself rather than erroring.
 func resolveSessionName(cfg *config.Config, store *state.Store, identifier string) (string, error) {
-	if store.Get(identifier) != nil {
+	if session, err := store.GetE(identifier); err != nil {
+		return "", err
+	} else if session != nil {
 		return identifier, nil
 	}
 
-	if hits := store.FindByAlias(identifier); len(hits) == 1 {
+	if hits, err := store.FindByAliasE(identifier); err != nil {
+		return "", err
+	} else if len(hits) == 1 {
 		return hits[0].Name, nil
 	} else if len(hits) > 1 {
 		names := make([]string, len(hits))

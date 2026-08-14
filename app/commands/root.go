@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kecbigmt/plect/app/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +28,12 @@ identifier no resolver matches selects a workflow explicitly (see
 	// help dump that follows.
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		if err := state.NewStore("").CheckReadable(); err != nil {
+			return err
+		}
+		return nil
+	},
 }
 
 func Execute() error {

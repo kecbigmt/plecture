@@ -15,7 +15,7 @@ import (
 	contract "github.com/kecbigmt/plect/contracts/state"
 )
 
-const stateVersion = 5
+const stateVersion = contract.SchemaVersion
 
 type stateFile struct {
 	Version  int                        `json:"version"`
@@ -48,10 +48,25 @@ func (s *Store) Dir() string {
 	return filepath.Dir(s.path)
 }
 
+// CheckReadable verifies that the state file can be loaded by this binary.
+func (s *Store) CheckReadable() error {
+	_, err := s.loadE()
+	return err
+}
+
 // Get returns a session by name, or nil if not found.
 func (s *Store) Get(name string) *domain.Session {
 	sf := s.load()
 	return sf.Sessions[name]
+}
+
+// GetE returns a session by name while preserving state load errors.
+func (s *Store) GetE(name string) (*domain.Session, error) {
+	sf, err := s.loadE()
+	if err != nil {
+		return nil, err
+	}
+	return sf.Sessions[name], nil
 }
 
 // Put saves or updates a session.
@@ -117,8 +132,36 @@ func (s *Store) Delete(name string) error {
 // caller decides how to disambiguate.
 func (s *Store) FindByAlias(alias string) []*domain.Session {
 	sf := s.load()
+	return findByAlias(sf.Sessions, alias)
+}
+
+// FindByAliasE returns alias matches while preserving state load errors.
+func (s *Store) FindByAliasE(alias string) ([]*domain.Session, error) {
+	sf, err := s.loadE()
+	if err != nil {
+		return nil, err
+	}
+	return findByAlias(sf.Sessions, alias), nil
+}
+
+// All returns all sessions.
+func (s *Store) All() map[string]*domain.Session {
+	sf := s.load()
+	return copySessions(sf.Sessions)
+}
+
+// AllE returns all sessions while preserving state load errors.
+func (s *Store) AllE() (map[string]*domain.Session, error) {
+	sf, err := s.loadE()
+	if err != nil {
+		return nil, err
+	}
+	return copySessions(sf.Sessions), nil
+}
+
+func findByAlias(sessions map[string]*domain.Session, alias string) []*domain.Session {
 	var result []*domain.Session
-	for _, session := range sf.Sessions {
+	for _, session := range sessions {
 		if session.Alias != "" && session.Alias == alias {
 			result = append(result, session)
 		}
@@ -126,11 +169,9 @@ func (s *Store) FindByAlias(alias string) []*domain.Session {
 	return result
 }
 
-// All returns all sessions.
-func (s *Store) All() map[string]*domain.Session {
-	sf := s.load()
-	result := make(map[string]*domain.Session, len(sf.Sessions))
-	for k, v := range sf.Sessions {
+func copySessions(sessions map[string]*domain.Session) map[string]*domain.Session {
+	result := make(map[string]*domain.Session, len(sessions))
+	for k, v := range sessions {
 		result[k] = v
 	}
 	return result
@@ -183,41 +224,53 @@ func (s *Store) withSharedFileLock(fn func() *stateFile) *stateFile {
 	return fn()
 }
 
+func (s *Store) withSharedLockErr(fn func() error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	lockPath := s.path + ".lock"
+	dir := filepath.Dir(lockPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create state directory: %w", err)
+	}
+
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open state lock file: %w", err)
+	}
+	defer f.Close()
+
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_SH); err != nil {
+		return fmt.Errorf("acquire state lock: %w", err)
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+
+	return fn()
+}
+
 func (s *Store) load() *stateFile {
 	return s.withSharedFileLock(func() *stateFile {
 		sf, err := s.loadLocked()
 		if err != nil {
-			// Read paths degrade to empty on a corrupted file rather than fail-fast:
-			// they have no error return to propagate to (Get/All predate this), so
-			// they'd need a signature change to surface it — tracked separately as a
-			// later, wider migration. Put/Update/Delete are the load-bearing paths and
-			// do fail-fast below, which is what actually prevents clobbering good state.
+			// Compatibility read paths degrade to empty when callers have no
+			// error return to propagate. New read paths should use loadE.
 			return &stateFile{Version: stateVersion, Sessions: make(map[string]*domain.Session)}
 		}
 		return sf
 	})
 }
 
-// legacySession is used for backward-compatible deserialization of the old "slack" field.
-type legacySession struct {
-	domain.Session
-	Slack   *legacySlackThread          `json:"slack,omitempty"`
-	Effects map[string]*legacyTaskState `json:"effects,omitempty"`
-}
-
-type legacySlackThread struct {
-	ThreadTS  string `json:"thread_ts"`
-	ChannelID string `json:"channel_id"`
-}
-
-type legacyTaskState struct {
-	contract.TaskState
-	EffectID string `json:"effect_id,omitempty"`
-}
-
-type legacyStateFile struct {
-	Version  int                       `json:"version"`
-	Sessions map[string]*legacySession `json:"sessions"`
+func (s *Store) loadE() (*stateFile, error) {
+	var sf *stateFile
+	err := s.withSharedLockErr(func() error {
+		var err error
+		sf, err = s.loadLocked()
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sf, nil
 }
 
 // loadLocked reads and parses state.json. A missing file is a fresh, empty
@@ -235,32 +288,48 @@ func (s *Store) loadLocked() (*stateFile, error) {
 		return nil, fmt.Errorf("read state file: %w", err)
 	}
 
-	// Try loading with legacy format first to migrate old "slack" fields
-	var lsf legacyStateFile
-	if err := json.Unmarshal(data, &lsf); err != nil {
+	var header struct {
+		Version int `json:"version"`
+	}
+	if err := json.Unmarshal(data, &header); err != nil {
 		return nil, fmt.Errorf("parse state file: %w", err)
 	}
+	if err := validateStateVersion(header.Version); err != nil {
+		return nil, err
+	}
 
-	for name, ls := range lsf.Sessions {
-		session := &ls.Session
-		session.Name = name // ensure name is set from map key
-		// Migrate old "slack" field to Conversation
-		if ls.Slack != nil && session.Conversation == nil {
-			session.Conversation = &domain.Conversation{
-				Source: "Slack",
-				Metadata: map[string]string{
-					"thread_ts":  ls.Slack.ThreadTS,
-					"channel_id": ls.Slack.ChannelID,
-				},
-			}
+	var parsed stateFile
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return nil, fmt.Errorf("parse state file: %w", err)
+	}
+	if parsed.Sessions == nil {
+		parsed.Sessions = make(map[string]*domain.Session)
+	}
+	if err := validateStateVersion(parsed.Version); err != nil {
+		return nil, err
+	}
+
+	for name, session := range parsed.Sessions {
+		if session == nil {
+			continue
 		}
-		migrateEffectsToTasks(session, ls.Effects)
+		session.Name = name // ensure name is set from map key
 		migrateResourceID(session)
 		sf.Sessions[name] = session
 	}
 	normalizeSessionTree(sf.Sessions)
 
 	return sf, nil
+}
+
+func validateStateVersion(got int) error {
+	if got == stateVersion {
+		return nil
+	}
+	if got > stateVersion {
+		return fmt.Errorf("state schema version mismatch: got %d, want %d; this state was written by a newer plect binary, so use a matching binary or migrate explicitly", got, stateVersion)
+	}
+	return fmt.Errorf("state schema version mismatch: got %d, want %d; run `go run ./plugins/legacy-migration/cmd/legacy-migration` before using this plect binary", got, stateVersion)
 }
 
 func normalizeSessionTree(sessions map[string]*domain.Session) {
@@ -370,28 +439,6 @@ func removeSessionName(names []string, remove string) []string {
 func migrateResourceID(session *domain.Session) {
 	if session.Alias == "" && session.ResourceID != "" {
 		session.Alias = session.ResourceID
-	}
-}
-
-func migrateEffectsToTasks(session *domain.Session, effects map[string]*legacyTaskState) {
-	if len(effects) == 0 {
-		return
-	}
-	if session.Tasks == nil {
-		session.Tasks = make(map[string]*contract.TaskState, len(effects))
-	}
-	for key, legacy := range effects {
-		if legacy == nil {
-			continue
-		}
-		if _, exists := session.Tasks[key]; exists {
-			continue
-		}
-		st := legacy.TaskState
-		if st.TaskID == "" {
-			st.TaskID = legacy.EffectID
-		}
-		session.Tasks[key] = &st
 	}
 }
 

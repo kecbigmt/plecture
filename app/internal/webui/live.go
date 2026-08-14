@@ -15,8 +15,12 @@ type LiveService struct {
 }
 
 // NewLiveService wires config.Load() and the default state store.
-func NewLiveService() *LiveService {
-	return newLiveService(config.Load(), state.NewStore(""))
+func NewLiveService() (*LiveService, error) {
+	store := state.NewStore("")
+	if err := store.CheckReadable(); err != nil {
+		return nil, err
+	}
+	return newLiveService(config.Load(), store), nil
 }
 
 // newLiveService injects the cfg and store so tests can supply a temp store

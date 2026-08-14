@@ -92,7 +92,10 @@ func (r HealthReport) State() domain.HealthState {
 // was supposed to be up, not a session that was deliberately brought down.
 // The first failing healthcheck wins; Reason names the failing task.
 func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (HealthReport, error) {
-	s := store.Get(name)
+	s, err := store.GetE(name)
+	if err != nil {
+		return HealthReport{}, err
+	}
 	if s == nil {
 		return HealthReport{}, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", name)}
 	}
@@ -301,7 +304,10 @@ func finalizeMovementObservation(report *HealthReport, prev *contract.HealthStat
 
 func HealthcheckSession(cfg *config.Config, store *state.Store, params HealthcheckParams) (*HealthReport, error) {
 	healthCfg := config.NormalizeHealthcheckConfig(&params.Config)
-	before := store.Get(params.SessionName)
+	before, err := store.GetE(params.SessionName)
+	if err != nil {
+		return nil, err
+	}
 	var prev *contract.HealthState
 	if before != nil && before.Health != nil {
 		cp := *before.Health
@@ -402,7 +408,10 @@ func publishHealthEscalationToLiveAncestor(cfg *config.Config, store *state.Stor
 	visited := map[string]bool{origin: true}
 	current := origin
 	for {
-		s := store.Get(current)
+		s, err := store.GetE(current)
+		if err != nil {
+			return "", nil, err
+		}
 		if s == nil {
 			return "", nil, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", current)}
 		}
