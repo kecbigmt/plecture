@@ -56,7 +56,7 @@ const oldStateJSON = `{
 }`
 
 const newStateJSON = `{
-  "version": 5,
+  "version": 6,
   "sessions": {
     "acme-issue-1": {
       "session_name": "acme-issue-1",
@@ -314,6 +314,84 @@ detached = true
 	}
 }
 
+func TestRun_BumpsPreGuardStateVersion(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	configPath := filepath.Join(dir, "config.toml")
+	preGuard := `{
+  "version": 5,
+  "sessions": {
+    "acme-issue-1": {
+      "session_name": "acme-issue-1",
+      "resource_id": "https://example.test/acme/widgets/items/1",
+      "alias": "https://example.test/acme/widgets/items/1",
+      "workdir_path": "/tmp/workdirs/acme-issue-1"
+    }
+  }
+}`
+	if err := os.WriteFile(statePath, []byte(preGuard), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(Options{StatePath: statePath, ConfigPath: configPath, BackupDir: filepath.Join(dir, "migration-backups")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Changed || !report.StateChanged || report.ConfigChanged {
+		t.Fatalf("expected only state.json to be rewritten, got %+v", report)
+	}
+
+	got := decodeJSONMap(t, mustReadFile(t, statePath))
+	if got["version"] != float64(6) {
+		t.Fatalf("version = %v, want 6", got["version"])
+	}
+}
+
+func TestRun_RepairsEmptyWorkdirPathFromLegacyWorktreePath(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	configPath := filepath.Join(dir, "config.toml")
+	input := `{
+  "version": 5,
+  "sessions": {
+    "acme-issue-1": {
+      "session_name": "acme-issue-1",
+      "workdir_path": "",
+      "worktree_path": "/tmp/worktrees/acme-issue-1"
+    }
+  }
+}`
+	if err := os.WriteFile(statePath, []byte(input), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(""), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(Options{StatePath: statePath, ConfigPath: configPath, BackupDir: filepath.Join(dir, "migration-backups")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Changed || !report.StateChanged {
+		t.Fatalf("expected state.json to be rewritten, got %+v", report)
+	}
+
+	got := decodeJSONMap(t, mustReadFile(t, statePath))
+	session := got["sessions"].(map[string]any)["acme-issue-1"].(map[string]any)
+	if session["workdir_path"] != "/tmp/worktrees/acme-issue-1" {
+		t.Fatalf("workdir_path = %v, want restored legacy path", session["workdir_path"])
+	}
+	if _, exists := session["worktree_path"]; exists {
+		t.Fatal("legacy worktree_path key must be removed")
+	}
+	if got["version"] != float64(6) {
+		t.Fatalf("version = %v, want 6", got["version"])
+	}
+}
+
 func TestRun_MissingFilesIsNoOp(t *testing.T) {
 	dir := t.TempDir()
 	report, err := Run(Options{
@@ -371,4 +449,13 @@ func decodeStringSlice(t *testing.T, tomlData []byte, key string) []string {
 		}
 	}
 	return out
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

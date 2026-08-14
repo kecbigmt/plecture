@@ -52,7 +52,11 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 	// its event log, so a typo'd --session would create a ghost subscription
 	// publishing to a name nothing reads. The env-default path always names
 	// the caller's own (existing) session; this guards the explicit override.
-	if store.Get(sessionName) == nil {
+	session, err := store.GetE(sessionName)
+	if err != nil {
+		return err
+	}
+	if session == nil {
 		return &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q does not exist", sessionName)}
 	}
 

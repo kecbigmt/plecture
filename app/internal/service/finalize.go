@@ -95,7 +95,10 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q declares no done_when; finalize has nothing to reconfirm", params.Instance)}
 	}
 
-	allSessions := store.All()
+	allSessions, err := store.AllE()
+	if err != nil {
+		return nil, err
+	}
 	eval := task.EvaluateTaskDoneWhenWithContext(dw, st.Outputs, doneWhenEvalContext(resolvedName, st, allSessions))
 	if eval.Overall != task.DoneSatisfied {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q done_when is %s, not satisfied; finalize refuses to record completion or clean up", params.Instance, eval.Overall)}

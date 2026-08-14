@@ -57,7 +57,10 @@ func resolveTerminalTarget(parent string) string {
 // still recorded (err is nil), so callers should surface wakeErr as a warning
 // rather than fail the caller's own operation on it.
 func PublishTerminalToParent(cfg *config.Config, store *state.Store, origin string, p TerminalParams) (id string, wakeErr error, err error) {
-	s := store.Get(origin)
+	s, err := store.GetE(origin)
+	if err != nil {
+		return "", nil, err
+	}
 	if s == nil {
 		return "", nil, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", origin)}
 	}
@@ -99,7 +102,11 @@ func publishTerminalTo(cfg *config.Config, store *state.Store, origin, target st
 		meta[k] = v
 	}
 	meta[event.MetaOriginSession] = origin
-	meta[event.MetaRelation] = string(domain.RelationFromTarget(store.All(), target, origin))
+	sessions, err := store.AllE()
+	if err != nil {
+		return "", nil, err
+	}
+	meta[event.MetaRelation] = string(domain.RelationFromTarget(sessions, target, origin))
 	if p.DedupKey != "" {
 		meta[event.MetaDedupKey] = p.DedupKey
 	}
@@ -124,7 +131,11 @@ func publishTerminalTo(cfg *config.Config, store *state.Store, origin, target st
 		return "", nil, &Error{Code: ErrExecutionFailed, Message: aerr.Error()}
 	}
 	if wakeIfDown {
-		if ts := store.Get(target); ts != nil && !runScopeUp(ts.Tasks) {
+		ts, err := store.GetE(target)
+		if err != nil {
+			return "", nil, err
+		}
+		if ts != nil && !runScopeUp(ts.Tasks) {
 			if _, uerr := Up(cfg, store, UpParams{Identifier: target}); uerr != nil {
 				wakeErr = fmt.Errorf("wake %q: %w", target, uerr)
 			}

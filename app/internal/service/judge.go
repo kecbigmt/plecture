@@ -78,7 +78,10 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 	if reviewer == "" {
 		return nil, &Error{Code: ErrInvalidInput, Message: "reviewer session is required: pass --reviewer-session or run inside a reviewer plect session pane"}
 	}
-	allSessions := store.All()
+	allSessions, err := store.AllE()
+	if err != nil {
+		return nil, err
+	}
 	reviewerWorkflow := ""
 	if rs := allSessions[reviewer]; rs != nil {
 		reviewerWorkflow = rs.Workflow

@@ -159,7 +159,10 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 		})
 	}
 
-	sessions := store.All()
+	sessions, err := store.AllE()
+	if err != nil {
+		return nil, err
+	}
 
 	events, err := EventRecent(cfg, store, sessionName, statusFlowLimit)
 	if err != nil {

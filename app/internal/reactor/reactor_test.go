@@ -530,6 +530,12 @@ func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
 	}
 
 	// Before the backed-off interval elapses, a sweep must not tick.
+	if err := st.Update("o/r-1", func(s *domain.Session) error {
+		s.LastTickAt = time.Now().Add(-heartbeat - time.Millisecond)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	tickCount = 0
 	r.checkHeartbeat(ctx)
 	if tickCount != 0 {

@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// SchemaVersion is the current state.json format version.
+const SchemaVersion = 6
+
 // Conversation holds information about an external communication channel
 // associated with a session (e.g., a Slack thread, Discord channel).
 type Conversation struct {
