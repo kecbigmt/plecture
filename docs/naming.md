@@ -50,9 +50,9 @@ Paired with the *plectere* root, the name points at what Plecture provides
 The image the name carries: within a woven structure, each strand stays
 identifiable rather than dissolving into the whole. Humans stay human,
 agents stay agents — Plecture connects them without replacing them. The
-weave is also supple, not rigid: workflows are defined as plain config
-(the way GitHub Actions workflows are), so you and your organization can
-build the workflow that fits you together with AI, and keep growing it.
+weave is also supple, not rigid: Plecture does not prescribe a fixed
+workflow — you and your organization can build and operate the workflow
+that fits you, working together with AI.
 
 `plect` is not a nickname, an abbreviation notice, or a placeholder — it is
 the CLI's formal name, exactly as `hg` is Mercurial's and `rg` is
