@@ -22,7 +22,12 @@ setup = '''
   --watcher-bin {{bin "official/plugins/github/github-watcher" | shellQuote}}
 '''
 
-cleanup = '{{bin "official/plugins/github/plect-github-provider"}} cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}} --force={{.Force}}'
+# --delete-branch reads the delete_branch cleanup input (`plect destroy
+# --input delete_branch=true`, or the plect_destroy MCP tool's cleanup_inputs
+# object) — a provider-level opt-in, not a core flag, so core carries no
+# branch vocabulary. Default is off: a branch left behind after workdir
+# removal is safer than one silently reclaimed.
+cleanup = '{{bin "official/plugins/github/plect-github-provider"}} cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}} --force={{.Force}} --delete-branch={{eq .CleanupInputs.delete_branch "true"}}'
 
 # subscribe binds a session to a resource at runtime (the `plect subscribe`
 # verb) — the same watcher subscription registry the setup-time

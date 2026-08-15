@@ -277,7 +277,7 @@ func TestSetup_MissingWorkdirPathIsAnError(t *testing.T) {
 	}
 }
 
-func TestCleanup_ReleasesWorktreeAndReclaimsBranch(t *testing.T) {
+func TestCleanup_ReleasesWorktreeWithoutReclaimingBranchByDefault(t *testing.T) {
 	mgr := &fakeManager{}
 	if err := Cleanup(context.Background(), CleanupOptions{
 		Workdir: "/roots/wt/issue-42-review",
@@ -293,8 +293,23 @@ func TestCleanup_ReleasesWorktreeAndReclaimsBranch(t *testing.T) {
 	if remove.workdir != "/roots/wt/issue-42-review" || remove.branch != "issue/42+review" {
 		t.Errorf("remove = %+v", remove)
 	}
-	if !remove.deleteBranch {
-		t.Error("cleanup must reclaim the branch it acquired")
+	if remove.deleteBranch {
+		t.Error("cleanup must not reclaim the branch unless DeleteBranch was requested")
+	}
+}
+
+func TestCleanup_DeleteBranchOptIn(t *testing.T) {
+	mgr := &fakeManager{}
+	if err := Cleanup(context.Background(), CleanupOptions{
+		Workdir:      "/roots/wt/issue-42-review",
+		Branch:       "issue/42+review",
+		DeleteBranch: true,
+		Manager:      mgr,
+	}); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+	if !mgr.removes[0].deleteBranch {
+		t.Error("cleanup must reclaim the branch when DeleteBranch is requested")
 	}
 }
 

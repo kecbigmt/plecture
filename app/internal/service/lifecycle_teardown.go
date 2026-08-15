@@ -14,7 +14,7 @@ import (
 // runs its cleanup hook. The definition comes from the trusted layers (the
 // workdir layer cannot declare hooks), so resolving against the session's
 // workdir path is safe even though that path is clone content.
-func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, observer task.Observer) error {
+func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, cleanupInputs map[string]string, observer task.Observer) error {
 	workflows, err := cfg.LoadWorkflows(session.WorkdirPath)
 	if err != nil {
 		return fmt.Errorf("load workflows: %w", err)
@@ -41,6 +41,7 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 		SessionInputs: session.Inputs,
 		Plugins:       cfg.Plugins,
 		Force:         force,
+		CleanupInputs: cleanupInputs,
 	}
 	return task.RunWorkflowCleanup(prov, vars, session.Tasks, observer)
 }

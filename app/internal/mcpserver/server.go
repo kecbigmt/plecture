@@ -98,8 +98,8 @@ var destroyTool = mcp.NewTool("plect_destroy",
 	mcp.WithBoolean("force",
 		mcp.Description("Demote cleanup errors to warnings so teardown continues through workdir cleanup and state deletion; also passes the force intent to cleanup hooks and proceeds when the session has child sessions, orphaning them instead of aborting"),
 	),
-	mcp.WithBoolean("delete_branch",
-		mcp.Description("Also delete the local branch after removing the workdir"),
+	mcp.WithObject("cleanup_inputs",
+		mcp.Description("Opaque key/value cleanup intents forwarded to provider cleanup, unexamined by core; consult the provider's own docs for which keys it reads"),
 	),
 )
 
@@ -283,9 +283,9 @@ func handleDestroy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 
 	result, err := service.Destroy(cfg, store, service.DestroyParams{
-		Identifier:   identifier,
-		Force:        request.GetBool("force", false),
-		DeleteBranch: request.GetBool("delete_branch", false),
+		Identifier:    identifier,
+		Force:         request.GetBool("force", false),
+		CleanupInputs: getStringMapArg(request, "cleanup_inputs"),
 	})
 	if err != nil {
 		return errorResult(err), nil

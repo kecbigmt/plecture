@@ -52,7 +52,6 @@
       </div>
       <input type="hidden" name="name" value="{{ .Identity.SessionName }}">
       <label class="flex items-start gap-2 text-body"><input type="checkbox" name="force" value="1" class="mt-1"><span>Force — demote cleanup errors to warnings and remove a dirty workdir too, continuing teardown</span></label>
-      <label class="flex items-start gap-2 text-body"><input type="checkbox" name="delete_branch" value="1" class="mt-1"><span>Also delete the local branch</span></label>
       <div class="flex items-center justify-end gap-2">
         <span class="htmx-indicator mr-auto text-label text-muted-foreground">Running…</span>
         <button type="button" onclick="this.closest('dialog').close()" class="{{ buttonClass "outline" }}">Cancel</button>

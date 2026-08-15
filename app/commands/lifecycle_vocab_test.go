@@ -19,10 +19,13 @@ func TestLifecycleCommandsRemoveCreateOnly(t *testing.T) {
 	if downCmd.Flags().Lookup("rm") != nil {
 		t.Fatal("down command unexpectedly exposes rm")
 	}
-	for _, name := range []string{"force", "delete-branch"} {
+	for _, name := range []string{"force", "input"} {
 		if destroyCmd.Flags().Lookup(name) == nil {
 			t.Fatalf("destroy command missing %q flag", name)
 		}
+	}
+	if destroyCmd.Flags().Lookup("delete-branch") != nil {
+		t.Fatal("destroy command must not expose delete-branch: core carries no branch vocabulary, branch deletion moved to provider cleanup")
 	}
 }
 
