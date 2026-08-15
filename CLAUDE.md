@@ -165,6 +165,24 @@ can block on, not name-drops.
   process already requires when complexity is introduced ahead of proven
   benefit.
 
+### Standing checks vs. one-time verification
+
+Adding a CI check or test is a decision to pay its maintenance cost
+forever, not a one-time cost.
+
+- A requirement to verify that something is absent, swept, or consistent
+  is satisfied **once**, by evidence in the PR body (the exact command and
+  its output) — not by adding a permanent check.
+- A standing check must guard an invariant that future changes can
+  silently break, and its maintenance cost must not scale with legitimate
+  edits. Never pin prose literals; never assert exact counts of document
+  structure.
+- This does not weaken TDD: tests for code behavior remain the default.
+  This rule targets meta-checks (lint jobs, structure validators, doc
+  checkers) and over-fitted assertions.
+- When proposing a new standing check, state in the PR what invariant it
+  guards and what would silently break without it. No answer, no check.
+
 ### Test placement and speed
 
 Prefer table-driven tests where idiomatic to the case being tested.
