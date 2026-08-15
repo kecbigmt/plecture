@@ -50,6 +50,16 @@ jobs:
       - name: Check comments for issue/PR/ADR number references
         run: ./scripts/check-comment-references.sh
 
+  plugin-packaging-design:
+    name: plugin-packaging-design
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove the checker catches replaced packaging model text
+        run: ./scripts/check-plugin-packaging-design_selftest.sh
+      - name: Check plugin packaging design consistency
+        run: ./scripts/check-plugin-packaging-design.sh
+
   build-test:
     name: build-test (${{ matrix.module }})
     runs-on: ubuntu-latest

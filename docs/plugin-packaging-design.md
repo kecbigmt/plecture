@@ -4,9 +4,11 @@ This document defines the plugin model for distributing reusable Plecture
 configuration and executable adapters. The goal is to reduce bootstrap cost
 without moving provider, tool, or domain knowledge into core.
 
-The design keeps one concept and one word: plugin. A plugin is a
-distributable package that may contain executable adapters, config resources,
-templates, and metadata. A plugin with only configuration is still a plugin.
+The design keeps two concepts: catalog and plugin. A catalog is a trusted
+distribution unit: a subtree of a source repository marked by `catalog.toml`.
+A plugin is a distributable package inside a catalog. It may contain executable
+adapters, config resources, templates, and metadata. A plugin with only
+configuration is still a plugin.
 
 ## Goals and constraints
 
@@ -22,8 +24,42 @@ templates, and metadata. A plugin with only configuration is still a plugin.
 
 ## Package format
 
-A plugin is a directory with a metadata file at the root and zero or more
-standard subdirectories that are already understood by the config loaders:
+A catalog is a directory with a `catalog.toml` manifest at its root. The
+manifest's directory bounds the trust space: Plecture does not fetch, verify,
+or mount files outside that subtree for plugins in the catalog.
+
+`catalog.toml` is hand-authored catalog metadata, not a generated index:
+
+```toml
+schema_version = 1
+description = "Example Plecture plugin catalog."
+
+plugins = [
+  "github",
+  "agent/claude-tasks",
+  "agent/codex-tasks",
+]
+```
+
+Catalog fields:
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `schema_version` | yes | Catalog file-format version. Unknown values fail loud. |
+| `plugins` | yes | Explicit catalog-relative paths to directories that directly contain `plugin.toml`. |
+| `description` | no | Display-only summary for list/show commands. |
+
+Catalogs have no upstream identity field. A catalog name exists only as the
+user's local alias in the catalog registration.
+
+Every path listed in `plugins` must resolve inside the catalog trust space
+after symlink resolution. `..` escapes and symlink escapes are load errors. A
+listed path without `plugin.toml` is a validation error. A `plugin.toml` under
+the catalog subtree that is not listed is also a validation error, so reviewers
+can audit the exact published plugin set from one manifest.
+
+A plugin is a directory with metadata at the root and zero or more standard
+subdirectories that are already understood by the config loaders:
 
 ```text
 plugin.toml
@@ -39,10 +75,10 @@ README.md
 LICENSE
 ```
 
-`plugin.toml` is the only required file:
+`plugin.toml` is the only required plugin-local file:
 
 ```toml
-name = "github"
+schema_version = 1
 version = "0.3.0"
 plect_min_version = "0.8.0"
 description = "GitHub resource provider and workflow support."
@@ -58,15 +94,21 @@ path = "bin/plect-github-provider"
 build = "go build -o bin/plect-github-provider ./cmd/plect-github-provider"
 ```
 
-Metadata fields:
+Plugin metadata fields:
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `name` | yes | Stable plugin identity. It is used in lockfile entries and diagnostics. |
+| `schema_version` | yes | Plugin metadata file-format version. Unknown values fail loud. |
 | `version` | no | Informational plugin package version for diagnostics and list/show commands. |
 | `plect_min_version` | yes | Minimum plect version required to load the plugin. |
 | `description` | no | Human-readable summary for list/show commands. |
 | `executables` | no | Relative paths for scripts or binaries shipped by the plugin. |
+
+The catalog-relative path listed in `catalog.toml` is the plugin identity. Full
+identity is `<catalog-alias>/<relative-path>`, such as `official/github` or
+`official/agent/claude-tasks`. Intra-catalog uniqueness comes from the
+filesystem. There is no plugin-owned identity field and no metadata identity
+check.
 
 Executable entry fields:
 
@@ -115,26 +157,27 @@ setup = 'agent-runtime launch --workdir {{.Session.WorkdirPath | shellQuote}}'
 cleanup = 'agent-runtime stop --id {{.Self.runtime_id | shellQuote}}'
 ```
 
-The same hook against a plugin-shipped executable names the plugin reference at
-the command position:
+The same hook against a plugin-shipped executable names the catalog-qualified
+plugin reference at the command position:
 
 ```toml
 scope = "run"
-setup = '{{bin "agent-runtime"}} launch --workdir {{.Session.WorkdirPath | shellQuote}}'
-cleanup = '{{bin "agent-runtime"}} stop --id {{.Self.runtime_id | shellQuote}}'
+setup = '{{bin "official/agent/runtime/agent-runtime"}} launch --workdir {{.Session.WorkdirPath | shellQuote}}'
+cleanup = '{{bin "official/agent/runtime/agent-runtime"}} stop --id {{.Self.runtime_id | shellQuote}}'
 ```
 
-`{{bin "agent-runtime"}}` is the tersest viable form: it keeps the executable
-reference in the place a command name already appears, and a plugin with exactly
-one executable can be referenced by plugin name alone. A multi-executable plugin
-uses `{{bin "plugin-name/executable-name"}}`; an ambiguous single-name reference
-is a load error. For locked sources, the helper returns an absolute path inside
-the read-only mounted plugin cache. For editable path sources, it returns an
-absolute path inside the directly mounted development tree. It never writes
-generated paths back into user config.
+`{{bin "<catalog-alias>/<plugin-path>/<executable>"}}` is the unambiguous form.
+For a plugin with exactly one executable,
+`{{bin "<catalog-alias>/<plugin-path>"}}` is shorthand for that executable. A
+shorter reference that omits the catalog alias is a load error because plugin
+paths are unique only inside a catalog. An executable segment that is ambiguous
+inside the selected plugin is also a load error. For locked plugins, the helper
+returns an absolute path inside the read-only mounted plugin cache. For
+editable path catalogs, it returns an absolute path inside the directly mounted
+development tree. It never writes generated paths back into user config.
 
 The same template-variable reference and read-only-mount rules apply to scripts
-and built binaries for locked sources; editable path sources keep the same
+and built binaries for locked plugins; editable path catalogs keep the same
 executable lookup but use the development-mode mount exception described in the
 resolution flow. Scripts are executed through their shebangs; hooks still
 reference them through `{{bin ...}}`.
@@ -174,17 +217,18 @@ Executable delivery is staged:
 A Go toolchain is an explicit v1 requirement for plugins with Go build commands,
 consistent with plect itself being installable through `go install` and with
 Go-tooling norms such as user-built language servers and static-analysis tools.
-The lock pins the source revision and content hash, so a locally built binary is
-a derivative of exactly the trusted content. That is a stronger verification
-chain than unsigned prebuilt distribution. Running a build command is within the
-trust already granted by confirming the source, because plugin config can run
-shell during normal operation. Plecture-maintained plugins also remain available
-through the existing Nix path.
+The lock pins the catalog revision and plugin content hash, so a locally built
+binary is a derivative of exactly the trusted content. That is a stronger
+verification chain than unsigned prebuilt distribution. Running a build command
+is within the trust already granted by confirming the catalog registration,
+because plugin config can run shell during normal operation.
+Plecture-maintained plugins also remain available through the existing Nix path.
 
 ## Reference resolution
 
-Users declare selected plugins in trusted user-owned config, not inside cloned
-workdir content. The global declaration file lives at:
+Users register trusted catalogs and enable selected plugins in trusted
+user-owned config, not inside cloned workdir content. The global declaration
+file lives at:
 
 ```text
 ~/.config/plect/plugins.toml
@@ -193,46 +237,51 @@ workdir content. The global declaration file lives at:
 Example:
 
 ```toml
-[[trusted_sources]]
-source_prefix = "git+https://github.com/example/"
+[[trusted_catalogs]]
+alias = "official"
+locator = "git+https://github.com/example/plect-plugins"
+revision = "v0.3.0"
 
-[[trusted_sources]]
-source_prefix = "git+ssh://git@example.com/team/"
+[[trusted_catalogs]]
+alias = "team"
+locator = "git+ssh://git@example.com/team/plect-catalog"
+revision = "main"
 
-[[trusted_sources]]
-source_prefix = "path:///home/user/src/"
-
-[[plugins]]
-name = "github"
-source = "git+https://github.com/example/plect-github-plugin"
-revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
-
-[[plugins]]
-name = "agent-runtime"
-source = "git+ssh://git@example.com/team/agent-runtime-plugin"
-revision = "v0.6.1"
-
-[[plugins]]
-name = "okf"
-source = "path:///home/user/src/okf-plugin"
+[[trusted_catalogs]]
+alias = "local"
+locator = "path:///home/user/src/plect-catalog"
 sha256 = "sha256:2b7c..."
+
+[[plugins]]
+id = "official/github"
+
+[[plugins]]
+id = "team/agent/runtime"
+
+[[plugins]]
+id = "local/okf"
 ```
 
-Declaration fields:
+Trusted catalog declaration fields:
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `name` | yes | Expected plugin name. It must match `plugin.toml`; a mismatch is a load error. |
-| `source` | yes | Source locator. Supported v1 schemes are `git+https`, `git+ssh`, and `path`. |
-| `revision` | scheme-dependent | Git revision to resolve. Required for Git sources. |
-| `sha256` | scheme-dependent | Content hash in `sha256:<digest>` form. Required for locked path sources. |
+| `alias` | yes | User-chosen local catalog alias. It is the trust name and the first segment of plugin identities. |
+| `locator` | yes | Source locator. Supported v1 schemes are `git+https`, `git+ssh`, and `path`. |
+| `revision` | scheme-dependent | Git revision to fetch. Required for Git catalogs. |
+| `sha256` | scheme-dependent | Content hash in `sha256:<digest>` form. Required for locked path catalogs. |
 | `editable` | no | Path-only development mode. When true, the path is mounted directly and is not reproducible. |
 
-`trusted_sources` is a classless, human-owned trust list. Each entry contains a
-`source_prefix`; core only checks whether a plugin source string matches one of
-those prefixes. There is no machine-verified officialness, and core does not
-contain an official host, owner, registry, or provider list. A declared plugin
-whose source matches no `trusted_sources` entry is a load error.
+Plugin declaration fields:
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `id` | yes | Catalog-qualified plugin identity, `<catalog-alias>/<relative-path>`. |
+
+A `trusted_catalogs` entry is the trust act. Each registration binds a
+user-chosen alias to one exact source locator. Default alias suggestions belong
+in provider README install snippets, not in any manifest. Core contains no
+official host, owner, registry, provider list, or prefix policy.
 
 Git is the default transport for reference distribution, not a requirement of
 the resolution model. The model needs only fetch, revision or hash
@@ -242,37 +291,45 @@ Environments without git lose only the git schemes, with a clear error.
 
 Resolution flow:
 
-1. Read plugin declarations from global user config. The first implementation
-   does not read plugin declarations from ancestor overlays.
-2. Fail if a declaration's `source` matches no `trusted_sources` entry.
-3. Resolve each declaration to concrete content:
-   - Git source: fetch the source and resolve `revision` to a commit hash.
-   - Locked path source: resolve symlinks and verify the tree against `sha256`.
-   - Editable path source: resolve symlinks and mount the path directly.
-4. Verify the resolved content against the lockfile, except editable path
-   sources.
-5. Read `plugin.toml` from the verified tree.
-6. Fail if `plugin.toml`'s `name` differs from the declaration's `name`.
-7. Check `plect_min_version` against the running plect version.
-8. Mount the plugin directory as a read-only base config layer, except editable
-   path sources, which are an explicit local development escape hatch.
+1. Read catalog registrations and plugin declarations from global user config.
+   The first implementation does not read them from ancestor overlays.
+2. For each referenced catalog, resolve the registration to concrete content:
+   - Git catalog: fetch the locator and resolve `revision` to a commit hash.
+   - Locked path catalog: resolve symlinks and verify the catalog subtree
+     against `sha256`.
+   - Editable path catalog: resolve symlinks and mount the path directly.
+3. Find `catalog.toml` at the resolved catalog root and fail if
+   `schema_version` is unknown.
+4. Validate every listed plugin path with realpath containment inside the
+   catalog root, and fail on unlisted `plugin.toml` files inside the catalog.
+5. For each enabled plugin id, split the catalog alias from the relative path
+   and fail if the alias is not registered or the path is not listed by that
+   catalog.
+6. Verify the plugin's lock entry against the catalog revision and plugin
+   content hash, except editable path catalogs.
+7. Read the plugin's `plugin.toml` and fail if `schema_version` is unknown.
+8. Check `plect_min_version` against the running plect version.
+9. Mount the plugin directory as a read-only base config layer, except editable
+   path catalogs, which are an explicit local development escape hatch.
 
-Core should materialize resolved plugins under a cache owned by the user, for
-example:
+Core should materialize resolved catalog snapshots under a cache owned by the
+user, for example:
 
 ```text
-~/.cache/plect/plugins/<plugin-name>/<content-hash>/
+~/.cache/plect/catalogs/<catalog-alias>/<resolved-revision>/
 ```
 
 The existing `plugin_dirs` setting becomes an implementation detail for mounted
 resolved directories. During migration, users can move from hand-authored
-`plugin_dirs` to `plugins.toml` plus `plect.lock`. Because Plecture is pre-1.0,
-the migration is one-time and documented rather than a compatibility shim.
+`plugin_dirs` to catalog registrations, plugin selections, and `plect.lock`.
+Because Plecture is pre-1.0, the migration is one-time and documented rather
+than a compatibility shim.
 
 Reference declarations are global-only in the first implementation. Ancestor
 overlays can still customize tasks and workflows under the existing loader
-rules, but they cannot select new plugin sources. The workdir's own `.plect/`
-directory is also excluded because cloned content must not fetch or run code.
+rules, but they cannot register catalogs or select new plugins. The workdir's
+own `.plect/` directory is also excluded because cloned content must not fetch
+or run code.
 
 Alternatives considered: `archive+https` is rejected from v1. Current adopters
 are a single user plus a planned team, and both source plugins from Git. The
@@ -288,22 +345,35 @@ The lockfile records exactly what was mounted. The default path is:
 ~/.config/plect/plect.lock
 ```
 
-Because plugin declarations are global-only in the first implementation, this
-lockfile is global-only too. A workdir-owned lockfile is ignored for plugin
-resolution.
+Because catalog registrations and plugin declarations are global-only in the
+first implementation, this lockfile is global-only too. A workdir-owned
+lockfile is ignored for plugin resolution.
 
 Example:
 
 ```toml
-version = 1
+schema_version = 1
 
 [[plugins]]
-name = "github"
-source = "git+https://github.com/example/plect-github-plugin"
-requested_revision = "v0.3.0"
-resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
+id = "official/github"
+catalog_alias = "official"
+catalog_locator = "git+https://github.com/example/plect-plugins"
+catalog_requested_revision = "v0.3.0"
+catalog_resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
+path = "github"
 content_hash = "sha256:..."
 version = "0.3.0"
+plect_min_version = "0.8.0"
+editable = false
+
+[[plugins]]
+id = "official/agent/codex-tasks"
+catalog_alias = "official"
+catalog_locator = "git+https://github.com/example/plect-plugins"
+catalog_requested_revision = "v0.3.0"
+catalog_resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
+path = "agent/codex-tasks"
+content_hash = "sha256:..."
 plect_min_version = "0.8.0"
 editable = false
 ```
@@ -312,45 +382,73 @@ Recorded fields:
 
 | Field | Meaning |
 |---|---|
-| `name` | Plugin identity from `plugin.toml`. |
-| `source` | Original source locator. |
-| `requested_revision` | User declaration, such as a tag or commit. |
-| `resolved_revision` | Immutable source revision, such as a Git commit. |
-| `content_hash` | Digest of the mounted tree after checkout or extraction. |
+| `id` | Catalog-qualified plugin identity, `<catalog-alias>/<relative-path>`. |
+| `catalog_alias` | User-chosen catalog alias from the registration. |
+| `catalog_locator` | Exact registered source locator for the catalog. |
+| `catalog_requested_revision` | User declaration, such as a tag, branch, or commit. |
+| `catalog_resolved_revision` | Immutable catalog revision, such as a Git commit. |
+| `path` | Plugin path relative to `catalog.toml`. |
+| `content_hash` | Digest of the mounted plugin directory after checkout or extraction. |
 | `version` | Optional plugin package version read from metadata when present. |
 | `plect_min_version` | Compatibility floor read from metadata. |
-| `editable` | Whether the source was mounted in explicit local development mode. |
+| `editable` | Whether the catalog was mounted in explicit local development mode. |
 
 Add and update commands:
 
-- `plect plugin add <source> --revision <rev>` resolves content, writes or
-  updates `plugins.toml`, and writes `plect.lock`. If the source matches no
-  existing `trusted_sources` entry, it shows the URL, resolved revision, and
-  content hash and asks for interactive confirmation. On consent, it appends the
-  source prefix to `trusted_sources` so the trust decision is an auditable diff
-  in a human-owned file.
-- `plect plugin update <name> --revision <rev>` performs an explicit revision
-  bump and lockfile rewrite.
-- `plect plugin verify` re-hashes cached content and fails if it differs from
-  the lockfile.
+- `plect catalog add <alias> <locator> [--revision <rev>]` resolves the catalog,
+  reads `catalog.toml`, shows the exact locator, resolved revision, manifest
+  description, and plugin paths, and asks for interactive confirmation. On
+  consent, it writes the catalog registration and fetches the catalog snapshot.
+- `plect catalog update <alias> [--revision <rev>]` fetches the newest matching
+  catalog revision and repoints every enabled plugin from that catalog to the
+  new snapshot with fresh per-plugin lock entries.
+- `plect catalog remove <alias>` removes the catalog registration and any
+  enabled plugins under that alias.
+- `plect catalog list` shows registered aliases, locators, requested revisions,
+  resolved revisions, and catalog validation state.
+- `plect plugin add <alias>/<path>` enables one plugin path from a registered
+  catalog and writes or updates that plugin's lock entry.
+- `plect plugin update <alias>/<path> [--revision <rev>]` fetches the newest
+  matching catalog revision, validates the catalog, and repoints only that
+  plugin's lock entry. Other plugins from the same catalog keep their previous
+  locked revisions; cache snapshots coexist by catalog and revision.
+- `plect plugin remove <alias>/<path>` disables that plugin and removes its lock
+  entry.
+- `plect plugin verify` re-hashes cached plugin directories and fails if any
+  differ from the lockfile.
 - `plect plugin list` shows declared, resolved, locked, and compatibility state.
 
-Non-interactive contexts fail instead of prompting for first-seen sources. Any
-override flag must be explicit and visible in command history.
+Non-interactive contexts fail instead of prompting for first-seen catalog
+registrations. Any override flag must be explicit and visible in command
+history.
 
 No command silently advances a plugin. A missing or mismatched lock entry is a
 load error unless the user is running an explicit add or update command.
-Editable path sources are the only exception: they are marked non-reproducible
+Editable path catalogs are the only exception: they are marked non-reproducible
 in `plect plugin list`, excluded from `plect plugin verify --locked`, and meant
 only for local plugin development.
 
-`plect.lock` carries mechanical pinning only: source, revision, content hash,
-metadata, and editable state. Trust policy stays in `trusted_sources`; the
-lockfile never records trust semantics.
+`plect.lock` carries mechanical pinning only: catalog locator, catalog
+revision, plugin path, plugin content hash, metadata, and editable state. Trust
+policy stays in catalog registrations; the lockfile never records trust
+semantics.
 
-Alternatives considered: recording a trust class in `plect.lock` was useful
-only in the earlier class-based model. With classless explicit trust, that
-reviewer nit is moot because the lockfile is deliberately mechanical-only.
+Alternatives considered:
+
+- Metadata-supplied plugin identities were rejected because collisions move up
+  to a flat namespace and local renaming becomes a special case. Filesystem
+  paths already provide intra-catalog uniqueness.
+- A central registry or marketplace layer was rejected for v1 because it needs
+  central infrastructure and a signing story. It can be revisited with signed
+  catalogs or packages.
+- Catalog-level usage pinning was rejected because it forces a single revision
+  across all enabled plugins from one catalog. That reproduces known friction
+  from nix-flake-style updates when the user wants to update one package while
+  leaving siblings untouched.
+- The accepted UX follows Helm and Homebrew: users choose local aliases and
+  update individual packages. The trust boundary follows Go modules: the
+  manifest position defines the subtree. Reproducibility comes from lock-based
+  pinning, which Helm-style indexes do not provide by themselves.
 
 ## Trust boundary
 
@@ -360,26 +458,27 @@ environment exec, and exec channels all execute commands.
 
 Threat model:
 
-- The config directory, including `trusted_sources`, is the root of trust. It is
-  in the same trust boundary as the `plect` binary because Plecture config is
-  effectively executable shell already.
-- `trusted_sources` is policy and `plect.lock` is a mechanical record. Keeping
-  them separate preserves their ownership split: humans edit policy; tooling
-  writes the lock.
-- A `trusted_sources` edit alone changes nothing mounted. Content immutability
-  still comes from revision and hash pinning in `plect.lock`, verified on every
-  load.
+- The config directory, including catalog registrations, is the root of trust.
+  It is in the same trust boundary as the `plect` binary because Plecture config
+  is effectively executable shell already.
+- Catalog registrations are policy and `plect.lock` is a mechanical record.
+  Keeping them separate preserves their ownership split: humans edit policy;
+  tooling writes the lock.
+- A catalog registration edit alone changes nothing mounted. Content
+  immutability still comes from revision and hash pinning in `plect.lock`,
+  verified on every load.
 - Plugin declarations are global-only. A dispatched session's workdir cannot
-  inject plugins or trust new sources through cloned content.
-- `trusted_sources` and lock edits are human actions. Agent-driven workflows
+  inject plugins or trust new catalogs through cloned content.
+- Catalog registration and lock edits are human actions. Agent-driven workflows
   must not edit them automatically; they should fail or escalate instead.
-- First-seen sources require interactive confirmation through `plect plugin add`.
-  Non-interactive contexts fail unless the user supplied an explicit override
-  that remains visible in command history.
+- First-seen catalogs require interactive confirmation through
+  `plect catalog add`. Non-interactive contexts fail unless the user supplied an
+  explicit override that remains visible in command history.
 - Remote attacks are constrained by transport authentication plus revision and
-  hash pinning: trust is established at add time, then verified on every load.
-- Users can point at any source they choose to trust. Third-party installation
-  is possible by design, and responsibility for trusting a source lies with the
+  hash pinning: trust is established at catalog registration time, then verified
+  on every load.
+- Users can point at any catalog they choose to trust. Third-party installation
+  is possible by design, and responsibility for trusting a catalog lies with the
   human who confirmed it. Deferred signing is what makes third-party consumption
   safe at scale, not what makes it possible.
 - No auto-update exists. Plugin directories mounted by core are read-only during
@@ -442,15 +541,16 @@ layer conflicts fail loud.
 ## Compatibility
 
 A plugin with an unsatisfied `plect_min_version` must fail loud before any of
-its config is mounted. The error should name the plugin, required version, and
-running version.
+its config is mounted. The error should name the plugin id, required version,
+and running version.
 
 Compatibility checks happen in this order:
 
-1. Source resolution and lockfile verification.
-2. Metadata parse.
-3. `plect_min_version` check.
-4. Config load and existing schema/contract validation.
+1. Catalog resolution and catalog manifest validation.
+2. Plugin path validation and lockfile verification.
+3. Plugin metadata parse.
+4. `plect_min_version` check.
+5. Config load and existing schema/contract validation.
 
 There is no silent degradation. A plugin cannot say "try this weaker behavior
 on old core." If a breaking change is needed while Plecture is pre-1.0, it ships
@@ -480,10 +580,12 @@ Current shape:
 
 Target shape:
 
-- Each distributable plugin carries its own `plugin.toml`.
+- Each distributable catalog carries `catalog.toml`.
+- Each distributable plugin directory listed by the catalog carries
+  `plugin.toml`.
 - Shipped config stays in the existing subdirectories.
-- Users declare references in `plugins.toml`.
-- `plect.lock` records the exact mounted content.
+- Users register catalogs and enable plugins by catalog-qualified path identity.
+- `plect.lock` records the exact mounted plugin content.
 - Core resolves those references to read-only directories and feeds them into
   the existing loader as base plugin layers.
 - Residual user config contains only local choices: allowlists, selected
@@ -495,11 +597,15 @@ One-time migration procedure:
 2. Group existing global files by ownership: provider/resource/channel/task pack,
    workflow pack, and team-owned template or overlay.
 3. Move reusable groups into plugin directories with `plugin.toml`.
-4. Replace `plugin_dirs` with pinned `plugins.toml` declarations.
-5. Run `plect plugin add <source> --revision <rev>` for each plugin to write
+4. Create a `catalog.toml` next to those plugin directories and list every
+   plugin path.
+5. Replace `plugin_dirs` with catalog registrations and plugin selections.
+6. Run `plect catalog add <alias> <locator> [--revision <rev>]` for each
+   catalog.
+7. Run `plect plugin add <alias>/<path>` for each selected plugin to write
    `plect.lock`.
-6. Run the normal per-module tests for any plugin source that contains code.
-7. Keep only residual local choices in global config.
+8. Run the normal per-module tests for any plugin source that contains code.
+9. Keep only residual local choices in global config.
 
 ## Walkthrough examples
 
@@ -508,22 +614,36 @@ One-time migration procedure:
 A Claude or Codex task pack is a plugin because it commits to a particular
 agent CLI and runtime behavior.
 
-Plugin-owned files:
+Catalog registration and plugin enablement:
+
+```bash
+plect catalog add official git+https://github.com/example/plect-plugins --revision v0.3.0
+plect plugin add official/agent/codex-tasks
+plect plugin update official/agent/codex-tasks
+```
+
+`plect plugin update official/agent/codex-tasks` fetches the newest catalog
+revision and repoints only `official/agent/codex-tasks`; `official/github` or
+`official/agent/claude-tasks` stay at their locked revisions until explicitly
+updated.
+
+Catalog-owned files:
 
 ```text
-plugin.toml
-tasks/agent.toml
-tasks/runtime.toml
-channels/agent_socket.toml
-workflows/coding.toml
-bin/plect-agent-activity
+catalog.toml
+agent/codex-tasks/plugin.toml
+agent/codex-tasks/tasks/agent.toml
+agent/codex-tasks/tasks/runtime.toml
+agent/codex-tasks/channels/agent_socket.toml
+agent/codex-tasks/workflows/coding.toml
+agent/codex-tasks/bin/plect-agent-activity
 ```
 
 Plugin-owned templates:
 
 ```text
-templates/work.md
-templates/review.md
+agent/codex-tasks/templates/work.md
+agent/codex-tasks/templates/review.md
 ```
 
 Residual user config:
@@ -547,17 +667,30 @@ built binary.
 The GitHub provider remains a plugin because URL parsing, branch lookup, and
 workdir acquisition are GitHub-specific.
 
-Plugin-owned files:
+Catalog registration and plugin enablement:
+
+```bash
+plect catalog add official git+https://github.com/example/plect-plugins --revision v0.3.0
+plect plugin add official/github
+plect plugin update official/github
+```
+
+`plect plugin update official/github` fetches the newest catalog revision and
+repoints only `official/github`; `official/agent/codex-tasks` stays at its
+locked revision.
+
+Catalog-owned files:
 
 ```text
-plugin.toml
-providers/github.toml
-resources/github.toml
-tasks/github_work.toml
-tasks/github_review.toml
-workflows/github_coding.toml
-bin/plect-github-provider
-bin/plect-github-watcher
+catalog.toml
+github/plugin.toml
+github/providers/github.toml
+github/resources/github.toml
+github/tasks/github_work.toml
+github/tasks/github_review.toml
+github/workflows/github_coding.toml
+github/bin/plect-github-provider
+github/bin/plect-github-watcher
 ```
 
 Residual user config:
@@ -579,12 +712,25 @@ first version owns only the goal resource mechanics that have machine
 semantics: observation, finalization, and ticks. Bundle records that do not have
 machine semantics, such as retrospectives, stay plain files outside the plugin.
 
-Plugin-owned files:
+Catalog registration and plugin enablement:
+
+```bash
+plect catalog add local path:///home/user/src/plect-catalog
+plect plugin add local/okf
+plect plugin update local/okf
+```
+
+`plect plugin update local/okf` refreshes the catalog snapshot used by
+`local/okf` only. Other enabled plugins from `local` remain pinned to their
+current lock entries.
+
+Catalog-owned files:
 
 ```text
-plugin.toml
-resources/okf_goal.toml
-bin/plect-okf
+catalog.toml
+okf/plugin.toml
+okf/resources/okf_goal.toml
+okf/bin/plect-okf
 ```
 
 Plugin-owned behavior:
