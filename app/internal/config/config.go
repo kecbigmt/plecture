@@ -79,12 +79,22 @@ type Config struct {
 	// for hand-authored plugin_dirs entries, which carry no catalog
 	// identity). The `{{bin ...}}` hook helper reads this in-memory list
 	// instead of re-parsing plugin.toml on every render.
-	Plugins          []plugins.Mounted `toml:"-"`
-	Detached         bool              `toml:"detached"`
-	Channels         []string          `toml:"channels"`
-	InputsSchema     map[string]any    `toml:"inputs_schema"`
-	InputsSchemaFile string            `toml:"inputs_schema_file"`
-	BaseDir          string            `toml:"-"`
+	Plugins []plugins.Mounted `toml:"-"`
+	// catalogRegistrations/catalogLock/catalogCacheRoot are the same local
+	// state resolveDeclaredPlugins already resolved Plugins from, kept
+	// around (unexported: no toml tag needed) so checkBinRefs can re-derive
+	// a catalog's full *published* plugin list on demand — see
+	// describeMissingPlugin. nil/"" for a Config built without going through
+	// Load() (e.g. tests), in which case describeMissingPlugin degrades to
+	// no hint rather than erroring.
+	catalogRegistrations *plugins.CatalogRegistrations
+	catalogLock          *plugins.Lockfile
+	catalogCacheRoot     string
+	Detached             bool           `toml:"detached"`
+	Channels             []string       `toml:"channels"`
+	InputsSchema         map[string]any `toml:"inputs_schema"`
+	InputsSchemaFile     string         `toml:"inputs_schema_file"`
+	BaseDir              string         `toml:"-"`
 	// SessionGuard is a per-session dispatch boundary sourced from the
 	// PLECT_SESSION_GUARD environment variable (not config.toml). When set, a
 	// `plect up` may only produce a *resolved session name* that

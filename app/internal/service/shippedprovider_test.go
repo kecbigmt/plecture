@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -24,10 +25,20 @@ func repoRoot(t *testing.T) string {
 }
 
 // loadShippedProvider loads a provider config that ships with a plugin,
-// exercising the same loader the CLI uses at runtime.
+// exercising the same loader the CLI uses at runtime. It mounts the plugin
+// (not just PluginDirs) so a bare {{bin ...}} reference inside the shipped
+// provider file resolves the same way it would under a real catalog mount.
 func loadShippedProvider(t *testing.T, pluginDir, id string) config.ProviderConfig {
 	t.Helper()
-	cfg := &config.Config{PluginDirs: []string{filepath.Join(repoRoot(t), "plugins", pluginDir)}}
+	dir := filepath.Join(repoRoot(t), "plugins", pluginDir)
+	m, err := plugins.LoadManifest(dir)
+	if err != nil {
+		t.Fatalf("LoadManifest(%s): %v", pluginDir, err)
+	}
+	cfg := &config.Config{
+		PluginDirs: []string{dir},
+		Plugins:    []plugins.Mounted{{ID: "official/" + pluginDir, Dir: dir, Manifest: m}},
+	}
 	provs, err := cfg.LoadProviders()
 	if err != nil {
 		t.Fatalf("load shipped providers: %v", err)

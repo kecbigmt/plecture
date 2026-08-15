@@ -40,7 +40,7 @@ func loadShippedCatalogTasks(t *testing.T) (map[string]config.TaskDefinition, []
 		pluginDirs = append(pluginDirs, dir)
 	}
 
-	cfg := &config.Config{PluginDirs: pluginDirs}
+	cfg := &config.Config{PluginDirs: pluginDirs, Plugins: mounted}
 	tasks, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
 		t.Fatalf("LoadTaskDefinitions(shipped catalog): %v", err)

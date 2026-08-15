@@ -88,13 +88,28 @@ func (c *Config) LoadProviders() (map[string]ProviderConfig, error) {
 	if c.BaseDir != "" {
 		globalDir = filepath.Join(c.BaseDir, "providers")
 	}
-	return loadTrustedLayer(pluginDirs, globalDir, func(path string) (ProviderConfig, error) {
+	out, err := loadTrustedLayer(pluginDirs, globalDir, func(path string) (ProviderConfig, error) {
 		p, err := loadProviderFile(path)
 		if err != nil {
 			return ProviderConfig{}, fmt.Errorf("provider %s: %w", path, err)
 		}
 		return p, nil
 	}, func(p ProviderConfig) string { return p.ID })
+	if err != nil {
+		return nil, err
+	}
+	var hooks []hookSource
+	for _, p := range out {
+		hooks = append(hooks,
+			hookSource{desc: fmt.Sprintf("provider %q setup", p.ID), sourcePath: p.SourcePath, script: p.Setup},
+			hookSource{desc: fmt.Sprintf("provider %q cleanup", p.ID), sourcePath: p.SourcePath, script: p.Cleanup},
+			hookSource{desc: fmt.Sprintf("provider %q subscribe", p.ID), sourcePath: p.SourcePath, script: p.Subscribe},
+		)
+	}
+	if err := checkBinRefs(hooks, c.Plugins, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func loadProviderFile(path string) (ProviderConfig, error) {

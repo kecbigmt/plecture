@@ -73,13 +73,27 @@ func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
 	if c.BaseDir != "" {
 		globalDir = filepath.Join(c.BaseDir, "resources")
 	}
-	return loadTrustedLayer(pluginDirs, globalDir, func(path string) (ResourceDef, error) {
+	out, err := loadTrustedLayer(pluginDirs, globalDir, func(path string) (ResourceDef, error) {
 		def, err := loadResourceDefFile(path)
 		if err != nil {
 			return ResourceDef{}, fmt.Errorf("resource %s: %w", path, err)
 		}
 		return def, nil
 	}, func(def ResourceDef) string { return def.ID })
+	if err != nil {
+		return nil, err
+	}
+	var hooks []hookSource
+	for _, def := range out {
+		hooks = append(hooks,
+			hookSource{desc: fmt.Sprintf("resource %q observe", def.ID), sourcePath: def.SourcePath, script: def.Observe},
+			hookSource{desc: fmt.Sprintf("resource %q finalize", def.ID), sourcePath: def.SourcePath, script: def.Finalize},
+		)
+	}
+	if err := checkBinRefs(hooks, c.Plugins, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func loadResourceDefFile(path string) (ResourceDef, error) {
