@@ -16,11 +16,6 @@ primary = true
 # This task therefore only starts the interactive Codex TUI in tmux and lets
 # plect manage its process lifecycle.
 #
-# Requires the agent/runtime plugin enabled from the same catalog: the
-# activity hooks below resolve plect-agent-activity through
-# {{bin "official/agent/runtime/plect-agent-activity"}}. If your catalog
-# registration uses an alias other than "official", replace this task with a
-# same-id definition in a trusted overlay that uses your alias instead.
 setup = '''
 # agent_activity self-report hooks: UserPromptSubmit/Stop call
 # plect-agent-activity, fire-and-forget by design. Hook registration is
@@ -38,8 +33,8 @@ cat > "$PROFILE_PATH" <<'HOOKS_TOML'
 bypass_hook_trust = true
 
 [hooks]
-UserPromptSubmit = [{type = "command", command = ["{{bin "official/agent/runtime/plect-agent-activity"}}", "codex", "working"]}]
-Stop = [{type = "command", command = ["{{bin "official/agent/runtime/plect-agent-activity"}}", "codex", "waiting"]}]
+UserPromptSubmit = [{type = "command", command = ["{{bin "plect-agent-activity"}}", "codex", "working"]}]
+Stop = [{type = "command", command = ["{{bin "plect-agent-activity"}}", "codex", "waiting"]}]
 HOOKS_TOML
 
 MODEL='{{get .Inputs "model"}}'

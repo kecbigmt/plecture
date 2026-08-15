@@ -1,10 +1,18 @@
 # agent/runtime
 
 Shared pieces used by both the `agent/claude` and `agent/codex` plugins: a
-tmux pane lifecycle task, provider-agnostic initial-prompt delivery, a
-tmux-keystroke event channel, and a turn-boundary activity self-report hook.
-None of this is CLI-specific — both plugins depend on it, which is why it is
-its own plugin instead of being duplicated in each.
+tmux pane lifecycle task, provider-agnostic initial-prompt delivery, and a
+tmux-keystroke event channel. None of this is CLI-specific — both plugins
+depend on it, which is why it is its own plugin instead of being duplicated
+in each.
+
+Each of `agent/claude` and `agent/codex` ships its own copy of
+`plect-agent-activity` (a fire-and-forget turn-boundary self-report hook)
+rather than this plugin owning one shared copy: a shipped plugin's own
+config can only resolve its own executables through `{{bin ...}}` (see
+`docs/design/plugin-packaging.md`'s Plugin-local `{{bin}}` resolution
+section), so a cross-plugin executable dependency isn't expressible here —
+see each plugin's own `bin/plect-agent-activity`.
 
 ## Contents
 
@@ -18,10 +26,6 @@ its own plugin instead of being duplicated in each.
 - `channels/tmux_send_keys.toml` — an event channel that types a later event
   into the same pane (for a CLI runtime with no structured delivery
   transport). Shares the readiness/backoff logic with `initial_prompt.toml`.
-- `bin/plect-agent-activity` — a fire-and-forget hook script an agent CLI's
-  own hook config calls at its own turn boundaries (user prompt submitted /
-  turn finished) to self-report `working`/`waiting` via
-  `plect state set-message`.
 
 ## Install
 

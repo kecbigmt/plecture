@@ -618,7 +618,7 @@ type RenderContext struct {
 	Session     SessionVars
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the `{{bin "<name>"}}` bare-name
-	// reading only — resolveBin uses it to find the containing plugin — so a
+	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a
 	// caller with no file origin (a test-built template, an attach/healthcheck
 	// template not tied to one definition) may safely leave it empty; only
 	// bare-name `{{bin}}` references stop resolving without it.
@@ -754,7 +754,7 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 	// — the set of plugins mounted for the config in effect, not a global.
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
-			return resolveBin(ctx.Session.Plugins, ctx.SourcePath, ref)
+			return plugins.ResolveBin(ctx.Session.Plugins, ctx.SourcePath, ref)
 		},
 	}
 	tmpl, err := template.New("task").

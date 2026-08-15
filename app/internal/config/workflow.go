@@ -689,7 +689,32 @@ func (c *Config) LoadTaskDefinitions(workdirDir string) (map[string]TaskDefiniti
 			out[def.ID] = withBuiltinOutputs(def)
 		}
 	}
+	if err := checkBinRefs(taskHookSources(out), c.Plugins, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// taskHookSources flattens every {{bin ...}}-eligible template string a task
+// definition can carry — setup/cleanup/healthcheck/movement_signal/
+// attach/capture plus each dynamic output's script — into hookSources for
+// checkBinRefs.
+func taskHookSources(defs map[string]TaskDefinition) []hookSource {
+	var hooks []hookSource
+	for _, def := range defs {
+		hooks = append(hooks,
+			hookSource{desc: fmt.Sprintf("task %q setup", def.ID), sourcePath: def.SourcePath, script: def.Setup},
+			hookSource{desc: fmt.Sprintf("task %q cleanup", def.ID), sourcePath: def.SourcePath, script: def.Cleanup},
+			hookSource{desc: fmt.Sprintf("task %q healthcheck", def.ID), sourcePath: def.SourcePath, script: def.Healthcheck},
+			hookSource{desc: fmt.Sprintf("task %q movement_signal", def.ID), sourcePath: def.SourcePath, script: def.MovementSignal},
+			hookSource{desc: fmt.Sprintf("task %q attach", def.ID), sourcePath: def.SourcePath, script: def.Attach},
+			hookSource{desc: fmt.Sprintf("task %q capture", def.ID), sourcePath: def.SourcePath, script: def.Capture},
+		)
+		for _, out := range def.DynamicOutputs {
+			hooks = append(hooks, hookSource{desc: fmt.Sprintf("task %q output %q script", def.ID, out.Name), sourcePath: def.SourcePath, script: out.Script})
+		}
+	}
+	return hooks
 }
 
 // workflowSearchDirs orders the cascade: plugins (base) → global → ancestors

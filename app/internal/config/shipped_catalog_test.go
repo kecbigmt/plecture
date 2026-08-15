@@ -9,13 +9,15 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/version"
 )
 
-// TestShippedCatalog_LoadsAndCompiles guards this repository's own official
-// catalog (plugins/catalog.toml plus the plugin directories it lists)
-// against a broken manifest or an unparseable task/channel file. This
-// is the only place that exercises the catalog end to end: a plugin author
-// otherwise only discovers a typo the first time a user runs `plect plugin
-// add`.
-func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
+// loadShippedCatalog mounts this repository's own official catalog
+// (plugins/catalog.toml plus the plugin directories it lists) under alias,
+// the same way `plect catalog add <alias> ...` / `plect plugin add
+// <alias>/<path>` would mount it for a real user — so a test using this
+// helper with an alias other than "official" catches a shipped {{bin ...}}
+// reference that only happens to resolve under this repository's own
+// catalog example alias.
+func loadShippedCatalog(t *testing.T, alias string) *Config {
+	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
@@ -32,6 +34,7 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 	}
 
 	var pluginDirs []string
+	var mounted []plugins.Mounted
 	for _, rel := range manifest.Plugins {
 		dir := filepath.Join(catalogRoot, rel)
 		m, err := plugins.LoadManifest(dir)
@@ -46,9 +49,19 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 			t.Errorf("plugin %s requires plect >= %s, running %s", rel, m.PlectMinVersion, version.Current)
 		}
 		pluginDirs = append(pluginDirs, dir)
+		mounted = append(mounted, plugins.Mounted{ID: alias + "/" + rel, Dir: dir, Manifest: m})
 	}
 
-	cfg := &Config{PluginDirs: pluginDirs}
+	return &Config{PluginDirs: pluginDirs, Plugins: mounted}
+}
+
+// TestShippedCatalog_LoadsAndCompiles guards this repository's own official
+// catalog against a broken manifest or an unparseable task/channel file.
+// This is the only place that exercises the catalog end to end: a plugin
+// author otherwise only discovers a typo the first time a user runs `plect
+// plugin add`.
+func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
+	cfg := loadShippedCatalog(t, "official")
 	tasks, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
 		t.Fatalf("LoadTaskDefinitions(shipped catalog): %v", err)
@@ -56,6 +69,12 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 	channels, err := cfg.LoadChannels()
 	if err != nil {
 		t.Fatalf("LoadChannels(shipped catalog): %v", err)
+	}
+	if _, err := cfg.LoadProviders(); err != nil {
+		t.Fatalf("LoadProviders(shipped catalog): %v", err)
+	}
+	if _, err := cfg.LoadResourceDefs(); err != nil {
+		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
 
 	for _, id := range []string{"tmux", "initial_prompt", "claude", "codex", "codex_exec"} {
@@ -67,5 +86,28 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 		if _, ok := channels[id]; !ok {
 			t.Errorf("shipped catalog channel %q not found", id)
 		}
+	}
+}
+
+// TestShippedCatalog_LoadsUnderArbitraryAlias re-runs the same load under an
+// alias other than "official": every {{bin ...}} reference in shipped
+// config must resolve under any catalog alias a user chooses, per
+// docs/design/plugin-packaging.md's Plugin-local {{bin}} resolution
+// section — a fully-qualified self-reference that happens to spell out
+// "official" would pass TestShippedCatalog_LoadsAndCompiles and still be
+// wrong.
+func TestShippedCatalog_LoadsUnderArbitraryAlias(t *testing.T) {
+	cfg := loadShippedCatalog(t, "acme")
+	if _, err := cfg.LoadTaskDefinitions(""); err != nil {
+		t.Fatalf("LoadTaskDefinitions(shipped catalog, alias %q): %v", "acme", err)
+	}
+	if _, err := cfg.LoadChannels(); err != nil {
+		t.Fatalf("LoadChannels(shipped catalog, alias %q): %v", "acme", err)
+	}
+	if _, err := cfg.LoadProviders(); err != nil {
+		t.Fatalf("LoadProviders(shipped catalog, alias %q): %v", "acme", err)
+	}
+	if _, err := cfg.LoadResourceDefs(); err != nil {
+		t.Fatalf("LoadResourceDefs(shipped catalog, alias %q): %v", "acme", err)
 	}
 }

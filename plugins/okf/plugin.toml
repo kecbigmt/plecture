@@ -6,4 +6,4 @@ description        = "OKF goal resource: parsing, workspace dispatch, observatio
 [[executables]]
 name  = "plect-okf"
 path  = "bin/plect-okf"
-build = "go build -o bin/plect-okf ./cmd/plect-okf"
+build = "go -C src build -o ../bin/plect-okf ./cmd/plect-okf"

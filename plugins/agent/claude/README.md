@@ -15,13 +15,19 @@ Launches and manages a Claude Code runtime as the primary task of a session.
   require a session down/up to keep event delivery working.
 - `channels/claude.toml` — delivers a session event to the running Claude
   Code process over its channel-server Unix socket.
+- `bin/plect-agent-activity` — the turn-boundary self-report hook
+  `tasks/claude.toml`'s setup registers. A copy of `agent/runtime`'s script
+  of the same name — see that plugin's README for why it's a copy rather
+  than a cross-plugin reference.
 
 ## Install
 
-Requires [`agent/runtime`](../runtime) enabled from the same catalog — the
-activity hooks resolve `plect-agent-activity` through it — and, optionally,
-a `channel-server` build on `PATH` for the socket-delivered channel above
-(see `plugins/channel-server` in this repository).
+Typically composed with [`agent/runtime`](../runtime) enabled from the same
+catalog — its `tmux` task is the usual source of the `tmux_session` input
+this plugin's task requires — but that pairing is a workflow-level choice,
+not a hard dependency: `plect-agent-activity` is this plugin's own `bin/`.
+Optionally, a `channel-server` build on `PATH` enables the socket-delivered
+channel above (see `plugins/channel-server` in this repository).
 
 ```bash
 plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision <tag-or-commit>

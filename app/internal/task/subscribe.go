@@ -59,7 +59,7 @@ func renderSubscribeHook(cmd string, vars SubscribeHookVars) (string, error) {
 	// renderWith's and renderWorkflowHook's dynamicFuncs for the same reason.
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
-			return resolveBin(vars.Plugins, vars.SourcePath, ref)
+			return plugins.ResolveBin(vars.Plugins, vars.SourcePath, ref)
 		},
 	}
 	tmpl, err := template.New("subscribe_hook").

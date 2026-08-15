@@ -187,7 +187,7 @@ func renderFinalize(tmplStr string, data finalizeTemplateData) (string, error) {
 	// renderWith's dynamicFuncs for the same reason.
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
-			return resolveBin(data.Plugins, data.SourcePath, ref)
+			return plugins.ResolveBin(data.Plugins, data.SourcePath, ref)
 		},
 	}
 	tmpl, err := template.New("resource-finalize").

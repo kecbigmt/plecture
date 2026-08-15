@@ -64,7 +64,8 @@ one manifest, and catalogs that need fixture manifests can avoid the reserved
 filename.
 
 A plugin is a directory with metadata at the root and zero or more standard
-subdirectories that are already understood by the config loaders:
+subdirectories that are already understood by the config loaders, plus two
+directories that separate build source from build output:
 
 ```text
 plugin.toml
@@ -75,10 +76,23 @@ workflows/
 templates/
 channels/
 environments/
+src/
 bin/
+scripts/
 README.md
 LICENSE
 ```
+
+`src/` is the language project a `build` command compiles from: `go.mod`,
+`go.sum`, `cmd/<executable-name>/`, `internal/`. A plugin with more than one
+built executable keeps a single `src/` module with multiple `cmd/` mains
+(ordinary Go convention), not one module per executable. `bin/` holds only
+build output — content a `build` command produces, never committed to the
+catalog source itself. `scripts/` holds committed script executables that
+need no build step at all; an entry with no `build` points `path` straight
+at a file under `scripts/` (or elsewhere in the plugin tree). A plugin with
+only build-less scripts needs no `src/`; a plugin with only shipped config
+needs neither.
 
 `plugin.toml` is the only required plugin-local file:
 
@@ -91,12 +105,12 @@ description = "GitHub resource provider and workflow support."
 [[executables]]
 name = "plect-github-watcher"
 path = "bin/plect-github-watcher"
-build = "go build -o bin/plect-github-watcher ./cmd/plect-github-watcher"
+build = "go -C src build -o ../bin/plect-github-watcher ./cmd/plect-github-watcher"
 
 [[executables]]
 name = "plect-github-provider"
 path = "bin/plect-github-provider"
-build = "go build -o bin/plect-github-provider ./cmd/plect-github-provider"
+build = "go -C src build -o ../bin/plect-github-provider ./cmd/plect-github-provider"
 ```
 
 Plugin metadata fields:
@@ -231,7 +245,8 @@ alias the user chose. A shipped plugin referencing *another* plugin's
 executables by name is not expressible under plugin-local resolution and is
 intentionally unsupported for shipped content: the referencing plugin has no
 alias to name the other plugin with, and no substitute syntax is added for
-it here — revisit only if a concrete cross-plugin need appears.
+it here. The next section covers what a plugin does instead when it finds
+itself wanting exactly that.
 
 Alternatives considered:
 
@@ -244,6 +259,40 @@ Alternatives considered:
   same-name executables across plugin layers would become declaration-order
   behavior unless another conflict system wrapped `PATH`.
 
+### Cross-plugin references and the dependency non-mechanism
+
+Standing rule: a catalog plugin's shipped config may reference only its own
+executables (the plugin-local `{{bin}}` reading above). Cross-plugin and
+cross-catalog references are unsupported, not just for the alias reason
+above but as a matter of policy — a plugin that could silently lean on
+another plugin's executable would be an undeclared dependency no catalog
+audit could see from `plugin.toml` alone. The first remedy for an emerging
+cross-plugin need is folding the two plugins together; where folding would
+force unrelated concerns into one plugin (two otherwise-independent agent
+CLI packages that both want the same small, stable helper script, say),
+duplicating the executable into each consuming plugin is the alternative —
+cheaper than a shared dependency for content that rarely changes.
+
+Dependency *metadata* — a plugin declaring "I need plugin X enabled" — is
+staged rather than built now:
+
+- **Stage now.** Reference-driven fail-loud: nothing declares a dependency,
+  but a `{{bin ...}}` reference that cannot resolve against the mounted
+  plugin set fails at config load (not first render), and the error names
+  the specific plugin to enable when it can be identified from a registered
+  catalog's published plugin list. This catches the actual failure mode
+  (an executable reference that silently doesn't resolve) without adding
+  any new manifest surface.
+- **Stage later**, only once a composed/profile plugin actually exists to
+  motivate it: a `requires` list of plugin ids within the same catalog,
+  checked as an enablement-closure error at `plect plugin add`/config load
+  (never auto-enabling the dependency). No version constraints — see below.
+- **Non-goal, stated explicitly**: version-constrained dependency
+  resolution. An executable is a CLI contract, deliberately rev-independent
+  of the plugin that calls it; a user who wants revision-coherence across a
+  catalog updates the whole catalog together (`plect catalog update`), not
+  through per-plugin version pins.
+
 ### Executable Build Model
 
 Executable delivery is staged:
@@ -252,9 +301,14 @@ Executable delivery is staged:
    source, and compiled executables are built on the user's machine at
    add/update time. When `build` is absent, `path` must point at a script or
    executable file already present in the source tree. When an executable entry
-   declares `build`, plect runs that command inside the resolved plugin
-   directory and places the resulting executable in the plugin's cache bin
-   location.
+   declares `build`, plect runs that command with the plugin's own root
+   directory as the working directory and places the resulting executable in
+   the plugin's cache bin location. A Go plugin source under `src/` uses `go
+   -C src build -o ../bin/<name> ./cmd/<name>`: `-C src` changes the working
+   directory before any other path on the command line is resolved, so `-o`
+   must climb back out (`../bin/<name>`) to land at the plugin-root `bin/`
+   that `path` names — `-o bin/<name>` after `-C src` would instead build
+   into `src/bin/`, not the mounted `bin/` the manifest declares.
 2. Stage 2, future direction: plect release artifacts may bundle
    Plecture-maintained plugin binaries as separate plugin packages that ride the
    release. They are not embedded in core, and activation still requires the
@@ -865,9 +919,15 @@ github/resources/github.toml
 github/tasks/github_work.toml
 github/tasks/github_review.toml
 github/workflows/github_coding.toml
-github/bin/plect-github-provider
-github/bin/plect-github-watcher
+github/src/go.mod
+github/src/cmd/plect-github-provider/main.go
+github/src/cmd/plect-github-watcher/main.go
 ```
+
+`github/bin/plect-github-provider` and `github/bin/plect-github-watcher`
+are what `plect plugin add`/`update` produce from `github/src` at add/update
+time — build output, not catalog content, so they are never committed (see
+the Package format section's `src`/`bin`/`scripts` split).
 
 Residual user config:
 
@@ -913,8 +973,14 @@ okf/tasks/goal_review.toml
 okf/tasks/goal_bootstrap.toml
 okf/workflows/goal_review.toml
 okf/templates/goal_review.md
-okf/bin/plect-okf
+okf/src/go.mod
+okf/src/cmd/plect-okf/main.go
 ```
+
+`okf/bin/plect-okf` is what `plect plugin add`/`update` produce from
+`okf/src` at add/update time — build output, not catalog content, so it is
+never committed (see the Package format section's `src`/`bin`/`scripts`
+split).
 
 Plugin-owned behavior:
 

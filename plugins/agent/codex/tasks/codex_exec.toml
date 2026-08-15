@@ -23,11 +23,6 @@ primary = true
 # submit-race and boot-race classes that motivate agent/runtime's channel and
 # task do not exist for a runtime with no input box.
 #
-# Requires the agent/runtime plugin enabled from the same catalog: the
-# activity hooks below resolve plect-agent-activity through
-# {{bin "official/agent/runtime/plect-agent-activity"}}. If your catalog
-# registration uses an alias other than "official", replace this task with a
-# same-id definition in a trusted overlay that uses your alias instead.
 setup = '''
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 mkdir -p "$CODEX_HOME_DIR"
@@ -37,8 +32,8 @@ cat > "$PROFILE_PATH" <<'HOOKS_TOML'
 bypass_hook_trust = true
 
 [hooks]
-UserPromptSubmit = [{type = "command", command = ["{{bin "official/agent/runtime/plect-agent-activity"}}", "codex", "working"]}]
-Stop = [{type = "command", command = ["{{bin "official/agent/runtime/plect-agent-activity"}}", "codex", "waiting"]}]
+UserPromptSubmit = [{type = "command", command = ["{{bin "plect-agent-activity"}}", "codex", "working"]}]
+Stop = [{type = "command", command = ["{{bin "plect-agent-activity"}}", "codex", "waiting"]}]
 HOOKS_TOML
 
 STATE_DIR="${TMPDIR:-/tmp}/plect-codex-exec/{{.SessionName}}"
@@ -54,7 +49,7 @@ EXPORTS="export PLECT_SESSION_NAME={{.SessionName}}; "
 # The worker script runs standalone, outside plect's template rendering, so
 # it can't resolve a bin-lookup reference itself for its own activity-hook
 # calls; resolve it here and hand it down as an env var instead.
-EXPORTS="${EXPORTS}export PLECT_AGENT_ACTIVITY_BIN={{bin "official/agent/runtime/plect-agent-activity" | shellQuote}}; "
+EXPORTS="${EXPORTS}export PLECT_AGENT_ACTIVITY_BIN={{bin "plect-agent-activity" | shellQuote}}; "
 # model/effort are free strings from --input, spliced literally into this
 # setup script's own source and later re-sent as EXPORTS keystrokes to the
 # pane's shell — two shell boundaries a crafted value could break out of.
@@ -74,7 +69,7 @@ rm -f "$STATE_DIR/ready"
 # codex task needs for the TUI, whose real PID differs from the launching
 # shell's.
 tmux send-keys -t {{.Inputs.tmux_session}} \
-  "${EXPORTS}exec {{bin "official/agent/codex/plect-codex-exec-worker"}} '$QUEUE_DIR' '$STATE_DIR' '$PROFILE_NAME'" Enter
+  "${EXPORTS}exec {{bin "plect-codex-exec-worker"}} '$QUEUE_DIR' '$STATE_DIR' '$PROFILE_NAME'" Enter
 
 PANE_PID=$(tmux display-message -p -t {{.Inputs.tmux_session}} '#{pane_pid}')
 READY_TIMEOUT_SECONDS="${PLECT_CODEX_EXEC_READY_TIMEOUT_SECONDS:-30}"

@@ -215,7 +215,7 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 	// renderWith's dynamicFuncs for the same reason.
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
-			return resolveBin(vars.Plugins, vars.SourcePath, ref)
+			return plugins.ResolveBin(vars.Plugins, vars.SourcePath, ref)
 		},
 	}
 	tmpl, err := template.New("workflow_hook").

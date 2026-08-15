@@ -53,5 +53,8 @@ func resolveDeclaredPlugins(cfg *Config) (*Config, error) {
 	}
 	cfg.PluginDirs = append(resolvedDirs, cfg.PluginDirs...)
 	cfg.Plugins = mounted
+	cfg.catalogRegistrations = registrations
+	cfg.catalogLock = lock
+	cfg.catalogCacheRoot = cacheRoot
 	return cfg, nil
 }

@@ -14,8 +14,8 @@ session runs through.
 
 - `plugin.toml` — declares the two executables this plugin builds:
   `plect-github-provider` (setup/cleanup/observe) and `github-watcher`
-  (subscribe/serve/gh-api), built from the sibling `plugins/github-provider`
-  and `plugins/github-watcher` Go modules.
+  (subscribe/serve/gh-api), both built from `src/`, this plugin's own Go
+  module (`src/cmd/plect-github-provider`, `src/cmd/github-watcher`).
 - `providers/github.toml` — resolves a GitHub issue/PR URL to a session id
   and acquires/releases the git workdir it maps to.
 - `resources/github.toml` — the standalone observation contract

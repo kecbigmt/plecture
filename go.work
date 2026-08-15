@@ -7,9 +7,8 @@ use (
 	./contracts/event
 	./contracts/state
 	./plugins/channel-server
-	./plugins/github-provider
-	./plugins/github-watcher
+	./plugins/github/src
 	./plugins/legacy-migration
-	./plugins/okf
+	./plugins/okf/src
 	./plugins/slack-adapter
 )

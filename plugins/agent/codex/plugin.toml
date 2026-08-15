@@ -13,3 +13,15 @@ path = "bin/plect-codex-exec-worker"
 [[executables]]
 name = "plect-codex-exec-enqueue"
 path = "bin/plect-codex-exec-enqueue"
+
+# Duplicated from agent/runtime rather than referenced across plugins: a
+# shipped plugin's own config can only resolve its own executables through
+# {{bin ...}} (the reference has no alias to name a sibling plugin with —
+# see docs/design/plugin-packaging.md's Plugin-local {{bin}} resolution
+# section), so a plugin that needs another plugin's executable either folds
+# into it or ships its own copy. This script is small and stable, so a copy
+# per consuming plugin costs less than folding agent/codex into
+# agent/runtime would.
+[[executables]]
+name = "plect-agent-activity"
+path = "bin/plect-agent-activity"
