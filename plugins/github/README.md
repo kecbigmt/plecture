@@ -33,6 +33,19 @@ Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
 `provider = "github"` plus an agent pack together.
 
+## Cleanup
+
+`plect destroy` always releases the workdir it acquired. To also delete the
+local branch, pass the provider-level cleanup intent this plugin reads:
+
+```bash
+plect destroy <session> --input delete_branch=true
+```
+
+Left off, the branch stays (the safer default for a review-only or
+shared-branch session). Branch deletion uses a safe `git branch -d`, so it
+still refuses a branch carrying unmerged commits regardless of this flag.
+
 ## Install
 
 Register this repository as a catalog and enable the plugin:

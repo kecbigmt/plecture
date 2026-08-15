@@ -90,10 +90,11 @@ func run(args []string) error {
 		branch := fs.String("branch", "", "branch recorded by setup")
 		workdirsRoot := fs.String("workdirs-root", "", "configured workdirs root")
 		force := fs.Bool("force", false, "remove the workdir even when it carries uncommitted changes")
+		deleteBranch := fs.Bool("delete-branch", false, "also delete the branch recorded by setup")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		return provider.Cleanup(ctx, provider.CleanupOptions{Workdir: *workdir, Branch: *branch, WorkdirsRoot: *workdirsRoot, Force: *force})
+		return provider.Cleanup(ctx, provider.CleanupOptions{Workdir: *workdir, Branch: *branch, WorkdirsRoot: *workdirsRoot, Force: *force, DeleteBranch: *deleteBranch})
 	default:
 		return fmt.Errorf("unknown subcommand %q; expected setup, cleanup, or observe", args[0])
 	}

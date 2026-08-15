@@ -37,7 +37,7 @@ Variables come from a session. Pass --session <identifier> (session name,
 alias, or resource id) to resolve a session and expose its vars to the
 template:
   {{.SessionName}} {{.ResourceID}} {{.WorkdirPath}}
-  {{.Workflow.outputs.<key>}}  — provider setup outputs (workdir, branch, ...)
+  {{.Workflow.outputs.<key>}}  — provider setup outputs (workdir, plus whatever else the provider declares)
   {{.SessionInputs.<key>}}     — session inputs and explicit --var values
 
 Guard optional vars with {{get .SessionInputs "key"}} (returns "" when absent)

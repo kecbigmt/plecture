@@ -190,13 +190,12 @@ func TestUp_NotFound(t *testing.T) {
 	}
 }
 
-// 4. destroy: passes force/delete_branch through and redirects to the list.
+// 4. destroy: passes force through and redirects to the list.
 func TestDestroy_Success(t *testing.T) {
 	svc := &fakeService{}
 	rec := postForm(t, New(svc).Routes(), "/sessions/destroy", url.Values{
-		"name":          {"owner/repo-1"},
-		"force":         {"1"},
-		"delete_branch": {"1"},
+		"name":  {"owner/repo-1"},
+		"force": {"1"},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -204,7 +203,7 @@ func TestDestroy_Success(t *testing.T) {
 	if got := rec.Header().Get("HX-Redirect"); got != "/" {
 		t.Errorf("HX-Redirect = %q, want /", got)
 	}
-	if svc.gotDestroy == nil || !svc.gotDestroy.Force || !svc.gotDestroy.DeleteBranch {
+	if svc.gotDestroy == nil || !svc.gotDestroy.Force {
 		t.Errorf("Destroy params = %+v", svc.gotDestroy)
 	}
 }
