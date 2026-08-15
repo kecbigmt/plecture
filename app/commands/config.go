@@ -28,10 +28,10 @@ var configShowCmd = &cobra.Command{
 	},
 }
 
-// configHomeSource names the precedence layer that determined the active
-// config home, mirroring PersistentPreRunE's flag-then-env resolution: the
-// flag has already been exported to the env var by the time this runs, so
-// the flag must be checked first to attribute it correctly.
+// configHomeSource must check configHomeFlag before the env var: by the time
+// this runs, PersistentPreRunE has already exported a nonempty flag value
+// into the env var, so checking the env var first would misattribute a
+// flag-driven override to PLECT_CONFIG_HOME.
 func configHomeSource() string {
 	switch {
 	case configHomeFlag != "":

@@ -10,10 +10,9 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/confighome"
 )
 
-// execRoot runs rootCmd with args against a shared output buffer and returns
-// combined stdout/stderr. Callers that touch --config-home or
-// confighome.EnvVar are responsible for their own env/flag cleanup — cobra
-// flag bindings and process env vars both outlive a single Execute() call.
+// Callers that pass --config-home are responsible for resetting
+// configHomeFlag afterward: cobra flag bindings outlive a single Execute()
+// call, unlike t.Setenv-backed env vars, which restore themselves.
 func execRoot(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	var out bytes.Buffer
