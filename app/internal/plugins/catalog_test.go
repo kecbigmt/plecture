@@ -130,6 +130,26 @@ func TestResolveCatalogSubdir_Subdirectory(t *testing.T) {
 	}
 }
 
+// TestResolveCatalogSubdir_MultiSegmentSubdirectory is the GWT the issue
+// asked for directly: subdir accepts a relative subpath of any depth, not
+// just a single directory name, and the resulting catalog root joins the
+// full multi-segment path.
+func TestResolveCatalogSubdir_MultiSegmentSubdirectory(t *testing.T) {
+	root := t.TempDir()
+	multiSegment := filepath.Join("path", "to", "plugins")
+	if err := os.MkdirAll(filepath.Join(root, multiSegment), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveCatalogSubdir(root, multiSegment)
+	if err != nil {
+		t.Fatalf("ResolveCatalogSubdir: unexpected error: %v", err)
+	}
+	want := filepath.Join(root, multiSegment)
+	if got != want {
+		t.Errorf("ResolveCatalogSubdir(root, %q) = %q, want %q", multiSegment, got, want)
+	}
+}
+
 func TestResolveCatalogSubdir_ParentEscapeRejected(t *testing.T) {
 	root := t.TempDir()
 	for _, subdir := range []string{"..", "../escape", "/etc"} {

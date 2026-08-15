@@ -435,3 +435,100 @@ func TestCatalogAdd_ThisRepositoryWithSubdir(t *testing.T) {
 		t.Errorf("ID = %q, want %q (no plugins/ prefix)", result.ID, "official/github")
 	}
 }
+
+// TestCatalogFlow_MultiSegmentSubdir is the GWT the issue asked for
+// directly: subdir = "path/to/plugins" (multi-segment) must work
+// identically to a single-segment subdir across every flow that reads or
+// writes it — add, lock, list, plugin add, update, and drift-check — with
+// the containment validation behavior unchanged.
+func TestCatalogFlow_MultiSegmentSubdir(t *testing.T) {
+	paths := catalogTestPaths(t)
+	multiSegment := filepath.Join("path", "to", "plugins")
+	src := writeCatalogSourceWithSubdir(t, multiSegment, map[string]string{"okf": "0.0.0"})
+	params := CatalogAddParams{Alias: "local", Source: "path://" + src, Subdir: multiSegment}
+
+	// When: the catalog is added.
+	preview, fetched, err := PreviewCatalogAdd(context.Background(), paths, params)
+	if err != nil {
+		t.Fatalf("PreviewCatalogAdd: unexpected error: %v", err)
+	}
+	wantRoot := filepath.Join(src, multiSegment)
+	if fetched.Root != wantRoot {
+		t.Fatalf("fetched.Root = %q, want %q (containment must resolve the full multi-segment path)", fetched.Root, wantRoot)
+	}
+	if !stringSliceContains(preview.Plugins, "okf") {
+		t.Fatalf("preview.Plugins = %v, want it to contain %q", preview.Plugins, "okf")
+	}
+	if _, err := CommitCatalogAdd(paths, params, fetched); err != nil {
+		t.Fatalf("CommitCatalogAdd: unexpected error: %v", err)
+	}
+
+	// Then: catalogs.toml and plect.lock both record the multi-segment
+	// subdir verbatim (locked).
+	registrations, err := plugins.LoadCatalogRegistrations(paths.CatalogsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registrations.Catalogs) != 1 || registrations.Catalogs[0].Subdir != multiSegment {
+		t.Fatalf("Catalogs = %+v, want one entry with subdir=%q", registrations.Catalogs, multiSegment)
+	}
+	lock, err := plugins.LoadLockfile(paths.LockfilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, ok := lock.FindCatalog("local")
+	if !ok || record.Subdir != multiSegment {
+		t.Fatalf("catalog lock record = %+v, ok=%v, want subdir=%q", record, ok, multiSegment)
+	}
+
+	// When: the catalog is listed.
+	entries, err := CatalogList(paths)
+	if err != nil {
+		t.Fatalf("CatalogList: unexpected error: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Subdir != multiSegment || entries[0].Status != "ok" {
+		t.Fatalf("CatalogList = %+v, want one ok entry with subdir=%q", entries, multiSegment)
+	}
+
+	// When: a plugin from it is enabled — containment must resolve the
+	// mount point through the full multi-segment path, not just its last
+	// component.
+	added, err := PluginAdd(context.Background(), paths, "local/okf")
+	if err != nil {
+		t.Fatalf("PluginAdd: unexpected error: %v", err)
+	}
+	if added.ID != "local/okf" {
+		t.Errorf("ID = %q, want %q", added.ID, "local/okf")
+	}
+
+	// When: the source content changes and the catalog is updated.
+	pluginTomlPath := filepath.Join(src, multiSegment, "okf", "plugin.toml")
+	if err := os.WriteFile(pluginTomlPath, []byte("schema_version = 1\nplect_min_version = \"0.0.1\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	updateResult, err := CatalogUpdate(context.Background(), paths, CatalogUpdateParams{Alias: "local"})
+	if err != nil {
+		t.Fatalf("CatalogUpdate: unexpected error: %v", err)
+	}
+	if len(updateResult.UpdatedPlugins) != 1 || updateResult.UpdatedPlugins[0] != "okf" {
+		t.Fatalf("UpdatedPlugins = %v", updateResult.UpdatedPlugins)
+	}
+
+	// Then: a hand-edited multi-segment subdir is rejected as drift, not
+	// silently trusted by the next update.
+	registrations, err = plugins.LoadCatalogRegistrations(paths.CatalogsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range registrations.Catalogs {
+		if registrations.Catalogs[i].Alias == "local" {
+			registrations.Catalogs[i].Subdir = filepath.Join("other", "path")
+		}
+	}
+	if err := plugins.SaveCatalogRegistrations(paths.CatalogsPath, registrations); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CatalogUpdate(context.Background(), paths, CatalogUpdateParams{Alias: "local"}); err == nil || !strings.Contains(err.Error(), "does not match plect.lock") {
+		t.Fatalf("CatalogUpdate after a hand-edited multi-segment subdir: err = %v, want a source/subdir drift error", err)
+	}
+}
