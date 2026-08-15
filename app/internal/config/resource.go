@@ -60,32 +60,26 @@ func (r ResourceDef) ResolvedStateSchemaPath() string {
 }
 
 // LoadResourceDefs loads `resources/*.toml` from the trusted base layers only:
-// plugin dirs first, then the global config dir; a deeper layer's same-id
-// file replaces the shallower one. Mirrors LoadProviders — the per-workdir
-// ancestor cascade is deliberately excluded, for the same reason.
+// plugin dirs first, then the global config dir; the global layer's same-id
+// file replaces a plugin layer's, but two plugin layers declaring the same
+// id is a load error (see loadTrustedLayer). Mirrors LoadProviders — the
+// per-workdir ancestor cascade is deliberately excluded, for the same reason.
 func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
-	out := make(map[string]ResourceDef)
-	var dirs []string
+	var pluginDirs []string
 	for _, plugin := range c.PluginDirs {
-		dirs = append(dirs, filepath.Join(plugin, "resources"))
+		pluginDirs = append(pluginDirs, filepath.Join(plugin, "resources"))
 	}
+	globalDir := ""
 	if c.BaseDir != "" {
-		dirs = append(dirs, filepath.Join(c.BaseDir, "resources"))
+		globalDir = filepath.Join(c.BaseDir, "resources")
 	}
-	for _, dir := range dirs {
-		entries, err := listTOMLFiles(dir)
+	return loadTrustedLayer(pluginDirs, globalDir, func(path string) (ResourceDef, error) {
+		def, err := loadResourceDefFile(path)
 		if err != nil {
-			return nil, err
+			return ResourceDef{}, fmt.Errorf("resource %s: %w", path, err)
 		}
-		for _, path := range entries {
-			def, err := loadResourceDefFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("resource %s: %w", path, err)
-			}
-			out[def.ID] = def
-		}
-	}
-	return out, nil
+		return def, nil
+	}, func(def ResourceDef) string { return def.ID })
 }
 
 func loadResourceDefFile(path string) (ResourceDef, error) {

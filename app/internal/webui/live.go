@@ -20,7 +20,11 @@ func NewLiveService() (*LiveService, error) {
 	if err := store.CheckReadable(); err != nil {
 		return nil, err
 	}
-	return newLiveService(config.Load(), store), nil
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	return newLiveService(cfg, store), nil
 }
 
 // newLiveService injects the cfg and store so tests can supply a temp store

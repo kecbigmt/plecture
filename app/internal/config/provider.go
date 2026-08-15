@@ -75,32 +75,26 @@ func (p ProviderConfig) HasResolver() bool {
 }
 
 // LoadProviders loads `providers/*.toml` from the trusted base layers only:
-// plugin dirs first, then the global config dir; a deeper layer's same-id
-// file replaces the shallower one. The per-workdir ancestor cascade is
-// deliberately excluded (see ProviderConfig).
+// plugin dirs first, then the global config dir; the global layer's same-id
+// file replaces a plugin layer's, but two plugin layers declaring the same
+// id is a load error (see loadTrustedLayer). The per-workdir ancestor
+// cascade is deliberately excluded (see ProviderConfig).
 func (c *Config) LoadProviders() (map[string]ProviderConfig, error) {
-	out := make(map[string]ProviderConfig)
-	var dirs []string
+	var pluginDirs []string
 	for _, plugin := range c.PluginDirs {
-		dirs = append(dirs, filepath.Join(plugin, "providers"))
+		pluginDirs = append(pluginDirs, filepath.Join(plugin, "providers"))
 	}
+	globalDir := ""
 	if c.BaseDir != "" {
-		dirs = append(dirs, filepath.Join(c.BaseDir, "providers"))
+		globalDir = filepath.Join(c.BaseDir, "providers")
 	}
-	for _, dir := range dirs {
-		entries, err := listTOMLFiles(dir)
+	return loadTrustedLayer(pluginDirs, globalDir, func(path string) (ProviderConfig, error) {
+		p, err := loadProviderFile(path)
 		if err != nil {
-			return nil, err
+			return ProviderConfig{}, fmt.Errorf("provider %s: %w", path, err)
 		}
-		for _, path := range entries {
-			p, err := loadProviderFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("provider %s: %w", path, err)
-			}
-			out[p.ID] = p
-		}
-	}
-	return out, nil
+		return p, nil
+	}, func(p ProviderConfig) string { return p.ID })
 }
 
 func loadProviderFile(path string) (ProviderConfig, error) {

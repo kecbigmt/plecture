@@ -138,7 +138,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	if envExecErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: envExecErr.Error()}
 	}
-	tasksErr := task.RunSetup(context.Background(), plan.Session, sessionVars(session), session.Tasks, params.Observer, envExecutor)
+	tasksErr := task.RunSetup(context.Background(), plan.Session, sessionVars(cfg, session), session.Tasks, params.Observer, envExecutor)
 	session.UpdatedAt = time.Now()
 	// A session node (the initial_task dispatcher) can shell out to a nested
 	// `plect task setup` subprocess that writes its instance straight to disk.

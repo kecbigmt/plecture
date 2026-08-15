@@ -25,7 +25,10 @@ hint to run 'plect up <session>' first. Compose with the shell when you want
 both: 'plect up <name> && plect attach <name>'.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		result, err := service.Attach(cfg, store, service.AttachParams{Identifier: args[0]})
 		if err != nil {

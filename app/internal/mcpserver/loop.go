@@ -151,7 +151,11 @@ func handleTaskSetup(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 		return mcp.NewToolResultError("task_id is required"), nil
 	}
 
-	result, err := service.TaskSetup(config.Load(), state.NewStore(""), service.TaskSetupParams{
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	result, err := service.TaskSetup(cfg, state.NewStore(""), service.TaskSetupParams{
 		TaskID:            taskID,
 		SessionName:       request.GetString("session", ""),
 		Name:              request.GetString("name", ""),
@@ -181,7 +185,11 @@ func handleTaskCleanup(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 		return mcp.NewToolResultError("instance is required"), nil
 	}
 
-	result, err := service.TaskCleanup(config.Load(), state.NewStore(""), service.TaskCleanupParams{
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	result, err := service.TaskCleanup(cfg, state.NewStore(""), service.TaskCleanupParams{
 		Instance:    instance,
 		SessionName: request.GetString("session", ""),
 	})
@@ -203,7 +211,11 @@ func handleTaskFinalize(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 		return mcp.NewToolResultError("instance is required"), nil
 	}
 
-	result, err := service.FinalizeTask(config.Load(), state.NewStore(""), service.FinalizeTaskParams{
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	result, err := service.FinalizeTask(cfg, state.NewStore(""), service.FinalizeTaskParams{
 		Instance:    instance,
 		SessionName: request.GetString("session", ""),
 	})
@@ -228,7 +240,11 @@ func handleCheck(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 		return mcp.NewToolResultError("session is required"), nil
 	}
 
-	result, err := service.CheckSession(config.Load(), state.NewStore(""), service.CheckParams{
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	result, err := service.CheckSession(cfg, state.NewStore(""), service.CheckParams{
 		SessionName: session,
 	})
 	if err != nil {
@@ -249,7 +265,11 @@ func handleTick(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 		return mcp.NewToolResultError("session is required"), nil
 	}
 
-	result, err := service.TickSession(config.Load(), state.NewStore(""), service.TickParams{
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	result, err := service.TickSession(cfg, state.NewStore(""), service.TickParams{
 		SessionName: session,
 		SkipRefresh: request.GetBool("no_refresh", false),
 	})
@@ -287,7 +307,11 @@ func recordJudge(request mcp.CallToolRequest, action string) (*mcp.CallToolResul
 		return mcp.NewToolResultError("judge_id is required"), nil
 	}
 
-	result, err := service.RecordJudge(config.Load(), state.NewStore(""), service.JudgeParams{
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	result, err := service.RecordJudge(cfg, state.NewStore(""), service.JudgeParams{
 		SessionName:     session,
 		Instance:        instance,
 		LeafID:          judgeID,
@@ -317,7 +341,11 @@ func handleSubscribe(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 		return mcp.NewToolResultError("resource is required"), nil
 	}
 
-	if err := service.Subscribe(config.Load(), state.NewStore(""), service.SubscribeParams{
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	if err := service.Subscribe(cfg, state.NewStore(""), service.SubscribeParams{
 		ResourceID:  resource,
 		SessionName: request.GetString("session", ""),
 	}); err != nil {

@@ -215,7 +215,7 @@ func attachCommandFor(cfg *config.Config, session *domain.Session) string {
 	if !ok || st == nil || st.Status != contract.TaskStatusProduced {
 		return ""
 	}
-	cmdStr, err := task.RenderAttach(target.Attach, st.Outputs, sessionVars(session))
+	cmdStr, err := task.RenderAttach(target.Attach, st.Outputs, sessionVars(cfg, session))
 	if err != nil {
 		return ""
 	}

@@ -88,30 +88,25 @@ func (d ChannelDefinition) Validate() error {
 
 // LoadChannels loads `channels/*.toml` from plugin + global layers only. The
 // per-workdir cascade is excluded for the same reason as providers — a channel
-// may run argv (see ChannelDefinition).
+// may run argv (see ChannelDefinition). The global layer's same-id file
+// replaces a plugin layer's, but two plugin layers declaring the same id is
+// a load error (see loadTrustedLayer).
 func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
-	out := make(map[string]ChannelDefinition)
-	var dirs []string
+	var pluginDirs []string
 	for _, plugin := range c.PluginDirs {
-		dirs = append(dirs, filepath.Join(plugin, "channels"))
+		pluginDirs = append(pluginDirs, filepath.Join(plugin, "channels"))
 	}
+	globalDir := ""
 	if c.BaseDir != "" {
-		dirs = append(dirs, filepath.Join(c.BaseDir, "channels"))
+		globalDir = filepath.Join(c.BaseDir, "channels")
 	}
-	for _, dir := range dirs {
-		entries, err := listTOMLFiles(dir)
+	return loadTrustedLayer(pluginDirs, globalDir, func(path string) (ChannelDefinition, error) {
+		d, err := loadChannelFile(path)
 		if err != nil {
-			return nil, err
+			return ChannelDefinition{}, fmt.Errorf("channel %s: %w", path, err)
 		}
-		for _, path := range entries {
-			d, err := loadChannelFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("channel %s: %w", path, err)
-			}
-			out[d.ID] = d
-		}
-	}
-	return out, nil
+		return d, nil
+	}, func(d ChannelDefinition) string { return d.ID })
 }
 
 func loadChannelFile(path string) (ChannelDefinition, error) {

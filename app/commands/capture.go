@@ -21,7 +21,10 @@ it. No interpretation — the raw view is returned for the caller (human or
 LLM) to judge. Session state never changes.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		result, err := service.Capture(cfg, store, service.CaptureParams{Identifier: args[0]})
 		if err != nil {

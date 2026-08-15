@@ -76,7 +76,10 @@ PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		stateStore := state.NewStore("")
 
 		// Session dispatchers share this process's event log and session state:

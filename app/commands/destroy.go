@@ -38,7 +38,10 @@ runs: deleting it would orphan them (plect up never re-adopts an orphan). Use
 children intact.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		result, err := service.Destroy(cfg, store, service.DestroyParams{
 			Identifier:   args[0],

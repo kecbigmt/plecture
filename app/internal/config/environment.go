@@ -46,32 +46,26 @@ func (e EnvironmentConfig) ResolvedOutputsSchemaPath() string {
 }
 
 // LoadEnvironments loads `environments/*.toml` from the trusted base layers
-// only: plugin dirs first, then the global config dir; a deeper layer's
-// same-id file replaces the shallower one. The per-workdir ancestor cascade
-// is deliberately excluded (see EnvironmentConfig).
+// only: plugin dirs first, then the global config dir; the global layer's
+// same-id file replaces a plugin layer's, but two plugin layers declaring
+// the same id is a load error (see loadTrustedLayer). The per-workdir
+// ancestor cascade is deliberately excluded (see EnvironmentConfig).
 func (c *Config) LoadEnvironments() (map[string]EnvironmentConfig, error) {
-	out := make(map[string]EnvironmentConfig)
-	var dirs []string
+	var pluginDirs []string
 	for _, plugin := range c.PluginDirs {
-		dirs = append(dirs, filepath.Join(plugin, "environments"))
+		pluginDirs = append(pluginDirs, filepath.Join(plugin, "environments"))
 	}
+	globalDir := ""
 	if c.BaseDir != "" {
-		dirs = append(dirs, filepath.Join(c.BaseDir, "environments"))
+		globalDir = filepath.Join(c.BaseDir, "environments")
 	}
-	for _, dir := range dirs {
-		entries, err := listTOMLFiles(dir)
+	return loadTrustedLayer(pluginDirs, globalDir, func(path string) (EnvironmentConfig, error) {
+		e, err := loadEnvironmentFile(path)
 		if err != nil {
-			return nil, err
+			return EnvironmentConfig{}, fmt.Errorf("environment %s: %w", path, err)
 		}
-		for _, path := range entries {
-			e, err := loadEnvironmentFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("environment %s: %w", path, err)
-			}
-			out[e.ID] = e
-		}
-	}
-	return out, nil
+		return e, nil
+	}, func(e EnvironmentConfig) string { return e.ID })
 }
 
 func loadEnvironmentFile(path string) (EnvironmentConfig, error) {

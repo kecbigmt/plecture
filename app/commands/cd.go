@@ -17,7 +17,10 @@ var cdCmd = &cobra.Command{
 	Long:  "Print the working directory to stdout. Use with: cd $(plect cd <resource-id|session>)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 
 		// Full state v3 lookup (name → alias → legacy URL → resolver

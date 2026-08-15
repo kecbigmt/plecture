@@ -124,7 +124,10 @@ timeout = "5s"
 [input_schema]
 session = { type = "string", required = true }
 `)
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadChannels()
 	if err != nil {
 		t.Fatalf("LoadChannels: %v", err)
@@ -162,9 +165,33 @@ func TestLoadChannels_RejectsInvalid(t *testing.T) {
 type = "unix_socket"
 path = "{{.Inputs.path}}"
 `)
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := cfg.LoadChannels(); err == nil {
 		t.Fatal("expected error for unix_socket channel missing body")
+	}
+}
+
+func TestLoadChannels_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+	pluginA := t.TempDir()
+	pluginB := t.TempDir()
+	writeFile(t, filepath.Join(pluginA, "channels", "tmux_send_keys.toml"), `
+type = "exec"
+command = "tmux"
+args = ["send-keys", "-t", "a"]
+`)
+	writeFile(t, filepath.Join(pluginB, "channels", "tmux_send_keys.toml"), `
+type = "exec"
+command = "tmux"
+args = ["send-keys", "-t", "b"]
+`)
+	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
+
+	_, err := cfg.LoadChannels()
+	if err == nil || !strings.Contains(err.Error(), "tmux_send_keys") {
+		t.Fatalf("expected a same-id-across-plugin-layers error naming \"tmux_send_keys\", got %v", err)
 	}
 }
 
@@ -320,7 +347,10 @@ name = "slack"
 uses = "slack_thread"
 include = ["github.*"]
 `)
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
@@ -360,8 +390,11 @@ name = "runtime"
 uses = "tmux_send_keys"
 include = ["github.*"]
 `)
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil || !strings.Contains(err.Error(), "declared in both") {
 		t.Fatalf("LoadWorkflows = %v, want duplicate channel name error", err)
 	}

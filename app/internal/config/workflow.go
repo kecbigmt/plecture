@@ -535,15 +535,25 @@ func resolveSchemaPath(file, baseDir string) string {
 // content — an attacker-controlled repository must not be able to introduce
 // shell that plect would execute. Every other layer (plugin, global, ancestor
 // overlays above the workdir) is machine-owned and trusted.
+//
+// plugin marks a layer sourced from c.PluginDirs specifically (as opposed to
+// the global config dir or an ancestor overlay): per the plugin-packaging
+// design, a same-id conflict between two plugin layers is a load error,
+// while a user-owned layer (global or overlay) may always replace what a
+// plugin layer defines.
 type layerDir struct {
 	dir     string
 	workdir bool
+	plugin  bool
 }
 
 // LoadWorkflows merges plugin + global + ancestor `.plect/workflows/` layers so
 // projects can extend (not fork) shared workflows. Same-stem files append
 // nodes; duplicating a node id across layers is rejected so a deeper layer
-// can't silently stomp a base node.
+// can't silently stomp a base node. Same-id across two different plugin
+// layers is rejected outright, before any merge is attempted: composing two
+// arbitrary plugins under one workflow id was never a sanctioned use case —
+// only a user-owned overlay may extend a plugin's workflow.
 //
 // Trust restriction: workflow files in the workdir layer may only add nodes.
 // Declaring anything else there (setup/cleanup shell, identity, schemas) is a
@@ -554,6 +564,7 @@ func (c *Config) LoadWorkflows(workdirDir string) (map[string]WorkflowFile, erro
 	dirs := c.workflowSearchDirs(workdirDir)
 	layered := make(map[string][]WorkflowFile)
 	order := make([]string, 0)
+	pluginOwner := make(map[string]string)
 	for _, layer := range dirs {
 		entries, err := listTOMLFiles(layer.dir)
 		if err != nil {
@@ -568,6 +579,12 @@ func (c *Config) LoadWorkflows(workdirDir string) (map[string]WorkflowFile, erro
 				if err := validateWorkdirLayerWorkflow(wf); err != nil {
 					return nil, err
 				}
+			}
+			if layer.plugin {
+				if owner, exists := pluginOwner[wf.ID]; exists {
+					return nil, fmt.Errorf("workflow %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", wf.ID, owner, path)
+				}
+				pluginOwner[wf.ID] = path
 			}
 			if _, seen := layered[wf.ID]; !seen {
 				order = append(order, wf.ID)
@@ -636,9 +653,11 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 }
 
 // LoadTaskDefinitions merges plugin + global + ancestor `.plect/tasks/`
-// layers. Same-id deeper layer wins because setup/cleanup is atomic —
-// appending two shell scripts doesn't have a sensible meaning the way
-// appending nodes does.
+// layers. Same-id deeper (user-owned) layer wins because setup/cleanup is
+// atomic — appending two shell scripts doesn't have a sensible meaning the
+// way appending nodes does. Same-id across two different plugin layers is a
+// load error instead of a silent pick, since declaration order must never
+// decide between two plugins' shell.
 //
 // Trust restriction: task definitions are arbitrary shell, so the workdir
 // layer (clone content) must not contribute any. A `.plect/tasks/*.toml`
@@ -646,6 +665,7 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 // silently ignoring it would make the author think the task is active.
 func (c *Config) LoadTaskDefinitions(workdirDir string) (map[string]TaskDefinition, error) {
 	out := make(map[string]TaskDefinition)
+	pluginOwner := make(map[string]string)
 	dirs := c.tasksSearchDirs(workdirDir)
 	for _, layer := range dirs {
 		entries, err := listTOMLFiles(layer.dir)
@@ -659,6 +679,12 @@ func (c *Config) LoadTaskDefinitions(workdirDir string) (map[string]TaskDefiniti
 			def, err := loadTaskDefinitionFile(path)
 			if err != nil {
 				return nil, fmt.Errorf("task %s: %w", path, err)
+			}
+			if layer.plugin {
+				if owner, exists := pluginOwner[def.ID]; exists {
+					return nil, fmt.Errorf("task %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, path)
+				}
+				pluginOwner[def.ID] = path
 			}
 			out[def.ID] = withBuiltinOutputs(def)
 		}
@@ -679,7 +705,7 @@ func (c *Config) tasksSearchDirs(workdirDir string) []layerDir {
 func (c *Config) searchDirs(workdirDir, kind string) []layerDir {
 	var dirs []layerDir
 	for _, plugin := range c.PluginDirs {
-		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, kind)})
+		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, kind), plugin: true})
 	}
 	if c.BaseDir != "" {
 		dirs = append(dirs, layerDir{dir: filepath.Join(c.BaseDir, kind)})

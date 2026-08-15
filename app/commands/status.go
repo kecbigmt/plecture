@@ -50,7 +50,10 @@ workflow's own display status line.`,
 			return fmt.Errorf("--full is only supported with --json")
 		}
 
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 
 		if statusRefresh {

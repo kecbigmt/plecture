@@ -40,7 +40,10 @@ Example:
     --meta channel_id=C01ABCDEF`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 
 		metadata := make(map[string]string)
@@ -81,7 +84,10 @@ Example:
   plect state set-message session-1 ""`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 
 		if err := service.SetMessage(cfg, store, args[0], args[1]); err != nil {
@@ -135,7 +141,10 @@ Example:
 		if payload == nil {
 			return fmt.Errorf("payload is not a JSON object: got null")
 		}
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		result, err := service.SetOutput(cfg, store, service.SetOutputParams{
 			Identifier: args[0],

@@ -60,7 +60,7 @@ func fetchFromResourceStatus(cfg *config.Config, src config.DynamicOutput, ctx R
 	if err != nil {
 		return nil, fmt.Errorf("output %v: load resource definitions: %w", src.OutputNames(), err)
 	}
-	state, _, ok, err := ResourceStatus(defs, resourceID, ctx.Session.Branch, ctx.Session.WorkdirPath)
+	state, _, ok, err := ResourceStatus(defs, resourceID, ctx.Session.Branch, ctx.Session.WorkdirPath, cfg.Plugins)
 	if err != nil {
 		return nil, fmt.Errorf("output %v: %w", src.OutputNames(), err)
 	}

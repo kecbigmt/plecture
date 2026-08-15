@@ -59,6 +59,10 @@ cross-session view spans sessions, so it takes no single session argument.`,
 		if err := validateScopeArgs(args); err != nil {
 			return err
 		}
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		params := service.EventPageParams{
 			Order:  order,
 			Cursor: eventCursor,
@@ -67,9 +71,9 @@ cross-session view spans sessions, so it takes no single session argument.`,
 		var page service.EventPageResult
 		switch {
 		case eventSubtree != "":
-			page, err = service.EventPageSubtree(config.Load(), store, eventSubtree, params)
+			page, err = service.EventPageSubtree(cfg, store, eventSubtree, params)
 		default:
-			page, err = service.EventPage(config.Load(), store, args[0], params)
+			page, err = service.EventPage(cfg, store, args[0], params)
 		}
 		if err != nil {
 			return err
@@ -92,7 +96,11 @@ var eventShowCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store := state.NewStore("")
-		ev, err := service.EventShow(config.Load(), store, args[0], args[1])
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		ev, err := service.EventShow(cfg, store, args[0], args[1])
 		if err != nil {
 			return err
 		}
@@ -105,7 +113,10 @@ var eventPublishCmd = &cobra.Command{
 	Short: "Publish an event to a session",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		meta, err := parseMeta(evPubMeta)
 		if err != nil {
@@ -143,6 +154,10 @@ argument and --subtree are mutually exclusive.`,
 		if err := validateScopeArgs(args); err != nil {
 			return err
 		}
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
 
@@ -155,12 +170,11 @@ argument and --subtree are mutually exclusive.`,
 			}
 			fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", ev.Time.Format("15:04:05"), ev.Type, ev.Source, ev.Summary)
 		}
-		var err error
 		switch {
 		case eventSubtree != "":
-			err = service.EventTailSubtree(ctx, config.Load(), store, eventSubtree, f, emit)
+			err = service.EventTailSubtree(ctx, cfg, store, eventSubtree, f, emit)
 		default:
-			err = service.EventTail(ctx, config.Load(), store, args[0], eventSince, f, emit)
+			err = service.EventTail(ctx, cfg, store, args[0], eventSince, f, emit)
 		}
 		if err == context.Canceled {
 			return nil

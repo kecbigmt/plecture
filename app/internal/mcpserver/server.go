@@ -152,7 +152,10 @@ var workflowShowTool = mcp.NewTool("plect_workflow_show",
 )
 
 func handleWorkflowList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return errorResult(err), nil
@@ -168,7 +171,10 @@ func handleWorkflowList(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 }
 
 func handleWorkflowShow(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	id := request.GetString("id", "")
 	if id == "" {
 		return mcp.NewToolResultError("id is required"), nil
@@ -188,8 +194,12 @@ func handleWorkflowShow(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 }
 
 func handleTemplateList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	workdir := request.GetString("workdir", "")
-	templates, err := template.List(workdir)
+	templates, err := template.List(workdir, cfg.PluginDirs)
 	if err != nil {
 		return errorResult(err), nil
 	}
@@ -201,7 +211,10 @@ func handleTemplateList(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 }
 
 func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	store := state.NewStore("")
 
 	identifier := request.GetString("session", "")
@@ -234,7 +247,10 @@ func handleUp(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 }
 
 func handleDown(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	store := state.NewStore("")
 
 	identifier := request.GetString("session", "")
@@ -255,7 +271,10 @@ func handleDown(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 }
 
 func handleDestroy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	store := state.NewStore("")
 
 	identifier := request.GetString("session", "")
@@ -284,7 +303,10 @@ func handleDestroy(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 }
 
 func handleCapture(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	store := state.NewStore("")
 
 	session := request.GetString("session", "")
@@ -306,7 +328,10 @@ func handleCapture(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 }
 
 func handleStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	store := state.NewStore("")
 
 	url := request.GetString("url", "")
@@ -341,7 +366,10 @@ func handleStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 }
 
 func handleList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	store := state.NewStore("")
 
 	entries, err := service.List(cfg, store)

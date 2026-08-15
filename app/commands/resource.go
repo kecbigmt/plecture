@@ -34,7 +34,10 @@ Example:
   plect resource status <resource-id>`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: args[0]})
 		if err != nil {
 			return err

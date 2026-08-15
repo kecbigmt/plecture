@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
 // MatchResourceDef finds the resource definition whose `match` recognizes
@@ -53,12 +54,12 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (co
 // `plect resource status` call, which has no owning session) — an observe
 // script may derive the current branch from workdirPath as its primary
 // identity signal for the resource.
-func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branch string, workdirPath string) (map[string]any, config.ResourceDef, bool, error) {
+func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branch string, workdirPath string, mountedPlugins []plugins.Mounted) (map[string]any, config.ResourceDef, bool, error) {
 	def, ok, err := MatchResourceDef(defs, resourceID)
 	if err != nil || !ok {
 		return nil, def, ok, err
 	}
-	cmdStr, rerr := render(def.Observe, RenderContext{Session: SessionVars{ResourceID: resourceID, Branch: branch, WorkdirPath: workdirPath}})
+	cmdStr, rerr := render(def.Observe, RenderContext{Session: SessionVars{ResourceID: resourceID, Branch: branch, WorkdirPath: workdirPath, Plugins: mountedPlugins}})
 	if rerr != nil {
 		return nil, def, true, fmt.Errorf("resource %s: observe script template: %w", def.ID, rerr)
 	}

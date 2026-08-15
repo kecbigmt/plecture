@@ -50,7 +50,10 @@ uses        = "claude_channel"
 inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
 include     = ["plect.instruction"]
 `)
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)

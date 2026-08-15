@@ -33,7 +33,7 @@ func TestMatchResourceDef_Ambiguous(t *testing.T) {
 }
 
 func TestResourceStatus_NoDefinition(t *testing.T) {
-	state, _, ok, err := ResourceStatus(nil, "https://github.com/o/r/pull/1", "", "")
+	state, _, ok, err := ResourceStatus(nil, "https://github.com/o/r/pull/1", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestResourceStatus_ObservesAndValidates(t *testing.T) {
 			},
 		},
 	}
-	state, def, ok, err := ResourceStatus(defs, "https://github.com/o/r/pull/5", "", "")
+	state, def, ok, err := ResourceStatus(defs, "https://github.com/o/r/pull/5", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestResourceStatus_ObserveTemplateSeesResourceID(t *testing.T) {
 	defs := map[string]config.ResourceDef{
 		"echo": {Match: `.*`, Observe: `printf '{"resource_id":"%s"}' '{{.ResourceID}}'`},
 	}
-	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", "", "")
+	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestResourceStatus_ObserveTemplateSeesBranch(t *testing.T) {
 	defs := map[string]config.ResourceDef{
 		"echo": {Match: `.*`, Observe: `printf '{"branch":"%s"}' '{{.Branch}}'`},
 	}
-	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", "issue/632+claude", "")
+	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", "issue/632+claude", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestResourceStatus_ObserveTemplateSeesWorkdirPath(t *testing.T) {
 	defs := map[string]config.ResourceDef{
 		"echo": {Match: `.*`, Observe: `printf '{"workdir_path":"%s"}' '{{.WorkdirPath}}'`},
 	}
-	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", "", "/tmp/wt/issue-632")
+	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", "", "/tmp/wt/issue-632", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestResourceStatus_SchemaViolationErrors(t *testing.T) {
 			},
 		},
 	}
-	if _, _, _, err := ResourceStatus(defs, "x", "", ""); err == nil {
+	if _, _, _, err := ResourceStatus(defs, "x", "", "", nil); err == nil {
 		t.Error("expected a state_schema validation error")
 	}
 }
@@ -131,7 +131,7 @@ func TestResourceStatus_NonZeroExitIsError(t *testing.T) {
 	defs := map[string]config.ResourceDef{
 		"x": {Match: `.*`, Observe: "echo boom >&2; exit 1"},
 	}
-	if _, _, _, err := ResourceStatus(defs, "x", "", ""); err == nil {
+	if _, _, _, err := ResourceStatus(defs, "x", "", "", nil); err == nil {
 		t.Error("expected observe failure to error")
 	}
 }

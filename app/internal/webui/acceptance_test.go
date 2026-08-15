@@ -35,7 +35,11 @@ func TestAcceptance_SessionAppearsInList(t *testing.T) {
 		t.Fatalf("seed session: %v", err)
 	}
 
-	svc := newLiveService(config.Load(), store)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := newLiveService(cfg, store)
 	rec := get(t, svc, "/")
 
 	if rec.Code != http.StatusOK {
@@ -67,7 +71,11 @@ func TestAcceptance_SessionDetail(t *testing.T) {
 		t.Fatalf("seed session: %v", err)
 	}
 
-	svc := newLiveService(config.Load(), store)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := newLiveService(cfg, store)
 	rec := get(t, svc, "/sessions/acceptance/web-2")
 
 	if rec.Code != http.StatusOK {
@@ -85,7 +93,11 @@ func TestAcceptance_SessionDetail(t *testing.T) {
 // Acceptance: an unknown session name returns 404 through the real stack.
 func TestAcceptance_SessionDetailNotFound(t *testing.T) {
 	store := state.NewStore(t.TempDir())
-	svc := newLiveService(config.Load(), store)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := newLiveService(cfg, store)
 	rec := get(t, svc, "/sessions/acceptance/missing-1")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
@@ -110,7 +122,10 @@ func acceptancePost(t *testing.T, h http.Handler, path string, form url.Values) 
 // the real stack — the allowlist check fires before any provider work.
 func TestAcceptance_CreateResourceNotAllowed(t *testing.T) {
 	store := state.NewStore(t.TempDir())
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	cfg.ResourceAllowlist = []string{`^https://github\.com/only/allowed/`}
 
 	h := New(newLiveService(cfg, store)).Routes()

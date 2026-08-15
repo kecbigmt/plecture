@@ -33,7 +33,10 @@ The subscriber session is taken from the ambient pane environment
 simply 'plect subscribe <url>'. --session overrides it.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		if err := service.Subscribe(cfg, store, service.SubscribeParams{
 			ResourceID:  args[0],
