@@ -236,16 +236,34 @@ the breaking change — not as follow-up work.
 
 ## Design and ADR documentation
 
-- **Decision records** live in `docs/adr/NNNN-<slug>.md` — a zero-padded
-  sequence number and a kebab-case slug (e.g. `docs/adr/0001-plugin-packaging-format.md`).
-  Each ADR has the sections Status (`Proposed`, `Accepted`, or `Superseded
-  by NNNN`), Context, Decision, Consequences, and Alternatives considered.
-  An ADR is immutable once `Accepted`: a change of mind produces a new,
-  superseding ADR, never an edit to the accepted one.
+- **Decision records** live in `docs/adr/YYYY-MM-DD-<slug>.md` — the date of
+  the decision and a kebab-case slug (e.g.
+  `docs/adr/2026-08-16-plugin-service-lifecycle.md`). Filename sort is
+  chronological, matching the knowledge-bundle retrospective naming already
+  in use. Each ADR has the sections Context, Decision, Consequences, and
+  Alternatives considered.
+- ADRs carry no Proposed or Accepted status. An unmerged PR is the proposal,
+  merging is acceptance, and git history records date and author.
+- Supersession is the only lifecycle fact recorded in ADR files. A
+  superseding ADR declares YAML frontmatter
+  `supersedes: <YYYY-MM-DD-slug>`, and the old ADR gets YAML frontmatter
+  `superseded_by: <YYYY-MM-DD-slug>`. That frontmatter edit is the only edit
+  permitted to an accepted ADR.
+- ADR frontmatter is present only when metadata exists, matching the
+  knowledge-bundle documents' existing practice. Do not add empty frontmatter
+  blocks or status keys. The ADR title remains the Markdown H1.
+- Implementation progress is never recorded in an ADR; it is derivable from
+  code and design documents and otherwise rots.
 - **Evolving design documents** (proposals still being worked out, broader
-  than a single decision) live in `docs/design/<slug>.md`. Each one states
-  its current status in the document and links the ADRs it implements or
-  that were produced from it.
+  than a single decision) live in `docs/design/<slug>.md`. Genre is conveyed
+  by directory placement, not by a status line. Design documents link the ADRs
+  they implement or that were produced from them.
+- A design document describes how the system is specified to behave:
+  present-tense, normative prose, with no change narrative. What changed,
+  from what, and why belongs in an ADR's Context, Decision, and Alternatives.
+  Phrasing like "currently", "instead of", "previously", or before/after
+  framing inside a design document is a smell that the content is ADR
+  material.
 - **Migration procedures** stay in `docs/migrations/` (see Compatibility
   policy above) — they are not ADRs or design documents.
 - All of the above is English-only prose; use `docs/naming.md` for project
