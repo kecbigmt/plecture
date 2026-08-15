@@ -7,16 +7,19 @@ import (
 	"text/template"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
 // SubscribeHookVars is the template surface for a provider's `subscribe` hook.
 // Like WorkflowHookVars it is deliberately minimal — subscribe is a runtime
 // verb that runs from an arbitrary cwd with no working directory or task DAG
 // in scope. It forwards only the current session and the opaque resource
-// being subscribed.
+// being subscribed, plus the mounted plugin list so the hook can invoke its
+// own plugin's executables through `{{bin ...}}`.
 type SubscribeHookVars struct {
 	ResourceID  string
 	SessionName string
+	Plugins     []plugins.Mounted
 }
 
 // RunProviderSubscribe renders and runs the provider's `subscribe` hook. The
@@ -46,9 +49,18 @@ func RunProviderSubscribe(prov config.ProviderConfig, vars SubscribeHookVars) er
 // (missingkey=error) like setup: the surface is a fixed struct so a missing
 // key is an author typo, not a runtime-empty value.
 func renderSubscribeHook(cmd string, vars SubscribeHookVars) (string, error) {
+	// bin is built per render call, not part of the static templateFuncs map,
+	// because it resolves against this render's own vars.Plugins — mirrors
+	// renderWith's and renderWorkflowHook's dynamicFuncs for the same reason.
+	dynamicFuncs := template.FuncMap{
+		"bin": func(ref string) (string, error) {
+			return resolveBin(vars.Plugins, ref)
+		},
+	}
 	tmpl, err := template.New("subscribe_hook").
 		Option("missingkey=error").
 		Funcs(templateFuncs).
+		Funcs(dynamicFuncs).
 		Parse(cmd)
 	if err != nil {
 		return "", fmt.Errorf("template parse: %w", err)

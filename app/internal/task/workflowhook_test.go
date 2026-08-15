@@ -8,8 +8,33 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+// TestRunWorkflowSetup_ResolvesBinReference pins that a provider's
+// setup/cleanup hooks can invoke a plugin-shipped executable through
+// `{{bin ...}}`, the same helper task setup/cleanup and resource observe
+// hooks already get — a provider hook that only has bare command names on
+// `PATH` available cannot reliably invoke its own plugin's executables once
+// that plugin is mounted read-only rather than installed onto `PATH`.
+func TestRunWorkflowSetup_ResolvesBinReference(t *testing.T) {
+	mounted := []plugins.Mounted{mustMount("official/plugins/github", "/mnt/github",
+		plugins.Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"})}
+	prov := config.ProviderConfig{
+		ID:    "wf",
+		Setup: `echo "{\"workdir\":\"/tmp/x\",\"bin\":\"{{bin "official/plugins/github/plect-github-provider"}}\"}"`,
+	}
+	tasks := map[string]*contract.TaskState{}
+	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted}, tasks, nil)
+	if err != nil {
+		t.Fatalf("RunWorkflowSetup: %v", err)
+	}
+	want := filepath.Join("/mnt/github", "bin", "plect-github-provider")
+	if outputs["bin"] != want {
+		t.Errorf("bin = %v, want %q", outputs["bin"], want)
+	}
+}
 
 func TestRunWorkflowSetup_ProducesWorkdir(t *testing.T) {
 	dir := t.TempDir()

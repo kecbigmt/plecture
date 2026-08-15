@@ -95,6 +95,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		SessionName:   sessionName,
 		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
+		Plugins:       cfg.Plugins,
 	}
 	outputs, setupErr := task.RunWorkflowSetup(prov, vars, session.Tasks, params.Observer)
 	session.UpdatedAt = time.Now()
