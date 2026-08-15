@@ -505,7 +505,7 @@ Catalog record fields:
 |---|---|
 | `alias` | User-chosen catalog alias from `catalogs.toml`. |
 | `catalog_source` | Catalog source from `catalogs.toml`. It never includes a symbolic Git revision. |
-| `dir` | Copy of `catalogs.toml`'s `dir` for this alias, empty when unset. Checked for drift the same way `catalog_source` is: if a hand-edited `catalogs.toml` no longer matches, resolution fails loud and asks for `plect catalog update` rather than silently trusting a different subtree than the one last confirmed. |
+| `dir` | Copy of `catalogs.toml`'s `dir` for this alias, empty when unset. Checked for drift the same way `catalog_source` is: if a hand-edited `catalogs.toml` no longer matches, resolution fails loud rather than silently trusting a different subtree than the one last confirmed. The fix is `plect catalog remove <alias>` then `plect catalog add` again — not `plect catalog update`, which performs the identical drift check itself and refuses for the same reason (see below). |
 | `catalog_resolved_revision` | Git-only immutable catalog revision. It is always the resolved commit SHA from the last explicit catalog add or catalog update. |
 
 Plugin record fields:
@@ -545,7 +545,14 @@ Add and update commands:
   entry. It does not write the requested revision to `catalogs.toml`. `dir`
   has no update-time flag: it is a registration-time decision read back from
   `catalogs.toml`, re-applied to the new snapshot unchanged; changing which
-  subtree is trusted is a new `catalog add`, not an update.
+  subtree is trusted is a new `catalog add`, not an update. Before fetching
+  anything, `catalog update` (and `plugin add`/`plugin update` below) compare
+  `catalogs.toml`'s current `source`/`dir` for the alias against the last
+  catalog lock record and refuse if they disagree — a hand-edited
+  registration is exactly the drift `catalog_source`/`dir`'s field entries
+  above describe, and none of these commands is the confirmation step that
+  is allowed to accept it silently. Only `plect catalog remove` +
+  `plect catalog add` can.
 - `plect catalog remove <alias>` shows the enabled plugins that would be
   disabled, requires confirmation in interactive contexts, then removes the
   catalog registration and those plugin selections and lock entries.

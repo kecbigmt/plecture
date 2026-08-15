@@ -148,6 +148,41 @@ func TestVerifyAndMountPlugin_GitSource_DirScoped(t *testing.T) {
 	}
 }
 
+func TestCheckCatalogNotDrifted_NoLockRecordIsNotDrift(t *testing.T) {
+	entry := CatalogEntry{Alias: "local", Source: "path:///x", Dir: "plugins"}
+	if err := CheckCatalogNotDrifted(entry, &Lockfile{}); err != nil {
+		t.Errorf("CheckCatalogNotDrifted: unexpected error for a never-locked alias: %v", err)
+	}
+}
+
+func TestCheckCatalogNotDrifted_MatchingRecordPasses(t *testing.T) {
+	entry := CatalogEntry{Alias: "local", Source: "path:///x", Dir: "plugins"}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///x", Dir: "plugins"}}}
+	if err := CheckCatalogNotDrifted(entry, lock); err != nil {
+		t.Errorf("CheckCatalogNotDrifted: unexpected error for a matching record: %v", err)
+	}
+}
+
+func TestCheckCatalogNotDrifted_DirMismatchFailsLoud(t *testing.T) {
+	entry := CatalogEntry{Alias: "local", Source: "path:///x", Dir: "plugins"}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///x", Dir: "other"}}}
+	err := CheckCatalogNotDrifted(entry, lock)
+	var want *ErrCatalogSourceDrift
+	if !errors.As(err, &want) {
+		t.Fatalf("err = %v, want *ErrCatalogSourceDrift", err)
+	}
+}
+
+func TestCheckCatalogNotDrifted_SourceMismatchFailsLoud(t *testing.T) {
+	entry := CatalogEntry{Alias: "local", Source: "path:///x"}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///y"}}}
+	err := CheckCatalogNotDrifted(entry, lock)
+	var want *ErrCatalogSourceDrift
+	if !errors.As(err, &want) {
+		t.Fatalf("err = %v, want *ErrCatalogSourceDrift", err)
+	}
+}
+
 func TestVerifyAndMountCatalog_GitSource_Success(t *testing.T) {
 	repo, firstCommit, _ := newLocalCatalogGitRepo(t)
 	cacheRoot := t.TempDir()

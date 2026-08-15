@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/plugins"
@@ -294,6 +295,36 @@ func TestCatalogUpdate_RepointsEnabledPlugins(t *testing.T) {
 	}
 	if after.ContentHash == before.ContentHash {
 		t.Fatal("CatalogUpdate did not re-hash the changed plugin content")
+	}
+}
+
+// TestCatalogUpdate_RejectsHandEditedDirDrift is a regression test:
+// CatalogUpdate used to read catalogs.toml's current `dir` straight into a
+// fresh fetch and lock write with no comparison against what was already
+// locked, so a hand-edited dir would get silently trusted on the next
+// update — never routing through the interactive `plect catalog add`
+// confirmation that changing a trusted subtree requires.
+func TestCatalogUpdate_RejectsHandEditedDirDrift(t *testing.T) {
+	paths := catalogTestPaths(t)
+	src := writeCatalogSource(t, map[string]string{"okf": "0.0.0"})
+	addTestCatalog(t, paths, "local", "path://"+src)
+
+	registrations, err := plugins.LoadCatalogRegistrations(paths.CatalogsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range registrations.Catalogs {
+		if registrations.Catalogs[i].Alias == "local" {
+			registrations.Catalogs[i].Dir = "sub"
+		}
+	}
+	if err := plugins.SaveCatalogRegistrations(paths.CatalogsPath, registrations); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = CatalogUpdate(context.Background(), paths, CatalogUpdateParams{Alias: "local"})
+	if err == nil || !strings.Contains(err.Error(), "does not match plect.lock") {
+		t.Fatalf("CatalogUpdate after a hand-edited dir: err = %v, want a source/dir drift error", err)
 	}
 }
 

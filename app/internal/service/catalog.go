@@ -182,12 +182,15 @@ func CatalogUpdate(ctx context.Context, paths PluginPaths, params CatalogUpdateP
 		return nil, &Error{Code: ErrInvalidInput, Message: "`--revision` does not apply to a path-sourced catalog"}
 	}
 
-	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, params.Revision, entry.Dir, paths.CacheRoot)
+	lock, err := plugins.LoadLockfile(paths.LockfilePath)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
+	if err := plugins.CheckCatalogNotDrifted(entry, lock); err != nil {
+		return nil, &Error{Code: ErrInvalidInput, Message: err.Error()}
+	}
 
-	lock, err := plugins.LoadLockfile(paths.LockfilePath)
+	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, params.Revision, entry.Dir, paths.CacheRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

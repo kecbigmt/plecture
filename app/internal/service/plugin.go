@@ -47,6 +47,9 @@ func PluginAdd(ctx context.Context, paths PluginPaths, id string) (*PluginAddRes
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
+	if err := plugins.CheckCatalogNotDrifted(entry, lock); err != nil {
+		return nil, &Error{Code: ErrInvalidInput, Message: err.Error()}
+	}
 
 	fetched, err := resolveCatalogForEnable(ctx, paths, entry, lock)
 	if err != nil {
@@ -145,6 +148,14 @@ func PluginUpdate(ctx context.Context, paths PluginPaths, id string, revision st
 		return nil, &Error{Code: ErrInvalidInput, Message: "`--revision` does not apply to a path-sourced catalog"}
 	}
 
+	lock, err := plugins.LoadLockfile(paths.LockfilePath)
+	if err != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	if err := plugins.CheckCatalogNotDrifted(entry, lock); err != nil {
+		return nil, &Error{Code: ErrInvalidInput, Message: err.Error()}
+	}
+
 	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, revision, entry.Dir, paths.CacheRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
@@ -158,10 +169,6 @@ func PluginUpdate(ctx context.Context, paths PluginPaths, id string, revision st
 		return nil, err
 	}
 
-	lock, err := plugins.LoadLockfile(paths.LockfilePath)
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
-	}
 	// Bump the shared catalog lock record too, so a later `plugin add` for a
 	// new path from this catalog reuses this fresher snapshot.
 	lock.PutCatalog(plugins.CatalogLockRecord{Alias: alias, CatalogSource: entry.Source, Dir: entry.Dir, CatalogResolvedRevision: fetched.ResolvedRevision})
