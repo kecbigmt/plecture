@@ -35,9 +35,8 @@ type WorkflowHookVars struct {
 	Force bool
 	// CleanupInputs are opaque key/value pairs the caller passes through to
 	// the cleanup template as .CleanupInputs, unexamined by core. This is the
-	// generic escape hatch for provider-specific teardown intents (e.g. the
-	// shipped github provider reads a delete_branch key) so a new intent
-	// never requires a core vocabulary addition. Setup never sets this —
+	// generic escape hatch for provider-specific teardown intents, so a new
+	// one never requires a core vocabulary addition. Setup never sets this —
 	// cleanup intents only apply to teardown.
 	CleanupInputs map[string]string
 }
