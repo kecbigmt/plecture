@@ -287,6 +287,14 @@ acquisition coordinates and content hashes. Default alias suggestions belong in
 provider README install snippets, not in any manifest. Core contains no official
 host, owner, registry, provider list, or prefix policy.
 
+Ownership stays split by file. `config.toml` is human-only. `catalogs.toml` is
+human-owned, but plect appends or edits it only in direct response to explicit
+human commands: `plect catalog add` writes a new `[[catalogs]]` entry after
+interactive trust confirmation, `plect plugin add` appends a path to that
+entry's `plugins` list, and `plect plugin remove` removes that path. `plect.lock`
+is tool-only; resolved revisions and content hashes live there, never in
+`catalogs.toml`.
+
 Git is the default transport for reference distribution, not a requirement of
 the resolution model. The model needs only fetch, revision or hash
 verification, and read-only mount; the `path` scheme is the git-free floor. Core
@@ -303,6 +311,8 @@ Resolution flow:
      the add or update command to a commit SHA. `--revision` accepts tags and
      branches as input, but the lockfile records only the resolved commit SHA,
      never the symbolic ref. The source in `catalogs.toml` remains revision-free.
+     The lockfile's catalog record is the durable home for the last explicitly
+     trusted catalog snapshot; plugin lock entries remain the usage pins.
    - Locked path catalog: resolve symlinks and verify selected plugin
      directories against their per-plugin tree SHA-256 hashes. Path sources have
      no catalog revision.
@@ -378,6 +388,11 @@ Example:
 ```toml
 schema_version = 1
 
+[[catalogs]]
+alias = "official"
+catalog_source = "git+https://github.com/example/plect-plugins"
+catalog_resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
+
 [[plugins]]
 id = "official/github"
 catalog_alias = "official"
@@ -409,7 +424,15 @@ plect_min_version = "0.8.0"
 editable = false
 ```
 
-Recorded fields:
+Catalog record fields:
+
+| Field | Meaning |
+|---|---|
+| `alias` | User-chosen catalog alias from `catalogs.toml`. |
+| `catalog_source` | Catalog source from `catalogs.toml`. It never includes a symbolic Git revision. |
+| `catalog_resolved_revision` | Git-only immutable catalog revision. It is always the resolved commit SHA from the last explicit catalog add or catalog update. |
+
+Plugin record fields:
 
 | Field | Meaning |
 |---|---|
@@ -430,17 +453,17 @@ Add and update commands:
   shows the exact source, resolved lock coordinate, manifest description, and
   plugin paths, and asks for interactive confirmation. On consent, it writes a
   new `[[catalogs]]` entry with `alias`, revision-free `source`, and an empty
-  `plugins` list. When `--revision` is supplied for a Git source, it affects the
-  trusted snapshot used by subsequent plugin add commands; `catalogs.toml` still
-  records no revision, and plugin lock entries record only the resolved commit
-  SHA.
+  `plugins` list. For Git sources, it also writes a catalog lock record with the
+  resolved commit SHA. That record is the durable home for a `--revision` input
+  until plugin entries are added; `catalogs.toml` still records no revision, and
+  plugin lock entries record only resolved commit SHAs.
 - `plect catalog update <alias> [--revision <rev>]` fetches the newest matching
   catalog snapshot and repoints every enabled plugin from that catalog to the
   new snapshot with fresh per-plugin lock entries. When `--revision` is
   supplied for a Git catalog, it is a catalog-level intent change: after
   confirmation, plect resolves the requested revision to a commit SHA and
-  records that SHA in each updated plugin lock entry. It does not write the
-  requested revision to `catalogs.toml`.
+  records that SHA in the catalog lock record and each updated plugin lock
+  entry. It does not write the requested revision to `catalogs.toml`.
 - `plect catalog remove <alias>` shows the enabled plugins that would be
   disabled, requires confirmation in interactive contexts, then removes the
   catalog registration and those plugin selections and lock entries.
@@ -449,9 +472,10 @@ Add and update commands:
   does not imply that one resolved Git commit applies to every enabled plugin in
   the catalog.
 - `plect plugin add <alias>/<path>` enables one plugin path from a registered
-  catalog, resolves the registered source or most recently trusted catalog
-  snapshot to a commit SHA for Git catalogs, adds the path to that catalog
-  entry's `plugins` list, and writes or updates that plugin's lock entry.
+  catalog. For Git catalogs, it uses the catalog lock record when one exists;
+  otherwise it resolves the registered source and writes the resulting commit SHA
+  to both the catalog lock record and the plugin lock entry. It also adds the
+  path to that catalog entry's `plugins` list.
 - `plect plugin update <alias>/<path> [--revision <rev>]` fetches the newest
   matching catalog snapshot, validates the catalog, and repoints only that
   plugin's lock entry. When `--revision` is supplied, it affects only that
@@ -461,7 +485,7 @@ Add and update commands:
   locked coordinates; cache snapshots coexist by source digest and lock
   coordinate.
 - `plect plugin remove <alias>/<path>` disables that plugin and removes its lock
-  entry.
+  entry, and removes the path from that catalog entry's `plugins` list.
 - `plect plugin verify` re-hashes cached plugin directories and fails if any
   differ from the lockfile.
 - `plect plugin list` shows selected, resolved, locked, and compatibility state.
@@ -497,6 +521,13 @@ Alternatives considered:
   update individual packages. The trust boundary follows Go modules: the
   manifest position defines the subtree. Reproducibility comes from lock-based
   pinning, which Helm-style indexes do not provide by themselves.
+- The user-side registration file is named `catalogs.toml` because entity-plural
+  registration files match Helm `repositories.yaml` and apt `sources.list`.
+  Installed-state names were rejected because this file declares desired state,
+  not installed state. `trusted_`-prefixed names were rejected because trust is a
+  property of the add-time confirmation procedure, not of the file. The
+  one-word overlap with the catalog's `catalog.toml` is handled in prose by
+  possessive phrasing: your `catalogs.toml` versus the catalog's `catalog.toml`.
 
 ## Trust boundary
 
@@ -516,10 +547,12 @@ Threat model:
   immutability still comes from `plect.lock`: Git catalogs record the resolved
   commit SHA plus the trust-space content hash, locked path catalogs record the
   tree SHA-256, and editable path catalogs are explicitly non-reproducible.
-- Plugin declarations are global-only. A dispatched session's workdir cannot
+- Plugin selections are global-only. A dispatched session's workdir cannot
   inject plugins or trust new catalogs through cloned content.
-- Catalog registration and lock edits are human actions. Agent-driven workflows
-  must not edit them automatically; they should fail or escalate instead.
+- Catalog registration and lock changes are human-governed actions. The `plect`
+  command may edit `catalogs.toml` and `plect.lock` only as the direct effect of
+  explicit human commands; agent-driven workflows must not edit them
+  automatically and should fail or escalate instead.
 - First-seen catalogs require interactive confirmation through
   `plect catalog add`. Non-interactive contexts fail unless the user supplied an
   explicit override that remains visible in command history.
