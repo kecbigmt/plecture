@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/procexec"
@@ -94,9 +96,9 @@ func TestVerifyAndMountPlugin_MissingLockFailsLoud(t *testing.T) {
 	dir := t.TempDir()
 	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
-	catalog := ResolvedCatalog{Alias: "local", Root: dir, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
+	catalog := ResolvedCatalog{Alias: "local", Source: "path://" + dir, Root: dir, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
 
-	_, err := VerifyAndMountPlugin(catalog, "okf", &Lockfile{}, testPlectVersion)
+	_, err := VerifyAndMountPlugin(catalog, "okf", t.TempDir(), &Lockfile{}, testPlectVersion)
 	var want *ErrMissingPluginLock
 	if !errors.As(err, &want) {
 		t.Fatalf("err = %v, want *ErrMissingPluginLock", err)
@@ -112,14 +114,14 @@ func TestVerifyAndMountPlugin_TamperedContentFailsLoud(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog := ResolvedCatalog{Alias: "local", Root: dir, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
+	catalog := ResolvedCatalog{Alias: "local", Source: "path://" + dir, Root: dir, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
 	lock := &Lockfile{Plugins: []PluginLockEntry{{ID: "local/okf", Path: "okf", ContentHash: hash}}}
 
 	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte("schema_version = 1\nplect_min_version = \"9.9.9\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = VerifyAndMountPlugin(catalog, "okf", lock, testPlectVersion)
+	_, err = VerifyAndMountPlugin(catalog, "okf", t.TempDir(), lock, testPlectVersion)
 	var want *ErrHashMismatch
 	if !errors.As(err, &want) {
 		t.Fatalf("err = %v, want *ErrHashMismatch", err)
@@ -135,10 +137,10 @@ func TestVerifyAndMountPlugin_LockedSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	catalog := ResolvedCatalog{Alias: "local", Root: dir, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
+	catalog := ResolvedCatalog{Alias: "local", Source: "path://" + dir, Root: dir, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
 	lock := &Lockfile{Plugins: []PluginLockEntry{{ID: "local/okf", Path: "okf", ContentHash: hash}}}
 
-	mounted, err := VerifyAndMountPlugin(catalog, "okf", lock, testPlectVersion)
+	mounted, err := VerifyAndMountPlugin(catalog, "okf", t.TempDir(), lock, testPlectVersion)
 	if err != nil {
 		t.Fatalf("VerifyAndMountPlugin: unexpected error: %v", err)
 	}
@@ -151,9 +153,9 @@ func TestVerifyAndMountPlugin_EditableCatalogNeedsNoLockEntry(t *testing.T) {
 	dir := t.TempDir()
 	pluginDir := filepath.Join(dir, "okf")
 	writeMinimalPlugin(t, pluginDir)
-	catalog := ResolvedCatalog{Alias: "local", Root: dir, NonReproducible: true, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
+	catalog := ResolvedCatalog{Alias: "local", Source: "path+editable://" + dir, Root: dir, NonReproducible: true, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
 
-	mounted, err := VerifyAndMountPlugin(catalog, "okf", &Lockfile{}, testPlectVersion)
+	mounted, err := VerifyAndMountPlugin(catalog, "okf", t.TempDir(), &Lockfile{}, testPlectVersion)
 	if err != nil {
 		t.Fatalf("VerifyAndMountPlugin: unexpected error: %v", err)
 	}
@@ -166,9 +168,9 @@ func TestVerifyAndMountPlugin_IncompatibleMinVersionFailsLoud(t *testing.T) {
 	dir := t.TempDir()
 	pluginDir := filepath.Join(dir, "okf")
 	writeManifest(t, pluginDir, "schema_version = 1\nplect_min_version = \"99.0.0\"\n")
-	catalog := ResolvedCatalog{Alias: "local", Root: dir, NonReproducible: true, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
+	catalog := ResolvedCatalog{Alias: "local", Source: "path+editable://" + dir, Root: dir, NonReproducible: true, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
 
-	_, err := VerifyAndMountPlugin(catalog, "okf", &Lockfile{}, testPlectVersion)
+	_, err := VerifyAndMountPlugin(catalog, "okf", t.TempDir(), &Lockfile{}, testPlectVersion)
 	var want *ErrIncompatible
 	if !errors.As(err, &want) {
 		t.Fatalf("err = %v, want *ErrIncompatible", err)
@@ -227,5 +229,122 @@ func TestVerifyAndMountAll_EnabledPathNotListedInCatalogFailsLoud(t *testing.T) 
 
 	if _, err := VerifyAndMountAll(registrations, lock, t.TempDir(), testPlectVersion); err == nil {
 		t.Fatal("want error when an enabled plugin path is not listed by the catalog, got nil")
+	}
+}
+
+// newLocalCatalogGitRepoTwoPlugins creates a git catalog repo with two
+// plugins, "okf" and "other". The first commit (tagged v1.0.0) has both at
+// baseline content; the second commit changes the content of BOTH plugins,
+// so a test can prove which commit a given plugin was actually mounted
+// from by comparing content hashes, not just by trusting a returned path.
+func newLocalCatalogGitRepoTwoPlugins(t *testing.T) (repoDir, firstCommit, secondCommit string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found on PATH")
+	}
+	dir := t.TempDir()
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME=plect-test", "GIT_AUTHOR_EMAIL=plect-test@example.test",
+		"GIT_COMMITTER_NAME=plect-test", "GIT_COMMITTER_EMAIL=plect-test@example.test",
+	)
+	run := func(args ...string) string {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	write := func(okfVersion, otherVersion string) {
+		if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 1\nplugins = [\"okf\", \"other\"]\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		for name, minVersion := range map[string]string{"okf": okfVersion, "other": otherVersion} {
+			pluginDir := filepath.Join(dir, name)
+			if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			content := "schema_version = 1\nplect_min_version = \"" + minVersion + "\"\n"
+			if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	run("init", "--quiet", "--initial-branch=main")
+	write("0.1.0", "0.1.0")
+	run("add", ".")
+	run("commit", "--quiet", "-m", "v1")
+	run("tag", "v1.0.0")
+	first := run("rev-parse", "HEAD")
+
+	write("0.2.0", "0.2.0")
+	run("commit", "--quiet", "-am", "v2")
+	second := run("rev-parse", "HEAD")
+
+	return dir, first, second
+}
+
+// TestVerifyAndMountAll_GitSiblingsStayIndependentlyPinnedAcrossPartialUpdate
+// is the regression test for the bug a reviewer caught: `plugin update`
+// repoints only the target plugin's lock entry (and bumps the shared
+// catalog lock record so a later `plugin add` reuses the fresher snapshot),
+// but a sibling plugin's OWN lock entry can still point at an older commit.
+// Mounting must honor each plugin's own locked commit, never the catalog's
+// shared lock record — otherwise a sibling silently mounts (and, as here,
+// fails to verify) content from a commit it was never pinned to.
+func TestVerifyAndMountAll_GitSiblingsStayIndependentlyPinnedAcrossPartialUpdate(t *testing.T) {
+	repo, firstCommit, secondCommit := newLocalCatalogGitRepoTwoPlugins(t)
+	cacheRoot := t.TempDir()
+	source := "git+https://" + repo
+
+	rootA, _, err := fetchGitCatalog(context.Background(), procexec.Default, source, repo, firstCommit, cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherHashA, err := HashTree(filepath.Join(rootA, "other"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootB, _, err := fetchGitCatalog(context.Background(), procexec.Default, source, repo, secondCommit, cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okfHashB, err := HashTree(filepath.Join(rootB, "okf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulates: both plugins were added at firstCommit, then only
+	// "local/okf" was updated to secondCommit — the shared catalog lock
+	// record now points at secondCommit (as CatalogUpdate/PluginUpdate
+	// leaves it), but "local/other"'s own lock entry still pins firstCommit.
+	registrations := &CatalogRegistrations{Catalogs: []CatalogEntry{
+		{Alias: "local", Source: source, Plugins: []string{"okf", "other"}},
+	}}
+	lock := &Lockfile{
+		Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: source, CatalogResolvedRevision: secondCommit}},
+		Plugins: []PluginLockEntry{
+			{ID: "local/okf", CatalogAlias: "local", CatalogSource: source, CatalogResolvedRevision: secondCommit, Path: "okf", ContentHash: okfHashB},
+			{ID: "local/other", CatalogAlias: "local", CatalogSource: source, CatalogResolvedRevision: firstCommit, Path: "other", ContentHash: otherHashA},
+		},
+	}
+
+	mounted, err := VerifyAndMountAll(registrations, lock, cacheRoot, testPlectVersion)
+	if err != nil {
+		t.Fatalf("VerifyAndMountAll: unexpected error: %v", err)
+	}
+	byID := make(map[string]Mounted, len(mounted))
+	for _, m := range mounted {
+		byID[m.ID] = m
+	}
+	if !strings.HasPrefix(byID["local/okf"].Dir, rootB) {
+		t.Errorf("local/okf.Dir = %q, want under the secondCommit snapshot %q", byID["local/okf"].Dir, rootB)
+	}
+	if !strings.HasPrefix(byID["local/other"].Dir, rootA) {
+		t.Errorf("local/other.Dir = %q, want under the firstCommit snapshot %q (its own pinned commit)", byID["local/other"].Dir, rootA)
 	}
 }

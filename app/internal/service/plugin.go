@@ -261,7 +261,7 @@ func PluginVerify(paths PluginPaths, lockedOnly bool) (*PluginVerifyResult, erro
 			case catalogErr != nil:
 				pluginEntry.Error = catalogErr.Error()
 			default:
-				if _, err := plugins.VerifyAndMountPlugin(rc, path, lock, version.Current); err != nil {
+				if _, err := plugins.VerifyAndMountPlugin(rc, path, paths.CacheRoot, lock, version.Current); err != nil {
 					pluginEntry.Error = err.Error()
 				} else {
 					pluginEntry.OK = true
@@ -323,7 +323,7 @@ func PluginList(paths PluginPaths) ([]PluginListEntry, error) {
 			case catalogErr != nil:
 				e.Status = catalogErr.Error()
 			default:
-				if _, err := plugins.VerifyAndMountPlugin(rc, path, lock, version.Current); err != nil {
+				if _, err := plugins.VerifyAndMountPlugin(rc, path, paths.CacheRoot, lock, version.Current); err != nil {
 					e.Status = err.Error()
 				}
 			}
