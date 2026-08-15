@@ -69,7 +69,7 @@ rm -f "$STATE_DIR/ready"
 # codex task needs for the TUI, whose real PID differs from the launching
 # shell's.
 tmux send-keys -t {{.Inputs.tmux_session}} \
-  "${EXPORTS}exec {{bin "official/agent/codex/plect-codex-exec-worker"}} '$QUEUE_DIR' '$STATE_DIR' '$PROFILE_NAME'" Enter
+  "${EXPORTS}exec {{bin "plect-codex-exec-worker"}} '$QUEUE_DIR' '$STATE_DIR' '$PROFILE_NAME'" Enter
 
 PANE_PID=$(tmux display-message -p -t {{.Inputs.tmux_session}} '#{pane_pid}')
 READY_TIMEOUT_SECONDS="${PLECT_CODEX_EXEC_READY_TIMEOUT_SECONDS:-30}"
