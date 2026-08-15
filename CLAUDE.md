@@ -53,6 +53,24 @@ go test ./app/...
 
 and likewise for each module under `contracts/` and `plugins/`.
 
+## Agent configuration
+
+Claude and Codex sessions operate under the same rules and skills, so the
+configuration has one source of truth per surface:
+
+- `AGENTS.md` is a symlink to `CLAUDE.md`. Edit `CLAUDE.md`; never edit
+  `AGENTS.md` directly or let the two diverge into separate files.
+- Skills live in `.claude/skills/<name>/SKILL.md`, with `name:` and
+  `description:` frontmatter fields.
+- `.agents/skills/<name>` is a relative symlink to
+  `../../.claude/skills/<name>`, one per skill, so a Codex session sees the
+  same skill set as a Claude session.
+
+`scripts/check-agent-config.sh` (wired into CI) validates these invariants:
+the `AGENTS.md` symlink target, and, for every directory under
+`.claude/skills/`, the presence of `SKILL.md` with both frontmatter fields
+and a matching `.agents/skills/` symlink.
+
 ## Development workflow
 
 This section is the source of truth for how changes get made. If the

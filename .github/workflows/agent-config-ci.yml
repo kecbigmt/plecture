@@ -1,0 +1,35 @@
+name: Agent config CI
+
+on:
+  pull_request:
+    paths:
+      - "CLAUDE.md"
+      - "AGENTS.md"
+      - ".claude/skills/**"
+      - ".agents/skills/**"
+      - "scripts/check-agent-config.sh"
+      - ".github/workflows/agent-config-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "CLAUDE.md"
+      - "AGENTS.md"
+      - ".claude/skills/**"
+      - ".agents/skills/**"
+      - "scripts/check-agent-config.sh"
+      - ".github/workflows/agent-config-ci.yml"
+
+concurrency:
+  group: agent-config-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prove the checker catches a seeded violation
+        run: ./scripts/check-agent-config_selftest.sh
+      - name: Check shared agent configuration
+        run: ./scripts/check-agent-config.sh
