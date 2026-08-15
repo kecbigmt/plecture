@@ -33,7 +33,11 @@ func setUpConfigHomeWithCapture(t *testing.T) {
 
 func createPlainSession(t *testing.T, sessionID string) string {
 	t.Helper()
-	result, err := service.Create(config.Load(), state.NewStore(""), service.CreateParams{
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Create(cfg, state.NewStore(""), service.CreateParams{
 		URL:      sessionID,
 		Workflow: "plain",
 	})

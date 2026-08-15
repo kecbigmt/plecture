@@ -16,7 +16,7 @@ func TestLoad_MissingTemplateNamesSearchedPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := Load("review", workdir)
+	_, err := Load("review", workdir, nil)
 	if err == nil {
 		t.Fatal("Load() expected a missing-template error")
 	}
@@ -36,7 +36,7 @@ func TestLoad_MissingTemplateNamesSearchedPaths(t *testing.T) {
 }
 
 func TestLoad_InvalidMode(t *testing.T) {
-	_, err := Load("nonexistent", "")
+	_, err := Load("nonexistent", "", nil)
 	if err == nil {
 		t.Error("Load(nonexistent) expected error, got nil")
 	}
@@ -56,7 +56,7 @@ func TestLoad_UserGlobalOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	content, err := Load("work", "")
+	content, err := Load("work", "", nil)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestLoad_RepoSpecificOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	content, err := Load("review", repoDir)
+	content, err := Load("review", repoDir, nil)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestRender(t *testing.T) {
 		Mode:       "work",
 	}
 
-	result, err := Render("work", "", vars)
+	result, err := Render("work", "", nil, vars)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestRender_WithInstruction(t *testing.T) {
 		Instruction: "Use Japanese comments",
 	}
 
-	result, err := Render("work", "", vars)
+	result, err := Render("work", "", nil, vars)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestRender_UnknownTemplate(t *testing.T) {
 		ResourceID: "https://example.test/org/repo/items/42",
 		Mode:       "nonexistent",
 	}
-	_, err := Render("nonexistent", "", vars)
+	_, err := Render("nonexistent", "", nil, vars)
 	if err == nil {
 		t.Error("Render(nonexistent) expected error, got nil")
 	}
@@ -183,7 +183,7 @@ func TestRender_VarsExpansion(t *testing.T) {
 		Instruction: "Focus on security",
 	}
 
-	result, err := Render("review", "", vars)
+	result, err := Render("review", "", nil, vars)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestRender_SessionVarsWithoutProviderOutputs(t *testing.T) {
 		SessionInputs: map[string]any{"focus": "triage"},
 	}
 
-	result, err := Render("kick", workdir, vars)
+	result, err := Render("kick", workdir, nil, vars)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestRender_EmptyVars(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := Render("bare", workdir, Vars{Mode: "bare"})
+	result, err := Render("bare", workdir, nil, Vars{Mode: "bare"})
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestRender_GetGuardsOptionalVars(t *testing.T) {
 	}
 
 	vars := Vars{Mode: "guard", SessionInputs: map[string]any{"focus": "triage"}}
-	result, err := Render("guard", workdir, vars)
+	result, err := Render("guard", workdir, nil, vars)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -345,7 +345,7 @@ func TestLoadWithMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	meta, body, err := LoadWithMetadata("review", "")
+	meta, body, err := LoadWithMetadata("review", "", nil)
 	if err != nil {
 		t.Fatalf("LoadWithMetadata() error: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestRender_StripsFrontmatter(t *testing.T) {
 		ResourceID: "https://example.test/org/repo/items/42",
 		Mode:       "review",
 	}
-	result, err := Render("review", "", vars)
+	result, err := Render("review", "", nil, vars)
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
@@ -408,7 +408,7 @@ func TestList_UserGlobalTemplates(t *testing.T) {
 		}
 	}
 
-	templates, err := List("")
+	templates, err := List("", nil)
 	if err != nil {
 		t.Fatalf("List() error: %v", err)
 	}
@@ -462,7 +462,7 @@ func TestList_RepoSpecificAndDedup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	templates, err := List(repoDir)
+	templates, err := List(repoDir, nil)
 	if err != nil {
 		t.Fatalf("List() error: %v", err)
 	}
@@ -503,7 +503,7 @@ func TestList_NoFrontmatter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	templates, err := List(repoDir)
+	templates, err := List(repoDir, nil)
 	if err != nil {
 		t.Fatalf("List() error: %v", err)
 	}
@@ -541,7 +541,7 @@ func TestLoad_AncestorOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	content, err := Load("work", workdirDir)
+	content, err := Load("work", workdirDir, nil)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -574,7 +574,7 @@ func TestLoad_AncestorOverlay_InnerWins(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	content, err := Load("work", workdirDir)
+	content, err := Load("work", workdirDir, nil)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -603,7 +603,7 @@ func TestList_AncestorOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	templates, err := List(workdirDir)
+	templates, err := List(workdirDir, nil)
 	if err != nil {
 		t.Fatalf("List() error: %v", err)
 	}
@@ -643,7 +643,7 @@ func TestLoad_Priority(t *testing.T) {
 	}
 
 	// Repo-specific should win over user-global and embedded
-	content, err := Load("work", repoDir)
+	content, err := Load("work", repoDir, nil)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -652,11 +652,112 @@ func TestLoad_Priority(t *testing.T) {
 	}
 
 	// Without repoDir, user-global should win
-	content, err = Load("work", "")
+	content, err = Load("work", "", nil)
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
 	if content != userContent {
 		t.Errorf("Load() = %q, want %q (user-global should take priority over embedded)", content, userContent)
+	}
+}
+
+func TestLoad_PluginLayerIsLowestPriority(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	pluginDir := t.TempDir()
+	pluginContent := "Plugin work template"
+	if err := os.MkdirAll(filepath.Join(pluginDir, "templates"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "templates", "work.md"), []byte(pluginContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// No workdir or user-global override: the plugin layer is found.
+	content, err := Load("work", "", []string{pluginDir})
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if content != pluginContent {
+		t.Errorf("Load() = %q, want %q (plugin layer)", content, pluginContent)
+	}
+
+	// A user-global template shadows the plugin's.
+	userDir := filepath.Join(tmpHome, ".config", "plect", "templates")
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	userContent := "User work template"
+	if err := os.WriteFile(filepath.Join(userDir, "work.md"), []byte(userContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	content, err = Load("work", "", []string{pluginDir})
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if content != userContent {
+		t.Errorf("Load() = %q, want %q (user-global should shadow the plugin layer)", content, userContent)
+	}
+}
+
+func TestLoad_TwoPluginLayersSameModeFailsLoud(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	pluginA := t.TempDir()
+	pluginB := t.TempDir()
+	for _, dir := range []string{pluginA, pluginB} {
+		if err := os.MkdirAll(filepath.Join(dir, "templates"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "templates", "review.md"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := Load("review", "", []string{pluginA, pluginB}); err == nil {
+		t.Fatal("Load() expected a same-id-across-plugin-layers error, got nil")
+	}
+}
+
+func TestList_PluginLayerAppendsBelowUserGlobal(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	pluginDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(pluginDir, "templates"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "templates", "kick.md"), []byte("---\ndescription: Plugin kick\n---\nBody"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	templates, err := List("", []string{pluginDir})
+	if err != nil {
+		t.Fatalf("List() error: %v", err)
+	}
+	if len(templates) != 1 || templates[0].Name != "kick" {
+		t.Fatalf("List() = %+v, want a single \"kick\" entry", templates)
+	}
+}
+
+func TestList_TwoPluginLayersSameNameFailsLoud(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	pluginA := t.TempDir()
+	pluginB := t.TempDir()
+	for _, dir := range []string{pluginA, pluginB} {
+		if err := os.MkdirAll(filepath.Join(dir, "templates"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "templates", "kick.md"), []byte("Body"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := List("", []string{pluginA, pluginB}); err == nil {
+		t.Fatal("List() expected a same-id-across-plugin-layers error, got nil")
 	}
 }

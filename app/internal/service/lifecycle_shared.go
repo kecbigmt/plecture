@@ -75,7 +75,7 @@ func resolveParentSession(store *state.Store, sessionName, explicit string) (str
 	return candidate, nil
 }
 
-func sessionVars(s *domain.Session) task.SessionVars {
+func sessionVars(cfg *config.Config, s *domain.Session) task.SessionVars {
 	return task.SessionVars{
 		Name:          s.Name,
 		ResourceID:    s.ResourceID,
@@ -83,6 +83,7 @@ func sessionVars(s *domain.Session) task.SessionVars {
 		WorkdirPath:   s.WorkdirPath,
 		Branch:        s.Branch,
 		Inputs:        s.Inputs,
+		Plugins:       cfg.Plugins,
 	}
 }
 

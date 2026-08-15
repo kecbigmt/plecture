@@ -55,7 +55,11 @@ uses = "tmux"
 	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	return config.Load(), workdirDir
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg, workdirDir
 }
 
 func TestWorkflowList_ReturnsSortedSummaries(t *testing.T) {
@@ -124,7 +128,10 @@ uses        = "claude_channel"
 inputs.path = "{{.Nodes.tmux.outputs.session_name}}"
 include     = ["plect.instruction", "github.*"]
 `)
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
 	if err != nil {
 		t.Fatalf("WorkflowShow: %v", err)
@@ -165,8 +172,11 @@ uses        = "claude_channel"
 inputs.path = "p"
 include     = ["github.*"]
 `)
-	cfg := config.Load()
-	_, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
 	if err == nil {
 		t.Fatal("expected error when a channel definition fails to load")
 	}
@@ -198,8 +208,11 @@ name    = "runtime"
 uses    = "missing_channel"
 include = ["github.*"]
 `)
-	cfg := config.Load()
-	_, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "withchan")
 	if err == nil {
 		t.Fatal("expected error for unknown channel definition")
 	}
@@ -245,8 +258,10 @@ enum = ["work", "review", "respond", "investigate", "none"]
 [[nodes]]
 uses = "noop"
 `)
-	cfg := config.Load()
-
+	cfg, loadErr := config.Load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
 	_, err := resolveSessionInputs(cfg, "", "claude", map[string]any{"task": "wrok"})
 	if err == nil {
 		t.Fatal("expected enum validation error")
@@ -287,8 +302,10 @@ enum = ["work", "review", "respond", "investigate", "none"]
 [[nodes]]
 uses = "noop"
 `)
-	cfg := config.Load()
-
+	cfg, loadErr := config.Load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
 	_, err := resolveSessionInputs(cfg, "", "claude", nil)
 	if err == nil {
 		t.Fatal("expected missing-required validation error")

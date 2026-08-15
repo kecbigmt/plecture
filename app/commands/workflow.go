@@ -37,7 +37,10 @@ Use --json for a fully structured listing; --no-header switches to tab-separated
 output without a header row so the result is consumable by cut/awk/etc.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("getwd: %w", err)
@@ -96,7 +99,10 @@ var workflowShowCmd = &cobra.Command{
 	Short: "Show full information about a workflow",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		cwd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("getwd: %w", err)

@@ -1,0 +1,115 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func writeCatalogsToml(t *testing.T, tmpHome, content string) {
+	t.Helper()
+	dir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "catalogs.toml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoad_ResolvesEnabledEditableCatalogPlugin(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	catalogDir := t.TempDir()
+	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
+schema_version = 1
+plugins = ["okf"]
+`)
+	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
+schema_version = 1
+plect_min_version = "0.0.0"
+`)
+	writeFile(t, filepath.Join(catalogDir, "okf", "providers", "okf.toml"), `
+setup = "echo '{\"workdir\":\"/tmp/x\"}'"
+`)
+
+	writeCatalogsToml(t, tmpHome, `
+schema_version = 1
+
+[[catalogs]]
+alias = "local"
+source = "path+editable://`+catalogDir+`"
+plugins = ["okf"]
+`)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: unexpected error: %v", err)
+	}
+	if len(cfg.PluginDirs) != 1 {
+		t.Fatalf("PluginDirs = %+v, want the resolved plugin dir", cfg.PluginDirs)
+	}
+
+	providers, err := cfg.LoadProviders()
+	if err != nil {
+		t.Fatalf("LoadProviders: unexpected error: %v", err)
+	}
+	if _, ok := providers["okf"]; !ok {
+		t.Fatalf("expected okf provider from the enabled plugin, got %+v", providers)
+	}
+}
+
+func TestLoad_MissingCatalogLockFailsLoud(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	catalogDir := t.TempDir()
+	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
+schema_version = 1
+plugins = ["okf"]
+`)
+	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
+schema_version = 1
+plect_min_version = "0.0.0"
+`)
+
+	// A locked (non-editable) path catalog, but plect.lock has no
+	// corresponding entry — it was never actually added.
+	writeCatalogsToml(t, tmpHome, `
+schema_version = 1
+
+[[catalogs]]
+alias = "local"
+source = "path://`+catalogDir+`"
+plugins = ["okf"]
+`)
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "local") {
+		t.Fatalf("Load: want an error naming the catalog \"local\", got %v", err)
+	}
+}
+
+func TestLoad_NoCatalogsRegisteredLeavesPluginDirsAlone(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	// No catalogs.toml at all: the absence must not be an error, and
+	// existing hand-authored plugin_dirs must be untouched.
+	configDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacyDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("plugin_dirs = [\""+legacyDir+"\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: unexpected error: %v", err)
+	}
+	if len(cfg.PluginDirs) != 1 || cfg.PluginDirs[0] != legacyDir {
+		t.Fatalf("PluginDirs = %+v, want just the legacy dir %q", cfg.PluginDirs, legacyDir)
+	}
+}

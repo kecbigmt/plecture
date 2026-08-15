@@ -49,7 +49,10 @@ The template name corresponds to files in the template search path:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		templateName := args[0]
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 
 		extra, err := parseTemplateVars(templateRenderVars)
 		if err != nil {
@@ -90,7 +93,7 @@ The template name corresponds to files in the template search path:
 		}
 		maps.Copy(vars.SessionInputs, extra)
 
-		result, err := template.Render(templateName, searchDir, vars)
+		result, err := template.Render(templateName, searchDir, cfg.PluginDirs, vars)
 		if err != nil {
 			return err
 		}
@@ -118,11 +121,15 @@ var templateListCmd = &cobra.Command{
 	Short: "List available templates with metadata",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		workdir := ""
 		if templateListWorkdir != "" {
 			workdir = templateListWorkdir
 		}
-		templates, err := template.List(workdir)
+		templates, err := template.List(workdir, cfg.PluginDirs)
 		if err != nil {
 			return err
 		}

@@ -86,9 +86,11 @@ func parseFrontmatter(content string) (Metadata, string) {
 	return meta, body
 }
 
-// LoadWithMetadata reads a template and returns its metadata and raw content separately.
-func LoadWithMetadata(mode, searchDir string) (Metadata, string, error) {
-	raw, err := Load(mode, searchDir)
+// LoadWithMetadata reads a template and returns its metadata and raw content
+// separately. pluginDirs are resolved plugin roots (Config.PluginDirs); see
+// Load.
+func LoadWithMetadata(mode, searchDir string, pluginDirs []string) (Metadata, string, error) {
+	raw, err := Load(mode, searchDir, pluginDirs)
 	if err != nil {
 		return Metadata{}, "", err
 	}
@@ -99,10 +101,12 @@ func LoadWithMetadata(mode, searchDir string) (Metadata, string, error) {
 // Load reads a template for the given mode with the following priority:
 //  1. <searchDir>/.plect/templates/<mode>.md and its ancestors, innermost wins
 //  2. ~/.config/plect/templates/<mode>.md (user global)
+//  3. <pluginDir>/templates/<mode>.md, for each resolved plugin (read-only
+//     base layer; see pluginTemplateFile for its same-id conflict rule)
 //
 // searchDir is the session's workdir, not a repository path: the overlay is
 // rooted at the working tree so it works for any provider.
-func Load(mode, searchDir string) (string, error) {
+func Load(mode, searchDir string, pluginDirs []string) (string, error) {
 	filename := mode + ".md"
 	var searched []string
 
@@ -123,7 +127,43 @@ func Load(mode, searchDir string) (string, error) {
 		return string(data), nil
 	}
 
+	// 3. Plugin base layer
+	pluginPath, err := pluginTemplateFile(mode, pluginDirs)
+	if err != nil {
+		return "", err
+	}
+	if pluginPath != "" {
+		searched = append(searched, pluginPath)
+		if data, err := os.ReadFile(pluginPath); err == nil {
+			return string(data), nil
+		}
+	}
+
 	return "", fmt.Errorf("no template found for mode %q; searched: %s", mode, strings.Join(searched, ", "))
+}
+
+// pluginTemplateFile returns the `templates/<mode>.md` path from exactly one
+// of pluginDirs. Two different plugin dirs both declaring the same mode is a
+// same-id conflict between plugin layers — a load error per the
+// plugin-packaging design's Templates row — rather than declaration order
+// silently picking one.
+func pluginTemplateFile(mode string, pluginDirs []string) (string, error) {
+	filename := mode + ".md"
+	var found []string
+	for _, dir := range pluginDirs {
+		p := filepath.Join(dir, "templates", filename)
+		if _, err := os.Stat(p); err == nil {
+			found = append(found, p)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return "", nil
+	case 1:
+		return found[0], nil
+	default:
+		return "", fmt.Errorf("template %q is defined by more than one plugin layer (%s); replace one definition in global config to resolve the conflict", mode, strings.Join(found, ", "))
+	}
 }
 
 // ancestorDirs walks up from searchDir, innermost first, so the closest
@@ -162,8 +202,8 @@ func ancestorDirs(searchDir string) []string {
 //
 // Workflow outputs are exposed as `.Workflow.outputs.<key>` and session inputs
 // as `.SessionInputs.<key>`, matching the task render context.
-func Render(mode, searchDir string, vars Vars) (string, error) {
-	_, body, err := LoadWithMetadata(mode, searchDir)
+func Render(mode, searchDir string, pluginDirs []string, vars Vars) (string, error) {
+	_, body, err := LoadWithMetadata(mode, searchDir, pluginDirs)
 	if err != nil {
 		return "", err
 	}
@@ -208,8 +248,11 @@ func Render(mode, searchDir string, vars Vars) (string, error) {
 }
 
 // List returns all available templates with metadata for the given workdir.
-// Templates are deduplicated by name with workdir-specific > user-global priority.
-func List(repoDir string) ([]TemplateInfo, error) {
+// Templates are deduplicated by name with workdir-specific > user-global >
+// plugin priority. pluginDirs are resolved plugin roots (Config.PluginDirs);
+// two different plugin dirs declaring the same template name is a load
+// error, mirroring Load's pluginTemplateFile rule.
+func List(repoDir string, pluginDirs []string) ([]TemplateInfo, error) {
 	seen := make(map[string]bool)
 	var result []TemplateInfo
 
@@ -255,6 +298,36 @@ func List(repoDir string) ([]TemplateInfo, error) {
 		func() ([]fs.DirEntry, error) { return os.ReadDir(userDir) },
 		func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(userDir, name)) },
 	)
+
+	// 3. Plugin base layer. Same-id conflicts between plugin dirs are
+	// checked up front, before any workdir/global shadowing is applied —
+	// declaration order must never silently pick one plugin's template over
+	// another's.
+	pluginOwner := make(map[string]string)
+	for _, dir := range pluginDirs {
+		templatesDir := filepath.Join(dir, "templates")
+		entries, err := os.ReadDir(templatesDir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+			name := strings.TrimSuffix(entry.Name(), ".md")
+			if owner, exists := pluginOwner[name]; exists {
+				return nil, fmt.Errorf("template %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", name, owner, dir)
+			}
+			pluginOwner[name] = dir
+		}
+	}
+	for _, dir := range pluginDirs {
+		templatesDir := filepath.Join(dir, "templates")
+		addFromDir(
+			func() ([]fs.DirEntry, error) { return os.ReadDir(templatesDir) },
+			func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(templatesDir, name)) },
+		)
+	}
 
 	return result, nil
 }

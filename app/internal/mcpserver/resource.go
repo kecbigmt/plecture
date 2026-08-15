@@ -23,7 +23,11 @@ func handleResourceStatus(ctx context.Context, request mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultError("resource_id is required"), nil
 	}
 
-	result, err := service.ResourceStatus(config.Load(), service.ResourceStatusParams{ResourceID: resourceID})
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	result, err := service.ResourceStatus(cfg, service.ResourceStatusParams{ResourceID: resourceID})
 	if err != nil {
 		return errorResult(err), nil
 	}

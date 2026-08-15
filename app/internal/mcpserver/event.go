@@ -77,6 +77,10 @@ func handleEventList(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
 	f := event.Filter{
 		Types:        event.SplitCSV(request.GetString("types", "")),
 		Sources:      event.SplitCSV(request.GetString("source", "")),
@@ -92,9 +96,9 @@ func handleEventList(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	var page service.EventPageResult
 	switch {
 	case subtree != "":
-		page, err = service.EventPageSubtree(config.Load(), store, subtree, params)
+		page, err = service.EventPageSubtree(cfg, store, subtree, params)
 	default:
-		page, err = service.EventPage(config.Load(), store, session, params)
+		page, err = service.EventPage(cfg, store, session, params)
 	}
 	if err != nil {
 		return errorResult(err), nil
@@ -116,7 +120,11 @@ func handleEventShow(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	if eventID == "" {
 		return mcp.NewToolResultError("event_id is required"), nil
 	}
-	ev, err := service.EventShow(config.Load(), store, session, eventID)
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	ev, err := service.EventShow(cfg, store, session, eventID)
 	if err != nil {
 		return errorResult(err), nil
 	}
@@ -133,7 +141,11 @@ func handleEventPublish(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	if source == "" {
 		source = event.SourceMCP
 	}
-	ev, err := service.EventPublish(config.Load(), store, session, service.EventPublishParams{
+	cfg, err := config.Load()
+	if err != nil {
+		return errorResult(err), nil
+	}
+	ev, err := service.EventPublish(cfg, store, session, service.EventPublishParams{
 		Type:      request.GetString("type", ""),
 		Source:    source,
 		Direction: event.Direction(request.GetString("direction", "")),

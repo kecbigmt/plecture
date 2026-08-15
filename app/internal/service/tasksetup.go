@@ -133,7 +133,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 
 	// The bound resource is the instance's own resource, exposed to its setup /
 	// done_when as .ResourceID (overriding the session's when present).
-	vars := sessionVars(session)
+	vars := sessionVars(cfg, session)
 	if params.Resource != "" {
 		vars.ResourceID = params.Resource
 	}

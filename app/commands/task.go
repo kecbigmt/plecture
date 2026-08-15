@@ -69,7 +69,10 @@ Examples:
 		if err != nil {
 			return err
 		}
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		result, err := service.TaskSetup(cfg, store, service.TaskSetupParams{
 			TaskID:            args[0],
@@ -108,7 +111,10 @@ Examples:
   plect task cleanup review#1`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		result, err := service.TaskCleanup(cfg, store, service.TaskCleanupParams{
 			Instance:    args[0],
@@ -147,7 +153,10 @@ Example:
   plect task finalize goal_flaky-tests`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		result, err := service.FinalizeTask(cfg, store, service.FinalizeTaskParams{
 			Instance:    args[0],

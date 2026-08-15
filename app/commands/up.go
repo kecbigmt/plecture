@@ -68,7 +68,10 @@ state so the next setup cannot resume from .Prev, then runs setup again.`,
 		if err != nil {
 			return err
 		}
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		result, err := service.Up(cfg, store, service.UpParams{
 			Identifier:    args[0],

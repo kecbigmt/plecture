@@ -80,7 +80,7 @@ func RefreshInstanceOutputs(cfg *config.Config, store *state.Store, sessionName,
 		return nil, nil
 	}
 
-	vars := sessionVars(session)
+	vars := sessionVars(cfg, session)
 	if st.Resource != "" {
 		vars.ResourceID = st.Resource
 	}

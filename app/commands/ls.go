@@ -24,7 +24,10 @@ var lsCmd = &cobra.Command{
 	Short: "List sessions as a flat table: session / run / health / done_when / message",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 
 		entries, err := service.List(cfg, store)

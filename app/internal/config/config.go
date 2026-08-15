@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
 // Duration wraps time.Duration with a TOML UnmarshalText implementation so
@@ -70,12 +72,18 @@ type Config struct {
 	// tasks/ subdirectories). Plugins form the base cascade layer: the
 	// global layer and ancestor overlays stack on top of them. Entries are
 	// trusted — only the user or the system's config-management tooling writes config.toml.
-	PluginDirs       []string       `toml:"plugin_dirs"`
-	Detached         bool           `toml:"detached"`
-	Channels         []string       `toml:"channels"`
-	InputsSchema     map[string]any `toml:"inputs_schema"`
-	InputsSchemaFile string         `toml:"inputs_schema_file"`
-	BaseDir          string         `toml:"-"`
+	PluginDirs []string `toml:"plugin_dirs"`
+	// Plugins is the resolved catalog-qualified identity + manifest for
+	// every plugin folded into PluginDirs by resolveDeclaredPlugins (empty
+	// for hand-authored plugin_dirs entries, which carry no catalog
+	// identity). The `{{bin ...}}` hook helper reads this in-memory list
+	// instead of re-parsing plugin.toml on every render.
+	Plugins          []plugins.Mounted `toml:"-"`
+	Detached         bool              `toml:"detached"`
+	Channels         []string          `toml:"channels"`
+	InputsSchema     map[string]any    `toml:"inputs_schema"`
+	InputsSchemaFile string            `toml:"inputs_schema_file"`
+	BaseDir          string            `toml:"-"`
 	// SessionGuard is a per-session dispatch boundary sourced from the
 	// PLECT_SESSION_GUARD environment variable (not config.toml). When set, a
 	// `plect up` may only produce a *resolved session name* that
@@ -111,15 +119,22 @@ func DefaultPath() string {
 	return filepath.Join(home, ".config", "plect", "config.toml")
 }
 
-func Load() *Config {
+// Load reads config.toml and resolves any plugins enabled across registered
+// catalogs in ~/.config/plect/catalogs.toml into cfg.PluginDirs/cfg.Plugins.
+// Unlike a malformed config.toml (which degrades to defaults with a warning
+// — see below), a plugin resolution failure returns a non-nil error: a
+// missing or mismatched lock entry, tampered content, or an incompatible
+// plugin must fail the whole load rather than silently mount nothing and
+// continue.
+func Load() (*Config, error) {
 	cfg := DefaultConfig()
 
 	configPath := DefaultPath()
 	if configPath == "" {
-		return cfg
+		return resolveDeclaredPlugins(cfg)
 	}
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return cfg
+		return resolveDeclaredPlugins(cfg)
 	}
 
 	meta, err := toml.DecodeFile(configPath, cfg)
@@ -127,11 +142,9 @@ func Load() *Config {
 		// A present but unparsable config.toml is a user mistake, not an
 		// absent-config no-op: silently falling back to defaults here would
 		// hide a typo behind seemingly-ignored settings, so this warns
-		// (disposition: surfaced) while still returning usable defaults
-		// (Load has no error return in its signature, so a hard failure
-		// would require a wider API change out of scope for this fix).
+		// (disposition: surfaced) while still returning usable defaults.
 		slog.Warn("config.toml present but failed to parse; using defaults", "path", configPath, "error", err)
-		return cfg
+		return resolveDeclaredPlugins(cfg)
 	}
 	if meta.IsDefined("worktrees_root") {
 		slog.Warn("legacy config key worktrees_root is ignored; rename it to workdirs_root or run the legacy migration", "path", configPath)
@@ -140,7 +153,7 @@ func Load() *Config {
 	// Expand ~ in path configs
 	home, homeErr := os.UserHomeDir()
 	if homeErr != nil {
-		return cfg
+		return resolveDeclaredPlugins(cfg)
 	}
 	if len(cfg.WorkdirsRoot) > 0 && cfg.WorkdirsRoot[0] == '~' {
 		cfg.WorkdirsRoot = filepath.Join(home, cfg.WorkdirsRoot[1:])
@@ -153,7 +166,7 @@ func Load() *Config {
 
 	cfg.BaseDir = configFileDir(configPath)
 
-	return cfg
+	return resolveDeclaredPlugins(cfg)
 }
 
 func (c *Config) ResolvedInputsSchemaPath() string {

@@ -18,7 +18,10 @@ var downCmd = &cobra.Command{
 session-scoped tasks are preserved.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		store := state.NewStore("")
 		result, err := service.Down(cfg, store, service.DownParams{
 			Identifier: args[0],

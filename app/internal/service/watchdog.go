@@ -111,7 +111,7 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 		tick = wf.Tick
 	}
 	now := time.Now()
-	report := evaluateHealthFor(name, s.Tasks, defs, sessionVars(s), healthCfg.StallThreshold.Duration, s.Health, now)
+	report := evaluateHealthFor(name, s.Tasks, defs, sessionVars(cfg, s), healthCfg.StallThreshold.Duration, s.Health, now)
 	applyMovementSource(cfg, s, tick, &report)
 	finalizeMovementObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
 	persistHealthState(store, name, report, now)
@@ -146,7 +146,7 @@ func applyMovementSource(cfg *config.Config, s *domain.Session, tick *config.Tic
 	if len(names) == 0 {
 		return
 	}
-	values, err := task.FetchOutput(context.Background(), cfg, src, task.RenderContext{Session: sessionVars(s)})
+	values, err := task.FetchOutput(context.Background(), cfg, src, task.RenderContext{Session: sessionVars(cfg, s)})
 	if err != nil {
 		// A fetch failure leaves this source with no basis to contribute
 		// right now — the same as if nothing were declared, not a stale

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -619,6 +620,13 @@ type SessionVars struct {
 	WorkdirPath   string
 	Branch        string
 	Inputs        map[string]any
+	// Plugins are the resolved, catalog-qualified plugins
+	// (config.Config.Plugins) in declaration order, feeding the `{{bin
+	// ...}}` hook helper. Threaded through SessionVars rather than added as
+	// a separate parameter to every render-driving function, since a
+	// SessionVars is already built and passed at every one of those call
+	// sites.
+	Plugins []plugins.Mounted
 }
 
 var templateFuncs = template.FuncMap{
@@ -729,9 +737,18 @@ func renderCleanup(cmd string, ctx RenderContext) (string, error) {
 }
 
 func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
+	// bin is built per render call (not part of the static templateFuncs
+	// map) because it resolves against this render's own ctx.Session.Plugins
+	// — the set of plugins mounted for the config in effect, not a global.
+	dynamicFuncs := template.FuncMap{
+		"bin": func(ref string) (string, error) {
+			return resolveBin(ctx.Session.Plugins, ref)
+		},
+	}
 	tmpl, err := template.New("task").
 		Option(opt).
 		Funcs(templateFuncs).
+		Funcs(dynamicFuncs).
 		Parse(cmd)
 	if err != nil {
 		return "", fmt.Errorf("template parse: %w", err)

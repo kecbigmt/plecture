@@ -47,6 +47,25 @@ observe = "echo global"
 	}
 }
 
+func TestLoadResourceDefs_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+	pluginA := t.TempDir()
+	pluginB := t.TempDir()
+	writeFile(t, filepath.Join(pluginA, "resources", "github.toml"), `
+match   = '^x'
+observe = "echo a"
+`)
+	writeFile(t, filepath.Join(pluginB, "resources", "github.toml"), `
+match   = '^x'
+observe = "echo b"
+`)
+	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
+
+	_, err := cfg.LoadResourceDefs()
+	if err == nil || !strings.Contains(err.Error(), "github") {
+		t.Fatalf("expected a same-id-across-plugin-layers error naming \"github\", got %v", err)
+	}
+}
+
 func TestLoadResourceDefs_MatchRequired(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "resources", "broken.toml"), `

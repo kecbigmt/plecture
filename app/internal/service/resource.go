@@ -36,7 +36,7 @@ func ResourceStatus(cfg *config.Config, params ResourceStatusParams) (*ResourceS
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	state, def, ok, serr := task.ResourceStatus(defs, resourceID, "", "")
+	state, def, ok, serr := task.ResourceStatus(defs, resourceID, "", "", cfg.Plugins)
 	if serr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: serr.Error()}
 	}

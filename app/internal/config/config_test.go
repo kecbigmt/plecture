@@ -48,8 +48,10 @@ detached = false
 		t.Fatal(err)
 	}
 
-	cfg := Load()
-
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cfg.WorkdirsRoot != filepath.Join(tmpHome, "my-workdirs") {
 		t.Errorf("WorkdirsRoot = %q, want %q", cfg.WorkdirsRoot, filepath.Join(tmpHome, "my-workdirs"))
 	}
@@ -65,8 +67,10 @@ func TestLoad_NoConfigFile(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
-	cfg := Load()
-
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Should return defaults
 	if cfg.Detached != true {
 		t.Errorf("Detached = %v, want true", cfg.Detached)
@@ -90,8 +94,10 @@ func TestLoad_MalformedConfigFileFallsBackAndWarns(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	defer slog.SetDefault(prev)
 
-	cfg := Load()
-
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cfg.Detached != true {
 		t.Errorf("Detached = %v, want true (defaults)", cfg.Detached)
 	}
@@ -117,8 +123,10 @@ func TestLoad_LegacyWorktreesRootWarns(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	defer slog.SetDefault(prev)
 
-	cfg := Load()
-
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cfg.WorkdirsRoot != filepath.Join(tmpHome, "workdirs") {
 		t.Errorf("WorkdirsRoot = %q, want default because legacy key is ignored", cfg.WorkdirsRoot)
 	}
@@ -138,8 +146,10 @@ func TestLoad_PopulatesBaseDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := Load()
-
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cfg.BaseDir != configDir {
 		t.Errorf("BaseDir = %q, want %q", cfg.BaseDir, configDir)
 	}
@@ -168,8 +178,10 @@ template = { type = "string" }
 		t.Fatal(err)
 	}
 
-	cfg := Load()
-
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cfg.InputsSchema == nil {
 		t.Fatal("expected InputsSchema parsed from TOML")
 	}

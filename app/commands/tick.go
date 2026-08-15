@@ -37,7 +37,10 @@ fingerprint for unchanged-poll detection, and unmet_items with machine-readable
 check/judge state.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := config.Load()
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
 		result, err := service.TickSession(cfg, state.NewStore(""), service.TickParams{
 			SessionName: args[0],
 			SkipRefresh: tickNoRefresh,
