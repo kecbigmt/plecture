@@ -204,6 +204,51 @@ if ! grep -q ".agents/skills/demo" /tmp/agent-config-selftest-agents-wrong-targe
 fi
 echo "ok: checker fails when .agents/skills/demo points at the wrong target"
 
+# Dirty fixture: .agents/skills has an orphan entry with no matching
+# .claude/skills directory (e.g. left behind by a deleted or renamed
+# skill).
+dirty_orphan_agents_entry="$(new_fixture)"
+make_clean_fixture "$dirty_orphan_agents_entry"
+ln -s "../../.claude/skills/ghost" "$dirty_orphan_agents_entry/.agents/skills/ghost"
+
+if run_against "$dirty_orphan_agents_entry" >/tmp/agent-config-selftest-orphan.log 2>&1; then
+  echo "FAIL: checker passed although .agents/skills/ghost is an orphan" >&2
+  cat /tmp/agent-config-selftest-orphan.log >&2
+  exit 1
+fi
+if ! grep -q ".agents/skills/ghost" /tmp/agent-config-selftest-orphan.log; then
+  echo "FAIL: checker did not name the orphan .agents/skills/ghost entry" >&2
+  cat /tmp/agent-config-selftest-orphan.log >&2
+  exit 1
+fi
+echo "ok: checker fails when .agents/skills has an orphan entry"
+
+# Dirty fixture: 'name:'/'description:' appear in the SKILL.md body, not in
+# the frontmatter block, so an empty frontmatter must still be rejected.
+dirty_fields_outside_frontmatter="$(new_fixture)"
+make_clean_fixture "$dirty_fields_outside_frontmatter"
+cat > "$dirty_fields_outside_frontmatter/.claude/skills/demo/SKILL.md" <<'EOF'
+---
+---
+
+# Demo
+
+name: demo
+description: A fixture skill used to exercise the agent-config checker.
+EOF
+
+if run_against "$dirty_fields_outside_frontmatter" >/tmp/agent-config-selftest-fields-outside.log 2>&1; then
+  echo "FAIL: checker passed although 'name:'/'description:' are outside the frontmatter block" >&2
+  cat /tmp/agent-config-selftest-fields-outside.log >&2
+  exit 1
+fi
+if ! grep -q "frontmatter" /tmp/agent-config-selftest-fields-outside.log; then
+  echo "FAIL: checker did not mention frontmatter" >&2
+  cat /tmp/agent-config-selftest-fields-outside.log >&2
+  exit 1
+fi
+echo "ok: checker fails when 'name:'/'description:' are outside the frontmatter block"
+
 # Clean fixture: a properly configured skill must pass without report.
 clean="$(new_fixture)"
 make_clean_fixture "$clean"

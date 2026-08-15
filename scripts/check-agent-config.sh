@@ -4,13 +4,18 @@
 #
 #   - AGENTS.md is a symlink to CLAUDE.md, so a Claude session and a Codex
 #     session read the same standing rules from one source of truth.
-#   - Every directory under .claude/skills/ has a SKILL.md with both a
-#     'name:' and a 'description:' frontmatter field, and a matching
+#   - Every directory under .claude/skills/ has a SKILL.md whose YAML
+#     frontmatter block (the lines between the first '---' and the next
+#     '---') has both a 'name:' and a 'description:' field, and a matching
 #     relative symlink under .agents/skills/, so a Codex session sees the
 #     same skill set as a Claude session.
+#   - Every symlink under .agents/skills/ has a matching directory under
+#     .claude/skills/ — an entry with no match is an orphan left behind by
+#     a deleted or renamed skill, and breaks the "same skill set" guarantee
+#     in the other direction.
 #
 # A repository with no skills yet (this repository's own state until its
-# first skill is migrated or authored) passes: the skill loop below has
+# first skill is migrated or authored) passes: the skill loops below have
 # nothing to iterate over.
 set -euo pipefail
 
@@ -18,6 +23,17 @@ root="${AGENT_CONFIG_CHECK_ROOT:-$(pwd)}"
 cd "$root"
 
 fail=0
+
+# Prints the lines strictly between the first '---' line and the next
+# '---' line of a SKILL.md, i.e. its YAML frontmatter block. Prints
+# nothing if the file does not open with '---' on its first line.
+extract_frontmatter() {
+  awk '
+    NR == 1 && $0 == "---" { infm = 1; next }
+    infm && $0 == "---" { exit }
+    infm { print }
+  ' "$1"
+}
 
 check_rule_file_symlink() {
   if [ ! -L AGENTS.md ]; then
@@ -35,7 +51,11 @@ check_rule_file_symlink() {
 
 check_skills() {
   shopt -s nullglob
-  local skill name skill_md expected target
+  local skill name skill_md expected target frontmatter
+
+  # Forward: every .claude/skills/<name> needs a SKILL.md with both
+  # frontmatter fields, and a correctly-pointing .agents/skills/<name>
+  # symlink.
   for skill in .claude/skills/*/; do
     skill="${skill%/}"
     name="$(basename "$skill")"
@@ -47,12 +67,13 @@ check_skills() {
       continue
     fi
 
-    if ! grep -q '^name:' "$skill_md"; then
-      echo "$skill_md: missing 'name:' frontmatter field" >&2
+    frontmatter="$(extract_frontmatter "$skill_md")"
+    if ! printf '%s\n' "$frontmatter" | grep -q '^name:'; then
+      echo "$skill_md: missing 'name:' field in its frontmatter block" >&2
       fail=1
     fi
-    if ! grep -q '^description:' "$skill_md"; then
-      echo "$skill_md: missing 'description:' frontmatter field" >&2
+    if ! printf '%s\n' "$frontmatter" | grep -q '^description:'; then
+      echo "$skill_md: missing 'description:' field in its frontmatter block" >&2
       fail=1
     fi
 
@@ -68,6 +89,19 @@ check_skills() {
       fail=1
     fi
   done
+
+  # Reverse: every .agents/skills/<name> symlink needs a matching
+  # .claude/skills/<name> directory. An entry that fails this is an orphan
+  # left behind by a deleted or renamed skill.
+  for entry in .agents/skills/*; do
+    [ -L "$entry" ] || continue
+    name="$(basename "$entry")"
+    if [ ! -d ".claude/skills/$name" ]; then
+      echo "$entry has no matching .claude/skills/$name directory (orphan)" >&2
+      fail=1
+    fi
+  done
+
   shopt -u nullglob
 }
 
