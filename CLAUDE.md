@@ -26,9 +26,47 @@ dimension.
 
 ## Comments
 
-- Never put issue, PR, or ADR numbers in code comments.
+Priority when writing a comment: **why / why-not** first, far ahead of
+**what**, further ahead of **how**. The code and the diff already show what
+changed and how; a comment earns its place only by explaining why a choice
+was made, or why an alternative was not.
+
+- **Default to no comment.** Write one only when the why is genuinely
+  non-obvious from the code itself.
+- **Keep it to the minimum that states the why-not.** The bar is not a line
+  count — a genuinely non-obvious why-not can run several lines — but never
+  pad it, and never let it restate what the code already shows.
+- Never put issue, PR, or ADR numbers in code comments. A number tied to an
+  external tracker rots the moment the comment is relocated or the tracker
+  is renumbered. Put a long-form rationale in a `docs/adr/` decision record
+  instead, and keep the comment itself a terse, self-contained why-not.
 - Every comment must be a self-contained, complete sentence understandable
   without external context.
+- Keep explanations in their own layer, and don't duplicate one layer's
+  explanation in another: a code comment carries only why-not; `--help`
+  text and CLI usage strings speak to the user; a test is the executable
+  specification; `docs/adr/` carries the long-form rationale.
+- A test function's name should usually make a docstring unnecessary. A
+  one-sentence statement of intent is acceptable when the name alone
+  doesn't carry it; don't restate the test's steps.
+
+Bad — restates what the code does and leans on an external decision
+record instead of standing on its own:
+
+```go
+// FetchOutput resolves one dynamic output by running its script against
+// the source of truth (see the design doc). It returns the value a later
+// check compares, and the value a status command displays as current.
+func FetchOutput(...) (string, error) { ... }
+```
+
+Good — states only the non-obvious why-not, self-contained:
+
+```go
+// A non-zero exit is a fetch failure, not an evaluation failure: a check
+// built on it reads as pending, not as failed.
+func FetchOutput(...) (string, error) { ... }
+```
 
 ## Language
 
