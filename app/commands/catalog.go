@@ -16,7 +16,7 @@ import (
 
 var (
 	catalogAddRevision string
-	catalogAddDir      string
+	catalogAddSubdir   string
 	catalogAddYes      bool
 
 	catalogUpdateRevision string
@@ -40,10 +40,10 @@ and ask for confirmation before registering it. A registered catalog is the
 trust act itself: nothing is enabled from it yet — follow up with
 "plect plugin add <alias>/<path>" for each plugin you want to use.
 
---dir names a subdirectory of the fetched source that becomes the catalog
-root, for a source whose catalog.toml does not sit at its own root (for
-example, a monorepo that publishes a catalog from one subtree). The trust
-space is bounded by that subdirectory, not the whole source.`,
+--subdir names a subdirectory of the fetched source that becomes the
+catalog root, for a source whose catalog.toml does not sit at its own root
+(for example, a monorepo that publishes a catalog from one subtree). The
+trust space is bounded by that subdirectory, not the whole source.`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runCatalogAdd(cmd, args[0], args[1])
@@ -104,9 +104,9 @@ var catalogListCmd = &cobra.Command{
 
 func writeCatalogList(out io.Writer, entries []service.CatalogListEntry) error {
 	w := tabwriter.NewWriter(out, 0, 2, 2, ' ', 0)
-	fmt.Fprintln(w, "ALIAS\tSOURCE\tDIR\tREVISION\tSTATUS\tPLUGINS")
+	fmt.Fprintln(w, "ALIAS\tSOURCE\tSUBDIR\tREVISION\tSTATUS\tPLUGINS")
 	for _, e := range entries {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%v\n", e.Alias, e.Source, orNoneDir(e.Dir), orNone(e.ResolvedRevision), e.Status, e.EnabledPlugins)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%v\n", e.Alias, e.Source, orNoneSubdir(e.Subdir), orNone(e.ResolvedRevision), e.Status, e.EnabledPlugins)
 	}
 	return w.Flush()
 }
@@ -116,15 +116,15 @@ func writeCatalogList(out io.Writer, entries []service.CatalogListEntry) error {
 // whether the human has confirmed, then commit.
 func runCatalogAdd(cmd *cobra.Command, alias, source string) error {
 	paths := mustPluginPaths()
-	params := service.CatalogAddParams{Alias: alias, Source: source, Dir: catalogAddDir, Revision: catalogAddRevision}
+	params := service.CatalogAddParams{Alias: alias, Source: source, Subdir: catalogAddSubdir, Revision: catalogAddRevision}
 
 	preview, fetched, err := service.PreviewCatalogAdd(cmd.Context(), paths, params)
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "catalog %q resolves to:\n  source:   %s\n  dir:      %s\n  revision: %s\n  plugins:  %v\n",
-		preview.Alias, preview.Source, orNoneDir(params.Dir), orNone(preview.ResolvedRevision), preview.Plugins)
+	fmt.Fprintf(cmd.OutOrStdout(), "catalog %q resolves to:\n  source:   %s\n  subdir:   %s\n  revision: %s\n  plugins:  %v\n",
+		preview.Alias, preview.Source, orNoneSubdir(params.Subdir), orNone(preview.ResolvedRevision), preview.Plugins)
 	if preview.Description != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "  description: %s\n", preview.Description)
 	}
@@ -183,10 +183,10 @@ func orNone(s string) string {
 	return s
 }
 
-// orNoneDir formats a catalog registration's --dir for display: empty means
-// the source root itself, not "no source", so it gets its own wording
+// orNoneSubdir formats a catalog registration's --subdir for display: empty
+// means the source root itself, not "no source", so it gets its own wording
 // rather than orNone's revision-specific one.
-func orNoneDir(s string) string {
+func orNoneSubdir(s string) string {
 	if s == "" {
 		return "(none, source root)"
 	}
@@ -242,7 +242,7 @@ func mustPluginPaths() service.PluginPaths {
 
 func init() {
 	catalogAddCmd.Flags().StringVar(&catalogAddRevision, "revision", "", "Git revision to resolve (required for git+https/git+ssh sources)")
-	catalogAddCmd.Flags().StringVar(&catalogAddDir, "dir", "", "Subdirectory of the source that becomes the catalog root (default: the source root itself)")
+	catalogAddCmd.Flags().StringVar(&catalogAddSubdir, "subdir", "", "Subdirectory of the source that becomes the catalog root (default: the source root itself)")
 	catalogAddCmd.Flags().BoolVar(&catalogAddYes, "yes", false, "Register a catalog non-interactively (visible in command history)")
 
 	catalogUpdateCmd.Flags().StringVar(&catalogUpdateRevision, "revision", "", "New git revision to resolve (required for a git-sourced catalog)")

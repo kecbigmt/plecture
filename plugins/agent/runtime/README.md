@@ -30,7 +30,7 @@ see each plugin's own `bin/plect-agent-activity`.
 ## Install
 
 ```bash
-plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision <tag-or-commit>
+plect catalog add official git+https://github.com/kecbigmt/plecture --subdir plugins --revision <tag-or-commit>
 plect plugin add official/agent/runtime
 ```
 

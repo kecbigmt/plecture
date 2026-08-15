@@ -75,10 +75,10 @@ func TestPreviewCatalogAdd_ResolvesCatalog(t *testing.T) {
 	}
 }
 
-// writeCatalogSourceWithDir is writeCatalogSource with catalog.toml and its
-// plugin directories nested one level under dirName instead of at the
-// source root, so tests can register with --dir.
-func writeCatalogSourceWithDir(t *testing.T, dirName string, plugins map[string]string) string {
+// writeCatalogSourceWithSubdir is writeCatalogSource with catalog.toml and
+// its plugin directories nested one level under dirName instead of at the
+// source root, so tests can register with --subdir.
+func writeCatalogSourceWithSubdir(t *testing.T, dirName string, plugins map[string]string) string {
 	t.Helper()
 	root := writeCatalogSource(t, nil)
 	catalogRoot := filepath.Join(root, dirName)
@@ -113,12 +113,12 @@ func writeCatalogSourceWithDir(t *testing.T, dirName string, plugins map[string]
 	return root
 }
 
-func TestPreviewCatalogAdd_DirScopesTrustSpace(t *testing.T) {
+func TestPreviewCatalogAdd_SubdirScopesTrustSpace(t *testing.T) {
 	paths := catalogTestPaths(t)
-	src := writeCatalogSourceWithDir(t, "plugins", map[string]string{"okf": "0.0.0"})
+	src := writeCatalogSourceWithSubdir(t, "plugins", map[string]string{"okf": "0.0.0"})
 
 	preview, fetched, err := PreviewCatalogAdd(context.Background(), paths, CatalogAddParams{
-		Alias: "local", Source: "path+editable://" + src, Dir: "plugins",
+		Alias: "local", Source: "path+editable://" + src, Subdir: "plugins",
 	})
 	if err != nil {
 		t.Fatalf("PreviewCatalogAdd: unexpected error: %v", err)
@@ -132,10 +132,10 @@ func TestPreviewCatalogAdd_DirScopesTrustSpace(t *testing.T) {
 	}
 }
 
-func TestCommitCatalogAdd_PersistsDir(t *testing.T) {
+func TestCommitCatalogAdd_PersistsSubdir(t *testing.T) {
 	paths := catalogTestPaths(t)
-	src := writeCatalogSourceWithDir(t, "plugins", map[string]string{"okf": "0.0.0"})
-	params := CatalogAddParams{Alias: "local", Source: "path+editable://" + src, Dir: "plugins"}
+	src := writeCatalogSourceWithSubdir(t, "plugins", map[string]string{"okf": "0.0.0"})
+	params := CatalogAddParams{Alias: "local", Source: "path+editable://" + src, Subdir: "plugins"}
 
 	_, fetched, err := PreviewCatalogAdd(context.Background(), paths, params)
 	if err != nil {
@@ -149,15 +149,15 @@ func TestCommitCatalogAdd_PersistsDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(registrations.Catalogs) != 1 || registrations.Catalogs[0].Dir != "plugins" {
-		t.Fatalf("Catalogs = %+v, want one entry with dir=\"plugins\"", registrations.Catalogs)
+	if len(registrations.Catalogs) != 1 || registrations.Catalogs[0].Subdir != "plugins" {
+		t.Fatalf("Catalogs = %+v, want one entry with subdir=\"plugins\"", registrations.Catalogs)
 	}
 }
 
-func TestPluginAdd_DirScopedCatalog(t *testing.T) {
+func TestPluginAdd_SubdirScopedCatalog(t *testing.T) {
 	paths := catalogTestPaths(t)
-	src := writeCatalogSourceWithDir(t, "plugins", map[string]string{"okf": "0.0.0"})
-	params := CatalogAddParams{Alias: "local", Source: "path://" + src, Dir: "plugins"}
+	src := writeCatalogSourceWithSubdir(t, "plugins", map[string]string{"okf": "0.0.0"})
+	params := CatalogAddParams{Alias: "local", Source: "path://" + src, Subdir: "plugins"}
 	_, fetched, err := PreviewCatalogAdd(context.Background(), paths, params)
 	if err != nil {
 		t.Fatal(err)
@@ -298,13 +298,13 @@ func TestCatalogUpdate_RepointsEnabledPlugins(t *testing.T) {
 	}
 }
 
-// TestCatalogUpdate_RejectsHandEditedDirDrift is a regression test:
-// CatalogUpdate used to read catalogs.toml's current `dir` straight into a
-// fresh fetch and lock write with no comparison against what was already
-// locked, so a hand-edited dir would get silently trusted on the next
+// TestCatalogUpdate_RejectsHandEditedSubdirDrift is a regression test:
+// CatalogUpdate used to read catalogs.toml's current `subdir` straight into
+// a fresh fetch and lock write with no comparison against what was already
+// locked, so a hand-edited subdir would get silently trusted on the next
 // update — never routing through the interactive `plect catalog add`
 // confirmation that changing a trusted subtree requires.
-func TestCatalogUpdate_RejectsHandEditedDirDrift(t *testing.T) {
+func TestCatalogUpdate_RejectsHandEditedSubdirDrift(t *testing.T) {
 	paths := catalogTestPaths(t)
 	src := writeCatalogSource(t, map[string]string{"okf": "0.0.0"})
 	addTestCatalog(t, paths, "local", "path://"+src)
@@ -315,7 +315,7 @@ func TestCatalogUpdate_RejectsHandEditedDirDrift(t *testing.T) {
 	}
 	for i := range registrations.Catalogs {
 		if registrations.Catalogs[i].Alias == "local" {
-			registrations.Catalogs[i].Dir = "sub"
+			registrations.Catalogs[i].Subdir = "sub"
 		}
 	}
 	if err := plugins.SaveCatalogRegistrations(paths.CatalogsPath, registrations); err != nil {
@@ -324,7 +324,7 @@ func TestCatalogUpdate_RejectsHandEditedDirDrift(t *testing.T) {
 
 	_, err = CatalogUpdate(context.Background(), paths, CatalogUpdateParams{Alias: "local"})
 	if err == nil || !strings.Contains(err.Error(), "does not match plect.lock") {
-		t.Fatalf("CatalogUpdate after a hand-edited dir: err = %v, want a source/dir drift error", err)
+		t.Fatalf("CatalogUpdate after a hand-edited subdir: err = %v, want a source/subdir drift error", err)
 	}
 }
 
@@ -397,12 +397,12 @@ func TestCatalogList_ReportsRegisteredCatalogs(t *testing.T) {
 	}
 }
 
-// TestCatalogAdd_ThisRepositoryWithDir is the GWT this repository's own
+// TestCatalogAdd_ThisRepositoryWithSubdir is the GWT this repository's own
 // issue tracker asked for directly: register this repository as a
-// path-sourced catalog scoped to its plugins/ subtree via --dir, enable
+// path-sourced catalog scoped to its plugins/ subtree via --subdir, enable
 // github, and confirm both the identity has no plugins/ prefix and the
 // mounted plugin directory never resolves outside plugins/.
-func TestCatalogAdd_ThisRepositoryWithDir(t *testing.T) {
+func TestCatalogAdd_ThisRepositoryWithSubdir(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
@@ -410,7 +410,7 @@ func TestCatalogAdd_ThisRepositoryWithDir(t *testing.T) {
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
 
 	paths := catalogTestPaths(t)
-	params := CatalogAddParams{Alias: "official", Source: "path+editable://" + repoRoot, Dir: "plugins"}
+	params := CatalogAddParams{Alias: "official", Source: "path+editable://" + repoRoot, Subdir: "plugins"}
 
 	preview, fetched, err := PreviewCatalogAdd(context.Background(), paths, params)
 	if err != nil {

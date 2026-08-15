@@ -21,7 +21,7 @@ const LockfileSchemaVersion = 1
 type CatalogLockRecord struct {
 	Alias                   string `toml:"alias"`
 	CatalogSource           string `toml:"catalog_source"`
-	Dir                     string `toml:"dir,omitempty"`
+	Subdir                  string `toml:"subdir,omitempty"`
 	CatalogResolvedRevision string `toml:"catalog_resolved_revision"`
 }
 

@@ -18,7 +18,7 @@ import (
 var (
 	initCatalogAlias    string
 	initCatalogSource   string
-	initCatalogDir      string
+	initCatalogSubdir   string
 	initCatalogRevision string
 	initEnablePlugins   []string
 	initAllowlist       []string
@@ -69,18 +69,18 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	reader := bufio.NewReader(cmd.InOrStdin())
 
-	alias, source, dir, revision, err := resolveInitCatalogAnswers(cmd, reader)
+	alias, source, subdir, revision, err := resolveInitCatalogAnswers(cmd, reader)
 	if err != nil {
 		return err
 	}
 
-	catalogParams := service.CatalogAddParams{Alias: alias, Source: source, Dir: dir, Revision: revision}
+	catalogParams := service.CatalogAddParams{Alias: alias, Source: source, Subdir: subdir, Revision: revision}
 	preview, fetched, err := service.PreviewCatalogAdd(cmd.Context(), paths, catalogParams)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "catalog %q resolves to:\n  source:   %s\n  dir:      %s\n  revision: %s\n  plugins:  %v\n",
-		preview.Alias, preview.Source, orNoneDir(dir), orNone(preview.ResolvedRevision), preview.Plugins)
+	fmt.Fprintf(cmd.OutOrStdout(), "catalog %q resolves to:\n  source:   %s\n  subdir:   %s\n  revision: %s\n  plugins:  %v\n",
+		preview.Alias, preview.Source, orNoneSubdir(subdir), orNone(preview.ResolvedRevision), preview.Plugins)
 	if preview.Description != "" {
 		fmt.Fprintf(cmd.OutOrStdout(), "  description: %s\n", preview.Description)
 	}
@@ -136,10 +136,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 // either way (interactively or as flags): there is no default catalog
 // source to fall back on, so a scripted --yes run with neither flag set is
 // a mistake, not an "add nothing" no-op.
-func resolveInitCatalogAnswers(cmd *cobra.Command, reader *bufio.Reader) (alias, source, dir, revision string, err error) {
+func resolveInitCatalogAnswers(cmd *cobra.Command, reader *bufio.Reader) (alias, source, subdir, revision string, err error) {
 	alias = strings.TrimSpace(initCatalogAlias)
 	source = strings.TrimSpace(initCatalogSource)
-	dir = strings.TrimSpace(initCatalogDir)
+	subdir = strings.TrimSpace(initCatalogSubdir)
 	revision = strings.TrimSpace(initCatalogRevision)
 
 	if !initYes && isInteractive() {
@@ -149,8 +149,8 @@ func resolveInitCatalogAnswers(cmd *cobra.Command, reader *bufio.Reader) (alias,
 		if source == "" {
 			source = promptLine(cmd, reader, "Catalog source (git+https://, git+ssh://, path://, path+editable://): ")
 		}
-		if dir == "" {
-			dir = promptLine(cmd, reader, "Catalog dir (subdirectory that is the catalog root; blank for the source root): ")
+		if subdir == "" {
+			subdir = promptLine(cmd, reader, "Catalog subdir (subdirectory that is the catalog root; blank for the source root): ")
 		}
 		if revision == "" {
 			revision = promptLine(cmd, reader, "Catalog revision (blank for a path source): ")
@@ -159,7 +159,7 @@ func resolveInitCatalogAnswers(cmd *cobra.Command, reader *bufio.Reader) (alias,
 	if alias == "" || source == "" {
 		return "", "", "", "", fmt.Errorf("--catalog-alias and --catalog-source are required (answer the prompts interactively, or pass both as explicit flags with --yes)")
 	}
-	return alias, source, dir, revision, nil
+	return alias, source, subdir, revision, nil
 }
 
 // resolveInitPluginSelection lets the user pick, by number or by path, from
@@ -292,7 +292,7 @@ func orAllowAll(patterns []string) string {
 func init() {
 	initCmd.Flags().StringVar(&initCatalogAlias, "catalog-alias", "", "Local alias for the catalog to register (required with --yes)")
 	initCmd.Flags().StringVar(&initCatalogSource, "catalog-source", "", "Catalog source: git+https://, git+ssh://, path://, or path+editable:// (required with --yes)")
-	initCmd.Flags().StringVar(&initCatalogDir, "catalog-dir", "", "Subdirectory of the catalog source that becomes the catalog root (default: the source root itself)")
+	initCmd.Flags().StringVar(&initCatalogSubdir, "catalog-subdir", "", "Subdirectory of the catalog source that becomes the catalog root (default: the source root itself)")
 	initCmd.Flags().StringVar(&initCatalogRevision, "catalog-revision", "", "Git revision to resolve (required for a git-sourced catalog)")
 	initCmd.Flags().StringArrayVar(&initEnablePlugins, "enable", nil, "Catalog-relative plugin path to enable (repeatable; required at least once with --yes)")
 	initCmd.Flags().StringArrayVar(&initAllowlist, "allowlist", nil, "Resource identifier regex pattern to allow (repeatable; required with --yes unless --allow-all is passed)")

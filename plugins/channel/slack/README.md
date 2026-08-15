@@ -20,7 +20,7 @@ plugin ships only the delivery channel that talks to it, not the adapter
 itself (build and run instructions are in slack-adapter's own README).
 
 ```bash
-plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision <tag-or-commit>
+plect catalog add official git+https://github.com/kecbigmt/plecture --subdir plugins --revision <tag-or-commit>
 plect plugin add official/channel/slack
 ```
 

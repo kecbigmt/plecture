@@ -23,37 +23,39 @@ func (e *ErrMissingCatalogLock) Error() string {
 }
 
 // ErrCatalogSourceDrift is returned when catalogs.toml's declared source or
-// dir no longer matches what plect.lock recorded — a human hand-edited the
-// registration without re-running catalog add/update. dir is included in
-// this check because it changes what subtree is trusted exactly the way
-// source does: an unnoticed dir edit would resolve a plugin's lock entry
-// against a catalog root nobody re-confirmed. `plect catalog update` is
-// deliberately not the suggested fix: it re-reads the same drifted
-// catalogs.toml values (CheckCatalogNotDrifted blocks it too), so the only
-// way to actually accept a changed source/dir is to remove and re-add the
-// catalog — a fresh, explicit `plect catalog add` trust confirmation.
+// subdir no longer matches what plect.lock recorded — a human hand-edited
+// the registration without re-running catalog add/update. subdir is
+// included in this check because it changes what subtree is trusted exactly
+// the way source does: an unnoticed subdir edit would resolve a plugin's
+// lock entry against a catalog root nobody re-confirmed. `plect catalog
+// update` is deliberately not the suggested fix: it re-reads the same
+// drifted catalogs.toml values (CheckCatalogNotDrifted blocks it too), so
+// the only way to actually accept a changed source/subdir is to remove and
+// re-add the catalog — a fresh, explicit `plect catalog add` trust
+// confirmation.
 type ErrCatalogSourceDrift struct{ Alias string }
 
 func (e *ErrCatalogSourceDrift) Error() string {
-	return fmt.Sprintf("catalog %q: declared source/dir does not match plect.lock; run `plect catalog remove %s` then `plect catalog add` to accept the change", e.Alias, e.Alias)
+	return fmt.Sprintf("catalog %q: declared source/subdir does not match plect.lock; run `plect catalog remove %s` then `plect catalog add` to accept the change", e.Alias, e.Alias)
 }
 
 // CheckCatalogNotDrifted reports ErrCatalogSourceDrift if entry's source or
-// dir disagrees with an already-existing catalog lock record for its alias.
-// Every command that trusts catalogs.toml's current source/dir to fetch and
-// (re)write plect.lock — catalog update, plugin add, plugin update — must
-// call this before doing either: without it, a hand-edited catalogs.toml
-// would silently launder its new source/dir into a trusted lock entry the
-// next time any plugin from that catalog is added or updated, bypassing the
-// explicit re-confirmation `plect catalog add` exists to require. A missing
-// lock record is not drift — nothing has been trusted for this alias yet,
-// so the caller's own fetch is the first trust act.
+// subdir disagrees with an already-existing catalog lock record for its
+// alias. Every command that trusts catalogs.toml's current source/subdir to
+// fetch and (re)write plect.lock — catalog update, plugin add, plugin
+// update — must call this before doing either: without it, a hand-edited
+// catalogs.toml would silently launder its new source/subdir into a trusted
+// lock entry the next time any plugin from that catalog is added or
+// updated, bypassing the explicit re-confirmation `plect catalog add`
+// exists to require. A missing lock record is not drift — nothing has been
+// trusted for this alias yet, so the caller's own fetch is the first trust
+// act.
 func CheckCatalogNotDrifted(entry CatalogEntry, lock *Lockfile) error {
 	record, ok := lock.FindCatalog(entry.Alias)
 	if !ok {
 		return nil
 	}
-	if record.CatalogSource != entry.Source || record.Dir != entry.Dir {
+	if record.CatalogSource != entry.Source || record.Subdir != entry.Subdir {
 		return &ErrCatalogSourceDrift{Alias: entry.Alias}
 	}
 	return nil
@@ -88,7 +90,7 @@ func (e *ErrIncompatible) Error() string {
 type ResolvedCatalog struct {
 	Alias           string
 	Source          string
-	Dir             string
+	Subdir          string
 	Root            string
 	Manifest        CatalogManifest
 	NonReproducible bool
@@ -112,7 +114,7 @@ func VerifyAndMountCatalog(entry CatalogEntry, lock *Lockfile, cacheRoot string)
 		if err != nil {
 			return ResolvedCatalog{}, err
 		}
-		root, err = ResolveCatalogDir(root, entry.Dir)
+		root, err = ResolveCatalogSubdir(root, entry.Subdir)
 		if err != nil {
 			return ResolvedCatalog{}, err
 		}
@@ -120,14 +122,14 @@ func VerifyAndMountCatalog(entry CatalogEntry, lock *Lockfile, cacheRoot string)
 		if err != nil {
 			return ResolvedCatalog{}, err
 		}
-		return ResolvedCatalog{Alias: entry.Alias, Source: entry.Source, Dir: entry.Dir, Root: root, Manifest: manifest, NonReproducible: true}, nil
+		return ResolvedCatalog{Alias: entry.Alias, Source: entry.Source, Subdir: entry.Subdir, Root: root, Manifest: manifest, NonReproducible: true}, nil
 	}
 
 	record, ok := lock.FindCatalog(entry.Alias)
 	if !ok {
 		return ResolvedCatalog{}, &ErrMissingCatalogLock{Alias: entry.Alias}
 	}
-	if record.CatalogSource != entry.Source || record.Dir != entry.Dir {
+	if record.CatalogSource != entry.Source || record.Subdir != entry.Subdir {
 		return ResolvedCatalog{}, &ErrCatalogSourceDrift{Alias: entry.Alias}
 	}
 
@@ -146,7 +148,7 @@ func VerifyAndMountCatalog(entry CatalogEntry, lock *Lockfile, cacheRoot string)
 	default:
 		return ResolvedCatalog{}, fmt.Errorf("catalog %q: source %q: unsupported scheme", entry.Alias, entry.Source)
 	}
-	root, err = ResolveCatalogDir(root, entry.Dir)
+	root, err = ResolveCatalogSubdir(root, entry.Subdir)
 	if err != nil {
 		return ResolvedCatalog{}, err
 	}
@@ -155,7 +157,7 @@ func VerifyAndMountCatalog(entry CatalogEntry, lock *Lockfile, cacheRoot string)
 	if err != nil {
 		return ResolvedCatalog{}, err
 	}
-	return ResolvedCatalog{Alias: entry.Alias, Source: entry.Source, Dir: entry.Dir, Root: root, Manifest: manifest}, nil
+	return ResolvedCatalog{Alias: entry.Alias, Source: entry.Source, Subdir: entry.Subdir, Root: root, Manifest: manifest}, nil
 }
 
 // ErrPluginNotListed is returned when pluginPath is enabled in
@@ -216,7 +218,7 @@ func VerifyAndMountPlugin(catalog ResolvedCatalog, pluginPath string, cacheRoot 
 		if entry.CatalogResolvedRevision == "" {
 			return Mounted{}, &ErrMissingPluginLock{ID: id}
 		}
-		pluginCatalogRoot, err = ResolveCatalogDir(CacheDir(cacheRoot, catalog.Source, entry.CatalogResolvedRevision), catalog.Dir)
+		pluginCatalogRoot, err = ResolveCatalogSubdir(CacheDir(cacheRoot, catalog.Source, entry.CatalogResolvedRevision), catalog.Subdir)
 		if err != nil {
 			return Mounted{}, err
 		}

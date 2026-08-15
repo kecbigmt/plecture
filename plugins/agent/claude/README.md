@@ -30,7 +30,7 @@ Optionally, a `channel-server` build on `PATH` enables the socket-delivered
 channel above (see `plugins/channel-server` in this repository).
 
 ```bash
-plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision <tag-or-commit>
+plect catalog add official git+https://github.com/kecbigmt/plecture --subdir plugins --revision <tag-or-commit>
 plect plugin add official/agent/runtime
 plect plugin add official/agent/claude
 ```

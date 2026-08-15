@@ -13,7 +13,7 @@ import (
 func TestWriteCatalogList_FormatsEntries(t *testing.T) {
 	var buf bytes.Buffer
 	err := writeCatalogList(&buf, []service.CatalogListEntry{
-		{Alias: "official", Source: "git+https://x", Dir: "plugins", ResolvedRevision: "abc123", Status: "ok", EnabledPlugins: []string{"github"}},
+		{Alias: "official", Source: "git+https://x", Subdir: "plugins", ResolvedRevision: "abc123", Status: "ok", EnabledPlugins: []string{"github"}},
 		{Alias: "local", Source: "path+editable:///x", Status: "ok", EnabledPlugins: nil},
 	})
 	if err != nil {
@@ -36,12 +36,12 @@ func TestOrNone(t *testing.T) {
 	}
 }
 
-func TestOrNoneDir(t *testing.T) {
-	if got := orNoneDir(""); got != "(none, source root)" {
-		t.Errorf("orNoneDir(\"\") = %q", got)
+func TestOrNoneSubdir(t *testing.T) {
+	if got := orNoneSubdir(""); got != "(none, source root)" {
+		t.Errorf("orNoneSubdir(\"\") = %q", got)
 	}
-	if got := orNoneDir("plugins"); got != "plugins" {
-		t.Errorf("orNoneDir(\"plugins\") = %q", got)
+	if got := orNoneSubdir("plugins"); got != "plugins" {
+		t.Errorf("orNoneSubdir(\"plugins\") = %q", got)
 	}
 }
 
