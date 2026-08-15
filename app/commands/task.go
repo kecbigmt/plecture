@@ -141,8 +141,7 @@ satisfied and teardown: it reconfirms the instance's done_when is satisfied at
 the current revision (refusing outright if it is not — finalize never forces
 completion), then lets the bound --resource's definition record completion via
 its 'finalize' script if it declares one. A resource definition without a
-'finalize' script (every kind until a later ADR slice adds one, e.g. a local
-OKF goal) is a no-op step, not an error.
+'finalize' script is a no-op step, not an error.
 
 Finalize is "gate + record" only: it never tears the instance down. Run
 'plect task cleanup <instance>' separately once you're done observing it.

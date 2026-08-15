@@ -31,8 +31,8 @@ type FinalizeTaskResult struct {
 // requires between a task instance's done_when being satisfied and its
 // teardown: reconfirm the instance's done_when is satisfied at the current
 // revision, then let the bound resource's definition record completion (if it
-// declares a `finalize` script — no OKF/local-okf definition exists yet, so
-// today this is almost always a no-op outside tests). It is "gate + record"
+// declares a `finalize` script — most resource kinds don't, so this is a
+// no-op for them). It is "gate + record"
 // only — it never tears the instance down; the caller runs `plect task cleanup`
 // separately once it's done observing the finalized instance. `cleanup`
 // itself stays unaware of any of this (it never gains completion semantics —

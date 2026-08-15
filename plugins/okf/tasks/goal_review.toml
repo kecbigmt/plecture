@@ -1,0 +1,72 @@
+# goal_review: a session that reviews one local-okf goal, spawned by
+# pursue_goal's chain once the goal's checklist is satisfied. Its own
+# resource is the goal file being reviewed (resources/okf_goal.toml), not
+# the target session's — its outputs mirror that resource's observe shape
+# (goal_parse_status/goal_status/checklist_status/goal_revision/open_items)
+# rather than any other resource kind's vocabulary.
+#
+# There is no third party to judge a reviewer, so this task's own
+# done_when cannot use a judge leaf either. Completion is instead this
+# reviewer's self-report of "I recorded the goal-met verdict on the target
+# session", captured as a revision (not a boolean) so a later goal file
+# edit invalidates it automatically.
+scope = "session"
+
+setup = '''
+EXTRA='{{get .Inputs "instruction"}}'
+INSTRUCTION=$(plect template render goal_review --session '{{.SessionName}}' --instruction "$EXTRA")
+if [ -z "$INSTRUCTION" ]; then
+  echo "plect template render goal_review produced empty instruction" >&2
+  exit 1
+fi
+jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
+'''
+
+requires = ["goal_parse_status", "verdict_current"]
+
+[[outputs]]
+produces = ["goal_parse_status", "goal_status", "checklist_status", "goal_revision", "revision", "open_items"]
+from_resource_status = true
+
+[[outputs]]
+name = "verdict_current"
+script = '''
+CURRENT_REVISION=$(plect resource status "{{.ResourceID}}" --json | jq -r '.state.revision // empty')
+if [ -n "$CURRENT_REVISION" ] && [ "{{.Self.verdict_revision}}" = "$CURRENT_REVISION" ]; then
+  echo true
+else
+  echo false
+fi
+'''
+
+[done_when]
+all = [
+  { check = "goal_parse_status", in = ["SUCCESS"] },
+  { check = "verdict_current", in = ["true"] },
+]
+
+[done_when.budget]
+heartbeat_budget = 3
+on_exhaust = "escalate"
+
+[inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[inputs_schema.properties]
+instruction = { type = "string" }
+
+[outputs_schema]
+type     = "object"
+required = ["instruction"]
+
+[outputs_schema.properties]
+instruction       = { type = "string" }
+goal_parse_status = { type = "string", mutable = true }
+goal_status       = { type = "string", mutable = true }
+checklist_status  = { type = "string", mutable = true }
+goal_revision     = { type = "string", mutable = true }
+revision          = { type = "string", mutable = true }
+open_items        = { type = "string", mutable = true }
+verdict_revision  = { type = "string", mutable = true }
+verdict_current   = { type = "string" }
