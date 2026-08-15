@@ -13,11 +13,6 @@ primary = true
 #   effort       — when set, appended as `--effort <value>` the same way.
 #                  Empty = no flag (CLI default).
 #
-# Requires the agent/runtime plugin enabled from the same catalog: the
-# activity hooks below resolve plect-agent-activity through
-# {{bin "official/agent/runtime/plect-agent-activity"}}. If your catalog
-# registration uses an alias other than "official", replace this task with a
-# same-id definition in a trusted overlay that uses your alias instead.
 setup = '''
 PREV_SID='{{get .Prev "session_id"}}'
 if [ -n "$PREV_SID" ]; then
@@ -59,8 +54,8 @@ HOOKS=$(mktemp "${TMPDIR:-/tmp}/plect-hooks.XXXXXX")
 mv "$HOOKS" "$HOOKS.json" && HOOKS="$HOOKS.json"
 jq -nc '{
   hooks: {
-    UserPromptSubmit: [{hooks: [{type: "command", command: "{{bin "official/agent/runtime/plect-agent-activity"}} claude working"}]}],
-    Stop:             [{hooks: [{type: "command", command: "{{bin "official/agent/runtime/plect-agent-activity"}} claude waiting"}]}]
+    UserPromptSubmit: [{hooks: [{type: "command", command: "{{bin "plect-agent-activity"}} claude working"}]}],
+    Stop:             [{hooks: [{type: "command", command: "{{bin "plect-agent-activity"}} claude waiting"}]}]
   }
 }' > "$HOOKS"
 

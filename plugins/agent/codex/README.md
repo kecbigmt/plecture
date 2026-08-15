@@ -31,11 +31,18 @@ workflow can compose either without hand-authoring it.
   `args` are, and only with the `json` function — `{{bin ...}}` exists only
   for task setup/cleanup hooks), so this script must be reachable on `PATH`
   under its own name for the channel to work.
+- `bin/plect-agent-activity` — the turn-boundary self-report hook both tasks'
+  setup registers. A copy of `agent/runtime`'s script of the same name — see
+  that plugin's README for why it's a copy rather than a cross-plugin
+  reference.
 
 ## Install
 
-Requires [`agent/runtime`](../runtime) enabled from the same catalog — both
-tasks' activity hooks resolve `plect-agent-activity` through it.
+Typically composed with [`agent/runtime`](../runtime) enabled from the same
+catalog — its `tmux` task is the usual source of the `tmux_session` input
+both of this plugin's tasks require — but that pairing is a workflow-level
+choice, not a hard dependency: `plect-agent-activity` is this plugin's own
+`bin/`.
 
 ```bash
 plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision <tag-or-commit>
