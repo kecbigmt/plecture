@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 	"github.com/kecbigmt/plecture/contracts/atomicfile"
 )
 
@@ -45,13 +46,14 @@ type Lockfile struct {
 	Plugins       []PluginLockEntry   `toml:"plugins"`
 }
 
-// DefaultLockfilePath returns ~/.config/plect/plect.lock.
+// DefaultLockfilePath returns plect.lock under the resolved config home
+// (~/.config/plect by default; see confighome.Resolve).
 func DefaultLockfilePath() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := confighome.Resolve()
 	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(home, ".config", "plect", "plect.lock"), nil
+	return filepath.Join(home, "plect.lock"), nil
 }
 
 // LoadLockfile reads plect.lock. A missing file is not an error: it means

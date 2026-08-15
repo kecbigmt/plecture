@@ -4,7 +4,24 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 )
+
+func TestDefaultLockfilePath_HonorsConfigHomeEnvVar(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	configHome := filepath.Join(t.TempDir(), "custom-config")
+	t.Setenv(confighome.EnvVar, configHome)
+
+	want := filepath.Join(configHome, "plect.lock")
+	got, err := DefaultLockfilePath()
+	if err != nil {
+		t.Fatalf("DefaultLockfilePath() error = %v", err)
+	}
+	if got != want {
+		t.Fatalf("DefaultLockfilePath() = %q, want %q", got, want)
+	}
+}
 
 func TestLoadLockfile_MissingFileIsEmptyNotError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "plect.lock")

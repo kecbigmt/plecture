@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -24,6 +26,17 @@ func TestDefaultPathUsesPlectureConfigDir(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	want := filepath.Join(tmpHome, ".config", "plect", "config.toml")
+	if got := DefaultPath(); got != want {
+		t.Fatalf("DefaultPath() = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultPath_HonorsConfigHomeEnvVar(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	configHome := filepath.Join(t.TempDir(), "custom-config")
+	t.Setenv(confighome.EnvVar, configHome)
+
+	want := filepath.Join(configHome, "config.toml")
 	if got := DefaultPath(); got != want {
 		t.Fatalf("DefaultPath() = %q, want %q", got, want)
 	}
@@ -156,6 +169,35 @@ func TestLoad_PopulatesBaseDir(t *testing.T) {
 	want := filepath.Join(configDir, "in.schema.json")
 	if got := cfg.ResolvedInputsSchemaPath(); got != want {
 		t.Errorf("ResolvedInputsSchemaPath = %q, want %q", got, want)
+	}
+}
+
+func TestLoad_ReadsFromConfigHomeEnvVarInsteadOfRealHome(t *testing.T) {
+	realHome := t.TempDir()
+	t.Setenv("HOME", realHome)
+	realConfigDir := filepath.Join(realHome, ".config", "plect")
+	if err := os.MkdirAll(realConfigDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realConfigDir, "config.toml"), []byte("workdirs_root = \"/real-home-workdirs\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	overrideDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(overrideDir, "config.toml"), []byte("workdirs_root = \"/override-workdirs\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(confighome.EnvVar, overrideDir)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.WorkdirsRoot != "/override-workdirs" {
+		t.Errorf("WorkdirsRoot = %q, want the override dir's value, not the real home's", cfg.WorkdirsRoot)
+	}
+	if cfg.BaseDir != overrideDir {
+		t.Errorf("BaseDir = %q, want %q", cfg.BaseDir, overrideDir)
 	}
 }
 

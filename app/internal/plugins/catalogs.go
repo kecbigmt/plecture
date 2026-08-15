@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 	"github.com/kecbigmt/plecture/contracts/atomicfile"
 )
 
@@ -29,13 +30,14 @@ type CatalogRegistrations struct {
 	Catalogs      []CatalogEntry `toml:"catalogs"`
 }
 
-// DefaultCatalogsPath returns ~/.config/plect/catalogs.toml.
+// DefaultCatalogsPath returns catalogs.toml under the resolved config home
+// (~/.config/plect by default; see confighome.Resolve).
 func DefaultCatalogsPath() (string, error) {
-	home, err := os.UserHomeDir()
+	home, err := confighome.Resolve()
 	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
+		return "", err
 	}
-	return filepath.Join(home, ".config", "plect", "catalogs.toml"), nil
+	return filepath.Join(home, "catalogs.toml"), nil
 }
 
 // LoadCatalogRegistrations reads catalogs.toml. A missing file is not an

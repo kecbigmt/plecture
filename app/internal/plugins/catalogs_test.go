@@ -4,7 +4,24 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 )
+
+func TestDefaultCatalogsPath_HonorsConfigHomeEnvVar(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	configHome := filepath.Join(t.TempDir(), "custom-config")
+	t.Setenv(confighome.EnvVar, configHome)
+
+	want := filepath.Join(configHome, "catalogs.toml")
+	got, err := DefaultCatalogsPath()
+	if err != nil {
+		t.Fatalf("DefaultCatalogsPath() error = %v", err)
+	}
+	if got != want {
+		t.Fatalf("DefaultCatalogsPath() = %q, want %q", got, want)
+	}
+}
 
 func TestLoadCatalogRegistrations_MissingFileIsEmptyNotError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "catalogs.toml")

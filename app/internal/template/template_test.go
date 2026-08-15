@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 )
 
 func TestLoad_MissingTemplateNamesSearchedPaths(t *testing.T) {
@@ -52,6 +54,29 @@ func TestLoad_UserGlobalOverride(t *testing.T) {
 	}
 
 	customContent := "Custom work template for {{.SessionName}}"
+	if err := os.WriteFile(filepath.Join(templateDir, "work.md"), []byte(customContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	content, err := Load("work", "", nil)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if content != customContent {
+		t.Errorf("Load() = %q, want %q", content, customContent)
+	}
+}
+
+func TestLoad_UserGlobalOverride_HonorsConfigHomeEnvVar(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	configHome := t.TempDir()
+	t.Setenv(confighome.EnvVar, configHome)
+
+	templateDir := filepath.Join(configHome, "templates")
+	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	customContent := "Custom work template under PLECT_CONFIG_HOME"
 	if err := os.WriteFile(filepath.Join(templateDir, "work.md"), []byte(customContent), 0o644); err != nil {
 		t.Fatal(err)
 	}

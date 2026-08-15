@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 )
 
 // templateFuncs mirrors the task render context so optional vars can be
@@ -100,7 +102,8 @@ func LoadWithMetadata(mode, searchDir string, pluginDirs []string) (Metadata, st
 
 // Load reads a template for the given mode with the following priority:
 //  1. <searchDir>/.plect/templates/<mode>.md and its ancestors, innermost wins
-//  2. ~/.config/plect/templates/<mode>.md (user global)
+//  2. <config home>/templates/<mode>.md (user global; ~/.config/plect by
+//     default, see confighome.Resolve)
 //  3. <pluginDir>/templates/<mode>.md, for each resolved plugin (read-only
 //     base layer; see pluginTemplateFile for its same-id conflict rule)
 //
@@ -120,8 +123,8 @@ func Load(mode, searchDir string, pluginDirs []string) (string, error) {
 	}
 
 	// 2. User global template
-	home, _ := os.UserHomeDir()
-	userPath := filepath.Join(home, ".config", "plect", "templates", filename)
+	configHome, _ := confighome.Resolve()
+	userPath := filepath.Join(configHome, "templates", filename)
 	searched = append(searched, userPath)
 	if data, err := os.ReadFile(userPath); err == nil {
 		return string(data), nil
@@ -292,8 +295,8 @@ func List(repoDir string, pluginDirs []string) ([]TemplateInfo, error) {
 	}
 
 	// 2. User global
-	home, _ := os.UserHomeDir()
-	userDir := filepath.Join(home, ".config", "plect", "templates")
+	configHome, _ := confighome.Resolve()
+	userDir := filepath.Join(configHome, "templates")
 	addFromDir(
 		func() ([]fs.DirEntry, error) { return os.ReadDir(userDir) },
 		func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(userDir, name)) },
