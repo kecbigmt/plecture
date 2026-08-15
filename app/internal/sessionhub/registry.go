@@ -92,6 +92,9 @@ type reader struct {
 	store   *eventlog.Store
 	poll    time.Duration
 	cancel  context.CancelFunc
+	// done closes when run returns, giving releaseRef and Close a point to
+	// wait on so neither can return while the reader might still touch the log.
+	done chan struct{}
 
 	mu     sync.Mutex
 	cursor int64 // broadcast watermark: everything < cursor has been broadcast
@@ -100,6 +103,7 @@ type reader struct {
 }
 
 func (r *reader) run(ctx context.Context) {
+	defer close(r.done)
 	cur := r.cursor
 	for {
 		evs, offs, next, err := r.store.List(r.session, cur, event.Filter{})
@@ -208,6 +212,7 @@ func (reg *Registry) acquire(session string) *reader {
 			store:   reg.store,
 			poll:    reg.poll,
 			cancel:  cancel,
+			done:    make(chan struct{}),
 			frames:  map[*FrameSub]struct{}{},
 			wakes:   map[*WakeSub]struct{}{},
 		}
@@ -222,25 +227,46 @@ func (reg *Registry) acquire(session string) *reader {
 	return e.reader
 }
 
+// releaseRef drops r's refcount and, once the last consumer has left, cancels
+// and joins it before returning. Joining (not just cancelling) matters because
+// a caller that immediately tears down the session's on-disk directory (as a
+// test's t.TempDir() cleanup does) would otherwise race a reader goroutine
+// still mid-poll: its next store.List call reopens the lock file with
+// O_CREATE, resurrecting it inside a directory already being removed. The
+// wait itself happens outside reg.mu so it doesn't stall unrelated sessions.
 func (reg *Registry) releaseRef(session string, r *reader) {
 	reg.mu.Lock()
-	defer reg.mu.Unlock()
-	if e, ok := reg.readers[session]; ok && e.reader == r {
-		e.refs--
-		if e.refs <= 0 {
-			e.reader.cancel()
-			delete(reg.readers, session)
-		}
+	e, ok := reg.readers[session]
+	if !ok || e.reader != r {
+		reg.mu.Unlock()
+		return
+	}
+	e.refs--
+	last := e.refs <= 0
+	if last {
+		delete(reg.readers, session)
+	}
+	reg.mu.Unlock()
+	if last {
+		r.cancel()
+		<-r.done
 	}
 }
 
-// Close cancels every live reader (bus shutdown). Consumers' handlers return when
-// their context ends; this is the belt-and-suspenders teardown.
+// Close cancels and joins every live reader (bus shutdown). This is the
+// belt-and-suspenders teardown for any reader still alive after subscribers,
+// dispatchers, and reactors have left; joining (see releaseRef) guarantees no
+// reader touches the log again once Close has returned.
 func (reg *Registry) Close() {
 	reg.mu.Lock()
-	defer reg.mu.Unlock()
+	readers := make([]*reader, 0, len(reg.readers))
 	for _, e := range reg.readers {
 		e.reader.cancel()
+		readers = append(readers, e.reader)
 	}
 	reg.readers = map[string]*entry{}
+	reg.mu.Unlock()
+	for _, r := range readers {
+		<-r.done
+	}
 }
