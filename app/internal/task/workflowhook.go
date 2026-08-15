@@ -28,6 +28,11 @@ type WorkflowHookVars struct {
 	WorkdirsRoot  string
 	SessionInputs map[string]any
 	Plugins       []plugins.Mounted
+	// SourcePath is the provider definition's own file path
+	// (config.ProviderConfig.SourcePath), threaded through so a
+	// `{{bin "<name>"}}` in Setup/Cleanup can resolve against the provider's
+	// containing plugin.
+	SourcePath string
 	// Force mirrors the caller's --force intent into the cleanup template so a
 	// provider's cleanup script can decide for itself whether to force-remove
 	// a dirty workdir; core has no opinion on what a provider's release step
@@ -210,7 +215,7 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 	// renderWith's dynamicFuncs for the same reason.
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
-			return resolveBin(vars.Plugins, ref)
+			return resolveBin(vars.Plugins, vars.SourcePath, ref)
 		},
 	}
 	tmpl, err := template.New("workflow_hook").

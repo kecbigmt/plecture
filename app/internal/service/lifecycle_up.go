@@ -286,6 +286,8 @@ func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, sess
 		SessionName:   session.Name,
 		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
+		Plugins:       cfg.Plugins,
+		SourcePath:    prov.SourcePath,
 	}
 	return task.RunWorkflowSetup(prov, vars, session.Tasks, observer)
 }

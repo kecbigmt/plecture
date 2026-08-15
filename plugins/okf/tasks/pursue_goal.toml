@@ -15,7 +15,7 @@
 # done_when config.
 scope = "session"
 
-setup = 'plect-okf task validate-goal-resource --resource {{.ResourceID | shellQuote}}'
+setup = '{{bin "plect-okf"}} task validate-goal-resource --resource {{.ResourceID | shellQuote}}'
 
 # Observed goal state is copied from the resource definition
 # (resources/okf_goal.toml) rather than fetched by a task-local script, so

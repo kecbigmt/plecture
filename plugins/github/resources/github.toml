@@ -13,7 +13,7 @@
 
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issues|pull)/(?P<number>\d+)'
 
-observe = '{{bin "official/plugins/github/plect-github-provider"}} observe --resource {{.ResourceID | shellQuote}} --workdir-path {{.WorkdirPath | shellQuote}} --watcher-bin {{bin "official/plugins/github/github-watcher" | shellQuote}}'
+observe = '{{bin "plect-github-provider"}} observe --resource {{.ResourceID | shellQuote}} --workdir-path {{.WorkdirPath | shellQuote}} --watcher-bin {{bin "github-watcher" | shellQuote}}'
 
 [state_schema]
 type     = "object"

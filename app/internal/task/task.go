@@ -53,6 +53,10 @@ type Resolved struct {
 	// `plect state set-output`; everything else is immutable (safe by default).
 	MutableOutputs []string
 	DependsOn      []string
+	// SourcePath is the task definition file's own path (config.TaskDefinition.
+	// SourcePath), threaded through so a `{{bin "<name>"}}` in Setup/Cleanup can
+	// resolve against the definition's containing plugin.
+	SourcePath string
 	// DoneWhen is the task's per-instance Definition of Done;
 	// nil for pure lifecycle-only tasks. Evaluated against the instance's own
 	// outputs for `plect status` / `ls` display.
@@ -283,6 +287,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		Scope:          scope,
 		Setup:          def.Setup,
 		Cleanup:        def.Cleanup,
+		SourcePath:     def.SourcePath,
 		Healthcheck:    def.Healthcheck,
 		Primary:        def.Primary,
 		Attach:         def.Attach,
@@ -611,6 +616,13 @@ type RenderContext struct {
 	Workflow    map[string]any
 	Environment map[string]any
 	Session     SessionVars
+	// SourcePath is the absolute path of the file the rendered template
+	// (Setup/Cleanup/...) came from. It feeds the `{{bin "<name>"}}` bare-name
+	// reading only — resolveBin uses it to find the containing plugin — so a
+	// caller with no file origin (a test-built template, an attach/healthcheck
+	// template not tied to one definition) may safely leave it empty; only
+	// bare-name `{{bin}}` references stop resolving without it.
+	SourcePath string
 }
 
 type SessionVars struct {
@@ -742,7 +754,7 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 	// — the set of plugins mounted for the config in effect, not a global.
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
-			return resolveBin(ctx.Session.Plugins, ref)
+			return resolveBin(ctx.Session.Plugins, ctx.SourcePath, ref)
 		},
 	}
 	tmpl, err := template.New("task").
@@ -1027,6 +1039,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			Workflow:    workflowOutputs(tasks),
 			Environment: environmentOutputs(tasks),
 			Session:     session,
+			SourcePath:  r.SourcePath,
 		}
 		cmdStr, err := render(r.Setup, ctx)
 		if err != nil {
@@ -1186,6 +1199,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			Workflow:    workflowOutputs(tasks),
 			Environment: environmentOutputs(tasks),
 			Session:     sess,
+			SourcePath:  r.SourcePath,
 		}
 		cmdStr, err := renderCleanup(r.Cleanup, ctx)
 		if err != nil {

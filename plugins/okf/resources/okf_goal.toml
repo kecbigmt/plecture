@@ -14,7 +14,7 @@ match = '^local-okf://[A-Za-z0-9][A-Za-z0-9-]*/goals/[A-Za-z0-9._/-]+\.md$'
 # file was read but is malformed. observe_error carries the human-readable
 # reason. Escapes out of the bundle are refused as a hard error (non-zero
 # exit), never folded into UNRESOLVED.
-observe = 'plect-okf resource observe --resource {{.ResourceID | shellQuote}}'
+observe = '{{bin "plect-okf"}} resource observe --resource {{.ResourceID | shellQuote}}'
 
 # `plect task finalize` already reconfirmed done_when is satisfied and
 # gathered judge evidence before invoking this, so finalize itself only
@@ -26,7 +26,7 @@ observe = 'plect-okf resource observe --resource {{.ResourceID | shellQuote}}'
 # quoted heredoc disables all shell expansion of its body, so the JSON is
 # read back byte-for-byte regardless of its content.
 finalize = '''
-plect-okf resource finalize --resource {{.ResourceID | shellQuote}} --revision {{.Revision | shellQuote}} <<'JUDGES_EOF'
+{{bin "plect-okf"}} resource finalize --resource {{.ResourceID | shellQuote}} --revision {{.Revision | shellQuote}} <<'JUDGES_EOF'
 {{.JudgesJSON}}
 JUDGES_EOF
 '''
