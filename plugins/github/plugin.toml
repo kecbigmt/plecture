@@ -9,8 +9,9 @@ description = "GitHub resource provider, resource observation, watcher subscript
 
 # Built from the sibling Go modules under plugins/github-provider and
 # plugins/github-watcher — both inside this catalog's trust space (the
-# catalog root is plugins/), so `build` reaching outside this plugin's own
-# directory still stays within what the catalog registration trusts.
+# catalog root is the repository root), so `build` reaching outside this
+# plugin's own directory still stays within what the catalog registration
+# trusts.
 [[executables]]
 name = "plect-github-provider"
 path = "bin/plect-github-provider"

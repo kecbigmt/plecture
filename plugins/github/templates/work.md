@@ -5,13 +5,18 @@ Resolve the issue at {{.ResourceID}}.
 
 Steps:
 
-1. Understand the issue (`gh issue view {{.ResourceID}}`)
+1. Understand the issue (parse `<owner>/<repo>` and `<number>` from the URL
+   {{.ResourceID}}, then `gh api repos/<owner>/<repo>/issues/<number>`)
 2. Investigate the relevant code
 3. Decide on an implementation approach
 4. Implement the changes
 5. Write and run tests
 6. Commit and push
 7. Create a PR (`gh pr create`)
+
+Read via `gh api` (REST); reserve `gh issue`/`gh pr` porcelain for writes
+(the PR itself, comments) — porcelain reads consume GraphQL quota that
+write-side `gh` calls also share.
 
 To track a related PR (one you opened, or a dependency you're waiting on), run
 `plect subscribe <pr-url>` — its CI / review / merge events then arrive in
