@@ -107,6 +107,26 @@ later commits.
 Coverage means error branches and failure paths are tested, not just the
 happy path. A change that only exercises success cases is incomplete.
 
+### Design principles: YAGNI and SOLID
+
+Stated operationally — testable rules an agent can apply and a reviewer
+can block on, not name-drops.
+
+- **YAGNI.** Build only what a present, concrete consumer needs. No
+  speculative flags, config keys, or extension points. An abstraction
+  needs at least two real consumers — in this change, or already in the
+  tree (rule of three preferred) — otherwise write the concrete code
+  twice first.
+- **SOLID, Go-idiomatically.** Single responsibility per package/type,
+  statable in one sentence. Small consumer-side interfaces: accept
+  interfaces, return structs; define an interface where it is used, not
+  where it is implemented. No interface with exactly one implementation
+  and one caller.
+- Speculative complexity that ships anyway must carry an explicit removal
+  condition (a deadline or a metric) — the same discipline this repo's PR
+  process already requires when complexity is introduced ahead of proven
+  benefit.
+
 ### Test placement and speed
 
 Prefer table-driven tests where idiomatic to the case being tested.
