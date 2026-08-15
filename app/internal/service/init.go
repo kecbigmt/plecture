@@ -11,9 +11,9 @@ import (
 )
 
 // InitConfigValues are the root config.toml fields `plect init` writes on
-// the user's behalf: the small, genuinely per-user residue identified by
-// the #80 bootstrap-cost investigation, not anything init defaults on its
-// own — every value here came from an explicit answer.
+// the user's behalf: the small set of genuinely per-user values, not
+// anything init defaults on its own — every value here came from an
+// explicit answer.
 type InitConfigValues struct {
 	WorkdirsRoot      string
 	ResourceAllowlist []string
