@@ -10,8 +10,15 @@ verification, and handoff.
 
 Durable structure of work (identity, lifecycle, relationships, observation,
 verification, handoff) belongs in `app/` and `contracts/` (core).
-Commitments to a particular technology (a VCS, an agent CLI, a terminal
-multiplexer, a chat service) belong in `plugins/` and shipped config.
+
+A plugin is a distributable package: executable adapters (0+) + config
+resources (0+ — providers, resources, tasks, workflows, templates,
+channels) + metadata. A plugin with only configuration and no executables
+is still a plugin. Commitments to a particular technology (a VCS, an agent
+CLI, a terminal multiplexer, a chat service) belong in `plugins/`, whether
+expressed as code or as shipped config. (Packaging mechanics — the package
+format, lockfile, and reference-resolution model — are covered by a
+separate design in progress, not by this section.)
 
 Core must not know any specific provider exists. No provider names in core
 identifiers, imports, help text, or error strings. This is a blocking review
@@ -19,9 +26,47 @@ dimension.
 
 ## Comments
 
-- Never put issue, PR, or ADR numbers in code comments.
+Priority when writing a comment: **why / why-not** first, far ahead of
+**what**, further ahead of **how**. The code and the diff already show what
+changed and how; a comment earns its place only by explaining why a choice
+was made, or why an alternative was not.
+
+- **Default to no comment.** Write one only when the why is genuinely
+  non-obvious from the code itself.
+- **Keep it to the minimum that states the why-not.** The bar is not a line
+  count — a genuinely non-obvious why-not can run several lines — but never
+  pad it, and never let it restate what the code already shows.
+- Never put issue, PR, or ADR numbers in code comments. A number tied to an
+  external tracker rots the moment the comment is relocated or the tracker
+  is renumbered. Put a long-form rationale in a `docs/adr/` decision record
+  instead, and keep the comment itself a terse, self-contained why-not.
 - Every comment must be a self-contained, complete sentence understandable
   without external context.
+- Keep explanations in their own layer, and don't duplicate one layer's
+  explanation in another: a code comment carries only why-not; `--help`
+  text and CLI usage strings speak to the user; a test is the executable
+  specification; `docs/adr/` carries the long-form rationale.
+- A test function's name should usually make a docstring unnecessary. A
+  one-sentence statement of intent is acceptable when the name alone
+  doesn't carry it; don't restate the test's steps.
+
+Bad — restates what the code does and leans on an external decision
+record instead of standing on its own:
+
+```go
+// FetchOutput resolves one dynamic output by running its script against
+// the source of truth (see the design doc). It returns the value a later
+// check compares, and the value a status command displays as current.
+func FetchOutput(...) (string, error) { ... }
+```
+
+Good — states only the non-obvious why-not, self-contained:
+
+```go
+// A non-zero exit is a fetch failure, not an evaluation failure: a check
+// built on it reads as pending, not as failed.
+func FetchOutput(...) (string, error) { ... }
+```
 
 ## Language
 
@@ -30,13 +75,17 @@ sole exception is non-English literals used as test data that specifically
 exercises multibyte/unicode behavior, labeled as such by an adjacent English
 comment.
 
+For which project name to use where (Plecture vs. `plect`), see
+[`docs/naming.md`](docs/naming.md); it is the decision record for all
+prose naming.
+
 ## Repository map and dependencies
 
 | Directory     | Responsibility                                                |
 |---------------|----------------------------------------------------------------|
 | `app/`        | CLI + MCP server: session lifecycle, task DAG, state, dispatch |
 | `contracts/`  | Shared data contracts between the CLI and plugins               |
-| `plugins/`    | Standalone processes (channel relay, GitHub provider and watcher, Slack adapter) |
+| `plugins/`    | Distributable packages: executable adapters and config resources for a particular technology (channel relay, GitHub provider and watcher, Slack adapter) |
 
 Core (`app/`, `contracts/*`) never imports `plugins/*`.
 
@@ -52,6 +101,24 @@ go test ./app/...
 ```
 
 and likewise for each module under `contracts/` and `plugins/`.
+
+## Agent configuration
+
+Claude and Codex sessions operate under the same rules and skills, so the
+configuration has one source of truth per surface:
+
+- `AGENTS.md` is a symlink to `CLAUDE.md`. Edit `CLAUDE.md`; never edit
+  `AGENTS.md` directly or let the two diverge into separate files.
+- Skills live in `.claude/skills/<name>/SKILL.md`, with `name:` and
+  `description:` frontmatter fields.
+- `.agents/skills/<name>` is a relative symlink to
+  `../../.claude/skills/<name>`, one per skill, so a Codex session sees the
+  same skill set as a Claude session.
+
+`scripts/check-agent-config.sh` (wired into CI) validates these invariants:
+the `AGENTS.md` symlink target, and, for every directory under
+`.claude/skills/`, the presence of `SKILL.md` with both frontmatter fields
+and a matching `.agents/skills/` symlink.
 
 ## Development workflow
 
@@ -78,6 +145,26 @@ later commits.
 Coverage means error branches and failure paths are tested, not just the
 happy path. A change that only exercises success cases is incomplete.
 
+### Design principles: YAGNI and SOLID
+
+Stated operationally — testable rules an agent can apply and a reviewer
+can block on, not name-drops.
+
+- **YAGNI.** Build only what a present, concrete consumer needs. No
+  speculative flags, config keys, or extension points. An abstraction
+  needs at least two real consumers — in this change, or already in the
+  tree (rule of three preferred) — otherwise write the concrete code
+  twice first.
+- **SOLID, Go-idiomatically.** Single responsibility per package/type,
+  statable in one sentence. Small consumer-side interfaces: accept
+  interfaces, return structs; define an interface where it is used, not
+  where it is implemented. No interface with exactly one implementation
+  and one caller.
+- Speculative complexity that ships anyway must carry an explicit removal
+  condition (a deadline or a metric) — the same discipline this repo's PR
+  process already requires when complexity is introduced ahead of proven
+  benefit.
+
 ### Test placement and speed
 
 Prefer table-driven tests where idiomatic to the case being tested.
@@ -85,6 +172,16 @@ Per-module tests must stay fast enough to run on every CI matrix job;
 push slow or environment-dependent cases behind an explicit opt-in rather
 than letting them slow down the default run. Integration-style tests live
 next to the module they exercise, not in a separate top-level tree.
+
+### Installability invariant
+
+`go install github.com/kecbigmt/plecture/app/cmd/plect@latest` must keep
+working without local replace directives. A change that touches an
+inter-module version pin (a `require` line in one module's `go.mod`
+pointing at another module in this repository, e.g. `app`'s pin on
+`contracts/*`) must verify that the commit embedded in the new pseudo-version
+is reachable from `main` before merging — an unreachable commit breaks
+resolution for every downstream `go install`.
 
 ### Definition of done
 
@@ -101,7 +198,28 @@ A PR is done when:
 
 Plecture is pre-1.0. Do not add backward-compatibility code paths. Breaking
 changes ship with a one-time migration (script or documented procedure,
-including a backup step), not a compatibility shim.
+including a backup step), not a compatibility shim. The migration
+procedure lives in `docs/migrations/`, added or updated in the same PR as
+the breaking change — not as follow-up work.
+
+## Design and ADR documentation
+
+- **Decision records** live in `docs/adr/NNNN-<slug>.md` — a zero-padded
+  sequence number and a kebab-case slug (e.g. `docs/adr/0001-plugin-packaging-format.md`).
+  Each ADR has the sections Status (`Proposed`, `Accepted`, or `Superseded
+  by NNNN`), Context, Decision, Consequences, and Alternatives considered.
+  An ADR is immutable once `Accepted`: a change of mind produces a new,
+  superseding ADR, never an edit to the accepted one.
+- **Evolving design documents** (proposals still being worked out, broader
+  than a single decision) live in `docs/design/<slug>.md`. Each one states
+  its current status in the document and links the ADRs it implements or
+  that were produced from it.
+- **Migration procedures** stay in `docs/migrations/` (see Compatibility
+  policy above) — they are not ADRs or design documents.
+- All of the above is English-only prose; use `docs/naming.md` for project
+  naming.
+- Design and ADR documents are owner-gated: a design or ADR PR is never
+  merged by automation, regardless of CI status.
 
 ## Self-containedness
 
