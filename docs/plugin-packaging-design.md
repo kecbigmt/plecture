@@ -380,38 +380,46 @@ It does not parse GitHub URLs or know GitHub exists.
 
 ### Hypothetical okf plugin
 
-An okf plugin owns the OKF-specific goal resource behavior that should not live
-in core. Its first version covers machine semantics for goal observation,
-finalization, and ticks; other OKF records can remain plain files until they
-have machine semantics.
+An okf plugin is scoped by the OKF specification, not by one use case. Its
+first version owns only the goal resource mechanics that have machine
+semantics: observation, finalization, and ticks. Bundle records that do not have
+machine semantics, such as retrospectives, stay plain files outside the plugin.
 
 Plugin-owned files:
 
 ```text
 plugin.toml
-providers/local-okf.toml
-resources/local-okf.toml
-tasks/goal_bootstrap.toml
-tasks/pursue_goal.toml
-tasks/goal_review.toml
-workflows/goal_review.toml
-templates/goal_review.md
+resources/okf_goal.toml
 bin/plect-okf
 ```
 
 Plugin-owned behavior:
 
-- Resource id syntax.
-- Goal file parsing.
+- Goal resource id syntax.
+- Goal observation, finalization, and tick entrypoints.
+- Revision and checklist status reporting for goal resources.
+- Idempotent completion logging for goal resources.
+
+Internally separable plugin behavior:
+
+- Owner alias resolution.
+- Bundle root discovery.
 - Bundle containment checks.
-- Revision and checklist status observation.
-- Finalization and idempotent completion logging.
+- Frontmatter parsing shared by future OKF concepts.
+
+Not plugin-owned in the first version:
+
+- Goal bootstrap, pursue, or review tasks.
+- Goal review workflows.
+- Goal review templates.
+- Retrospectives or other bundle records without machine semantics.
 
 Residual user config:
 
 - Which goal roots or owners are allowed.
 - Which orchestrator workflow is used.
 - Which agent and channel plugins handle the work.
+- Goal bootstrap, pursue, and review task composition.
 - Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 
