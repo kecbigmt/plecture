@@ -142,11 +142,10 @@ type CleanupOptions struct {
 	Manager WorkdirManager
 }
 
-// Cleanup releases the workdir setup acquired, reclaiming its branch so a
-// later dispatch on the same resource is not blocked by an orphan. A setup
-// that never produced a working directory leaves nothing to release, which
-// is a success rather than an error: cleanup must converge on a session
-// whose setup failed halfway.
+// Cleanup releases the workdir setup acquired, reclaiming its branch too
+// when DeleteBranch opts in. A setup that never produced a working
+// directory leaves nothing to release, which is a success rather than an
+// error: cleanup must converge on a session whose setup failed halfway.
 func Cleanup(ctx context.Context, opts CleanupOptions) error {
 	if strings.TrimSpace(opts.Workdir) == "" {
 		return nil
