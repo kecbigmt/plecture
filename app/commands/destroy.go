@@ -31,6 +31,11 @@ Default policy is fail-fast: the first cleanup error aborts the remaining
 steps and the state entry is kept so you can inspect and retry. Use
 --force to switch to best-effort teardown (see flag description).
 
+--force means you accept losing uncommitted work: it is forwarded to
+provider cleanup, and a provider whose release step refuses on uncommitted
+changes may discard them to complete the release instead of leaving them on
+disk.
+
 If the session has child sessions, destroy fails before any teardown step
 runs: deleting it would orphan them (plect up never re-adopts an orphan). Use
 --force to destroy anyway and orphan the children, or reset with
@@ -64,7 +69,7 @@ children intact.`,
 }
 
 func init() {
-	destroyCmd.Flags().BoolVarP(&destroyForce, "force", "f", false, "Demote cleanup errors to warnings (recorded in CleanupWarnings) so teardown continues through provider cleanup and state deletion; also passes the force intent to cleanup hooks and proceeds when the session has child sessions, orphaning them (reported as a warning) instead of aborting")
+	destroyCmd.Flags().BoolVarP(&destroyForce, "force", "f", false, "Demote cleanup errors to warnings (recorded in CleanupWarnings) so teardown continues through provider cleanup and state deletion; also forwards the force intent to cleanup hooks, where it may discard uncommitted changes in the session's working directory to complete the release, and proceeds when the session has child sessions, orphaning them (reported as a warning) instead of aborting")
 	destroyCmd.Flags().BoolVarP(&destroyDeleteBranch, "delete-branch", "b", false, "Also delete the local branch")
 	rootCmd.AddCommand(destroyCmd)
 }
