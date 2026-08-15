@@ -10,13 +10,12 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// TestShippedCatalog_TasksRender guards this repository's own official
-// catalog against a broken template: a `{{bin ...}}` reference that doesn't
-// resolve, or a `{{...}}` action that fails to parse, would otherwise only
-// surface the first time a real session runs the task. A kitchen-sink
-// context supplies every key any shipped task's setup/cleanup/healthcheck
-// references, so this exercises actual rendering, not just TOML decoding.
-func TestShippedCatalog_TasksRender(t *testing.T) {
+// loadShippedCatalogTasks loads this repository's own official catalog
+// (catalog.toml at the repo root plus the plugin directories it lists) the
+// same way a real config load would, returning every shipped task
+// definition plus the mounted-plugin list `{{bin ...}}` resolves against.
+func loadShippedCatalogTasks(t *testing.T) (map[string]config.TaskDefinition, []plugins.Mounted) {
+	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
@@ -46,6 +45,17 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTaskDefinitions(shipped catalog): %v", err)
 	}
+	return tasks, mounted
+}
+
+// TestShippedCatalog_TasksRender guards this repository's own official
+// catalog against a broken template: a `{{bin ...}}` reference that doesn't
+// resolve, or a `{{...}}` action that fails to parse, would otherwise only
+// surface the first time a real session runs the task. A kitchen-sink
+// context supplies every key any shipped task's setup/cleanup/healthcheck
+// references, so this exercises actual rendering, not just TOML decoding.
+func TestShippedCatalog_TasksRender(t *testing.T) {
+	tasks, mounted := loadShippedCatalogTasks(t)
 
 	session := SessionVars{
 		Name:          "test-session",
@@ -101,5 +111,48 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 				t.Errorf("task %q healthcheck: render: %v", id, err)
 			}
 		}
+	}
+}
+
+// TestShippedCatalog_ModelEffortInputsRejectShellMetacharacters is a
+// regression test: every shipped task's model/effort inputs are spliced
+// directly into that task's own setup script (and, for claude/codex, resent
+// as pane keystrokes), so a value carrying a shell metacharacter must be
+// rejected by inputs_schema before it ever reaches that splice point. This
+// previously held for agent/codex's tasks but not agent/claude's, letting a
+// value like `x' ; rm -rf ~ ; echo '` break out of claude.toml's `MODEL='...'`
+// literal at render time.
+func TestShippedCatalog_ModelEffortInputsRejectShellMetacharacters(t *testing.T) {
+	tasks, _ := loadShippedCatalogTasks(t)
+
+	malicious := map[string]any{"tmux_session": "s", "model": "x' ; touch /tmp/pwned ; echo '"}
+	benign := map[string]any{"tmux_session": "s", "model": "fable"}
+
+	checked := 0
+	for id, def := range tasks {
+		props, ok := def.InputsSchema["properties"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, ok := props["model"]; !ok {
+			continue
+		}
+		checked++
+		schema, err := CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "test:"+id)
+		if err != nil {
+			t.Fatalf("task %q: CompileSchema: %v", id, err)
+		}
+		if schema == nil {
+			t.Fatalf("task %q declares a model input but compiled to no schema", id)
+		}
+		if err := schema.Validate(toJSONShape(malicious)); err == nil {
+			t.Errorf("task %q: inputs_schema accepted a model value containing shell metacharacters", id)
+		}
+		if err := schema.Validate(toJSONShape(benign)); err != nil {
+			t.Errorf("task %q: inputs_schema rejected a plain model token: %v", id, err)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no shipped task declares a model input; this test is checking nothing")
 	}
 }

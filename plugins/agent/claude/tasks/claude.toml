@@ -70,6 +70,14 @@ jq -nc '{
 # is safe unquoted.
 EXPORTS="export PLECT_SESSION_NAME={{.SessionName}}; "
 
+# model/effort are free strings from --input, spliced directly into this
+# setup script's own source at render time (before bash ever sees it) and
+# again later as EXPORTS keystrokes re-sent to the pane's shell — two shell
+# boundaries a crafted value (e.g. one containing a single quote) could
+# break out of. The inputs_schema pattern below is what actually closes
+# both: it rejects anything but a plain token before this script ever
+# renders, so neither splice point can see a quote/newline/shell
+# metacharacter to begin with.
 MODEL='{{get .Inputs "model"}}'
 MODEL_FLAG=""
 [ -n "$MODEL" ] && MODEL_FLAG="--model $MODEL"
@@ -206,10 +214,13 @@ type                 = "object"
 required             = ["tmux_session"]
 additionalProperties = false
 
+# model/effort: restricted to a plain-token charset (no quotes, whitespace,
+# or newlines) so a malicious value is rejected here, before it ever reaches
+# the setup script's template splice — see the setup script's comment above.
 [inputs_schema.properties]
 tmux_session = { type = "string" }
-model        = { type = "string" }
-effort       = { type = "string" }
+model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 
 [outputs_schema]
 type     = "object"
