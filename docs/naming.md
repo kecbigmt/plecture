@@ -14,7 +14,6 @@ chosen — only how to use them correctly.
 | Commands, binaries, and everything execution-facing (`plect`, `plect-web`, config paths, `PLECT_*` environment variables, the module path, state) | **plect** — always the code-facing resident |
 | The repository name | **plecture** |
 | The web UI | **Plecture Web UI** — the binary name `plect-web` does not change |
-| The domain | plect.dev |
 
 ## Rules
 
@@ -33,15 +32,15 @@ chosen — only how to use them correctly.
   as "Plecture Web UI" — another entry point into Plecture, not an add-on
   bundled with the `plect` command. Its binary name (`plect-web`) is
   code-facing and follows the code-facing rule above.
-- **Japanese prose fixes on プレクチャー.** Use this transliteration
-  consistently instead of alternatives.
+- **Japanese prose fixes on the transliteration Purekuchā.** Use this
+  romanized rendering consistently instead of alternatives.
 
 ## What the name means
 
-Plecture (プレクチャー, /ˈplɛktʃər/) is a coined word, built from the Latin
-verb *plectere* — to weave, to braid, to entwine — the same pattern that
-turned *texere* (to weave) into *texture*. The word Plecture does not
-otherwise exist in classical Latin; the actual Latin derivation of
+Plecture (Purekuchā in Japanese, /ˈplɛktʃər/) is a coined word, built from
+the Latin verb *plectere* — to weave, to braid, to entwine — the same
+pattern that turned *texere* (to weave) into *texture*. The word Plecture
+does not otherwise exist in classical Latin; the actual Latin derivation of
 *plectere* is *plexura* (English: plexure). Describe Plecture as "coined
 from *plectere*," never as "the Latin word for..." or as an attested Latin
 noun.
