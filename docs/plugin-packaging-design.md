@@ -62,7 +62,7 @@ Metadata fields:
 | `description` | no | Human-readable summary for list/show commands. |
 | `executables` | no | Relative paths for binaries or scripts shipped by the plugin. |
 
-The standard subdirectories have their current meanings:
+The standard subdirectories with current plugin-layer loader behavior are:
 
 | Directory | Mount behavior |
 |---|---|
@@ -72,7 +72,13 @@ The standard subdirectories have their current meanings:
 | `channels/` | Trusted base layer only. Same-id deeper layer replaces shallower layer. |
 | `tasks/` | Trusted layer plus trusted ancestor overlay. Same-id deeper layer replaces shallower layer. |
 | `workflows/` | Trusted layer plus ancestor overlay. Same-id files merge by adding nodes and channels, with singleton fields guarded against accidental redeclaration. |
-| `templates/` | Whole-file lookup. The nearest trusted or workdir template wins over global and plugin templates. |
+
+`templates/` is proposed package content, but it has no plugin layer today. The
+current template loader searches only the workdir ancestor overlays and
+`~/.config/plect/templates/`. Shipping templates from plugins therefore
+requires one implementation decision: add plugin directories to the template
+loader as a base layer, or materialize plugin templates into user-owned config
+during install.
 
 Executable adapters are invoked from TOML hooks through normal command lines.
 Core does not gain a plugin-specific process protocol in this design. A plugin
@@ -225,7 +231,7 @@ The current loader already enforces most of this shape:
 
 ## Shadowing and precedence
 
-Resolution order is:
+For loaders that already receive plugin dirs, resolution order is:
 
 1. Plugin layers, in declaration order.
 2. Global user config.
@@ -243,7 +249,7 @@ Same-id behavior by kind:
 | Tasks | Deeper layer replaces the whole definition. No partial override. |
 | Workflows | Layers merge. New nodes and event channels append. Existing node ids and event channel names cannot be redeclared. Singleton fields cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
 | Workflow input schemas | Multiple layer schemas combine with `allOf`. |
-| Templates | First match wins, with nearest workdir or ancestor template before global and plugin templates. |
+| Templates | Current behavior has no plugin layer: first match wins across nearest workdir or ancestor template, then global user templates. A plugin template layer or install-time materialization is proposed but not yet implemented. |
 
 Partial override model:
 
@@ -252,7 +258,9 @@ Partial override model:
 - To replace a plugin task, provider, resource, environment, or channel, place a
   full same-id definition in global config or a trusted overlay.
 - To customize a template, place a same-named Markdown template in the nearest
-  desired overlay.
+  desired overlay. Until template plugin support exists, plugin-provided
+  templates must be materialized into user-owned config before this override
+  model can apply to them.
 - A plugin-provided task cannot be edited in place through a patch mechanism.
   Whole-definition replacement keeps arbitrary shell behavior auditable.
 
@@ -333,6 +341,11 @@ tasks/agent.toml
 tasks/runtime.toml
 channels/agent_socket.toml
 workflows/coding.toml
+```
+
+Proposed plugin-owned templates:
+
+```text
 templates/work.md
 templates/review.md
 ```
@@ -345,8 +358,11 @@ Residual user config:
 - Team-specific workflow overlays that add local notification or review nodes.
 - Prompt templates that encode team operating style.
 
-No core change is required. The workflow still references tasks and channels by
-their existing ids.
+No provider, task, workflow, or channel contract change is required. The
+workflow still references tasks and channels by their existing ids. Shipping the
+templates from the plugin does require either a core template-loader layer or an
+install-time materialization step, because templates do not load from
+`Config.PluginDirs` today.
 
 ### GitHub provider
 
