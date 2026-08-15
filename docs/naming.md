@@ -11,7 +11,7 @@ chosen — only how to use them correctly.
 | Context | Name |
 |---|---|
 | Prose that refers to the project or product (README headings, ADRs, discussion) | **Plecture** — proper noun, capitalized, never appears in code |
-| Commands, binaries, and everything execution-facing (`plect`, `plect-web`, config paths, `PLECT_*` environment variables, the module path, state) | **plect** — always the code-facing resident |
+| Commands, binaries, and everything execution-facing (`plect`, `plect-web`, config paths, `PLECT_*` environment variables, state) | **plect** — always the code-facing resident |
 | The repository name | **plecture** |
 | The web UI | **Plecture Web UI** — the binary name `plect-web` does not change |
 
