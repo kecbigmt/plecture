@@ -165,6 +165,38 @@ can block on, not name-drops.
   process already requires when complexity is introduced ahead of proven
   benefit.
 
+### Standing checks vs. one-time verification
+
+Adding a CI check or test is a decision to pay its maintenance cost
+forever, not a one-time cost.
+
+- A requirement to verify that something is absent, swept, or consistent
+  is satisfied **once**, by evidence in the PR body (the exact command and
+  its output) — not by adding a permanent check.
+- A standing check must guard an invariant that future changes can
+  silently break, and its maintenance cost must not scale with legitimate
+  edits. Never pin prose literals; never assert exact counts of document
+  structure.
+- **Behavior tests are the spec, and committing them is the default, not
+  the exception.** BDD-style tests that express required behavior (the
+  Given/When/Then of the acceptance criteria, including failure paths) are
+  an expected deliverable of every behavior change, and their maintenance
+  cost is the cost of having a specification — always justified. This rule
+  must never be cited to skip or trim them.
+- What requires justification is the other category: standing meta-checks
+  (lint jobs, structure validators, doc checkers) and over-fitted
+  assertions whose maintenance scales with legitimate edits rather than
+  with behavior.
+- When proposing a new standing check, state in the PR what invariant it
+  guards and what would silently break without it. No answer, no check.
+
+This follows Meszaros, *xUnit Test Patterns*, "Goals of Test Automation"
+(http://xunitpatterns.com/Goals%20of%20Test%20Automation.html): the
+maintenance-commitment framing is the Economics of Test Automation, the
+BDD-positive bullet is Tests as Specification, and the
+never-scale-with-legitimate-edits prohibition generalizes the Fragile
+Test smell.
+
 ### Test placement and speed
 
 Prefer table-driven tests where idiomatic to the case being tested.
