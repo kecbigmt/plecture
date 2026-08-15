@@ -1,0 +1,32 @@
+# GitHub issue/PR resource definition: the generic Resource contract
+# (match/observe/state_schema) applied to GitHub. Independent of the GitHub
+# provider (providers/github.toml, which resolves a *session's* resource
+# identifier to a workdir) — this consolidates the same observation into a
+# standalone contract callable via `plect resource status` outside any one
+# task instance, and is what work/review/respond/investigate's
+# `from_resource_status` dynamic outputs read.
+#
+# .WorkdirPath is the observing task instance's session workdir when one
+# exists, and empty for a standalone `plect resource status` call — an issue
+# resource's linked-PR discovery then skips straight to the GraphQL
+# closing-PR lookup (see plect-github-provider's observe command).
+
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issues|pull)/(?P<number>\d+)'
+
+observe = '{{bin "official/plugins/github/plect-github-provider"}} observe --resource {{.ResourceID | shellQuote}} --workdir-path {{.WorkdirPath | shellQuote}} --watcher-bin {{bin "official/plugins/github/github-watcher" | shellQuote}}'
+
+[state_schema]
+type     = "object"
+required = ["resource_kind", "checks_status", "issue_status", "revision", "mergeable_state"]
+
+[state_schema.properties]
+resource_kind   = { type = "string", enum = ["pull", "issue", "unknown"] }
+checks_status   = { type = "string", enum = ["SUCCESS", "PENDING", "FAILURE", "NULL"] }
+issue_status    = { type = "string", enum = ["SUCCESS", "PENDING", "NULL"] }
+revision        = { type = "string" }
+pr_url          = { type = "string" }
+# GitHub's own vocabulary for pulls.mergeable_state, plus "NULL" for the
+# checks_status/issue_status sentinel pattern (no PR observed at all) — kept
+# distinct from "unknown" (a real PR whose mergeability GitHub is still
+# computing), since only "unknown" must never read as a rebase prompt.
+mergeable_state = { type = "string", enum = ["clean", "dirty", "unstable", "blocked", "behind", "unknown", "draft", "has_hooks", "NULL"] }

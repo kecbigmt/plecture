@@ -39,6 +39,7 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 		SessionName:   session.Name,
 		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
+		Plugins:       cfg.Plugins,
 		Force:         force,
 	}
 	return task.RunWorkflowCleanup(prov, vars, session.Tasks, observer)

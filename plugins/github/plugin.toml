@@ -1,0 +1,23 @@
+schema_version = 1
+version = "0.1.0"
+# No plect release has been tagged yet (pre-1.0, no version tags exist), and
+# every source build reports itself as "0.0.0-dev" — a nonzero floor here
+# would make the plugin unloadable for every current build, not gate on any
+# real compatibility fact. Raise this once a first tagged release exists.
+plect_min_version = "0.0.0"
+description = "GitHub resource provider, resource observation, watcher subscription, and the work/review/respond/investigate task pack."
+
+# Built from the sibling Go modules under plugins/github-provider and
+# plugins/github-watcher — both inside this catalog's trust space (the
+# catalog root is the repository root), so `build` reaching outside this
+# plugin's own directory still stays within what the catalog registration
+# trusts.
+[[executables]]
+name = "plect-github-provider"
+path = "bin/plect-github-provider"
+build = "go build -o bin/plect-github-provider ../github-provider/cmd/plect-github-provider"
+
+[[executables]]
+name = "github-watcher"
+path = "bin/github-watcher"
+build = "go build -o bin/github-watcher ../github-watcher/cmd/github-watcher"

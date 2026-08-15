@@ -261,7 +261,7 @@ func (m *Manager) Add(ctx context.Context, params AddParams) (*WorkspaceInfo, er
 				}
 			} else {
 				// Branch does not exist: create new branch from default branch
-				defaultBranch := m.resolveDefaultBranch(ctx, gitDir)
+				defaultBranch := m.resolveDefaultBranch(ctx, repoDir, gitDir)
 				if stderr, err := m.runGitCapture(ctx, gitDir, "worktree", "add", "-b", branch, wtPath, "origin/"+defaultBranch); err != nil {
 					return nil, worktreeAddError(err, stderr)
 				}
@@ -290,9 +290,7 @@ func (m *Manager) Remove(ctx context.Context, repo, branch string, force, delete
 	}
 
 	if deleteBranch {
-		if err := m.runGit(ctx, gitDir, "branch", "-D", branch); err != nil {
-			return fmt.Errorf("git branch delete failed: %w", err)
-		}
+		m.reclaimBranch(ctx, gitDir, branch)
 	}
 
 	return nil
@@ -306,12 +304,20 @@ func (m *Manager) RemoveByPath(ctx context.Context, wtPath, gitDir, branch strin
 	}
 
 	if deleteBranch {
-		if err := m.runGit(ctx, gitDir, "branch", "-D", branch); err != nil {
-			return fmt.Errorf("git branch delete failed: %w", err)
-		}
+		m.reclaimBranch(ctx, gitDir, branch)
 	}
 
 	return nil
+}
+
+// reclaimBranch deletes the branch a worktree removal leaves behind, using a
+// safe delete (`-d`, never `-D`) so a branch carrying commits `git` can't
+// prove are merged is left in place rather than discarded. A refusal is not
+// an error: the branch becomes an orphan a later dispatch on the same
+// resource reuses (see Add's orphan-branch reuse path), so convergence holds
+// either way cleanup responds to a safe-delete refusal.
+func (m *Manager) reclaimBranch(ctx context.Context, gitDir, branch string) {
+	_ = m.runGit(ctx, gitDir, "branch", "-d", branch)
 }
 
 // WorktreeExists checks if a worktree path exists.
@@ -430,7 +436,19 @@ func (m *Manager) refExists(ctx context.Context, gitDir, ref string) bool {
 	return err == nil
 }
 
-func (m *Manager) resolveDefaultBranch(ctx context.Context, gitDir string) string {
+// resolveDefaultBranch picks the branch new work starts from: a per-repo
+// override recorded at <repoDir>/.plect/base-branch when present, otherwise
+// the remote's actual default. The override is a plain file on the
+// repository container rather than provider config because providers don't
+// cascade to individual repo layers — a git-flow repo that branches from
+// `develop`, not GitHub's own default, has no other place to record that.
+func (m *Manager) resolveDefaultBranch(ctx context.Context, repoDir, gitDir string) string {
+	if override, err := os.ReadFile(filepath.Join(repoDir, ".plect", "base-branch")); err == nil {
+		if b := strings.TrimSpace(string(override)); b != "" {
+			return b
+		}
+	}
+
 	out, _, err := m.runnerOrDefault().Run(ctx, gitDir, false, "git", "symbolic-ref", "refs/remotes/origin/HEAD")
 	if err != nil {
 		return "main"

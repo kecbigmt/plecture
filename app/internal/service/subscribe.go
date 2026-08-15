@@ -68,6 +68,7 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 	if hookErr := task.RunProviderSubscribe(prov, task.SubscribeHookVars{
 		ResourceID:  params.ResourceID,
 		SessionName: sessionName,
+		Plugins:     cfg.Plugins,
 	}); hookErr != nil {
 		return &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
 	}

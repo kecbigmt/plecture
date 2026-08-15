@@ -1,48 +1,44 @@
 # github-provider
 
-The GitHub provider: it maps GitHub issue and pull request URLs to session
-ids, and owns the git worktree those sessions work in.
+The `plect-github-provider` executable: it maps GitHub issue and pull
+request URLs to session ids, owns the git worktree those sessions work in,
+and observes a GitHub resource's state (CI check rollup, issue completion,
+linked PR, mergeability).
 
-plect's core knows nothing about GitHub. Everything GitHub-shaped lives
-here: parsing a resource identifier, resolving the branch a resource maps to,
-and knowing that a repository's worktrees live under a `github.com/<owner>/<repo>`
-path. The provider executable also creates and removes the worktree, reuses an
-existing one, and finds the repository's primary checkout.
+This module is a build dependency of the `plugins/github` catalog plugin,
+not something to install directly — see `plugins/github/README.md` for the
+provider/resource config that invokes this binary and for install
+instructions. This README covers the executable's own commands, for
+development and testing.
 
-## Contents
+## Commands
 
-- `providers/github.toml` — the shipped provider config. Its `[resolver]`
-  pair (`match` / `name`) derives a session id offline; `setup` and `cleanup`
-  invoke the executable below.
-- `cmd/plect-github-provider` — the executable those hooks run. `setup`
-  prints the provider outputs contract (a JSON object carrying the reserved
-  `workdir` key) on stdout; `cleanup` releases what setup acquired.
+- `plect-github-provider setup --resource <id> --session <name> [--workdirs-root <root>] [--watcher-bin <path>]`
+  — acquires the working directory for a GitHub resource and prints the
+  provider outputs contract (JSON, carrying the reserved `workdir` key) on
+  stdout. `--watcher-bin`, when given, routes title/state fetches through a
+  `github-watcher gh-api` call so they share its poll loop's rate budget;
+  omitted, it calls `gh api` directly.
+- `plect-github-provider cleanup --workdir <path> --branch <branch> [--workdirs-root <root>] [--force]`
+  — releases what `setup` acquired. Branch reclaim uses a safe delete
+  (`git branch -d`): a branch carrying unmerged commits survives as an
+  orphan a later dispatch on the same resource reuses, rather than being
+  discarded.
+- `plect-github-provider observe --resource <id> [--workdir-path <path>] [--watcher-bin <path>]`
+  — fetches and classifies a GitHub resource's current state: resource kind,
+  CI check rollup, issue completion, revision, linked PR (for an issue
+  resource), and mergeability. Backs `resources/github.toml`'s `observe`
+  hook.
 
-## Install
+## Per-repository base branch override
 
-Build the executable and put it on the `PATH` plect's hooks run with:
-
-```bash
-go build -o <bindir>/plect-github-provider ./cmd/plect-github-provider
-```
-
-Then add this directory to `plugin_dirs` in `~/.config/plect/config.toml` so
-`providers/github.toml` is loaded:
-
-```toml
-plugin_dirs = ["/path/to/plect/plugins/github-provider"]
-```
-
-A workflow opts into it with `provider = "github"`.
-
-## Outputs
-
-`setup` emits `workdir` and `branch`, plus the resource facts a workflow's
-templates may want: `url`, `owner_repo`, `owner`, `repo`, and `number`. Read
-them in a task or template as `.Workflow.outputs.<key>`.
+A repository whose new work should start from a branch other than its
+actual GitHub default (a git-flow repo branching from `develop`) can record
+that choice at `<repoDir>/.plect/base-branch` — a plain file on the
+repository container, not provider config, since providers don't cascade to
+individual repo layers.
 
 ## Requirements
 
 - `git`
-- the `gh` CLI, authenticated — used to resolve a pull request's head branch
-  and to resolve a Projects v2 item id to its issue or pull request
+- the `gh` CLI, authenticated — used to resolve pull request/issue metadata

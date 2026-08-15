@@ -1,0 +1,89 @@
+scope = "session"
+
+setup = '''
+set -euo pipefail
+EXTRA='{{get .Inputs "instruction"}}'
+INSTRUCTION=$(plect template render review --session '{{.SessionName}}' --instruction "$EXTRA")
+if [ -z "$INSTRUCTION" ]; then
+  echo "plect template render review produced empty instruction" >&2
+  exit 1
+fi
+jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
+'''
+
+requires = ["resource_kind", "verdict_current"]
+
+# There is no third party to judge a reviewer (self-judge is structurally
+# rejected), so review's done_when cannot use a judge leaf the way
+# work/investigate/respond do. Completion is instead the reviewer's own
+# self-report of "I recorded a verdict", captured as a revision (not a
+# boolean) so a later push invalidates it automatically:
+#
+#   verdict_revision = revision the reviewer last recorded a verdict against
+#                       (set via `plect state set-output ... verdict_revision=...`)
+#   verdict_current  = "true" iff verdict_revision == the resource's current
+#                       revision, else "false" — derived each refresh, never
+#                       set directly, so the reviewer cannot flip it back
+#
+# `revision` (below) is still exposed as a first-class output for display /
+# other tasks, but verdict_current's own script re-observes the resource
+# directly (`plect resource status`) instead of reading `{{.Self.revision}}`:
+# a refresh's dynamic outputs all render against one Self snapshot taken
+# before any of that pass's scripts run, so an output written earlier in the
+# same [[outputs]] list is not yet visible to one later in the list — reading
+# `{{.Self.revision}}` here would compare against the PRE-refresh revision,
+# letting a stale verdict read as current for one tick right after a new push
+# lands. Re-observing trades one extra `gh` round trip per refresh for
+# correctness at the exact moment revision changes.
+[[outputs]]
+produces = ["resource_kind", "checks_status", "issue_status", "revision"]
+from_resource_status = true
+
+[[outputs]]
+name = "verdict_current"
+script = '''
+SESSION_BRANCH='{{.Workflow.outputs.branch}}'
+PR_BRANCH="${SESSION_BRANCH%+*}"
+CURRENT_REVISION=""
+if [ -n "$PR_BRANCH" ]; then
+  CURRENT_REVISION=$(git ls-remote origin "refs/heads/$PR_BRANCH" | awk '{print $1}')
+fi
+if [ -z "$CURRENT_REVISION" ]; then
+  CURRENT_REVISION=$(plect resource status "{{.ResourceID}}" --json | jq -r '.state.revision // empty')
+fi
+if [ -n "$CURRENT_REVISION" ] && [ "{{.Self.verdict_revision}}" = "$CURRENT_REVISION" ]; then
+  echo true
+else
+  echo false
+fi
+'''
+
+[done_when]
+all = [
+  { check = "resource_kind", in = ["pull", "issue"] },
+  { check = "verdict_current", in = ["true"] },
+]
+
+[done_when.budget]
+heartbeat_budget = 3
+on_exhaust = "escalate"
+
+[inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[inputs_schema.properties]
+instruction = { type = "string" }
+
+[outputs_schema]
+type     = "object"
+required = ["instruction"]
+
+[outputs_schema.properties]
+instruction      = { type = "string" }
+resource_kind    = { type = "string", mutable = true }
+checks_status    = { type = "string", mutable = true }
+issue_status     = { type = "string", mutable = true }
+revision         = { type = "string", mutable = true }
+verdict_revision = { type = "string", mutable = true }
+verdict_current  = { type = "string" }

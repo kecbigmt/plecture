@@ -1,0 +1,80 @@
+scope = "session"
+
+setup = '''
+set -euo pipefail
+EXTRA='{{get .Inputs "instruction"}}'
+INSTRUCTION=$(plect template render work --session '{{.SessionName}}' --instruction "$EXTRA")
+if [ -z "$INSTRUCTION" ]; then
+  echo "plect template render work produced empty instruction" >&2
+  exit 1
+fi
+jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
+'''
+
+requires = ["resource_kind", "checks_status", "issue_status"]
+
+# Resource status is kept as three first-class outputs rather than one rolled-up
+# "completion" flag: collapsing a failing PR check and a still-running one onto a
+# single value erases the failure↔pending distinction the check needs. done_when
+# can express neither a null literal nor OR, so a status that doesn't apply to
+# this resource kind is the literal sentinel "NULL" (a PR has no issue_status; an
+# issue with no linked PR yet has no checks_status) — `in [..., "NULL"]` accepts
+# it without it ever satisfying on its own. A gh failure exits non-zero so the
+# whole fetch stays pending (prior values retained), never silently flipping a
+# check to "NULL".
+#
+# An issue-keyed session tracks its LINKED PR once one exists (closing
+# reference first, session branch as fallback): checks_status becomes the PR's
+# rollup and revision its head SHA. Judges thus re-pend on code changes (not
+# issue-metadata edits), and a chain gated on checks SUCCESS can never fire
+# before the PR is up and green. Discovery failures degrade to the no-PR shape
+# (checks NULL) rather than failing the fetch — issue_status still gates.
+#
+#   resource_kind = "pull" | "issue" | "unknown"
+#   checks_status = "SUCCESS" | "PENDING" | "FAILURE" | "NULL"  (NULL unless pull or linked PR)
+#   issue_status  = "SUCCESS" | "PENDING" | "NULL"              (NULL unless issue)
+#   revision      = opaque provider revision (PR head SHA, or issue updatedAt)
+#   pr_url        = the PR under review (resource itself, or the linked PR) —
+#                   omitted until one exists, so a chain wiring it cannot fire early
+#   mergeable_state = GitHub's pulls.mergeable_state ("clean"/"dirty"/"unknown"/...),
+#                   or "NULL" when there is no PR to read it from. Deliberately
+#                   absent from done_when: a merge conflict is a work signal, not a
+#                   failure, so it must not gate completion.
+# Observed state is copied from the resource definition (resources/github.toml)
+# rather than fetched by a task-local script, so `plect resource status`, show,
+# and this instance all read one contract.
+[[outputs]]
+produces = ["resource_kind", "checks_status", "issue_status", "revision", "pr_url", "mergeable_state"]
+from_resource_status = true
+
+[done_when]
+all = [
+  { check = "resource_kind", in = ["pull", "issue"] },
+  { check = "checks_status", in = ["SUCCESS", "NULL"] },
+  { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
+  { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
+]
+
+[done_when.budget]
+heartbeat_budget = 3
+on_exhaust = "escalate"
+
+[inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[inputs_schema.properties]
+instruction = { type = "string" }
+
+[outputs_schema]
+type     = "object"
+required = ["instruction"]
+
+[outputs_schema.properties]
+instruction     = { type = "string" }
+resource_kind   = { type = "string", mutable = true }
+checks_status   = { type = "string", mutable = true }
+issue_status    = { type = "string", mutable = true }
+revision        = { type = "string", mutable = true }
+pr_url          = { type = "string", mutable = true }
+mergeable_state = { type = "string", mutable = true }

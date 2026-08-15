@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -17,12 +18,16 @@ import (
 // session name, the configured workdirs root, and the frozen session inputs.
 // Anything else the script needs (URL parsing etc.) it derives itself —
 // resolver captures are NOT forwarded, so the resolver's regex never becomes
-// setup's input contract.
+// setup's input contract. Plugins is the one exception: plugin mounting
+// resolves from global config independently of any workdir, so it is already
+// available at this point in the lifecycle, and a provider hook needs it to
+// invoke its own plugin's executables through `{{bin ...}}`.
 type WorkflowHookVars struct {
 	ResourceID    string
 	SessionName   string
 	WorkdirsRoot  string
 	SessionInputs map[string]any
+	Plugins       []plugins.Mounted
 	// Force mirrors the caller's --force intent into the cleanup template so a
 	// provider's cleanup script can decide for itself whether to force-remove
 	// a dirty workdir; core has no opinion on what a provider's release step
@@ -194,9 +199,18 @@ func RunWorkflowCleanup(prov config.ProviderConfig, vars WorkflowHookVars, tasks
 // for idempotent retry). Like renderCleanup, "<no value>" is stripped under
 // missingkey=zero so nil never leaks shell metacharacters.
 func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string]any, opt string) (string, error) {
+	// bin is built per render call, not part of the static templateFuncs map,
+	// because it resolves against this render's own vars.Plugins — mirrors
+	// renderWith's dynamicFuncs for the same reason.
+	dynamicFuncs := template.FuncMap{
+		"bin": func(ref string) (string, error) {
+			return resolveBin(vars.Plugins, ref)
+		},
+	}
 	tmpl, err := template.New("workflow_hook").
 		Option(opt).
 		Funcs(templateFuncs).
+		Funcs(dynamicFuncs).
 		Parse(cmd)
 	if err != nil {
 		return "", fmt.Errorf("template parse: %w", err)

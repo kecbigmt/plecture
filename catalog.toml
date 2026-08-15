@@ -7,4 +7,5 @@ plugins = [
   "plugins/agent/codex",
   "plugins/channel/slack",
   "plugins/okf",
+  "plugins/github",
 ]

@@ -610,6 +610,77 @@ func TestRemoveByPath_ReclaimsTaggedBranch(t *testing.T) {
 	}
 }
 
+// TestAdd_NewBranchHonorsRepoBaseBranchOverride: a repository whose default
+// branch on GitHub differs from the branch new work should start from (a
+// git-flow repo branching from `develop`, not the repo's actual default)
+// records that choice in `<repoDir>/.plect/base-branch`. It lives on the
+// repository container, not in provider config, because providers don't
+// cascade to individual repo layers (see providers/github.toml's setup hook
+// in the production reference config).
+func TestAdd_NewBranchHonorsRepoBaseBranchOverride(t *testing.T) {
+	worktreesRoot, ownerRepo := setupTestRepo(t)
+	mgr := NewManager(worktreesRoot)
+	gitDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo), "main")
+	repoDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo))
+
+	runGitT(t, gitDir, "checkout", "-b", "develop")
+	runGitT(t, gitDir, "commit", "--allow-empty", "-m", "develop-only work")
+	runGitT(t, gitDir, "push", "-u", "origin", "develop")
+	runGitT(t, gitDir, "checkout", "main")
+
+	if err := os.MkdirAll(filepath.Join(repoDir, ".plect"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repoDir, ".plect", "base-branch"), []byte("develop\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: "feature/x", SessionName: sessionID(ownerRepo, 1)})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	out := exec.Command("git", "-C", info.WorktreePath, "log", "--oneline", "-1")
+	log, err := out.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log: %v", err)
+	}
+	if !strings.Contains(string(log), "develop-only work") {
+		t.Errorf("new branch started from origin/main, want origin/develop (repo base-branch override); log = %q", log)
+	}
+}
+
+// TestRemoveByPath_PreservesUnmergedBranchOnReclaim: a branch reclaim must use
+// a safe delete (`git branch -d`), not a forced one. An unmerged branch (one
+// carrying commits `main` doesn't have) fails a safe delete; that failure must
+// not fail the whole cleanup, and the branch must survive so a later dispatch
+// can still reuse it — the same convergence guarantee production relies on
+// (see providers/github.toml's cleanup hook in the production reference
+// config).
+func TestRemoveByPath_PreservesUnmergedBranchOnReclaim(t *testing.T) {
+	worktreesRoot, ownerRepo := setupTestRepo(t)
+	mgr := NewManager(worktreesRoot)
+	gitDir := filepath.Join(worktreesRoot, filepath.FromSlash(ownerRepo), "main")
+
+	branch := "issue/42+review"
+	info, err := mgr.Add(context.Background(), AddParams{Repo: ownerRepo, Branch: branch, SessionName: taggedSessionID(ownerRepo, 42, "review")})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	runGitT(t, info.WorktreePath, "commit", "--allow-empty", "-m", "unmerged work")
+
+	if err := mgr.RemoveByPath(context.Background(), info.WorktreePath, gitDir, branch, true, true); err != nil {
+		t.Fatalf("RemoveByPath must tolerate a safe-delete refusal, got: %v", err)
+	}
+	if _, err := os.Stat(info.WorktreePath); !os.IsNotExist(err) {
+		t.Errorf("worktree should be gone, stat err: %v", err)
+	}
+	if !mgr.branchExists(context.Background(), gitDir, branch) {
+		t.Error("an unmerged branch must survive a safe-delete reclaim")
+	}
+}
+
 // sessionID / taggedSessionID build opaque session identifiers for the tests.
 // The manager treats them as strings, so their shape only has to be stable,
 // not meaningful.

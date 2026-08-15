@@ -43,7 +43,7 @@ func loadShippedProvider(t *testing.T, pluginDir, id string) config.ProviderConf
 // shipped provider's resolver derives session ids from resource identifiers
 // with regex and template alone — the core never asks a network for a name.
 func TestShippedProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
-	prov := loadShippedProvider(t, "github-provider", "github")
+	prov := loadShippedProvider(t, "github", "github")
 	if !prov.HasResolver() {
 		t.Fatal("the shipped provider must declare a resolver")
 	}
@@ -84,7 +84,7 @@ func TestShippedProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
 // semicolon-separated command in "cmd1; cmd2" independent of cmd1's exit
 // status — so this test needs no built binaries.
 func TestShippedProvider_SetupHookDoesNotShellInjectResourceID(t *testing.T) {
-	prov := loadShippedProvider(t, "github-provider", "github")
+	prov := loadShippedProvider(t, "github", "github")
 	marker := filepath.Join(t.TempDir(), "pwned")
 	malicious := `https://github.com/acme/widgets/issues/1"; touch ` + marker + `; echo "`
 
@@ -105,7 +105,7 @@ func TestShippedProvider_SetupHookDoesNotShellInjectResourceID(t *testing.T) {
 // and branch (sourced from setup's own outputs, which in turn derive from the
 // session's tag — not fully outside user control).
 func TestShippedProvider_CleanupHookDoesNotShellInjectWorkdirOrBranch(t *testing.T) {
-	prov := loadShippedProvider(t, "github-provider", "github")
+	prov := loadShippedProvider(t, "github", "github")
 	marker := filepath.Join(t.TempDir(), "pwned")
 	maliciousBranch := `issue/1"; touch ` + marker + `; echo "`
 
@@ -127,7 +127,7 @@ func TestShippedProvider_CleanupHookDoesNotShellInjectWorkdirOrBranch(t *testing
 // provider owns both halves of the working-directory lifecycle, since a
 // setup with no matching cleanup would strand every workdir it creates.
 func TestShippedProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
-	prov := loadShippedProvider(t, "github-provider", "github")
+	prov := loadShippedProvider(t, "github", "github")
 	if prov.Setup == "" {
 		t.Error("the shipped provider must declare setup")
 	}

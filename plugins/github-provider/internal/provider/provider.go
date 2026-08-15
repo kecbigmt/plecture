@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kecbigmt/plecture/plugins/github-provider/internal/ghapi"
 	"github.com/kecbigmt/plecture/plugins/github-provider/internal/github"
 	"github.com/kecbigmt/plecture/plugins/github-provider/internal/workspace"
 )
@@ -39,6 +40,11 @@ type SetupOptions struct {
 	WorkdirsRoot string
 	// Manager lets tests observe acquisition without a real repository.
 	Manager WorkdirManager
+	// GHClient fetches title/state metadata. Defaults to ghapi.Direct(); a
+	// mounted plugin's provider hook instead passes one bound to the
+	// bundled github-watcher binary, so setup shares its shared rate budget
+	// (see providers/github.toml's setup hook).
+	GHClient github.GHClient
 }
 
 // Setup acquires the working directory for a GitHub resource and returns the
@@ -49,10 +55,25 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	baseBranch, err := github.ResolveBranch(ctx, parsed)
-	if err != nil {
-		return nil, err
+
+	client := opts.GHClient
+	if client == nil {
+		client = ghapi.Direct()
 	}
+
+	var baseBranch, title, state string
+	if parsed.Type == github.URLTypePR {
+		meta, err := github.FetchPullMeta(ctx, client, parsed.OwnerRepo, parsed.Number)
+		if err != nil {
+			return nil, err
+		}
+		baseBranch, title, state = meta.HeadRef, meta.Title, meta.State
+	} else {
+		baseBranch = github.IssueBranch(parsed.Number)
+		meta := github.FetchIssueMeta(ctx, client, parsed.OwnerRepo, parsed.Number)
+		title, state = meta.Title, meta.State
+	}
+
 	branch := baseBranch
 	if tag := SessionTag(opts.SessionName); tag != "" {
 		branch = github.BranchWithTag(baseBranch, tag)
@@ -79,7 +100,7 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 		return nil, fmt.Errorf("acquired workdir path is empty")
 	}
 
-	return map[string]any{
+	outputs := map[string]any{
 		"workdir":    info.WorktreePath,
 		"branch":     branch,
 		"url":        parsed.URL(),
@@ -87,7 +108,18 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 		"owner":      parsed.Owner,
 		"repo":       parsed.Repo,
 		"number":     parsed.Number,
-	}, nil
+	}
+	if title != "" {
+		outputs["title"] = title
+	}
+	if state != "" {
+		if parsed.Type == github.URLTypePR {
+			outputs["pr_state"] = state
+		} else {
+			outputs["issue_state"] = state
+		}
+	}
+	return outputs, nil
 }
 
 // CleanupOptions are the inputs the provider cleanup hook receives, read back
