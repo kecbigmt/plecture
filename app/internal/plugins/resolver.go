@@ -48,13 +48,15 @@ func (e *ErrIncompatible) Error() string {
 }
 
 // ResolvedCatalog is a catalog root resolved from local state and validated
-// against its own catalog.toml. For a git catalog, Root is only the
-// snapshot the shared catalog lock record currently points at — it is used
-// to validate catalog.toml's `plugins` listing, never as a plugin's mount
-// point: `plugin update` repoints one plugin's own lock entry without
-// touching its siblings, so two plugins from the same catalog can be
-// legitimately pinned to different commits at once (see
-// VerifyAndMountPlugin, which re-resolves per plugin for a git source).
+// against its own catalog.toml. For a git catalog, Root/Manifest are only
+// the snapshot the shared catalog lock record currently points at — proof
+// the registration itself is intact — never a plugin's mount point or the
+// source of truth for whether a given plugin is still published:
+// VerifyAndMountPlugin re-resolves both per plugin for a git source, since
+// `plugin update` repoints one plugin's own lock entry without touching its
+// siblings, so two plugins from the same catalog can be legitimately pinned
+// to different commits (each governed by that commit's own catalog.toml)
+// at once.
 type ResolvedCatalog struct {
 	Alias           string
 	Source          string
@@ -119,24 +121,41 @@ func VerifyAndMountCatalog(entry CatalogEntry, lock *Lockfile, cacheRoot string)
 	return ResolvedCatalog{Alias: entry.Alias, Source: entry.Source, Root: root, Manifest: manifest}, nil
 }
 
+// ErrPluginNotListed is returned when pluginPath is enabled in
+// catalogs.toml but is not listed by `plugins` in the catalog.toml that
+// governs the commit it is actually pinned to.
+type ErrPluginNotListed struct {
+	Alias string
+	Path  string
+}
+
+func (e *ErrPluginNotListed) Error() string {
+	return fmt.Sprintf("catalog %q: enabled plugin path %q is not listed in catalog.toml at its locked commit", e.Alias, e.Path)
+}
+
 // VerifyAndMountPlugin resolves one plugin at pluginPath belonging to an
 // already-resolved catalog, verifying its own lock entry's content hash
-// against the mounted directory — local-only, Load()-time safe. The caller
-// is responsible for having checked pluginPath is listed in
-// catalog.Manifest.Plugins (VerifyAndMountAll does).
+// against the mounted directory — local-only, Load()-time safe.
 //
-// For a non-editable git catalog, the plugin's mount directory is resolved
-// from its OWN lock entry's CatalogResolvedRevision, via cacheRoot —
-// deliberately never from catalog.Root. `plugin update` repoints only the
-// target plugin's lock entry, so a sibling plugin from the same catalog can
-// still be pinned to an older commit; reusing catalog.Root here would mount
-// (and verify) every plugin from whatever snapshot the catalog's shared
-// lock record currently points at, silently drifting siblings onto commits
-// they were never verified against.
+// For a non-editable git catalog, both the mount directory and the
+// catalog.toml membership check are resolved from the plugin's OWN lock
+// entry's CatalogResolvedRevision, via cacheRoot — deliberately never from
+// catalog.Root/catalog.Manifest. `plugin update` repoints only the target
+// plugin's lock entry, so a sibling plugin from the same catalog can still
+// be pinned to an older commit whose catalog.toml differs from the
+// catalog's current shared snapshot (a newer commit may have dropped that
+// sibling from `plugins` entirely). Checking membership against
+// catalog.Manifest here would reject a sibling that is still validly
+// published at its own locked commit, and reusing catalog.Root as the
+// mount point would silently drift it onto a commit it was never verified
+// against.
 func VerifyAndMountPlugin(catalog ResolvedCatalog, pluginPath string, cacheRoot string, lock *Lockfile, currentPlectVersion string) (Mounted, error) {
 	id := catalog.Alias + "/" + pluginPath
 
 	if catalog.NonReproducible {
+		if !containsString(catalog.Manifest.Plugins, pluginPath) {
+			return Mounted{}, &ErrPluginNotListed{Alias: catalog.Alias, Path: pluginPath}
+		}
 		dir := filepath.Join(catalog.Root, pluginPath)
 		m, err := LoadManifest(dir)
 		if err != nil {
@@ -155,11 +174,19 @@ func VerifyAndMountPlugin(catalog ResolvedCatalog, pluginPath string, cacheRoot 
 		return Mounted{}, err
 	}
 	pluginCatalogRoot := catalog.Root
+	pluginCatalogManifest := catalog.Manifest
 	if scheme.IsGit() {
 		if entry.CatalogResolvedRevision == "" {
 			return Mounted{}, &ErrMissingPluginLock{ID: id}
 		}
 		pluginCatalogRoot = CacheDir(cacheRoot, catalog.Source, entry.CatalogResolvedRevision)
+		pluginCatalogManifest, err = LoadCatalogManifest(pluginCatalogRoot)
+		if err != nil {
+			return Mounted{}, err
+		}
+	}
+	if !containsString(pluginCatalogManifest.Plugins, pluginPath) {
+		return Mounted{}, &ErrPluginNotListed{Alias: catalog.Alias, Path: pluginPath}
 	}
 	dir := filepath.Join(pluginCatalogRoot, pluginPath)
 
@@ -189,7 +216,11 @@ func finishPluginMount(id, dir string, m Manifest, nonReproducible bool, current
 }
 
 // VerifyAndMountAll resolves every registered catalog and its enabled
-// plugins, entirely from local state, in declaration order.
+// plugins, entirely from local state, in declaration order. Catalog-level
+// resolution (VerifyAndMountCatalog) only needs to succeed enough to prove
+// the registration itself is intact; per-plugin `plugins` membership is
+// checked inside VerifyAndMountPlugin against each plugin's own locked
+// commit, not repeated here against the catalog's shared snapshot.
 func VerifyAndMountAll(registrations *CatalogRegistrations, lock *Lockfile, cacheRoot, currentPlectVersion string) ([]Mounted, error) {
 	var out []Mounted
 	for _, entry := range registrations.Catalogs {
@@ -198,9 +229,6 @@ func VerifyAndMountAll(registrations *CatalogRegistrations, lock *Lockfile, cach
 			return nil, fmt.Errorf("catalog %q: %w", entry.Alias, err)
 		}
 		for _, path := range entry.Plugins {
-			if !containsString(rc.Manifest.Plugins, path) {
-				return nil, fmt.Errorf("catalog %q: enabled plugin path %q is not listed in catalog.toml", entry.Alias, path)
-			}
 			mounted, err := VerifyAndMountPlugin(rc, path, cacheRoot, lock, currentPlectVersion)
 			if err != nil {
 				return nil, err

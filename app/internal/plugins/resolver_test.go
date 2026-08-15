@@ -221,14 +221,23 @@ func TestVerifyAndMountAll_EnabledPathNotListedInCatalogFailsLoud(t *testing.T) 
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 
 	// "github" is enabled in the user's registration but not published by
-	// the catalog's own manifest.
+	// the catalog's own manifest. Left unenabled here so this test isolates
+	// that one failure mode rather than also needing a valid "okf" lock
+	// entry to get past it first.
 	registrations := &CatalogRegistrations{Catalogs: []CatalogEntry{
-		{Alias: "local", Source: "path://" + dir, Plugins: []string{"okf", "github"}},
+		{Alias: "local", Source: "path://" + dir, Plugins: []string{"github"}},
 	}}
-	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path://" + dir}}}
+	// A lock entry for "github" is present so the missing-lock-entry check
+	// (a different, earlier failure mode) doesn't mask the one under test.
+	lock := &Lockfile{
+		Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path://" + dir}},
+		Plugins:  []PluginLockEntry{{ID: "local/github", Path: "github", ContentHash: "sha256:whatever"}},
+	}
 
-	if _, err := VerifyAndMountAll(registrations, lock, t.TempDir(), testPlectVersion); err == nil {
-		t.Fatal("want error when an enabled plugin path is not listed by the catalog, got nil")
+	_, err := VerifyAndMountAll(registrations, lock, t.TempDir(), testPlectVersion)
+	var want *ErrPluginNotListed
+	if !errors.As(err, &want) {
+		t.Fatalf("err = %v, want *ErrPluginNotListed", err)
 	}
 }
 
@@ -346,5 +355,118 @@ func TestVerifyAndMountAll_GitSiblingsStayIndependentlyPinnedAcrossPartialUpdate
 	}
 	if !strings.HasPrefix(byID["local/other"].Dir, rootA) {
 		t.Errorf("local/other.Dir = %q, want under the firstCommit snapshot %q (its own pinned commit)", byID["local/other"].Dir, rootA)
+	}
+}
+
+// newLocalCatalogGitRepoPluginRemovedLater creates a git catalog repo where
+// the first commit (tagged v1.0.0) lists two plugins, "okf" and "other",
+// and the second commit removes "other" from catalog.toml's `plugins` list
+// (and deletes its directory, so the tree stays consistent with a strict
+// "no unlisted plugin.toml" catalog — the shape a catalog author would
+// actually publish when dropping a plugin).
+func newLocalCatalogGitRepoPluginRemovedLater(t *testing.T) (repoDir, firstCommit, secondCommit string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found on PATH")
+	}
+	dir := t.TempDir()
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME=plect-test", "GIT_AUTHOR_EMAIL=plect-test@example.test",
+		"GIT_COMMITTER_NAME=plect-test", "GIT_COMMITTER_EMAIL=plect-test@example.test",
+	)
+	run := func(args ...string) string {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	run("init", "--quiet", "--initial-branch=main")
+	if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 1\nplugins = [\"okf\", \"other\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"okf", "other"} {
+		pluginDir := filepath.Join(dir, name)
+		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte("schema_version = 1\nplect_min_version = \"0.1.0\"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("add", ".")
+	run("commit", "--quiet", "-m", "v1")
+	run("tag", "v1.0.0")
+	first := run("rev-parse", "HEAD")
+
+	if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 1\nplugins = [\"okf\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "okf", "plugin.toml"), []byte("schema_version = 1\nplect_min_version = \"0.2.0\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("rm", "--quiet", "-r", "other")
+	run("add", ".")
+	run("commit", "--quiet", "-m", "v2: drop other")
+	second := run("rev-parse", "HEAD")
+
+	return dir, first, second
+}
+
+// TestVerifyAndMountAll_GitSiblingRemovedFromNewerManifestStaysMountable is
+// the regression test for the follow-up finding: membership in
+// catalog.toml's `plugins` list must be checked against each plugin's OWN
+// locked commit, not the catalog's current shared snapshot. A catalog
+// author dropping "other" in a newer release must not break an untouched
+// sibling still validly pinned to the older commit that published it.
+func TestVerifyAndMountAll_GitSiblingRemovedFromNewerManifestStaysMountable(t *testing.T) {
+	repo, firstCommit, secondCommit := newLocalCatalogGitRepoPluginRemovedLater(t)
+	cacheRoot := t.TempDir()
+	source := "git+https://" + repo
+
+	rootA, _, err := fetchGitCatalog(context.Background(), procexec.Default, source, repo, firstCommit, cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherHashA, err := HashTree(filepath.Join(rootA, "other"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootB, _, err := fetchGitCatalog(context.Background(), procexec.Default, source, repo, secondCommit, cacheRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okfHashB, err := HashTree(filepath.Join(rootB, "okf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulates: both plugins added at firstCommit, then "local/okf" was
+	// updated to secondCommit (which no longer publishes "other" at all).
+	// The shared catalog lock record now points at secondCommit, but
+	// "local/other"'s own lock entry is untouched, still pinning firstCommit
+	// — where it was, and still is, validly published.
+	registrations := &CatalogRegistrations{Catalogs: []CatalogEntry{
+		{Alias: "local", Source: source, Plugins: []string{"okf", "other"}},
+	}}
+	lock := &Lockfile{
+		Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: source, CatalogResolvedRevision: secondCommit}},
+		Plugins: []PluginLockEntry{
+			{ID: "local/okf", CatalogAlias: "local", CatalogSource: source, CatalogResolvedRevision: secondCommit, Path: "okf", ContentHash: okfHashB},
+			{ID: "local/other", CatalogAlias: "local", CatalogSource: source, CatalogResolvedRevision: firstCommit, Path: "other", ContentHash: otherHashA},
+		},
+	}
+
+	mounted, err := VerifyAndMountAll(registrations, lock, cacheRoot, testPlectVersion)
+	if err != nil {
+		t.Fatalf("VerifyAndMountAll: unexpected error: %v (a sibling still valid at its own locked commit must not be rejected because a newer commit dropped it)", err)
+	}
+	if len(mounted) != 2 {
+		t.Fatalf("mounted = %+v, want 2 entries", mounted)
 	}
 }
