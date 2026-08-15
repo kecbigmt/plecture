@@ -1,5 +1,7 @@
 # Plugin packaging, reference resolution, lockfile, and trust model
 
+Status: evolving design.
+
 This document defines the plugin model for distributing reusable Plecture
 configuration and executable adapters. The goal is to reduce bootstrap cost
 without moving provider, tool, or domain knowledge into core.
@@ -36,6 +38,7 @@ description = "Example Plecture plugin catalog."
 
 plugins = [
   "github",
+  "agent/runtime",
   "agent/claude-tasks",
   "agent/codex-tasks",
 ]
@@ -55,8 +58,10 @@ user's local alias in the catalog registration.
 Every path listed in `plugins` must resolve inside the catalog trust space
 after symlink resolution. `..` escapes and symlink escapes are load errors. A
 listed path without `plugin.toml` is a validation error. A `plugin.toml` under
-the catalog subtree that is not listed is also a validation error, so reviewers
-can audit the exact published plugin set from one manifest.
+the catalog subtree that is not listed is also a validation error. This strict
+rule is intentional: reviewers can audit the exact published plugin set from
+one manifest, and catalogs that need fixture manifests can avoid the reserved
+filename.
 
 A plugin is a directory with metadata at the root and zero or more standard
 subdirectories that are already understood by the config loaders:
@@ -166,15 +171,21 @@ setup = '{{bin "official/agent/runtime/agent-runtime"}} launch --workdir {{.Sess
 cleanup = '{{bin "official/agent/runtime/agent-runtime"}} stop --id {{.Self.runtime_id | shellQuote}}'
 ```
 
-`{{bin "<catalog-alias>/<plugin-path>/<executable>"}}` is the unambiguous form.
-For a plugin with exactly one executable,
-`{{bin "<catalog-alias>/<plugin-path>"}}` is shorthand for that executable. A
-shorter reference that omits the catalog alias is a load error because plugin
-paths are unique only inside a catalog. An executable segment that is ambiguous
-inside the selected plugin is also a load error. For locked plugins, the helper
-returns an absolute path inside the read-only mounted plugin cache. For
-editable path catalogs, it returns an absolute path inside the directly mounted
-development tree. It never writes generated paths back into user config.
+`{{bin "<catalog-alias>/<plugin-path>/<executable>"}}` is the full form. To
+parse it, plect compares the reference against enabled plugin identities in the
+same catalog and selects the longest matching plugin path; the remaining
+segment is the executable name. `{{bin "<catalog-alias>/<plugin-path>"}}` is
+shorthand only when the whole reference exactly matches one enabled plugin and
+that plugin declares exactly one executable. A reference is a load error if the
+same string can also be read as a shorter plugin plus executable, because no
+slash-based syntax can disambiguate that collision under arbitrary-depth plugin
+paths. A shorter reference that omits the catalog alias is a load error because
+plugin paths are unique only inside a catalog. An executable segment that is
+ambiguous inside the selected plugin is also a load error. For locked plugins,
+the helper returns an absolute path inside the read-only mounted plugin cache.
+For editable path catalogs, it returns an absolute path inside the directly
+mounted development tree. It never writes generated paths back into user
+config.
 
 The same template-variable reference and read-only-mount rules apply to scripts
 and built binaries for locked plugins; editable path catalogs keep the same
@@ -231,26 +242,25 @@ user-owned config, not inside cloned workdir content. The global declaration
 file lives at:
 
 ```text
-~/.config/plect/plugins.toml
+~/.config/plect/catalogs.toml
 ```
 
 Example:
 
 ```toml
+schema_version = 1
+
 [[trusted_catalogs]]
 alias = "official"
-locator = "git+https://github.com/example/plect-plugins"
-revision = "v0.3.0"
+locator = "git+https://github.com/example/plect-plugins#v0.3.0"
 
 [[trusted_catalogs]]
 alias = "team"
-locator = "git+ssh://git@example.com/team/plect-catalog"
-revision = "main"
+locator = "git+ssh://git@example.com/team/plect-catalog#main"
 
 [[trusted_catalogs]]
 alias = "local"
 locator = "path:///home/user/src/plect-catalog"
-sha256 = "sha256:2b7c..."
 
 [[plugins]]
 id = "official/github"
@@ -262,15 +272,18 @@ id = "team/agent/runtime"
 id = "local/okf"
 ```
 
-Trusted catalog declaration fields:
+Declaration file fields:
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `schema_version` | yes | Declaration file-format version. Unknown values fail loud. |
+
+Trusted catalog entry fields:
 
 | Field | Required | Meaning |
 |---|---:|---|
 | `alias` | yes | User-chosen local catalog alias. It is the trust name and the first segment of plugin identities. |
-| `locator` | yes | Source locator. Supported v1 schemes are `git+https`, `git+ssh`, and `path`. |
-| `revision` | scheme-dependent | Git revision to fetch. Required for Git catalogs. |
-| `sha256` | scheme-dependent | Content hash in `sha256:<digest>` form. Required for locked path catalogs. |
-| `editable` | no | Path-only development mode. When true, the path is mounted directly and is not reproducible. |
+| `locator` | yes | Exact catalog locator, not a prefix. Supported v1 schemes are `git+https`, `git+ssh`, `path`, and `path+editable`. Git locators include the requested revision as a fragment, such as `#v0.3.0` or `#main`. |
 
 Plugin declaration fields:
 
@@ -279,9 +292,11 @@ Plugin declaration fields:
 | `id` | yes | Catalog-qualified plugin identity, `<catalog-alias>/<relative-path>`. |
 
 A `trusted_catalogs` entry is the trust act. Each registration binds a
-user-chosen alias to one exact source locator. Default alias suggestions belong
-in provider README install snippets, not in any manifest. Core contains no
-official host, owner, registry, provider list, or prefix policy.
+user-chosen alias to one exact source locator. It does not pin selected plugin
+content; per-plugin lock entries carry the resolved revisions and hashes.
+Default alias suggestions belong in provider README install snippets, not in
+any manifest. Core contains no official host, owner, registry, provider list,
+or prefix policy.
 
 Git is the default transport for reference distribution, not a requirement of
 the resolution model. The model needs only fetch, revision or hash
@@ -294,9 +309,10 @@ Resolution flow:
 1. Read catalog registrations and plugin declarations from global user config.
    The first implementation does not read them from ancestor overlays.
 2. For each referenced catalog, resolve the registration to concrete content:
-   - Git catalog: fetch the locator and resolve `revision` to a commit hash.
-   - Locked path catalog: resolve symlinks and verify the catalog subtree
-     against `sha256`.
+   - Git catalog: fetch the locator and resolve its requested revision fragment
+     to a commit hash.
+   - Locked path catalog: resolve symlinks and verify selected plugin
+     directories against their per-plugin lock hashes.
    - Editable path catalog: resolve symlinks and mount the path directly.
 3. Find `catalog.toml` at the resolved catalog root and fail if
    `schema_version` is unknown.
@@ -306,7 +322,9 @@ Resolution flow:
    and fail if the alias is not registered or the path is not listed by that
    catalog.
 6. Verify the plugin's lock entry against the catalog revision and plugin
-   content hash, except editable path catalogs.
+   content hash, except editable path catalogs. Path catalogs hash each selected
+   plugin directory, not the whole catalog subtree, so changing one local plugin
+   does not force unrelated sibling plugins to move.
 7. Read the plugin's `plugin.toml` and fail if `schema_version` is unknown.
 8. Check `plect_min_version` against the running plect version.
 9. Mount the plugin directory as a read-only base config layer, except editable
@@ -316,8 +334,12 @@ Core should materialize resolved catalog snapshots under a cache owned by the
 user, for example:
 
 ```text
-~/.cache/plect/catalogs/<catalog-alias>/<resolved-revision>/
+~/.cache/plect/catalogs/<locator-digest>/<resolved-revision>/
 ```
+
+The locator digest is derived from the exact registered locator, not from the
+user-local alias. Reusing an alias for a different catalog therefore cannot
+reuse the old catalog's cache namespace.
 
 The existing `plugin_dirs` setting becomes an implementation detail for mounted
 resolved directories. During migration, users can move from hand-authored
@@ -357,7 +379,7 @@ schema_version = 1
 [[plugins]]
 id = "official/github"
 catalog_alias = "official"
-catalog_locator = "git+https://github.com/example/plect-plugins"
+catalog_locator = "git+https://github.com/example/plect-plugins#v0.3.0"
 catalog_requested_revision = "v0.3.0"
 catalog_resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
 path = "github"
@@ -369,7 +391,7 @@ editable = false
 [[plugins]]
 id = "official/agent/codex-tasks"
 catalog_alias = "official"
-catalog_locator = "git+https://github.com/example/plect-plugins"
+catalog_locator = "git+https://github.com/example/plect-plugins#v0.3.0"
 catalog_requested_revision = "v0.3.0"
 catalog_resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
 path = "agent/codex-tasks"
@@ -385,7 +407,7 @@ Recorded fields:
 | `id` | Catalog-qualified plugin identity, `<catalog-alias>/<relative-path>`. |
 | `catalog_alias` | User-chosen catalog alias from the registration. |
 | `catalog_locator` | Exact registered source locator for the catalog. |
-| `catalog_requested_revision` | User declaration, such as a tag, branch, or commit. |
+| `catalog_requested_revision` | Revision request parsed from the registered locator or from the explicit update command, such as a tag, branch, or commit. |
 | `catalog_resolved_revision` | Immutable catalog revision, such as a Git commit. |
 | `path` | Plugin path relative to `catalog.toml`. |
 | `content_hash` | Digest of the mounted plugin directory after checkout or extraction. |
@@ -396,22 +418,34 @@ Recorded fields:
 Add and update commands:
 
 - `plect catalog add <alias> <locator> [--revision <rev>]` resolves the catalog,
-  reads `catalog.toml`, shows the exact locator, resolved revision, manifest
-  description, and plugin paths, and asks for interactive confirmation. On
-  consent, it writes the catalog registration and fetches the catalog snapshot.
+  normalizes the locator into an exact registered locator, reads `catalog.toml`,
+  shows the exact locator, resolved revision, manifest description, and plugin
+  paths, and asks for interactive confirmation. On consent, it writes only the
+  catalog registration and fetches the catalog snapshot. When `--revision` is
+  supplied for a Git locator, the written locator includes that revision.
 - `plect catalog update <alias> [--revision <rev>]` fetches the newest matching
   catalog revision and repoints every enabled plugin from that catalog to the
-  new snapshot with fresh per-plugin lock entries.
-- `plect catalog remove <alias>` removes the catalog registration and any
-  enabled plugins under that alias.
-- `plect catalog list` shows registered aliases, locators, requested revisions,
-  resolved revisions, and catalog validation state.
+  new snapshot with fresh per-plugin lock entries. When `--revision` is
+  supplied for a Git catalog, it is a catalog-level intent change: after
+  confirmation, plect rewrites that catalog's exact locator in `catalogs.toml`
+  and updates all enabled plugins under the alias to the new requested
+  revision.
+- `plect catalog remove <alias>` shows the enabled plugins that would be
+  disabled, requires confirmation in interactive contexts, then removes the
+  catalog registration and those plugin declarations and lock entries.
+- `plect catalog list` shows registered aliases, locators, catalog validation
+  state, and a summary of enabled plugin lock revisions grouped by catalog. It
+  does not imply that one resolved revision applies to every enabled plugin in
+  the catalog.
 - `plect plugin add <alias>/<path>` enables one plugin path from a registered
-  catalog and writes or updates that plugin's lock entry.
+  catalog, resolves the registered locator's requested revision, and writes or
+  updates that plugin's lock entry. It does not modify the catalog registration.
 - `plect plugin update <alias>/<path> [--revision <rev>]` fetches the newest
   matching catalog revision, validates the catalog, and repoints only that
-  plugin's lock entry. Other plugins from the same catalog keep their previous
-  locked revisions; cache snapshots coexist by catalog and revision.
+  plugin's lock entry. When `--revision` is supplied, it affects only that
+  plugin's lock entry and does not rewrite the catalog registration. Other
+  plugins from the same catalog keep their previous locked revisions; cache
+  snapshots coexist by locator digest and revision.
 - `plect plugin remove <alias>/<path>` disables that plugin and removes its lock
   entry.
 - `plect plugin verify` re-hashes cached plugin directories and fails if any
@@ -534,7 +568,7 @@ This model keeps the existing loader semantics and makes plugin distribution a
 new source of base layers rather than a new merge language.
 
 Alternatives considered: letting declaration order decide same-id plugin
-conflicts would make behavior depend on list order in `plugins.toml`. That is
+conflicts would make behavior depend on list order in `catalogs.toml`. That is
 too easy to miss during review, especially for executable shell hooks, so plugin
 layer conflicts fail loud.
 
