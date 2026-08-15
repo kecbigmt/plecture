@@ -14,7 +14,7 @@ import (
 // runs its cleanup hook. The definition comes from the trusted layers (the
 // workdir layer cannot declare hooks), so resolving against the session's
 // workdir path is safe even though that path is clone content.
-func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, observer task.Observer) error {
+func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, cleanupInputs map[string]string, observer task.Observer) error {
 	workflows, err := cfg.LoadWorkflows(session.WorkdirPath)
 	if err != nil {
 		return fmt.Errorf("load workflows: %w", err)
@@ -40,7 +40,9 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
 		Plugins:       cfg.Plugins,
+		SourcePath:    prov.SourcePath,
 		Force:         force,
+		CleanupInputs: cleanupInputs,
 	}
 	return task.RunWorkflowCleanup(prov, vars, session.Tasks, observer)
 }
@@ -117,6 +119,7 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 		r := task.Resolved{NodeID: key, TaskID: taskID, Scope: st.Scope}
 		if def, ok := defs[taskID]; ok {
 			r.Cleanup = def.Cleanup
+			r.SourcePath = def.SourcePath
 			if resolved, execErr := task.ResolveExecution(def.Execution, wf.Environment); execErr == nil {
 				r.Execution = resolved
 			}

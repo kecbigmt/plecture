@@ -92,10 +92,11 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 
 	for id, def := range tasks {
 		ctx := RenderContext{
-			Self:    kitchen,
-			Prev:    kitchen,
-			Inputs:  inputs,
-			Session: session,
+			Self:       kitchen,
+			Prev:       kitchen,
+			Inputs:     inputs,
+			Session:    session,
+			SourcePath: def.SourcePath,
 		}
 		if def.Setup != "" {
 			if _, err := render(def.Setup, ctx); err != nil {

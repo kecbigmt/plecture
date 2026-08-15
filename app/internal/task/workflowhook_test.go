@@ -224,6 +224,67 @@ func TestRunWorkflowCleanup_RunsAndMarksClean(t *testing.T) {
 	}
 }
 
+// TestRunWorkflowCleanup_CleanupInputsReachTemplate pins the generic escape
+// hatch a provider's cleanup script reads its own intents through (e.g. the
+// shipped github provider's delete_branch key) — core forwards the map
+// opaquely, so a new intent never needs a core vocabulary addition.
+func TestRunWorkflowCleanup_CleanupInputsReachTemplate(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "delete_branch.txt")
+	prov := config.ProviderConfig{
+		ID:      "wf",
+		Setup:   "echo '{}'",
+		Cleanup: `echo {{eq .CleanupInputs.delete_branch "true"}} > ` + marker,
+	}
+	tasks := map[string]*contract.TaskState{
+		contract.WorkflowPseudoNodeID: {
+			Scope:   contract.TaskScopeSession,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"workdir": "/tmp/wd"},
+		},
+	}
+	vars := WorkflowHookVars{CleanupInputs: map[string]string{"delete_branch": "true"}}
+	if err := RunWorkflowCleanup(prov, vars, tasks, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "true" {
+		t.Errorf(".CleanupInputs.delete_branch rendered %q, want true", got)
+	}
+}
+
+// TestRunWorkflowCleanup_CleanupInputsDefaultUnset pins that an intent no
+// caller set renders as the map's zero value rather than a template error —
+// a cleanup script reading one key must never have to special-case "no
+// intents given".
+func TestRunWorkflowCleanup_CleanupInputsDefaultUnset(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "delete_branch.txt")
+	prov := config.ProviderConfig{
+		ID:      "wf",
+		Setup:   "echo '{}'",
+		Cleanup: `echo {{eq .CleanupInputs.delete_branch "true"}} > ` + marker,
+	}
+	tasks := map[string]*contract.TaskState{
+		contract.WorkflowPseudoNodeID: {
+			Scope:   contract.TaskScopeSession,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"workdir": "/tmp/wd"},
+		},
+	}
+	if err := RunWorkflowCleanup(prov, WorkflowHookVars{}, tasks, nil); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "false" {
+		t.Errorf(".CleanupInputs.delete_branch rendered %q, want false when unset", got)
+	}
+}
+
 func TestRunWorkflowCleanup_NoStateSkips(t *testing.T) {
 	prov := config.ProviderConfig{ID: "wf", Cleanup: "exit 1"}
 	if err := RunWorkflowCleanup(prov, WorkflowHookVars{}, map[string]*contract.TaskState{}, nil); err != nil {

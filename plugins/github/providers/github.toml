@@ -5,8 +5,10 @@
 # Workflows compose on top via `provider = "github"`.
 #
 # `setup`/`cleanup`/`subscribe` resolve plect-github-provider and
-# github-watcher (this plugin's bin/) through `{{bin ...}}`, so both are
-# reachable purely from this plugin being enabled — no PATH setup required.
+# github-watcher (this plugin's bin/) through `{{bin ...}}`'s plugin-local
+# bare-name reading, so both are reachable purely from this plugin being
+# enabled — no PATH setup required, and no dependency on which alias the
+# operator registered this catalog under.
 
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
 name  = "{{.owner}}/{{.repo}}-{{.number}}"
@@ -15,19 +17,24 @@ name  = "{{.owner}}/{{.repo}}-{{.number}}"
 # setup call and the daemon's own polling share one rate budget instead of
 # each independently re-tripping GitHub's secondary rate limit.
 setup = '''
-{{bin "official/github/plect-github-provider"}} setup \
+{{bin "plect-github-provider"}} setup \
   --resource {{.ResourceID | shellQuote}} \
   --session {{.SessionName | shellQuote}} \
   --workdirs-root {{.WorkdirsRoot | shellQuote}} \
-  --watcher-bin {{bin "official/github/github-watcher" | shellQuote}}
+  --watcher-bin {{bin "github-watcher" | shellQuote}}
 '''
 
-cleanup = '{{bin "official/github/plect-github-provider"}} cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}} --force={{.Force}}'
+# --delete-branch reads the delete_branch cleanup input (`plect destroy
+# --input delete_branch=true`, or the plect_destroy MCP tool's cleanup_inputs
+# object) — a provider-level opt-in, not a core flag, so core carries no
+# branch vocabulary. Default is off: a branch left behind after workdir
+# removal is safer than one silently reclaimed.
+cleanup = '{{bin "plect-github-provider"}} cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}} --force={{.Force}} --delete-branch={{eq .CleanupInputs.delete_branch "true"}}'
 
 # subscribe binds a session to a resource at runtime (the `plect subscribe`
 # verb) — the same watcher subscription registry the setup-time
 # tasks/github_watch.toml task uses, additive, never replacing.
-subscribe = '{{bin "official/github/github-watcher"}} subscribe --session {{.SessionName | shellQuote}} --resource {{.ResourceID | shellQuote}}'
+subscribe = '{{bin "github-watcher"}} subscribe --session {{.SessionName | shellQuote}} --resource {{.ResourceID | shellQuote}}'
 
 # Outputs contract. `workdir`/`branch` are always present; the rest degrade
 # to absent when their gh-api fetch is tolerated as best-effort (see

@@ -20,6 +20,11 @@ type SubscribeHookVars struct {
 	ResourceID  string
 	SessionName string
 	Plugins     []plugins.Mounted
+	// SourcePath is the provider definition's own file path
+	// (config.ProviderConfig.SourcePath), threaded through so a
+	// `{{bin "<name>"}}` in Subscribe can resolve against the provider's
+	// containing plugin.
+	SourcePath string
 }
 
 // RunProviderSubscribe renders and runs the provider's `subscribe` hook. The
@@ -54,7 +59,7 @@ func renderSubscribeHook(cmd string, vars SubscribeHookVars) (string, error) {
 	// renderWith's and renderWorkflowHook's dynamicFuncs for the same reason.
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
-			return resolveBin(vars.Plugins, ref)
+			return resolveBin(vars.Plugins, vars.SourcePath, ref)
 		},
 	}
 	tmpl, err := template.New("subscribe_hook").

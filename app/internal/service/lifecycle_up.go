@@ -193,7 +193,9 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	}
 
 	if wfState, ok := session.Tasks[contract.WorkflowPseudoNodeID]; ok && wfState != nil {
-		if workflowCleanupErr := runWorkflowCleanupForDestroy(cfg, session, true, observer); workflowCleanupErr != nil {
+		// Internal reset path, not an explicit operator destroy: no cleanup
+		// intents to forward.
+		if workflowCleanupErr := runWorkflowCleanupForDestroy(cfg, session, true, nil, observer); workflowCleanupErr != nil {
 			session.UpdatedAt = time.Now()
 			if err := mergeTasks(store, sessionName, session); err != nil {
 				return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
@@ -284,6 +286,8 @@ func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, sess
 		SessionName:   session.Name,
 		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
+		Plugins:       cfg.Plugins,
+		SourcePath:    prov.SourcePath,
 	}
 	return task.RunWorkflowSetup(prov, vars, session.Tasks, observer)
 }

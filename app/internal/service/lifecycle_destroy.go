@@ -16,10 +16,13 @@ import (
 
 // DestroyParams holds parameters for Destroy.
 type DestroyParams struct {
-	Identifier   string
-	Force        bool
-	DeleteBranch bool
-	Observer     task.Observer
+	Identifier string
+	Force      bool
+	// CleanupInputs are opaque key/value intents forwarded verbatim to the
+	// provider cleanup hook (see task.WorkflowHookVars.CleanupInputs); core
+	// interprets none of them.
+	CleanupInputs map[string]string
+	Observer      task.Observer
 }
 
 // DestroyResult holds the outcome of Destroy.
@@ -133,7 +136,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 		// owns its release — the core performs no workdir removal here.
 		// (Whether the workdir is actually deleted is the cleanup script's
 		// decision; setup/cleanup symmetry is the author's contract.)
-		cleanupErr := runWorkflowCleanupForDestroy(cfg, session, params.Force, params.Observer)
+		cleanupErr := runWorkflowCleanupForDestroy(cfg, session, params.Force, params.CleanupInputs, params.Observer)
 		session.UpdatedAt = time.Now()
 		putBestEffort(store, session, "workflow cleanup for destroy")
 		if cleanupErr != nil {

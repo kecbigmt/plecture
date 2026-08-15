@@ -193,6 +193,46 @@ executable lookup but use the development-mode mount exception described in the
 resolution flow. Scripts are executed through their shebangs; hooks still
 reference them through `{{bin ...}}`.
 
+### Plugin-local `{{bin}}` resolution
+
+The fully-qualified form above names a catalog alias — but a plugin's own
+shipped config cannot know that alias in advance: `catalogs.toml` assigns it
+per-user, at registration time, and nothing constrains it to `official`. A
+plugin's provider/resource/task files that reference their own plugin's
+executables by the fully-qualified form are wrong the moment a user
+registers the catalog under any other alias.
+
+`{{bin "<name>"}}` with a bare executable name — no alias, no path segment —
+resolves differently: against the *containing* plugin's own
+`[[executables]]`, found from the file the reference was read from (the
+loader already knows which mounted plugin any given config file came from).
+No alias comparison happens at all, so the reference is correct under every
+alias simultaneously:
+
+```toml
+# plugins/agent/runtime/tasks/agent_runtime.toml, shipped inside the
+# agent/runtime plugin itself
+setup   = '{{bin "agent-runtime"}} launch --workdir {{.Session.WorkdirPath | shellQuote}}'
+cleanup = '{{bin "agent-runtime"}} stop --id {{.Self.runtime_id | shellQuote}}'
+```
+
+This bare-name reading is available only inside plugin-mounted config: a
+reference read from a file that was not mounted from any catalog plugin
+(hand-authored global config, an ancestor overlay) has no containing plugin
+to resolve against, and fails loud rather than guessing. The containing
+plugin's own executable list is also the entire search space — a bare name
+never matches another plugin's executable, even one mounted alongside it,
+so two plugins may reuse the same executable name with no collision.
+
+The fully-qualified `<catalog-alias>/<plugin-path>[/<executable-name>]` form
+remains exactly as specified above, for user-authored config (global
+config, ancestor overlays) that names any mounted plugin's executable by the
+alias the user chose. A shipped plugin referencing *another* plugin's
+executables by name is not expressible under plugin-local resolution and is
+intentionally unsupported for shipped content: the referencing plugin has no
+alias to name the other plugin with, and no substitute syntax is added for
+it here — revisit only if a concrete cross-plugin need appears.
+
 Alternatives considered:
 
 - Environment-variable injection would require command strings like

@@ -120,14 +120,14 @@ func TestHandleDestroy_MissingSessionArg(t *testing.T) {
 	}
 }
 
-func TestHandleDestroy_ForceFlagsForwarded(t *testing.T) {
+func TestHandleDestroy_ForceAndCleanupInputsForwarded(t *testing.T) {
 	setUpConfigHomeWithCapture(t)
 	name := createPlainSession(t, "destroy-force-session")
 
 	result, err := handleDestroy(context.Background(), reqWith(map[string]any{
-		"session":       name,
-		"force":         true,
-		"delete_branch": true,
+		"session":        name,
+		"force":          true,
+		"cleanup_inputs": map[string]any{"delete_branch": "true"},
 	}))
 	if err != nil {
 		t.Fatalf("handleDestroy: %v", err)

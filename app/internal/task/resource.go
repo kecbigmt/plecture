@@ -59,7 +59,7 @@ func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branc
 	if err != nil || !ok {
 		return nil, def, ok, err
 	}
-	cmdStr, rerr := render(def.Observe, RenderContext{Session: SessionVars{ResourceID: resourceID, Branch: branch, WorkdirPath: workdirPath, Plugins: mountedPlugins}})
+	cmdStr, rerr := render(def.Observe, RenderContext{Session: SessionVars{ResourceID: resourceID, Branch: branch, WorkdirPath: workdirPath, Plugins: mountedPlugins}, SourcePath: def.SourcePath})
 	if rerr != nil {
 		return nil, def, true, fmt.Errorf("resource %s: observe script template: %w", def.ID, rerr)
 	}
@@ -107,6 +107,10 @@ type FinalizeResourceParams struct {
 	SessionName string
 	Revision    string
 	Judges      []FinalizeJudgeEvidence
+	// Plugins are the mounted plugins `{{bin ...}}` resolves against inside
+	// finalize (config.Config.Plugins) — mirrors Observe's mountedPlugins
+	// parameter above.
+	Plugins []plugins.Mounted
 }
 
 // finalizeTemplateData is the template surface a `finalize` script renders
@@ -121,6 +125,8 @@ type finalizeTemplateData struct {
 	Revision    string
 	Judges      []FinalizeJudgeEvidence
 	JudgesJSON  string
+	Plugins     []plugins.Mounted
+	SourcePath  string
 }
 
 // FinalizeResource runs the matched resource definition's `finalize` script,
@@ -148,6 +154,8 @@ func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourc
 		Revision:    params.Revision,
 		Judges:      params.Judges,
 		JudgesJSON:  judgesJSON,
+		Plugins:     params.Plugins,
+		SourcePath:  def.SourcePath,
 	})
 	if rerr != nil {
 		return false, def, fmt.Errorf("resource %s: finalize script template: %w", def.ID, rerr)
@@ -174,7 +182,19 @@ func marshalJudges(judges []FinalizeJudgeEvidence) (string, error) {
 }
 
 func renderFinalize(tmplStr string, data finalizeTemplateData) (string, error) {
-	tmpl, err := template.New("resource-finalize").Option("missingkey=error").Funcs(templateFuncs).Parse(tmplStr)
+	// bin is built per render call, not part of the static templateFuncs map,
+	// because it resolves against this render's own data.Plugins — mirrors
+	// renderWith's dynamicFuncs for the same reason.
+	dynamicFuncs := template.FuncMap{
+		"bin": func(ref string) (string, error) {
+			return resolveBin(data.Plugins, data.SourcePath, ref)
+		},
+	}
+	tmpl, err := template.New("resource-finalize").
+		Option("missingkey=error").
+		Funcs(templateFuncs).
+		Funcs(dynamicFuncs).
+		Parse(tmplStr)
 	if err != nil {
 		return "", fmt.Errorf("template parse: %w", err)
 	}

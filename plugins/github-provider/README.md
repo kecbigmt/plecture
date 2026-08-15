@@ -19,11 +19,13 @@ development and testing.
   stdout. `--watcher-bin`, when given, routes title/state fetches through a
   `github-watcher gh-api` call so they share its poll loop's rate budget;
   omitted, it calls `gh api` directly.
-- `plect-github-provider cleanup --workdir <path> --branch <branch> [--workdirs-root <root>] [--force]`
-  — releases what `setup` acquired. Branch reclaim uses a safe delete
+- `plect-github-provider cleanup --workdir <path> --branch <branch> [--workdirs-root <root>] [--force] [--delete-branch]`
+  — releases what `setup` acquired. `--delete-branch` opts into reclaiming
+  the branch; left off, the branch survives (the safer default for a
+  review-only or shared-branch session). Reclaim uses a safe delete
   (`git branch -d`): a branch carrying unmerged commits survives as an
   orphan a later dispatch on the same resource reuses, rather than being
-  discarded.
+  discarded, regardless of `--delete-branch`.
 - `plect-github-provider observe --resource <id> [--workdir-path <path>] [--watcher-bin <path>]`
   — fetches and classifies a GitHub resource's current state: resource kind,
   CI check rollup, issue completion, revision, linked PR (for an issue

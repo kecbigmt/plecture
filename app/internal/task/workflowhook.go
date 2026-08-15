@@ -28,11 +28,22 @@ type WorkflowHookVars struct {
 	WorkdirsRoot  string
 	SessionInputs map[string]any
 	Plugins       []plugins.Mounted
+	// SourcePath is the provider definition's own file path
+	// (config.ProviderConfig.SourcePath), threaded through so a
+	// `{{bin "<name>"}}` in Setup/Cleanup can resolve against the provider's
+	// containing plugin.
+	SourcePath string
 	// Force mirrors the caller's --force intent into the cleanup template so a
 	// provider's cleanup script can decide for itself whether to force-remove
 	// a dirty workdir; core has no opinion on what a provider's release step
 	// does with it. Setup never sets this — force only applies to teardown.
 	Force bool
+	// CleanupInputs are opaque key/value pairs the caller passes through to
+	// the cleanup template as .CleanupInputs, unexamined by core. This is the
+	// generic escape hatch for provider-specific teardown intents, so a new
+	// one never requires a core vocabulary addition. Setup never sets this —
+	// cleanup intents only apply to teardown.
+	CleanupInputs map[string]string
 }
 
 // workflowHookScope is the Observer scope label for pseudo-node events.
@@ -204,7 +215,7 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 	// renderWith's dynamicFuncs for the same reason.
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
-			return resolveBin(vars.Plugins, ref)
+			return resolveBin(vars.Plugins, vars.SourcePath, ref)
 		},
 	}
 	tmpl, err := template.New("workflow_hook").
@@ -223,6 +234,7 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 		Prev          map[string]any
 		Self          map[string]any
 		Force         bool
+		CleanupInputs map[string]string
 	}{
 		ResourceID:    vars.ResourceID,
 		SessionName:   vars.SessionName,
@@ -231,6 +243,7 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 		Prev:          normalizeOutputs(prev),
 		Self:          normalizeOutputs(self),
 		Force:         vars.Force,
+		CleanupInputs: vars.CleanupInputs,
 	}
 	if data.SessionInputs == nil {
 		data.SessionInputs = map[string]any{}
@@ -240,6 +253,9 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 	}
 	if data.Self == nil {
 		data.Self = map[string]any{}
+	}
+	if data.CleanupInputs == nil {
+		data.CleanupInputs = map[string]string{}
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {

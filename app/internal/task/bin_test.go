@@ -14,7 +14,7 @@ func mustMount(id, dir string, executables ...plugins.Executable) plugins.Mounte
 func TestResolveBin_ShorthandResolvesSoleExecutable(t *testing.T) {
 	mounted := []plugins.Mounted{mustMount("official/agent/runtime", "/mnt/agent-runtime", plugins.Executable{Name: "agent-runtime", Path: "bin/agent-runtime"})}
 
-	got, err := resolveBin(mounted, "official/agent/runtime")
+	got, err := resolveBin(mounted, "", "official/agent/runtime")
 	if err != nil {
 		t.Fatalf("resolveBin: unexpected error: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestResolveBin_ShorthandAmbiguousWithMultipleExecutables(t *testing.T) {
 		plugins.Executable{Name: "plect-github-watcher", Path: "bin/plect-github-watcher"},
 	)}
 
-	if _, err := resolveBin(mounted, "official/github"); err == nil {
+	if _, err := resolveBin(mounted, "", "official/github"); err == nil {
 		t.Fatal("resolveBin: want error for a shorthand reference to a multi-executable plugin, got nil")
 	}
 }
@@ -41,7 +41,7 @@ func TestResolveBin_FullFormDisambiguates(t *testing.T) {
 		plugins.Executable{Name: "plect-github-watcher", Path: "bin/plect-github-watcher"},
 	)}
 
-	got, err := resolveBin(mounted, "official/github/plect-github-watcher")
+	got, err := resolveBin(mounted, "", "official/github/plect-github-watcher")
 	if err != nil {
 		t.Fatalf("resolveBin: unexpected error: %v", err)
 	}
@@ -52,25 +52,62 @@ func TestResolveBin_FullFormDisambiguates(t *testing.T) {
 }
 
 func TestResolveBin_UnknownPluginID(t *testing.T) {
-	if _, err := resolveBin(nil, "official/nope"); err == nil {
+	if _, err := resolveBin(nil, "", "official/nope"); err == nil {
 		t.Fatal("resolveBin: want error for an unmounted plugin, got nil")
 	}
 }
 
-func TestResolveBin_MissingCatalogAliasNeverMatches(t *testing.T) {
-	// A reference with no "<catalog-alias>/" prefix can never equal or
-	// prefix any mounted plugin id (ids always start with an alias).
+func TestResolveBin_BareNameWithNoSourcePathFailsLoud(t *testing.T) {
+	// A bare executable name resolves only against the containing plugin
+	// (found from sourcePath); an empty sourcePath has no containing plugin
+	// to resolve against, regardless of what mounted declares.
 	mounted := []plugins.Mounted{mustMount("official/agent/runtime", "/mnt/agent-runtime", plugins.Executable{Name: "agent-runtime", Path: "bin/agent-runtime"})}
 
-	if _, err := resolveBin(mounted, "agent-runtime"); err == nil {
-		t.Fatal("resolveBin: want error for a reference with no catalog alias, got nil")
+	if _, err := resolveBin(mounted, "", "agent-runtime"); err == nil {
+		t.Fatal("resolveBin: want error for a bare name with no source file to derive a containing plugin from, got nil")
+	}
+}
+
+// TestResolveBin_PluginLocalBareNameResolvesWithinContainingPlugin covers
+// the plugin-local reading: a bare executable name inside a file mounted
+// from a plugin resolves against that plugin's own [[executables]], with no
+// alias in the reference at all.
+func TestResolveBin_PluginLocalBareNameResolvesWithinContainingPlugin(t *testing.T) {
+	mounted := []plugins.Mounted{
+		mustMount("some-alias/github", "/mnt/some-alias/github", plugins.Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"}),
+	}
+	sourcePath := filepath.Join("/mnt/some-alias/github", "resources", "github.toml")
+
+	got, err := resolveBin(mounted, sourcePath, "plect-github-provider")
+	if err != nil {
+		t.Fatalf("resolveBin: unexpected error: %v", err)
+	}
+	want := filepath.Join("/mnt/some-alias/github", "bin", "plect-github-provider")
+	if got != want {
+		t.Errorf("resolveBin = %q, want %q", got, want)
+	}
+}
+
+// TestResolveBin_PluginLocalBareNameIgnoresOtherPlugins proves plugin-local
+// resolution never reaches across plugin boundaries even when another
+// mounted plugin happens to declare a same-named executable: shipped
+// content may only ever reach its own plugin's executables this way.
+func TestResolveBin_PluginLocalBareNameIgnoresOtherPlugins(t *testing.T) {
+	mounted := []plugins.Mounted{
+		mustMount("official/github", "/mnt/official/github", plugins.Executable{Name: "watcher", Path: "bin/watcher"}),
+		mustMount("official/okf", "/mnt/official/okf", plugins.Executable{Name: "plect-okf", Path: "bin/plect-okf"}),
+	}
+	sourcePath := filepath.Join("/mnt/official/okf", "resources", "okf_goal.toml")
+
+	if _, err := resolveBin(mounted, sourcePath, "watcher"); err == nil {
+		t.Fatal("resolveBin: want error for a bare name declared by a different plugin than the containing one, got nil")
 	}
 }
 
 func TestResolveBin_UnknownExecutableName(t *testing.T) {
 	mounted := []plugins.Mounted{mustMount("official/github", "/mnt/github", plugins.Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"})}
 
-	if _, err := resolveBin(mounted, "official/github/nope"); err == nil {
+	if _, err := resolveBin(mounted, "", "official/github/nope"); err == nil {
 		t.Fatal("resolveBin: want error for an unknown executable name, got nil")
 	}
 }
@@ -78,7 +115,7 @@ func TestResolveBin_UnknownExecutableName(t *testing.T) {
 func TestResolveBin_ZeroExecutablePlugin(t *testing.T) {
 	mounted := []plugins.Mounted{mustMount("official/config-only", "/mnt/config-only")}
 
-	if _, err := resolveBin(mounted, "official/config-only"); err == nil {
+	if _, err := resolveBin(mounted, "", "official/config-only"); err == nil {
 		t.Fatal("resolveBin: want error for a plugin with no executables, got nil")
 	}
 }
@@ -93,7 +130,7 @@ func TestResolveBin_NestedPluginCollisionFailsLoud(t *testing.T) {
 		mustMount("official/agent/runtime", "/mnt/agent-runtime", plugins.Executable{Name: "agent-runtime", Path: "bin/agent-runtime"}),
 	}
 
-	if _, err := resolveBin(mounted, "official/agent/runtime"); err == nil {
+	if _, err := resolveBin(mounted, "", "official/agent/runtime"); err == nil {
 		t.Fatal("resolveBin: want error for a reference readable as two different plugin/executable pairs, got nil")
 	}
 }
@@ -119,5 +156,27 @@ func TestRender_BinHelperResolvesThroughSessionPlugins(t *testing.T) {
 func TestRender_BinHelperUnresolvedFailsLoud(t *testing.T) {
 	if _, err := render(`{{bin "official/nope"}}`, RenderContext{Session: SessionVars{}}); err == nil {
 		t.Fatal("render: want error for an unresolvable {{bin ...}} reference, got nil")
+	}
+}
+
+// TestRender_BinHelperResolvesPluginLocalBareName exercises the plugin-local
+// {{bin "<name>"}} reading end-to-end through render, using
+// RenderContext.SourcePath the way task setup/cleanup templates do.
+func TestRender_BinHelperResolvesPluginLocalBareName(t *testing.T) {
+	mounted := []plugins.Mounted{
+		mustMount("some-alias/github", "/mnt/some-alias/github", plugins.Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"}),
+	}
+	sourcePath := filepath.Join("/mnt/some-alias/github", "providers", "github.toml")
+
+	out, err := render(`{{bin "plect-github-provider"}} setup`, RenderContext{
+		Session:    SessionVars{Plugins: mounted},
+		SourcePath: sourcePath,
+	})
+	if err != nil {
+		t.Fatalf("render: unexpected error: %v", err)
+	}
+	want := filepath.Join("/mnt/some-alias/github", "bin", "plect-github-provider") + " setup"
+	if out != want {
+		t.Errorf("render = %q, want %q", out, want)
 	}
 }

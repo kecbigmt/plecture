@@ -275,9 +275,8 @@ func (s *Server) handleSessionDown(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSessionDestroy(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
 	res, err := s.svc.Destroy(service.DestroyParams{
-		Identifier:   name,
-		Force:        r.FormValue("force") != "",
-		DeleteBranch: r.FormValue("delete_branch") != "",
+		Identifier: name,
+		Force:      r.FormValue("force") != "",
 	})
 	if err != nil {
 		s.renderStatusError(w, httpStatusForError(err), err.Error())

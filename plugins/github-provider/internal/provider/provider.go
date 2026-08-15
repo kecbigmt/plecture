@@ -130,17 +130,22 @@ type CleanupOptions struct {
 	// Force removes the workdir even when it carries uncommitted changes,
 	// mirroring the caller's `plect destroy --force` intent.
 	Force bool
+	// DeleteBranch reclaims the branch setup created, mirroring the caller's
+	// `plect destroy --input delete_branch=true` intent (providers/github.toml's
+	// cleanup hook). Opt-in, not derived from Branch being non-empty: a branch
+	// left behind after workdir removal is the safer default, since deleting
+	// one is not always what a review-only or shared-branch session wants.
+	DeleteBranch bool
 	// WorkdirsRoot overrides the configured workdirs root.
 	WorkdirsRoot string
 	// Manager lets tests observe release without a real repository.
 	Manager WorkdirManager
 }
 
-// Cleanup releases the workdir setup acquired, reclaiming its branch so a
-// later dispatch on the same resource is not blocked by an orphan. A setup
-// that never produced a working directory leaves nothing to release, which
-// is a success rather than an error: cleanup must converge on a session
-// whose setup failed halfway.
+// Cleanup releases the workdir setup acquired, reclaiming its branch too
+// when DeleteBranch opts in. A setup that never produced a working
+// directory leaves nothing to release, which is a success rather than an
+// error: cleanup must converge on a session whose setup failed halfway.
 func Cleanup(ctx context.Context, opts CleanupOptions) error {
 	if strings.TrimSpace(opts.Workdir) == "" {
 		return nil
@@ -154,7 +159,7 @@ func Cleanup(ctx context.Context, opts CleanupOptions) error {
 	if err != nil {
 		return fmt.Errorf("release workdir: %w", err)
 	}
-	if err := mgr.RemoveByPath(ctx, opts.Workdir, gitDir, opts.Branch, opts.Force, opts.Branch != ""); err != nil {
+	if err := mgr.RemoveByPath(ctx, opts.Workdir, gitDir, opts.Branch, opts.Force, opts.DeleteBranch); err != nil {
 		return fmt.Errorf("release workdir: %w", err)
 	}
 	return nil

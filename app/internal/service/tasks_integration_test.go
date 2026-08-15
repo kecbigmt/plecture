@@ -492,10 +492,9 @@ func TestIntegration_DestroyRefusesWhenWorkdirDirty(t *testing.T) {
 		t.Fatalf("untracked file should remain on disk after refusal, stat err: %v", err)
 	}
 
-	// --force is plect's own "delete the state entry anyway" switch. It does
-	// not rewrite the provider's release script, so a release the provider
-	// refuses stays refused and is reported as a warning instead of silently
-	// discarding the user's uncommitted work.
+	// --force means "I accept losing the dirty work": it overrides the
+	// provider's own refusal and forwards that intent to the release script,
+	// which discards the uncommitted file along with the rest of the worktree.
 	result, err := Destroy(cfg, store, DestroyParams{Identifier: sessionName, Force: true})
 	if err != nil {
 		t.Fatalf("Destroy --force failed: %v", err)
@@ -503,11 +502,17 @@ func TestIntegration_DestroyRefusesWhenWorkdirDirty(t *testing.T) {
 	if store.Get(sessionName) != nil {
 		t.Fatal("state entry should be deleted after --force")
 	}
-	if len(result.CleanupWarnings) == 0 {
-		t.Error("a refused release must be reported as a warning")
+	if len(result.CleanupWarnings) != 0 {
+		t.Errorf("a successful forced release should not be reported as a warning, got %v", result.CleanupWarnings)
 	}
-	if _, err := os.Stat(untracked); err != nil {
-		t.Errorf("uncommitted work must survive a refused release, stat err: %v", err)
+	if !result.RemovedWorkdir {
+		t.Error("RemovedWorkdir should be true after --force removes the workdir")
+	}
+	if _, err := os.Stat(createResult.WorkdirPath); !os.IsNotExist(err) {
+		t.Fatalf("workdir should be removed after --force, stat err: %v", err)
+	}
+	if _, err := os.Stat(untracked); !os.IsNotExist(err) {
+		t.Errorf("uncommitted work should be discarded after --force, stat err: %v", err)
 	}
 }
 

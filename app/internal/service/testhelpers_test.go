@@ -101,11 +101,22 @@ func writeIntegrationFixture(t *testing.T, workdirsRoot, wfID string, defs []tas
 // attachGithubProvider points a workflow at a provider whose hooks are the
 // shipped GitHub provider executable, and mounts that executable (and
 // github-watcher) as cfg.Plugins so the hooks' `{{bin ...}}` references
-// resolve the way they would for a real catalog-mounted plugin.
+// resolve the way they would for a real catalog-mounted plugin. The provider
+// file itself is written inside that same mounted plugin's directory (not
+// the global config layer) — plugin-local `{{bin "<name>"}}` resolution
+// finds the containing plugin from the provider file's own path, so a
+// fixture that split the two across different directories the way a real
+// mount never does would fail to resolve its own bare-name references.
 func attachGithubProvider(t *testing.T, cfg *config.Config, wfID string) {
 	t.Helper()
-	cfg.Plugins = buildProviderBinaries(t, repoRoot(t))
-	providersDir := filepath.Join(cfg.BaseDir, "providers")
+	// Appended, not assigned: a fixture attaching more than one workflow (each
+	// its own attachGithubProvider call) must keep every earlier call's mount
+	// resolvable too, not just the last one.
+	newMount := buildProviderBinaries(t, repoRoot(t))
+	cfg.Plugins = append(cfg.Plugins, newMount...)
+	pluginDir := newMount[0].Dir
+	cfg.PluginDirs = append(cfg.PluginDirs, pluginDir)
+	providersDir := filepath.Join(pluginDir, "providers")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

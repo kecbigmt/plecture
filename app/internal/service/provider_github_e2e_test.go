@@ -20,11 +20,42 @@ import (
 // ship rather than a fixture. It also builds the binaries those hooks
 // resolve through `{{bin ...}}` and returns the mounted-plugin entry that
 // resolution needs, since the hooks are what is under test here.
+//
+// The provider is loaded from inside the same directory buildProviderBinaries
+// mounted (not straight from the repo's plugins/github/), because
+// plugin-local `{{bin "<name>"}}` resolution finds the containing plugin from
+// the provider's own SourcePath — it must actually live under the mounted
+// plugin's directory, the way a real catalog mount always does. The copy is
+// made here, not inside buildProviderBinaries, because attachGithubProvider
+// (the other buildProviderBinaries caller) writes its own differently-named
+// provider file into the same mounted directory — a second, unconditional
+// "github.toml" there would collide with it under a repeated-alias test like
+// TestIntegration_WorkflowFrozenOnSession's two-workflow fixture.
 func shippedGithubProvider(t *testing.T) (config.ProviderConfig, []plugins.Mounted) {
 	t.Helper()
 	root := repoRoot(t)
 	mounted := buildProviderBinaries(t, root)
-	return loadShippedProvider(t, "github", "github"), mounted
+	providersDir := filepath.Join(mounted[0].Dir, "providers")
+	if err := os.MkdirAll(providersDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	shipped, err := os.ReadFile(filepath.Join(root, "plugins", "github", "providers", "github.toml"))
+	if err != nil {
+		t.Fatalf("read shipped github provider: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(providersDir, "github.toml"), shipped, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}}
+	provs, err := cfg.LoadProviders()
+	if err != nil {
+		t.Fatalf("load mounted github provider: %v", err)
+	}
+	prov, ok := provs["github"]
+	if !ok {
+		t.Fatal(`mounted github provider: "github" not found`)
+	}
+	return prov, mounted
 }
 
 // goToolCaches holds the module and build cache locations resolved before any
@@ -160,7 +191,7 @@ func TestE2E_GithubProviderSrcLayoutSingleWorkdir(t *testing.T) {
 	session := "testowner/testrepo-42+review"
 
 	tasks := map[string]*contract.TaskState{}
-	vars := task.WorkflowHookVars{ResourceID: "https://github.com/testowner/testrepo/issues/42", SessionName: session, Plugins: mounted}
+	vars := task.WorkflowHookVars{ResourceID: "https://github.com/testowner/testrepo/issues/42", SessionName: session, Plugins: mounted, SourcePath: prov.SourcePath}
 	out, err := task.RunWorkflowSetup(prov, vars, tasks, nil)
 	if err != nil {
 		t.Fatalf("setup: %v", err)
@@ -189,6 +220,7 @@ func runSetup(t *testing.T, prov config.ProviderConfig, mounted []plugins.Mounte
 		ResourceID:  "https://github.com/testowner/testrepo/issues/42",
 		SessionName: session,
 		Plugins:     mounted,
+		SourcePath:  prov.SourcePath,
 	}, tasks, nil)
 	if err != nil {
 		t.Fatalf("provider setup: %v", err)
@@ -236,7 +268,15 @@ func TestE2E_GithubProviderConvergesAndReclaims(t *testing.T) {
 
 	// First dispatch.
 	tasks := map[string]*contract.TaskState{}
-	vars := task.WorkflowHookVars{ResourceID: "https://github.com/testowner/testrepo/issues/42", SessionName: session, Plugins: mounted}
+	// delete_branch opts into branch reclaim on cleanup — the default is now
+	// to leave it, so this test's own name ("...AndReclaims") requires it.
+	vars := task.WorkflowHookVars{
+		ResourceID:    "https://github.com/testowner/testrepo/issues/42",
+		SessionName:   session,
+		Plugins:       mounted,
+		SourcePath:    prov.SourcePath,
+		CleanupInputs: map[string]string{"delete_branch": "true"},
+	}
 	if _, err := task.RunWorkflowSetup(prov, vars, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}

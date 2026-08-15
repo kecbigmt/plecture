@@ -33,6 +33,19 @@ Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
 `provider = "github"` plus an agent pack together.
 
+## Cleanup
+
+`plect destroy` always releases the workdir it acquired. To also delete the
+local branch, pass the provider-level cleanup intent this plugin reads:
+
+```bash
+plect destroy <session> --input delete_branch=true
+```
+
+Left off, the branch stays (the safer default for a review-only or
+shared-branch session). Branch deletion uses a safe `git branch -d`, so it
+still refuses a branch carrying unmerged commits regardless of this flag.
+
 ## Install
 
 Register this repository as a catalog and enable the plugin:
@@ -44,10 +57,11 @@ plect plugin add official/github
 
 `--dir plugins` scopes the catalog root (and the fetch/verify/mount trust
 space) to this repository's `plugins/` subtree, where `plugins/catalog.toml`
-lives — not the whole repository. The shipped config also assumes the alias
-`official` — its resource hook references `{{bin "official/github/..."}}`.
-Registering under a different alias means overriding `resources/github.toml`
-in your own global config with the alias you chose.
+lives — not the whole repository. This plugin's own config
+(providers/resources) never encodes the alias you register under: it
+resolves its executables through `{{bin "plect-github-provider"}}`'s
+plugin-local bare-name reading, which resolves against the containing
+plugin regardless of which alias you chose.
 
 Running `github-watcher serve` as a background daemon is a separate,
 deployment-specific step (a systemd unit, a launchd agent, or similar) —

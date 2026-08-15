@@ -313,6 +313,49 @@ touch %s
 	}
 }
 
+// TestDestroy_ForwardsCleanupInputsToWorkflowCleanup pins the generic
+// escape hatch destroy operators use to pass provider-specific cleanup
+// intents (e.g. --input delete_branch=true) through to provider cleanup,
+// without core interpreting them.
+func TestDestroy_ForwardsCleanupInputsToWorkflowCleanup(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	marker := filepath.Join(t.TempDir(), "delete_branch.txt")
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
+setup = '''
+mkdir -p %s
+echo '{"workdir":"%s"}'
+'''
+cleanup = '''
+rm -rf "{{.Self.workdir}}"
+echo {{eq .CleanupInputs.delete_branch "true"}} > %s
+'''
+`, workdir, workdir, marker)+githubResolver)
+
+	url := "https://github.com/org/repo/issues/8"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if _, err := Destroy(cfg, store, DestroyParams{
+		Identifier:    "org/repo-8+wf",
+		CleanupInputs: map[string]string{"delete_branch": "true"},
+	}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "true" {
+		t.Errorf("cleanup saw .CleanupInputs.delete_branch = %q, want true", got)
+	}
+}
+
 func TestDestroy_WorkflowCleanupFailureBlocksWithoutForce(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")

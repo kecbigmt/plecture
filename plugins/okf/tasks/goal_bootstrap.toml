@@ -12,7 +12,7 @@
 scope = "run"
 
 setup = '''
-plect-okf task bootstrap \
+{{bin "plect-okf"}} task bootstrap \
   --workdir {{.WorkdirPath | shellQuote}} \
   --owner {{.Inputs.owner | shellQuote}} \
   --session {{.SessionName | shellQuote}} \

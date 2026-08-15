@@ -121,6 +121,7 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 			SessionName: resolvedName,
 			Revision:    currentRevision(st.Outputs),
 			Judges:      judgeEvidenceFromLeaves(eval.Leaves),
+			Plugins:     cfg.Plugins,
 		})
 		if ferr != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: ferr.Error()}
