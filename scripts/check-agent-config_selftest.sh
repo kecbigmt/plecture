@@ -249,6 +249,34 @@ if ! grep -q "frontmatter" /tmp/agent-config-selftest-fields-outside.log; then
 fi
 echo "ok: checker fails when 'name:'/'description:' are outside the frontmatter block"
 
+# Dirty fixture: the frontmatter block opens with '---' but is never
+# closed with a second '---'. Without that closing delimiter it is not a
+# valid frontmatter block, so 'name:'/'description:' lines after the
+# opening '---' must not count.
+dirty_unterminated_frontmatter="$(new_fixture)"
+make_clean_fixture "$dirty_unterminated_frontmatter"
+cat > "$dirty_unterminated_frontmatter/.claude/skills/demo/SKILL.md" <<'EOF'
+---
+name: demo
+description: A fixture skill used to exercise the agent-config checker.
+
+# Demo
+
+No closing '---' delimiter follows the opening one above.
+EOF
+
+if run_against "$dirty_unterminated_frontmatter" >/tmp/agent-config-selftest-unterminated.log 2>&1; then
+  echo "FAIL: checker passed although the frontmatter block is never closed" >&2
+  cat /tmp/agent-config-selftest-unterminated.log >&2
+  exit 1
+fi
+if ! grep -q "frontmatter" /tmp/agent-config-selftest-unterminated.log; then
+  echo "FAIL: checker did not mention frontmatter" >&2
+  cat /tmp/agent-config-selftest-unterminated.log >&2
+  exit 1
+fi
+echo "ok: checker fails when the frontmatter block is never closed with a second '---'"
+
 # Clean fixture: a properly configured skill must pass without report.
 clean="$(new_fixture)"
 make_clean_fixture "$clean"

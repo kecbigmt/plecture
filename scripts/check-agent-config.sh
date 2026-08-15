@@ -26,12 +26,16 @@ fail=0
 
 # Prints the lines strictly between the first '---' line and the next
 # '---' line of a SKILL.md, i.e. its YAML frontmatter block. Prints
-# nothing if the file does not open with '---' on its first line.
+# nothing if the file does not open with '---' on its first line, or if
+# the block is never closed with a second '---' before EOF -- an
+# unterminated block is not valid frontmatter, so its 'name:'/
+# 'description:' lines must not count.
 extract_frontmatter() {
   awk '
     NR == 1 && $0 == "---" { infm = 1; next }
-    infm && $0 == "---" { exit }
-    infm { print }
+    infm && $0 == "---" { closed = 1; exit }
+    infm { buf = buf $0 "\n" }
+    END { if (closed) printf "%s", buf }
   ' "$1"
 }
 
