@@ -1,0 +1,11 @@
+schema_version = 1
+version = "0.1.0"
+# 0.0.0 matches app/internal/version.Current ("0.0.0-dev"): plect has no
+# release/tagging process yet, so any higher floor would reject the plugin
+# against every build until real versioning exists.
+plect_min_version = "0.0.0"
+description = "Shared tmux pane lifecycle and turn-boundary activity self-report for interactive coding-agent runtimes (Claude Code, Codex)."
+
+[[executables]]
+name = "plect-agent-activity"
+path = "bin/plect-agent-activity"

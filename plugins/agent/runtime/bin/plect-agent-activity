@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Coding-agent turn-boundary hook: self-report status via
+# `plect state set-message`. Fire-and-forget — a failure here must never fail
+# the agent's turn, so every exit path is 0.
+#
+# Usage: plect-agent-activity <source> <working|waiting>
+#   source: a short label for the calling agent CLI (e.g. claude, codex).
+# Reads the hook event JSON from stdin (only hook_event_name is used).
+
+set -u
+
+source="${1:-}"
+activity="${2:-}"
+
+if [ -z "${PLECT_SESSION_NAME:-}" ] || [ -z "$source" ] || [ -z "$activity" ]; then
+  exit 0
+fi
+
+event="$(jq -r '.hook_event_name // ""' 2>/dev/null)" || event=""
+
+text="$activity"
+[ -n "$event" ] && text="$activity ($source $event)"
+
+plect state set-message "$PLECT_SESSION_NAME" "$text" >/dev/null 2>&1
+
+exit 0

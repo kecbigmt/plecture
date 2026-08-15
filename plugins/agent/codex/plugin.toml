@@ -1,0 +1,15 @@
+schema_version = 1
+version = "0.1.0"
+# 0.0.0 matches app/internal/version.Current ("0.0.0-dev"): plect has no
+# release/tagging process yet, so any higher floor would reject the plugin
+# against every build until real versioning exists.
+plect_min_version = "0.0.0"
+description = "Launches and manages Codex CLI runtimes: an interactive TUI in a tmux pane, or a headless codex-exec worker draining a serialized instruction queue."
+
+[[executables]]
+name = "plect-codex-exec-worker"
+path = "bin/plect-codex-exec-worker"
+
+[[executables]]
+name = "plect-codex-exec-enqueue"
+path = "bin/plect-codex-exec-enqueue"
