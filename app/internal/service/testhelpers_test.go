@@ -99,11 +99,12 @@ func writeIntegrationFixture(t *testing.T, workdirsRoot, wfID string, defs []tas
 }
 
 // attachGithubProvider points a workflow at a provider whose hooks are the
-// shipped GitHub provider executable, and puts that executable (and the plect
-// CLI it calls) on PATH.
+// shipped GitHub provider executable, and mounts that executable (and
+// github-watcher) as cfg.Plugins so the hooks' `{{bin ...}}` references
+// resolve the way they would for a real catalog-mounted plugin.
 func attachGithubProvider(t *testing.T, cfg *config.Config, wfID string) {
 	t.Helper()
-	buildProviderBinaries(t, repoRoot(t))
+	cfg.Plugins = buildProviderBinaries(t, repoRoot(t))
 	providersDir := filepath.Join(cfg.BaseDir, "providers")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -126,7 +127,7 @@ func attachGithubProvider(t *testing.T, cfg *config.Config, wfID string) {
 // plugin ships, so fixtures never drift from it.
 func shippedGithubProviderTOML(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github-provider", "providers", "github.toml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "providers", "github.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}
