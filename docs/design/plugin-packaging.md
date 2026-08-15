@@ -659,6 +659,10 @@ Compatibility metadata decisions:
 
 Today's shipped binaries and hand-authored global TOML map onto this model
 without changing provider, resource, task, workflow, or channel contracts.
+[`docs/migrating-to-plugins.md`](../migrating-to-plugins.md) is the
+operator-facing walkthrough of the one-time migration procedure sketched
+below: inventory, isolated verification, cutover, divergence handling, and
+rollback.
 
 Current shape:
 
