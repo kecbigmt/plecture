@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
 func TestMutableOutputKeys_ExtractsAnnotatedKeys(t *testing.T) {

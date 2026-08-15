@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
 // ExecRequest is a single host-process invocation: Argv[0] is the command,

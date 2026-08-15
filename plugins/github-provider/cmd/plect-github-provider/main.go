@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kecbigmt/plect/plugins/github-provider/internal/provider"
+	"github.com/kecbigmt/plecture/plugins/github-provider/internal/provider"
 )
 
 func main() {

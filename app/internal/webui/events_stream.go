@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/service"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 // busClient builds a fresh bus client per request from the configured socket

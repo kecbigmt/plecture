@@ -7,8 +7,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // WorkflowHookVars is the template surface for workflow-level setup/cleanup.

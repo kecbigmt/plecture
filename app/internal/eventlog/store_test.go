@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 // TestMain lets a test re-exec itself as a child appender so we can exercise the

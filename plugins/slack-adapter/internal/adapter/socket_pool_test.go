@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/contracts/channel-protocol"
-	"github.com/kecbigmt/plect/plugins/channel-server/server"
+	"github.com/kecbigmt/plecture/contracts/channel-protocol"
+	"github.com/kecbigmt/plecture/plugins/channel-server/server"
 )
 
 func testLogger() *slog.Logger {

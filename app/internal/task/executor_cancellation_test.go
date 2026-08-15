@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // These tests cover cancellation for the five task exec paths (setup,

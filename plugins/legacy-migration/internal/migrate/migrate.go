@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 const preGuardStateVersion = 5

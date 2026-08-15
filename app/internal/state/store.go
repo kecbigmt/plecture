@@ -10,9 +10,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/contracts/atomicfile"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/contracts/atomicfile"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 const stateVersion = contract.SchemaVersion

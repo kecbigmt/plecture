@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/contracts/event"
-	"github.com/kecbigmt/plect/plugins/github-watcher/internal/ratebudget"
+	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/ratebudget"
 )
 
 func TestStore_SubscribeUnsubscribe(t *testing.T) {

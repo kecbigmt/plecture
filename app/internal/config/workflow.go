@@ -12,7 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 )
 
 // WorkflowFile is loaded from `.plect/workflows/<id>.toml` (per-repo) or from

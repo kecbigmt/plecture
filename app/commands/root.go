@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/spf13/cobra"
 )
 

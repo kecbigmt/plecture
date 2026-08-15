@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/state"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // TestIntegration_TickSpawnsReviewer drives the full fire path: a work

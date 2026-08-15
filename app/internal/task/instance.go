@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	contract "github.com/kecbigmt/plect/contracts/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // InstanceKey derives the session.Tasks key for the numbered form of a dynamic

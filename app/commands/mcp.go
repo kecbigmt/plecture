@@ -11,8 +11,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plect/app/internal/mcpserver"
-	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/mcpserver"
+	"github.com/kecbigmt/plecture/app/internal/service"
 )
 
 var mcpCmd = &cobra.Command{

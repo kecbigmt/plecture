@@ -1,13 +1,13 @@
-module github.com/kecbigmt/plect/app
+module github.com/kecbigmt/plecture/app
 
 go 1.25.6
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/kecbigmt/plect/contracts/atomicfile v0.0.0
-	github.com/kecbigmt/plect/contracts/channel-protocol v0.0.0
-	github.com/kecbigmt/plect/contracts/event v0.0.0
-	github.com/kecbigmt/plect/contracts/state v0.0.0
+	github.com/kecbigmt/plecture/contracts/atomicfile v0.0.0-20260815035651-ea03a1435561
+	github.com/kecbigmt/plecture/contracts/channel-protocol v0.0.0-20260815035651-ea03a1435561
+	github.com/kecbigmt/plecture/contracts/event v0.0.0-20260815035651-ea03a1435561
+	github.com/kecbigmt/plecture/contracts/state v0.0.0-20260815035651-ea03a1435561
 	github.com/mark3labs/mcp-go v0.48.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
@@ -23,11 +23,4 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	golang.org/x/text v0.14.0 // indirect
-)
-
-replace (
-	github.com/kecbigmt/plect/contracts/atomicfile => ../contracts/atomicfile
-	github.com/kecbigmt/plect/contracts/channel-protocol => ../contracts/channel-protocol
-	github.com/kecbigmt/plect/contracts/event => ../contracts/event
-	github.com/kecbigmt/plect/contracts/state => ../contracts/state
 )

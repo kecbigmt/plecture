@@ -10,7 +10,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/kecbigmt/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/plecture/contracts/channel-protocol"
 )
 
 // MessageHandler is called when a message is received from a connected client.

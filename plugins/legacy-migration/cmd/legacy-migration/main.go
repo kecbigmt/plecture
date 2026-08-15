@@ -16,7 +16,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kecbigmt/plect/plugins/legacy-migration/internal/migrate"
+	"github.com/kecbigmt/plecture/plugins/legacy-migration/internal/migrate"
 )
 
 func main() {

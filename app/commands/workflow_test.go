@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/service"
 )
 
 func TestWriteWorkflowList_NoHeaderUsesLiteralTabs(t *testing.T) {

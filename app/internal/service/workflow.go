@@ -5,8 +5,8 @@ import (
 	"maps"
 	"sort"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // WorkflowSummary is a row in WorkflowList output: just enough to pick the
