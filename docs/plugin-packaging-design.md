@@ -98,33 +98,62 @@ workdir content. A global declaration file is proposed at:
 Example:
 
 ```toml
+[[trusted_sources]]
+class = "official"
+source_prefix = "git+https://github.com/example/"
+
 [[plugins]]
 name = "github"
 source = "git+https://github.com/example/plect-github-plugin"
 revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
+trust = "official"
 
 [[plugins]]
 name = "agent-runtime"
 source = "git+ssh://git@example.com/team/agent-runtime-plugin"
 revision = "v0.6.1"
+trust = "third_party"
 
 [[plugins]]
 name = "okf"
 source = "path:///home/user/src/okf-plugin"
-revision = "sha256:2b7c..."
+sha256 = "2b7c..."
+trust = "local"
 ```
+
+Declaration fields:
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `name` | yes | Expected plugin name. It must match `plugin.toml`; a mismatch is a load error. |
+| `source` | yes | Source locator. Supported schemes are `git+https`, `git+ssh`, `archive+https`, and `path`. |
+| `revision` | scheme-dependent | Git revision to resolve. Required for Git sources. |
+| `sha256` | scheme-dependent | Content hash. Required for archive sources and locked path sources. |
+| `trust` | yes | User-declared trust class: `official`, `third_party`, or `local`. |
+| `editable` | no | Path-only development mode. When true, the path is mounted directly and is not reproducible. |
+
+`trusted_sources` is user-owned policy. Core does not contain an official host,
+owner, registry, or provider list. For `trust = "official"`, core only checks
+that the source string matches a user-declared `trusted_sources` rule whose
+class is `official`. Third-party and local sources still require explicit trust
+on the plugin declaration.
 
 Resolution flow:
 
-1. Read plugin declarations from trusted config.
+1. Read plugin declarations from global user config. The first implementation
+   does not read plugin declarations from ancestor overlays.
 2. Resolve each declaration to immutable content:
    - Git source: fetch the source and resolve `revision` to a commit hash.
-   - Archive source: download only when a declared `sha256` is present.
-   - Local path source: resolve symlinks and compute a content digest.
+   - Archive source: download only when `sha256` is declared.
+   - Locked path source: resolve symlinks and verify the tree against `sha256`.
+   - Editable path source: resolve symlinks and mount the path directly.
 3. Read `plugin.toml` from the resolved tree.
-4. Check `plect_min_version` against the running plect version.
-5. Verify the resolved content against the lockfile.
-6. Mount the plugin directory as a read-only base config layer.
+4. Fail if `plugin.toml`'s `name` differs from the declaration's `name`.
+5. Check `plect_min_version` against the running plect version.
+6. Verify the resolved content against the lockfile, except editable path
+   sources.
+7. Mount the plugin directory as a read-only base config layer, except editable
+   path sources, which are an explicit local development escape hatch.
 
 Core should materialize resolved plugins under a cache owned by the user, for
 example:
@@ -138,13 +167,10 @@ resolved directories. During migration, users can move from hand-authored
 `plugin_dirs` to `plugins.toml` plus `plect.lock`. Because Plecture is pre-1.0,
 the migration is one-time and documented rather than a compatibility shim.
 
-Reference declarations are allowed only in trusted layers:
-
-- Global user config is trusted.
-- A directory above a workdir may be trusted under the existing ancestor overlay
-  model.
-- The workdir's own `.plect/` directory is not allowed to declare plugin
-  references because cloned content must not fetch or run code.
+Reference declarations are global-only in the first implementation. Ancestor
+overlays can still customize tasks and workflows under the existing loader
+rules, but they cannot select new plugin sources. The workdir's own `.plect/`
+directory is also excluded because cloned content must not fetch or run code.
 
 ## Lockfile
 
@@ -154,9 +180,9 @@ The lockfile records exactly what was mounted. The proposed default path is:
 ~/.config/plect/plect.lock
 ```
 
-For a repo or team overlay that intentionally selects plugins, the lockfile
-lives next to that trusted overlay's plugin declaration. A workdir-owned lockfile
-is ignored for plugin resolution.
+Because plugin declarations are global-only in the first implementation, this
+lockfile is global-only too. A workdir-owned lockfile is ignored for plugin
+resolution.
 
 Example:
 
@@ -185,7 +211,8 @@ Recorded fields:
 | `content_hash` | Digest of the mounted tree after checkout or extraction. |
 | `version` | Plugin package version read from metadata. |
 | `plect_min_version` | Compatibility floor read from metadata. |
-| `official` | Whether the source was classified as official at resolution time. |
+| `official` | Whether user-owned `trusted_sources` classified the source as official at resolution time. |
+| `editable` | Whether the source was mounted in explicit local development mode. |
 
 Install and update commands:
 
@@ -199,6 +226,9 @@ Install and update commands:
 
 No command silently advances a plugin. A missing or mismatched lock entry is a
 load error unless the user is running an explicit install or update command.
+Editable path sources are the only exception: they are marked non-reproducible
+in `plect plugin list`, excluded from `plect plugin verify --locked`, and meant
+only for local plugin development.
 
 ## Trust boundary
 
@@ -210,10 +240,12 @@ Trust rules:
 
 - Every non-local plugin source must be pinned by immutable revision or content
   hash before it can load.
-- Official sources are still pinned. "Official" changes review expectations,
+- Official sources are still pinned. "Official" is determined only by
+  user-owned `trusted_sources` policy; core must not hardcode any official
+  host, owner, provider, or registry. The label changes review expectations,
   not execution safety.
-- Third-party support may be staged later by requiring an explicit
-  `trust = "third_party"` declaration before install.
+- Third-party sources require an explicit `trust = "third_party"` declaration
+  before install.
 - No auto-update exists for official or third-party plugins.
 - Plugin directories mounted by core are read-only during normal command
   execution.
@@ -445,8 +477,6 @@ cannot express, that is an open question for a later contract issue.
 
 ## Open questions
 
-- Should trusted ancestor overlays be allowed to declare plugin references, or
-  should plugin references be global-only for the first implementation?
 - Should same-id conflicts between two plugin layers fail by default, requiring
   the user to resolve the conflict in global config, or should declaration order
   always decide?
@@ -454,5 +484,5 @@ cannot express, that is an open question for a later contract issue.
   mounted plugin directories read-only?
 - Should templates become a mounted plugin layer in the template loader, or
   should plugin templates be materialized into global config during install?
-- Should third-party plugin support wait for a signing story, or is immutable
-  revision plus content hash enough for the first non-official stage?
+- Should third-party plugins later gain a signing story on top of explicit
+  trust, immutable revision, and content hash?
