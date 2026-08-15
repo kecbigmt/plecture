@@ -282,3 +282,48 @@ func TestRegistry_CloseCancelsReaders(t *testing.T) {
 		t.Fatalf("Close should drop all readers, got %d", n)
 	}
 }
+
+// Regression: the last unsubscribe used to only cancel the reader's context
+// and return, without waiting for the reader goroutine to actually observe
+// cancellation and exit. A caller that immediately tore down the session's
+// on-disk directory (as t.TempDir() cleanup does) could race a still-running
+// reader mid-poll — its flock() helper reopens the lock file with O_CREATE,
+// so a poll landing after the directory's other entries were already removed
+// recreates it, surfacing as an intermittent "directory not empty" cleanup
+// failure. The reader must be fully joined before the last unsubscribe/Close
+// returns.
+func TestRegistry_LastUnsubscribeJoinsReaderGoroutine(t *testing.T) {
+	store := eventlog.NewStore(t.TempDir())
+	reg := NewRegistry(store, WithPollInterval(50*time.Millisecond))
+	sub := reg.SubscribeFrames("o/r-1")
+
+	reg.mu.Lock()
+	r := reg.readers["o/r-1"].reader
+	reg.mu.Unlock()
+
+	sub.Close()
+
+	select {
+	case <-r.done:
+	default:
+		t.Fatal("Close returned before the reader goroutine exited — teardown is not joined")
+	}
+}
+
+func TestRegistry_CloseJoinsReaderGoroutines(t *testing.T) {
+	store := eventlog.NewStore(t.TempDir())
+	reg := NewRegistry(store, WithPollInterval(50*time.Millisecond))
+	reg.SubscribeFrames("o/r-1") // leak a sub; Close must still fully join the reader
+
+	reg.mu.Lock()
+	r := reg.readers["o/r-1"].reader
+	reg.mu.Unlock()
+
+	reg.Close()
+
+	select {
+	case <-r.done:
+	default:
+		t.Fatal("Close returned before the reader goroutine exited — teardown is not joined")
+	}
+}
