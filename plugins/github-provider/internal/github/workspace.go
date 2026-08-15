@@ -1,12 +1,8 @@
 package github
 
 import (
-	"context"
 	"fmt"
 	"path"
-	"strings"
-
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/procexec"
 )
 
 // RepoSlug is the repository's path relative to the worktrees root for a
@@ -23,18 +19,9 @@ func PullRefspec(number int, localBranch string) string {
 	return fmt.Sprintf("pull/%d/head:%s", number, localBranch)
 }
 
-// ResolveBranch resolves the branch name for the given parsed URL. ctx bounds
-// the `gh pr view` invocation issued for pull request URLs; issue URLs derive
-// the branch name locally and never shell out.
-func ResolveBranch(ctx context.Context, parsed *ParsedURL) (string, error) {
-	if parsed.Type == URLTypePR {
-		out, _, err := procexec.Default.Run(ctx, "", false, "gh", "pr", "view", fmt.Sprintf("%d", parsed.Number),
-			"--repo", parsed.OwnerRepo,
-			"--json", "headRefName", "--jq", ".headRefName")
-		if err != nil {
-			return "", fmt.Errorf("failed to get PR info (is gh authenticated?): %w", err)
-		}
-		return strings.TrimSpace(string(out)), nil
-	}
-	return fmt.Sprintf("issue/%d", parsed.Number), nil
+// IssueBranch is the branch name an issue resource maps to. A pull request's
+// branch instead comes from FetchPullMeta's HeadRef, since it requires an API
+// call the issue case never needs.
+func IssueBranch(number int) string {
+	return fmt.Sprintf("issue/%d", number)
 }

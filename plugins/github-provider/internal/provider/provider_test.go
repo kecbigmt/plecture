@@ -12,6 +12,21 @@ import (
 	"github.com/kecbigmt/plecture/plugins/github-provider/internal/workspace"
 )
 
+type fakeGHClient struct {
+	responses map[string]string // args (space-joined) -> JSON body
+	err       error
+}
+
+func (f *fakeGHClient) JSON(ctx context.Context, args ...string) ([]byte, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if body, ok := f.responses[strings.Join(args, " ")]; ok {
+		return []byte(body), nil
+	}
+	return nil, errors.New("fakeGHClient: no response configured for " + strings.Join(args, " "))
+}
+
 type fakeManager struct {
 	adds      []workspace.AddParams
 	removes   []removeCall
@@ -77,6 +92,7 @@ func TestSetup_IssueAcquiresTaggedWorktree(t *testing.T) {
 		ResourceID:  "https://github.com/acme/widgets/issues/42",
 		SessionName: "acme/widgets-42+review",
 		Manager:     mgr,
+		GHClient:    &fakeGHClient{err: errors.New("no gh-api client configured for this test")},
 	})
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
@@ -112,6 +128,7 @@ func TestSetup_UntaggedSessionKeepsBaseBranch(t *testing.T) {
 		ResourceID:  "https://github.com/acme/widgets/issues/7",
 		SessionName: "acme/widgets-7",
 		Manager:     mgr,
+		GHClient:    &fakeGHClient{err: errors.New("no gh-api client configured for this test")},
 	})
 	if err != nil {
 		t.Fatalf("Setup: %v", err)
@@ -121,6 +138,103 @@ func TestSetup_UntaggedSessionKeepsBaseBranch(t *testing.T) {
 	}
 	if got := mgr.adds[0].Branch; got != "issue/7" {
 		t.Errorf("branch = %q, want issue/7", got)
+	}
+}
+
+func TestSetup_IssueTitleAndStateFromGHClient(t *testing.T) {
+	mgr := &fakeManager{addInfo: &workspace.WorkspaceInfo{WorktreePath: "/roots/wt/issue-7"}}
+	client := &fakeGHClient{responses: map[string]string{
+		"repos/acme/widgets/issues/7": `{"title":"Fix crash","state":"CLOSED"}`,
+	}}
+	outputs, err := Setup(context.Background(), SetupOptions{
+		ResourceID:  "https://github.com/acme/widgets/issues/7",
+		SessionName: "acme/widgets-7",
+		Manager:     mgr,
+		GHClient:    client,
+	})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if outputs["title"] != "Fix crash" {
+		t.Errorf("title = %v, want %q", outputs["title"], "Fix crash")
+	}
+	if outputs["issue_state"] != "closed" {
+		t.Errorf("issue_state = %v, want %q", outputs["issue_state"], "closed")
+	}
+	if _, ok := outputs["pr_state"]; ok {
+		t.Errorf("an issue resource must not emit pr_state, got %v", outputs["pr_state"])
+	}
+}
+
+// TestSetup_IssueGHClientFailureIsTolerated: an unreachable or nonexistent
+// issue must not fail setup — branch work can start before the issue exists.
+func TestSetup_IssueGHClientFailureIsTolerated(t *testing.T) {
+	mgr := &fakeManager{addInfo: &workspace.WorkspaceInfo{WorktreePath: "/roots/wt/issue-7"}}
+	outputs, err := Setup(context.Background(), SetupOptions{
+		ResourceID:  "https://github.com/acme/widgets/issues/7",
+		SessionName: "acme/widgets-7",
+		Manager:     mgr,
+		GHClient:    &fakeGHClient{err: errors.New("HTTP 404")},
+	})
+	if err != nil {
+		t.Fatalf("Setup: %v, want the gh-api failure tolerated", err)
+	}
+	if _, ok := outputs["title"]; ok {
+		t.Errorf("title should be omitted on fetch failure, got %v", outputs["title"])
+	}
+	if _, ok := outputs["issue_state"]; ok {
+		t.Errorf("issue_state should be omitted on fetch failure, got %v", outputs["issue_state"])
+	}
+}
+
+func TestSetup_PRAcquiresHeadBranchAndTitleState(t *testing.T) {
+	mgr := &fakeManager{addInfo: &workspace.WorkspaceInfo{WorktreePath: "/roots/wt/pr-44"}}
+	client := &fakeGHClient{responses: map[string]string{
+		"repos/acme/widgets/pulls/44": `{"head":{"ref":"feat/login"},"title":"Add login","state":"OPEN"}`,
+	}}
+	outputs, err := Setup(context.Background(), SetupOptions{
+		ResourceID:  "https://github.com/acme/widgets/pull/44",
+		SessionName: "acme/widgets-44",
+		Manager:     mgr,
+		GHClient:    client,
+	})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if len(mgr.adds) != 1 {
+		t.Fatalf("issued %d manager adds, want 1", len(mgr.adds))
+	}
+	add := mgr.adds[0]
+	if add.Branch != "feat/login" || add.BaseBranch != "feat/login" {
+		t.Errorf("add params = %+v, want branch derived from the PR's head ref", add)
+	}
+	if add.FallbackRefspec == "" {
+		t.Error("a pull request acquisition must pass a fallback refspec for the merged-PR case")
+	}
+	if outputs["branch"] != "feat/login" || outputs["title"] != "Add login" || outputs["pr_state"] != "open" {
+		t.Errorf("outputs = %v", outputs)
+	}
+	if _, ok := outputs["issue_state"]; ok {
+		t.Errorf("a PR resource must not emit issue_state, got %v", outputs["issue_state"])
+	}
+}
+
+// TestSetup_PRGHClientFailurePropagates: unlike an issue, a pull request
+// resource with no reachable metadata has no branch to acquire, so the
+// failure must fail setup rather than degrade silently.
+func TestSetup_PRGHClientFailurePropagates(t *testing.T) {
+	mgr := &fakeManager{}
+	_, err := Setup(context.Background(), SetupOptions{
+		ResourceID:  "https://github.com/acme/widgets/pull/44",
+		SessionName: "acme/widgets-44",
+		Manager:     mgr,
+		GHClient:    &fakeGHClient{err: errors.New("HTTP 500")},
+	})
+	if err == nil {
+		t.Fatal("expected the gh-api failure to propagate for a pull request")
+	}
+	if len(mgr.adds) != 0 {
+		t.Errorf("a failed metadata fetch must not reach the manager, got %v", mgr.adds)
 	}
 }
 
@@ -144,6 +258,7 @@ func TestSetup_AcquisitionFailurePropagates(t *testing.T) {
 		ResourceID:  "https://github.com/acme/widgets/issues/1",
 		SessionName: "acme/widgets-1",
 		Manager:     &fakeManager{addErr: errors.New("repository not found")},
+		GHClient:    &fakeGHClient{err: errors.New("no gh-api client configured for this test")},
 	})
 	if err == nil || !strings.Contains(err.Error(), "repository not found") {
 		t.Fatalf("error = %v, want the acquisition failure to propagate", err)
@@ -155,6 +270,7 @@ func TestSetup_MissingWorkdirPathIsAnError(t *testing.T) {
 		ResourceID:  "https://github.com/acme/widgets/issues/1",
 		SessionName: "acme/widgets-1",
 		Manager:     &fakeManager{addInfo: &workspace.WorkspaceInfo{}},
+		GHClient:    &fakeGHClient{err: errors.New("no gh-api client configured for this test")},
 	})
 	if err == nil || !strings.Contains(err.Error(), "workdir path") {
 		t.Fatalf("error = %v, want a missing-workdir-path error", err)
