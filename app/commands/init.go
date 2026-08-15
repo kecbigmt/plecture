@@ -21,6 +21,7 @@ var (
 	initCatalogRevision string
 	initEnablePlugins   []string
 	initAllowlist       []string
+	initAllowAll        bool
 	initWorkdirsRoot    string
 	initYes             bool
 )
@@ -40,10 +41,12 @@ registered catalog, and never writes anything in that case — start from an
 empty config home, or remove the existing one first.
 
 Non-interactive scripted setups pass --yes together with every answer as an
-explicit flag: --catalog-alias, --catalog-source, --enable (repeatable),
---allowlist (repeatable), --workdirs-root. There is no default catalog
-source: every invocation names exactly which catalog it is choosing to
-trust, interactively or on the command line.`,
+explicit flag: --catalog-alias, --catalog-source, --enable (repeatable, at
+least once), --allowlist (repeatable) or --allow-all, and --workdirs-root.
+None of these fall back to a silent default outside an interactive
+terminal: there is no default catalog source, no default "enable nothing",
+no default "allow all", and no default workdirs root — every answer is
+either typed at a prompt or spelled out on the command line.`,
 	Args: cobra.NoArgs,
 	RunE: runInit,
 }
@@ -160,12 +163,20 @@ func resolveInitCatalogAnswers(cmd *cobra.Command, reader *bufio.Reader) (alias,
 // manifest is the only source of what's available.
 func resolveInitPluginSelection(cmd *cobra.Command, reader *bufio.Reader, published []string) ([]string, error) {
 	requested := initEnablePlugins
-	if !initYes && isInteractive() {
+	switch {
+	case !initYes && isInteractive():
 		fmt.Fprintln(cmd.OutOrStdout(), "Published plugin paths:")
 		for i, p := range published {
 			fmt.Fprintf(cmd.OutOrStdout(), "  %d) %s\n", i+1, p)
 		}
 		requested = splitCommaList(promptLine(cmd, reader, "Enable which plugins? (comma-separated numbers or paths, blank for none): "))
+	case len(requested) == 0:
+		// A config home with no enabled plugins has no workflow to
+		// dispatch: silently defaulting to "enable nothing" outside an
+		// interactive terminal would leave init's promise ("a session can
+		// be dispatched immediately afterward") unmet without ever telling
+		// the caller.
+		return nil, fmt.Errorf("--enable is required at least once (answer the prompt interactively, or pass --enable as an explicit flag with --yes)")
 	}
 
 	enable := make([]string, 0, len(requested))
@@ -194,8 +205,17 @@ func resolvePluginToken(token string, published []string) (string, error) {
 
 func resolveInitAllowlist(cmd *cobra.Command, reader *bufio.Reader) ([]string, error) {
 	patterns := initAllowlist
-	if !initYes && isInteractive() {
+	switch {
+	case !initYes && isInteractive():
 		patterns = splitCommaList(promptLine(cmd, reader, "Resource allowlist patterns (regex, comma-separated; blank = allow all): "))
+	case len(patterns) > 0 && initAllowAll:
+		return nil, fmt.Errorf("--allowlist and --allow-all are mutually exclusive")
+	case len(patterns) == 0 && !initAllowAll:
+		// The allowlist is a security boundary checked on every session
+		// create; outside an interactive terminal, "allow all" must be an
+		// explicit, visible choice (--allow-all), not whatever happens
+		// when nobody answers the question.
+		return nil, fmt.Errorf("--allowlist (repeatable) or --allow-all is required (answer the prompt interactively, or pass one as an explicit flag with --yes)")
 	}
 	for _, p := range patterns {
 		if _, err := regexp.Compile(p); err != nil {
@@ -205,10 +225,11 @@ func resolveInitAllowlist(cmd *cobra.Command, reader *bufio.Reader) ([]string, e
 	return patterns, nil
 }
 
-// resolveInitWorkdirsRoot's fallback mirrors config.DefaultConfig's own
-// default (~/workdirs) rather than inventing a second default value: a
-// config.toml init writes with no override still reads back identically to
-// one Load() would have produced with the key absent entirely.
+// resolveInitWorkdirsRoot's interactive suggestion mirrors
+// config.DefaultConfig's own default (~/workdirs) rather than inventing a
+// second default value, but only interactive Enter-to-accept counts as
+// answering it: outside a terminal, --yes must say so explicitly, the same
+// as every other init answer.
 func resolveInitWorkdirsRoot(cmd *cobra.Command, reader *bufio.Reader) (string, error) {
 	root := strings.TrimSpace(initWorkdirsRoot)
 	home, err := os.UserHomeDir()
@@ -217,13 +238,15 @@ func resolveInitWorkdirsRoot(cmd *cobra.Command, reader *bufio.Reader) (string, 
 	}
 	defaultRoot := filepath.Join(home, "workdirs")
 
-	if !initYes && isInteractive() {
+	switch {
+	case !initYes && isInteractive():
 		if answer := promptLine(cmd, reader, fmt.Sprintf("Workdirs root [%s]: ", defaultRoot)); answer != "" {
 			root = answer
+		} else {
+			root = defaultRoot
 		}
-	}
-	if root == "" {
-		root = defaultRoot
+	case root == "":
+		return "", fmt.Errorf("--workdirs-root is required (answer the prompt interactively, or pass an explicit flag with --yes)")
 	}
 	if len(root) > 0 && root[0] == '~' {
 		root = filepath.Join(home, root[1:])
@@ -265,9 +288,10 @@ func init() {
 	initCmd.Flags().StringVar(&initCatalogAlias, "catalog-alias", "", "Local alias for the catalog to register (required with --yes)")
 	initCmd.Flags().StringVar(&initCatalogSource, "catalog-source", "", "Catalog source: git+https://, git+ssh://, path://, or path+editable:// (required with --yes)")
 	initCmd.Flags().StringVar(&initCatalogRevision, "catalog-revision", "", "Git revision to resolve (required for a git-sourced catalog)")
-	initCmd.Flags().StringArrayVar(&initEnablePlugins, "enable", nil, "Catalog-relative plugin path to enable (repeatable)")
-	initCmd.Flags().StringArrayVar(&initAllowlist, "allowlist", nil, "Resource identifier regex pattern to allow (repeatable; none means allow all)")
-	initCmd.Flags().StringVar(&initWorkdirsRoot, "workdirs-root", "", "Workdir root directory (default ~/workdirs)")
+	initCmd.Flags().StringArrayVar(&initEnablePlugins, "enable", nil, "Catalog-relative plugin path to enable (repeatable; required at least once with --yes)")
+	initCmd.Flags().StringArrayVar(&initAllowlist, "allowlist", nil, "Resource identifier regex pattern to allow (repeatable; required with --yes unless --allow-all is passed)")
+	initCmd.Flags().BoolVar(&initAllowAll, "allow-all", false, "Explicitly allow every resource identifier instead of passing --allowlist (mutually exclusive with it)")
+	initCmd.Flags().StringVar(&initWorkdirsRoot, "workdirs-root", "", "Workdir root directory (required with --yes; interactive default ~/workdirs)")
 	initCmd.Flags().BoolVar(&initYes, "yes", false, "Initialize non-interactively (visible in command history)")
 
 	rootCmd.AddCommand(initCmd)

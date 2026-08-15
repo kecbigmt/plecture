@@ -50,7 +50,7 @@ func resetInitFlags(t *testing.T) {
 	t.Cleanup(func() {
 		initCatalogAlias, initCatalogSource, initCatalogRevision, initWorkdirsRoot = "", "", "", ""
 		initEnablePlugins, initAllowlist = nil, nil
-		initYes = false
+		initYes, initAllowAll = false, false
 	})
 }
 
@@ -196,6 +196,124 @@ func TestInit_RejectsUnpublishedPluginPath(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(configHome, "catalogs.toml")); !os.IsNotExist(statErr) {
 		t.Error("init registered the catalog despite an invalid --enable value")
+	}
+}
+
+// TestInit_YesRequiresExplicitEnable is a regression test: --yes with only
+// the catalog flags set used to succeed by silently enabling no plugins,
+// leaving a config home registered but with nothing to dispatch.
+func TestInit_YesRequiresExplicitEnable(t *testing.T) {
+	resetInitFlags(t)
+	configHome := setInitConfigHome(t)
+	fixture := writeInitCatalogFixture(t, "agent/claude")
+
+	out, err := execRoot(t, "init", "--yes",
+		"--catalog-alias", "local",
+		"--catalog-source", "path+editable://"+fixture,
+		"--allow-all",
+		"--workdirs-root", filepath.Join(t.TempDir(), "work"),
+	)
+	if err == nil {
+		t.Fatalf("Execute() succeeded with --yes and no --enable, want an error; output:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "--enable") {
+		t.Errorf("error = %v, want it to name --enable as required", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(configHome, "catalogs.toml")); !os.IsNotExist(statErr) {
+		t.Error("init registered the catalog despite a missing required --enable answer")
+	}
+}
+
+// TestInit_YesRequiresExplicitAllowlistOrAllowAll is a regression test:
+// --yes used to silently write an allow-all config.toml when --allowlist
+// was never passed, even though the allowlist is a security boundary.
+func TestInit_YesRequiresExplicitAllowlistOrAllowAll(t *testing.T) {
+	resetInitFlags(t)
+	configHome := setInitConfigHome(t)
+	fixture := writeInitCatalogFixture(t, "agent/claude")
+
+	out, err := execRoot(t, "init", "--yes",
+		"--catalog-alias", "local",
+		"--catalog-source", "path+editable://"+fixture,
+		"--enable", "agent/claude",
+		"--workdirs-root", filepath.Join(t.TempDir(), "work"),
+	)
+	if err == nil {
+		t.Fatalf("Execute() succeeded with --yes and no --allowlist/--allow-all, want an error; output:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "--allowlist") {
+		t.Errorf("error = %v, want it to name --allowlist/--allow-all as required", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(configHome, "catalogs.toml")); !os.IsNotExist(statErr) {
+		t.Error("init registered the catalog despite a missing required allowlist answer")
+	}
+}
+
+func TestInit_YesAllowAllOptsOutOfAllowlistExplicitly(t *testing.T) {
+	resetInitFlags(t)
+	configHome := setInitConfigHome(t)
+	fixture := writeInitCatalogFixture(t, "agent/claude")
+	workdirs := filepath.Join(t.TempDir(), "work")
+
+	out, err := execRoot(t, "init", "--yes",
+		"--catalog-alias", "local",
+		"--catalog-source", "path+editable://"+fixture,
+		"--enable", "agent/claude",
+		"--allow-all",
+		"--workdirs-root", workdirs,
+	)
+	if err != nil {
+		t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+	}
+	data, readErr := os.ReadFile(filepath.Join(configHome, "config.toml"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if strings.Contains(string(data), "resource_allowlist") {
+		t.Errorf("config.toml should have no resource_allowlist key when --allow-all was passed:\n%s", data)
+	}
+}
+
+func TestInit_YesRejectsAllowlistAndAllowAllTogether(t *testing.T) {
+	resetInitFlags(t)
+	setInitConfigHome(t)
+	fixture := writeInitCatalogFixture(t, "agent/claude")
+
+	out, err := execRoot(t, "init", "--yes",
+		"--catalog-alias", "local",
+		"--catalog-source", "path+editable://"+fixture,
+		"--enable", "agent/claude",
+		"--allowlist", "^acme/",
+		"--allow-all",
+		"--workdirs-root", filepath.Join(t.TempDir(), "work"),
+	)
+	if err == nil {
+		t.Fatalf("Execute() succeeded with both --allowlist and --allow-all, want a mutual-exclusivity error; output:\n%s", out)
+	}
+}
+
+// TestInit_YesRequiresExplicitWorkdirsRoot is a regression test: --yes
+// used to silently fall back to ~/workdirs when --workdirs-root was never
+// passed.
+func TestInit_YesRequiresExplicitWorkdirsRoot(t *testing.T) {
+	resetInitFlags(t)
+	configHome := setInitConfigHome(t)
+	fixture := writeInitCatalogFixture(t, "agent/claude")
+
+	out, err := execRoot(t, "init", "--yes",
+		"--catalog-alias", "local",
+		"--catalog-source", "path+editable://"+fixture,
+		"--enable", "agent/claude",
+		"--allow-all",
+	)
+	if err == nil {
+		t.Fatalf("Execute() succeeded with --yes and no --workdirs-root, want an error; output:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "--workdirs-root") {
+		t.Errorf("error = %v, want it to name --workdirs-root as required", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(configHome, "catalogs.toml")); !os.IsNotExist(statErr) {
+		t.Error("init registered the catalog despite a missing required --workdirs-root answer")
 	}
 }
 
