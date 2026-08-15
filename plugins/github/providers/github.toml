@@ -1,0 +1,85 @@
+# GitHub resource provider — owns every piece of GitHub knowledge a session
+# needs, independent of any particular workflow: resolving an issue/PR URL to
+# a session id, acquiring and releasing the git workdir that resource maps
+# to, and binding a session to the shipped watcher's subscription registry.
+# Workflows compose on top via `provider = "github"`.
+#
+# `setup`/`cleanup`/`subscribe` invoke plect-github-provider and
+# github-watcher (this plugin's bin/) by their bare command names: unlike
+# resources/github.toml's `observe` hook, provider hooks do not have the
+# `{{bin ...}}` template helper available, so both executables must be on the
+# `PATH` plect's hooks run with (see README.md).
+
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
+name  = "{{.owner}}/{{.repo}}-{{.number}}"
+
+# Title/state fetches share the resident github-watcher's poll-loop rate
+# budget when it's reachable, so a setup call and the daemon's own polling
+# back off together instead of each independently re-tripping GitHub's
+# secondary rate limit; otherwise plect-github-provider falls back to calling
+# `gh api` directly.
+setup = '''
+watcher_bin=""
+command -v github-watcher >/dev/null 2>&1 && watcher_bin="github-watcher"
+plect-github-provider setup \
+  --resource {{.ResourceID | shellQuote}} \
+  --session {{.SessionName | shellQuote}} \
+  --workdirs-root {{.WorkdirsRoot | shellQuote}} \
+  --watcher-bin "$watcher_bin"
+'''
+
+cleanup = 'plect-github-provider cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}} --force={{.Force}}'
+
+# subscribe binds a session to a resource at runtime (the `plect subscribe`
+# verb) — the same watcher subscription registry the setup-time
+# tasks/github_watch.toml task uses, additive, never replacing. A watcher not
+# being reachable (no daemon configured yet) degrades to a no-op subscribe
+# rather than failing the verb.
+subscribe = '''
+if command -v github-watcher >/dev/null 2>&1; then
+  github-watcher subscribe --session {{.SessionName | shellQuote}} --resource {{.ResourceID | shellQuote}}
+fi
+'''
+
+# Outputs contract. `workdir`/`branch` are always present; the rest degrade
+# to absent when their gh-api fetch is tolerated as best-effort (see
+# plect-github-provider's setup command). `mutable` keys may additionally be
+# merged from trusted side paths (`plect state set-output`) — GitHub status
+# for done_when is fetched by dynamic output refresh via
+# resources/github.toml, not by re-running this hook.
+[outputs_schema]
+type     = "object"
+required = ["workdir", "branch"]
+
+[outputs_schema.properties.workdir]
+type = "string"
+
+[outputs_schema.properties.branch]
+type = "string"
+
+[outputs_schema.properties.url]
+type = "string"
+
+[outputs_schema.properties.owner_repo]
+type = "string"
+
+[outputs_schema.properties.owner]
+type = "string"
+
+[outputs_schema.properties.repo]
+type = "string"
+
+[outputs_schema.properties.number]
+type = "integer"
+
+[outputs_schema.properties.title]
+type    = "string"
+mutable = true
+
+[outputs_schema.properties.pr_state]
+type    = "string"
+mutable = true
+
+[outputs_schema.properties.issue_state]
+type    = "string"
+mutable = true

@@ -1,0 +1,6 @@
+schema_version = 1
+description = "Plecture's official plugin catalog."
+
+plugins = [
+  "github",
+]
