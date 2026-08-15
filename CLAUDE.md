@@ -190,6 +190,13 @@ forever, not a one-time cost.
 - When proposing a new standing check, state in the PR what invariant it
   guards and what would silently break without it. No answer, no check.
 
+This follows Meszaros, *xUnit Test Patterns*, "Goals of Test Automation"
+(http://xunitpatterns.com/Goals%20of%20Test%20Automation.html): the
+maintenance-commitment framing is the Economics of Test Automation, the
+BDD-positive bullet is Tests as Specification, and the
+never-scale-with-legitimate-edits prohibition generalizes the Fragile
+Test smell.
+
 ### Test placement and speed
 
 Prefer table-driven tests where idiomatic to the case being tested.
