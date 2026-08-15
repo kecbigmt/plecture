@@ -23,22 +23,24 @@ type FetchedCatalog struct {
 // place. FetchCatalog performs no trust check — `plect catalog add`'s flow
 // fetches first so it can show the user what an as-yet-unregistered source
 // resolves to before asking for confirmation. revision is required for a
-// git source and ignored otherwise.
-func FetchCatalog(ctx context.Context, runner procexec.Runner, source, revision, cacheRoot string) (FetchedCatalog, error) {
+// git source and ignored otherwise. dir, when non-empty, is a catalog-
+// relative subdirectory of the fetched source that becomes the catalog
+// root — see ResolveCatalogDir.
+func FetchCatalog(ctx context.Context, runner procexec.Runner, source, revision, dir, cacheRoot string) (FetchedCatalog, error) {
 	scheme, rest, err := ParseSource(source)
 	if err != nil {
 		return FetchedCatalog{}, err
 	}
 
-	var root, resolvedRevision string
+	var sourceRoot, resolvedRevision string
 	switch {
 	case scheme.IsGit():
 		if revision == "" {
 			return FetchedCatalog{}, fmt.Errorf("source %q: `--revision` is required for a git catalog", source)
 		}
-		root, resolvedRevision, err = fetchGitCatalog(ctx, runner, source, rest, revision, cacheRoot)
+		sourceRoot, resolvedRevision, err = fetchGitCatalog(ctx, runner, source, rest, revision, cacheRoot)
 	case scheme == SchemePath || scheme == SchemePathEditable:
-		root, _, err = resolvePathTree(rest)
+		sourceRoot, _, err = resolvePathTree(rest)
 	default:
 		err = fmt.Errorf("source %q: unsupported scheme", source)
 	}
@@ -46,6 +48,10 @@ func FetchCatalog(ctx context.Context, runner procexec.Runner, source, revision,
 		return FetchedCatalog{}, err
 	}
 
+	root, err := ResolveCatalogDir(sourceRoot, dir)
+	if err != nil {
+		return FetchedCatalog{}, err
+	}
 	manifest, err := LoadCatalogManifest(root)
 	if err != nil {
 		return FetchedCatalog{}, err

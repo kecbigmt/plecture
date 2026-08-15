@@ -3,7 +3,6 @@ package task
 import (
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -11,9 +10,9 @@ import (
 )
 
 // loadShippedCatalogTasks loads this repository's own official catalog
-// (catalog.toml at the repo root plus the plugin directories it lists) the
-// same way a real config load would, returning every shipped task
-// definition plus the mounted-plugin list `{{bin ...}}` resolves against.
+// (plugins/catalog.toml plus the plugin directories it lists) the same way
+// a real config load would, returning every shipped task definition plus
+// the mounted-plugin list `{{bin ...}}` resolves against.
 func loadShippedCatalogTasks(t *testing.T) (map[string]config.TaskDefinition, []plugins.Mounted) {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -21,21 +20,22 @@ func loadShippedCatalogTasks(t *testing.T) (map[string]config.TaskDefinition, []
 		t.Fatal("runtime.Caller failed")
 	}
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+	catalogRoot := filepath.Join(repoRoot, "plugins")
 
-	manifest, err := plugins.LoadCatalogManifest(repoRoot)
+	manifest, err := plugins.LoadCatalogManifest(catalogRoot)
 	if err != nil {
-		t.Fatalf("LoadCatalogManifest(repo root): %v", err)
+		t.Fatalf("LoadCatalogManifest(catalog root): %v", err)
 	}
 
 	var pluginDirs []string
 	var mounted []plugins.Mounted
 	for _, rel := range manifest.Plugins {
-		dir := filepath.Join(repoRoot, rel)
+		dir := filepath.Join(catalogRoot, rel)
 		m, err := plugins.LoadManifest(dir)
 		if err != nil {
 			t.Fatalf("LoadManifest(%s): %v", rel, err)
 		}
-		id := "official/" + strings.TrimPrefix(rel, "plugins/")
+		id := "official/" + rel
 		mounted = append(mounted, plugins.Mounted{ID: id, Dir: dir, Manifest: m})
 		pluginDirs = append(pluginDirs, dir)
 	}

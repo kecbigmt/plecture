@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/plugins"
@@ -70,6 +71,106 @@ func TestPreviewCatalogAdd_ResolvesCatalog(t *testing.T) {
 	}
 	if fetched.Manifest.Plugins[0] != "okf" {
 		t.Fatalf("fetched = %+v", fetched)
+	}
+}
+
+// writeCatalogSourceWithDir is writeCatalogSource with catalog.toml and its
+// plugin directories nested one level under dirName instead of at the
+// source root, so tests can register with --dir.
+func writeCatalogSourceWithDir(t *testing.T, dirName string, plugins map[string]string) string {
+	t.Helper()
+	root := writeCatalogSource(t, nil)
+	catalogRoot := filepath.Join(root, dirName)
+	var names []string
+	for name := range plugins {
+		names = append(names, name)
+	}
+	manifest := "schema_version = 1\nplugins = ["
+	for i, name := range names {
+		if i > 0 {
+			manifest += ", "
+		}
+		manifest += "\"" + name + "\""
+	}
+	manifest += "]\n"
+	if err := os.MkdirAll(catalogRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(catalogRoot, "catalog.toml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, minVersion := range plugins {
+		pluginDir := filepath.Join(catalogRoot, name)
+		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		content := "schema_version = 1\nplect_min_version = \"" + minVersion + "\"\n"
+		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+func TestPreviewCatalogAdd_DirScopesTrustSpace(t *testing.T) {
+	paths := catalogTestPaths(t)
+	src := writeCatalogSourceWithDir(t, "plugins", map[string]string{"okf": "0.0.0"})
+
+	preview, fetched, err := PreviewCatalogAdd(context.Background(), paths, CatalogAddParams{
+		Alias: "local", Source: "path+editable://" + src, Dir: "plugins",
+	})
+	if err != nil {
+		t.Fatalf("PreviewCatalogAdd: unexpected error: %v", err)
+	}
+	if len(preview.Plugins) != 1 || preview.Plugins[0] != "okf" {
+		t.Fatalf("preview.Plugins = %v", preview.Plugins)
+	}
+	wantRoot := filepath.Join(src, "plugins")
+	if fetched.Root != wantRoot {
+		t.Errorf("fetched.Root = %q, want %q", fetched.Root, wantRoot)
+	}
+}
+
+func TestCommitCatalogAdd_PersistsDir(t *testing.T) {
+	paths := catalogTestPaths(t)
+	src := writeCatalogSourceWithDir(t, "plugins", map[string]string{"okf": "0.0.0"})
+	params := CatalogAddParams{Alias: "local", Source: "path+editable://" + src, Dir: "plugins"}
+
+	_, fetched, err := PreviewCatalogAdd(context.Background(), paths, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CommitCatalogAdd(paths, params, fetched); err != nil {
+		t.Fatalf("CommitCatalogAdd: unexpected error: %v", err)
+	}
+
+	registrations, err := plugins.LoadCatalogRegistrations(paths.CatalogsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registrations.Catalogs) != 1 || registrations.Catalogs[0].Dir != "plugins" {
+		t.Fatalf("Catalogs = %+v, want one entry with dir=\"plugins\"", registrations.Catalogs)
+	}
+}
+
+func TestPluginAdd_DirScopedCatalog(t *testing.T) {
+	paths := catalogTestPaths(t)
+	src := writeCatalogSourceWithDir(t, "plugins", map[string]string{"okf": "0.0.0"})
+	params := CatalogAddParams{Alias: "local", Source: "path://" + src, Dir: "plugins"}
+	_, fetched, err := PreviewCatalogAdd(context.Background(), paths, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CommitCatalogAdd(paths, params, fetched); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := PluginAdd(context.Background(), paths, "local/okf")
+	if err != nil {
+		t.Fatalf("PluginAdd: unexpected error: %v", err)
+	}
+	if result.ID != "local/okf" {
+		t.Errorf("ID = %q", result.ID)
 	}
 }
 
@@ -262,5 +363,44 @@ func TestCatalogList_ReportsRegisteredCatalogs(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Alias != "local" || got[0].Status != "ok" || len(got[0].EnabledPlugins) != 1 {
 		t.Fatalf("CatalogList = %+v", got)
+	}
+}
+
+// TestCatalogAdd_ThisRepositoryWithDir is the GWT this repository's own
+// issue tracker asked for directly: register this repository as a
+// path-sourced catalog scoped to its plugins/ subtree via --dir, enable
+// github, and confirm both the identity has no plugins/ prefix and the
+// mounted plugin directory never resolves outside plugins/.
+func TestCatalogAdd_ThisRepositoryWithDir(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+
+	paths := catalogTestPaths(t)
+	params := CatalogAddParams{Alias: "official", Source: "path+editable://" + repoRoot, Dir: "plugins"}
+
+	preview, fetched, err := PreviewCatalogAdd(context.Background(), paths, params)
+	if err != nil {
+		t.Fatalf("PreviewCatalogAdd: unexpected error: %v", err)
+	}
+	if !stringSliceContains(preview.Plugins, "github") {
+		t.Fatalf("preview.Plugins = %v, want it to contain %q", preview.Plugins, "github")
+	}
+	wantRoot := filepath.Join(repoRoot, "plugins")
+	if fetched.Root != wantRoot {
+		t.Errorf("fetched.Root = %q, want %q", fetched.Root, wantRoot)
+	}
+
+	if _, err := CommitCatalogAdd(paths, params, fetched); err != nil {
+		t.Fatalf("CommitCatalogAdd: unexpected error: %v", err)
+	}
+	result, err := PluginAdd(context.Background(), paths, "official/github")
+	if err != nil {
+		t.Fatalf("PluginAdd: unexpected error: %v", err)
+	}
+	if result.ID != "official/github" {
+		t.Errorf("ID = %q, want %q (no plugins/ prefix)", result.ID, "official/github")
 	}
 }

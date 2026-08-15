@@ -38,17 +38,16 @@ Codex task/workflow pack is a separate plugin), and the workflow that wires
 Register this repository as a catalog and enable the plugin:
 
 ```bash
-plect catalog add official git+https://github.com/kecbigmt/plecture --revision main
-plect plugin add official/plugins/github
+plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision main
+plect plugin add official/github
 ```
 
-`plugins/github` (not `github`) is the enable path: this repository's
-`catalog.toml` lives at the repo root, so every published plugin's identity
-is `<catalog-alias>/plugins/<name>`, matching its path from that root. The
-shipped config also assumes the alias `official` — its resource hook
-references `{{bin "official/plugins/github/..."}}`. Registering under a
-different alias means overriding `resources/github.toml` in your own global
-config with the alias you chose.
+`--dir plugins` scopes the catalog root (and the fetch/verify/mount trust
+space) to this repository's `plugins/` subtree, where `plugins/catalog.toml`
+lives — not the whole repository. The shipped config also assumes the alias
+`official` — its resource hook references `{{bin "official/github/..."}}`.
+Registering under a different alias means overriding `resources/github.toml`
+in your own global config with the alias you chose.
 
 Running `github-watcher serve` as a background daemon is a separate,
 deployment-specific step (a systemd unit, a launchd agent, or similar) —

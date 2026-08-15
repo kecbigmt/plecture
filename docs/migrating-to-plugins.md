@@ -70,8 +70,8 @@ config home, so cache reuse across environments is safe), only
 ```bash
 export PLECT_CONFIG_HOME="$(mktemp -d)"
 
-plect catalog add official git+https://github.com/kecbigmt/plecture --revision main
-plect plugin add official/plugins/github
+plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision main
+plect plugin add official/github
 plect plugin verify
 plect plugin list
 ```

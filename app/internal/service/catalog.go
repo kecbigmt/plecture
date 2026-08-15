@@ -41,6 +41,7 @@ func DefaultPluginPaths() (PluginPaths, error) {
 type CatalogAddParams struct {
 	Alias    string
 	Source   string
+	Dir      string // catalog-relative subdirectory of the fetched source that becomes the catalog root; empty means the source root itself.
 	Revision string // required for a git source; ignored otherwise.
 }
 
@@ -76,7 +77,7 @@ func PreviewCatalogAdd(ctx context.Context, paths PluginPaths, params CatalogAdd
 		return nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("catalog alias %q is already registered", params.Alias)}
 	}
 
-	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, params.Source, params.Revision, paths.CacheRoot)
+	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, params.Source, params.Revision, params.Dir, paths.CacheRoot)
 	if err != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -113,6 +114,7 @@ func CommitCatalogAdd(paths PluginPaths, params CatalogAddParams, fetched *plugi
 	registrations.Catalogs = append(registrations.Catalogs, plugins.CatalogEntry{
 		Alias:   params.Alias,
 		Source:  params.Source,
+		Dir:     params.Dir,
 		Plugins: []string{},
 	})
 
@@ -123,6 +125,7 @@ func CommitCatalogAdd(paths PluginPaths, params CatalogAddParams, fetched *plugi
 	lock.PutCatalog(plugins.CatalogLockRecord{
 		Alias:                   params.Alias,
 		CatalogSource:           params.Source,
+		Dir:                     params.Dir,
 		CatalogResolvedRevision: fetched.ResolvedRevision,
 	})
 
@@ -179,7 +182,7 @@ func CatalogUpdate(ctx context.Context, paths PluginPaths, params CatalogUpdateP
 		return nil, &Error{Code: ErrInvalidInput, Message: "`--revision` does not apply to a path-sourced catalog"}
 	}
 
-	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, params.Revision, paths.CacheRoot)
+	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, params.Revision, entry.Dir, paths.CacheRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -191,6 +194,7 @@ func CatalogUpdate(ctx context.Context, paths PluginPaths, params CatalogUpdateP
 	lock.PutCatalog(plugins.CatalogLockRecord{
 		Alias:                   params.Alias,
 		CatalogSource:           entry.Source,
+		Dir:                     entry.Dir,
 		CatalogResolvedRevision: fetched.ResolvedRevision,
 	})
 
@@ -330,6 +334,7 @@ func CommitCatalogRemove(paths PluginPaths, alias string) (*CatalogRemoveResult,
 type CatalogListEntry struct {
 	Alias            string
 	Source           string
+	Dir              string // catalog-relative subdirectory that is the catalog root; empty means the source root itself.
 	ResolvedRevision string
 	Status           string // "ok" or the resolution error's message.
 	EnabledPlugins   []string
@@ -353,6 +358,7 @@ func CatalogList(paths PluginPaths) ([]CatalogListEntry, error) {
 		e := CatalogListEntry{
 			Alias:            c.Alias,
 			Source:           c.Source,
+			Dir:              c.Dir,
 			ResolvedRevision: record.CatalogResolvedRevision,
 			Status:           "ok",
 			EnabledPlugins:   c.Plugins,

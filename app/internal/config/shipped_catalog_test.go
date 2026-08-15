@@ -10,8 +10,8 @@ import (
 )
 
 // TestShippedCatalog_LoadsAndCompiles guards this repository's own official
-// catalog (catalog.toml at the repo root plus the plugin directories it
-// lists) against a broken manifest or an unparseable task/channel file. This
+// catalog (plugins/catalog.toml plus the plugin directories it lists)
+// against a broken manifest or an unparseable task/channel file. This
 // is the only place that exercises the catalog end to end: a plugin author
 // otherwise only discovers a typo the first time a user runs `plect plugin
 // add`.
@@ -21,10 +21,11 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+	catalogRoot := filepath.Join(repoRoot, "plugins")
 
-	manifest, err := plugins.LoadCatalogManifest(repoRoot)
+	manifest, err := plugins.LoadCatalogManifest(catalogRoot)
 	if err != nil {
-		t.Fatalf("LoadCatalogManifest(repo root): %v", err)
+		t.Fatalf("LoadCatalogManifest(catalog root): %v", err)
 	}
 	if len(manifest.Plugins) == 0 {
 		t.Fatal("shipped catalog.toml lists no plugins")
@@ -32,7 +33,7 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 
 	var pluginDirs []string
 	for _, rel := range manifest.Plugins {
-		dir := filepath.Join(repoRoot, rel)
+		dir := filepath.Join(catalogRoot, rel)
 		m, err := plugins.LoadManifest(dir)
 		if err != nil {
 			t.Fatalf("LoadManifest(%s): %v", rel, err)

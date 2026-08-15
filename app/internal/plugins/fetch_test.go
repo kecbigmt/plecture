@@ -105,7 +105,7 @@ func TestFetchCatalog_PathSource(t *testing.T) {
 	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 
-	result, err := FetchCatalog(context.Background(), procexec.Default, "path://"+dir, "", t.TempDir())
+	result, err := FetchCatalog(context.Background(), procexec.Default, "path://"+dir, "", "", t.TempDir())
 	if err != nil {
 		t.Fatalf("FetchCatalog: unexpected error: %v", err)
 	}
@@ -117,12 +117,40 @@ func TestFetchCatalog_PathSource(t *testing.T) {
 	}
 }
 
+func TestFetchCatalog_PathSource_Dir(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogManifest(t, filepath.Join(root, "plugins"), "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeMinimalPlugin(t, filepath.Join(root, "plugins", "okf"))
+
+	result, err := FetchCatalog(context.Background(), procexec.Default, "path://"+root, "", "plugins", t.TempDir())
+	if err != nil {
+		t.Fatalf("FetchCatalog: unexpected error: %v", err)
+	}
+	wantRoot := filepath.Join(root, "plugins")
+	if result.Root != wantRoot {
+		t.Errorf("Root = %q, want %q", result.Root, wantRoot)
+	}
+	if len(result.Manifest.Plugins) != 1 || result.Manifest.Plugins[0] != "okf" {
+		t.Errorf("Manifest.Plugins = %v", result.Manifest.Plugins)
+	}
+}
+
+func TestFetchCatalog_Dir_EscapeRejected(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogManifest(t, root, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeMinimalPlugin(t, filepath.Join(root, "okf"))
+
+	if _, err := FetchCatalog(context.Background(), procexec.Default, "path://"+root, "", "../escape", t.TempDir()); err == nil {
+		t.Fatal("want error for a dir that escapes the source root, got nil")
+	}
+}
+
 func TestFetchCatalog_PathEditableSource(t *testing.T) {
 	dir := t.TempDir()
 	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 
-	result, err := FetchCatalog(context.Background(), procexec.Default, "path+editable://"+dir, "", t.TempDir())
+	result, err := FetchCatalog(context.Background(), procexec.Default, "path+editable://"+dir, "", "", t.TempDir())
 	if err != nil {
 		t.Fatalf("FetchCatalog: unexpected error: %v", err)
 	}
@@ -134,13 +162,13 @@ func TestFetchCatalog_PathEditableSource(t *testing.T) {
 func TestFetchCatalog_GitSource_MissingRevision(t *testing.T) {
 	repo, _, _ := newLocalCatalogGitRepo(t)
 
-	if _, err := FetchCatalog(context.Background(), procexec.Default, "git+https://"+repo, "", t.TempDir()); err == nil {
+	if _, err := FetchCatalog(context.Background(), procexec.Default, "git+https://"+repo, "", "", t.TempDir()); err == nil {
 		t.Fatal("want error when a git source has no revision, got nil")
 	}
 }
 
 func TestFetchCatalog_UnsupportedScheme(t *testing.T) {
-	if _, err := FetchCatalog(context.Background(), procexec.Default, "archive+https://example.com/catalog.tar.gz", "", t.TempDir()); err == nil {
+	if _, err := FetchCatalog(context.Background(), procexec.Default, "archive+https://example.com/catalog.tar.gz", "", "", t.TempDir()); err == nil {
 		t.Fatal("want error for an unsupported scheme, got nil")
 	}
 }
@@ -148,7 +176,7 @@ func TestFetchCatalog_UnsupportedScheme(t *testing.T) {
 func TestFetchCatalog_InvalidCatalogManifestFailsLoud(t *testing.T) {
 	dir := t.TempDir() // no catalog.toml
 
-	if _, err := FetchCatalog(context.Background(), procexec.Default, "path://"+dir, "", t.TempDir()); err == nil {
+	if _, err := FetchCatalog(context.Background(), procexec.Default, "path://"+dir, "", "", t.TempDir()); err == nil {
 		t.Fatal("want error when the source has no catalog.toml, got nil")
 	}
 }

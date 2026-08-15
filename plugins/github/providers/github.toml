@@ -15,19 +15,19 @@ name  = "{{.owner}}/{{.repo}}-{{.number}}"
 # setup call and the daemon's own polling share one rate budget instead of
 # each independently re-tripping GitHub's secondary rate limit.
 setup = '''
-{{bin "official/plugins/github/plect-github-provider"}} setup \
+{{bin "official/github/plect-github-provider"}} setup \
   --resource {{.ResourceID | shellQuote}} \
   --session {{.SessionName | shellQuote}} \
   --workdirs-root {{.WorkdirsRoot | shellQuote}} \
-  --watcher-bin {{bin "official/plugins/github/github-watcher" | shellQuote}}
+  --watcher-bin {{bin "official/github/github-watcher" | shellQuote}}
 '''
 
-cleanup = '{{bin "official/plugins/github/plect-github-provider"}} cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}} --force={{.Force}}'
+cleanup = '{{bin "official/github/plect-github-provider"}} cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}} --force={{.Force}}'
 
 # subscribe binds a session to a resource at runtime (the `plect subscribe`
 # verb) — the same watcher subscription registry the setup-time
 # tasks/github_watch.toml task uses, additive, never replacing.
-subscribe = '{{bin "official/plugins/github/github-watcher"}} subscribe --session {{.SessionName | shellQuote}} --resource {{.ResourceID | shellQuote}}'
+subscribe = '{{bin "official/github/github-watcher"}} subscribe --session {{.SessionName | shellQuote}} --resource {{.ResourceID | shellQuote}}'
 
 # Outputs contract. `workdir`/`branch` are always present; the rest degrade
 # to absent when their gh-api fetch is tolerated as best-effort (see

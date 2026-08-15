@@ -32,11 +32,11 @@ func TestRunProviderSubscribe_NoSubscribeHookIsAnError(t *testing.T) {
 // hooks — a subscribe hook otherwise has only bare command names on `PATH`
 // available to reach its own plugin's executables.
 func TestRunProviderSubscribe_ResolvesBinReference(t *testing.T) {
-	mounted := []plugins.Mounted{mustMount("official/plugins/github", "/mnt/github",
+	mounted := []plugins.Mounted{mustMount("official/github", "/mnt/github",
 		plugins.Executable{Name: "github-watcher", Path: "bin/github-watcher"})}
 	prov := config.ProviderConfig{
 		ID:        "wf",
-		Subscribe: `echo {{bin "official/plugins/github/github-watcher"}} subscribe`,
+		Subscribe: `echo {{bin "official/github/github-watcher"}} subscribe`,
 	}
 	if err := RunProviderSubscribe(prov, SubscribeHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted}); err != nil {
 		t.Fatalf("RunProviderSubscribe: %v", err)
@@ -47,9 +47,9 @@ func TestRunProviderSubscribe_ResolvesBinReference(t *testing.T) {
 // directly so the rendered command string (not just a successful shell run)
 // can be asserted against.
 func TestRenderSubscribeHook_ResolvesBinReference(t *testing.T) {
-	mounted := []plugins.Mounted{mustMount("official/plugins/github", "/mnt/github",
+	mounted := []plugins.Mounted{mustMount("official/github", "/mnt/github",
 		plugins.Executable{Name: "github-watcher", Path: "bin/github-watcher"})}
-	got, err := renderSubscribeHook(`{{bin "official/plugins/github/github-watcher"}} subscribe`, SubscribeHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted})
+	got, err := renderSubscribeHook(`{{bin "official/github/github-watcher"}} subscribe`, SubscribeHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted})
 	if err != nil {
 		t.Fatalf("renderSubscribeHook: %v", err)
 	}
