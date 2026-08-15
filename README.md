@@ -2,13 +2,23 @@
 
 **Give autonomous work a place to go.**
 
-Plecture is the project: a local-first system for giving autonomous work durable structure. The tool is **plect**.
+Plecture is a local-first system for giving autonomous work durable structure. It ships as a CLI called `plect`.
 
 `plect` gives autonomous work **identity**, **lifecycle**, **relationships**, **observation**, **verification**, and **handoff**. Work lives in inspectable, portable state that you own — a place to exist outside any single agent's context, and a place to move on from: back to a worker, on to a reviewer, up to a human, through verification to done.
 
 It is not an agent framework. It is not a workflow engine that dictates execution. It does not hide your tools behind a common abstraction. Plecture owns the semantics of work; the mechanisms that carry it out remain yours to choose and to swap. Claude Code or Codex. Git or another VCS. Worktrees or containers. tmux or another process host. These are choices at the edge, not assumptions at the core.
 
-The name is coined from Latin *plectere*, to braid — the way *texere*, to weave, gave English *texture*. In a braided structure every strand stays itself: humans stay human, agents stay agents, tools stay tools. Plecture connects them without replacing them.
+## Install
+
+```bash
+go install github.com/kecbigmt/plect/app/cmd/plect@latest
+```
+
+## Quick start
+
+```bash
+plect --help
+```
 
 ## Layout
 
