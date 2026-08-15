@@ -154,6 +154,23 @@ func TestParse_failureModes(t *testing.T) {
 	}
 }
 
+func TestParse_bareChecklistItemDoesNotPanic(t *testing.T) {
+	dir := t.TempDir()
+	content := "---\ntype: Goal\nstatus: open\n---\n## Done When\n- [ ]\n- [x]\n"
+	path := writeGoal(t, dir, "goal.md", content)
+
+	g, parseErr := Parse(path)
+	if parseErr != nil {
+		t.Fatalf("unexpected error: %v", parseErr)
+	}
+	if g.OpenItems != "" {
+		t.Errorf("OpenItems = %q, want empty text for a bare unchecked item", g.OpenItems)
+	}
+	if g.ChecklistStatus != ChecklistPending {
+		t.Errorf("ChecklistStatus = %q, want PENDING", g.ChecklistStatus)
+	}
+}
+
 func TestParse_doneWhenSectionStopsAtNextHeading(t *testing.T) {
 	dir := t.TempDir()
 	content := "---\ntype: Goal\nstatus: open\n---\n## Done When\n- [ ] a\n## Notes\n- [ ] not a checklist item, different section\n"

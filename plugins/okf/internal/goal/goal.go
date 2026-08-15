@@ -139,7 +139,15 @@ func Parse(path string) (*Goal, *ParseError) {
 		case strings.HasPrefix(trimmed, "- [ ]"), strings.HasPrefix(trimmed, "- [x]"), strings.HasPrefix(trimmed, "- [X]"):
 			itemCount++
 			mark := trimmed[3]
-			text := strings.TrimLeft(trimmed[6:], " \t")
+			// A bare item like "- [ ]" with no trailing text is shorter
+			// than the fixed "- [ ] " prefix a text slice would start
+			// after — cut -c7- on such a line returns empty in the shell
+			// this was ported from, so an out-of-range slice here must
+			// mean "no text" too, not a panic.
+			var text string
+			if len(trimmed) > 6 {
+				text = strings.TrimLeft(trimmed[6:], " \t")
+			}
 			if mark == ' ' {
 				openItems = append(openItems, text)
 			}

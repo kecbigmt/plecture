@@ -13,8 +13,7 @@
 scope = "session"
 
 setup = '''
-EXTRA='{{get .Inputs "instruction"}}'
-INSTRUCTION=$(plect template render goal_review --session '{{.SessionName}}' --instruction "$EXTRA")
+INSTRUCTION=$(plect template render goal_review --session {{.SessionName | shellQuote}} --instruction {{get .Inputs "instruction" | shellQuote}})
 if [ -z "$INSTRUCTION" ]; then
   echo "plect template render goal_review produced empty instruction" >&2
   exit 1
@@ -31,8 +30,8 @@ from_resource_status = true
 [[outputs]]
 name = "verdict_current"
 script = '''
-CURRENT_REVISION=$(plect resource status "{{.ResourceID}}" --json | jq -r '.state.revision // empty')
-if [ -n "$CURRENT_REVISION" ] && [ "{{.Self.verdict_revision}}" = "$CURRENT_REVISION" ]; then
+CURRENT_REVISION=$(plect resource status {{.ResourceID | shellQuote}} --json | jq -r '.state.revision // empty')
+if [ -n "$CURRENT_REVISION" ] && [ {{.Self.verdict_revision | shellQuote}} = "$CURRENT_REVISION" ]; then
   echo true
 else
   echo false

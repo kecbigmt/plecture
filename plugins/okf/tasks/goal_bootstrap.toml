@@ -12,12 +12,11 @@
 scope = "run"
 
 setup = '''
-ASSIGNEES='{{get .Inputs "assignees"}}'
 plect-okf task bootstrap \
   --workdir {{.WorkdirPath | shellQuote}} \
   --owner {{.Inputs.owner | shellQuote}} \
   --session {{.SessionName | shellQuote}} \
-  --assignees "$ASSIGNEES"
+  --assignees {{get .Inputs "assignees" | shellQuote}}
 '''
 
 [inputs_schema]
