@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	contract "github.com/kecbigmt/plect/contracts/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // FinalizeTask must refuse — no cleanup attempted, instance left in place —

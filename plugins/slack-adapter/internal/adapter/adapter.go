@@ -13,8 +13,8 @@ import (
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 
-	protocol "github.com/kecbigmt/plect/contracts/channel-protocol"
-	"github.com/kecbigmt/plect/contracts/event"
+	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 // Adapter connects Slack (via Socket Mode) to channel server instances (via Unix socket).

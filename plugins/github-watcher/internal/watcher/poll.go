@@ -17,8 +17,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plect/contracts/event"
-	"github.com/kecbigmt/plect/plugins/github-watcher/internal/ratebudget"
+	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/ratebudget"
 )
 
 // sourceGitHub and typeGitHubPrefix are this plugin's own values for the

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/service"
 )
 
 // exec runs a named component partial with data and returns its HTML.

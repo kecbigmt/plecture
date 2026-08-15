@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // TestHostEnvironment_ExplicitMatchesUnspecified is the golden test for the

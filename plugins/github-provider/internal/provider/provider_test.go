@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/plugins/github-provider/internal/workspace"
+	"github.com/kecbigmt/plecture/plugins/github-provider/internal/workspace"
 )
 
 type fakeManager struct {

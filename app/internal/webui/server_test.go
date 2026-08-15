@@ -3,7 +3,7 @@ package webui
 import (
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 )
 
 // statusClass must return a distinct, non-empty class per known Run/Health

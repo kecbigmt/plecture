@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/service"
 )
 
 var resourceStatusJSON bool

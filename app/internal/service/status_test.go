@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // Status's "work" layer must carry the same decision-making material the

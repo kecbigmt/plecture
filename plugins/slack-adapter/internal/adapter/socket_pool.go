@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/kecbigmt/plect/contracts/channel-protocol"
+	"github.com/kecbigmt/plecture/contracts/channel-protocol"
 )
 
 // SocketPool manages connections to channel-server instances via Unix socket.

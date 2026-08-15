@@ -1,3 +1,3 @@
-module github.com/kecbigmt/plect/plugins/github-provider
+module github.com/kecbigmt/plecture/plugins/github-provider
 
 go 1.25.6

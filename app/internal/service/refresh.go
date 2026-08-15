@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // OutputRefreshResult is one dynamic output's refresh outcome.

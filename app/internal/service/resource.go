@@ -3,8 +3,8 @@ package service
 import (
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // ResourceStatusParams are the inputs to ResourceStatus (`plect resource

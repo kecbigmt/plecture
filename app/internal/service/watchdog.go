@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	"github.com/kecbigmt/plect/contracts/event"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // HealthReport is the outcome of one healthcheck observation.

@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/webui"
+	"github.com/kecbigmt/plecture/app/internal/webui"
 )
 
 func main() {

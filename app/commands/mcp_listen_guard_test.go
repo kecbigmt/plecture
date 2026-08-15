@@ -13,8 +13,8 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/kecbigmt/plect/app/internal/mcpserver"
-	"github.com/kecbigmt/plect/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/mcpserver"
+	"github.com/kecbigmt/plecture/app/internal/service"
 )
 
 // helperProcessEnv is the sentinel that makes this test binary double as the

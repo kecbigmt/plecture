@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/dispatch"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/dispatch"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // createWithWorkflowSetup is the workflow-setup create path:

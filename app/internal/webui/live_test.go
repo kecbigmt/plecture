@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plect/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
 func TestNewLiveServiceRejectsStateVersionMismatch(t *testing.T) {

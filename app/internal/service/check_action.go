@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/task"
-	contract "github.com/kecbigmt/plect/contracts/state"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 func checkActionForResult(sessionName, instance, resource string, dw *config.DoneWhen, st *contract.TaskState, result task.DoneWhenResult, trigger TickTrigger) CheckAction {

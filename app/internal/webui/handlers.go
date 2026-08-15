@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/service"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 // appView is the data for the two-pane shell (list on the left, detail on the

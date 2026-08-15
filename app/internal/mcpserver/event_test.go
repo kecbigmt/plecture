@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 func TestHandleEventShow_ReturnsPublishedEvent(t *testing.T) {

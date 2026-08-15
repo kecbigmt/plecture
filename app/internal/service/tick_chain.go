@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/eventlog"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/contracts/event"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workSession string, sp ChainSpawn) (bool, error) {

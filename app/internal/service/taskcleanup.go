@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/config"
-	"github.com/kecbigmt/plect/app/internal/domain"
-	"github.com/kecbigmt/plect/app/internal/state"
-	"github.com/kecbigmt/plect/app/internal/task"
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // TaskCleanupParams are the inputs to TaskCleanup (the `plect task cleanup`

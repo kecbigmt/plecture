@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kecbigmt/plect/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 )
 
 func TestStore_PutAndGet(t *testing.T) {

@@ -11,7 +11,7 @@ It is not an agent framework. It is not a workflow engine that dictates executio
 ## Install
 
 ```bash
-go install github.com/kecbigmt/plect/app/cmd/plect@latest
+go install github.com/kecbigmt/plecture/app/cmd/plect@latest
 ```
 
 ## Quick start
