@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,36 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
+
+// mountResolverOnlyProvider registers a minimal global-layer workflow +
+// provider so dispatch can resolve a github.com URL without depending on
+// whatever catalogs.toml (if any) happens to be registered on the machine
+// the test runs on. The provider's setup hook is a placeholder that must
+// never actually run — Create's allowlist check is meant to reject the
+// request before any provider hook does.
+func mountResolverOnlyProvider(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	base := t.TempDir()
+	cfg.BaseDir = base
+	if err := os.MkdirAll(filepath.Join(base, "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(base, "providers"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	workflowTOML := "provider = \"test-gh\"\n"
+	if err := os.WriteFile(filepath.Join(base, "workflows", "test.toml"), []byte(workflowTOML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	providerTOML := "match = '^https://github\\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\\d+)'\n" +
+		"name  = \"{{.owner}}/{{.repo}}-{{.number}}\"\n" +
+		// Never invoked (the allowlist check rejects the request first) —
+		// only present because LoadProviders requires a non-empty setup.
+		"setup = \"exit 1\"\n"
+	if err := os.WriteFile(filepath.Join(base, "providers", "test-gh.toml"), []byte(providerTOML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // Acceptance: the real service stack (state.Store + service.List), driven
 // through the HTTP handler, surfaces a session that exists in state.json.
@@ -126,6 +158,7 @@ func TestAcceptance_CreateResourceNotAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	mountResolverOnlyProvider(t, cfg)
 	cfg.ResourceAllowlist = []string{`^https://github\.com/only/allowed/`}
 
 	h := New(newLiveService(cfg, store)).Routes()
