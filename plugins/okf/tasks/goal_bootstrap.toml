@@ -1,0 +1,41 @@
+# Auto-recreates missing pursue_goal instances for every open local-okf goal
+# under the orchestrator workdir's knowledge/bundle/goals/. A pursue_goal
+# instance is session-scoped, so a destroy→up cycle silently drops it and
+# the tick reactor's heartbeat starves (nothing left to re-evaluate).
+# scope="run" re-scans on every `up`.
+#
+# plect-okf task bootstrap checks for an existing instance before calling
+# setup — not cleanup-then-setup — because an existing instance carries
+# recorded judge history, and recreating it on every up would re-pend an
+# already-satisfied judge for no reason. Only a genuinely missing instance
+# is created.
+scope = "run"
+
+setup = '''
+plect-okf task bootstrap \
+  --workdir {{.WorkdirPath | shellQuote}} \
+  --owner {{.Inputs.owner | shellQuote}} \
+  --session {{.SessionName | shellQuote}} \
+  --assignees {{get .Inputs "assignees" | shellQuote}}
+'''
+
+[inputs_schema]
+type                 = "object"
+required             = ["owner"]
+additionalProperties = false
+
+[inputs_schema.properties]
+owner = { type = "string" }
+# assignees is a JSON array string of this orchestrator's own identity
+# strings (`user:<login>` / `team:<slug>`, the same vocabulary a goal
+# file's frontmatter `assignee` field uses). Empty/unset means the filter
+# is inactive (opt-in, backward compatible): every open goal instantiates
+# regardless of assignee.
+assignees = { type = "string" }
+
+[outputs_schema]
+type     = "object"
+required = ["created"]
+
+[outputs_schema.properties.created]
+type = "string"

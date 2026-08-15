@@ -10,5 +10,6 @@ use (
 	./plugins/github-provider
 	./plugins/github-watcher
 	./plugins/legacy-migration
+	./plugins/okf
 	./plugins/slack-adapter
 )

@@ -1,0 +1,34 @@
+# local-okf workspace provider: resolves `local-okf://<owner>/<concept-id>`
+# into a session name and a read-context workspace over the owner's
+# knowledge bundle. This is the dispatch-time counterpart to
+# resources/okf_goal.toml's observe — same owner-alias resolution and
+# bundle-containment checks, but here they gate workspace acquisition
+# (`plect up` / `plect create --task`) instead of a status read, so a
+# missing or unresolvable bundle fails the dispatch outright rather than
+# folding into a resource-state field.
+
+# The leading path segment(s) before the final `<slug>.md` are optional and
+# unnamed, since the provider is concept-kind agnostic (goals today, other
+# OKF concepts later); resources/okf_goal.toml narrows the pattern to
+# `goals/*.md` for the one concept kind this plugin currently understands.
+match = '^local-okf://(?P<owner>[A-Za-z0-9][A-Za-z0-9-]*)/(?:[A-Za-z0-9._/-]*/)?(?P<slug>[A-Za-z0-9._-]+)\.md$'
+name  = "{{.owner}}/okf-{{.slug}}"
+
+setup   = 'plect-okf provider setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}}'
+cleanup = 'plect-okf provider cleanup --workdir {{.Self.workdir | shellQuote}}'
+
+[outputs_schema]
+type     = "object"
+required = ["workdir", "owner", "concept_id", "concept_path"]
+
+[outputs_schema.properties.workdir]
+type = "string"
+
+[outputs_schema.properties.owner]
+type = "string"
+
+[outputs_schema.properties.concept_id]
+type = "string"
+
+[outputs_schema.properties.concept_path]
+type = "string"

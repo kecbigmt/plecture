@@ -1,0 +1,47 @@
+# The local-okf.goal resource: a goal Concept in an owner's knowledge
+# bundle. The owner segment selects the orchestrator session (the
+# "owner:<owner>" alias); the concept id is resolved inside
+# <workdir>/knowledge/bundle/ only — `..` or symlink escapes are refused via
+# realpath-based containment checks (providers/local-okf.toml shares this
+# resolution chain for workspace dispatch). Parsing (frontmatter + "## Done
+# When" checklist) treats the goal file's content as data, never as code.
+
+match = '^local-okf://[A-Za-z0-9][A-Za-z0-9-]*/goals/[A-Za-z0-9._/-]+\.md$'
+
+# goal_parse_status UNRESOLVED means the observation could not even locate
+# the goal (no orchestrator session, workdir unreadable — possibly
+# mid-destroy — bundle not bootstrapped, or file absent); FAILURE means the
+# file was read but is malformed. observe_error carries the human-readable
+# reason. Escapes out of the bundle are refused as a hard error (non-zero
+# exit), never folded into UNRESOLVED.
+observe = 'plect-okf resource observe --resource {{.ResourceID | shellQuote}}'
+
+# `plect task finalize` already reconfirmed done_when is satisfied and
+# gathered judge evidence before invoking this, so finalize itself only
+# writes the frontmatter and appends the log entry — it is not a second
+# gate. Judge evidence arrives over stdin as JSON, rather than as a
+# `'...'`-quoted template substitution: judge reasons are arbitrary --reason
+# text, and a reason containing a single quote would otherwise terminate
+# the shell command early or splice attacker-controlled text into it. A
+# quoted heredoc disables all shell expansion of its body, so the JSON is
+# read back byte-for-byte regardless of its content.
+finalize = '''
+plect-okf resource finalize --resource {{.ResourceID | shellQuote}} --revision {{.Revision | shellQuote}} <<'JUDGES_EOF'
+{{.JudgesJSON}}
+JUDGES_EOF
+'''
+
+[state_schema]
+type     = "object"
+required = ["goal_parse_status", "goal_status", "checklist_status", "goal_revision", "open_items"]
+
+[state_schema.properties]
+goal_parse_status = { type = "string", enum = ["SUCCESS", "FAILURE", "UNRESOLVED"] }
+goal_status       = { type = "string", enum = ["open", "blocked", "completed", "archived", "NULL"] }
+checklist_status  = { type = "string", enum = ["SUCCESS", "PENDING", "NULL"] }
+# revision duplicates goal_revision under the reserved output key the judge
+# staleness comparison reads, so a task copying it re-pends judges on edits.
+goal_revision     = { type = "string" }
+revision          = { type = "string" }
+open_items        = { type = "string" }
+observe_error     = { type = "string" }

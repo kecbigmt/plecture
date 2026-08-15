@@ -795,12 +795,13 @@ Residual user config:
 Core still sees only provider, resource, task, workflow, and channel contracts.
 It does not parse GitHub URLs or know GitHub exists.
 
-### Hypothetical okf plugin
+### okf plugin
 
-An okf plugin is scoped by the OKF specification, not by one use case. Its
-first version owns only the goal resource mechanics that have machine
-semantics: observation, finalization, and ticks. Bundle records that do not have
-machine semantics, such as retrospectives, stay plain files outside the plugin.
+The okf plugin is scoped by the OKF specification, not by one use case. Its
+first version owns the goal resource mechanics that have machine semantics
+(observation, finalization, and workspace dispatch) and the goal task pack
+built on top of them. Bundle records that do not have machine semantics,
+such as retrospectives, stay plain files outside the plugin.
 
 Catalog registration and plugin enablement:
 
@@ -819,16 +820,32 @@ Catalog-owned files:
 ```text
 catalog.toml
 okf/plugin.toml
+okf/providers/local-okf.toml
 okf/resources/okf_goal.toml
+okf/tasks/pursue_goal.toml
+okf/tasks/goal_review.toml
+okf/tasks/goal_bootstrap.toml
+okf/workflows/goal_review.toml
+okf/templates/goal_review.md
 okf/bin/plect-okf
 ```
 
 Plugin-owned behavior:
 
 - Goal resource id syntax.
-- Goal observation, finalization, and tick entrypoints.
+- Workspace dispatch for a `local-okf://` resource: a read-context workdir
+  symlinked into the owner's bundle.
+- Goal observation and finalization entrypoints.
 - Revision and checklist status reporting for goal resources.
 - Idempotent completion logging for goal resources.
+- The `pursue_goal` / `goal_review` / `goal_bootstrap` task pack that tracks
+  a goal to completion and re-creates a dropped `pursue_goal` instance.
+  `pursue_goal` only gates the resource kind; goal-specific completion
+  conditions live in the goal file's own "## Done When" checklist.
+- A reference `goal_review` workflow and template that dispatches an agent
+  session to record the review verdict. This composes node kinds (agent
+  runtime, chat channel) the plugin does not itself define — see "Residual
+  user config" below.
 
 Internally separable plugin behavior:
 
@@ -837,22 +854,33 @@ Internally separable plugin behavior:
 - Bundle containment checks.
 - Frontmatter parsing shared by future OKF concepts.
 
-Not plugin-owned in the first version:
+Not plugin-owned:
 
-- Goal bootstrap, pursue, or review tasks.
-- Goal review workflows.
-- Goal review templates.
 - Retrospectives or other bundle records without machine semantics.
+- Which agent runtime and channel plugins actually execute a goal review —
+  the shipped workflow only composes their node kinds by id.
 
 Residual user config:
 
 - Which goal roots or owners are allowed.
 - Which orchestrator workflow is used.
-- Which agent and channel plugins handle the work.
-- Goal bootstrap, pursue, and review task composition.
+- Which agent and channel plugins handle the work — the shipped
+  `goal_review` workflow's `tmux` / `envfile` / `codex_exec` /
+  `slack_thread` / `initial_task` nodes are a reference composition; an
+  operator whose agent-runtime plugin defines different task ids swaps the
+  node `uses` values, or replaces the workflow with their own team-owned
+  overlay entirely.
 - Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 
 No provider/resource/task/workflow contract changes are needed. If the plugin
 discovers that goal state needs data the existing resource observation contract
 cannot express, that belongs in a later contract issue.
+
+This walkthrough previously scoped the task/workflow/template pack out of
+v1 ("Not plugin-owned in the first version"). That scoping was revised
+before implementation: the actual okf plugin (`plugins/okf/`) ships the
+goal task pack and a reference review workflow alongside the resource, on
+the reasoning that a goal resource with no task pack to drive it is not yet
+"zero hand-authored OKF TOML in user config" — the acceptance bar an okf
+extraction issue set for itself.
