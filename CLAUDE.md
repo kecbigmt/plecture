@@ -177,9 +177,16 @@ forever, not a one-time cost.
   silently break, and its maintenance cost must not scale with legitimate
   edits. Never pin prose literals; never assert exact counts of document
   structure.
-- This does not weaken TDD: tests for code behavior remain the default.
-  This rule targets meta-checks (lint jobs, structure validators, doc
-  checkers) and over-fitted assertions.
+- **Behavior tests are the spec, and committing them is the default, not
+  the exception.** BDD-style tests that express required behavior (the
+  Given/When/Then of the acceptance criteria, including failure paths) are
+  an expected deliverable of every behavior change, and their maintenance
+  cost is the cost of having a specification — always justified. This rule
+  must never be cited to skip or trim them.
+- What requires justification is the other category: standing meta-checks
+  (lint jobs, structure validators, doc checkers) and over-fitted
+  assertions whose maintenance scales with legitimate edits rather than
+  with behavior.
 - When proposing a new standing check, state in the PR what invariant it
   guards and what would silently break without it. No answer, no check.
 
