@@ -51,17 +51,17 @@ still refuses a branch carrying unmerged commits regardless of this flag.
 Register this repository as a catalog and enable the plugin:
 
 ```bash
-plect catalog add official git+https://github.com/kecbigmt/plecture --revision main
-plect plugin add official/plugins/github
+plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision main
+plect plugin add official/github
 ```
 
-`plugins/github` (not `github`) is the enable path: this repository's
-`catalog.toml` lives at the repo root, so every published plugin's identity
-is `<catalog-alias>/plugins/<name>`, matching its path from that root. This
-plugin's own config (providers/resources) never encodes that alias: it
+`--dir plugins` scopes the catalog root (and the fetch/verify/mount trust
+space) to this repository's `plugins/` subtree, where `plugins/catalog.toml`
+lives — not the whole repository. This plugin's own config
+(providers/resources) never encodes the alias you register under: it
 resolves its executables through `{{bin "plect-github-provider"}}`'s
 plugin-local bare-name reading, which resolves against the containing
-plugin regardless of which alias you register the catalog under.
+plugin regardless of which alias you chose.
 
 Running `github-watcher serve` as a background daemon is a separate,
 deployment-specific step (a systemd unit, a launchd agent, or similar) —

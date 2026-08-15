@@ -19,11 +19,11 @@ import (
 // `PATH` available cannot reliably invoke its own plugin's executables once
 // that plugin is mounted read-only rather than installed onto `PATH`.
 func TestRunWorkflowSetup_ResolvesBinReference(t *testing.T) {
-	mounted := []plugins.Mounted{mustMount("official/plugins/github", "/mnt/github",
+	mounted := []plugins.Mounted{mustMount("official/github", "/mnt/github",
 		plugins.Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"})}
 	prov := config.ProviderConfig{
 		ID:    "wf",
-		Setup: `echo "{\"workdir\":\"/tmp/x\",\"bin\":\"{{bin "official/plugins/github/plect-github-provider"}}\"}"`,
+		Setup: `echo "{\"workdir\":\"/tmp/x\",\"bin\":\"{{bin "official/github/plect-github-provider"}}\"}"`,
 	}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted}, tasks, nil)

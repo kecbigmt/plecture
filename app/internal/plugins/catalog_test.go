@@ -104,6 +104,52 @@ plugins = ["github"]
 	}
 }
 
+func TestResolveCatalogDir_Empty(t *testing.T) {
+	root := t.TempDir()
+	got, err := ResolveCatalogDir(root, "")
+	if err != nil {
+		t.Fatalf("ResolveCatalogDir: unexpected error: %v", err)
+	}
+	if got != root {
+		t.Errorf("ResolveCatalogDir(root, \"\") = %q, want %q", got, root)
+	}
+}
+
+func TestResolveCatalogDir_Subdirectory(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "plugins"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveCatalogDir(root, "plugins")
+	if err != nil {
+		t.Fatalf("ResolveCatalogDir: unexpected error: %v", err)
+	}
+	want := filepath.Join(root, "plugins")
+	if got != want {
+		t.Errorf("ResolveCatalogDir(root, \"plugins\") = %q, want %q", got, want)
+	}
+}
+
+func TestResolveCatalogDir_ParentEscapeRejected(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"..", "../escape", "/etc"} {
+		if _, err := ResolveCatalogDir(root, dir); err == nil {
+			t.Errorf("ResolveCatalogDir(root, %q): want error, got nil", dir)
+		}
+	}
+}
+
+func TestResolveCatalogDir_SymlinkEscapeRejected(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "linked")); err != nil {
+		t.Skipf("symlink not supported in this environment: %v", err)
+	}
+	if _, err := ResolveCatalogDir(root, "linked"); err == nil {
+		t.Fatal("want error for a dir that symlinks outside the source root, got nil")
+	}
+}
+
 func TestLoadCatalogManifest_SymlinkEscapeRejected(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()

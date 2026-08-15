@@ -35,6 +35,33 @@ func writeInitCatalogFixture(t *testing.T, pluginPaths ...string) string {
 	return dir
 }
 
+// writeInitCatalogFixtureWithDir is writeInitCatalogFixture with the
+// catalog.toml and plugin directories nested one level under dirName, so
+// tests can exercise `plect init --catalog-dir`.
+func writeInitCatalogFixtureWithDir(t *testing.T, dirName string, pluginPaths ...string) string {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, dirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := "schema_version = 1\nplugins = [" + quoteJoin(pluginPaths) + "]\n"
+	if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range pluginPaths {
+		pluginDir := filepath.Join(dir, p)
+		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		content := "schema_version = 1\nplect_min_version = \"0.0.0\"\n"
+		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
 func quoteJoin(items []string) string {
 	quoted := make([]string, len(items))
 	for i, s := range items {
@@ -48,7 +75,7 @@ func quoteJoin(items []string) string {
 func resetInitFlags(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		initCatalogAlias, initCatalogSource, initCatalogRevision, initWorkdirsRoot = "", "", "", ""
+		initCatalogAlias, initCatalogSource, initCatalogDir, initCatalogRevision, initWorkdirsRoot = "", "", "", "", ""
 		initEnablePlugins, initAllowlist = nil, nil
 		initYes, initAllowAll = false, false
 	})
@@ -112,6 +139,41 @@ func TestInit_YesBootstrapsFreshConfigHome(t *testing.T) {
 	}
 	if cfg.WorkdirsRoot != workdirs {
 		t.Errorf("cfg.WorkdirsRoot = %q, want %q", cfg.WorkdirsRoot, workdirs)
+	}
+}
+
+func TestInit_Yes_CatalogDirScopesTrustSpace(t *testing.T) {
+	resetInitFlags(t)
+	configHome := setInitConfigHome(t)
+	root := writeInitCatalogFixtureWithDir(t, "plugins", "agent/claude")
+	workdirs := filepath.Join(t.TempDir(), "work")
+
+	out, err := execRoot(t, "init", "--yes",
+		"--catalog-alias", "local",
+		"--catalog-source", "path+editable://"+root,
+		"--catalog-dir", "plugins",
+		"--enable", "agent/claude",
+		"--allow-all",
+		"--workdirs-root", workdirs,
+	)
+	if err != nil {
+		t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+	}
+
+	catalogsData, readErr := os.ReadFile(filepath.Join(configHome, "catalogs.toml"))
+	if readErr != nil {
+		t.Fatalf("catalogs.toml not written: %v", readErr)
+	}
+	if !strings.Contains(string(catalogsData), "dir = \"plugins\"") {
+		t.Errorf("catalogs.toml missing dir = \"plugins\":\n%s", catalogsData)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load() after init: %v", err)
+	}
+	if len(cfg.Plugins) != 1 {
+		t.Errorf("cfg.Plugins = %+v, want 1 resolved plugin", cfg.Plugins)
 	}
 }
 
@@ -348,6 +410,7 @@ func TestInit_InteractivePromptsDriveTheSameFlow(t *testing.T) {
 	stdin := strings.Join([]string{
 		"local",                      // catalog alias
 		"path+editable://" + fixture, // catalog source
+		"",                           // catalog dir (blank: source root)
 		"",                           // catalog revision (blank: path source)
 		"1, channel/slack",           // plugin selection (mixed index + path)
 		"^acme/",                     // resource allowlist

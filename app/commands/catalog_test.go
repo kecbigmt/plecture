@@ -13,14 +13,14 @@ import (
 func TestWriteCatalogList_FormatsEntries(t *testing.T) {
 	var buf bytes.Buffer
 	err := writeCatalogList(&buf, []service.CatalogListEntry{
-		{Alias: "official", Source: "git+https://x", ResolvedRevision: "abc123", Status: "ok", EnabledPlugins: []string{"github"}},
+		{Alias: "official", Source: "git+https://x", Dir: "plugins", ResolvedRevision: "abc123", Status: "ok", EnabledPlugins: []string{"github"}},
 		{Alias: "local", Source: "path+editable:///x", Status: "ok", EnabledPlugins: nil},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := buf.String()
-	for _, want := range []string{"official", "abc123", "github", "local", "(none, path source)"} {
+	for _, want := range []string{"official", "plugins", "abc123", "github", "local", "(none, path source)", "(none, source root)"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q; got:\n%s", want, got)
 		}
@@ -33,6 +33,15 @@ func TestOrNone(t *testing.T) {
 	}
 	if got := orNone("abc123"); got != "abc123" {
 		t.Errorf("orNone(\"abc123\") = %q", got)
+	}
+}
+
+func TestOrNoneDir(t *testing.T) {
+	if got := orNoneDir(""); got != "(none, source root)" {
+		t.Errorf("orNoneDir(\"\") = %q", got)
+	}
+	if got := orNoneDir("plugins"); got != "plugins" {
+		t.Errorf("orNoneDir(\"plugins\") = %q", got)
 	}
 }
 

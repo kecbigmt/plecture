@@ -104,7 +104,7 @@ func buildProviderBinaries(t *testing.T, root string) []plugins.Mounted {
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	return []plugins.Mounted{{
-		ID:  "official/plugins/github",
+		ID:  "official/github",
 		Dir: binDir,
 		Manifest: plugins.Manifest{Executables: []plugins.Executable{
 			{Name: "plect-github-provider", Path: "plect-github-provider"},

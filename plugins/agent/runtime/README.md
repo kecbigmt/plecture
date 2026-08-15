@@ -26,7 +26,7 @@ its own plugin instead of being duplicated in each.
 ## Install
 
 ```bash
-plect catalog add official git+https://github.com/kecbigmt/plecture --revision <tag-or-commit>
+plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision <tag-or-commit>
 plect plugin add official/agent/runtime
 ```
 

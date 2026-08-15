@@ -46,6 +46,38 @@ func LoadCatalogManifest(catalogRoot string) (CatalogManifest, error) {
 	return m, nil
 }
 
+// ResolveCatalogDir joins dir onto a fetched source root and returns the
+// resulting catalog root, applying the same realpath-containment check as a
+// listed plugin path: dir is a structured registration field (`--dir`), not
+// something the source locator string itself carries, but it still names a
+// path inside content plect has already decided to trust — not content it
+// has independently vetted — so a `..` or symlink escape is rejected the
+// same as any other catalog-relative path. An empty dir returns root
+// unchanged.
+func ResolveCatalogDir(root, dir string) (string, error) {
+	if dir == "" {
+		return root, nil
+	}
+	clean := filepath.Clean(dir)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+		return "", fmt.Errorf("catalog dir %q is not a relative subpath of the source root", dir)
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve source root %s: %w", root, err)
+	}
+	full := filepath.Join(root, clean)
+	realFull, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return "", fmt.Errorf("catalog dir %q: %w", dir, err)
+	}
+	rel, err := filepath.Rel(realRoot, realFull)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("catalog dir %q escapes the source root", dir)
+	}
+	return full, nil
+}
+
 // validateCatalogPaths enforces catalog.toml's containment and
 // allowlist-completeness invariants.
 func validateCatalogPaths(catalogRoot string, m CatalogManifest) error {

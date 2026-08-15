@@ -38,7 +38,7 @@ Requires [`agent/runtime`](../runtime) enabled from the same catalog — both
 tasks' activity hooks resolve `plect-agent-activity` through it.
 
 ```bash
-plect catalog add official git+https://github.com/kecbigmt/plecture --revision <tag-or-commit>
+plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision <tag-or-commit>
 plect plugin add official/agent/runtime
 plect plugin add official/agent/codex
 ```

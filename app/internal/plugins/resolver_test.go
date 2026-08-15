@@ -39,6 +39,150 @@ func TestVerifyAndMountCatalog_GitSource_SourceDriftFailsLoud(t *testing.T) {
 	}
 }
 
+func TestVerifyAndMountCatalog_GitSource_DirDriftFailsLoud(t *testing.T) {
+	repo, firstCommit, _ := newLocalCatalogGitRepo(t)
+	entry := CatalogEntry{Alias: "official", Source: "git+https://" + repo, Dir: "plugins", Plugins: []string{"okf"}}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{
+		Alias: "official", CatalogSource: "git+https://" + repo, Dir: "", CatalogResolvedRevision: firstCommit,
+	}}}
+
+	_, err := VerifyAndMountCatalog(entry, lock, t.TempDir())
+	var want *ErrCatalogSourceDrift
+	if !errors.As(err, &want) {
+		t.Fatalf("err = %v, want *ErrCatalogSourceDrift", err)
+	}
+}
+
+// newLocalCatalogGitRepoWithDir is newLocalCatalogGitRepo's catalog.toml
+// nested one level under dirName instead of at the repo root, so tests can
+// exercise a git-sourced catalog registered with --dir.
+func newLocalCatalogGitRepoWithDir(t *testing.T, dirName string) (repoDir, firstCommit string) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found on PATH")
+	}
+	dir := t.TempDir()
+	env := append(os.Environ(),
+		"GIT_AUTHOR_NAME=plect-test", "GIT_AUTHOR_EMAIL=plect-test@example.test",
+		"GIT_COMMITTER_NAME=plect-test", "GIT_COMMITTER_EMAIL=plect-test@example.test",
+	)
+	run := func(args ...string) string {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	catalogRoot := filepath.Join(dir, dirName)
+	writeCatalogManifest(t, catalogRoot, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeMinimalPlugin(t, filepath.Join(catalogRoot, "okf"))
+	// A sibling directory outside dirName, unrelated to the catalog, so a
+	// test can assert the resolved catalog root does not reach it.
+	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "docs", "notes.md"), []byte("outside the catalog trust space"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	run("init", "--quiet", "--initial-branch=main")
+	run("add", ".")
+	run("commit", "--quiet", "-m", "v1")
+	first := run("rev-parse", "HEAD")
+
+	return dir, first
+}
+
+func TestVerifyAndMountCatalog_GitSource_DirScopesRoot(t *testing.T) {
+	repo, firstCommit := newLocalCatalogGitRepoWithDir(t, "plugins")
+	cacheRoot := t.TempDir()
+	source := "git+https://" + repo
+	if _, _, err := fetchGitCatalog(context.Background(), procexec.Default, source, repo, firstCommit, cacheRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	entry := CatalogEntry{Alias: "official", Source: source, Dir: "plugins", Plugins: []string{"okf"}}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "official", CatalogSource: source, Dir: "plugins", CatalogResolvedRevision: firstCommit}}}
+
+	rc, err := VerifyAndMountCatalog(entry, lock, cacheRoot)
+	if err != nil {
+		t.Fatalf("VerifyAndMountCatalog: unexpected error: %v", err)
+	}
+	wantRoot := filepath.Join(CacheDir(cacheRoot, source, firstCommit), "plugins")
+	if rc.Root != wantRoot {
+		t.Errorf("Root = %q, want %q", rc.Root, wantRoot)
+	}
+	if len(rc.Manifest.Plugins) != 1 || rc.Manifest.Plugins[0] != "okf" {
+		t.Errorf("Manifest.Plugins = %v", rc.Manifest.Plugins)
+	}
+}
+
+func TestVerifyAndMountPlugin_GitSource_DirScoped(t *testing.T) {
+	repo, firstCommit := newLocalCatalogGitRepoWithDir(t, "plugins")
+	cacheRoot := t.TempDir()
+	source := "git+https://" + repo
+	if _, _, err := fetchGitCatalog(context.Background(), procexec.Default, source, repo, firstCommit, cacheRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	catalog := ResolvedCatalog{Alias: "official", Source: source, Dir: "plugins", Manifest: CatalogManifest{Plugins: []string{"okf"}}}
+	pluginDir := filepath.Join(CacheDir(cacheRoot, source, firstCommit), "plugins", "okf")
+	hash, err := HashTree(pluginDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock := &Lockfile{Plugins: []PluginLockEntry{{
+		ID: "official/okf", Path: "okf", ContentHash: hash, CatalogResolvedRevision: firstCommit,
+	}}}
+
+	mounted, err := VerifyAndMountPlugin(catalog, "okf", cacheRoot, lock, testPlectVersion)
+	if err != nil {
+		t.Fatalf("VerifyAndMountPlugin: unexpected error: %v", err)
+	}
+	if mounted.Dir != pluginDir {
+		t.Errorf("Dir = %q, want %q", mounted.Dir, pluginDir)
+	}
+}
+
+func TestCheckCatalogNotDrifted_NoLockRecordIsNotDrift(t *testing.T) {
+	entry := CatalogEntry{Alias: "local", Source: "path:///x", Dir: "plugins"}
+	if err := CheckCatalogNotDrifted(entry, &Lockfile{}); err != nil {
+		t.Errorf("CheckCatalogNotDrifted: unexpected error for a never-locked alias: %v", err)
+	}
+}
+
+func TestCheckCatalogNotDrifted_MatchingRecordPasses(t *testing.T) {
+	entry := CatalogEntry{Alias: "local", Source: "path:///x", Dir: "plugins"}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///x", Dir: "plugins"}}}
+	if err := CheckCatalogNotDrifted(entry, lock); err != nil {
+		t.Errorf("CheckCatalogNotDrifted: unexpected error for a matching record: %v", err)
+	}
+}
+
+func TestCheckCatalogNotDrifted_DirMismatchFailsLoud(t *testing.T) {
+	entry := CatalogEntry{Alias: "local", Source: "path:///x", Dir: "plugins"}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///x", Dir: "other"}}}
+	err := CheckCatalogNotDrifted(entry, lock)
+	var want *ErrCatalogSourceDrift
+	if !errors.As(err, &want) {
+		t.Fatalf("err = %v, want *ErrCatalogSourceDrift", err)
+	}
+}
+
+func TestCheckCatalogNotDrifted_SourceMismatchFailsLoud(t *testing.T) {
+	entry := CatalogEntry{Alias: "local", Source: "path:///x"}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///y"}}}
+	err := CheckCatalogNotDrifted(entry, lock)
+	var want *ErrCatalogSourceDrift
+	if !errors.As(err, &want) {
+		t.Fatalf("err = %v, want *ErrCatalogSourceDrift", err)
+	}
+}
+
 func TestVerifyAndMountCatalog_GitSource_Success(t *testing.T) {
 	repo, firstCommit, _ := newLocalCatalogGitRepo(t)
 	cacheRoot := t.TempDir()
