@@ -228,11 +228,12 @@ Executable delivery is staged:
 A Go toolchain is an explicit v1 requirement for plugins with Go build commands,
 consistent with plect itself being installable through `go install` and with
 Go-tooling norms such as user-built language servers and static-analysis tools.
-The lock pins the catalog revision and plugin content hash, so a locally built
-binary is a derivative of exactly the trusted content. That is a stronger
-verification chain than unsigned prebuilt distribution. Running a build command
-is within the trust already granted by confirming the catalog registration,
-because plugin config can run shell during normal operation.
+The lock pins the plugin content hash, so a locally built binary is a
+derivative of exactly the trusted content; the Git commit SHA is provenance for
+where that content was acquired. That is a stronger verification chain than
+unsigned prebuilt distribution. Running a build command is within the trust
+already granted by confirming the catalog registration, because plugin config
+can run shell during normal operation.
 Plecture-maintained plugins also remain available through the existing Nix path.
 
 ## Reference resolution
@@ -293,10 +294,10 @@ Plugin declaration fields:
 
 A `trusted_catalogs` entry is the trust act. Each registration binds a
 user-chosen alias to one exact source locator. It does not pin selected plugin
-content; per-plugin lock entries carry the resolved revisions and hashes.
-Default alias suggestions belong in provider README install snippets, not in
-any manifest. Core contains no official host, owner, registry, provider list,
-or prefix policy.
+content; per-plugin lock entries carry the resolved acquisition coordinates and
+content hashes. Default alias suggestions belong in provider README install
+snippets, not in any manifest. Core contains no official host, owner, registry,
+provider list, or prefix policy.
 
 Git is the default transport for reference distribution, not a requirement of
 the resolution model. The model needs only fetch, revision or hash
@@ -310,10 +311,14 @@ Resolution flow:
    The first implementation does not read them from ancestor overlays.
 2. For each referenced catalog, resolve the registration to concrete content:
    - Git catalog: fetch the locator and resolve its requested revision fragment
-     to a commit hash.
+     to a commit SHA. `--revision` accepts tags and branches as input, but the
+     lockfile records only the resolved commit SHA, never the symbolic ref.
    - Locked path catalog: resolve symlinks and verify selected plugin
-     directories against their per-plugin lock hashes.
-   - Editable path catalog: resolve symlinks and mount the path directly.
+     directories against their per-plugin tree SHA-256 hashes. Path sources have
+     no catalog revision.
+   - Editable path catalog: resolve symlinks and mount the path directly. It
+     records neither a catalog revision nor a content hash and is therefore
+     non-reproducible.
 3. Find `catalog.toml` at the resolved catalog root and fail if
    `schema_version` is unknown.
 4. Validate every listed plugin path with realpath containment inside the
@@ -321,10 +326,15 @@ Resolution flow:
 5. For each enabled plugin id, split the catalog alias from the relative path
    and fail if the alias is not registered or the path is not listed by that
    catalog.
-6. Verify the plugin's lock entry against the catalog revision and plugin
-   content hash, except editable path catalogs. Path catalogs hash each selected
-   plugin directory, not the whole catalog subtree, so changing one local plugin
-   does not force unrelated sibling plugins to move.
+6. Verify the plugin's lock entry against the catalog acquisition coordinate
+   and plugin content hash, except editable path catalogs. For Git catalogs, the
+   acquisition coordinate is the resolved commit SHA and the content hash is
+   computed over the catalog trust-space subtree actually mounted for the
+   plugin. The SHA identifies the repository snapshot; the content hash verifies
+   the trusted bytes. Recording both also avoids relying on Git SHA-1 collision
+   resistance alone. Path catalogs hash each selected plugin directory, not the
+   whole catalog subtree, so changing one local plugin does not force unrelated
+   sibling plugins to move.
 7. Read the plugin's `plugin.toml` and fail if `schema_version` is unknown.
 8. Check `plect_min_version` against the running plect version.
 9. Mount the plugin directory as a read-only base config layer, except editable
@@ -334,12 +344,14 @@ Core should materialize resolved catalog snapshots under a cache owned by the
 user, for example:
 
 ```text
-~/.cache/plect/catalogs/<locator-digest>/<resolved-revision>/
+~/.cache/plect/catalogs/<locator-digest>/<lock-coordinate>/
 ```
 
 The locator digest is derived from the exact registered locator, not from the
 user-local alias. Reusing an alias for a different catalog therefore cannot
-reuse the old catalog's cache namespace.
+reuse the old catalog's cache namespace. The lock coordinate is the resolved
+commit SHA for Git catalogs and the plugin content hash for locked path
+catalogs. Editable path catalogs are mounted directly and are not cached.
 
 The existing `plugin_dirs` setting becomes an implementation detail for mounted
 resolved directories. During migration, users can move from hand-authored
@@ -379,8 +391,7 @@ schema_version = 1
 [[plugins]]
 id = "official/github"
 catalog_alias = "official"
-catalog_locator = "git+https://github.com/example/plect-plugins#v0.3.0"
-catalog_requested_revision = "v0.3.0"
+catalog_locator = "git+https://github.com/example/plect-plugins"
 catalog_resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
 path = "github"
 content_hash = "sha256:..."
@@ -391,10 +402,18 @@ editable = false
 [[plugins]]
 id = "official/agent/codex-tasks"
 catalog_alias = "official"
-catalog_locator = "git+https://github.com/example/plect-plugins#v0.3.0"
-catalog_requested_revision = "v0.3.0"
+catalog_locator = "git+https://github.com/example/plect-plugins"
 catalog_resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
 path = "agent/codex-tasks"
+content_hash = "sha256:..."
+plect_min_version = "0.8.0"
+editable = false
+
+[[plugins]]
+id = "local/okf"
+catalog_alias = "local"
+catalog_locator = "path:///home/user/src/plect-catalog"
+path = "okf"
 content_hash = "sha256:..."
 plect_min_version = "0.8.0"
 editable = false
@@ -406,11 +425,10 @@ Recorded fields:
 |---|---|
 | `id` | Catalog-qualified plugin identity, `<catalog-alias>/<relative-path>`. |
 | `catalog_alias` | User-chosen catalog alias from the registration. |
-| `catalog_locator` | Exact registered source locator for the catalog. |
-| `catalog_requested_revision` | Revision request parsed from the registered locator or from the explicit update command, such as a tag, branch, or commit. |
-| `catalog_resolved_revision` | Immutable catalog revision, such as a Git commit. |
+| `catalog_locator` | Catalog source locator without a symbolic Git revision fragment. |
+| `catalog_resolved_revision` | Git-only immutable catalog revision. It is always the resolved commit SHA. |
 | `path` | Plugin path relative to `catalog.toml`. |
-| `content_hash` | Digest of the mounted plugin directory after checkout or extraction. |
+| `content_hash` | Digest of the mounted plugin directory after checkout or path resolution. For Git catalogs, this verifies the trust-space subtree content independently of the commit SHA. For locked path catalogs, this tree SHA-256 is the only pin. Editable path catalogs omit it. |
 | `version` | Optional plugin package version read from metadata when present. |
 | `plect_min_version` | Compatibility floor read from metadata. |
 | `editable` | Whether the catalog was mounted in explicit local development mode. |
@@ -419,33 +437,38 @@ Add and update commands:
 
 - `plect catalog add <alias> <locator> [--revision <rev>]` resolves the catalog,
   normalizes the locator into an exact registered locator, reads `catalog.toml`,
-  shows the exact locator, resolved revision, manifest description, and plugin
-  paths, and asks for interactive confirmation. On consent, it writes only the
-  catalog registration and fetches the catalog snapshot. When `--revision` is
-  supplied for a Git locator, the written locator includes that revision.
+  shows the exact locator, resolved lock coordinate, manifest description, and
+  plugin paths, and asks for interactive confirmation. On consent, it writes
+  only the catalog registration and fetches the catalog snapshot. When
+  `--revision` is supplied for a Git locator, the written locator includes that
+  requested revision. Later lock entries still record only the resolved commit
+  SHA.
 - `plect catalog update <alias> [--revision <rev>]` fetches the newest matching
-  catalog revision and repoints every enabled plugin from that catalog to the
+  catalog snapshot and repoints every enabled plugin from that catalog to the
   new snapshot with fresh per-plugin lock entries. When `--revision` is
   supplied for a Git catalog, it is a catalog-level intent change: after
-  confirmation, plect rewrites that catalog's exact locator in `catalogs.toml`
-  and updates all enabled plugins under the alias to the new requested
-  revision.
+  confirmation, plect rewrites that catalog's exact locator in `catalogs.toml`,
+  resolves the requested revision to a commit SHA, and records that SHA in each
+  updated plugin lock entry.
 - `plect catalog remove <alias>` shows the enabled plugins that would be
   disabled, requires confirmation in interactive contexts, then removes the
   catalog registration and those plugin declarations and lock entries.
 - `plect catalog list` shows registered aliases, locators, catalog validation
-  state, and a summary of enabled plugin lock revisions grouped by catalog. It
-  does not imply that one resolved revision applies to every enabled plugin in
+  state, and a summary of enabled plugin lock coordinates grouped by catalog. It
+  does not imply that one resolved Git commit applies to every enabled plugin in
   the catalog.
 - `plect plugin add <alias>/<path>` enables one plugin path from a registered
-  catalog, resolves the registered locator's requested revision, and writes or
-  updates that plugin's lock entry. It does not modify the catalog registration.
+  catalog, resolves the registered locator's requested revision to a commit SHA
+  for Git catalogs, and writes or updates that plugin's lock entry. It does not
+  modify the catalog registration.
 - `plect plugin update <alias>/<path> [--revision <rev>]` fetches the newest
-  matching catalog revision, validates the catalog, and repoints only that
+  matching catalog snapshot, validates the catalog, and repoints only that
   plugin's lock entry. When `--revision` is supplied, it affects only that
-  plugin's lock entry and does not rewrite the catalog registration. Other
-  plugins from the same catalog keep their previous locked revisions; cache
-  snapshots coexist by locator digest and revision.
+  plugin's lock entry and does not rewrite the catalog registration. Tags and
+  branches are accepted as input for Git catalogs, but the lock records the
+  resolved commit SHA. Other plugins from the same catalog keep their previous
+  locked coordinates; cache snapshots coexist by locator digest and lock
+  coordinate.
 - `plect plugin remove <alias>/<path>` disables that plugin and removes its lock
   entry.
 - `plect plugin verify` re-hashes cached plugin directories and fails if any
@@ -462,10 +485,10 @@ Editable path catalogs are the only exception: they are marked non-reproducible
 in `plect plugin list`, excluded from `plect plugin verify --locked`, and meant
 only for local plugin development.
 
-`plect.lock` carries mechanical pinning only: catalog locator, catalog
-revision, plugin path, plugin content hash, metadata, and editable state. Trust
-policy stays in catalog registrations; the lockfile never records trust
-semantics.
+`plect.lock` carries mechanical pinning only: catalog locator, Git commit SHA
+when applicable, plugin path, plugin content hash, metadata, and editable state.
+Trust policy stays in catalog registrations; the lockfile never records trust
+semantics or symbolic Git refs.
 
 Alternatives considered:
 
@@ -499,8 +522,9 @@ Threat model:
   Keeping them separate preserves their ownership split: humans edit policy;
   tooling writes the lock.
 - A catalog registration edit alone changes nothing mounted. Content
-  immutability still comes from revision and hash pinning in `plect.lock`,
-  verified on every load.
+  immutability still comes from `plect.lock`: Git catalogs record the resolved
+  commit SHA plus the trust-space content hash, locked path catalogs record the
+  tree SHA-256, and editable path catalogs are explicitly non-reproducible.
 - Plugin declarations are global-only. A dispatched session's workdir cannot
   inject plugins or trust new catalogs through cloned content.
 - Catalog registration and lock edits are human actions. Agent-driven workflows
@@ -508,9 +532,10 @@ Threat model:
 - First-seen catalogs require interactive confirmation through
   `plect catalog add`. Non-interactive contexts fail unless the user supplied an
   explicit override that remains visible in command history.
-- Remote attacks are constrained by transport authentication plus revision and
-  hash pinning: trust is established at catalog registration time, then verified
-  on every load.
+- Remote attacks are constrained by transport authentication plus lock
+  verification: trust is established at catalog registration time, then the
+  resolved Git commit SHA and trust-space content hash are verified on every
+  load.
 - Users can point at any catalog they choose to trust. Third-party installation
   is possible by design, and responsibility for trusting a catalog lies with the
   human who confirmed it. Deferred signing is what makes third-party consumption
@@ -657,8 +682,8 @@ plect plugin update official/agent/codex-tasks
 ```
 
 `plect plugin update official/agent/codex-tasks` fetches the newest catalog
-revision and repoints only `official/agent/codex-tasks`; `official/github` or
-`official/agent/claude-tasks` stay at their locked revisions until explicitly
+snapshot and repoints only `official/agent/codex-tasks`; `official/github` or
+`official/agent/claude-tasks` stay at their locked coordinates until explicitly
 updated.
 
 Catalog-owned files:
@@ -709,9 +734,9 @@ plect plugin add official/github
 plect plugin update official/github
 ```
 
-`plect plugin update official/github` fetches the newest catalog revision and
+`plect plugin update official/github` fetches the newest catalog snapshot and
 repoints only `official/github`; `official/agent/codex-tasks` stays at its
-locked revision.
+locked coordinate.
 
 Catalog-owned files:
 
