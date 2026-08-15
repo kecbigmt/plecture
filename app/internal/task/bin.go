@@ -17,24 +17,41 @@ type binCandidate struct {
 
 // resolveBin resolves a `{{bin ref}}` reference against mounted (the
 // catalog-qualified plugins folded into the current config, in declaration
-// order) to an absolute executable path.
+// order) to an absolute executable path. sourcePath is the file the
+// referencing template came from — the catalog-load worktree's absolute
+// path — used only to find ref's containing plugin for the bare-name
+// reading below; pass "" when the template has no file origin (e.g. it was
+// built in-process by a test).
 //
-// ref is always "<catalog-alias>/<plugin-path>[/<executable-name>]": a
-// reference with no catalog alias can never match, because plugin paths are
-// unique only inside a catalog. Two readings are tried against every
-// mounted plugin:
+// ref has two readings:
 //
+//   - A bare executable name (no "/"): resolves against the *containing*
+//     plugin only — the plugin sourcePath was mounted from — matched
+//     against that plugin's own `[[executables]]`. Shipped config never
+//     knows the alias its catalog was registered under, so this is the
+//     only form plugin-mounted content may use. It is unavailable when
+//     sourcePath resolves to no mounted plugin (hand-authored config
+//     outside any plugin has no "containing plugin" to resolve against).
+//   - "<catalog-alias>/<plugin-path>[/<executable-name>]": the
+//     fully-qualified form, for user-authored config referencing any
+//     mounted plugin (its own or another's) by the alias the user chose at
+//     registration. Two sub-readings are tried against every mounted
+//     plugin:
 //   - ref exactly equals the plugin's id: valid only when that plugin
 //     declares exactly one executable (the terse common case).
-//   - ref is "<plugin-id>/<executable-name>" for some mounted plugin id and
-//     one of its declared executable names.
-//
-// Both readings can be tried for every mounted plugin whose id is a prefix
-// of ref, so nested plugin paths can collide: a reference is a load error
-// when more than one candidate resolution exists, because no slash-based
-// syntax can disambiguate that collision under arbitrary-depth plugin
-// paths — the design deliberately refuses to guess.
-func resolveBin(mounted []plugins.Mounted, ref string) (string, error) {
+//   - ref is "<plugin-id>/<executable-name>" for some mounted plugin id
+//     and one of its declared executable names.
+//     Both sub-readings can match for every mounted plugin whose id is a
+//     prefix of ref, so nested plugin paths can collide: a reference is a
+//     load error when more than one candidate resolution exists, because no
+//     slash-based syntax can disambiguate that collision under
+//     arbitrary-depth plugin paths — the design deliberately refuses to
+//     guess.
+func resolveBin(mounted []plugins.Mounted, sourcePath, ref string) (string, error) {
+	if ref != "" && !strings.Contains(ref, "/") {
+		return resolvePluginLocalBin(mounted, sourcePath, ref)
+	}
+
 	var candidates []binCandidate
 	for _, m := range mounted {
 		switch {
@@ -64,4 +81,43 @@ func resolveBin(mounted []plugins.Mounted, ref string) (string, error) {
 		}
 		return "", fmt.Errorf("{{bin %q}}: ambiguous; matches more than one plugin/executable reading: %v", ref, ids)
 	}
+}
+
+// resolvePluginLocalBin resolves a bare executable name against the single
+// plugin that mounted sourcePath, by name only (no alias, no path) — the
+// containing plugin's own [[executables]] never has a duplicate name
+// (LoadManifest rejects that), so at most one match can ever exist.
+func resolvePluginLocalBin(mounted []plugins.Mounted, sourcePath, ref string) (string, error) {
+	owner, ok := containingPlugin(mounted, sourcePath)
+	if !ok {
+		return "", fmt.Errorf(`{{bin %q}}: a bare executable name only resolves inside plugin-mounted config; this file was not mounted from any catalog plugin (use "<catalog-alias>/<plugin-path>/<executable-name>" instead)`, ref)
+	}
+	for _, ex := range owner.Manifest.Executables {
+		if ex.Name == ref {
+			return filepath.Join(owner.Dir, ex.Path), nil
+		}
+	}
+	return "", fmt.Errorf("{{bin %q}}: plugin %q declares no executable named %q", ref, owner.ID, ref)
+}
+
+// containingPlugin finds the mounted plugin whose directory contains
+// sourcePath, i.e. the plugin sourcePath's file was mounted from. Picks the
+// longest matching Dir so a plugin nested under another plugin's directory
+// resolves to its own, more specific, manifest rather than the outer one's.
+func containingPlugin(mounted []plugins.Mounted, sourcePath string) (plugins.Mounted, bool) {
+	var best plugins.Mounted
+	found := false
+	for _, m := range mounted {
+		if m.Dir == "" {
+			continue
+		}
+		if !strings.HasPrefix(sourcePath, m.Dir+string(filepath.Separator)) {
+			continue
+		}
+		if !found || len(m.Dir) > len(best.Dir) {
+			best = m
+			found = true
+		}
+	}
+	return best, found
 }

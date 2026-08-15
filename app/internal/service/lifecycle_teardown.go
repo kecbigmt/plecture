@@ -40,6 +40,7 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 		WorkdirsRoot:  cfg.WorkdirsRoot,
 		SessionInputs: session.Inputs,
 		Plugins:       cfg.Plugins,
+		SourcePath:    prov.SourcePath,
 		Force:         force,
 		CleanupInputs: cleanupInputs,
 	}
@@ -118,6 +119,7 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 		r := task.Resolved{NodeID: key, TaskID: taskID, Scope: st.Scope}
 		if def, ok := defs[taskID]; ok {
 			r.Cleanup = def.Cleanup
+			r.SourcePath = def.SourcePath
 			if resolved, execErr := task.ResolveExecution(def.Execution, wf.Environment); execErr == nil {
 				r.Execution = resolved
 			}

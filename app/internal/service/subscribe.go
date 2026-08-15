@@ -69,6 +69,7 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 		ResourceID:  params.ResourceID,
 		SessionName: sessionName,
 		Plugins:     cfg.Plugins,
+		SourcePath:  prov.SourcePath,
 	}); hookErr != nil {
 		return &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
 	}

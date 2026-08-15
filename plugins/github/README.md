@@ -57,11 +57,11 @@ plect plugin add official/plugins/github
 
 `plugins/github` (not `github`) is the enable path: this repository's
 `catalog.toml` lives at the repo root, so every published plugin's identity
-is `<catalog-alias>/plugins/<name>`, matching its path from that root. The
-shipped config also assumes the alias `official` — its resource hook
-references `{{bin "official/plugins/github/..."}}`. Registering under a
-different alias means overriding `resources/github.toml` in your own global
-config with the alias you chose.
+is `<catalog-alias>/plugins/<name>`, matching its path from that root. This
+plugin's own config (providers/resources) never encodes that alias: it
+resolves its executables through `{{bin "plect-github-provider"}}`'s
+plugin-local bare-name reading, which resolves against the containing
+plugin regardless of which alias you register the catalog under.
 
 Running `github-watcher serve` as a background daemon is a separate,
 deployment-specific step (a systemd unit, a launchd agent, or similar) —

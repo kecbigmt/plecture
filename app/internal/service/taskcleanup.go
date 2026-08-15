@@ -81,6 +81,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	envExecutor, _ := environmentExecutorForSession(cfg, wf, session)
 	if def, ok := defs[taskID]; ok {
 		r.Cleanup = def.Cleanup
+		r.SourcePath = def.SourcePath
 		if resolved, execErr := task.ResolveExecution(def.Execution, wf.Environment); execErr == nil {
 			r.Execution = resolved
 		}

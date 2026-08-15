@@ -14,8 +14,8 @@
 match = '^local-okf://(?P<owner>[A-Za-z0-9][A-Za-z0-9-]*)/(?:[A-Za-z0-9._/-]*/)?(?P<slug>[A-Za-z0-9._-]+)\.md$'
 name  = "{{.owner}}/okf-{{.slug}}"
 
-setup   = 'plect-okf provider setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}}'
-cleanup = 'plect-okf provider cleanup --workdir {{.Self.workdir | shellQuote}}'
+setup   = '{{bin "plect-okf"}} provider setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}}'
+cleanup = '{{bin "plect-okf"}} provider cleanup --workdir {{.Self.workdir | shellQuote}}'
 
 [outputs_schema]
 type     = "object"

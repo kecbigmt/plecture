@@ -89,6 +89,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 		Workflow:    workflowOutputs(workflowTasks),
 		Environment: environmentOutputs(workflowTasks),
 		Session:     session,
+		SourcePath:  r.SourcePath,
 	}
 	cmdStr, err := render(r.Setup, ctx)
 	if err != nil {
