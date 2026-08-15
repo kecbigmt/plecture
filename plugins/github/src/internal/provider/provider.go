@@ -15,9 +15,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/ghapi"
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/github"
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/workspace"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/github"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/workspace"
 )
 
 // WorkdirManager is the git workdir lifecycle surface Setup and Cleanup use.

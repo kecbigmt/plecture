@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/contracts/event"
-	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/ratebudget"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/ratebudget"
 )
 
 func TestStore_SubscribeUnsubscribe(t *testing.T) {

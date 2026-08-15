@@ -19,9 +19,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/ghapi"
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/github"
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/procexec"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/github"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/procexec"
 )
 
 // Result is the observed state, one field per resources/github.toml

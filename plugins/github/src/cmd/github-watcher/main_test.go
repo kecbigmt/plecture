@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/watcher"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/watcher"
 )
 
 func TestConfigureDeliveryRequiresBusUnlessLegacyOptIn(t *testing.T) {

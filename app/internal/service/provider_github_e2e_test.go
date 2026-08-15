@@ -46,7 +46,7 @@ func shippedGithubProvider(t *testing.T) (config.ProviderConfig, []plugins.Mount
 	if err := os.WriteFile(filepath.Join(providersDir, "github.toml"), shipped, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}}
+	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
 	provs, err := cfg.LoadProviders()
 	if err != nil {
 		t.Fatalf("load mounted github provider: %v", err)
@@ -99,8 +99,8 @@ func buildProviderBinaries(t *testing.T, root string) []plugins.Mounted {
 		}
 	}
 	build("app", "./cmd/plect", "plect")
-	build(filepath.Join("plugins", "github-provider"), "./cmd/plect-github-provider", "plect-github-provider")
-	build(filepath.Join("plugins", "github-watcher"), "./cmd/github-watcher", "github-watcher")
+	build(filepath.Join("plugins", "github", "src"), "./cmd/plect-github-provider", "plect-github-provider")
+	build(filepath.Join("plugins", "github", "src"), "./cmd/github-watcher", "github-watcher")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	return []plugins.Mounted{{

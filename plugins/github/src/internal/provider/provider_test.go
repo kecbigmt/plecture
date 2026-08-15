@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/workspace"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/workspace"
 )
 
 type fakeGHClient struct {

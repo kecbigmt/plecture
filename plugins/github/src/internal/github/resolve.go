@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/procexec"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/procexec"
 )
 
 // projectItemResponse is the GraphQL response structure for resolving a project item.

@@ -1,15 +1,13 @@
-# github-provider
+# github/src
 
-The `plect-github-provider` executable: it maps GitHub issue and pull
-request URLs to session ids, owns the git worktree those sessions work in,
-and observes a GitHub resource's state (CI check rollup, issue completion,
-linked PR, mergeability).
+The Go source for the `plugins/github` catalog plugin's two executables:
+`plect-github-provider` (this module's own README section below) and
+`github-watcher` (subscribe/serve/gh-api — see its own `--help`).
 
-This module is a build dependency of the `plugins/github` catalog plugin,
-not something to install directly — see `plugins/github/README.md` for the
-provider/resource config that invokes this binary and for install
-instructions. This README covers the executable's own commands, for
-development and testing.
+This module is `plugins/github`'s build source, not something to install
+directly — see `plugins/github/README.md` for the provider/resource config
+that invokes these binaries and for install instructions. This README
+covers `plect-github-provider`'s own commands, for development and testing.
 
 ## Commands
 

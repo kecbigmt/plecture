@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/ghapi"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
 )
 
 type fakeRunner struct {

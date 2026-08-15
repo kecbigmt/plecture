@@ -17,8 +17,8 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/contracts/event"
-	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/ratebudget"
-	"github.com/kecbigmt/plecture/plugins/github-watcher/internal/watcher"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/ratebudget"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/watcher"
 )
 
 func main() {

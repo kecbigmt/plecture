@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/ghapi"
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/github"
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/observe"
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/provider"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/github"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/observe"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/provider"
 )
 
 // ghClient builds the gh-api client setup/observe use, sharing the named

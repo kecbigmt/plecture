@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-// TestLoad_UnresolvedCrossPluginBinRefNamesPluginToEnable is the acceptance
-// scenario from issue #112: a shipped config's {{bin ...}} reference to an
-// executable of a plugin that exists in the catalog but is not enabled must
-// fail loud at config load, naming the plugin to enable — not wait until
-// that hook is actually rendered mid-session.
+// TestLoad_UnresolvedCrossPluginBinRefNamesPluginToEnable covers a shipped
+// config's {{bin ...}} reference to an executable of a plugin that exists in
+// the catalog but is not enabled: it must fail loud at config load, naming
+// the plugin to enable — not wait until that hook is actually rendered
+// mid-session.
 func TestLoad_UnresolvedCrossPluginBinRefNamesPluginToEnable(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)

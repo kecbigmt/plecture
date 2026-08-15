@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/kecbigmt/plecture/plugins/github-provider/internal/procexec"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/procexec"
 )
 
 // Client runs one GitHub REST call per JSON invocation.
