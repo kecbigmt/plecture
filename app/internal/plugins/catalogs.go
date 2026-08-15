@@ -21,7 +21,7 @@ const CatalogsSchemaVersion = 1
 type CatalogEntry struct {
 	Alias   string   `toml:"alias"`
 	Source  string   `toml:"source"`
-	Dir     string   `toml:"dir,omitempty"`
+	Subdir  string   `toml:"subdir,omitempty"`
 	Plugins []string `toml:"plugins"`
 }
 

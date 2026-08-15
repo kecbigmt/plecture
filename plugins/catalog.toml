@@ -1,5 +1,5 @@
 # This directory (plugins/) is the catalog root: registering this
-# repository as a catalog with `--dir plugins` bounds the fetch/verify/mount
+# repository as a catalog with `--subdir plugins` bounds the fetch/verify/mount
 # trust space to this subtree, not the whole repository (app/, contracts/,
 # docs/ stay out of it). Sibling directories under plugins/ that are not
 # listed below — channel-server, slack-adapter, legacy-migration — sit

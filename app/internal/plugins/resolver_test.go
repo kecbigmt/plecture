@@ -39,11 +39,11 @@ func TestVerifyAndMountCatalog_GitSource_SourceDriftFailsLoud(t *testing.T) {
 	}
 }
 
-func TestVerifyAndMountCatalog_GitSource_DirDriftFailsLoud(t *testing.T) {
+func TestVerifyAndMountCatalog_GitSource_SubdirDriftFailsLoud(t *testing.T) {
 	repo, firstCommit, _ := newLocalCatalogGitRepo(t)
-	entry := CatalogEntry{Alias: "official", Source: "git+https://" + repo, Dir: "plugins", Plugins: []string{"okf"}}
+	entry := CatalogEntry{Alias: "official", Source: "git+https://" + repo, Subdir: "plugins", Plugins: []string{"okf"}}
 	lock := &Lockfile{Catalogs: []CatalogLockRecord{{
-		Alias: "official", CatalogSource: "git+https://" + repo, Dir: "", CatalogResolvedRevision: firstCommit,
+		Alias: "official", CatalogSource: "git+https://" + repo, Subdir: "", CatalogResolvedRevision: firstCommit,
 	}}}
 
 	_, err := VerifyAndMountCatalog(entry, lock, t.TempDir())
@@ -53,10 +53,10 @@ func TestVerifyAndMountCatalog_GitSource_DirDriftFailsLoud(t *testing.T) {
 	}
 }
 
-// newLocalCatalogGitRepoWithDir is newLocalCatalogGitRepo's catalog.toml
+// newLocalCatalogGitRepoWithSubdir is newLocalCatalogGitRepo's catalog.toml
 // nested one level under dirName instead of at the repo root, so tests can
-// exercise a git-sourced catalog registered with --dir.
-func newLocalCatalogGitRepoWithDir(t *testing.T, dirName string) (repoDir, firstCommit string) {
+// exercise a git-sourced catalog registered with --subdir.
+func newLocalCatalogGitRepoWithSubdir(t *testing.T, dirName string) (repoDir, firstCommit string) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not found on PATH")
@@ -97,16 +97,16 @@ func newLocalCatalogGitRepoWithDir(t *testing.T, dirName string) (repoDir, first
 	return dir, first
 }
 
-func TestVerifyAndMountCatalog_GitSource_DirScopesRoot(t *testing.T) {
-	repo, firstCommit := newLocalCatalogGitRepoWithDir(t, "plugins")
+func TestVerifyAndMountCatalog_GitSource_SubdirScopesRoot(t *testing.T) {
+	repo, firstCommit := newLocalCatalogGitRepoWithSubdir(t, "plugins")
 	cacheRoot := t.TempDir()
 	source := "git+https://" + repo
 	if _, _, err := fetchGitCatalog(context.Background(), procexec.Default, source, repo, firstCommit, cacheRoot); err != nil {
 		t.Fatal(err)
 	}
 
-	entry := CatalogEntry{Alias: "official", Source: source, Dir: "plugins", Plugins: []string{"okf"}}
-	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "official", CatalogSource: source, Dir: "plugins", CatalogResolvedRevision: firstCommit}}}
+	entry := CatalogEntry{Alias: "official", Source: source, Subdir: "plugins", Plugins: []string{"okf"}}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "official", CatalogSource: source, Subdir: "plugins", CatalogResolvedRevision: firstCommit}}}
 
 	rc, err := VerifyAndMountCatalog(entry, lock, cacheRoot)
 	if err != nil {
@@ -121,15 +121,15 @@ func TestVerifyAndMountCatalog_GitSource_DirScopesRoot(t *testing.T) {
 	}
 }
 
-func TestVerifyAndMountPlugin_GitSource_DirScoped(t *testing.T) {
-	repo, firstCommit := newLocalCatalogGitRepoWithDir(t, "plugins")
+func TestVerifyAndMountPlugin_GitSource_SubdirScoped(t *testing.T) {
+	repo, firstCommit := newLocalCatalogGitRepoWithSubdir(t, "plugins")
 	cacheRoot := t.TempDir()
 	source := "git+https://" + repo
 	if _, _, err := fetchGitCatalog(context.Background(), procexec.Default, source, repo, firstCommit, cacheRoot); err != nil {
 		t.Fatal(err)
 	}
 
-	catalog := ResolvedCatalog{Alias: "official", Source: source, Dir: "plugins", Manifest: CatalogManifest{Plugins: []string{"okf"}}}
+	catalog := ResolvedCatalog{Alias: "official", Source: source, Subdir: "plugins", Manifest: CatalogManifest{Plugins: []string{"okf"}}}
 	pluginDir := filepath.Join(CacheDir(cacheRoot, source, firstCommit), "plugins", "okf")
 	hash, err := HashTree(pluginDir)
 	if err != nil {
@@ -149,23 +149,23 @@ func TestVerifyAndMountPlugin_GitSource_DirScoped(t *testing.T) {
 }
 
 func TestCheckCatalogNotDrifted_NoLockRecordIsNotDrift(t *testing.T) {
-	entry := CatalogEntry{Alias: "local", Source: "path:///x", Dir: "plugins"}
+	entry := CatalogEntry{Alias: "local", Source: "path:///x", Subdir: "plugins"}
 	if err := CheckCatalogNotDrifted(entry, &Lockfile{}); err != nil {
 		t.Errorf("CheckCatalogNotDrifted: unexpected error for a never-locked alias: %v", err)
 	}
 }
 
 func TestCheckCatalogNotDrifted_MatchingRecordPasses(t *testing.T) {
-	entry := CatalogEntry{Alias: "local", Source: "path:///x", Dir: "plugins"}
-	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///x", Dir: "plugins"}}}
+	entry := CatalogEntry{Alias: "local", Source: "path:///x", Subdir: "plugins"}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///x", Subdir: "plugins"}}}
 	if err := CheckCatalogNotDrifted(entry, lock); err != nil {
 		t.Errorf("CheckCatalogNotDrifted: unexpected error for a matching record: %v", err)
 	}
 }
 
-func TestCheckCatalogNotDrifted_DirMismatchFailsLoud(t *testing.T) {
-	entry := CatalogEntry{Alias: "local", Source: "path:///x", Dir: "plugins"}
-	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///x", Dir: "other"}}}
+func TestCheckCatalogNotDrifted_SubdirMismatchFailsLoud(t *testing.T) {
+	entry := CatalogEntry{Alias: "local", Source: "path:///x", Subdir: "plugins"}
+	lock := &Lockfile{Catalogs: []CatalogLockRecord{{Alias: "local", CatalogSource: "path:///x", Subdir: "other"}}}
 	err := CheckCatalogNotDrifted(entry, lock)
 	var want *ErrCatalogSourceDrift
 	if !errors.As(err, &want) {

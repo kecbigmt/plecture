@@ -117,7 +117,7 @@ func TestFetchCatalog_PathSource(t *testing.T) {
 	}
 }
 
-func TestFetchCatalog_PathSource_Dir(t *testing.T) {
+func TestFetchCatalog_PathSource_Subdir(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogManifest(t, filepath.Join(root, "plugins"), "schema_version = 1\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(root, "plugins", "okf"))
@@ -135,13 +135,13 @@ func TestFetchCatalog_PathSource_Dir(t *testing.T) {
 	}
 }
 
-func TestFetchCatalog_Dir_EscapeRejected(t *testing.T) {
+func TestFetchCatalog_Subdir_EscapeRejected(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogManifest(t, root, "schema_version = 1\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(root, "okf"))
 
 	if _, err := FetchCatalog(context.Background(), procexec.Default, "path://"+root, "", "../escape", t.TempDir()); err == nil {
-		t.Fatal("want error for a dir that escapes the source root, got nil")
+		t.Fatal("want error for a subdir that escapes the source root, got nil")
 	}
 }
 

@@ -23,10 +23,10 @@ type FetchedCatalog struct {
 // place. FetchCatalog performs no trust check — `plect catalog add`'s flow
 // fetches first so it can show the user what an as-yet-unregistered source
 // resolves to before asking for confirmation. revision is required for a
-// git source and ignored otherwise. dir, when non-empty, is a catalog-
+// git source and ignored otherwise. subdir, when non-empty, is a catalog-
 // relative subdirectory of the fetched source that becomes the catalog
-// root — see ResolveCatalogDir.
-func FetchCatalog(ctx context.Context, runner procexec.Runner, source, revision, dir, cacheRoot string) (FetchedCatalog, error) {
+// root — see ResolveCatalogSubdir.
+func FetchCatalog(ctx context.Context, runner procexec.Runner, source, revision, subdir, cacheRoot string) (FetchedCatalog, error) {
 	scheme, rest, err := ParseSource(source)
 	if err != nil {
 		return FetchedCatalog{}, err
@@ -48,7 +48,7 @@ func FetchCatalog(ctx context.Context, runner procexec.Runner, source, revision,
 		return FetchedCatalog{}, err
 	}
 
-	root, err := ResolveCatalogDir(sourceRoot, dir)
+	root, err := ResolveCatalogSubdir(sourceRoot, subdir)
 	if err != nil {
 		return FetchedCatalog{}, err
 	}

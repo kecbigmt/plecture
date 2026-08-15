@@ -46,21 +46,21 @@ func LoadCatalogManifest(catalogRoot string) (CatalogManifest, error) {
 	return m, nil
 }
 
-// ResolveCatalogDir joins dir onto a fetched source root and returns the
-// resulting catalog root, applying the same realpath-containment check as a
-// listed plugin path: dir is a structured registration field (`--dir`), not
-// something the source locator string itself carries, but it still names a
-// path inside content plect has already decided to trust — not content it
-// has independently vetted — so a `..` or symlink escape is rejected the
-// same as any other catalog-relative path. An empty dir returns root
-// unchanged.
-func ResolveCatalogDir(root, dir string) (string, error) {
-	if dir == "" {
+// ResolveCatalogSubdir joins subdir onto a fetched source root and returns
+// the resulting catalog root, applying the same realpath-containment check
+// as a listed plugin path: subdir is a structured registration field
+// (`--subdir`), not something the source locator string itself carries, but
+// it still names a path inside content plect has already decided to trust —
+// not content it has independently vetted — so a `..` or symlink escape is
+// rejected the same as any other catalog-relative path. An empty subdir
+// returns root unchanged.
+func ResolveCatalogSubdir(root, subdir string) (string, error) {
+	if subdir == "" {
 		return root, nil
 	}
-	clean := filepath.Clean(dir)
+	clean := filepath.Clean(subdir)
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
-		return "", fmt.Errorf("catalog dir %q is not a relative subpath of the source root", dir)
+		return "", fmt.Errorf("catalog subdir %q is not a relative subpath of the source root", subdir)
 	}
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
@@ -69,11 +69,11 @@ func ResolveCatalogDir(root, dir string) (string, error) {
 	full := filepath.Join(root, clean)
 	realFull, err := filepath.EvalSymlinks(full)
 	if err != nil {
-		return "", fmt.Errorf("catalog dir %q: %w", dir, err)
+		return "", fmt.Errorf("catalog subdir %q: %w", subdir, err)
 	}
 	rel, err := filepath.Rel(realRoot, realFull)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("catalog dir %q escapes the source root", dir)
+		return "", fmt.Errorf("catalog subdir %q escapes the source root", subdir)
 	}
 	return full, nil
 }

@@ -35,10 +35,10 @@ func writeInitCatalogFixture(t *testing.T, pluginPaths ...string) string {
 	return dir
 }
 
-// writeInitCatalogFixtureWithDir is writeInitCatalogFixture with the
+// writeInitCatalogFixtureWithSubdir is writeInitCatalogFixture with the
 // catalog.toml and plugin directories nested one level under dirName, so
-// tests can exercise `plect init --catalog-dir`.
-func writeInitCatalogFixtureWithDir(t *testing.T, dirName string, pluginPaths ...string) string {
+// tests can exercise `plect init --catalog-subdir`.
+func writeInitCatalogFixtureWithSubdir(t *testing.T, dirName string, pluginPaths ...string) string {
 	t.Helper()
 	root := t.TempDir()
 	dir := filepath.Join(root, dirName)
@@ -75,7 +75,7 @@ func quoteJoin(items []string) string {
 func resetInitFlags(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		initCatalogAlias, initCatalogSource, initCatalogDir, initCatalogRevision, initWorkdirsRoot = "", "", "", "", ""
+		initCatalogAlias, initCatalogSource, initCatalogSubdir, initCatalogRevision, initWorkdirsRoot = "", "", "", "", ""
 		initEnablePlugins, initAllowlist = nil, nil
 		initYes, initAllowAll = false, false
 	})
@@ -142,16 +142,16 @@ func TestInit_YesBootstrapsFreshConfigHome(t *testing.T) {
 	}
 }
 
-func TestInit_Yes_CatalogDirScopesTrustSpace(t *testing.T) {
+func TestInit_Yes_CatalogSubdirScopesTrustSpace(t *testing.T) {
 	resetInitFlags(t)
 	configHome := setInitConfigHome(t)
-	root := writeInitCatalogFixtureWithDir(t, "plugins", "agent/claude")
+	root := writeInitCatalogFixtureWithSubdir(t, "plugins", "agent/claude")
 	workdirs := filepath.Join(t.TempDir(), "work")
 
 	out, err := execRoot(t, "init", "--yes",
 		"--catalog-alias", "local",
 		"--catalog-source", "path+editable://"+root,
-		"--catalog-dir", "plugins",
+		"--catalog-subdir", "plugins",
 		"--enable", "agent/claude",
 		"--allow-all",
 		"--workdirs-root", workdirs,
@@ -164,8 +164,8 @@ func TestInit_Yes_CatalogDirScopesTrustSpace(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("catalogs.toml not written: %v", readErr)
 	}
-	if !strings.Contains(string(catalogsData), "dir = \"plugins\"") {
-		t.Errorf("catalogs.toml missing dir = \"plugins\":\n%s", catalogsData)
+	if !strings.Contains(string(catalogsData), "subdir = \"plugins\"") {
+		t.Errorf("catalogs.toml missing subdir = \"plugins\":\n%s", catalogsData)
 	}
 
 	cfg, err := config.Load()
@@ -410,7 +410,7 @@ func TestInit_InteractivePromptsDriveTheSameFlow(t *testing.T) {
 	stdin := strings.Join([]string{
 		"local",                      // catalog alias
 		"path+editable://" + fixture, // catalog source
-		"",                           // catalog dir (blank: source root)
+		"",                           // catalog subdir (blank: source root)
 		"",                           // catalog revision (blank: path source)
 		"1, channel/slack",           // plugin selection (mixed index + path)
 		"^acme/",                     // resource allowlist

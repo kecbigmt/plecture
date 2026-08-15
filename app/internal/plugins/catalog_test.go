@@ -104,49 +104,69 @@ plugins = ["github"]
 	}
 }
 
-func TestResolveCatalogDir_Empty(t *testing.T) {
+func TestResolveCatalogSubdir_Empty(t *testing.T) {
 	root := t.TempDir()
-	got, err := ResolveCatalogDir(root, "")
+	got, err := ResolveCatalogSubdir(root, "")
 	if err != nil {
-		t.Fatalf("ResolveCatalogDir: unexpected error: %v", err)
+		t.Fatalf("ResolveCatalogSubdir: unexpected error: %v", err)
 	}
 	if got != root {
-		t.Errorf("ResolveCatalogDir(root, \"\") = %q, want %q", got, root)
+		t.Errorf("ResolveCatalogSubdir(root, \"\") = %q, want %q", got, root)
 	}
 }
 
-func TestResolveCatalogDir_Subdirectory(t *testing.T) {
+func TestResolveCatalogSubdir_Subdirectory(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "plugins"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, err := ResolveCatalogDir(root, "plugins")
+	got, err := ResolveCatalogSubdir(root, "plugins")
 	if err != nil {
-		t.Fatalf("ResolveCatalogDir: unexpected error: %v", err)
+		t.Fatalf("ResolveCatalogSubdir: unexpected error: %v", err)
 	}
 	want := filepath.Join(root, "plugins")
 	if got != want {
-		t.Errorf("ResolveCatalogDir(root, \"plugins\") = %q, want %q", got, want)
+		t.Errorf("ResolveCatalogSubdir(root, \"plugins\") = %q, want %q", got, want)
 	}
 }
 
-func TestResolveCatalogDir_ParentEscapeRejected(t *testing.T) {
+// TestResolveCatalogSubdir_MultiSegmentSubdirectory is the GWT the issue
+// asked for directly: subdir accepts a relative subpath of any depth, not
+// just a single directory name, and the resulting catalog root joins the
+// full multi-segment path.
+func TestResolveCatalogSubdir_MultiSegmentSubdirectory(t *testing.T) {
 	root := t.TempDir()
-	for _, dir := range []string{"..", "../escape", "/etc"} {
-		if _, err := ResolveCatalogDir(root, dir); err == nil {
-			t.Errorf("ResolveCatalogDir(root, %q): want error, got nil", dir)
+	multiSegment := filepath.Join("path", "to", "plugins")
+	if err := os.MkdirAll(filepath.Join(root, multiSegment), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ResolveCatalogSubdir(root, multiSegment)
+	if err != nil {
+		t.Fatalf("ResolveCatalogSubdir: unexpected error: %v", err)
+	}
+	want := filepath.Join(root, multiSegment)
+	if got != want {
+		t.Errorf("ResolveCatalogSubdir(root, %q) = %q, want %q", multiSegment, got, want)
+	}
+}
+
+func TestResolveCatalogSubdir_ParentEscapeRejected(t *testing.T) {
+	root := t.TempDir()
+	for _, subdir := range []string{"..", "../escape", "/etc"} {
+		if _, err := ResolveCatalogSubdir(root, subdir); err == nil {
+			t.Errorf("ResolveCatalogSubdir(root, %q): want error, got nil", subdir)
 		}
 	}
 }
 
-func TestResolveCatalogDir_SymlinkEscapeRejected(t *testing.T) {
+func TestResolveCatalogSubdir_SymlinkEscapeRejected(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()
 	if err := os.Symlink(outside, filepath.Join(root, "linked")); err != nil {
 		t.Skipf("symlink not supported in this environment: %v", err)
 	}
-	if _, err := ResolveCatalogDir(root, "linked"); err == nil {
-		t.Fatal("want error for a dir that symlinks outside the source root, got nil")
+	if _, err := ResolveCatalogSubdir(root, "linked"); err == nil {
+		t.Fatal("want error for a subdir that symlinks outside the source root, got nil")
 	}
 }
 

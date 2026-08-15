@@ -369,7 +369,7 @@ plugins = ["okf"]
 [[catalogs]]
 alias = "mono"
 source = "git+https://github.com/example/monorepo"
-dir = "plugins"
+subdir = "plugins"
 plugins = ["github"]
 ```
 
@@ -385,10 +385,10 @@ Catalog entry fields:
 |---|---:|---|
 | `alias` | yes | User-chosen local catalog alias. It is the trust name and the first segment of plugin identities. |
 | `source` | yes | Exact catalog source, not a prefix. Supported v1 schemes are `git+https`, `git+ssh`, `path`, and `path+editable`. The source value never carries a revision. |
-| `dir` | no | Catalog-relative subdirectory of the fetched source that becomes the catalog root; `catalog.toml` is read from there. Empty means the source root itself. Written by `plect catalog add --dir <path>`, never inferred. |
+| `subdir` | no | Catalog-relative subdirectory of the fetched source that becomes the catalog root; `catalog.toml` is read from there. Empty means the source root itself. Written by `plect catalog add --subdir <path>`, never inferred. |
 | `plugins` | yes | Catalog-relative plugin paths enabled from this catalog. Each path forms a catalog-qualified plugin identity with the alias, `<catalog-alias>/<relative-path>`. |
 
-`dir` exists as its own field, not a suffix folded into `source` (no
+`subdir` exists as its own field, not a suffix folded into `source` (no
 Terraform-style `//subdir`, no nix-style `?dir=` query), for the same reason
 `source` never carries a revision: the locator stays a plain, tool-agnostic
 URL or path, and every plect-specific modifier is its own explicit,
@@ -433,10 +433,10 @@ Resolution flow:
    - Editable path catalog: resolve symlinks and mount the path directly. It
      records neither a catalog revision nor a content hash and is therefore
      non-reproducible.
-3. Join the registration's `dir`, if any, onto the fetched source root — the
-   result is the catalog root — with the same realpath containment check
-   used for plugin paths in step 4: a `dir` that escapes the fetched source
-   via `..` or a symlink is a load error, not a silent clamp. Find
+3. Join the registration's `subdir`, if any, onto the fetched source root —
+   the result is the catalog root — with the same realpath containment check
+   used for plugin paths in step 4: a `subdir` that escapes the fetched
+   source via `..` or a symlink is a load error, not a silent clamp. Find
    `catalog.toml` at that catalog root and fail if `schema_version` is
    unknown.
 4. Validate every listed plugin path with realpath containment inside the
@@ -483,10 +483,10 @@ rules, but they cannot register catalogs or select new plugins. The workdir's
 own `.plect/` directory is also excluded because cloned content must not fetch
 or run code.
 
-Alternatives considered: encoding `dir` into the source locator itself
+Alternatives considered: encoding `subdir` into the source locator itself
 (Terraform's `//subdir` suffix, nix's `?dir=` query parameter) is rejected
-for the same reason a revision is never embedded in `source` — see `dir`'s
-field entry above.
+for the same reason a revision is never embedded in `source` — see
+`subdir`'s field entry above.
 
 Alternatives considered: `archive+https` is rejected from v1. Current adopters
 are a single user plus a planned team, and both source plugins from Git. The
@@ -519,7 +519,7 @@ catalog_resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
 [[catalogs]]
 alias = "mono"
 catalog_source = "git+https://github.com/example/monorepo"
-dir = "plugins"
+subdir = "plugins"
 catalog_resolved_revision = "9c1e2a3b4d5e6f708192a3b4c5d6e7f809182a3b"
 
 [[plugins]]
@@ -559,7 +559,7 @@ Catalog record fields:
 |---|---|
 | `alias` | User-chosen catalog alias from `catalogs.toml`. |
 | `catalog_source` | Catalog source from `catalogs.toml`. It never includes a symbolic Git revision. |
-| `dir` | Copy of `catalogs.toml`'s `dir` for this alias, empty when unset. Checked for drift the same way `catalog_source` is: if a hand-edited `catalogs.toml` no longer matches, resolution fails loud rather than silently trusting a different subtree than the one last confirmed. The fix is `plect catalog remove <alias>` then `plect catalog add` again — not `plect catalog update`, which performs the identical drift check itself and refuses for the same reason (see below). |
+| `subdir` | Copy of `catalogs.toml`'s `subdir` for this alias, empty when unset. Checked for drift the same way `catalog_source` is: if a hand-edited `catalogs.toml` no longer matches, resolution fails loud rather than silently trusting a different subtree than the one last confirmed. The fix is `plect catalog remove <alias>` then `plect catalog add` again — not `plect catalog update`, which performs the identical drift check itself and refuses for the same reason (see below). |
 | `catalog_resolved_revision` | Git-only immutable catalog revision. It is always the resolved commit SHA from the last explicit catalog add or catalog update. |
 
 Plugin record fields:
@@ -578,35 +578,35 @@ Plugin record fields:
 
 Add and update commands:
 
-- `plect catalog add <alias> <source> [--dir <path>] [--revision <rev>]`
+- `plect catalog add <alias> <source> [--subdir <path>] [--revision <rev>]`
   resolves the catalog, normalizes the source into an exact registered
-  source, joins `--dir` (if given) onto the fetched root, reads
-  `catalog.toml` from the result, shows the exact source, dir, resolved lock
-  coordinate, manifest description, and plugin paths, and asks for
+  source, joins `--subdir` (if given) onto the fetched root, reads
+  `catalog.toml` from the result, shows the exact source, subdir, resolved
+  lock coordinate, manifest description, and plugin paths, and asks for
   interactive confirmation. On consent, it writes a new `[[catalogs]]` entry
-  with `alias`, revision-free `source`, `dir`, and an empty `plugins` list.
-  For Git sources, it also writes a catalog lock record with the resolved
-  commit SHA and the same `dir`. That record is the durable home for a
-  `--revision` input until plugin entries are added; `catalogs.toml` still
-  records no revision, and plugin lock entries record only resolved commit
-  SHAs.
+  with `alias`, revision-free `source`, `subdir`, and an empty `plugins`
+  list. For Git sources, it also writes a catalog lock record with the
+  resolved commit SHA and the same `subdir`. That record is the durable home
+  for a `--revision` input until plugin entries are added; `catalogs.toml`
+  still records no revision, and plugin lock entries record only resolved
+  commit SHAs.
 - `plect catalog update <alias> [--revision <rev>]` fetches the newest matching
   catalog snapshot and repoints every enabled plugin from that catalog to the
   new snapshot with fresh per-plugin lock entries. When `--revision` is
   supplied for a Git catalog, it is a catalog-level intent change: after
   confirmation, plect resolves the requested revision to a commit SHA and
   records that SHA in the catalog lock record and each updated plugin lock
-  entry. It does not write the requested revision to `catalogs.toml`. `dir`
-  has no update-time flag: it is a registration-time decision read back from
-  `catalogs.toml`, re-applied to the new snapshot unchanged; changing which
-  subtree is trusted is a new `catalog add`, not an update. Before fetching
-  anything, `catalog update` (and `plugin add`/`plugin update` below) compare
-  `catalogs.toml`'s current `source`/`dir` for the alias against the last
-  catalog lock record and refuse if they disagree — a hand-edited
-  registration is exactly the drift `catalog_source`/`dir`'s field entries
-  above describe, and none of these commands is the confirmation step that
-  is allowed to accept it silently. Only `plect catalog remove` +
-  `plect catalog add` can.
+  entry. It does not write the requested revision to `catalogs.toml`.
+  `subdir` has no update-time flag: it is a registration-time decision read
+  back from `catalogs.toml`, re-applied to the new snapshot unchanged;
+  changing which subtree is trusted is a new `catalog add`, not an update.
+  Before fetching anything, `catalog update` (and `plugin add`/`plugin
+  update` below) compare `catalogs.toml`'s current `source`/`subdir` for the
+  alias against the last catalog lock record and refuse if they disagree —
+  a hand-edited registration is exactly the drift
+  `catalog_source`/`subdir`'s field entries above describe, and none of
+  these commands is the confirmation step that is allowed to accept it
+  silently. Only `plect catalog remove` + `plect catalog add` can.
 - `plect catalog remove <alias>` shows the enabled plugins that would be
   disabled, requires confirmation in interactive contexts, then removes the
   catalog registration and those plugin selections and lock entries.

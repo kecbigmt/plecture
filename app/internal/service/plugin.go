@@ -63,7 +63,7 @@ func PluginAdd(ctx context.Context, paths PluginPaths, id string) (*PluginAddRes
 	if err != nil {
 		return nil, err
 	}
-	lock.PutCatalog(plugins.CatalogLockRecord{Alias: alias, CatalogSource: entry.Source, Dir: entry.Dir, CatalogResolvedRevision: fetched.ResolvedRevision})
+	lock.PutCatalog(plugins.CatalogLockRecord{Alias: alias, CatalogSource: entry.Source, Subdir: entry.Subdir, CatalogResolvedRevision: fetched.ResolvedRevision})
 	lock.PutPlugin(locked)
 
 	for i := range registrations.Catalogs {
@@ -91,7 +91,7 @@ func resolveCatalogForEnable(ctx context.Context, paths PluginPaths, entry plugi
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
 	if record, ok := lock.FindCatalog(entry.Alias); ok && scheme.IsGit() {
-		root, err := plugins.ResolveCatalogDir(plugins.CacheDir(paths.CacheRoot, entry.Source, record.CatalogResolvedRevision), entry.Dir)
+		root, err := plugins.ResolveCatalogSubdir(plugins.CacheDir(paths.CacheRoot, entry.Source, record.CatalogResolvedRevision), entry.Subdir)
 		if err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 		}
@@ -101,7 +101,7 @@ func resolveCatalogForEnable(ctx context.Context, paths PluginPaths, entry plugi
 		}
 		return &plugins.FetchedCatalog{Root: root, ResolvedRevision: record.CatalogResolvedRevision, Manifest: manifest}, nil
 	}
-	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, "", entry.Dir, paths.CacheRoot)
+	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, "", entry.Subdir, paths.CacheRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -156,7 +156,7 @@ func PluginUpdate(ctx context.Context, paths PluginPaths, id string, revision st
 		return nil, &Error{Code: ErrInvalidInput, Message: err.Error()}
 	}
 
-	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, revision, entry.Dir, paths.CacheRoot)
+	fetched, err := plugins.FetchCatalog(ctx, procexec.Default, entry.Source, revision, entry.Subdir, paths.CacheRoot)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -171,7 +171,7 @@ func PluginUpdate(ctx context.Context, paths PluginPaths, id string, revision st
 
 	// Bump the shared catalog lock record too, so a later `plugin add` for a
 	// new path from this catalog reuses this fresher snapshot.
-	lock.PutCatalog(plugins.CatalogLockRecord{Alias: alias, CatalogSource: entry.Source, Dir: entry.Dir, CatalogResolvedRevision: fetched.ResolvedRevision})
+	lock.PutCatalog(plugins.CatalogLockRecord{Alias: alias, CatalogSource: entry.Source, Subdir: entry.Subdir, CatalogResolvedRevision: fetched.ResolvedRevision})
 	lock.PutPlugin(locked)
 	if err := plugins.SaveLockfile(paths.LockfilePath, lock); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}

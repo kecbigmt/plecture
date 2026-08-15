@@ -10,10 +10,11 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// handEditCatalogDir simulates a human directly editing catalogs.toml's dir
-// field for alias, bypassing `plect catalog add`/`remove` — the drift
-// PluginAdd/PluginUpdate/CatalogUpdate must all reject before trusting it.
-func handEditCatalogDir(t *testing.T, paths PluginPaths, alias, dir string) {
+// handEditCatalogSubdir simulates a human directly editing catalogs.toml's
+// subdir field for alias, bypassing `plect catalog add`/`remove` — the
+// drift PluginAdd/PluginUpdate/CatalogUpdate must all reject before
+// trusting it.
+func handEditCatalogSubdir(t *testing.T, paths PluginPaths, alias, subdir string) {
 	t.Helper()
 	registrations, err := plugins.LoadCatalogRegistrations(paths.CatalogsPath)
 	if err != nil {
@@ -22,12 +23,12 @@ func handEditCatalogDir(t *testing.T, paths PluginPaths, alias, dir string) {
 	found := false
 	for i := range registrations.Catalogs {
 		if registrations.Catalogs[i].Alias == alias {
-			registrations.Catalogs[i].Dir = dir
+			registrations.Catalogs[i].Subdir = subdir
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("handEditCatalogDir: alias %q not registered", alias)
+		t.Fatalf("handEditCatalogSubdir: alias %q not registered", alias)
 	}
 	if err := plugins.SaveCatalogRegistrations(paths.CatalogsPath, registrations); err != nil {
 		t.Fatal(err)
@@ -327,13 +328,14 @@ func TestPluginAdd_EditableCatalogLockEntryOmitsContentHash(t *testing.T) {
 	}
 }
 
-// TestPluginAdd_RejectsHandEditedDirDrift is a regression test: PluginAdd's
-// git-catalog fast path (and its non-git fallback) used to read
-// catalogs.toml's current `dir` straight into a fresh fetch and lock write,
-// so a hand-edited dir would get silently trusted the next time any plugin
-// from that catalog was enabled — never routing through the interactive
-// `plect catalog add` confirmation that changing a trusted subtree requires.
-func TestPluginAdd_RejectsHandEditedDirDrift(t *testing.T) {
+// TestPluginAdd_RejectsHandEditedSubdirDrift is a regression test:
+// PluginAdd's git-catalog fast path (and its non-git fallback) used to read
+// catalogs.toml's current `subdir` straight into a fresh fetch and lock
+// write, so a hand-edited subdir would get silently trusted the next time
+// any plugin from that catalog was enabled — never routing through the
+// interactive `plect catalog add` confirmation that changing a trusted
+// subtree requires.
+func TestPluginAdd_RejectsHandEditedSubdirDrift(t *testing.T) {
 	paths := catalogTestPaths(t)
 	src := writeCatalogSource(t, map[string]string{"okf": "0.0.0", "other": "0.0.0"})
 	addTestCatalog(t, paths, "local", "path://"+src)
@@ -341,18 +343,19 @@ func TestPluginAdd_RejectsHandEditedDirDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	handEditCatalogDir(t, paths, "local", "sub")
+	handEditCatalogSubdir(t, paths, "local", "sub")
 
 	_, err := PluginAdd(context.Background(), paths, "local/other")
 	if err == nil || !strings.Contains(err.Error(), "does not match plect.lock") {
-		t.Fatalf("PluginAdd after a hand-edited dir: err = %v, want a source/dir drift error", err)
+		t.Fatalf("PluginAdd after a hand-edited subdir: err = %v, want a source/subdir drift error", err)
 	}
 }
 
-// TestPluginUpdate_RejectsHandEditedDirDrift mirrors
-// TestPluginAdd_RejectsHandEditedDirDrift for the update path: a hand-edited
-// dir must be rejected before PluginUpdate fetches and repoints the lock.
-func TestPluginUpdate_RejectsHandEditedDirDrift(t *testing.T) {
+// TestPluginUpdate_RejectsHandEditedSubdirDrift mirrors
+// TestPluginAdd_RejectsHandEditedSubdirDrift for the update path: a
+// hand-edited subdir must be rejected before PluginUpdate fetches and
+// repoints the lock.
+func TestPluginUpdate_RejectsHandEditedSubdirDrift(t *testing.T) {
 	paths := catalogTestPaths(t)
 	src := writeCatalogSource(t, map[string]string{"okf": "0.0.0"})
 	addTestCatalog(t, paths, "local", "path://"+src)
@@ -360,10 +363,10 @@ func TestPluginUpdate_RejectsHandEditedDirDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	handEditCatalogDir(t, paths, "local", "sub")
+	handEditCatalogSubdir(t, paths, "local", "sub")
 
 	_, err := PluginUpdate(context.Background(), paths, "local/okf", "")
 	if err == nil || !strings.Contains(err.Error(), "does not match plect.lock") {
-		t.Fatalf("PluginUpdate after a hand-edited dir: err = %v, want a source/dir drift error", err)
+		t.Fatalf("PluginUpdate after a hand-edited subdir: err = %v, want a source/subdir drift error", err)
 	}
 }

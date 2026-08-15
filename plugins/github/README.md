@@ -51,11 +51,11 @@ still refuses a branch carrying unmerged commits regardless of this flag.
 Register this repository as a catalog and enable the plugin:
 
 ```bash
-plect catalog add official git+https://github.com/kecbigmt/plecture --dir plugins --revision main
+plect catalog add official git+https://github.com/kecbigmt/plecture --subdir plugins --revision main
 plect plugin add official/github
 ```
 
-`--dir plugins` scopes the catalog root (and the fetch/verify/mount trust
+`--subdir plugins` scopes the catalog root (and the fetch/verify/mount trust
 space) to this repository's `plugins/` subtree, where `plugins/catalog.toml`
 lives — not the whole repository. This plugin's own config
 (providers/resources) never encodes the alias you register under: it
