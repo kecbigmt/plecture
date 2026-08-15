@@ -87,6 +87,7 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 		"template":      "",
 		"agent_session": "",
 		"repeat":        "",
+		"owner":         "acme",
 	}
 
 	for id, def := range tasks {
