@@ -46,6 +46,10 @@ otherwise exist in classical Latin; the actual Latin derivation of
 from *plectere*," never as "the Latin word for..." or as an attested Latin
 noun.
 
+The `-ture` ending is deliberate: it echoes *structure* and *architecture*.
+Paired with the *plectere* root, the name points at what Plecture provides
+— the structure within which autonomous work can keep moving.
+
 The image the name carries: within a woven structure, each strand stays
 identifiable rather than dissolving into the whole. Humans stay human,
 agents stay agents — Plecture connects them without replacing them.
