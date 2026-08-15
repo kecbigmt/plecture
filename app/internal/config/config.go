@@ -10,6 +10,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
@@ -112,11 +113,11 @@ func DefaultConfig() *Config {
 // the normal load path (e.g. the migration command, which must locate the
 // same file Load would) use this instead of duplicating the join.
 func DefaultPath() string {
-	home, err := os.UserHomeDir()
+	home, err := confighome.Resolve()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".config", "plect", "config.toml")
+	return filepath.Join(home, "config.toml")
 }
 
 // Load reads config.toml and resolves any plugins enabled across registered

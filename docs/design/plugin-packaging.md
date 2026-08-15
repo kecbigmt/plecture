@@ -245,6 +245,13 @@ config, not inside cloned workdir content. The global declaration file lives at:
 ~/.config/plect/catalogs.toml
 ```
 
+`~/.config/plect` here is the default config home; `PLECT_CONFIG_HOME` or
+`--config-home` overrides it for the whole config tree (`config.toml`,
+`catalogs.toml`, `plect.lock`, and the global `templates/`, `tasks/`,
+`workflows/`, `providers/`, `resources/`, `environments/`, and `channels/`
+overlays), while the plugin cache and runtime state stay on the XDG
+data/cache dirs regardless.
+
 Example:
 
 ```toml

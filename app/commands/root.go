@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/spf13/cobra"
 )
+
+var configHomeFlag string
 
 var rootCmd = &cobra.Command{
 	Use:   "plect",
@@ -29,11 +32,26 @@ identifier no resolver matches selects a workflow explicitly (see
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Exporting to the env var, rather than threading the flag value through
+		// every config/plugins path resolver, keeps confighome.Resolve a plain
+		// env lookup at every call site.
+		if configHomeFlag != "" {
+			if err := os.Setenv(confighome.EnvVar, configHomeFlag); err != nil {
+				return fmt.Errorf("set %s from --config-home: %w", confighome.EnvVar, err)
+			}
+		}
 		if err := state.NewStore("").CheckReadable(); err != nil {
 			return err
 		}
 		return nil
 	},
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringVar(&configHomeFlag, "config-home", "",
+		"Override the config home directory (declarations only: config.toml, catalogs.toml, "+
+			"plect.lock, templates/, tasks/, workflows/, ...); else $"+confighome.EnvVar+", else ~/.config/plect. "+
+			"Runtime state and the plugin cache always resolve from the XDG data/cache dirs, unaffected by this.")
 }
 
 func Execute() error {
