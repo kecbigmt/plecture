@@ -47,14 +47,17 @@ locked yet), skip that `sed` — there is nothing to migrate in it.
 After migration:
 
 ```bash
-rg '^dir = ' "$CONFIG_DIR/catalogs.toml" "$CONFIG_DIR/plect.lock"
+for f in "$CONFIG_DIR/catalogs.toml" "$CONFIG_DIR/plect.lock"; do
+  [ -f "$f" ] && rg '^dir = ' "$f"
+done
 plect catalog list
 ```
 
-The `rg` command should print nothing for migrated files (an absent file
-is fine — `rg` reports no matches for it too). `plect catalog list` should
-show every previously registered catalog with its subdirectory intact
-under the `SUBDIR` column, and no drift errors.
+`rg` errors on a missing file rather than reporting no matches, so the loop
+checks each file exists first; either an absent file or a migrated one
+should leave the loop silent. `plect catalog list` should show every
+previously registered catalog with its subdirectory intact under the
+`SUBDIR` column, and no drift errors.
 
 ## Rollback
 
