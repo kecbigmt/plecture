@@ -92,7 +92,9 @@ type reader struct {
 	store   *eventlog.Store
 	poll    time.Duration
 	cancel  context.CancelFunc
-	done    chan struct{} // closed when run returns; the join point for releaseRef/Close
+	// done closes when run returns, giving releaseRef and Close a point to
+	// wait on so neither can return while the reader might still touch the log.
+	done chan struct{}
 
 	mu     sync.Mutex
 	cursor int64 // broadcast watermark: everything < cursor has been broadcast

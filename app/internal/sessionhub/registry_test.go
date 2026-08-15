@@ -313,7 +313,9 @@ func TestRegistry_LastUnsubscribeJoinsReaderGoroutine(t *testing.T) {
 func TestRegistry_CloseJoinsReaderGoroutines(t *testing.T) {
 	store := eventlog.NewStore(t.TempDir())
 	reg := NewRegistry(store, WithPollInterval(50*time.Millisecond))
-	reg.SubscribeFrames("o/r-1") // leak a sub; Close must still fully join the reader
+	// Leaking the sub (never closing it) exercises Close tearing the reader
+	// down on its own, independent of any consumer unsubscribing.
+	reg.SubscribeFrames("o/r-1")
 
 	reg.mu.Lock()
 	r := reg.readers["o/r-1"].reader
