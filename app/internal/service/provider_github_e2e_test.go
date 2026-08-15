@@ -236,7 +236,14 @@ func TestE2E_GithubProviderConvergesAndReclaims(t *testing.T) {
 
 	// First dispatch.
 	tasks := map[string]*contract.TaskState{}
-	vars := task.WorkflowHookVars{ResourceID: "https://github.com/testowner/testrepo/issues/42", SessionName: session, Plugins: mounted}
+	// delete_branch opts into branch reclaim on cleanup — the default is now
+	// to leave it, so this test's own name ("...AndReclaims") requires it.
+	vars := task.WorkflowHookVars{
+		ResourceID:    "https://github.com/testowner/testrepo/issues/42",
+		SessionName:   session,
+		Plugins:       mounted,
+		CleanupInputs: map[string]string{"delete_branch": "true"},
+	}
 	if _, err := task.RunWorkflowSetup(prov, vars, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
