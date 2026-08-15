@@ -187,10 +187,27 @@ var isInteractive = func() bool {
 
 // confirm prompts on cmd's output and reads a y/N answer from cmd's input.
 func confirm(cmd *cobra.Command, prompt string) bool {
+	return confirmReader(cmd, bufio.NewReader(cmd.InOrStdin()), prompt)
+}
+
+// confirmReader is confirm's core, taking an already-constructed reader so a
+// multi-prompt flow (init) can share one bufio.Reader across every prompt —
+// a fresh bufio.Reader per prompt on the same underlying stdin can silently
+// drop bytes it had already buffered ahead for a later prompt.
+func confirmReader(cmd *cobra.Command, reader *bufio.Reader, prompt string) bool {
 	fmt.Fprintf(cmd.OutOrStdout(), "%s [y/N] ", prompt)
-	line, _ := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	line, _ := reader.ReadString('\n')
 	answer := strings.ToLower(strings.TrimSpace(line))
 	return answer == "y" || answer == "yes"
+}
+
+// promptLine prompts on cmd's output and reads one line of free-form text
+// from reader, trimmed. See confirmReader for why the reader is shared
+// across an entire multi-prompt flow rather than constructed per call.
+func promptLine(cmd *cobra.Command, reader *bufio.Reader, prompt string) string {
+	fmt.Fprint(cmd.OutOrStdout(), prompt)
+	line, _ := reader.ReadString('\n')
+	return strings.TrimSpace(line)
 }
 
 func mustPluginPaths() service.PluginPaths {
