@@ -1,0 +1,143 @@
+scope   = "run"
+primary = true
+
+# Inputs:
+#   tmux_session — target tmux session (typically
+#                  {{.Nodes.tmux.outputs.session_name}} from the
+#                  agent/runtime plugin's tmux task). Kept only as the
+#                  observation window (`plect attach`) for the headless
+#                  worker's stdout — it carries no input channel.
+#   model        — when set, exported as CODEX_MODEL so the worker appends
+#                  `-m <value>` to every `codex exec`/`codex exec resume`
+#                  call. Empty = codex's own config default. Restricted to a
+#                  plain-token charset (see inputs_schema below) — this
+#                  value is spliced into the setup script.
+#   effort       — when set, exported as CODEX_MODEL_REASONING_EFFORT so the
+#                  worker appends `-c model_reasoning_effort=<value>` the
+#                  same way. Empty = codex's own config default. Same
+#                  restriction as model.
+#
+# codex_exec starts a headless worker (plect-codex-exec-worker) instead of
+# the interactive Codex TUI, so instruction delivery is a queued
+# `codex exec`/`codex exec resume` call rather than tmux keystrokes — the
+# submit-race and boot-race classes that motivate agent/runtime's channel and
+# task do not exist for a runtime with no input box.
+#
+# Requires the agent/runtime plugin enabled from the same catalog: the
+# activity hooks below resolve plect-agent-activity through
+# {{bin "official/agent/runtime/plect-agent-activity"}}. If your catalog
+# registration uses an alias other than "official", replace this task with a
+# same-id definition in a trusted overlay that uses your alias instead.
+setup = '''
+CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
+mkdir -p "$CODEX_HOME_DIR"
+PROFILE_NAME="plect-$(uuidgen)"
+PROFILE_PATH="$CODEX_HOME_DIR/$PROFILE_NAME.config.toml"
+cat > "$PROFILE_PATH" <<'HOOKS_TOML'
+bypass_hook_trust = true
+
+[hooks]
+UserPromptSubmit = [{type = "command", command = ["{{bin "official/agent/runtime/plect-agent-activity"}}", "codex", "working"]}]
+Stop = [{type = "command", command = ["{{bin "official/agent/runtime/plect-agent-activity"}}", "codex", "waiting"]}]
+HOOKS_TOML
+
+STATE_DIR="${TMPDIR:-/tmp}/plect-codex-exec/{{.SessionName}}"
+QUEUE_DIR="$STATE_DIR/queue"
+mkdir -p "$QUEUE_DIR"
+
+# A resumed session keeps its queue/state dir and thread_id file — the
+# worker just needs restarting, not reseeding.
+PREV_STATE_DIR='{{get .Prev "state_dir"}}'
+[ -n "$PREV_STATE_DIR" ] && [ "$PREV_STATE_DIR" != "$STATE_DIR" ] && STATE_DIR="$PREV_STATE_DIR" && QUEUE_DIR="$STATE_DIR/queue"
+
+EXPORTS="export PLECT_SESSION_NAME={{.SessionName}}; "
+# The worker script runs standalone, outside plect's template rendering, so
+# it can't resolve a bin-lookup reference itself for its own activity-hook
+# calls; resolve it here and hand it down as an env var instead.
+EXPORTS="${EXPORTS}export PLECT_AGENT_ACTIVITY_BIN={{bin "official/agent/runtime/plect-agent-activity" | shellQuote}}; "
+# model/effort are free strings from --input, spliced literally into this
+# setup script's own source and later re-sent as EXPORTS keystrokes to the
+# pane's shell — two shell boundaries a crafted value could break out of.
+# The inputs_schema pattern below (not a quoting trick here) is what
+# actually closes both: it rejects anything but a plain token before this
+# script ever renders, so neither splice point can see a quote/newline/shell
+# metacharacter to begin with. printf %q on top is redundant defense, not
+# the load-bearing fix.
+MODEL='{{get .Inputs "model"}}'
+[ -n "$MODEL" ] && EXPORTS="${EXPORTS}export CODEX_MODEL=$(printf '%q' "$MODEL"); "
+EFFORT='{{get .Inputs "effort"}}'
+[ -n "$EFFORT" ] && EXPORTS="${EXPORTS}export CODEX_MODEL_REASONING_EFFORT=$(printf '%q' "$EFFORT"); "
+
+rm -f "$STATE_DIR/ready"
+# exec (not a bare command line): the worker replaces the pane shell, so the
+# pane PID *is* the worker PID — no child-PID search like the interactive
+# codex task needs for the TUI, whose real PID differs from the launching
+# shell's.
+tmux send-keys -t {{.Inputs.tmux_session}} \
+  "${EXPORTS}exec {{bin "official/agent/codex/plect-codex-exec-worker"}} '$QUEUE_DIR' '$STATE_DIR' '$PROFILE_NAME'" Enter
+
+PANE_PID=$(tmux display-message -p -t {{.Inputs.tmux_session}} '#{pane_pid}')
+READY_TIMEOUT_SECONDS="${PLECT_CODEX_EXEC_READY_TIMEOUT_SECONDS:-30}"
+READY=0
+for _ in $(seq 1 $((READY_TIMEOUT_SECONDS * 2))); do
+  sleep 0.5
+  kill -0 "$PANE_PID" 2>/dev/null || continue
+  [ -f "$STATE_DIR/ready" ] && READY=1 && break
+done
+if [ "$READY" -ne 1 ]; then
+  echo "codex-exec worker not ready within ${READY_TIMEOUT_SECONDS}s under pane pid $PANE_PID" >&2
+  exit 1
+fi
+
+jq -nc \
+  --argjson pid "$PANE_PID" \
+  --arg queue_dir "$QUEUE_DIR" \
+  --arg state_dir "$STATE_DIR" \
+  --arg profile "$PROFILE_PATH" \
+  '{pid:$pid, queue_dir:$queue_dir, state_dir:$state_dir, profile_path:$profile}'
+'''
+
+cleanup = '''
+kill -TERM {{.Self.pid}} 2>/dev/null || exit 0
+for _ in 1 2 3 4 5; do
+  sleep 0.5
+  kill -0 {{.Self.pid}} 2>/dev/null || break
+done
+kill -KILL {{.Self.pid}} 2>/dev/null || true
+PROFILE_PATH='{{get .Self "profile_path"}}'
+[ -n "$PROFILE_PATH" ] && rm -f "$PROFILE_PATH"
+true
+'''
+
+# A live PID alone would hide a worker stuck on a permanently-failing turn.
+# health.json is absent until the first turn finishes, which is healthy —
+# nothing has failed yet.
+healthcheck = '''
+kill -0 {{.Self.pid}} || exit 1
+HEALTH="{{.Self.state_dir}}/health.json"
+[ -f "$HEALTH" ] || exit 0
+jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null
+'''
+
+[inputs_schema]
+type                 = "object"
+required             = ["tmux_session"]
+additionalProperties = false
+
+# model/effort: restricted to a plain-token charset (no quotes, whitespace,
+# or newlines) so a malicious value is rejected here, before it ever reaches
+# the setup script's template splice — see the setup script's comment above.
+[inputs_schema.properties]
+tmux_session = { type = "string" }
+model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+
+[outputs_schema]
+type     = "object"
+required = ["pid", "queue_dir", "state_dir"]
+
+[outputs_schema.properties]
+pid          = { type = "integer" }
+queue_dir    = { type = "string" }
+state_dir    = { type = "string" }
+profile_path = { type = "string" }

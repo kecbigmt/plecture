@@ -1,0 +1,12 @@
+# Channel: deliver a session event to a Claude Code runtime over its
+# channel-server Unix socket. The unix_socket primitive dials `path` and
+# writes the rendered `body` as a framed channel-server message. Trusted
+# config fixes the primitive and the message shape; the workflow supplies
+# only the socket path (typically {{.Nodes.claude.outputs.socket_path}}).
+# `path`/`body` precede [input_schema] so TOML scopes them at top level.
+type = "unix_socket"
+path = "{{.Inputs.path}}"
+body = "{{ json .Event }}"
+
+[input_schema]
+path = { type = "string", required = true }

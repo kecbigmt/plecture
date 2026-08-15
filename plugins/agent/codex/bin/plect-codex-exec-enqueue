@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# codex-headless runtime channel: append one instruction to a session's
+# queue directory (consumed by plect-codex-exec-worker). Enqueue only writes
+# a file and returns — it must never block on the turn itself, since it runs
+# inside the dispatcher's exec channel and shares its delivery timeout.
+#
+# Usage: plect-codex-exec-enqueue <queue_dir> <event_type> <text>
+
+set -euo pipefail
+
+queue_dir="${1:?queue_dir required}"
+event_type="${2:?event_type required}"
+text="${3:?text required}"
+
+mkdir -p "$queue_dir"
+
+# Filename orders FIFO by write time; the worker only reads oldest-first, so
+# a collision just needs a unique suffix, not a globally sortable one.
+tmp="$(mktemp "$queue_dir/.enqueue.XXXXXX")"
+jq -n --arg type "$event_type" --arg text "$text" '{type: $type, text: $text}' > "$tmp"
+mv "$tmp" "$queue_dir/$(date +%s%N)-$$.json"

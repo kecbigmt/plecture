@@ -1,0 +1,25 @@
+scope       = "run"
+attach      = "tmux attach -t {{.Self.session_name}}"
+capture     = "tmux capture-pane -p -t {{.Self.session_name}}"
+healthcheck = "tmux has-session -t {{.Self.session_name}}"
+
+# Session name / cwd come from the session itself, not from upstream nodes —
+# tmux has no node-level inputs. A workflow wires
+# {{.Nodes.tmux.outputs.session_name}} into downstream nodes that send keys
+# into the pane this task creates.
+setup = '''
+tmux has-session -t {{.SessionName}} 2>/dev/null \
+  || tmux new-session -d -s {{.SessionName}} -c {{.WorkdirPath}}
+tmux has-session -t {{.SessionName}} \
+  || { echo "failed to ensure tmux session {{.SessionName}}" >&2; exit 1; }
+echo '{"session_name":"{{.SessionName}}"}'
+'''
+
+cleanup = "tmux kill-session -t {{.Self.session_name}} 2>/dev/null || true"
+
+[outputs_schema]
+type     = "object"
+required = ["session_name"]
+
+[outputs_schema.properties]
+session_name = { type = "string" }
