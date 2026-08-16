@@ -1454,3 +1454,47 @@ func TestPoller_SweepSkipsWhenPlectListFails(t *testing.T) {
 		t.Error("Sweep must leave subscriptions untouched when it can't list sessions")
 	}
 }
+
+// A hung `plect ls` (e.g. one session's movement-source healthcheck never
+// returning) must not block Sweep — and therefore the watcher's first
+// Tick — forever. Bounding the subprocess with PlectListTimeout is what
+// turns "hangs indefinitely" into "fails like any other liveSessions error."
+func TestPoller_SweepBoundsHungPlectListCall(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	const res = "https://github.com/org/repo/pull/5"
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-5", Resource: res}); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	plect := fakeBin(t, binDir, "plect", "sleep 30\n") // never returns within any sane test budget
+
+	p := &Poller{
+		Store:            store,
+		Logger:           slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		PlectBin:         plect,
+		PlectListTimeout: 200 * time.Millisecond,
+	}
+
+	done := make(chan struct{})
+	start := time.Now()
+	go func() {
+		p.Sweep()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Sweep did not return within 5s of a hung plect ls — the timeout isn't bounding the subprocess")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("Sweep took %v to return, want close to the 200ms PlectListTimeout", elapsed)
+	}
+
+	subs, _ := store.All()
+	if _, ok := subs[subKey("org/repo-5", res)]; !ok {
+		t.Error("Sweep must leave subscriptions untouched when plect ls times out")
+	}
+}

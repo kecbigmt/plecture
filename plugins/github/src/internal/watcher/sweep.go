@@ -1,9 +1,20 @@
 package watcher
 
 import (
+	"context"
 	"encoding/json"
-	"os/exec"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/procexec"
 )
+
+// defaultPlectListTimeout bounds Sweep's `plect ls --json` call. `plect ls`
+// fans out a healthcheck per session — one hung healthcheck (a movement
+// source script that never returns) must not block the watcher from ever
+// reaching its first Tick, which is what an unbounded call would risk.
+const defaultPlectListTimeout = 15 * time.Second
 
 // Sweep drops every subscription whose owning session no longer exists.
 //
@@ -53,12 +64,33 @@ func (p *Poller) plect() string {
 	return "plect"
 }
 
+func (p *Poller) plectListTimeout() time.Duration {
+	if p.PlectListTimeout > 0 {
+		return p.PlectListTimeout
+	}
+	return defaultPlectListTimeout
+}
+
+func (p *Poller) runner() procexec.Runner {
+	if p.Runner != nil {
+		return p.Runner
+	}
+	return procexec.Default
+}
+
 // liveSessions returns every session name plect currently knows about, in
-// any run state (up, down, ...) — everything short of destroyed.
+// any run state (up, down, ...) — everything short of destroyed. Bounded by
+// plectListTimeout (see defaultPlectListTimeout): a `plect ls` that hangs
+// past it is killed and treated as a failure, same as any other error here.
 func (p *Poller) liveSessions() (map[string]bool, error) {
-	out, err := exec.Command(p.plect(), "ls", "--json").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), p.plectListTimeout())
+	defer cancel()
+	out, stderr, err := p.runner().Run(ctx, "", false, p.plect(), "ls", "--json")
 	if err != nil {
-		return nil, err
+		if msg := strings.TrimSpace(string(stderr)); msg != "" {
+			return nil, fmt.Errorf("%s ls --json: %s", p.plect(), msg)
+		}
+		return nil, fmt.Errorf("%s ls --json: %w", p.plect(), err)
 	}
 	var rows []struct {
 		SessionName string `json:"session_name"`

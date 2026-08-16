@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/procexec"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ratebudget"
 )
 
@@ -99,7 +100,13 @@ type Poller struct {
 	NotifyURL string // slack-adapter /notify endpoint; empty disables delivery
 	GhBin     string // gh binary; default "gh"
 	PlectBin  string // plect binary Sweep uses to list live sessions; default "plect"
-	HTTP      *http.Client
+	// PlectListTimeout bounds Sweep's `plect ls --json` call; default
+	// defaultPlectListTimeout. Exposed mainly for tests.
+	PlectListTimeout time.Duration
+	// Runner executes Sweep's `plect ls --json` subprocess. Defaults to
+	// procexec.Default (real process, context-bounded — see plectListTimeout).
+	Runner procexec.Runner
+	HTTP   *http.Client
 	// Guard is the shared cross-process GitHub API rate budget:
 	// every gh api call below checks it before running and reports 403/429
 	// responses to it, so a burst hit by one poll tick backs off every other
