@@ -58,16 +58,22 @@ type HealthcheckParams struct {
 // reports.
 //
 //   - Undeclared beats everything else when there is no declared healthcheck
-//     to evaluate at all.
+//     to evaluate at all and movement has never once been observed for this
+//     session.
 //   - Unhealthy beats movement: a failing surface check is reported as such
 //     regardless of movement evidence.
 //   - When no movement is currently expected, a passing surface check is
 //     healthy outright.
-//   - When movement is expected but no movement signal is declared to judge it,
-//     there is no basis to call it either healthy or stalled.
-//   - Otherwise, fresh movement evidence is healthy and its absence is stalled.
+//   - When movement is expected but no movement signal is declared this tick
+//     and none has ever been observed, there is no basis to call it either
+//     healthy or stalled.
+//   - Otherwise, fresh movement evidence is healthy and its absence is
+//     stalled — once movement has been observed at least once, a signal
+//     source dying afterward is a stall, not a reversion to undeclared: the
+//     basis to judge (LastMovementAt) survives the source that produced it.
 func (r HealthReport) State() domain.HealthState {
-	if !r.Declared && !r.MovementDeclared {
+	everObserved := !r.LastMovementAt.IsZero()
+	if !r.Declared && !r.MovementDeclared && !everObserved {
 		return domain.HealthUndeclared
 	}
 	if !r.Healthy {
@@ -76,7 +82,7 @@ func (r HealthReport) State() domain.HealthState {
 	if !r.MovementExpected {
 		return domain.HealthHealthy
 	}
-	if !r.MovementDeclared {
+	if !r.MovementDeclared && !everObserved {
 		return domain.HealthUndeclared
 	}
 	if r.MovementFresh {
@@ -293,7 +299,12 @@ func finalizeMovementObservation(report *HealthReport, prev *contract.HealthStat
 		lastMovementAt = now
 	}
 	report.LastMovementAt = lastMovementAt
-	if !report.MovementExpected || !report.MovementDeclared {
+	// A source that never contributed evidence (this tick or ever) has no
+	// basis to judge freshness at all, so it defaults true rather than
+	// false — but once LastMovementAt is on record, that basis survives the
+	// current tick's source dying, and freshness must be judged against it
+	// rather than defaulted.
+	if !report.MovementExpected || (!report.MovementDeclared && lastMovementAt.IsZero()) {
 		report.MovementFresh = true
 		return
 	}
