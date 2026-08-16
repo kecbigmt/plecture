@@ -17,6 +17,48 @@ import (
 // content, or a plect_min_version violation) fails the whole load: per the
 // plugin-packaging design, a plugin problem must never silently mount
 // nothing and continue.
+// LoadPlugins resolves every plugin enabled across registered catalogs,
+// purely from local state — the same resolution resolveDeclaredPlugins
+// applies inside Load(). It is kept as an independent function rather than
+// a shared helper because its caller (the bus service supervisor, polling
+// for plugin content changes) only needs the mounted plugin list and
+// lockfile, not a full Config with providers/resources/tasks/workflows/
+// channels loaded on every poll tick. A missing catalogs.toml or no
+// registered catalogs returns (nil, nil, nil): not an error, just nothing
+// declared.
+func LoadPlugins() ([]plugins.Mounted, *plugins.Lockfile, error) {
+	catalogsPath, err := plugins.DefaultCatalogsPath()
+	if err != nil {
+		return nil, nil, nil
+	}
+	registrations, err := plugins.LoadCatalogRegistrations(catalogsPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load catalog registrations: %w", err)
+	}
+	if len(registrations.Catalogs) == 0 {
+		return nil, nil, nil
+	}
+
+	lockPath, err := plugins.DefaultLockfilePath()
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve plect.lock path: %w", err)
+	}
+	lock, err := plugins.LoadLockfile(lockPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load plect.lock: %w", err)
+	}
+	cacheRoot, err := plugins.DefaultCacheRoot()
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve catalog cache root: %w", err)
+	}
+
+	mounted, err := plugins.VerifyAndMountAll(registrations, lock, cacheRoot, version.Current)
+	if err != nil {
+		return nil, nil, err
+	}
+	return mounted, lock, nil
+}
+
 func resolveDeclaredPlugins(cfg *Config) (*Config, error) {
 	catalogsPath, err := plugins.DefaultCatalogsPath()
 	if err != nil {

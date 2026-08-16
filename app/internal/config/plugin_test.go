@@ -113,3 +113,51 @@ func TestLoad_NoCatalogsRegisteredLeavesPluginDirsAlone(t *testing.T) {
 		t.Fatalf("PluginDirs = %+v, want just the legacy dir %q", cfg.PluginDirs, legacyDir)
 	}
 }
+
+func TestLoadPlugins_ResolvesEnabledEditableCatalogPlugin(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	catalogDir := t.TempDir()
+	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
+schema_version = 1
+plugins = ["okf"]
+`)
+	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
+schema_version = 1
+plect_min_version = "0.0.0"
+`)
+
+	writeCatalogsToml(t, tmpHome, `
+schema_version = 1
+
+[[catalogs]]
+alias = "local"
+source = "path+editable://`+catalogDir+`"
+plugins = ["okf"]
+`)
+
+	mounted, lock, err := LoadPlugins()
+	if err != nil {
+		t.Fatalf("LoadPlugins: unexpected error: %v", err)
+	}
+	if len(mounted) != 1 || mounted[0].ID != "local/okf" {
+		t.Fatalf("mounted = %+v, want a single local/okf plugin", mounted)
+	}
+	if lock == nil {
+		t.Fatal("lock = nil, want a non-nil (possibly empty) lockfile")
+	}
+}
+
+func TestLoadPlugins_NoCatalogsRegisteredReturnsNil(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	mounted, lock, err := LoadPlugins()
+	if err != nil {
+		t.Fatalf("LoadPlugins: unexpected error: %v", err)
+	}
+	if mounted != nil || lock != nil {
+		t.Fatalf("mounted = %+v, lock = %+v, want both nil when no catalogs are registered", mounted, lock)
+	}
+}
