@@ -18,14 +18,22 @@ The vocabulary appears in these surfaces:
 
 - config paths: global `providers/` and plugin `config/providers/`;
 - workflow config: `provider = "<id>"`;
-- Go identifiers and JSON: `ProviderConfig`, `LoadProviders`,
-  `WorkflowFile.Provider`, `WorkflowDetail.Provider`,
-  `provider_info`, and related service/task plumbing;
+- app Go identifiers and JSON: `ProviderConfig`, `LoadProviders`,
+  `WorkflowFile.Provider`, `WorkflowDetail.Provider`, `provider_info`,
+  `app/internal/config/provider.go`, and related service/task plumbing;
+- contracts Go prose: `contracts/state` uses provider in the workdir-source
+  sense when describing setup outputs, while `contracts/event` and
+  `contracts/state` also use provider in the external-integration sense for
+  opaque resource, chat, and source values;
 - CLI and user-facing text: workflow detail output, root/status/destroy/template
   help, and load or dispatch errors;
 - shipped plugin content: `plugins/github/config/providers/github.toml`,
   `plugins/okf/config/providers/local-okf.toml`, plugin README files, plugin
-  metadata, and executable names such as `plect-github-provider`;
+  metadata, `plugins/catalog.toml`, and executable names such as
+  `plect-github-provider`;
+- boundary checks: `scripts/check-provider-boundary.sh`,
+  `scripts/check-provider-boundary_selftest.sh`, and the `provider-boundary`
+  CI job;
 - design and migration docs: plugin packaging, plugin config layout migration,
   workdir vocabulary migration, and repository-adjacent wiki prose that still
   explains the concept through retired workspace language.
@@ -87,6 +95,20 @@ acquisition and resource observation.
 and the `-er` shape that reads like a daemon or vendor role. It is a partial
 repair that leaves the disputed vocabulary in the core model.
 
+### Provider/resource concept-split mains
+
+Naming executable mains directly after the old provider/resource concept split
+would make binary names mirror stale vocabulary. It loses because `provider`
+is the term under dispute, and `resource` already names the observation side of
+the model rather than workdir acquisition.
+
+### CLI as the executable noun
+
+`cli` is rejected for binaries or packages that implement this contract because
+it names an interface style, not a responsibility. It creates no single
+responsibility pressure: any command-line surface can be called a CLI, even
+when it mixes unrelated contract work.
+
 ### Workdir definition
 
 `workdir definition` pairs neatly with `resource definition`, but it implies a
@@ -105,4 +127,3 @@ object that workflows reference.
 `workspace` is rejected because Plecture already migrated user-facing state to
 `workdir`. Reintroducing workspace language would make the durable vocabulary
 less precise.
-
