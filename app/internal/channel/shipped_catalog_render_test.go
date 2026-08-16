@@ -11,10 +11,9 @@ import (
 )
 
 // TestShippedCatalog_ChannelsRender renders every channel definition shipped
-// by this repository's official catalog (agent/runtime, agent/claude,
-// agent/codex, channel/slack) against a sample event, so a template typo in
-// one of those channels' command/args/path/body fails CI instead of only
-// surfacing at delivery.
+// by this repository's official catalog (the session/runtime plugin)
+// against a sample event, so a template typo in one of those channels'
+// command/args/path/body fails CI instead of only surfacing at delivery.
 func TestShippedCatalog_ChannelsRender(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -23,10 +22,7 @@ func TestShippedCatalog_ChannelsRender(t *testing.T) {
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
 
 	dirs := []string{
-		filepath.Join(repoRoot, "plugins", "agent", "runtime"),
-		filepath.Join(repoRoot, "plugins", "agent", "claude"),
-		filepath.Join(repoRoot, "plugins", "agent", "codex"),
-		filepath.Join(repoRoot, "plugins", "channel", "slack"),
+		filepath.Join(repoRoot, "plugins", "session", "runtime"),
 	}
 	channels, err := (&config.Config{PluginDirs: dirs}).LoadChannels()
 	if err != nil {

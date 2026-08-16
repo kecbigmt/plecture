@@ -32,7 +32,7 @@ path = "bin/activity"
 schema_version = 1
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "claude", "tasks", "claude.toml"), `
+	writeFile(t, filepath.Join(catalogDir, "claude", "config", "tasks", "claude.toml"), `
 scope = "run"
 setup = '{{bin "local/runtime/activity"}} claude working'
 `)
@@ -83,7 +83,7 @@ plect_min_version = "0.0.0"
 name = "plect-okf"
 path = "bin/plect-okf"
 `)
-	writeFile(t, filepath.Join(catalogDir, "okf", "tasks", "goal.toml"), `
+	writeFile(t, filepath.Join(catalogDir, "okf", "config", "tasks", "goal.toml"), `
 scope = "run"
 setup = '{{bin "plect-okf"}} task bootstrap'
 `)
@@ -123,7 +123,7 @@ plugins = ["claude"]
 schema_version = 1
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "claude", "tasks", "claude.toml"), `
+	writeFile(t, filepath.Join(catalogDir, "claude", "config", "tasks", "claude.toml"), `
 scope = "run"
 setup = '{{bin "nonexistent/runtime/activity"}} claude working'
 `)
@@ -174,7 +174,7 @@ path = "bin/watcher"
 schema_version = 1
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "github", "providers", "github.toml"), `
+	writeFile(t, filepath.Join(catalogDir, "github", "config", "providers", "github.toml"), `
 setup = "echo '{\"workdir\":\"/tmp/x\"}'"
 subscribe = '{{bin "local/runtime/watcher"}} subscribe'
 `)
@@ -225,7 +225,7 @@ path = "bin/watcher"
 schema_version = 1
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "github", "resources", "github.toml"), `
+	writeFile(t, filepath.Join(catalogDir, "github", "config", "resources", "github.toml"), `
 match   = "^gh:"
 observe = '{{bin "local/runtime/watcher"}} observe'
 `)

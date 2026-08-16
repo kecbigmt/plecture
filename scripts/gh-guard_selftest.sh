@@ -1,14 +1,11 @@
 #!/usr/bin/env bash
-# Behavior tests for plugins/agent/{claude,codex}/bin/gh-guard: proves the
+# Behavior tests for plugins/session/runtime/scripts/gh-guard: proves the
 # shim denies merge/close before it is trusted as the opt-in gh_guard task
-# input's mechanism, and that the two plugins' copies never silently
-# diverge (each plugin ships its own copy — see either plugin's README —
-# and nothing else re-derives one from the other).
+# input's mechanism shared by the claude, codex, and codex_exec tasks.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-guard="$root/plugins/agent/claude/bin/gh-guard"
-guard_codex_copy="$root/plugins/agent/codex/bin/gh-guard"
+guard="$root/plugins/session/runtime/scripts/gh-guard"
 
 fail=0
 
@@ -188,13 +185,6 @@ if GH_GUARD_REAL_GH="$not_exec" "$guard" issue view 123 >/tmp/gh-guard-selftest-
   fail=1
 else
   echo "ok: refuses to run with a non-executable GH_GUARD_REAL_GH"
-fi
-
-if ! diff -q "$guard" "$guard_codex_copy" >/dev/null; then
-  echo "FAIL: agent/claude's and agent/codex's gh-guard copies have diverged" >&2
-  fail=1
-else
-  echo "ok: agent/claude and agent/codex ship the same gh-guard"
 fi
 
 exit "$fail"

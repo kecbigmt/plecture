@@ -553,11 +553,11 @@ setup = "echo session"
 func TestLoadTaskDefinitions_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
-	writeFile(t, filepath.Join(pluginA, "tasks", "tmux.toml"), `
+	writeFile(t, filepath.Join(pluginA, "config", "tasks", "tmux.toml"), `
 scope = "run"
 setup = "echo a"
 `)
-	writeFile(t, filepath.Join(pluginB, "tasks", "tmux.toml"), `
+	writeFile(t, filepath.Join(pluginB, "config", "tasks", "tmux.toml"), `
 scope = "run"
 setup = "echo b"
 `)
@@ -1176,7 +1176,7 @@ func TestLoadWorkflows_PluginLayerIsBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	pluginDir := filepath.Join(tmpHome, "plugin-github")
-	writeFile(t, filepath.Join(pluginDir, "workflows", "shared.toml"), `
+	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "shared.toml"), `
 name     = "From plugin"
 provider = "github"
 
@@ -1210,11 +1210,11 @@ id = "g"
 func TestLoadWorkflows_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
-	writeFile(t, filepath.Join(pluginA, "workflows", "shared.toml"), `
+	writeFile(t, filepath.Join(pluginA, "config", "workflows", "shared.toml"), `
 [[nodes]]
 id = "a"
 `)
-	writeFile(t, filepath.Join(pluginB, "workflows", "shared.toml"), `
+	writeFile(t, filepath.Join(pluginB, "config", "workflows", "shared.toml"), `
 [[nodes]]
 id = "b"
 `)

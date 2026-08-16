@@ -114,7 +114,7 @@ include     = ["plect.instruction"]
 // after `plect bus serve` started, not just after a restart.
 func TestSupervisor_DeliversChannelDefinedOnlyInAPluginMountedAfterConstruction(t *testing.T) {
 	pluginDir := t.TempDir()
-	writeFile(t, filepath.Join(pluginDir, "channels", "claude.toml"), `
+	writeFile(t, filepath.Join(pluginDir, "config", "channels", "claude.toml"), `
 type = "unix_socket"
 path = "{{.Inputs.path}}"
 body = "{{ json .Event }}"
@@ -122,7 +122,7 @@ body = "{{ json .Event }}"
 [input_schema]
 path = { type = "string", required = true }
 `)
-	writeFile(t, filepath.Join(pluginDir, "workflows", "coding.toml"), `
+	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "coding.toml"), `
 [[event.channel]]
 name        = "runtime"
 uses        = "claude"

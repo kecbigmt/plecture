@@ -730,7 +730,7 @@ func (c *Config) tasksSearchDirs(workdirDir string) []layerDir {
 func (c *Config) searchDirs(workdirDir, kind string) []layerDir {
 	var dirs []layerDir
 	for _, plugin := range c.PluginDirs {
-		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, kind), plugin: true})
+		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, "config", kind), plugin: true})
 	}
 	if c.BaseDir != "" {
 		dirs = append(dirs, layerDir{dir: filepath.Join(c.BaseDir, kind)})

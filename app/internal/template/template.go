@@ -154,7 +154,7 @@ func pluginTemplateFile(mode string, pluginDirs []string) (string, error) {
 	filename := mode + ".md"
 	var found []string
 	for _, dir := range pluginDirs {
-		p := filepath.Join(dir, "templates", filename)
+		p := filepath.Join(dir, "config", "templates", filename)
 		if _, err := os.Stat(p); err == nil {
 			found = append(found, p)
 		}
@@ -308,7 +308,7 @@ func List(repoDir string, pluginDirs []string) ([]TemplateInfo, error) {
 	// another's.
 	pluginOwner := make(map[string]string)
 	for _, dir := range pluginDirs {
-		templatesDir := filepath.Join(dir, "templates")
+		templatesDir := filepath.Join(dir, "config", "templates")
 		entries, err := os.ReadDir(templatesDir)
 		if err != nil {
 			continue
@@ -325,7 +325,7 @@ func List(repoDir string, pluginDirs []string) ([]TemplateInfo, error) {
 		}
 	}
 	for _, dir := range pluginDirs {
-		templatesDir := filepath.Join(dir, "templates")
+		templatesDir := filepath.Join(dir, "config", "templates")
 		addFromDir(
 			func() ([]fs.DirEntry, error) { return os.ReadDir(templatesDir) },
 			func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(templatesDir, name)) },

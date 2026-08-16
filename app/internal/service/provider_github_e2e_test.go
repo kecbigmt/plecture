@@ -35,11 +35,11 @@ func shippedGithubProvider(t *testing.T) (config.ProviderConfig, []plugins.Mount
 	t.Helper()
 	root := repoRoot(t)
 	mounted := buildProviderBinaries(t, root)
-	providersDir := filepath.Join(mounted[0].Dir, "providers")
+	providersDir := filepath.Join(mounted[0].Dir, "config", "providers")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	shipped, err := os.ReadFile(filepath.Join(root, "plugins", "github", "providers", "github.toml"))
+	shipped, err := os.ReadFile(filepath.Join(root, "plugins", "github", "config", "providers", "github.toml"))
 	if err != nil {
 		t.Fatalf("read shipped github provider: %v", err)
 	}

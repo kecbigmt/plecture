@@ -29,7 +29,7 @@ observe = "echo '{\"issue_status\":\"PENDING\"}'"
 func TestLoadResourceDefs_GlobalOverridesPlugin(t *testing.T) {
 	pluginDir := t.TempDir()
 	baseDir := t.TempDir()
-	writeFile(t, filepath.Join(pluginDir, "resources", "github.toml"), `
+	writeFile(t, filepath.Join(pluginDir, "config", "resources", "github.toml"), `
 match   = '^x'
 observe = "echo plugin"
 `)
@@ -50,11 +50,11 @@ observe = "echo global"
 func TestLoadResourceDefs_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
-	writeFile(t, filepath.Join(pluginA, "resources", "github.toml"), `
+	writeFile(t, filepath.Join(pluginA, "config", "resources", "github.toml"), `
 match   = '^x'
 observe = "echo a"
 `)
-	writeFile(t, filepath.Join(pluginB, "resources", "github.toml"), `
+	writeFile(t, filepath.Join(pluginB, "config", "resources", "github.toml"), `
 match   = '^x'
 observe = "echo b"
 `)

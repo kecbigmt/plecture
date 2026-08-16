@@ -16,3 +16,13 @@ build = "go -C src build -o ../bin/plect-github-provider ./cmd/plect-github-prov
 name = "github-watcher"
 path = "bin/github-watcher"
 build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
+
+# The watcher polls subscribed resources via the gh CLI, authenticated
+# outside plect (the user's own `gh auth login`) — no required_env, since
+# there is no plect-owned credential to gate on.
+[[services]]
+name = "github-watcher"
+executable = "github-watcher"
+args = ["serve"]
+restart = "on-failure"
+health = { type = "process" }

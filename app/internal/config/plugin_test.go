@@ -31,7 +31,7 @@ plugins = ["okf"]
 schema_version = 1
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "okf", "providers", "okf.toml"), `
+	writeFile(t, filepath.Join(catalogDir, "okf", "config", "providers", "okf.toml"), `
 setup = "echo '{\"workdir\":\"/tmp/x\"}'"
 `)
 

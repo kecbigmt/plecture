@@ -2,24 +2,19 @@
 # repository as a catalog with `--subdir plugins` bounds the fetch/verify/mount
 # trust space to this subtree, not the whole repository (app/, contracts/,
 # docs/ stay out of it). Sibling directories under plugins/ that are not
-# listed below — channel-server, slack-adapter, legacy-migration — sit
-# inside that trust space but are not catalog plugins themselves:
-# channel-server and slack-adapter are standalone companion processes (not
-# built by any listed plugin's `build` command), and legacy-migration is a
-# standalone one-time migration tool, not something `plect plugin add` ever
-# enables. Explicit enumeration below, not directory presence, is what makes
-# a plugin published. A listed plugin's own `src/` (github, okf) is its
-# build source, never itself catalog-addressable — see
+# listed below — legacy-migration — sit inside that trust space but are not
+# catalog plugins themselves: legacy-migration is a standalone one-time
+# migration tool, not something `plect plugin add` ever enables. Explicit
+# enumeration below, not directory presence, is what makes a plugin
+# published. A listed plugin's own `src/` (github, okf, session/runtime) is
+# its build source, never itself catalog-addressable — see
 # docs/design/plugin-packaging.md's Package format section for the src/
 # bin/ scripts/ layout convention.
 schema_version = 1
 description = "Plecture's official plugin catalog: reusable provider, resource, task, and channel packs shipped from this repository."
 
 plugins = [
-  "agent/runtime",
-  "agent/claude",
-  "agent/codex",
-  "channel/slack",
+  "session/runtime",
   "okf",
   "github",
 ]

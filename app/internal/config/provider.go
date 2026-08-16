@@ -82,7 +82,7 @@ func (p ProviderConfig) HasResolver() bool {
 func (c *Config) LoadProviders() (map[string]ProviderConfig, error) {
 	var pluginDirs []string
 	for _, plugin := range c.PluginDirs {
-		pluginDirs = append(pluginDirs, filepath.Join(plugin, "providers"))
+		pluginDirs = append(pluginDirs, filepath.Join(plugin, "config", "providers"))
 	}
 	globalDir := ""
 	if c.BaseDir != "" {

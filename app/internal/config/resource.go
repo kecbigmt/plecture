@@ -67,7 +67,7 @@ func (r ResourceDef) ResolvedStateSchemaPath() string {
 func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
 	var pluginDirs []string
 	for _, plugin := range c.PluginDirs {
-		pluginDirs = append(pluginDirs, filepath.Join(plugin, "resources"))
+		pluginDirs = append(pluginDirs, filepath.Join(plugin, "config", "resources"))
 	}
 	globalDir := ""
 	if c.BaseDir != "" {
