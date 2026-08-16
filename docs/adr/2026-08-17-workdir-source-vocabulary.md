@@ -42,6 +42,11 @@ The binary-naming discussion exposed the issue. A binary that implements a
 concept should be named after the concept, but the concept's current name is
 too vague to support that rule.
 
+The same discussion ratified that plugin executables do not use the `plect-`
+prefix. Plugin ids already qualify executable references and service logs, so
+the prefix is reserved for host-installed binaries such as `plect` and
+`plect-web`.
+
 ## Decision
 
 The concept is named **workdir source**.
@@ -58,12 +63,17 @@ The code-facing vocabulary for the breaking implementation is:
 - Go type and loader: `WorkdirSourceConfig` and `LoadWorkdirSources`;
 - workflow detail JSON: `workdir_source` and `workdir_source_info`;
 - CLI noun, when a direct inspection command exists: `workdir-source`;
-- shipped single-purpose executable names: `<plugin>-workdir-source`, with the
-  existing `plect-` prefix retained where the plugin already uses it.
+- shipped single-purpose executable names: `<plugin>-workdir-source`.
 
 `resource definition` remains the paired concept. A resource definition
 observes a resource's state. A workdir source turns a session resource into a
 workdir lifecycle.
+
+This decision removes `provider` as the name of the workdir acquisition
+contract. It does not ban `provider` as generic English for an external
+integration when the prose is not naming a core config kind, API field, command,
+or Go identifier. The provider-boundary checker keeps that term because it
+guards against core naming a specific external integration provider.
 
 ## Consequences
 
@@ -101,6 +111,13 @@ Naming executable mains directly after the old provider/resource concept split
 would make binary names mirror stale vocabulary. It loses because `provider`
 is the term under dispute, and `resource` already names the observation side of
 the model rather than workdir acquisition.
+
+### Retain `plect-` for plugin executables
+
+Keeping names such as `plect-github-workdir-source` would preserve the old
+host-binary prefix inside plugin packages. It loses because plugin executable
+references are already qualified by plugin id, and `plect-` is reserved for
+host-installed binaries.
 
 ### CLI as the executable noun
 
