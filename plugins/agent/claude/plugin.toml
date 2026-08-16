@@ -17,3 +17,12 @@ description = "Launches and manages a Claude Code runtime in a tmux pane, with a
 [[executables]]
 name = "plect-agent-activity"
 path = "bin/plect-agent-activity"
+
+# Duplicated between agent/claude and agent/codex for the same reason as
+# plect-agent-activity above ({{bin ...}} only resolves within the owning
+# plugin) — see agent/codex's copy and each plugin's README. Opt-in only
+# (the task's gh_guard input decides whether it's ever shimmed onto PATH),
+# so its presence here changes no default behavior.
+[[executables]]
+name = "gh-guard"
+path = "bin/gh-guard"

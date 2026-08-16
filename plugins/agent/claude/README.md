@@ -19,6 +19,13 @@ Launches and manages a Claude Code runtime as the primary task of a session.
   `tasks/claude.toml`'s setup registers. A copy of `agent/runtime`'s script
   of the same name — see that plugin's README for why it's a copy rather
   than a cross-plugin reference.
+- `bin/gh-guard` — a `gh` shim that mechanically denies `pr merge`/`issue
+  close`/`pr close` (and their `gh api` equivalents), so a session can't act
+  on a forgotten or de-prioritized "don't merge" instruction. `tasks/claude.toml`'s
+  setup symlinks this onto the session's `PATH` as `gh` only when the task's
+  `gh_guard` input is set — unset (the default) launches with no shim. A copy
+  of `agent/codex`'s script of the same name, for the same cross-plugin
+  reason as `plect-agent-activity` above.
 
 ## Install
 
@@ -38,17 +45,17 @@ plect plugin add official/agent/claude
 ## Inputs
 
 `tmux_session` (required, typically wired from `agent/runtime`'s `tmux`
-task), `model`, `effort` — see `tasks/claude.toml` for the exact flag each
-one appends.
+task), `model`, `effort`, `gh_guard` — see `tasks/claude.toml` for the exact
+flag/effect each one appends. `gh_guard` is opt-in and defaults to unset (no
+shim, no behavior change from before this input existed).
 
 ## Not included
 
 - Any workflow composing this task with a resource provider (e.g. GitHub) —
   workflows compose across plugins and their packaging is decided when that
   provider plugin lands.
-- Chat/notification channel bindings (Slack, or any other tool), MCP servers
-  beyond channel-server, and CLI write-guards (e.g. a shim that denies `gh pr
-  merge`) — these are operator/team choices, not shipped defaults. Add them
-  by placing a same-id `claude` task definition in your own trusted overlay
-  (whole-definition replacement; see this repository's plugin-packaging
-  design doc for the shadowing model).
+- Chat/notification channel bindings (Slack, or any other tool) and MCP
+  servers beyond channel-server — these are operator/team choices, not
+  shipped defaults. Add them by placing a same-id `claude` task definition in
+  your own trusted overlay (whole-definition replacement; see this
+  repository's plugin-packaging design doc for the shadowing model).
