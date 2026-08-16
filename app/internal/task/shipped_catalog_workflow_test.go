@@ -6,9 +6,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 )
 
-// loadShippedCatalogWorkflows loads this repository's own official catalog
-// workflows alongside its task definitions, reusing loadShippedCatalogTasks's
-// plugin-mount setup so both walk the exact same catalog.toml plugin list.
 func loadShippedCatalogWorkflows(t *testing.T) (map[string]config.WorkflowFile, map[string]config.TaskDefinition) {
 	t.Helper()
 	tasks, mounted := loadShippedCatalogTasks(t)
@@ -24,29 +21,10 @@ func loadShippedCatalogWorkflows(t *testing.T) (map[string]config.WorkflowFile, 
 	return workflows, tasks
 }
 
-// TestShippedCatalog_WorkflowNodeInputsMatchTaskSchema guards every shipped
-// workflow's [[nodes]] input bindings against the inputs_schema of whichever
-// official task they resolve to. A node whose `uses` names a task id the
-// official catalog does not ship (an operator-supplied composition point —
-// see e.g. goal_review.toml's own header comment) is skipped: there is no
-// official schema to check it against.
-//
-// Two checks run per resolvable node: a structural key/required check
-// against the raw input template map (works regardless of whether upstream
-// nodes are resolvable, so it always catches an unsupported/missing key),
-// and — only when every `.Nodes.<id>.outputs` reference the node's inputs
-// make is itself resolvable — an actual template render against synthetic
-// upstream outputs, validated through the same compiled schema RunSetup
-// uses. The second check additionally catches template syntax errors and
-// pattern/type violations the first one can't see.
-//
-// This is a regression test for the class of bug the okf plugin's
-// goal_review workflow shipped with: passing slack_thread_ts/slack_channel_id
-// to the codex_exec node when agent/codex's codex_exec task never declared
-// those inputs, so additionalProperties=false rejected them the first time a
-// session actually reached that node — a failure RunSetup only surfaces
-// after upstream nodes have already run, never at `workflow show`/compile
-// time.
+// TestShippedCatalog_WorkflowNodeInputsMatchTaskSchema skips a node whose
+// `uses` names a task id the official catalog doesn't ship — an
+// operator-supplied composition point (e.g. goal_review.toml's envfile/
+// slack_thread/initial_task nodes) has no official schema to check against.
 func TestShippedCatalog_WorkflowNodeInputsMatchTaskSchema(t *testing.T) {
 	workflows, tasks := loadShippedCatalogWorkflows(t)
 	session := SessionVars{Name: "test-session"}
@@ -100,10 +78,10 @@ func TestShippedCatalog_WorkflowNodeInputsMatchTaskSchema(t *testing.T) {
 	}
 }
 
-// renderable reports whether every `.Nodes.<id>.outputs` reference in inputs
-// names a node already present in resolved — i.e. whether RenderInputs can
-// run without hitting missingkey=error on an operator-supplied node this
-// test never synthesized outputs for.
+// renderable reports whether every node an input's `.Nodes.<id>.outputs`
+// reference names is already in resolved: RenderInputs uses
+// missingkey=error, so an unresolved reference fails the render rather than
+// being skipped.
 func renderable(inputs map[string]string, resolved map[string]map[string]any) bool {
 	for _, tmpl := range inputs {
 		for _, m := range nodeRefRE.FindAllStringSubmatch(tmpl, -1) {
@@ -115,10 +93,8 @@ func renderable(inputs map[string]string, resolved map[string]map[string]any) bo
 	return true
 }
 
-// synthesizeOutputs fabricates a schema-conformant value for each declared
-// outputs_schema property, keyed by declared JSON type, so a downstream
-// node's input template can render against something type-correct without
-// this test needing to know what a real task setup would actually produce.
+// synthesizeOutputs fabricates a type-correct dummy per declared output so a
+// downstream node's input template can render without a real task run.
 func synthesizeOutputs(schema map[string]any) map[string]any {
 	props, _ := schema["properties"].(map[string]any)
 	out := make(map[string]any, len(props))
@@ -136,10 +112,8 @@ func synthesizeOutputs(schema map[string]any) map[string]any {
 	return out
 }
 
-// inputsSchemaKeys extracts an inline inputs_schema's declared property
-// names and required list. allowed is nil when the schema does not restrict
-// extra properties (additionalProperties unset or true) — nil means "any key
-// passes", matching the schema's own semantics.
+// inputsSchemaKeys returns a nil allowed set when additionalProperties
+// doesn't restrict extra keys, matching the schema's own semantics.
 func inputsSchemaKeys(schema map[string]any) (allowed map[string]bool, required []string) {
 	if schema == nil {
 		return nil, nil
