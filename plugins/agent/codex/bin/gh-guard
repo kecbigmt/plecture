@@ -26,6 +26,13 @@ fi
   exit 1
 }
 
+# Set once a `gh api --input -` body has been buffered off real stdin (see
+# below) so it can be replayed to the real gh after this shim itself has
+# finished reading stdin to inspect it. Declared here, before deny() can
+# exit, so the EXIT trap below always sees a defined (possibly empty) value.
+stdin_capture=""
+trap 'rm -f "$stdin_capture"' EXIT
+
 deny() {
   echo "This session does not merge/close. Record your result (verdict / PR ready state); merging is the orchestrator's job." >&2
   exit 1
@@ -44,15 +51,21 @@ if [ "$sub" = "api" ]; then
   method="GET"
   path=""
   body_has_closed=0
+  input_value=""
   prev=""
   for arg in "$@"; do
     # --method/-X takes a value three ways: split ("-X" "PUT"), joined with
     # "=" ("--method=PUT"), or glued to the short flag ("-XPUT") — pflag
     # (gh's flag parser) accepts all three, so all three must be recognized
-    # here or one of them silently walks past the deny check below.
+    # here or one of them silently walks past the deny check below. --input
+    # has no glued short form (gh defines no short flag for it), so only
+    # split and joined need recognizing.
     case "$prev" in
       -X | --method)
         method="$arg"
+        ;;
+      --input)
+        input_value="$arg"
         ;;
     esac
     case "$arg" in
@@ -61,6 +74,9 @@ if [ "$sub" = "api" ]; then
         ;;
       -X?*)
         method="${arg#-X}"
+        ;;
+      --input=*)
+        input_value="${arg#--input=}"
         ;;
     esac
     case "$arg" in
@@ -76,12 +92,44 @@ if [ "$sub" = "api" ]; then
     prev="$arg"
   done
   method=$(printf '%s' "$method" | tr '[:lower:]' '[:upper:]')
+
+  # --input replaces the whole request body from a file or stdin (per `gh api
+  # --help`), which the argv scan above never sees — a state:closed body
+  # delivered this way must be inspected from its actual source instead.
+  if [ -n "$input_value" ] && [ "$body_has_closed" != "1" ]; then
+    if [ "$input_value" = "-" ]; then
+      # Stdin is a single-read stream: buffer it to a temp file so it can be
+      # inspected here and still replayed to the real gh below — reading it
+      # once with no buffer would leave the real call with an already-drained
+      # stdin.
+      stdin_capture=$(mktemp "${TMPDIR:-/tmp}/gh-guard-stdin.XXXXXX")
+      cat > "$stdin_capture"
+      grep -q -e 'state=closed' -e '"state":"closed"' -e '"state": "closed"' "$stdin_capture" \
+        && body_has_closed=1
+    elif [ -r "$input_value" ]; then
+      grep -q -e 'state=closed' -e '"state":"closed"' -e '"state": "closed"' "$input_value" \
+        && body_has_closed=1
+    fi
+  fi
+
   if [ "$method" = "PUT" ] && [ -n "$path" ]; then
     deny
   fi
   if [ "$method" = "PATCH" ] && [ "$body_has_closed" = "1" ]; then
     deny
   fi
+fi
+
+if [ -n "$stdin_capture" ]; then
+  # Open the buffered body on a separate fd, then unlink it immediately: the
+  # inode stays reachable through that fd across exec (so the real gh still
+  # reads the full body on its stdin), but no temp file survives on disk once
+  # the replaced process closes it — exec never runs this script's own EXIT
+  # trap, so without this the file would otherwise leak on every guarded
+  # `--input -` call.
+  exec 3< "$stdin_capture"
+  rm -f "$stdin_capture"
+  exec "$GH_GUARD_REAL_GH" "$@" <&3
 fi
 
 exec "$GH_GUARD_REAL_GH" "$@"
