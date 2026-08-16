@@ -36,10 +36,12 @@ a provider, resource, task, workflow, channel, or template keeps its id
 across the move, but the file that carries it may not keep the same name or
 path.
 
-For every standard subdirectory a candidate plugin ships
-(`providers/`, `resources/`, `environments/`, `tasks/`, `workflows/`,
-`channels/`, `templates/`), compare it against the same-named directory
-under your config home:
+For every standard config declaration a candidate plugin ships under
+`config/`, compare the plugin path with the `config/` prefix stripped against
+the matching path under your config home. For example, plugin file
+`config/tasks/tmux.toml` maps to config-home file `tasks/tmux.toml`, and
+plugin file `config/templates/work.md` maps to config-home file
+`templates/work.md`.
 
 | Comparison result | Disposition |
 |---|---|
@@ -142,9 +144,8 @@ Then, against your real config home:
    ```
 
 3. Delete the config files identified as redundant in step 1: hand-authored
-   `providers/`, `resources/`, `environments/`, `tasks/`, `workflows/`,
-   `channels/`, and `templates/` files whose id now comes from an enabled
-   plugin.
+   files whose ids now come from enabled plugin files under `config/` after
+   stripping that prefix.
 
 4. Remove the `plugin_dirs` entries noted in step 1 whose content the newly
    enabled plugins now supersede.

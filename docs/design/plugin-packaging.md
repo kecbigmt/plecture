@@ -1,10 +1,10 @@
 # Plugin packaging, reference resolution, lockfile, and trust model
 
-Status: evolving design.
-
 This document defines the plugin model for distributing reusable Plecture
 configuration and executable adapters. The goal is to reduce bootstrap cost
 without moving provider, tool, or domain knowledge into core.
+The plugin service lifecycle decision is recorded in
+[`../adr/2026-08-16-plugin-service-lifecycle.md`](../adr/2026-08-16-plugin-service-lifecycle.md).
 
 The design keeps two concepts: catalog and plugin. A catalog is a trusted
 distribution unit: a subtree of a source repository marked by `catalog.toml`.
@@ -17,7 +17,7 @@ configuration is still a plugin.
 - Core owns generic mechanics: fetch, verify, mount, resolve, and fail-loud
   compatibility checks.
 - Plugins own technology or domain commitments: provider adapters, resource
-  observation, channels, agent/runtime tasks, workflow packs, and templates.
+  observation, session runtime surfaces, workflow packs, and templates.
 - User-owned config remains the final authority.
 - No provider/resource/task/workflow contract changes are required by this
   design. Any discovered gap must become a later contract issue, not an
@@ -38,9 +38,7 @@ description = "Example Plecture plugin catalog."
 
 plugins = [
   "github",
-  "agent/runtime",
-  "agent/claude-tasks",
-  "agent/codex-tasks",
+  "session/runtime",
 ]
 ```
 
@@ -63,36 +61,50 @@ rule is intentional: reviewers can audit the exact published plugin set from
 one manifest, and catalogs that need fixture manifests can avoid the reserved
 filename.
 
-A plugin is a directory with metadata at the root and zero or more standard
-subdirectories that are already understood by the config loaders, plus two
-directories that separate build source from build output:
+A plugin is a project root with a small fixed set of roles. Config declarations
+live under `config/`; build source lives under `src/`; committed executables
+live under `scripts/`; build outputs live under `bin/`.
 
 ```text
 plugin.toml
-providers/
-resources/
-tasks/
-workflows/
-templates/
-channels/
-environments/
-src/
-bin/
-scripts/
 README.md
-LICENSE
+config/
+src/
+scripts/
+bin/
 ```
 
-`src/` is the language project a `build` command compiles from: `go.mod`,
-`go.sum`, `cmd/<executable-name>/`, `internal/`. A plugin with more than one
-built executable keeps a single `src/` module with multiple `cmd/` mains
-(ordinary Go convention), not one module per executable. `bin/` holds only
-build output — content a `build` command produces, never committed to the
-catalog source itself. `scripts/` holds committed script executables that
-need no build step at all; an entry with no `build` points `path` straight
-at a file under `scripts/` (or elsewhere in the plugin tree). A plugin with
-only build-less scripts needs no `src/`; a plugin with only shipped config
-needs neither.
+With `src/` introduced, the plugin root is not a config-home overlay fragment.
+Layers are cut by role. The mirror correspondence with the user config home is
+preserved by stripping the `config/` prefix: a plugin file
+`config/<relative-path>` shadows or replaces the config-home file
+`<relative-path>`. The loader mounts plugin `config/` as the layer root.
+
+`src/` holds source projects that `build` commands compile from. The plugin is
+the distribution and enablement unit; a Go module is a build unit. Those units
+are explicitly decoupled so distribution cohesion does not dictate source-level
+coupling.
+
+A plugin with built Go executables uses either one Go module directly at
+`src/` (`go.mod`, `go.sum`, `cmd/`, `internal/`) or multiple independent Go
+modules under `src/<project-name>/`, each with its own `go.mod`. The
+session-runtime regrouping can therefore keep channel-server, agent helpers,
+and other implementation projects as separate modules under one plugin. A
+future plugin split stays cheap because those modules are already separated.
+The repository `go.work` lists each module individually, following the existing
+multi-module monorepo practice.
+
+The directory name stays `src/`. `modules/` is rejected because it collides with
+Nix and Go vocabulary, `internal/` carries Go import-path semantics, `go/`
+breaks language neutrality, and `apps/` is misleading for daemon and helper
+executables.
+
+`bin/` holds only build output — content a `build` command produces, never
+committed to the catalog source itself. `scripts/` holds committed script
+executables that need no build step at all; an entry with no `build` points
+`path` straight at a file under `scripts/` (or elsewhere in the plugin tree).
+A plugin with only build-less scripts needs no `src/`; a plugin with only
+shipped config needs neither.
 
 `plugin.toml` is the only required plugin-local file:
 
@@ -103,14 +115,24 @@ plect_min_version = "0.8.0"
 description = "GitHub resource provider and workflow support."
 
 [[executables]]
-name = "plect-github-watcher"
-path = "bin/plect-github-watcher"
-build = "go -C src build -o ../bin/plect-github-watcher ./cmd/plect-github-watcher"
+name = "github-watcher"
+path = "bin/github-watcher"
+build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
 
 [[executables]]
 name = "plect-github-provider"
 path = "bin/plect-github-provider"
 build = "go -C src build -o ../bin/plect-github-provider ./cmd/plect-github-provider"
+```
+
+A plugin with multiple source modules points each build command at the module
+that owns that executable:
+
+```toml
+[[executables]]
+name = "channel-server"
+path = "bin/channel-server"
+build = "go -C src/channel-server build -o ../../bin/channel-server ./cmd/channel-server"
 ```
 
 Plugin metadata fields:
@@ -122,10 +144,11 @@ Plugin metadata fields:
 | `plect_min_version` | yes | Minimum plect version required to load the plugin. |
 | `description` | no | Human-readable summary for list/show commands. |
 | `executables` | no | Relative paths for scripts or binaries shipped by the plugin. |
+| `services` | no | Daemon declarations supervised by `plect bus serve`. |
 
 The catalog-relative path listed in `catalog.toml` is the plugin identity. Full
 identity is `<catalog-alias>/<relative-path>`, such as `official/github` or
-`official/agent/claude-tasks`. Intra-catalog uniqueness comes from the
+`official/session/runtime`. Intra-catalog uniqueness comes from the
 filesystem. There is no plugin-owned identity field and no metadata identity
 check.
 
@@ -137,26 +160,78 @@ Executable entry fields:
 | `path` | yes | Relative executable path. In the primary script case, this points at a file already present in the source tree. |
 | `build` | no | Command run at add/update time to produce a compiled executable from plugin source. |
 
+Service entries declare plugin-owned daemons supervised by `plect bus serve`:
+
+```toml
+[[services]]
+name = "github-watcher"
+executable = "github-watcher"
+args = ["serve"]
+restart = "on-failure"
+health = { type = "process" }
+```
+
+A session runtime plugin can declare its daemons the same way:
+
+```toml
+[[services]]
+name = "channel-server"
+executable = "channel-server"
+restart = "on-failure"
+health = { type = "process" }
+
+[[services]]
+name = "slack-adapter"
+executable = "slack-adapter"
+args = ["serve"]
+required_env = ["SLACK_BOT_TOKEN"]
+restart = "on-failure"
+health = { type = "process" }
+```
+
+Service entry fields:
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `name` | yes | Stable service identity inside the plugin. Full identity is `<catalog-alias>/<plugin-path>/<service-name>`. |
+| `executable` | yes | Name of one executable declared by the same plugin. Services cannot name another plugin's executable. |
+| `args` | no | Argument vector passed after the executable path. |
+| `env` | no | Non-secret environment literals supplied to the child process. |
+| `required_env` | no | Environment variable names that must be present in user-owned configuration or the supervisor environment before the service can start. |
+| `restart` | no | Restart policy. `on-failure` restarts crashed children with bounded backoff; `never` leaves the service stopped after exit. |
+| `health` | no | Health policy. `type = "process"` treats a running child as healthy. Future health kinds must be provider-agnostic. |
+
+The bus supervisor starts services for enabled plugins when `plect bus serve`
+starts, stops them when the bus stops, and restarts service processes according
+to their restart policy. Service status is bus-global and records service id,
+running state, pid, restart count, last exit, last error, last health result,
+plugin id, and the lock coordinate or content hash that produced the running
+process.
+
+Service logs are attached to the bus process log with the service id. Service
+logs do not write into per-session event logs.
+
+Updating a service-owning plugin restarts its services.
+
 Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for
 plugins that need compilation.
 
-The standard subdirectories with plugin-layer loader behavior are:
+The standard `config/` subdirectories with plugin-layer loader behavior are:
 
 | Directory | Mount behavior |
 |---|---|
-| `providers/` | Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
-| `resources/` | Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
-| `environments/` | Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
-| `channels/` | Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
-| `tasks/` | Trusted layer plus trusted ancestor overlay. Same-id conflicts between plugin layers are load errors; user-owned layers replace whole definitions. |
-| `workflows/` | Trusted layer plus ancestor overlay. Same-id plugin-layer conflicts are load errors; user-owned layers can add nodes and channels, with singleton fields guarded against accidental redeclaration. |
-| `templates/` | Read-only plugin base layer plus current user-owned template layers. Same-id conflicts between plugin layers are load errors. |
+| `config/providers/` | Mounted as `providers/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
+| `config/resources/` | Mounted as `resources/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
+| `config/channels/` | Mounted as `channels/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
+| `config/tasks/` | Mounted as `tasks/`. Trusted layer plus trusted ancestor overlay. Same-id conflicts between plugin layers are load errors; user-owned layers replace whole definitions. |
+| `config/workflows/` | Mounted as `workflows/`. Trusted layer plus ancestor overlay. Same-id plugin-layer conflicts are load errors; user-owned layers can add nodes and channels, with singleton fields guarded against accidental redeclaration. |
+| `config/templates/` | Mounted as `templates/`. Read-only plugin base layer plus user-owned template layers. Same-id conflicts between plugin layers are load errors. |
 
-The template loader gains one generic read-only plugin layer. The current
-loader searches only the workdir ancestor overlays and
-`~/.config/plect/templates/`; plugin template support extends that lookup with
-mounted plugin `templates/` directories below user-owned template directories.
+The template loader includes one generic read-only plugin layer. Lookup searches
+workdir ancestor overlays, `~/.config/plect/templates/`, and mounted plugin
+`config/templates/` directories. User-owned template directories take precedence
+over mounted plugin template directories.
 Install-time materialization is rejected because it copies plugin content into
 user config, and those copies drift away from the plugin revision recorded in
 the lockfile.
@@ -181,8 +256,8 @@ plugin reference at the command position:
 
 ```toml
 scope = "run"
-setup = '{{bin "official/agent/runtime/agent-runtime"}} launch --workdir {{.Session.WorkdirPath | shellQuote}}'
-cleanup = '{{bin "official/agent/runtime/agent-runtime"}} stop --id {{.Self.runtime_id | shellQuote}}'
+setup = '{{bin "official/session/runtime/agent-runtime"}} launch --workdir {{.Session.WorkdirPath | shellQuote}}'
+cleanup = '{{bin "official/session/runtime/agent-runtime"}} stop --id {{.Self.runtime_id | shellQuote}}'
 ```
 
 `{{bin "<catalog-alias>/<plugin-path>/<executable>"}}` is the full form. To
@@ -224,8 +299,8 @@ No alias comparison happens at all, so the reference is correct under every
 alias simultaneously:
 
 ```toml
-# plugins/agent/runtime/tasks/agent_runtime.toml, shipped inside the
-# agent/runtime plugin itself
+# plugins/session/runtime/config/tasks/agent_runtime.toml, shipped inside
+# the session/runtime plugin itself
 setup   = '{{bin "agent-runtime"}} launch --workdir {{.Session.WorkdirPath | shellQuote}}'
 cleanup = '{{bin "agent-runtime"}} stop --id {{.Self.runtime_id | shellQuote}}'
 ```
@@ -241,12 +316,10 @@ so two plugins may reuse the same executable name with no collision.
 The fully-qualified `<catalog-alias>/<plugin-path>[/<executable-name>]` form
 remains exactly as specified above, for user-authored config (global
 config, ancestor overlays) that names any mounted plugin's executable by the
-alias the user chose. A shipped plugin referencing *another* plugin's
-executables by name is not expressible under plugin-local resolution and is
-intentionally unsupported for shipped content: the referencing plugin has no
-alias to name the other plugin with, and no substitute syntax is added for
-it here. The next section covers what a plugin does instead when it finds
-itself wanting exactly that.
+alias the user chose. A shipped plugin may not use that alias-qualified form:
+the referencing plugin has no alias to name the other plugin with, and
+cross-catalog references remain unsupported. Shipped plugin config can
+reference only its own executables.
 
 Alternatives considered:
 
@@ -259,39 +332,34 @@ Alternatives considered:
   same-name executables across plugin layers would become declaration-order
   behavior unless another conflict system wrapped `PATH`.
 
-### Cross-plugin references and the dependency non-mechanism
+### Plugin Boundary Rule
 
-Standing rule: a catalog plugin's shipped config may reference only its own
-executables (the plugin-local `{{bin}}` reading above). Cross-plugin and
-cross-catalog references are unsupported, not just for the alias reason
-above but as a matter of policy — a plugin that could silently lean on
-another plugin's executable would be an undeclared dependency no catalog
-audit could see from `plugin.toml` alone. The first remedy for an emerging
-cross-plugin need is folding the two plugins together; where folding would
-force unrelated concerns into one plugin (two otherwise-independent agent
-CLI packages that both want the same small, stable helper script, say),
-duplicating the executable into each consuming plugin is the alternative —
-cheaper than a shared dependency for content that rarely changes.
+Plecture has no plugin dependency mechanism. `plugin.toml` has no field for
+naming another plugin, declaring capabilities, or requesting provider
+resolution. plect does not acquire artifacts, resolve version ranges,
+auto-enable plugins, or build transitive plugin graphs.
 
-Dependency *metadata* — a plugin declaring "I need plugin X enabled" — is
-staged rather than built now:
+A plugin boundary must not cut through a runtime contract. When a dependency
+edge appears, the edge is a boundary smell, and the first remedy is merging the
+plugins that share the runtime contract.
 
-- **Stage now.** Reference-driven fail-loud: nothing declares a dependency,
-  but a `{{bin ...}}` reference that cannot resolve against the mounted
-  plugin set fails at config load (not first render), and the error names
-  the specific plugin to enable when it can be identified from a registered
-  catalog's published plugin list. This catches the actual failure mode
-  (an executable reference that silently doesn't resolve) without adding
-  any new manifest surface.
-- **Stage later**, only once a composed/profile plugin actually exists to
-  motivate it: a `requires` list of plugin ids within the same catalog,
-  checked as an enablement-closure error at `plect plugin add`/config load
-  (never auto-enabling the dependency). No version constraints — see below.
-- **Non-goal, stated explicitly**: version-constrained dependency
-  resolution. An executable is a CLI contract, deliberately rev-independent
-  of the plugin that calls it; a user who wants revision-coherence across a
-  catalog updates the whole catalog together (`plect catalog update`), not
-  through per-plugin version pins.
+The session runtime surface is one plugin. The planned regrouping merges the
+agent runtime tasks, Claude agent tasks, Codex agent tasks, channel-server, and
+Slack channel adapter into one self-contained session-runtime plugin. The exact
+path/name can be refined during implementation.
+
+The tmux plumbing is shared runtime logic because it has no agent-specific
+branch. `plect-agent-activity` is not shared runtime logic: the session-runtime
+plugin carries separate branch-free activity scripts for Claude and Codex
+because the earlier shared script's Claude/Codex branching was forced
+generalization.
+
+Mounted-but-unused definitions cost nothing. A user who enables the
+session-runtime plugin can leave unused Claude, Codex, or Slack definitions
+mounted. The Slack service remains naturally inert without credentials.
+
+The `github` and `okf` plugins are already self-contained. Their runtime
+contracts do not require another plugin to be mounted.
 
 ### Executable Build Model
 
@@ -303,12 +371,13 @@ Executable delivery is staged:
    executable file already present in the source tree. When an executable entry
    declares `build`, plect runs that command with the plugin's own root
    directory as the working directory and places the resulting executable in
-   the plugin's cache bin location. A Go plugin source under `src/` uses `go
-   -C src build -o ../bin/<name> ./cmd/<name>`: `-C src` changes the working
-   directory before any other path on the command line is resolved, so `-o`
-   must climb back out (`../bin/<name>`) to land at the plugin-root `bin/`
-   that `path` names — `-o bin/<name>` after `-C src` would instead build
-   into `src/bin/`, not the mounted `bin/` the manifest declares.
+   the plugin's cache bin location. A Go plugin source with one module directly
+   under `src/` uses `go -C src build -o ../bin/<name> ./cmd/<name>`. A plugin
+   with multiple independent modules uses the specific module directory, such
+   as `go -C src/channel-server build -o ../../bin/<name> ./cmd/<name>`. `-C`
+   changes the working directory before any other path on the command line is
+   resolved, so `-o` must climb back to the plugin-root `bin/` that `path`
+   names.
 2. Stage 2, future direction: plect release artifacts may bundle
    Plecture-maintained plugin binaries as separate plugin packages that ride the
    release. They are not embedded in core, and activation still requires the
@@ -354,12 +423,12 @@ schema_version = 1
 [[catalogs]]
 alias = "official"
 source = "git+https://github.com/example/plect-plugins"
-plugins = ["github", "agent/codex-tasks"]
+plugins = ["github", "session/runtime"]
 
 [[catalogs]]
 alias = "team"
 source = "git+ssh://git@example.com/team/plect-catalog"
-plugins = ["agent/runtime"]
+plugins = ["session/runtime"]
 
 [[catalogs]]
 alias = "local"
@@ -534,11 +603,11 @@ plect_min_version = "0.8.0"
 editable = false
 
 [[plugins]]
-id = "official/agent/codex-tasks"
+id = "official/session/runtime"
 catalog_alias = "official"
 catalog_source = "git+https://github.com/example/plect-plugins"
 catalog_resolved_revision = "4f2db5e4c2b4b4a8c6c0f6c0d4d2d2ecf0c1a0b3"
-path = "agent/codex-tasks"
+path = "session/runtime"
 content_hash = "sha256:..."
 plect_min_version = "0.8.0"
 editable = false
@@ -632,6 +701,8 @@ Add and update commands:
 - `plect plugin verify` re-hashes cached plugin directories and fails if any
   differ from the lockfile.
 - `plect plugin list` shows selected, resolved, locked, and compatibility state.
+- `plect plugin show <alias>/<path>` shows metadata, executables, services,
+  compatibility, and lock coordinates.
 
 Non-interactive contexts fail instead of prompting for first-seen catalog
 registrations. Any override flag must be explicit and visible in command
@@ -712,7 +783,7 @@ Threat model:
 - Workdir-owned cloned content cannot declare plugin references, providers,
   resources, environments, channels, or task definitions.
 
-The current loader already enforces most of this shape:
+Loader trust restrictions follow this shape:
 
 - Providers, resources, environments, and channels load only from plugin dirs
   and global config.
@@ -728,7 +799,7 @@ For loaders that receive plugin dirs, resolution order is:
 1. Plugin layers, in declaration order.
 2. Global user config.
 3. Trusted ancestor overlays, outermost to innermost.
-4. Workdir `.plect/` overlay, with the current restrictions.
+4. Workdir `.plect/` overlay, with the same restrictions.
 
 The user layer always wins because every user-owned layer is deeper than the
 plugin layers. Declaration order never chooses between same-id definitions from
@@ -826,7 +897,8 @@ One-time migration procedure:
 1. Back up `~/.config/plect/config.toml` and sibling config directories.
 2. Group existing global files by ownership: provider/resource/channel/task pack,
    workflow pack, and team-owned template or overlay.
-3. Move reusable groups into plugin directories with `plugin.toml`.
+3. Move reusable groups into a plugin's `config/` directory and add
+   `plugin.toml` at the plugin root.
 4. Create a `catalog.toml` next to those plugin directories and list every
    plugin path.
 5. Replace `plugin_dirs` with catalog registrations and plugin selections.
@@ -839,41 +911,61 @@ One-time migration procedure:
 
 ## Walkthrough examples
 
-### Agent task pack
+### Session runtime plugin
 
-A Claude or Codex task pack is a plugin because it commits to a particular
-agent CLI and runtime behavior.
+The session runtime plugin owns the reusable runtime surface for Claude, Codex,
+tmux, the Claude channel-server protocol, and Slack delivery. It is one plugin
+because those pieces share runtime contracts; splitting them would create
+dependency edges through the middle of the session runtime.
 
 Catalog registration and plugin enablement:
 
 ```bash
 plect catalog add official git+https://github.com/example/plect-plugins --revision v0.3.0
-plect plugin add official/agent/codex-tasks
-plect plugin update official/agent/codex-tasks
+plect plugin add official/session/runtime
+plect plugin update official/session/runtime
 ```
 
-`plect plugin update official/agent/codex-tasks` fetches the newest catalog
-snapshot and repoints only `official/agent/codex-tasks`; `official/github` or
-`official/agent/claude-tasks` stay at their locked coordinates until explicitly
-updated.
+`plect plugin update official/session/runtime` fetches the newest catalog
+snapshot and repoints only `official/session/runtime`; `official/github` stays
+at its locked coordinate until explicitly updated.
 
 Catalog-owned files:
 
 ```text
 catalog.toml
-agent/codex-tasks/plugin.toml
-agent/codex-tasks/tasks/agent.toml
-agent/codex-tasks/tasks/runtime.toml
-agent/codex-tasks/channels/agent_socket.toml
-agent/codex-tasks/workflows/coding.toml
-agent/codex-tasks/bin/plect-agent-activity
+session/runtime/plugin.toml
+session/runtime/config/tasks/tmux.toml
+session/runtime/config/tasks/initial_prompt.toml
+session/runtime/config/tasks/claude.toml
+session/runtime/config/tasks/codex.toml
+session/runtime/config/tasks/codex_exec.toml
+session/runtime/config/channels/tmux_send_keys.toml
+session/runtime/config/channels/claude_delivery.toml
+session/runtime/config/channels/codex_exec.toml
+session/runtime/scripts/plect-claude-agent-activity
+session/runtime/scripts/plect-codex-agent-activity
+session/runtime/src/channel-server/go.mod
+session/runtime/src/channel-server/cmd/channel-server/main.go
+session/runtime/src/slack-adapter/go.mod
+session/runtime/src/slack-adapter/cmd/slack-adapter/main.go
+session/runtime/src/codex-helpers/go.mod
+session/runtime/src/codex-helpers/cmd/plect-codex-exec-worker/main.go
+session/runtime/src/codex-helpers/cmd/plect-codex-exec-enqueue/main.go
 ```
+
+`session/runtime/bin/channel-server`, `session/runtime/bin/slack-adapter`,
+`session/runtime/bin/plect-codex-exec-worker`, and
+`session/runtime/bin/plect-codex-exec-enqueue` are what `plect plugin
+add`/`update` produce from the modules under `session/runtime/src` at
+add/update time — build output, not catalog content, so they are never
+committed (see the Package format section's `src`/`bin`/`scripts` split).
 
 Plugin-owned templates:
 
 ```text
-agent/codex-tasks/templates/work.md
-agent/codex-tasks/templates/review.md
+session/runtime/config/templates/work.md
+session/runtime/config/templates/review.md
 ```
 
 Residual user config:
@@ -883,14 +975,17 @@ Residual user config:
 - Event channel bindings for the user's runtime session.
 - Team-specific workflow overlays that add local notification or review nodes.
 - Prompt templates that encode team operating style.
+- Slack credentials or environment files. Without credentials, the Slack
+  service remains inert.
 
 No provider, task, workflow, or channel contract change is required. The
 workflow still references tasks and channels by their existing ids. Shipping
 templates from the plugin requires the generic read-only template-loader layer
 described above; it does not require task or workflow contract changes.
-`bin/plect-agent-activity` is a build-less shell script with its interpreter in
-the shebang, referenced from hooks through the same `{{bin ...}}` helper as a
-built binary.
+The tmux plumbing is genuinely shared runtime logic with no agent-specific
+branch. Agent activity remains de-generalized: Claude and Codex each carry a
+small branch-free activity script instead of sharing one helper that switches on
+agent kind.
 
 ### GitHub provider
 
@@ -906,7 +1001,7 @@ plect plugin update official/github
 ```
 
 `plect plugin update official/github` fetches the newest catalog snapshot and
-repoints only `official/github`; `official/agent/codex-tasks` stays at its
+repoints only `official/github`; `official/session/runtime` stays at its
 locked coordinate.
 
 Catalog-owned files:
@@ -914,17 +1009,17 @@ Catalog-owned files:
 ```text
 catalog.toml
 github/plugin.toml
-github/providers/github.toml
-github/resources/github.toml
-github/tasks/github_work.toml
-github/tasks/github_review.toml
-github/workflows/github_coding.toml
+github/config/providers/github.toml
+github/config/resources/github.toml
+github/config/tasks/github_work.toml
+github/config/tasks/github_review.toml
+github/config/workflows/github_coding.toml
 github/src/go.mod
 github/src/cmd/plect-github-provider/main.go
-github/src/cmd/plect-github-watcher/main.go
+github/src/cmd/github-watcher/main.go
 ```
 
-`github/bin/plect-github-provider` and `github/bin/plect-github-watcher`
+`github/bin/plect-github-provider` and `github/bin/github-watcher`
 are what `plect plugin add`/`update` produce from `github/src` at add/update
 time — build output, not catalog content, so they are never committed (see
 the Package format section's `src`/`bin`/`scripts` split).
@@ -934,8 +1029,7 @@ Residual user config:
 - Resource allowlist entries for allowed owners or repositories.
 - Authentication outside Plecture, such as the GitHub CLI token.
 - Workdir root choice.
-- Whether the user composes the GitHub workflow with Claude, Codex, or another
-  agent plugin.
+- Which session-runtime task surface the user composes the GitHub workflow with.
 - Project-board or watcher subscriptions that are local operating policy.
 
 Core still sees only provider, resource, task, workflow, and channel contracts.
@@ -966,13 +1060,13 @@ Catalog-owned files:
 ```text
 catalog.toml
 okf/plugin.toml
-okf/providers/local-okf.toml
-okf/resources/okf_goal.toml
-okf/tasks/pursue_goal.toml
-okf/tasks/goal_review.toml
-okf/tasks/goal_bootstrap.toml
-okf/workflows/goal_review.toml
-okf/templates/goal_review.md
+okf/config/providers/local-okf.toml
+okf/config/resources/okf_goal.toml
+okf/config/tasks/pursue_goal.toml
+okf/config/tasks/goal_review.toml
+okf/config/tasks/goal_bootstrap.toml
+okf/config/workflows/goal_review.toml
+okf/config/templates/goal_review.md
 okf/src/go.mod
 okf/src/cmd/plect-okf/main.go
 ```
@@ -995,8 +1089,8 @@ Plugin-owned behavior:
   `pursue_goal` only gates the resource kind; goal-specific completion
   conditions live in the goal file's own "## Done When" checklist.
 - A reference `goal_review` workflow and template that dispatches an agent
-  session to record the review verdict. This composes node kinds (agent
-  runtime, chat channel) the plugin does not itself define — see "Residual
+  session to record the review verdict. This composes node kinds from the
+  session runtime surface that the plugin does not itself define — see "Residual
   user config" below.
 
 Internally separable plugin behavior:
@@ -1009,30 +1103,21 @@ Internally separable plugin behavior:
 Not plugin-owned:
 
 - Retrospectives or other bundle records without machine semantics.
-- Which agent runtime and channel plugins actually execute a goal review —
-  the shipped workflow only composes their node kinds by id.
+- Which session runtime plugin actually executes a goal review — the shipped
+  workflow only composes its node kinds by id.
 
 Residual user config:
 
 - Which goal roots or owners are allowed.
 - Which orchestrator workflow is used.
-- Which agent and channel plugins handle the work — the shipped
-  `goal_review` workflow's `tmux` / `envfile` / `codex_exec` /
-  `slack_thread` / `initial_task` nodes are a reference composition; an
-  operator whose agent-runtime plugin defines different task ids swaps the
-  node `uses` values, or replaces the workflow with their own team-owned
-  overlay entirely.
+- Which session runtime handles the work — the shipped `goal_review` workflow's
+  `tmux` / `envfile` / `codex_exec` / `slack_thread` / `initial_task` nodes are
+  a reference composition; an operator whose session runtime defines different
+  task ids swaps the node `uses` values, or replaces the workflow with their
+  own team-owned overlay entirely.
 - Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 
 No provider/resource/task/workflow contract changes are needed. If the plugin
 discovers that goal state needs data the existing resource observation contract
 cannot express, that belongs in a later contract issue.
-
-This walkthrough previously scoped the task/workflow/template pack out of
-v1 ("Not plugin-owned in the first version"). That scoping was revised
-before implementation: the actual okf plugin (`plugins/okf/`) ships the
-goal task pack and a reference review workflow alongside the resource, on
-the reasoning that a goal resource with no task pack to drive it is not yet
-"zero hand-authored OKF TOML in user config" — the acceptance bar an okf
-extraction issue set for itself.
