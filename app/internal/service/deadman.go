@@ -21,15 +21,27 @@ import (
 const deadmanMultiplier = 3
 
 // CheckHeartbeatDeadman reports and escalates when name's declared
-// `heartbeat` has gone unfired for deadmanMultiplier * heartbeat. It must be
-// called from outside the per-session tick reactor it is watching: a stalled
-// reactor loop cannot report its own stall, since the very goroutine that
-// would fire this check is the one that stopped running.
+// `heartbeat` has gone unfired for deadmanMultiplier * the session's current
+// effective interval. It must be called from outside the per-session tick
+// reactor it is watching: a stalled reactor loop cannot report its own
+// stall, since the very goroutine that would fire this check is the one
+// that stopped running.
+//
+// The effective interval is heartbeat scaled by the reactor's own quiet-tick
+// backoff (config.BackoffInterval, the identical math checkHeartbeat applies
+// before deciding whether to tick), not the bare declared heartbeat: a
+// session that has legitimately backed off because nothing changed is due
+// its next real tick well past one base heartbeat, and judging staleness
+// against the unscaled value would misread that ordinary quiet period as a
+// stalled scheduler.
 //
 // A session that has never ticked judges staleness from CreatedAt instead of
 // a zero LastTickAt, so a session just brought up gets one full window's
-// grace before its silence counts as a stall.
-func CheckHeartbeatDeadman(cfg *config.Config, store *state.Store, name string, heartbeat time.Duration, now time.Time) (bool, error) {
+// grace before its silence counts as a stall; a session that has never
+// ticked also has no TickBackoff yet, so its effective interval is
+// unscaled heartbeat (n=0).
+func CheckHeartbeatDeadman(cfg *config.Config, store *state.Store, name string, tick config.TickConfig, now time.Time) (bool, error) {
+	heartbeat := tick.Heartbeat.Duration
 	if heartbeat <= 0 {
 		return false, nil
 	}
@@ -40,14 +52,20 @@ func CheckHeartbeatDeadman(cfg *config.Config, store *state.Store, name string, 
 	if s == nil || !runScopeUp(s.Tasks) {
 		return false, nil
 	}
+	n := 0
+	if s.TickBackoff != nil {
+		n = s.TickBackoff.ConsecutiveUnchanged
+	}
+	effective := config.BackoffInterval(heartbeat, tick.MaxHeartbeatOrDefault(), n)
+
 	staleSince := s.LastTickAt
 	if staleSince.IsZero() {
 		staleSince = s.CreatedAt
 	}
-	if staleSince.IsZero() || now.Sub(staleSince) < deadmanMultiplier*heartbeat {
+	if staleSince.IsZero() || now.Sub(staleSince) < deadmanMultiplier*effective {
 		return false, nil
 	}
-	return pushHeartbeatDeadmanEscalation(cfg, store, name, staleSince, heartbeat, now)
+	return pushHeartbeatDeadmanEscalation(cfg, store, name, staleSince, heartbeat, effective, now)
 }
 
 // pushHeartbeatDeadmanEscalation delivers the alert to the first live
@@ -70,13 +88,14 @@ func CheckHeartbeatDeadman(cfg *config.Config, store *state.Store, name string, 
 // checking its dedup state before publishing keeps those two outcomes
 // separate. Once ticks resume, LastTickAt advances past staleSince and a
 // later stall produces a new key, escalating again as its own new episode.
-func pushHeartbeatDeadmanEscalation(cfg *config.Config, store *state.Store, origin string, staleSince time.Time, heartbeat time.Duration, now time.Time) (bool, error) {
+func pushHeartbeatDeadmanEscalation(cfg *config.Config, store *state.Store, origin string, staleSince time.Time, heartbeat, effective time.Duration, now time.Time) (bool, error) {
 	meta := map[string]string{
-		"escalation_kind": "heartbeat.deadman",
-		"heartbeat":       heartbeat.String(),
-		"stale_since":     staleSince.UTC().Format(time.RFC3339),
+		"escalation_kind":    "heartbeat.deadman",
+		"heartbeat":          heartbeat.String(),
+		"effective_interval": effective.String(),
+		"stale_since":        staleSince.UTC().Format(time.RFC3339),
 	}
-	body := heartbeatDeadmanBody(origin, staleSince, heartbeat, now)
+	body := heartbeatDeadmanBody(origin, staleSince, heartbeat, effective, now)
 	dedupKey := origin + "|heartbeat_deadman|" + staleSince.UTC().Format(time.RFC3339Nano)
 
 	target, err := resolveLiveAncestor(cfg, store, origin)
@@ -155,9 +174,9 @@ func resolveLiveAncestor(cfg *config.Config, store *state.Store, origin string) 
 	}
 }
 
-func heartbeatDeadmanBody(origin string, staleSince time.Time, heartbeat time.Duration, now time.Time) string {
+func heartbeatDeadmanBody(origin string, staleSince time.Time, heartbeat, effective time.Duration, now time.Time) string {
 	return fmt.Sprintf(
-		"%s heartbeat scheduling has gone silent: no tick has fired in %s (heartbeat=%s, threshold=%dx).\n\nstale_since: %s",
-		origin, now.Sub(staleSince).Round(time.Second), heartbeat, deadmanMultiplier, staleSince.UTC().Format(time.RFC3339),
+		"%s heartbeat scheduling has gone silent: no tick has fired in %s (heartbeat=%s, effective_interval=%s, threshold=%dx effective_interval).\n\nstale_since: %s",
+		origin, now.Sub(staleSince).Round(time.Second), heartbeat, effective, deadmanMultiplier, staleSince.UTC().Format(time.RFC3339),
 	)
 }

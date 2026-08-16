@@ -60,7 +60,7 @@ on = ["resource.*"]
 
 	var mu sync.Mutex
 	var calls []string
-	sup.deadmanFn = func(_ *config.Config, _ *state.Store, name string, _ time.Duration, _ time.Time) (bool, error) {
+	sup.deadmanFn = func(_ *config.Config, _ *state.Store, name string, _ config.TickConfig, _ time.Time) (bool, error) {
 		mu.Lock()
 		calls = append(calls, name)
 		mu.Unlock()
@@ -109,7 +109,7 @@ heartbeat = "1h"
 
 	var mu sync.Mutex
 	var calls int
-	sup.deadmanFn = func(_ *config.Config, _ *state.Store, name string, _ time.Duration, _ time.Time) (bool, error) {
+	sup.deadmanFn = func(_ *config.Config, _ *state.Store, name string, _ config.TickConfig, _ time.Time) (bool, error) {
 		if name != "o/r-1" {
 			t.Errorf("unexpected session swept: %q", name)
 		}

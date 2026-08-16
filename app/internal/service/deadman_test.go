@@ -21,6 +21,12 @@ func runningTasks() map[string]*contract.TaskState {
 	}
 }
 
+// heartbeatTick is a TickConfig declaring only `heartbeat`, the shape every
+// deadman test but the backoff-aware one below needs.
+func heartbeatTick(d time.Duration) config.TickConfig {
+	return config.TickConfig{Heartbeat: config.Duration{Duration: d}}
+}
+
 func setLastTickAt(t *testing.T, store *state.Store, name string, at time.Time) {
 	t.Helper()
 	if err := store.Update(name, func(s *domain.Session) error {
@@ -28,6 +34,16 @@ func setLastTickAt(t *testing.T, store *state.Store, name string, at time.Time) 
 		return nil
 	}); err != nil {
 		t.Fatalf("set LastTickAt: %v", err)
+	}
+}
+
+func setConsecutiveUnchanged(t *testing.T, store *state.Store, name string, n int) {
+	t.Helper()
+	if err := store.Update(name, func(s *domain.Session) error {
+		s.TickBackoff = &contract.TickBackoff{ConsecutiveUnchanged: n}
+		return nil
+	}); err != nil {
+		t.Fatalf("set ConsecutiveUnchanged: %v", err)
 	}
 }
 
@@ -46,7 +62,7 @@ func TestCheckHeartbeatDeadman_NoDeclaredHeartbeatNeverEscalates(t *testing.T) {
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", runningTasks())
 	setLastTickAt(t, store, "owner/repo-1", time.Now().Add(-time.Hour))
 
-	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", 0, time.Now())
+	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", config.TickConfig{}, time.Now())
 	if err != nil {
 		t.Fatalf("CheckHeartbeatDeadman: %v", err)
 	}
@@ -62,7 +78,7 @@ func TestCheckHeartbeatDeadman_NotYetStaleDoesNotEscalate(t *testing.T) {
 	now := time.Now()
 	setLastTickAt(t, store, "owner/repo-1", now.Add(-2*time.Minute)) // < 3x heartbeat below
 
-	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, now)
+	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), now)
 	if err != nil {
 		t.Fatalf("CheckHeartbeatDeadman: %v", err)
 	}
@@ -78,7 +94,7 @@ func TestCheckHeartbeatDeadman_RunScopeDownNeverEscalates(t *testing.T) {
 	now := time.Now()
 	setLastTickAt(t, store, "owner/repo-1", now.Add(-time.Hour))
 
-	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, now)
+	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), now)
 	if err != nil {
 		t.Fatalf("CheckHeartbeatDeadman: %v", err)
 	}
@@ -96,7 +112,7 @@ func TestCheckHeartbeatDeadman_NeverTickedJudgesStalenessFromCreatedAt(t *testin
 	// CreatedAt was stamped ~now by seedSession — well within one window, so
 	// a session just brought up gets its grace period even though it has
 	// never ticked (LastTickAt is zero).
-	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, now)
+	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), now)
 	if err != nil {
 		t.Fatalf("CheckHeartbeatDeadman: %v", err)
 	}
@@ -110,12 +126,55 @@ func TestCheckHeartbeatDeadman_NeverTickedJudgesStalenessFromCreatedAt(t *testin
 	}); err != nil {
 		t.Fatal(err)
 	}
-	escalated, err = CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, now)
+	escalated, err = CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), now)
 	if err != nil {
 		t.Fatalf("CheckHeartbeatDeadman: %v", err)
 	}
 	if !escalated {
 		t.Fatal("did not escalate for a session that has never ticked well past CreatedAt + 3x heartbeat")
+	}
+}
+
+// TestCheckHeartbeatDeadman_BackedOffSessionUsesEffectiveIntervalNotBaseHeartbeat
+// proves the fix for a false-positive a code reviewer caught: a session that
+// legitimately backed off (repeated quiet heartbeat sweeps, no fingerprint
+// change) is due its next real tick at heartbeat * 2^n, not bare heartbeat.
+// Judging staleness against 3x the unscaled heartbeat would misread that
+// ordinary quiet period as a stalled scheduler.
+func TestCheckHeartbeatDeadman_BackedOffSessionUsesEffectiveIntervalNotBaseHeartbeat(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{}
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", runningTasks())
+	now := time.Now()
+
+	tick := config.TickConfig{
+		Heartbeat:    config.Duration{Duration: time.Minute},
+		MaxHeartbeat: config.Duration{Duration: time.Hour},
+	}
+	// effective = BackoffInterval(1m, 1h, 3) = 8m; 3x effective = 24m.
+	setConsecutiveUnchanged(t, store, "owner/repo-1", 3)
+
+	setLastTickAt(t, store, "owner/repo-1", now.Add(-20*time.Minute)) // > 3x base heartbeat (3m), < 3x effective (24m)
+	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", tick, now)
+	if err != nil {
+		t.Fatalf("CheckHeartbeatDeadman: %v", err)
+	}
+	if escalated {
+		t.Fatal("escalated a session legitimately backed off — false positive against a healthy quiet session")
+	}
+
+	setLastTickAt(t, store, "owner/repo-1", now.Add(-25*time.Minute)) // > 3x effective (24m)
+	escalated, err = CheckHeartbeatDeadman(cfg, store, "owner/repo-1", tick, now)
+	if err != nil {
+		t.Fatalf("CheckHeartbeatDeadman: %v", err)
+	}
+	if !escalated {
+		t.Fatal("did not escalate once staleness passed 3x the backed-off effective interval")
+	}
+
+	dead := listEvents(t, store, "owner/repo-1", event.TypeTerminalDead)
+	if len(dead) != 1 || dead[0].Metadata["effective_interval"] != "8m0s" {
+		t.Fatalf("dead events = %+v, want one with effective_interval=8m0s", dead)
 	}
 }
 
@@ -128,7 +187,7 @@ func TestCheckHeartbeatDeadman_EscalatesToLiveParentAndDedupsWithinEpisode(t *te
 	now := time.Now()
 	setLastTickAt(t, store, "owner/repo-1", now.Add(-time.Hour))
 
-	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, now)
+	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), now)
 	if err != nil {
 		t.Fatalf("CheckHeartbeatDeadman: %v", err)
 	}
@@ -148,7 +207,7 @@ func TestCheckHeartbeatDeadman_EscalatesToLiveParentAndDedupsWithinEpisode(t *te
 	// re-escalate, and must not fall back to an "undeliverable" record on
 	// origin either — the live parent was found, the duplicate is simply
 	// nothing further to do.
-	escalated, err = CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, now.Add(time.Minute))
+	escalated, err = CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), now.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("second CheckHeartbeatDeadman: %v", err)
 	}
@@ -172,21 +231,21 @@ func TestCheckHeartbeatDeadman_ResumingTicksClosesEpisodeThenStallingAgainEscala
 	now := time.Now()
 	setLastTickAt(t, store, "owner/repo-1", now.Add(-time.Hour))
 
-	if escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, now); err != nil || !escalated {
+	if escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), now); err != nil || !escalated {
 		t.Fatalf("first escalation: escalated=%v err=%v", escalated, err)
 	}
 
 	// Ticks resume: LastTickAt advances, closing the episode.
 	resumedAt := now.Add(2 * time.Minute)
 	setLastTickAt(t, store, "owner/repo-1", resumedAt)
-	if escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, resumedAt); err != nil || escalated {
+	if escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), resumedAt); err != nil || escalated {
 		t.Fatalf("escalated right after ticks resumed: escalated=%v err=%v", escalated, err)
 	}
 
 	// A new stall well past the resumed LastTickAt is a new episode and must
 	// escalate again.
 	laterNow := resumedAt.Add(time.Hour)
-	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, laterNow)
+	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), laterNow)
 	if err != nil {
 		t.Fatalf("second-episode CheckHeartbeatDeadman: %v", err)
 	}
@@ -205,7 +264,7 @@ func TestCheckHeartbeatDeadman_NoLiveAncestorRecordsUndeliverableOnOrigin(t *tes
 	now := time.Now()
 	setLastTickAt(t, store, "owner/repo-1", now.Add(-time.Hour))
 
-	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, now)
+	escalated, err := CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), now)
 	if err != nil {
 		t.Fatalf("CheckHeartbeatDeadman: %v", err)
 	}
@@ -222,7 +281,7 @@ func TestCheckHeartbeatDeadman_NoLiveAncestorRecordsUndeliverableOnOrigin(t *tes
 	}
 
 	// Same episode: repeated sweep must not duplicate the self-record.
-	escalated, err = CheckHeartbeatDeadman(cfg, store, "owner/repo-1", time.Minute, now.Add(time.Minute))
+	escalated, err = CheckHeartbeatDeadman(cfg, store, "owner/repo-1", heartbeatTick(time.Minute), now.Add(time.Minute))
 	if err != nil {
 		t.Fatalf("second CheckHeartbeatDeadman: %v", err)
 	}
