@@ -72,12 +72,9 @@ uses             = "codex_exec"
 inputs.queue_dir = "{{.Nodes.codex_exec.outputs.queue_dir}}"
 include          = ["plect.instruction", "user.emit", "plect.terminal.*"]
 
-# uses the channel/slack plugin's shipped "slack" channel, not the
-# slack_thread node above (same name, different namespace: channels vs.
-# tasks) — no catalog plugin ships a "slack_thread" channel, so that name
-# never resolved here. base_url is channel/slack's documented default for
-# a locally-run slack-adapter; override this node in your own overlay if
-# yours listens elsewhere.
+# No plugin in this catalog ships a channel named "slack_thread" (only the
+# task id above shares that name); this uses channel/slack's shipped
+# "slack" channel and its documented default base_url instead.
 [[event.channel]]
 name              = "slack"
 uses              = "slack"
