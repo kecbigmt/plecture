@@ -1,0 +1,57 @@
+schema_version = 1
+version = "0.1.0"
+# 0.0.0 matches app/internal/version.Current ("0.0.0-dev"): plect has no
+# release/tagging process yet, so any higher floor would reject the plugin
+# against every build until real versioning exists.
+plect_min_version = "0.0.0"
+description = "Session runtime surface for Claude Code and Codex CLI: shared tmux pane lifecycle, per-agent launch tasks, the channel-server/slack-adapter delivery daemons, and the Slack delivery channel that talks to them."
+
+[[executables]]
+name = "plect-claude-agent-activity"
+path = "scripts/plect-claude-agent-activity"
+
+[[executables]]
+name = "plect-codex-agent-activity"
+path = "scripts/plect-codex-agent-activity"
+
+[[executables]]
+name = "plect-codex-exec-worker"
+path = "scripts/plect-codex-exec-worker"
+
+[[executables]]
+name = "plect-codex-exec-enqueue"
+path = "scripts/plect-codex-exec-enqueue"
+
+[[executables]]
+name = "channel-server"
+path = "bin/channel-server"
+build = "go -C src/channel-server build -o ../../bin/channel-server ./cmd/channel-server"
+
+[[executables]]
+name = "slack-adapter"
+path = "bin/slack-adapter"
+build = "go -C src/slack-adapter build -o ../../bin/slack-adapter ./cmd/slack-adapter"
+
+# channel-server today runs one instance per Claude Code session, launched
+# by Claude itself through MCP configuration with a session-specific
+# CHANNEL_SOCKET_PATH (see the claude task's setup script) — not a single
+# bus-global daemon. Declaring it as a service still satisfies the adoption
+# boundary this ADR names ("enabling a plugin should make its daemons known
+# to Plecture"), but required_env intentionally names a variable the bus
+# process's own environment never sets: the bus-supervised instance stays
+# inert by design until a future change moves the per-session lifecycle
+# under the bus, per docs/adr/2026-08-16-plugin-service-lifecycle.md's
+# Consequences section.
+[[services]]
+name = "channel-server"
+executable = "channel-server"
+required_env = ["CHANNEL_SOCKET_PATH"]
+restart = "on-failure"
+health = { type = "process" }
+
+[[services]]
+name = "slack-adapter"
+executable = "slack-adapter"
+required_env = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]
+restart = "on-failure"
+health = { type = "process" }
