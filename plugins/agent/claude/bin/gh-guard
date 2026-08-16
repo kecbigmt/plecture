@@ -38,6 +38,22 @@ deny() {
   exit 1
 }
 
+# A --input body is a whole JSON document, not a fixed literal — matching
+# specific substrings (compact "state":"closed", one particular spacing)
+# chases formatting forever and always has another gap. jq -e '.state ==
+# "closed"' instead parses the document and checks the actual field, so any
+# whitespace/formatting of an equivalent body is caught the same way. The
+# grep fallback only covers jq being unavailable; every task setup in this
+# catalog already assumes jq is on PATH, so that path is a defensive
+# minimum, not the primary check.
+body_is_closed() {
+  local content_file="$1"
+  if command -v jq >/dev/null 2>&1 && jq -e '(.state // empty) == "closed"' "$content_file" >/dev/null 2>&1; then
+    return 0
+  fi
+  grep -q -e 'state=closed' -e '"state":"closed"' -e '"state": "closed"' "$content_file"
+}
+
 sub="${1:-}"
 action="${2:-}"
 
@@ -104,11 +120,9 @@ if [ "$sub" = "api" ]; then
       # stdin.
       stdin_capture=$(mktemp "${TMPDIR:-/tmp}/gh-guard-stdin.XXXXXX")
       cat > "$stdin_capture"
-      grep -q -e 'state=closed' -e '"state":"closed"' -e '"state": "closed"' "$stdin_capture" \
-        && body_has_closed=1
+      body_is_closed "$stdin_capture" && body_has_closed=1
     elif [ -r "$input_value" ]; then
-      grep -q -e 'state=closed' -e '"state":"closed"' -e '"state": "closed"' "$input_value" \
-        && body_has_closed=1
+      body_is_closed "$input_value" && body_has_closed=1
     fi
   fi
 

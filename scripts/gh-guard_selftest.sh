@@ -148,11 +148,21 @@ expect_denied      "api -X PATCH --input <file> (split) with closed body"    api
 expect_denied      "api -X PATCH --input=<file> (joined) with closed body"   api -X PATCH repos/o/r/issues/1 --input="$closed_body_file"
 expect_passthrough "api -X PATCH --input <file> without closed body"         api -X PATCH repos/o/r/issues/1 --input "$open_body_file"
 
+# Same JSON document, ordinary alternative whitespace/formatting — a
+# substring-literal match would miss these; the jq-based check must not.
+spaced_body_file="$stub_dir/spaced-body.json"
+printf '%s' '{ "state" : "closed" }' > "$spaced_body_file"
+multiline_body_file="$stub_dir/multiline-body.json"
+printf '%s\n' '{' '  "state": "closed"' '}' > "$multiline_body_file"
+expect_denied "api -X PATCH --input <file> with spaced JSON closed body"     api -X PATCH repos/o/r/issues/1 --input "$spaced_body_file"
+expect_denied "api -X PATCH --input <file> with multiline JSON closed body"  api -X PATCH repos/o/r/issues/1 --input "$multiline_body_file"
+
 # --input -: the body arrives on stdin instead of a file — same bypass, plus
 # the guard must buffer-and-replay it so the real gh still receives the body
 # it was never allowed to read directly (see run_guard_with_stdin above).
-expect_denied_stdin      "api -X PATCH --input - with closed body on stdin"     '{"state":"closed"}' api -X PATCH repos/o/r/issues/1 --input -
-expect_passthrough_stdin "api -X PATCH --input - without closed body on stdin"  '{"title":"x"}'       api -X PATCH repos/o/r/issues/1 --input -
+expect_denied_stdin      "api -X PATCH --input - with closed body on stdin"          '{"state":"closed"}'    api -X PATCH repos/o/r/issues/1 --input -
+expect_denied_stdin      "api -X PATCH --input - with spaced JSON closed body"       '{ "state" : "closed" }' api -X PATCH repos/o/r/issues/1 --input -
+expect_passthrough_stdin "api -X PATCH --input - without closed body on stdin"       '{"title":"x"}'         api -X PATCH repos/o/r/issues/1 --input -
 
 # Misconfiguration must fail loud, never silently fall back to an unguarded
 # real gh: an unset/self-referential/non-executable GH_GUARD_REAL_GH is a
