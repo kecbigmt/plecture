@@ -277,6 +277,87 @@ path = { type = "string", required = true }
 	}
 }
 
+// TestSupervisor_ValidationSuccessDoesNotClearDeliveryFailureStreak is the
+// supervisor-side half of the same regression: a session whose channel is
+// currently failing to deliver (e.g. its runtime socket isn't listening) but
+// whose declaration validates fine must not have that delivery-failure
+// streak wiped out just because the next up-transition's (unrelated)
+// validation check passes — validation success says nothing about whether
+// delivery, which is checked on its own per-event schedule, has recovered.
+func TestSupervisor_ValidationSuccessDoesNotClearDeliveryFailureStreak(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
+type = "unix_socket"
+path = "{{.Inputs.path}}"
+body = "{{ json .Event }}"
+
+[input_schema]
+path = { type = "string", required = true }
+`)
+	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
+[[event.channel]]
+name        = "runtime"
+uses        = "claude_channel"
+inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
+include     = ["plect.instruction"]
+`)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stateStore := state.NewStore(t.TempDir())
+	sock, _ := startFakeSocket(t)
+	if err := stateStore.Put(&domain.Session{
+		Name: "o/r-1", Workflow: "coding", WorkdirPath: t.TempDir(),
+		Tasks: map[string]*contract.TaskState{
+			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seededAt := time.Now()
+	if err := stateStore.Update("o/r-1", func(s *domain.Session) error {
+		s.ChannelHealth = &contract.ChannelHealth{ConsecutiveFailures: 2, FirstFailureAt: seededAt, LastFailureAt: seededAt, LastKind: contract.ChannelFailureKindDelivery, LastChannel: "runtime"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	log := eventlog.NewStore(t.TempDir())
+	hub := sessionhub.NewRegistry(log)
+	defer hub.Close()
+	sup := NewSupervisor(func() *config.Config { return cfg }, stateStore, log, hub)
+	ctx := t.Context()
+	active := map[string]context.CancelFunc{}
+	skip := map[string]bool{}
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	defer func() {
+		for _, c := range active {
+			c()
+		}
+	}()
+
+	sup.reconcile(ctx, active, skip, &wg)
+	if _, ok := active["o/r-1"]; !ok {
+		t.Fatal("dispatcher not started for an up session")
+	}
+
+	ch := stateStore.Get("o/r-1").ChannelHealth
+	if ch == nil || ch.ConsecutiveFailures != 2 || ch.LastKind != contract.ChannelFailureKindDelivery || !ch.FirstFailureAt.Equal(seededAt) {
+		t.Errorf("channel health = %+v, want the delivery-failure streak left untouched by an unrelated successful validation", ch)
+	}
+}
+
 // TestSupervisor_DeliversChannelDefinedOnlyInAPluginMountedAfterConstruction
 // reproduces the bus-daemon outage class: a channel definition that exists
 // only in a plugin layer (no global copy) must validate and deliver once the

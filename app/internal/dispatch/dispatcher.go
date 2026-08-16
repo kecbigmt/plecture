@@ -208,7 +208,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 	case failedChannel != "":
 		recordChannelFailure(d.state, d.session, contract.ChannelFailureKindDelivery, failedChannel, failedCause, time.Now())
 	case matched:
-		recordChannelSuccess(d.state, d.session)
+		recordChannelSuccess(d.state, d.session, contract.ChannelFailureKindDelivery)
 	}
 }
 

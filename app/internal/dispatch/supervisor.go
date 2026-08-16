@@ -129,7 +129,7 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		_, _, _, _ = sup.log.Append(channel.ChannelValidationErrorEvent(name, wf.ID, verr))
 		recordChannelFailure(sup.state, name, contract.ChannelFailureKindValidation, "", verr, time.Now())
 	} else {
-		recordChannelSuccess(sup.state, name)
+		recordChannelSuccess(sup.state, name, contract.ChannelFailureKindValidation)
 	}
 	envExecutor, envErr := buildChannelEnvironmentExecutor(cfg, wf, s)
 	if envErr != nil {

@@ -44,16 +44,23 @@ func recordChannelFailure(st *state.Store, session, kind, channelName string, ca
 	}
 }
 
-// recordChannelSuccess clears an open failure streak, ending the episode; a
-// later failure starts a new one and is free to escalate again. The cheap
-// Get check avoids a state.json rewrite on the path where nothing needs
+// recordChannelSuccess clears an open failure streak of the matching kind,
+// ending that episode; a later failure starts a new one and is free to
+// escalate again. kind must match the open streak's LastKind, not just be
+// non-empty: validation and delivery are checked on entirely independent
+// schedules (validation only at a dispatcher (re)build, delivery per event),
+// so a delivery success says nothing about whether a declared channel that
+// still fails to validate has been fixed, and vice versa — clearing on any
+// success, regardless of kind, would let a workflow's one healthy channel
+// mask another that's persistently broken in a different way. The cheap Get
+// check avoids a state.json rewrite on the path where nothing needs
 // clearing — the overwhelming majority of deliveries and validations.
-func recordChannelSuccess(st *state.Store, session string) {
-	if s := st.Get(session); s == nil || s.ChannelHealth == nil || s.ChannelHealth.ConsecutiveFailures == 0 {
+func recordChannelSuccess(st *state.Store, session, kind string) {
+	if s := st.Get(session); s == nil || s.ChannelHealth == nil || s.ChannelHealth.ConsecutiveFailures == 0 || s.ChannelHealth.LastKind != kind {
 		return
 	}
 	err := st.Update(session, func(s *domain.Session) error {
-		if s.ChannelHealth == nil || s.ChannelHealth.ConsecutiveFailures == 0 {
+		if s.ChannelHealth == nil || s.ChannelHealth.ConsecutiveFailures == 0 || s.ChannelHealth.LastKind != kind {
 			return nil
 		}
 		s.ChannelHealth = &contract.ChannelHealth{}

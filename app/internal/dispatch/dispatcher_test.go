@@ -320,6 +320,36 @@ func TestDispatcher_SuccessfulDeliveryClearsChannelHealth(t *testing.T) {
 	}
 }
 
+// TestDispatcher_SuccessfulDeliveryDoesNotClearValidationFailureStreak is a
+// regression test: validation (checked once, at a dispatcher's build) and
+// delivery (checked per event) run on independent schedules, so a delivery
+// success says nothing about whether a declared channel that still fails to
+// validate has been fixed. Without the kind check, a workflow's one healthy
+// channel would mask another that's persistently failing to validate — the
+// open streak would be cleared the moment any event delivers successfully,
+// even though the validation problem is untouched.
+func TestDispatcher_SuccessfulDeliveryDoesNotClearValidationFailureStreak(t *testing.T) {
+	log := eventlog.NewStore(t.TempDir())
+	sock, recv := startFakeSocket(t)
+	d, s := runtimeDispatcher(t, "o/r-1", log, sock, "plect.instruction")
+	seededAt := time.Now()
+	if err := d.state.Update("o/r-1", func(session *domain.Session) error {
+		session.ChannelHealth = &contract.ChannelHealth{ConsecutiveFailures: 1, FirstFailureAt: seededAt, LastFailureAt: seededAt, LastKind: contract.ChannelFailureKindValidation, LastError: `uses unknown channel definition "alerts_channel"`}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction})
+	drainOnce(d, s)
+	recvType(t, recv) // delivered
+
+	ch := d.state.Get("o/r-1").ChannelHealth
+	if ch == nil || ch.ConsecutiveFailures != 1 || ch.LastKind != contract.ChannelFailureKindValidation || !ch.FirstFailureAt.Equal(seededAt) {
+		t.Errorf("channel health = %+v, want the validation-failure streak left untouched by an unrelated channel's successful delivery", ch)
+	}
+}
+
 func TestDispatcher_ChannelErrorNotRedelivered(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	dead := filepath.Join(t.TempDir(), "absent.sock")
