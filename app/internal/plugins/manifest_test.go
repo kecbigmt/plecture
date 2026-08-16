@@ -156,3 +156,196 @@ path = "bin/x2"
 		t.Fatal("want error for duplicate executable name, got nil")
 	}
 }
+
+func TestLoadManifest_ServiceValid(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `
+schema_version = 1
+plect_min_version = "0.1.0"
+
+[[executables]]
+name = "channel-server"
+path = "bin/channel-server"
+
+[[services]]
+name = "channel-server"
+executable = "channel-server"
+`)
+
+	m, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatalf("LoadManifest: unexpected error: %v", err)
+	}
+	if len(m.Services) != 1 {
+		t.Fatalf("Services = %+v", m.Services)
+	}
+	svc := m.Services[0]
+	if svc.Name != "channel-server" || svc.Executable != "channel-server" {
+		t.Fatalf("Service = %+v", svc)
+	}
+	if svc.Restart != ServiceRestartOnFailure {
+		t.Fatalf("Restart default = %q, want %q", svc.Restart, ServiceRestartOnFailure)
+	}
+	if svc.Health.Type != ServiceHealthProcess {
+		t.Fatalf("Health.Type default = %q, want %q", svc.Health.Type, ServiceHealthProcess)
+	}
+}
+
+func TestLoadManifest_ServiceExplicitFields(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `
+schema_version = 1
+plect_min_version = "0.1.0"
+
+[[executables]]
+name = "slack-adapter"
+path = "bin/slack-adapter"
+
+[[services]]
+name = "slack-adapter"
+executable = "slack-adapter"
+args = ["serve"]
+env = { LOG_LEVEL = "info" }
+required_env = ["SLACK_BOT_TOKEN"]
+restart = "never"
+health = { type = "process" }
+`)
+
+	m, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatalf("LoadManifest: unexpected error: %v", err)
+	}
+	svc := m.Services[0]
+	if len(svc.Args) != 1 || svc.Args[0] != "serve" {
+		t.Fatalf("Args = %+v", svc.Args)
+	}
+	if svc.Env["LOG_LEVEL"] != "info" {
+		t.Fatalf("Env = %+v", svc.Env)
+	}
+	if len(svc.RequiredEnv) != 1 || svc.RequiredEnv[0] != "SLACK_BOT_TOKEN" {
+		t.Fatalf("RequiredEnv = %+v", svc.RequiredEnv)
+	}
+	if svc.Restart != ServiceRestartNever {
+		t.Fatalf("Restart = %q, want %q", svc.Restart, ServiceRestartNever)
+	}
+}
+
+func TestLoadManifest_ServiceMissingName(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `
+schema_version = 1
+plect_min_version = "0.1.0"
+
+[[executables]]
+name = "x"
+path = "bin/x"
+
+[[services]]
+executable = "x"
+`)
+
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("want error for service missing name, got nil")
+	}
+}
+
+func TestLoadManifest_ServiceMissingExecutable(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `
+schema_version = 1
+plect_min_version = "0.1.0"
+
+[[services]]
+name = "x"
+`)
+
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("want error for service missing executable, got nil")
+	}
+}
+
+func TestLoadManifest_ServiceExecutableNotDeclared(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `
+schema_version = 1
+plect_min_version = "0.1.0"
+
+[[executables]]
+name = "x"
+path = "bin/x"
+
+[[services]]
+name = "svc"
+executable = "y"
+`)
+
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("want error for service executable not declared by this plugin, got nil")
+	}
+}
+
+func TestLoadManifest_DuplicateServiceName(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `
+schema_version = 1
+plect_min_version = "0.1.0"
+
+[[executables]]
+name = "x"
+path = "bin/x"
+
+[[services]]
+name = "svc"
+executable = "x"
+
+[[services]]
+name = "svc"
+executable = "x"
+`)
+
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("want error for duplicate service name, got nil")
+	}
+}
+
+func TestLoadManifest_ServiceInvalidRestartPolicy(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `
+schema_version = 1
+plect_min_version = "0.1.0"
+
+[[executables]]
+name = "x"
+path = "bin/x"
+
+[[services]]
+name = "svc"
+executable = "x"
+restart = "always"
+`)
+
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("want error for unsupported restart policy, got nil")
+	}
+}
+
+func TestLoadManifest_ServiceInvalidHealthType(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, `
+schema_version = 1
+plect_min_version = "0.1.0"
+
+[[executables]]
+name = "x"
+path = "bin/x"
+
+[[services]]
+name = "svc"
+executable = "x"
+health = { type = "http" }
+`)
+
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("want error for unsupported health type, got nil")
+	}
+}
