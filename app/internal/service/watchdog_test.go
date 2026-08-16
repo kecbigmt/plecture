@@ -373,6 +373,43 @@ func TestEvaluateHealth_ExplicitNoSignalDeclarationStaysUndeclared(t *testing.T)
 	}
 }
 
+// TestEvaluateHealth_LapsedSignalWithPriorMovementReadsStalledNotUndeclared
+// pins the fix for the undeclared predicate becoming historical: a session
+// that has recorded movement before must never fall back to undeclared just
+// because its movement signal source has since died (e.g. lost hook wiring
+// after a pane restart) — the recorded LastMovementAt is a permanent basis
+// to judge staleness, so a lapsed signal past the stall threshold reads
+// stalled, exactly like a signal that is still wired but stale.
+func TestEvaluateHealth_LapsedSignalWithPriorMovementReadsStalledNotUndeclared(t *testing.T) {
+	store := testStore(t)
+	longAgo := time.Now().Add(-24 * time.Hour)
+	// supported=false: the signal itself now reports no basis to judge
+	// movement this tick, standing in for the source having died.
+	cfg := movementSignalFixtureConfig(t, movementSignalCmd(t, false, true, "", time.Time{}))
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Health = &contract.HealthState{LastFingerprint: "initial:fp-1", LastMovementAt: longAgo}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed prior movement state: %v", err)
+	}
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthStalled {
+		t.Fatalf("report = %+v, state = %q, want stalled (prior movement observation must survive the signal source dying)", report, report.State())
+	}
+}
+
 // TestEvaluateHealth_FreshMovementEvidenceReadsHealthy is the positive
 // counterpart to the stalled test: the same unmet work, but the declared
 // movement signal reports evidence timestamped within the stall threshold.

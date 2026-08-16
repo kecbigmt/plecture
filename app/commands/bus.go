@@ -26,6 +26,13 @@ import (
 
 var busSocket string
 
+// liveConfigRefresh bounds how stale the daemon's view of mounted plugins
+// can get. Kept well above the 1s reconcile poll: resolving plugins hashes
+// every enabled plugin's full directory tree (see plugins.VerifyAndMountAll),
+// so running it every reconcile tick would turn a cheap poll into an
+// increasingly expensive one as the plugin set grows.
+const liveConfigRefresh = 30 * time.Second
+
 var busCmd = &cobra.Command{
 	Use:   "bus",
 	Short: "Event bus server",
@@ -38,7 +45,11 @@ var busServeCmd = &cobra.Command{
 POST /v1/events (append), GET /v1/events (list), GET /v1/stream (SSE replay+live).
 
 The socket is created 0600, so same-user processes need no token; set
-PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).`,
+PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).
+
+Config (including which plugins are mounted) is re-resolved periodically, so
+a plugin enabled after this command started becomes visible without a
+restart, within one refresh interval.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		socket := busSocket
@@ -77,7 +88,14 @@ PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
-		cfg, err := config.Load()
+		// A one-shot config.Load() would pin the plugin-mount layer to
+		// whatever existed at process start for the daemon's whole
+		// lifetime — every other consumer is a short-lived CLI invocation
+		// that reloads fresh per run, but a daemon has no equivalent
+		// per-invocation boundary. Live re-resolves on liveConfigRefresh so
+		// a plugin mounted after the daemon started is visible on the next
+		// session up transition, not just after a daemon restart.
+		live, err := config.NewLive(config.Load, liveConfigRefresh)
 		if err != nil {
 			return err
 		}
@@ -85,7 +103,7 @@ PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).
 
 		// Session dispatchers share this process's event log and session state:
 		// one per active session delivers events to its workflow-declared channels.
-		sup := dispatch.NewSupervisor(cfg, stateStore, store, hub)
+		sup := dispatch.NewSupervisor(live.Get, stateStore, store, hub)
 		var supWG sync.WaitGroup
 		supWG.Go(func() { sup.Run(ctx) })
 
@@ -93,16 +111,21 @@ PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).
 		// ticking on a declared `[tick]` pattern, the judge builtin, or a
 		// `heartbeat` sweep (docs/wiki/verification-gate.md), instead of
 		// leaving `plect tick` to an orchestrator's judgment or memory.
-		react := reactor.NewSupervisor(cfg, stateStore, store, hub)
+		react := reactor.NewSupervisor(live.Get, stateStore, store, hub)
 		var reactWG sync.WaitGroup
 		reactWG.Go(func() { react.Run(ctx) })
+
+		go live.Run(ctx)
 
 		// Plugin-declared [[services]] (a plugin-owned daemon such as a chat
 		// relay or an issue-tracker watcher) are supervised the same way:
 		// bus-started, bus-stopped, restarted on crash or on the owning
 		// plugin's content change. Polls config.LoadPlugins() itself rather
-		// than reusing cfg.Plugins so a `plect plugin update` while the bus
-		// is running is picked up without a bus restart.
+		// than live.Get()/cfg.Plugins: services only need the mounted
+		// plugin list and lockfile, not a full re-resolved Config, and
+		// polling independently of live's 30s refresh keeps a plugin
+		// content change (a `plect plugin update` while the bus is
+		// running) picked up on the supervisor's own, tighter poll cycle.
 		svcSup := busservice.NewSupervisor(config.LoadPlugins)
 		var svcWG sync.WaitGroup
 		svcWG.Go(func() { svcSup.Run(ctx) })
