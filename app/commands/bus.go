@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/kecbigmt/plecture/app/internal/busservice"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/dispatch"
 	"github.com/kecbigmt/plecture/app/internal/eventbus"
@@ -96,6 +97,16 @@ PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).
 		var reactWG sync.WaitGroup
 		reactWG.Go(func() { react.Run(ctx) })
 
+		// Plugin-declared [[services]] (a plugin-owned daemon such as a chat
+		// relay or an issue-tracker watcher) are supervised the same way:
+		// bus-started, bus-stopped, restarted on crash or on the owning
+		// plugin's content change. Polls config.LoadPlugins() itself rather
+		// than reusing cfg.Plugins so a `plect plugin update` while the bus
+		// is running is picked up without a bus restart.
+		svcSup := busservice.NewSupervisor(config.LoadPlugins)
+		var svcWG sync.WaitGroup
+		svcWG.Go(func() { svcSup.Run(ctx) })
+
 		go func() {
 			<-ctx.Done()
 			_ = httpSrv.Close()
@@ -106,6 +117,7 @@ PLECT_BUS_TOKEN to also require a bearer token (e.g. when proxied to a browser).
 		stop()         // cancel ctx so the supervisors tear down even if Serve failed without a signal
 		supWG.Wait()   // let the dispatch supervisor cancel and join its dispatchers
 		reactWG.Wait() // let the reactor supervisor cancel and join its reactors
+		svcWG.Wait()   // let the service supervisor stop every running plugin service
 		hub.Close()    // cancel any reader still alive after subscribers/dispatchers/reactors left
 		if serveErr != nil && serveErr != http.ErrServerClosed {
 			return serveErr
