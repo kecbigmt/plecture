@@ -12,7 +12,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
-	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // Supervisor keeps at most one dispatcher per active session. It is the single
@@ -127,9 +126,9 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		sup.logger.Warn("event channels did not validate; some may not deliver",
 			"session", name, "workflow", wf.ID, "error", verr)
 		_, _, _, _ = sup.log.Append(channel.ChannelValidationErrorEvent(name, wf.ID, verr))
-		recordChannelFailure(sup.state, name, contract.ChannelFailureKindValidation, "", verr, time.Now())
+		recordValidationFailure(sup.state, name, verr, time.Now())
 	} else {
-		recordChannelSuccess(sup.state, name, contract.ChannelFailureKindValidation)
+		recordValidationSuccess(sup.state, name)
 	}
 	envExecutor, envErr := buildChannelEnvironmentExecutor(cfg, wf, s)
 	if envErr != nil {

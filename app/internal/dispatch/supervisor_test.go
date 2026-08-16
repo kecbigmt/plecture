@@ -176,9 +176,9 @@ include     = ["plect.instruction"]
 		t.Errorf("channel.error metadata = %+v, want workflow=coding", errs[0].Metadata)
 	}
 
-	ch := stateStore.Get("o/r-1").ChannelHealth
-	if ch == nil || ch.ConsecutiveFailures != 1 || ch.LastKind != contract.ChannelFailureKindValidation || ch.FirstFailureAt.IsZero() {
-		t.Errorf("channel health = %+v, want a one-failure validation streak", ch)
+	ch := stateStore.Get("o/r-1").ChannelValidationHealth
+	if ch == nil || ch.ConsecutiveFailures != 1 || ch.FirstFailureAt.IsZero() {
+		t.Errorf("channel validation health = %+v, want a one-failure validation streak", ch)
 	}
 }
 
@@ -234,8 +234,8 @@ include     = ["plect.instruction"]
 	}()
 
 	sup.reconcile(ctx, active, skip, &wg)
-	if ch := stateStore.Get("o/r-1").ChannelHealth; ch == nil || ch.ConsecutiveFailures == 0 {
-		t.Fatalf("channel health = %+v, want a failure recorded before the fix", ch)
+	if ch := stateStore.Get("o/r-1").ChannelValidationHealth; ch == nil || ch.ConsecutiveFailures == 0 {
+		t.Fatalf("channel validation health = %+v, want a failure recorded before the fix", ch)
 	}
 
 	// Run scope goes down (supervisor cancels the dispatcher, matching
@@ -272,8 +272,8 @@ path = { type = "string", required = true }
 		t.Fatal("dispatcher not restarted for the fresh up transition")
 	}
 
-	if ch := stateStore.Get("o/r-1").ChannelHealth; ch != nil && ch.ConsecutiveFailures != 0 {
-		t.Errorf("channel health = %+v, want the streak cleared by the next successful validation", ch)
+	if ch := stateStore.Get("o/r-1").ChannelValidationHealth; ch != nil && ch.ConsecutiveFailures != 0 {
+		t.Errorf("channel validation health = %+v, want the streak cleared by the next successful validation", ch)
 	}
 }
 
@@ -326,7 +326,7 @@ include     = ["plect.instruction"]
 	}
 	seededAt := time.Now()
 	if err := stateStore.Update("o/r-1", func(s *domain.Session) error {
-		s.ChannelHealth = &contract.ChannelHealth{ConsecutiveFailures: 2, FirstFailureAt: seededAt, LastFailureAt: seededAt, LastKind: contract.ChannelFailureKindDelivery, LastChannel: "runtime"}
+		s.ChannelDeliveryHealth = &contract.ChannelHealth{ConsecutiveFailures: 2, FirstFailureAt: seededAt, LastFailureAt: seededAt, LastChannel: "runtime"}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -352,9 +352,9 @@ include     = ["plect.instruction"]
 		t.Fatal("dispatcher not started for an up session")
 	}
 
-	ch := stateStore.Get("o/r-1").ChannelHealth
-	if ch == nil || ch.ConsecutiveFailures != 2 || ch.LastKind != contract.ChannelFailureKindDelivery || !ch.FirstFailureAt.Equal(seededAt) {
-		t.Errorf("channel health = %+v, want the delivery-failure streak left untouched by an unrelated successful validation", ch)
+	ch := stateStore.Get("o/r-1").ChannelDeliveryHealth
+	if ch == nil || ch.ConsecutiveFailures != 2 || !ch.FirstFailureAt.Equal(seededAt) {
+		t.Errorf("channel delivery health = %+v, want the delivery-failure streak left untouched by an unrelated successful validation", ch)
 	}
 }
 

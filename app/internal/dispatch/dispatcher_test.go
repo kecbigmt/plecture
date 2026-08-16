@@ -290,9 +290,9 @@ func TestDispatcher_FinalFailureAppendsChannelError(t *testing.T) {
 	if ce.Metadata["channel"] != "runtime" || ce.Metadata["event_id"] != orig.ID || ce.Metadata["attempts"] != "2" {
 		t.Errorf("channel.error metadata = %+v", ce.Metadata)
 	}
-	ch := d.state.Get("o/r-1").ChannelHealth
-	if ch == nil || ch.ConsecutiveFailures != 1 || ch.LastKind != contract.ChannelFailureKindDelivery || ch.LastChannel != "runtime" || ch.FirstFailureAt.IsZero() {
-		t.Errorf("channel health = %+v, want a one-failure delivery streak", ch)
+	ch := d.state.Get("o/r-1").ChannelDeliveryHealth
+	if ch == nil || ch.ConsecutiveFailures != 1 || ch.LastChannel != "runtime" || ch.FirstFailureAt.IsZero() {
+		t.Errorf("channel delivery health = %+v, want a one-failure delivery streak", ch)
 	}
 }
 
@@ -305,7 +305,7 @@ func TestDispatcher_SuccessfulDeliveryClearsChannelHealth(t *testing.T) {
 	sock, recv := startFakeSocket(t)
 	d, s := runtimeDispatcher(t, "o/r-1", log, sock, "plect.instruction")
 	if err := d.state.Update("o/r-1", func(session *domain.Session) error {
-		session.ChannelHealth = &contract.ChannelHealth{ConsecutiveFailures: 2, FirstFailureAt: time.Now(), LastFailureAt: time.Now(), LastKind: contract.ChannelFailureKindDelivery, LastChannel: "runtime"}
+		session.ChannelDeliveryHealth = &contract.ChannelHealth{ConsecutiveFailures: 2, FirstFailureAt: time.Now(), LastFailureAt: time.Now(), LastChannel: "runtime"}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -315,26 +315,26 @@ func TestDispatcher_SuccessfulDeliveryClearsChannelHealth(t *testing.T) {
 	drainOnce(d, s)
 	recvType(t, recv) // delivered
 
-	if ch := d.state.Get("o/r-1").ChannelHealth; ch != nil && ch.ConsecutiveFailures != 0 {
-		t.Errorf("channel health = %+v, want the streak cleared after a successful delivery", ch)
+	if ch := d.state.Get("o/r-1").ChannelDeliveryHealth; ch != nil && ch.ConsecutiveFailures != 0 {
+		t.Errorf("channel delivery health = %+v, want the streak cleared after a successful delivery", ch)
 	}
 }
 
 // TestDispatcher_SuccessfulDeliveryDoesNotClearValidationFailureStreak is a
 // regression test: validation (checked once, at a dispatcher's build) and
-// delivery (checked per event) run on independent schedules, so a delivery
-// success says nothing about whether a declared channel that still fails to
-// validate has been fixed. Without the kind check, a workflow's one healthy
-// channel would mask another that's persistently failing to validate — the
-// open streak would be cleared the moment any event delivers successfully,
-// even though the validation problem is untouched.
+// delivery (checked per event) are independent streaks — Session.
+// ChannelValidationHealth vs ChannelDeliveryHealth — precisely so a
+// delivery success can never clear a still-open validation failure on a
+// declared channel that never even reaches delivery (an unresolvable `uses`
+// is skipped before the fan-out loop, so it would otherwise be invisible to
+// every event's outcome).
 func TestDispatcher_SuccessfulDeliveryDoesNotClearValidationFailureStreak(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
 	d, s := runtimeDispatcher(t, "o/r-1", log, sock, "plect.instruction")
 	seededAt := time.Now()
 	if err := d.state.Update("o/r-1", func(session *domain.Session) error {
-		session.ChannelHealth = &contract.ChannelHealth{ConsecutiveFailures: 1, FirstFailureAt: seededAt, LastFailureAt: seededAt, LastKind: contract.ChannelFailureKindValidation, LastError: `uses unknown channel definition "alerts_channel"`}
+		session.ChannelValidationHealth = &contract.ChannelHealth{ConsecutiveFailures: 1, FirstFailureAt: seededAt, LastFailureAt: seededAt, LastError: `uses unknown channel definition "alerts_channel"`}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -344,9 +344,9 @@ func TestDispatcher_SuccessfulDeliveryDoesNotClearValidationFailureStreak(t *tes
 	drainOnce(d, s)
 	recvType(t, recv) // delivered
 
-	ch := d.state.Get("o/r-1").ChannelHealth
-	if ch == nil || ch.ConsecutiveFailures != 1 || ch.LastKind != contract.ChannelFailureKindValidation || !ch.FirstFailureAt.Equal(seededAt) {
-		t.Errorf("channel health = %+v, want the validation-failure streak left untouched by an unrelated channel's successful delivery", ch)
+	ch := d.state.Get("o/r-1").ChannelValidationHealth
+	if ch == nil || ch.ConsecutiveFailures != 1 || !ch.FirstFailureAt.Equal(seededAt) {
+		t.Errorf("channel validation health = %+v, want the validation-failure streak left untouched by an unrelated channel's successful delivery", ch)
 	}
 }
 
@@ -397,7 +397,7 @@ func TestDispatcher_MultiChannelFanOut(t *testing.T) {
 	if cur, _ := log.ReadCursor("o/r-1", dispatcherConsumer); cur == 0 {
 		t.Error("cursor should advance after both workers are terminal")
 	}
-	if ch := d.state.Get("o/r-1").ChannelHealth; ch == nil || ch.ConsecutiveFailures != 1 || ch.LastChannel != "dead" {
+	if ch := d.state.Get("o/r-1").ChannelDeliveryHealth; ch == nil || ch.ConsecutiveFailures != 1 || ch.LastChannel != "dead" {
 		t.Errorf("channel health = %+v, want one recorded failure for the dead channel", ch)
 	}
 
@@ -407,7 +407,7 @@ func TestDispatcher_MultiChannelFanOut(t *testing.T) {
 	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction})
 	drainOnce(d, s)
 	recvType(t, recv)
-	if ch := d.state.Get("o/r-1").ChannelHealth; ch == nil || ch.ConsecutiveFailures != 2 {
+	if ch := d.state.Get("o/r-1").ChannelDeliveryHealth; ch == nil || ch.ConsecutiveFailures != 2 {
 		t.Errorf("channel health = %+v, want the streak to survive the live channel's sibling success", ch)
 	}
 }

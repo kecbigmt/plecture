@@ -180,11 +180,17 @@ type Session struct {
 	// parent re-notification use one durable history instead of a caller's
 	// transient poll cadence.
 	Health *HealthState `json:"health,omitempty"`
-	// ChannelHealth is the session's open event-channel validation/delivery
-	// failure streak, if any. It is persisted so a threshold crossing and a
-	// parent escalation share one durable history instead of a poller's
-	// transient state, mirroring Health.
-	ChannelHealth *ChannelHealth `json:"channel_health,omitempty"`
+	// ChannelValidationHealth and ChannelDeliveryHealth are the session's open
+	// event-channel failure streaks, if any — validation (checked once, at a
+	// dispatcher's build) and delivery (checked per event) run on entirely
+	// independent schedules, so they are tracked as two separate streaks
+	// rather than one shared counter: a success of one kind says nothing
+	// about whether the other kind's still-open failure has been fixed, and
+	// must never clear it. Persisted so a threshold crossing and a parent
+	// escalation share one durable history instead of a poller's transient
+	// state, mirroring Health.
+	ChannelValidationHealth *ChannelHealth `json:"channel_validation_health,omitempty"`
+	ChannelDeliveryHealth   *ChannelHealth `json:"channel_delivery_health,omitempty"`
 	// LastTickAt is the session-level watermark `plect tick` stamps every time
 	// it runs (regardless of instance/action outcome). The tick reactor's
 	// `heartbeat` sweep reads it to decide whether observation has gone
@@ -212,7 +218,8 @@ type HealthState struct {
 	NotifyCount     int       `json:"notify_count,omitempty"`
 }
 
-// Channel failure kinds for ChannelHealth.LastKind: a workflow-level
+// Channel failure kinds, naming which of Session's two ChannelHealth streaks
+// an escalation (or a caller selecting one) refers to: a workflow-level
 // validation failure (a declared channel doesn't resolve to a valid
 // definition, so nothing is ever attempted) versus a per-event delivery
 // failure (a resolved channel was attempted and exhausted its retries).
@@ -221,18 +228,17 @@ const (
 	ChannelFailureKindDelivery   = "delivery"
 )
 
-// ChannelHealth is core's own record of a session's open event-channel
-// validation/delivery failure streak: how many failures in a row, since
-// when, and the most recent one's detail. EscalatedAt is non-zero once the
-// current streak has already been escalated to the parent, so a persistent
-// failure escalates exactly once per episode; a subsequent successful
-// validation or delivery clears the whole struct, ending the episode, and a
-// later failure starts a new one (free to escalate again).
+// ChannelHealth is core's own record of one open event-channel failure
+// streak (see Session.ChannelValidationHealth / ChannelDeliveryHealth): how
+// many failures in a row, since when, and the most recent one's detail.
+// EscalatedAt is non-zero once the current streak has already been escalated
+// to the parent, so a persistent failure escalates exactly once per episode;
+// a subsequent success of the matching kind clears the struct, ending the
+// episode, and a later failure starts a new one (free to escalate again).
 type ChannelHealth struct {
 	ConsecutiveFailures int       `json:"consecutive_failures,omitempty"`
 	FirstFailureAt      time.Time `json:"first_failure_at,omitzero"`
 	LastFailureAt       time.Time `json:"last_failure_at,omitzero"`
-	LastKind            string    `json:"last_kind,omitempty"`    // "validation" | "delivery"
 	LastChannel         string    `json:"last_channel,omitempty"` // empty for a workflow-level validation failure
 	LastError           string    `json:"last_error,omitempty"`
 	EscalatedAt         time.Time `json:"escalated_at,omitzero"`

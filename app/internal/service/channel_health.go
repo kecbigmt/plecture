@@ -16,6 +16,10 @@ import (
 // escalationKindChannelDeliveryFailed names the terminal escalation this
 // file pushes, matching the naming convention already established by
 // escalationKindDoneWhenNonConvergence and health's "health."+state values.
+// One constant covers both streaks (validation and delivery): from a
+// parent's point of view they mean the same thing — this session's event
+// channel isn't working — and the escalation's channel_failure_kind metadata
+// (see pushChannelHealthEscalation) already carries the distinction.
 const escalationKindChannelDeliveryFailed = "delivery.failed"
 
 // channelHealthFailureThreshold and channelHealthFailureAge are the two ways
@@ -31,13 +35,20 @@ const (
 	channelHealthFailureAge       = 5 * time.Minute
 )
 
-// CheckChannelHealth escalates a session's open event-channel
-// validation/delivery failure streak to a live ancestor exactly once per
-// episode, once the streak crosses channelHealthFailureThreshold consecutive
-// failures or has been open longer than channelHealthFailureAge. A later
-// successful validation or delivery (internal/dispatch again) clears the
-// streak, ending the episode; a subsequent failure starts a new one and is
-// free to escalate again. Returns whether an escalation was pushed.
+// CheckChannelHealth escalates a session's open event-channel failure
+// streaks to a live ancestor, exactly once per episode, once a streak
+// crosses channelHealthFailureThreshold consecutive failures or has been
+// open longer than channelHealthFailureAge. Validation (checked once, at a
+// dispatcher's build) and delivery (checked per event) are two entirely
+// independent streaks — see contract.Session.ChannelValidationHealth /
+// ChannelDeliveryHealth — so both are checked and may each escalate on their
+// own; a session can simultaneously have one declared channel that never
+// resolves and another that resolves but times out, and a reader needs both
+// signals, not just whichever happened to be checked last. A later success
+// of the matching kind (internal/dispatch again) clears that one streak,
+// ending its episode; a subsequent failure of that kind starts a new one and
+// is free to escalate again. Returns whether at least one escalation was
+// pushed.
 func CheckChannelHealth(cfg *config.Config, store *state.Store, sessionName string) (bool, error) {
 	s, err := store.GetE(sessionName)
 	if err != nil {
@@ -46,26 +57,31 @@ func CheckChannelHealth(cfg *config.Config, store *state.Store, sessionName stri
 	if s == nil {
 		return false, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", sessionName)}
 	}
-	ch := s.ChannelHealth
+	validationPushed := checkChannelHealthStreak(cfg, store, sessionName, s.ChannelValidationHealth, contract.ChannelFailureKindValidation)
+	deliveryPushed := checkChannelHealthStreak(cfg, store, sessionName, s.ChannelDeliveryHealth, contract.ChannelFailureKindDelivery)
+	return validationPushed || deliveryPushed, nil
+}
+
+func checkChannelHealthStreak(cfg *config.Config, store *state.Store, sessionName string, ch *contract.ChannelHealth, kind string) bool {
 	if ch == nil || ch.ConsecutiveFailures == 0 || !ch.EscalatedAt.IsZero() {
-		return false, nil
+		return false
 	}
 	crossed := ch.ConsecutiveFailures >= channelHealthFailureThreshold ||
 		(!ch.FirstFailureAt.IsZero() && time.Since(ch.FirstFailureAt) >= channelHealthFailureAge)
 	if !crossed {
-		return false, nil
+		return false
 	}
-	if !pushChannelHealthEscalation(cfg, store, sessionName, ch) {
-		return false, nil
+	if !pushChannelHealthEscalation(cfg, store, sessionName, ch, kind) {
+		return false
 	}
-	persistChannelHealthEscalation(store, sessionName)
-	return true, nil
+	persistChannelHealthEscalation(store, sessionName, kind)
+	return true
 }
 
-func pushChannelHealthEscalation(cfg *config.Config, store *state.Store, origin string, ch *contract.ChannelHealth) bool {
+func pushChannelHealthEscalation(cfg *config.Config, store *state.Store, origin string, ch *contract.ChannelHealth, kind string) bool {
 	meta := map[string]string{
 		"escalation_kind":      escalationKindChannelDeliveryFailed,
-		"channel_failure_kind": ch.LastKind,
+		"channel_failure_kind": kind,
 	}
 	if ch.LastChannel != "" {
 		meta["channel"] = ch.LastChannel
@@ -77,42 +93,44 @@ func pushChannelHealthEscalation(cfg *config.Config, store *state.Store, origin 
 	// lifetime — reusing it (rather than a running counter, like health's
 	// notifyCount) is enough here because this path only ever fires once per
 	// episode: unlike health, there is no renotify-while-still-failing case
-	// to distinguish.
-	dedupKey := fmt.Sprintf("%s|channel|%s", origin, ch.FirstFailureAt.UTC().Format(time.RFC3339Nano))
+	// to distinguish. kind is part of the key so the validation and delivery
+	// streaks, which are independent episodes, can never collide even if
+	// they happen to open at the same instant.
+	dedupKey := fmt.Sprintf("%s|channel|%s|%s", origin, kind, ch.FirstFailureAt.UTC().Format(time.RFC3339Nano))
 	id, wakeErr, err := publishHealthEscalationToLiveAncestor(cfg, store, origin, TerminalParams{
 		Type:     event.TypeTerminalEscalate,
-		Summary:  fmt.Sprintf("%s event channel is failing", origin),
-		Body:     channelHealthEscalationBody(origin, ch),
+		Summary:  fmt.Sprintf("%s event channel %s is failing", origin, kind),
+		Body:     channelHealthEscalationBody(origin, ch, kind),
 		Metadata: meta,
 		DedupKey: dedupKey,
 	})
 	if err != nil {
-		slog.Warn("publish channel health escalation failed", "session", origin, "error", err)
+		slog.Warn("publish channel health escalation failed", "session", origin, "kind", kind, "error", err)
 		return false
 	}
 	if id == "" {
 		localID, _, localErr := publishTerminalTo(cfg, store, origin, origin, false, TerminalParams{
 			Type:     event.TypeTerminalDead,
 			Summary:  fmt.Sprintf("%s channel health escalation is undeliverable", origin),
-			Body:     channelHealthEscalationBody(origin, ch),
+			Body:     channelHealthEscalationBody(origin, ch, kind),
 			Metadata: meta,
 			DedupKey: dedupKey + "|undeliverable",
 		})
 		if localErr != nil {
-			slog.Warn("record undeliverable channel health escalation failed", "session", origin, "error", localErr)
+			slog.Warn("record undeliverable channel health escalation failed", "session", origin, "kind", kind, "error", localErr)
 			return false
 		}
 		return localID != ""
 	}
 	if wakeErr != nil {
-		slog.Warn("wake parent for channel health escalation failed", "session", origin, "target", id, "error", wakeErr)
+		slog.Warn("wake parent for channel health escalation failed", "session", origin, "kind", kind, "target", id, "error", wakeErr)
 	}
 	return true
 }
 
-func channelHealthEscalationBody(origin string, ch *contract.ChannelHealth) string {
+func channelHealthEscalationBody(origin string, ch *contract.ChannelHealth, kind string) string {
 	lines := []string{
-		fmt.Sprintf("%s event channel %s is failing.", origin, ch.LastKind),
+		fmt.Sprintf("%s event channel %s is failing.", origin, kind),
 	}
 	if ch.LastChannel != "" {
 		lines = append(lines, "", "channel: "+ch.LastChannel)
@@ -127,18 +145,25 @@ func channelHealthEscalationBody(origin string, ch *contract.ChannelHealth) stri
 	return strings.Join(lines, "\n")
 }
 
-func persistChannelHealthEscalation(store *state.Store, name string) {
+func persistChannelHealthEscalation(store *state.Store, name, kind string) {
 	now := time.Now()
 	if err := store.Update(name, func(s *domain.Session) error {
-		if s.ChannelHealth == nil || s.ChannelHealth.ConsecutiveFailures == 0 {
+		var ch *contract.ChannelHealth
+		switch kind {
+		case contract.ChannelFailureKindValidation:
+			ch = s.ChannelValidationHealth
+		case contract.ChannelFailureKindDelivery:
+			ch = s.ChannelDeliveryHealth
+		}
+		if ch == nil || ch.ConsecutiveFailures == 0 {
 			// The streak already cleared (recovered) before this push landed;
 			// there is nothing left to dedup against.
 			return nil
 		}
-		s.ChannelHealth.EscalatedAt = now
+		ch.EscalatedAt = now
 		s.UpdatedAt = now
 		return nil
 	}); err != nil {
-		slog.Warn("persist channel health escalation failed", "session", name, "error", err)
+		slog.Warn("persist channel health escalation failed", "session", name, "kind", kind, "error", err)
 	}
 }

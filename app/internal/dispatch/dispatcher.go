@@ -151,7 +151,7 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 
 // processEvent runs one worker per matching channel and returns once all are
 // terminal, so the cursor only advances after the event is fully processed.
-// The channel-health streak (contract.ChannelHealth) is updated once per
+// The delivery streak (Session.ChannelDeliveryHealth) is updated once per
 // event, from the workers' combined outcome, rather than once per channel:
 // a multi-channel workflow with one permanently broken channel and one
 // healthy one would otherwise have concurrent per-channel writes to the same
@@ -206,9 +206,9 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 	}
 	switch {
 	case failedChannel != "":
-		recordChannelFailure(d.state, d.session, contract.ChannelFailureKindDelivery, failedChannel, failedCause, time.Now())
+		recordDeliveryFailure(d.state, d.session, failedChannel, failedCause, time.Now())
 	case matched:
-		recordChannelSuccess(d.state, d.session, contract.ChannelFailureKindDelivery)
+		recordDeliverySuccess(d.state, d.session)
 	}
 }
 
