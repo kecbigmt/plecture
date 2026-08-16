@@ -517,8 +517,8 @@ func TestBackoffInterval(t *testing.T) {
 		{100, 4 * time.Hour}, // far beyond overflow of a naive 1<<n
 	}
 	for _, c := range cases {
-		if got := backoffInterval(base, max, c.n); got != c.want {
-			t.Errorf("backoffInterval(n=%d) = %v, want %v", c.n, got, c.want)
+		if got := config.BackoffInterval(base, max, c.n); got != c.want {
+			t.Errorf("BackoffInterval(n=%d) = %v, want %v", c.n, got, c.want)
 		}
 	}
 }
@@ -556,7 +556,7 @@ func TestSessionReactor_QuietTickBackoffGrows(t *testing.T) {
 	// interval by rewinding LastTickAt, so the test doesn't wait real
 	// wall-clock multiples of heartbeat.
 	rewindAndSweep := func(n int) {
-		interval := backoffInterval(heartbeat, maxHeartbeat, n)
+		interval := config.BackoffInterval(heartbeat, maxHeartbeat, n)
 		if err := st.Update("o/r-1", func(s *domain.Session) error {
 			s.LastTickAt = time.Now().Add(-interval - time.Millisecond)
 			return nil
@@ -614,7 +614,7 @@ func TestSessionReactor_QuietTickBackoffResetsOnInbound(t *testing.T) {
 		if s := st.Get("o/r-1"); s.TickBackoff != nil {
 			n = s.TickBackoff.ConsecutiveUnchanged
 		}
-		interval := backoffInterval(heartbeat, defaultMaxHeartbeat, n)
+		interval := config.BackoffInterval(heartbeat, config.DefaultMaxHeartbeat, n)
 		if err := st.Update("o/r-1", func(s *domain.Session) error {
 			s.LastTickAt = time.Now().Add(-interval - time.Millisecond)
 			return nil
@@ -640,7 +640,7 @@ func TestSessionReactor_QuietTickBackoffResetsOnInbound(t *testing.T) {
 	}
 
 	n := st.Get("o/r-1").TickBackoff.ConsecutiveUnchanged
-	interval := backoffInterval(heartbeat, defaultMaxHeartbeat, n)
+	interval := config.BackoffInterval(heartbeat, config.DefaultMaxHeartbeat, n)
 	if err := st.Update("o/r-1", func(s *domain.Session) error {
 		s.LastTickAt = time.Now().Add(-interval - time.Millisecond)
 		return nil

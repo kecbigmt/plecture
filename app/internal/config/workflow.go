@@ -127,6 +127,40 @@ type TickConfig struct {
 	MovementSource *DynamicOutput `toml:"movement_source"`
 }
 
+// DefaultMaxHeartbeat caps the quiet-tick backoff interval when a workflow's
+// `[tick]` declares no `max_heartbeat`: standing goals must keep observing
+// at some ceiling even after many quiet sweeps, so backoff never fully
+// suppresses ticking.
+const DefaultMaxHeartbeat = 8 * time.Hour
+
+// MaxHeartbeatOrDefault returns t's declared `max_heartbeat` cap, falling
+// back to DefaultMaxHeartbeat when the workflow declares none.
+func (t TickConfig) MaxHeartbeatOrDefault() time.Duration {
+	if t.MaxHeartbeat.Duration > 0 {
+		return t.MaxHeartbeat.Duration
+	}
+	return DefaultMaxHeartbeat
+}
+
+// BackoffInterval computes heartbeat * 2^n capped at max. Doubling
+// iteratively (rather than shifting n) keeps this well-defined for large n
+// without overflowing time.Duration. Shared by the tick reactor's own
+// quiet-tick backoff (internal/reactor) and the heartbeat deadman check
+// (internal/service): both must judge a session against the same effective
+// interval the reactor is actually honoring right now, not the bare
+// declared `heartbeat` value, or a session legitimately backed off from
+// quiet reads as a false stall.
+func BackoffInterval(base, max time.Duration, n int) time.Duration {
+	interval := base
+	for i := 0; i < n && interval < max; i++ {
+		interval *= 2
+	}
+	if interval > max {
+		interval = max
+	}
+	return interval
+}
+
 // HealthcheckConfig declares the dedicated healthcheck cycle for a workflow.
 // Unlike `[tick].heartbeat`, this clock has no quiet backoff: it is the
 // health side's stall accelerator, so it keeps sampling even when the

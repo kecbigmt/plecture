@@ -218,12 +218,6 @@ func isSelfEmitted(ev event.Event) bool {
 	return strings.HasPrefix(ev.Type, event.TypeLifecyclePrefix)
 }
 
-// defaultMaxHeartbeat caps the quiet-tick backoff interval when a workflow's
-// `[tick]` declares no `max_heartbeat`: standing goals must
-// keep observing at some ceiling even after many quiet sweeps, so backoff
-// never fully suppresses ticking.
-const defaultMaxHeartbeat = 8 * time.Hour
-
 // checkHeartbeat ticks the session when `heartbeat` (scaled by the quiet-tick
 // backoff) has elapsed since LastTickAt. A zero LastTickAt (never ticked)
 // counts as infinitely overdue, so a freshly produced instance with
@@ -251,7 +245,7 @@ func (r *sessionReactor) checkHeartbeat(ctx context.Context) {
 		if inbound, _ := r.hasInboundSince(lastLogPosition); inbound {
 			n = 0
 		}
-		if time.Since(s.LastTickAt) < backoffInterval(r.tick.Heartbeat.Duration, r.maxHeartbeat(), n) {
+		if time.Since(s.LastTickAt) < config.BackoffInterval(r.tick.Heartbeat.Duration, r.tick.MaxHeartbeatOrDefault(), n) {
 			return
 		}
 	}
@@ -273,29 +267,6 @@ func (r *sessionReactor) checkHealth(ctx context.Context) {
 	if _, err := fn(r.cfg, r.state, service.HealthcheckParams{SessionName: r.session, Config: r.healthcheck}); err != nil {
 		slog.Default().Warn("reactor: healthcheck failed", "session", r.session, "error", err)
 	}
-}
-
-// maxHeartbeat returns the declared `max_heartbeat` cap, falling back to
-// defaultMaxHeartbeat when the workflow declares none.
-func (r *sessionReactor) maxHeartbeat() time.Duration {
-	if r.tick.MaxHeartbeat.Duration > 0 {
-		return r.tick.MaxHeartbeat.Duration
-	}
-	return defaultMaxHeartbeat
-}
-
-// backoffInterval computes heartbeat * 2^n capped at max. Doubling
-// iteratively (rather than shifting n) keeps this well-defined for large n
-// without overflowing time.Duration.
-func backoffInterval(base, max time.Duration, n int) time.Duration {
-	interval := base
-	for i := 0; i < n && interval < max; i++ {
-		interval *= 2
-	}
-	if interval > max {
-		interval = max
-	}
-	return interval
 }
 
 // updateBackoff runs right after any tick (doTick, regardless of trigger) and
