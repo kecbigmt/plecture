@@ -133,7 +133,7 @@ func TestStore_MultipleResourcesPerSession(t *testing.T) {
 }
 
 // A subscriptions file from the pre-N:1 format (version 1) is discarded on load,
-// not migrated — the task re-subscribes on the next `plect up`.
+// not migrated — `plect subscribe` re-creates it.
 func TestStore_DiscardsOldFormat(t *testing.T) {
 	dir := t.TempDir()
 	// version 1, keyed by session name (the old shape).
@@ -297,15 +297,76 @@ func TestPoller_TickNotifiesAndAdvancesBaseline(t *testing.T) {
 		}
 	}
 
-	// Baseline persisted → second tick is silent.
+	// "merged" is a terminal PR state: the transition still notifies
+	// (asserted above), but the subscription itself is dropped immediately
+	// afterward rather than kept around polling a resource that can never
+	// change again — see TestPoller_TerminalStateDropsSubscription for the
+	// dedicated coverage.
 	subs, _ := store.All()
-	if subs[subKey("org/repo-7", resource)].Last["pr_state"] != "merged" {
-		t.Errorf("baseline not persisted: %+v", subs[subKey("org/repo-7", resource)].Last)
+	if _, ok := subs[subKey("org/repo-7", resource)]; ok {
+		t.Errorf("subscription must be dropped after observing a terminal state, got %+v", subs)
 	}
 	notified = nil
 	p.Tick()
 	if len(notified) != 0 {
-		t.Errorf("steady state must not notify, got %+v", notified)
+		t.Errorf("dropped subscription must not be polled again, got %+v", notified)
+	}
+}
+
+// A resource observed in a terminal state (a merged or closed PR, a closed
+// issue) is dropped the moment it's observed — nothing further can ever
+// change about it, so polling it again would only grow the registry and the
+// steady-state gh call volume forever.
+func TestPoller_TerminalStateDropsSubscription(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource string
+		routes   []ghRoute
+	}{
+		{
+			name:     "merged PR",
+			resource: "https://github.com/org/repo/pull/7",
+			routes: []ghRoute{
+				{match: "check-runs", stdout: ""},
+				{match: "/status", stdout: ""},
+				prCoreRoute("7", "closed", true, "deadbeef1"),
+			},
+		},
+		{
+			name:     "closed PR (not merged)",
+			resource: "https://github.com/org/repo/pull/8",
+			routes: []ghRoute{
+				{match: "check-runs", stdout: ""},
+				{match: "/status", stdout: ""},
+				prCoreRoute("8", "closed", false, "deadbeef2"),
+			},
+		},
+		{
+			name:     "closed issue",
+			resource: "https://github.com/org/repo/issues/9",
+			routes: []ghRoute{
+				{match: "issues/9", stdout: `{"state":"closed"}`},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			store := NewStore(dir)
+			if err := store.Subscribe(Subscription{SessionName: "org/repo-x", Resource: tt.resource}); err != nil {
+				t.Fatal(err)
+			}
+
+			binDir := t.TempDir()
+			gh := fakeGh(t, binDir, "", tt.routes)
+			p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+			p.Tick()
+
+			subs, _ := store.All()
+			if _, ok := subs[subKey("org/repo-x", tt.resource)]; ok {
+				t.Errorf("terminal resource must be dropped, got %+v", subs)
+			}
+		})
 	}
 }
 
@@ -590,9 +651,11 @@ func TestPoller_DoesNotPruneSubscriptionsDuringPoll(t *testing.T) {
 	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
 	p.Tick()
 
-	// Polling no longer probes plect state as a side task. Session teardown is
-	// responsible for explicit unsubscribe, keeping watcher delivery decoupled
-	// from the removed output-writing path.
+	// Polling never probes plect state as a side task — session-existence
+	// cleanup is left to explicit unsubscribe / Sweep. An open (non-terminal)
+	// PR must also survive polling itself: only a resource observed in a
+	// terminal state gets dropped inline (see
+	// TestPoller_TerminalStateDropsSubscription).
 	subs, _ := store.All()
 	if len(subs) != 1 {
 		t.Errorf("poll should leave subscription cleanup to unsubscribe, got %+v", subs)
@@ -1142,7 +1205,8 @@ printf 'HTTP/1.1 200 OK\r\n\r\n'
 `)
 
 	guardDir := t.TempDir()
-	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(guardDir)}
+	var logs bytes.Buffer
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(&logs, nil)), GhBin: gh, Guard: ratebudget.NewGuard(guardDir)}
 	p.Tick() // seeds the baseline + ETag cache from the 200 response
 	p.Tick() // must hit the cache via 304
 
@@ -1158,6 +1222,14 @@ printf 'HTTP/1.1 200 OK\r\n\r\n'
 	data, _ := os.ReadFile(callLog)
 	if !strings.Contains(string(data), `If-None-Match: "v1"`) {
 		t.Errorf("second tick must send If-None-Match, calls:\n%s", data)
+	}
+
+	// The 304's empty body makes gh exit non-zero (its --jq filter has
+	// nothing to project), even though this is a normal cache hit — that
+	// exit code alone must never produce a warning, or every unchanged
+	// resource would warn-spam the journal on every tick.
+	if strings.Contains(logs.String(), "gh api invocation failed") {
+		t.Errorf("a 304 cache hit must not log an invocation-failed warning, got:\n%s", logs.String())
 	}
 }
 
@@ -1203,5 +1275,182 @@ exit 1
 	afterCount := strings.Count(string(after), "\n")
 	if afterCount != before {
 		t.Errorf("second tick invoked gh %d more time(s) while backed off, want 0 (log:\n%s)", afterCount-before, after)
+	}
+}
+
+// --- Fail-streak surfacing: loud once, not spammed every tick ---
+
+// A subscription whose fetch keeps failing is surfaced exactly once, the
+// moment it crosses failureSurfaceThreshold consecutive failures — not
+// before (a transient blip must stay silent) and not again afterward (an
+// unresolved problem must stay visible without repeating into a journal
+// nobody reads).
+func TestPoller_RepeatedFailureSurfacesOnceAtThreshold(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	const res = "https://github.com/org/repo/issues/50"
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-50", Resource: res}); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	gh := fakeGh(t, binDir, "", []ghRoute{{match: "issues/50", fail: true}})
+
+	var notified []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		notified = append(notified, body)
+		w.WriteHeader(200)
+	}))
+	defer srv.Close()
+
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), NotifyURL: srv.URL, GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+
+	for i := 0; i < failureSurfaceThreshold-1; i++ {
+		p.Tick()
+	}
+	if len(notified) != 0 {
+		t.Fatalf("must not surface before the threshold, got %+v", notified)
+	}
+
+	p.Tick() // the Nth consecutive failure
+	if len(notified) != 1 {
+		t.Fatalf("expected exactly one surfaced notification at the threshold, got %d: %+v", len(notified), notified)
+	}
+	if notified[0]["change_type"] != "fetch_failed" {
+		t.Errorf("change_type = %v, want fetch_failed", notified[0]["change_type"])
+	}
+
+	p.Tick() // one more failure past the threshold
+	if len(notified) != 1 {
+		t.Errorf("must not re-surface every subsequent failure, got %d: %+v", len(notified), notified)
+	}
+}
+
+// A fail streak resets on the next successful poll, so a later, unrelated
+// blip doesn't compound toward the surface threshold with a stale count.
+func TestPoller_FailureStreakResetsOnSuccess(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	const res = "https://github.com/org/repo/issues/51"
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-51", Resource: res}); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	failFlag := filepath.Join(t.TempDir(), "fail-mode")
+	if err := os.WriteFile(failFlag, []byte("1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gh := fakeBin(t, binDir, "gh", `
+if [[ "$(cat `+failFlag+`)" == "1" ]]; then
+  printf 'HTTP/1.1 500 Internal Server Error\n\n'
+  exit 1
+fi
+printf 'HTTP/1.1 200 OK\n\n{"state":"open"}'
+`)
+
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), GhBin: gh, Guard: ratebudget.NewGuard(t.TempDir())}
+
+	for i := 0; i < failureSurfaceThreshold-1; i++ {
+		p.Tick()
+	}
+	subs, _ := store.All()
+	if got := subs[subKey("org/repo-51", res)].FailStreak; got != failureSurfaceThreshold-1 {
+		t.Fatalf("fail streak = %d, want %d", got, failureSurfaceThreshold-1)
+	}
+
+	if err := os.WriteFile(failFlag, []byte("0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p.Tick() // succeeds
+	subs, _ = store.All()
+	if got := subs[subKey("org/repo-51", res)].FailStreak; got != 0 {
+		t.Errorf("fail streak = %d, want reset to 0 after a success", got)
+	}
+}
+
+// --- Sweep: drop subscriptions for destroyed sessions ---
+
+// fakePlectLs writes a `plect` stub that answers `ls --json` with the given
+// session names, mirroring the shape Sweep parses (session_name only — run
+// state is irrelevant to session existence).
+func fakePlectLs(t *testing.T, dir string, sessionNames []string) string {
+	t.Helper()
+	rows := make([]string, len(sessionNames))
+	for i, n := range sessionNames {
+		rows[i] = fmt.Sprintf(`{"session_name":%q}`, n)
+	}
+	return fakeBin(t, dir, "plect", "echo '["+strings.Join(rows, ",")+"]'\n")
+}
+
+func TestPoller_SweepDropsSubscriptionsForDestroyedSessions(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	const liveRes = "https://github.com/org/repo/pull/1"
+	const deadRes = "https://github.com/org/repo/pull/2"
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-1", Resource: liveRes}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-2", Resource: deadRes}); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	plect := fakePlectLs(t, binDir, []string{"org/repo-1"}) // org/repo-2 no longer exists
+
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PlectBin: plect}
+	p.Sweep()
+
+	subs, _ := store.All()
+	if _, ok := subs[subKey("org/repo-1", liveRes)]; !ok {
+		t.Error("live session's subscription must survive Sweep")
+	}
+	if _, ok := subs[subKey("org/repo-2", deadRes)]; ok {
+		t.Error("destroyed session's subscription must be dropped by Sweep")
+	}
+}
+
+// A session plect still lists as "down" (not destroyed — resumable via
+// `plect up`) must not be swept; only a session plect no longer knows about
+// at all is gone.
+func TestPoller_SweepKeepsDownButNotDestroyedSessions(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	const res = "https://github.com/org/repo/pull/3"
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-3", Resource: res}); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	plect := fakePlectLs(t, binDir, []string{"org/repo-3"})
+
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PlectBin: plect}
+	p.Sweep()
+
+	subs, _ := store.All()
+	if _, ok := subs[subKey("org/repo-3", res)]; !ok {
+		t.Error("a session plect still lists (even if down) must survive Sweep")
+	}
+}
+
+// A `plect` that can't be asked (missing binary, non-zero exit) must never
+// be treated as "nothing exists" — that would sweep every live session's
+// subscriptions on a transient hiccup.
+func TestPoller_SweepSkipsWhenPlectListFails(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	const res = "https://github.com/org/repo/pull/4"
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-4", Resource: res}); err != nil {
+		t.Fatal(err)
+	}
+
+	p := &Poller{Store: store, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), PlectBin: filepath.Join(t.TempDir(), "plect-does-not-exist")}
+	p.Sweep()
+
+	subs, _ := store.All()
+	if _, ok := subs[subKey("org/repo-4", res)]; !ok {
+		t.Error("Sweep must leave subscriptions untouched when it can't list sessions")
 	}
 }

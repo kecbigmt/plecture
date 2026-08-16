@@ -18,9 +18,9 @@ import (
 
 // registryVersion is the on-disk subscription format version. It was bumped to 2
 // when the key changed from session-only (1:1) to (session, resource) so one
-// session can funnel several PRs. A file at any other version is
-// discarded on load: the github_watch task re-subscribes on the next `plect up`,
-// so there is nothing to migrate.
+// session can funnel several PRs. A file at any other version is discarded
+// on load: subscriptions are re-created by `plect subscribe` (the provider's
+// runtime subscribe hook), so there is nothing to migrate.
 const registryVersion = 2
 
 // Subscription is one watched resource bound to a plect session. A session may
@@ -35,6 +35,11 @@ type Subscription struct {
 	// Last holds the most recent observed values, used for change detection
 	// across daemon restarts.
 	Last map[string]string `json:"last,omitempty"`
+	// FailStreak counts consecutive failed polls since the last successful
+	// one. It exists so a subscription that never resolves (a deleted repo,
+	// a revoked token) can be surfaced once instead of warn-spamming every
+	// tick forever — see Poller.recordFailure.
+	FailStreak int `json:"fail_streak,omitempty"`
 }
 
 // subKey is the registry key for a subscription: (session, resource). The NUL
@@ -138,6 +143,34 @@ func (s *Store) SetLast(sessionName, resource string, last map[string]string) er
 	return s.update(func(r *registry) error {
 		if sub, ok := r.Subscriptions[subKey(sessionName, resource)]; ok {
 			sub.Last = last
+		}
+		return nil
+	})
+}
+
+// IncrementFailStreak bumps a subscription's consecutive-failure counter and
+// returns the new value. A no-op (returns 0, nil) when the subscription has
+// been removed mid-poll, mirroring SetLast.
+func (s *Store) IncrementFailStreak(sessionName, resource string) (int, error) {
+	var streak int
+	err := s.update(func(r *registry) error {
+		sub, ok := r.Subscriptions[subKey(sessionName, resource)]
+		if !ok {
+			return nil
+		}
+		sub.FailStreak++
+		streak = sub.FailStreak
+		return nil
+	})
+	return streak, err
+}
+
+// ResetFailStreak clears a subscription's consecutive-failure counter after
+// a successful poll. No-op when the subscription has been removed mid-poll.
+func (s *Store) ResetFailStreak(sessionName, resource string) error {
+	return s.update(func(r *registry) error {
+		if sub, ok := r.Subscriptions[subKey(sessionName, resource)]; ok {
+			sub.FailStreak = 0
 		}
 		return nil
 	})

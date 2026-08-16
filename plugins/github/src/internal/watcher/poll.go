@@ -98,6 +98,7 @@ type Poller struct {
 	Bus       *event.Client
 	NotifyURL string // slack-adapter /notify endpoint; empty disables delivery
 	GhBin     string // gh binary; default "gh"
+	PlectBin  string // plect binary Sweep uses to list live sessions; default "plect"
 	HTTP      *http.Client
 	// Guard is the shared cross-process GitHub API rate budget:
 	// every gh api call below checks it before running and reports 403/429
@@ -126,6 +127,14 @@ func (p *Poller) guard() *ratebudget.Guard {
 	}
 	return ratebudget.NewGuard("")
 }
+
+// failureSurfaceThreshold is how many consecutive failed polls a
+// subscription tolerates before it's surfaced once through the delivery
+// path. Below this it fails silently (a transient blip must not spam
+// notifications); at exactly this count it fires once — not on every
+// subsequent failure — so an unresolved problem stays visible without
+// repeating.
+const failureSurfaceThreshold = 5
 
 // Tick polls every subscription once, deduplicating fetches per fetchKey
 // (see that func for why branch is part of the key for issues but not PRs).
@@ -156,9 +165,43 @@ func (p *Poller) Tick() {
 			fetched[key] = obs
 		}
 		if obs == nil {
+			p.recordFailure(sub)
 			continue
 		}
+		p.recordSuccess(sub)
 		p.apply(sub, obs)
+	}
+}
+
+// recordFailure bumps a subscription's consecutive-failure counter and, the
+// moment it first crosses failureSurfaceThreshold, notifies once through the
+// normal delivery path. It never removes the subscription itself — a
+// standing failure might be transient (a GitHub incident, a token hiccup),
+// so only the lifecycle paths (terminal-state pruning, sweep, explicit
+// unsubscribe) get to do that.
+func (p *Poller) recordFailure(sub *Subscription) {
+	streak, err := p.Store.IncrementFailStreak(sub.SessionName, sub.Resource)
+	if err != nil {
+		p.Logger.Warn("persist fail streak", "session", sub.SessionName, "resource", sub.Resource, "error", err)
+		return
+	}
+	if streak != failureSurfaceThreshold {
+		return
+	}
+	p.notify(sub, change{
+		Type:    "fetch_failed",
+		Summary: fmt.Sprintf("GitHub fetch failing (%d consecutive polls)", streak),
+	})
+}
+
+// recordSuccess clears a subscription's fail streak once a poll succeeds.
+// Cheap to skip when there's nothing to clear (the common case).
+func (p *Poller) recordSuccess(sub *Subscription) {
+	if sub.FailStreak == 0 {
+		return
+	}
+	if err := p.Store.ResetFailStreak(sub.SessionName, sub.Resource); err != nil {
+		p.Logger.Warn("reset fail streak", "session", sub.SessionName, "resource", sub.Resource, "error", err)
 	}
 }
 
@@ -376,22 +419,27 @@ func (p *Poller) ghAPI(cacheKey, apiPath string, jqArgs ...string) ([]byte, bool
 	if hasCache && etag != "" {
 		args = append(args, "-H", "If-None-Match: "+etag)
 	}
+	// gh exits non-zero for more than "couldn't run at all": a --jq filter
+	// applied to a 304's empty body fails too (that's the expected shape of
+	// a cache hit, not an error), so a non-nil runErr alone is not evidence
+	// of a real failure. ParseHTTPResponse below, not this exit code, is
+	// what decides that — it works off the header block gh always writes
+	// before any --jq processing runs.
 	out, runErr := exec.Command(p.gh(), args...).Output()
-	if runErr != nil {
-		// A non-2xx `gh api` response still writes a parsable HTTP response
-		// to stdout (handled below via ParseHTTPResponse), so this branch is
-		// reserved for failures to run gh at all (binary missing, killed,
-		// etc.) — those deserve a warning since they're otherwise invisible
-		// and distinct from an ordinary API error.
-		p.Logger.Warn("gh api invocation failed", "path", apiPath, "error", runErr)
-	}
 	resp, ok := ratebudget.ParseHTTPResponse(out)
 	if !ok {
+		// Nothing parsable came back at all: gh itself couldn't run (binary
+		// missing, killed, ...) or produced garbage. This is the one case
+		// where the raw exit error is diagnostic.
+		p.Logger.Warn("gh api invocation failed", "path", apiPath, "error", runErr)
 		return nil, false
 	}
 
 	switch {
 	case resp.Status == http.StatusNotModified:
+		// An empty 304 body is the expected, common case conditional GET
+		// exists for, not a failure — no warning belongs here regardless of
+		// gh's exit code (see above).
 		_ = guard.RecordSuccess()
 		if !hasCache {
 			return nil, false
@@ -400,6 +448,7 @@ func (p *Poller) ghAPI(cacheKey, apiPath string, jqArgs ...string) ([]byte, bool
 	case resp.Status == http.StatusForbidden || resp.Status == http.StatusTooManyRequests:
 		retryAfter := ratebudget.RetryAfterSeconds(resp.Headers["retry-after"])
 		reset := ratebudget.RateLimitReset(resp.Headers["x-ratelimit-reset"])
+		p.Logger.Warn("gh rate limit hit; backing off", "path", apiPath, "status", resp.Status)
 		if err := guard.RecordThrottle(retryAfter, reset); err != nil {
 			p.Logger.Warn("record gh throttle failed", "error", err)
 		}
@@ -415,6 +464,12 @@ func (p *Poller) ghAPI(cacheKey, apiPath string, jqArgs ...string) ([]byte, bool
 		}
 		return resp.Body, true
 	default:
+		// A genuine, unhandled API error (404 deleted resource, 5xx, ...):
+		// worth a warning, but Tick's fail-streak tracking is what decides
+		// whether this specific subscription needs surfacing beyond the
+		// journal — this function has no subscription context to do that
+		// itself.
+		p.Logger.Warn("gh api request failed", "path", apiPath, "status", resp.Status)
 		return nil, false
 	}
 }
@@ -513,27 +568,50 @@ func classifyCheck(c statusCheck) string {
 }
 
 // apply diffs the observation against the subscription's baseline, notifies the
-// delivery path, and persists the new baseline.
+// delivery path, persists the new baseline, and — once the resource has
+// reached a terminal state — drops the subscription.
 func (p *Poller) apply(sub *Subscription, obs *Observed) {
 	current := outputsFor(obs)
 	changes := diff(sub.Last, current)
-	if len(changes) == 0 {
+	if len(changes) != 0 {
+		for _, c := range summarizeChanges(sub.Last, current) {
+			p.notify(sub, c)
+		}
+
+		// Merge current over the old baseline rather than replacing it, mirroring
+		// diff: a key absent from current (e.g. pr_state when a linked-PR lookup
+		// failed) is never retracted, while a present-but-empty key (a retracted
+		// check) does overwrite. A wholesale replace would drop the omitted keys.
+		merged := mergeBaseline(sub.Last, current)
+		if err := p.Store.SetLast(sub.SessionName, sub.Resource, merged); err != nil {
+			p.Logger.Warn("persist baseline", "session", sub.SessionName, "error", err)
+		}
+		p.Logger.Info("observed github change", "session", sub.SessionName, "keys", sortedKeys(changes))
+	}
+
+	// A closed/merged resource can never produce another meaningful
+	// transition. Dropping it here — the moment it's observed, whether or
+	// not this tick also carried a diff — is what actually bounds the
+	// registry's steady-state size; a periodic sweep would leave it polling
+	// (and warn-spamming) until the daemon's next restart.
+	if !isTerminalState(obs) {
 		return
 	}
-
-	for _, c := range summarizeChanges(sub.Last, current) {
-		p.notify(sub, c)
+	if err := p.Store.UnsubscribeResource(sub.SessionName, sub.Resource); err != nil {
+		p.Logger.Warn("drop terminal subscription", "session", sub.SessionName, "resource", sub.Resource, "error", err)
+		return
 	}
+	p.Logger.Info("subscription dropped: resource reached a terminal state", "session", sub.SessionName, "resource", sub.Resource, "state", obs.State)
+}
 
-	// Merge current over the old baseline rather than replacing it, mirroring
-	// diff: a key absent from current (e.g. pr_state when a linked-PR lookup
-	// failed) is never retracted, while a present-but-empty key (a retracted
-	// check) does overwrite. A wholesale replace would drop the omitted keys.
-	merged := mergeBaseline(sub.Last, current)
-	if err := p.Store.SetLast(sub.SessionName, sub.Resource, merged); err != nil {
-		p.Logger.Warn("persist baseline", "session", sub.SessionName, "error", err)
+// isTerminalState reports whether obs's own resource (not a linked PR — an
+// issue subscription that happens to link a merged PR may still want issue
+// updates) has reached a state nothing further can change.
+func isTerminalState(obs *Observed) bool {
+	if obs.Kind == "pull" {
+		return obs.State == "closed" || obs.State == "merged"
 	}
-	p.Logger.Info("observed github change", "session", sub.SessionName, "keys", sortedKeys(changes))
+	return obs.State == "closed"
 }
 
 // outputsFor flattens an observation into the value set used for change
