@@ -125,6 +125,10 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 	if verr := config.ValidateWorkflowChannels(wf, defs); verr != nil {
 		sup.logger.Warn("event channels did not validate; some may not deliver",
 			"session", name, "workflow", wf.ID, "error", verr)
+		_, _, _, _ = sup.log.Append(channel.ChannelValidationErrorEvent(name, wf.ID, verr))
+		recordValidationFailure(sup.state, name, verr, time.Now())
+	} else {
+		recordValidationSuccess(sup.state, name)
 	}
 	envExecutor, envErr := buildChannelEnvironmentExecutor(cfg, wf, s)
 	if envErr != nil {

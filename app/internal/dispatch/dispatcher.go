@@ -151,6 +151,13 @@ func (d *sessionDispatcher) drain(ctx context.Context, s *domain.Session, startG
 
 // processEvent runs one worker per matching channel and returns once all are
 // terminal, so the cursor only advances after the event is fully processed.
+// The delivery streak (Session.ChannelDeliveryHealth) is updated once per
+// event, from the workers' combined outcome, rather than once per channel:
+// a multi-channel workflow with one permanently broken channel and one
+// healthy one would otherwise have concurrent per-channel writes to the same
+// session-level streak race each other, and the healthy channel's steady
+// stream of successes would starve the broken one's streak of ever reaching
+// the escalation threshold.
 func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session, ev event.Event) {
 	// Never deliver a channel error — a channel with include="*" would otherwise
 	// loop on its own failures. Structural, not just a config convention.
@@ -158,6 +165,10 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		return
 	}
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	matched := false
+	var failedChannel string
+	var failedCause error
 	for _, ch := range d.channels {
 		if !channelMatches(ch, ev) {
 			continue
@@ -166,19 +177,39 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		if !ok {
 			continue // resolution is validated at load; defensive
 		}
+		matched = true // set on the main goroutine, before any worker starts — no lock needed
 		wg.Go(func() {
 			inputs, err := channelInputs(s, ch)
 			if err != nil {
 				d.recordFailure(ctx, ev, ch.Name, 0, err)
+				mu.Lock()
+				if failedChannel == "" {
+					failedChannel, failedCause = ch.Name, err
+				}
+				mu.Unlock()
 				return
 			}
 			attempts, derr := channel.DeliverWithRetryAndExecutor(ctx, def, inputs, ev, d.policy, d.envExecutor)
 			if derr != nil {
 				d.recordFailure(ctx, ev, ch.Name, attempts, derr)
+				mu.Lock()
+				if failedChannel == "" {
+					failedChannel, failedCause = ch.Name, derr
+				}
+				mu.Unlock()
 			}
 		})
 	}
 	wg.Wait()
+	if ctx.Err() != nil {
+		return // shutdown mid-event, not a delivery outcome either way
+	}
+	switch {
+	case failedChannel != "":
+		recordDeliveryFailure(d.state, d.session, failedChannel, failedCause, time.Now())
+	case matched:
+		recordDeliverySuccess(d.state, d.session)
+	}
 }
 
 func channelMatches(ch config.EventChannel, ev event.Event) bool {
