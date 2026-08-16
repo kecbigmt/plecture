@@ -185,7 +185,7 @@ func (sup *Supervisor) runOne(ctx context.Context, decl Declaration) {
 		if ctx.Err() != nil {
 			return
 		}
-		runErr := runProcess(ctx, decl, sup.waitDelay, func(pid int) {
+		runErr := runProcess(ctx, decl, sup.logger, sup.waitDelay, func(pid int) {
 			sup.Status.Update(decl.ID, func(st *Status) {
 				st.Running = true
 				st.PID = pid

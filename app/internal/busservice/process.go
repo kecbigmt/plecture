@@ -1,7 +1,9 @@
 package busservice
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"os/exec"
 	"sort"
@@ -18,9 +20,20 @@ import (
 // long Wait keeps waiting for the group to actually exit before the
 // os/exec package escalates to SIGKILL, so a service that ignores SIGTERM
 // cannot hang bus shutdown indefinitely.
-func runProcess(ctx context.Context, decl Declaration, waitDelay time.Duration, onStart func(pid int)) error {
+//
+// Child stdout/stderr are forwarded to logger, one log record per line,
+// each tagged with the service id and stream — see
+// docs/design/plugin-packaging.md: "Service logs are attached to the bus
+// process log with the service id." They never reach the durable
+// per-session event log; that log is for plect's own events, not a plugin
+// daemon's arbitrary output.
+func runProcess(ctx context.Context, decl Declaration, logger *slog.Logger, waitDelay time.Duration, onStart func(pid int)) error {
 	cmd := exec.CommandContext(ctx, decl.ExecPath, decl.Args...)
 	cmd.Env = buildEnv(decl.Env)
+	stdout := &serviceLogWriter{logger: logger, id: decl.ID, stream: "stdout"}
+	stderr := &serviceLogWriter{logger: logger, id: decl.ID, stream: "stderr"}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
@@ -31,7 +44,59 @@ func runProcess(ctx context.Context, decl Declaration, waitDelay time.Duration, 
 		return err
 	}
 	onStart(cmd.Process.Pid)
-	return cmd.Wait()
+	err := cmd.Wait()
+	// A child that exits without a trailing newline on its last write would
+	// otherwise lose that line: Write only logs on '\n' boundaries.
+	stdout.flush()
+	stderr.flush()
+	return err
+}
+
+// serviceLogWriter is an io.Writer that logs each complete line written to
+// it as one log record tagged with the owning service's id and stream
+// name, buffering an incomplete trailing line across Write calls (a child
+// process's stdout/stderr writes are not guaranteed to land one line per
+// Write). Not safe for concurrent use — runProcess gives stdout and stderr
+// each their own instance, and os/exec never calls a Writer from more than
+// one goroutine at a time for a given stream.
+type serviceLogWriter struct {
+	logger *slog.Logger
+	id     string
+	stream string
+	buf    bytes.Buffer
+}
+
+func (w *serviceLogWriter) Write(p []byte) (int, error) {
+	w.buf.Write(p)
+	for {
+		line, err := w.buf.ReadString('\n')
+		if err != nil {
+			// No full line yet: ReadString still drained the partial data
+			// into line, leaving buf empty — put it back for the next
+			// Write (or flush) to complete.
+			w.buf.WriteString(line)
+			break
+		}
+		w.logLine(strings.TrimSuffix(line, "\n"))
+	}
+	return len(p), nil
+}
+
+// flush logs a trailing line that never got a '\n', once the child has
+// exited and no further Write is coming.
+func (w *serviceLogWriter) flush() {
+	if w.buf.Len() == 0 {
+		return
+	}
+	w.logLine(w.buf.String())
+	w.buf.Reset()
+}
+
+func (w *serviceLogWriter) logLine(line string) {
+	if line == "" {
+		return
+	}
+	w.logger.Info(line, "service", w.id, "stream", w.stream)
 }
 
 // buildEnv merges decl.Env on top of the supervisor's own environment,
