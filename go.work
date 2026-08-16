@@ -6,9 +6,9 @@ use (
 	./contracts/channel-protocol
 	./contracts/event
 	./contracts/state
-	./plugins/channel-server
 	./plugins/github/src
 	./plugins/legacy-migration
 	./plugins/okf/src
-	./plugins/slack-adapter
+	./plugins/session/runtime/src/channel-server
+	./plugins/session/runtime/src/slack-adapter
 )
