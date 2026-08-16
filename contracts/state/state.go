@@ -180,6 +180,11 @@ type Session struct {
 	// parent re-notification use one durable history instead of a caller's
 	// transient poll cadence.
 	Health *HealthState `json:"health,omitempty"`
+	// ChannelHealth is the session's open event-channel validation/delivery
+	// failure streak, if any. It is persisted so a threshold crossing and a
+	// parent escalation share one durable history instead of a poller's
+	// transient state, mirroring Health.
+	ChannelHealth *ChannelHealth `json:"channel_health,omitempty"`
 	// LastTickAt is the session-level watermark `plect tick` stamps every time
 	// it runs (regardless of instance/action outcome). The tick reactor's
 	// `heartbeat` sweep reads it to decide whether observation has gone
@@ -205,6 +210,32 @@ type HealthState struct {
 	LastReason      string    `json:"last_reason,omitempty"`
 	LastNotifiedAt  time.Time `json:"last_notified_at,omitzero"`
 	NotifyCount     int       `json:"notify_count,omitempty"`
+}
+
+// Channel failure kinds for ChannelHealth.LastKind: a workflow-level
+// validation failure (a declared channel doesn't resolve to a valid
+// definition, so nothing is ever attempted) versus a per-event delivery
+// failure (a resolved channel was attempted and exhausted its retries).
+const (
+	ChannelFailureKindValidation = "validation"
+	ChannelFailureKindDelivery   = "delivery"
+)
+
+// ChannelHealth is core's own record of a session's open event-channel
+// validation/delivery failure streak: how many failures in a row, since
+// when, and the most recent one's detail. EscalatedAt is non-zero once the
+// current streak has already been escalated to the parent, so a persistent
+// failure escalates exactly once per episode; a subsequent successful
+// validation or delivery clears the whole struct, ending the episode, and a
+// later failure starts a new one (free to escalate again).
+type ChannelHealth struct {
+	ConsecutiveFailures int       `json:"consecutive_failures,omitempty"`
+	FirstFailureAt      time.Time `json:"first_failure_at,omitzero"`
+	LastFailureAt       time.Time `json:"last_failure_at,omitzero"`
+	LastKind            string    `json:"last_kind,omitempty"`    // "validation" | "delivery"
+	LastChannel         string    `json:"last_channel,omitempty"` // empty for a workflow-level validation failure
+	LastError           string    `json:"last_error,omitempty"`
+	EscalatedAt         time.Time `json:"escalated_at,omitzero"`
 }
 
 // TickBackoff is the quiet-tick exponential backoff bookkeeping the tick

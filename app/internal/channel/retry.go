@@ -87,6 +87,31 @@ func retry(ctx context.Context, policy RetryPolicy, perAttemptTimeout time.Durat
 	return policy.MaxAttempts, lastErr
 }
 
+// ChannelValidationErrorEvent builds the plect.channel.error event the
+// supervisor appends when a session's declared event channels fail to
+// validate against the loaded channel definitions — the WARN log alone is
+// visible only in journalctl, which nobody watches during an outage. It has
+// no originating event or per-channel name (validation runs once over the
+// whole workflow declaration, before any specific event is dispatched), so
+// unlike ChannelErrorEvent it carries the workflow id instead.
+func ChannelValidationErrorEvent(session, workflowID string, cause error) event.Event {
+	reason := ""
+	if cause != nil {
+		reason = cause.Error()
+	}
+	return event.Event{
+		SessionName: session,
+		Type:        event.TypeChannelError,
+		Source:      event.SourcePlect,
+		Direction:   event.Internal,
+		Summary:     fmt.Sprintf("event channels did not validate for workflow %s", workflowID),
+		Body:        reason,
+		Metadata: map[string]string{
+			"workflow": workflowID,
+		},
+	}
+}
+
 // ChannelErrorEvent builds the plect.channel.error event a worker appends after
 // exhausting retries. Metadata (channel/event_id/attempts) lets a reader trace
 // the failure; it is never a channel `include` target, so it cannot loop.

@@ -36,6 +36,15 @@ const fallbackDrain = 5 * time.Second
 // swept on recovery, not left waiting for the next regular tick.
 const heartbeatInterval = time.Minute
 
+// channelHealthInterval is the cadence of the periodic channel-health sweep
+// (service.CheckChannelHealth). It runs unconditionally, unlike heartbeat/
+// healthcheck which are gated behind a workflow declaration, because a
+// session's event channel can fail regardless of whether it declares
+// [tick]/[healthcheck] — and it is deliberately tighter than
+// channelHealthFailureAge so the age-based escalation path fires close to
+// its threshold instead of lagging a full sweep behind.
+const channelHealthInterval = 30 * time.Second
+
 // sessionReactor follows one session's event log and ticks it when a
 // declared event pattern matches, the judge builtin fires, or `heartbeat`
 // has elapsed since the session's last tick. Static config (tick) is
@@ -55,10 +64,16 @@ type sessionReactor struct {
 	// behavior — buildReactor never sets it.
 	tickFn        func(*config.Config, *state.Store, service.TickParams) (*service.CheckResult, error)
 	healthcheckFn func(*config.Config, *state.Store, service.HealthcheckParams) (*service.HealthReport, error)
+	// channelHealthFn defaults to service.CheckChannelHealth; overridable in
+	// tests to observe invocation without waiting on real wall-clock tickers.
+	channelHealthFn func(*config.Config, *state.Store, string) (bool, error)
 	// heartbeatEvery defaults to heartbeatInterval; overridable in tests so
 	// the heartbeat-sweep test cases don't need to wait a full minute of wall clock.
 	heartbeatEvery   time.Duration
 	healthcheckEvery time.Duration
+	// channelHealthEvery defaults to channelHealthInterval; overridable in
+	// tests, mirroring healthcheckEvery.
+	channelHealthEvery time.Duration
 }
 
 func (r *sessionReactor) run(ctx context.Context) {
@@ -86,6 +101,13 @@ func (r *sessionReactor) run(ctx context.Context) {
 		healthcheck = healthTicker.C
 		r.checkHealth(ctx)
 	}
+	channelHealthEvery := r.channelHealthEvery
+	if channelHealthEvery <= 0 {
+		channelHealthEvery = channelHealthInterval
+	}
+	channelHealthTicker := time.NewTicker(channelHealthEvery)
+	defer channelHealthTicker.Stop()
+	r.checkChannelHealth(ctx)
 
 	// Immediate check, not just on the first tick of heartbeat: a bus that
 	// was down past `heartbeat` must sweep the backlog on restart, not wait
@@ -111,6 +133,8 @@ func (r *sessionReactor) run(ctx context.Context) {
 			r.checkHeartbeat(ctx)
 		case <-healthcheck:
 			r.checkHealth(ctx)
+		case <-channelHealthTicker.C:
+			r.checkChannelHealth(ctx)
 		}
 	}
 }
@@ -266,6 +290,27 @@ func (r *sessionReactor) checkHealth(ctx context.Context) {
 	}
 	if _, err := fn(r.cfg, r.state, service.HealthcheckParams{SessionName: r.session, Config: r.healthcheck}); err != nil {
 		slog.Default().Warn("reactor: healthcheck failed", "session", r.session, "error", err)
+	}
+}
+
+// checkChannelHealth escalates the session's open event-channel
+// validation/delivery failure streak once it crosses the threshold
+// (service.CheckChannelHealth owns the streak/threshold/dedup logic; this
+// just supplies the periodic tick, mirroring checkHealth).
+func (r *sessionReactor) checkChannelHealth(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	s := r.state.Get(r.session)
+	if s == nil || !hasRunScopeUp(s.Tasks) {
+		return
+	}
+	fn := r.channelHealthFn
+	if fn == nil {
+		fn = service.CheckChannelHealth
+	}
+	if _, err := fn(r.cfg, r.state, r.session); err != nil {
+		slog.Default().Warn("reactor: channel health check failed", "session", r.session, "error", err)
 	}
 }
 

@@ -272,6 +272,46 @@ func TestSessionReactor_HealthcheckRunsWithoutTickDeclaration(t *testing.T) {
 	}
 }
 
+// TestSessionReactor_ChannelHealthRunsWithoutTickOrHealthcheckDeclaration
+// proves the channel-health sweep is unconditional, unlike heartbeat/
+// healthcheck: a session's event channel can fail regardless of whether it
+// declares [tick] or [healthcheck].
+func TestSessionReactor_ChannelHealthRunsWithoutTickOrHealthcheckDeclaration(t *testing.T) {
+	r, _, _ := newTestReactor(t, config.TickConfig{})
+	r.channelHealthEvery = 5 * time.Millisecond
+
+	var mu sync.Mutex
+	calls := 0
+	var gotSession string
+	r.channelHealthFn = func(cfg *config.Config, store *state.Store, sessionName string) (bool, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls++
+		gotSession = sessionName
+		return false, nil
+	}
+
+	stop := startReactor(t, r)
+	defer stop()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		mu.Lock()
+		got := calls
+		mu.Unlock()
+		if got > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("channel health check was not called")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if gotSession != "o/r-1" {
+		t.Errorf("channel health check session = %q, want %q", gotSession, "o/r-1")
+	}
+}
+
 // TestSessionReactor_ReactiveTickResetsHeartbeatWindow proves that a reactive
 // tick resets the heartbeat clock, so a `heartbeat` sweep due to fire soon
 // after it must not fire an extra, redundant tick within

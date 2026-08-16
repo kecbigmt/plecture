@@ -105,6 +105,178 @@ include     = ["plect.instruction"]
 	}
 }
 
+// TestSupervisor_ValidationFailureRecordsChannelErrorAndStreak pins the
+// validation half of the channel-failure fix: a channel that fails to
+// validate (not just one that fails to deliver) must also become
+// machine-visible — a plect.channel.error event on the session's own log,
+// plus a persisted failure streak for the reactor's escalation sweep
+// (service.CheckChannelHealth) to act on — not just the WARN log line
+// nobody watches.
+func TestSupervisor_ValidationFailureRecordsChannelErrorAndStreak(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// No channels/claude_channel.toml: `uses` below resolves to nothing.
+	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
+[[event.channel]]
+name        = "runtime"
+uses        = "claude_channel"
+inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
+include     = ["plect.instruction"]
+`)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stateStore := state.NewStore(t.TempDir())
+	if err := stateStore.Put(&domain.Session{
+		Name: "o/r-1", Workflow: "coding", WorkdirPath: t.TempDir(),
+		Tasks: map[string]*contract.TaskState{
+			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	log := eventlog.NewStore(t.TempDir())
+	hub := sessionhub.NewRegistry(log)
+	defer hub.Close()
+	sup := NewSupervisor(func() *config.Config { return cfg }, stateStore, log, hub)
+	ctx := t.Context()
+	active := map[string]context.CancelFunc{}
+	skip := map[string]bool{}
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	defer func() {
+		for _, c := range active {
+			c()
+		}
+	}()
+
+	sup.reconcile(ctx, active, skip, &wg)
+	if _, ok := active["o/r-1"]; !ok {
+		t.Fatal("a validation failure must not stop the dispatcher from starting (other channels may still be valid)")
+	}
+
+	errs, _, _, err := log.List("o/r-1", 0, event.Filter{Types: []string{event.TypeChannelError}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(errs) != 1 {
+		t.Fatalf("want exactly one plect.channel.error for the validation failure, got %d", len(errs))
+	}
+	if errs[0].Metadata["workflow"] != "coding" {
+		t.Errorf("channel.error metadata = %+v, want workflow=coding", errs[0].Metadata)
+	}
+
+	ch := stateStore.Get("o/r-1").ChannelHealth
+	if ch == nil || ch.ConsecutiveFailures != 1 || ch.LastKind != contract.ChannelFailureKindValidation || ch.FirstFailureAt.IsZero() {
+		t.Errorf("channel health = %+v, want a one-failure validation streak", ch)
+	}
+}
+
+// TestSupervisor_ValidationRecoveryOnNextUpClearsStreak covers the episode's
+// other end: once the workflow is fixed, the next up-transition's successful
+// validation clears the failure streak so a later break starts a fresh
+// episode instead of continuing an already-escalated one.
+func TestSupervisor_ValidationRecoveryOnNextUpClearsStreak(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
+[[event.channel]]
+name        = "runtime"
+uses        = "claude_channel"
+inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
+include     = ["plect.instruction"]
+`)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stateStore := state.NewStore(t.TempDir())
+	if err := stateStore.Put(&domain.Session{
+		Name: "o/r-1", Workflow: "coding", WorkdirPath: t.TempDir(),
+		Tasks: map[string]*contract.TaskState{
+			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	log := eventlog.NewStore(t.TempDir())
+	hub := sessionhub.NewRegistry(log)
+	defer hub.Close()
+	sup := NewSupervisor(func() *config.Config { return cfg }, stateStore, log, hub)
+	ctx := t.Context()
+	active := map[string]context.CancelFunc{}
+	skip := map[string]bool{}
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	defer func() {
+		for _, c := range active {
+			c()
+		}
+	}()
+
+	sup.reconcile(ctx, active, skip, &wg)
+	if ch := stateStore.Get("o/r-1").ChannelHealth; ch == nil || ch.ConsecutiveFailures == 0 {
+		t.Fatalf("channel health = %+v, want a failure recorded before the fix", ch)
+	}
+
+	// Run scope goes down (supervisor cancels the dispatcher, matching
+	// TestSupervisor_StartsAndStopsWithRunScope), the workflow gets fixed,
+	// then run scope comes back up: buildDispatcher re-validates on this
+	// fresh up-transition.
+	if err := stateStore.Update("o/r-1", func(s *domain.Session) error {
+		s.Tasks["claude"].Status = contract.TaskStatusCleaned
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sup.reconcile(ctx, active, skip, &wg)
+	if len(active) != 0 {
+		t.Fatalf("dispatcher not stopped after run scope down: %d active", len(active))
+	}
+
+	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
+type = "unix_socket"
+path = "{{.Inputs.path}}"
+body = "{{ json .Event }}"
+
+[input_schema]
+path = { type = "string", required = true }
+`)
+	if err := stateStore.Update("o/r-1", func(s *domain.Session) error {
+		s.Tasks["claude"].Status = contract.TaskStatusProduced
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sup.reconcile(ctx, active, skip, &wg)
+	if _, ok := active["o/r-1"]; !ok {
+		t.Fatal("dispatcher not restarted for the fresh up transition")
+	}
+
+	if ch := stateStore.Get("o/r-1").ChannelHealth; ch != nil && ch.ConsecutiveFailures != 0 {
+		t.Errorf("channel health = %+v, want the streak cleared by the next successful validation", ch)
+	}
+}
+
 // TestSupervisor_DeliversChannelDefinedOnlyInAPluginMountedAfterConstruction
 // reproduces the bus-daemon outage class: a channel definition that exists
 // only in a plugin layer (no global copy) must validate and deliver once the
