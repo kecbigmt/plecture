@@ -19,7 +19,12 @@ import (
 // up and cancels it when the run scope goes down (a suspend — the durable cursor
 // is untouched, so the next up resumes) or the session is destroyed.
 type Supervisor struct {
-	cfg    *config.Config
+	// cfg is a getter rather than a fixed *config.Config: buildDispatcher
+	// calls it fresh for every session that comes up, so a plugin mounted
+	// (or unmounted) after the daemon started is visible on the next up
+	// transition instead of requiring a daemon restart. config.Live.Get is
+	// the production getter; tests can close over a fixed *config.Config.
+	cfg    func() *config.Config
 	state  *state.Store
 	log    *eventlog.Store
 	hub    *sessionhub.Registry
@@ -29,7 +34,7 @@ type Supervisor struct {
 
 // NewSupervisor builds a supervisor over the same event log the bus serves, the
 // shared session state, and the shared per-session reader hub.
-func NewSupervisor(cfg *config.Config, st *state.Store, log *eventlog.Store, hub *sessionhub.Registry) *Supervisor {
+func NewSupervisor(cfg func() *config.Config, st *state.Store, log *eventlog.Store, hub *sessionhub.Registry) *Supervisor {
 	return &Supervisor{cfg: cfg, state: st, log: log, hub: hub, logger: slog.Default(), poll: time.Second}
 }
 
@@ -98,7 +103,8 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 	if s.Workflow == "" {
 		return nil, true
 	}
-	workflows, err := sup.cfg.LoadWorkflows(s.WorkdirPath)
+	cfg := sup.cfg()
+	workflows, err := cfg.LoadWorkflows(s.WorkdirPath)
 	if err != nil {
 		return nil, false
 	}
@@ -109,7 +115,7 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 	if len(wf.Event.Channel) == 0 {
 		return nil, true
 	}
-	defs, err := sup.cfg.LoadChannels()
+	defs, err := cfg.LoadChannels()
 	if err != nil {
 		return nil, false
 	}
@@ -120,7 +126,7 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		sup.logger.Warn("event channels did not validate; some may not deliver",
 			"session", name, "workflow", wf.ID, "error", verr)
 	}
-	envExecutor, envErr := buildChannelEnvironmentExecutor(sup.cfg, wf, s)
+	envExecutor, envErr := buildChannelEnvironmentExecutor(cfg, wf, s)
 	if envErr != nil {
 		sup.logger.Warn("event channel environment executor unavailable; channels opting into execution=\"environment\" will fail",
 			"session", name, "workflow", wf.ID, "error", envErr)

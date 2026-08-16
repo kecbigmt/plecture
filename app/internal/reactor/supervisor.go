@@ -32,7 +32,12 @@ import (
 // goes down or the session is destroyed — the same lifecycle contract as
 // dispatch.Supervisor.
 type Supervisor struct {
-	cfg      *config.Config
+	// cfg is a getter rather than a fixed *config.Config, matching
+	// dispatch.Supervisor: buildReactor calls it fresh for every session
+	// that comes up, so a plugin-declared workflow mounted after the daemon
+	// started is visible on the next up transition instead of requiring a
+	// daemon restart.
+	cfg      func() *config.Config
 	state    *state.Store
 	log      *eventlog.Store
 	hub      *sessionhub.Registry
@@ -43,7 +48,7 @@ type Supervisor struct {
 
 // NewSupervisor builds a supervisor over the same event log, session state,
 // and per-session reader hub the bus and dispatch.Supervisor share.
-func NewSupervisor(cfg *config.Config, st *state.Store, log *eventlog.Store, hub *sessionhub.Registry) *Supervisor {
+func NewSupervisor(cfg func() *config.Config, st *state.Store, log *eventlog.Store, hub *sessionhub.Registry) *Supervisor {
 	return &Supervisor{cfg: cfg, state: st, log: log, hub: hub, logger: slog.Default(), poll: time.Second}
 }
 
@@ -97,10 +102,11 @@ func (sup *Supervisor) reconcile(ctx context.Context, active map[string]context.
 // independent, so a session must still be watched for it even when its
 // workflow config cannot be resolved.
 func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReactor {
+	cfg := sup.cfg()
 	var tc config.TickConfig
 	hc := config.DefaultHealthcheckConfig()
 	if s.Workflow != "" {
-		workflows, err := sup.cfg.LoadWorkflows(s.WorkdirPath)
+		workflows, err := cfg.LoadWorkflows(s.WorkdirPath)
 		if err != nil {
 			sup.logger.Warn("reactor: load workflows failed; declared [tick]/heartbeat inactive, judge builtin still active", "session", name, "error", err)
 		} else if wf, ok := workflows[s.Workflow]; ok {
@@ -112,7 +118,7 @@ func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReac
 	}
 	return &sessionReactor{
 		session:     name,
-		cfg:         sup.cfg,
+		cfg:         cfg,
 		state:       sup.state,
 		log:         sup.log,
 		hub:         sup.hub,
