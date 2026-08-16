@@ -53,7 +53,7 @@ func (e EnvironmentConfig) ResolvedOutputsSchemaPath() string {
 func (c *Config) LoadEnvironments() (map[string]EnvironmentConfig, error) {
 	var pluginDirs []string
 	for _, plugin := range c.PluginDirs {
-		pluginDirs = append(pluginDirs, filepath.Join(plugin, "environments"))
+		pluginDirs = append(pluginDirs, filepath.Join(plugin, "config", "environments"))
 	}
 	globalDir := ""
 	if c.BaseDir != "" {

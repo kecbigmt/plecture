@@ -177,12 +177,12 @@ path = "{{.Inputs.path}}"
 func TestLoadChannels_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
-	writeFile(t, filepath.Join(pluginA, "channels", "tmux_send_keys.toml"), `
+	writeFile(t, filepath.Join(pluginA, "config", "channels", "tmux_send_keys.toml"), `
 type = "exec"
 command = "tmux"
 args = ["send-keys", "-t", "a"]
 `)
-	writeFile(t, filepath.Join(pluginB, "channels", "tmux_send_keys.toml"), `
+	writeFile(t, filepath.Join(pluginB, "config", "channels", "tmux_send_keys.toml"), `
 type = "exec"
 command = "tmux"
 args = ["send-keys", "-t", "b"]

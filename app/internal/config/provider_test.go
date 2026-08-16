@@ -32,7 +32,7 @@ cleanup = "true"
 func TestLoadProviders_GlobalOverridesPlugin(t *testing.T) {
 	pluginDir := t.TempDir()
 	baseDir := t.TempDir()
-	writeFile(t, filepath.Join(pluginDir, "providers", "github.toml"), `
+	writeFile(t, filepath.Join(pluginDir, "config", "providers", "github.toml"), `
 setup = "echo plugin"
 `)
 	writeFile(t, filepath.Join(baseDir, "providers", "github.toml"), `
@@ -51,8 +51,8 @@ setup = "echo global"
 func TestLoadProviders_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
-	writeFile(t, filepath.Join(pluginA, "providers", "github.toml"), `setup = "echo a"`)
-	writeFile(t, filepath.Join(pluginB, "providers", "github.toml"), `setup = "echo b"`)
+	writeFile(t, filepath.Join(pluginA, "config", "providers", "github.toml"), `setup = "echo a"`)
+	writeFile(t, filepath.Join(pluginB, "config", "providers", "github.toml"), `setup = "echo b"`)
 	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
 
 	_, err := cfg.LoadProviders()

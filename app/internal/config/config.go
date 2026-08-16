@@ -69,8 +69,10 @@ type Config struct {
 	// Only the user-owned global config can declare it. Empty means allow
 	// all.
 	ResourceAllowlist []string `toml:"resource_allowlist"`
-	// PluginDirs lists plugin config roots (each containing workflows/ and
-	// tasks/ subdirectories). Plugins form the base cascade layer: the
+	// PluginDirs lists plugin roots (each containing a config/ subdirectory
+	// with providers/, resources/, channels/, tasks/, workflows/, and
+	// templates/ subdirectories — see docs/design/plugin-packaging.md's
+	// Package format section). Plugins form the base cascade layer: the
 	// global layer and ancestor overlays stack on top of them. Entries are
 	// trusted — only the user or the system's config-management tooling writes config.toml.
 	PluginDirs []string `toml:"plugin_dirs"`

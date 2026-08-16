@@ -31,7 +31,7 @@ cleanup = "docker rm -f x"
 func TestLoadEnvironments_GlobalOverridesPlugin(t *testing.T) {
 	pluginDir := t.TempDir()
 	baseDir := t.TempDir()
-	writeFile(t, filepath.Join(pluginDir, "environments", "docker.toml"), `
+	writeFile(t, filepath.Join(pluginDir, "config", "environments", "docker.toml"), `
 exec = "echo plugin"
 `)
 	writeFile(t, filepath.Join(baseDir, "environments", "docker.toml"), `
@@ -50,8 +50,8 @@ exec = "echo global"
 func TestLoadEnvironments_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
-	writeFile(t, filepath.Join(pluginA, "environments", "docker.toml"), `exec = "echo a"`)
-	writeFile(t, filepath.Join(pluginB, "environments", "docker.toml"), `exec = "echo b"`)
+	writeFile(t, filepath.Join(pluginA, "config", "environments", "docker.toml"), `exec = "echo a"`)
+	writeFile(t, filepath.Join(pluginB, "config", "environments", "docker.toml"), `exec = "echo b"`)
 	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
 
 	_, err := cfg.LoadEnvironments()

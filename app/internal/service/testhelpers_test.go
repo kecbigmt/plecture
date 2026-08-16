@@ -116,7 +116,7 @@ func attachGithubProvider(t *testing.T, cfg *config.Config, wfID string) {
 	cfg.Plugins = append(cfg.Plugins, newMount...)
 	pluginDir := newMount[0].Dir
 	cfg.PluginDirs = append(cfg.PluginDirs, pluginDir)
-	providersDir := filepath.Join(pluginDir, "providers")
+	providersDir := filepath.Join(pluginDir, "config", "providers")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func attachGithubProvider(t *testing.T, cfg *config.Config, wfID string) {
 // plugin ships, so fixtures never drift from it.
 func shippedGithubProviderTOML(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "providers", "github.toml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "config", "providers", "github.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -692,10 +692,10 @@ func TestLoad_PluginLayerIsLowestPriority(t *testing.T) {
 
 	pluginDir := t.TempDir()
 	pluginContent := "Plugin work template"
-	if err := os.MkdirAll(filepath.Join(pluginDir, "templates"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(pluginDir, "config", "templates"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pluginDir, "templates", "work.md"), []byte(pluginContent), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(pluginDir, "config", "templates", "work.md"), []byte(pluginContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -733,10 +733,10 @@ func TestLoad_TwoPluginLayersSameModeFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
 	for _, dir := range []string{pluginA, pluginB} {
-		if err := os.MkdirAll(filepath.Join(dir, "templates"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(dir, "config", "templates"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "templates", "review.md"), []byte("x"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "config", "templates", "review.md"), []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -751,10 +751,10 @@ func TestList_PluginLayerAppendsBelowUserGlobal(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 
 	pluginDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(pluginDir, "templates"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(pluginDir, "config", "templates"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(pluginDir, "templates", "kick.md"), []byte("---\ndescription: Plugin kick\n---\nBody"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(pluginDir, "config", "templates", "kick.md"), []byte("---\ndescription: Plugin kick\n---\nBody"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -774,10 +774,10 @@ func TestList_TwoPluginLayersSameNameFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
 	for _, dir := range []string{pluginA, pluginB} {
-		if err := os.MkdirAll(filepath.Join(dir, "templates"), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(dir, "config", "templates"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "templates", "kick.md"), []byte("Body"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "config", "templates", "kick.md"), []byte("Body"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

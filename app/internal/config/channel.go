@@ -94,7 +94,7 @@ func (d ChannelDefinition) Validate() error {
 func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
 	var pluginDirs []string
 	for _, plugin := range c.PluginDirs {
-		pluginDirs = append(pluginDirs, filepath.Join(plugin, "channels"))
+		pluginDirs = append(pluginDirs, filepath.Join(plugin, "config", "channels"))
 	}
 	globalDir := ""
 	if c.BaseDir != "" {

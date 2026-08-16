@@ -465,7 +465,7 @@ func TestSupervisor_StartsAndStopsWithRunScope(t *testing.T) {
 // after `plect bus serve` started, not just after a restart.
 func TestSupervisor_ResolvesTickConfigFromPluginMountedAfterConstruction(t *testing.T) {
 	pluginDir := t.TempDir()
-	writeFile(t, filepath.Join(pluginDir, "workflows", "coding.toml"), `
+	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "coding.toml"), `
 [tick]
 on = ["github.*"]
 `)
