@@ -72,9 +72,13 @@ uses             = "codex_exec"
 inputs.queue_dir = "{{.Nodes.codex_exec.outputs.queue_dir}}"
 include          = ["plect.instruction", "user.emit", "plect.terminal.*"]
 
+# No plugin in this catalog ships a channel named "slack_thread" (only the
+# task id above shares that name); this uses channel/slack's shipped
+# "slack" channel and its documented default base_url instead.
 [[event.channel]]
 name              = "slack"
-uses              = "slack_thread"
+uses              = "slack"
+inputs.base_url   = "http://127.0.0.1:7890"
 inputs.channel_id = "{{.Nodes.slack_thread.outputs.channel_id}}"
 inputs.thread_ts  = "{{.Nodes.slack_thread.outputs.thread_ts}}"
 include           = ["user.emit"]
