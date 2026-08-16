@@ -35,6 +35,13 @@ workflow can compose either without hand-authoring it.
   setup registers. A copy of `agent/runtime`'s script of the same name — see
   that plugin's README for why it's a copy rather than a cross-plugin
   reference.
+- `bin/gh-guard` — a `gh` shim that mechanically denies `pr merge`/`issue
+  close`/`pr close` (and their `gh api` equivalents), so a session can't act
+  on a forgotten or de-prioritized "don't merge" instruction. Both tasks'
+  setup symlinks this onto the session's `PATH` as `gh` only when the task's
+  `gh_guard` input is set — unset (the default) launches with no shim. A copy
+  of `agent/claude`'s script of the same name, for the same cross-plugin
+  reason as `plect-agent-activity` above.
 
 ## Install
 
@@ -60,15 +67,17 @@ export PATH="/path/to/plugin/cache/agent/codex/bin:$PATH"
 ## Inputs
 
 Both tasks take `tmux_session` (required, typically wired from
-`agent/runtime`'s `tmux` task), `model`, and `effort` — see each task file
-for the exact flag each one appends.
+`agent/runtime`'s `tmux` task), `model`, `effort`, and `gh_guard` — see each
+task file for the exact flag/effect each one appends. `gh_guard` is opt-in
+and defaults to unset (no shim, no behavior change from before this input
+existed).
 
 ## Not included
 
 - Any workflow composing these tasks/channels with a resource provider
   (e.g. GitHub) — workflows compose across plugins and their packaging is
   decided when that provider plugin lands.
-- Chat/notification channel bindings and CLI write-guards — operator/team
-  choices, not shipped defaults. Add them by placing a same-id task
-  definition in your own trusted overlay (whole-definition replacement; see
-  this repository's plugin-packaging design doc for the shadowing model).
+- Chat/notification channel bindings — operator/team choices, not shipped
+  defaults. Add them by placing a same-id task definition in your own
+  trusted overlay (whole-definition replacement; see this repository's
+  plugin-packaging design doc for the shadowing model).
