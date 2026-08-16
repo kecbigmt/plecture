@@ -2,6 +2,8 @@ package reactor
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +17,16 @@ import (
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 // newTestReactor builds a sessionReactor over a fast-poll hub so tests don't
 // wait on the production 500ms poll interval.
@@ -411,7 +423,7 @@ func TestSupervisor_StartsAndStopsWithRunScope(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	hub := sessionhub.NewRegistry(log)
 	defer hub.Close()
-	sup := NewSupervisor(cfg, st, log, hub)
+	sup := NewSupervisor(func() *config.Config { return cfg }, st, log, hub)
 	ctx := t.Context()
 	active := map[string]context.CancelFunc{}
 	var wg sync.WaitGroup
@@ -441,6 +453,49 @@ func TestSupervisor_StartsAndStopsWithRunScope(t *testing.T) {
 	sup.reconcile(ctx, active, &wg)
 	if len(active) != 0 {
 		t.Fatalf("reactor not stopped after run scope down: %d active", len(active))
+	}
+}
+
+// TestSupervisor_ResolvesTickConfigFromPluginMountedAfterConstruction mirrors
+// dispatch.Supervisor's identical fix: a `[tick]` declaration that exists
+// only in a plugin-only workflow (no global copy) must resolve once the
+// supervisor's config getter reflects the plugin, even though the getter
+// returned a Config without that plugin when the Supervisor was built —
+// matching a long-running daemon whose config.Live refresh mounts a plugin
+// after `plect bus serve` started, not just after a restart.
+func TestSupervisor_ResolvesTickConfigFromPluginMountedAfterConstruction(t *testing.T) {
+	pluginDir := t.TempDir()
+	writeFile(t, filepath.Join(pluginDir, "workflows", "coding.toml"), `
+[tick]
+on = ["github.*"]
+`)
+
+	// currentCfg starts without the plugin mounted, as if the daemon started
+	// before this plugin was enabled; the getter closure below always reads
+	// its current value, so reassigning it simulates config.Live swapping in
+	// a freshly-resolved Config on its next periodic refresh.
+	currentCfg := &config.Config{}
+	st := state.NewStore(t.TempDir())
+	if err := st.Put(&domain.Session{
+		Name: "o/r-1", Workflow: "coding",
+		Tasks: map[string]*contract.TaskState{
+			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	log := eventlog.NewStore(t.TempDir())
+	hub := sessionhub.NewRegistry(log)
+	defer hub.Close()
+	sup := NewSupervisor(func() *config.Config { return currentCfg }, st, log, hub)
+
+	// The plugin mounts (config refresh happens) before this session's
+	// reactor is built.
+	currentCfg = &config.Config{PluginDirs: []string{pluginDir}}
+
+	r := sup.buildReactor("o/r-1", st.Get("o/r-1"))
+	if len(r.tick.On) != 1 || r.tick.On[0] != "github.*" {
+		t.Fatalf("tick config = %+v, want on=[\"github.*\"] resolved from the plugin-only workflow", r.tick)
 	}
 }
 
