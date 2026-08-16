@@ -55,11 +55,12 @@ uses = "slack_thread"
 [[nodes]]
 uses = "tmux"
 
+# codex_exec has no use for the Slack thread's channel_id/thread_ts — the
+# "slack" event channel below delivers to that thread directly off
+# slack_thread's own outputs, so codex_exec only needs its tmux pane.
 [[nodes]]
-uses                    = "codex_exec"
-inputs.tmux_session     = "{{.Nodes.tmux.outputs.session_name}}"
-inputs.slack_thread_ts  = "{{.Nodes.slack_thread.outputs.thread_ts}}"
-inputs.slack_channel_id = "{{.Nodes.slack_thread.outputs.channel_id}}"
+uses                = "codex_exec"
+inputs.tmux_session = "{{.Nodes.tmux.outputs.session_name}}"
 
 [[nodes]]
 uses        = "initial_task"
