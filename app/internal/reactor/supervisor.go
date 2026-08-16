@@ -21,11 +21,18 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+// deadmanInterval is the heartbeat-deadman sweep's own cadence — coarse,
+// like reactor.go's own heartbeatInterval, since a deadman threshold is
+// always some multiple of a `heartbeat` value itself measured in minutes or
+// more.
+const deadmanInterval = time.Minute
 
 // Supervisor keeps at most one sessionReactor per active session, starting
 // one when a session's run scope comes up and cancelling it when the scope
@@ -44,6 +51,14 @@ type Supervisor struct {
 	observer task.Observer
 	logger   *slog.Logger
 	poll     time.Duration
+	// deadmanPoll defaults to deadmanInterval; overridable in tests so the
+	// heartbeat-deadman sweep test cases don't need to wait a full minute of
+	// wall clock.
+	deadmanPoll time.Duration
+	// deadmanFn defaults to service.CheckHeartbeatDeadman; overridable in
+	// tests to observe invocation without depending on real terminal-event
+	// delivery, matching sessionReactor's tickFn/healthcheckFn convention.
+	deadmanFn func(*config.Config, *state.Store, string, time.Duration, time.Time) (bool, error)
 }
 
 // NewSupervisor builds a supervisor over the same event log, session state,
@@ -66,14 +81,79 @@ func (sup *Supervisor) Run(ctx context.Context) {
 
 	tick := time.NewTicker(sup.poll)
 	defer tick.Stop()
+	deadmanEvery := sup.deadmanPoll
+	if deadmanEvery <= 0 {
+		deadmanEvery = deadmanInterval
+	}
+	deadman := time.NewTicker(deadmanEvery)
+	defer deadman.Stop()
+	// Swept once immediately, not just on the first tick of deadman: a bus
+	// that was down past a session's deadman threshold must surface that on
+	// restart, not wait up to another full interval — same rationale as
+	// reactor.go's own immediate checkHeartbeat call.
+	sup.checkDeadman(ctx)
 	for {
 		sup.reconcile(ctx, active, &wg)
 		select {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
+		case <-deadman.C:
+			sup.checkDeadman(ctx)
 		}
 	}
+}
+
+// checkDeadman sweeps every up session with a declared `heartbeat` for the
+// heartbeat-scheduling deadman condition (service.CheckHeartbeatDeadman): K x
+// heartbeat elapsed with no tick. This runs from Supervisor.Run's own poll
+// loop, never from inside a per-session sessionReactor — a stalled reactor
+// loop cannot report its own stall, since the very goroutine that would run
+// the check is the one that stopped running, so the check must live
+// somewhere a stuck per-session reactor cannot also block.
+func (sup *Supervisor) checkDeadman(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	fn := sup.deadmanFn
+	if fn == nil {
+		fn = service.CheckHeartbeatDeadman
+	}
+	cfg := sup.cfg()
+	now := time.Now()
+	for name, s := range sup.state.All() {
+		if !hasRunScopeUp(s.Tasks) {
+			continue
+		}
+		heartbeat := resolveHeartbeat(cfg, s)
+		if heartbeat <= 0 {
+			continue
+		}
+		if _, err := fn(cfg, sup.state, name, heartbeat, now); err != nil {
+			sup.logger.Warn("reactor: heartbeat deadman check failed", "session", name, "error", err)
+		}
+	}
+}
+
+// resolveHeartbeat resolves just the declared `[tick].heartbeat` duration
+// for s. It duplicates buildReactor's tc-resolution rather than sharing it:
+// buildReactor also resolves `[healthcheck]` from the same LoadWorkflows call
+// and runs once per session-startup transition, while this runs on its own
+// sweep cadence — keeping them separate avoids coupling two call sites with
+// different frequencies and different result shapes to one helper.
+func resolveHeartbeat(cfg *config.Config, s *domain.Session) time.Duration {
+	if s.Workflow == "" {
+		return 0
+	}
+	workflows, err := cfg.LoadWorkflows(s.WorkdirPath)
+	if err != nil {
+		return 0
+	}
+	wf, ok := workflows[s.Workflow]
+	if !ok || wf.Tick == nil {
+		return 0
+	}
+	return wf.Tick.Heartbeat.Duration
 }
 
 func (sup *Supervisor) reconcile(ctx context.Context, active map[string]context.CancelFunc, wg *sync.WaitGroup) {
