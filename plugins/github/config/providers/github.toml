@@ -29,11 +29,29 @@ setup = '''
 # object) — a provider-level opt-in, not a core flag, so core carries no
 # branch vocabulary. Default is off: a branch left behind after workdir
 # removal is safer than one silently reclaimed.
-cleanup = '{{bin "plect-github-provider"}} cleanup --workdir {{.Self.workdir | shellQuote}} --branch {{.Self.branch | shellQuote}} --workdirs-root {{.WorkdirsRoot | shellQuote}} --force={{.Force}} --delete-branch={{eq .CleanupInputs.delete_branch "true"}}'
+#
+# The watcher unsubscribe runs unconditionally after workdir cleanup and
+# never gates its exit status: dropping this session's watcher
+# subscriptions is orthogonal to whether the workdir came out clean, and a
+# dirty-workdir failure must still fail `plect destroy` the same as before
+# this line existed. Without it a destroyed session's subscriptions poll
+# forever — the watcher has no other way to learn a session is gone between
+# its own startup sweeps.
+cleanup = '''
+{{bin "plect-github-provider"}} cleanup \
+  --workdir {{.Self.workdir | shellQuote}} \
+  --branch {{.Self.branch | shellQuote}} \
+  --workdirs-root {{.WorkdirsRoot | shellQuote}} \
+  --force={{.Force}} \
+  --delete-branch={{eq .CleanupInputs.delete_branch "true"}}
+status=$?
+{{bin "github-watcher"}} unsubscribe --session {{.SessionName | shellQuote}}
+exit $status
+'''
 
 # subscribe binds a session to a resource at runtime (the `plect subscribe`
-# verb) — the same watcher subscription registry the setup-time
-# tasks/github_watch.toml task uses, additive, never replacing.
+# verb) — the same watcher subscription registry `cleanup` unsubscribes from
+# on destroy, additive, never replacing.
 subscribe = '{{bin "github-watcher"}} subscribe --session {{.SessionName | shellQuote}} --resource {{.ResourceID | shellQuote}}'
 
 # Outputs contract. `workdir`/`branch` are always present; the rest degrade

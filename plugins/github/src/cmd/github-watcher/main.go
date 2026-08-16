@@ -148,6 +148,10 @@ func cmdServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Drop subscriptions for sessions destroyed while the daemon wasn't
+	// running (or before this fix shipped) before ever polling them —
+	// see Poller.Sweep for why this isn't also done every Tick.
+	poller.Sweep()
 	// Establish baselines promptly on start, then tick.
 	poller.Tick()
 	ticker := time.NewTicker(tick)
