@@ -16,6 +16,12 @@ primary = true
 #                  worker appends `-c model_reasoning_effort=<value>` the
 #                  same way. Empty = codex's own config default. Same
 #                  restriction as model.
+#   gh_guard     — when "1", shims a `gh` onto this session's PATH that
+#                  denies `pr merge`/`issue close`/`pr close` (and their
+#                  `gh api` equivalents) so the session can't act on a
+#                  forgotten or de-prioritized "don't merge" instruction.
+#                  Empty/unset (the default) launches with no such shim —
+#                  byte-identical to before this input existed.
 #
 # codex_exec starts a headless worker (plect-codex-exec-worker) instead of
 # the interactive Codex TUI, so instruction delivery is a queued
@@ -51,6 +57,21 @@ EXPORTS="export PLECT_SESSION_NAME={{.SessionName}}; "
 # it can't resolve a bin-lookup reference itself for its own activity-hook
 # calls; resolve it here and hand it down as an env var instead.
 EXPORTS="${EXPORTS}export PLECT_AGENT_ACTIVITY_BIN={{bin "plect-codex-agent-activity" | shellQuote}}; "
+
+# gh_guard: symlink gh-guard as `gh` in a fresh shim directory and prepend it
+# to PATH, so every `gh` this worker (and the codex exec turns it drives)
+# resolves is the guard instead of the real binary. REAL_GH must be resolved
+# *before* the shim directory reaches PATH — resolving it lazily inside the
+# guard would find the shim itself (still ahead of the real gh on PATH) and
+# recurse forever.
+GH_GUARD='{{get .Inputs "gh_guard"}}'
+GH_GUARD_DIR=""
+if [ -n "$GH_GUARD" ]; then
+  REAL_GH=$(command -v gh) || { echo "gh_guard requested but no gh on PATH" >&2; exit 1; }
+  GH_GUARD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/plect-gh-guard.XXXXXX")
+  ln -s '{{bin "gh-guard"}}' "$GH_GUARD_DIR/gh"
+  EXPORTS="${EXPORTS}export GH_GUARD_REAL_GH=$REAL_GH; export PATH=$GH_GUARD_DIR:\$PATH; "
+fi
 # model/effort are free strings from --input, spliced literally into this
 # setup script's own source and later re-sent as EXPORTS keystrokes to the
 # pane's shell — two shell boundaries a crafted value could break out of.
@@ -90,7 +111,8 @@ jq -nc \
   --arg queue_dir "$QUEUE_DIR" \
   --arg state_dir "$STATE_DIR" \
   --arg profile "$PROFILE_PATH" \
-  '{pid:$pid, queue_dir:$queue_dir, state_dir:$state_dir, profile_path:$profile}'
+  --arg ghguard "$GH_GUARD_DIR" \
+  '{pid:$pid, queue_dir:$queue_dir, state_dir:$state_dir, profile_path:$profile, gh_guard_dir:$ghguard}'
 '''
 
 cleanup = '''
@@ -102,6 +124,8 @@ done
 kill -KILL {{.Self.pid}} 2>/dev/null || true
 PROFILE_PATH='{{get .Self "profile_path"}}'
 [ -n "$PROFILE_PATH" ] && rm -f "$PROFILE_PATH"
+GH_GUARD_DIR='{{get .Self "gh_guard_dir"}}'
+[ -n "$GH_GUARD_DIR" ] && rm -rf "$GH_GUARD_DIR"
 true
 '''
 
@@ -127,6 +151,11 @@ additionalProperties = false
 tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+# Boolean-shaped but kept a string, matching model/effort above: this value
+# is spliced into the setup script's own source at render time (before bash
+# ever sees it), so the pattern — not a runtime quoting trick — is what
+# actually restricts it to the one meaningful shape ("1" or unset).
+gh_guard     = { type = "string", pattern = "^1?$" }
 
 [outputs_schema]
 type     = "object"
@@ -137,3 +166,4 @@ pid          = { type = "integer" }
 queue_dir    = { type = "string" }
 state_dir    = { type = "string" }
 profile_path = { type = "string" }
+gh_guard_dir = { type = "string" }

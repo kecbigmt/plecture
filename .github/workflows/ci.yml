@@ -50,6 +50,14 @@ jobs:
       - name: Check comments for issue/PR/ADR number references
         run: ./scripts/check-comment-references.sh
 
+  gh-guard:
+    name: gh-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove the gh_guard shim denies merge/close and passes through everything else
+        run: ./scripts/gh-guard_selftest.sh
+
   build-test:
     name: build-test (${{ matrix.module }})
     runs-on: ubuntu-latest

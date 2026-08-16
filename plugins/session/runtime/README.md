@@ -58,6 +58,14 @@ Plugin Boundary Rule.
   function — `{{bin ...}}` exists only for task setup/cleanup hooks), so
   this script must be reachable on `PATH` under its own name for the
   channel to work.
+- `scripts/gh-guard` — a `gh` shim that mechanically denies `pr merge`/
+  `issue close`/`pr close` (and their `gh api` equivalents), so a session
+  can't act on a forgotten or de-prioritized "don't merge" instruction.
+  The claude/codex/codex_exec tasks' setup symlinks this onto the
+  session's `PATH` as `gh` only when the task's `gh_guard` input is set —
+  unset (the default) launches with no shim, byte-identical to before this
+  input existed. One copy shared by all three tasks (previously shipped as
+  two duplicate copies across the plugins this one merges).
 - `src/channel-server/` — generic message delivery to Claude Code, with no
   knowledge of message sources (Slack or otherwise). See
   `src/channel-server/CLAUDE.md`.
@@ -83,9 +91,11 @@ the note on channel `command` above.
 
 `channel-server` and `slack-adapter` are declared as `[[services]]` in
 `plugin.toml`, supervised by `plect bus serve` (start, crash-restart with
-backoff, stop with the bus). `slack-adapter` needs `SLACK_BOT_TOKEN` and
-`SLACK_APP_TOKEN` in the bus process's own environment before it starts —
-without them it stays inert rather than crash-looping. `channel-server`'s
+backoff, stop with the bus). `slack-adapter` needs `SLACK_BOT_TOKEN`,
+`SLACK_APP_TOKEN`, and `SLACK_CHANNEL_ID` in the bus process's own
+environment before it starts — without all three it stays inert rather
+than crash-looping (its `cmd/slack-adapter/main.go` exits at startup if
+any is unset). `channel-server`'s
 service declaration stays inert today by design: real instances are
 per-session, launched by Claude Code itself via MCP configuration with a
 session-specific `CHANNEL_SOCKET_PATH` the bus process never has — see
@@ -98,11 +108,13 @@ session-specific `CHANNEL_SOCKET_PATH` the bus process never has — see
 - Any workflow composing these tasks/channels with a resource provider
   (e.g. GitHub) — workflows compose across plugins and stay out of any
   single plugin.
-- Chat/notification channel bindings beyond Slack, MCP servers beyond
-  channel-server, and CLI write-guards (e.g. a shim that denies `gh pr
-  merge`) — operator/team choices, not shipped defaults. Add them by
+- Chat/notification channel bindings beyond Slack, and MCP servers beyond
+  channel-server — operator/team choices, not shipped defaults. Add them by
   placing a same-id task/channel definition in your own trusted overlay
   (whole-definition replacement; see `docs/design/plugin-packaging.md`'s
-  shadowing model).
+  shadowing model). `gh_guard` is the one CLI write-guard shipped here,
+  opt-in via a task input — see `config/tasks/claude.toml`/`codex.toml`/
+  `codex_exec.toml` for the exact input, and `scripts/gh-guard_selftest.sh`
+  at the repository root for its behavior tests.
 - slack-adapter's Slack App manifest, HTTP API surface, and subscription
   broker behavior — see `src/slack-adapter/CLAUDE.md`.

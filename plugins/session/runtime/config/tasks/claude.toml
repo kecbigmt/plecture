@@ -12,6 +12,12 @@ primary = true
 #                  updates automatically.
 #   effort       — when set, appended as `--effort <value>` the same way.
 #                  Empty = no flag (CLI default).
+#   gh_guard     — when "1", shims a `gh` onto this session's PATH that
+#                  denies `pr merge`/`issue close`/`pr close` (and their
+#                  `gh api` equivalents) so the session can't act on a
+#                  forgotten or de-prioritized "don't merge" instruction.
+#                  Empty/unset (the default) launches with no such shim —
+#                  byte-identical to before this input existed.
 #
 setup = '''
 PREV_SID='{{get .Prev "session_id"}}'
@@ -65,6 +71,20 @@ jq -nc '{
 # dispatched sessions. The session id grammar is metacharacter-free, so it
 # is safe unquoted.
 EXPORTS="export PLECT_SESSION_NAME={{.SessionName}}; "
+
+# gh_guard: symlink gh-guard as `gh` in a fresh shim directory and prepend it
+# to PATH, so every `gh` this session's shell resolves is the guard instead
+# of the real binary. REAL_GH must be resolved *before* the shim directory
+# reaches PATH — resolving it lazily inside the guard would find the shim
+# itself (still ahead of the real gh on PATH) and recurse forever.
+GH_GUARD='{{get .Inputs "gh_guard"}}'
+GH_GUARD_DIR=""
+if [ -n "$GH_GUARD" ]; then
+  REAL_GH=$(command -v gh) || { echo "gh_guard requested but no gh on PATH" >&2; exit 1; }
+  GH_GUARD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/plect-gh-guard.XXXXXX")
+  ln -s '{{bin "gh-guard"}}' "$GH_GUARD_DIR/gh"
+  EXPORTS="${EXPORTS}export GH_GUARD_REAL_GH=$REAL_GH; export PATH=$GH_GUARD_DIR:\$PATH; "
+fi
 
 # model/effort are free strings from --input, spliced directly into this
 # setup script's own source at render time (before bash ever sees it) and
@@ -145,7 +165,8 @@ jq -nc \
   --arg sock "$SOCKET" \
   --arg mcp "$MCP" \
   --arg hooks "$HOOKS" \
-  '{pid:$pid, session_id:$sid, socket_path:$sock, mcp_config:$mcp, hooks_settings:$hooks}'
+  --arg ghguard "$GH_GUARD_DIR" \
+  '{pid:$pid, session_id:$sid, socket_path:$sock, mcp_config:$mcp, hooks_settings:$hooks, gh_guard_dir:$ghguard}'
 '''
 
 cleanup = '''
@@ -161,6 +182,10 @@ rm -f {{.Self.mcp_config}} {{.Self.socket_path}}
 # error.
 HOOKS_SETTINGS='{{get .Self "hooks_settings"}}'
 [ -n "$HOOKS_SETTINGS" ] && rm -f "$HOOKS_SETTINGS"
+# get, not .Self.gh_guard_dir: a session produced before this field existed
+# has no such key, and .Self's strict missingkey semantics would error.
+GH_GUARD_DIR='{{get .Self "gh_guard_dir"}}'
+[ -n "$GH_GUARD_DIR" ] && rm -rf "$GH_GUARD_DIR"
 true
 '''
 
@@ -217,6 +242,11 @@ additionalProperties = false
 tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+# Boolean-shaped but kept a string, matching model/effort above: this value
+# is spliced into the setup script's own source at render time (before bash
+# ever sees it), so the pattern — not a runtime quoting trick — is what
+# actually restricts it to the one meaningful shape ("1" or unset).
+gh_guard     = { type = "string", pattern = "^1?$" }
 
 [outputs_schema]
 type     = "object"
@@ -228,3 +258,4 @@ session_id     = { type = "string", mutable = true }
 socket_path    = { type = "string", mutable = true }
 mcp_config     = { type = "string" }
 hooks_settings = { type = "string" }
+gh_guard_dir   = { type = "string" }
