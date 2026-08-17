@@ -49,10 +49,26 @@ plugin's private package, executable, config shape, or provider-specific event
 schema.
 
 The multiplexer seam is a core-owned terminal operation surface. A multiplexer
-task declares an opaque `interactive_endpoint` output and terminal operations
-that create or act on it: `create`, `attach`, `capture`, `send_text`,
-`send_keys`, `healthcheck`, and `cleanup`. `interactive_endpoint` is the
-binding those operations target; it is not a new top-level config kind.
+task declares an opaque `interactive_endpoint` output and a `[terminal]` table
+whose terminal verbs act on that endpoint: `attach`, `capture`, `send_text`,
+and `send_keys`. Universal task keys stay top-level and unchanged: `setup`
+declares endpoint creation by returning the `interactive_endpoint` binding,
+`cleanup` releases multiplexer-owned resources, and `healthcheck` reports
+whether the endpoint is live enough for delivery.
+
+`healthcheck` is not terminal-specific. A Claude task may use the same
+universal key for process-id self-healing; a multiplexer task's healthcheck is
+only that universal key's terminal-surface instance. `interactive_endpoint` is
+the binding terminal verbs target; it is not a new top-level config kind.
+
+A task with a `[terminal]` table provides the terminal operation surface. The
+table must declare all four members: `attach`, `capture`, `send_text`, and
+`send_keys`. A partial terminal surface is a load error.
+
+The `[terminal]` table makes the terminal surface visible in the config shape
+itself. It also aligns the config layer with the `{{terminal "send_text"}}`
+template helper and the Terminal Operation Surface vocabulary, so one word
+carries through the config shape, template call site, and prose contract.
 
 Terminal operations are invoked by template injection, generalizing the
 existing `{{bin "..."}}` helper. `{{terminal "send_text"}}`,
@@ -72,11 +88,6 @@ Plecture adds no CLI commands for terminal operations. Consumers must be
 declared task hooks or event channels, which keeps pane input inside the
 session's declared workflow surface. Manual debugging continues to use the
 existing `plect attach` and `plect capture` commands.
-
-`create` and `cleanup` are the existing task `setup` and `cleanup` hooks viewed
-through this operation contract, not new parallel task fields. `attach`,
-`capture`, and `healthcheck` are the existing task-level declarations. The new
-operation declarations are `send_text` and `send_keys`.
 
 The send and capture operations are raw terminal verbs. Agent-runtime plugins
 own submit and readiness composition for their interactive TUIs: rendering the
@@ -99,6 +110,13 @@ submission. Claude Code delivery therefore uses channel-server, and a
 no-channel-server interactive Claude configuration is outside this decision's
 supported surface. Raw-verb terminal submit is the fallback for interactive
 TUIs without structured transport, such as Codex interactive.
+
+Moving `attach` and `capture` from top-level task keys into `[terminal]` is a
+breaking config change. The split implementation PR carries this change for
+the shipped tmux task; only shipped `tmux.toml` declares those keys today.
+Folding this shape into the already-open breaking window keeps the one-time
+migration machinery hot. Deferring would let the flat shape ossify before the
+terminal surface has a visible config boundary.
 
 Chat delivery and agent delivery rendezvous through provider-neutral
 conversation events on the Plecture event bus:
@@ -158,18 +176,20 @@ support independently, use Slack delivery without Claude-specific socket
 knowledge, and use the GitHub guard without installing it as session-runtime
 behavior.
 
-Implementation work includes defining the task-level terminal operation
-surface, adding the terminal operation template helper to task hooks and
-channel argument rendering, keeping `interactive_endpoint` as the opaque
-operation binding, moving initial-prompt and terminal-submit composition into
-the agent runtime plugins, adding the provider-neutral conversation event
-vocabulary, moving Slack delivery off channel-server socket subscriptions,
-moving the channel-server socket protocol out of `contracts/` when it has no
-cross-plugin consumer, splitting the current session runtime package into the
-selected plugins, dropping the `plect-` prefix from the session-runtime plugin
-executables when they move into `session/claude` and `session/codex`, moving
-`gh-guard` into the GitHub plugin, and adding a `docs/migrations/` entry for
-no-channel-server interactive Claude configurations.
+Implementation work includes defining the `[terminal]` task table and its
+all-or-nothing load validation, migrating shipped top-level `attach` and
+`capture` declarations into `[terminal]`, adding the terminal operation
+template helper to task hooks and channel argument rendering, keeping
+`interactive_endpoint` as the opaque operation binding, moving initial-prompt
+and terminal-submit composition into the agent runtime plugins, adding the
+provider-neutral conversation event vocabulary, moving Slack delivery off
+channel-server socket subscriptions, moving the channel-server socket protocol
+out of `contracts/` when it has no cross-plugin consumer, splitting the current
+session runtime package into the selected plugins, dropping the `plect-` prefix
+from the session-runtime plugin executables when they move into
+`session/claude` and `session/codex`, moving `gh-guard` into the GitHub plugin,
+and adding a `docs/migrations/` entry for no-channel-server interactive Claude
+configurations.
 
 This decision supersedes the plugin service lifecycle decision by carrying
 forward its service declaration and bus-supervision decisions while replacing
@@ -195,9 +215,9 @@ pull Plecture toward version solving before there is a proven registry problem.
 
 Workflow config can already connect a tmux task to an agent task by passing a
 provider-neutral output such as `session_name`, and task declarations already
-carry attach, capture, and healthcheck commands. That is enough for one local
-workflow overlay that edits the producer node, the consumer templates, and any
-agent-runtime submit/readiness config together.
+carry setup, cleanup, healthcheck, attach, and capture commands. That is enough
+for one local workflow overlay that edits the producer node, the consumer
+templates, and any agent-runtime submit/readiness config together.
 
 It is not enough for a reusable plugin split. The output name is a convention
 owned by the concrete task, not a declared core capability. A consumer plugin

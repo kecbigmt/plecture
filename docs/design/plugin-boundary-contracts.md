@@ -44,10 +44,11 @@ required executable adapter.
 
 The multiplexer seam is a core-owned terminal operation surface.
 
-A multiplexer task declares an `interactive_endpoint` output and the terminal
-operations that create or act on it. `interactive_endpoint` is an opaque string
-binding that identifies the live endpoint for plect. It is not a new top-level
-config kind, and it is not sufficient without the declared operations.
+A multiplexer task declares an `interactive_endpoint` output, universal
+lifecycle keys for creating and maintaining it, and terminal verbs that act on
+it. `interactive_endpoint` is an opaque string binding that identifies the live
+endpoint for plect. It is not a new top-level config kind, and it is not
+sufficient without the declared surface.
 
 An interactive endpoint represents a live text terminal attached to a session.
 It is not a tmux pane, a process id, a worktree, an agent runtime, or a chat
@@ -58,39 +59,56 @@ environment values supplied as operation context, as documented by the
 [Herdr socket API](https://herdr.dev/docs/socket-api/). Consumers treat both
 bindings as opaque strings.
 
-The terminal operation set is:
+Endpoint lifecycle and liveness use universal task keys:
 
-| Operation | Meaning |
+| Universal key | Terminal-surface role |
 |---|---|
-| `create` | Create the endpoint and return its `interactive_endpoint` binding |
+| `setup` | Creates the endpoint and returns the `interactive_endpoint` binding |
+| `cleanup` | Closes the endpoint and releases multiplexer-owned resources |
+| `healthcheck` | Reports whether the endpoint is live enough for delivery |
+
+`healthcheck` is not terminal-specific. A Claude task may use the same universal
+key for process-id self-healing. A multiplexer task's `healthcheck` is the
+terminal-surface instance of that universal key.
+
+Interactive terminal verbs live under the task's `[terminal]` table:
+
+| Terminal verb | Meaning |
+|---|---|
 | `attach` | Attach the user's terminal to the endpoint |
 | `capture` | Return the endpoint's current transcript |
 | `send_text` | Send literal text input to the endpoint |
 | `send_keys` | Send key-combo input to the endpoint |
-| `healthcheck` | Report whether the endpoint is live enough for delivery |
-| `cleanup` | Close the endpoint and release multiplexer-owned resources |
 
-The existing task-level `attach`, `capture`, and `healthcheck` declarations
-are members of this operation set. Existing task `setup` declares `create`, and
-existing task `cleanup` declares `cleanup`; they are not new parallel config
-keys. `send_text` and `send_keys` extend the same task-declared operation model
-to delivery while preserving the semantic difference between literal text and
-key-combo input.
+A task with a `[terminal]` table provides the terminal operation surface. The
+table must declare all four terminal verbs; a partial terminal surface is a load
+error.
 
-The required operations map to concrete multiplexers without leaking those
-tools into consumers:
+The word `terminal` names the config table, the `{{terminal "send_text"}}`
+template helper, and the Terminal Operation Surface prose contract.
 
-| Operation | tmux mapping | Herdr mapping |
+```toml
+[terminal]
+attach = "..."
+capture = "..."
+send_text = "..."
+send_keys = "..."
+```
+
+The required lifecycle keys and terminal verbs map to concrete multiplexers
+without leaking those tools into consumers:
+
+| Declaration | tmux mapping | Herdr mapping |
 |---|---|---|
-| `create` | create the tmux session | `workspace.create` and `pane.split` |
-| `attach` | attach to the tmux session | reattach to the Herdr session or pane |
-| `capture` | capture pane output | `pane.read` with `--source` and `--lines` |
-| `send_text` | `send-keys` with literal text | `pane.send_text` |
-| `send_keys` | `send-keys` with key tokens | `pane.send_keys` |
-| `healthcheck` | check the tmux session and pane | `agent.get` or pane existence |
+| `setup` | create the tmux session | `workspace.create` and `pane.split` |
 | `cleanup` | kill the tmux session or pane | `pane.close` |
+| `healthcheck` | check the tmux session and pane | `agent.get` or pane existence |
+| `[terminal].attach` | attach to the tmux session | reattach to the Herdr session or pane |
+| `[terminal].capture` | capture pane output | `pane.read` with `--source` and `--lines` |
+| `[terminal].send_text` | `send-keys` with literal text | `pane.send_text` |
+| `[terminal].send_keys` | `send-keys` with key tokens | `pane.send_keys` |
 
-Agent runtime plugins and channels call these operations through terminal
+Agent runtime plugins and channels call terminal verbs through terminal
 operation template injection. `{{terminal "send_text"}}`,
 `{{terminal "send_keys"}}`, `{{terminal "capture"}}`, and the other terminal
 operation templates resolve the session's selected multiplexer task operation
@@ -143,7 +161,7 @@ operation contract and the `interactive_endpoint` binding, not on the concrete
 multiplexer plugin.
 
 Richer multiplexers may expose optional capabilities outside the required
-operation set. Herdr exposes semantic agent status such as `working`,
+terminal surface. Herdr exposes semantic agent status such as `working`,
 `blocked`, `idle`, and `done`; readiness waits such as `agent.wait --until`;
 and event subscriptions such as `events.subscribe`. Plecture workflows may use
 those extension capabilities when a selected multiplexer declares them, such as
