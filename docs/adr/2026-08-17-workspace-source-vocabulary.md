@@ -109,6 +109,11 @@ Future executor work can add workspace representations that are not only local
 directories. Existing path contracts stay explicit because their names carry
 `_dir` or `_dir_path`.
 
+The migration cost is real: persisted state fields, a config key, and template
+variables move again after the workdir vocabulary migration. Folding that cost
+into this breaking change is cheaper than keeping a filesystem-specific concept
+name and paying another rename when non-directory workspaces arrive.
+
 ## Alternatives considered
 
 ### Keep `provider`

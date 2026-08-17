@@ -109,6 +109,10 @@ The implementation migration performs these moves in one breaking PR:
 - rename shipped plugin references and binaries that implement only the
   workspace source contract;
 - update docs and repository-adjacent wiki prose that describes the concept;
+- supersede `docs/migrations/workdir-vocabulary-migration.md` for this
+  breaking release with a new one-time procedure that accepts both worktree-era
+  and workdir-era names and writes only the workspace vocabulary, so operators
+  do not chain two state rewrites;
 - add a one-time migration procedure under `docs/migrations/` with a backup
   step.
 
@@ -132,4 +136,3 @@ The same evidence should confirm that workspace prose in core docs, code,
 tests, and shipped plugins uses the acquired-work-surface sense from this
 design. Any remaining workspace wording with runner, environment, or
 domain-bundle meaning must be renamed to that narrower concept.
-
