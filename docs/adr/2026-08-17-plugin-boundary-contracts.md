@@ -49,12 +49,13 @@ plugin's private package, executable, config shape, or provider-specific event
 schema.
 
 The multiplexer seam is a core-owned terminal operation surface. A multiplexer
-task declares an `interactive_endpoint` output and terminal operations that act
-on it: `attach`, `capture`, `send_input`, and `healthcheck`.
-`interactive_endpoint` is the binding those operations target; it is not a new
-top-level config kind. Agent runtime plugins and channels call the operations
-through plect's common surface, so they contain no tmux commands, no tmux output
-field knowledge, and no concrete multiplexer plugin references.
+task declares an opaque `interactive_endpoint` output and terminal operations
+that create or act on it: `create`, `attach`, `capture`, `send_text`,
+`send_keys`, `healthcheck`, and `cleanup`. `interactive_endpoint` is the
+binding those operations target; it is not a new top-level config kind. Agent
+runtime plugins and channels call the operations through plect's common
+surface, so they contain no tmux commands, no tmux output field knowledge, and
+no concrete multiplexer plugin references.
 
 Chat delivery and agent delivery rendezvous through provider-neutral
 conversation events on the Plecture event bus:
@@ -105,8 +106,8 @@ Plugin splitting remains possible without adding plugin dependency metadata,
 capability solving, or cross-plugin executable references.
 
 Core grows only where a contract is durable across concrete technologies:
-terminal operations, interactive endpoint bindings, and conversation events.
-Concrete multiplexer, agent, chat, and VCS behavior remains in plugins.
+terminal operations, opaque interactive endpoint bindings, and conversation
+events. Concrete multiplexer, agent, chat, and VCS behavior remains in plugins.
 
 The official catalog can offer smaller independently selectable packages. An
 operator can select a different multiplexer, choose Claude or Codex runtime
@@ -115,8 +116,8 @@ knowledge, and use the GitHub guard without installing it as session-runtime
 behavior.
 
 Implementation work includes defining the task-level terminal operation
-surface, keeping `interactive_endpoint` as the operation binding, adding the
-provider-neutral conversation event vocabulary, moving Slack delivery off
+surface, keeping `interactive_endpoint` as the opaque operation binding, adding
+the provider-neutral conversation event vocabulary, moving Slack delivery off
 channel-server socket subscriptions, moving the channel-server socket protocol
 out of `contracts/` when it has no cross-plugin consumer, splitting the current
 session runtime package into the selected plugins, and moving `gh-guard` into
@@ -162,6 +163,28 @@ tool-specific command knowledge. That recreates the dependency the split is
 meant to remove. The reusable seam is therefore the task-declared operation
 surface, with `interactive_endpoint` kept only as the binding those operations
 target.
+
+### Require Herdr's richer multiplexer API
+
+The terminal operation surface was checked against tmux and
+[Herdr](https://github.com/herdrdev/herdr), using Herdr's documented
+[socket API](https://herdr.dev/docs/socket-api/) as a real second
+implementation. The required contract maps cleanly to both: tmux identifies an
+endpoint by session name, while Herdr identifies one by pane id such as `w1:p1`
+and supplies `HERDR_SOCKET_PATH` and `HERDR_PANE_ID` as operation context; the
+binding is therefore an opaque string, never a tmux-shaped name.
+
+Herdr separates literal text input from key-combo input with `pane.send_text`
+and `pane.send_keys`; tmux implements both contract verbs with `send-keys`.
+Keeping both `send_text` and `send_keys` in the required contract preserves
+that semantic difference without requiring consumers to know which multiplexer
+is selected.
+
+Herdr also offers semantic agent status, `agent.wait --until`, and
+`events.subscribe`. Those are useful extension capabilities, and readiness
+polling such as an initial prompt may use them when declared. They are not part
+of the required surface because tmux can provide the portable terminal verbs
+without providing semantic agent lifecycle events.
 
 ### Keep Slack delivery on the channel-server socket protocol
 
