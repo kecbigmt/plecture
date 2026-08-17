@@ -29,7 +29,7 @@ available to outer cleanup, input and environment binding templates, and public
 output binding. Public output binding is a live projection, not a setup-time
 copy: reads render against the current inner output and local values.
 Direct inner-output bindings route mutable writes to that inner output;
-computed bindings are read-only.
+computed bindings are rendered strings and are read-only.
 
 ## Configuration Shape
 
@@ -128,6 +128,10 @@ A `[bind.outputs]` entry is a direct inner-output binding only when the whole
 template body is exactly one `.Inner.outputs.<key>` reference, apart from
 template delimiters and whitespace. Any literal text, function call, pipeline,
 multiple template action, or local reference makes the binding computed.
+Direct inner-output bindings project the inner output's native value without
+string rendering, so integer, boolean, object, and array outputs keep their
+schema type. Computed bindings render templates to strings, so their public
+schema type is `string`.
 Every public key named by `[bind.outputs]` must appear in the effective
 `outputs_schema`, and every public field is declared explicitly by the outer
 schema. A same-name re-export such as `pid = "{{.Inner.outputs.pid}}"` still
@@ -180,6 +184,12 @@ Loading nested task definitions fails when:
 - `[bind.outputs]` declares a public key missing from `outputs_schema`.
 - `[bind.outputs]` declares a computed template output mutable in
   `outputs_schema`.
+- `[bind.outputs]` declares a computed template output with a non-string
+  `outputs_schema` type.
+- `[bind.outputs]` declares a direct inner-output binding whose
+  `outputs_schema` type differs from the bound inner output's type.
+- `[bind.outputs]` declares a direct inner-output binding mutable in
+  `outputs_schema` when the bound inner output is not mutable.
 - `bind.inputs` omits an inner required input or binds a key rejected by a
   closed inner schema.
 - a `bind.env` key is not a valid process environment name.

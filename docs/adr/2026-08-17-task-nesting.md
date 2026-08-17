@@ -83,15 +83,18 @@ namespace and a task inside a specific enabled plugin.
 
 Core needs nested-task validation for unknown inner references, nesting cycles,
 scope conflicts, rejected outer behavior fields, explicit output binding,
-missing required machinery outputs, bound-input schema conflicts, repeated
-environment keys across layers, and invalid injected environment names.
+missing required machinery outputs, bound-input schema conflicts, direct-output
+schema compatibility, computed-output string typing, repeated environment keys
+across layers, and invalid injected environment names.
 
 Core needs lifecycle execution that stores outer setup locals privately while
 declaring only the output keys bound by the outer task. Output binding is a
-live projection rather than a setup-time copy. Downstream workflow nodes,
-channels, status, chain output mappings, and nested-task done_when output checks validate
-against the outer public contract, while chain judge ids resolve from the
-effective innermost done_when.
+live projection rather than a setup-time copy. Direct output bindings project
+the inner value without string rendering; computed output bindings render
+templates to strings. Downstream workflow nodes, channels, status, chain output
+mappings, and nested-task done_when output checks validate against the outer
+public contract, while chain judge ids resolve from the effective innermost
+done_when.
 
 Core needs task inspection output to show the nesting chain from the outermost
 task to the innermost plugin task, so an operator can audit provenance without
