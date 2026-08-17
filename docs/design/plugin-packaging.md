@@ -350,6 +350,10 @@ Plugin boundaries are governed by
 configuration references only executables declared by the same plugin. When a
 reusable runtime contract would cross a plugin boundary, the contract either
 belongs in core or the participants rendezvous through the event bus.
+Task customization by additive nesting is governed by
+[`task-composition.md`](task-composition.md); that design also specifies the
+catalog-qualified task reference form shared by composed tasks and workflow
+`uses`.
 
 ### Executable Build Model
 
