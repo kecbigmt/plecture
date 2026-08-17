@@ -113,10 +113,13 @@ TUIs without structured transport, such as Codex interactive.
 
 Moving `attach` and `capture` from top-level task keys into `[terminal]` is a
 breaking config change. The split implementation PR carries this change for
-the shipped tmux task; only shipped `tmux.toml` declares those keys today.
-Folding this shape into the already-open breaking window keeps the one-time
-migration machinery hot. Deferring would let the flat shape ossify before the
-terminal surface has a visible config boundary.
+the shipped tmux task and includes a `docs/migrations/` procedure for
+user-owned multiplexer tasks or local overlays that declare top-level `attach`
+or `capture`. It also updates `plect attach` and `plect capture` resolution to
+read those declarations from `[terminal]`. Folding this shape into the
+already-open breaking window keeps the one-time migration machinery hot.
+Deferring would let the flat shape ossify before the terminal surface has a
+visible config boundary.
 
 Chat delivery and agent delivery rendezvous through provider-neutral
 conversation events on the Plecture event bus:
@@ -178,18 +181,20 @@ behavior.
 
 Implementation work includes defining the `[terminal]` task table and its
 all-or-nothing load validation, migrating shipped top-level `attach` and
-`capture` declarations into `[terminal]`, adding the terminal operation
-template helper to task hooks and channel argument rendering, keeping
-`interactive_endpoint` as the opaque operation binding, moving initial-prompt
-and terminal-submit composition into the agent runtime plugins, adding the
-provider-neutral conversation event vocabulary, moving Slack delivery off
-channel-server socket subscriptions, moving the channel-server socket protocol
-out of `contracts/` when it has no cross-plugin consumer, splitting the current
-session runtime package into the selected plugins, dropping the `plect-` prefix
-from the session-runtime plugin executables when they move into
-`session/claude` and `session/codex`, moving `gh-guard` into the GitHub plugin,
-and adding a `docs/migrations/` entry for no-channel-server interactive Claude
-configurations.
+`capture` declarations into `[terminal]`, updating `plect attach` and
+`plect capture` to resolve `[terminal].attach` and `[terminal].capture`, adding
+a `docs/migrations/` entry for user-owned top-level `attach` and `capture`
+declarations, adding the terminal operation template helper to task hooks and
+channel argument rendering, keeping `interactive_endpoint` as the opaque
+operation binding, moving initial-prompt and terminal-submit composition into
+the agent runtime plugins, adding the provider-neutral conversation event
+vocabulary, moving Slack delivery off channel-server socket subscriptions,
+moving the channel-server socket protocol out of `contracts/` when it has no
+cross-plugin consumer, splitting the current session runtime package into the
+selected plugins, dropping the `plect-` prefix from the session-runtime plugin
+executables when they move into `session/claude` and `session/codex`, moving
+`gh-guard` into the GitHub plugin, and adding a `docs/migrations/` entry for
+no-channel-server interactive Claude configurations.
 
 This decision supersedes the plugin service lifecycle decision by carrying
 forward its service declaration and bus-supervision decisions while replacing
