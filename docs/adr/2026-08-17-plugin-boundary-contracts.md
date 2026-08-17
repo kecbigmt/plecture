@@ -60,15 +60,18 @@ existing `{{bin "..."}}` helper. `{{terminal "send_text"}}`,
 operation templates ask plect to resolve the session's selected multiplexer
 task operation into the concrete command line declared by that task. The helper
 is available to consumer task hooks and channel arguments; channel command
-fields stay static, and injected command lines ride in rendered arguments like
-the existing enqueue-wrapper pattern. Agent runtime plugins and channels
+fields stay static, and injected command lines ride in rendered arguments.
+Making the helper available in channel arguments deliberately extends the
+channel template function set beyond its existing event-serialization helpers
+while preserving the invariant that channel `command` is verbatim and event or
+input data can never choose the executable. Agent runtime plugins and channels
 therefore contain no tmux commands, no tmux output field knowledge, and no
 concrete multiplexer plugin references.
 
 Plecture adds no CLI commands for terminal operations. Consumers must be
 declared task hooks or event channels, which keeps pane input inside the
 session's declared workflow surface. Manual debugging continues to use the
-existing `plect attach` and `plect show --capture` commands.
+existing `plect attach` and `plect capture` commands.
 
 `create` and `cleanup` are the existing task `setup` and `cleanup` hooks viewed
 through this operation contract, not new parallel task fields. `attach`,
@@ -156,17 +159,17 @@ knowledge, and use the GitHub guard without installing it as session-runtime
 behavior.
 
 Implementation work includes defining the task-level terminal operation
-surface, adding the terminal operation template helper, keeping
-`interactive_endpoint` as the opaque operation binding, moving initial-prompt
-and terminal-submit composition into the agent runtime plugins, adding the
-provider-neutral conversation event vocabulary, moving Slack delivery off
-channel-server socket subscriptions, moving the channel-server socket protocol
-out of `contracts/` when it has no cross-plugin consumer, splitting the current
-session runtime package into the selected plugins, dropping the `plect-` prefix
-from the session-runtime plugin executables when they move into
-`session/claude` and `session/codex`, moving `gh-guard` into the GitHub plugin,
-and adding a `docs/migrations/` entry for no-channel-server interactive Claude
-configurations.
+surface, adding the terminal operation template helper to task hooks and
+channel argument rendering, keeping `interactive_endpoint` as the opaque
+operation binding, moving initial-prompt and terminal-submit composition into
+the agent runtime plugins, adding the provider-neutral conversation event
+vocabulary, moving Slack delivery off channel-server socket subscriptions,
+moving the channel-server socket protocol out of `contracts/` when it has no
+cross-plugin consumer, splitting the current session runtime package into the
+selected plugins, dropping the `plect-` prefix from the session-runtime plugin
+executables when they move into `session/claude` and `session/codex`, moving
+`gh-guard` into the GitHub plugin, and adding a `docs/migrations/` entry for
+no-channel-server interactive Claude configurations.
 
 This decision supersedes the plugin service lifecycle decision by carrying
 forward its service declaration and bus-supervision decisions while replacing

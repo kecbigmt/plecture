@@ -96,14 +96,16 @@ operation template injection. `{{terminal "send_text"}}`,
 operation templates resolve the session's selected multiplexer task operation
 into the concrete command line declared by that task. The helper is available
 to consumer task hooks and channel arguments, following the same literal-name
-template convention as `{{bin "..."}}`. Channels keep a static command and
-receive rendered terminal operation command lines through their arguments, so
-args-only channel rendering remains sufficient.
+template convention as `{{bin "..."}}`.
+
+Channel argument rendering includes the terminal operation helper for declared
+terminal operation consumers. Channels keep a static command and receive
+rendered terminal operation command lines through their arguments, so event data
+and channel input data can select argv values but cannot choose the executable.
 
 Plecture does not expose CLI commands for terminal operations. Terminal
 operation consumers are declared task hooks and event channels only. Manual
-debugging stays on the existing `plect attach` and `plect show --capture`
-commands.
+debugging stays on the existing `plect attach` and `plect capture` commands.
 
 Agent runtime plugins and channels do not invoke multiplexer commands, inspect
 multiplexer-specific output fields, or name a concrete multiplexer plugin.
