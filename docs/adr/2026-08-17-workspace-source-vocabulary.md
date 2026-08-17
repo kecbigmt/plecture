@@ -133,6 +133,13 @@ tools.
 noun and the `-er` shape that reads like a daemon or vendor role. It is a
 partial repair that leaves the disputed vocabulary in the core model.
 
+### Workspace definition
+
+`workspace definition` pairs neatly with `resource definition`, but it implies
+a static declaration of a workspace rather than an active lifecycle contract.
+The concept does not merely define a place; it runs setup, cleanup,
+subscription, and optional resolution.
+
 ### Provider/resource concept-split mains
 
 Naming the workspace-acquisition executable main after the old provider side of
@@ -159,4 +166,3 @@ when it mixes unrelated contract work.
 Reusing workspace without a pinned sense would revive the ambiguity from older
 runner and OKF prose. It loses because the concept needs to mean the acquired
 session work surface specifically, with directory paths named by `_dir` fields.
-
