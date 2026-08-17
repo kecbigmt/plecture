@@ -128,6 +128,56 @@ Implementation touches multiple packages and shipped plugin config. It must
 update docs, help text, tests, schema-facing JSON names, and migration
 instructions in the same PR that changes code.
 
+The implementation migration shape is:
+
+- rename `providers/` directories to `workspaces/` in global config and plugin
+  `config/` trees;
+- rename workflow `provider` fields to `workspace_provider`;
+- rename setup output `workdir` to `workspace_dir`;
+- rename path-bearing state/config/template fields from `workdir` to
+  `workspace_dir` or `workspace_dir_path` according to the field's existing
+  shape;
+- rename Go identifiers, JSON fields, command output labels, help text, and
+  error strings that expose the concept;
+- update contracts prose that uses `provider` for the workspace provider
+  contract;
+- audit contracts prose that uses `provider` for external integrations and keep
+  only provider-neutral phrasing;
+- audit workspace prose that predates this definition and either align it to
+  the acquired-work-surface sense or rename it to the narrower concept it means;
+- audit `scripts/check-provider-boundary.sh`, its selftest, and the
+  `provider-boundary` CI job; under this vocabulary they keep their names
+  because they guard against specific external integration leakage;
+- rename shipped plugin references and binaries that implement only the
+  workspace provider contract to concrete realization names such as
+  `github-worktree`;
+- update docs and repository-adjacent wiki prose that describes the concept;
+- supersede `docs/migrations/workdir-vocabulary-migration.md` for this breaking
+  release with a new one-time procedure that accepts both worktree-era and
+  workdir-era names and writes only the workspace vocabulary, so operators do
+  not chain two state rewrites;
+- add a one-time migration procedure under `docs/migrations/` with a backup
+  step.
+
+The migration does not add dual-read compatibility. A post-migration plect
+binary reads the new vocabulary only.
+
+The implementation PR carries behavior tests for the config loader, workflow
+loader, workflow display, lifecycle setup/cleanup, subscription, shipped plugin
+config, and legacy migration path.
+
+One-time survey evidence belongs in the PR body. It should include exact
+commands used to confirm that no core/user-facing bare `provider` vocabulary
+names the workspace provider contract. Historical ADR context, migration
+instructions, provider-neutral boundary tooling, and generic
+external-integration prose may keep the word when it does not define a config
+kind, API field, command, or Go identifier.
+
+The same evidence should confirm that workspace prose in core docs, code,
+tests, and shipped plugins uses the acquired-work-surface sense from the design.
+Any remaining workspace wording with runner, environment, or domain-bundle
+meaning must be renamed to that narrower concept.
+
 Future executor work can add workspace representations that are not only local
 directories. Existing path contracts stay explicit because their names carry
 `_dir` or `_dir_path`.
