@@ -531,11 +531,11 @@ reuse the old catalog's cache namespace. The lock coordinate is the resolved
 commit SHA for Git catalogs and the plugin content hash for locked path
 catalogs. Editable path catalogs are mounted directly and are not cached.
 
-The existing `plugin_dirs` setting becomes an implementation detail for mounted
-resolved directories. During migration, users can move from hand-authored
-`plugin_dirs` to catalog registrations, plugin selections, and `plect.lock`.
-Because Plecture is pre-1.0, the migration is one-time and documented rather
-than a compatibility shim.
+`plugin_dirs` is the base-layer mechanism itself: catalog resolution's step 9
+above mounts each resolved plugin directory into that same list, alongside any
+hand-authored entries. The two kinds are not equivalent — only a
+catalog-resolved entry carries lock verification and the `plect_min_version`
+check; a hand-authored entry carries no catalog identity and skips both.
 
 Reference declarations are global-only in the first implementation. Ancestor
 overlays can still customize tasks and workflows under the existing loader
@@ -841,8 +841,7 @@ Compatibility checks happen in this order:
 5. Config load and existing schema/contract validation.
 
 There is no silent degradation. A plugin cannot say "try this weaker behavior
-on old core." If a breaking change is needed while Plecture is pre-1.0, it ships
-with a one-time migration or documented procedure that includes a backup step.
+on old core."
 
 Compatibility metadata decisions:
 
@@ -852,53 +851,6 @@ Compatibility metadata decisions:
   demonstrate the need.
 - Executable adapter protocol versions remain adapter-specific documentation
   unless core later defines a generic adapter protocol.
-
-## Migration sketch
-
-Today's shipped binaries and hand-authored global TOML map onto this model
-without changing workspace-provider, resource, task, workflow, or channel contracts.
-[`docs/migrating-to-plugins.md`](../migrating-to-plugins.md) is the
-operator-facing walkthrough of the one-time migration procedure sketched
-below: inventory, isolated verification, cutover, divergence handling, and
-rollback.
-
-Current shape:
-
-- Binaries live under `plugins/`.
-- Some shipped workspace provider TOML already lives with a plugin.
-- Production-like usage still requires hand-authored global TOML for workspace
-  providers, resources, tasks, workflows, channels, and templates.
-- `~/.config/plect/config.toml` lists `plugin_dirs`.
-
-Target shape:
-
-- Each distributable catalog carries `catalog.toml`.
-- Each distributable plugin directory listed by the catalog carries
-  `plugin.toml`.
-- Shipped config stays in the existing subdirectories.
-- Users register catalogs and enable plugins by catalog-qualified path identity.
-- `plect.lock` records the exact mounted plugin content.
-- Core resolves those references to read-only directories and feeds them into
-  the existing loader as base plugin layers.
-- Residual user config contains only local choices: allowlists, selected
-  channels, workflow inputs, team overlays, and template customizations.
-
-One-time migration procedure:
-
-1. Back up `~/.config/plect/config.toml` and sibling config directories.
-2. Group existing global files by ownership: workspace-provider/resource/channel/task pack,
-   workflow pack, and team-owned template or overlay.
-3. Move reusable groups into a plugin's `config/` directory and add
-   `plugin.toml` at the plugin root.
-4. Create a `catalog.toml` next to those plugin directories and list every
-   plugin path.
-5. Replace `plugin_dirs` with catalog registrations and plugin selections.
-6. Run `plect catalog add <alias> <source> [--revision <rev>]` for each
-   catalog.
-7. Run `plect plugin add <alias>/<path>` for each selected plugin to write
-   `plect.lock`.
-8. Run the normal per-module tests for any plugin source that contains code.
-9. Keep only residual local choices in global config.
 
 ## Walkthrough examples
 
