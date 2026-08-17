@@ -1,5 +1,5 @@
 // Package dispatch is the session dispatcher: one per active session, hosted in
-// the resident `plect bus serve` process. It reads a session's event log from a
+// the resident `plect serve` process. It reads a session's event log from a
 // durable read cursor (so it survives session down/up) and fans each event out
 // to the workflow's [[event.channel]] workers whose include filter matches,
 // delivering via app/internal/channel and recording a plect.channel.error when a

@@ -20,7 +20,7 @@ import (
 // LoadPlugins resolves every plugin enabled across registered catalogs,
 // purely from local state — the same resolution resolveDeclaredPlugins
 // applies inside Load(). It is kept as an independent function rather than
-// a shared helper because its caller (the bus service supervisor, polling
+// a shared helper because its caller (the plugin service supervisor, polling
 // for plugin content changes) only needs the mounted plugin list and
 // lockfile, not a full Config with workspaces/resources/tasks/workflows/
 // channels loaded on every poll tick. A missing catalogs.toml or no

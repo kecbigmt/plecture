@@ -1,4 +1,4 @@
-package busservice
+package pluginservice
 
 import (
 	"path/filepath"

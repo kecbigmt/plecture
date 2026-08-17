@@ -1,4 +1,4 @@
-// Package eventbus is the live pub/sub fan-out server behind `plect bus serve`.
+// Package eventbus is the live pub/sub fan-out server behind `plect serve`.
 //
 // The durable per-session log (app/internal/eventlog) is the source of truth;
 // this server is a thin HTTP/SSE face over it:

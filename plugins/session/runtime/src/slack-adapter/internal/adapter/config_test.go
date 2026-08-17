@@ -91,7 +91,7 @@ func TestLoadConfig_ConfigFileTakesPriorityOverEnvVars(t *testing.T) {
 	cfg := LoadConfig()
 
 	// config.toml is the file a user already fully controls; an env var
-	// (typically supplied for bus-supervised startup) only fills a field
+	// (typically supplied for resident-supervised startup) only fills a field
 	// config.toml left empty, so a value explicitly set in the file is
 	// never silently overridden by whatever happens to be in the process
 	// environment.

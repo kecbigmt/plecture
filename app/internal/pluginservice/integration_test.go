@@ -1,4 +1,4 @@
-package busservice
+package pluginservice
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 // end-to-end proof for this PR's slice of the plugin service lifecycle
 // ADR's acceptance criteria: a plugin enabled through the normal catalog
 // registration path, declaring a [[services]] entry, actually gets started
-// by a Supervisor built the same way `plect bus serve` builds one — over
+// by a Supervisor built the same way `plect serve` builds one — over
 // config.LoadPlugins, not a hand-built PluginSource. It stands in for the
 // full "session-runtime + github enabled" scenario the ADR describes,
 // which needs the plugin regrouping this issue's follow-up PR performs;

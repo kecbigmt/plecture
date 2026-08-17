@@ -1,4 +1,4 @@
-package busservice
+package pluginservice
 
 import (
 	"context"
@@ -13,8 +13,8 @@ import (
 
 // PluginSource resolves the currently mounted plugins and lockfile, purely
 // from local state — config.LoadPlugins in production. The supervisor calls
-// it on every reconcile pass so a `plect plugin update` while the bus is
-// running is picked up without restarting the bus itself.
+// it on every reconcile pass so a `plect plugin update` while the resident
+// process is running is picked up without restarting the process itself.
 type PluginSource func() ([]plugins.Mounted, *plugins.Lockfile, error)
 
 // Supervisor starts every plugin-declared [[services]] entry when Run
@@ -91,12 +91,12 @@ func (sup *Supervisor) Run(ctx context.Context) {
 func (sup *Supervisor) reconcile(ctx context.Context, running map[string]*runningService) {
 	mounted, lock, err := sup.source()
 	if err != nil {
-		sup.logger.Error("busservice: failed to load plugins; leaving currently running services as-is", "error", err)
+		sup.logger.Error("pluginservice: failed to load plugins; leaving currently running services as-is", "error", err)
 		return
 	}
 	decls, err := BuildDeclarations(mounted, lock)
 	if err != nil {
-		sup.logger.Error("busservice: invalid service declarations; leaving currently running services as-is", "error", err)
+		sup.logger.Error("pluginservice: invalid service declarations; leaving currently running services as-is", "error", err)
 		return
 	}
 
@@ -147,7 +147,7 @@ func (sup *Supervisor) start(ctx context.Context, decl Declaration) *runningServ
 func (sup *Supervisor) runOne(ctx context.Context, decl Declaration) {
 	defer func() {
 		if r := recover(); r != nil {
-			sup.logger.Error("busservice: recovered panic in service goroutine", "service", decl.ID, "panic", r)
+			sup.logger.Error("pluginservice: recovered panic in service goroutine", "service", decl.ID, "panic", r)
 			sup.Status.Update(decl.ID, func(st *Status) {
 				st.Running = false
 				st.LastError = fmt.Sprintf("panic: %v", r)
@@ -164,8 +164,8 @@ func (sup *Supervisor) runOne(ctx context.Context, decl Declaration) {
 	if missing := missingRequiredEnv(decl.RequiredEnv); len(missing) > 0 {
 		// Naturally inert, not a failure: e.g. the Slack service without
 		// SLACK_BOT_TOKEN configured. Checked once per (re)start attempt —
-		// required env is expected to come from the bus process's own
-		// environment, which does not change during the bus's lifetime, so
+		// required env is expected to come from the resident process's own
+		// environment, which does not change during the process's lifetime, so
 		// there is nothing to gain by rechecking every poll tick.
 		sup.Status.Update(decl.ID, func(st *Status) {
 			st.Running = false

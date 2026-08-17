@@ -149,7 +149,7 @@ Plugin metadata fields:
 | `plect_min_version` | yes | Minimum plect version required to load the plugin. |
 | `description` | no | Human-readable summary for list/show commands. |
 | `executables` | no | Relative paths for scripts or binaries shipped by the plugin. |
-| `services` | no | Daemon declarations supervised by `plect bus serve`. |
+| `services` | no | Daemon declarations supervised by `plect serve`. |
 
 The catalog-relative path listed in `catalog.toml` is the plugin identity. Full
 identity is `<catalog-alias>/<relative-path>`, such as `official/github` or
@@ -165,7 +165,7 @@ Executable entry fields:
 | `path` | yes | Relative executable path. In the primary script case, this points at a file already present in the source tree. |
 | `build` | no | Command run at add/update time to produce a compiled executable from plugin source. |
 
-Service entries declare plugin-owned daemons supervised by `plect bus serve`:
+Service entries declare plugin-owned daemons supervised by `plect serve`:
 
 ```toml
 [[services]]
@@ -206,15 +206,16 @@ Service entry fields:
 | `restart` | no | Restart policy. `on-failure` restarts crashed children with bounded backoff; `never` leaves the service stopped after exit. |
 | `health` | no | Health policy. `type = "process"` treats a running child as healthy. Future health kinds must be workspace-provider-agnostic. |
 
-The bus supervisor starts services for enabled plugins when `plect bus serve`
-starts, stops them when the bus stops, and restarts service processes according
-to their restart policy. Service status is bus-global and records service id,
+The plugin service supervisor starts services for enabled plugins when
+`plect serve` starts, stops them when the resident process stops, and restarts
+service processes according to their restart policy. Service status is
+resident-global and records service id,
 running state, pid, restart count, last exit, last error, last health result,
 plugin id, and the lock coordinate or content hash that produced the running
 process.
 
-Service logs are attached to the bus process log with the service id. Service
-logs do not write into per-session event logs.
+Service logs are attached to the resident process log with the service id.
+Service logs do not write into per-session event logs.
 
 Updating a service-owning plugin restarts its services.
 

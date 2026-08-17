@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// Client talks to a plect bus server over its HTTP/SSE API. The transport is set
+// Client talks to a plect server over its HTTP/SSE API. The transport is set
 // by BaseURL + HTTP: NewUDSClient dials a Unix domain socket; tests inject an
 // httptest base URL. The bus speaks session_name only — provider-specific
 // details ride opaquely in Event.Metadata.

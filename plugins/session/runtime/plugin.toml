@@ -44,12 +44,12 @@ build = "go -C src/slack-adapter build -o ../../bin/slack-adapter ./cmd/slack-ad
 # channel-server today runs one instance per Claude Code session, launched
 # by Claude itself through MCP configuration with a session-specific
 # CHANNEL_SOCKET_PATH (see the claude task's setup script) — not a single
-# bus-global daemon. Declaring it as a service still satisfies the adoption
+# resident-global daemon. Declaring it as a service still satisfies the adoption
 # boundary this ADR names ("enabling a plugin should make its daemons known
-# to Plecture"), but required_env intentionally names a variable the bus
-# process's own environment never sets: the bus-supervised instance stays
+# to Plecture"), but required_env intentionally names a variable the
+# resident process's own environment never sets: the declared instance stays
 # inert by design until a future change moves the per-session lifecycle
-# under the bus, per docs/adr/2026-08-16-plugin-service-lifecycle.md's
+# under the resident process, per docs/adr/2026-08-16-plugin-service-lifecycle.md's
 # Consequences section.
 [[services]]
 name = "channel-server"
@@ -63,9 +63,9 @@ name = "slack-adapter"
 executable = "slack-adapter"
 # main.go exits(1) at startup if any of these three is empty (bot token,
 # app token, and channel id — see cmd/slack-adapter/main.go); all three
-# must gate the bus-supervised service, or a bus with tokens set but no
-# channel id would crash-loop instead of staying inert like an unconfigured
-# service should.
+# must gate the resident-supervised service, or a process with tokens set
+# but no channel id would crash-loop instead of staying inert like an
+# unconfigured service should.
 required_env = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL_ID"]
 restart = "on-failure"
 health = { type = "process" }

@@ -87,18 +87,18 @@ If a workflow uses `config/channels/codex_exec.toml`, put this plugin's
 `scripts/` on `PATH` (or symlink `plect-codex-exec-enqueue` onto it) — see
 the note on channel `command` above.
 
-## Bus-supervised services
+## Resident-supervised Services
 
 `channel-server` and `slack-adapter` are declared as `[[services]]` in
-`plugin.toml`, supervised by `plect bus serve` (start, crash-restart with
-backoff, stop with the bus). `slack-adapter` needs `SLACK_BOT_TOKEN`,
-`SLACK_APP_TOKEN`, and `SLACK_CHANNEL_ID` in the bus process's own
+`plugin.toml`, supervised by `plect serve` (start, crash-restart with
+backoff, stop with the resident process). `slack-adapter` needs `SLACK_BOT_TOKEN`,
+`SLACK_APP_TOKEN`, and `SLACK_CHANNEL_ID` in the resident process's own
 environment before it starts — without all three it stays inert rather
 than crash-looping (its `cmd/slack-adapter/main.go` exits at startup if
 any is unset). `channel-server`'s
 service declaration stays inert today by design: real instances are
 per-session, launched by Claude Code itself via MCP configuration with a
-session-specific `CHANNEL_SOCKET_PATH` the bus process never has — see
+session-specific `CHANNEL_SOCKET_PATH` the resident process never has — see
 `plugin.toml`'s comment and the ADR's Consequences section.
 
 ## Not included
