@@ -28,6 +28,13 @@ belongs to resource definitions under `resources/`.
 
 The canonical prose term is **workspace provider**.
 
+Naming is layered:
+
+- concept names describe the durable core responsibility;
+- config directories use short plural nouns;
+- shipped plugin executables use the plugin's concrete realization of the core
+  capability.
+
 The code-facing vocabulary is:
 
 | Surface | Name |
@@ -52,9 +59,10 @@ Config directories use short plural nouns. Resource definitions live in
 concept name appears in prose, Go types, API fields, and command nouns.
 
 Executable names are not a mechanical copy of concept names. Single-purpose
-plugin executables use the short plugin capability noun and do not use the
-host-binary `plect-` prefix. The GitHub executable name is `github-workspace`.
-A multipurpose executable may expose a `workspace-provider` subcommand when the
+plugin executables use the plugin's concrete realization and do not use the
+host-binary `plect-` prefix. The GitHub workspace-provider executable name is
+`github-worktree` because GitHub realizes workspaces as git worktrees. A
+multipurpose executable may expose a `workspace-provider` subcommand when the
 top-level binary name covers broader plugin behavior.
 
 `provider` remains available as generic English for an external integration
@@ -110,8 +118,8 @@ The implementation migration performs these moves in one breaking PR:
   `provider-boundary` CI job; under this vocabulary they keep their names
   because they guard against specific external integration leakage;
 - rename shipped plugin references and binaries that implement only the
-  workspace provider contract to short capability names such as
-  `github-workspace`;
+  workspace provider contract to concrete realization names such as
+  `github-worktree`;
 - update docs and repository-adjacent wiki prose that describes the concept;
 - supersede `docs/migrations/workdir-vocabulary-migration.md` for this
   breaking release with a new one-time procedure that accepts both worktree-era

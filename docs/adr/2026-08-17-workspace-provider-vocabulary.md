@@ -38,11 +38,12 @@ The vocabulary appears in these surfaces:
   workdir vocabulary migration, and repository-adjacent wiki prose that explains
   this concept through workspace language.
 
-The binary-naming discussion exposed the issue. A binary that implements a
-single plugin capability should not use an `-er` noun that reads like a
-resident daemon, but that rule applies to executable names, not to concept
-names. The bare noun `provider` was ambiguous; the compound `workspace
-provider` is specific to this contract.
+The binary-naming discussion exposed the issue. Core concept names, config
+directory names, and shipped plugin executable names live at different layers.
+A binary that implements a single plugin capability should not use an `-er`
+noun that reads like a resident daemon, but that rule applies to executable
+names, not to concept names. The bare noun `provider` was ambiguous; the
+compound `workspace provider` is specific to this contract.
 
 The same discussion ratified that plugin executables do not use the `plect-`
 prefix. Plugin ids already qualify executable references and service logs, so
@@ -57,7 +58,15 @@ migration disambiguates the legacy sense.
 
 ## Decision
 
-The concept is named **workspace provider**.
+This decision sets a three-layer naming principle:
+
+- the core concept is named by its responsibility;
+- config directories use short plural nouns that name the declaration kind's
+  slot in the config tree;
+- shipped plugin executables are named for the plugin's concrete realization of
+  a core capability, not by mechanically copying the core concept name.
+
+Under that principle, the core concept is named **workspace provider**.
 
 A workspace provider is a trusted configuration declaration that may resolve a
 resource id to a session id, acquires the session workspace, releases what it
@@ -78,7 +87,8 @@ The code-facing vocabulary for the breaking implementation is:
   `LoadWorkspaceProviders`;
 - workflow detail JSON: `workspace_provider` and `workspace_provider_info`;
 - CLI noun, when a direct inspection command exists: `workspace-provider`;
-- shipped single-purpose executable names: `<plugin>-workspace`;
+- shipped single-purpose executable names: plugin-specific concrete capability
+  names such as `github-worktree`;
 - setup output path key: `workspace_dir`;
 - path-valued state or root fields: `workspace_dir_path`,
   `workspace_dirs_root`, and matching Go/template names.
@@ -88,15 +98,20 @@ observes a resource's state. A workspace provider turns a session resource into
 a workspace lifecycle.
 
 This decision removes bare `provider` as the name of the workspace lifecycle
-contract. It does not ban `provider` as generic English for an external
-integration when the prose is not naming a core config kind, API field, command,
-or Go identifier. The provider-boundary checker keeps that term because it
-guards against core naming a specific external integration provider.
+contract, not the provider noun itself. `Provide` names the responsibility's
+center of gravity: the declaration makes a workspace available, and release and
+subscription are obligations of the same providing party. It does not ban
+`provider` as generic English for an external integration when the prose is not
+naming a core config kind, API field, command, or Go identifier. The
+provider-boundary checker keeps that term because it guards against core naming
+a specific external integration provider.
 
-The concept name does not mechanically become the executable name. Shipped
-single-purpose plugin executables use a short capability noun, so the GitHub
-workspace-provider executable is `github-workspace`, not
-`github-workspace-provider`. A multipurpose executable may expose a
+The concept name does not mechanically become the executable name. The GitHub
+workspace provider's concrete workspace realization is a git worktree, so its
+single-purpose executable is `github-worktree`, not `github-workspace-provider`
+or `github-workspace`. The same layer rule keeps GitHub resource-observation
+executables on concrete resource names such as issue and pull request, not the
+abstract `resource definition` concept. A multipurpose executable may expose a
 `workspace-provider` subcommand when the top-level binary name covers broader
 plugin behavior.
 
@@ -126,8 +141,8 @@ name and paying another rename when non-directory workspaces arrive.
 
 Using `workspace provider` keeps an `-er` noun in the concept layer. That is
 acceptable because the compound names the full lifecycle responsibility, while
-the executable naming rule keeps shipped binaries out of the resident-daemon
-shape.
+the executable naming layer uses plugin-specific concrete realizations and
+keeps shipped binaries out of the resident-daemon shape.
 
 ## Alternatives considered
 
@@ -194,23 +209,27 @@ directory for workspace provider declarations is `workspaces/`.
 Naming every single-purpose plugin executable after its full concept would
 produce `github-workspace-provider`. That keeps the `-er` binary shape that the
 binary-naming convention reserves away from non-resident executables. It loses
-because executable names need to identify the plugin capability without
-repeating the full concept noun.
+because executable names need to identify the plugin's concrete realization
+rather than repeat the abstract core concept. The shortened abstract form
+`github-workspace` has the same problem without the `-er` suffix: GitHub does
+not implement workspace in general, it implements the workspace capability with
+git worktrees.
 
 ### Provider/resource concept-split mains
 
 Naming the workspace executable main after the old provider side of the
 provider/resource concept split would make binary names mirror stale
-vocabulary. The resource-definition main may keep the resource concept name;
-the rejection applies to carrying bare `provider` forward for workspace
-lifecycle executables.
+vocabulary. Resource-observation executables should also follow the concrete
+realization layer and use the plugin's resource shape, not a generic
+`resource-definition` binary name. The rejection applies to carrying bare
+`provider` forward for workspace lifecycle executables.
 
 ### Retain `plect-` for plugin executables
 
-Keeping names such as `plect-github-workspace` would preserve the old
-host-binary prefix inside plugin packages. It loses because plugin executable
-references are already qualified by plugin id, and `plect-` is reserved for
-host-installed binaries.
+Keeping names such as `plect-github-worktree` would preserve the old host-binary
+prefix inside plugin packages. It loses because plugin executable references
+are already qualified by plugin id, and `plect-` is reserved for host-installed
+binaries.
 
 ### CLI as the executable noun
 
