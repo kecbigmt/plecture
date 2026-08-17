@@ -14,3 +14,5 @@ agreement alone does not fix a config shape.
 
 Prefer concrete examples over prose restatement. A design document conveys the
 design core, not an exhaustive specification; long prose bases rot.
+An example shows the mechanism or shape and elides incidental details whose
+change would not change the design.

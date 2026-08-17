@@ -57,6 +57,10 @@ members, and a partial table is a load error. Each member is a
 Go-template-rendered shell command string. Single-line and multi-line TOML
 strings are valid; arrays are invalid.
 
+`attach` and `capture` receive no terminal operand. `send_text` and `send_keys`
+receive the literal text or key token as their first shell positional
+parameter.
+
 Terminal commands are raw verbs. `send_text` sends literal text, `send_keys`
 sends key-combo input, and `capture` returns terminal text for the consumer to
 interpret. Agent-runtime plugins compose those verbs into submit/readiness
@@ -65,29 +69,14 @@ behavior.
 ### tmux Provider
 
 ```toml
-scope = "run"
-
-setup = '''
-tmux has-session -t {{.SessionName}} 2>/dev/null \
-  || tmux new-session -d -s {{.SessionName}} -c {{.WorkspaceDirPath}}
-echo '{"interactive_endpoint":"{{.SessionName}}"}'
-'''
-
-cleanup = "tmux kill-session -t {{.Self.interactive_endpoint}} 2>/dev/null || true"
-healthcheck = "tmux has-session -t {{.Self.interactive_endpoint}}"
+# The task also declares setup, cleanup, healthcheck, and an
+# interactive_endpoint output.
 
 [terminal]
-attach = "tmux attach -t {{.Self.interactive_endpoint}}"
-capture = "tmux capture-pane -p -t {{.Self.interactive_endpoint}}"
+attach = "..."
+capture = "..."
 send_text = "tmux send-keys -t {{.Self.interactive_endpoint}} -- \"$1\""
-send_keys = "tmux send-keys -t {{.Self.interactive_endpoint}} \"$1\""
-
-[outputs_schema]
-type = "object"
-required = ["interactive_endpoint"]
-
-[outputs_schema.properties]
-interactive_endpoint = { type = "string" }
+send_keys = "..."
 ```
 
 The `interactive_endpoint` value is opaque to consumers. The tmux task uses a
@@ -96,9 +85,9 @@ other implementation-owned binding.
 
 ### Codex Terminal Submit
 
-`session/codex` owns Codex TUI submission because the burst split,
-prompt-readiness predicate, non-breaking-space normalization, retry schedule,
-and fail-loud behavior describe the Codex TUI contract.
+`session/codex` owns Codex TUI submission because the burst split, readiness
+predicate, retry policy, and fail-loud behavior describe the Codex TUI
+contract.
 
 ```toml
 type = "exec"
@@ -106,34 +95,16 @@ command = "bash"
 args = [
   "-c",
   '''
-set -u
 send_text_cmd="$1"
 send_keys_cmd="$2"
 capture_cmd="$3"
 message="$4"
 
-prompt_is_ready() {
-  input=$(sh -c "$capture_cmd" terminal-capture | grep "$CODEX_PROMPT_PATTERN" | tail -n 1)
-  input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
-  case "$input" in
-    ''|"$CODEX_EMPTY_PROMPT") return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
+# session/codex owns the burst split, readiness predicate, retry policy, and
+# fail-loud behavior around these raw terminal calls.
 sh -c "$send_text_cmd" terminal-send-text "$message"
-sleep 1
 sh -c "$send_keys_cmd" terminal-send-keys Enter
-
-for delay in 2 4 8 16; do
-  prompt_is_ready && exit 0
-  sleep "$delay"
-  sh -c "$send_keys_cmd" terminal-send-keys Enter
-done
-
-prompt_is_ready && exit 0
-echo "terminal_submit: instruction still unsubmitted after retries" >&2
-exit 1
+sh -c "$capture_cmd" terminal-capture
 ''',
   "terminal_submit",
   "{{terminal \"send_text\"}}",
@@ -146,6 +117,8 @@ timeout = "45s"
 
 The channel command is static. Rendered `{{terminal "..."}}` values and event
 data ride in `args`, so event data can choose operands but not the executable.
+The readiness predicate and retry details live in the shipped `session/codex`
+config.
 
 Claude Code delivery uses channel-server as its structured delivery path. A
 no-channel-server interactive Claude configuration is outside the supported
@@ -155,29 +128,13 @@ structured transport.
 ### Herdr Provider
 
 ```toml
-scope = "run"
-
-setup = '''
-workspace=$(herdr workspace.create --cwd {{.WorkspaceDirPath}})
-pane=$(herdr pane.split --workspace "$workspace")
-echo "{\"interactive_endpoint\":\"$pane\"}"
-'''
-
-cleanup = "herdr pane.close {{.Self.interactive_endpoint}}"
-healthcheck = "herdr agent.get {{.Self.interactive_endpoint}} >/dev/null"
+# The task returns an opaque Herdr pane id as interactive_endpoint.
 
 [terminal]
-attach = "herdr reattach {{.Self.interactive_endpoint}}"
-capture = "herdr pane.read {{.Self.interactive_endpoint}} --source screen --lines 200"
+attach = "..."
+capture = "..."
 send_text = "herdr pane.send_text {{.Self.interactive_endpoint}} \"$1\""
-send_keys = "herdr pane.send_keys {{.Self.interactive_endpoint}} \"$1\""
-
-[outputs_schema]
-type = "object"
-required = ["interactive_endpoint"]
-
-[outputs_schema.properties]
-interactive_endpoint = { type = "string" }
+send_keys = "..."
 ```
 
 Herdr pane ids such as `w1:p1` fit the same opaque binding. Herdr's
