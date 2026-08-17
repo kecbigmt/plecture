@@ -79,7 +79,7 @@ send_text = "tmux send-keys -t {{.Self.interactive_endpoint}} -- \"$1\""
 send_keys = "..."
 ```
 
-The `interactive_endpoint` value is opaque to consumers. The tmux task uses a
+The `interactive_endpoint` value is an opaque string. The tmux task uses a
 session name; a different multiplexer may use a pane id, socket path token, or
 other implementation-owned binding.
 
