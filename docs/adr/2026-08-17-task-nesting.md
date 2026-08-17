@@ -16,7 +16,7 @@ Plecture needs a three-rung customization ladder:
 
 1. parameterization through author-declared task inputs;
 2. task nesting for additive lifecycle, locals, env, chain,
-   input-forwarding, and output-wiring work;
+   input binding, and output-binding work;
 3. whole-file fork as the explicit last resort.
 
 Workflow definitions are user-owned exemplars, so user default values belong in
@@ -38,8 +38,8 @@ N-layer LIFO stack:
 outermost setup -> ... -> innermost setup -> innermost cleanup -> ... -> outermost cleanup
 ```
 
-The outer task may inject environment variables into the inner task's process
-executions and may forward its own validated inputs into the inner task's
+The outer task may bind environment variables into the inner task's process
+executions and may bind its own validated inputs into the inner task's
 validated input object. The outer task's input schema is coherent and
 self-owned; it is not an edit to the inner task's schema.
 
@@ -48,9 +48,9 @@ alter the inner task's behavior fields. The inner task has no reference to the
 outer task and no virtual dispatch point back into it.
 
 The nested task's public outputs are only what the outer task explicitly
-wires. Inner public outputs are not automatically promoted. This follows the
+binds. Inner public outputs are not automatically promoted. This follows the
 Rust newtype shape: the outer owner gets a reviewable boundary and chooses what
-to re-expose, while upgrades to the inner definition cannot silently widen the
+to re-export, while upgrades to the inner definition cannot silently widen the
 outer contract. Go-style embedding is rejected here because automatic promotion
 is ergonomics-first and makes inner upgrades change the nested task's public
 surface without an edit to the outer file. Kotlin delegation and TypeScript
@@ -58,9 +58,10 @@ intersection types carry the same lesson: extra members are acceptable when the
 outer contract states them, but hidden widening is not.
 
 The outer task may use locals as private intermediate values from its setup.
-Locals can feed forwarded inner inputs, outer cleanup, or explicit public
-output wiring, but they are not outputs unless the outer task publishes them.
-The explicit public output wiring table is named `[publish]`.
+Locals can feed bound inner inputs, outer cleanup, or explicit public output
+binding, but they are not outputs unless the outer task binds them into the
+public contract. Boundary wiring uses one namespace: `[bind.inputs]`,
+`[bind.env]`, and `[bind.outputs]`.
 
 The reference field is named `inner`. It favors the lifecycle model over a
 pattern name: the reader can see that the referenced task is inside the outer
@@ -81,14 +82,14 @@ Core needs task-reference resolution that can address both the merged task
 namespace and a task inside a specific enabled plugin.
 
 Core needs nested-task validation for unknown inner references, nesting cycles,
-scope conflicts, rejected outer behavior fields, explicit output wiring, missing
-required machinery outputs, forwarded-input schema conflicts, repeated
+scope conflicts, rejected outer behavior fields, explicit output binding,
+missing required machinery outputs, bound-input schema conflicts, repeated
 environment keys across layers, and invalid injected environment names.
 
 Core needs lifecycle execution that stores outer setup locals privately while
-publishing only the output keys wired by the outer task. Output wiring is a live
-projection rather than a setup-time copy. Downstream workflow nodes, channels,
-status, chain output bindings, and nested-task done_when output checks validate
+declaring only the output keys bound by the outer task. Output binding is a
+live projection rather than a setup-time copy. Downstream workflow nodes,
+channels, status, chain output mappings, and nested-task done_when output checks validate
 against the outer public contract, while chain judge ids resolve from the
 effective innermost done_when.
 
@@ -98,8 +99,8 @@ reconstructing it from resolved config files.
 
 The production fitness target is a zero-copy path for all seven
 plugin-counterpart shadows listed in the design note. Task nesting covers
-additive lifecycle, locals, forwarding, path injection, chain attachment, and
-explicit output wiring.
+additive lifecycle, locals, input binding, path injection, chain attachment, and
+explicit output binding.
 Agent-process environment for terminal-launched runtimes, worker state
 location, queue message formatting, workspace layout, branch naming, cleanup
 defaults, and review-state observation remain author-declared parameterization
@@ -145,7 +146,7 @@ freely when each layer has an auditable boundary.
 
 ### Innermost environment wins
 
-Letting the innermost `forward.env` value win on duplicate keys would keep
+Letting the innermost `bind.env` value win on duplicate keys would keep
 execution moving, but it hides which layer changed the process environment.
 Plecture prefers fail-loud configuration errors for ambiguous ownership, so a
 repeated environment key anywhere in the nesting chain is a load error.
@@ -161,9 +162,30 @@ private locals.
 ### Output wiring table named `[outputs]`
 
 Naming the explicit output wiring table `[outputs]` is rejected because task
-definitions already use `[[outputs]]` for dynamic output scripts. Reusing the
-same TOML key for a table and an array of tables would make the implementation
-depend on shape sniffing and make bracket typos select another feature.
+definitions already use `[[outputs]]` for dynamic output scripts, whose Go type
+is `DynamicOutput`. Reusing the same TOML key for a table and an array of tables
+would make the implementation depend on shape sniffing and make bracket typos
+select another feature. Adopting `[outputs]` for public output binding would
+force a `[[dynamic_outputs]]` migration of shipped task configuration.
+
+### Boundary namespace named `[forward.*]`
+
+`[forward.inputs]` reads well for inner inputs, but forwarding is a relay word.
+It strains for environment values created by the outer layer and for public
+outputs flowing from inner outputs or locals to downstream consumers.
+
+### Boundary namespace named `[wire.*]`
+
+`[wire.*]` is rejected because Plecture configuration as a whole is a
+declarative wiring language. Naming one construct with the language's general
+character word would discriminate too little.
+
+### Same-name `expose` plus `[publish]`
+
+A same-name re-export shorthand plus a separate output table would create two
+vocabularies for one public boundary. Once every public field is declared in
+the outer output schema, the shorthand saves only one binding line per key while
+splitting the reviewable contract across two places.
 
 ### Alternative reference names
 

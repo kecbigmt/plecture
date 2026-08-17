@@ -6,7 +6,7 @@ This design is governed by
 ## Design Core
 
 Task nesting lets a user-owned or configuration-only plugin task add
-lifecycle work, input forwarding, chains, and process environment to a plugin
+lifecycle work, input binding, chains, and process environment to a plugin
 task without copying the plugin task file.
 
 A nested task has a chain of task definitions. The outermost task is the id
@@ -20,21 +20,21 @@ The lifecycle is an N-layer LIFO stack:
 outermost setup -> ... -> innermost setup -> innermost cleanup -> ... -> outermost cleanup
 ```
 
-The nested task exposes only the public outputs the outer task explicitly
-wires. Inner public outputs are not passed through automatically. The outer
-task may re-export inner outputs, rename inner outputs, or publish values
-computed by its own setup, but downstream consumers bind only to the outer
-task's declared public contract. Outer setup emits locals: always-private
-intermediate values available to outer cleanup, forwarding templates, and
-public output wiring. Public output wiring is a live projection, not a
-setup-time copy: reads render against the current inner output and local values.
-Direct inner-output publications route mutable writes to that inner output;
-computed publications are read-only.
+The nested task declares only the public outputs the outer task explicitly
+binds. Inner public outputs are not passed through automatically. The outer
+task may re-export inner outputs, rename inner outputs, or bind values computed
+by its own setup, but downstream consumers read only the outer task's declared
+public contract. Outer setup emits locals: always-private intermediate values
+available to outer cleanup, input and environment binding templates, and public
+output binding. Public output binding is a live projection, not a setup-time
+copy: reads render against the current inner output and local values.
+Direct inner-output bindings route mutable writes to that inner output;
+computed bindings are read-only.
 
 ## Configuration Shape
 
 An outer task is a normal `tasks/<id>.toml` file with an `inner` reference and
-optional forwarding tables:
+optional binding tables:
 
 ```toml
 inner = "official/claude/claude"
@@ -44,19 +44,20 @@ jq -nc --arg guard_dir "{{.Nodes.gh_guard.outputs.dir}}" '{guard_dir:$guard_dir}
 '''
 cleanup = "true"
 
-expose = ["pid", "socket_path", "mcp_config"]
-
-[publish]
+[bind.outputs]
+pid = "{{.Inner.outputs.pid}}"
+socket_path = "{{.Inner.outputs.socket_path}}"
+mcp_config = "{{.Inner.outputs.mcp_config}}"
 agent_session = "{{.Inner.outputs.session_id}}"
 guard_dir = "{{.Locals.guard_dir}}"
 
-[forward.inputs]
+[bind.inputs]
 tmux_session = "{{.Inputs.tmux_session}}"
 model = "{{get .Inputs \"model\"}}"
 effort = "{{get .Inputs \"effort\"}}"
 path_prepend = "{{.Locals.guard_dir}}"
 
-[forward.env]
+[bind.env]
 PLECT_TEAM_CONTEXT = "{{.SessionName}}"
 
 [inputs_schema]
@@ -82,16 +83,19 @@ type = "object"
 required = ["pid", "socket_path", "mcp_config", "agent_session", "guard_dir"]
 
 [outputs_schema.properties]
+pid = { type = "integer", mutable = true }
+socket_path = { type = "string", mutable = true }
+mcp_config = { type = "string" }
 agent_session = { type = "string", mutable = true }
 guard_dir = { type = "string" }
 ```
 
 The outer task's `inputs_schema` is its own schema. It is not an edit to the
 inner task's schema. Workflow node inputs validate against the outer schema,
-then `forward.inputs` renders the inner input object and validates it against
+then `bind.inputs` renders the inner input object and validates it against
 the inner task's schema.
 
-The `forward.env` table injects environment variables into process executions
+The `bind.env` table injects environment variables into process executions
 owned by the inner task: setup, cleanup, healthcheck, movement signal, dynamic
 output scripts, and terminal operation commands. It does not affect the outer
 task's hooks, any sibling task, or commands the inner task sends into an
@@ -105,29 +109,29 @@ Task nesting fields:
 | `inner` | yes | string | Task reference for the nested inner task. |
 | `setup` | no | string | Outer setup hook. Empty means `{}` locals. |
 | `cleanup` | no | string | Outer cleanup hook. Empty marks the outer layer cleaned. |
-| `expose` | no | string array | Same-name re-export shorthand for inner public outputs. |
-| `[forward.inputs]` | no | string table | Templates that produce the inner task's inputs. |
-| `[forward.env]` | no | string table | Templates that produce the inner task's process environment additions. |
-| `[publish]` | no | string table | Templates that wire the nested task's public outputs from inner outputs or locals. Renaming is explicit here. |
+| `[bind.inputs]` | no | string table | Templates that produce the inner task's inputs. |
+| `[bind.env]` | no | string table | Templates that produce the inner task's process environment additions. |
+| `[bind.outputs]` | no | string table | Templates that bind the nested task's public outputs from inner outputs or locals. Re-exports and renames are explicit here. |
 | `[inputs_schema]` / `inputs_schema_file` | no | JSON Schema | The outer task's workflow-facing inputs contract. |
 | `[locals_schema]` / `locals_schema_file` | no | JSON Schema | The private locals contract for outer setup emissions. |
-| `[outputs_schema]` / `outputs_schema_file` | no | JSON Schema | The nested task's explicit public output contract. Same-name `expose` entries import their inner schema. |
-| `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the effective innermost `done_when` and output bindings validated against the outer public output contract. |
+| `[outputs_schema]` / `outputs_schema_file` | no | JSON Schema | The nested task's explicit public output contract. Every public output is declared here. |
+| `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the effective innermost `done_when` and chain output mappings validated against the outer public output contract. |
 
 The nested task's effective scope is the innermost task's scope. If an outer
 task declares `scope`, it must match the scope of its next inner task, and the
 rule repeats down the nesting chain.
 The inner task's `.Self` sees only the inner task's own outputs. Outer cleanup,
-forwarding templates, and `[publish]` wiring read outer setup values from
-`.Locals`; `[publish]` wiring also reads inner setup values from
+binding templates, and `[bind.outputs]` wiring read outer setup values from
+`.Locals`; `[bind.outputs]` wiring also reads inner setup values from
 `.Inner.outputs`.
-A `[publish]` entry is a direct inner-output publication only when the whole
+A `[bind.outputs]` entry is a direct inner-output binding only when the whole
 template body is exactly one `.Inner.outputs.<key>` reference, apart from
 template delimiters and whitespace. Any literal text, function call, pipeline,
-multiple template action, or local reference makes the publication computed.
-Every public key named by `expose` or `[publish]` must appear in the effective
-`outputs_schema`; `expose` imports the matching inner schema property, while
-`[publish]` keys are declared by the outer schema.
+multiple template action, or local reference makes the binding computed.
+Every public key named by `[bind.outputs]` must appear in the effective
+`outputs_schema`, and every public field is declared explicitly by the outer
+schema. A same-name re-export such as `pid = "{{.Inner.outputs.pid}}"` still
+needs a local schema property.
 
 Inspection output such as `plect task show` prints the nesting chain from the
 outermost task to the innermost plugin task.
@@ -171,30 +175,31 @@ Loading nested task definitions fails when:
 - the outer task declares inner-owned behavior fields: `primary`, `execution`,
   `idle_after`, `healthcheck`, `movement_signal`, `requires`, `[terminal]`,
   `[done_when]`, or `[[outputs]]`.
-- `expose` names an output not declared by the inner task.
-- `[publish]` references a source other than an inner public output or a local.
-- the same public output key is declared by both `expose` and `[publish]`.
-- `[publish]` declares a computed template output mutable in `outputs_schema`.
-- `forward.inputs` omits an inner required input or forwards a key rejected by a
+- `[bind.outputs]` references a source other than an inner public output or a
+  local.
+- `[bind.outputs]` declares a public key missing from `outputs_schema`.
+- `[bind.outputs]` declares a computed template output mutable in
+  `outputs_schema`.
+- `bind.inputs` omits an inner required input or binds a key rejected by a
   closed inner schema.
-- a `forward.env` key is not a valid process environment name.
-- a `forward.env` key repeats a key from any other layer in the nesting chain.
+- a `bind.env` key is not a valid process environment name.
+- a `bind.env` key repeats a key from any other layer in the nesting chain.
 - a chain declared on the outer task references a judge id not declared by the
   effective innermost `done_when`, or a public output not declared by the outer
   public contract.
-- a chain declared on the outer task references a local not wired into the outer
+- a chain declared on the outer task references a local not bound into the outer
   public contract.
 - the inner task declares `[terminal]` and the outer public contract does not
-  expose `interactive_endpoint`.
-- a nested task `done_when` check or chain references an output not exposed by
+  bind `interactive_endpoint`.
+- a nested task `done_when` check or chain references an output not bound by
   the outer public contract.
 
 Running a nested task fails when:
 
 - the outer setup exits non-zero or emits locals rejected by the locals schema;
-- a forwarding template fails to render;
-- rendered forwarded inputs fail the inner task's schema value validation;
-- a public output wiring template fails to render or emits a value rejected by
+- a binding template fails to render;
+- rendered bound inputs fail the inner task's schema value validation;
+- a public output binding template fails to render or emits a value rejected by
   the public outputs schema;
 - any inner task process fails under the normal inner task rules.
 
@@ -207,7 +212,7 @@ Task nesting is the middle rung:
 
 1. Parameterization: a plugin task author declares a supported input.
 2. Task nesting: an outer task adds lifecycle, locals, env, chains, input
-   forwarding, and explicit output wiring.
+   binding, and explicit output binding.
 3. Fork: a user copies the whole task because the required behavior is not an
    author-declared variation point and cannot be added outside the task.
 
@@ -222,18 +227,18 @@ hides a shadow behind a keyhole and breaks final-by-default ownership.
 
 The evaluation set contains seven production shadows with plugin counterparts.
 Runtime-argument wiring for a retiring third-party service is outside this
-mapping. Explicit outer-output wiring applies to task definitions; workspace,
+mapping. Explicit outer-output binding applies to task definitions; workspace,
 resource, and channel shadows resolve through plugin parameterization or
 adoption in their owning config kinds.
 
 | Shadow | Durable intent | Rung | Zero-copy path |
 |---|---|---:|---|
-| `tasks/claude.toml` | Different runtime inputs, extra agent-process env, path injection, chains. | 1 + 2 | Rung 2 forwards `tmux_session`/model/effort/path inputs and declares chains on the outer id. Rung 1 in the `claude` plugin provides an author-declared `launch_env` input whose exports are included in the terminal launch line. Workflow-owned defaults stay in the workflow node. |
-| `tasks/codex.toml` | Different runtime inputs, extra agent-process env, path injection, chains. | 1 + 2 | Rung 2 forwards the plugin task inputs and declares chains. Rung 1 in the `codex` plugin provides an author-declared `launch_env` input whose exports are included in the Codex TUI launch line. |
-| `tasks/codex_exec.toml` | Different runtime inputs, extra worker-process env, path injection, worker state location. | 1 + 2 | Rung 2 forwards runtime/path inputs and declares chains. Rung 1 in the `codex` plugin provides author-declared `launch_env` and `state_root` inputs for the worker's exported environment and state directory. |
-| `tasks/work.toml` | Different instruction input, explicit output boundary, and local chain attachment. | 2 | The outer task forwards `instruction` into `official/github/work`, re-exports the inner outputs it chooses to publish, wires any local computed output through `[publish]`, and attaches chains to the outer id. Workflow-owned defaults stay in the workflow node. |
-| `channels/codex_exec.toml` | Queue timeout and message formatting around the shipped enqueue executable. | 1 | The channel adopts the plugin's shipped enqueue executable. Rung 1 in the `codex` plugin exposes `enqueue_timeout` and `message_envelope`; `message_envelope` is a formatting template over the existing event fields, not executable substitution. |
-| `workspaces/github.toml` | Workspace layout root, branch naming, cleanup policy, and local-only status outputs. | 1 | Rung 1 in the `github` plugin exposes `workspace_layout_root`, `issue_branch_template`, `tagged_branch_suffix`, and `delete_branch_default`. The plugin already owns `title`; the local-only `checks_status` output is dropped from workspace setup because resource observation owns CI status. |
+| `tasks/claude.toml` | Different runtime inputs, extra agent-process env, path injection, chains. | 1 + 2 | Rung 2 binds `tmux_session`/model/effort/path inputs and declares chains on the outer id. Rung 1 in the `claude` plugin provides an author-declared `launch_env` input whose exports are included in the terminal launch line. Workflow-owned defaults stay in the workflow node. |
+| `tasks/codex.toml` | Different runtime inputs, extra agent-process env, path injection, chains. | 1 + 2 | Rung 2 binds the plugin task inputs and declares chains. Rung 1 in the `codex` plugin provides an author-declared `launch_env` input whose exports are included in the Codex TUI launch line. |
+| `tasks/codex_exec.toml` | Different runtime inputs, extra worker-process env, path injection, worker state location. | 1 + 2 | Rung 2 binds runtime/path inputs and declares chains. Rung 1 in the `codex` plugin provides author-declared `launch_env` and `state_root` inputs for the worker's exported environment and state directory. |
+| `tasks/work.toml` | Different instruction input, explicit output boundary, and local chain attachment. | 2 | The outer task binds `instruction` into `official/github/work`, re-exports chosen inner outputs through `[bind.outputs]`, binds any local computed public output through `[bind.outputs]`, and attaches chains to the outer id. Workflow-owned defaults stay in the workflow node. |
+| `channels/codex_exec.toml` | Queue timeout and message formatting around the shipped enqueue executable. | 1 | The channel adopts the plugin's shipped enqueue executable. Rung 1 in the `codex` plugin declares `enqueue_timeout` and `message_envelope`; `message_envelope` is a formatting template over the existing event fields, not executable substitution. |
+| `workspaces/github.toml` | Workspace layout root, branch naming, cleanup policy, and local-only status outputs. | 1 | Rung 1 in the `github` plugin declares `workspace_layout_root`, `issue_branch_template`, `tagged_branch_suffix`, and `delete_branch_default`. The plugin already owns `title`; the local-only `checks_status` output is dropped from workspace setup because resource observation owns CI status. |
 | `resources/github.toml` | Script-internal observation drift with the same public state keys, plus review-state observation needed outside workspace setup. | As-is + 1 | Adopt the plugin resource implementation as-is for the existing state keys. Rung 1 in the `github` plugin adds the concrete `review_decision` observed state key; no open-ended resource output hook is needed. |
 
 The mapping leaves no listed plugin-counterpart shadow on rung 3. Configs with
@@ -249,19 +254,20 @@ A team-local Claude runtime customization can stay small:
 inner = "official/claude/claude"
 setup = "jq -nc --arg guard_dir '{{.Nodes.gh_guard.outputs.dir}}' '{guard_dir:$guard_dir}'"
 
-expose = ["pid", "socket_path", "mcp_config"]
-
-[publish]
+[bind.outputs]
+pid = "{{.Inner.outputs.pid}}"
+socket_path = "{{.Inner.outputs.socket_path}}"
+mcp_config = "{{.Inner.outputs.mcp_config}}"
 agent_session = "{{.Inner.outputs.session_id}}"
 guard_dir = "{{.Locals.guard_dir}}"
 
-[forward.inputs]
+[bind.inputs]
 tmux_session = "{{.Inputs.tmux_session}}"
 model = "{{get .Inputs \"model\"}}"
 effort = "{{get .Inputs \"effort\"}}"
 path_prepend = "{{.Locals.guard_dir}}"
 
-[forward.env]
+[bind.env]
 PLECT_TEAM_CONTEXT = "{{.SessionName}}"
 
 [inputs_schema]
@@ -287,12 +293,15 @@ type = "object"
 required = ["pid", "socket_path", "mcp_config", "agent_session", "guard_dir"]
 
 [outputs_schema.properties]
+pid = { type = "integer", mutable = true }
+socket_path = { type = "string", mutable = true }
+mcp_config = { type = "string" }
 agent_session = { type = "string", mutable = true }
 guard_dir = { type = "string" }
 ```
 
 The same pattern covers task-shaped shadows whose differences are input values,
-chain declarations, explicit output publication, or a single command path
+chain declarations, explicit output binding, or a single command path
 expressed as an environment/path input. Agent-process environment for
 terminal-launched runtimes belongs to author-declared launch inputs on the
 runtime plugin. Workspace layout belongs to the workspace provider or workflow

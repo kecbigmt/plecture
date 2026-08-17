@@ -13,8 +13,8 @@ configuration section: required keys, all-or-nothing groups, and types. Prose
 agreement alone does not fix a config shape.
 
 Plecture configuration is a declarative wiring language. Its constructs
-express structure, binding, and wiring: schemas, references, forwarding,
-outputs tables, and nesting. Computation belongs in explicit hooks and core;
+express structure, binding, and wiring: schemas, references, binding tables,
+output contracts, and nesting. Computation belongs in explicit hooks and core;
 the existing template conditionals are the baseline. New control-flow
 constructs, loops, user-defined functions, or other config-language constructs
 require an ADR with precedent, observed need, a worked example, and validation
