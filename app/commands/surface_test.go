@@ -2,7 +2,7 @@ package commands
 
 import (
 	"bytes"
-	"strings"
+	"regexp"
 	"testing"
 )
 
@@ -27,10 +27,10 @@ func TestResidentDaemonCommandIsServe(t *testing.T) {
 		t.Fatalf("Help() error = %v", err)
 	}
 	help := out.String()
-	if !strings.Contains(help, "serve") {
+	if !regexp.MustCompile(`(?m)^\s+serve\s+Run the resident daemon$`).MatchString(help) {
 		t.Fatalf("top-level help does not list serve:\n%s", help)
 	}
-	if strings.Contains(help, "bus") {
+	if regexp.MustCompile(`(?m)^\s+bus\s+`).MatchString(help) {
 		t.Fatalf("top-level help still exposes bus vocabulary:\n%s", help)
 	}
 }

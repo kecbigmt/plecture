@@ -20,7 +20,7 @@ type Config struct {
 	// Authorization: Bearer header or the login cookie (defense in depth for
 	// exposing the control plane over a private network/VPN). Empty = network trust.
 	AuthToken string `toml:"auth_token"`
-	// BusSocket is the plect server's Unix socket. The live timeline opens its
+	// BusSocket is the event bus API's Unix socket. The live timeline opens its
 	// SSE stream over this socket and relays frames to the browser (which can
 	// neither dial a UDS nor hold the bus token). Empty falls back to the
 	// PLECT_BUS_SOCKET env var, then $XDG_RUNTIME_DIR/plect/bus.sock.

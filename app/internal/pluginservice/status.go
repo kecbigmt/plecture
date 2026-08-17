@@ -29,9 +29,8 @@ type Status struct {
 // StatusRegistry is an in-memory, thread-safe home for every declared
 // service's Status, owned by one resident process. It has no consumer yet beyond
 // the Supervisor that maintains it and this package's own tests; a
-// cross-process view (a `plect serve status` command or an HTTP endpoint) is
-// deferred until something needs one, per the repository's YAGNI rule —
-// nothing here blocks adding that later.
+// cross-process view is deferred until something needs one, per the
+// repository's YAGNI rule — nothing here blocks adding that later.
 type StatusRegistry struct {
 	mu       sync.Mutex
 	statuses map[string]Status

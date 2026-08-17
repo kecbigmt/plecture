@@ -14,10 +14,10 @@ import (
 	"time"
 )
 
-// Client talks to a plect server over its HTTP/SSE API. The transport is set
-// by BaseURL + HTTP: NewUDSClient dials a Unix domain socket; tests inject an
-// httptest base URL. The bus speaks session_name only — provider-specific
-// details ride opaquely in Event.Metadata.
+// Client talks to the plect event bus API over HTTP/SSE. The transport is
+// set by BaseURL + HTTP: NewUDSClient dials a Unix domain socket; tests
+// inject an httptest base URL. The bus speaks session_name only; provider-
+// specific details ride opaquely in Event.Metadata.
 type Client struct {
 	BaseURL string // e.g. "http://unix" (UDS) or an httptest URL
 	Token   string // bearer; empty for same-user UDS
