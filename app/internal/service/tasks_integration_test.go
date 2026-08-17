@@ -871,6 +871,8 @@ func TestIntegration_CaptureWithoutDeclarationFails(t *testing.T) {
 // the pre-[terminal] split's ErrAmbiguousCapture can no longer arise, since
 // capture is now always declared alongside attach/send_text/send_keys on the
 // same task, and a second [terminal]-declaring node is already rejected here.
+// The plan compiles as part of Create itself (session-scoped setup needs
+// the full plan), so the rejection surfaces there rather than at Up.
 func TestIntegration_MultipleTerminalDeclarationsRejectedAtPlanCompile(t *testing.T) {
 	workspaceDirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
@@ -887,10 +889,7 @@ func TestIntegration_MultipleTerminalDeclarationsRejectedAtPlanCompile(t *testin
 
 	url := "https://github.com/testowner/testrepo/issues/704"
 
-	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	_, err := Up(cfg, store, UpParams{Identifier: url})
+	_, err := Create(cfg, store, CreateParams{URL: url})
 	if err == nil {
 		t.Fatal("expected plan compile to reject a second [terminal]-declaring node")
 	}
