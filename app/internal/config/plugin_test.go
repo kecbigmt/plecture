@@ -31,8 +31,8 @@ plugins = ["okf"]
 schema_version = 1
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "okf", "config", "providers", "okf.toml"), `
-setup = "echo '{\"workdir\":\"/tmp/x\"}'"
+	writeFile(t, filepath.Join(catalogDir, "okf", "config", "workspaces", "okf.toml"), `
+setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
 `)
 
 	writeCatalogsToml(t, tmpHome, `
@@ -52,12 +52,12 @@ plugins = ["okf"]
 		t.Fatalf("PluginDirs = %+v, want the resolved plugin dir", cfg.PluginDirs)
 	}
 
-	providers, err := cfg.LoadProviders()
+	workspaceProviders, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		t.Fatalf("LoadProviders: unexpected error: %v", err)
+		t.Fatalf("LoadWorkspaceProviders: unexpected error: %v", err)
 	}
-	if _, ok := providers["okf"]; !ok {
-		t.Fatalf("expected okf provider from the enabled plugin, got %+v", providers)
+	if _, ok := workspaceProviders["okf"]; !ok {
+		t.Fatalf("expected okf workspace provider from the enabled plugin, got %+v", workspaceProviders)
 	}
 }
 

@@ -45,7 +45,7 @@ func TestBuildChannelEnvironmentExecutor_NilWhenEnvironmentNotProduced(t *testin
 	}{
 		{"missing @environment key", map[string]*contract.TaskState{}},
 		{"@environment failed", map[string]*contract.TaskState{
-			contract.EnvironmentPseudoNodeID: {Status: contract.TaskStatusFailed, Outputs: map[string]any{"workdir": "/stale"}},
+			contract.EnvironmentPseudoNodeID: {Status: contract.TaskStatusFailed, Outputs: map[string]any{"workspace_dir": "/stale"}},
 		}},
 	}
 	for _, tc := range cases {
@@ -68,7 +68,7 @@ func TestBuildChannelEnvironmentExecutor_NonNilWhenProduced(t *testing.T) {
 	cfg := &config.Config{BaseDir: baseDir}
 	wf := config.WorkflowFile{ID: "wf", Environment: "docker"}
 	s := &domain.Session{Tasks: map[string]*contract.TaskState{
-		contract.EnvironmentPseudoNodeID: {Status: contract.TaskStatusProduced, Outputs: map[string]any{"workdir": "/env/wd"}},
+		contract.EnvironmentPseudoNodeID: {Status: contract.TaskStatusProduced, Outputs: map[string]any{"workspace_dir": "/env/wd"}},
 	}}
 	ex, err := buildChannelEnvironmentExecutor(cfg, wf, s)
 	if err != nil {

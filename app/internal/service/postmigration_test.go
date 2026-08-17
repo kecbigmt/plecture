@@ -13,20 +13,20 @@ import (
 // resource id and the create-time alias, with no legacy provider-shaped
 // identity keys at all.
 const postMigrationStateJSON = `{
-  "version": 6,
+  "version": 7,
   "sessions": {
     "acme/widgets-1+claude": {
       "session_name": "acme/widgets-1+claude",
       "resource_id": "https://example.test/acme/widgets/items/1",
       "alias": "https://example.test/acme/widgets/items/1",
       "branch": "item/1+claude",
-      "workdir_path": "/tmp/workdirs/acme-widgets-1-claude",
+      "workspace_dir_path": "/tmp/workdirs/acme-widgets-1-claude",
       "workflow": "coding",
       "tasks": {
         "@workflow": {
           "scope": "session",
           "status": "produced",
-          "outputs": {"workdir": "/tmp/workdirs/acme-widgets-1-claude"}
+          "outputs": {"workspace_dir": "/tmp/workdirs/acme-widgets-1-claude"}
         }
       },
       "created_at": "2024-01-01T00:00:00Z",
@@ -36,7 +36,7 @@ const postMigrationStateJSON = `{
       "session_name": "standalone",
       "resource_id": "standalone",
       "alias": "standalone",
-      "workdir_path": "/tmp/workdirs/standalone",
+      "workspace_dir_path": "/tmp/workdirs/standalone",
       "created_at": "2024-01-01T00:00:00Z",
       "updated_at": "2024-01-01T00:00:00Z"
     }
@@ -72,8 +72,8 @@ func TestPostMigrationState_LoadsIdentityFields(t *testing.T) {
 	if s.Branch != "item/1+claude" {
 		t.Errorf("Branch = %q", s.Branch)
 	}
-	if s.WorkdirPath != "/tmp/workdirs/acme-widgets-1-claude" {
-		t.Errorf("WorkdirPath = %q", s.WorkdirPath)
+	if s.WorkspaceDirPath != "/tmp/workdirs/acme-widgets-1-claude" {
+		t.Errorf("WorkspaceDirPath = %q", s.WorkspaceDirPath)
 	}
 }
 
@@ -118,18 +118,19 @@ func TestPostMigrationState_UnknownIdentifier(t *testing.T) {
 	}
 }
 
-// TestPostMigrationState_WorkdirFromSession pins that the working directory
-// lookup reads the session's recorded workdir, with no resource-shape
+// TestPostMigrationState_WorkspaceDirFromSession pins that the working directory
+// lookup reads the session's recorded workspace directory, with no
+// resource-shape
 // derivation involved.
-func TestPostMigrationState_WorkdirFromSession(t *testing.T) {
+func TestPostMigrationState_WorkspaceDirFromSession(t *testing.T) {
 	store := writePostMigrationState(t)
 
-	got, err := Workdir(nil, store, "acme/widgets-1+claude")
+	got, err := WorkspaceDir(nil, store, "acme/widgets-1+claude")
 	if err != nil {
-		t.Fatalf("Workdir: %v", err)
+		t.Fatalf("WorkspaceDir: %v", err)
 	}
 	if got != "/tmp/workdirs/acme-widgets-1-claude" {
-		t.Errorf("Workdir = %q", got)
+		t.Errorf("WorkspaceDir = %q", got)
 	}
 }
 
@@ -142,7 +143,7 @@ func TestPostMigrationState_ResolverDispatchOverPostMigrationState(t *testing.T)
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "state.json")
 	migrated := `{
-  "version": 6,
+  "version": 7,
   "sessions": {
     "acme/widgets-42+gh": {
       "session_name": "acme/widgets-42+gh",
@@ -150,12 +151,12 @@ func TestPostMigrationState_ResolverDispatchOverPostMigrationState(t *testing.T)
       "alias": "https://github.com/acme/widgets/issues/42",
       "workflow": "gh",
       "branch": "issue/42+gh",
-      "workdir_path": "/tmp/workdirs/issue-42-gh",
+      "workspace_dir_path": "/tmp/workdirs/issue-42-gh",
       "tasks": {
         "@workflow": {
           "scope": "session",
           "status": "produced",
-          "outputs": {"workdir": "/tmp/workdirs/issue-42-gh"}
+          "outputs": {"workspace_dir": "/tmp/workdirs/issue-42-gh"}
         }
       },
       "created_at": "2024-01-01T00:00:00Z",
@@ -171,7 +172,7 @@ func TestPostMigrationState_ResolverDispatchOverPostMigrationState(t *testing.T)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n"+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", "setup = \"echo '{\\\"workspace_dir\\\":\\\"/tmp/x\\\"}'\"\n"+githubResolver)
 
 	disp, matched, err := dispatchResource(cfg, "", "https://github.com/acme/widgets/issues/42")
 	if err != nil || !matched {

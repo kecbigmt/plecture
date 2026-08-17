@@ -38,10 +38,10 @@ func channelInputs(s *domain.Session, ch config.EventChannel) (map[string]any, e
 		envOutputs = st.Outputs
 	}
 	return task.RenderInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
-		Name:        s.Name,
-		ResourceID:  s.ResourceID,
-		WorkdirPath: s.WorkdirPath,
-		Branch:      s.Branch,
-		Inputs:      s.Inputs,
+		Name:             s.Name,
+		ResourceID:       s.ResourceID,
+		WorkspaceDirPath: s.WorkspaceDirPath,
+		Branch:           s.Branch,
+		Inputs:           s.Inputs,
 	}, envOutputs)
 }

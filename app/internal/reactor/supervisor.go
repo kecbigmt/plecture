@@ -146,7 +146,7 @@ func resolveTickConfig(cfg *config.Config, s *domain.Session) config.TickConfig 
 	if s.Workflow == "" {
 		return config.TickConfig{}
 	}
-	workflows, err := cfg.LoadWorkflows(s.WorkdirPath)
+	workflows, err := cfg.LoadWorkflows(s.WorkspaceDirPath)
 	if err != nil {
 		return config.TickConfig{}
 	}
@@ -187,7 +187,7 @@ func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReac
 	var tc config.TickConfig
 	hc := config.DefaultHealthcheckConfig()
 	if s.Workflow != "" {
-		workflows, err := cfg.LoadWorkflows(s.WorkdirPath)
+		workflows, err := cfg.LoadWorkflows(s.WorkspaceDirPath)
 		if err != nil {
 			sup.logger.Warn("reactor: load workflows failed; declared [tick]/heartbeat inactive, judge builtin still active", "session", name, "error", err)
 		} else if wf, ok := workflows[s.Workflow]; ok {

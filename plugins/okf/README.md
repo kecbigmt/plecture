@@ -22,16 +22,18 @@ change out of scope for this plugin's extraction.
 
 ## Contents
 
-- `providers/local-okf.toml` — the workspace provider: its `[resolver]`
+- `workspaces/local-okf.toml` — the workspace provider: its `[resolver]`
   pair (`match` / `name`) derives a session id offline; `setup` and
   `cleanup` invoke the executable below to acquire and release a
-  read-context workdir over the owner's bundle.
+  read-context workspace directory over the owner's bundle.
 - `resources/okf_goal.toml` — the goal resource: `observe` reports parse
   and completion state; `finalize` records a done_when-satisfied goal's
   completion, once.
-- `cmd/plect-okf` — the executable those hooks run. Its `internal/` packages
-  (`bundle`, `goal`, `resource`, `workspace`, `task`) hold the actual logic;
-  `cmd/plect-okf` is a thin flag-parsing and JSON-encoding shell around them.
+- `cmd/okf-bundle`, `cmd/okf-goal` — the executables those hooks run. Their
+  shared `internal/` packages (`bundle`, `goal`, `resource`, `workspace`,
+  `task`) hold the actual logic; each `cmd/` main is a thin flag-parsing and
+  JSON-encoding shell around them — `okf-bundle` wraps the workspace
+  provider hooks, `okf-goal` wraps the resource and goal task hooks.
 - `tasks/pursue_goal.toml`, `tasks/goal_review.toml`,
   `tasks/goal_bootstrap.toml` — the goal task pack: `pursue_goal` tracks one
   goal to completion and chains into `goal_review` once its checklist is
@@ -47,20 +49,21 @@ change out of scope for this plugin's extraction.
 
 ## Install
 
-Build the executable and put it on the `PATH` plect's hooks run with:
+Build the executables and put them on the `PATH` plect's hooks run with:
 
 ```bash
-go build -o <bindir>/plect-okf ./cmd/plect-okf
+go build -o <bindir>/okf-goal ./cmd/okf-goal
+go build -o <bindir>/okf-bundle ./cmd/okf-bundle
 ```
 
 Then add this directory to `plugin_dirs` in `~/.config/plect/config.toml`,
 or enable it through a registered catalog (see
-`docs/design/plugin-packaging.md`), so its `providers/`, `resources/`,
+`docs/design/plugin-packaging.md`), so its `workspaces/`, `resources/`,
 `tasks/`, `workflows/`, and `templates/` are loaded.
 
 ## Outputs
 
-`providers/local-okf.toml`'s `setup` emits `workdir`, `owner`,
+`workspaces/local-okf.toml`'s `setup` emits `workspace_dir`, `owner`,
 `concept_id`, and `concept_path`. `resources/okf_goal.toml`'s `observe`
 emits `goal_parse_status`, `goal_status`, `checklist_status`,
 `goal_revision`, `revision`, `open_items`, and `observe_error`. Read them in
@@ -72,5 +75,5 @@ own copied outputs.
 - `plect` itself on `PATH` — every resolution step shells out to
   `plect status` to find the owner's orchestrator session, and
   `goal_bootstrap` shells out to `plect task setup` to create instances.
-- A knowledge bundle at `<orchestrator workdir>/knowledge/bundle/`, with
-  goal Concept files under `goals/`.
+- A knowledge bundle at `<orchestrator workspace directory>/knowledge/bundle/`,
+  with goal Concept files under `goals/`.

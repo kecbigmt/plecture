@@ -5,12 +5,12 @@
 //
 // This is a standalone operator tool, not runtime dispatch code: it runs
 // once, out of band, against a data directory. It is deliberately narrow —
-// it only knows the four old-form shapes named by the refactor plan —
-// rather than a generic pluggable migration framework, because no second
-// use case exists yet. Its provider-specific field mapping (GitHub identity
-// fields, GitHub-shaped repo allowlist entries) lives here, outside plect's
-// core, because that knowledge is retired together with this tool once the
-// migration has run.
+// it only knows the specific old-form shapes named by the refactor plans
+// that produced it (see docs/migrations/) — rather than a generic pluggable
+// migration framework, because no second use case exists yet. Its
+// integration-specific field mapping (GitHub identity fields, GitHub-shaped
+// repo allowlist entries) lives here, outside plect's core, because that
+// knowledge is retired together with this tool once the migration has run.
 package migrate
 
 import (
@@ -29,6 +29,24 @@ import (
 )
 
 const preGuardStateVersion = 5
+
+// workdirEraStateVersion is the schema version the prior (now-superseded)
+// worktree→workdir vocabulary migration produced. This tool accepts input at
+// either preGuardStateVersion or workdirEraStateVersion so an operator who
+// already ran the old migration does not have to chain two rewrites — one
+// pass carries either starting point straight to the current workspace
+// vocabulary.
+const workdirEraStateVersion = 6
+
+// supportedOldStateVersions are every schema version this tool knows how to
+// bring forward to contract.SchemaVersion. Deliberately an explicit set, not
+// a "less than current" range: each entry names a real historical release
+// shape this tool's field-rewrite functions were written against, not an
+// assumption that every older version happens to need the same rewrites.
+var supportedOldStateVersions = map[int]bool{
+	preGuardStateVersion:   true,
+	workdirEraStateVersion: true,
+}
 
 // Options configures a migration run.
 type Options struct {
@@ -213,8 +231,11 @@ func migrateStateJSON(data []byte) ([]byte, []string, error) {
 		if migrateLegacyIdentity(session) {
 			notes = append(notes, fmt.Sprintf("session %q: folded legacy url/owner_repo/number identity fields into resource_id/alias", name))
 		}
-		if migrateWorkdirPath(session) {
-			notes = append(notes, fmt.Sprintf("session %q: renamed worktree_path to workdir_path", name))
+		if migrateWorkspaceDirPath(session) {
+			notes = append(notes, fmt.Sprintf("session %q: renamed worktree_path/workdir_path to workspace_dir_path", name))
+		}
+		if migrateWorkflowOutputsWorkdirKey(session) {
+			notes = append(notes, fmt.Sprintf("session %q: renamed @workflow output key workdir to workspace_dir", name))
 		}
 		if backfillInlineTaskIDs(session) {
 			notes = append(notes, fmt.Sprintf("session %q: backfilled task_id for legacy inline tasks", name))
@@ -265,7 +286,7 @@ func stampStateVersion(state map[string]any) (string, error) {
 	if got > contract.SchemaVersion {
 		return "", fmt.Errorf("state.json: schema version %d is newer than this migration tool understands (%d)", got, contract.SchemaVersion)
 	}
-	if got != preGuardStateVersion {
+	if !supportedOldStateVersions[got] {
 		return "", fmt.Errorf("state.json: schema version %d is not supported by this migration tool", got)
 	}
 	state["version"] = float64(contract.SchemaVersion)
@@ -367,14 +388,62 @@ func migrateLegacyIdentity(session map[string]any) bool {
 	return true
 }
 
-func migrateWorkdirPath(session map[string]any) bool {
-	value, ok := session["worktree_path"]
+// migrateWorkspaceDirPath folds either legacy path field — the oldest
+// "worktree_path" or the workdir-era "workdir_path" a prior migration run
+// may have left — into the current "workspace_dir_path", in one pass. Both
+// legacy keys are checked (not just whichever the input schema version
+// implies) because a session can carry a stale worktree_path alongside an
+// empty workdir_path when an earlier migration ran against data missing its
+// value — see the fallback below.
+func migrateWorkspaceDirPath(session map[string]any) bool {
+	_, hadWorktreePath := session["worktree_path"]
+	_, hadWorkdirPath := session["workdir_path"]
+	if !hadWorktreePath && !hadWorkdirPath {
+		return false
+	}
+
+	value := ""
+	if v, ok := session["workdir_path"].(string); ok && v != "" {
+		value = v
+	}
+	if value == "" {
+		if v, ok := session["worktree_path"].(string); ok {
+			value = v
+		}
+	}
+	delete(session, "worktree_path")
+	delete(session, "workdir_path")
+	if current, exists := session["workspace_dir_path"]; !exists || current == "" {
+		session["workspace_dir_path"] = value
+	}
+	return true
+}
+
+// migrateWorkflowOutputsWorkdirKey renames the @workflow pseudo-node's
+// reserved setup output key from "workdir" to "workspace_dir", mirroring
+// contract.OutputKeyWorkspaceDir. Other tasks' outputs are left alone: only
+// the @workflow pseudo-node's outputs carry a plect-reserved key with
+// contract meaning.
+func migrateWorkflowOutputsWorkdirKey(session map[string]any) bool {
+	tasks, _ := session["tasks"].(map[string]any)
+	if tasks == nil {
+		return false
+	}
+	wf, _ := tasks[contract.WorkflowPseudoNodeID].(map[string]any)
+	if wf == nil {
+		return false
+	}
+	outputs, _ := wf["outputs"].(map[string]any)
+	if outputs == nil {
+		return false
+	}
+	value, ok := outputs["workdir"]
 	if !ok {
 		return false
 	}
-	delete(session, "worktree_path")
-	if current, exists := session["workdir_path"]; !exists || current == "" {
-		session["workdir_path"] = value
+	delete(outputs, "workdir")
+	if current, exists := outputs["workspace_dir"]; !exists || current == "" {
+		outputs["workspace_dir"] = value
 	}
 	return true
 }
@@ -427,12 +496,22 @@ func migrateConfigTOML(data []byte) ([]byte, []string, error) {
 	}
 
 	var notes []string
-	if root, ok := doc["worktrees_root"]; ok {
+	// Either legacy root key may be present (worktrees_root from the oldest
+	// form, workdirs_root from a workdir-era config a prior migration already
+	// produced) — both fold into workspace_dirs_root in one pass, mirroring
+	// migrateWorkspaceDirPath's same-shaped fallback in state.json.
+	root, hadWorktreesRoot := doc["worktrees_root"]
+	workdirsRoot, hadWorkdirsRoot := doc["workdirs_root"]
+	if hadWorkdirsRoot {
+		root = workdirsRoot
+	}
+	if hadWorktreesRoot || hadWorkdirsRoot {
 		delete(doc, "worktrees_root")
-		if _, exists := doc["workdirs_root"]; !exists {
-			doc["workdirs_root"] = root
+		delete(doc, "workdirs_root")
+		if _, exists := doc["workspace_dirs_root"]; !exists {
+			doc["workspace_dirs_root"] = root
 		}
-		notes = append(notes, "config.toml: renamed worktrees_root to workdirs_root")
+		notes = append(notes, "config.toml: renamed worktrees_root/workdirs_root to workspace_dirs_root")
 	}
 
 	rawAllowlist, ok := doc["repo_allowlist"]

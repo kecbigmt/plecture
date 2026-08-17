@@ -10,14 +10,14 @@ import (
 
 // ResourceDef is loaded from `resources/<id>.toml` in the trusted base layers
 // (plugin dirs + global config) — the same non-cascading rule as
-// ProviderConfig (ADR "goal-as-task" D6: a resource's observation is
+// WorkspaceProviderConfig (ADR "goal-as-task" D6: a resource's observation is
 // arbitrary shell, so only user/machine-owned layers may supply it, never a
-// cloned workdir's `.plect/`).
+// cloned workspace dir's `.plect/`).
 //
 // A ResourceDef is deliberately a different, narrower concept than
-// ProviderConfig. ProviderConfig resolves a *session's* resource identifier
-// (the argument to `create`/`up`) to a session id and a working directory.
-// ResourceDef instead gives a *task-instance-bound* resource id (the
+// WorkspaceProviderConfig. WorkspaceProviderConfig resolves a *session's*
+// resource identifier (the argument to `create`/`up`) to a session id and a
+// workspace. ResourceDef instead gives a *task-instance-bound* resource id (the
 // `--resource` an instance carries, independent of the session it lives in)
 // an id syntax and an observation contract: which ids it recognizes (Match),
 // how to read its current state (Observe), and the shape that state must
@@ -27,8 +27,9 @@ import (
 type ResourceDef struct {
 	ID string `toml:"-"`
 	// Match is a regex a resource id must satisfy to be this kind. Required —
-	// unlike ProviderConfig's optional resolver, a resource definition exists
-	// only to recognize and observe ids, so it has no other reason to load.
+	// unlike WorkspaceProviderConfig's optional resolver, a resource
+	// definition exists only to recognize and observe ids, so it has no
+	// other reason to load.
 	Match string `toml:"match"`
 	// Observe runs to read the resource's current state. It must emit a JSON
 	// object on stdout, validated against StateSchema when one is declared.
@@ -62,8 +63,9 @@ func (r ResourceDef) ResolvedStateSchemaPath() string {
 // LoadResourceDefs loads `resources/*.toml` from the trusted base layers only:
 // plugin dirs first, then the global config dir; the global layer's same-id
 // file replaces a plugin layer's, but two plugin layers declaring the same
-// id is a load error (see loadTrustedLayer). Mirrors LoadProviders — the
-// per-workdir ancestor cascade is deliberately excluded, for the same reason.
+// id is a load error (see loadTrustedLayer). Mirrors LoadWorkspaceProviders —
+// the per-workspace-dir ancestor cascade is deliberately excluded, for the
+// same reason.
 func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
 	var pluginDirs []string
 	for _, plugin := range c.PluginDirs {

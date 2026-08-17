@@ -59,7 +59,7 @@ func TestFlakeOverlays_ClaudeCodexCompile(t *testing.T) {
 					if err := os.Symlink(plectDir, plectureLink); err != nil {
 						t.Fatalf("symlink .plect: %v", err)
 					}
-					workdirDir := filepath.Join(repoBase, "workdir")
+					workdirDir := filepath.Join(repoBase, "workspace_dir")
 
 					cfg := &config.Config{BaseDir: cfgDir}
 					workflows, err := cfg.LoadWorkflows(workdirDir)

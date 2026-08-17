@@ -72,10 +72,11 @@ func (hostExecutor) Run(ctx context.Context, req ExecRequest) (stdout, stderr []
 	return outBuf.Bytes(), errBuf.Bytes(), err
 }
 
-// alwaysHostExecutor backs runShell, the path used by provider setup/cleanup,
-// provider subscribe, and resource observe/finalize. Those must always run on
-// the host regardless of any workflow's Environment — provider setup runs
-// before any environment could exist, and standalone resource commands have
+// alwaysHostExecutor backs runShell, the path used by workspace provider
+// setup/cleanup, workspace provider subscribe, and resource observe/finalize.
+// Those must always run on the host regardless of any workflow's
+// Environment — workspace provider setup runs before any environment could
+// exist, and standalone resource commands have
 // no session (and so no Environment) to consult at all. Unlike
 // defaultExecutor, this is never swapped, not even by tests.
 var alwaysHostExecutor Executor = hostExecutor{}

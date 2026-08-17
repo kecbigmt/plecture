@@ -4,6 +4,11 @@ plect_min_version  = "0.0.0"
 description        = "OKF goal resource: parsing, workspace dispatch, observation, and finalization for a local knowledge bundle's goal Concepts, plus the pursue_goal/goal_review/goal_bootstrap task pack."
 
 [[executables]]
-name  = "plect-okf"
-path  = "bin/plect-okf"
-build = "go -C src build -o ../bin/plect-okf ./cmd/plect-okf"
+name  = "okf-goal"
+path  = "bin/okf-goal"
+build = "go -C src build -o ../bin/okf-goal ./cmd/okf-goal"
+
+[[executables]]
+name  = "okf-bundle"
+path  = "bin/okf-bundle"
+build = "go -C src build -o ../bin/okf-bundle ./cmd/okf-bundle"

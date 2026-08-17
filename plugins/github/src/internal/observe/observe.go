@@ -4,10 +4,10 @@
 // rollup, issue completion, revision, the linked pull request (for an issue
 // resource), and mergeability.
 //
-// This is independent of the provider's Setup/Cleanup (package provider):
-// that owns *session* workdir acquisition, this owns the resource's
-// observable state, callable standalone via `plect resource status` outside
-// any one session.
+// This is independent of the workspace provider's Setup/Cleanup (package
+// worktree): that owns *session* workspace acquisition, this owns the
+// resource's observable state, callable standalone via `plect resource
+// status` outside any one session.
 package observe
 
 import (
@@ -39,16 +39,17 @@ type Result struct {
 type Options struct {
 	// ResourceID is the GitHub issue or pull request URL being observed.
 	ResourceID string
-	// WorkdirPath is the observing task instance's session workdir, when one
-	// exists. Empty for a standalone `plect resource status` call, which has
-	// no owning session.
-	WorkdirPath string
+	// WorkspaceDirPath is the observing task instance's session workspace
+	// directory, when one exists. Empty for a standalone `plect resource
+	// status` call, which has no owning session.
+	WorkspaceDirPath string
 	// GHClient fetches from the GitHub REST/GraphQL API. Defaults to
 	// ghapi.Direct().
 	GHClient github.GHClient
-	// WorkdirBranch returns the branch checked out at a workdir, or "" when
-	// it cannot be determined. Defaults to `git symbolic-ref --short HEAD`.
-	WorkdirBranch func(ctx context.Context, workdirPath string) string
+	// WorkspaceDirBranch returns the branch checked out at a workspace
+	// directory, or "" when it cannot be determined. Defaults to `git
+	// symbolic-ref --short HEAD`.
+	WorkspaceDirBranch func(ctx context.Context, workspaceDirPath string) string
 }
 
 // Observe fetches and classifies a GitHub resource's current state.
@@ -152,11 +153,11 @@ func observeIssue(ctx context.Context, client github.GHClient, parsed *github.Pa
 // failing the observation, matching production's tolerance for a resource
 // that legitimately has no PR at all.
 func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) string {
-	branchOf := opts.WorkdirBranch
+	branchOf := opts.WorkspaceDirBranch
 	if branchOf == nil {
-		branchOf = defaultWorkdirBranch
+		branchOf = defaultWorkspaceDirBranch
 	}
-	if branch := branchOf(ctx, opts.WorkdirPath); branch != "" {
+	if branch := branchOf(ctx, opts.WorkspaceDirPath); branch != "" {
 		path := fmt.Sprintf("repos/%s/%s/pulls?head=%s:%s&state=all", parsed.Owner, parsed.Repo, parsed.Owner, branch)
 		if raw, err := client.JSON(ctx, path); err == nil {
 			var prs []struct {
@@ -237,14 +238,14 @@ func prNumberFromURL(prURL string) (int, bool) {
 	return n, err == nil
 }
 
-func defaultWorkdirBranch(ctx context.Context, workdirPath string) string {
-	if workdirPath == "" {
+func defaultWorkspaceDirBranch(ctx context.Context, workspaceDirPath string) string {
+	if workspaceDirPath == "" {
 		return ""
 	}
-	if _, err := os.Stat(workdirPath); err != nil {
+	if _, err := os.Stat(workspaceDirPath); err != nil {
 		return ""
 	}
-	out, _, err := procexec.Default.Run(ctx, workdirPath, false, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
+	out, _, err := procexec.Default.Run(ctx, workspaceDirPath, false, "git", "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		return ""
 	}

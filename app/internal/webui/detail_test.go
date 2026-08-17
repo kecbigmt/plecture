@@ -23,12 +23,12 @@ func sampleShow() *service.StatusResult {
 			CreatedAt:   time.Now(),
 		},
 		Runtime: service.StatusRuntime{
-			Run:           domain.RunUp,
-			Health:        domain.HealthHealthy,
-			WorkdirPath:   "/home/dev/workdirs/owner/repo/issue-7",
-			WorkdirExists: true,
-			Conversation:  &domain.Conversation{Source: "Slack", URL: "https://slack.example/thread/1"},
-			AttachCommand: "some-runtime attach owner/repo-7",
+			Run:                domain.RunUp,
+			Health:             domain.HealthHealthy,
+			WorkspaceDirPath:   "/home/dev/workdirs/owner/repo/issue-7",
+			WorkspaceDirExists: true,
+			Conversation:       &domain.Conversation{Source: "Slack", URL: "https://slack.example/thread/1"},
+			AttachCommand:      "some-runtime attach owner/repo-7",
 		},
 	}
 }

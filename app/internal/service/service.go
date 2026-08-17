@@ -34,9 +34,9 @@ func validateTagFormat(tag string) *Error {
 // effectiveTag resolves the session-identity tag that becomes part of a
 // session name. An explicit --tag wins; otherwise the workflow id is the
 // default, so two tools acting on one resource (claude work, codex review)
-// materialize distinct sessions instead of racing for one branch/workdir.
-// The tag is never empty on the provider-dispatch paths — session identity
-// always carries a label.
+// materialize distinct sessions instead of racing for one branch/workspace.
+// The tag is never empty on the workspace-provider-dispatch paths — session
+// identity always carries a label.
 func effectiveTag(tag, workflowID string) (string, *Error) {
 	if tag != "" {
 		if err := validateTagFormat(tag); err != nil {
@@ -56,7 +56,8 @@ func effectiveTag(tag, workflowID string) (string, *Error) {
 //  1. exact session name
 //  2. create-time alias (survives resolver rule changes; ambiguous when tag
 //     variants share the alias)
-//  3. resolver derivation (pure, offline — works during provider outages)
+//  3. resolver derivation (pure, offline — works during workspace provider
+//     outages)
 func resolveSession(cfg *config.Config, store *state.Store, identifier string) (string, *domain.Session, error) {
 	if session, err := store.GetE(identifier); err != nil {
 		return "", nil, err
@@ -284,18 +285,18 @@ func childNames(sessions map[string]*domain.Session, name string) []string {
 
 // ListEntry represents a single entry in the session list.
 type ListEntry struct {
-	SessionName   string             `json:"session_name"`
-	Title         string             `json:"title,omitempty"`
-	Run           domain.RunState    `json:"run"`
-	Health        domain.HealthState `json:"health,omitempty"`
-	DisplayStatus string             `json:"display_status"`
-	ResourceID    string             `json:"resource_id"`
-	Tracked       bool               `json:"tracked"`
-	LastActiveAt  *time.Time         `json:"last_active_at,omitempty"`
-	Message       *domain.Message    `json:"message,omitempty"`
-	Branch        string             `json:"branch,omitempty"`
-	WorkdirPath   string             `json:"workdir_path,omitempty"`
-	ParentSession string             `json:"parent_session,omitempty"`
+	SessionName      string             `json:"session_name"`
+	Title            string             `json:"title,omitempty"`
+	Run              domain.RunState    `json:"run"`
+	Health           domain.HealthState `json:"health,omitempty"`
+	DisplayStatus    string             `json:"display_status"`
+	ResourceID       string             `json:"resource_id"`
+	Tracked          bool               `json:"tracked"`
+	LastActiveAt     *time.Time         `json:"last_active_at,omitempty"`
+	Message          *domain.Message    `json:"message,omitempty"`
+	Branch           string             `json:"branch,omitempty"`
+	WorkspaceDirPath string             `json:"workspace_dir_path,omitempty"`
+	ParentSession    string             `json:"parent_session,omitempty"`
 	// Tasks projects the session's dynamic instances and done_when-bearing
 	// tasks with their per-instance done_when status.
 	Tasks []TaskInstanceView `json:"tasks,omitempty"`
@@ -351,19 +352,19 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 	applyDisplay(displayWorkflows, s, &cached)
 
 	entry := ListEntry{
-		SessionName:   s.Name,
-		Title:         cached.Title,
-		Run:           sessionRunState(s),
-		Health:        sessionHealthState(cfg, store, s.Name),
-		DisplayStatus: cached.DisplayStatus,
-		ResourceID:    s.ResourceID,
-		Tracked:       true,
-		LastActiveAt:  &s.UpdatedAt,
-		Message:       s.Message,
-		Branch:        s.Branch,
-		WorkdirPath:   s.WorkdirPath,
-		ParentSession: s.ParentSession,
-		Tasks:         taskViews(displayTasks, s, sessions),
+		SessionName:      s.Name,
+		Title:            cached.Title,
+		Run:              sessionRunState(s),
+		Health:           sessionHealthState(cfg, store, s.Name),
+		DisplayStatus:    cached.DisplayStatus,
+		ResourceID:       s.ResourceID,
+		Tracked:          true,
+		LastActiveAt:     &s.UpdatedAt,
+		Message:          s.Message,
+		Branch:           s.Branch,
+		WorkspaceDirPath: s.WorkspaceDirPath,
+		ParentSession:    s.ParentSession,
+		Tasks:            taskViews(displayTasks, s, sessions),
 	}
 
 	return entry
@@ -425,16 +426,16 @@ type cachedInfo struct {
 	DisplayStatus string
 }
 
-// Workdir resolves an identifier to the session's working directory using
-// the full lookup order (name -> alias -> resolver derivation). The working
-// directory is whatever the provider's setup recorded; plect never recomputes
-// it from the shape of the identifier.
-func Workdir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
+// WorkspaceDir resolves an identifier to the session's workspace directory
+// using the full lookup order (name -> alias -> resolver derivation). The
+// workspace directory is whatever the workspace provider's setup recorded;
+// plect never recomputes it from the shape of the identifier.
+func WorkspaceDir(cfg *config.Config, store *state.Store, identifier string) (string, error) {
 	if _, session, err := resolveSession(cfg, store, identifier); err == nil {
-		if session.WorkdirPath == "" {
-			return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q has no working directory recorded", session.Name)}
+		if session.WorkspaceDirPath == "" {
+			return "", &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q has no workspace directory recorded", session.Name)}
 		}
-		return session.WorkdirPath, nil
+		return session.WorkspaceDirPath, nil
 	} else if svcErr, ok := err.(*Error); ok && svcErr.Code != ErrSessionNotFound {
 		// An ambiguous alias must surface rather than fall through.
 		return "", err

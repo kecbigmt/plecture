@@ -105,11 +105,11 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	if s == nil {
 		return HealthReport{}, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", name)}
 	}
-	defs, err := cfg.LoadTaskDefinitions(s.WorkdirPath)
+	defs, err := cfg.LoadTaskDefinitions(s.WorkspaceDirPath)
 	if err != nil {
 		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
-	wf := sessionWorkflowConfig(cfg, s.Workflow, s.WorkdirPath)
+	wf := sessionWorkflowConfig(cfg, s.Workflow, s.WorkspaceDirPath)
 	healthCfg := config.DefaultHealthcheckConfig()
 	var tick *config.TickConfig
 	if wf != nil {
@@ -124,8 +124,8 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	return report, nil
 }
 
-func sessionWorkflowConfig(cfg *config.Config, workflowID, workdirPath string) *config.WorkflowFile {
-	workflows, err := cfg.LoadWorkflows(workdirPath)
+func sessionWorkflowConfig(cfg *config.Config, workflowID, workspaceDirPath string) *config.WorkflowFile {
+	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		return nil
 	}

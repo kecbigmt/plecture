@@ -13,55 +13,57 @@ import (
 )
 
 // WorkflowHookVars is the template surface for workflow-level setup/cleanup.
-// Deliberately minimal: setup runs before the working directory (and thus the
-// full config cascade) exists, so it only gets the resource identifier, the
-// session name, the configured workdirs root, and the frozen session inputs.
-// Anything else the script needs (URL parsing etc.) it derives itself —
-// resolver captures are NOT forwarded, so the resolver's regex never becomes
-// setup's input contract. Plugins is the one exception: plugin mounting
-// resolves from global config independently of any workdir, so it is already
-// available at this point in the lifecycle, and a provider hook needs it to
-// invoke its own plugin's executables through `{{bin ...}}`.
+// Deliberately minimal: setup runs before the workspace (and thus the full
+// config cascade) exists, so it only gets the resource identifier, the
+// session name, the configured workspace-dirs root, and the frozen session
+// inputs. Anything else the script needs (URL parsing etc.) it derives
+// itself — resolver captures are NOT forwarded, so the resolver's regex
+// never becomes setup's input contract. Plugins is the one exception: plugin
+// mounting resolves from global config independently of any workspace, so it
+// is already available at this point in the lifecycle, and a workspace
+// provider hook needs it to invoke its own plugin's executables through
+// `{{bin ...}}`.
 type WorkflowHookVars struct {
-	ResourceID    string
-	SessionName   string
-	WorkdirsRoot  string
-	SessionInputs map[string]any
-	Plugins       []plugins.Mounted
-	// SourcePath is the provider definition's own file path
-	// (config.ProviderConfig.SourcePath), threaded through so a
-	// `{{bin "<name>"}}` in Setup/Cleanup can resolve against the provider's
-	// containing plugin.
+	ResourceID        string
+	SessionName       string
+	WorkspaceDirsRoot string
+	SessionInputs     map[string]any
+	Plugins           []plugins.Mounted
+	// SourcePath is the workspace provider definition's own file path
+	// (config.WorkspaceProviderConfig.SourcePath), threaded through so a
+	// `{{bin "<name>"}}` in Setup/Cleanup can resolve against the workspace
+	// provider's containing plugin.
 	SourcePath string
-	// Force mirrors the caller's --force intent into the cleanup template so a
-	// provider's cleanup script can decide for itself whether to force-remove
-	// a dirty workdir; core has no opinion on what a provider's release step
-	// does with it. Setup never sets this — force only applies to teardown.
+	// Force mirrors the caller's --force intent into the cleanup template so
+	// a workspace provider's cleanup script can decide for itself whether to
+	// force-remove a dirty workspace; core has no opinion on what a
+	// workspace provider's release step does with it. Setup never sets
+	// this — force only applies to teardown.
 	Force bool
 	// CleanupInputs are opaque key/value pairs the caller passes through to
 	// the cleanup template as .CleanupInputs, unexamined by core. This is the
-	// generic escape hatch for provider-specific teardown intents, so a new
-	// one never requires a core vocabulary addition. Setup never sets this —
-	// cleanup intents only apply to teardown.
+	// generic escape hatch for workspace-provider-specific teardown intents,
+	// so a new one never requires a core vocabulary addition. Setup never
+	// sets this — cleanup intents only apply to teardown.
 	CleanupInputs map[string]string
 }
 
 // workflowHookScope is the Observer scope label for pseudo-node events.
 const workflowHookScope = "workflow"
 
-// RunWorkflowSetup executes the provider setup hook (the workflow-level
-// lifecycle) and persists the
-// result as the @workflow pseudo-node in tasks. Semantics mirror RunSetup:
-// idempotent (an already-produced pseudo-node is skipped), .Prev carries the
-// prior outputs across retries, stdout is the JSON outputs contract.
+// RunWorkflowSetup executes the workspace provider setup hook (the
+// workflow-level lifecycle) and persists the result as the @workflow
+// pseudo-node in tasks. Semantics mirror RunSetup: idempotent (an
+// already-produced pseudo-node is skipped), .Prev carries the prior outputs
+// across retries, stdout is the JSON outputs contract.
 //
-// Additional contract: the outputs MUST contain the reserved `workdir` key
-// (non-empty string) — every downstream consumer (cascade resolution, task
-// cwd, cd/attach) depends on it. The outputs are validated against the
+// Additional contract: the outputs MUST contain the reserved `workspace_dir`
+// key (non-empty string) — every downstream consumer (cascade resolution,
+// task cwd, cd/attach) depends on it. The outputs are validated against the
 // workflow's outputs schema when one is declared.
 //
 // Returns the pseudo-node outputs (whether fresh or reused).
-func RunWorkflowSetup(prov config.ProviderConfig, vars WorkflowHookVars, tasks map[string]*contract.TaskState, observer Observer) (map[string]any, error) {
+func RunWorkflowSetup(prov config.WorkspaceProviderConfig, vars WorkflowHookVars, tasks map[string]*contract.TaskState, observer Observer) (map[string]any, error) {
 	obs := observerOr(observer)
 	id := contract.WorkflowPseudoNodeID
 
@@ -70,7 +72,7 @@ func RunWorkflowSetup(prov config.ProviderConfig, vars WorkflowHookVars, tasks m
 		return existing.Outputs, nil
 	}
 	if strings.TrimSpace(prov.Setup) == "" {
-		return nil, fmt.Errorf("provider %q declares no setup", prov.ID)
+		return nil, fmt.Errorf("workspace provider %q declares no setup", prov.ID)
 	}
 
 	obs.OnStart(workflowHookScope, id)
@@ -93,46 +95,46 @@ func RunWorkflowSetup(prov config.ProviderConfig, vars WorkflowHookVars, tasks m
 	cmdStr, err := renderWorkflowHook(prov.Setup, vars, prev, nil, "missingkey=error")
 	if err != nil {
 		fail(err.Error())
-		wrapped := fmt.Errorf("provider %q setup template: %w", prov.ID, err)
+		wrapped := fmt.Errorf("workspace provider %q setup template: %w", prov.ID, err)
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, nil)
 		return nil, wrapped
 	}
 
-	// No workdir exists yet by definition — the script runs from the
+	// No workspace exists yet by definition — the script runs from the
 	// caller's cwd and must use absolute paths.
 	stdout, stderr, runErr := runShell(cmdStr, "")
 	if runErr != nil {
 		fail(runErr.Error())
-		wrapped := fmt.Errorf("provider %q setup: %w", prov.ID, runErr)
+		wrapped := fmt.Errorf("workspace provider %q setup: %w", prov.ID, runErr)
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, stderr)
 		return nil, wrapped
 	}
 	outputs, parseErr := ParseOutputs(stdout)
 	if parseErr != nil {
 		fail(parseErr.Error())
-		wrapped := fmt.Errorf("provider %q setup: %w", prov.ID, parseErr)
+		wrapped := fmt.Errorf("workspace provider %q setup: %w", prov.ID, parseErr)
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, stderr)
 		return nil, wrapped
 	}
-	workdir, _ := outputs[contract.OutputKeyWorkdir].(string)
-	if strings.TrimSpace(workdir) == "" {
-		msg := fmt.Sprintf("setup outputs must contain a non-empty %q string (got %v)", contract.OutputKeyWorkdir, outputs[contract.OutputKeyWorkdir])
+	workspaceDir, _ := outputs[contract.OutputKeyWorkspaceDir].(string)
+	if strings.TrimSpace(workspaceDir) == "" {
+		msg := fmt.Sprintf("setup outputs must contain a non-empty %q string (got %v)", contract.OutputKeyWorkspaceDir, outputs[contract.OutputKeyWorkspaceDir])
 		fail(msg)
-		wrapped := fmt.Errorf("provider %q setup: %s", prov.ID, msg)
+		wrapped := fmt.Errorf("workspace provider %q setup: %s", prov.ID, msg)
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, stderr)
 		return nil, wrapped
 	}
-	schema, err := CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:provider:"+prov.ID+":outputs")
+	schema, err := CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
 	if err != nil {
 		fail(err.Error())
-		wrapped := fmt.Errorf("provider %q outputs schema: %w", prov.ID, err)
+		wrapped := fmt.Errorf("workspace provider %q outputs schema: %w", prov.ID, err)
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, stderr)
 		return nil, wrapped
 	}
 	if schema != nil {
 		if vErr := schema.Validate(outputs); vErr != nil {
 			fail(vErr.Error())
-			wrapped := fmt.Errorf("provider %q setup: outputs schema: %w", prov.ID, vErr)
+			wrapped := fmt.Errorf("workspace provider %q setup: outputs schema: %w", prov.ID, vErr)
 			obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, stderr)
 			return nil, wrapped
 		}
@@ -154,11 +156,11 @@ func RunWorkflowSetup(prov config.ProviderConfig, vars WorkflowHookVars, tasks m
 // body flips the state to cleaned, errors mark the pseudo-node failed and
 // are returned (callers decide fail-fast vs --force).
 //
-// The hook intentionally never deletes workdir itself — setup/cleanup
+// The hook intentionally never deletes workspace_dir itself — setup/cleanup
 // symmetry is the script author's contract ("use an existing directory"
 // workflows must stay possible). Outputs survive cleanup (same invariant as
 // task cleanup) so a later setup retry can read .Prev.
-func RunWorkflowCleanup(prov config.ProviderConfig, vars WorkflowHookVars, tasks map[string]*contract.TaskState, observer Observer) error {
+func RunWorkflowCleanup(prov config.WorkspaceProviderConfig, vars WorkflowHookVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
 	id := contract.WorkflowPseudoNodeID
 
@@ -185,7 +187,7 @@ func RunWorkflowCleanup(prov config.ProviderConfig, vars WorkflowHookVars, tasks
 		state.Status = contract.TaskStatusFailed
 		state.Error = err.Error()
 		state.FailedAt = now
-		wrapped := fmt.Errorf("provider %q cleanup template: %w", prov.ID, err)
+		wrapped := fmt.Errorf("workspace provider %q cleanup template: %w", prov.ID, err)
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, nil)
 		return wrapped
 	}
@@ -194,7 +196,7 @@ func RunWorkflowCleanup(prov config.ProviderConfig, vars WorkflowHookVars, tasks
 		state.Status = contract.TaskStatusFailed
 		state.Error = runErr.Error()
 		state.FailedAt = now
-		wrapped := fmt.Errorf("provider %q cleanup: %w", prov.ID, runErr)
+		wrapped := fmt.Errorf("workspace provider %q cleanup: %w", prov.ID, runErr)
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, stderr)
 		return wrapped
 	}
@@ -227,23 +229,23 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 		return "", fmt.Errorf("template parse: %w", err)
 	}
 	data := struct {
-		ResourceID    string
-		SessionName   string
-		WorkdirsRoot  string
-		SessionInputs map[string]any
-		Prev          map[string]any
-		Self          map[string]any
-		Force         bool
-		CleanupInputs map[string]string
+		ResourceID        string
+		SessionName       string
+		WorkspaceDirsRoot string
+		SessionInputs     map[string]any
+		Prev              map[string]any
+		Self              map[string]any
+		Force             bool
+		CleanupInputs     map[string]string
 	}{
-		ResourceID:    vars.ResourceID,
-		SessionName:   vars.SessionName,
-		WorkdirsRoot:  vars.WorkdirsRoot,
-		SessionInputs: normalizeOutputs(vars.SessionInputs),
-		Prev:          normalizeOutputs(prev),
-		Self:          normalizeOutputs(self),
-		Force:         vars.Force,
-		CleanupInputs: vars.CleanupInputs,
+		ResourceID:        vars.ResourceID,
+		SessionName:       vars.SessionName,
+		WorkspaceDirsRoot: vars.WorkspaceDirsRoot,
+		SessionInputs:     normalizeOutputs(vars.SessionInputs),
+		Prev:              normalizeOutputs(prev),
+		Self:              normalizeOutputs(self),
+		Force:             vars.Force,
+		CleanupInputs:     vars.CleanupInputs,
 	}
 	if data.SessionInputs == nil {
 		data.SessionInputs = map[string]any{}

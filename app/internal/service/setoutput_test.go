@@ -154,7 +154,7 @@ func TestSetOutput_WorkdirAlwaysRejected(t *testing.T) {
 	_, err := SetOutput(cfg, store, SetOutputParams{
 		Identifier: "org/repo-1",
 		Node:       "watch",
-		Outputs:    map[string]any{"workdir": "/tmp/evil"},
+		Outputs:    map[string]any{"workspace_dir": "/tmp/evil"},
 	})
 	if err == nil {
 		t.Fatal("expected error: workdir is reserved")
@@ -220,7 +220,7 @@ mutable = true
 
 func TestSetOutput_ExactlyOneTargetRequired(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{WorkdirsRoot: t.TempDir()}
+	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
 
 	for _, p := range []SetOutputParams{
 		{Identifier: "x", Outputs: map[string]any{"a": 1}},                            // neither
@@ -241,7 +241,7 @@ func TestSetOutput_WorkflowPseudoNode(t *testing.T) {
 
 	// The @workflow outputs contract lives on the workflow's provider.
 	writeSetupWorkflow(t, cfg, "wf", `
-setup = "echo '{\"workdir\":\"/tmp/wd\"}'"
+setup = "echo '{\"workspace_dir\":\"/tmp/wd\"}'"
 
 [outputs_schema]
 type = "object"
@@ -259,7 +259,7 @@ type = "string"
 		contract.WorkflowPseudoNodeID: {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"workdir": "/tmp/wd", "pr_state": "open"},
+			Outputs: map[string]any{"workspace_dir": "/tmp/wd", "pr_state": "open"},
 		},
 	})
 
@@ -278,8 +278,8 @@ type = "string"
 	if got["pr_state"] != "merged" {
 		t.Errorf("pr_state = %v, want merged", got["pr_state"])
 	}
-	if got["workdir"] != "/tmp/wd" {
-		t.Errorf("workdir must be untouched, got %v", got["workdir"])
+	if got["workspace_dir"] != "/tmp/wd" {
+		t.Errorf("workdir must be untouched, got %v", got["workspace_dir"])
 	}
 }
 

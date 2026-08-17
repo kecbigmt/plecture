@@ -105,7 +105,7 @@ session-specific `CHANNEL_SOCKET_PATH` the bus process never has — see
 
 - Which agent CLI a session launches, and its model/effort defaults, are a
   workflow's concern, composed by referencing this plugin's task ids.
-- Any workflow composing these tasks/channels with a resource provider
+- Any workflow composing these tasks/channels with a workspace provider
   (e.g. GitHub) — workflows compose across plugins and stay out of any
   single plugin.
 - Chat/notification channel bindings beyond Slack, and MCP servers beyond

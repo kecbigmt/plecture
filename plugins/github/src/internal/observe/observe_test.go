@@ -150,11 +150,11 @@ func TestObserve_Issue_LinkedPRViaBranch(t *testing.T) {
 		"repos/acme/widgets/commits/def456/status":     `{"statuses":[]}`,
 	}}
 	result, err := Observe(context.Background(), Options{
-		ResourceID:  "https://github.com/acme/widgets/issues/7",
-		WorkdirPath: "/roots/wt/issue-7",
-		WorkdirBranch: func(ctx context.Context, workdir string) string {
-			if workdir != "/roots/wt/issue-7" {
-				t.Fatalf("WorkdirBranch called with %q", workdir)
+		ResourceID:       "https://github.com/acme/widgets/issues/7",
+		WorkspaceDirPath: "/roots/wt/issue-7",
+		WorkspaceDirBranch: func(ctx context.Context, workspaceDir string) string {
+			if workspaceDir != "/roots/wt/issue-7" {
+				t.Fatalf("WorkspaceDirBranch called with %q", workspaceDir)
 			}
 			return "issue/7"
 		},
@@ -183,10 +183,10 @@ func TestObserve_Issue_BranchLookupFailureFallsBackToGraphQL(t *testing.T) {
 		errs: map[string]error{"repos/acme/widgets/pulls?": errors.New("HTTP 422")},
 	}
 	result, err := Observe(context.Background(), Options{
-		ResourceID:    "https://github.com/acme/widgets/issues/7",
-		WorkdirPath:   "/roots/wt/issue-7",
-		WorkdirBranch: func(ctx context.Context, workdir string) string { return "issue/7" },
-		GHClient:      client,
+		ResourceID:         "https://github.com/acme/widgets/issues/7",
+		WorkspaceDirPath:   "/roots/wt/issue-7",
+		WorkspaceDirBranch: func(ctx context.Context, workspaceDir string) string { return "issue/7" },
+		GHClient:           client,
 	})
 	if err != nil {
 		t.Fatalf("Observe: %v", err)

@@ -48,7 +48,7 @@ func TestCreate_HostDegeneration_NoEnvironmentNode(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 
@@ -78,12 +78,12 @@ func TestCreate_EnvironmentLifecycle_SetupRunsAfterProviderBeforeTasks(t *testin
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
 setup = '''
-[ -d "{{.WorkdirPath}}" ] && vis=yes || vis=no
+[ -d "{{.WorkspaceDirPath}}" ] && vis=yes || vis=no
 echo "{\"marker\":\"m1\",\"workdir_visible\":\"$vis\"}"
 '''
 exec = '"$@"'
@@ -133,7 +133,7 @@ func TestCreate_EnvironmentSetupFailureFailsClosed(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
@@ -171,7 +171,7 @@ func TestCreate_EnvironmentOutputsSchemaViolationFailsClosed(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
@@ -218,7 +218,7 @@ func TestExecutor_TaskExecutionEnvironmentRoutesThroughEnvironmentExec(t *testin
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", fmt.Sprintf(`
@@ -260,7 +260,7 @@ func TestDestroy_EnvironmentCleanupOrdering(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup   = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 cleanup = '''
 echo provider >> %s
@@ -313,7 +313,7 @@ func TestUp_EnvironmentSetupFailedFailsClosed(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `
@@ -369,7 +369,7 @@ func TestTaskSetup_EnvironmentSetupFailedFailsClosed(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 	writeEnvironmentWorkflow(t, cfg, "wf", "docker", `

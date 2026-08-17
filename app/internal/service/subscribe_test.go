@@ -19,12 +19,12 @@ import (
 func writeSubscribeProvider(t *testing.T, id, match, recordPath string) *config.Config {
 	t.Helper()
 	baseDir := t.TempDir()
-	providersDir := filepath.Join(baseDir, "providers")
+	providersDir := filepath.Join(baseDir, "workspaces")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`
-setup = "echo '{\"workdir\":\"/tmp/x\"}'"
+setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
 match = %q
 name  = "{{.owner}}/{{.repo}}-{{.number}}"
 subscribe = '''
@@ -150,7 +150,7 @@ func TestSubscribe_NoProviderMatches(t *testing.T) {
 
 func TestSubscribe_ProviderWithoutSubscribeHook(t *testing.T) {
 	baseDir := t.TempDir()
-	providersDir := filepath.Join(baseDir, "providers")
+	providersDir := filepath.Join(baseDir, "workspaces")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestSubscribe_ProviderWithoutSubscribeHook(t *testing.T) {
 
 func TestSubscribe_HookFailureSurfacesStderr(t *testing.T) {
 	baseDir := t.TempDir()
-	providersDir := filepath.Join(baseDir, "providers")
+	providersDir := filepath.Join(baseDir, "workspaces")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

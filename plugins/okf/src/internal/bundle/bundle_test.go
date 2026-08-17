@@ -48,21 +48,21 @@ type fakeRunner struct {
 
 func (f fakeRunner) Status(alias string) ([]byte, error) { return f.output, f.err }
 
-func TestResolveOwnerWorkdir(t *testing.T) {
+func TestResolveOwnerWorkspaceDir(t *testing.T) {
 	t.Run("resolved", func(t *testing.T) {
-		runner := fakeRunner{output: []byte(`{"runtime":{"workdir_path":"/w","workdir_exists":true}}`)}
-		got, resolveErr := ResolveOwnerWorkdir(runner, "acme")
+		runner := fakeRunner{output: []byte(`{"runtime":{"workspace_dir_path":"/w","workspace_dir_exists":true}}`)}
+		got, resolveErr := ResolveOwnerWorkspaceDir(runner, "acme")
 		if resolveErr != nil {
 			t.Fatalf("unexpected error: %v", resolveErr)
 		}
 		if got != "/w" {
-			t.Fatalf("got workdir %q, want /w", got)
+			t.Fatalf("got workspace dir %q, want /w", got)
 		}
 	})
 
 	t.Run("no session is unresolved", func(t *testing.T) {
 		runner := fakeRunner{output: []byte("no such session"), err: errors.New("exit 1")}
-		_, resolveErr := ResolveOwnerWorkdir(runner, "acme")
+		_, resolveErr := ResolveOwnerWorkspaceDir(runner, "acme")
 		if resolveErr == nil || !resolveErr.Unresolved {
 			t.Fatalf("want an Unresolved error, got %#v", resolveErr)
 		}
@@ -70,15 +70,15 @@ func TestResolveOwnerWorkdir(t *testing.T) {
 
 	t.Run("ambiguous alias is a hard error", func(t *testing.T) {
 		runner := fakeRunner{output: []byte("owner:acme matches multiple sessions"), err: errors.New("exit 1")}
-		_, resolveErr := ResolveOwnerWorkdir(runner, "acme")
+		_, resolveErr := ResolveOwnerWorkspaceDir(runner, "acme")
 		if resolveErr == nil || resolveErr.Unresolved {
 			t.Fatalf("want a hard (non-Unresolved) error, got %#v", resolveErr)
 		}
 	})
 
-	t.Run("unreadable workdir is unresolved", func(t *testing.T) {
-		runner := fakeRunner{output: []byte(`{"runtime":{"workdir_path":"/w","workdir_exists":false}}`)}
-		_, resolveErr := ResolveOwnerWorkdir(runner, "acme")
+	t.Run("unreadable workspace directory is unresolved", func(t *testing.T) {
+		runner := fakeRunner{output: []byte(`{"runtime":{"workspace_dir_path":"/w","workspace_dir_exists":false}}`)}
+		_, resolveErr := ResolveOwnerWorkspaceDir(runner, "acme")
 		if resolveErr == nil || !resolveErr.Unresolved {
 			t.Fatalf("want an Unresolved error, got %#v", resolveErr)
 		}
@@ -86,7 +86,7 @@ func TestResolveOwnerWorkdir(t *testing.T) {
 
 	t.Run("unparseable status output is unresolved", func(t *testing.T) {
 		runner := fakeRunner{output: []byte("not json")}
-		_, resolveErr := ResolveOwnerWorkdir(runner, "acme")
+		_, resolveErr := ResolveOwnerWorkspaceDir(runner, "acme")
 		if resolveErr == nil || !resolveErr.Unresolved {
 			t.Fatalf("want an Unresolved error, got %#v", resolveErr)
 		}
@@ -95,12 +95,12 @@ func TestResolveOwnerWorkdir(t *testing.T) {
 
 func TestRoot(t *testing.T) {
 	t.Run("bundle exists", func(t *testing.T) {
-		workdir := t.TempDir()
-		bundleDir := filepath.Join(workdir, "knowledge", "bundle")
+		workspaceDir := t.TempDir()
+		bundleDir := filepath.Join(workspaceDir, "knowledge", "bundle")
 		if err := os.MkdirAll(bundleDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		got, resolveErr := Root(workdir)
+		got, resolveErr := Root(workspaceDir)
 		if resolveErr != nil {
 			t.Fatalf("unexpected error: %v", resolveErr)
 		}
@@ -111,8 +111,8 @@ func TestRoot(t *testing.T) {
 	})
 
 	t.Run("bundle not bootstrapped is unresolved", func(t *testing.T) {
-		workdir := t.TempDir()
-		_, resolveErr := Root(workdir)
+		workspaceDir := t.TempDir()
+		_, resolveErr := Root(workspaceDir)
 		if resolveErr == nil || !resolveErr.Unresolved {
 			t.Fatalf("want an Unresolved error, got %#v", resolveErr)
 		}

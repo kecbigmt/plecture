@@ -16,8 +16,8 @@ import (
 
 // createWithWorkflowSetup is the workflow-setup create path:
 //
-//	state entry → workflow setup (acquires workdir) → cascade resolution
-//	from workdir → task DAG compile → session-scoped tasks
+//	state entry → workflow setup (acquires workspace) → cascade resolution
+//	from workspace → task DAG compile → session-scoped tasks
 //
 // sessionName is the final id (tag already applied); resource is the
 // canonical resource identifier; alias is the user's original input.
@@ -25,7 +25,7 @@ import (
 // The state entry is recorded before setup runs so a failed setup leaves an
 // inspectable session (with the @workflow pseudo-node marked failed) that a
 // later create retries and a non-force destroy can immediately release.
-func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params CreateParams, wf config.WorkflowFile, prov config.ProviderConfig, sessionName, resource, alias string) (*CreateResult, error) {
+func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params CreateParams, wf config.WorkflowFile, prov config.WorkspaceProviderConfig, sessionName, resource, alias string) (*CreateResult, error) {
 	if err := validateSessionName(sessionName); err != nil {
 		return nil, err
 	}
@@ -55,8 +55,9 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 			return nil, parentErr
 		}
 		// Session inputs are validated against the trusted-layer schema;
-		// workdir overlays can add nodes but not tighten the input contract
-		// retroactively (the workdir doesn't exist at validation time).
+		// workspace-dir overlays can add nodes but not tighten the input
+		// contract retroactively (the workspace doesn't exist at validation
+		// time).
 		input, validateErr := resolveSessionInputs(cfg, "", wf.ID, params.Inputs)
 		if validateErr != nil {
 			return nil, validateErr
@@ -91,20 +92,20 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	}
 
 	vars := task.WorkflowHookVars{
-		ResourceID:    resource,
-		SessionName:   sessionName,
-		WorkdirsRoot:  cfg.WorkdirsRoot,
-		SessionInputs: session.Inputs,
-		Plugins:       cfg.Plugins,
-		SourcePath:    prov.SourcePath,
+		ResourceID:        resource,
+		SessionName:       sessionName,
+		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
+		SessionInputs:     session.Inputs,
+		Plugins:           cfg.Plugins,
+		SourcePath:        prov.SourcePath,
 	}
 	outputs, setupErr := task.RunWorkflowSetup(prov, vars, session.Tasks, params.Observer)
 	session.UpdatedAt = time.Now()
 	if outputs != nil {
-		if workdir, ok := outputs[contract.OutputKeyWorkdir].(string); ok {
-			// The session's own working-directory field is the one every
+		if workspaceDir, ok := outputs[contract.OutputKeyWorkspaceDir].(string); ok {
+			// The session's own workspace-directory field is the one every
 			// consumer (cd/attach/ls/web UI/hooks) reads, so mirror it here.
-			session.WorkdirPath = workdir
+			session.WorkspaceDirPath = workspaceDir
 		}
 		if branch, ok := outputs["branch"].(string); ok && branch != "" {
 			session.Branch = branch
@@ -117,10 +118,10 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
 
-	// Environment lifecycle: after provider setup (the workdir exists), before
-	// session task setup. A no-op when the workflow declares no environment.
-	// Fail-closed like provider setup — an environment setup failure must not
-	// let task setup start.
+	// Environment lifecycle: after workspace provider setup (the workspace
+	// exists), before session task setup. A no-op when the workflow declares
+	// no environment. Fail-closed like workspace provider setup — an
+	// environment setup failure must not let task setup start.
 	envSetupErr := runEnvironmentSetupForSession(cfg, wf, session, params.Observer)
 	session.UpdatedAt = time.Now()
 	if err := store.Put(session); err != nil {
@@ -130,9 +131,10 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		return nil, &Error{Code: ErrExecutionFailed, Message: envSetupErr.Error()}
 	}
 
-	// The workdir now exists: resolve the full cascade (incl. overlays above
-	// and the node-only layer inside the workdir) and run session tasks.
-	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
+	// The workspace now exists: resolve the full cascade (incl. overlays
+	// above and the node-only layer inside the workspace dir) and run
+	// session tasks.
+	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -161,10 +163,10 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	recordSessionCreated(store, sessionName)
 
 	return &CreateResult{
-		SessionName:   sessionName,
-		WorkdirPath:   session.WorkdirPath,
-		Branch:        session.Branch,
-		ReusedWorkdir: reused,
-		Tasks:         session.Tasks,
+		SessionName:        sessionName,
+		WorkspaceDirPath:   session.WorkspaceDirPath,
+		Branch:             session.Branch,
+		ReusedWorkspaceDir: reused,
+		Tasks:              session.Tasks,
 	}, nil
 }

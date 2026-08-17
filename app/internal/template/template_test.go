@@ -238,18 +238,18 @@ func TestRender_SessionVarsWithoutProviderOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := "owner={{.Workflow.outputs.owner}} session={{.SessionName}} " +
-		"workdir={{.WorkdirPath}} focus={{.SessionInputs.focus}} res={{.ResourceID}}"
+		"workdir={{.WorkspaceDirPath}} focus={{.SessionInputs.focus}} res={{.ResourceID}}"
 	if err := os.WriteFile(filepath.Join(plectDir, "kick.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	vars := Vars{
-		Mode:          "kick",
-		SessionName:   "acme/_orchestrator",
-		ResourceID:    "owner:acme",
-		WorkdirPath:   workdir,
-		Workflow:      map[string]any{"owner": "acme"},
-		SessionInputs: map[string]any{"focus": "triage"},
+		Mode:             "kick",
+		SessionName:      "acme/_orchestrator",
+		ResourceID:       "owner:acme",
+		WorkspaceDirPath: workdir,
+		Workflow:         map[string]any{"owner": "acme"},
+		SessionInputs:    map[string]any{"focus": "triage"},
 	}
 
 	result, err := Render("kick", workdir, nil, vars)

@@ -1,23 +1,24 @@
 # github
 
-The GitHub catalog plugin: a resource provider, a resource observation
+The GitHub catalog plugin: a workspace provider, a resource observation
 contract, watcher subscription wiring, and the work/review/respond/investigate
 task pack, reconciled from the production GitHub configuration this repository
 was originally bootstrapped with.
 
 plect core knows nothing about GitHub. Everything GitHub-shaped lives here:
-URL parsing, branch resolution, workdir acquisition, check-run/status rollup,
+URL parsing, branch resolution, worktree acquisition, check-run/status rollup,
 linked-PR discovery, and the four task instructions a GitHub-flavored coding
 session runs through.
 
 ## Contents
 
-- `plugin.toml` — declares the two executables this plugin builds:
-  `plect-github-provider` (setup/cleanup/observe) and `github-watcher`
-  (subscribe/serve/gh-api), both built from `src/`, this plugin's own Go
-  module (`src/cmd/plect-github-provider`, `src/cmd/github-watcher`).
-- `providers/github.toml` — resolves a GitHub issue/PR URL to a session id
-  and acquires/releases the git workdir it maps to.
+- `plugin.toml` — declares the three executables this plugin builds:
+  `github-worktree` (setup/cleanup), `github-issue-pr` (observe), and
+  `github-watcher` (subscribe/serve/gh-api), all built from `src/`, this
+  plugin's own Go module (`src/cmd/github-worktree`, `src/cmd/github-issue-pr`,
+  `src/cmd/github-watcher`).
+- `workspaces/github.toml` — resolves a GitHub issue/PR URL to a session id
+  and acquires/releases the git worktree it maps to.
 - `resources/github.toml` — the standalone observation contract
   (`plect resource status`): resource kind, CI check rollup, issue
   completion, revision, linked PR, and mergeability.
@@ -31,12 +32,13 @@ session runs through.
 
 Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
-`provider = "github"` plus an agent pack together.
+`workspace_provider = "github"` plus an agent pack together.
 
 ## Cleanup
 
-`plect destroy` always releases the workdir it acquired. To also delete the
-local branch, pass the provider-level cleanup intent this plugin reads:
+`plect destroy` always releases the worktree it acquired. To also delete the
+local branch, pass the workspace-provider-level cleanup intent this plugin
+reads:
 
 ```bash
 plect destroy <session> --input delete_branch=true
@@ -58,10 +60,10 @@ plect plugin add official/github
 `--subdir plugins` scopes the catalog root (and the fetch/verify/mount trust
 space) to this repository's `plugins/` subtree, where `plugins/catalog.toml`
 lives — not the whole repository. This plugin's own config
-(providers/resources) never encodes the alias you register under: it
-resolves its executables through `{{bin "plect-github-provider"}}`'s
-plugin-local bare-name reading, which resolves against the containing
-plugin regardless of which alias you chose.
+(workspaces/resources) never encodes the alias you register under: it
+resolves its executables through `{{bin "github-worktree"}}`'s plugin-local
+bare-name reading, which resolves against the containing plugin regardless of
+which alias you chose.
 
 Running `github-watcher serve` as a background daemon is a separate,
 deployment-specific step (a systemd unit, a launchd agent, or similar) —
@@ -72,7 +74,7 @@ supervisor.
 
 - `git`
 - the `gh` CLI, authenticated
-- a Go toolchain, to build the two executables at `plect plugin add`/`update`
+- a Go toolchain, to build the three executables at `plect plugin add`/`update`
   time (see `docs/design/plugin-packaging.md`'s Executable Build Model)
 
 ## Residual config
@@ -81,12 +83,12 @@ What stays in your own config after enabling this plugin:
 
 - Resource allowlist entries (`resource_allowlist` in `config.toml`) for the
   owners/repositories you allow `plect create` to dispatch against.
-- Workdir root choice (`workdirs_root` in `config.toml`), and a per-repository
-  `<repoDir>/.plect/base-branch` file for a repository that branches from
-  something other than its actual default (a git-flow repo branching from
-  `develop`, say).
-- Whether you compose the GitHub provider/tasks with a Claude, Codex, or
-  other agent workflow pack.
+- Workspace dirs root choice (`workspace_dirs_root` in `config.toml`), and a
+  per-repository `<repoDir>/.plect/base-branch` file for a repository that
+  branches from something other than its actual default (a git-flow repo
+  branching from `develop`, say).
+- Whether you compose the GitHub workspace provider/tasks with a Claude,
+  Codex, or other agent workflow pack.
 - Project-board integration, PR-description conventions, or house review
   style — add these as your own overlay of `templates/work.md` /
   `templates/review.md` in a trusted config layer, since they are

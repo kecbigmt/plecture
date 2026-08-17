@@ -28,21 +28,21 @@ var templateFuncs = template.FuncMap{
 }
 
 // Vars is the variable bundle for templates. The session-derived fields
-// mirror the task render context (SessionName / ResourceID / WorkdirPath /
-// Workflow outputs / SessionInputs) so a template authored for a task reads
-// the same way here. Anything resource-shaped a template needs beyond the
-// resource id comes from the provider's setup outputs, exposed as
-// .Workflow.outputs.<key>.
+// mirror the task render context (SessionName / ResourceID /
+// WorkspaceDirPath / Workflow outputs / SessionInputs) so a template
+// authored for a task reads the same way here. Anything resource-shaped a
+// template needs beyond the resource id comes from the workspace provider's
+// setup outputs, exposed as .Workflow.outputs.<key>.
 type Vars struct {
 	Mode        string
 	Instruction string
 
-	// Session-derived (provider-agnostic).
-	SessionName   string
-	ResourceID    string
-	WorkdirPath   string
-	Workflow      map[string]any // provider setup outputs, exposed as .Workflow.outputs.<key>
-	SessionInputs map[string]any // session inputs + explicit --var, exposed as .SessionInputs.<key>
+	// Session-derived (workspace-provider-agnostic).
+	SessionName      string
+	ResourceID       string
+	WorkspaceDirPath string
+	Workflow         map[string]any // workspace provider setup outputs, exposed as .Workflow.outputs.<key>
+	SessionInputs    map[string]any // session inputs + explicit --var, exposed as .SessionInputs.<key>
 }
 
 // Metadata holds frontmatter fields parsed from a template.
@@ -225,21 +225,21 @@ func Render(mode, searchDir string, pluginDirs []string, vars Vars) (string, err
 		inputs = map[string]any{}
 	}
 	data := struct {
-		Mode          string
-		Instruction   string
-		SessionName   string
-		ResourceID    string
-		WorkdirPath   string
-		Workflow      map[string]any
-		SessionInputs map[string]any
+		Mode             string
+		Instruction      string
+		SessionName      string
+		ResourceID       string
+		WorkspaceDirPath string
+		Workflow         map[string]any
+		SessionInputs    map[string]any
 	}{
-		Mode:          vars.Mode,
-		Instruction:   vars.Instruction,
-		SessionName:   vars.SessionName,
-		ResourceID:    vars.ResourceID,
-		WorkdirPath:   vars.WorkdirPath,
-		Workflow:      map[string]any{"outputs": outputs},
-		SessionInputs: inputs,
+		Mode:             vars.Mode,
+		Instruction:      vars.Instruction,
+		SessionName:      vars.SessionName,
+		ResourceID:       vars.ResourceID,
+		WorkspaceDirPath: vars.WorkspaceDirPath,
+		Workflow:         map[string]any{"outputs": outputs},
+		SessionInputs:    inputs,
 	}
 
 	var buf bytes.Buffer

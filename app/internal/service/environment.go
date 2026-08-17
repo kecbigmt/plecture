@@ -31,15 +31,15 @@ func environmentHookVars(wf config.WorkflowFile, session *domain.Session) task.E
 		ResourceID:        session.ResourceID,
 		SessionName:       session.Name,
 		SessionInputs:     session.Inputs,
-		WorkdirPath:       session.WorkdirPath,
+		WorkspaceDirPath:  session.WorkspaceDirPath,
 		EnvironmentInputs: wf.EnvironmentInputs,
 	}
 }
 
 // runEnvironmentSetupForSession runs the @environment pseudo-node's setup (a
-// no-op when the workflow declares no environment). Must run after provider
-// setup (the workdir exists) and before session task setup: provider ->
-// environment -> tasks.
+// no-op when the workflow declares no environment). Must run after workspace
+// provider setup (the workspace exists) and before session task setup:
+// workspace provider -> environment -> tasks.
 func runEnvironmentSetupForSession(cfg *config.Config, wf config.WorkflowFile, session *domain.Session, observer task.Observer) error {
 	env, ok, err := sessionEnvironment(cfg, wf)
 	if err != nil {
@@ -54,8 +54,8 @@ func runEnvironmentSetupForSession(cfg *config.Config, wf config.WorkflowFile, s
 
 // runEnvironmentCleanupForSession runs the @environment pseudo-node's
 // cleanup (a no-op when the workflow declares no environment, or setup never
-// ran). Must run after run+session task cleanup and before provider cleanup:
-// tasks -> environment -> provider.
+// ran). Must run after run+session task cleanup and before workspace
+// provider cleanup: tasks -> environment -> workspace provider.
 func runEnvironmentCleanupForSession(cfg *config.Config, wf config.WorkflowFile, session *domain.Session, observer task.Observer) error {
 	env, ok, err := sessionEnvironment(cfg, wf)
 	if err != nil {
@@ -89,11 +89,11 @@ func environmentExecutorForSession(cfg *config.Config, wf config.WorkflowFile, s
 // loadSessionWorkflow reloads the workflow a session is frozen to. Used by
 // lifecycle paths (up/down/destroy/task setup/cleanup) that only have the
 // session in hand, not an already-loaded WorkflowFile.
-func loadSessionWorkflow(cfg *config.Config, workdirDir string, session *domain.Session) (config.WorkflowFile, error) {
+func loadSessionWorkflow(cfg *config.Config, workspaceDirPath string, session *domain.Session) (config.WorkflowFile, error) {
 	if session == nil || session.Workflow == "" {
 		return config.WorkflowFile{}, nil
 	}
-	workflows, err := cfg.LoadWorkflows(workdirDir)
+	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		return config.WorkflowFile{}, fmt.Errorf("load workflows: %w", err)
 	}

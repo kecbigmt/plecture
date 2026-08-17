@@ -28,11 +28,12 @@ type SubscribeParams struct {
 // replacing — subscribing a resource another session already watches does not
 // take it over.
 //
-// core stays provider-agnostic: it matches the resource against each
-// provider's resolver to pick the owning provider, fills in the current
-// session from the ambient env, and runs that provider's `subscribe` hook.
-// Everything resource-specific (registering with a resident watcher, say)
-// lives in the hook — core never parses the resource.
+// core stays workspace-provider-agnostic: it matches the resource against
+// each workspace provider's resolver to pick the owning workspace provider,
+// fills in the current session from the ambient env, and runs that workspace
+// provider's `subscribe` hook. Everything resource-specific (registering with
+// a resident watcher, say) lives in the hook — core never parses the
+// resource.
 func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) error {
 	if strings.TrimSpace(params.ResourceID) == "" {
 		return &Error{Code: ErrInvalidInput, Message: "resource id is required"}
@@ -60,12 +61,12 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 		return &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q does not exist", sessionName)}
 	}
 
-	prov, err := providerForResource(cfg, params.ResourceID)
+	prov, err := workspaceProviderForResource(cfg, params.ResourceID)
 	if err != nil {
 		return err
 	}
 
-	if hookErr := task.RunProviderSubscribe(prov, task.SubscribeHookVars{
+	if hookErr := task.RunWorkspaceProviderSubscribe(prov, task.SubscribeHookVars{
 		ResourceID:  params.ResourceID,
 		SessionName: sessionName,
 		Plugins:     cfg.Plugins,
@@ -76,31 +77,31 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 	return nil
 }
 
-// providerForResource selects the single provider whose resolver matches the
-// resource. Mirrors dispatchResource's no-flag branch but keys on the
-// provider's `match` directly (subscribe has no workflow): zero matches is an
-// "unknown resource" error, several is ambiguity. The chosen provider must
-// declare a `subscribe` hook.
-func providerForResource(cfg *config.Config, resource string) (config.ProviderConfig, error) {
-	providers, err := cfg.LoadProviders()
+// workspaceProviderForResource selects the single workspace provider whose
+// resolver matches the resource. Mirrors dispatchResource's no-flag branch
+// but keys on the workspace provider's `match` directly (subscribe has no
+// workflow): zero matches is an "unknown resource" error, several is
+// ambiguity. The chosen workspace provider must declare a `subscribe` hook.
+func workspaceProviderForResource(cfg *config.Config, resource string) (config.WorkspaceProviderConfig, error) {
+	workspaceProviders, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		return config.ProviderConfig{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load providers: %v", err)}
+		return config.WorkspaceProviderConfig{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", err)}
 	}
-	ids := make([]string, 0, len(providers))
-	for id := range providers {
+	ids := make([]string, 0, len(workspaceProviders))
+	for id := range workspaceProviders {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 
-	var matched []config.ProviderConfig
+	var matched []config.WorkspaceProviderConfig
 	for _, id := range ids {
-		prov := providers[id]
+		prov := workspaceProviders[id]
 		if !prov.HasResolver() {
 			continue
 		}
 		re, reErr := regexp.Compile(prov.Match)
 		if reErr != nil {
-			return config.ProviderConfig{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("provider %q resolver match: %v", prov.ID, reErr)}
+			return config.WorkspaceProviderConfig{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q resolver match: %v", prov.ID, reErr)}
 		}
 		if re.MatchString(resource) {
 			matched = append(matched, prov)
@@ -108,11 +109,11 @@ func providerForResource(cfg *config.Config, resource string) (config.ProviderCo
 	}
 	switch len(matched) {
 	case 0:
-		return config.ProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no provider matches resource %q", resource)}
+		return config.WorkspaceProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workspace provider matches resource %q", resource)}
 	case 1:
 		prov := matched[0]
 		if strings.TrimSpace(prov.Subscribe) == "" {
-			return config.ProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("provider %q does not support subscribe", prov.ID)}
+			return config.WorkspaceProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workspace provider %q does not support subscribe", prov.ID)}
 		}
 		return prov, nil
 	default:
@@ -120,6 +121,6 @@ func providerForResource(cfg *config.Config, resource string) (config.ProviderCo
 		for i, p := range matched {
 			names[i] = p.ID
 		}
-		return config.ProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple providers (%s)", resource, strings.Join(names, ", "))}
+		return config.WorkspaceProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource %q matches multiple workspace providers (%s)", resource, strings.Join(names, ", "))}
 	}
 }

@@ -1,10 +1,10 @@
 # Auto-recreates missing pursue_goal instances for every open local-okf goal
-# under the orchestrator workdir's knowledge/bundle/goals/. A pursue_goal
-# instance is session-scoped, so a destroy→up cycle silently drops it and
-# the tick reactor's heartbeat starves (nothing left to re-evaluate).
-# scope="run" re-scans on every `up`.
+# under the orchestrator workspace directory's knowledge/bundle/goals/. A
+# pursue_goal instance is session-scoped, so a destroy→up cycle silently
+# drops it and the tick reactor's heartbeat starves (nothing left to
+# re-evaluate). scope="run" re-scans on every `up`.
 #
-# plect-okf task bootstrap checks for an existing instance before calling
+# okf-goal task bootstrap checks for an existing instance before calling
 # setup — not cleanup-then-setup — because an existing instance carries
 # recorded judge history, and recreating it on every up would re-pend an
 # already-satisfied judge for no reason. Only a genuinely missing instance
@@ -12,8 +12,8 @@
 scope = "run"
 
 setup = '''
-{{bin "plect-okf"}} task bootstrap \
-  --workdir {{.WorkdirPath | shellQuote}} \
+{{bin "okf-goal"}} task bootstrap \
+  --workspace-dir {{.WorkspaceDirPath | shellQuote}} \
   --owner {{.Inputs.owner | shellQuote}} \
   --session {{.SessionName | shellQuote}} \
   --assignees {{get .Inputs "assignees" | shellQuote}}

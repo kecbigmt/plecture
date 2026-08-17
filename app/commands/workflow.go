@@ -132,25 +132,25 @@ func printWorkflowDetail(out io.Writer, d *service.WorkflowDetail) error {
 	if d.Description != "" {
 		fmt.Fprintf(w, "Description:\t%s\n", d.Description)
 	}
-	if d.Provider != "" {
-		fmt.Fprintf(w, "Provider:\t%s\n", d.Provider)
+	if d.WorkspaceProvider != "" {
+		fmt.Fprintf(w, "Workspace provider:\t%s\n", d.WorkspaceProvider)
 	}
 	if !d.AutoSelect {
 		fmt.Fprintln(w, "Auto-select:\tfalse")
 	}
-	if d.ProviderInfo != nil {
-		if d.ProviderInfo.Match != "" {
-			fmt.Fprintf(w, "Resolver:\t%s → %s\n", d.ProviderInfo.Match, d.ProviderInfo.Name)
+	if d.WorkspaceProviderInfo != nil {
+		if d.WorkspaceProviderInfo.Match != "" {
+			fmt.Fprintf(w, "Resolver:\t%s → %s\n", d.WorkspaceProviderInfo.Match, d.WorkspaceProviderInfo.Name)
 		}
 		var hooks []string
-		if d.ProviderInfo.Setup != "" {
+		if d.WorkspaceProviderInfo.Setup != "" {
 			hooks = append(hooks, "setup")
 		}
-		if d.ProviderInfo.Cleanup != "" {
+		if d.WorkspaceProviderInfo.Cleanup != "" {
 			hooks = append(hooks, "cleanup")
 		}
 		if len(hooks) > 0 {
-			fmt.Fprintf(w, "Provider hooks:\t%s (use --json for the scripts)\n", strings.Join(hooks, ", "))
+			fmt.Fprintf(w, "Workspace provider hooks:\t%s (use --json for the scripts)\n", strings.Join(hooks, ", "))
 		}
 	}
 	if d.Tick != nil {

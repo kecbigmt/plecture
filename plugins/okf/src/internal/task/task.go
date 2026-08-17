@@ -43,7 +43,7 @@ type Runner interface {
 	SetupPursueGoal(session, name, resourceID string) error
 }
 
-// Bootstrap scans an orchestrator workdir's goals directory and creates a
+// Bootstrap scans an orchestrator workspace directory's goals directory and creates a
 // missing pursue_goal instance for every open goal the assignee filter
 // admits. A pursue_goal instance is session-scoped, so a destroy→up cycle
 // silently drops it; bootstrap re-scanning on every `up` is what recreates

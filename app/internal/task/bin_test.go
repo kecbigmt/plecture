@@ -40,18 +40,18 @@ func TestRender_BinHelperUnresolvedFailsLoud(t *testing.T) {
 // RenderContext.SourcePath the way task setup/cleanup templates do.
 func TestRender_BinHelperResolvesPluginLocalBareName(t *testing.T) {
 	mounted := []plugins.Mounted{
-		mustMount("some-alias/github", "/mnt/some-alias/github", plugins.Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"}),
+		mustMount("some-alias/github", "/mnt/some-alias/github", plugins.Executable{Name: "github-worktree", Path: "bin/github-worktree"}),
 	}
-	sourcePath := filepath.Join("/mnt/some-alias/github", "providers", "github.toml")
+	sourcePath := filepath.Join("/mnt/some-alias/github", "workspaces", "github.toml")
 
-	out, err := render(`{{bin "plect-github-provider"}} setup`, RenderContext{
+	out, err := render(`{{bin "github-worktree"}} setup`, RenderContext{
 		Session:    SessionVars{Plugins: mounted},
 		SourcePath: sourcePath,
 	})
 	if err != nil {
 		t.Fatalf("render: unexpected error: %v", err)
 	}
-	want := filepath.Join("/mnt/some-alias/github", "bin", "plect-github-provider") + " setup"
+	want := filepath.Join("/mnt/some-alias/github", "bin", "github-worktree") + " setup"
 	if out != want {
 		t.Errorf("render = %q, want %q", out, want)
 	}

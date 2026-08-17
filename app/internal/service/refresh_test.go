@@ -27,9 +27,9 @@ func TestRefreshInstanceOutputs_PersistsFetchedValue(t *testing.T) {
 
 	now := time.Now()
 	store.Put(&domain.Session{
-		Name:        "owner/repo-1",
-		WorkdirPath: t.TempDir(),
-		Workflow:    "wf",
+		Name:             "owner/repo-1",
+		WorkspaceDirPath: t.TempDir(),
+		Workflow:         "wf",
 		Tasks: map[string]*contract.TaskState{
 			"review#1": {TaskID: "review", Dynamic: true, Status: contract.TaskStatusProduced, Resource: "pr", Outputs: map[string]any{}},
 		},
@@ -56,9 +56,9 @@ func TestRefreshInstanceOutputs_FetchFailureKeepsPrior(t *testing.T) {
 		[]nodeFixture{{id: "review"}})
 
 	store.Put(&domain.Session{
-		Name:        "owner/repo-2",
-		WorkdirPath: t.TempDir(),
-		Workflow:    "wf",
+		Name:             "owner/repo-2",
+		WorkspaceDirPath: t.TempDir(),
+		Workflow:         "wf",
 		Tasks: map[string]*contract.TaskState{
 			"review#1": {TaskID: "review", Dynamic: true, Status: contract.TaskStatusProduced, Outputs: map[string]any{"checks_status": "PENDING"}},
 		},
@@ -82,7 +82,7 @@ func TestRefreshSessionOutputs_RefreshesDynamicInstancesOnly(t *testing.T) {
 		[]taskFixture{reviewFixtureWithOutput("echo SUCCESS"), {id: "tmux", scope: "run"}},
 		[]nodeFixture{{id: "review"}, {id: "tmux"}})
 	store.Put(&domain.Session{
-		Name: "owner/repo-9", WorkdirPath: t.TempDir(), Workflow: "wf",
+		Name: "owner/repo-9", WorkspaceDirPath: t.TempDir(), Workflow: "wf",
 		Tasks: map[string]*contract.TaskState{
 			"review#1": {TaskID: "review", Dynamic: true, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 			"tmux":     {TaskID: "tmux", Status: contract.TaskStatusProduced},
@@ -108,7 +108,7 @@ func TestRefreshInstanceOutputs_ProducesGroup(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{id: "review", scope: "session", extra: extra}}, []nodeFixture{{id: "review"}})
 	store.Put(&domain.Session{
-		Name: "owner/repo-8", WorkdirPath: t.TempDir(), Workflow: "wf",
+		Name: "owner/repo-8", WorkspaceDirPath: t.TempDir(), Workflow: "wf",
 		Tasks: map[string]*contract.TaskState{
 			"review#1": {TaskID: "review", Dynamic: true, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 		},
@@ -126,12 +126,12 @@ func TestRefreshInstanceOutputs_ProducesGroup(t *testing.T) {
 	}
 }
 
-// A builtin output (no [[outputs]] declared) fetches from the real workdir —
-// local DoD rides the same mechanism as a remote check.
-func TestRefreshInstanceOutputs_BuiltinWorkdirDirty(t *testing.T) {
+// A builtin output (no [[outputs]] declared) fetches from the real workspace
+// directory — local DoD rides the same mechanism as a remote check.
+func TestRefreshInstanceOutputs_BuiltinWorkspaceDirDirty(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{{id: "work", scope: "session", extra: "[[done_when.all]]\ncheck = \"workdir_dirty\"\neq = \"0\"\n"}},
+		[]taskFixture{{id: "work", scope: "session", extra: "[[done_when.all]]\ncheck = \"workspace_dir_dirty\"\neq = \"0\"\n"}},
 		[]nodeFixture{{id: "work"}})
 
 	wt := t.TempDir()
@@ -147,7 +147,7 @@ func TestRefreshInstanceOutputs_BuiltinWorkdirDirty(t *testing.T) {
 	}
 
 	store.Put(&domain.Session{
-		Name: "owner/repo-7", WorkdirPath: wt, Workflow: "wf",
+		Name: "owner/repo-7", WorkspaceDirPath: wt, Workflow: "wf",
 		Tasks: map[string]*contract.TaskState{
 			"work#1": {TaskID: "work", Dynamic: true, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 		},
@@ -157,8 +157,8 @@ func TestRefreshInstanceOutputs_BuiltinWorkdirDirty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 1 || !results[0].Fetched || results[0].Name != "workdir_dirty" || results[0].Value != "1" {
-		t.Fatalf("results = %+v, want workdir_dirty=1 (one untracked file)", results)
+	if len(results) != 1 || !results[0].Fetched || results[0].Name != "workspace_dir_dirty" || results[0].Value != "1" {
+		t.Fatalf("results = %+v, want workspace_dir_dirty=1 (one untracked file)", results)
 	}
 }
 
@@ -168,7 +168,7 @@ func TestRefreshInstanceOutputs_NoDynamicOutputs(t *testing.T) {
 		[]taskFixture{{id: "tmux", scope: "run"}},
 		[]nodeFixture{{id: "tmux"}})
 	store.Put(&domain.Session{
-		Name: "owner/repo-3", WorkdirPath: t.TempDir(), Workflow: "wf",
+		Name: "owner/repo-3", WorkspaceDirPath: t.TempDir(), Workflow: "wf",
 		Tasks: map[string]*contract.TaskState{
 			"tmux": {TaskID: "tmux", Status: contract.TaskStatusProduced},
 		},

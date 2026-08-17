@@ -54,16 +54,16 @@ func TestDispatchResource_NoMatchFallsThrough(t *testing.T) {
 func TestDispatchResource_AmbiguousIsError(t *testing.T) {
 	baseDir := t.TempDir()
 	for _, id := range []string{"a", "b"} {
-		for _, sub := range []string{"workflows", "providers"} {
+		for _, sub := range []string{"workflows", "workspaces"} {
 			if err := os.MkdirAll(filepath.Join(baseDir, sub), 0o755); err != nil {
 				t.Fatal(err)
 			}
 		}
 		prov := "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n" + githubResolver
-		if err := os.WriteFile(filepath.Join(baseDir, "providers", id+".toml"), []byte(prov), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(baseDir, "workspaces", id+".toml"), []byte(prov), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		content := "provider = \"" + id + "\"\n\n[[nodes]]\nid = \"noop\"\n"
+		content := "workspace_provider = \"" + id + "\"\n\n[[nodes]]\nid = \"noop\"\n"
 		if err := os.WriteFile(filepath.Join(baseDir, "workflows", id+".toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -87,22 +87,22 @@ func TestDispatchResource_AmbiguousIsError(t *testing.T) {
 
 func TestDispatchResource_AutoSelectFalseSkippedUnlessExplicit(t *testing.T) {
 	baseDir := t.TempDir()
-	for _, sub := range []string{"workflows", "providers", "tasks"} {
+	for _, sub := range []string{"workflows", "workspaces", "tasks"} {
 		if err := os.MkdirAll(filepath.Join(baseDir, sub), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	prov := "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n" + githubResolver
-	if err := os.WriteFile(filepath.Join(baseDir, "providers", "github.toml"), []byte(prov), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "github.toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("setup = \"echo '{}'\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "claude.toml"), []byte("provider = \"github\"\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "claude.toml"), []byte("workspace_provider = \"github\"\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "codex.toml"), []byte("provider = \"github\"\nauto_select = false\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "codex.toml"), []byte("workspace_provider = \"github\"\nauto_select = false\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{BaseDir: baseDir}
@@ -177,7 +177,7 @@ func TestCreate_ResolverPath(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "gh", `
 setup = '''
 mkdir -p `+workdir+`
-echo '{"workdir":"`+workdir+`"}'
+echo '{"workspace_dir":"`+workdir+`"}'
 '''
 `+githubResolver)
 
@@ -207,7 +207,7 @@ func TestCreate_IdentityPath(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "scratch", `
 setup = '''
 mkdir -p `+workdir+`
-echo '{"workdir":"`+workdir+`"}'
+echo '{"workspace_dir":"`+workdir+`"}'
 '''
 `)
 
@@ -247,7 +247,7 @@ func TestCreate_ResourceAllowlistBlocks(t *testing.T) {
 		[]nodeFixture{{id: "noop"}})
 	cfg.ResourceAllowlist = []string{`^https://github\.com/allowed-org/`}
 	writeSetupWorkflow(t, cfg, "gh", `
-setup = "echo '{\"workdir\":\"/tmp/x\"}'"
+setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
 `+githubResolver)
 
 	_, err := Create(cfg, store, CreateParams{URL: "https://github.com/evil-org/repo/issues/1"})
@@ -269,7 +269,7 @@ func TestCreate_SessionGuardBlocksCrossOwner(t *testing.T) {
 	// "acme/repo-1" but not "exampleorg/repo-26".
 	cfg.SessionGuard = "^acme/"
 	writeSetupWorkflow(t, cfg, "gh", `
-setup = "echo '{\"workdir\":\"/tmp/x\"}'"
+setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
 `+githubResolver)
 
 	// acme's orchestrator must not be able to dispatch exampleorg work.
@@ -292,7 +292,7 @@ func TestResolveSession_ByAliasAndResolver(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "gh", `
 setup = '''
 mkdir -p `+workdir+`
-echo '{"workdir":"`+workdir+`"}'
+echo '{"workspace_dir":"`+workdir+`"}'
 '''
 `+githubResolver)
 
@@ -320,7 +320,7 @@ func TestResolveSession_ResolverDerivationAfterRuleChange(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	writeSetupWorkflow(t, cfg, "gh", `
-setup = "echo '{\"workdir\":\"/tmp/x\"}'"
+setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
 `+githubResolver)
 
 	// seedSession sets URL to .../issues/1 — look up via a never-stored URL
@@ -344,7 +344,7 @@ func TestUp_ResolverAutoCreate(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "gh", `
 setup = '''
 mkdir -p `+workdir+`
-echo '{"workdir":"`+workdir+`"}'
+echo '{"workspace_dir":"`+workdir+`"}'
 '''
 `+githubResolver)
 
@@ -372,7 +372,7 @@ func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	providersDir := filepath.Join(baseDir, "providers")
+	providersDir := filepath.Join(baseDir, "workspaces")
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +381,7 @@ func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(providersDir, id+".toml"), []byte(prov), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		content := "provider = \"" + id + "\"\n\n[[nodes]]\nid = \"noop\"\n"
+		content := "workspace_provider = \"" + id + "\"\n\n[[nodes]]\nid = \"noop\"\n"
 		if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -392,7 +392,7 @@ func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("setup = \"echo '{}'\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{WorkdirsRoot: t.TempDir(), BaseDir: baseDir}
+	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir(), BaseDir: baseDir}
 
 	_, err := Up(cfg, store, UpParams{Identifier: "https://github.com/org/repo/issues/1"})
 	if err == nil {
@@ -413,7 +413,7 @@ func TestCreate_SetsResourceIDAndAlias(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "bridge", `
 setup = '''
 mkdir -p `+workdir+`
-echo '{"workdir":"`+workdir+`"}'
+echo '{"workspace_dir":"`+workdir+`"}'
 '''
 `+githubResolver)
 	url := "https://github.com/org/repo/issues/55"
@@ -437,7 +437,7 @@ func TestWorkdir_ResolverAndAliasLookup(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "gh", `
 setup = '''
 mkdir -p `+workdir+`
-echo '{"workdir":"`+workdir+`"}'
+echo '{"workspace_dir":"`+workdir+`"}'
 '''
 `+githubResolver)
 
@@ -450,17 +450,17 @@ echo '{"workdir":"`+workdir+`"}'
 	// bare resource base no longer resolves because it cannot disambiguate the
 	// session-identity tag (which workflow's session?).
 	for _, id := range []string{"org/repo-66+gh", url} {
-		got, err := Workdir(cfg, store, id)
+		got, err := WorkspaceDir(cfg, store, id)
 		if err != nil {
-			t.Errorf("Workdir(%q): %v", id, err)
+			t.Errorf("WorkspaceDir(%q): %v", id, err)
 			continue
 		}
 		if got != workdir {
-			t.Errorf("Workdir(%q) = %q, want %q", id, got, workdir)
+			t.Errorf("WorkspaceDir(%q) = %q, want %q", id, got, workdir)
 		}
 	}
 
-	if _, err := Workdir(cfg, store, "no-such-session"); err == nil {
+	if _, err := WorkspaceDir(cfg, store, "no-such-session"); err == nil {
 		t.Error("unknown identifier should error")
 	}
 }

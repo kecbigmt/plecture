@@ -1,4 +1,4 @@
-package provider
+package worktree
 
 import (
 	"context"
@@ -37,7 +37,7 @@ type fakeManager struct {
 }
 
 type removeCall struct {
-	workdir      string
+	workspaceDir string
 	gitDir       string
 	branch       string
 	force        bool
@@ -62,8 +62,8 @@ func (m *fakeManager) FindGitDir(string, ...string) (string, error) {
 	return "/roots/src/acme/widgets", nil
 }
 
-func (m *fakeManager) RemoveByPath(ctx context.Context, workdir, gitDir, branch string, force, deleteBranch bool) error {
-	m.removes = append(m.removes, removeCall{workdir: workdir, gitDir: gitDir, branch: branch, force: force, deleteBranch: deleteBranch})
+func (m *fakeManager) RemoveByPath(ctx context.Context, workspaceDir, gitDir, branch string, force, deleteBranch bool) error {
+	m.removes = append(m.removes, removeCall{workspaceDir: workspaceDir, gitDir: gitDir, branch: branch, force: force, deleteBranch: deleteBranch})
 	return m.removeErr
 }
 
@@ -109,13 +109,13 @@ func TestSetup_IssueAcquiresTaggedWorktree(t *testing.T) {
 	}
 
 	want := map[string]any{
-		"workdir":    "/roots/worktrees/github.com/acme/widgets/issue-42-review",
-		"branch":     "issue/42+review",
-		"url":        "https://github.com/acme/widgets/issues/42",
-		"owner_repo": "acme/widgets",
-		"owner":      "acme",
-		"repo":       "widgets",
-		"number":     42,
+		"workspace_dir": "/roots/worktrees/github.com/acme/widgets/issue-42-review",
+		"branch":        "issue/42+review",
+		"url":           "https://github.com/acme/widgets/issues/42",
+		"owner_repo":    "acme/widgets",
+		"owner":         "acme",
+		"repo":          "widgets",
+		"number":        42,
 	}
 	if !reflect.DeepEqual(outputs, want) {
 		t.Errorf("outputs = %v, want %v", outputs, want)
@@ -265,24 +265,24 @@ func TestSetup_AcquisitionFailurePropagates(t *testing.T) {
 	}
 }
 
-func TestSetup_MissingWorkdirPathIsAnError(t *testing.T) {
+func TestSetup_MissingWorkspaceDirPathIsAnError(t *testing.T) {
 	_, err := Setup(context.Background(), SetupOptions{
 		ResourceID:  "https://github.com/acme/widgets/issues/1",
 		SessionName: "acme/widgets-1",
 		Manager:     &fakeManager{addInfo: &workspace.WorkspaceInfo{}},
 		GHClient:    &fakeGHClient{err: errors.New("no gh-api client configured for this test")},
 	})
-	if err == nil || !strings.Contains(err.Error(), "workdir path") {
-		t.Fatalf("error = %v, want a missing-workdir-path error", err)
+	if err == nil || !strings.Contains(err.Error(), "worktree path") {
+		t.Fatalf("error = %v, want a missing-worktree-path error", err)
 	}
 }
 
 func TestCleanup_ReleasesWorktreeWithoutReclaimingBranchByDefault(t *testing.T) {
 	mgr := &fakeManager{}
 	if err := Cleanup(context.Background(), CleanupOptions{
-		Workdir: "/roots/wt/issue-42-review",
-		Branch:  "issue/42+review",
-		Manager: mgr,
+		WorkspaceDir: "/roots/wt/issue-42-review",
+		Branch:       "issue/42+review",
+		Manager:      mgr,
 	}); err != nil {
 		t.Fatalf("Cleanup: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestCleanup_ReleasesWorktreeWithoutReclaimingBranchByDefault(t *testing.T) 
 		t.Fatalf("issued %d manager removes, want 1", len(mgr.removes))
 	}
 	remove := mgr.removes[0]
-	if remove.workdir != "/roots/wt/issue-42-review" || remove.branch != "issue/42+review" {
+	if remove.workspaceDir != "/roots/wt/issue-42-review" || remove.branch != "issue/42+review" {
 		t.Errorf("remove = %+v", remove)
 	}
 	if remove.deleteBranch {
@@ -301,7 +301,7 @@ func TestCleanup_ReleasesWorktreeWithoutReclaimingBranchByDefault(t *testing.T) 
 func TestCleanup_DeleteBranchOptIn(t *testing.T) {
 	mgr := &fakeManager{}
 	if err := Cleanup(context.Background(), CleanupOptions{
-		Workdir:      "/roots/wt/issue-42-review",
+		WorkspaceDir: "/roots/wt/issue-42-review",
 		Branch:       "issue/42+review",
 		DeleteBranch: true,
 		Manager:      mgr,
@@ -316,9 +316,9 @@ func TestCleanup_DeleteBranchOptIn(t *testing.T) {
 func TestCleanup_ForcePassesForceFlagToWorkspaceRemove(t *testing.T) {
 	mgr := &fakeManager{}
 	if err := Cleanup(context.Background(), CleanupOptions{
-		Workdir: "/roots/wt/issue-42-review",
-		Force:   true,
-		Manager: mgr,
+		WorkspaceDir: "/roots/wt/issue-42-review",
+		Force:        true,
+		Manager:      mgr,
 	}); err != nil {
 		t.Fatalf("Cleanup: %v", err)
 	}
@@ -327,10 +327,10 @@ func TestCleanup_ForcePassesForceFlagToWorkspaceRemove(t *testing.T) {
 	}
 }
 
-func TestCleanup_NoWorkdirIsANoOp(t *testing.T) {
+func TestCleanup_NoWorkspaceDirIsANoOp(t *testing.T) {
 	mgr := &fakeManager{}
 	if err := Cleanup(context.Background(), CleanupOptions{Manager: mgr}); err != nil {
-		t.Fatalf("Cleanup with no workdir: %v", err)
+		t.Fatalf("Cleanup with no workspace dir: %v", err)
 	}
 	if len(mgr.removes) != 0 {
 		t.Errorf("nothing was acquired, so nothing may be released, got %v", mgr.removes)
@@ -339,32 +339,32 @@ func TestCleanup_NoWorkdirIsANoOp(t *testing.T) {
 
 func TestCleanup_FailurePropagates(t *testing.T) {
 	err := Cleanup(context.Background(), CleanupOptions{
-		Workdir: "/roots/wt/issue-1",
-		Manager: &fakeManager{removeErr: errors.New("worktree is dirty")},
+		WorkspaceDir: "/roots/wt/issue-1",
+		Manager:      &fakeManager{removeErr: errors.New("worktree is dirty")},
 	})
 	if err == nil || !strings.Contains(err.Error(), "worktree is dirty") {
 		t.Fatalf("error = %v, want the removal failure to propagate", err)
 	}
 }
 
-func TestWorkdirsRootComesFromHookArgumentNotCoreConfig(t *testing.T) {
+func TestWorkspaceDirsRootComesFromHookArgumentNotCoreConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	configDir := filepath.Join(home, ".config", "plect")
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`workdirs_root = "/configured/root"`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`workspace_dirs_root = "/configured/root"`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	if got, want := workdirsRoot(""), filepath.Join(home, "workdirs"); got != want {
-		t.Fatalf("workdirsRoot(\"\") = %q, want default %q instead of config.toml", got, want)
+	if got, want := workspaceDirsRoot(""), filepath.Join(home, "workspace_dirs"); got != want {
+		t.Fatalf("workspaceDirsRoot(\"\") = %q, want default %q instead of config.toml", got, want)
 	}
-	if got, want := workdirsRoot("~/custom"), filepath.Join(home, "custom"); got != want {
-		t.Fatalf("workdirsRoot(\"~/custom\") = %q, want %q", got, want)
+	if got, want := workspaceDirsRoot("~/custom"), filepath.Join(home, "custom"); got != want {
+		t.Fatalf("workspaceDirsRoot(\"~/custom\") = %q, want %q", got, want)
 	}
-	if got := workdirsRoot("/explicit/root"); got != "/explicit/root" {
-		t.Fatalf("workdirsRoot override = %q, want /explicit/root", got)
+	if got := workspaceDirsRoot("/explicit/root"); got != "/explicit/root" {
+		t.Fatalf("workspaceDirsRoot override = %q, want /explicit/root", got)
 	}
 }

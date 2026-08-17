@@ -12,14 +12,15 @@ import (
 )
 
 // EnvironmentHookVars is the template surface for environment setup/cleanup.
-// Unlike WorkflowHookVars, the working directory already exists by the time
-// environment setup runs (it runs after provider setup) — so it is available
-// here, along with the workflow's environment_inputs passthrough table.
+// Unlike WorkflowHookVars, the workspace already exists by the time
+// environment setup runs (it runs after workspace provider setup) — so it is
+// available here, along with the workflow's environment_inputs passthrough
+// table.
 type EnvironmentHookVars struct {
 	ResourceID        string
 	SessionName       string
 	SessionInputs     map[string]any
-	WorkdirPath       string
+	WorkspaceDirPath  string
 	EnvironmentInputs map[string]any
 }
 
@@ -29,8 +30,8 @@ const environmentHookScope = "environment"
 // RunEnvironmentSetup executes the environment's setup hook and persists the
 // result as the @environment pseudo-node in tasks. Semantics mirror
 // RunWorkflowSetup: idempotent (an already-produced pseudo-node is skipped),
-// .Prev carries prior outputs across retries. Unlike a provider's setup,
-// EnvironmentConfig.Setup is optional — an environment with nothing to
+// .Prev carries prior outputs across retries. Unlike a workspace provider's
+// setup, EnvironmentConfig.Setup is optional — an environment with nothing to
 // acquire still produces an empty-outputs pseudo-node so downstream
 // Execution="environment" nodes and .Environment.outputs render consistently.
 //
@@ -71,7 +72,7 @@ func RunEnvironmentSetup(env config.EnvironmentConfig, vars EnvironmentHookVars,
 			obs.OnFailure(environmentHookScope, id, time.Since(now), wrapped, nil)
 			return nil, wrapped
 		}
-		stdout, capturedStderr, runErr := runShell(cmdStr, vars.WorkdirPath)
+		stdout, capturedStderr, runErr := runShell(cmdStr, vars.WorkspaceDirPath)
 		stderr = capturedStderr
 		if runErr != nil {
 			fail(runErr.Error())
@@ -150,7 +151,7 @@ func RunEnvironmentCleanup(env config.EnvironmentConfig, vars EnvironmentHookVar
 		obs.OnFailure(environmentHookScope, id, time.Since(now), wrapped, nil)
 		return wrapped
 	}
-	_, stderr, runErr := runShell(cmdStr, vars.WorkdirPath)
+	_, stderr, runErr := runShell(cmdStr, vars.WorkspaceDirPath)
 	if runErr != nil {
 		state.Status = contract.TaskStatusFailed
 		state.Error = runErr.Error()
@@ -181,7 +182,7 @@ func renderEnvironmentHook(cmd string, vars EnvironmentHookVars, prev, self map[
 		ResourceID        string
 		SessionName       string
 		SessionInputs     map[string]any
-		WorkdirPath       string
+		WorkspaceDirPath  string
 		EnvironmentInputs map[string]any
 		Prev              map[string]any
 		Self              map[string]any
@@ -189,7 +190,7 @@ func renderEnvironmentHook(cmd string, vars EnvironmentHookVars, prev, self map[
 		ResourceID:        vars.ResourceID,
 		SessionName:       vars.SessionName,
 		SessionInputs:     normalizeOutputs(vars.SessionInputs),
-		WorkdirPath:       vars.WorkdirPath,
+		WorkspaceDirPath:  vars.WorkspaceDirPath,
 		EnvironmentInputs: normalizeOutputs(vars.EnvironmentInputs),
 		Prev:              normalizeOutputs(prev),
 		Self:              normalizeOutputs(self),

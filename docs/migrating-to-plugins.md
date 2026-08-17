@@ -1,7 +1,7 @@
 # Migrating a hand-authored config to catalog plugins
 
 This guide is for an operator whose global plect config tree predates
-catalog plugins: providers, resources, tasks, workflows, channels, and
+catalog plugins: workspace providers, resources, tasks, workflows, channels, and
 templates that were hand-authored or copied into `~/.config/plect` (or
 whatever directory `PLECT_CONFIG_HOME`/`--config-home` points at) directly,
 possibly wired up through hand-authored `plugin_dirs` entries in
@@ -32,7 +32,7 @@ because it is the one guaranteed to be reachable while following along.
 
 For each plugin you intend to enable, diff your hand-authored config
 against that plugin's shipped content, by **definition id, not filename** —
-a provider, resource, task, workflow, channel, or template keeps its id
+a workspace provider, resource, task, workflow, channel, or template keeps its id
 across the move, but the file that carries it may not keep the same name or
 path.
 
@@ -50,7 +50,7 @@ plugin file `config/templates/work.md` maps to config-home file
 | Your file defines an id the plugin does not ship at all | User-owned residue. It stays, unchanged, as global config. |
 
 Typical residue, independent of which plugins you enable: resource
-allowlist entries (`resource_allowlist` in `config.toml`), `workdirs_root`,
+allowlist entries (`resource_allowlist` in `config.toml`), `workspace_dirs_root`,
 authentication configured outside plect, team-specific workflow overlays
 that only add nodes or channels to a plugin workflow, and prompt templates
 that encode team operating style rather than a plugin default.
@@ -152,7 +152,7 @@ Then, against your real config home:
 
    **This step is not optional.** Same-id conflicts between plugin layers
    are load errors, not a declaration-order pick — a hand-authored
-   `plugin_dirs` entry that still defines the same provider, resource, task,
+   `plugin_dirs` entry that still defines the same workspace provider, resource, task,
    workflow, or template id as a newly enabled catalog plugin makes every
    later `plect` invocation fail to load, with an error naming the
    conflicting id and both plugin layers. `config.toml`'s `plugin_dirs`
@@ -174,7 +174,7 @@ not a default:
 
 - **Fold it into a user-owned override.** Per the shadowing and precedence
   rules in the design, the user layer (global config or a trusted ancestor
-  overlay) always wins over plugin layers. For providers, resources,
+  overlay) always wins over plugin layers. For workspace providers, resources,
   environments, tasks, channels, and templates this means placing a full
   same-id definition in global config or an overlay — there is no
   partial-field patch for these kinds. For workflows, a same-named

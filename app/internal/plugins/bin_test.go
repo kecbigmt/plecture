@@ -24,7 +24,7 @@ func TestResolveBin_ShorthandResolvesSoleExecutable(t *testing.T) {
 
 func TestResolveBin_ShorthandAmbiguousWithMultipleExecutables(t *testing.T) {
 	mounted := []Mounted{mustMount("official/github", "/mnt/github",
-		Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"},
+		Executable{Name: "github-worktree", Path: "bin/github-worktree"},
 		Executable{Name: "plect-github-watcher", Path: "bin/plect-github-watcher"},
 	)}
 
@@ -35,7 +35,7 @@ func TestResolveBin_ShorthandAmbiguousWithMultipleExecutables(t *testing.T) {
 
 func TestResolveBin_FullFormDisambiguates(t *testing.T) {
 	mounted := []Mounted{mustMount("official/github", "/mnt/github",
-		Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"},
+		Executable{Name: "github-worktree", Path: "bin/github-worktree"},
 		Executable{Name: "plect-github-watcher", Path: "bin/plect-github-watcher"},
 	)}
 
@@ -72,15 +72,15 @@ func TestResolveBin_BareNameWithNoSourcePathFailsLoud(t *testing.T) {
 // alias in the reference at all.
 func TestResolveBin_PluginLocalBareNameResolvesWithinContainingPlugin(t *testing.T) {
 	mounted := []Mounted{
-		mustMount("some-alias/github", "/mnt/some-alias/github", Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"}),
+		mustMount("some-alias/github", "/mnt/some-alias/github", Executable{Name: "github-worktree", Path: "bin/github-worktree"}),
 	}
 	sourcePath := filepath.Join("/mnt/some-alias/github", "resources", "github.toml")
 
-	got, err := ResolveBin(mounted, sourcePath, "plect-github-provider")
+	got, err := ResolveBin(mounted, sourcePath, "github-worktree")
 	if err != nil {
 		t.Fatalf("ResolveBin: unexpected error: %v", err)
 	}
-	want := filepath.Join("/mnt/some-alias/github", "bin", "plect-github-provider")
+	want := filepath.Join("/mnt/some-alias/github", "bin", "github-worktree")
 	if got != want {
 		t.Errorf("ResolveBin = %q, want %q", got, want)
 	}
@@ -93,7 +93,7 @@ func TestResolveBin_PluginLocalBareNameResolvesWithinContainingPlugin(t *testing
 func TestResolveBin_PluginLocalBareNameIgnoresOtherPlugins(t *testing.T) {
 	mounted := []Mounted{
 		mustMount("official/github", "/mnt/official/github", Executable{Name: "watcher", Path: "bin/watcher"}),
-		mustMount("official/okf", "/mnt/official/okf", Executable{Name: "plect-okf", Path: "bin/plect-okf"}),
+		mustMount("official/okf", "/mnt/official/okf", Executable{Name: "okf-goal", Path: "bin/okf-goal"}),
 	}
 	sourcePath := filepath.Join("/mnt/official/okf", "resources", "okf_goal.toml")
 
@@ -103,7 +103,7 @@ func TestResolveBin_PluginLocalBareNameIgnoresOtherPlugins(t *testing.T) {
 }
 
 func TestResolveBin_UnknownExecutableName(t *testing.T) {
-	mounted := []Mounted{mustMount("official/github", "/mnt/github", Executable{Name: "plect-github-provider", Path: "bin/plect-github-provider"})}
+	mounted := []Mounted{mustMount("official/github", "/mnt/github", Executable{Name: "github-worktree", Path: "bin/github-worktree"})}
 
 	if _, err := ResolveBin(mounted, "", "official/github/nope"); err == nil {
 		t.Fatal("ResolveBin: want error for an unknown executable name, got nil")

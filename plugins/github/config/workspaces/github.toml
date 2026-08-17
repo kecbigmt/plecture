@@ -1,14 +1,15 @@
-# GitHub resource provider — owns every piece of GitHub knowledge a session
-# needs, independent of any particular workflow: resolving an issue/PR URL to
-# a session id, acquiring and releasing the git workdir that resource maps
-# to, and binding a session to the shipped watcher's subscription registry.
-# Workflows compose on top via `provider = "github"`.
+# GitHub workspace provider — owns every piece of GitHub knowledge a
+# session needs, independent of any particular workflow: resolving an
+# issue/PR URL to a session id, acquiring and releasing the git worktree
+# that resource maps to, and binding a session to the shipped watcher's
+# subscription registry. Workflows compose on top via
+# `workspace_provider = "github"`.
 #
-# `setup`/`cleanup`/`subscribe` resolve plect-github-provider and
-# github-watcher (this plugin's bin/) through `{{bin ...}}`'s plugin-local
-# bare-name reading, so both are reachable purely from this plugin being
-# enabled — no PATH setup required, and no dependency on which alias the
-# operator registered this catalog under.
+# `setup`/`cleanup`/`subscribe` resolve github-worktree and github-watcher
+# (this plugin's bin/) through `{{bin ...}}`'s plugin-local bare-name
+# reading, so both are reachable purely from this plugin being enabled — no
+# PATH setup required, and no dependency on which alias the operator
+# registered this catalog under.
 
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
 name  = "{{.owner}}/{{.repo}}-{{.number}}"
@@ -17,31 +18,31 @@ name  = "{{.owner}}/{{.repo}}-{{.number}}"
 # setup call and the daemon's own polling share one rate budget instead of
 # each independently re-tripping GitHub's secondary rate limit.
 setup = '''
-{{bin "plect-github-provider"}} setup \
+{{bin "github-worktree"}} setup \
   --resource {{.ResourceID | shellQuote}} \
   --session {{.SessionName | shellQuote}} \
-  --workdirs-root {{.WorkdirsRoot | shellQuote}} \
+  --workspace-dirs-root {{.WorkspaceDirsRoot | shellQuote}} \
   --watcher-bin {{bin "github-watcher" | shellQuote}}
 '''
 
 # --delete-branch reads the delete_branch cleanup input (`plect destroy
 # --input delete_branch=true`, or the plect_destroy MCP tool's cleanup_inputs
-# object) — a provider-level opt-in, not a core flag, so core carries no
-# branch vocabulary. Default is off: a branch left behind after workdir
-# removal is safer than one silently reclaimed.
+# object) — a workspace-provider-level opt-in, not a core flag, so core
+# carries no branch vocabulary. Default is off: a branch left behind after
+# worktree removal is safer than one silently reclaimed.
 #
-# The watcher unsubscribe runs unconditionally after workdir cleanup and
+# The watcher unsubscribe runs unconditionally after worktree cleanup and
 # never gates its exit status: dropping this session's watcher
-# subscriptions is orthogonal to whether the workdir came out clean, and a
-# dirty-workdir failure must still fail `plect destroy` the same as before
+# subscriptions is orthogonal to whether the worktree came out clean, and a
+# dirty-worktree failure must still fail `plect destroy` the same as before
 # this line existed. Without it a destroyed session's subscriptions poll
 # forever — the watcher has no other way to learn a session is gone between
 # its own startup sweeps.
 cleanup = '''
-{{bin "plect-github-provider"}} cleanup \
-  --workdir {{.Self.workdir | shellQuote}} \
+{{bin "github-worktree"}} cleanup \
+  --workspace-dir {{.Self.workspace_dir | shellQuote}} \
   --branch {{.Self.branch | shellQuote}} \
-  --workdirs-root {{.WorkdirsRoot | shellQuote}} \
+  --workspace-dirs-root {{.WorkspaceDirsRoot | shellQuote}} \
   --force={{.Force}} \
   --delete-branch={{eq .CleanupInputs.delete_branch "true"}}
 status=$?
@@ -54,17 +55,17 @@ exit $status
 # on destroy, additive, never replacing.
 subscribe = '{{bin "github-watcher"}} subscribe --session {{.SessionName | shellQuote}} --resource {{.ResourceID | shellQuote}}'
 
-# Outputs contract. `workdir`/`branch` are always present; the rest degrade
-# to absent when their gh-api fetch is tolerated as best-effort (see
-# plect-github-provider's setup command). `mutable` keys may additionally be
+# Outputs contract. `workspace_dir`/`branch` are always present; the rest
+# degrade to absent when their gh-api fetch is tolerated as best-effort (see
+# github-worktree's setup command). `mutable` keys may additionally be
 # merged from trusted side paths (`plect state set-output`) — GitHub status
 # for done_when is fetched by dynamic output refresh via
 # resources/github.toml, not by re-running this hook.
 [outputs_schema]
 type     = "object"
-required = ["workdir", "branch"]
+required = ["workspace_dir", "branch"]
 
-[outputs_schema.properties.workdir]
+[outputs_schema.properties.workspace_dir]
 type = "string"
 
 [outputs_schema.properties.branch]

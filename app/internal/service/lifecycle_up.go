@@ -122,11 +122,11 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
 
-	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
+	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkdirPath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
@@ -205,7 +205,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	}
 
 	session.Branch = ""
-	session.WorkdirPath = ""
+	session.WorkspaceDirPath = ""
 	session.Conversation = nil
 	session.Message = nil
 	session.Tasks = make(map[string]*contract.TaskState)
@@ -220,8 +220,8 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	outputs, setupErr := runWorkflowSetupForSession(cfg, wf, session, observer)
 	session.UpdatedAt = time.Now()
 	if outputs != nil {
-		if workdir, ok := outputs[contract.OutputKeyWorkdir].(string); ok {
-			session.WorkdirPath = workdir
+		if workspaceDir, ok := outputs[contract.OutputKeyWorkspaceDir].(string); ok {
+			session.WorkspaceDirPath = workspaceDir
 		}
 		if branch, ok := outputs["branch"].(string); ok && branch != "" {
 			session.Branch = branch
@@ -234,11 +234,11 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
 
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkdirPath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
 	if wfErr != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
-	setupPlan, planErr := buildPlanForSession(cfg, session.WorkdirPath, session)
+	setupPlan, planErr := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if planErr != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
 	}
@@ -270,24 +270,24 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 }
 
 func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, session *domain.Session, observer task.Observer) (map[string]any, error) {
-	providers, err := cfg.LoadProviders()
+	workspaceProviders, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		return nil, fmt.Errorf("load providers: %w", err)
+		return nil, fmt.Errorf("load workspace providers: %w", err)
 	}
-	prov, ok, provErr := providerFor(wf, providers)
+	prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
 	if provErr != nil {
 		return nil, provErr
 	}
 	if !ok {
-		return nil, fmt.Errorf("workflow %q declares no provider; its setup hook cannot run", wf.ID)
+		return nil, fmt.Errorf("workflow %q declares no workspace provider; its setup hook cannot run", wf.ID)
 	}
 	vars := task.WorkflowHookVars{
-		ResourceID:    session.ResourceID,
-		SessionName:   session.Name,
-		WorkdirsRoot:  cfg.WorkdirsRoot,
-		SessionInputs: session.Inputs,
-		Plugins:       cfg.Plugins,
-		SourcePath:    prov.SourcePath,
+		ResourceID:        session.ResourceID,
+		SessionName:       session.Name,
+		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
+		SessionInputs:     session.Inputs,
+		Plugins:           cfg.Plugins,
+		SourcePath:        prov.SourcePath,
 	}
 	return task.RunWorkflowSetup(prov, vars, session.Tasks, observer)
 }

@@ -14,7 +14,7 @@ func TestWriteInitConfig_WritesOnlyAnsweredFields(t *testing.T) {
 	path := filepath.Join(dir, "config.toml")
 
 	if err := WriteInitConfig(path, InitConfigValues{
-		WorkdirsRoot:      "/home/user/workdirs",
+		WorkspaceDirsRoot: "/home/user/workdirs",
 		ResourceAllowlist: []string{"^acme/"},
 	}); err != nil {
 		t.Fatalf("WriteInitConfig: unexpected error: %v", err)
@@ -25,8 +25,8 @@ func TestWriteInitConfig_WritesOnlyAnsweredFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(data)
-	if !strings.Contains(got, `workdirs_root = "/home/user/workdirs"`) {
-		t.Errorf("config.toml missing workdirs_root:\n%s", got)
+	if !strings.Contains(got, `workspace_dirs_root = "/home/user/workdirs"`) {
+		t.Errorf("config.toml missing workspace_dirs_root:\n%s", got)
 	}
 	if !strings.Contains(got, "^acme/") {
 		t.Errorf("config.toml missing resource_allowlist entry:\n%s", got)
@@ -40,7 +40,7 @@ func TestWriteInitConfig_OmitsEmptyAllowlist(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
 
-	if err := WriteInitConfig(path, InitConfigValues{WorkdirsRoot: "/home/user/workdirs"}); err != nil {
+	if err := WriteInitConfig(path, InitConfigValues{WorkspaceDirsRoot: "/home/user/workdirs"}); err != nil {
 		t.Fatalf("WriteInitConfig: unexpected error: %v", err)
 	}
 
@@ -56,11 +56,11 @@ func TestWriteInitConfig_OmitsEmptyAllowlist(t *testing.T) {
 func TestWriteInitConfig_RefusesToOverwriteExistingFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(path, []byte("workdirs_root = \"/existing\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("workspace_dirs_root = \"/existing\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	err := WriteInitConfig(path, InitConfigValues{WorkdirsRoot: "/new"})
+	err := WriteInitConfig(path, InitConfigValues{WorkspaceDirsRoot: "/new"})
 	if err == nil {
 		t.Fatal("want error overwriting an existing config.toml, got nil")
 	}
@@ -90,7 +90,7 @@ func TestInitAlreadyDone_FalseOnFreshConfigHome(t *testing.T) {
 func TestInitAlreadyDone_TrueWhenConfigTomlExists(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(configPath, []byte("workdirs_root = \"/x\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(configPath, []byte("workspace_dirs_root = \"/x\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	paths := PluginPaths{CatalogsPath: filepath.Join(dir, "catalogs.toml"), LockfilePath: filepath.Join(dir, "plect.lock"), CacheRoot: filepath.Join(dir, "cache")}

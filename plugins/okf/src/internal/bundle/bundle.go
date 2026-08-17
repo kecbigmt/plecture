@@ -1,8 +1,8 @@
 // Package bundle implements the plumbing shared by every OKF concept kind:
-// resolving the owner alias to an orchestrator workdir, locating that
-// workdir's knowledge bundle, and containing a concept id inside it. Goal
-// parsing itself lives in the sibling goal package; this package only knows
-// how to find bytes safely, not how to interpret them.
+// resolving the owner alias to an orchestrator workspace directory, locating
+// that workspace directory's knowledge bundle, and containing a concept id
+// inside it. Goal parsing itself lives in the sibling goal package; this
+// package only knows how to find bytes safely, not how to interpret them.
 package bundle
 
 import (
@@ -13,13 +13,13 @@ import (
 )
 
 // ResolveError distinguishes a resource that simply cannot be located yet
-// (Unresolved: no orchestrator session, an unreadable workdir, a bundle that
-// hasn't been bootstrapped, or a missing file) from a resolution that must
-// fail outright (an ambiguous owner alias, or a concept id that escapes the
-// bundle). Observe folds the former into its UNRESOLVED state; every other
-// caller (provider setup, finalize) treats both the same way, as a hard
-// error, because dispatch and completion recording have no "pending" state
-// to fold into.
+// (Unresolved: no orchestrator session, an unreadable workspace directory, a
+// bundle that hasn't been bootstrapped, or a missing file) from a resolution
+// that must fail outright (an ambiguous owner alias, or a concept id that
+// escapes the bundle). Observe folds the former into its UNRESOLVED state;
+// every other caller (workspace provider setup, finalize) treats both the
+// same way, as a hard error, because dispatch and completion recording have
+// no "pending" state to fold into.
 type ResolveError struct {
 	Reason     string
 	Unresolved bool
@@ -39,8 +39,8 @@ type StatusRunner interface {
 // not to bundle resolution.
 type statusPayload struct {
 	Runtime struct {
-		WorkdirPath   string `json:"workdir_path"`
-		WorkdirExists bool   `json:"workdir_exists"`
+		WorkspaceDirPath   string `json:"workspace_dir_path"`
+		WorkspaceDirExists bool   `json:"workspace_dir_exists"`
 	} `json:"runtime"`
 }
 
@@ -61,13 +61,14 @@ func ParseResourceID(resourceID string) (owner, conceptID string, err error) {
 	return owner, conceptID, nil
 }
 
-// ResolveOwnerWorkdir resolves the "owner:<owner>" orchestrator session
-// alias to its workdir. An alias matching more than one session is a hard
-// error: silently picking one would record a goal-file edit or a completion
-// entry against the wrong bundle. Every other failure to resolve — no
-// session, or a workdir that is unreadable, likely mid-destroy — is soft:
-// the caller decides whether that means UNRESOLVED or a hard stop.
-func ResolveOwnerWorkdir(runner StatusRunner, owner string) (string, *ResolveError) {
+// ResolveOwnerWorkspaceDir resolves the "owner:<owner>" orchestrator session
+// alias to its workspace directory. An alias matching more than one session
+// is a hard error: silently picking one would record a goal-file edit or a
+// completion entry against the wrong bundle. Every other failure to
+// resolve — no session, or a workspace directory that is unreadable, likely
+// mid-destroy — is soft: the caller decides whether that means UNRESOLVED or
+// a hard stop.
+func ResolveOwnerWorkspaceDir(runner StatusRunner, owner string) (string, *ResolveError) {
 	output, err := runner.Status("owner:" + owner)
 	if err != nil {
 		if strings.Contains(string(output), "matches multiple sessions") {
@@ -86,21 +87,21 @@ func ResolveOwnerWorkdir(runner StatusRunner, owner string) (string, *ResolveErr
 			Unresolved: true,
 		}
 	}
-	if payload.Runtime.WorkdirPath == "" || !payload.Runtime.WorkdirExists {
+	if payload.Runtime.WorkspaceDirPath == "" || !payload.Runtime.WorkspaceDirExists {
 		return "", &ResolveError{
-			Reason:     "orchestrator workdir \"" + payload.Runtime.WorkdirPath + "\" is not readable (possibly mid-destroy)",
+			Reason:     "orchestrator workspace directory \"" + payload.Runtime.WorkspaceDirPath + "\" is not readable (possibly mid-destroy)",
 			Unresolved: true,
 		}
 	}
-	return payload.Runtime.WorkdirPath, nil
+	return payload.Runtime.WorkspaceDirPath, nil
 }
 
-// Root resolves an orchestrator workdir's knowledge bundle to its real,
-// symlink-free path. Every later containment check is anchored to this
-// path, so it must itself be fully resolved and must fully exist — a bundle
-// that hasn't been bootstrapped yet is UNRESOLVED, not a hard error.
-func Root(workdirPath string) (string, *ResolveError) {
-	dir := filepath.Join(workdirPath, "knowledge", "bundle")
+// Root resolves an orchestrator workspace directory's knowledge bundle to
+// its real, symlink-free path. Every later containment check is anchored to
+// this path, so it must itself be fully resolved and must fully exist — a
+// bundle that hasn't been bootstrapped yet is UNRESOLVED, not a hard error.
+func Root(workspaceDirPath string) (string, *ResolveError) {
+	dir := filepath.Join(workspaceDirPath, "knowledge", "bundle")
 	real, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		return "", &ResolveError{

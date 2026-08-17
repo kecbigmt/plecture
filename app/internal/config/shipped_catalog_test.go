@@ -70,8 +70,8 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadChannels(shipped catalog): %v", err)
 	}
-	if _, err := cfg.LoadProviders(); err != nil {
-		t.Fatalf("LoadProviders(shipped catalog): %v", err)
+	if _, err := cfg.LoadWorkspaceProviders(); err != nil {
+		t.Fatalf("LoadWorkspaceProviders(shipped catalog): %v", err)
 	}
 	if _, err := cfg.LoadResourceDefs(); err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
@@ -104,8 +104,8 @@ func TestShippedCatalog_LoadsUnderArbitraryAlias(t *testing.T) {
 	if _, err := cfg.LoadChannels(); err != nil {
 		t.Fatalf("LoadChannels(shipped catalog, alias %q): %v", "acme", err)
 	}
-	if _, err := cfg.LoadProviders(); err != nil {
-		t.Fatalf("LoadProviders(shipped catalog, alias %q): %v", "acme", err)
+	if _, err := cfg.LoadWorkspaceProviders(); err != nil {
+		t.Fatalf("LoadWorkspaceProviders(shipped catalog, alias %q): %v", "acme", err)
 	}
 	if _, err := cfg.LoadResourceDefs(); err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog, alias %q): %v", "acme", err)

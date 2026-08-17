@@ -22,22 +22,22 @@ func setUpConfigHome(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 
 	baseDir := filepath.Join(home, ".config", "plect")
-	for _, dir := range []string{"workflows", "tasks", "providers"} {
+	for _, dir := range []string{"workflows", "tasks", "workspaces"} {
 		if err := os.MkdirAll(filepath.Join(baseDir, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "config.toml"),
-		[]byte("workdirs_root = \""+filepath.Join(home, "workdirs")+"\"\n"), 0o644); err != nil {
+		[]byte("workspace_dirs_root = \""+filepath.Join(home, "workspace_dirs")+"\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	workdir := filepath.Join(home, "wd")
-	if err := os.WriteFile(filepath.Join(baseDir, "providers", "plain.toml"),
-		[]byte("setup = \"mkdir -p "+workdir+" && echo '{\\\"workdir\\\":\\\""+workdir+"\\\"}'\"\n"), 0o644); err != nil {
+	workspaceDirPath := filepath.Join(home, "wd")
+	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "plain.toml"),
+		[]byte("setup = \"mkdir -p "+workspaceDirPath+" && echo '{\\\"workspace_dir\\\":\\\""+workspaceDirPath+"\\\"}'\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "plain.toml"),
-		[]byte("provider = \"plain\"\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
+		[]byte("workspace_provider = \"plain\"\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"),

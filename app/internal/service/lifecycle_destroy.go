@@ -19,16 +19,16 @@ type DestroyParams struct {
 	Identifier string
 	Force      bool
 	// CleanupInputs are opaque key/value intents forwarded verbatim to the
-	// provider cleanup hook (see task.WorkflowHookVars.CleanupInputs); core
-	// interprets none of them.
+	// workspace provider cleanup hook (see
+	// task.WorkflowHookVars.CleanupInputs); core interprets none of them.
 	CleanupInputs map[string]string
 	Observer      task.Observer
 }
 
 // DestroyResult holds the outcome of Destroy.
 type DestroyResult struct {
-	SessionName    string `json:"session_name"`
-	RemovedWorkdir bool   `json:"removed_workdir"`
+	SessionName         string `json:"session_name"`
+	RemovedWorkspaceDir bool   `json:"removed_workspace_dir"`
 	// CleanupWarnings carries task cleanup errors that were downgraded to
 	// warnings by --force. Without --force a cleanup error aborts Destroy and
 	// returns the error directly; this field is only populated when the user
@@ -81,7 +81,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("orphaned %d child session(s): %s", len(children), strings.Join(children, ", ")))
 	}
 
-	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
+	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -90,13 +90,13 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	// static plan nodes (run + session) and dynamic instances merged into one
 	// seq-descending pass. This is strictly the reverse of the instantiation
 	// stack, so a static node instantiated after a dynamic one is still
-	// cleaned first regardless of scope. @workflow (workdir) is released
+	// cleaned first regardless of scope. @workflow (workspace) is released
 	// last, below.
 	teardown, teardownErr := unifiedTeardownList(cfg, session, plan, false)
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkdirPath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
@@ -114,14 +114,14 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	}
 
 	// Persist any TaskState changes (status flips to cleaned) before we
-	// delete the entry, in case workdir removal fails and the user wants
-	// to inspect state.json post hoc.
+	// delete the entry, in case workspace directory removal fails and the
+	// user wants to inspect state.json post hoc.
 	session.UpdatedAt = time.Now()
 	putBestEffort(store, session, "post-run-cleanup checkpoint")
 
-	// Environment cleanup: after run+session task cleanup, before provider
-	// cleanup (tasks -> environment -> provider). A no-op when the workflow
-	// declares no environment, or its setup never ran.
+	// Environment cleanup: after run+session task cleanup, before workspace
+	// provider cleanup (tasks -> environment -> workspace provider). A no-op
+	// when the workflow declares no environment, or its setup never ran.
 	if envCleanupErr := runEnvironmentCleanupForSession(cfg, wf, session, params.Observer); envCleanupErr != nil {
 		session.UpdatedAt = time.Now()
 		putBestEffort(store, session, "environment cleanup failure")
@@ -132,10 +132,11 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	}
 
 	if wfState, ok := session.Tasks[contract.WorkflowPseudoNodeID]; ok && wfState != nil {
-		// Workflow setup acquired the working directory, so workflow cleanup
-		// owns its release — the core performs no workdir removal here.
-		// (Whether the workdir is actually deleted is the cleanup script's
-		// decision; setup/cleanup symmetry is the author's contract.)
+		// Workflow setup acquired the workspace, so workflow cleanup owns
+		// its release — the core performs no workspace directory removal
+		// here. (Whether the workspace directory is actually deleted is the
+		// cleanup script's decision; setup/cleanup symmetry is the author's
+		// contract.)
 		cleanupErr := runWorkflowCleanupForDestroy(cfg, session, params.Force, params.CleanupInputs, params.Observer)
 		session.UpdatedAt = time.Now()
 		putBestEffort(store, session, "workflow cleanup for destroy")
@@ -148,7 +149,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 			}
 			result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("workflow cleanup: %v", cleanupErr))
 		}
-		result.RemovedWorkdir = session.WorkdirPath != "" && !fileExists(session.WorkdirPath)
+		result.RemovedWorkspaceDir = session.WorkspaceDirPath != "" && !fileExists(session.WorkspaceDirPath)
 	}
 
 	// Snapshot the state entry as a tombstone in the event log directory

@@ -410,10 +410,10 @@ func TestRenderInputs_RendersAgainstDeps(t *testing.T) {
 		"tmux": {"session_name": "abc"},
 	}
 	out, err := RenderInputs(map[string]string{
-		"session_name": "{{.Nodes.tmux.outputs.session_name}}",
-		"branch":       "{{.Branch}}",
-		"workdir":      "{{.Workflow.outputs.workdir}}",
-	}, deps, map[string]any{"workdir": "/tmp/wd"}, SessionVars{Branch: "main"})
+		"session_name":  "{{.Nodes.tmux.outputs.session_name}}",
+		"branch":        "{{.Branch}}",
+		"workspace_dir": "{{.Workflow.outputs.workspace_dir}}",
+	}, deps, map[string]any{"workspace_dir": "/tmp/wd"}, SessionVars{Branch: "main"})
 	if err != nil {
 		t.Fatalf("RenderInputs: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestRenderInputs_RendersAgainstDeps(t *testing.T) {
 	if got := out["branch"]; got != "main" {
 		t.Errorf("branch = %v, want main", got)
 	}
-	if got := out["workdir"]; got != "/tmp/wd" {
+	if got := out["workspace_dir"]; got != "/tmp/wd" {
 		t.Errorf("workdir = %v, want /tmp/wd", got)
 	}
 }

@@ -429,8 +429,8 @@ func appendInstruction(store *state.Store, sessionName, taskKey, resource, instr
 
 // resolveSessionName maps an identifier (session name, alias, or resource
 // id) to the canonical session name used as the event-log key. It mirrors the
-// core resolveSession precedence — exact name, alias, then provider resolver
-// dispatch — so event commands resolve the same way as
+// core resolveSession precedence — exact name, alias, then workspace
+// provider resolver dispatch — so event commands resolve the same way as
 // create/up/show. Unlike resolveSession it does NOT require the session to
 // exist (destroyed sessions retain their log), so a non-matching identifier
 // falls back to itself rather than erroring.
@@ -454,7 +454,7 @@ func resolveSessionName(cfg *config.Config, store *state.Store, identifier strin
 		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("identifier %q matches multiple sessions (%s); use the session name", identifier, strings.Join(names, ", "))}
 	}
 
-	// Provider resolver dispatch (pure/offline). cfg is nil in some unit tests.
+	// Workspace provider resolver dispatch (pure/offline). cfg is nil in some unit tests.
 	if cfg != nil {
 		if disp, matched, err := dispatchResource(cfg, "", identifier); err == nil && matched {
 			return disp.Name, nil

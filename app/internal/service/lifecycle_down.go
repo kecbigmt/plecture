@@ -41,7 +41,7 @@ func Down(cfg *config.Config, store *state.Store, params DownParams) (*DownResul
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
 
-	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
+	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -54,7 +54,7 @@ func Down(cfg *config.Config, store *state.Store, params DownParams) (*DownResul
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkdirPath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}

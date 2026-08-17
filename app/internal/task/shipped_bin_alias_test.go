@@ -37,7 +37,7 @@ func repoRootForTest(t *testing.T) string {
 // TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias is the
 // acceptance test for plugin-local {{bin}} resolution (docs/design/
 // plugin-packaging.md, "Plugin-local {{bin}} resolution"): every shipped
-// github and okf resource/provider/task hook must resolve its own plugin's
+// github and okf resource/workspace-provider/task hook must resolve its own plugin's
 // executables regardless of which alias the operator registered the catalog
 // under. "official" is deliberately avoided — a regression that silently
 // re-depends on that one specific alias would otherwise pass unnoticed.
@@ -58,16 +58,16 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 	if err != nil {
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}
-	provDefs, err := cfg.LoadProviders()
+	provDefs, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		t.Fatalf("LoadProviders: %v", err)
+		t.Fatalf("LoadWorkspaceProviders: %v", err)
 	}
 	taskDefs, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
 		t.Fatalf("LoadTaskDefinitions: %v", err)
 	}
 	if len(resDefs) == 0 || len(provDefs) == 0 || len(taskDefs) == 0 {
-		t.Fatalf("expected github+okf to declare resources, providers, and tasks; got %d/%d/%d", len(resDefs), len(provDefs), len(taskDefs))
+		t.Fatalf("expected github+okf to declare resources, workspace providers, and tasks; got %d/%d/%d", len(resDefs), len(provDefs), len(taskDefs))
 	}
 
 	for id, def := range resDefs {
@@ -96,33 +96,33 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 
 	for id, prov := range provDefs {
 		vars := WorkflowHookVars{
-			ResourceID:    "owner:test",
-			SessionName:   "test-session",
-			WorkdirsRoot:  "/tmp/workdirs",
-			SessionInputs: map[string]any{},
-			Plugins:       mounted,
-			SourcePath:    prov.SourcePath,
+			ResourceID:        "owner:test",
+			SessionName:       "test-session",
+			WorkspaceDirsRoot: "/tmp/workspace_dirs",
+			SessionInputs:     map[string]any{},
+			Plugins:           mounted,
+			SourcePath:        prov.SourcePath,
 		}
 		if prov.Setup != "" {
 			if _, err := renderWorkflowHook(prov.Setup, vars, map[string]any{}, nil, "missingkey=error"); err != nil {
-				t.Errorf("provider %q setup: %v", id, err)
+				t.Errorf("workspace provider %q setup: %v", id, err)
 			}
 		}
 		if prov.Cleanup != "" {
-			self := map[string]any{"workdir": "/tmp/wd", "branch": "b"}
+			self := map[string]any{"workspace_dir": "/tmp/wd", "branch": "b"}
 			if _, err := renderWorkflowHook(prov.Cleanup, vars, nil, self, "missingkey=zero"); err != nil {
-				t.Errorf("provider %q cleanup: %v", id, err)
+				t.Errorf("workspace provider %q cleanup: %v", id, err)
 			}
 		}
 		if prov.Subscribe != "" {
 			subVars := SubscribeHookVars{ResourceID: "owner:test", SessionName: "test-session", Plugins: mounted, SourcePath: prov.SourcePath}
 			if _, err := renderSubscribeHook(prov.Subscribe, subVars); err != nil {
-				t.Errorf("provider %q subscribe: %v", id, err)
+				t.Errorf("workspace provider %q subscribe: %v", id, err)
 			}
 		}
 	}
 
-	session := SessionVars{Name: "test-session", ResourceID: "owner:test", WorkdirPath: "/tmp/wd", Plugins: mounted}
+	session := SessionVars{Name: "test-session", ResourceID: "owner:test", WorkspaceDirPath: "/tmp/wd", Plugins: mounted}
 	inputs := map[string]any{"owner": "acme", "assignees": ""}
 	for id, def := range taskDefs {
 		ctx := RenderContext{

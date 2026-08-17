@@ -8,18 +8,19 @@ import (
 )
 
 // EnvironmentConfig is loaded from `environments/<id>.toml` in the trusted
-// base layers (plugin dirs + global config), mirroring ProviderConfig. It
-// declares how a workflow's task executor runs: Setup/Cleanup acquire and
-// release whatever the environment needs (a container, a remote host, ...),
-// and Exec is the host-run script that launches an argv inside it.
+// base layers (plugin dirs + global config), mirroring
+// WorkspaceProviderConfig. It declares how a workflow's task executor runs:
+// Setup/Cleanup acquire and release whatever the environment needs (a
+// container, a remote host, ...), and Exec is the host-run script that
+// launches an argv inside it.
 //
 // A workflow that never sets `environment` (host degeneration) never
 // consults this loader at all.
 //
-// Environments deliberately do NOT participate in the per-workdir cascade,
-// for the same reason providers don't: they must be resolvable independent
-// of any working directory, and Setup/Exec/Cleanup are arbitrary shell, so
-// only user/machine-owned layers may supply them.
+// Environments deliberately do NOT participate in the per-workspace-dir
+// cascade, for the same reason workspace providers don't: they must be
+// resolvable independent of any workspace, and Setup/Exec/Cleanup are
+// arbitrary shell, so only user/machine-owned layers may supply them.
 type EnvironmentConfig struct {
 	ID string `toml:"-"`
 	// Setup acquires whatever the environment needs (e.g. starts a
@@ -32,7 +33,7 @@ type EnvironmentConfig struct {
 	// Required — running argv inside the environment is its reason to exist.
 	Exec string `toml:"exec"`
 	// Cleanup releases whatever Setup acquired. Optional, mirroring
-	// ProviderConfig.Cleanup.
+	// WorkspaceProviderConfig.Cleanup.
 	Cleanup           string         `toml:"cleanup"`
 	OutputsSchema     map[string]any `toml:"outputs_schema"`
 	OutputsSchemaFile string         `toml:"outputs_schema_file"`
@@ -48,7 +49,7 @@ func (e EnvironmentConfig) ResolvedOutputsSchemaPath() string {
 // LoadEnvironments loads `environments/*.toml` from the trusted base layers
 // only: plugin dirs first, then the global config dir; the global layer's
 // same-id file replaces a plugin layer's, but two plugin layers declaring
-// the same id is a load error (see loadTrustedLayer). The per-workdir
+// the same id is a load error (see loadTrustedLayer). The per-workspace-dir
 // ancestor cascade is deliberately excluded (see EnvironmentConfig).
 func (c *Config) LoadEnvironments() (map[string]EnvironmentConfig, error) {
 	var pluginDirs []string

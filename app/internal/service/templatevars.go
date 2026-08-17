@@ -14,11 +14,11 @@ import (
 // without handing the raw mutating-lifecycle-owned *domain.Session to a
 // surface adapter that only wants to render text.
 type TemplateVars struct {
-	SessionName   string
-	ResourceID    string
-	WorkdirPath   string
-	Workflow      map[string]any
-	SessionInputs map[string]any
+	SessionName      string
+	ResourceID       string
+	WorkspaceDirPath string
+	Workflow         map[string]any
+	SessionInputs    map[string]any
 }
 
 // ResolveTemplateVars resolves identifier to a session (the same lookup order
@@ -45,10 +45,10 @@ func projectTemplateVars(name string, s *domain.Session) TemplateVars {
 		inputs = map[string]any{}
 	}
 	return TemplateVars{
-		SessionName:   name,
-		ResourceID:    s.ResourceID,
-		WorkdirPath:   s.WorkdirPath,
-		Workflow:      outputs,
-		SessionInputs: inputs,
+		SessionName:      name,
+		ResourceID:       s.ResourceID,
+		WorkspaceDirPath: s.WorkspaceDirPath,
+		Workflow:         outputs,
+		SessionInputs:    inputs,
 	}
 }

@@ -61,7 +61,7 @@ const (
 )
 
 type Config struct {
-	WorkdirsRoot string `toml:"workdirs_root"`
+	WorkspaceDirsRoot string `toml:"workspace_dirs_root"`
 	// ResourceAllowlist is the security boundary for session creation: regex
 	// patterns the resource identifier must match. The boundary exists
 	// because agents (MCP) can invoke plect with arbitrary input, and a
@@ -70,7 +70,7 @@ type Config struct {
 	// all.
 	ResourceAllowlist []string `toml:"resource_allowlist"`
 	// PluginDirs lists plugin roots (each containing a config/ subdirectory
-	// with providers/, resources/, channels/, tasks/, workflows/, and
+	// with workspaces/, resources/, channels/, tasks/, workflows/, and
 	// templates/ subdirectories — see docs/design/plugin-packaging.md's
 	// Package format section). Plugins form the base cascade layer: the
 	// global layer and ancestor overlays stack on top of them. Entries are
@@ -101,23 +101,24 @@ type Config struct {
 	// PLECT_SESSION_GUARD environment variable (not config.toml). When set, a
 	// `plect up` may only produce a *resolved session name* that
 	// matches this regex. The orchestrator's claude pane exports it from the
-	// provider's `session_guard` output (e.g. "^acme/"), so a
+	// workspace provider's `session_guard` output (e.g. "^acme/"), so a
 	// prompt-injected board body cannot make the orchestrator dispatch work
 	// outside its own session-name space. Empty = disabled.
 	//
 	// The guard is intentionally an opaque regex over the resolved session
-	// name: plect core stays provider-agnostic and never parses the
-	// resource identifier's internal structure — knowing how names are
-	// shaped is the provider's job, encoded in the pattern it emits.
+	// name: plect core stays workspace-provider-agnostic and never parses
+	// the resource identifier's internal structure — knowing how names are
+	// shaped is the workspace provider's job, encoded in the pattern it
+	// emits.
 	SessionGuard string `toml:"-"`
 }
 
 func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
-		WorkdirsRoot: filepath.Join(home, "workdirs"),
-		Detached:     true,
-		SessionGuard: os.Getenv("PLECT_SESSION_GUARD"),
+		WorkspaceDirsRoot: filepath.Join(home, "workspace_dirs"),
+		Detached:          true,
+		SessionGuard:      os.Getenv("PLECT_SESSION_GUARD"),
 	}
 }
 
@@ -160,7 +161,10 @@ func Load() (*Config, error) {
 		return resolveDeclaredPlugins(cfg)
 	}
 	if meta.IsDefined("worktrees_root") {
-		slog.Warn("legacy config key worktrees_root is ignored; rename it to workdirs_root or run the legacy migration", "path", configPath)
+		slog.Warn("legacy config key worktrees_root is ignored; rename it to workspace_dirs_root or run the legacy migration", "path", configPath)
+	}
+	if meta.IsDefined("workdirs_root") {
+		slog.Warn("legacy config key workdirs_root is ignored; rename it to workspace_dirs_root or run the legacy migration", "path", configPath)
 	}
 
 	// Expand ~ in path configs
@@ -168,8 +172,8 @@ func Load() (*Config, error) {
 	if homeErr != nil {
 		return resolveDeclaredPlugins(cfg)
 	}
-	if len(cfg.WorkdirsRoot) > 0 && cfg.WorkdirsRoot[0] == '~' {
-		cfg.WorkdirsRoot = filepath.Join(home, cfg.WorkdirsRoot[1:])
+	if len(cfg.WorkspaceDirsRoot) > 0 && cfg.WorkspaceDirsRoot[0] == '~' {
+		cfg.WorkspaceDirsRoot = filepath.Join(home, cfg.WorkspaceDirsRoot[1:])
 	}
 	for i, dir := range cfg.PluginDirs {
 		if len(dir) > 0 && dir[0] == '~' {
