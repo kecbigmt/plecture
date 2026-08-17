@@ -88,9 +88,9 @@ coupling.
 A plugin with built Go executables uses either one Go module directly at
 `src/` (`go.mod`, `go.sum`, `cmd/`, `internal/`) or multiple independent Go
 modules under `src/<project-name>/`, each with its own `go.mod`. The
-session-runtime regrouping can therefore keep channel-server, agent helpers,
-and other implementation projects as separate modules under one plugin. A
-future plugin split stays cheap because those modules are already separated.
+session runtime plugins can therefore keep channel-server, agent helpers, and
+other implementation projects as separate modules inside the plugin that owns
+them.
 The repository `go.work` lists each module individually, following the existing
 multi-module monorepo practice.
 
@@ -345,27 +345,11 @@ naming another plugin, declaring capabilities, or requesting workspace-provider
 resolution. plect does not acquire artifacts, resolve version ranges,
 auto-enable plugins, or build transitive plugin graphs.
 
-A plugin boundary must not cut through a runtime contract. When a dependency
-edge appears, the edge is a boundary smell, and the first remedy is merging the
-plugins that share the runtime contract.
-
-The session runtime surface is one plugin. The planned regrouping merges the
-agent runtime tasks, Claude agent tasks, Codex agent tasks, channel-server, and
-Slack channel adapter into one self-contained session-runtime plugin. The exact
-path/name can be refined during implementation.
-
-The tmux plumbing is shared runtime logic because it has no agent-specific
-branch. `plect-agent-activity` is not shared runtime logic: the session-runtime
-plugin carries separate branch-free activity scripts for Claude and Codex
-because the earlier shared script's Claude/Codex branching was forced
-generalization.
-
-Mounted-but-unused definitions cost nothing. A user who enables the
-session-runtime plugin can leave unused Claude, Codex, or Slack definitions
-mounted. The Slack service remains naturally inert without credentials.
-
-The `github` and `okf` plugins are already self-contained. Their runtime
-contracts do not require another plugin to be mounted.
+Plugin boundaries are governed by
+[`plugin-boundary-contracts.md`](plugin-boundary-contracts.md). Shipped plugin
+configuration references only executables declared by the same plugin. When a
+reusable runtime contract would cross a plugin boundary, the contract either
+belongs in core or the participants rendezvous through the event bus.
 
 ### Executable Build Model
 
@@ -918,68 +902,76 @@ One-time migration procedure:
 
 ## Walkthrough examples
 
-### Session runtime plugin
+### Session runtime plugins
 
-The session runtime plugin owns the reusable runtime surface for Claude, Codex,
-tmux, the Claude channel-server protocol, and Slack delivery. It is one plugin
-because those pieces share runtime contracts; splitting them would create
-dependency edges through the middle of the session runtime.
+The session runtime surface is split into plugins for the terminal
+multiplexer, each agent runtime, and chat delivery. The split uses the
+core-owned contracts described in
+[`plugin-boundary-contracts.md`](plugin-boundary-contracts.md): an interactive
+endpoint for text-terminal runtime access and conversation events for chat and
+agent message exchange.
 
 Catalog registration and plugin enablement:
 
 ```bash
 plect catalog add official git+https://github.com/example/plect-plugins --revision v0.3.0
-plect plugin add official/session/runtime
-plect plugin update official/session/runtime
+plect plugin add official/session/tmux
+plect plugin add official/session/claude
+plect plugin add official/slack-delivery
+plect plugin update official/session/claude
 ```
 
-`plect plugin update official/session/runtime` fetches the newest catalog
-snapshot and repoints only `official/session/runtime`; `official/github` stays
-at its locked coordinate until explicitly updated.
+`plect plugin update official/session/claude` fetches the newest catalog
+snapshot and repoints only `official/session/claude`; `official/session/tmux`,
+`official/slack-delivery`, and `official/github` stay at their locked
+coordinates until explicitly updated.
 
 Catalog-owned files:
 
 ```text
 catalog.toml
-session/runtime/plugin.toml
-session/runtime/config/tasks/tmux.toml
-session/runtime/config/tasks/initial_prompt.toml
-session/runtime/config/tasks/claude.toml
-session/runtime/config/tasks/codex.toml
-session/runtime/config/tasks/codex_exec.toml
-session/runtime/config/channels/tmux_send_keys.toml
-session/runtime/config/channels/claude_delivery.toml
-session/runtime/config/channels/codex_exec.toml
-session/runtime/scripts/plect-claude-agent-activity
-session/runtime/scripts/plect-codex-agent-activity
-session/runtime/src/channel-server/go.mod
-session/runtime/src/channel-server/cmd/channel-server/main.go
-session/runtime/src/slack-adapter/go.mod
-session/runtime/src/slack-adapter/cmd/slack-adapter/main.go
-session/runtime/src/codex-helpers/go.mod
-session/runtime/src/codex-helpers/cmd/plect-codex-exec-worker/main.go
-session/runtime/src/codex-helpers/cmd/plect-codex-exec-enqueue/main.go
+session/tmux/plugin.toml
+session/tmux/config/tasks/tmux.toml
+session/tmux/config/channels/terminal_send_text.toml
+session/claude/plugin.toml
+session/claude/config/tasks/claude.toml
+session/claude/config/channels/claude.toml
+session/claude/scripts/plect-claude-agent-activity
+session/claude/src/channel-server/go.mod
+session/claude/src/channel-server/cmd/channel-server/main.go
+session/codex/plugin.toml
+session/codex/config/tasks/codex.toml
+session/codex/config/tasks/codex_exec.toml
+session/codex/config/channels/codex_exec.toml
+session/codex/scripts/plect-codex-agent-activity
+session/codex/src/codex-helpers/go.mod
+session/codex/src/codex-helpers/cmd/plect-codex-exec-worker/main.go
+session/codex/src/codex-helpers/cmd/plect-codex-exec-enqueue/main.go
+slack-delivery/plugin.toml
+slack-delivery/config/channels/slack.toml
+slack-delivery/src/slack-adapter/go.mod
+slack-delivery/src/slack-adapter/cmd/slack-adapter/main.go
 ```
 
-`session/runtime/bin/channel-server`, `session/runtime/bin/slack-adapter`,
-`session/runtime/bin/plect-codex-exec-worker`, and
-`session/runtime/bin/plect-codex-exec-enqueue` are what `plect plugin
-add`/`update` produce from the modules under `session/runtime/src` at
-add/update time — build output, not catalog content, so they are never
-committed (see the Package format section's `src`/`bin`/`scripts` split).
+`session/claude/bin/channel-server`, `session/codex/bin/plect-codex-exec-worker`,
+`session/codex/bin/plect-codex-exec-enqueue`, and
+`slack-delivery/bin/slack-adapter` are what `plect plugin add`/`update`
+produce from source modules at add/update time — build output, not catalog
+content, so they are never committed (see the Package format section's
+`src`/`bin`/`scripts` split).
 
 Plugin-owned templates:
 
 ```text
-session/runtime/config/templates/work.md
-session/runtime/config/templates/review.md
+session/claude/config/templates/work.md
+session/codex/config/templates/work.md
 ```
 
 Residual user config:
 
-- Which agent pack is selected.
+- Which multiplexer and agent runtime are selected for a workflow.
 - Local command path or model defaults if they differ from plugin defaults.
-- Event channel bindings for the user's runtime session.
+- Event channel bindings for the user's runtime session and team conversation.
 - Team-specific workflow overlays that add local notification or review nodes.
 - Prompt templates that encode team operating style.
 - Slack credentials or environment files. Without credentials, the Slack
