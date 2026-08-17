@@ -11,3 +11,6 @@ A design that introduces or changes configuration must show the resulting
 config schema as a worked example plus validation rules for the new or changed
 configuration section: required keys, all-or-nothing groups, and types. Prose
 agreement alone does not fix a config shape.
+
+Prefer concrete examples over prose restatement. A design document conveys the
+design core, not an exhaustive specification; long prose bases rot.

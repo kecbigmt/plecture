@@ -3,26 +3,30 @@
 This design is governed by
 [`../adr/2026-08-17-plugin-boundary-contracts.md`](../adr/2026-08-17-plugin-boundary-contracts.md).
 
-## Boundary Rule
+## Design Core
 
-Plugin boundaries are package boundaries, not runtime-isolation boundaries.
-A plugin may collaborate with another plugin only through these boundary
-surfaces:
+Plugin boundaries are package boundaries, not runtime-isolation boundaries. A
+plugin may collaborate with another plugin only through core-owned composition,
+provider-neutral contracts, provider-neutral event-bus types, or opaque
+plugin-owned event payloads.
 
-- core-owned workflow, task, channel, resource, workspace, and template composition;
-- core-owned provider-neutral Go contracts under `contracts/`;
-- core-owned provider-neutral event-bus types;
-- opaque plugin-owned event types that other plugins treat as uninterpreted payloads.
+The load-bearing rules are:
 
-Shipped plugin configuration references only executables declared by the same
-plugin. User-owned workflow and task overlays compose definitions from multiple
-plugins by id.
+- shipped plugin configuration references only executables declared by the same
+  plugin;
+- user-owned workflow and task overlays compose plugin definitions by id;
+- reusable terminal integration crosses plugin boundaries through an opaque
+  `interactive_endpoint` binding plus raw terminal verbs, not through a
+  multiplexer-specific handle;
+- agent-runtime plugins own submit and readiness composition for their own
+  interactive TUIs;
+- structured delivery is the supported path when an agent runtime provides it;
+- human conversation and agent replies rendezvous on provider-neutral
+  `conversation.*` events;
+- concrete provider guards, watchers, chat adapters, agent CLIs, and
+  multiplexers stay in provider plugins.
 
-Core owns durable work structure: identity, lifecycle, relationships,
-observation, verification, and handoff. Plugins own concrete commitments to
-tools, providers, communication systems, and agent runtimes.
-
-## Session Runtime Plugins
+## Plugin Ownership
 
 The reusable session runtime surface is split into independently selectable
 plugins:
@@ -36,146 +40,153 @@ plugins:
 | `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource definitions, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
 
 A plugin with only workflow, task, channel, template, or other configuration
-resources is still a plugin. A team may publish a reusable review workflow as
-a configuration-only plugin, but the workflow itself is composition, not a
-required executable adapter.
+resources is still a plugin. A shared review workflow may be distributed as a
+configuration-only plugin, or it may remain user-owned workflow and template
+configuration.
 
 ## Terminal Operation Surface
 
-The multiplexer seam is a core-owned terminal operation surface.
+A task that owns an interactive terminal endpoint declares:
 
-A multiplexer task declares an `interactive_endpoint` output, universal
-lifecycle keys for creating and maintaining it, and terminal verbs that act on
-it. `interactive_endpoint` is an opaque string binding that identifies the live
-endpoint for plect. It is not a new top-level config kind, and it is not
-sufficient without the declared surface.
+- `setup`, returning an `interactive_endpoint` output;
+- top-level `cleanup` and `healthcheck` task keys;
+- a `[terminal]` table with `attach`, `capture`, `send_text`, and `send_keys`.
 
-An interactive endpoint represents a live text terminal attached to a session.
-It is not a tmux pane, a process id, a worktree, an agent runtime, or a chat
-thread. A tmux-backed endpoint may use a tmux session name as its binding. A
-[Herdr](https://github.com/herdrdev/herdr)-backed endpoint may use a pane id
-such as `w1:p1`, with Herdr's `HERDR_SOCKET_PATH` and `HERDR_PANE_ID`
-environment values supplied as operation context, as documented by the
-[Herdr socket API](https://herdr.dev/docs/socket-api/). Consumers treat both
-bindings as opaque strings.
+The `[terminal]` table is all-or-nothing: declaring any member requires all four
+members, and a partial table is a load error. Each member is a
+Go-template-rendered shell command string. Single-line and multi-line TOML
+strings are valid; arrays are invalid.
 
-Endpoint lifecycle and liveness use universal task keys:
-
-| Universal key | Terminal-surface role |
-|---|---|
-| `setup` | Creates the endpoint and returns the `interactive_endpoint` binding |
-| `cleanup` | Closes the endpoint and releases multiplexer-owned resources |
-| `healthcheck` | Reports whether the endpoint is live enough for delivery |
-
-`healthcheck` is not terminal-specific. A Claude task may use the same universal
-key for process-id self-healing. A multiplexer task's `healthcheck` is the
-terminal-surface instance of that universal key.
-
-Interactive terminal verbs live under the task's `[terminal]` table:
-
-| Terminal verb | Meaning |
-|---|---|
-| `attach` | Attach the user's terminal to the endpoint |
-| `capture` | Return the endpoint's current transcript |
-| `send_text` | Send literal text input to the endpoint |
-| `send_keys` | Send key-combo input to the endpoint |
-
-A task with a `[terminal]` table provides the terminal operation surface. The
-table must declare all four terminal verbs; a partial terminal surface is a load
-error. Each value is a Go-template-rendered command string; single-line and
-multi-line TOML strings are valid, and arrays are not valid.
-
-The word `terminal` names the config table, the `{{terminal "send_text"}}`
-template helper, and the Terminal Operation Surface prose contract.
-
-```toml
-[terminal]
-attach = "..."
-capture = "..."
-send_text = "..."
-send_keys = "..."
-```
-
-The required lifecycle keys and terminal verbs map to concrete multiplexers
-without leaking those tools into consumers:
-
-| Declaration | tmux mapping | Herdr mapping |
-|---|---|---|
-| `setup` | create the tmux session | `workspace.create` and `pane.split` |
-| `cleanup` | kill the tmux session or pane | `pane.close` |
-| `healthcheck` | check the tmux session and pane | `agent.get` or pane existence |
-| `[terminal].attach` | attach to the tmux session | reattach to the Herdr session or pane |
-| `[terminal].capture` | capture pane output | `pane.read` with `--source` and `--lines` |
-| `[terminal].send_text` | `send-keys` with literal text | `pane.send_text` |
-| `[terminal].send_keys` | `send-keys` with key tokens | `pane.send_keys` |
-
-Agent runtime plugins and channels call terminal verbs through terminal
-operation template injection. `{{terminal "send_text"}}`,
-`{{terminal "send_keys"}}`, `{{terminal "capture"}}`, and the other terminal
-operation templates resolve the session's selected multiplexer task operation
-into the concrete command line declared by that task. The helper is available
-to consumer task hooks and channel arguments, following the same literal-name
-template convention as `{{bin "..."}}`.
-
-Channel argument rendering includes the terminal operation helper for declared
-terminal operation consumers. Channels keep a static command and receive
-rendered terminal operation command lines through their arguments, so event data
-and channel input data can select argv values but cannot choose the executable.
-
-Plecture does not expose CLI commands for terminal operations. Terminal
-operation consumers are declared task hooks and event channels only. Manual
-debugging stays on the existing `plect attach` and `plect capture` commands.
-
-Agent runtime plugins and channels do not invoke multiplexer commands, inspect
-multiplexer-specific output fields, or name a concrete multiplexer plugin.
-
-Terminal operations are raw verbs. They do not define an agent submit protocol,
-readiness predicate, prompt-glyph vocabulary, retry schedule, or burst-splitting
-policy. An agent-runtime plugin that drives an interactive TUI owns that
-composition: it renders the message, calls `send_text` for literal text, calls
-`send_keys` for submit keys such as Enter, calls `capture` to evaluate the
-runtime's prompt/readiness state, and retries according to that runtime's TUI
+Terminal commands are raw verbs. `send_text` sends literal text, `send_keys`
+sends key-combo input, and `capture` returns terminal text for the consumer to
+interpret. Agent-runtime plugins compose those verbs into submit/readiness
 behavior.
 
-The initial-prompt task belongs to the agent runtime plugin whose TUI receives
-the prompt. `session/claude` and `session/codex` each ship an initial-prompt
-task that composes the raw terminal verbs with that runtime's readiness checks.
-`session/claude` uses channel-server as its supported event-delivery path
-because structured delivery is more robust than terminal key submission. A
-no-channel-server interactive Claude configuration is outside this supported
-surface. `session/codex` ships a terminal-submit event channel for its
-interactive TUI shape because Codex interactive has no structured transport.
-`session/tmux` does not ship agent-TUI submit or readiness composition.
+### tmux Provider
 
-`session/codex`'s terminal-submit channel composes raw terminal operations into
-Codex TUI delivery. The multiplexer command positions are injected terminal
-operation command lines: literal message delivery uses
-`{{terminal "send_text"}}`, submit-key delivery uses
-`{{terminal "send_keys"}}`, and verification uses `{{terminal "capture"}}`.
-The burst split, prompt-glyph and non-breaking-space readiness predicate,
-backoff schedule, and fail-loud behavior belong to `session/codex` because they
-describe the Codex TUI submit contract, not the multiplexer.
+```toml
+scope = "run"
 
-The operation surface lets a workflow swap one multiplexer implementation for
-another by replacing the producer node. Agent plugins depend on the core
-operation contract and the `interactive_endpoint` binding, not on the concrete
-multiplexer plugin.
+setup = '''
+tmux has-session -t {{.SessionName}} 2>/dev/null \
+  || tmux new-session -d -s {{.SessionName}} -c {{.WorkspaceDirPath}}
+echo '{"interactive_endpoint":"{{.SessionName}}"}'
+'''
 
-Richer multiplexers may expose optional capabilities outside the required
-terminal surface. Herdr exposes semantic agent status such as `working`,
-`blocked`, `idle`, and `done`; readiness waits such as `agent.wait --until`;
-and event subscriptions such as `events.subscribe`. Plecture workflows may use
-those extension capabilities when a selected multiplexer declares them, such as
-using `agent.wait` for initial-prompt readiness. The required-surface path uses
-the portable `capture` operation plus the agent runtime's prompt/readiness
-predicate.
+cleanup = "tmux kill-session -t {{.Self.interactive_endpoint}} 2>/dev/null || true"
+healthcheck = "tmux has-session -t {{.Self.interactive_endpoint}}"
+
+[terminal]
+attach = "tmux attach -t {{.Self.interactive_endpoint}}"
+capture = "tmux capture-pane -p -t {{.Self.interactive_endpoint}}"
+send_text = "tmux send-keys -t {{.Self.interactive_endpoint}} -- \"$1\""
+send_keys = "tmux send-keys -t {{.Self.interactive_endpoint}} \"$1\""
+
+[outputs_schema]
+type = "object"
+required = ["interactive_endpoint"]
+
+[outputs_schema.properties]
+interactive_endpoint = { type = "string" }
+```
+
+The `interactive_endpoint` value is opaque to consumers. The tmux task uses a
+session name; a different multiplexer may use a pane id, socket path token, or
+other implementation-owned binding.
+
+### Codex Terminal Submit
+
+`session/codex` owns Codex TUI submission because the burst split,
+prompt-readiness predicate, non-breaking-space normalization, retry schedule,
+and fail-loud behavior describe the Codex TUI contract.
+
+```toml
+type = "exec"
+command = "bash"
+args = [
+  "-c",
+  '''
+set -u
+send_text_cmd="$1"
+send_keys_cmd="$2"
+capture_cmd="$3"
+message="$4"
+
+prompt_is_ready() {
+  input=$(sh -c "$capture_cmd" terminal-capture | grep "$CODEX_PROMPT_PATTERN" | tail -n 1)
+  input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
+  case "$input" in
+    ''|"$CODEX_EMPTY_PROMPT") return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+sh -c "$send_text_cmd" terminal-send-text "$message"
+sleep 1
+sh -c "$send_keys_cmd" terminal-send-keys Enter
+
+for delay in 2 4 8 16; do
+  prompt_is_ready && exit 0
+  sleep "$delay"
+  sh -c "$send_keys_cmd" terminal-send-keys Enter
+done
+
+prompt_is_ready && exit 0
+echo "terminal_submit: instruction still unsubmitted after retries" >&2
+exit 1
+''',
+  "terminal_submit",
+  "{{terminal \"send_text\"}}",
+  "{{terminal \"send_keys\"}}",
+  "{{terminal \"capture\"}}",
+  '[{{.Event.type}}] {{if .Event.body}}{{.Event.body}}{{else}}{{.Event.summary}}{{end}}{{with index .Event.metadata "url"}} ({{.}}){{end}}',
+]
+timeout = "45s"
+```
+
+The channel command is static. Rendered `{{terminal "..."}}` values and event
+data ride in `args`, so event data can choose operands but not the executable.
+
+Claude Code delivery uses channel-server as its structured delivery path. A
+no-channel-server interactive Claude configuration is outside the supported
+surface. Raw terminal submit is the fallback for interactive TUIs without
+structured transport.
+
+### Herdr Provider
+
+```toml
+scope = "run"
+
+setup = '''
+workspace=$(herdr workspace.create --cwd {{.WorkspaceDirPath}})
+pane=$(herdr pane.split --workspace "$workspace")
+echo "{\"interactive_endpoint\":\"$pane\"}"
+'''
+
+cleanup = "herdr pane.close {{.Self.interactive_endpoint}}"
+healthcheck = "herdr agent.get {{.Self.interactive_endpoint}} >/dev/null"
+
+[terminal]
+attach = "herdr reattach {{.Self.interactive_endpoint}}"
+capture = "herdr pane.read {{.Self.interactive_endpoint}} --source screen --lines 200"
+send_text = "herdr pane.send_text {{.Self.interactive_endpoint}} \"$1\""
+send_keys = "herdr pane.send_keys {{.Self.interactive_endpoint}} \"$1\""
+
+[outputs_schema]
+type = "object"
+required = ["interactive_endpoint"]
+
+[outputs_schema.properties]
+interactive_endpoint = { type = "string" }
+```
+
+Herdr pane ids such as `w1:p1` fit the same opaque binding. Herdr's
+`HERDR_SOCKET_PATH` and `HERDR_PANE_ID` environment values are operation
+context, not consumer-visible endpoint shape. Herdr capabilities such as
+semantic agent status, `agent.wait`, and `events.subscribe` are optional
+extensions outside the required terminal surface.
 
 ## Conversation Events
-
-Human conversation and agent replies rendezvous on the Plecture event bus.
-Delivery plugins map concrete communication systems to provider-neutral
-conversation events. Agent-runtime plugins consume and publish those same
-events.
 
 Core owns these conversation event types:
 
@@ -186,18 +197,25 @@ Core owns these conversation event types:
 | `conversation.permission_request` | outbound | A runtime asks the human conversation for a decision |
 | `conversation.permission_reply` | inbound | A human decision for a permission request |
 
-Conversation events carry opaque metadata for conversation identity,
-participant identity, and delivery correlation. Core records and routes those
-fields without interpreting a concrete communication provider.
+A Slack-to-agent flow uses the bus as the rendezvous:
+
+1. `slack-delivery` receives a Slack message and publishes
+   `conversation.message` with opaque Slack correlation metadata.
+2. `session/claude` consumes `conversation.message` through its structured
+   channel-server delivery path, or `session/codex` consumes the same event
+   through its terminal-submit channel.
+3. The agent runtime publishes `conversation.reply` or
+   `conversation.permission_request`.
+4. `slack-delivery` maps those events back to the bound Slack thread.
+5. A Slack decision publishes `conversation.permission_reply` for the waiting
+   runtime.
 
 The channel-server socket protocol is an implementation protocol for a
-structured agent runtime. It is not the boundary between chat delivery and
-agent delivery. Chat-delivery plugins do not connect to channel-server sockets
-and do not import channel-server client packages.
-
-The channel-server socket protocol belongs with the structured agent runtime
-implementation that uses it. It is not a shared `contracts/` package unless
-another concrete consumer needs the same provider-neutral wire contract.
+structured agent runtime. Chat-delivery plugins do not connect to
+channel-server sockets and do not import channel-server client packages. The
+socket protocol belongs with the structured agent runtime implementation that
+uses it, not in a shared `contracts/` package without another concrete
+provider-neutral consumer.
 
 ## Review Workflow Composition
 
@@ -211,16 +229,11 @@ The team review workflow is configuration-level composition:
    event bus;
 5. `done_when`, judge, and terminal events record verification and handoff.
 
-No review-workflow executable plugin is required. A shared review workflow may
-be distributed as a configuration-only plugin when reuse justifies packaging,
-or it may remain user-owned workflow and template configuration.
+No review-workflow executable plugin is required.
 
 ## GitHub CLI Guard
 
-The GitHub CLI write guard belongs to the `github` plugin. It is a concrete
-GitHub CLI adapter and policy shim, not session-runtime behavior.
-
-Workflows that need the guard compose the GitHub plugin's guard task or
-environment output as an upstream runtime input. Agent plugins accept only
-generic environment or path inputs; they do not carry a GitHub-specific guard
-switch.
+The GitHub CLI write guard belongs to the `github` plugin. Workflows that need
+the guard compose the GitHub plugin's guard task or environment output as an
+upstream runtime input. Agent plugins accept only generic environment or path
+inputs; they do not carry a GitHub-specific guard switch.
