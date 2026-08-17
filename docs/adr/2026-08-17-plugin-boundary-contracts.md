@@ -1,9 +1,15 @@
+---
+supersedes: 2026-08-16-plugin-service-lifecycle
+---
+
 # Plugin boundary contracts and event rendezvous
 
 ## Context
 
 This decision is specified by
-[`docs/design/plugin-boundary-contracts.md`](../design/plugin-boundary-contracts.md).
+[`docs/design/plugin-boundary-contracts.md`](../design/plugin-boundary-contracts.md)
+and
+[`docs/design/plugin-packaging.md`](../design/plugin-packaging.md).
 
 The owner wants the plugin set to serve as building blocks for team workflows.
 The first forcing workflow is review request, review session, team conversation
@@ -22,6 +28,18 @@ Core still must not know that any specific provider, chat service, VCS, agent
 CLI, or terminal multiplexer exists.
 
 ## Decision
+
+Plecture keeps first-class plugin service declarations. `plugin.toml` supports
+`[[services]]` entries for bus-supervised plugin daemons. The bus supervisor
+starts declared services when the bus starts, restarts crashed children with
+bounded backoff, records service status, restarts services when their plugin
+content changes, and stops services when the bus stops.
+
+Service declarations are provider-agnostic. A declaration names a plugin-owned
+executable, arguments, environment/config bindings, readiness or health checks,
+restart policy, and log policy. Catalog content does not carry secrets; tokens,
+credentials, and similar values stay in user configuration, environment, or
+environment files.
 
 Plecture replaces the merge-first boundary rule with a core-contract boundary
 rule: when a reusable runtime contract would cross a plugin boundary, the
@@ -66,6 +84,22 @@ review-workflow plugin is required by this decision.
 
 ## Consequences
 
+Only the `plect bus serve` unit remains host-owned. Plugin daemons become part
+of the mounted plugin surface and are supervised by the bus.
+
+The `github` plugin declares a `github-watcher` service. `session/claude`
+declares the `channel-server` service. `slack-delivery` declares the
+`slack-adapter` service.
+
+Service state is bus-global and includes service identity, running state, pid,
+restart count, last exit, last error, last health result, plugin id, and the
+plugin lock coordinate or content hash that produced the running process.
+
+Core needs manifest parsing and validation for `[[services]]`, a bus-owned
+service supervisor, a service status model, and plugin update/remove signaling
+or lockfile polling. It does not need plugin dependency parsing, dependency
+closure checks, capability matching, or version solving.
+
 Plugin splitting remains possible without adding plugin dependency metadata,
 capability solving, or cross-plugin executable references.
 
@@ -86,8 +120,9 @@ channel-server socket protocol out of `contracts/` when it has no cross-plugin
 consumer, splitting the current session runtime package into the selected
 plugins, and moving `gh-guard` into the GitHub plugin.
 
-The existing plugin service lifecycle decision still governs `[[services]]`
-and bus supervision. This decision replaces only its plugin-boundary remedy.
+This decision supersedes the plugin service lifecycle decision by carrying
+forward its service declaration and bus-supervision decisions while replacing
+its merge-first plugin-boundary remedy.
 
 ## Alternatives considered
 

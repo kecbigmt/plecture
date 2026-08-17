@@ -4,7 +4,7 @@ This document defines the plugin model for distributing reusable Plecture
 configuration and executable adapters. The goal is to reduce bootstrap cost
 without moving workspace-provider, tool, or domain knowledge into core.
 The plugin service lifecycle decision is recorded in
-[`../adr/2026-08-16-plugin-service-lifecycle.md`](../adr/2026-08-16-plugin-service-lifecycle.md).
+[`../adr/2026-08-17-plugin-boundary-contracts.md`](../adr/2026-08-17-plugin-boundary-contracts.md).
 
 The design keeps two concepts: catalog and plugin. A catalog is a trusted
 distribution unit: a subtree of a source repository marked by `catalog.toml`.

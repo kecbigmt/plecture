@@ -1,3 +1,7 @@
+---
+superseded_by: 2026-08-17-plugin-boundary-contracts
+---
+
 # Plugin service lifecycle
 
 ## Context
