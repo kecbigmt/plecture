@@ -22,6 +22,14 @@ name = "github-watcher"
 path = "bin/github-watcher"
 build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
 
+# A `gh` shim that mechanically denies `pr merge`/`issue close`/`pr close`
+# (and their `gh api` equivalents), consumed by this plugin's own gh_guard
+# task (config/tasks/gh_guard.toml) — see
+# docs/design/plugin-boundary-contracts.md's GitHub CLI Guard section.
+[[executables]]
+name = "gh-guard"
+path = "scripts/gh-guard"
+
 # The watcher polls subscribed resources via the gh CLI, authenticated
 # outside plect (the user's own `gh auth login`) — no required_env, since
 # there is no plect-owned credential to gate on.

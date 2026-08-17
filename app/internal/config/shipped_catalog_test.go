@@ -77,12 +77,12 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
 
-	for _, id := range []string{"tmux", "initial_prompt", "claude", "codex", "codex_exec"} {
+	for _, id := range []string{"tmux", "claude_initial_prompt", "claude", "codex", "codex_initial_prompt", "codex_exec", "gh_guard"} {
 		if _, ok := tasks[id]; !ok {
 			t.Errorf("shipped catalog task %q not found", id)
 		}
 	}
-	for _, id := range []string{"tmux_send_keys", "claude", "codex_exec", "slack"} {
+	for _, id := range []string{"terminal_submit", "claude", "codex_exec", "slack"} {
 		if _, ok := channels[id]; !ok {
 			t.Errorf("shipped catalog channel %q not found", id)
 		}
@@ -145,7 +145,7 @@ func TestShippedCatalog_WorkflowEventChannelsResolve(t *testing.T) {
 }
 
 // TestShippedCatalog_SlackAdapterServiceRequiresAllStartupCredentials guards
-// the slack-adapter [[services]] declaration in the session/runtime
+// the slack-adapter [[services]] declaration in the slack plugin's
 // plugin.toml against a partial required_env list: slack-adapter's
 // cmd/slack-adapter/main.go exits(1) at startup if any of the bot token,
 // app token, or channel id is unset, so a required_env list missing one of

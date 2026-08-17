@@ -1,0 +1,29 @@
+schema_version = 1
+version = "0.1.0"
+# 0.0.0 matches app/internal/version.Current ("0.0.0-dev"): plect has no
+# release/tagging process yet, so any higher floor would reject the plugin
+# against every build until real versioning exists.
+plect_min_version = "0.0.0"
+description = "Claude Code launch task, initial-prompt submit/readiness composition, and the channel-server delivery daemon."
+
+[[executables]]
+name = "claude-agent-activity"
+path = "scripts/claude-agent-activity"
+
+[[executables]]
+name = "channel-server"
+path = "bin/channel-server"
+build = "go -C src/channel-server build -o ../../bin/channel-server ./cmd/channel-server"
+
+# channel-server is declared as a service so it is visible in plugin service
+# status, but the resident process must not start a single global instance
+# while Claude Code launches one instance per session with a
+# session-specific CHANNEL_SOCKET_PATH. required_env intentionally names
+# that per-session variable so the resident-supervised declaration stays
+# inert until the per-session lifecycle moves under the resident process.
+[[services]]
+name = "channel-server"
+executable = "channel-server"
+required_env = ["CHANNEL_SOCKET_PATH"]
+restart = "on-failure"
+health = { type = "process" }

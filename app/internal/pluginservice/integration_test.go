@@ -11,15 +11,15 @@ import (
 )
 
 // TestSupervisor_OverConfigLoadPlugins_RunsADeclaredService is the
-// end-to-end proof for this PR's slice of the plugin service lifecycle
-// ADR's acceptance criteria: a plugin enabled through the normal catalog
-// registration path, declaring a [[services]] entry, actually gets started
-// by a Supervisor built the same way `plect serve` builds one — over
-// config.LoadPlugins, not a hand-built PluginSource. It stands in for the
-// full "session-runtime + github enabled" scenario the ADR describes,
-// which needs the plugin regrouping this issue's follow-up PR performs;
-// this fixture plugin exercises the same mechanism with a synthetic
-// service instead.
+// end-to-end proof for the plugin service lifecycle ADR's acceptance
+// criteria: a plugin enabled through the normal catalog registration path,
+// declaring a [[services]] entry, actually gets started by a Supervisor
+// built the same way `plect serve` builds one — over config.LoadPlugins,
+// not a hand-built PluginSource. The real shipped services (claude's
+// channel-server, slack's slack-adapter) stay deliberately inert without a
+// live session/Slack workspace behind them (see their own plugin.toml
+// comments), so a synthetic fixture plugin exercises the same mechanism
+// with an always-runnable service instead.
 func TestSupervisor_OverConfigLoadPlugins_RunsADeclaredService(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)

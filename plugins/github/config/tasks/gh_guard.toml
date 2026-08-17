@@ -1,0 +1,37 @@
+scope = "session"
+
+# Produces a directory a workflow composes into an agent-runtime task's
+# generic PATH-prepend input (e.g. `official/claude`'s `claude` task, or
+# `official/codex`'s `codex`/`codex_exec` tasks) — see
+# docs/design/plugin-boundary-contracts.md's GitHub CLI Guard section.
+# Agent-runtime plugins accept only this generic path input; they carry no
+# GitHub-specific guard switch of their own, so this is the one place that
+# knows about `gh` at all.
+#
+# The real gh's resolved absolute path is embedded into the generated
+# wrapper below at setup time, before the shim directory reaches anyone's
+# PATH — resolving it lazily inside the guard would find the shim itself
+# (still ahead of the real gh on PATH) and recurse forever, so this task
+# (not the consumer) is the one place that ordering has to be gotten right.
+setup = '''
+REAL_GH=$(command -v gh) || { echo "gh_guard: no gh on PATH to guard" >&2; exit 1; }
+DIR=$(mktemp -d "${TMPDIR:-/tmp}/plect-gh-guard.XXXXXX")
+cat > "$DIR/gh" <<WRAPPER
+#!/usr/bin/env bash
+export GH_GUARD_REAL_GH='$REAL_GH'
+exec '{{bin "gh-guard"}}' "\$@"
+WRAPPER
+chmod +x "$DIR/gh"
+jq -nc --arg dir "$DIR" '{dir:$dir}'
+'''
+
+cleanup = '''
+rm -rf {{.Self.dir}}
+'''
+
+[outputs_schema]
+type     = "object"
+required = ["dir"]
+
+[outputs_schema.properties]
+dir = { type = "string" }

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Behavior tests for plugins/session/runtime/scripts/gh-guard: proves the
-# shim denies merge/close before it is trusted as the opt-in gh_guard task
-# input's mechanism shared by the claude, codex, and codex_exec tasks.
+# Behavior tests for plugins/github/scripts/gh-guard: proves the shim
+# denies merge/close before it is trusted as the mechanism behind the
+# github plugin's gh_guard task, composed into claude/codex/codex_exec
+# tasks via their generic path_prepend input.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-guard="$root/plugins/session/runtime/scripts/gh-guard"
+guard="$root/plugins/github/scripts/gh-guard"
 
 fail=0
 

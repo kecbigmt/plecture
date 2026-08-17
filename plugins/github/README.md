@@ -12,11 +12,12 @@ session runs through.
 
 ## Contents
 
-- `plugin.toml` — declares the three executables this plugin builds:
+- `plugin.toml` — declares the executables this plugin builds or ships:
   `github-worktree` (setup/cleanup), `github-issue-pr` (observe), and
   `github-watcher` (subscribe/serve/gh-api), all built from `src/`, this
   plugin's own Go module (`src/cmd/github-worktree`, `src/cmd/github-issue-pr`,
-  `src/cmd/github-watcher`).
+  `src/cmd/github-watcher`); plus `gh-guard` (`scripts/gh-guard`), a shipped
+  shell shim, not a build target.
 - `workspaces/github.toml` — resolves a GitHub issue/PR URL to a session id
   and acquires/releases the git worktree it maps to.
 - `resources/github.toml` — the standalone observation contract
@@ -25,6 +26,15 @@ session runs through.
 - `tasks/{work,review,respond,investigate}.toml` — the task pack a
   GitHub-flavored workflow composes: each renders its own instruction
   template and reads resource state via `from_resource_status`.
+- `tasks/gh_guard.toml` — produces a directory an agent-runtime plugin's
+  task composes as a generic PATH-prepend input (see
+  `docs/design/plugin-boundary-contracts.md`'s GitHub CLI Guard section),
+  so every `gh` a session's shell resolves is `scripts/gh-guard` instead of
+  the real binary — mechanically denying `pr merge`/`issue close`/`pr
+  close` (and their `gh api` equivalents) so a session can't act on a
+  forgotten or de-prioritized "don't merge" instruction. Opt-in: wire it
+  only into workflows that want it. See `scripts/gh-guard_selftest.sh` at
+  the repository root for its behavior tests.
 - `templates/{work,review,respond,investigate}.md` — the default
   instructions for each task. Team-specific process (a project-board
   integration, a PR-description convention, a code-review house style) is
