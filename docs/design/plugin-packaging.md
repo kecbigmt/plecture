@@ -536,9 +536,6 @@ above mounts each resolved plugin directory into that same list, alongside any
 hand-authored entries. The two kinds are not equivalent — only a
 catalog-resolved entry carries lock verification and the `plect_min_version`
 check; a hand-authored entry carries no catalog identity and skips both.
-Bringing a hand-authored `plugin_dirs` entry under catalog management is a
-one-time, documented procedure; see
-[`docs/migrating-to-plugins.md`](../migrating-to-plugins.md).
 
 Reference declarations are global-only in the first implementation. Ancestor
 overlays can still customize tasks and workflows under the existing loader
