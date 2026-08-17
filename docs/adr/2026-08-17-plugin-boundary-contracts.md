@@ -48,12 +48,13 @@ rendezvous through the event bus. A plugin boundary may not depend on another
 plugin's private package, executable, config shape, or provider-specific event
 schema.
 
-The multiplexer seam is a core-owned `interactive_endpoint` task-output
-contract. It is not a new top-level config kind. A multiplexer task declares an
-interactive endpoint in its output schema and produces that endpoint through
-the existing workflow node-output mechanism. Agent runtime plugins consume it
-as an opaque text-terminal handle, so a workflow can substitute another
-multiplexer implementation without changing the agent plugin.
+The multiplexer seam is a core-owned terminal operation surface. A multiplexer
+task declares an `interactive_endpoint` output and terminal operations that act
+on it: `attach`, `capture`, `send_input`, and `healthcheck`.
+`interactive_endpoint` is the binding those operations target; it is not a new
+top-level config kind. Agent runtime plugins and channels call the operations
+through plect's common surface, so they contain no tmux commands, no tmux output
+field knowledge, and no concrete multiplexer plugin references.
 
 Chat delivery and agent delivery rendezvous through provider-neutral
 conversation events on the Plecture event bus:
@@ -104,8 +105,8 @@ Plugin splitting remains possible without adding plugin dependency metadata,
 capability solving, or cross-plugin executable references.
 
 Core grows only where a contract is durable across concrete technologies:
-interactive endpoints and conversation events. Concrete multiplexer, agent,
-chat, and VCS behavior remains in plugins.
+terminal operations, interactive endpoint bindings, and conversation events.
+Concrete multiplexer, agent, chat, and VCS behavior remains in plugins.
 
 The official catalog can offer smaller independently selectable packages. An
 operator can select a different multiplexer, choose Claude or Codex runtime
@@ -113,12 +114,13 @@ support independently, use Slack delivery without Claude-specific socket
 knowledge, and use the GitHub guard without installing it as session-runtime
 behavior.
 
-Implementation work includes defining the task-level `interactive_endpoint`
-output contract, adding the provider-neutral conversation event vocabulary,
-moving Slack delivery off channel-server socket subscriptions, moving the
-channel-server socket protocol out of `contracts/` when it has no cross-plugin
-consumer, splitting the current session runtime package into the selected
-plugins, and moving `gh-guard` into the GitHub plugin.
+Implementation work includes defining the task-level terminal operation
+surface, keeping `interactive_endpoint` as the operation binding, adding the
+provider-neutral conversation event vocabulary, moving Slack delivery off
+channel-server socket subscriptions, moving the channel-server socket protocol
+out of `contracts/` when it has no cross-plugin consumer, splitting the current
+session runtime package into the selected plugins, and moving `gh-guard` into
+the GitHub plugin.
 
 This decision supersedes the plugin service lifecycle decision by carrying
 forward its service declaration and bus-supervision decisions while replacing
@@ -145,16 +147,21 @@ pull Plecture toward version solving before there is a proven registry problem.
 Workflow config can already connect a tmux task to an agent task by passing a
 provider-neutral output such as `session_name`, and task declarations already
 carry attach, capture, and healthcheck commands. That is enough for one local
-workflow overlay that edits the producer node, the consumer templates, and the
-producer-owned delivery channel together.
+workflow overlay that edits the producer node, the consumer templates, and any
+input-delivery channel together.
 
 It is not enough for a reusable plugin split. The output name is a convention
 owned by the concrete task, not a declared core capability. A consumer plugin
-has no stable way to say it needs an attachable, capturable, text-sendable
+has no stable way to say it needs an attachable, capturable, input-receiving
 terminal endpoint without naming the concrete producer's node id or output
-shape. Config-only composition therefore describes the operator motion for
-choosing a multiplexer, but it does not carry the published swap guarantee
-between independently distributed plugins.
+shape.
+
+An opaque handle alone also loses. If the only common contract is
+`interactive_endpoint`, the plugin or channel that types into it still needs
+tool-specific command knowledge. That recreates the dependency the split is
+meant to remove. The reusable seam is therefore the task-declared operation
+surface, with `interactive_endpoint` kept only as the binding those operations
+target.
 
 ### Keep Slack delivery on the channel-server socket protocol
 

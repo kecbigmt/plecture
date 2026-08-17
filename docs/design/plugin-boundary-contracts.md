@@ -29,9 +29,9 @@ plugins:
 
 | Plugin | Owns | Core contracts used | Excludes |
 |---|---|---|---|
-| `session/tmux` | tmux-backed interactive endpoint tasks and text delivery | interactive endpoint, task lifecycle, attach/capture | agent CLIs, chat delivery, VCS guards |
-| `session/claude` | Claude Code launch tasks, Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
-| `session/codex` | Codex TUI and `codex exec` launch tasks, queue worker, enqueue channel, Codex activity hook | interactive endpoint, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
+| `session/tmux` | tmux-backed interactive endpoint task and terminal operation declarations | interactive endpoint, terminal operations, task lifecycle | agent CLIs, chat delivery, VCS guards |
+| `session/claude` | Claude Code launch tasks, Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
+| `session/codex` | Codex TUI and `codex exec` launch tasks, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
 | `slack-delivery` | Slack adapter service, Slack thread binding, Slack event ingress and egress | conversation events, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
 | `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource definitions, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
 
@@ -40,26 +40,41 @@ resources is still a plugin. A team may publish a reusable review workflow as
 a configuration-only plugin, but the workflow itself is composition, not a
 required executable adapter.
 
-## Interactive Endpoint
+## Terminal Operation Surface
 
-The multiplexer seam is a core-owned workflow contract named
-`interactive_endpoint`.
+The multiplexer seam is a core-owned terminal operation surface.
 
-`interactive_endpoint` is a task-level output contract. A task declaration uses
-its output schema to say that one of its outputs carries an interactive
-endpoint. The value then travels through the existing workflow node-output
-mechanism. It is not a new top-level config kind.
+A multiplexer task declares an `interactive_endpoint` output and the terminal
+operations that act on it. `interactive_endpoint` is the task-output binding
+that identifies the live endpoint for plect. It is not a new top-level config
+kind, and it is not sufficient without the declared operations.
 
 An interactive endpoint represents a live text terminal attached to a session.
 It is not a tmux pane, a process id, a worktree, an agent runtime, or a chat
-thread. A multiplexer plugin produces the endpoint and owns setup, cleanup,
-health, attach, capture, and text-send mechanics. Agent-runtime plugins consume
-the endpoint as an opaque task output and never inspect the multiplexer-specific
-shape behind it.
+thread.
 
-The endpoint contract lets a workflow swap one multiplexer implementation for
-another by replacing the producer node and any producer-owned delivery channel.
-Agent plugins depend on the core endpoint contract, not on the concrete
+The terminal operation set is:
+
+| Operation | Meaning |
+|---|---|
+| `attach` | Attach the user's terminal to the endpoint |
+| `capture` | Return the endpoint's current transcript |
+| `send_input` | Send text input to the endpoint |
+| `healthcheck` | Report whether the endpoint is live enough for delivery |
+
+The existing task-level `attach`, `capture`, and `healthcheck` declarations
+are members of this operation set. `send_input` extends the same task-declared
+operation model to text delivery.
+
+Agent runtime plugins and channels call these operations through plect's common
+surface. They do not invoke multiplexer commands, inspect multiplexer-specific
+output fields, or name a concrete multiplexer plugin. The shipped text-input
+channel is generic and invokes `send_input` on the session's declared
+multiplexer endpoint.
+
+The operation surface lets a workflow swap one multiplexer implementation for
+another by replacing the producer node. Agent plugins depend on the core
+operation contract and the `interactive_endpoint` binding, not on the concrete
 multiplexer plugin.
 
 ## Conversation Events

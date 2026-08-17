@@ -932,7 +932,7 @@ Catalog-owned files:
 catalog.toml
 session/tmux/plugin.toml
 session/tmux/config/tasks/tmux.toml
-session/tmux/config/channels/terminal_send_text.toml
+session/tmux/config/channels/terminal_send_input.toml
 session/claude/plugin.toml
 session/claude/config/tasks/claude.toml
 session/claude/config/channels/claude.toml
