@@ -62,7 +62,7 @@ type Supervisor struct {
 }
 
 // NewSupervisor builds a supervisor over the same event log, session state,
-// and per-session reader hub the bus and dispatch.Supervisor share.
+// and per-session reader hub the resident process and dispatch.Supervisor share.
 func NewSupervisor(cfg func() *config.Config, st *state.Store, log *eventlog.Store, hub *sessionhub.Registry) *Supervisor {
 	return &Supervisor{cfg: cfg, state: st, log: log, hub: hub, logger: slog.Default(), poll: time.Second}
 }
@@ -87,10 +87,10 @@ func (sup *Supervisor) Run(ctx context.Context) {
 	}
 	deadman := time.NewTicker(deadmanEvery)
 	defer deadman.Stop()
-	// Swept once immediately, not just on the first tick of deadman: a bus
-	// that was down past a session's deadman threshold must surface that on
-	// restart, not wait up to another full interval — same rationale as
-	// reactor.go's own immediate checkHeartbeat call.
+	// Swept once immediately, not just on the first tick of deadman: a
+	// resident process that was down past a session's deadman threshold must
+	// surface that on restart, not wait up to another full interval — same
+	// rationale as reactor.go's own immediate checkHeartbeat call.
 	sup.checkDeadman(ctx)
 	for {
 		sup.reconcile(ctx, active, &wg)

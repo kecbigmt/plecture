@@ -30,10 +30,10 @@ const fallbackDrain = 5 * time.Second
 
 // heartbeatInterval is the cadence of the periodic `heartbeat` sweep. It is
 // deliberately coarse relative to typical `heartbeat` values (minutes), and
-// checked once immediately at startup so a bus restart sweeps any
+// checked once immediately at startup so a resident restart sweeps any
 // already-overdue session promptly rather than waiting a full interval:
-// whatever exceeds the freshness ceiling while the bus was down must be
-// swept on recovery, not left waiting for the next regular tick.
+// whatever exceeds the freshness ceiling while the resident process was down
+// must be swept on recovery, not left waiting for the next regular tick.
 const heartbeatInterval = time.Minute
 
 // channelHealthInterval is the cadence of the periodic channel-health sweep
@@ -109,9 +109,9 @@ func (r *sessionReactor) run(ctx context.Context) {
 	defer channelHealthTicker.Stop()
 	r.checkChannelHealth(ctx)
 
-	// Immediate check, not just on the first tick of heartbeat: a bus that
-	// was down past `heartbeat` must sweep the backlog on restart, not wait
-	// up to another full interval.
+	// Immediate check, not just on the first tick of heartbeat: a resident
+	// process that was down past `heartbeat` must sweep the backlog on
+	// restart, not wait up to another full interval.
 	r.checkHeartbeat(ctx)
 	for {
 		if ctx.Err() != nil {

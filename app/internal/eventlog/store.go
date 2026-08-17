@@ -44,7 +44,7 @@ type Store struct {
 }
 
 // Root returns the events directory this store reads/writes (for diagnostics —
-// e.g. confirming the bus daemon and writers resolve the same log tree).
+// e.g. confirming the resident process and writers resolve the same log tree).
 func (s *Store) Root() string { return s.root }
 
 // NewStore creates a Store. If dir is empty it defaults to ~/.local/share/plect
