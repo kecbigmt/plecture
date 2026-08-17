@@ -43,9 +43,40 @@ executions and may bind its own validated inputs into the inner task's
 validated input object. The outer task's input schema is coherent and
 self-owned; it is not an edit to the inner task's schema.
 
-Task nesting is strictly additive. The outer task may not overwrite or
-alter the inner task's behavior fields. The inner task has no reference to the
-outer task and no virtual dispatch point back into it.
+Task nesting is strictly additive. The outer task may never modify inner
+behavior; additive extension is permitted exactly where this design grants it:
+chains, `done_when` conjunction, public outputs, environment, forwarded inputs,
+and an interactive endpoint over a chain that declares none. The inner task has
+no reference to the outer task and no virtual dispatch point back into it.
+
+An outer task may extend `done_when`. The composed effective `done_when` is the
+inner effective `done_when` conjoined with the outer's added leaves.
+Additive-only is a grammar guarantee rather than a rule to police: `done_when`
+has one leaf list and no disjunction, negation, reordering, or removal syntax,
+so no outer layer can weaken or drop an inner condition. Adding necessary
+conditions leaves the inner author's completion reasoning intact, because every
+condition they declared remains necessary. The composed completion contract is
+part of the nested task's public face, and the outer task already owns that face
+by the same responsibility transfer that makes it declare the public outputs.
+Judge ids merge into one namespace across the nesting chain and a repeated id is
+a load error, so extension cannot mask an inner judge. `[done_when.budget]`
+stays inner-owned: heartbeat policy is behavior, not a condition.
+
+`requires` is the validation companion for the outer's own additions. The outer
+`requires` names the public output keys the outer-added checks read, and the
+mutual validation runs against the outer `outputs_schema`. The inner `requires`
+stays inner-owned and validates the inner `done_when` against the inner outputs.
+Each layer validates only its own additions.
+
+`[terminal]` is conflict-banned rather than inner-owned. An outer task may
+declare it when no layer of its inner chain does, which composes an interactive
+surface around a headless inner task without touching inner behavior. Two
+declarations in one chain are a load error. The plan-level at-most-one rule
+generalizes to at most one declaration per nesting chain, so a nested task
+contributes one terminal declaration or none and terminal-task resolution stays
+as it is. Whichever layer declares `[terminal]`, the composed public contract
+binds `interactive_endpoint` from that layer, and operation commands stay in the
+declaring layer's table where no other layer can inject or replace them.
 
 The nested task's public outputs are only what the outer task explicitly
 binds. Inner public outputs are not automatically promoted. This follows the
@@ -92,7 +123,10 @@ Core needs nested-task validation for unknown inner references, nesting cycles,
 scope conflicts, rejected outer behavior fields, explicit output binding,
 missing required machinery outputs, bound-input schema conflicts, direct-output
 schema compatibility, computed-output string typing, repeated environment keys
-across layers, and invalid injected environment names.
+across layers, invalid injected environment names, repeated judge ids across
+layers, per-layer `requires` validation of each layer's own `done_when` checks,
+multiple `[terminal]` declarations in one nesting chain, and
+`interactive_endpoint` wiring from whichever layer declares `[terminal]`.
 
 Core needs lifecycle execution that stores outer setup locals privately while
 declaring only the output keys bound by the outer task. Output binding is a
@@ -100,7 +134,7 @@ live projection rather than a setup-time copy. Direct output bindings project
 the inner value without string rendering; computed output bindings render
 templates to strings. Downstream workflow nodes, channels, status, chain output
 mappings, and nested-task done_when output checks validate against the outer
-public contract, while chain judge ids resolve from the effective innermost
+public contract, while chain judge ids resolve from the composed effective
 done_when.
 
 Core needs task inspection output to show the nesting chain from the outermost
@@ -118,6 +152,10 @@ surfaces in their owning plugins. Runtime argument wiring for a retiring
 third-party service is outside this decision. Whole-file forks remain available
 when behavior cannot be expressed by an author-declared input or by additive
 nesting.
+
+The same additive argument would extend `healthcheck`, but no observed shadow
+needs it, so `healthcheck` stays inner-owned and the question is revisited on
+evidence.
 
 ## Alternatives considered
 
@@ -144,6 +182,27 @@ config layer may replace pieces in place.
 The no-override rule follows the same shape as coherence and final-by-default
 systems: the owner of a definition declares its extension surface, and other
 parties create a named variant instead of mutating that definition in place.
+
+### Inner-owned `done_when` and `requires`
+
+Listing `[done_when]` and `requires` among the inner-owned fields, alongside
+`primary`, `execution`, and `[terminal]`, is the strictest reading of
+no-override, and this decision started there. It over-applies the rule by
+treating any appearance of a field in an outer file as an override. Conjunction
+overrides nothing: the grammar offers no way to weaken, drop, or reorder an
+inner condition, so every inner condition survives an outer addition intact.
+The ban also costs real coverage. A team that needs one extra completion gate on
+a plugin task has only a whole-file fork, which is precisely the hole in the
+zero-copy target this design exists to close.
+
+### Unconditionally inner-owned `[terminal]`
+
+Banning `[terminal]` in outer tasks outright shares the shape of the
+`done_when` case: it reads the presence of a field as an override even when the
+inner chain declares none, so nothing can be overridden. A composed interactive
+surface around a headless inner task is addition. Conflict is the real hazard,
+and a per-chain at-most-one rule addresses it directly while keeping plan
+assembly's existing guarantee intact.
 
 ### Single-level nesting only
 

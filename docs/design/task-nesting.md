@@ -5,8 +5,9 @@ This design is governed by
 
 ## Design Core
 
-Task nesting lets an outer task add lifecycle work, input binding, chains, and
-process environment to an inner task without copying the inner task's file.
+Task nesting lets an outer task add lifecycle work, input binding, chains,
+completion conditions, an interactive endpoint, and process environment to an
+inner task without copying the inner task's file.
 Any layer that owns task definitions writes outer tasks: user-owned
 configuration, a configuration-only plugin, and a plugin factoring its own
 tasks, such as runtime variants that share a common inner layer. The rules in
@@ -118,7 +119,10 @@ Task nesting fields:
 | `[inputs_schema]` / `inputs_schema_file` | no | JSON Schema | The outer task's workflow-facing inputs contract. |
 | `[locals_schema]` / `locals_schema_file` | no | JSON Schema | The private locals contract for outer setup emissions. |
 | `[outputs_schema]` / `outputs_schema_file` | no | JSON Schema | The nested task's explicit public output contract. Every public output is declared here. |
-| `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the effective innermost `done_when` and chain output mappings validated against the outer public output contract. |
+| `[done_when]` | no | leaf list | Completion conditions the outer layer adds to the inner effective `done_when`. Leaves only; `[done_when.budget]` stays inner-owned. |
+| `requires` | no | string list | The public output keys the outer-added `done_when` checks read. |
+| `[terminal]` | no | terminal table | An interactive endpoint for a nesting chain whose other layers declare none. |
+| `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the composed effective `done_when` and chain output mappings validated against the outer public output contract. |
 
 The nested task's effective scope is the innermost task's scope. If an outer
 task declares `scope`, it must match the scope of its next inner task, and the
@@ -142,6 +146,80 @@ needs a local schema property.
 
 Inspection output such as `plect task show` prints the nesting chain from the
 outermost task to the innermost plugin task.
+
+## Completion Conditions
+
+An outer task may declare `[done_when]`. The composed task's effective
+`done_when` is the inner effective `done_when` conjoined with the outer's added
+leaves. The addition can only narrow completion: `done_when` has one leaf list,
+`all`, and no disjunction, negation, reordering, or removal syntax, so every
+condition the inner author declared stays necessary and their completion
+reasoning holds unchanged. The composed completion contract is part of the
+nested task's public face, which the outer task already owns through its public
+output contract.
+
+An outer `[done_when]` declares leaves only. `[done_when.budget]` is inner-owned
+behavior: the outer layer adds conditions, not a heartbeat policy.
+
+Outer `done_when` checks read only the outer public output contract, the same
+scope rule outer chains follow. Locals and unbound inner outputs are not visible
+to them.
+
+Judge ids from outer leaves join the judge namespace of the inner effective
+`done_when`, and a judge id repeated anywhere in the nesting chain is a load
+error, so an outer layer cannot mask an inner judge. Chain judge ids resolve
+from the composed effective `done_when`, so a chain declared on the outer task
+may name an inner judge id or one the outer added.
+
+The outer task declares `requires` for its own added checks:
+
+```toml
+inner = "official/github/work"
+
+requires = ["review_decision"]
+
+[done_when]
+all = [
+  { check = "review_decision", eq = "APPROVED" },
+  { judge = "the team's release checklist is satisfied", id = "release-gate" },
+]
+
+[bind.outputs]
+instruction = "{{.Inner.outputs.instruction}}"
+review_decision = "{{.Inner.outputs.review_decision}}"
+```
+
+The mutual validation between `requires` and `done_when` applies to the outer's
+own additions: every outer-added check names a key in the outer `requires`, and
+every key the outer `requires` names is a property of the outer
+`outputs_schema`. The inner `requires` stays inner-owned and validates the inner
+`done_when` against the inner outputs. Each layer validates only its own
+additions, and neither layer's `requires` constrains the other.
+
+## Interactive Endpoint
+
+Any one layer of a nesting chain may declare `[terminal]`. An outer task
+declaring it over an inner chain that declares none composes an interactive
+surface around a headless inner task, which is addition rather than
+modification. Two layers of one chain declaring `[terminal]` is a load error
+naming both layers.
+
+At most one `[terminal]` declaration per nesting chain keeps plan assembly's
+at-most-one-per-plan rule unambiguous. A nested task contributes either one
+terminal declaration or none, so terminal-task resolution for attach, capture,
+and the `{{terminal "..."}}` helper needs no nesting-aware tie-break.
+
+Whichever layer declares `[terminal]`, the composed public contract carries
+`interactive_endpoint` bound from that layer. When the inner chain declares it,
+`[bind.outputs]` binds `interactive_endpoint` from
+`{{.Inner.outputs.interactive_endpoint}}`. When the outer task declares it, the
+outer binds `interactive_endpoint` from its own setup-emitted local. A chain
+with a `[terminal]` declaration whose composed public contract does not bind
+`interactive_endpoint` is a load error either way.
+
+Terminal operation commands belong to the declaring layer's `[terminal]` table.
+Other layers do not inject, wrap, or replace them, and consumers reach the
+declaring layer only through the composed public contract.
 
 ## Reference Resolution
 
@@ -188,8 +266,13 @@ Loading nested task definitions fails when:
 - `inner` forms a nesting cycle, including self-reference.
 - the outer task declares a `scope` that differs from the inner task's scope.
 - the outer task declares inner-owned behavior fields: `primary`, `execution`,
-  `idle_after`, `healthcheck`, `movement_signal`, `requires`, `[terminal]`,
-  `[done_when]`, or `[[outputs]]`.
+  `idle_after`, `healthcheck`, `movement_signal`, or `[[outputs]]`.
+- two layers of the nesting chain declare `[terminal]`.
+- the outer task declares `[done_when.budget]`.
+- an outer `done_when` judge id repeats a judge id declared by any other layer
+  in the nesting chain.
+- an outer `done_when` check names a key missing from the outer `requires`, or
+  the outer `requires` names a key missing from the outer `outputs_schema`.
 - `[bind.outputs]` references a source other than an inner public output or a
   local.
 - `[bind.outputs]` declares a public key missing from `outputs_schema`.
@@ -206,14 +289,14 @@ Loading nested task definitions fails when:
 - a `bind.env` key is not a valid process environment name.
 - a `bind.env` key repeats a key from any other layer in the nesting chain.
 - a chain declared on the outer task references a judge id not declared by the
-  effective innermost `done_when`, or a public output not declared by the outer
+  composed effective `done_when`, or a public output not declared by the outer
   public contract.
 - a chain declared on the outer task references a local not bound into the outer
   public contract.
-- the inner task declares `[terminal]` and the outer public contract does not
-  bind `interactive_endpoint`.
-- a nested task `done_when` check or chain references an output not bound by
-  the outer public contract.
+- a layer of the nesting chain declares `[terminal]` and the outer public
+  contract does not bind `interactive_endpoint` from that layer.
+- a `done_when` check at any layer of the composed effective `done_when`, or a
+  chain, references an output not bound by the outer public contract.
 
 Running a nested task fails when:
 
@@ -232,8 +315,9 @@ outer setup succeeds, the next cleanup unwinds each produced outer layer.
 Task nesting is the middle rung:
 
 1. Parameterization: a plugin task author declares a supported input.
-2. Task nesting: an outer task adds lifecycle, locals, env, chains, input
-   binding, and explicit output binding.
+2. Task nesting: an outer task adds lifecycle, locals, env, chains, completion
+   conditions, an interactive endpoint, input binding, and explicit output
+   binding.
 3. Fork: a user copies the whole task because the required behavior is not an
    author-declared variation point and cannot be added outside the task.
 
@@ -257,7 +341,7 @@ adoption in their owning config kinds.
 | `tasks/claude.toml` | Different runtime inputs, extra agent-process env, path injection, chains. | 1 + 2 | Rung 2 binds `tmux_session`/model/effort/path inputs and declares chains on the outer id. Rung 1 in the `claude` plugin provides an author-declared `launch_env` input whose exports are included in the terminal launch line. Workflow-owned defaults stay in the workflow node. |
 | `tasks/codex.toml` | Different runtime inputs, extra agent-process env, path injection, chains. | 1 + 2 | Rung 2 binds the plugin task inputs and declares chains. Rung 1 in the `codex` plugin provides an author-declared `launch_env` input whose exports are included in the Codex TUI launch line. |
 | `tasks/codex_exec.toml` | Different runtime inputs, extra worker-process env, path injection, worker state location. | 1 + 2 | Rung 2 binds runtime/path inputs and declares chains. Rung 1 in the `codex` plugin provides author-declared `launch_env` and `state_root` inputs for the worker's exported environment and state directory. |
-| `tasks/work.toml` | Different instruction input, explicit output boundary, and local chain attachment. | 2 | The outer task binds `instruction` into `official/github/work`, re-exports chosen inner outputs through `[bind.outputs]`, binds any local computed public output through `[bind.outputs]`, and attaches chains to the outer id. Workflow-owned defaults stay in the workflow node. |
+| `tasks/work.toml` | Different instruction input, explicit output boundary, team-specific completion gates, and local chain attachment. | 2 | The outer task binds `instruction` into `official/github/work`, re-exports chosen inner outputs through `[bind.outputs]`, binds any local computed public output through `[bind.outputs]`, adds team-specific `done_when` leaves with a matching `requires`, and attaches chains to the outer id. Workflow-owned defaults stay in the workflow node. |
 | `channels/codex_exec.toml` | Queue timeout and message formatting around the shipped enqueue executable. | 1 | The channel adopts the plugin's shipped enqueue executable. Rung 1 in the `codex` plugin declares `enqueue_timeout` and `message_envelope`; `message_envelope` is a formatting template over the existing event fields, not executable substitution. |
 | `workspaces/github.toml` | Workspace layout root, branch naming, cleanup policy, and local-only status outputs. | 1 | Rung 1 in the `github` plugin declares `workspace_layout_root`, `issue_branch_template`, `tagged_branch_suffix`, and `delete_branch_default`. The plugin already owns `title`; the local-only `checks_status` output is dropped from workspace setup because resource observation owns CI status. |
 | `resources/github.toml` | Script-internal observation drift with the same public state keys, plus review-state observation needed outside workspace setup. | As-is + 1 | Adopt the plugin resource implementation as-is for the existing state keys. Rung 1 in the `github` plugin adds the concrete `review_decision` observed state key; no open-ended resource output hook is needed. |
@@ -322,10 +406,10 @@ guard_dir = { type = "string" }
 ```
 
 The same pattern covers task-shaped shadows whose differences are input values,
-chain declarations, explicit output binding, or a single command path
-expressed as an environment/path input. Agent-process environment for
-terminal-launched runtimes belongs to author-declared launch inputs on the
-runtime plugin. Workspace layout belongs to the workspace provider or workflow
-node inputs. Script-internal command changes belong to parameterization; if no
-author-declared variation point exists, a fork remains the explicit last
-resort.
+chain declarations, added completion conditions, explicit output binding, or a
+single command path expressed as an environment/path input. Agent-process
+environment for terminal-launched runtimes belongs to author-declared launch
+inputs on the runtime plugin. Workspace layout belongs to the workspace
+provider or workflow node inputs. Script-internal command changes belong to
+parameterization; if no author-declared variation point exists, a fork remains
+the explicit last resort.
