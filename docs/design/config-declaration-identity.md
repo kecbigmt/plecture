@@ -12,35 +12,41 @@ The language's unit of meaning is the definition block. Files are packaging.
 Splitting definition blocks across any number of `.toml` files and
 concatenating those files into one TOML document in path-sorted traversal order
 are semantically equivalent except for file-relative path fields, which stay
-relative to the file that contains the definition header.
+relative to the file that contains the definition table.
 
 Markdown templates remain template assets and are loaded by the template layer
 described in
 [`plugin-packaging.md`](plugin-packaging.md). A template asset is not a TOML
 definition block.
 
-## Definition Headers
+## Definition Tables
 
-A TOML configuration definition is declared by a section header:
+A TOML configuration definition is declared by a top-level table whose name is
+the definition id:
 
 ```toml
-[task.runtime]
+[runtime]
+kind = "task"
 scope = "run"
 setup = "{{bin \"agent-runtime\"}} launch"
 ```
 
-The header has two segments:
+The top-level table has this shape:
 
 ```text
-[<kind>.<id>]
+[<id>]
+kind = "<kind>"
 ```
 
-Header segments:
+Definition fields:
 
-| Segment | Meaning |
+| Field | Meaning |
 |---|---|
-| `<kind>` | The declaration contract this block implements. |
 | `<id>` | The responsibility name used by references. |
+| `kind` | The declaration contract this block implements. |
+
+The `kind` field is required. A missing `kind` field is a load error. An
+unknown `kind` value is a load error.
 
 The `kind` vocabulary is:
 
@@ -56,7 +62,7 @@ The `kind` vocabulary is:
 `kind` uses the short code-facing config noun. The workflow field remains
 `workspace_provider` because it names the role a workflow selects, following
 [`workspace-provider-vocabulary.md`](workspace-provider-vocabulary.md); its
-value is a reference whose kind segment is `workspace`.
+value is a reference whose site expects a `workspace` definition.
 
 `id` is a TOML bare-key segment matching this regular expression:
 
@@ -69,32 +75,32 @@ dots separate address segments. Hyphens are not valid because task ids are also
 workflow node ids when `[[nodes]]` omits `id`, and node ids must be safe as
 dotted Go template fields such as `.Nodes.runtime.outputs`.
 
-Nested tables stay under the definition header:
+Nested tables stay under the definition table:
 
 ```toml
-[task.runtime.outputs_schema]
+[runtime.outputs_schema]
 type = "object"
 required = ["workspace_dir"]
 
-[task.runtime.outputs_schema.properties.workspace_dir]
+[runtime.outputs_schema.properties.workspace_dir]
 type = "string"
 ```
 
 Array tables use the same containment:
 
 ```toml
-[[workflow.review_session.nodes]]
-uses = "task.runtime"
+[[review_session.nodes]]
+uses = "runtime"
 ```
 
-A definition does not exist without a `[<kind>.<id>]` header. TOML rejects a
-duplicate table header inside one file; the loader applies the same duplicate
-detection across files in a layer.
+A definition does not exist without a top-level `[<id>]` table and its required
+`kind` field. TOML rejects a duplicate table header inside one file; the loader
+applies the same duplicate detection across files in a layer.
 
 `id` is a responsibility name, not a provider name repeated for qualification.
 For example, a Claude Code plugin task that launches the runtime uses
-`[task.runtime]`, so a catalog-qualified reference reads
-`official.claude.task.runtime`.
+`[runtime]` with `kind = "task"`, so a catalog-qualified reference reads
+`official.claude.runtime`.
 
 ## Discovery and Concatenation
 
@@ -121,23 +127,22 @@ plect.lock
 ```
 
 For each layer, the loader parses every discovered `.toml` file and merges the
-top-level kind tables. The result is the same as parsing one concatenated TOML
-document whose file sections appear in path-sorted traversal order. Cross-file
-array-of-table entries append in that order while preserving in-file order.
-Cross-file duplicate definition ids in the same layer are load errors.
-Cross-file table collisions below a definition header are load errors unless
+top-level definition tables. The result is the same as parsing one concatenated
+TOML document whose file sections appear in path-sorted traversal order.
+Cross-file array-of-table entries append in that order while preserving in-file
+order. Cross-file duplicate definition ids in the same layer are load errors.
+Cross-file table collisions below a definition table are load errors unless
 TOML would accept the same shape in one concatenated document.
 
 Fields that name a file path relative to config, such as `*_schema_file`, are
-resolved against the file that contains the owning `[<kind>.<id>]` definition
-header.
+resolved against the file that contains the owning `[<id>]` definition table.
 
 The workspace-dir `.plect/` overlay is not a full definition root because it is
 cloned, untrusted content. It keeps the plugin-packaging trust restrictions:
 
 | Workspace-dir content | Behavior |
 |---|---|
-| Workflow fragments | Loaded from `.plect/workflows/` under the workflow cascade rules. Fragment identity comes from the `[workflow.<id>]` header; the directory is only an allowlist. |
+| Workflow fragments | Loaded from `.plect/workflows/` under the workflow cascade rules. Fragment identity comes from the `[<id>]` table with `kind = "workflow"`; the directory is only an allowlist. |
 | Task definitions | Load error, because cloned content must not carry shell. |
 | Workspace, resource, environment, or channel definitions | Not loaded. |
 
@@ -152,8 +157,8 @@ Two definitions in the same plugin with the same id are a load error, even when
 their kinds differ.
 
 Different plugins may use the same id. Their full addresses differ by catalog
-alias and plugin path, such as `official.claude.task.initial_prompt` and
-`official.codex.task.initial_prompt`.
+alias and plugin path, such as `official.claude.initial_prompt` and
+`official.codex.initial_prompt`.
 
 Each user-owned layer has one definition id namespace across all TOML definition
 kinds. Two definitions in the same user-owned layer with the same id are a load
@@ -181,26 +186,27 @@ the named plugin definition.
 
 ## Reference Grammar
 
-References are dotted addresses that extend the definition header outward:
+References are dotted addresses:
 
 ```text
-<kind>.<id>
-<catalog-alias>.<plugin-path>.<kind>.<id>
+<id>
+<catalog-alias>.<plugin-path>.<id>
 ```
 
 Catalog aliases and plugin path segments use the same lexical rule as
 definition ids, `^[A-Za-z_][A-Za-z0-9_]*$`. Dots are not valid inside aliases or
 plugin path segments because dots separate address segments.
 
-The relative form, `<kind>.<id>`, refers to a definition in the same plugin or
-in the user-owned layer stack. In user-owned config, a relative reference that
-would select catalog content is a load error; the reference must use the
+The relative form, `<id>`, refers to a definition in the same plugin or in the
+user-owned layer stack. In user-owned config, a relative reference that would
+select catalog content is a load error; the reference must use the
 catalog-qualified form.
 
-The catalog-qualified form,
-`<catalog-alias>.<plugin-path>.<kind>.<id>`, refers to a definition shipped by a
-catalog plugin. A plugin path with multiple catalog path segments uses those
-segments in order before the kind segment.
+The catalog-qualified form, `<catalog-alias>.<plugin-path>.<id>`, refers to a
+definition shipped by a catalog plugin. A plugin path with multiple catalog path
+segments uses those segments in order before the id segment. The parser selects
+the longest enabled plugin path under the named catalog alias; the remaining
+final segment is the definition id.
 
 Stored config has no alias-optional middle form. A user-owned layer that
 references catalog content uses the catalog-qualified form, so the reference's
@@ -211,30 +217,29 @@ A reference written inside a plugin uses only the relative form. Catalog aliases
 are user-local and unknowable to plugin authors. Cross-plugin references from
 shipped plugin config remain banned by the plugin boundary rule.
 
-Exemplar workflow designs may use the scaffold-only form
-`<plugin>.<kind>.<id>`, such as `claude.task.runtime`. Scaffolding rewrites that
-form to the user's catalog alias during copy-time verification before storing
-the workflow as config.
+Exemplar workflow designs may use the scaffold-only form `<plugin>.<id>`, such
+as `claude.runtime`. Scaffolding rewrites that form to the user's catalog alias
+during copy-time verification before storing the workflow as config.
 
-The kind segment is mandatory even though the unified namespace makes it
-redundant for lookup. The loader uses that redundancy as validation:
+Reference sites declare their expected kind:
 
-| Reference site | Required reference kind |
+| Reference site | Expected target kind |
 |---|---|
-| `workflow.<id>.workspace_provider` | `workspace` |
-| `workflow.<id>.nodes[].uses` | `task` |
-| `workflow.<id>.event.channel[].uses` | `channel` |
-| `task.<id>.chains[].workflow` | `workflow` |
+| `workflow.workspace_provider` | `workspace` |
+| `workflow.nodes[].uses` | `task` |
+| `workflow.event.channel[].uses` | `channel` |
+| `task.chains[].workflow` | `workflow` |
 
-A reference whose kind segment does not match the kind required by the site is
-a load error. A reference whose kind segment does not match the target
-definition's declared kind is also a load error naming both kinds.
+A reference carries no kind segment. After resolving the reference, the loader
+validates that the target definition's `kind` matches the reference site's
+expected kind. A mismatch is a load error naming the site, the reference, the
+expected kind, and the target's declared kind.
 
-If `workflow.<id>.nodes[]` omits `id`, the node id defaults to the referenced
-task definition id, not to the full dotted reference. For
-`uses = "official.claude.task.runtime"`, the default node id is `runtime`.
-Workflow authors must set an explicit node id when two nodes would otherwise
-default to the same id.
+If `workflow.nodes[]` omits `id`, the node id defaults to the referenced task
+definition id, not to the full dotted reference. For
+`uses = "official.claude.runtime"`, the default node id is `runtime`. Workflow
+authors must set an explicit node id when two nodes would otherwise default to
+the same id.
 
 Inner references used by task-nesting and chain-spawn designs use the same
 dotted grammar. They do not get a second reference language.
@@ -246,20 +251,30 @@ arbitrary-depth plugin path from an executable name.
 
 ## Worked Example
 
-This plugin organizes by feature. Tasks, channels, and a workflow live together
-under one directory:
+This plugin organizes by feature. A workspace provider, task, channel, and
+workflow live together under one directory:
 
 ```text
 plugin.toml
+config/review/worktree.toml
 config/review/runtime.toml
 config/review/delivery.toml
 config/review/session.toml
 ```
 
+`config/review/worktree.toml`:
+
+```toml
+[worktree]
+kind = "workspace"
+root = "{{.Session.WorkspaceDirPath}}"
+```
+
 `config/review/runtime.toml`:
 
 ```toml
-[task.runtime]
+[runtime]
+kind = "task"
 scope = "run"
 setup = "{{bin \"agent-runtime\"}} launch"
 ```
@@ -267,7 +282,8 @@ setup = "{{bin \"agent-runtime\"}} launch"
 `config/review/delivery.toml`:
 
 ```toml
-[channel.runtime_events]
+[runtime_events]
+kind = "channel"
 type = "exec"
 command = "agent-runtime-send"
 args = ["{{.Event.type}}", "{{.Event.body}}"]
@@ -276,25 +292,28 @@ args = ["{{.Event.type}}", "{{.Event.body}}"]
 `config/review/session.toml`:
 
 ```toml
-[workflow.review_session]
-workspace_provider = "workspace.worktree"
+[review_session]
+kind = "workflow"
+workspace_provider = "worktree"
 
-[[workflow.review_session.nodes]]
-uses = "task.runtime"
+[[review_session.nodes]]
+uses = "runtime"
 
-[[workflow.review_session.event.channel]]
+[[review_session.event.channel]]
 name = "runtime"
-uses = "channel.runtime_events"
+uses = "runtime_events"
 ```
 
-The three definitions load correctly because their ids are unique in the plugin
+The four definitions load correctly because their ids are unique in the plugin
 layer. The directory name `review/` has no semantic effect.
 
 ## Validation Rules
 
-- A discovered TOML file in a trusted definition root with no definition header
-  is a load error unless it is a reserved root file.
-- A definition header whose kind is outside the kind vocabulary is a load error.
+- A discovered TOML file in a trusted definition root with no top-level
+  definition table is a load error unless it is a reserved root file.
+- A definition table missing `kind` is a load error.
+- A definition table whose `kind` is outside the kind vocabulary is a load
+  error.
 - Two definitions with the same id in one plugin are a load error, even when
   their kinds differ.
 - Two definitions with the same id in one user-owned layer are a load error,
@@ -302,11 +321,12 @@ layer. The directory name `review/` has no semantic effect.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
 - Catalog aliases and plugin path segments must match
   `^[A-Za-z_][A-Za-z0-9_]*$`.
-- A reference must include a kind segment.
+- A stored reference must use either the relative `<id>` form or the
+  catalog-qualified `<catalog-alias>.<plugin-path>.<id>` form.
 - A user-owned reference to catalog content must include the catalog alias.
 - A plugin-owned reference must not include a catalog alias or another plugin's
   ownership segment.
-- A reference site's required kind must match the reference's kind segment.
-- A resolved target's declared kind must match the reference's kind segment.
+- A reference site's expected kind must match the resolved target definition's
+  `kind`.
 - The workspace-dir `.plect/` overlay does not participate in recursive
   free-layout discovery; it loads only the path-restricted workflow overlay.

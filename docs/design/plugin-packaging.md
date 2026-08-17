@@ -226,10 +226,10 @@ plugins that need compilation.
 Plugin TOML configuration definitions live anywhere under `config/`.
 Declaration identity is specified by
 [`config-declaration-identity.md`](config-declaration-identity.md): each
-definition is introduced by a `[<kind>.<id>]` header, and subdirectories are
-author organization only. Shipped plugins may keep directories such as
-`config/tasks/` and `config/workflows/` as a convention, but the loader reads
-kind and id from the definition header.
+definition is introduced by a top-level `[<id>]` table with a required `kind`
+field, and subdirectories are author organization only. Shipped plugins may keep
+directories such as `config/tasks/` and `config/workflows/` as a convention,
+but the loader reads kind and id from the definition table.
 
 `config/templates/` remains the standard location for plugin-owned Markdown
 template assets. Template assets are not TOML declarations.

@@ -2,13 +2,13 @@
 
 This migration covers the configuration language change decided in
 `docs/adr/2026-08-17-config-declaration-identity.md`: TOML configuration
-definitions are declared by `[<kind>.<id>]` headers, directory layout is author
-organization, and definition ids are unique across TOML definition kinds in a
-layer.
+definitions are declared by top-level `[<id>]` tables with a required `kind`
+field, directory layout is author organization, and definition ids are unique
+across TOML definition kinds in a layer.
 
 The change is intentionally breaking. Plecture is pre-1.0, so operators migrate
 their own config once instead of relying on a compatibility shim that reads both
-placement-as-kind and header-declared layouts.
+placement-as-kind and table-declared layouts.
 
 ## Backup
 
@@ -28,15 +28,15 @@ done
 If you use hand-authored plugin directories outside a catalog, back up each
 plugin directory too.
 
-## Add Definition Headers
+## Add Definition Tables
 
 For every TOML definition under `workspaces/`, `resources/`, `environments/`,
 `channels/`, `tasks/`, and `workflows/`, move the definition body under a
-`[<kind>.<id>]` header.
+top-level `[<id>]` table and add the required `kind` field.
 
-Use this mapping from the old directory to the new header kind:
+Use this mapping from the old directory to the new `kind` value:
 
-| Old directory | Header kind |
+| Old directory | `kind` value |
 |---|---|
 | `workspaces/` | `workspace` |
 | `resources/` | `resource` |
@@ -62,64 +62,72 @@ type = "object"
 Example after:
 
 ```toml
-[task.runtime]
+[runtime]
+kind = "task"
 scope = "run"
 setup = "agent-runtime launch"
 
-[task.runtime.outputs_schema]
+[runtime.outputs_schema]
 type = "object"
 ```
 
-Array tables move under the definition header too:
+Array tables move under the definition table too:
 
 ```toml
-[[workflow.review_session.nodes]]
-uses = "official.claude.task.runtime"
+[review_session]
+kind = "workflow"
+workspace_provider = "official.github.worktree"
 
-[[workflow.review_session.event.channel]]
-uses = "official.claude.channel.structured_delivery"
+[[review_session.nodes]]
+uses = "official.claude.runtime"
+
+[[review_session.event.channel]]
+uses = "official.claude.structured_delivery"
 ```
 
 ## Update References
 
-Reference values now include a kind segment.
+Reference values no longer include a kind segment. The reference site declares
+the expected kind, and the loader checks the resolved target's `kind`.
 
 Use relative references within the same user layer or inside one plugin:
 
 ```toml
-[workflow.review_session]
-workspace_provider = "workspace.worktree"
+[review_session]
+kind = "workflow"
+workspace_provider = "worktree"
 
-[[workflow.review_session.nodes]]
-uses = "task.runtime"
+[[review_session.nodes]]
+uses = "runtime"
 
-[[workflow.review_session.event.channel]]
-uses = "channel.structured_delivery"
+[[review_session.event.channel]]
+uses = "structured_delivery"
 
-[[task.pursue_goal.chains]]
-workflow = "workflow.goal_review_session"
+[[pursue_goal.chains]]
+workflow = "goal_review_session"
 ```
 
 Use catalog-qualified references from user-owned config to catalog content:
 
 ```toml
-[workflow.review_session]
-workspace_provider = "official.github.workspace.worktree"
+[review_session]
+kind = "workflow"
+workspace_provider = "official.github.worktree"
 
-[[workflow.review_session.nodes]]
-uses = "official.claude.task.runtime"
+[[review_session.nodes]]
+uses = "official.claude.runtime"
 
-[[workflow.review_session.event.channel]]
-uses = "official.claude.channel.structured_delivery"
+[[review_session.event.channel]]
+uses = "official.claude.structured_delivery"
 ```
 
 There is no alias-optional form in stored config. Replace scaffold examples
-such as `claude.task.runtime` with the catalog alias actually used in
-`catalogs.toml`, such as `official.claude.task.runtime`.
+such as `claude.runtime` with the catalog alias actually used in
+`catalogs.toml`, such as `official.claude.runtime`.
 
 If a workflow node omits `id`, its node id defaults to the referenced task id.
-For `uses = "official.claude.task.runtime"`, the default node id is `runtime`.
-Add explicit node ids when two nodes would otherwise default to the same id.
+For `uses = "official.claude.runtime"`, the default node id is `runtime`. Add
+explicit node ids when two nodes would otherwise default to the same id.
 
 Catalog aliases and plugin path segments must use the same lexical rule as
 definition ids, `^[A-Za-z_][A-Za-z0-9_]*$`, so dotted references can be parsed
@@ -163,32 +171,34 @@ overlays against the shipped plugin ids listed above and the keep-their-id list.
 For a same-id user-owned task, workspace provider, resource, environment, or
 channel that previously replaced a plugin definition:
 
-1. Keep or rename the user-owned definition with a valid `[<kind>.<id>]`
-   header.
+1. Keep or rename the user-owned definition with a valid `[<id>]` table and
+   required `kind`.
 2. Update user-owned workflows, tasks, or channel bindings that should use it to
-   the relative reference, such as `task.runtime`.
+   the relative reference, such as `runtime`.
 3. Update references that should continue to use the plugin definition to the
-   catalog-qualified reference, such as `official.claude.task.runtime`.
+   catalog-qualified reference, such as `official.claude.runtime`.
 
 For a same-id workflow fragment that previously added nodes or event channels to
 a plugin workflow:
 
 1. Copy the plugin workflow into a trusted user-owned config layer under a
-   `[workflow.<id>]` header, or choose a new user-owned workflow id.
+   `[<id>]` table with `kind = "workflow"`, or choose a new user-owned workflow
+   id.
 2. Manually merge the local nodes and event channels into that user-owned
    workflow.
 3. Use catalog-qualified references for plugin tasks, channels, resources, or
    workspace providers that the workflow still composes.
 4. Update user-owned entrypoints and references to the relative workflow
-   address, such as `workflow.review_session`.
+   address, such as `review_session`.
 
 Remove the old fragment after the replacement workflow loads. A cloned
 workspace-dir `.plect/workflows/` fragment also gets its identity from the
-`[workflow.<id>]` header; the filename stem is no longer the workflow id.
+`[<id>]` table with `kind = "workflow"`; the filename stem is no longer the
+workflow id.
 
 ## Choose Layout
 
-After adding definition headers, directory layout is optional organization. You
+After adding definition tables, directory layout is optional organization. You
 may keep kind directories:
 
 ```text
@@ -204,8 +214,8 @@ config/review/structured_delivery.toml
 config/review/session.toml
 ```
 
-The loader reads the definition header; it does not infer kind or id from either
-layout.
+The loader reads the definition table and required `kind`; it does not infer
+kind or id from either layout.
 
 ## Verification
 
@@ -224,8 +234,9 @@ plect up --dry-run <session>
 ```
 
 If a load error reports a same-id conflict, rename one definition id and update
-references to it. If a load error reports a kind mismatch, update the reference
-kind or the referenced definition id so the site, reference, and target agree.
+references to it. If a load error reports a kind mismatch, update the referenced
+definition or point the reference at a definition whose `kind` matches the
+reference site.
 
 ## Rollback
 
