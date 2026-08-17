@@ -112,7 +112,9 @@ from the session-runtime plugin executables when they move into
 adds a `docs/migrations/` entry for no-channel-server interactive Claude
 configurations, and replaces `slack` tests' direct channel-server server import
 with a protocol-conformant fake owned by the `slack` module until Slack
-delivery moves to conversation-event bus rendezvous.
+delivery moves to conversation-event bus rendezvous. The implementation removes
+the channel-server `require` and relative `replace ../channel-server` edge from
+`slack-adapter/go.mod` and runs `go mod tidy`.
 
 This decision supersedes the plugin service lifecycle decision by carrying
 forward its service declaration and bus-supervision decisions while replacing
