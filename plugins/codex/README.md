@@ -17,7 +17,7 @@ dependency.
   "capture"}}` where possible) remain direct, documented tmux dependencies
   — no `[terminal]` verb covers "what pid does this endpoint run as" or
   raw pane introspection beyond a capture.
-- `config/tasks/initial_prompt.toml` — sends a session's initial prompt via
+- `config/tasks/codex_initial_prompt.toml` — sends a session's initial prompt via
   `{{terminal "..."}}` once the CLI's input box is visible, or on every
   `plect up` when `repeat = "true"`.
 - `config/channels/terminal_submit.toml` — an event channel that types a

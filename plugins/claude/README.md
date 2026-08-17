@@ -20,7 +20,7 @@ independently selectable plugin this one composes through `{{terminal
   dependency — no `[terminal]` verb covers process discovery), so a
   crash-and-relaunch or a manual `--resume` does not require a session
   down/up to keep event delivery working.
-- `config/tasks/initial_prompt.toml` — sends a session's initial prompt via
+- `config/tasks/claude_initial_prompt.toml` — sends a session's initial prompt via
   `{{terminal "..."}}` once the CLI's input box is visible, or on every
   `plect up` when `repeat = "true"`.
 - `config/channels/claude.toml` — delivers a session event to the running
