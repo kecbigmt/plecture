@@ -23,6 +23,7 @@ import (
 func TestSupervisor_OverConfigLoadPlugins_RunsADeclaredService(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
+	t.Setenv("PLECT_CONFIG_HOME", filepath.Join(tmpHome, ".config", "plect"))
 
 	catalogDir := t.TempDir()
 	scriptPath := filepath.Join(catalogDir, "svc", "bin", "svc")
