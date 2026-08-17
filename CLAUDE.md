@@ -244,11 +244,15 @@ the breaking change — not as follow-up work.
   Alternatives considered.
 - ADRs carry no Proposed or Accepted status. An unmerged PR is the proposal,
   merging is acceptance, and git history records date and author.
-- Supersession is the only lifecycle fact recorded in ADR files. A
-  superseding ADR declares YAML frontmatter
+- Supersession and amendment are the only lifecycle facts recorded in ADR
+  files. A superseding ADR declares YAML frontmatter
   `supersedes: <YYYY-MM-DD-slug>`, and the old ADR gets YAML frontmatter
-  `superseded_by: <YYYY-MM-DD-slug>`. That frontmatter edit is the only edit
-  permitted to an accepted ADR.
+  `superseded_by: <YYYY-MM-DD-slug>`. An amending ADR declares YAML
+  frontmatter `amends: <YYYY-MM-DD-slug>`, and the amended ADR gets YAML
+  frontmatter `amended_by: <YYYY-MM-DD-slug>`. Supersession replaces the
+  prior decision; amendment changes a specific part while leaving the rest
+  standing. Those lifecycle frontmatter edits are the only edits permitted
+  to an accepted ADR.
 - ADR frontmatter is present only when metadata exists, matching the
   knowledge-bundle documents' existing practice. Do not add empty frontmatter
   blocks or status keys. The ADR title remains the Markdown H1.
