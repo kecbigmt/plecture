@@ -145,7 +145,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 			return nil, recreateErr
 		}
 	}
-	setupErr := task.RunSetup(context.Background(), plan.Run, sessionVars(cfg, session), session.Tasks, params.Observer, envExecutor)
+	setupErr := task.RunSetup(context.Background(), plan.Run, sessionVars(cfg, session, plan), session.Tasks, params.Observer, envExecutor)
 	session.UpdatedAt = time.Now()
 	// A run-scope node's setup script can itself shell out to a nested `plect
 	// task setup` against this same session (e.g. goal_bootstrap re-deriving
@@ -175,7 +175,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	if teardownErr != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(cfg, session), session.Tasks, observer, envExecutor)
+	cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(cfg, session, teardownPlan), session.Tasks, observer, envExecutor)
 	session.UpdatedAt = time.Now()
 	if cleanupErr != nil {
 		if err := mergeTasks(store, sessionName, session); err != nil {
@@ -258,7 +258,7 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 	if envErr != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
 	}
-	setupErr = task.RunSetup(context.Background(), setupPlan.Session, sessionVars(cfg, session), session.Tasks, observer, envExecutor)
+	setupErr = task.RunSetup(context.Background(), setupPlan.Session, sessionVars(cfg, session, setupPlan), session.Tasks, observer, envExecutor)
 	session.UpdatedAt = time.Now()
 	if err := mergeTasks(store, sessionName, session); err != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}

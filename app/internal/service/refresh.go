@@ -80,7 +80,10 @@ func RefreshInstanceOutputs(cfg *config.Config, store *state.Store, sessionName,
 		return nil, nil
 	}
 
-	vars := sessionVars(cfg, session)
+	// No full compiled Plan in scope here (a dynamic output refresh works off
+	// the instance's own state entry) — {{terminal "..."}} is unavailable,
+	// same as taskcleanup.go's single-instance teardown.
+	vars := sessionVars(cfg, session, nil)
 	if st.Resource != "" {
 		vars.ResourceID = st.Resource
 	}

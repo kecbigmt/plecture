@@ -75,7 +75,11 @@ func resolveParentSession(store *state.Store, sessionName, explicit string) (str
 	return candidate, nil
 }
 
-func sessionVars(cfg *config.Config, s *domain.Session) task.SessionVars {
+// sessionVars builds the template variable bundle for a session's task
+// hooks. plan is optional (nil when the caller has no full compiled plan in
+// scope, e.g. a dynamic instance's own cleanup) — it feeds the {{terminal
+// "..."}} helper binding; every other field is plan-independent.
+func sessionVars(cfg *config.Config, s *domain.Session, plan *task.Plan) task.SessionVars {
 	return task.SessionVars{
 		Name:             s.Name,
 		ResourceID:       s.ResourceID,
@@ -84,7 +88,30 @@ func sessionVars(cfg *config.Config, s *domain.Session) task.SessionVars {
 		Branch:           s.Branch,
 		Inputs:           s.Inputs,
 		Plugins:          cfg.Plugins,
+		Terminal:         terminalBinding(plan, s),
 	}
+}
+
+// terminalBinding resolves the plan's [terminal]-declaring task (if any)
+// into the {{terminal "..."}} helper's binding: its verb templates plus its
+// own current outputs (the .Self a nested render needs). Nil plan or no
+// declaring task means {{terminal "..."}} is unavailable for this render —
+// the same way a caller with no full plan in scope already lacks
+// `.Nodes.<id>.outputs` access to sibling tasks outside its own dependency
+// set.
+func terminalBinding(plan *task.Plan, s *domain.Session) *task.TerminalBinding {
+	if plan == nil {
+		return nil
+	}
+	t := plan.TerminalTask()
+	if t == nil {
+		return nil
+	}
+	outputs := map[string]any{}
+	if st, ok := s.Tasks[t.NodeID]; ok && st != nil && st.Outputs != nil {
+		outputs = st.Outputs
+	}
+	return &task.TerminalBinding{Ops: t.Terminal, Outputs: outputs}
 }
 
 func inputsOnExistingSessionMessage() string {

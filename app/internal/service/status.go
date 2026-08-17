@@ -207,7 +207,7 @@ func attachCommandFor(cfg *config.Config, session *domain.Session) string {
 	if err != nil {
 		return ""
 	}
-	target := plan.AttachTask()
+	target := plan.TerminalTask()
 	if target == nil {
 		return ""
 	}
@@ -215,7 +215,7 @@ func attachCommandFor(cfg *config.Config, session *domain.Session) string {
 	if !ok || st == nil || st.Status != contract.TaskStatusProduced {
 		return ""
 	}
-	cmdStr, err := task.RenderAttach(target.Attach, st.Outputs, sessionVars(cfg, session))
+	cmdStr, err := task.RenderAttach(target.Terminal.Attach, st.Outputs, sessionVars(cfg, session, plan))
 	if err != nil {
 		return ""
 	}

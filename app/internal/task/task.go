@@ -35,15 +35,16 @@ import (
 // is the `uses` target — preserved for traceability and to render `.TaskID`
 // in templates when a node id has been customized.
 type Resolved struct {
-	NodeID        string
-	TaskID        string
-	Scope         string // canonical scope ("session" | "run")
-	Setup         string
-	Cleanup       string
-	Healthcheck   string
-	Primary       bool
-	Attach        string
-	Capture       string
+	NodeID      string
+	TaskID      string
+	Scope       string // canonical scope ("session" | "run")
+	Setup       string
+	Cleanup     string
+	Healthcheck string
+	Primary     bool
+	// Terminal is the task's declared `[terminal]` table, or nil for a task
+	// that owns no interactive endpoint. See config.TerminalConfig.
+	Terminal      *config.TerminalConfig
 	IdleAfter     config.Duration
 	Inputs        map[string]string  // template strings rendered at setup time → .Input.<key>
 	InputsSchema  *jsonschema.Schema // optional: validated against resolved inputs
@@ -75,50 +76,24 @@ type Plan struct {
 	Run     []Resolved // run-scoped nodes, setup order
 }
 
-// AttachTask returns the resolved node that declares attach, or nil if
-// none does. Validate has already enforced at most one such declaration.
-func (p *Plan) AttachTask() *Resolved {
+// TerminalTask returns the resolved node that declares a `[terminal]` table,
+// or nil if none does. assemblePlan has already enforced at most one such
+// declaration per plan, so — unlike the pre-[terminal] Attach/Capture split,
+// where only attach carried that compile-time guarantee — this lookup can
+// never be ambiguous. `plect attach` / `plect capture` and the {{terminal
+// "..."}} template helper all resolve through this one node.
+func (p *Plan) TerminalTask() *Resolved {
 	for i, r := range p.Session {
-		if r.Attach != "" {
+		if r.Terminal != nil {
 			return &p.Session[i]
 		}
 	}
 	for i, r := range p.Run {
-		if r.Attach != "" {
+		if r.Terminal != nil {
 			return &p.Run[i]
 		}
 	}
 	return nil
-}
-
-// CaptureTask returns the resolved node that declares capture, or nil if none
-// does. Unlike attach (validated to at most one at compile time, see
-// assemblePlan), any number of task definitions may declare capture — a
-// session simply never resolves to one until `plect capture` is called on it —
-// so ambiguity across the resolved plan is reported here as an error instead.
-func (p *Plan) CaptureTask() (*Resolved, error) {
-	var found []*Resolved
-	for i, r := range p.Session {
-		if r.Capture != "" {
-			found = append(found, &p.Session[i])
-		}
-	}
-	for i, r := range p.Run {
-		if r.Capture != "" {
-			found = append(found, &p.Run[i])
-		}
-	}
-	if len(found) > 1 {
-		ids := make([]string, len(found))
-		for i, r := range found {
-			ids[i] = r.NodeID
-		}
-		return nil, fmt.Errorf("more than one node declares capture: %s (ambiguous; at most one may be resolved per session)", strings.Join(ids, ", "))
-	}
-	if len(found) == 0 {
-		return nil, nil
-	}
-	return found[0], nil
 }
 
 // RenderAttach expands the attach template against the task's own outputs
@@ -169,6 +144,33 @@ func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, s
 		return "", err
 	}
 	return string(stdout), nil
+}
+
+// RenderTerminalOp renders one [terminal] verb — attach/capture/send_text/
+// send_keys — against the plan's terminal-declaring task's own outputs (as
+// .Self) and session vars, backing the {{terminal "..."}} template helper. A
+// nil binding (no task in the plan declares [terminal], or the caller has no
+// full plan in scope) and an unknown verb both fail loudly rather than
+// rendering an empty command a hook or channel would otherwise invoke
+// against nothing.
+func RenderTerminalOp(binding *TerminalBinding, verb string, session SessionVars) (string, error) {
+	if binding == nil || binding.Ops == nil {
+		return "", fmt.Errorf("{{terminal %q}}: no task in this workflow's plan declares [terminal]", verb)
+	}
+	var tmpl string
+	switch verb {
+	case "attach":
+		tmpl = binding.Ops.Attach
+	case "capture":
+		tmpl = binding.Ops.Capture
+	case "send_text":
+		tmpl = binding.Ops.SendText
+	case "send_keys":
+		tmpl = binding.Ops.SendKeys
+	default:
+		return "", fmt.Errorf("{{terminal %q}}: unknown terminal operation (want attach, capture, send_text, or send_keys)", verb)
+	}
+	return render(tmpl, RenderContext{Self: binding.Outputs, Session: session})
 }
 
 // CompileWorkflow turns a workflow file plus its referenced task definitions
@@ -275,6 +277,18 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 	if err := def.DoneWhen.Validate(); err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
+	if err := def.Terminal.Validate(); err != nil {
+		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
+	}
+	terminal := def.Terminal
+	if !terminal.IsDeclared() {
+		// A bare `[terminal]` header with every member left empty carries no
+		// obligation (Validate accepts it), but it must not read as "this
+		// node owns the plan's terminal endpoint" downstream — normalize to
+		// nil so TerminalTask/assemblePlan's uniqueness check only sees
+		// nodes that actually declared verbs.
+		terminal = nil
+	}
 	if err := validateTaskRequires(def); err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
@@ -290,8 +304,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		SourcePath:     def.SourcePath,
 		Healthcheck:    def.Healthcheck,
 		Primary:        def.Primary,
-		Attach:         def.Attach,
-		Capture:        def.Capture,
+		Terminal:       terminal,
 		IdleAfter:      def.IdleAfter,
 		InputsSchema:   inputsSchema,
 		OutputsSchema:  outputsSchema,
@@ -442,16 +455,18 @@ func assemblePlan(resolved []Resolved) (*Plan, error) {
 		byID[r.NodeID] = r
 	}
 
-	// At most one attach declaration per plan.
-	var attachID string
+	// At most one [terminal] declaration per plan — the plan has at most one
+	// interactive endpoint for plect attach/capture and {{terminal "..."}}
+	// to resolve against.
+	var terminalID string
 	for _, r := range resolved {
-		if r.Attach == "" {
+		if r.Terminal == nil {
 			continue
 		}
-		if attachID != "" {
-			return nil, fmt.Errorf("more than one node declares attach: %q and %q (at most one allowed)", attachID, r.NodeID)
+		if terminalID != "" {
+			return nil, fmt.Errorf("more than one node declares [terminal]: %q and %q (at most one allowed)", terminalID, r.NodeID)
 		}
-		attachID = r.NodeID
+		terminalID = r.NodeID
 	}
 
 	// Validate DependsOn references and scope rule.
@@ -639,6 +654,21 @@ type SessionVars struct {
 	// SessionVars is already built and passed at every one of those call
 	// sites.
 	Plugins []plugins.Mounted
+	// Terminal is the session plan's [terminal]-declaring task, if any,
+	// feeding the `{{terminal "..."}}` hook helper the same way Plugins
+	// feeds `{{bin ...}}`. Nil when the plan declares no such task, or the
+	// caller has no full plan in scope (e.g. a dynamic instance's own
+	// cleanup) — {{terminal "..."}} then fails with a clear error instead
+	// of silently resolving to an empty command.
+	Terminal *TerminalBinding
+}
+
+// TerminalBinding pairs a plan's [terminal]-declaring task's verb templates
+// with that task's own current outputs — the .Self a nested render needs to
+// expand e.g. `{{.Self.session_name}}` inside the verb template itself.
+type TerminalBinding struct {
+	Ops     *config.TerminalConfig
+	Outputs map[string]any
 }
 
 var templateFuncs = template.FuncMap{
@@ -755,6 +785,12 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
 			return plugins.ResolveBin(ctx.Session.Plugins, ctx.SourcePath, ref)
+		},
+		// terminal is built per render call for the same reason bin is: it
+		// resolves against this render's own ctx.Session.Terminal binding,
+		// not a global.
+		"terminal": func(verb string) (string, error) {
+			return RenderTerminalOp(ctx.Session.Terminal, verb, ctx.Session)
 		},
 	}
 	tmpl, err := template.New("task").

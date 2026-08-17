@@ -916,40 +916,63 @@ func TestRunCleanup_EmptyCleanupFiresOnSuccess(t *testing.T) {
 	}
 }
 
-func TestPlan_MultipleAttachRejected(t *testing.T) {
+// terminalStub is shorthand for a taskStub declaring a complete [terminal]
+// table — most TerminalTask tests only care that one is declared, not the
+// concrete verb templates.
+func terminalStub(id string) taskStub {
+	return taskStub{
+		id: id, scope: "run", setup: "true",
+		attach: "attach " + id, capture: "capture " + id,
+		sendText: "send_text " + id, sendKeys: "send_keys " + id,
+	}
+}
+
+func TestPlan_MultipleTerminalDeclarationsRejected(t *testing.T) {
 	_, err := tryBuildPlan(
-		[]taskStub{
-			{id: "tmux", scope: "run", setup: "true", attach: "tmux attach"},
-			{id: "zellij", scope: "run", setup: "true", attach: "zellij attach"},
-		},
+		[]taskStub{terminalStub("tmux"), terminalStub("zellij")},
 		[]nodeStub{{id: "tmux"}, {id: "zellij"}},
 	)
-	if err == nil || !strings.Contains(err.Error(), "more than one node declares attach") {
-		t.Fatalf("expected multi-attach error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "more than one node declares [terminal]") {
+		t.Fatalf("expected multi-terminal error, got %v", err)
 	}
 }
 
-func TestPlan_SingleAttachAccepted(t *testing.T) {
+func TestPlan_SingleTerminalAccepted(t *testing.T) {
 	plan := buildPlan(t,
-		[]taskStub{{id: "tmux", scope: "run", setup: "true", attach: "tmux attach -t {{.Self.session_name}}"}},
+		[]taskStub{terminalStub("tmux")},
 		[]nodeStub{{id: "tmux"}},
 	)
-	target := plan.AttachTask()
+	target := plan.TerminalTask()
 	if target == nil {
-		t.Fatal("expected attach task on plan")
+		t.Fatal("expected terminal task on plan")
 	}
 	if target.NodeID != "tmux" {
-		t.Fatalf("attach task = %q, want tmux", target.NodeID)
+		t.Fatalf("terminal task = %q, want tmux", target.NodeID)
 	}
 }
 
-func TestPlan_AttachTaskNilWhenNoneDeclared(t *testing.T) {
+func TestPlan_TerminalTaskNilWhenNoneDeclared(t *testing.T) {
 	plan := buildPlan(t,
 		[]taskStub{{id: "tmux", scope: "run", setup: "true"}},
 		[]nodeStub{{id: "tmux"}},
 	)
-	if plan.AttachTask() != nil {
-		t.Fatal("expected nil attach task when none declared")
+	if plan.TerminalTask() != nil {
+		t.Fatal("expected nil terminal task when none declared")
+	}
+}
+
+// TestResolveDefinition_PartialTerminalTableRejected guards the same
+// all-or-nothing rule the config package enforces at file-load time, this
+// time as ResolveDefinition sees a config.TaskDefinition built by any other
+// caller (e.g. the dynamic `plect task setup` path, which never goes through
+// loadTaskDefinitionFile).
+func TestResolveDefinition_PartialTerminalTableRejected(t *testing.T) {
+	_, err := tryBuildPlan(
+		[]taskStub{{id: "tmux", scope: "run", setup: "true", attach: "attach tmux"}},
+		[]nodeStub{{id: "tmux"}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "capture") {
+		t.Fatalf("expected partial [terminal] table error naming the missing members, got %v", err)
 	}
 }
 
@@ -981,53 +1004,12 @@ func TestRenderAttach_MissingSelfKeyErrors(t *testing.T) {
 	}
 }
 
-func TestPlan_CaptureTaskNilWhenNoneDeclared(t *testing.T) {
-	plan := buildPlan(t,
-		[]taskStub{{id: "tmux", scope: "run", setup: "true"}},
-		[]nodeStub{{id: "tmux"}},
-	)
-	target, err := plan.CaptureTask()
-	if err != nil {
-		t.Fatalf("CaptureTask: %v", err)
-	}
-	if target != nil {
-		t.Fatal("expected nil capture task when none declared")
-	}
-}
-
-func TestPlan_CaptureTaskReturnsDeclaringNode(t *testing.T) {
-	plan := buildPlan(t,
-		[]taskStub{{id: "tmux", scope: "run", setup: "true", capture: "tmux capture-pane -p -t {{.Self.session_name}}"}},
-		[]nodeStub{{id: "tmux"}},
-	)
-	target, err := plan.CaptureTask()
-	if err != nil {
-		t.Fatalf("CaptureTask: %v", err)
-	}
-	if target == nil || target.NodeID != "tmux" {
-		t.Fatalf("CaptureTask = %+v, want node %q", target, "tmux")
-	}
-}
-
-func TestPlan_CaptureTaskAmbiguousWhenMultipleDeclare(t *testing.T) {
-	// Unlike attach (a compile-time "at most one" validation), capture allows
-	// any number of task definitions to declare it; ambiguity across the
-	// resolved plan is a runtime resolution error instead.
-	plan := buildPlan(t,
-		[]taskStub{
-			{id: "tmux", scope: "run", setup: "true", capture: "tmux capture-pane -p -t {{.Self.session_name}}"},
-			{id: "other", scope: "run", setup: "true", capture: "echo other"},
-		},
-		[]nodeStub{{id: "tmux"}, {id: "other"}},
-	)
-	target, err := plan.CaptureTask()
-	if err == nil {
-		t.Fatalf("expected ambiguous-capture error, got target %+v", target)
-	}
-	if !strings.Contains(err.Error(), "tmux") || !strings.Contains(err.Error(), "other") {
-		t.Fatalf("error %q should name both ambiguous node ids", err.Error())
-	}
-}
+// Capture resolution is covered by TestPlan_TerminalTaskNilWhenNoneDeclared
+// and TestPlan_SingleTerminalAccepted above: capture is no longer an
+// independent declaration (see TestPlan_MultipleTerminalDeclarationsRejected
+// for why a capture-only ambiguity can no longer arise — any second
+// capture-declaring node is already a second [terminal] declaration, and
+// assemblePlan rejects that before CaptureTask-style resolution ever runs).
 
 func TestRenderCapture_ExpandsSelfAndSessionVars(t *testing.T) {
 	out, err := RunCapture(context.Background(),

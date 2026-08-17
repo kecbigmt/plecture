@@ -10,13 +10,19 @@ import (
 // Tests should keep it minimal — only the fields they care about. Scope
 // defaults to "run" so most callers can omit it.
 type taskStub struct {
-	id                string
-	scope             string
-	setup             string
-	cleanup           string
-	healthcheck       string
+	id          string
+	scope       string
+	setup       string
+	cleanup     string
+	healthcheck string
+	// attach/capture/sendText/sendKeys build a [terminal] table when any is
+	// set. All four must be set together (see config.TerminalConfig.Validate)
+	// — a stub setting only some of them is exercising the partial-table
+	// error path, not a real terminal task.
 	attach            string
 	capture           string
+	sendText          string
+	sendKeys          string
 	primary           bool
 	idleAfter         config.Duration
 	outputsSchema     map[string]any
@@ -69,6 +75,15 @@ func buildPlanWithEnvironment(t *testing.T, defs []taskStub, nodes []nodeStub, e
 func tryBuildPlanWithEnvironment(defs []taskStub, nodes []nodeStub, environment string) (*Plan, error) {
 	defMap := make(map[string]config.TaskDefinition, len(defs))
 	for _, s := range defs {
+		var terminal *config.TerminalConfig
+		if s.attach != "" || s.capture != "" || s.sendText != "" || s.sendKeys != "" {
+			terminal = &config.TerminalConfig{
+				Attach:   s.attach,
+				Capture:  s.capture,
+				SendText: s.sendText,
+				SendKeys: s.sendKeys,
+			}
+		}
 		defMap[s.id] = config.TaskDefinition{
 			ID:                s.id,
 			Scope:             s.scope,
@@ -76,8 +91,7 @@ func tryBuildPlanWithEnvironment(defs []taskStub, nodes []nodeStub, environment 
 			Cleanup:           s.cleanup,
 			Healthcheck:       s.healthcheck,
 			Primary:           s.primary,
-			Attach:            s.attach,
-			Capture:           s.capture,
+			Terminal:          terminal,
 			IdleAfter:         s.idleAfter,
 			OutputsSchema:     s.outputsSchema,
 			OutputsSchemaFile: s.outputsSchemaFile,

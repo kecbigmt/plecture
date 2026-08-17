@@ -38,6 +38,7 @@ func TestShippedChannelDefsRender(t *testing.T) {
 	rctx := newRenderContext(
 		map[string]any{"path": "/run/c.sock", "session": "o/r-1", "thread_ts": "12.34", "channel_id": "C0", "queue_dir": "/run/codex-exec/o-r-1/queue"},
 		event.Event{Type: "github.ci_status", Summary: "CI failed: test"},
+		nil,
 	)
 	for id, def := range channels {
 		fields := map[string]string{"path": def.Path, "body": def.Body, "command": def.Command}
@@ -68,7 +69,7 @@ func TestShippedChannelDefsRender(t *testing.T) {
 		{event.Event{Type: "github.ci_status", Summary: "CI failed: test"}, "CI failed: test"},
 		{event.Event{Type: event.TypeUserEmit, Summary: "s", Body: "kick \"now\"\nplease"}, "kick \"now\"\nplease"},
 	} {
-		rc := newRenderContext(map[string]any{"thread_ts": "12.34", "channel_id": "C0"}, tc.ev)
+		rc := newRenderContext(map[string]any{"thread_ts": "12.34", "channel_id": "C0"}, tc.ev, nil)
 		got, err := renderField("-d", body, rc)
 		if err != nil {
 			t.Fatalf("slack -d render: %v", err)
@@ -166,6 +167,51 @@ func TestDeliver_Exec(t *testing.T) {
 	// argv rendered from both .Inputs and .Event, run without a shell.
 	if _, err := os.Stat(filepath.Join(dir, event.TypeInstruction)); err != nil {
 		t.Errorf("expected touched file: %v", err)
+	}
+}
+
+// TestDeliverWithOptions_TerminalResolverFeedsArgs exercises {{terminal
+// "..."}} end-to-end through DeliverWithOptions, the same path the shipped
+// tmux_send_keys.toml channel goes through.
+func TestDeliverWithOptions_TerminalResolverFeedsArgs(t *testing.T) {
+	dir := t.TempDir()
+	def := config.ChannelDefinition{
+		Type:    config.ChannelTypeExec,
+		Command: "bash",
+		Args:    []string{"-c", `echo "$1" > "$2"`, "terminal_resolver_test", `{{terminal "send_text"}}`, filepath.Join(dir, "out")},
+	}
+	ev := event.Event{Type: event.TypeInstruction}
+	terminal := func(verb string) (string, error) {
+		if verb != "send_text" {
+			t.Fatalf("resolver called with verb %q, want send_text", verb)
+		}
+		return "tmux send-keys -t mysession", nil
+	}
+	if err := DeliverWithOptions(context.Background(), def, nil, ev, DeliverOptions{Terminal: terminal}); err != nil {
+		t.Fatalf("DeliverWithOptions: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "out"))
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	if want := "tmux send-keys -t mysession\n"; string(got) != want {
+		t.Errorf("output = %q, want %q", string(got), want)
+	}
+}
+
+// TestDeliver_TerminalWithNoResolverFailsLoud guards a channel that
+// references {{terminal "..."}} when the caller supplied no resolver (Deliver,
+// not DeliverWithOptions) — it must fail the delivery, not render an empty
+// command a receiving script would otherwise run against nothing.
+func TestDeliver_TerminalWithNoResolverFailsLoud(t *testing.T) {
+	def := config.ChannelDefinition{
+		Type:    config.ChannelTypeExec,
+		Command: "true",
+		Args:    []string{`{{terminal "send_text"}}`},
+	}
+	err := Deliver(context.Background(), def, nil, event.Event{Type: event.TypeInstruction})
+	if err == nil {
+		t.Fatal("expected an error when {{terminal ...}} has no resolver")
 	}
 }
 
@@ -280,7 +326,7 @@ func TestRenderField_OptionalEventFieldEmpty(t *testing.T) {
 		Type:     "github.ci_status",
 		Summary:  "CI failed",
 		Metadata: map[string]string{"url": "https://github.com/o/r/pull/404"},
-	})
+	}, nil)
 	got, err := renderField("arg", arg, rctx)
 	if err != nil {
 		t.Fatalf("renderField: %v", err)
@@ -289,7 +335,7 @@ func TestRenderField_OptionalEventFieldEmpty(t *testing.T) {
 		t.Errorf("got %q, want %q", got, want)
 	}
 
-	rctx = newRenderContext(nil, event.Event{Type: "plect.instruction", Body: "do it"})
+	rctx = newRenderContext(nil, event.Event{Type: "plect.instruction", Body: "do it"}, nil)
 	got, err = renderField("arg", arg, rctx)
 	if err != nil {
 		t.Fatalf("renderField (no url): %v", err)

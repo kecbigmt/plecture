@@ -11,7 +11,6 @@ const (
 	ErrNotAttachable      = "not_attachable"
 	ErrNotProduced        = "not_produced"
 	ErrNotCapturable      = "not_capturable"
-	ErrAmbiguousCapture   = "ambiguous_capture"
 	ErrHasChildren        = "has_children"
 	ErrRelationNotAllowed = "relation_not_allowed"
 )
