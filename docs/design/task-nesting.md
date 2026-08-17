@@ -44,7 +44,11 @@ jq -nc --arg guard_dir "{{.Nodes.gh_guard.outputs.dir}}" '{guard_dir:$guard_dir}
 '''
 cleanup = "true"
 
-expose = ["pid", "session_id", "socket_path", "mcp_config"]
+expose = ["pid", "socket_path", "mcp_config"]
+
+[publish]
+agent_session = "{{.Inner.outputs.session_id}}"
+guard_dir = "{{.Locals.guard_dir}}"
 
 [forward.inputs]
 tmux_session = "{{.Inputs.tmux_session}}"
@@ -71,6 +75,14 @@ required = ["guard_dir"]
 additionalProperties = false
 
 [locals_schema.properties]
+guard_dir = { type = "string" }
+
+[outputs_schema]
+type = "object"
+required = ["pid", "socket_path", "mcp_config", "agent_session", "guard_dir"]
+
+[outputs_schema.properties]
+agent_session = { type = "string", mutable = true }
 guard_dir = { type = "string" }
 ```
 
@@ -109,6 +121,13 @@ The inner task's `.Self` sees only the inner task's own outputs. Outer cleanup,
 forwarding templates, and `[publish]` wiring read outer setup values from
 `.Locals`; `[publish]` wiring also reads inner setup values from
 `.Inner.outputs`.
+A `[publish]` entry is a direct inner-output publication only when the whole
+template body is exactly one `.Inner.outputs.<key>` reference, apart from
+template delimiters and whitespace. Any literal text, function call, pipeline,
+multiple template action, or local reference makes the publication computed.
+Every public key named by `expose` or `[publish]` must appear in the effective
+`outputs_schema`; `expose` imports the matching inner schema property, while
+`[publish]` keys are declared by the outer schema.
 
 Inspection output such as `plect task show` prints the nesting chain from the
 outermost task to the innermost plugin task.
@@ -230,7 +249,11 @@ A team-local Claude runtime customization can stay small:
 inner = "official/claude/claude"
 setup = "jq -nc --arg guard_dir '{{.Nodes.gh_guard.outputs.dir}}' '{guard_dir:$guard_dir}'"
 
-expose = ["pid", "session_id", "socket_path", "mcp_config"]
+expose = ["pid", "socket_path", "mcp_config"]
+
+[publish]
+agent_session = "{{.Inner.outputs.session_id}}"
+guard_dir = "{{.Locals.guard_dir}}"
 
 [forward.inputs]
 tmux_session = "{{.Inputs.tmux_session}}"
@@ -257,6 +280,14 @@ required = ["guard_dir"]
 additionalProperties = false
 
 [locals_schema.properties]
+guard_dir = { type = "string" }
+
+[outputs_schema]
+type = "object"
+required = ["pid", "socket_path", "mcp_config", "agent_session", "guard_dir"]
+
+[outputs_schema.properties]
+agent_session = { type = "string", mutable = true }
 guard_dir = { type = "string" }
 ```
 
