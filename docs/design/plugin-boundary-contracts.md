@@ -82,7 +82,8 @@ Interactive terminal verbs live under the task's `[terminal]` table:
 
 A task with a `[terminal]` table provides the terminal operation surface. The
 table must declare all four terminal verbs; a partial terminal surface is a load
-error.
+error. Each value is a Go-template-rendered command string; single-line and
+multi-line TOML strings are valid, and arrays are not valid.
 
 The word `terminal` names the config table, the `{{terminal "send_text"}}`
 template helper, and the Terminal Operation Surface prose contract.
