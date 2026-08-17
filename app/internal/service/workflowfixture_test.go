@@ -13,6 +13,13 @@ import (
 // taskFixture is a terse spec for one task definition. Scope defaults to
 // "run". Empty fields are omitted from the generated TOML. extra is raw TOML
 // appended verbatim (e.g. an [outputs_schema] block).
+//
+// attach/capture/sendText/sendKeys build a [terminal] table when any one is
+// set — the config package's all-or-nothing rule requires all four together,
+// so the writer below fills any of the four a test left unset with a trivial
+// always-succeeds stub. Most fixtures only care about one or two verbs; the
+// stubs keep the other verbs inert instead of forcing every attach/capture
+// test to also spell out send_text/send_keys it never exercises.
 type taskFixture struct {
 	id             string
 	scope          string
@@ -22,9 +29,22 @@ type taskFixture struct {
 	movementSignal string
 	attach         string
 	capture        string
+	sendText       string
+	sendKeys       string
 	primary        bool
 	execution      string
 	extra          string
+}
+
+// stubTerminalVerb fills an unset [terminal] verb with a trivial
+// always-succeeds command, so a fixture that only cares about (say) attach
+// can leave capture/send_text/send_keys unset without tripping the
+// all-or-nothing [terminal] validation.
+func stubTerminalVerb(v string) string {
+	if v == "" {
+		return "true"
+	}
+	return v
 }
 
 // nodeFixture mirrors WorkflowNode for fixture authoring. ID defaults to Uses;
@@ -70,12 +90,6 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 		if d.movementSignal != "" {
 			fmt.Fprintf(&b, "movement_signal = %q\n", d.movementSignal)
 		}
-		if d.attach != "" {
-			fmt.Fprintf(&b, "attach = %q\n", d.attach)
-		}
-		if d.capture != "" {
-			fmt.Fprintf(&b, "capture = %q\n", d.capture)
-		}
 		if d.primary {
 			b.WriteString("primary = true\n")
 		}
@@ -85,6 +99,15 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 		if d.extra != "" {
 			b.WriteString(d.extra)
 			b.WriteString("\n")
+		}
+		// [terminal] goes last: TOML scopes every bare key = value after a
+		// table header to that table, so anything else in this file must
+		// come before it (extra may itself open another table like
+		// [outputs_schema], which is fine — a new table header ends
+		// [terminal]'s scope, but nothing here reopens a bare key after it).
+		if d.attach != "" || d.capture != "" || d.sendText != "" || d.sendKeys != "" {
+			fmt.Fprintf(&b, "\n[terminal]\nattach = %q\ncapture = %q\nsend_text = %q\nsend_keys = %q\n",
+				stubTerminalVerb(d.attach), stubTerminalVerb(d.capture), stubTerminalVerb(d.sendText), stubTerminalVerb(d.sendKeys))
 		}
 		if err := os.WriteFile(filepath.Join(tasksDir, d.id+".toml"), []byte(b.String()), 0o644); err != nil {
 			t.Fatal(err)

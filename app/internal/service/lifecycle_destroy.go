@@ -104,7 +104,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	if envErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
 	}
-	if cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(cfg, session), session.Tasks, params.Observer, envExecutor); cleanupErr != nil {
+	if cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session.Tasks, params.Observer, envExecutor); cleanupErr != nil {
 		session.UpdatedAt = time.Now()
 		putBestEffort(store, session, "run cleanup failure")
 		if !params.Force {

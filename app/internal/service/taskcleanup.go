@@ -90,7 +90,12 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	// RunCleanup mutates st (the snapshot's entry) in place. Persist only that one
 	// key under the lock — a blind Put of the whole snapshot would clobber an
 	// instance a concurrent TaskSetup reserved during this (unlocked) cleanup.
-	cleanupErr := task.RunCleanup(context.Background(), []task.Resolved{r}, sessionVars(cfg, session), session.Tasks, params.Observer, envExecutor)
+	// No full compiled Plan in scope here (this teardown targets a single
+	// dynamic instance by its state entry, not a workflow node) — plect
+	// attach/capture and {{terminal "..."}} are unavailable in this
+	// instance's own cleanup, the same as any sibling-task output it hasn't
+	// explicitly depended on.
+	cleanupErr := task.RunCleanup(context.Background(), []task.Resolved{r}, sessionVars(cfg, session, nil), session.Tasks, params.Observer, envExecutor)
 	if cleanupErr != nil {
 		// Keep the failed status inspectable for retry, scoped to this key. A
 		// persist failure here means that inspectable status never lands, so it's

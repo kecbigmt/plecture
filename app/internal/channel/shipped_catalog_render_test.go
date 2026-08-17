@@ -34,6 +34,9 @@ func TestShippedCatalog_ChannelsRender(t *testing.T) {
 		}
 	}
 
+	terminal := func(verb string) (string, error) {
+		return "tmux " + verb + " -t test-session", nil
+	}
 	rctx := newRenderContext(
 		map[string]any{
 			"path":       "/run/claude-channel/x.sock",
@@ -44,6 +47,7 @@ func TestShippedCatalog_ChannelsRender(t *testing.T) {
 			"queue_dir":  "/tmp/plect-codex-exec/test-session/queue",
 		},
 		event.Event{Type: "github.ci_status", Summary: "CI failed: test"},
+		terminal,
 	)
 	for id, def := range channels {
 		fields := map[string]string{"path": def.Path, "body": def.Body, "command": def.Command}

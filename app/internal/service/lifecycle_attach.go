@@ -36,13 +36,13 @@ func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*Attac
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
 
-	target := plan.AttachTask()
+	target := plan.TerminalTask()
 	if target == nil {
 		return nil, &Error{Code: ErrNotAttachable, Message: "this workflow has no attach target"}
 	}
 
 	// Resolved.Config is empty for nodes synthesized from workflow files (only
-	// legacy inline `[[tasks]]` populates it). Reach for NodeID/Attach
+	// legacy inline `[[tasks]]` populates it). Reach for NodeID/Terminal
 	// directly so the workflow path renders the right command instead of
 	// looking up `session.Tasks[""]`.
 	st, ok := session.Tasks[target.NodeID]
@@ -53,7 +53,7 @@ func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*Attac
 		}
 	}
 
-	cmdStr, err := task.RenderAttach(target.Attach, st.Outputs, sessionVars(cfg, session))
+	cmdStr, err := task.RenderAttach(target.Terminal.Attach, st.Outputs, sessionVars(cfg, session, plan))
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("attach template: %v", err)}
 	}

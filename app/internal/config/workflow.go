@@ -271,24 +271,22 @@ type TaskDefinition struct {
 	MovementSignal string   `toml:"movement_signal"`
 	Primary        bool     `toml:"primary"`
 	IdleAfter      Duration `toml:"idle_after"`
-	Attach         string   `toml:"attach"`
 	// Execution selects the execution plane for this task's setup/cleanup:
 	// "host" or "environment". Empty defaults to the workflow's own
 	// Environment (environment when declared, host otherwise) — see
 	// task.ResolveExecution. Declaring "environment" on a workflow with no
 	// Environment is a compile-time error, not a silent fallback to host.
 	Execution string `toml:"execution"`
-	// Capture declares a read-only template that snapshots what the task's
-	// channel currently shows, declared on the same task that declares
-	// attach (see config/plect/tasks/tmux.toml, the built-in runtime task).
-	// Symmetric with Attach — attach
-	// hands the terminal over, capture only reads it — so the channel's own
-	// identity stays inside the task definition; core never references it.
-	Capture           string         `toml:"capture"`
-	OutputsSchema     map[string]any `toml:"outputs_schema"`
-	OutputsSchemaFile string         `toml:"outputs_schema_file"`
-	InputsSchema      map[string]any `toml:"inputs_schema"`
-	InputsSchemaFile  string         `toml:"inputs_schema_file"`
+	// Terminal declares the task's `[terminal]` table: the task owns an
+	// interactive endpoint and offers attach/capture/send_text/send_keys
+	// against it. `plect attach` / `plect capture` resolve through it, and
+	// the `{{terminal "..."}}` template helper (task hooks and channel
+	// argument rendering) reaches all four verbs. See TerminalConfig.
+	Terminal          *TerminalConfig `toml:"terminal"`
+	OutputsSchema     map[string]any  `toml:"outputs_schema"`
+	OutputsSchemaFile string          `toml:"outputs_schema_file"`
+	InputsSchema      map[string]any  `toml:"inputs_schema"`
+	InputsSchemaFile  string          `toml:"inputs_schema_file"`
 	// DoneWhen is the task's Definition of Done: a structured
 	// completion predicate evaluated per instance. Nil for pure lifecycle-only
 	// tasks (the runtime task, the agent launcher, chat notifications); set for
@@ -744,9 +742,15 @@ func taskHookSources(defs map[string]TaskDefinition) []hookSource {
 			hookSource{desc: fmt.Sprintf("task %q cleanup", def.ID), sourcePath: def.SourcePath, script: def.Cleanup},
 			hookSource{desc: fmt.Sprintf("task %q healthcheck", def.ID), sourcePath: def.SourcePath, script: def.Healthcheck},
 			hookSource{desc: fmt.Sprintf("task %q movement_signal", def.ID), sourcePath: def.SourcePath, script: def.MovementSignal},
-			hookSource{desc: fmt.Sprintf("task %q attach", def.ID), sourcePath: def.SourcePath, script: def.Attach},
-			hookSource{desc: fmt.Sprintf("task %q capture", def.ID), sourcePath: def.SourcePath, script: def.Capture},
 		)
+		if def.Terminal != nil {
+			hooks = append(hooks,
+				hookSource{desc: fmt.Sprintf("task %q terminal.attach", def.ID), sourcePath: def.SourcePath, script: def.Terminal.Attach},
+				hookSource{desc: fmt.Sprintf("task %q terminal.capture", def.ID), sourcePath: def.SourcePath, script: def.Terminal.Capture},
+				hookSource{desc: fmt.Sprintf("task %q terminal.send_text", def.ID), sourcePath: def.SourcePath, script: def.Terminal.SendText},
+				hookSource{desc: fmt.Sprintf("task %q terminal.send_keys", def.ID), sourcePath: def.SourcePath, script: def.Terminal.SendKeys},
+			)
+		}
 		for _, out := range def.DynamicOutputs {
 			hooks = append(hooks, hookSource{desc: fmt.Sprintf("task %q output %q script", def.ID, out.Name), sourcePath: def.SourcePath, script: out.Script})
 		}
@@ -1077,11 +1081,34 @@ func loadTaskDefinitionFile(path string) (TaskDefinition, error) {
 		return TaskDefinition{}, err
 	}
 	var def TaskDefinition
-	if _, err := toml.DecodeFile(path, &def); err != nil {
+	md, err := toml.DecodeFile(path, &def)
+	if err != nil {
 		return def, err
+	}
+	// Top-level attach/capture moved under [terminal] (with send_text/
+	// send_keys added). Left as plain TaskDefinition fields, the decoder
+	// would silently drop them as unrecognized keys — a task that used to
+	// declare attach would load successfully but end up with no attach
+	// target at all, discovered only much later at `plect attach` time. Fail
+	// loudly here instead, pointing at the migration.
+	for _, key := range md.Undecoded() {
+		if len(key) == 1 && (key[0] == "attach" || key[0] == "capture") {
+			return def, fmt.Errorf("task %s: top-level `%s` was moved under `[terminal]` (attach/capture/send_text/send_keys declared together); see docs/migrations/", path, key[0])
+		}
+		// The canonical [terminal] schema (schema/terminal.schema.json) sets
+		// additionalProperties: false; matching that here means a typo'd
+		// verb name (e.g. `sendtext`) is a load error instead of a silently
+		// dropped key that leaves {{terminal "send_text"}} looking
+		// undeclared with no hint why.
+		if len(key) == 2 && key[0] == "terminal" {
+			return def, fmt.Errorf("task %s: [terminal] has unknown field %q (want attach, capture, send_text, send_keys)", path, key[1])
+		}
 	}
 	if err := def.DoneWhen.Validate(); err != nil {
 		return def, err
+	}
+	if err := def.Terminal.Validate(); err != nil {
+		return def, fmt.Errorf("task %s: %w", path, err)
 	}
 	def.ID = stem
 	def.SourcePath = path

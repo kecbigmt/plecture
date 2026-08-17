@@ -28,7 +28,21 @@ import (
 type renderContext struct {
 	Event  map[string]any
 	Inputs map[string]any
+	// Terminal backs {{terminal "..."}} in an args/path/body template. Nil
+	// when the caller passed no DeliverOptions.Terminal (the session's plan
+	// declares no [terminal]-owning task, or the caller has none in scope)
+	// — a channel that never references {{terminal ...}} is unaffected.
+	Terminal TerminalResolver
 }
+
+// TerminalResolver resolves one [terminal] verb (attach/capture/send_text/
+// send_keys) to its already-rendered command string, backing {{terminal
+// "..."}} in channel argument templates. Defined here as a plain function
+// type — not imported from internal/task — so this package stays free of a
+// dependency on internal/task, the same reason Executor is narrowed to
+// argv-only instead of reusing task.Executor; dispatch (which already
+// depends on both) builds the closure.
+type TerminalResolver func(verb string) (string, error)
 
 var templateFuncs = template.FuncMap{
 	"json": func(v any) (string, error) {
@@ -62,11 +76,11 @@ func eventMap(ev event.Event) map[string]any {
 	}
 }
 
-func newRenderContext(inputs map[string]any, ev event.Event) renderContext {
+func newRenderContext(inputs map[string]any, ev event.Event, terminal TerminalResolver) renderContext {
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
-	return renderContext{Event: eventMap(ev), Inputs: inputs}
+	return renderContext{Event: eventMap(ev), Inputs: inputs, Terminal: terminal}
 }
 
 // renderField renders one primitive field. missingkey=error so a typo'd field or
@@ -74,7 +88,18 @@ func newRenderContext(inputs map[string]any, ev event.Event) renderContext {
 // standard .Event fields are always present (see eventMap), so an optional field
 // that is merely empty renders empty, not an error.
 func renderField(name, tmplStr string, rctx renderContext) (string, error) {
-	t, err := template.New(name).Option("missingkey=error").Funcs(templateFuncs).Parse(tmplStr)
+	// terminal is built per render call (not part of the static
+	// templateFuncs map) because it resolves against this render's own
+	// rctx.Terminal — the session in effect for this delivery, not a global.
+	dynamicFuncs := template.FuncMap{
+		"terminal": func(verb string) (string, error) {
+			if rctx.Terminal == nil {
+				return "", fmt.Errorf("{{terminal %q}}: no task in this session's plan declares [terminal]", verb)
+			}
+			return rctx.Terminal(verb)
+		},
+	}
+	t, err := template.New(name).Option("missingkey=error").Funcs(templateFuncs).Funcs(dynamicFuncs).Parse(tmplStr)
 	if err != nil {
 		return "", fmt.Errorf("channel %s template: %w", name, err)
 	}
@@ -94,28 +119,48 @@ type Executor interface {
 	Run(argv []string) (stdout, stderr []byte, err error)
 }
 
+// DeliverOptions carries optional per-delivery overrides beyond the channel
+// definition and event itself. The zero value is what Deliver uses: no
+// execution-plane override, no {{terminal "..."}} binding.
+type DeliverOptions struct {
+	// Executor routes an exec channel's argv through it when def.Execution
+	// == "environment"; nil always runs on the host, unchanged.
+	Executor Executor
+	// Terminal resolves {{terminal "..."}} in this delivery's templates; nil
+	// means a channel that references it gets a clear "no binding" error
+	// rather than resolving to an empty command.
+	Terminal TerminalResolver
+}
+
 // Deliver renders a channel definition against the event and resolved inputs,
 // then performs ONE delivery attempt on the host. The caller resolves inputs
 // (node outputs) and owns retry/timeout (see DeliverWithRetry). Equivalent to
-// DeliverWithExecutor with a nil executor.
+// DeliverWithOptions with the zero DeliverOptions.
 func Deliver(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event) error {
-	return deliver(ctx, def, inputs, ev, nil)
+	return deliver(ctx, def, inputs, ev, DeliverOptions{})
 }
 
 // DeliverWithExecutor is Deliver with an execution-plane override: executor
 // routes an exec channel's argv through it when def.Execution ==
 // "environment"; nil (what Deliver uses) always runs on the host, unchanged.
 func DeliverWithExecutor(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, executor Executor) error {
-	return deliver(ctx, def, inputs, ev, executor)
+	return deliver(ctx, def, inputs, ev, DeliverOptions{Executor: executor})
 }
 
-func deliver(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, executor Executor) error {
-	rctx := newRenderContext(inputs, ev)
+// DeliverWithOptions is Deliver with the full set of per-delivery overrides —
+// use this over DeliverWithExecutor when the caller also has a
+// {{terminal "..."}} binding to supply.
+func DeliverWithOptions(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, opts DeliverOptions) error {
+	return deliver(ctx, def, inputs, ev, opts)
+}
+
+func deliver(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, opts DeliverOptions) error {
+	rctx := newRenderContext(inputs, ev, opts.Terminal)
 	switch def.Type {
 	case config.ChannelTypeUnixSocket:
 		return deliverUnixSocket(ctx, def, rctx)
 	case config.ChannelTypeExec:
-		return deliverExec(ctx, def, rctx, executor)
+		return deliverExec(ctx, def, rctx, opts.Executor)
 	default:
 		return fmt.Errorf("unknown channel type %q", def.Type)
 	}

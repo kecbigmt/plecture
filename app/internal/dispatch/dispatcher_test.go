@@ -566,3 +566,56 @@ func TestDispatcher_CommitCursorFailureIsLoggedAndEventRedelivers(t *testing.T) 
 		t.Errorf("expected the stuck event to redeliver, got %q", typ)
 	}
 }
+
+// TestDispatcher_TerminalHelperResolvesThroughSessionPlan exercises
+// {{terminal "..."}} end to end through the real dispatcher delivery path:
+// a channel's exec args render against the [terminal]-declaring task's
+// current outputs, without the channel itself knowing anything about the
+// concrete multiplexer behind it.
+func TestDispatcher_TerminalHelperResolvesThroughSessionPlan(t *testing.T) {
+	log := eventlog.NewStore(t.TempDir())
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "out")
+
+	s := &domain.Session{
+		Name: "o/r-1",
+		Tasks: map[string]*contract.TaskState{
+			"tmux": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"session_name": "mysession"}},
+		},
+	}
+	st := state.NewStore(t.TempDir())
+	if err := st.Put(s); err != nil {
+		t.Fatal(err)
+	}
+	def := config.ChannelDefinition{
+		Type:    config.ChannelTypeExec,
+		Command: "bash",
+		Args:    []string{"-c", `echo "$1" > "$2"`, "terminal_test", `{{terminal "send_text"}}`, outFile},
+	}
+	d := &sessionDispatcher{
+		session:        "o/r-1",
+		channels:       []config.EventChannel{{Name: "runtime", Uses: "send_keys", Include: []string{"plect.instruction"}}},
+		defs:           map[string]config.ChannelDefinition{"send_keys": def},
+		log:            log,
+		state:          st,
+		policy:         channel.RetryPolicy{MaxAttempts: 1, BaseBackoff: time.Millisecond, MaxBackoff: time.Millisecond, Timeout: 200 * time.Millisecond},
+		terminalNodeID: "tmux",
+		terminalOps: &config.TerminalConfig{
+			Attach:   "tmux attach -t {{.Self.session_name}}",
+			Capture:  "tmux capture-pane -p -t {{.Self.session_name}}",
+			SendText: `tmux send-keys -t {{.Self.session_name}} -- "$1"`,
+			SendKeys: `tmux send-keys -t {{.Self.session_name}} "$1"`,
+		},
+	}
+	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction})
+	drainOnce(d, s)
+
+	got, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	want := "tmux send-keys -t mysession -- \"$1\"\n"
+	if string(got) != want {
+		t.Errorf("output = %q, want %q", string(got), want)
+	}
+}

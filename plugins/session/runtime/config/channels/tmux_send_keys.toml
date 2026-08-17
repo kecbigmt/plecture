@@ -1,21 +1,24 @@
 # Channel: deliver a session event to a runtime without a structured channel
 # (e.g. an interactive Codex or Claude Code pane) by typing it into the
-# runtime's tmux pane. The TUI treats an Enter that arrives in the same
-# send-keys burst as the text as a newline, not a submit, so the keystrokes
-# must be split: send text, short sleep, then send Enter (mirrors
+# runtime's terminal via the session's own [terminal] table
+# ({{terminal "..."}}) — this file never names a concrete multiplexer, so it
+# works unmodified against any task that declares [terminal], not just the
+# tmux one this plugin ships. The TUI treats an Enter that arrives in the
+# same send-keys burst as the text as a newline, not a submit, so the
+# keystrokes must be split: send text, short sleep, then send Enter (mirrors
 # tasks/initial_prompt.toml). That needs a shell, but the script body stays
-# static and the event data rides in as positional args ($1/$2) — so event
-# data is never part of the command, only its operands, preserving the
-# no-injection boundary. An event without a body (only a summary) falls back
-# to summary; a resource URL in metadata is appended if present so a session
-# that funnels several resources can tell which one an event is about.
+# static and the event data rides in as a positional arg — so event data is
+# never part of the command, only its operands, preserving the no-injection
+# boundary. An event without a body (only a summary) falls back to summary; a
+# resource URL in metadata is appended if present so a session that funnels
+# several resources can tell which one an event is about.
 #
 # A single `sleep 1` before Enter is not enough: on long/multi-line
 # instructions the TUI's paste-burst detection window can still be open past
 # 1s, so the trailing Enter is absorbed as a newline inside the burst instead
 # of acting as submit — a separate race from pane-boot readiness, so it is
 # not fixed by gating on boot. After the first Enter, re-check the input box
-# (the `›`/`❯` prompt line from capture-pane — different CLI versions use
+# (the `›`/`❯` prompt line from a capture — different CLI versions use
 # different glyphs) and resend Enter with backoff until it's empty; if it
 # never clears, fail loudly instead of leaving a silent, unsubmitted
 # instruction sitting in the pane. The `❯` glyph is followed by NBSP
@@ -29,33 +32,34 @@ args = [
   "-c",
   '''
 set -u
-session="$1"
-text="$2"
-tmux send-keys -t "$session" -- "$text"
+send_text_cmd="$1"
+send_keys_cmd="$2"
+capture_cmd="$3"
+text="$4"
+sh -c "$send_text_cmd" terminal-send-text "$text"
 sleep 1
-tmux send-keys -t "$session" Enter
+sh -c "$send_keys_cmd" terminal-send-keys Enter
 for delay in 2 4 8 16; do
-  input=$(tmux capture-pane -p -t "$session" 2>/dev/null | grep '^[›❯]' | tail -n 1)
+  input=$(sh -c "$capture_cmd" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
   input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
   case "$input" in
     ''|'›'|'› '|'❯'|'❯ ') exit 0 ;;
   esac
   sleep "$delay"
-  tmux send-keys -t "$session" Enter
+  sh -c "$send_keys_cmd" terminal-send-keys Enter
 done
-input=$(tmux capture-pane -p -t "$session" 2>/dev/null | grep '^[›❯]' | tail -n 1)
+input=$(sh -c "$capture_cmd" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
 input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
 case "$input" in
   ''|'›'|'› '|'❯'|'❯ ') exit 0 ;;
 esac
-echo "tmux_send_keys: instruction still unsubmitted in pane '$session' after 4 retries" >&2
+echo "tmux_send_keys: instruction still unsubmitted after 4 retries" >&2
 exit 1
 ''',
   "tmux_send_keys",
-  "{{.Inputs.session}}",
+  "{{terminal \"send_text\"}}",
+  "{{terminal \"send_keys\"}}",
+  "{{terminal \"capture\"}}",
   '[{{.Event.type}}] {{if .Event.body}}{{.Event.body}}{{else}}{{.Event.summary}}{{end}}{{with index .Event.metadata "url"}} ({{.}}){{end}}',
 ]
 timeout = "45s"
-
-[input_schema]
-session = { type = "string", required = true }

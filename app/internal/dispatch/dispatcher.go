@@ -10,8 +10,10 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -42,6 +44,15 @@ type sessionDispatcher struct {
 	// (host degeneration, or environment resolution failed) means every
 	// channel delivers exactly as it did before this field existed.
 	envExecutor channel.Executor
+	// plugins feeds {{bin ...}} inside a {{terminal "..."}} verb template,
+	// mirroring task.SessionVars.Plugins.
+	plugins []plugins.Mounted
+	// terminalNodeID/terminalOps are the workflow's [terminal]-declaring
+	// task, resolved once at dispatcher build (see resolveTerminalOwner).
+	// terminalOps nil means the workflow declares no such task; a channel
+	// that never references {{terminal "..."}} is unaffected either way.
+	terminalNodeID string
+	terminalOps    *config.TerminalConfig
 }
 
 func (d *sessionDispatcher) run(ctx context.Context) {
@@ -189,7 +200,18 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 				mu.Unlock()
 				return
 			}
-			attempts, derr := channel.DeliverWithRetryAndExecutor(ctx, def, inputs, ev, d.policy, d.envExecutor)
+			opts := channel.DeliverOptions{
+				Executor: d.envExecutor,
+				Terminal: terminalResolver(s, d.terminalNodeID, d.terminalOps, task.SessionVars{
+					Name:             s.Name,
+					ResourceID:       s.ResourceID,
+					WorkspaceDirPath: s.WorkspaceDirPath,
+					Branch:           s.Branch,
+					Inputs:           s.Inputs,
+					Plugins:          d.plugins,
+				}),
+			}
+			attempts, derr := channel.DeliverWithRetryAndOptions(ctx, def, inputs, ev, d.policy, opts)
 			if derr != nil {
 				d.recordFailure(ctx, ev, ch.Name, attempts, derr)
 				mu.Lock()

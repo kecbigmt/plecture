@@ -1,6 +1,4 @@
 scope       = "run"
-attach      = "tmux attach -t {{.Self.session_name}}"
-capture     = "tmux capture-pane -p -t {{.Self.session_name}}"
 healthcheck = "tmux has-session -t {{.Self.session_name}}"
 
 # Session name / cwd come from the session itself, not from upstream nodes —
@@ -16,6 +14,20 @@ echo '{"session_name":"{{.SessionName}}"}'
 '''
 
 cleanup = "tmux kill-session -t {{.Self.session_name}} 2>/dev/null || true"
+
+# The four verbs below are this task's [terminal] table: attach/capture are
+# consumed by `plect attach`/`plect capture`, and all four are reachable from
+# any task hook or channel via {{terminal "..."}} without that consumer
+# knowing tmux is behind it. send_text receives the literal text to type as
+# its first positional argument; send_keys receives a key token (e.g.
+# "Enter") the same way. TOML scopes every bare key after a table header to
+# that table, so this must be the last table-free content in the file —
+# [outputs_schema] below is its own table and is unaffected.
+[terminal]
+attach     = "tmux attach -t {{.Self.session_name}}"
+capture    = "tmux capture-pane -p -t {{.Self.session_name}}"
+send_text  = "tmux send-keys -t {{.Self.session_name}} -- \"$1\""
+send_keys  = "tmux send-keys -t {{.Self.session_name}} \"$1\""
 
 [outputs_schema]
 type     = "object"

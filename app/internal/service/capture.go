@@ -38,10 +38,7 @@ func Capture(cfg *config.Config, store *state.Store, params CaptureParams) (*Cap
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
 
-	target, err := plan.CaptureTask()
-	if err != nil {
-		return nil, &Error{Code: ErrAmbiguousCapture, Message: err.Error()}
-	}
+	target := plan.TerminalTask()
 	if target == nil {
 		return nil, &Error{Code: ErrNotCapturable, Message: "this workflow has no capture-declaring task"}
 	}
@@ -54,7 +51,7 @@ func Capture(cfg *config.Config, store *state.Store, params CaptureParams) (*Cap
 		}
 	}
 
-	content, err := task.RunCapture(context.Background(), target.Capture, st.Outputs, sessionVars(cfg, session))
+	content, err := task.RunCapture(context.Background(), target.Terminal.Capture, st.Outputs, sessionVars(cfg, session, plan))
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture failed for %q: %v", sessionName, err)}
 	}

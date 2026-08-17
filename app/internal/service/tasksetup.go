@@ -133,7 +133,10 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 
 	// The bound resource is the instance's own resource, exposed to its setup /
 	// done_when as .ResourceID (overriding the session's when present).
-	vars := sessionVars(cfg, session)
+	// No full compiled Plan in scope here (a dynamic task setup instantiates
+	// one definition directly, not a workflow node) — {{terminal "..."}} is
+	// unavailable, same as taskcleanup.go's single-instance teardown.
+	vars := sessionVars(cfg, session, nil)
 	if params.Resource != "" {
 		vars.ResourceID = params.Resource
 	}

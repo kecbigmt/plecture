@@ -865,10 +865,13 @@ func TestIntegration_CaptureWithoutDeclarationFails(t *testing.T) {
 	}
 }
 
-// TestIntegration_CaptureAmbiguousWhenMultipleDeclare verifies that a
-// workflow where more than one task declares capture resolves to an explicit
-// ambiguity error instead of silently picking one.
-func TestIntegration_CaptureAmbiguousWhenMultipleDeclare(t *testing.T) {
+// TestIntegration_MultipleTerminalDeclarationsRejectedAtPlanCompile verifies
+// that a workflow where more than one task declares [terminal] fails to
+// compile, instead of silently picking one — a capture-only ambiguity like
+// the pre-[terminal] split's ErrAmbiguousCapture can no longer arise, since
+// capture is now always declared alongside attach/send_text/send_keys on the
+// same task, and a second [terminal]-declaring node is already rejected here.
+func TestIntegration_MultipleTerminalDeclarationsRejectedAtPlanCompile(t *testing.T) {
 	workspaceDirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
@@ -883,21 +886,16 @@ func TestIntegration_CaptureAmbiguousWhenMultipleDeclare(t *testing.T) {
 	)
 
 	url := "https://github.com/testowner/testrepo/issues/704"
-	sessionName := "testowner/testrepo-704+default"
 
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
-		t.Fatalf("up: %v", err)
-	}
-	_, err := Capture(cfg, store, CaptureParams{Identifier: sessionName})
+	_, err := Up(cfg, store, UpParams{Identifier: url})
 	if err == nil {
-		t.Fatal("expected ErrAmbiguousCapture when more than one task declares capture")
+		t.Fatal("expected plan compile to reject a second [terminal]-declaring node")
 	}
-	svcErr, ok := err.(*Error)
-	if !ok || svcErr.Code != ErrAmbiguousCapture {
-		t.Fatalf("err = %v (%T), want code=%q", err, err, ErrAmbiguousCapture)
+	if !strings.Contains(err.Error(), "more than one node declares [terminal]") {
+		t.Fatalf("err = %v, want a more-than-one-[terminal] message", err)
 	}
 }
 
@@ -1112,10 +1110,15 @@ func TestIntegration_AttachUnderWorkflowPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(repoDir+"/.plect/tasks/tmux.toml", []byte(`
-id     = "tmux"
-scope  = "run"
-attach = "tmux attach -t {{.Self.session_name}}"
-setup  = "echo '{\"session_name\":\"abc\"}'"
+id    = "tmux"
+scope = "run"
+setup = "echo '{\"session_name\":\"abc\"}'"
+
+[terminal]
+attach     = "tmux attach -t {{.Self.session_name}}"
+capture    = "true"
+send_text  = "true"
+send_keys  = "true"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
