@@ -10,9 +10,9 @@ user-owned config layers.
 
 The language's unit of meaning is the definition block. Files are packaging.
 Splitting definition blocks across any number of `.toml` files and
-concatenating those files into one TOML document are semantically equivalent
-except for file-relative path fields, which stay relative to the file that
-contains the definition header.
+concatenating those files into one TOML document in path-sorted traversal order
+are semantically equivalent except for file-relative path fields, which stay
+relative to the file that contains the definition header.
 
 Markdown templates remain template assets and are loaded by the template layer
 described in
@@ -61,12 +61,13 @@ value is a reference whose kind segment is `workspace`.
 `id` is a TOML bare-key segment matching this regular expression:
 
 ```text
-^[A-Za-z][A-Za-z0-9_-]*$
+^[A-Za-z_][A-Za-z0-9_]*$
 ```
 
 Quoted keys are not valid definition ids. Dots are not valid inside ids because
-dots separate address segments. Hyphens are valid so existing responsibility
-names such as `local-okf` can migrate without a forced spelling change.
+dots separate address segments. Hyphens are not valid because task ids are also
+workflow node ids when `[[nodes]]` omits `id`, and node ids must be safe as
+dotted Go template fields such as `.Nodes.runtime.outputs`.
 
 Nested tables stay under the definition header:
 
@@ -106,9 +107,10 @@ Trusted config layers have definition roots:
 | Trusted ancestor overlay | The overlay's `.plect/` directory |
 
 Within a definition root, plect recursively reads TOML files that are not
-reserved root files. Subdirectories are author organization only. A shipped
-plugin may keep one definition per file or may keep kind-named directories such
-as `config/tasks/`; neither convention changes semantics.
+reserved root files in lexicographic order by slash-separated relative path.
+Subdirectories are author organization only. A shipped plugin may keep one
+definition per file or may keep kind-named directories such as `config/tasks/`;
+neither convention changes semantics.
 
 Reserved root files are not definition files:
 
@@ -120,10 +122,11 @@ plect.lock
 
 For each layer, the loader parses every discovered `.toml` file and merges the
 top-level kind tables. The result is the same as parsing one concatenated TOML
-document with those definition blocks. Cross-file duplicate definition ids in
-the same layer are load errors. Cross-file table collisions below a definition
-header are load errors unless TOML would accept the same shape in one
-concatenated document.
+document whose file sections appear in path-sorted traversal order. Cross-file
+array-of-table entries append in that order while preserving in-file order.
+Cross-file duplicate definition ids in the same layer are load errors.
+Cross-file table collisions below a definition header are load errors unless
+TOML would accept the same shape in one concatenated document.
 
 Fields that name a file path relative to config, such as `*_schema_file`, are
 resolved against the file that contains the owning `[<kind>.<id>]` definition
@@ -134,7 +137,7 @@ cloned, untrusted content. It keeps the plugin-packaging trust restrictions:
 
 | Workspace-dir content | Behavior |
 |---|---|
-| Workflow fragments | Loaded from `.plect/workflows/` under the workflow cascade rules. |
+| Workflow fragments | Loaded from `.plect/workflows/` under the workflow cascade rules. Fragment identity comes from the `[workflow.<id>]` header; the directory is only an allowlist. |
 | Task definitions | Load error, because cloned content must not carry shell. |
 | Workspace, resource, environment, or channel definitions | Not loaded. |
 
@@ -158,7 +161,8 @@ error, even when their kinds differ.
 
 User-owned layers are deeper than other user-owned layers. Catalog-qualified
 references select catalog plugin definitions and are not shadowed by same-id
-relative definitions in user-owned layers. A user-owned workflow or task uses a
+relative definitions in user-owned layers. Same-id user-owned definitions also
+do not extend plugin-owned workflows. A user-owned workflow or task uses a
 user-owned replacement by referencing its relative address.
 
 | Deeper definition | Rule |
@@ -169,6 +173,12 @@ user-owned replacement by referencing its relative address.
 
 Whole-definition kinds are workspace, resource, environment, channel, and task.
 
+A user-owned replacement may intentionally reuse a plugin definition id, but it
+is a separate user-owned definition. Plugin-owned relative references still
+resolve inside the owning plugin. User-owned relative references resolve through
+the user-owned layer stack. User-owned catalog-qualified references resolve to
+the named plugin definition.
+
 ## Reference Grammar
 
 References are dotted addresses that extend the definition header outward:
@@ -177,6 +187,10 @@ References are dotted addresses that extend the definition header outward:
 <kind>.<id>
 <catalog-alias>.<plugin-path>.<kind>.<id>
 ```
+
+Catalog aliases and plugin path segments use the same lexical rule as
+definition ids, `^[A-Za-z_][A-Za-z0-9_]*$`. Dots are not valid inside aliases or
+plugin path segments because dots separate address segments.
 
 The relative form, `<kind>.<id>`, refers to a definition in the same plugin or
 in the user-owned layer stack. In user-owned config, a relative reference that
@@ -216,8 +230,19 @@ A reference whose kind segment does not match the kind required by the site is
 a load error. A reference whose kind segment does not match the target
 definition's declared kind is also a load error naming both kinds.
 
+If `workflow.<id>.nodes[]` omits `id`, the node id defaults to the referenced
+task definition id, not to the full dotted reference. For
+`uses = "official.claude.task.runtime"`, the default node id is `runtime`.
+Workflow authors must set an explicit node id when two nodes would otherwise
+default to the same id.
+
 Inner references used by task-nesting and chain-spawn designs use the same
 dotted grammar. They do not get a second reference language.
+
+Executable lookup through `{{bin}}` is a separate executable namespace, not a
+TOML definition reference. It keeps the slash-based plugin identity grammar
+described in `plugin-packaging.md` because executable selection must split an
+arbitrary-depth plugin path from an executable name.
 
 ## Worked Example
 
@@ -274,7 +299,9 @@ layer. The directory name `review/` has no semantic effect.
   their kinds differ.
 - Two definitions with the same id in one user-owned layer are a load error,
   even when their kinds differ.
-- A definition id must match `^[A-Za-z][A-Za-z0-9_-]*$`.
+- A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
+- Catalog aliases and plugin path segments must match
+  `^[A-Za-z_][A-Za-z0-9_]*$`.
 - A reference must include a kind segment.
 - A user-owned reference to catalog content must include the catalog alias.
 - A plugin-owned reference must not include a catalog alias or another plugin's

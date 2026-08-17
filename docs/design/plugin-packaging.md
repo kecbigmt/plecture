@@ -282,6 +282,12 @@ For editable path catalogs, it returns an absolute path inside the directly
 mounted development tree. It never writes generated paths back into user
 config.
 
+`{{bin}}` references are executable references, not TOML config definition
+references. They keep the slash-based plugin identity grammar because the
+resolver must split an arbitrary-depth plugin path from an executable name.
+TOML config references use the dotted definition grammar in
+[`config-declaration-identity.md`](config-declaration-identity.md).
+
 The same template-variable reference and read-only-mount rules apply to scripts
 and built binaries for locked plugins; editable path catalogs keep the same
 executable lookup but use the development-mode mount exception described in the
@@ -795,7 +801,8 @@ User-owned layers are deeper than other user-owned layers. Same-id conflicts
 inside one plugin are load errors. Different plugins may reuse an id because
 catalog-qualified references include the catalog alias and plugin path.
 Catalog-qualified references select catalog plugin definitions and are not
-shadowed by same-id relative definitions in user-owned layers.
+shadowed by same-id relative definitions in user-owned layers. Same-id
+user-owned definitions do not extend plugin-owned workflows.
 
 Same-id behavior by kind:
 
@@ -803,7 +810,7 @@ Same-id behavior by kind:
 |---|---|
 | Workspace providers, resources, environments, channels | Same-id conflicts inside one plugin fail across that plugin's unified definition namespace. A deeper user-owned layer replaces a shallower user-owned whole definition only when the kind also matches. No partial override. |
 | Tasks | Same-id conflicts inside one plugin fail across that plugin's unified definition namespace. A deeper user-owned layer replaces a shallower user-owned whole definition only when the kind also matches. No partial override. |
-| Workflows | Same-id workflow definitions inside one plugin fail across that plugin's unified definition namespace. Same-kind user-owned workflow layers merge by adding nodes and event channels. Singleton fields cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
+| Workflows | Same-id workflow definitions inside one plugin fail across that plugin's unified definition namespace. Same-kind user-owned workflow layers merge by adding nodes and event channels only with shallower user-owned workflow layers. Singleton fields cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
 | Workflow input schemas | Plugin-layer schemas for the same workflow id conflict unless they belong to the same selected plugin workflow. User-owned layer schemas combine with `allOf`. |
 | Templates | Same-id conflicts between plugin layers fail. Lookup then remains user-overridable: nearest workspace dir or ancestor template, then global user templates, then plugin templates. |
 
@@ -812,8 +819,9 @@ layer is always a load error. Kind mismatches are never replacements.
 
 Partial override model:
 
-- To partially customize a plugin workflow, add a same-named workflow file in a
-  trusted overlay that adds new `[[nodes]]` or new `[[event.channel]]` entries.
+- To customize a plugin workflow, copy or recreate it as a user-owned workflow,
+  merge the local nodes or event channels there, and update user-owned
+  entrypoints or references to the relative workflow address.
 - To replace a plugin task, workspace provider, resource, environment, or
   channel, define a user-owned replacement and update user-owned references to
   use its relative address.
@@ -822,8 +830,10 @@ Partial override model:
 - A plugin-provided task cannot be edited in place through a patch mechanism.
   Whole-definition replacement keeps arbitrary shell behavior auditable.
 
-This model keeps the existing loader semantics and makes plugin distribution a
-new source of base layers rather than a new merge language.
+This model keeps user-owned overlay merging for user-owned workflows, but it
+does not treat plugin definitions as patch targets. Plugin distribution remains
+a source of catalog-qualified definitions rather than a patch language for
+mounted plugin content.
 
 Alternatives considered: letting declaration order decide same-id conflicts
 inside one plugin would make behavior depend on file walk order. That is too
@@ -930,7 +940,7 @@ Residual user config:
 - Which multiplexer and agent runtime are selected for a workflow.
 - Local command path or model defaults if they differ from plugin defaults.
 - Event channel bindings for the user's runtime session and team conversation.
-- Team-specific workflow overlays that add local notification or review nodes.
+- Team-owned workflow definitions that add local notification or review nodes.
 - Prompt templates that encode team operating style.
 - Slack credentials or environment files. Without credentials, the Slack
   service remains inert.
@@ -1080,9 +1090,10 @@ Residual user config:
   `tmux` / `envfile` / `codex_exec` / `slack_thread` / `initial_task` nodes are
   a reference composition; an operator whose session runtime defines different
   task ids swaps the node `uses` values, or replaces the workflow with their
-  own team-owned overlay entirely.
+  own team-owned workflow entirely.
 - Team-owned operating procedure templates.
-- Any local overlay that maps goal review into the team's workflow shape.
+- Any local workflow definition that maps goal review into the team's workflow
+  shape.
 
 No workspace-provider/resource/task/workflow contract changes are needed. If the plugin
 discovers that goal state needs data the existing resource observation contract

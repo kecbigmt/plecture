@@ -47,7 +47,7 @@ Use this mapping from the old directory to the new header kind:
 
 The initial id is the old filename stem. Rename ids that repeat a provider name,
 collide across kinds in the same plugin or user-owned layer, or do not match
-`^[A-Za-z][A-Za-z0-9_-]*$`.
+`^[A-Za-z_][A-Za-z0-9_]*$`.
 
 Example before:
 
@@ -117,6 +117,14 @@ There is no alias-optional form in stored config. Replace scaffold examples
 such as `claude.task.runtime` with the catalog alias actually used in
 `catalogs.toml`, such as `official.claude.task.runtime`.
 
+If a workflow node omits `id`, its node id defaults to the referenced task id.
+For `uses = "official.claude.task.runtime"`, the default node id is `runtime`.
+Add explicit node ids when two nodes would otherwise default to the same id.
+
+Catalog aliases and plugin path segments must use the same lexical rule as
+definition ids, `^[A-Za-z_][A-Za-z0-9_]*$`, so dotted references can be parsed
+without ambiguity.
+
 ## Update Shipped Plugin References
 
 If user-owned workflows, tasks, or channel bindings reference shipped plugin
@@ -144,6 +152,39 @@ ids, update them to the responsibility names:
 The `github` task ids `work`, `review`, `respond`, `investigate`, and
 `gh_guard` do not change. The `codex` channel id `terminal_submit` does not
 change. The `okf` task id `pursue_goal` does not change.
+
+## Convert Same-Id Plugin Overrides
+
+Same-id user-owned definitions no longer shadow plugin definitions, and
+same-id user-owned workflow fragments no longer append to plugin workflows.
+Before updating references, compare trusted user config and trusted repo
+overlays against the shipped plugin ids listed above and the keep-their-id list.
+
+For a same-id user-owned task, workspace provider, resource, environment, or
+channel that previously replaced a plugin definition:
+
+1. Keep or rename the user-owned definition with a valid `[<kind>.<id>]`
+   header.
+2. Update user-owned workflows, tasks, or channel bindings that should use it to
+   the relative reference, such as `task.runtime`.
+3. Update references that should continue to use the plugin definition to the
+   catalog-qualified reference, such as `official.claude.task.runtime`.
+
+For a same-id workflow fragment that previously added nodes or event channels to
+a plugin workflow:
+
+1. Copy the plugin workflow into a trusted user-owned config layer under a
+   `[workflow.<id>]` header, or choose a new user-owned workflow id.
+2. Manually merge the local nodes and event channels into that user-owned
+   workflow.
+3. Use catalog-qualified references for plugin tasks, channels, resources, or
+   workspace providers that the workflow still composes.
+4. Update user-owned entrypoints and references to the relative workflow
+   address, such as `workflow.review_session`.
+
+Remove the old fragment after the replacement workflow loads. A cloned
+workspace-dir `.plect/workflows/` fragment also gets its identity from the
+`[workflow.<id>]` header; the filename stem is no longer the workflow id.
 
 ## Choose Layout
 

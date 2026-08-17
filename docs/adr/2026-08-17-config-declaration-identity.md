@@ -45,14 +45,18 @@ Plecture TOML configuration definitions are declared by section headers:
 The kind values are `workspace`, `resource`, `environment`, `channel`, `task`,
 and `workflow`. Ids come only from definition headers. Filenames and directory
 names are organizational. Valid ids are TOML bare-key segments matching
-`^[A-Za-z][A-Za-z0-9_-]*$`.
+`^[A-Za-z_][A-Za-z0-9_]*$`. Hyphens are not valid because task ids are also
+workflow node ids when a node omits `id`, and node ids must remain safe in
+dotted Go template fields.
 
 The unit of meaning is the definition block. Splitting definitions across any
-number of `.toml` files and concatenating those files into one TOML document are
-semantically equivalent, except that file-relative path fields stay relative to
-the file containing the definition header. The loader walks a config layer's
-definition root recursively, parses every TOML file, merges top-level kind
-tables, and fails on duplicate definitions.
+number of `.toml` files and concatenating those files into one TOML document in
+path-sorted traversal order are semantically equivalent, except that
+file-relative path fields stay relative to the file containing the definition
+header. The loader walks a config layer's definition root recursively, parses
+every TOML file in lexicographic order by slash-separated relative path, merges
+top-level kind tables, appends array-of-table entries in that order, and fails
+on duplicate definitions.
 
 Each plugin has one definition id namespace across TOML definition kinds.
 Same-id conflicts inside one plugin are load errors even when the kinds differ.
@@ -63,7 +67,8 @@ layer are load errors even when the kinds differ. User-owned layers may replace
 or merge a shallower user-owned definition only when the id and kind match; a
 same-id, different-kind definition is a load error. Catalog-qualified
 references select catalog plugin definitions and are not shadowed by same-id
-relative definitions in user-owned layers.
+relative definitions in user-owned layers. Same-id user-owned definitions do not
+extend plugin-owned workflows.
 
 References are dotted addresses that extend the definition header outward. The
 loadable stored forms are:
@@ -78,6 +83,10 @@ plugin authors, and cross-plugin references remain banned by the plugin boundary
 rules. A user-owned relative reference that would select catalog content is a
 load error.
 
+Catalog aliases and plugin path segments use the same lexical rule as
+definition ids, `^[A-Za-z_][A-Za-z0-9_]*$`, because dots separate address
+segments.
+
 The kind segment is mandatory even though the unified namespace makes it
 informationally redundant. The reference site validates that the reference kind
 is allowed for that field, and the resolved definition validates that its
@@ -90,12 +99,19 @@ the user's catalog alias during copy-time verification before storing the
 workflow as config.
 
 Task-nesting and chain-spawn inner references use the same dotted grammar.
+If a workflow node omits `id`, its id defaults to the referenced task
+definition id rather than the full dotted reference.
+
+Executable lookup through `{{bin}}` remains a separate slash-based namespace.
+It resolves catalog plugin identities and executable names, not TOML definition
+blocks, and it must split arbitrary-depth plugin paths from executable names.
 
 The workspace-dir `.plect/` overlay keeps the existing trust boundary. Recursive
 free-layout discovery applies to trusted roots. The cloned workspace-dir overlay
 loads only workflow fragments from `.plect/workflows/`, rejects task
 definitions, and does not load workspace, resource, environment, or channel
-definitions.
+definitions. Workflow fragment identity still comes from `[workflow.<id>]`;
+the directory is only an allowlist.
 
 Shipped plugin definition ids are renamed to responsibility names as part of the
 migration:
@@ -139,10 +155,19 @@ Config authors can organize by feature, by kind, or flat layout. A moved file
 keeps its definition identity because the header, not the filename, declares the
 id.
 
+User-owned same-id definitions no longer shadow plugin definitions or append to
+plugin workflows. Operators who used same-id user config to replace a plugin
+task or partially extend a plugin workflow must make that customization
+explicit: define a user-owned replacement workflow or task, update user-owned
+entrypoints and references to the relative address, and use catalog-qualified
+references for any plugin definitions the replacement still composes.
+
 The migration inserts definition headers into shipped plugin declarations,
 renames shipped responsibility ids, nests existing declaration fields under
 their headers, and updates references in workflows, tasks, README examples,
-migration docs, and tests that name those ids.
+migration docs, and tests that name those ids. It also detects same-id
+user-owned definitions that previously shadowed or extended plugin definitions
+so operators can convert them to explicit replacements.
 
 ## Alternatives considered
 
