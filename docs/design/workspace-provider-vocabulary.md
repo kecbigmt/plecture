@@ -1,11 +1,11 @@
-# Workspace source vocabulary
+# Workspace provider vocabulary
 
 This design is governed by
-[`../adr/2026-08-17-workspace-source-vocabulary.md`](../adr/2026-08-17-workspace-source-vocabulary.md).
+[`../adr/2026-08-17-workspace-provider-vocabulary.md`](../adr/2026-08-17-workspace-provider-vocabulary.md).
 
 ## Contract
 
-A workspace source is a trusted configuration declaration that owns the
+A workspace provider is a trusted configuration declaration that owns the
 workspace lifecycle for sessions of a resource shape.
 
 It has these responsibilities:
@@ -17,28 +17,27 @@ It has these responsibilities:
 - declare the setup output schema exposed to workflow nodes.
 
 A workspace is the session's acquired work surface. It is not the executor,
-the task runner, the environment, or the resource itself. The present
-implementation exposes the acquired filesystem location through a required
-setup output key named `workspace_dir`. Other outputs are source-specific
-contract fields.
+the task runner, the environment, or the resource itself. The filesystem
+implementation exposes the acquired location through a required setup output
+key named `workspace_dir`. Other outputs are provider-specific contract fields.
 
-Resource-state observation remains outside the workspace source contract and
+Resource-state observation remains outside the workspace provider contract and
 belongs to resource definitions under `resources/`.
 
 ## Vocabulary
 
-The canonical prose term is **workspace source**.
+The canonical prose term is **workspace provider**.
 
 The code-facing vocabulary is:
 
 | Surface | Name |
 |---|---|
-| Config directory | `workspace_sources/` |
-| Workflow field | `workspace_source = "<id>"` |
-| Go config type | `WorkspaceSourceConfig` |
-| Go loader | `LoadWorkspaceSources` |
-| Workflow detail JSON | `workspace_source`, `workspace_source_info` |
-| CLI command noun | `workspace-source` |
+| Config directory | `workspaces/` |
+| Workflow field | `workspace_provider = "<id>"` |
+| Go config type | `WorkspaceProviderConfig` |
+| Go loader | `LoadWorkspaceProviders` |
+| Workflow detail JSON | `workspace_provider`, `workspace_provider_info` |
+| CLI command noun | `workspace-provider` |
 | Setup output path key | `workspace_dir` |
 | State path field | `workspace_dir_path` |
 | Root path field | `workspace_dirs_root` |
@@ -48,28 +47,32 @@ The workflow output namespace stays `Workflow.outputs`. It names the
 workflow-level pseudo-node outputs visible to templates, not the configuration
 kind that produced them.
 
-Single-purpose plugin executables use the concept name and do not use the
-host-binary `plect-` prefix. The GitHub executable name is
-`github-workspace-source`. A multipurpose executable may expose a
-`workspace-source` subcommand when the top-level binary name covers broader
-plugin behavior.
+Config directories use short plural nouns. Resource definitions live in
+`resources/`; workspace provider declarations live in `workspaces/`. The full
+concept name appears in prose, Go types, API fields, and command nouns.
+
+Executable names are not a mechanical copy of concept names. Single-purpose
+plugin executables use the short plugin capability noun and do not use the
+host-binary `plect-` prefix. The GitHub executable name is `github-workspace`.
+A multipurpose executable may expose a `workspace-provider` subcommand when the
+top-level binary name covers broader plugin behavior.
 
 `provider` remains available as generic English for an external integration
-when prose is not naming the workspace source contract. Core config keys, API
-fields, command nouns, and Go identifiers use `workspace source`;
-provider-neutral boundary tooling may keep `provider` when it means an
-external integration boundary.
+when prose is not naming the workspace provider contract. Core config keys, API
+fields, command nouns, and Go identifiers use `workspace provider` or the
+short config-directory noun `workspace`; provider-neutral boundary tooling may
+keep `provider` when it means an external integration boundary.
 
 ## Pairing With Resource Definitions
 
-Resource definitions and workspace sources are separate declarations:
+Resource definitions and workspace providers are separate declarations:
 
 | Question | Declaration |
 |---|---|
 | What is this resource's observable state? | resource definition |
-| Where does this session's work happen, and how is that space acquired and released? | workspace source |
+| Where does this session's work happen, and how is that space acquired and released? | workspace provider |
 
-A workflow references one workspace source by id. A resource definition is
+A workflow references one workspace provider by id. A resource definition is
 found by matching the resource id when state observation or finalization runs.
 
 ## Workspace Disambiguation
@@ -88,16 +91,16 @@ Directory paths remain concrete in names:
 
 The implementation migration performs these moves in one breaking PR:
 
-- rename `providers/` directories to `workspace_sources/` in global config and
-  plugin `config/` trees;
-- rename workflow `provider` fields to `workspace_source`;
+- rename `providers/` directories to `workspaces/` in global config and plugin
+  `config/` trees;
+- rename workflow `provider` fields to `workspace_provider`;
 - rename setup output `workdir` to `workspace_dir`;
 - rename path-bearing state/config/template fields from `workdir` to
   `workspace_dir` or `workspace_dir_path` according to the field's existing
   shape;
 - rename Go identifiers, JSON fields, command output labels, help text, and
   error strings that expose the concept;
-- update contracts prose that uses `provider` for the workspace source
+- update contracts prose that uses `provider` for the workspace provider
   contract;
 - audit contracts prose that uses `provider` for external integrations and keep
   only provider-neutral phrasing;
@@ -107,7 +110,8 @@ The implementation migration performs these moves in one breaking PR:
   `provider-boundary` CI job; under this vocabulary they keep their names
   because they guard against specific external integration leakage;
 - rename shipped plugin references and binaries that implement only the
-  workspace source contract;
+  workspace provider contract to short capability names such as
+  `github-workspace`;
 - update docs and repository-adjacent wiki prose that describes the concept;
 - supersede `docs/migrations/workdir-vocabulary-migration.md` for this
   breaking release with a new one-time procedure that accepts both worktree-era
@@ -126,11 +130,11 @@ loader, workflow display, lifecycle setup/cleanup, subscription, shipped plugin
 config, and legacy migration path.
 
 One-time survey evidence belongs in the PR body. It should include exact
-commands used to confirm that no core/user-facing `provider` vocabulary names
-the workspace source contract. Historical ADR context, migration instructions,
-provider-neutral boundary tooling, and generic external-integration prose may
-keep the word when it does not define a config kind, API field, command, or Go
-identifier.
+commands used to confirm that no core/user-facing bare `provider` vocabulary
+names the workspace provider contract. Historical ADR context, migration
+instructions, provider-neutral boundary tooling, and generic
+external-integration prose may keep the word when it does not define a config
+kind, API field, command, or Go identifier.
 
 The same evidence should confirm that workspace prose in core docs, code,
 tests, and shipped plugins uses the acquired-work-surface sense from this
