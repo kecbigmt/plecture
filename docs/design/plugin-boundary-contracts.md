@@ -87,10 +87,9 @@ structured agent runtime. It is not the boundary between chat delivery and
 agent delivery. Chat-delivery plugins do not connect to channel-server sockets
 and do not import channel-server client packages.
 
-After the split, the channel-server socket protocol belongs with the structured
-agent runtime implementation that uses it. It does not remain a shared
-`contracts/` package unless another concrete consumer needs the same
-provider-neutral wire contract.
+The channel-server socket protocol belongs with the structured agent runtime
+implementation that uses it. It is not a shared `contracts/` package unless
+another concrete consumer needs the same provider-neutral wire contract.
 
 ## Review Workflow Composition
 
