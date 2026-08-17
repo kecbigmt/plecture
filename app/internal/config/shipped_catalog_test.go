@@ -149,7 +149,7 @@ func TestShippedCatalog_WorkflowEventChannelsResolve(t *testing.T) {
 // plugin.toml against a partial required_env list: slack-adapter's
 // cmd/slack-adapter/main.go exits(1) at startup if any of the bot token,
 // app token, or channel id is unset, so a required_env list missing one of
-// them would let the bus service supervisor start (and then crash-loop)
+// them would let the plugin service supervisor start (and then crash-loop)
 // slack-adapter instead of leaving it inert, the way an unconfigured
 // service should stay. This regression guards the specific gap a review
 // caught: required_env originally listed only the two tokens, not the

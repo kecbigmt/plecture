@@ -1,9 +1,6 @@
-// Package busservice supervises plugin-owned daemons declared by
-// [[services]] in plugin.toml: it starts them when the bus starts, restarts
-// crashed children with bounded backoff, restarts a plugin's services when
-// its content changes, and stops them when the bus stops. See the plugin
-// service lifecycle decision record under docs/adr.
-package busservice
+// Package pluginservice supervises plugin-owned daemons declared by
+// [[services]] in plugin.toml.
+package pluginservice
 
 import (
 	"fmt"

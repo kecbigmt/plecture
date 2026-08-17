@@ -1,4 +1,4 @@
-package busservice
+package pluginservice
 
 import (
 	"bytes"
@@ -19,12 +19,12 @@ import (
 // SIGTERM (a service may spawn helpers of its own); WaitDelay bounds how
 // long Wait keeps waiting for the group to actually exit before the
 // os/exec package escalates to SIGKILL, so a service that ignores SIGTERM
-// cannot hang bus shutdown indefinitely.
+// cannot hang resident shutdown indefinitely.
 //
 // Child stdout/stderr are forwarded to logger, one log record per line,
 // each tagged with the service id and stream — see
-// docs/design/plugin-packaging.md: "Service logs are attached to the bus
-// process log with the service id." They never reach the durable
+// docs/design/plugin-packaging.md: "Service logs are attached to the
+// resident process log with the service id." They never reach the durable
 // per-session event log; that log is for plect's own events, not a plugin
 // daemon's arbitrary output.
 func runProcess(ctx context.Context, decl Declaration, logger *slog.Logger, waitDelay time.Duration, onStart func(pid int)) error {

@@ -32,7 +32,7 @@ type Executable struct {
 }
 
 // Service is one [[services]] entry: a plugin-owned daemon supervised by
-// `plect bus serve`. Its full identity is `<plugin-id>/<name>`.
+// `plect serve`. Its full identity is `<plugin-id>/<name>`.
 type Service struct {
 	Name        string            `toml:"name"`
 	Executable  string            `toml:"executable"`

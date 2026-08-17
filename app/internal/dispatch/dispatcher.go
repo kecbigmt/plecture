@@ -17,7 +17,7 @@ import (
 )
 
 // dispatcherConsumer is this consumer's cursor name. The cursor is durable per
-// session, so it survives down/up; it assumes a single bus daemon (one
+// session, so it survives down/up; it assumes a single resident process (one
 // dispatcher per session process-wide).
 const dispatcherConsumer = "dispatcher"
 

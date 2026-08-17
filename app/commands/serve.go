@@ -14,17 +14,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/kecbigmt/plecture/app/internal/busservice"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/dispatch"
 	"github.com/kecbigmt/plecture/app/internal/eventbus"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/pluginservice"
 	"github.com/kecbigmt/plecture/app/internal/reactor"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
-var busSocket string
+var serveEventBusSocket string
 
 // liveConfigRefresh bounds how stale the daemon's view of mounted plugins
 // can get. Kept well above the 1s reconcile poll: resolving plugins hashes
@@ -33,15 +33,12 @@ var busSocket string
 // increasingly expensive one as the plugin set grows.
 const liveConfigRefresh = 30 * time.Second
 
-var busCmd = &cobra.Command{
-	Use:   "bus",
-	Short: "Event bus server",
-}
-
-var busServeCmd = &cobra.Command{
+var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Run the event bus server (HTTP/SSE fan-out over the per-session event log)",
-	Long: `Serve the durable event log over a Unix domain socket as an HTTP/SSE API:
+	Short: "Run the resident daemon",
+	Long: `Run the resident daemon that hosts Plecture's local runtime followers.
+
+It serves the durable event log over a Unix domain socket as an HTTP/SSE API:
 POST /v1/events (append), GET /v1/events (list), GET /v1/stream (SSE replay+live).
 
 The socket is created 0600, so same-user processes need no token; set
@@ -52,7 +49,7 @@ a plugin enabled after this command started becomes visible without a
 restart, within one refresh interval.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		socket := busSocket
+		socket := serveEventBusSocket
 		if socket == "" {
 			socket = defaultBusSocket()
 		}
@@ -119,14 +116,14 @@ restart, within one refresh interval.`,
 
 		// Plugin-declared [[services]] (a plugin-owned daemon such as a chat
 		// relay or an issue-tracker watcher) are supervised the same way:
-		// bus-started, bus-stopped, restarted on crash or on the owning
-		// plugin's content change. Polls config.LoadPlugins() itself rather
+		// started and stopped with the resident process, restarted on crash
+		// or on the owning plugin's content change. Polls config.LoadPlugins() itself rather
 		// than live.Get()/cfg.Plugins: services only need the mounted
 		// plugin list and lockfile, not a full re-resolved Config, and
 		// polling independently of live's 30s refresh keeps a plugin
-		// content change (a `plect plugin update` while the bus is
+		// content change (a `plect plugin update` while the resident process is
 		// running) picked up on the supervisor's own, tighter poll cycle.
-		svcSup := busservice.NewSupervisor(config.LoadPlugins)
+		svcSup := pluginservice.NewSupervisor(config.LoadPlugins)
 		var svcWG sync.WaitGroup
 		svcWG.Go(func() { svcSup.Run(ctx) })
 
@@ -135,7 +132,7 @@ restart, within one refresh interval.`,
 			_ = httpSrv.Close()
 		}()
 
-		fmt.Fprintf(cmd.ErrOrStderr(), "plect bus serving on %s (events: %s)\n", socket, store.Root())
+		fmt.Fprintf(cmd.ErrOrStderr(), "plect serve listening on %s (events: %s)\n", socket, store.Root())
 		serveErr := httpSrv.Serve(ln)
 		stop()         // cancel ctx so the supervisors tear down even if Serve failed without a signal
 		supWG.Wait()   // let the dispatch supervisor cancel and join its dispatchers
@@ -158,7 +155,6 @@ func defaultBusSocket() string {
 }
 
 func init() {
-	busServeCmd.Flags().StringVar(&busSocket, "socket", "", "Unix socket path (default $XDG_RUNTIME_DIR/plect/bus.sock)")
-	busCmd.AddCommand(busServeCmd)
-	rootCmd.AddCommand(busCmd)
+	serveCmd.Flags().StringVar(&serveEventBusSocket, "socket", "", "Unix socket path (default $XDG_RUNTIME_DIR/plect/bus.sock)")
+	rootCmd.AddCommand(serveCmd)
 }

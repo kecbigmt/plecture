@@ -359,12 +359,12 @@ include     = ["plect.instruction"]
 }
 
 // TestSupervisor_DeliversChannelDefinedOnlyInAPluginMountedAfterConstruction
-// reproduces the bus-daemon outage class: a channel definition that exists
+// reproduces the resident-daemon outage class: a channel definition that exists
 // only in a plugin layer (no global copy) must validate and deliver once the
 // supervisor's config getter reflects the plugin, even though the getter
 // returned a Config without that plugin when the Supervisor was built —
 // matching a long-running daemon whose config.Live refresh mounts a plugin
-// after `plect bus serve` started, not just after a restart.
+// after `plect serve` started, not just after a restart.
 func TestSupervisor_DeliversChannelDefinedOnlyInAPluginMountedAfterConstruction(t *testing.T) {
 	pluginDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "channels", "claude.toml"), `

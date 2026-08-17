@@ -1,4 +1,4 @@
-package busservice
+package pluginservice
 
 import (
 	"sort"
@@ -8,7 +8,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 )
 
-// Status is one service's bus-global running record — the fields the
+// Status is one service's resident-global running record — the fields the
 // plugin service lifecycle ADR's Consequences section calls out: service
 // identity, running state, pid, restart count, last exit, last error, last
 // health result, plugin id, and the content hash of the plugin that
@@ -27,11 +27,10 @@ type Status struct {
 }
 
 // StatusRegistry is an in-memory, thread-safe home for every declared
-// service's Status, owned by one bus process. It has no consumer yet beyond
+// service's Status, owned by one resident process. It has no consumer yet beyond
 // the Supervisor that maintains it and this package's own tests; a
-// cross-process view (a `plect bus status` command or an HTTP endpoint) is
-// deferred until something needs one, per the repository's YAGNI rule —
-// nothing here blocks adding that later.
+// cross-process view is deferred until something needs one, per the
+// repository's YAGNI rule — nothing here blocks adding that later.
 type StatusRegistry struct {
 	mu       sync.Mutex
 	statuses map[string]Status

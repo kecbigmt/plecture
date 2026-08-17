@@ -8,7 +8,7 @@ import (
 )
 
 // Live holds a *Config re-resolved from disk on a fixed interval, for a
-// long-running process (`plect bus serve`) that would otherwise pin the
+// long-running process (`plect serve`) that would otherwise pin the
 // plugin-mount layer to whatever existed at the moment it called Load. Every
 // other consumer (a CLI subcommand) is a short-lived process that calls Load
 // fresh per invocation, so it never goes stale; a daemon has no equivalent

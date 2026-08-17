@@ -253,8 +253,8 @@ func (reg *Registry) releaseRef(session string, r *reader) {
 	}
 }
 
-// Close cancels and joins every live reader (bus shutdown). This is the
-// belt-and-suspenders teardown for any reader still alive after subscribers,
+// Close cancels and joins every live reader during resident shutdown. This is
+// the belt-and-suspenders teardown for any reader still alive after subscribers,
 // dispatchers, and reactors have left; joining (see releaseRef) guarantees no
 // reader touches the log again once Close has returned.
 func (reg *Registry) Close() {

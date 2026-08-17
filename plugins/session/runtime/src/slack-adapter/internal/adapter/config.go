@@ -41,7 +41,7 @@ func LoadConfig() *Config {
 	// Env vars only fill a field config.toml left empty: config.toml is a
 	// file the user already fully controls, so an explicit value there is
 	// never silently overridden by whatever happens to be in the process
-	// environment. This is the credential path a bus-supervised
+	// environment. This is the credential path a resident-supervised
 	// [[services]] declaration's `required_env` gates on (see this
 	// plugin's plugin.toml) — plect never writes secrets into catalog
 	// content, so they arrive as environment instead.
