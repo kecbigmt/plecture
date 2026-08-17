@@ -52,10 +52,23 @@ The multiplexer seam is a core-owned terminal operation surface. A multiplexer
 task declares an opaque `interactive_endpoint` output and terminal operations
 that create or act on it: `create`, `attach`, `capture`, `send_text`,
 `send_keys`, `healthcheck`, and `cleanup`. `interactive_endpoint` is the
-binding those operations target; it is not a new top-level config kind. Agent
-runtime plugins and channels call the operations through plect's common
-surface, so they contain no tmux commands, no tmux output field knowledge, and
-no concrete multiplexer plugin references.
+binding those operations target; it is not a new top-level config kind.
+
+Terminal operations are invoked by template injection, generalizing the
+existing `{{bin "..."}}` helper. `{{terminal "send_text"}}`,
+`{{terminal "send_keys"}}`, `{{terminal "capture"}}`, and the other terminal
+operation templates ask plect to resolve the session's selected multiplexer
+task operation into the concrete command line declared by that task. The helper
+is available to consumer task hooks and channel arguments; channel command
+fields stay static, and injected command lines ride in rendered arguments like
+the existing enqueue-wrapper pattern. Agent runtime plugins and channels
+therefore contain no tmux commands, no tmux output field knowledge, and no
+concrete multiplexer plugin references.
+
+Plecture adds no CLI commands for terminal operations. Consumers must be
+declared task hooks or event channels, which keeps pane input inside the
+session's declared workflow surface. Manual debugging continues to use the
+existing `plect attach` and `plect show --capture` commands.
 
 `create` and `cleanup` are the existing task `setup` and `cleanup` hooks viewed
 through this operation contract, not new parallel task fields. `attach`,
@@ -70,6 +83,12 @@ newline instead of submission. Initial-prompt tasks therefore belong to the
 agent runtime plugin whose TUI receives the prompt, not to the multiplexer
 plugin. A terminal-submit event channel for an interactive TUI belongs to the
 agent runtime plugin as well.
+
+The existing tmux text-input channel splits along this contract when the split
+is implemented: its tmux command lines move behind injected terminal operation
+commands, while burst splitting, prompt-glyph and non-breaking-space readiness
+checks, backoff, and fail-loud behavior move into `session/codex`'s
+terminal-submit composition.
 
 When an agent runtime has a structured delivery channel, that channel is the
 supported event-delivery path because it is more robust than terminal key
@@ -137,16 +156,17 @@ knowledge, and use the GitHub guard without installing it as session-runtime
 behavior.
 
 Implementation work includes defining the task-level terminal operation
-surface, keeping `interactive_endpoint` as the opaque operation binding, moving
-initial-prompt and terminal-submit composition into the agent runtime plugins,
-adding the provider-neutral conversation event vocabulary, moving Slack
-delivery off channel-server socket subscriptions, moving the channel-server
-socket protocol out of `contracts/` when it has no cross-plugin consumer,
-splitting the current session runtime package into the selected plugins,
-dropping the `plect-` prefix from the session-runtime plugin executables when
-they move into `session/claude` and `session/codex`, moving `gh-guard` into the
-GitHub plugin, and adding a `docs/migrations/` entry for no-channel-server
-interactive Claude configurations.
+surface, adding the terminal operation template helper, keeping
+`interactive_endpoint` as the opaque operation binding, moving initial-prompt
+and terminal-submit composition into the agent runtime plugins, adding the
+provider-neutral conversation event vocabulary, moving Slack delivery off
+channel-server socket subscriptions, moving the channel-server socket protocol
+out of `contracts/` when it has no cross-plugin consumer, splitting the current
+session runtime package into the selected plugins, dropping the `plect-` prefix
+from the session-runtime plugin executables when they move into
+`session/claude` and `session/codex`, moving `gh-guard` into the GitHub plugin,
+and adding a `docs/migrations/` entry for no-channel-server interactive Claude
+configurations.
 
 This decision supersedes the plugin service lifecycle decision by carrying
 forward its service declaration and bus-supervision decisions while replacing
@@ -190,6 +210,17 @@ tool-specific command knowledge. That recreates the dependency the split is
 meant to remove. The reusable seam is therefore the task-declared operation
 surface, with `interactive_endpoint` kept only as the binding those operations
 target.
+
+### Name the template helper `op` or `operation`
+
+`{{op "send_text"}}` is rejected because abbreviations are not part of the
+contract vocabulary. `{{operation "send_text"}}` is rejected because it does
+not name the terminal operation surface and would collide conceptually with
+other operation-shaped concepts later. `{{terminal_operation "send_text"}}` is
+rejected because it repeats the surface name without adding disambiguating
+meaning. `{{terminal "send_text"}}` keeps the helper in the terminal operation
+vocabulary and follows the literal-string convention already used by
+`{{bin "..."}}`.
 
 ### Require Herdr's richer multiplexer API
 

@@ -90,9 +90,23 @@ tools into consumers:
 | `healthcheck` | check the tmux session and pane | `agent.get` or pane existence |
 | `cleanup` | kill the tmux session or pane | `pane.close` |
 
-Agent runtime plugins and channels call these operations through plect's common
-surface. They do not invoke multiplexer commands, inspect multiplexer-specific
-output fields, or name a concrete multiplexer plugin.
+Agent runtime plugins and channels call these operations through terminal
+operation template injection. `{{terminal "send_text"}}`,
+`{{terminal "send_keys"}}`, `{{terminal "capture"}}`, and the other terminal
+operation templates resolve the session's selected multiplexer task operation
+into the concrete command line declared by that task. The helper is available
+to consumer task hooks and channel arguments, following the same literal-name
+template convention as `{{bin "..."}}`. Channels keep a static command and
+receive rendered terminal operation command lines through their arguments, so
+args-only channel rendering remains sufficient.
+
+Plecture does not expose CLI commands for terminal operations. Terminal
+operation consumers are declared task hooks and event channels only. Manual
+debugging stays on the existing `plect attach` and `plect show --capture`
+commands.
+
+Agent runtime plugins and channels do not invoke multiplexer commands, inspect
+multiplexer-specific output fields, or name a concrete multiplexer plugin.
 
 Terminal operations are raw verbs. They do not define an agent submit protocol,
 readiness predicate, prompt-glyph vocabulary, retry schedule, or burst-splitting
@@ -111,6 +125,15 @@ no-channel-server interactive Claude configuration is outside this supported
 surface. `session/codex` ships a terminal-submit event channel for its
 interactive TUI shape because Codex interactive has no structured transport.
 `session/tmux` does not ship agent-TUI submit or readiness composition.
+
+`session/codex`'s terminal-submit channel composes raw terminal operations into
+Codex TUI delivery. The multiplexer command positions are injected terminal
+operation command lines: literal message delivery uses
+`{{terminal "send_text"}}`, submit-key delivery uses
+`{{terminal "send_keys"}}`, and verification uses `{{terminal "capture"}}`.
+The burst split, prompt-glyph and non-breaking-space readiness predicate,
+backoff schedule, and fail-loud behavior belong to `session/codex` because they
+describe the Codex TUI submit contract, not the multiplexer.
 
 The operation surface lets a workflow swap one multiplexer implementation for
 another by replacing the producer node. Agent plugins depend on the core
