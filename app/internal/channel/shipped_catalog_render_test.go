@@ -11,7 +11,7 @@ import (
 )
 
 // TestShippedCatalog_ChannelsRender renders every channel definition shipped
-// by this repository's official catalog (the session/runtime plugin)
+// by this repository's official catalog (the claude/codex/slack plugins)
 // against a sample event, so a template typo in one of those channels'
 // command/args/path/body fails CI instead of only surfacing at delivery.
 func TestShippedCatalog_ChannelsRender(t *testing.T) {
@@ -22,13 +22,15 @@ func TestShippedCatalog_ChannelsRender(t *testing.T) {
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
 
 	dirs := []string{
-		filepath.Join(repoRoot, "plugins", "session", "runtime"),
+		filepath.Join(repoRoot, "plugins", "claude"),
+		filepath.Join(repoRoot, "plugins", "codex"),
+		filepath.Join(repoRoot, "plugins", "slack"),
 	}
 	channels, err := (&config.Config{PluginDirs: dirs}).LoadChannels()
 	if err != nil {
 		t.Fatalf("LoadChannels(shipped catalog): %v", err)
 	}
-	for _, id := range []string{"tmux_send_keys", "claude", "codex_exec", "slack"} {
+	for _, id := range []string{"terminal_submit", "claude", "codex_exec", "slack"} {
 		if _, ok := channels[id]; !ok {
 			t.Errorf("shipped catalog channel %q not found", id)
 		}

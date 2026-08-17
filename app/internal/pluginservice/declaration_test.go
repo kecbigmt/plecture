@@ -10,8 +10,8 @@ import (
 func TestBuildDeclarations_ResolvesExecPathAndContentHash(t *testing.T) {
 	mounted := []plugins.Mounted{
 		{
-			ID:  "official/session/runtime",
-			Dir: "/mnt/session-runtime",
+			ID:  "official/example-runtime",
+			Dir: "/mnt/example-runtime",
 			Manifest: plugins.Manifest{
 				Executables: []plugins.Executable{
 					{Name: "channel-server", Path: "bin/channel-server"},
@@ -32,7 +32,7 @@ func TestBuildDeclarations_ResolvesExecPathAndContentHash(t *testing.T) {
 	}
 	lock := &plugins.Lockfile{
 		Plugins: []plugins.PluginLockEntry{
-			{ID: "official/session/runtime", ContentHash: "sha256:abc"},
+			{ID: "official/example-runtime", ContentHash: "sha256:abc"},
 		},
 	}
 
@@ -44,13 +44,13 @@ func TestBuildDeclarations_ResolvesExecPathAndContentHash(t *testing.T) {
 		t.Fatalf("decls = %+v, want 1", decls)
 	}
 	d := decls[0]
-	if d.ID != "official/session/runtime/channel-server" {
+	if d.ID != "official/example-runtime/channel-server" {
 		t.Errorf("ID = %q", d.ID)
 	}
-	if d.PluginID != "official/session/runtime" {
+	if d.PluginID != "official/example-runtime" {
 		t.Errorf("PluginID = %q", d.PluginID)
 	}
-	wantExec := filepath.Join("/mnt/session-runtime", "bin/channel-server")
+	wantExec := filepath.Join("/mnt/example-runtime", "bin/channel-server")
 	if d.ExecPath != wantExec {
 		t.Errorf("ExecPath = %q, want %q", d.ExecPath, wantExec)
 	}
@@ -85,8 +85,8 @@ func TestBuildDeclarations_MultiplePluginsMultipleServices(t *testing.T) {
 			},
 		},
 		{
-			ID:  "official/session/runtime",
-			Dir: "/mnt/session-runtime",
+			ID:  "official/example-runtime",
+			Dir: "/mnt/example-runtime",
 			Manifest: plugins.Manifest{
 				Executables: []plugins.Executable{
 					{Name: "channel-server", Path: "bin/channel-server"},
@@ -113,8 +113,8 @@ func TestBuildDeclarations_MultiplePluginsMultipleServices(t *testing.T) {
 	}
 	for _, want := range []string{
 		"official/github/github-watcher",
-		"official/session/runtime/channel-server",
-		"official/session/runtime/slack-adapter",
+		"official/example-runtime/channel-server",
+		"official/example-runtime/slack-adapter",
 	} {
 		if !ids[want] {
 			t.Errorf("missing declaration %q in %v", want, ids)

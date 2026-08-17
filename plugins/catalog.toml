@@ -6,15 +6,26 @@
 # catalog plugins themselves: legacy-migration is a standalone one-time
 # migration tool, not something `plect plugin add` ever enables. Explicit
 # enumeration below, not directory presence, is what makes a plugin
-# published. A listed plugin's own `src/` (github, okf, session/runtime) is
+# published. A listed plugin's own `src/` (github, okf, claude, slack) is
 # its build source, never itself catalog-addressable — see
 # docs/design/plugin-packaging.md's Package format section for the src/
 # bin/ scripts/ layout convention.
+#
+# tmux/claude/codex/slack are flat ids, not grouped under a shared
+# directory: docs/adr/2026-08-17-plugin-boundary-contracts.md rejected a
+# `session/` grouping directory because "session" discriminates nothing in
+# this catalog (every plugin serves sessions) and would mix different
+# kinds of plugin under one taxonomy. They replace the former
+# `session/runtime` plugin, split along the terminal/agent-runtime/
+# chat-delivery boundary that plugin used to merge.
 schema_version = 1
 description = "Plecture's official plugin catalog: reusable workspace provider, resource, task, and channel packs shipped from this repository."
 
 plugins = [
-  "session/runtime",
+  "tmux",
+  "claude",
+  "codex",
+  "slack",
   "okf",
   "github",
 ]

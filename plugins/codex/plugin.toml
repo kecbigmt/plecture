@@ -1,0 +1,19 @@
+schema_version = 1
+version = "0.1.0"
+# 0.0.0 matches app/internal/version.Current ("0.0.0-dev"): plect has no
+# release/tagging process yet, so any higher floor would reject the plugin
+# against every build until real versioning exists.
+plect_min_version = "0.0.0"
+description = "Codex TUI and codex exec launch tasks, initial-prompt/terminal-submit readiness composition, and the headless exec worker/enqueue pair."
+
+[[executables]]
+name = "codex-agent-activity"
+path = "scripts/codex-agent-activity"
+
+[[executables]]
+name = "codex-exec-worker"
+path = "scripts/codex-exec-worker"
+
+[[executables]]
+name = "codex-exec-enqueue"
+path = "scripts/codex-exec-enqueue"

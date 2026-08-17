@@ -64,6 +64,19 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 		Plugins:          mounted,
 		ParentSession:    "",
 		Inputs:           map[string]any{},
+		// Every shipped claude/codex task hook composes {{terminal "..."}}
+		// against whichever task in the plan declares [terminal] — this
+		// kitchen-sink render has no real tmux task in scope, so a stub
+		// binding stands in for it.
+		Terminal: &TerminalBinding{
+			Ops: &config.TerminalConfig{
+				Attach:   "tmux attach -t test-session",
+				Capture:  "tmux capture-pane -p -t test-session",
+				SendText: `tmux send-keys -t test-session -- "$1"`,
+				SendKeys: `tmux send-keys -t test-session "$1"`,
+			},
+			Outputs: map[string]any{"session_name": "test-session"},
+		},
 	}
 
 	// Superset of every key a shipped task's setup/cleanup/healthcheck reads
@@ -79,15 +92,18 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 		"state_dir":      "/tmp/plect-codex-exec/test-session",
 		"sent":           "true",
 		"session_name":   "test-session",
+		"dir":            "/tmp/plect-gh-guard.x",
 	}
 	inputs := map[string]any{
-		"tmux_session":  "test-session",
-		"model":         "fable",
-		"effort":        "high",
-		"template":      "",
-		"agent_session": "",
-		"repeat":        "",
-		"owner":         "acme",
+		"tmux_session":   "test-session",
+		"terminal_ready": "test-session",
+		"model":          "fable",
+		"effort":         "high",
+		"path_prepend":   "/tmp/plect-gh-guard.x",
+		"template":       "",
+		"agent_session":  "",
+		"repeat":         "",
+		"owner":          "acme",
 	}
 
 	for id, def := range tasks {
