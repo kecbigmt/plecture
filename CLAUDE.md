@@ -264,6 +264,7 @@ the breaking change — not as follow-up work.
   Phrasing like "currently", "instead of", "previously", or before/after
   framing inside a design document is a smell that the content is ADR
   material.
+- Read `docs/design/README.md` before authoring or revising a design document.
 - **Migration procedures** stay in `docs/migrations/` (see Compatibility
   policy above) — they are not ADRs or design documents.
 - All of the above is English-only prose; use `docs/naming.md` for project
