@@ -12,13 +12,22 @@ placement-as-kind and table-declared layouts.
 
 ## Backup
 
-Back up global config and any trusted repo overlays before editing:
+Back up global config, runtime state, and any trusted repo overlays before
+editing:
 
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/plect}"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+BACKUP_DIR="$CONFIG_HOME.migration-backup.$STAMP"
 
-cp -r "$CONFIG_HOME" "$CONFIG_HOME.migration-backup.$STAMP"
+mkdir -p "$BACKUP_DIR"
+cp -r "$CONFIG_HOME" "$BACKUP_DIR/config-home"
+
+if [ -f "$DATA_DIR/state.json" ]; then
+  mkdir -p "$BACKUP_DIR/state"
+  cp "$DATA_DIR/state.json" "$BACKUP_DIR/state/state.json"
+fi
 
 find . -type d -name .plect -prune -print | while read -r OVERLAY; do
   cp -r "$OVERLAY" "$OVERLAY.migration-backup.$STAMP"
@@ -26,7 +35,8 @@ done
 ```
 
 If you use hand-authored plugin directories outside a catalog, back up each
-plugin directory too.
+plugin directory too. Runtime state stays under the XDG data dir even when
+`--config-home` points at a different config tree.
 
 ## Add Definition Tables
 
@@ -129,9 +139,9 @@ If a workflow node omits `id`, its node id defaults to the referenced task id.
 For `uses = "official.claude.runtime"`, the default node id is `runtime`. Add
 explicit node ids when two nodes would otherwise default to the same id.
 
-Catalog aliases and plugin path segments must use the same lexical rule as
-definition ids, `^[A-Za-z_][A-Za-z0-9_]*$`, so dotted references can be parsed
-without ambiguity.
+Catalog aliases and plugin path segments must be non-empty dot-free segments
+matching `^[A-Za-z0-9_-]+$`, so dotted references can be parsed without
+ambiguity. Hyphens are valid in aliases and plugin path segments.
 
 ## Update Shipped Plugin References
 
@@ -160,6 +170,51 @@ ids, update them to the responsibility names:
 The `github` task ids `work`, `review`, `respond`, `investigate`, and
 `gh_guard` do not change. The `codex` channel id `terminal_submit` does not
 change. The `okf` task id `pursue_goal` does not change.
+
+## Update Frozen Workflow State
+
+The new definition id syntax invalidates workflow ids that contain dots or
+hyphens. Existing sessions freeze their workflow id in runtime `state.json`.
+Before renaming a workflow id, find sessions and done-when judge records that
+refer to the old id:
+
+```bash
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
+STATE="$DATA_DIR/state.json"
+OLD_WORKFLOW="coding-claude"
+
+jq -r --arg old "$OLD_WORKFLOW" '
+  .sessions // {}
+  | to_entries[]
+  | select(.value.workflow == $old)
+  | .key
+' "$STATE"
+
+jq -r --arg old "$OLD_WORKFLOW" '
+  .. | objects | select(.reviewer_workflow? == $old) | .reviewer_workflow
+' "$STATE"
+```
+
+For each renamed workflow id, either destroy and recreate affected sessions with
+the new workflow id, or rewrite `state.json` after taking the backup above.
+Destroying and recreating is the normal remedy when a session's frozen workflow
+does not match the requested workflow. Rewriting preserves the session record:
+
+```bash
+OLD_WORKFLOW="coding-claude"
+NEW_WORKFLOW="coding_claude"
+TMP="$(mktemp)"
+
+jq --arg old "$OLD_WORKFLOW" --arg new "$NEW_WORKFLOW" '
+  (.sessions[]? | select(.workflow == $old) | .workflow) = $new
+  | (.. | objects | select(.reviewer_workflow? == $old) | .reviewer_workflow) = $new
+' "$STATE" > "$TMP"
+
+mv "$TMP" "$STATE"
+```
+
+Check both session `workflow` fields and done-when `reviewer_workflow` fields
+because reviewer workflow names are stamped in state at record time.
 
 ## Convert Same-Id Plugin Overrides
 
@@ -243,8 +298,17 @@ reference site.
 Restore the backed-up config and use a plect binary built before this change:
 
 ```bash
+CONFIG_HOME="${PLECT_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/plect}"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
+BACKUP_DIR="$CONFIG_HOME.migration-backup.$STAMP"
+
 rm -rf "$CONFIG_HOME"
-mv "$CONFIG_HOME.migration-backup.$STAMP" "$CONFIG_HOME"
+mv "$BACKUP_DIR/config-home" "$CONFIG_HOME"
+
+if [ -f "$BACKUP_DIR/state/state.json" ]; then
+  mkdir -p "$DATA_DIR"
+  cp "$BACKUP_DIR/state/state.json" "$DATA_DIR/state.json"
+fi
 ```
 
 Restore any backed-up `.plect` overlay or hand-authored plugin directory the

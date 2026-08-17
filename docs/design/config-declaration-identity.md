@@ -193,9 +193,10 @@ References are dotted addresses:
 <catalog-alias>.<plugin-path>.<id>
 ```
 
-Catalog aliases and plugin path segments use the same lexical rule as
-definition ids, `^[A-Za-z_][A-Za-z0-9_]*$`. Dots are not valid inside aliases or
-plugin path segments because dots separate address segments.
+Catalog aliases and plugin path segments are non-empty dot-free segments
+matching `^[A-Za-z0-9_-]+$`. Dots are not valid inside aliases or plugin path
+segments because dots separate address segments. Hyphens are valid because
+aliases and plugin path segments never become workflow node ids.
 
 The relative form, `<id>`, refers to a definition in the same plugin or in the
 user-owned layer stack. In user-owned config, a relative reference that would
@@ -320,7 +321,7 @@ layer. The directory name `review/` has no semantic effect.
   even when their kinds differ.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
 - Catalog aliases and plugin path segments must match
-  `^[A-Za-z_][A-Za-z0-9_]*$`.
+  `^[A-Za-z0-9_-]+$`.
 - A stored reference must use either the relative `<id>` form or the
   catalog-qualified `<catalog-alias>.<plugin-path>.<id>` form.
 - A user-owned reference to catalog content must include the catalog alias.

@@ -82,10 +82,12 @@ plugin authors, and cross-plugin references remain banned by the plugin boundary
 rules. A user-owned relative reference that would select catalog content is a
 load error.
 
-Catalog aliases and plugin path segments use the same lexical rule as
-definition ids, `^[A-Za-z_][A-Za-z0-9_]*$`, because dots separate address
-segments. A catalog-qualified reference selects the longest enabled plugin path
-under the named catalog alias; the remaining final segment is the definition id.
+Catalog aliases and plugin path segments are non-empty dot-free segments
+matching `^[A-Za-z0-9_-]+$`. Dots are not valid inside aliases or plugin path
+segments because dots separate address segments. Hyphens are valid because
+aliases and plugin path segments never become workflow node ids. A
+catalog-qualified reference selects the longest enabled plugin path under the
+named catalog alias; the remaining final segment is the definition id.
 
 Reference sites declare their expected kind. A workflow node `uses` field
 expects `task`, workflow event channel bindings expect `channel`,
@@ -174,6 +176,12 @@ task or partially extend a plugin workflow must make that customization
 explicit: define a user-owned replacement workflow or task, update user-owned
 entrypoints and references to the relative address, and use catalog-qualified
 references for any plugin definitions the replacement still composes.
+
+Renaming workflow ids that do not match the new definition-id syntax also
+affects runtime state. Existing sessions freeze the workflow id in `state.json`,
+and done-when judge records may stamp `reviewer_workflow`. The migration must
+back up runtime state and either rewrite those frozen workflow fields or have
+operators destroy and recreate affected sessions.
 
 The migration inserts definition tables and required `kind` fields into shipped
 plugin declarations, renames shipped responsibility ids, nests existing
