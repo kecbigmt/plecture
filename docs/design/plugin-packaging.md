@@ -917,13 +917,13 @@ Catalog registration and plugin enablement:
 plect catalog add official git+https://github.com/example/plect-plugins --revision v0.3.0
 plect plugin add official/tmux
 plect plugin add official/claude
-plect plugin add official/slack-delivery
+plect plugin add official/slack
 plect plugin update official/claude
 ```
 
 `plect plugin update official/claude` fetches the newest catalog
 snapshot and repoints only `official/claude`; `official/tmux`,
-`official/slack-delivery`, and `official/github` stay at their locked
+`official/slack`, and `official/github` stay at their locked
 coordinates until explicitly updated.
 
 Catalog-owned files:
@@ -949,15 +949,15 @@ codex/scripts/codex-agent-activity
 codex/src/codex-helpers/go.mod
 codex/src/codex-helpers/cmd/codex-exec-worker/main.go
 codex/src/codex-helpers/cmd/codex-exec-enqueue/main.go
-slack-delivery/plugin.toml
-slack-delivery/config/channels/slack.toml
-slack-delivery/src/slack-adapter/go.mod
-slack-delivery/src/slack-adapter/cmd/slack-adapter/main.go
+slack/plugin.toml
+slack/config/channels/slack.toml
+slack/src/slack-adapter/go.mod
+slack/src/slack-adapter/cmd/slack-adapter/main.go
 ```
 
 `claude/bin/channel-server`, `codex/bin/codex-exec-worker`,
 `codex/bin/codex-exec-enqueue`, and
-`slack-delivery/bin/slack-adapter` are what `plect plugin add`/`update`
+`slack/bin/slack-adapter` are what `plect plugin add`/`update`
 produce from source modules at add/update time — build output, not catalog
 content, so they are never committed (see the Package format section's
 `src`/`bin`/`scripts` split).

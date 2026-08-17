@@ -109,8 +109,10 @@ out of `contracts/` when it has no cross-plugin consumer, splits the current
 session runtime package into the selected plugins, drops the `plect-` prefix
 from the session-runtime plugin executables when they move into
 `claude` and `codex`, moves `gh-guard` into the GitHub plugin,
-and adds a `docs/migrations/` entry for no-channel-server interactive Claude
-configurations.
+adds a `docs/migrations/` entry for no-channel-server interactive Claude
+configurations, and replaces `slack` tests' direct channel-server server import
+with a protocol-conformant fake owned by the `slack` module until Slack
+delivery moves to conversation-event bus rendezvous.
 
 This decision supersedes the plugin service lifecycle decision by carrying
 forward its service declaration and bus-supervision decisions while replacing
@@ -189,6 +191,20 @@ plugin ids. Flat ids such as `official/claude` and `official/tmux` are
 unambiguous because catalog entries are curated and enumerated. Classification
 lives in the design note's plugin table, not the filesystem. This can be
 revisited if the curated catalog grows beyond about twenty plugins.
+
+### Name the Slack plugin `slack-delivery`
+
+`slack-delivery` is rejected because the GitHub precedent names a plugin after
+the external system and lets the plugin contain whatever that integration
+requires. After flattening, `tmux`, `claude`, `codex`, and `github` are bare
+tool or service names; `slack-delivery` would be the only tool-plus-function
+compound.
+
+The suffix names one implementation facet and would rot if the plugin grows a
+second Slack surface. A future second Slack plugin is speculative in a curated
+catalog: extend `slack` first, and split by concrete need later. The layers are
+therefore provider-neutral conversation events in core and concrete `slack` at
+the plugin layer.
 
 ### Put submit and readiness composition in the multiplexer plugin
 

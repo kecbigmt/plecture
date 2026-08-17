@@ -36,7 +36,7 @@ plugins:
 | `tmux` | tmux-backed interactive endpoint task and terminal operation declarations | interactive endpoint, terminal operations, task lifecycle | agent CLIs, agent-TUI submit/readiness logic, chat delivery, VCS guards |
 | `claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, structured Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
 | `codex` | Codex TUI and `codex exec` launch tasks, initial-prompt and terminal-submit readiness logic, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
-| `slack-delivery` | Slack adapter service, Slack thread binding, Slack event ingress and egress | conversation events, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
+| `slack` | Slack adapter service, Slack thread binding, Slack event ingress and egress | conversation events, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
 | `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource definitions, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
 
 A plugin with only workflow, task, channel, template, or other configuration
@@ -156,14 +156,14 @@ Core owns these conversation event types:
 
 A Slack-to-agent flow uses the bus as the rendezvous:
 
-1. `slack-delivery` receives a Slack message and publishes
+1. `slack` receives a Slack message and publishes
    `conversation.message` with opaque Slack correlation metadata.
 2. `claude` consumes `conversation.message` through its structured
    channel-server delivery path, or `codex` consumes the same event
    through its terminal-submit channel.
 3. The agent runtime publishes `conversation.reply` or
    `conversation.permission_request`.
-4. `slack-delivery` maps those events back to the bound Slack thread.
+4. `slack` maps those events back to the bound Slack thread.
 5. A Slack decision publishes `conversation.permission_reply` for the waiting
    runtime.
 
