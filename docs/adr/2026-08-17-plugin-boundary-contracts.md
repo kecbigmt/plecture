@@ -30,9 +30,9 @@ CLI, or terminal multiplexer exists.
 ## Decision
 
 Plecture keeps first-class plugin service declarations from the superseded
-service-lifecycle decision. `plugin.toml` continues to support bus-supervised
-`[[services]]` entries for plugin-owned daemons, with provider-agnostic
-declarations and user-owned secret material.
+service-lifecycle decision. `plugin.toml` continues to support
+resident-supervised `[[services]]` entries for plugin-owned daemons, with
+provider-agnostic declarations and user-owned secret material.
 
 Plecture replaces the merge-first boundary rule with a core-contract boundary
 rule: when a reusable runtime contract would cross a plugin boundary, the
@@ -78,17 +78,19 @@ required by this decision.
 
 ## Consequences
 
-Only the `plect bus serve` unit remains host-owned. Plugin daemons become part
-of the mounted plugin surface and are supervised by the bus.
+Only the `plect serve` resident process remains host-owned. Plugin daemons
+become part of the mounted plugin surface and are supervised by the plugin
+service supervisor.
 
-Service state is bus-global and includes service identity, running state, pid,
-restart count, last exit, last error, last health result, plugin id, and the
-plugin lock coordinate or content hash that produced the running process.
+Service state is resident-process-global and includes service identity, running
+state, pid, restart count, last exit, last error, last health result, plugin id,
+and the plugin lock coordinate or content hash that produced the running
+process.
 
-Core needs manifest parsing and validation for `[[services]]`, a bus-owned
-service supervisor, a service status model, and plugin update/remove signaling
-or lockfile polling. It does not need plugin dependency parsing, dependency
-closure checks, capability matching, or version solving.
+Core needs manifest parsing and validation for `[[services]]`, a
+resident-process-owned service supervisor, a service status model, and plugin
+update/remove signaling or lockfile polling. It does not need plugin dependency
+parsing, dependency closure checks, capability matching, or version solving.
 
 Core grows only where a contract is durable across concrete technologies:
 terminal operations, opaque interactive endpoint bindings, and conversation
@@ -112,13 +114,13 @@ from the session-runtime plugin executables when they move into
 adds a `docs/migrations/` entry for no-channel-server interactive Claude
 configurations, and replaces `slack` tests' direct channel-server server import
 with a protocol-conformant fake owned by the `slack` module until Slack
-delivery moves to conversation-event bus rendezvous. The implementation removes
+delivery moves to conversation-event rendezvous. The implementation removes
 the channel-server `require` and relative `replace ../channel-server` edge from
 `slack-adapter/go.mod` and runs `go mod tidy`.
 
 This decision supersedes the plugin service lifecycle decision by carrying
-forward its service declaration and bus-supervision decisions while replacing
-its merge-first plugin-boundary remedy.
+forward its service declaration and plugin service supervision decisions while
+replacing its merge-first plugin-boundary remedy.
 
 ## Alternatives considered
 
