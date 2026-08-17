@@ -2,10 +2,11 @@
 
 The session runtime surface for Claude Code and Codex CLI: shared tmux pane
 lifecycle, per-agent launch tasks, the channel-server/slack-adapter delivery
-daemons, and the Slack delivery channel that talks to them. One plugin
-because these pieces share runtime contracts that a plugin boundary must not
-cut through — see `docs/adr/2026-08-16-plugin-service-lifecycle.md`'s
-Plugin Boundary Rule.
+daemons, and the Slack delivery channel that talks to them.
+
+This package is the existing implementation shape. The split boundary for
+future runtime packages is specified in
+`docs/design/plugin-boundary-contracts.md`.
 
 ## Contents
 
@@ -64,8 +65,9 @@ Plugin Boundary Rule.
   The claude/codex/codex_exec tasks' setup symlinks this onto the
   session's `PATH` as `gh` only when the task's `gh_guard` input is set —
   unset (the default) launches with no shim, byte-identical to before this
-  input existed. One copy shared by all three tasks (previously shipped as
-  two duplicate copies across the plugins this one merges).
+  input existed. One copy is shared by all three tasks in this package.
+  Future split ownership is specified in
+  `docs/design/plugin-boundary-contracts.md`.
 - `src/channel-server/` — generic message delivery to Claude Code, with no
   knowledge of message sources (Slack or otherwise). See
   `src/channel-server/CLAUDE.md`.

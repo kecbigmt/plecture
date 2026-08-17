@@ -41,16 +41,12 @@ name = "slack-adapter"
 path = "bin/slack-adapter"
 build = "go -C src/slack-adapter build -o ../../bin/slack-adapter ./cmd/slack-adapter"
 
-# channel-server today runs one instance per Claude Code session, launched
-# by Claude itself through MCP configuration with a session-specific
-# CHANNEL_SOCKET_PATH (see the claude task's setup script) — not a single
-# resident-global daemon. Declaring it as a service still satisfies the adoption
-# boundary this ADR names ("enabling a plugin should make its daemons known
-# to Plecture"), but required_env intentionally names a variable the
-# resident process's own environment never sets: the declared instance stays
-# inert by design until a future change moves the per-session lifecycle
-# under the resident process, per docs/adr/2026-08-16-plugin-service-lifecycle.md's
-# Consequences section.
+# channel-server is declared as a service so it is visible in plugin service
+# status, but the resident process must not start a single global instance while
+# Claude Code launches one instance per session with a session-specific
+# CHANNEL_SOCKET_PATH. required_env intentionally names that per-session
+# variable so the resident-supervised declaration stays inert until the
+# per-session lifecycle moves under the resident process.
 [[services]]
 name = "channel-server"
 executable = "channel-server"
