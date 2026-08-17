@@ -9,7 +9,7 @@ import (
 )
 
 func TestFetchOutput_Single(t *testing.T) {
-	ctx := RenderContext{Session: SessionVars{ResourceID: "pr5", WorkdirPath: t.TempDir()}}
+	ctx := RenderContext{Session: SessionVars{ResourceID: "pr5", WorkspaceDirPath: t.TempDir()}}
 	v, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Name: "res", Script: "printf '  {{.ResourceID}} \\n'"}, ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +21,7 @@ func TestFetchOutput_Single(t *testing.T) {
 
 // One fetch yields several outputs from a JSON object — no per-field re-run.
 func TestFetchOutput_Produces(t *testing.T) {
-	ctx := RenderContext{Session: SessionVars{WorkdirPath: t.TempDir()}}
+	ctx := RenderContext{Session: SessionVars{WorkspaceDirPath: t.TempDir()}}
 	src := config.DynamicOutput{
 		Produces: []string{"pr_state", "review_decision", "checks"},
 		Script:   `echo '{"pr_state":"OPEN","review_decision":"APPROVED","checks":3}'`,
@@ -37,7 +37,7 @@ func TestFetchOutput_Produces(t *testing.T) {
 
 // A produced key the JSON omits is left unset (→ check pending), not an error.
 func TestFetchOutput_ProducesMissingKeyUnset(t *testing.T) {
-	ctx := RenderContext{Session: SessionVars{WorkdirPath: t.TempDir()}}
+	ctx := RenderContext{Session: SessionVars{WorkspaceDirPath: t.TempDir()}}
 	v, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Produces: []string{"a", "b"}, Script: `echo '{"a":"x"}'`}, ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +48,7 @@ func TestFetchOutput_ProducesMissingKeyUnset(t *testing.T) {
 }
 
 func TestFetchOutput_NonZeroExitIsFetchFailure(t *testing.T) {
-	ctx := RenderContext{Session: SessionVars{WorkdirPath: t.TempDir()}}
+	ctx := RenderContext{Session: SessionVars{WorkspaceDirPath: t.TempDir()}}
 	v, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Name: "x", Script: "echo boom >&2; exit 3"}, ctx)
 	if v != nil || err == nil {
 		t.Errorf("fetch failure must yield nil values + error, got v=%v err=%v", v, err)
@@ -56,14 +56,14 @@ func TestFetchOutput_NonZeroExitIsFetchFailure(t *testing.T) {
 }
 
 func TestFetchOutput_ProducesNonObjectIsError(t *testing.T) {
-	ctx := RenderContext{Session: SessionVars{WorkdirPath: t.TempDir()}}
+	ctx := RenderContext{Session: SessionVars{WorkspaceDirPath: t.TempDir()}}
 	if _, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Produces: []string{"a"}, Script: "echo not-json"}, ctx); err == nil {
 		t.Error("non-JSON stdout for a produces group must error")
 	}
 }
 
 func TestFetchOutput_TemplateError(t *testing.T) {
-	ctx := RenderContext{Session: SessionVars{WorkdirPath: t.TempDir()}}
+	ctx := RenderContext{Session: SessionVars{WorkspaceDirPath: t.TempDir()}}
 	if _, err := FetchOutput(context.Background(), &config.Config{}, config.DynamicOutput{Name: "x", Script: "echo {{.Bogus}}"}, ctx); err == nil {
 		t.Error("a bad template must error before running")
 	}
@@ -120,19 +120,19 @@ func TestFetchOutput_FromResourceStatus_PassesSessionWorkdirPath(t *testing.T) {
 	}
 	if err := os.WriteFile(cfg.BaseDir+"/resources/echo.toml", []byte(`
 match   = '.*'
-observe = "printf '{\"workdir_path\":\"%s\"}' '{{.WorkdirPath}}'"
+observe = "printf '{\"workspace_dir_path\":\"%s\"}' '{{.WorkspaceDirPath}}'"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	workdir := t.TempDir()
-	ctx := RenderContext{Session: SessionVars{ResourceID: "x", WorkdirPath: workdir}}
-	src := config.DynamicOutput{Produces: []string{"workdir_path"}, FromResourceStatus: true}
+	ctx := RenderContext{Session: SessionVars{ResourceID: "x", WorkspaceDirPath: workdir}}
+	src := config.DynamicOutput{Produces: []string{"workspace_dir_path"}, FromResourceStatus: true}
 	v, err := FetchOutput(context.Background(), cfg, src, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v["workdir_path"] != workdir {
-		t.Errorf("workdir_path = %q, want the instance's session workdir path threaded into observe", v["workdir_path"])
+	if v["workspace_dir_path"] != workdir {
+		t.Errorf("workspace_dir_path = %q, want the instance's session workdir path threaded into observe", v["workspace_dir_path"])
 	}
 }
 

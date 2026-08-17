@@ -439,8 +439,8 @@ func (m *Manager) refExists(ctx context.Context, gitDir, ref string) bool {
 // resolveDefaultBranch picks the branch new work starts from: a per-repo
 // override recorded at <repoDir>/.plect/base-branch when present, otherwise
 // the remote's actual default. The override is a plain file on the
-// repository container rather than provider config because providers don't
-// cascade to individual repo layers — a git-flow repo that branches from
+// repository container rather than workspace provider config because
+// workspace providers don't cascade to individual repo layers — a git-flow repo that branches from
 // `develop`, not GitHub's own default, has no other place to record that.
 func (m *Manager) resolveDefaultBranch(ctx context.Context, repoDir, gitDir string) string {
 	if override, err := os.ReadFile(filepath.Join(repoDir, ".plect", "base-branch")); err == nil {

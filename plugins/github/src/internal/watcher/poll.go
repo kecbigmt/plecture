@@ -24,7 +24,7 @@ import (
 
 // sourceGitHub and typeGitHubPrefix are this plugin's own values for the
 // generic event.Source/event.Type fields — the shared contracts/event
-// package stays provider-agnostic and does not know these names.
+// package stays workspace-provider-agnostic and does not know these names.
 const (
 	sourceGitHub     = "github"
 	typeGitHubPrefix = "github." // github.<change type>

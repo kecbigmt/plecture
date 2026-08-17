@@ -53,7 +53,7 @@ func TestLoad_WithConfigFile(t *testing.T) {
 	}
 
 	configContent := `
-workdirs_root = "~/my-workdirs"
+workspace_dirs_root = "~/my-workspace-dirs"
 resource_allowlist = ["^https://example\\.test/org/", "^https://example\\.test/other/"]
 detached = false
 `
@@ -65,8 +65,8 @@ detached = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.WorkdirsRoot != filepath.Join(tmpHome, "my-workdirs") {
-		t.Errorf("WorkdirsRoot = %q, want %q", cfg.WorkdirsRoot, filepath.Join(tmpHome, "my-workdirs"))
+	if cfg.WorkspaceDirsRoot != filepath.Join(tmpHome, "my-workspace-dirs") {
+		t.Errorf("WorkspaceDirsRoot = %q, want %q", cfg.WorkspaceDirsRoot, filepath.Join(tmpHome, "my-workspace-dirs"))
 	}
 	if len(cfg.ResourceAllowlist) != 2 {
 		t.Errorf("ResourceAllowlist length = %d, want 2", len(cfg.ResourceAllowlist))
@@ -140,11 +140,40 @@ func TestLoad_LegacyWorktreesRootWarns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.WorkdirsRoot != filepath.Join(tmpHome, "workdirs") {
-		t.Errorf("WorkdirsRoot = %q, want default because legacy key is ignored", cfg.WorkdirsRoot)
+	if cfg.WorkspaceDirsRoot != filepath.Join(tmpHome, "workspace_dirs") {
+		t.Errorf("WorkspaceDirsRoot = %q, want default because legacy key is ignored", cfg.WorkspaceDirsRoot)
 	}
 	if !bytes.Contains(logs.Bytes(), []byte("legacy config key worktrees_root is ignored")) {
 		t.Errorf("expected a warning about worktrees_root, got log output: %q", logs.String())
+	}
+}
+
+func TestLoad_LegacyWorkdirsRootWarns(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	configDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`workdirs_root = "/legacy/workdirs"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.WorkspaceDirsRoot != filepath.Join(tmpHome, "workspace_dirs") {
+		t.Errorf("WorkspaceDirsRoot = %q, want default because legacy key is ignored", cfg.WorkspaceDirsRoot)
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("legacy config key workdirs_root is ignored")) {
+		t.Errorf("expected a warning about workdirs_root, got log output: %q", logs.String())
 	}
 }
 
@@ -179,12 +208,12 @@ func TestLoad_ReadsFromConfigHomeEnvVarInsteadOfRealHome(t *testing.T) {
 	if err := os.MkdirAll(realConfigDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(realConfigDir, "config.toml"), []byte("workdirs_root = \"/real-home-workdirs\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(realConfigDir, "config.toml"), []byte("workspace_dirs_root = \"/real-home-workspace-dirs\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	overrideDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(overrideDir, "config.toml"), []byte("workdirs_root = \"/override-workdirs\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(overrideDir, "config.toml"), []byte("workspace_dirs_root = \"/override-workspace-dirs\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(confighome.EnvVar, overrideDir)
@@ -193,8 +222,8 @@ func TestLoad_ReadsFromConfigHomeEnvVarInsteadOfRealHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.WorkdirsRoot != "/override-workdirs" {
-		t.Errorf("WorkdirsRoot = %q, want the override dir's value, not the real home's", cfg.WorkdirsRoot)
+	if cfg.WorkspaceDirsRoot != "/override-workspace-dirs" {
+		t.Errorf("WorkspaceDirsRoot = %q, want the override dir's value, not the real home's", cfg.WorkspaceDirsRoot)
 	}
 	if cfg.BaseDir != overrideDir {
 		t.Errorf("BaseDir = %q, want %q", cfg.BaseDir, overrideDir)

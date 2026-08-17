@@ -25,7 +25,7 @@ const defaultPlectListTimeout = 15 * time.Second
 // rather than every Tick: Tick's own gh-polling loop stays decoupled from
 // probing plect state (see TestPoller_DoesNotPruneSubscriptionsDuringPoll),
 // and a destroyed session's subscriptions get an immediate, explicit
-// unsubscribe from the provider's cleanup hook anyway — this sweep is the
+// unsubscribe from the workspace provider's cleanup hook anyway — this sweep is the
 // backstop for whatever that path missed (a watcher outage during destroy,
 // registry entries predating this fix), not the primary removal path.
 func (p *Poller) Sweep() {

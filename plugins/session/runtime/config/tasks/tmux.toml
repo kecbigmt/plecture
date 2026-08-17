@@ -9,7 +9,7 @@ healthcheck = "tmux has-session -t {{.Self.session_name}}"
 # into the pane this task creates.
 setup = '''
 tmux has-session -t {{.SessionName}} 2>/dev/null \
-  || tmux new-session -d -s {{.SessionName}} -c {{.WorkdirPath}}
+  || tmux new-session -d -s {{.SessionName}} -c {{.WorkspaceDirPath}}
 tmux has-session -t {{.SessionName}} \
   || { echo "failed to ensure tmux session {{.SessionName}}" >&2; exit 1; }
 echo '{"session_name":"{{.SessionName}}"}'

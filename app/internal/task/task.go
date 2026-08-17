@@ -122,7 +122,7 @@ func (p *Plan) CaptureTask() (*Resolved, error) {
 }
 
 // RenderAttach expands the attach template against the task's own outputs
-// and session vars (.Self / .SessionName / .WorkdirPath / .ResourceID / ...).
+// and session vars (.Self / .SessionName / .WorkspaceDirPath / .ResourceID / ...).
 // Uses the same strict missingkey semantics as setup — an unset .Self.<key>
 // is a contract violation, surfaced as an error instead of an empty arg.
 func RenderAttach(cmd string, selfOutputs map[string]any, session SessionVars) (string, error) {
@@ -140,7 +140,7 @@ func RunHealthcheck(goCtx context.Context, cmd string, selfOutputs map[string]an
 	if err != nil {
 		return err
 	}
-	_, stderr, err := execHostScript(goCtx, rendered, session.WorkdirPath)
+	_, stderr, err := execHostScript(goCtx, rendered, session.WorkspaceDirPath)
 	if err != nil {
 		if len(stderr) > 0 {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -161,7 +161,7 @@ func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, s
 	if err != nil {
 		return "", err
 	}
-	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorkdirPath)
+	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorkspaceDirPath)
 	if err != nil {
 		if len(stderr) > 0 {
 			return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -598,7 +598,7 @@ func topoSortNodes(list []Resolved) ([]Resolved, error) {
 //	Inputs   — node's resolved input bindings (post-render), exposed as `.Inputs.<key>`.
 //	           Also reachable via `.Nodes.<self>.inputs.<key>` for symmetry.
 //	Workflow — the workflow pseudo-node's outputs, exposed as
-//	           `.Workflow.outputs.<key>` (workdir, branch, ...). Empty for
+//	           `.Workflow.outputs.<key>` (workspace_dir, branch, ...). Empty for
 //	           sessions whose workflow declares no setup hook.
 //	Environment — the environment pseudo-node's outputs, exposed as
 //	           `.Environment.outputs.<key>`. Empty for sessions whose
@@ -626,12 +626,12 @@ type RenderContext struct {
 }
 
 type SessionVars struct {
-	Name          string
-	ResourceID    string
-	ParentSession string
-	WorkdirPath   string
-	Branch        string
-	Inputs        map[string]any
+	Name             string
+	ResourceID       string
+	ParentSession    string
+	WorkspaceDirPath string
+	Branch           string
+	Inputs           map[string]any
 	// Plugins are the resolved, catalog-qualified plugins
 	// (config.Config.Plugins) in declaration order, feeding the `{{bin
 	// ...}}` hook helper. Threaded through SessionVars rather than added as
@@ -781,33 +781,33 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 	// is identical whether the template runs as a node-input binding or as a
 	// setup/cleanup body.
 	data := struct {
-		Self          map[string]any
-		Prev          map[string]any
-		Tasks         map[string]map[string]any
-		Nodes         map[string]map[string]any
-		Inputs        map[string]any
-		Workflow      map[string]any
-		Environment   map[string]any
-		SessionInputs map[string]any
-		SessionName   string
-		ResourceID    string
-		ParentSession string
-		WorkdirPath   string
-		Branch        string
+		Self             map[string]any
+		Prev             map[string]any
+		Tasks            map[string]map[string]any
+		Nodes            map[string]map[string]any
+		Inputs           map[string]any
+		Workflow         map[string]any
+		Environment      map[string]any
+		SessionInputs    map[string]any
+		SessionName      string
+		ResourceID       string
+		ParentSession    string
+		WorkspaceDirPath string
+		Branch           string
 	}{
-		Self:          normalizeOutputs(ctx.Self),
-		Prev:          normalizeOutputs(ctx.Prev),
-		Tasks:         tasks,
-		Nodes:         nodes,
-		Inputs:        normalizeOutputs(ctx.Inputs),
-		Workflow:      map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Workflow))},
-		Environment:   map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Environment))},
-		SessionInputs: normalizeOutputs(ctx.Session.Inputs),
-		SessionName:   ctx.Session.Name,
-		ResourceID:    ctx.Session.ResourceID,
-		ParentSession: ctx.Session.ParentSession,
-		WorkdirPath:   ctx.Session.WorkdirPath,
-		Branch:        ctx.Session.Branch,
+		Self:             normalizeOutputs(ctx.Self),
+		Prev:             normalizeOutputs(ctx.Prev),
+		Tasks:            tasks,
+		Nodes:            nodes,
+		Inputs:           normalizeOutputs(ctx.Inputs),
+		Workflow:         map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Workflow))},
+		Environment:      map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Environment))},
+		SessionInputs:    normalizeOutputs(ctx.Session.Inputs),
+		SessionName:      ctx.Session.Name,
+		ResourceID:       ctx.Session.ResourceID,
+		ParentSession:    ctx.Session.ParentSession,
+		WorkspaceDirPath: ctx.Session.WorkspaceDirPath,
+		Branch:           ctx.Session.Branch,
 	}
 	if data.Self == nil {
 		data.Self = map[string]any{}
@@ -940,7 +940,7 @@ func execForNode(goCtx context.Context, execution string, envExecutor Executor, 
 // captured separately so the caller can decide when to surface it —
 // streaming it during the run would interleave with the progress spinner.
 // If workDir is non-empty and exists, it is used as the command's cwd.
-// runShell's callers (provider setup/cleanup/subscribe, workflow and
+// runShell's callers (workspace provider setup/cleanup/subscribe, workflow and
 // environment hooks, resource observe/finalize) have no caller-supplied
 // context to thread through yet, so it always runs with context.Background();
 // giving those paths a cancellable context is separate follow-up work.
@@ -1051,7 +1051,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		outputs := map[string]any{}
 		var stderrCaptured []byte
 		if strings.TrimSpace(cmdStr) != "" {
-			stdout, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorkdirPath)
+			stdout, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorkspaceDirPath)
 			stderrCaptured = stderr
 			if runErr != nil {
 				tasks[r.NodeID] = failedState(r, now, runErr.Error(), prev, resolvedInputs)
@@ -1213,7 +1213,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
 			continue
 		}
-		_, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorkdirPath)
+		_, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorkspaceDirPath)
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = runErr.Error()

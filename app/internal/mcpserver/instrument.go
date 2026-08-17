@@ -47,8 +47,8 @@ func instrumentHandler(toolName string, handler server.ToolHandlerFunc) server.T
 		// Label the log line with whatever identity the call carried. The
 		// "url" argument is a resource identifier and the "session" argument
 		// is a session identifier; both are logged verbatim, because turning
-		// a resource identifier into a session name is the provider
-		// resolver's job and must not be duplicated here.
+		// a resource identifier into a session name is the workspace
+		// provider resolver's job and must not be duplicated here.
 		resource := request.GetString("url", "")
 		session := request.GetString("session", "")
 

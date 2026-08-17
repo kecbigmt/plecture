@@ -31,7 +31,7 @@ func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*Attac
 		return nil, err
 	}
 
-	plan, err := buildPlanForSession(cfg, session.WorkdirPath, session)
+	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

@@ -67,7 +67,7 @@ func NextInstanceNumber(taskID string, tasks map[string]*contract.TaskState) int
 // stderr is returned so the caller's observer can surface diagnostic output.
 //
 // inputs are the already-bound input values (the caller applies the
-// --input > provider/workflow outputs > session vars precedence). workflowTasks
+// --input > workspace-provider/workflow outputs > session vars precedence). workflowTasks
 // is the session's tasks map, read only to expose the @workflow (and
 // @environment) pseudo-nodes' outputs to the setup template.
 //
@@ -99,7 +99,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 	outputs := map[string]any{}
 	var stderr []byte
 	if strings.TrimSpace(cmdStr) != "" {
-		stdout, capturedStderr, runErr := execForNode(goCtx, r.Execution, firstExecutor(envExecutor), cmdStr, session.WorkdirPath)
+		stdout, capturedStderr, runErr := execForNode(goCtx, r.Execution, firstExecutor(envExecutor), cmdStr, session.WorkspaceDirPath)
 		stderr = capturedStderr
 		if runErr != nil {
 			return nil, stderr, fmt.Errorf("setup: %w", runErr)

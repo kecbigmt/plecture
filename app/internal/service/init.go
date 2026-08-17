@@ -15,7 +15,7 @@ import (
 // anything init defaults on its own — every value here came from an
 // explicit answer.
 type InitConfigValues struct {
-	WorkdirsRoot      string
+	WorkspaceDirsRoot string
 	ResourceAllowlist []string
 }
 
@@ -25,7 +25,7 @@ type InitConfigValues struct {
 // override of config.DefaultConfig's baseline, which init never asked
 // about.
 type initConfigDoc struct {
-	WorkdirsRoot      string   `toml:"workdirs_root"`
+	WorkspaceDirsRoot string   `toml:"workspace_dirs_root"`
 	ResourceAllowlist []string `toml:"resource_allowlist,omitempty"`
 }
 
@@ -44,7 +44,7 @@ func WriteInitConfig(path string, values InitConfigValues) error {
 	}
 	defer f.Close()
 
-	doc := initConfigDoc{WorkdirsRoot: values.WorkdirsRoot, ResourceAllowlist: values.ResourceAllowlist}
+	doc := initConfigDoc{WorkspaceDirsRoot: values.WorkspaceDirsRoot, ResourceAllowlist: values.ResourceAllowlist}
 	if err := toml.NewEncoder(f).Encode(doc); err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

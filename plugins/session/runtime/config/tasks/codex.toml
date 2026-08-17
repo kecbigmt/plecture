@@ -102,7 +102,7 @@ for _ in $(seq 1 "$ATTEMPTS"); do
 
   SID=$(find "$HOME/.codex/sessions" -type f -newer "$MARKER" -name '*.jsonl' 2>/dev/null \
     | while IFS= read -r file; do
-        head -n 1 "$file" | jq -r --arg cwd '{{.WorkdirPath}}' \
+        head -n 1 "$file" | jq -r --arg cwd '{{.WorkspaceDirPath}}' \
           'select(.type == "session_meta" and .payload.cwd == $cwd) | (.payload.session_id // empty)' 2>/dev/null
       done \
     | grep -E '^[0-9a-fA-F-]{36}$' \

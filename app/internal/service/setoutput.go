@@ -45,8 +45,8 @@ type SetOutputResult struct {
 //     no full-replace mode
 //   - only keys declared `mutable = true` in the target's outputs schema are
 //     writable; with no such declaration nothing is writable
-//   - the reserved `workdir` key is always immutable (schemas declaring it
-//     mutable fail at load, before this check is ever reached)
+//   - the reserved `workspace_dir` key is always immutable (schemas declaring
+//     it mutable fail at load, before this check is ever reached)
 //   - the merged result must still satisfy the outputs schema
 //
 // The read-modify-write runs under the state file lock so concurrent explicit
@@ -68,8 +68,8 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 	if len(params.Outputs) == 0 {
 		return nil, &Error{Code: ErrInvalidInput, Message: "payload must be a non-empty JSON object"}
 	}
-	if _, ok := params.Outputs[contract.OutputKeyWorkdir]; ok {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("output key %q is reserved and always immutable", contract.OutputKeyWorkdir)}
+	if _, ok := params.Outputs[contract.OutputKeyWorkspaceDir]; ok {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("output key %q is reserved and always immutable", contract.OutputKeyWorkspaceDir)}
 	}
 
 	sessionName, session, err := resolveSession(cfg, store, params.Identifier)
@@ -135,7 +135,7 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 // the mutable-key set and compiled outputs schema that govern it.
 func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params SetOutputParams) (target string, mutable []string, schema *jsonschema.Schema, err *Error) {
 	if params.Workflow {
-		workflows, loadErr := cfg.LoadWorkflows(session.WorkdirPath)
+		workflows, loadErr := cfg.LoadWorkflows(session.WorkspaceDirPath)
 		if loadErr != nil {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", loadErr)}
 		}
@@ -143,24 +143,24 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		if !ok {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q not found in .plect/workflows or global config", session.Workflow)}
 		}
-		providers, loadErr := cfg.LoadProviders()
+		workspaceProviders, loadErr := cfg.LoadWorkspaceProviders()
 		if loadErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load providers: %v", loadErr)}
+			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", loadErr)}
 		}
-		prov, ok, provErr := providerFor(wf, providers)
+		prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
 		if provErr != nil {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
 		}
 		if !ok {
-			return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no provider; the @workflow pseudo-node has no outputs contract", session.Workflow)}
+			return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no workspace provider; the @workflow pseudo-node has no outputs contract", session.Workflow)}
 		}
 		mutableKeys, mErr := task.MutableOutputKeys(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath())
 		if mErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("provider %q: outputs schema: %v", prov.ID, mErr)}
+			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, mErr)}
 		}
-		compiled, cErr := task.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:provider:"+prov.ID+":outputs")
+		compiled, cErr := task.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
 		if cErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("provider %q: outputs schema: %v", prov.ID, cErr)}
+			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, cErr)}
 		}
 		return contract.WorkflowPseudoNodeID, mutableKeys, compiled, nil
 	}
@@ -175,7 +175,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 			return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("%q is a static workflow node, not a runtime task; use --node", handle)}
 		}
 		taskID := taskIDForInstance(handle, st)
-		defs, loadErr := cfg.LoadTaskDefinitions(session.WorkdirPath)
+		defs, loadErr := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
 		if loadErr != nil {
 			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", loadErr)}
 		}
@@ -194,7 +194,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		return handle, mutableKeys, compiled, nil
 	}
 
-	plan, planErr := buildPlanForSession(cfg, session.WorkdirPath, session)
+	plan, planErr := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if planErr != nil {
 		return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
 	}

@@ -87,7 +87,8 @@ func TestInstrumentHandler_ToolError(t *testing.T) {
 	assertField(t, rec, "level", "ERROR")
 	assertField(t, rec, "error", "session already exists")
 	// The resource identifier is logged verbatim; deriving a session name
-	// from it is the provider resolver's job, not the log wrapper's.
+	// from it is the workspace provider resolver's job, not the log
+	// wrapper's.
 	assertField(t, rec, "resource", "https://github.com/acme/widgets/issues/170")
 	assertFieldPresent(t, rec, "trace_id")
 	assertFieldPresent(t, rec, "duration_ms")

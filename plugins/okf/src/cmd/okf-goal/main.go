@@ -1,8 +1,8 @@
-// Command plect-okf is the executable the shipped okf plugin config invokes
-// for its resource, provider, and task hooks. Each subcommand prints the
-// contract its TOML caller expects on stdout (JSON for resource/provider
-// hooks, nothing on task hooks beyond a created-instance summary) and
-// reports failure through its exit status.
+// Command okf-goal is the executable the shipped okf plugin config invokes
+// for its goal resource and goal task hooks. Each subcommand prints the
+// contract its TOML caller expects on stdout (JSON for the resource hook,
+// nothing on task hooks beyond a created-instance summary) and reports
+// failure through its exit status.
 package main
 
 import (
@@ -18,19 +18,18 @@ import (
 	"github.com/kecbigmt/plecture/plugins/okf/internal/goal"
 	"github.com/kecbigmt/plecture/plugins/okf/internal/resource"
 	"github.com/kecbigmt/plecture/plugins/okf/internal/task"
-	"github.com/kecbigmt/plecture/plugins/okf/internal/workspace"
 )
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "plect-okf:", err)
+		fmt.Fprintln(os.Stderr, "okf-goal:", err)
 		os.Exit(1)
 	}
 }
 
 func run(args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: plect-okf <resource|provider|task> <subcommand> [flags]")
+		return fmt.Errorf("usage: okf-goal <resource|task> <subcommand> [flags]")
 	}
 	group, sub, rest := args[0], args[1], args[2:]
 
@@ -42,13 +41,6 @@ func run(args []string) error {
 		case "finalize":
 			return runResourceFinalize(rest)
 		}
-	case "provider":
-		switch sub {
-		case "setup":
-			return runProviderSetup(rest)
-		case "cleanup":
-			return runProviderCleanup(rest)
-		}
 	case "task":
 		switch sub {
 		case "validate-goal-resource":
@@ -57,7 +49,7 @@ func run(args []string) error {
 			return runTaskBootstrap(rest)
 		}
 	}
-	return fmt.Errorf("unknown subcommand %q %q; expected one of: resource observe, resource finalize, provider setup, provider cleanup, task validate-goal-resource, task bootstrap", group, sub)
+	return fmt.Errorf("unknown subcommand %q %q; expected one of: resource observe, resource finalize, task validate-goal-resource, task bootstrap", group, sub)
 }
 
 func runResourceObserve(args []string) error {
@@ -124,39 +116,6 @@ func runResourceFinalize(args []string) error {
 	return resource.Finalize(cliexec.CLI{}, *resourceID, *revision, time.Now(), goalJudges)
 }
 
-func runProviderSetup(args []string) error {
-	fs := flag.NewFlagSet("provider setup", flag.ContinueOnError)
-	resourceID := fs.String("resource", "", "resource identifier (local-okf://<owner>/<concept-id>)")
-	session := fs.String("session", "", "session name the workspace is acquired for")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *resourceID == "" || *session == "" {
-		return fmt.Errorf("provider setup requires --resource and --session")
-	}
-
-	result, err := workspace.Setup(cliexec.CLI{}, *resourceID, *session)
-	if err != nil {
-		return err
-	}
-
-	return encodeJSON(os.Stdout, map[string]any{
-		"workdir":      result.Workdir,
-		"owner":        result.Owner,
-		"concept_id":   result.ConceptID,
-		"concept_path": result.ConceptPath,
-	})
-}
-
-func runProviderCleanup(args []string) error {
-	fs := flag.NewFlagSet("provider cleanup", flag.ContinueOnError)
-	workdir := fs.String("workdir", "", "workdir recorded by provider setup")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	return workspace.Cleanup(*workdir)
-}
-
 func runTaskValidateGoalResource(args []string) error {
 	fs := flag.NewFlagSet("task validate-goal-resource", flag.ContinueOnError)
 	resourceID := fs.String("resource", "", "resource identifier")
@@ -171,15 +130,15 @@ func runTaskValidateGoalResource(args []string) error {
 
 func runTaskBootstrap(args []string) error {
 	fs := flag.NewFlagSet("task bootstrap", flag.ContinueOnError)
-	workdirPath := fs.String("workdir", "", "orchestrator workdir path")
+	workspaceDirPath := fs.String("workspace-dir", "", "orchestrator workspace directory path")
 	owner := fs.String("owner", "", "owner alias goal resource ids are built with")
 	session := fs.String("session", "", "session to instantiate pursue_goal on")
 	assigneesJSON := fs.String("assignees", "", "JSON array of assignee strings to filter by (empty means no filter)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *workdirPath == "" || *owner == "" || *session == "" {
-		return fmt.Errorf("task bootstrap requires --workdir, --owner, and --session")
+	if *workspaceDirPath == "" || *owner == "" || *session == "" {
+		return fmt.Errorf("task bootstrap requires --workspace-dir, --owner, and --session")
 	}
 
 	var assignees []string
@@ -189,7 +148,7 @@ func runTaskBootstrap(args []string) error {
 		}
 	}
 
-	goalsDir := *workdirPath + "/knowledge/bundle/goals"
+	goalsDir := *workspaceDirPath + "/knowledge/bundle/goals"
 	created, err := task.Bootstrap(cliexec.CLI{}, goalsDir, *owner, *session, assignees)
 	if err != nil {
 		return err

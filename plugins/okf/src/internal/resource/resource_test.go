@@ -20,37 +20,37 @@ status: open
 - [ ] write the tests
 `
 
-// fakeRunner answers ResolveOwnerWorkdir with a fixed workdir, or a
+// fakeRunner answers ResolveOwnerWorkspaceDir with a fixed workspaceDir, or a
 // canned failure, without a real orchestrator session.
 type fakeRunner struct {
-	workdir string
-	output  []byte
-	err     error
+	workspaceDir string
+	output       []byte
+	err          error
 }
 
 func (f fakeRunner) Status(alias string) ([]byte, error) {
 	if f.err != nil {
 		return f.output, f.err
 	}
-	return []byte(fmt.Sprintf(`{"runtime":{"workdir_path":%q,"workdir_exists":true}}`, f.workdir)), nil
+	return []byte(fmt.Sprintf(`{"runtime":{"workspace_dir_path":%q,"workspace_dir_exists":true}}`, f.workspaceDir)), nil
 }
 
-func newBundle(t *testing.T, goalContent string) (workdir string, resourceID string) {
+func newBundle(t *testing.T, goalContent string) (workspaceDir string, resourceID string) {
 	t.Helper()
-	workdir = t.TempDir()
-	goalsDir := filepath.Join(workdir, "knowledge", "bundle", "goals")
+	workspaceDir = t.TempDir()
+	goalsDir := filepath.Join(workspaceDir, "knowledge", "bundle", "goals")
 	if err := os.MkdirAll(goalsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(goalsDir, "ship-it.md"), []byte(goalContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return workdir, "local-okf://acme/goals/ship-it.md"
+	return workspaceDir, "local-okf://acme/goals/ship-it.md"
 }
 
 func TestObserve_success(t *testing.T) {
-	workdir, resourceID := newBundle(t, validGoal)
-	runner := fakeRunner{workdir: workdir}
+	workspaceDir, resourceID := newBundle(t, validGoal)
+	runner := fakeRunner{workspaceDir: workspaceDir}
 
 	result, err := Observe(runner, resourceID)
 	if err != nil {
@@ -71,8 +71,8 @@ func TestObserve_success(t *testing.T) {
 }
 
 func TestObserve_malformedGoalIsFailureNotError(t *testing.T) {
-	workdir, resourceID := newBundle(t, "not frontmatter at all\n")
-	runner := fakeRunner{workdir: workdir}
+	workspaceDir, resourceID := newBundle(t, "not frontmatter at all\n")
+	runner := fakeRunner{workspaceDir: workspaceDir}
 
 	result, err := Observe(runner, resourceID)
 	if err != nil {
@@ -114,8 +114,8 @@ func TestObserve_ambiguousAliasIsAHardError(t *testing.T) {
 }
 
 func TestObserve_bundleEscapeIsAHardError(t *testing.T) {
-	workdir, _ := newBundle(t, validGoal)
-	runner := fakeRunner{workdir: workdir}
+	workspaceDir, _ := newBundle(t, validGoal)
+	runner := fakeRunner{workspaceDir: workspaceDir}
 
 	_, err := Observe(runner, "local-okf://acme/../../etc/passwd")
 	if err == nil {
@@ -124,15 +124,15 @@ func TestObserve_bundleEscapeIsAHardError(t *testing.T) {
 }
 
 func TestFinalize_recordsCompletion(t *testing.T) {
-	workdir, resourceID := newBundle(t, validGoal)
-	runner := fakeRunner{workdir: workdir}
+	workspaceDir, resourceID := newBundle(t, validGoal)
+	runner := fakeRunner{workspaceDir: workspaceDir}
 	now := time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC)
 
 	if err := Finalize(runner, resourceID, "sha256:abc", now, []goal.Judge{{ID: "goal-met", Reason: "done"}}); err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
 
-	logged, err := os.ReadFile(filepath.Join(workdir, "knowledge", "bundle", "log.md"))
+	logged, err := os.ReadFile(filepath.Join(workspaceDir, "knowledge", "bundle", "log.md"))
 	if err != nil {
 		t.Fatalf("expected a log.md to be written: %v", err)
 	}

@@ -46,7 +46,7 @@ func newTestReactor(t *testing.T, tc config.TickConfig) (*sessionReactor, *state
 	}
 	r := &sessionReactor{
 		session: "o/r-1",
-		cfg:     &config.Config{WorkdirsRoot: t.TempDir()},
+		cfg:     &config.Config{WorkspaceDirsRoot: t.TempDir()},
 		state:   st,
 		log:     log,
 		hub:     hub,

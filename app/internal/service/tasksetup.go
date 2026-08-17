@@ -88,7 +88,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
 
-	defs, err := cfg.LoadTaskDefinitions(session.WorkdirPath)
+	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
@@ -104,7 +104,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkdirPath, session)
+	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
 	if wfErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
 	}
@@ -283,7 +283,7 @@ func parseExtraDoneWhen(raw string) (json.RawMessage, error) {
 }
 
 // bindDynamicInputs resolves each input the task declares to a value, using
-// the precedence: --input > @workflow (provider) outputs > session inputs.
+// the precedence: --input > @workflow (workspace provider) outputs > session inputs.
 // When the task declares an inputs schema, only its declared properties are
 // bound and an --input key it does not declare is rejected (a typo surfaces
 // instead of being silently dropped); required-but-unbound inputs are caught by

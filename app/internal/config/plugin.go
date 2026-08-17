@@ -22,7 +22,7 @@ import (
 // applies inside Load(). It is kept as an independent function rather than
 // a shared helper because its caller (the bus service supervisor, polling
 // for plugin content changes) only needs the mounted plugin list and
-// lockfile, not a full Config with providers/resources/tasks/workflows/
+// lockfile, not a full Config with workspaces/resources/tasks/workflows/
 // channels loaded on every poll tick. A missing catalogs.toml or no
 // registered catalogs returns (nil, nil, nil): not an error, just nothing
 // declared.

@@ -82,7 +82,7 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q not found in session %s", params.Instance, resolvedName)}
 	}
 
-	defs, err := cfg.LoadTaskDefinitions(session.WorkdirPath)
+	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}

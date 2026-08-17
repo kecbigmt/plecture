@@ -15,18 +15,18 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// writeSetupWorkflow gives the fixture workflow a resource provider: the
-// extra TOML (setup/cleanup/match/name/outputs_schema — flat provider keys)
-// lands in providers/<wfID>.toml and the workflow gains `provider = "<wfID>"`.
-// Prepend, not append — top-level keys after a [[nodes]] table would be
-// parsed as part of that table.
+// writeSetupWorkflow gives the fixture workflow a workspace provider: the
+// extra TOML (setup/cleanup/match/name/outputs_schema — flat workspace
+// provider keys) lands in workspaces/<wfID>.toml and the workflow gains
+// `workspace_provider = "<wfID>"`. Prepend, not append — top-level keys
+// after a [[nodes]] table would be parsed as part of that table.
 func writeSetupWorkflow(t *testing.T, cfg *config.Config, wfID, extra string) {
 	t.Helper()
-	providersDir := filepath.Join(cfg.BaseDir, "providers")
-	if err := os.MkdirAll(providersDir, 0o755); err != nil {
+	workspacesDir := filepath.Join(cfg.BaseDir, "workspaces")
+	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(providersDir, wfID+".toml"), []byte(extra), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workspacesDir, wfID+".toml"), []byte(extra), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wfPath := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
@@ -34,7 +34,7 @@ func writeSetupWorkflow(t *testing.T, cfg *config.Config, wfID, extra string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	header := "provider = \"" + wfID + "\"\n"
+	header := "workspace_provider = \"" + wfID + "\"\n"
 	if err := os.WriteFile(wfPath, append([]byte(header), existing...), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestCreate_WorkflowSetupPath(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s","branch":"issue/5","title":"T"}'
+echo '{"workspace_dir":"%s","branch":"issue/5","title":"T"}'
 '''
 `, workdir, workdir)+githubResolver)
 
@@ -58,8 +58,8 @@ echo '{"workdir":"%s","branch":"issue/5","title":"T"}'
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if result.WorkdirPath != workdir {
-		t.Errorf("WorkdirPath = %q, want %q (mirrored from workdir output)", result.WorkdirPath, workdir)
+	if result.WorkspaceDirPath != workdir {
+		t.Errorf("WorkspaceDirPath = %q, want %q (mirrored from workdir output)", result.WorkspaceDirPath, workdir)
 	}
 	if result.Branch != "issue/5" {
 		t.Errorf("Branch = %q, want issue/5", result.Branch)
@@ -100,7 +100,7 @@ func TestCreate_RecordsParentSession(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 
@@ -153,7 +153,7 @@ echo '{}'`
 	writeSetupWorkflow(t, cfg, "claude", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 
@@ -193,7 +193,7 @@ func TestCreate_WorkflowSetupRecordsLifecycleCreated(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, workdir, workdir)+githubResolver)
 
@@ -235,7 +235,7 @@ func TestCreate_WorkflowSetupFailureLeavesRetryableState(t *testing.T) {
 setup = '''
 [ -f %s ] || { echo "transient" >&2; exit 1; }
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, gate, workdir, workdir)+githubResolver)
 
@@ -285,10 +285,10 @@ func TestDestroy_RunsWorkflowCleanup(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 cleanup = '''
-rm -rf "{{.Self.workdir}}"
+rm -rf "{{.Self.workspace_dir}}"
 touch %s
 '''
 `, workdir, workdir, marker)+githubResolver)
@@ -305,7 +305,7 @@ touch %s
 	if _, err := os.Stat(marker); err != nil {
 		t.Error("workflow cleanup did not run")
 	}
-	if !result.RemovedWorkdir {
+	if !result.RemovedWorkspaceDir {
 		t.Error("workdir was removed by cleanup; result should report it")
 	}
 	if store.Get("org/repo-7+wf") != nil {
@@ -328,10 +328,10 @@ func TestDestroy_ForwardsCleanupInputsToWorkflowCleanup(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 cleanup = '''
-rm -rf "{{.Self.workdir}}"
+rm -rf "{{.Self.workspace_dir}}"
 echo {{eq .CleanupInputs.delete_branch "true"}} > %s
 '''
 `, workdir, workdir, marker)+githubResolver)
@@ -366,7 +366,7 @@ func TestDestroy_WorkflowCleanupFailureBlocksWithoutForce(t *testing.T) {
 	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
 setup = '''
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 cleanup = "exit 9"
 `, workdir, workdir)+githubResolver)
@@ -411,7 +411,7 @@ func TestUp_RecoversFailedWorkflowSetup(t *testing.T) {
 setup = '''
 [ -f %s ] || { echo "transient" >&2; exit 1; }
 mkdir -p %s
-echo '{"workdir":"%s"}'
+echo '{"workspace_dir":"%s"}'
 '''
 `, gate, workdir, workdir)+githubResolver)
 

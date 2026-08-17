@@ -80,12 +80,12 @@ schema_version = 1
 plect_min_version = "0.0.0"
 
 [[executables]]
-name = "plect-okf"
-path = "bin/plect-okf"
+name = "okf-goal"
+path = "bin/okf-goal"
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "config", "tasks", "goal.toml"), `
 scope = "run"
-setup = '{{bin "plect-okf"}} task bootstrap'
+setup = '{{bin "okf-goal"}} task bootstrap'
 `)
 
 	writeCatalogsToml(t, tmpHome, `
@@ -174,8 +174,8 @@ path = "bin/watcher"
 schema_version = 1
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "github", "config", "providers", "github.toml"), `
-setup = "echo '{\"workdir\":\"/tmp/x\"}'"
+	writeFile(t, filepath.Join(catalogDir, "github", "config", "workspaces", "github.toml"), `
+setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
 subscribe = '{{bin "local/runtime/watcher"}} subscribe'
 `)
 
@@ -193,12 +193,12 @@ plugins = ["github"]
 		t.Fatalf("Load: unexpected error: %v", err)
 	}
 
-	_, err = cfg.LoadProviders()
+	_, err = cfg.LoadWorkspaceProviders()
 	if err == nil {
-		t.Fatal("LoadProviders: want an error for a {{bin}} reference to an unmounted plugin, got nil")
+		t.Fatal("LoadWorkspaceProviders: want an error for a {{bin}} reference to an unmounted plugin, got nil")
 	}
 	if !strings.Contains(err.Error(), "local/runtime") {
-		t.Errorf("LoadProviders error = %v, want it to name the missing plugin \"local/runtime\"", err)
+		t.Errorf("LoadWorkspaceProviders error = %v, want it to name the missing plugin \"local/runtime\"", err)
 	}
 }
 

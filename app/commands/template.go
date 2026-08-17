@@ -16,11 +16,11 @@ import (
 )
 
 var (
-	templateRenderSession     string
-	templateRenderWorkdir     string
-	templateRenderInstruction string
-	templateRenderVars        []string
-	templateListWorkdir       string
+	templateRenderSession      string
+	templateRenderWorkspaceDir string
+	templateRenderInstruction  string
+	templateRenderVars         []string
+	templateListWorkspaceDir   string
 )
 
 var templateCmd = &cobra.Command{
@@ -36,15 +36,15 @@ var templateRenderCmd = &cobra.Command{
 Variables come from a session. Pass --session <identifier> (session name,
 alias, or resource id) to resolve a session and expose its vars to the
 template:
-  {{.SessionName}} {{.ResourceID}} {{.WorkdirPath}}
-  {{.Workflow.outputs.<key>}}  — provider setup outputs (workdir, plus whatever else the provider declares)
+  {{.SessionName}} {{.ResourceID}} {{.WorkspaceDirPath}}
+  {{.Workflow.outputs.<key>}}  — workspace provider setup outputs (workspace_dir, plus whatever else the workspace provider declares)
   {{.SessionInputs.<key>}}     — session inputs and explicit --var values
 
 Guard optional vars with {{get .SessionInputs "key"}} (returns "" when absent)
 instead of {{.SessionInputs.key}} (renders "<no value>").
 
 The template name corresponds to files in the template search path:
-  1. <workdir>/.plect/templates/<name>.md  (session working-directory overlay)
+  1. <workspace-dir>/.plect/templates/<name>.md  (session workspace-directory overlay)
   2. ~/.config/plect/templates/<name>.md`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -64,7 +64,7 @@ The template name corresponds to files in the template search path:
 		resolved := false
 
 		// A session identifier yields the session's vars and roots the
-		// template overlay at its working directory.
+		// template overlay at its workspace directory.
 		if templateRenderSession != "" {
 			store := state.NewStore("")
 			tv, rerr := service.ResolveTemplateVars(cfg, store, templateRenderSession)
@@ -72,18 +72,18 @@ The template name corresponds to files in the template search path:
 				return rerr
 			}
 			vars = template.Vars{
-				SessionName:   tv.SessionName,
-				ResourceID:    tv.ResourceID,
-				WorkdirPath:   tv.WorkdirPath,
-				Workflow:      tv.Workflow,
-				SessionInputs: tv.SessionInputs,
+				SessionName:      tv.SessionName,
+				ResourceID:       tv.ResourceID,
+				WorkspaceDirPath: tv.WorkspaceDirPath,
+				Workflow:         tv.Workflow,
+				SessionInputs:    tv.SessionInputs,
 			}
-			searchDir = tv.WorkdirPath
+			searchDir = tv.WorkspaceDirPath
 			resolved = true
 		}
 
-		if templateRenderWorkdir != "" && !resolved {
-			searchDir = templateRenderWorkdir
+		if templateRenderWorkspaceDir != "" && !resolved {
+			searchDir = templateRenderWorkspaceDir
 		}
 
 		vars.Mode = templateName
@@ -125,11 +125,11 @@ var templateListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		workdir := ""
-		if templateListWorkdir != "" {
-			workdir = templateListWorkdir
+		workspaceDirPath := ""
+		if templateListWorkspaceDir != "" {
+			workspaceDirPath = templateListWorkspaceDir
 		}
-		templates, err := template.List(workdir, cfg.PluginDirs)
+		templates, err := template.List(workspaceDirPath, cfg.PluginDirs)
 		if err != nil {
 			return err
 		}
@@ -142,11 +142,11 @@ var templateListCmd = &cobra.Command{
 
 func init() {
 	templateRenderCmd.Flags().StringVar(&templateRenderSession, "session", "", "Session identifier (name, alias, or resource id) to source vars from")
-	templateRenderCmd.Flags().StringVar(&templateRenderWorkdir, "workdir", "", "Working directory path to root the template overlay at")
+	templateRenderCmd.Flags().StringVar(&templateRenderWorkspaceDir, "workspace-dir", "", "Workspace directory path to root the template overlay at")
 	templateRenderCmd.Flags().StringVar(&templateRenderInstruction, "instruction", "", "Additional instruction text")
 	templateRenderCmd.Flags().StringArrayVar(&templateRenderVars, "var", nil, "Explicit template var as key=value (repeatable; exposed as .SessionInputs.<key>)")
 
-	templateListCmd.Flags().StringVar(&templateListWorkdir, "workdir", "", "Working directory path to include templates from")
+	templateListCmd.Flags().StringVar(&templateListWorkspaceDir, "workspace-dir", "", "Workspace directory path to include templates from")
 
 	templateCmd.AddCommand(templateRenderCmd)
 	templateCmd.AddCommand(templateListCmd)

@@ -19,10 +19,10 @@ func TestStore_PutAndGet(t *testing.T) {
 
 	now := time.Now()
 	session := &domain.Session{
-		Name:        "owner/repo-123",
-		ResourceID:  "https://example.test/owner/repo/items/123",
-		Branch:      "issue/123",
-		WorkdirPath: "/tmp/workdirs/github.com/owner/repo/issue-123",
+		Name:             "owner/repo-123",
+		ResourceID:       "https://example.test/owner/repo/items/123",
+		Branch:           "issue/123",
+		WorkspaceDirPath: "/tmp/workdirs/github.com/owner/repo/issue-123",
 		Conversation: &domain.Conversation{
 			Source: "Slack",
 			URL:    "https://exampleorg.slack.com/archives/C01ABCDEF/p1234567890123456",
@@ -350,7 +350,7 @@ func TestLoad_BackfillsAliasFromResourceID(t *testing.T) {
 	// A session written without an explicit alias was looked up by its
 	// resource id, so loading must make that lookup keep working.
 	state := `{
-  "version": 6,
+  "version": 7,
   "sessions": {
     "org/repo-1": {
       "session_name": "org/repo-1",
@@ -424,21 +424,21 @@ func TestStore_StateVersionMismatchFailsWritesInsteadOfOverwriting(t *testing.T)
 	}{
 		{
 			name:    "older",
-			version: 5,
+			version: 6,
 			wantParts: []string{
 				"state schema version mismatch",
-				"got 5",
-				"want 6",
+				"got 6",
+				"want 7",
 				"go run ./plugins/legacy-migration/cmd/legacy-migration",
 			},
 		},
 		{
 			name:    "newer",
-			version: 7,
+			version: 8,
 			wantParts: []string{
 				"state schema version mismatch",
-				"got 7",
-				"want 6",
+				"got 8",
+				"want 7",
 				"newer",
 			},
 		},
@@ -453,7 +453,7 @@ func TestStore_StateVersionMismatchFailsWritesInsteadOfOverwriting(t *testing.T)
   "sessions": {
     "org/repo-1": {
       "session_name": "org/repo-1",
-      "workdir_path": "/tmp/workdir"
+      "workspace_dir_path": "/tmp/workdir"
     }
   }
 }`, tt.version))

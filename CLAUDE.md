@@ -12,7 +12,7 @@ Durable structure of work (identity, lifecycle, relationships, observation,
 verification, handoff) belongs in `app/` and `contracts/` (core).
 
 A plugin is a distributable package: executable adapters (0+) + config
-resources (0+ — providers, resources, tasks, workflows, templates,
+resources (0+ — workspace providers, resources, tasks, workflows, templates,
 channels) + metadata. A plugin with only configuration and no executables
 is still a plugin. Commitments to a particular technology (a VCS, an agent
 CLI, a terminal multiplexer, a chat service) belong in `plugins/`, whether
@@ -85,7 +85,7 @@ prose naming.
 |---------------|----------------------------------------------------------------|
 | `app/`        | CLI + MCP server: session lifecycle, task DAG, state, dispatch |
 | `contracts/`  | Shared data contracts between the CLI and plugins               |
-| `plugins/`    | Distributable packages: executable adapters and config resources for a particular technology (channel relay, GitHub provider and watcher, Slack adapter) |
+| `plugins/`    | Distributable packages: executable adapters and config resources for a particular technology (channel relay, GitHub workspace provider and watcher, Slack adapter) |
 
 Core (`app/`, `contracts/*`) never imports `plugins/*`.
 

@@ -19,8 +19,8 @@ import (
 // registryVersion is the on-disk subscription format version. It was bumped to 2
 // when the key changed from session-only (1:1) to (session, resource) so one
 // session can funnel several PRs. A file at any other version is discarded
-// on load: subscriptions are re-created by `plect subscribe` (the provider's
-// runtime subscribe hook), so there is nothing to migrate.
+// on load: subscriptions are re-created by `plect subscribe` (the workspace
+// provider's runtime subscribe hook), so there is nothing to migrate.
 const registryVersion = 2
 
 // Subscription is one watched resource bound to a plect session. A session may

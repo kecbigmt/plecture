@@ -18,11 +18,11 @@ func TestNewLiveServiceRejectsStateVersionMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := []byte(`{
-  "version": 5,
+  "version": 6,
   "sessions": {
     "org/repo-1": {
       "session_name": "org/repo-1",
-      "workdir_path": "/tmp/workdir"
+      "workspace_dir_path": "/tmp/workdir"
     }
   }
 }`)
@@ -35,7 +35,7 @@ func TestNewLiveServiceRejectsStateVersionMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("NewLiveService() over a mismatched state version must fail")
 	}
-	for _, part := range []string{"state schema version mismatch", "got 5", "want 6", "go run ./plugins/legacy-migration/cmd/legacy-migration"} {
+	for _, part := range []string{"state schema version mismatch", "got 6", "want 7", "go run ./plugins/legacy-migration/cmd/legacy-migration"} {
 		if !strings.Contains(err.Error(), part) {
 			t.Fatalf("error = %q, want it to contain %q", err.Error(), part)
 		}
@@ -74,7 +74,7 @@ func writeMismatchedState(t *testing.T, path string) []byte {
   "sessions": {
     "org/repo-1": {
       "session_name": "org/repo-1",
-      "workdir_path": "/tmp/workdir"
+      "workspace_dir_path": "/tmp/workdir"
     }
   }
 }`)

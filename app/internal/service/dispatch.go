@@ -29,11 +29,11 @@ func validateSessionName(name string) *Error {
 }
 
 // checkSessionGuard enforces the per-session SessionGuard (PLECT_SESSION_GUARD)
-// against the resolved session name, before any workdir/setup side task.
+// against the resolved session name, before any workspace/setup side task.
 // The orchestrator's pane exports a guard like "^acme/" so a cross-owner
 // dispatch (which resolves to "exampleorg/...") is rejected server-side rather
 // than relying on the loop-spec prompt. plect core never parses the owner — the
-// guard is an opaque regex the provider supplied.
+// guard is an opaque regex the workspace provider supplied.
 func checkSessionGuard(cfg *config.Config, sessionName string) *Error {
 	// No config means no guard configured — allow (mirrors an empty guard).
 	// EventPublish and other write paths accept a nil cfg from in-process
@@ -68,34 +68,34 @@ func SessionGuardForOwnSession(sessionName string) (string, error) {
 }
 
 // dispatchResult is the outcome of resolver dispatch: which workflow handles
-// the resource, the provider that resolved it, and the derived session id
-// (before any +tag suffix).
+// the resource, the workspace provider that resolved it, and the derived
+// session id (before any +tag suffix).
 type dispatchResult struct {
-	Workflow config.WorkflowFile
-	Provider config.ProviderConfig
-	Name     string
+	Workflow          config.WorkflowFile
+	WorkspaceProvider config.WorkspaceProviderConfig
+	Name              string
 }
 
-// resolveName runs a provider's resolver against the resource id. A
+// resolveName runs a workspace provider's resolver against the resource id. A
 // non-matching input is an error — the regex doubles as input validation for
 // explicitly-selected workflows.
-func resolveName(prov config.ProviderConfig, resource string) (string, error) {
+func resolveName(prov config.WorkspaceProviderConfig, resource string) (string, error) {
 	name, ok, err := tryResolveName(prov, resource)
 	if err != nil {
 		return "", err
 	}
 	if !ok {
-		return "", fmt.Errorf("resource %q does not match provider %q resolver (%s)", resource, prov.ID, prov.Match)
+		return "", fmt.Errorf("resource %q does not match workspace provider %q resolver (%s)", resource, prov.ID, prov.Match)
 	}
 	return name, nil
 }
 
 // tryResolveName attempts the resolver match, reporting (name, matched, err).
 // Pure: regex + template only, no I/O.
-func tryResolveName(prov config.ProviderConfig, resource string) (string, bool, error) {
+func tryResolveName(prov config.WorkspaceProviderConfig, resource string) (string, bool, error) {
 	re, err := regexp.Compile(prov.Match)
 	if err != nil {
-		return "", false, fmt.Errorf("provider %q resolver match: %w", prov.ID, err)
+		return "", false, fmt.Errorf("workspace provider %q resolver match: %w", prov.ID, err)
 	}
 	m := re.FindStringSubmatch(resource)
 	if m == nil {
@@ -109,30 +109,30 @@ func tryResolveName(prov config.ProviderConfig, resource string) (string, bool, 
 	}
 	tmpl, err := template.New("resolver").Option("missingkey=error").Parse(prov.Name)
 	if err != nil {
-		return "", false, fmt.Errorf("provider %q resolver name template: %w", prov.ID, err)
+		return "", false, fmt.Errorf("workspace provider %q resolver name template: %w", prov.ID, err)
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, captures); err != nil {
-		return "", false, fmt.Errorf("provider %q resolver name template: %w", prov.ID, err)
+		return "", false, fmt.Errorf("workspace provider %q resolver name template: %w", prov.ID, err)
 	}
 	name := strings.TrimSpace(buf.String())
 	if name == "" {
-		return "", false, fmt.Errorf("provider %q resolver produced an empty session id for %q", prov.ID, resource)
+		return "", false, fmt.Errorf("workspace provider %q resolver produced an empty session id for %q", prov.ID, resource)
 	}
 	return name, true, nil
 }
 
-// providerFor resolves a workflow's provider reference. ok=false when the
-// workflow declares no provider, which leaves it unable to back a session.
-// A dangling reference is an error — silently ignoring it would route the
-// create to the wrong path.
-func providerFor(wf config.WorkflowFile, providers map[string]config.ProviderConfig) (config.ProviderConfig, bool, error) {
-	if wf.Provider == "" {
-		return config.ProviderConfig{}, false, nil
+// workspaceProviderFor resolves a workflow's workspace provider reference.
+// ok=false when the workflow declares no workspace provider, which leaves it
+// unable to back a session. A dangling reference is an error — silently
+// ignoring it would route the create to the wrong path.
+func workspaceProviderFor(wf config.WorkflowFile, workspaceProviders map[string]config.WorkspaceProviderConfig) (config.WorkspaceProviderConfig, bool, error) {
+	if wf.WorkspaceProvider == "" {
+		return config.WorkspaceProviderConfig{}, false, nil
 	}
-	prov, ok := providers[wf.Provider]
+	prov, ok := workspaceProviders[wf.WorkspaceProvider]
 	if !ok {
-		return config.ProviderConfig{}, false, fmt.Errorf("workflow %q references unknown provider %q; add providers/%s.toml to the global config or a plugin", wf.ID, wf.Provider, wf.Provider)
+		return config.WorkspaceProviderConfig{}, false, fmt.Errorf("workflow %q references unknown workspace provider %q; add workspaces/%s.toml to the global config or a plugin", wf.ID, wf.WorkspaceProvider, wf.WorkspaceProvider)
 	}
 	return prov, true, nil
 }
@@ -143,25 +143,25 @@ func workflowAutoSelect(wf config.WorkflowFile) bool {
 
 // dispatchResource selects the workflow for a resource identifier.
 //
-//	flag != "" — that workflow handles it; its provider's resolver derives
-//	             the name, and a resolver mismatch is an error.
-//	flag == "" — every trusted-layer workflow whose provider has a resolver
-//	             tries to match. Exactly one match wins; several is an
-//	             ambiguity error; zero returns ok=false so the caller can
+//	flag != "" — that workflow handles it; its workspace provider's resolver
+//	             derives the name, and a resolver mismatch is an error.
+//	flag == "" — every trusted-layer workflow whose workspace provider has a
+//	             resolver tries to match. Exactly one match wins; several is
+//	             an ambiguity error; zero returns ok=false so the caller can
 //	             fall back to identity dispatch. Workflows without a
 //	             resolver never participate — identity dispatch on arbitrary
 //	             input would shadow every other workflow.
 //
-// Dispatch reads only the trusted base layers (plugin + global): the working
-// directory doesn't exist yet, and identity must not depend on clone content.
+// Dispatch reads only the trusted base layers (plugin + global): the
+// workspace doesn't exist yet, and identity must not depend on clone content.
 func dispatchResource(cfg *config.Config, flag, resource string) (dispatchResult, bool, error) {
 	workflows, err := cfg.LoadWorkflows("")
 	if err != nil {
 		return dispatchResult{}, false, fmt.Errorf("load workflows: %w", err)
 	}
-	providers, err := cfg.LoadProviders()
+	workspaceProviders, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		return dispatchResult{}, false, fmt.Errorf("load providers: %w", err)
+		return dispatchResult{}, false, fmt.Errorf("load workspace providers: %w", err)
 	}
 
 	if flag != "" {
@@ -172,25 +172,26 @@ func dispatchResource(cfg *config.Config, flag, resource string) (dispatchResult
 			// file the user needs to add.
 			return dispatchResult{}, false, nil
 		}
-		prov, ok, provErr := providerFor(wf, providers)
+		prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
 		if provErr != nil {
 			return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
 		}
 		if !ok || !prov.HasResolver() {
 			// Identity is the caller's branch — it needs context (is the
-			// workflow provider-backed at all?) that dispatch doesn't have.
+			// workflow workspace-provider-backed at all?) that dispatch
+			// doesn't have.
 			return dispatchResult{}, false, nil
 		}
 		name, err := resolveName(prov, resource)
 		if err != nil {
 			return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: err.Error()}
 		}
-		return dispatchResult{Workflow: wf, Provider: prov, Name: name}, true, nil
+		return dispatchResult{Workflow: wf, WorkspaceProvider: prov, Name: name}, true, nil
 	}
 
 	type candidate struct {
 		wf   config.WorkflowFile
-		prov config.ProviderConfig
+		prov config.WorkspaceProviderConfig
 		name string
 	}
 	var matches []candidate
@@ -204,7 +205,7 @@ func dispatchResource(cfg *config.Config, flag, resource string) (dispatchResult
 		if !workflowAutoSelect(wf) {
 			continue
 		}
-		prov, ok, provErr := providerFor(wf, providers)
+		prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
 		if provErr != nil {
 			return dispatchResult{}, false, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
 		}
@@ -223,7 +224,7 @@ func dispatchResource(cfg *config.Config, flag, resource string) (dispatchResult
 	case 0:
 		return dispatchResult{}, false, nil
 	case 1:
-		return dispatchResult{Workflow: matches[0].wf, Provider: matches[0].prov, Name: matches[0].name}, true, nil
+		return dispatchResult{Workflow: matches[0].wf, WorkspaceProvider: matches[0].prov, Name: matches[0].name}, true, nil
 	default:
 		names := make([]string, len(matches))
 		for i, m := range matches {

@@ -9,10 +9,10 @@ import (
 
 func TestProjectTemplateVars(t *testing.T) {
 	s := &domain.Session{
-		Name:        "org/repo-42",
-		ResourceID:  "https://github.com/org/repo/issues/42",
-		WorkdirPath: "/wt/org/repo/branch",
-		Inputs:      map[string]any{"template": "work"},
+		Name:             "org/repo-42",
+		ResourceID:       "https://github.com/org/repo/issues/42",
+		WorkspaceDirPath: "/wt/org/repo/branch",
+		Inputs:           map[string]any{"template": "work"},
 		Tasks: map[string]*contract.TaskState{
 			contract.WorkflowPseudoNodeID: {Outputs: map[string]any{"title": "Fix bug"}},
 		},
@@ -20,7 +20,7 @@ func TestProjectTemplateVars(t *testing.T) {
 
 	vars := projectTemplateVars(s.Name, s)
 
-	if vars.SessionName != "org/repo-42" || vars.WorkdirPath != "/wt/org/repo/branch" {
+	if vars.SessionName != "org/repo-42" || vars.WorkspaceDirPath != "/wt/org/repo/branch" {
 		t.Errorf("unexpected session fields: %+v", vars)
 	}
 	if vars.ResourceID != "https://github.com/org/repo/issues/42" {
@@ -37,9 +37,9 @@ func TestProjectTemplateVars(t *testing.T) {
 func TestProjectTemplateVars_IdentitySession(t *testing.T) {
 	// Orchestrator-style session: the provider outputs carry the owner.
 	s := &domain.Session{
-		Name:        "acme/_orchestrator",
-		ResourceID:  "owner:acme",
-		WorkdirPath: "/scratch/acme",
+		Name:             "acme/_orchestrator",
+		ResourceID:       "owner:acme",
+		WorkspaceDirPath: "/scratch/acme",
 		Tasks: map[string]*contract.TaskState{
 			contract.WorkflowPseudoNodeID: {Outputs: map[string]any{"owner": "acme"}},
 		},

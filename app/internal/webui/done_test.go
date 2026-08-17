@@ -19,7 +19,7 @@ func sampleTasks() []service.TaskInstanceView {
 		DoneWhen: &task.DoneWhenResult{
 			Overall: task.DonePending,
 			Leaves: []task.DoneLeafResult{
-				{Kind: "check", Status: task.DoneSatisfied, Output: "workdir_dirty", Value: "0", Observed: true},
+				{Kind: "check", Status: task.DoneSatisfied, Output: "workspace_dir_dirty", Value: "0", Observed: true},
 				{
 					Kind: "judge", Status: task.DonePending, ID: "review",
 					Reason:          "awaiting reviewer",
@@ -95,9 +95,9 @@ func TestDoneBadge_OverallAndCount(t *testing.T) {
 // value reads "?" (pending), not a failure.
 func TestDoneLeaf_Check(t *testing.T) {
 	observed := exec(t, "done-leaf", task.DoneLeafResult{
-		Kind: "check", Status: task.DoneSatisfied, Output: "workdir_dirty", Value: "0", Observed: true,
+		Kind: "check", Status: task.DoneSatisfied, Output: "workspace_dir_dirty", Value: "0", Observed: true,
 	})
-	if !strings.Contains(observed, "workdir_dirty") || !strings.Contains(observed, "0") {
+	if !strings.Contains(observed, "workspace_dir_dirty") || !strings.Contains(observed, "0") {
 		t.Errorf("check leaf missing output/value: %s", observed)
 	}
 
@@ -143,7 +143,7 @@ func TestDetail_ShowsTasks(t *testing.T) {
 	status.Work = sampleWork()
 	body := get(t, &fakeService{status: status}, "/sessions/owner/repo-7").Body.String()
 	for _, want := range []string{
-		"Work", "engineer", "workdir_dirty", "review", "no reviewer verdict yet",
+		"Work", "engineer", "workspace_dir_dirty", "review", "no reviewer verdict yet",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("detail missing task content %q", want)

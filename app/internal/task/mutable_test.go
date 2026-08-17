@@ -38,15 +38,15 @@ func TestMutableOutputKeys_NoSchemaMeansNothingMutable(t *testing.T) {
 	}
 }
 
-func TestMutableOutputKeys_WorkdirMutableIsLoadError(t *testing.T) {
+func TestMutableOutputKeys_WorkspaceDirMutableIsLoadError(t *testing.T) {
 	schema := map[string]any{
 		"properties": map[string]any{
-			"workdir": map[string]any{"type": "string", "mutable": true},
+			"workspace_dir": map[string]any{"type": "string", "mutable": true},
 		},
 	}
 	_, err := MutableOutputKeys(schema, "")
 	if err == nil {
-		t.Fatal("expected error: workdir is reserved always-immutable")
+		t.Fatal("expected error: workspace_dir is reserved always-immutable")
 	}
 	if !strings.Contains(err.Error(), "reserved") {
 		t.Errorf("unexpected message: %v", err)
@@ -69,9 +69,9 @@ func TestMutableOutputKeys_FromFile(t *testing.T) {
 	}
 }
 
-// CompileWorkflow must reject a task whose schema declares workdir mutable
+// CompileWorkflow must reject a task whose schema declares workspace_dir mutable
 // — load-time failure, before any lifecycle command can run against it.
-func TestCompileWorkflow_RejectsWorkdirMutableDeclaration(t *testing.T) {
+func TestCompileWorkflow_RejectsWorkspaceDirMutableDeclaration(t *testing.T) {
 	wf := config.WorkflowFile{
 		ID:    "wf",
 		Nodes: []config.WorkflowNode{{ID: "bad"}},
@@ -82,7 +82,7 @@ func TestCompileWorkflow_RejectsWorkdirMutableDeclaration(t *testing.T) {
 			Setup: "echo '{}'",
 			OutputsSchema: map[string]any{
 				"properties": map[string]any{
-					"workdir": map[string]any{"type": "string", "mutable": true},
+					"workspace_dir": map[string]any{"type": "string", "mutable": true},
 				},
 			},
 		},

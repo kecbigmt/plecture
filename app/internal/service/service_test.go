@@ -262,7 +262,7 @@ func TestStatus_ProjectsTree(t *testing.T) {
 	for _, n := range []string{"org/repo-1", "org/repo-2", "org/repo-3"} {
 		if err := store.Put(&domain.Session{
 			Name: n, CreatedAt: now, UpdatedAt: now,
-			WorkdirPath: wt,
+			WorkspaceDirPath: wt,
 		}); err != nil {
 			t.Fatalf("seed %s: %v", n, err)
 		}

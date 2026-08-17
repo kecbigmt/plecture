@@ -24,11 +24,12 @@ func repoRoot(t *testing.T) string {
 	return filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
 }
 
-// loadShippedProvider loads a provider config that ships with a plugin,
-// exercising the same loader the CLI uses at runtime. It mounts the plugin
-// (not just PluginDirs) so a bare {{bin ...}} reference inside the shipped
-// provider file resolves the same way it would under a real catalog mount.
-func loadShippedProvider(t *testing.T, pluginDir, id string) config.ProviderConfig {
+// loadShippedWorkspaceProvider loads a workspace provider config that ships
+// with a plugin, exercising the same loader the CLI uses at runtime. It
+// mounts the plugin (not just PluginDirs) so a bare {{bin ...}} reference
+// inside the shipped workspace provider file resolves the same way it would
+// under a real catalog mount.
+func loadShippedWorkspaceProvider(t *testing.T, pluginDir, id string) config.WorkspaceProviderConfig {
 	t.Helper()
 	dir := filepath.Join(repoRoot(t), "plugins", pluginDir)
 	m, err := plugins.LoadManifest(dir)
@@ -39,24 +40,25 @@ func loadShippedProvider(t *testing.T, pluginDir, id string) config.ProviderConf
 		PluginDirs: []string{dir},
 		Plugins:    []plugins.Mounted{{ID: "official/" + pluginDir, Dir: dir, Manifest: m}},
 	}
-	provs, err := cfg.LoadProviders()
+	provs, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		t.Fatalf("load shipped providers: %v", err)
+		t.Fatalf("load shipped workspace providers: %v", err)
 	}
 	prov, ok := provs[id]
 	if !ok {
-		t.Fatalf("shipped provider %q not found", id)
+		t.Fatalf("shipped workspace provider %q not found", id)
 	}
 	return prov
 }
 
-// TestShippedProvider_ResolvesResourceIdentifiersOffline pins that the
-// shipped provider's resolver derives session ids from resource identifiers
-// with regex and template alone — the core never asks a network for a name.
-func TestShippedProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
-	prov := loadShippedProvider(t, "github", "github")
+// TestShippedWorkspaceProvider_ResolvesResourceIdentifiersOffline pins that
+// the shipped workspace provider's resolver derives session ids from
+// resource identifiers with regex and template alone — the core never asks a
+// network for a name.
+func TestShippedWorkspaceProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
+	prov := loadShippedWorkspaceProvider(t, "github", "github")
 	if !prov.HasResolver() {
-		t.Fatal("the shipped provider must declare a resolver")
+		t.Fatal("the shipped workspace provider must declare a resolver")
 	}
 
 	tests := []struct {
@@ -87,21 +89,21 @@ func TestShippedProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
 	}
 }
 
-// TestShippedProvider_SetupHookDoesNotShellInjectResourceID pins that a
-// resource id carrying shell metacharacters is passed to the setup hook
-// literally rather than being interpreted by the shell that renders it. The
-// injected command runs (if unescaped) regardless of whether
-// plect-github-provider is even on PATH, since bash executes every
+// TestShippedWorkspaceProvider_SetupHookDoesNotShellInjectResourceID pins
+// that a resource id carrying shell metacharacters is passed to the setup
+// hook literally rather than being interpreted by the shell that renders it.
+// The injected command runs (if unescaped) regardless of whether
+// github-worktree is even on PATH, since bash executes every
 // semicolon-separated command in "cmd1; cmd2" independent of cmd1's exit
 // status — so this test needs no built binaries.
-func TestShippedProvider_SetupHookDoesNotShellInjectResourceID(t *testing.T) {
-	prov := loadShippedProvider(t, "github", "github")
+func TestShippedWorkspaceProvider_SetupHookDoesNotShellInjectResourceID(t *testing.T) {
+	prov := loadShippedWorkspaceProvider(t, "github", "github")
 	marker := filepath.Join(t.TempDir(), "pwned")
 	malicious := `https://github.com/acme/widgets/issues/1"; touch ` + marker + `; echo "`
 
 	tasks := map[string]*contract.TaskState{}
 	vars := task.WorkflowHookVars{ResourceID: malicious, SessionName: "acme/widgets-1"}
-	// Setup is expected to fail (plect-github-provider is not on PATH in this
+	// Setup is expected to fail (github-worktree is not on PATH in this
 	// test and the resource id is not a valid URL); only the absence of the
 	// injected side effect is under test.
 	_, _ = task.RunWorkflowSetup(prov, vars, tasks, nil)
@@ -111,19 +113,20 @@ func TestShippedProvider_SetupHookDoesNotShellInjectResourceID(t *testing.T) {
 	}
 }
 
-// TestShippedProvider_CleanupHookDoesNotShellInjectWorkdirOrBranch mirrors the
-// setup case for cleanup, whose template interpolates the persisted workdir
-// and branch (sourced from setup's own outputs, which in turn derive from the
-// session's tag — not fully outside user control).
-func TestShippedProvider_CleanupHookDoesNotShellInjectWorkdirOrBranch(t *testing.T) {
-	prov := loadShippedProvider(t, "github", "github")
+// TestShippedWorkspaceProvider_CleanupHookDoesNotShellInjectWorkspaceDirOrBranch
+// mirrors the setup case for cleanup, whose template interpolates the
+// persisted workspace directory and branch (sourced from setup's own
+// outputs, which in turn derive from the session's tag — not fully outside
+// user control).
+func TestShippedWorkspaceProvider_CleanupHookDoesNotShellInjectWorkspaceDirOrBranch(t *testing.T) {
+	prov := loadShippedWorkspaceProvider(t, "github", "github")
 	marker := filepath.Join(t.TempDir(), "pwned")
 	maliciousBranch := `issue/1"; touch ` + marker + `; echo "`
 
 	tasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"workdir": "/tmp/does-not-matter", "branch": maliciousBranch},
+			Outputs: map[string]any{"workspace_dir": "/tmp/does-not-matter", "branch": maliciousBranch},
 		},
 	}
 	vars := task.WorkflowHookVars{ResourceID: "https://github.com/acme/widgets/issues/1", SessionName: "acme/widgets-1"}
@@ -134,15 +137,16 @@ func TestShippedProvider_CleanupHookDoesNotShellInjectWorkdirOrBranch(t *testing
 	}
 }
 
-// TestShippedProvider_DeclaresAcquisitionAndRelease pins that the shipped
-// provider owns both halves of the working-directory lifecycle, since a
-// setup with no matching cleanup would strand every workdir it creates.
-func TestShippedProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
-	prov := loadShippedProvider(t, "github", "github")
+// TestShippedWorkspaceProvider_DeclaresAcquisitionAndRelease pins that the
+// shipped workspace provider owns both halves of the workspace lifecycle,
+// since a setup with no matching cleanup would strand every workspace
+// directory it creates.
+func TestShippedWorkspaceProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
+	prov := loadShippedWorkspaceProvider(t, "github", "github")
 	if prov.Setup == "" {
-		t.Error("the shipped provider must declare setup")
+		t.Error("the shipped workspace provider must declare setup")
 	}
 	if prov.Cleanup == "" {
-		t.Error("the shipped provider must declare cleanup")
+		t.Error("the shipped workspace provider must declare cleanup")
 	}
 }

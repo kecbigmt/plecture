@@ -10,8 +10,8 @@ scope = "run"
 #   repeat        — "true" resends the prompt on every `plect up` (a kick).
 #                   Empty/unset sends it once per session lifetime.
 #
-# Provider-agnostic: the prompt is rendered with `--session {{.SessionName}}`,
-# so the template receives session/provider vars without needing a resource
+# Workspace-provider-agnostic: the prompt is rendered with `--session {{.SessionName}}`,
+# so the template receives session/workspace-provider vars without needing a resource
 # URL. The session is persisted before this task runs, so the render can
 # resolve it.
 #

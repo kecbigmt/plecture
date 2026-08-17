@@ -60,7 +60,7 @@ include     = ["plect.instruction"]
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)
 	if err := stateStore.Put(&domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkdirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Tasks: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},
@@ -137,7 +137,7 @@ include     = ["plect.instruction"]
 
 	stateStore := state.NewStore(t.TempDir())
 	if err := stateStore.Put(&domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkdirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Tasks: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
@@ -210,7 +210,7 @@ include     = ["plect.instruction"]
 
 	stateStore := state.NewStore(t.TempDir())
 	if err := stateStore.Put(&domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkdirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Tasks: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
@@ -317,7 +317,7 @@ include     = ["plect.instruction"]
 	stateStore := state.NewStore(t.TempDir())
 	sock, _ := startFakeSocket(t)
 	if err := stateStore.Put(&domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkdirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Tasks: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},
@@ -392,7 +392,7 @@ include     = ["plect.instruction"]
 	stateStore := state.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
 	if err := stateStore.Put(&domain.Session{
-		Name: "o/r-1", Workflow: "coding", WorkdirPath: t.TempDir(),
+		Name: "o/r-1", Workflow: "coding", WorkspaceDirPath: t.TempDir(),
 		Tasks: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{"socket_path": sock}},
 		},

@@ -16,15 +16,15 @@ import (
 )
 
 var (
-	initCatalogAlias    string
-	initCatalogSource   string
-	initCatalogSubdir   string
-	initCatalogRevision string
-	initEnablePlugins   []string
-	initAllowlist       []string
-	initAllowAll        bool
-	initWorkdirsRoot    string
-	initYes             bool
+	initCatalogAlias      string
+	initCatalogSource     string
+	initCatalogSubdir     string
+	initCatalogRevision   string
+	initEnablePlugins     []string
+	initAllowlist         []string
+	initAllowAll          bool
+	initWorkspaceDirsRoot string
+	initYes               bool
 )
 
 var initCmd = &cobra.Command{
@@ -35,7 +35,7 @@ for which one is active): registers one plugin catalog through the same
 trust-confirmation flow as "plect catalog add" (init never bypasses it),
 enables whichever of its published plugin paths you select, and writes the
 small set of genuinely per-user root config.toml values (resource
-allowlist, workdirs root).
+allowlist, workspace dirs root).
 
 Refuses outright if this config home already has a config.toml or a
 registered catalog, and never writes anything in that case — start from an
@@ -43,11 +43,11 @@ empty config home, or remove the existing one first.
 
 Non-interactive scripted setups pass --yes together with every answer as an
 explicit flag: --catalog-alias, --catalog-source, --enable (repeatable, at
-least once), --allowlist (repeatable) or --allow-all, and --workdirs-root.
-None of these fall back to a silent default outside an interactive
-terminal: there is no default catalog source, no default "enable nothing",
-no default "allow all", and no default workdirs root — every answer is
-either typed at a prompt or spelled out on the command line.`,
+least once), --allowlist (repeatable) or --allow-all, and
+--workspace-dirs-root. None of these fall back to a silent default outside an
+interactive terminal: there is no default catalog source, no default "enable
+nothing", no default "allow all", and no default workspace dirs root — every
+answer is either typed at a prompt or spelled out on the command line.`,
 	Args: cobra.NoArgs,
 	RunE: runInit,
 }
@@ -93,14 +93,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	workdirsRoot, err := resolveInitWorkdirsRoot(cmd, reader)
+	workspaceDirsRoot, err := resolveInitWorkspaceDirsRoot(cmd, reader)
 	if err != nil {
 		return err
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "will enable: %v\n", enable)
 	fmt.Fprintf(cmd.OutOrStdout(), "resource allowlist: %v\n", orAllowAll(allowlist))
-	fmt.Fprintf(cmd.OutOrStdout(), "workdirs root: %s\n", workdirsRoot)
+	fmt.Fprintf(cmd.OutOrStdout(), "workspace dirs root: %s\n", workspaceDirsRoot)
 
 	switch {
 	case initYes:
@@ -122,7 +122,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 	if err := service.WriteInitConfig(configPath, service.InitConfigValues{
-		WorkdirsRoot:      workdirsRoot,
+		WorkspaceDirsRoot: workspaceDirsRoot,
 		ResourceAllowlist: allowlist,
 	}); err != nil {
 		return err
@@ -164,8 +164,8 @@ func resolveInitCatalogAnswers(cmd *cobra.Command, reader *bufio.Reader) (alias,
 
 // resolveInitPluginSelection lets the user pick, by number or by path, from
 // exactly what the just-registered catalog publishes — init has no
-// provider-specific notion of "which plugins go together"; the catalog
-// manifest is the only source of what's available.
+// workspace-provider-specific notion of "which plugins go together"; the
+// catalog manifest is the only source of what's available.
 func resolveInitPluginSelection(cmd *cobra.Command, reader *bufio.Reader, published []string) ([]string, error) {
 	requested := initEnablePlugins
 	switch {
@@ -230,28 +230,28 @@ func resolveInitAllowlist(cmd *cobra.Command, reader *bufio.Reader) ([]string, e
 	return patterns, nil
 }
 
-// resolveInitWorkdirsRoot's interactive suggestion mirrors
-// config.DefaultConfig's own default (~/workdirs) rather than inventing a
-// second default value, but only interactive Enter-to-accept counts as
-// answering it: outside a terminal, --yes must say so explicitly, the same
-// as every other init answer.
-func resolveInitWorkdirsRoot(cmd *cobra.Command, reader *bufio.Reader) (string, error) {
-	root := strings.TrimSpace(initWorkdirsRoot)
+// resolveInitWorkspaceDirsRoot's interactive suggestion mirrors
+// config.DefaultConfig's own default (~/workspace_dirs) rather than
+// inventing a second default value, but only interactive Enter-to-accept
+// counts as answering it: outside a terminal, --yes must say so explicitly,
+// the same as every other init answer.
+func resolveInitWorkspaceDirsRoot(cmd *cobra.Command, reader *bufio.Reader) (string, error) {
+	root := strings.TrimSpace(initWorkspaceDirsRoot)
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	defaultRoot := filepath.Join(home, "workdirs")
+	defaultRoot := filepath.Join(home, "workspace_dirs")
 
 	switch {
 	case !initYes && isInteractive():
-		if answer := promptLine(cmd, reader, fmt.Sprintf("Workdirs root [%s]: ", defaultRoot)); answer != "" {
+		if answer := promptLine(cmd, reader, fmt.Sprintf("Workspace dirs root [%s]: ", defaultRoot)); answer != "" {
 			root = answer
 		} else {
 			root = defaultRoot
 		}
 	case root == "":
-		return "", fmt.Errorf("--workdirs-root is required (answer the prompt interactively, or pass an explicit flag with --yes)")
+		return "", fmt.Errorf("--workspace-dirs-root is required (answer the prompt interactively, or pass an explicit flag with --yes)")
 	}
 	if len(root) > 0 && root[0] == '~' {
 		root = filepath.Join(home, root[1:])
@@ -297,7 +297,7 @@ func init() {
 	initCmd.Flags().StringArrayVar(&initEnablePlugins, "enable", nil, "Catalog-relative plugin path to enable (repeatable; required at least once with --yes)")
 	initCmd.Flags().StringArrayVar(&initAllowlist, "allowlist", nil, "Resource identifier regex pattern to allow (repeatable; required with --yes unless --allow-all is passed)")
 	initCmd.Flags().BoolVar(&initAllowAll, "allow-all", false, "Explicitly allow every resource identifier instead of passing --allowlist (mutually exclusive with it)")
-	initCmd.Flags().StringVar(&initWorkdirsRoot, "workdirs-root", "", "Workdir root directory (required with --yes; interactive default ~/workdirs)")
+	initCmd.Flags().StringVar(&initWorkspaceDirsRoot, "workspace-dirs-root", "", "Workspace dirs root directory (required with --yes; interactive default ~/workspace_dirs)")
 	initCmd.Flags().BoolVar(&initYes, "yes", false, "Initialize non-interactively (visible in command history)")
 
 	rootCmd.AddCommand(initCmd)

@@ -11,7 +11,7 @@ import (
 )
 
 // SchemaVersion is the current state.json format version.
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 // Conversation holds information about an external communication channel
 // associated with a session (e.g., a Slack thread, Discord channel).
@@ -30,8 +30,8 @@ type Message struct {
 }
 
 // DoneWhenJudge is the reviewer-owned verdict for one done_when judge leaf.
-// Revision is an opaque provider value; plect only compares it for exact equality
-// with the instance's current revision output.
+// Revision is an opaque workspace provider value; plect only compares it for
+// exact equality with the instance's current revision output.
 //
 // The record is self-contained: TargetSession / Instance name the work it
 // judges, and ReviewerWorkflow / Relation stamp the reviewer's workflow and the
@@ -101,10 +101,11 @@ const WorkflowPseudoNodeID = "@workflow"
 // degeneration) never creates this key.
 const EnvironmentPseudoNodeID = "@environment"
 
-// OutputKeyWorkdir is the reserved output key naming the session's working
-// directory. It is always immutable: declaring it `mutable = true` in an
-// outputs schema is a load error, and `plect state set-output` rejects it.
-const OutputKeyWorkdir = "workdir"
+// OutputKeyWorkspaceDir is the reserved output key naming the session's
+// acquired workspace directory. It is always immutable: declaring it
+// `mutable = true` in an outputs schema is a load error, and
+// `plect state set-output` rejects it.
+const OutputKeyWorkspaceDir = "workspace_dir"
 
 // TaskState records the persisted outcome of a task's setup/cleanup.
 // Runtime liveness is not stored here — it is determined on demand via healthcheck.
@@ -158,23 +159,24 @@ type TaskState struct {
 // changes. Empty means the legacy inline-`[[tasks]]` path was used.
 //
 // ResourceID is the canonical external resource this session works on (any
-// string — the provider that resolved it decides what the string means);
-// Alias preserves the original create-time input so lookups survive resolver
-// rule changes. Anything resource-shaped beyond those two (a repository, a
-// number, a permalink) is a provider setup output, not a session field.
+// string — the workspace provider that resolved it decides what the string
+// means); Alias preserves the original create-time input so lookups survive
+// resolver rule changes. Anything resource-shaped beyond those two (a
+// repository, a number, a permalink) is a workspace provider setup output,
+// not a session field.
 type Session struct {
-	Name          string                `json:"session_name"`
-	ResourceID    string                `json:"resource_id,omitempty"`
-	ParentSession string                `json:"parent_session,omitempty"`
-	Children      []string              `json:"children,omitempty"`
-	Alias         string                `json:"alias,omitempty"`
-	Branch        string                `json:"branch"`
-	WorkdirPath   string                `json:"workdir_path"`
-	Conversation  *Conversation         `json:"conversation,omitempty"`
-	Message       *Message              `json:"message,omitempty"`
-	Workflow      string                `json:"workflow,omitempty"`
-	Inputs        map[string]any        `json:"inputs,omitempty"`
-	Tasks         map[string]*TaskState `json:"tasks,omitempty"`
+	Name             string                `json:"session_name"`
+	ResourceID       string                `json:"resource_id,omitempty"`
+	ParentSession    string                `json:"parent_session,omitempty"`
+	Children         []string              `json:"children,omitempty"`
+	Alias            string                `json:"alias,omitempty"`
+	Branch           string                `json:"branch"`
+	WorkspaceDirPath string                `json:"workspace_dir_path"`
+	Conversation     *Conversation         `json:"conversation,omitempty"`
+	Message          *Message              `json:"message,omitempty"`
+	Workflow         string                `json:"workflow,omitempty"`
+	Inputs           map[string]any        `json:"inputs,omitempty"`
+	Tasks            map[string]*TaskState `json:"tasks,omitempty"`
 	// Health is the last healthcheck observation and movement fingerprint
 	// core recorded for this session. It is persisted so stall judgment and
 	// parent re-notification use one durable history instead of a caller's

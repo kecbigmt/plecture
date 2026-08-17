@@ -75,7 +75,7 @@ func quoteJoin(items []string) string {
 func resetInitFlags(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		initCatalogAlias, initCatalogSource, initCatalogSubdir, initCatalogRevision, initWorkdirsRoot = "", "", "", "", ""
+		initCatalogAlias, initCatalogSource, initCatalogSubdir, initCatalogRevision, initWorkspaceDirsRoot = "", "", "", "", ""
 		initEnablePlugins, initAllowlist = nil, nil
 		initYes, initAllowAll = false, false
 	})
@@ -93,7 +93,7 @@ func TestInit_YesBootstrapsFreshConfigHome(t *testing.T) {
 	resetInitFlags(t)
 	configHome := setInitConfigHome(t)
 	fixture := writeInitCatalogFixture(t, "agent/claude", "channel/slack")
-	workdirs := filepath.Join(t.TempDir(), "work")
+	workspaceDirs := filepath.Join(t.TempDir(), "work")
 
 	out, err := execRoot(t, "init", "--yes",
 		"--catalog-alias", "local",
@@ -101,7 +101,7 @@ func TestInit_YesBootstrapsFreshConfigHome(t *testing.T) {
 		"--enable", "agent/claude",
 		"--enable", "channel/slack",
 		"--allowlist", "^acme/",
-		"--workdirs-root", workdirs,
+		"--workspace-dirs-root", workspaceDirs,
 	)
 	if err != nil {
 		t.Fatalf("Execute() error = %v; output:\n%s", err, out)
@@ -112,8 +112,8 @@ func TestInit_YesBootstrapsFreshConfigHome(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("config.toml not written: %v", readErr)
 	}
-	if !strings.Contains(string(data), workdirs) {
-		t.Errorf("config.toml missing workdirs root:\n%s", data)
+	if !strings.Contains(string(data), workspaceDirs) {
+		t.Errorf("config.toml missing workspaceDirs root:\n%s", data)
 	}
 	if !strings.Contains(string(data), "^acme/") {
 		t.Errorf("config.toml missing allowlist pattern:\n%s", data)
@@ -137,8 +137,8 @@ func TestInit_YesBootstrapsFreshConfigHome(t *testing.T) {
 	if len(cfg.Plugins) != 2 {
 		t.Errorf("cfg.Plugins = %+v, want 2 resolved plugins", cfg.Plugins)
 	}
-	if cfg.WorkdirsRoot != workdirs {
-		t.Errorf("cfg.WorkdirsRoot = %q, want %q", cfg.WorkdirsRoot, workdirs)
+	if cfg.WorkspaceDirsRoot != workspaceDirs {
+		t.Errorf("cfg.WorkspaceDirsRoot = %q, want %q", cfg.WorkspaceDirsRoot, workspaceDirs)
 	}
 }
 
@@ -146,7 +146,7 @@ func TestInit_Yes_CatalogSubdirScopesTrustSpace(t *testing.T) {
 	resetInitFlags(t)
 	configHome := setInitConfigHome(t)
 	root := writeInitCatalogFixtureWithSubdir(t, "plugins", "agent/claude")
-	workdirs := filepath.Join(t.TempDir(), "work")
+	workspaceDirs := filepath.Join(t.TempDir(), "work")
 
 	out, err := execRoot(t, "init", "--yes",
 		"--catalog-alias", "local",
@@ -154,7 +154,7 @@ func TestInit_Yes_CatalogSubdirScopesTrustSpace(t *testing.T) {
 		"--catalog-subdir", "plugins",
 		"--enable", "agent/claude",
 		"--allow-all",
-		"--workdirs-root", workdirs,
+		"--workspace-dirs-root", workspaceDirs,
 	)
 	if err != nil {
 		t.Fatalf("Execute() error = %v; output:\n%s", err, out)
@@ -183,7 +183,7 @@ func TestInit_RefusesWhenConfigTomlAlreadyExists(t *testing.T) {
 	if err := os.MkdirAll(configHome, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configHome, "config.toml"), []byte("workdirs_root = \"/existing\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configHome, "config.toml"), []byte("workspace_dirs_root = \"/existing\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	fixture := writeInitCatalogFixture(t, "okf")
@@ -273,7 +273,7 @@ func TestInit_YesRequiresExplicitEnable(t *testing.T) {
 		"--catalog-alias", "local",
 		"--catalog-source", "path+editable://"+fixture,
 		"--allow-all",
-		"--workdirs-root", filepath.Join(t.TempDir(), "work"),
+		"--workspace-dirs-root", filepath.Join(t.TempDir(), "work"),
 	)
 	if err == nil {
 		t.Fatalf("Execute() succeeded with --yes and no --enable, want an error; output:\n%s", out)
@@ -298,7 +298,7 @@ func TestInit_YesRequiresExplicitAllowlistOrAllowAll(t *testing.T) {
 		"--catalog-alias", "local",
 		"--catalog-source", "path+editable://"+fixture,
 		"--enable", "agent/claude",
-		"--workdirs-root", filepath.Join(t.TempDir(), "work"),
+		"--workspace-dirs-root", filepath.Join(t.TempDir(), "work"),
 	)
 	if err == nil {
 		t.Fatalf("Execute() succeeded with --yes and no --allowlist/--allow-all, want an error; output:\n%s", out)
@@ -315,14 +315,14 @@ func TestInit_YesAllowAllOptsOutOfAllowlistExplicitly(t *testing.T) {
 	resetInitFlags(t)
 	configHome := setInitConfigHome(t)
 	fixture := writeInitCatalogFixture(t, "agent/claude")
-	workdirs := filepath.Join(t.TempDir(), "work")
+	workspaceDirs := filepath.Join(t.TempDir(), "work")
 
 	out, err := execRoot(t, "init", "--yes",
 		"--catalog-alias", "local",
 		"--catalog-source", "path+editable://"+fixture,
 		"--enable", "agent/claude",
 		"--allow-all",
-		"--workdirs-root", workdirs,
+		"--workspace-dirs-root", workspaceDirs,
 	)
 	if err != nil {
 		t.Fatalf("Execute() error = %v; output:\n%s", err, out)
@@ -347,17 +347,17 @@ func TestInit_YesRejectsAllowlistAndAllowAllTogether(t *testing.T) {
 		"--enable", "agent/claude",
 		"--allowlist", "^acme/",
 		"--allow-all",
-		"--workdirs-root", filepath.Join(t.TempDir(), "work"),
+		"--workspace-dirs-root", filepath.Join(t.TempDir(), "work"),
 	)
 	if err == nil {
 		t.Fatalf("Execute() succeeded with both --allowlist and --allow-all, want a mutual-exclusivity error; output:\n%s", out)
 	}
 }
 
-// TestInit_YesRequiresExplicitWorkdirsRoot is a regression test: --yes
-// used to silently fall back to ~/workdirs when --workdirs-root was never
+// TestInit_YesRequiresExplicitWorkspaceDirsRoot is a regression test: --yes
+// used to silently fall back to ~/workspaceDirs when --workspace-dirs-root was never
 // passed.
-func TestInit_YesRequiresExplicitWorkdirsRoot(t *testing.T) {
+func TestInit_YesRequiresExplicitWorkspaceDirsRoot(t *testing.T) {
 	resetInitFlags(t)
 	configHome := setInitConfigHome(t)
 	fixture := writeInitCatalogFixture(t, "agent/claude")
@@ -369,13 +369,13 @@ func TestInit_YesRequiresExplicitWorkdirsRoot(t *testing.T) {
 		"--allow-all",
 	)
 	if err == nil {
-		t.Fatalf("Execute() succeeded with --yes and no --workdirs-root, want an error; output:\n%s", out)
+		t.Fatalf("Execute() succeeded with --yes and no --workspace-dirs-root, want an error; output:\n%s", out)
 	}
-	if !strings.Contains(err.Error(), "--workdirs-root") {
-		t.Errorf("error = %v, want it to name --workdirs-root as required", err)
+	if !strings.Contains(err.Error(), "--workspace-dirs-root") {
+		t.Errorf("error = %v, want it to name --workspace-dirs-root as required", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(configHome, "catalogs.toml")); !os.IsNotExist(statErr) {
-		t.Error("init registered the catalog despite a missing required --workdirs-root answer")
+		t.Error("init registered the catalog despite a missing required --workspace-dirs-root answer")
 	}
 }
 
@@ -406,7 +406,7 @@ func TestInit_InteractivePromptsDriveTheSameFlow(t *testing.T) {
 	isInteractive = func() bool { return true }
 	t.Cleanup(func() { isInteractive = origInteractive })
 
-	workdirs := filepath.Join(t.TempDir(), "work")
+	workspaceDirs := filepath.Join(t.TempDir(), "work")
 	stdin := strings.Join([]string{
 		"local",                      // catalog alias
 		"path+editable://" + fixture, // catalog source
@@ -414,7 +414,7 @@ func TestInit_InteractivePromptsDriveTheSameFlow(t *testing.T) {
 		"",                           // catalog revision (blank: path source)
 		"1, channel/slack",           // plugin selection (mixed index + path)
 		"^acme/",                     // resource allowlist
-		workdirs,                     // workdirs root
+		workspaceDirs,                // workspaceDirs root
 		"y",                          // final confirmation
 	}, "\n") + "\n"
 
@@ -439,7 +439,7 @@ func TestInit_InteractivePromptsDriveTheSameFlow(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("config.toml not written: %v", readErr)
 	}
-	if !strings.Contains(string(configData), workdirs) || !strings.Contains(string(configData), "^acme/") {
+	if !strings.Contains(string(configData), workspaceDirs) || !strings.Contains(string(configData), "^acme/") {
 		t.Errorf("config.toml missing prompted answers:\n%s", configData)
 	}
 }

@@ -124,7 +124,7 @@ func evalChain(cfg *config.Config, store *state.Store, def config.ChainDefinitio
 			sp.Warnings = append(sp.Warnings, fmt.Sprintf("input bindings could not be rendered: %v", rErr))
 			return sp
 		}
-		resolved, vErr := resolveSessionInputs(cfg, session.WorkdirPath, workflow, rendered)
+		resolved, vErr := resolveSessionInputs(cfg, session.WorkspaceDirPath, workflow, rendered)
 		if vErr != nil {
 			sp.BlockedReason = chainBlockedInvalidBindings
 			sp.Warnings = append(sp.Warnings, fmt.Sprintf("resolved inputs violate workflow %q inputs contract: %s", workflow, vErr.Message))
@@ -139,7 +139,7 @@ func evalChain(cfg *config.Config, store *state.Store, def config.ChainDefinitio
 	// repeating, silent-in-effect failure rather than the explicit error AC1
 	// requires. Checked here (not at render time) so it only blocks a chain
 	// that would otherwise really fire.
-	workflows, wfErr := cfg.LoadWorkflows(session.WorkdirPath)
+	workflows, wfErr := cfg.LoadWorkflows(session.WorkspaceDirPath)
 	if wfErr != nil {
 		sp.BlockedReason = chainBlockedWorkflowUnresolved
 		sp.Warnings = append(sp.Warnings, fmt.Sprintf("load workflows: %v", wfErr))
@@ -232,7 +232,7 @@ func sanitizeTag(s string) string {
 }
 
 // resolveSpawnSessionName derives, offline, the session name a fire's spawn
-// would resolve to — mirroring Up's name derivation (the provider resolver) so
+// would resolve to — mirroring Up's name derivation (the workspace provider resolver) so
 // the idempotency check sees the same name Up will. A resource no resolver
 // matches is an identity dispatch, whose name is the resource itself.
 func resolveSpawnSessionName(cfg *config.Config, resource, workflow, tag string) (string, error) {

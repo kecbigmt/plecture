@@ -12,10 +12,11 @@ import (
 
 // runWorkflowCleanupForDestroy resolves the session's workflow definition and
 // runs its cleanup hook. The definition comes from the trusted layers (the
-// workdir layer cannot declare hooks), so resolving against the session's
-// workdir path is safe even though that path is clone content.
+// workspace-dir layer cannot declare hooks), so resolving against the
+// session's workspace directory path is safe even though that path is clone
+// content.
 func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, cleanupInputs map[string]string, observer task.Observer) error {
-	workflows, err := cfg.LoadWorkflows(session.WorkdirPath)
+	workflows, err := cfg.LoadWorkflows(session.WorkspaceDirPath)
 	if err != nil {
 		return fmt.Errorf("load workflows: %w", err)
 	}
@@ -23,26 +24,26 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 	if !ok {
 		return fmt.Errorf("workflow %q not found; its cleanup hook cannot run", session.Workflow)
 	}
-	providers, err := cfg.LoadProviders()
+	workspaceProviders, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		return fmt.Errorf("load providers: %w", err)
+		return fmt.Errorf("load workspace providers: %w", err)
 	}
-	prov, ok, provErr := providerFor(wf, providers)
+	prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
 	if provErr != nil {
 		return provErr
 	}
 	if !ok {
-		return fmt.Errorf("workflow %q declares no provider; its cleanup hook cannot run", session.Workflow)
+		return fmt.Errorf("workflow %q declares no workspace provider; its cleanup hook cannot run", session.Workflow)
 	}
 	vars := task.WorkflowHookVars{
-		ResourceID:    session.ResourceID,
-		SessionName:   session.Name,
-		WorkdirsRoot:  cfg.WorkdirsRoot,
-		SessionInputs: session.Inputs,
-		Plugins:       cfg.Plugins,
-		SourcePath:    prov.SourcePath,
-		Force:         force,
-		CleanupInputs: cleanupInputs,
+		ResourceID:        session.ResourceID,
+		SessionName:       session.Name,
+		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
+		SessionInputs:     session.Inputs,
+		Plugins:           cfg.Plugins,
+		SourcePath:        prov.SourcePath,
+		Force:             force,
+		CleanupInputs:     cleanupInputs,
 	}
 	return task.RunWorkflowCleanup(prov, vars, session.Tasks, observer)
 }
@@ -53,7 +54,7 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 // reverse, so the result is strictly the reverse of the instantiation stack —
 // a static node instantiated after a dynamic one (e.g. a re-`up` that re-stamps
 // run nodes) is still cleaned first. The @workflow pseudo-node is excluded; it
-// is released last via the provider cleanup hook.
+// is released last via the workspace provider cleanup hook.
 //
 // runOnly restricts to run-scoped tasks (the `down` lifecycle); destroy
 // passes false to reclaim every task regardless of scope. Static nodes are
@@ -85,14 +86,14 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 	appendStatic(plan.Session)
 	appendStatic(plan.Run)
 
-	defs, err := cfg.LoadTaskDefinitions(session.WorkdirPath)
+	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}
 	// Best-effort: teardown must stay resilient to a workflow config that has
 	// since disappeared or broken (see the comment below), so an error here
 	// just leaves Execution at its zero value (host) rather than aborting.
-	wf, _ := loadSessionWorkflow(cfg, session.WorkdirPath, session)
+	wf, _ := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
 	// Sort dynamic keys for a deterministic input order before the stable sort
 	// (map iteration is random; equal-seq legacy entries would otherwise vary).
 	dynKeys := make([]string, 0, len(session.Tasks))

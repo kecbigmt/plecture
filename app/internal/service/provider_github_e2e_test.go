@@ -15,45 +15,48 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// shippedGithubProvider loads the provider config that ships with the GitHub
-// catalog plugin, so the invariant/convergence tests exercise the hooks that
-// ship rather than a fixture. It also builds the binaries those hooks
-// resolve through `{{bin ...}}` and returns the mounted-plugin entry that
-// resolution needs, since the hooks are what is under test here.
+// shippedGithubWorkspaceProvider loads the workspace provider config that
+// ships with the GitHub catalog plugin, so the invariant/convergence tests
+// exercise the hooks that ship rather than a fixture. It also builds the
+// binaries those hooks resolve through `{{bin ...}}` and returns the
+// mounted-plugin entry that resolution needs, since the hooks are what is
+// under test here.
 //
-// The provider is loaded from inside the same directory buildProviderBinaries
-// mounted (not straight from the repo's plugins/github/), because
-// plugin-local `{{bin "<name>"}}` resolution finds the containing plugin from
-// the provider's own SourcePath — it must actually live under the mounted
-// plugin's directory, the way a real catalog mount always does. The copy is
-// made here, not inside buildProviderBinaries, because attachGithubProvider
-// (the other buildProviderBinaries caller) writes its own differently-named
-// provider file into the same mounted directory — a second, unconditional
-// "github.toml" there would collide with it under a repeated-alias test like
+// The workspace provider is loaded from inside the same directory
+// buildWorkspaceProviderBinaries mounted (not straight from the repo's
+// plugins/github/), because plugin-local `{{bin "<name>"}}` resolution finds
+// the containing plugin from the workspace provider's own SourcePath — it
+// must actually live under the mounted plugin's directory, the way a real
+// catalog mount always does. The copy is made here, not inside
+// buildWorkspaceProviderBinaries, because attachGithubWorkspaceProvider (the
+// other buildWorkspaceProviderBinaries caller) writes its own
+// differently-named workspace provider file into the same mounted
+// directory — a second, unconditional "github.toml" there would collide
+// with it under a repeated-alias test like
 // TestIntegration_WorkflowFrozenOnSession's two-workflow fixture.
-func shippedGithubProvider(t *testing.T) (config.ProviderConfig, []plugins.Mounted) {
+func shippedGithubWorkspaceProvider(t *testing.T) (config.WorkspaceProviderConfig, []plugins.Mounted) {
 	t.Helper()
 	root := repoRoot(t)
-	mounted := buildProviderBinaries(t, root)
-	providersDir := filepath.Join(mounted[0].Dir, "config", "providers")
-	if err := os.MkdirAll(providersDir, 0o755); err != nil {
+	mounted := buildWorkspaceProviderBinaries(t, root)
+	workspacesDir := filepath.Join(mounted[0].Dir, "config", "workspaces")
+	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	shipped, err := os.ReadFile(filepath.Join(root, "plugins", "github", "config", "providers", "github.toml"))
+	shipped, err := os.ReadFile(filepath.Join(root, "plugins", "github", "config", "workspaces", "github.toml"))
 	if err != nil {
-		t.Fatalf("read shipped github provider: %v", err)
+		t.Fatalf("read shipped github workspace provider: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(providersDir, "github.toml"), shipped, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workspacesDir, "github.toml"), shipped, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
-	provs, err := cfg.LoadProviders()
+	provs, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		t.Fatalf("load mounted github provider: %v", err)
+		t.Fatalf("load mounted github workspace provider: %v", err)
 	}
 	prov, ok := provs["github"]
 	if !ok {
-		t.Fatal(`mounted github provider: "github" not found`)
+		t.Fatal(`mounted github workspace provider: "github" not found`)
 	}
 	return prov, mounted
 }
@@ -75,13 +78,13 @@ func resolveGoToolCaches() []string {
 	return []string{"GOMODCACHE=" + lines[0], "GOCACHE=" + lines[1]}
 }
 
-// buildProviderBinaries compiles the plect CLI and the two executables the
-// GitHub catalog plugin ships (plect-github-provider, github-watcher) into a
-// temp directory, prepends it to PATH (`plect` itself is still resolved that
-// way), and returns the mounted-plugin entry a WorkflowHookVars/
-// SubscribeHookVars.Plugins needs so the shipped hooks' `{{bin ...}}`
-// references resolve to the code in this working tree.
-func buildProviderBinaries(t *testing.T, root string) []plugins.Mounted {
+// buildWorkspaceProviderBinaries compiles the plect CLI and the two
+// executables the GitHub catalog plugin ships (github-worktree,
+// github-watcher) into a temp directory, prepends it to PATH (`plect`
+// itself is still resolved that way), and returns the mounted-plugin entry
+// a WorkflowHookVars/SubscribeHookVars.Plugins needs so the shipped hooks'
+// `{{bin ...}}` references resolve to the code in this working tree.
+func buildWorkspaceProviderBinaries(t *testing.T, root string) []plugins.Mounted {
 	t.Helper()
 	binDir := filepath.Join(t.TempDir(), "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -99,7 +102,7 @@ func buildProviderBinaries(t *testing.T, root string) []plugins.Mounted {
 		}
 	}
 	build("app", "./cmd/plect", "plect")
-	build(filepath.Join("plugins", "github", "src"), "./cmd/plect-github-provider", "plect-github-provider")
+	build(filepath.Join("plugins", "github", "src"), "./cmd/github-worktree", "github-worktree")
 	build(filepath.Join("plugins", "github", "src"), "./cmd/github-watcher", "github-watcher")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
@@ -107,19 +110,20 @@ func buildProviderBinaries(t *testing.T, root string) []plugins.Mounted {
 		ID:  "official/github",
 		Dir: binDir,
 		Manifest: plugins.Manifest{Executables: []plugins.Executable{
-			{Name: "plect-github-provider", Path: "plect-github-provider"},
+			{Name: "github-worktree", Path: "github-worktree"},
 			{Name: "github-watcher", Path: "github-watcher"},
 		}},
 	}}
 }
 
-// setupHomeRepo builds the bare-ish layout the github provider expects under
-// $HOME/workdirs (the path the setup script hard-codes) and points HOME at it.
+// setupHomeRepo builds the bare-ish layout the github workspace provider
+// expects under $HOME/workdirs (the path the setup script hard-codes) and
+// points HOME at it.
 func setupHomeRepo(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	gitDir := filepath.Join(home, "workdirs", "github.com", "testowner", "testrepo", "main")
+	gitDir := filepath.Join(home, "workspace_dirs", "github.com", "testowner", "testrepo", "main")
 	bareDir := filepath.Join(t.TempDir(), "origin.git")
 	if err := os.MkdirAll(gitDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -152,7 +156,7 @@ func setupSrcRepo(t *testing.T) string {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	srcDir := filepath.Join(home, "src", "github.com", "testowner", "testrepo")
-	container := filepath.Join(home, "workdirs", "github.com", "testowner", "testrepo")
+	container := filepath.Join(home, "workspace_dirs", "github.com", "testowner", "testrepo")
 	bareDir := filepath.Join(t.TempDir(), "origin.git")
 	if err := os.MkdirAll(srcDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -180,14 +184,15 @@ func setupSrcRepo(t *testing.T) string {
 	return srcDir
 }
 
-// TestE2E_GithubProviderSrcLayoutSingleWorkdir covers the ~/src layout's
-// thinnest case: the session owns the container's only workdir. Cleanup has
-// no sibling workdir and no bare layout to fall back to, so resolving the
-// primary checkout is the only thing keeping destroy from stranding it.
-func TestE2E_GithubProviderSrcLayoutSingleWorkdir(t *testing.T) {
+// TestE2E_GithubWorkspaceProviderSrcLayoutSingleWorkdir covers the ~/src
+// layout's thinnest case: the session owns the container's only workdir.
+// Cleanup has no sibling workdir and no bare layout to fall back to, so
+// resolving the primary checkout is the only thing keeping destroy from
+// stranding it.
+func TestE2E_GithubWorkspaceProviderSrcLayoutSingleWorkdir(t *testing.T) {
 	setupFakeScripts(t)
 	setupSrcRepo(t)
-	prov, mounted := shippedGithubProvider(t)
+	prov, mounted := shippedGithubWorkspaceProvider(t)
 	session := "testowner/testrepo-42+review"
 
 	tasks := map[string]*contract.TaskState{}
@@ -197,11 +202,11 @@ func TestE2E_GithubProviderSrcLayoutSingleWorkdir(t *testing.T) {
 		t.Fatalf("setup: %v", err)
 	}
 
-	workdir, _ := out["workdir"].(string)
+	workdir, _ := out["workspace_dir"].(string)
 	if _, err := os.Stat(workdir); err != nil {
 		t.Fatalf("workdir not created: %v", err)
 	}
-	if !strings.Contains(workdir, filepath.Join("workdirs", "github.com", "testowner", "testrepo")) {
+	if !strings.Contains(workdir, filepath.Join("workspace_dirs", "github.com", "testowner", "testrepo")) {
 		t.Errorf("workdir = %q, want it inside the workdir container", workdir)
 	}
 
@@ -213,7 +218,7 @@ func TestE2E_GithubProviderSrcLayoutSingleWorkdir(t *testing.T) {
 	}
 }
 
-func runSetup(t *testing.T, prov config.ProviderConfig, mounted []plugins.Mounted, session string) map[string]any {
+func runSetup(t *testing.T, prov config.WorkspaceProviderConfig, mounted []plugins.Mounted, session string) map[string]any {
 	t.Helper()
 	tasks := map[string]*contract.TaskState{}
 	out, err := task.RunWorkflowSetup(prov, task.WorkflowHookVars{
@@ -228,20 +233,20 @@ func runSetup(t *testing.T, prov config.ProviderConfig, mounted []plugins.Mounte
 	return out
 }
 
-// TestE2E_GithubProviderInvariant runs the shipped github setup and asserts the
-// session is a function of the tagged session name (branch + workdir path
-// both carry the tag).
-func TestE2E_GithubProviderInvariant(t *testing.T) {
+// TestE2E_GithubWorkspaceProviderInvariant runs the shipped github setup and
+// asserts the session is a function of the tagged session name (branch +
+// workdir path both carry the tag).
+func TestE2E_GithubWorkspaceProviderInvariant(t *testing.T) {
 	setupFakeScripts(t)
 	setupHomeRepo(t)
-	prov, mounted := shippedGithubProvider(t)
+	prov, mounted := shippedGithubWorkspaceProvider(t)
 
 	out := runSetup(t, prov, mounted, "testowner/testrepo-42+review")
 
 	if got := out["branch"]; got != "issue/42+review" {
 		t.Errorf("branch = %v, want issue/42+review (derived from tagged session name)", got)
 	}
-	workdir, _ := out["workdir"].(string)
+	workdir, _ := out["workspace_dir"].(string)
 	if !strings.HasSuffix(workdir, "/issue-42-review") {
 		t.Errorf("workdir = %q, want suffix /issue-42-review", workdir)
 	}
@@ -251,18 +256,19 @@ func TestE2E_GithubProviderInvariant(t *testing.T) {
 	// A different tool's session on the same resource must land in a distinct
 	// session (the cross-tool separation the default tag guarantees).
 	out2 := runSetup(t, prov, mounted, "testowner/testrepo-42+claude")
-	if out2["workdir"] == workdir {
+	if out2["workspace_dir"] == workdir {
 		t.Error("tagged sessions must not share a session")
 	}
 }
 
-// TestE2E_GithubProviderConvergesAndReclaims covers destroy convergence on
-// the live provider path: cleanup reclaims the tagged branch, and a re-dispatch
-// over an orphaned branch reuses it instead of failing.
-func TestE2E_GithubProviderConvergesAndReclaims(t *testing.T) {
+// TestE2E_GithubWorkspaceProviderConvergesAndReclaims covers destroy
+// convergence on the live workspace provider path: cleanup reclaims the
+// tagged branch, and a re-dispatch over an orphaned branch reuses it
+// instead of failing.
+func TestE2E_GithubWorkspaceProviderConvergesAndReclaims(t *testing.T) {
 	setupFakeScripts(t)
 	gitDir := setupHomeRepo(t)
-	prov, mounted := shippedGithubProvider(t)
+	prov, mounted := shippedGithubWorkspaceProvider(t)
 	session := "testowner/testrepo-42+review"
 	branch := "issue/42+review"
 
@@ -293,7 +299,7 @@ func TestE2E_GithubProviderConvergesAndReclaims(t *testing.T) {
 	if err := task.RunWorkflowCleanup(prov, vars, tasks, nil); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
-	workdir, _ := tasks[contract.WorkflowPseudoNodeID].Outputs["workdir"].(string)
+	workdir, _ := tasks[contract.WorkflowPseudoNodeID].Outputs["workspace_dir"].(string)
 	if _, err := os.Stat(workdir); !os.IsNotExist(err) {
 		t.Errorf("workdir should be removed, stat err: %v", err)
 	}
@@ -305,8 +311,8 @@ func TestE2E_GithubProviderConvergesAndReclaims(t *testing.T) {
 	// the workdir (branch survives), and re-dispatch. Setup must converge.
 	tasks2 := map[string]*contract.TaskState{}
 	out := runSetup(t, prov, mounted, session)
-	wd, _ := out["workdir"].(string)
-	// "worktree", not "workdir": this is the literal git subcommand, not
+	wd, _ := out["workspace_dir"].(string)
+	// "worktree", not "workspace_dir": this is the literal git subcommand, not
 	// plect's own vocabulary for the acquired directory.
 	if err := exec.Command("git", "-C", gitDir, "worktree", "remove", wd).Run(); err != nil {
 		t.Fatalf("orphan the branch (remove workdir): %v", err)

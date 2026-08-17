@@ -56,14 +56,14 @@ const oldStateJSON = `{
 }`
 
 const newStateJSON = `{
-  "version": 6,
+  "version": 7,
   "sessions": {
     "acme-issue-1": {
       "session_name": "acme-issue-1",
       "resource_id": "https://github.com/acme/widgets/issues/1",
       "alias": "https://github.com/acme/widgets/issues/1",
       "branch": "issue-1",
-      "workdir_path": "/tmp/worktrees/acme-issue-1",
+      "workspace_dir_path": "/tmp/worktrees/acme-issue-1",
       "conversation": {
         "source": "Slack",
         "metadata": {
@@ -86,7 +86,7 @@ const newStateJSON = `{
       "resource_id": "https://github.com/acme/widgets/issues/2",
       "alias": "https://github.com/acme/widgets/issues/2",
       "branch": "issue-2",
-      "workdir_path": "/tmp/worktrees/inline-legacy",
+      "workspace_dir_path": "/tmp/worktrees/inline-legacy",
       "tasks": {
         "build": {
           "scope": "session",
@@ -167,8 +167,8 @@ func TestRun_MigratesOldFormAndIsIdempotent(t *testing.T) {
 	if containsKey(t, gotConfig, "repo_allowlist") {
 		t.Fatal("expected repo_allowlist to be removed from config.toml")
 	}
-	if containsKey(t, gotConfig, "worktrees_root") || !containsKey(t, gotConfig, "workdirs_root") {
-		t.Fatalf("expected worktrees_root to be renamed to workdirs_root, got:\n%s", gotConfig)
+	if containsKey(t, gotConfig, "worktrees_root") || containsKey(t, gotConfig, "workdirs_root") || !containsKey(t, gotConfig, "workspace_dirs_root") {
+		t.Fatalf("expected worktrees_root to be renamed to workspace_dirs_root, got:\n%s", gotConfig)
 	}
 	patterns := decodeStringSlice(t, gotConfig, "resource_allowlist")
 	wantPatterns := map[string]bool{
@@ -294,7 +294,7 @@ func TestRun_CurrentFormDataIsNoOp(t *testing.T) {
 	if err := os.WriteFile(statePath, []byte(newStateJSON), 0644); err != nil {
 		t.Fatal(err)
 	}
-	newConfig := `workdirs_root = "/home/user/workdirs"
+	newConfig := `workspace_dirs_root = "/home/user/workspace_dirs"
 resource_allowlist = ["^https://github\\.com/acme/widgets(/|$)"]
 detached = true
 `
@@ -345,12 +345,86 @@ func TestRun_BumpsPreGuardStateVersion(t *testing.T) {
 	}
 
 	got := decodeJSONMap(t, mustReadFile(t, statePath))
-	if got["version"] != float64(6) {
-		t.Fatalf("version = %v, want 6", got["version"])
+	if got["version"] != float64(7) {
+		t.Fatalf("version = %v, want 7", got["version"])
+	}
+	session := got["sessions"].(map[string]any)["acme-issue-1"].(map[string]any)
+	if session["workspace_dir_path"] != "/tmp/workdirs/acme-issue-1" {
+		t.Fatalf("workspace_dir_path = %v, want it renamed from workdir_path", session["workspace_dir_path"])
 	}
 }
 
-func TestRun_RepairsEmptyWorkdirPathFromLegacyWorktreePath(t *testing.T) {
+// TestRun_WorkdirEraStateVersionAlsoMigrates pins that this tool accepts
+// input already at the workdir-era schema version (the prior, now-retired
+// worktree→workdir migration's own output), not just the oldest pre-guard
+// version — so an operator who already ran that migration does not have to
+// chain a second one.
+func TestRun_WorkdirEraStateVersionAlsoMigrates(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	configPath := filepath.Join(dir, "config.toml")
+	workdirEra := `{
+  "version": 6,
+  "sessions": {
+    "acme-issue-1": {
+      "session_name": "acme-issue-1",
+      "resource_id": "https://example.test/acme/widgets/items/1",
+      "alias": "https://example.test/acme/widgets/items/1",
+      "workdir_path": "/tmp/workdirs/acme-issue-1",
+      "tasks": {
+        "@workflow": {
+          "scope": "session",
+          "status": "produced",
+          "outputs": {"workdir": "/tmp/workdirs/acme-issue-1", "branch": "issue-1"}
+        }
+      }
+    }
+  }
+}`
+	if err := os.WriteFile(statePath, []byte(workdirEra), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(`workdirs_root = "/home/user/workdirs"`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(Options{StatePath: statePath, ConfigPath: configPath, BackupDir: filepath.Join(dir, "migration-backups")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Changed || !report.StateChanged || !report.ConfigChanged {
+		t.Fatalf("expected both files to be rewritten, got %+v", report)
+	}
+
+	got := decodeJSONMap(t, mustReadFile(t, statePath))
+	if got["version"] != float64(7) {
+		t.Fatalf("version = %v, want 7", got["version"])
+	}
+	session := got["sessions"].(map[string]any)["acme-issue-1"].(map[string]any)
+	if session["workspace_dir_path"] != "/tmp/workdirs/acme-issue-1" {
+		t.Fatalf("workspace_dir_path = %v, want it renamed from workdir_path", session["workspace_dir_path"])
+	}
+	if _, exists := session["workdir_path"]; exists {
+		t.Fatal("legacy workdir_path key must be removed")
+	}
+	wfOutputs := session["tasks"].(map[string]any)["@workflow"].(map[string]any)["outputs"].(map[string]any)
+	if wfOutputs["workspace_dir"] != "/tmp/workdirs/acme-issue-1" {
+		t.Fatalf("@workflow outputs.workspace_dir = %v, want it renamed from outputs.workdir", wfOutputs["workspace_dir"])
+	}
+	if _, exists := wfOutputs["workdir"]; exists {
+		t.Fatal("legacy @workflow outputs.workdir key must be removed")
+	}
+
+	gotConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsKey(t, gotConfig, "workdirs_root") || !containsKey(t, gotConfig, "workspace_dirs_root") {
+		t.Fatalf("expected workdirs_root to be renamed to workspace_dirs_root, got:\n%s", gotConfig)
+	}
+}
+
+func TestRun_RepairsEmptyWorkspaceDirPathFromLegacyWorktreePath(t *testing.T) {
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "state.json")
 	configPath := filepath.Join(dir, "config.toml")
@@ -381,14 +455,17 @@ func TestRun_RepairsEmptyWorkdirPathFromLegacyWorktreePath(t *testing.T) {
 
 	got := decodeJSONMap(t, mustReadFile(t, statePath))
 	session := got["sessions"].(map[string]any)["acme-issue-1"].(map[string]any)
-	if session["workdir_path"] != "/tmp/worktrees/acme-issue-1" {
-		t.Fatalf("workdir_path = %v, want restored legacy path", session["workdir_path"])
+	if session["workspace_dir_path"] != "/tmp/worktrees/acme-issue-1" {
+		t.Fatalf("workspace_dir_path = %v, want restored legacy path", session["workspace_dir_path"])
 	}
 	if _, exists := session["worktree_path"]; exists {
 		t.Fatal("legacy worktree_path key must be removed")
 	}
-	if got["version"] != float64(6) {
-		t.Fatalf("version = %v, want 6", got["version"])
+	if _, exists := session["workdir_path"]; exists {
+		t.Fatal("legacy workdir_path key must be removed")
+	}
+	if got["version"] != float64(7) {
+		t.Fatalf("version = %v, want 7", got["version"])
 	}
 }
 

@@ -42,7 +42,8 @@ type ObserveResult struct {
 // resolution that must fail outright — an ambiguous owner alias, or a
 // concept id that escapes the bundle — because those have no state to fold
 // into. Every other failure to locate the goal (no session, unreadable
-// workdir, missing bundle, missing file) becomes an UNRESOLVED result, and
+// workspace directory, missing bundle, missing file) becomes an UNRESOLVED
+// result, and
 // a malformed file becomes a FAILURE result: both are reported, not
 // returned as errors, because observe is a status read, not a command that
 // can fail outright.
@@ -112,16 +113,16 @@ func Finalize(runner bundle.StatusRunner, resourceID, revision string, now time.
 }
 
 // resolve is the resolution chain observe and finalize share: owner alias
-// to workdir, workdir to bundle root, root plus concept id to a contained
-// file. It returns the root alongside the file path so finalize can place
-// the completion log entry beside the bundle without a second `plect
-// status` round trip.
+// to workspace directory, workspace directory to bundle root, root plus
+// concept id to a contained file. It returns the root alongside the file
+// path so finalize can place the completion log entry beside the bundle
+// without a second `plect status` round trip.
 func resolve(runner bundle.StatusRunner, owner, conceptID string) (root, path string, rerr *bundle.ResolveError) {
-	workdir, rerr := bundle.ResolveOwnerWorkdir(runner, owner)
+	workspaceDir, rerr := bundle.ResolveOwnerWorkspaceDir(runner, owner)
 	if rerr != nil {
 		return "", "", rerr
 	}
-	root, rerr = bundle.Root(workdir)
+	root, rerr = bundle.Root(workspaceDir)
 	if rerr != nil {
 		return "", "", rerr
 	}

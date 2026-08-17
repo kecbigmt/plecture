@@ -5,12 +5,17 @@ version = "0.1.0"
 # would make the plugin unloadable for every current build, not gate on any
 # real compatibility fact. Raise this once a first tagged release exists.
 plect_min_version = "0.0.0"
-description = "GitHub resource provider, resource observation, watcher subscription, and the work/review/respond/investigate task pack."
+description = "GitHub workspace provider, resource observation, watcher subscription, and the work/review/respond/investigate task pack."
 
 [[executables]]
-name = "plect-github-provider"
-path = "bin/plect-github-provider"
-build = "go -C src build -o ../bin/plect-github-provider ./cmd/plect-github-provider"
+name = "github-worktree"
+path = "bin/github-worktree"
+build = "go -C src build -o ../bin/github-worktree ./cmd/github-worktree"
+
+[[executables]]
+name = "github-issue-pr"
+path = "bin/github-issue-pr"
+build = "go -C src build -o ../bin/github-issue-pr ./cmd/github-issue-pr"
 
 [[executables]]
 name = "github-watcher"

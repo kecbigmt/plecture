@@ -111,7 +111,7 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 		t.Fatal(err)
 	}
 	return &config.Config{
-		WorkdirsRoot: workdirsRoot,
-		BaseDir:      baseDir,
+		WorkspaceDirsRoot: workdirsRoot,
+		BaseDir:           baseDir,
 	}
 }

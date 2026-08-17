@@ -87,7 +87,7 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 		reviewerWorkflow = rs.Workflow
 	}
 	relation := string(domain.RelationFromTarget(allSessions, resolvedName, reviewer))
-	defs, err := cfg.LoadTaskDefinitions(session.WorkdirPath)
+	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}

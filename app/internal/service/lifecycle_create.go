@@ -13,7 +13,7 @@ import (
 
 // CreateParams holds parameters for Create — the task-aware counterpart of Add.
 // Unlike Add, Create does not auto-start the runtime: the user opts into
-// run-scoped lifecycle via Up. session-scoped tasks run after workdir
+// run-scoped lifecycle via Up. session-scoped tasks run after workspace
 // creation.
 type CreateParams struct {
 	URL           string
@@ -26,30 +26,30 @@ type CreateParams struct {
 
 // CreateResult holds the outcome of Create.
 type CreateResult struct {
-	SessionName   string                         `json:"session_name"`
-	WorkdirPath   string                         `json:"workdir_path"`
-	Branch        string                         `json:"branch"`
-	ReusedWorkdir bool                           `json:"reused_workdir"`
-	Tasks         map[string]*contract.TaskState `json:"tasks,omitempty"`
+	SessionName        string                         `json:"session_name"`
+	WorkspaceDirPath   string                         `json:"workspace_dir_path"`
+	Branch             string                         `json:"branch"`
+	ReusedWorkspaceDir bool                           `json:"reused_workspace_dir"`
+	Tasks              map[string]*contract.TaskState `json:"tasks,omitempty"`
 }
 
-// Create establishes the session: state entry + working directory + session-
-// scoped tasks.
+// Create establishes the session: state entry + workspace directory +
+// session-scoped tasks.
 //
 // Dispatch order for the resource identifier (any string):
 //
 //  1. Resolver dispatch — the workflow whose `[resolver]` matches (or the
 //     --workflow flag's resolver) derives the session id purely; the
-//     provider's setup then acquires the workdir. The core performs no
-//     version-control or provider-API work of its own.
+//     workspace provider's setup then acquires the workspace. The core
+//     performs no version-control or workspace-provider-API work of its own.
 //  2. Identity — an identifier no resolver matches, with an explicit
-//     --workflow whose provider declares setup: the input string IS the
-//     session id.
+//     --workflow whose workspace provider declares setup: the input string
+//     IS the session id.
 //
 // Create is idempotent: re-running it against an existing session reuses
-// the workdir + state entry and retries the workflow setup and any
-// session-scoped tasks that have not yet reached "produced". This is the
-// recovery path for a previous create that partially failed.
+// the workspace directory + state entry and retries the workflow setup and
+// any session-scoped tasks that have not yet reached "produced". This is
+// the recovery path for a previous create that partially failed.
 // putBestEffort persists session after a step whose own error already takes
 // priority in the caller's return path (e.g. mid-lifecycle checkpoints, or
 // cleanup that reports via CleanupWarnings/Force). A failure here must not
@@ -91,7 +91,7 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 			return nil, tagErr
 		}
 		sessionName := disp.Name + "+" + tag
-		return createWithWorkflowSetup(cfg, store, params, disp.Workflow, disp.Provider, sessionName, resource, params.URL)
+		return createWithWorkflowSetup(cfg, store, params, disp.Workflow, disp.WorkspaceProvider, sessionName, resource, params.URL)
 	}
 
 	// 2. Identity: the resource identifier IS the session id. Requires an
@@ -108,16 +108,16 @@ func Create(cfg *config.Config, store *state.Store, params CreateParams) (*Creat
 	if !ok {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found; add .plect/workflows/%s.toml", params.Workflow, params.Workflow)}
 	}
-	providers, err := cfg.LoadProviders()
+	workspaceProviders, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load providers: %v", err)}
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", err)}
 	}
-	prov, ok, provErr := providerFor(wf, providers)
+	prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
 	if provErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
 	}
 	if !ok {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no provider; a session needs one to acquire its working directory", wf.ID)}
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no workspace provider; a session needs one to acquire its workspace", wf.ID)}
 	}
 	tag, tagErr := effectiveTag(params.Tag, wf.ID)
 	if tagErr != nil {

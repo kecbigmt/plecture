@@ -8,7 +8,7 @@ Review the goal at {{.ResourceID}}.
 
 Steps:
 
-1. Read the goal file's contents (symlinked into this session's workdir as
+1. Read the goal file's contents (symlinked into this session's workspace directory as
    `knowledge/`) — its "## Done When" checklist, its current status, and the
    log of what's happened against it so far
 2. Cross-check the checklist against actual evidence: recent commits, PRs,

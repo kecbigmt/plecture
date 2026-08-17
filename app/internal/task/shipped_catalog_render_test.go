@@ -58,12 +58,12 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 	tasks, mounted := loadShippedCatalogTasks(t)
 
 	session := SessionVars{
-		Name:          "test-session",
-		ResourceID:    "owner:test",
-		WorkdirPath:   "/tmp/test-workdir",
-		Plugins:       mounted,
-		ParentSession: "",
-		Inputs:        map[string]any{},
+		Name:             "test-session",
+		ResourceID:       "owner:test",
+		WorkspaceDirPath: "/tmp/test-workdir",
+		Plugins:          mounted,
+		ParentSession:    "",
+		Inputs:           map[string]any{},
 	}
 
 	// Superset of every key a shipped task's setup/cleanup/healthcheck reads

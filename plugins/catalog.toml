@@ -11,7 +11,7 @@
 # docs/design/plugin-packaging.md's Package format section for the src/
 # bin/ scripts/ layout convention.
 schema_version = 1
-description = "Plecture's official plugin catalog: reusable provider, resource, task, and channel packs shipped from this repository."
+description = "Plecture's official plugin catalog: reusable workspace provider, resource, task, and channel packs shipped from this repository."
 
 plugins = [
   "session/runtime",

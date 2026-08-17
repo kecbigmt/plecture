@@ -17,32 +17,32 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
-// mountResolverOnlyProvider registers a minimal global-layer workflow +
-// provider so dispatch can resolve a github.com URL without depending on
+// mountResolverOnlyWorkspaceProvider registers a minimal global-layer workflow +
+// workspace provider so dispatch can resolve a github.com URL without depending on
 // whatever catalogs.toml (if any) happens to be registered on the machine
-// the test runs on. The provider's setup hook is a placeholder that must
+// the test runs on. The workspace provider's setup hook is a placeholder that must
 // never actually run — Create's allowlist check is meant to reject the
-// request before any provider hook does.
-func mountResolverOnlyProvider(t *testing.T, cfg *config.Config) {
+// request before any workspace provider hook does.
+func mountResolverOnlyWorkspaceProvider(t *testing.T, cfg *config.Config) {
 	t.Helper()
 	base := t.TempDir()
 	cfg.BaseDir = base
 	if err := os.MkdirAll(filepath.Join(base, "workflows"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(base, "providers"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(base, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	workflowTOML := "provider = \"test-gh\"\n"
+	workflowTOML := "workspace_provider = \"test-gh\"\n"
 	if err := os.WriteFile(filepath.Join(base, "workflows", "test.toml"), []byte(workflowTOML), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	providerTOML := "match = '^https://github\\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\\d+)'\n" +
+	workspaceProviderTOML := "match = '^https://github\\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\\d+)'\n" +
 		"name  = \"{{.owner}}/{{.repo}}-{{.number}}\"\n" +
 		// Never invoked (the allowlist check rejects the request first) —
-		// only present because LoadProviders requires a non-empty setup.
+		// only present because LoadWorkspaceProviders requires a non-empty setup.
 		"setup = \"exit 1\"\n"
-	if err := os.WriteFile(filepath.Join(base, "providers", "test-gh.toml"), []byte(providerTOML), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(base, "workspaces", "test-gh.toml"), []byte(workspaceProviderTOML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -56,12 +56,12 @@ func mountResolverOnlyProvider(t *testing.T, cfg *config.Config) {
 func TestAcceptance_SessionAppearsInList(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	sess := &domain.Session{
-		Name:        "acceptance/web-1",
-		ResourceID:  "https://github.com/acceptance/web/issues/1",
-		Branch:      "issue/1",
-		WorkdirPath: "/nonexistent/workdir",
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		Name:             "acceptance/web-1",
+		ResourceID:       "https://github.com/acceptance/web/issues/1",
+		Branch:           "issue/1",
+		WorkspaceDirPath: "/nonexistent/workspace-dir",
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
 	}
 	if err := store.Put(sess); err != nil {
 		t.Fatalf("seed session: %v", err)
@@ -88,16 +88,16 @@ func TestAcceptance_SessionAppearsInList(t *testing.T) {
 // Given a session persisted in a temp state store,
 // When GET /sessions/<name> is served by the live service,
 // Then the response shows that session's branch and a diagnostic for the
-// missing workdir (the seeded path does not exist).
+// missing workspace directory (the seeded path does not exist).
 func TestAcceptance_SessionDetail(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	sess := &domain.Session{
-		Name:        "acceptance/web-2",
-		ResourceID:  "https://github.com/acceptance/web/issues/2",
-		Branch:      "issue/2",
-		WorkdirPath: "/nonexistent/workdir",
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		Name:             "acceptance/web-2",
+		ResourceID:       "https://github.com/acceptance/web/issues/2",
+		Branch:           "issue/2",
+		WorkspaceDirPath: "/nonexistent/workspace-dir",
+		CreatedAt:        time.Now(),
+		UpdatedAt:        time.Now(),
 	}
 	if err := store.Put(sess); err != nil {
 		t.Fatalf("seed session: %v", err)
@@ -118,7 +118,7 @@ func TestAcceptance_SessionDetail(t *testing.T) {
 		t.Errorf("detail missing session fields; body:\n%s", body)
 	}
 	if !strings.Contains(body, "(missing)") {
-		t.Errorf("detail should surface the missing-workdir diagnostic; body:\n%s", body)
+		t.Errorf("detail should surface the missing-workspace-dir diagnostic; body:\n%s", body)
 	}
 }
 
@@ -151,14 +151,14 @@ func acceptancePost(t *testing.T, h http.Handler, path string, form url.Values) 
 }
 
 // Acceptance: a create for a resource outside the allowlist is a 403 through
-// the real stack — the allowlist check fires before any provider work.
+// the real stack — the allowlist check fires before any workspace provider work.
 func TestAcceptance_CreateResourceNotAllowed(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	mountResolverOnlyProvider(t, cfg)
+	mountResolverOnlyWorkspaceProvider(t, cfg)
 	cfg.ResourceAllowlist = []string{`^https://github\.com/only/allowed/`}
 
 	h := New(newLiveService(cfg, store)).Routes()

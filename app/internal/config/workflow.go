@@ -32,21 +32,22 @@ type WorkflowFile struct {
 	ID          string `toml:"-"`
 	Name        string `toml:"name"`
 	Description string `toml:"description"`
-	// Provider names the resource provider (providers/<id>.toml in the
-	// trusted base layers) this workflow runs on. The provider owns the
-	// resource-kind knowledge — resolver, workdir setup/cleanup, the
-	// @workflow outputs contract; the workflow owns the task shape on top
+	// WorkspaceProvider names the workspace provider (workspaces/<id>.toml in
+	// the trusted base layers) this workflow runs on. The workspace provider
+	// owns the resource-kind knowledge — resolver, workspace setup/cleanup,
+	// the @workflow outputs contract; the workflow owns the task shape on top
 	// (nodes, inputs, done_when, display). A workflow without one cannot
-	// acquire a working directory, so it cannot back a session.
-	Provider string `toml:"provider"`
+	// acquire a workspace, so it cannot back a session.
+	WorkspaceProvider string `toml:"workspace_provider"`
 	// Environment names the environment definition (environments/<id>.toml in
 	// the trusted base layers) this workflow's task Executor runs in. Empty
 	// or the built-in "host" value are the same thing — no environment
 	// lifecycle, tasks run directly on this machine (host degeneration) — so
 	// declaring `environment = "host"` explicitly changes nothing observable.
 	// Any other value is resolved against LoadEnvironments and its setup runs
-	// after provider setup, before session task setup (see EnvironmentConfig);
-	// a node's own `execution` decides whether it actually runs there.
+	// after workspace provider setup, before session task setup (see
+	// EnvironmentConfig); a node's own `execution` decides whether it
+	// actually runs there.
 	Environment string `toml:"environment"`
 	// EnvironmentInputs is a passthrough table for values a non-host
 	// Environment needs (e.g. a Docker image/tag). Core does not interpret
@@ -209,8 +210,8 @@ func NormalizeHealthcheckConfig(in *HealthcheckConfig) HealthcheckConfig {
 // Blocks declares reverse dependency edges: each listed node id becomes a
 // dependent of this one, equivalent to writing the inverse dependency in the
 // listed node. Use it when a cascade overlay needs to insert itself ahead of
-// base nodes it cannot modify directly (e.g. a workdir-process killer that
-// must clean up after the runtime/agent tasks).
+// base nodes it cannot modify directly (e.g. a workspace-dir-process killer
+// that must clean up after the runtime/agent tasks).
 type WorkflowNode struct {
 	ID     string            `toml:"id"`
 	Uses   string            `toml:"uses"`
@@ -261,7 +262,7 @@ type TaskDefinition struct {
 	// movement facts as JSON on stdout: {"supported": bool,
 	// "movement_expected": bool, "fingerprint": string, "observed_at":
 	// RFC3339 string}. Core never interprets what the command actually
-	// checked (a terminal pane, an agent transcript, a VCS workdir, ...) —
+	// checked (a terminal pane, an agent transcript, a VCS workspace, ...) —
 	// it only compares the fingerprint and timestamp the command reports.
 	// Empty means no movement signal is declared for this task; a command
 	// that runs but reports "supported": false is an explicit declaration
@@ -488,8 +489,8 @@ func ValidateDynamicOutputs(srcs []DynamicOutput) error {
 // builtinDynamicOutputs let a local DoD ride the same script→value→check path
 // as a remote one with no per-task boilerplate.
 var builtinDynamicOutputs = []DynamicOutput{{
-	Name:   "workdir_dirty",
-	Script: "git -C {{.WorkdirPath}} status --porcelain | wc -l | tr -d ' '",
+	Name:   "workspace_dir_dirty",
+	Script: "git -C {{.WorkspaceDirPath}} status --porcelain | wc -l | tr -d ' '",
 }}
 
 // withBuiltinOutputs injects a builtin only into tasks whose done_when names
@@ -565,10 +566,11 @@ func resolveSchemaPath(file, baseDir string) string {
 }
 
 // layerDir pairs a cascade search directory with its trust classification.
-// The workdir layer (`.plect/` inside the working directory itself) is clone
-// content — an attacker-controlled repository must not be able to introduce
-// shell that plect would execute. Every other layer (plugin, global, ancestor
-// overlays above the workdir) is machine-owned and trusted.
+// The workspace-dir layer (`.plect/` inside the workspace directory itself)
+// is clone content — an attacker-controlled repository must not be able to
+// introduce shell that plect would execute. Every other layer (plugin,
+// global, ancestor overlays above the workspace dir) is machine-owned and
+// trusted.
 //
 // plugin marks a layer sourced from c.PluginDirs specifically (as opposed to
 // the global config dir or an ancestor overlay): per the plugin-packaging
@@ -576,9 +578,9 @@ func resolveSchemaPath(file, baseDir string) string {
 // while a user-owned layer (global or overlay) may always replace what a
 // plugin layer defines.
 type layerDir struct {
-	dir     string
-	workdir bool
-	plugin  bool
+	dir          string
+	workspaceDir bool
+	plugin       bool
 }
 
 // LoadWorkflows merges plugin + global + ancestor `.plect/workflows/` layers so
@@ -589,13 +591,13 @@ type layerDir struct {
 // arbitrary plugins under one workflow id was never a sanctioned use case —
 // only a user-owned overlay may extend a plugin's workflow.
 //
-// Trust restriction: workflow files in the workdir layer may only add nodes.
-// Declaring anything else there (setup/cleanup shell, identity, schemas) is a
-// load error. Declaring `done_when` at the workflow level, in any layer, is
-// also a load error — the completion predicate lives on the task definition's
-// `[done_when]`.
-func (c *Config) LoadWorkflows(workdirDir string) (map[string]WorkflowFile, error) {
-	dirs := c.workflowSearchDirs(workdirDir)
+// Trust restriction: workflow files in the workspace-dir layer may only add
+// nodes. Declaring anything else there (setup/cleanup shell, identity,
+// schemas) is a load error. Declaring `done_when` at the workflow level, in
+// any layer, is also a load error — the completion predicate lives on the
+// task definition's `[done_when]`.
+func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile, error) {
+	dirs := c.workflowSearchDirs(workspaceDirPath)
 	layered := make(map[string][]WorkflowFile)
 	order := make([]string, 0)
 	pluginOwner := make(map[string]string)
@@ -609,8 +611,8 @@ func (c *Config) LoadWorkflows(workdirDir string) (map[string]WorkflowFile, erro
 			if err != nil {
 				return nil, fmt.Errorf("workflow %s: %w", path, err)
 			}
-			if layer.workdir {
-				if err := validateWorkdirLayerWorkflow(wf); err != nil {
+			if layer.workspaceDir {
+				if err := validateWorkspaceDirLayerWorkflow(wf); err != nil {
 					return nil, err
 				}
 			}
@@ -637,9 +639,9 @@ func (c *Config) LoadWorkflows(workdirDir string) (map[string]WorkflowFile, erro
 	return out, nil
 }
 
-// validateWorkdirLayerWorkflow enforces the node-addition-only rule for
-// workflow files that live inside the working directory.
-func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
+// validateWorkspaceDirLayerWorkflow enforces the node-addition-only rule for
+// workflow files that live inside the workspace directory.
+func validateWorkspaceDirLayerWorkflow(wf WorkflowFile) error {
 	var offending []string
 	if wf.Name != "" {
 		offending = append(offending, "name")
@@ -647,8 +649,8 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 	if wf.Description != "" {
 		offending = append(offending, "description")
 	}
-	if wf.Provider != "" {
-		offending = append(offending, "provider")
+	if wf.WorkspaceProvider != "" {
+		offending = append(offending, "workspace_provider")
 	}
 	if wf.Environment != "" {
 		offending = append(offending, "environment")
@@ -666,7 +668,7 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 		offending = append(offending, "inputs_schema")
 	}
 	// A channel selects a delivery primitive (exec runs argv) — clone content
-	// must not introduce one, same trust rule as tasks/providers.
+	// must not introduce one, same trust rule as tasks/workspaces.
 	if len(wf.Event.Channel) > 0 {
 		offending = append(offending, "event.channel")
 	}
@@ -681,7 +683,7 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 		offending = append(offending, "healthcheck")
 	}
 	if len(offending) > 0 {
-		return fmt.Errorf("workflow %s: a `.plect/workflows/` file inside the working directory may only add [[nodes]]; %v must move to a trusted layer (global config, plugin, or a directory above the workdir)", wf.SourcePath, offending)
+		return fmt.Errorf("workflow %s: a `.plect/workflows/` file inside the workspace directory may only add [[nodes]]; %v must move to a trusted layer (global config, plugin, or a directory above the workspace dir)", wf.SourcePath, offending)
 	}
 	return nil
 }
@@ -693,21 +695,22 @@ func validateWorkdirLayerWorkflow(wf WorkflowFile) error {
 // load error instead of a silent pick, since declaration order must never
 // decide between two plugins' shell.
 //
-// Trust restriction: task definitions are arbitrary shell, so the workdir
-// layer (clone content) must not contribute any. A `.plect/tasks/*.toml`
-// inside the working directory is a load error rather than a silent skip —
-// silently ignoring it would make the author think the task is active.
-func (c *Config) LoadTaskDefinitions(workdirDir string) (map[string]TaskDefinition, error) {
+// Trust restriction: task definitions are arbitrary shell, so the
+// workspace-dir layer (clone content) must not contribute any. A
+// `.plect/tasks/*.toml` inside the workspace directory is a load error
+// rather than a silent skip — silently ignoring it would make the author
+// think the task is active.
+func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDefinition, error) {
 	out := make(map[string]TaskDefinition)
 	pluginOwner := make(map[string]string)
-	dirs := c.tasksSearchDirs(workdirDir)
+	dirs := c.tasksSearchDirs(workspaceDirPath)
 	for _, layer := range dirs {
 		entries, err := listTOMLFiles(layer.dir)
 		if err != nil {
 			return nil, err
 		}
-		if layer.workdir && len(entries) > 0 {
-			return nil, fmt.Errorf("task definitions inside the working directory are not loaded (clone content must not carry shell): %s; move them to the global layer (~/.config/plect/tasks/), a plugin, or a repo overlay above the workdir", entries[0])
+		if layer.workspaceDir && len(entries) > 0 {
+			return nil, fmt.Errorf("task definitions inside the workspace directory are not loaded (clone content must not carry shell): %s; move them to the global layer (~/.config/plect/tasks/), a plugin, or a repo overlay above the workspace dir", entries[0])
 		}
 		for _, path := range entries {
 			def, err := loadTaskDefinitionFile(path)
@@ -752,16 +755,17 @@ func taskHookSources(defs map[string]TaskDefinition) []hookSource {
 }
 
 // workflowSearchDirs orders the cascade: plugins (base) → global → ancestors
-// (outermost-first, ending at the workdir itself — the only untrusted layer).
-func (c *Config) workflowSearchDirs(workdirDir string) []layerDir {
-	return c.searchDirs(workdirDir, "workflows")
+// (outermost-first, ending at the workspace dir itself — the only untrusted
+// layer).
+func (c *Config) workflowSearchDirs(workspaceDirPath string) []layerDir {
+	return c.searchDirs(workspaceDirPath, "workflows")
 }
 
-func (c *Config) tasksSearchDirs(workdirDir string) []layerDir {
-	return c.searchDirs(workdirDir, "tasks")
+func (c *Config) tasksSearchDirs(workspaceDirPath string) []layerDir {
+	return c.searchDirs(workspaceDirPath, "tasks")
 }
 
-func (c *Config) searchDirs(workdirDir, kind string) []layerDir {
+func (c *Config) searchDirs(workspaceDirPath, kind string) []layerDir {
 	var dirs []layerDir
 	for _, plugin := range c.PluginDirs {
 		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, "config", kind), plugin: true})
@@ -769,24 +773,24 @@ func (c *Config) searchDirs(workdirDir, kind string) []layerDir {
 	if c.BaseDir != "" {
 		dirs = append(dirs, layerDir{dir: filepath.Join(c.BaseDir, kind)})
 	}
-	cleanWorkdir := ""
-	if workdirDir != "" {
-		cleanWorkdir = filepath.Clean(workdirDir)
+	cleanWorkspaceDir := ""
+	if workspaceDirPath != "" {
+		cleanWorkspaceDir = filepath.Clean(workspaceDirPath)
 	}
-	for _, anc := range cascadeAncestors(workdirDir) {
+	for _, anc := range cascadeAncestors(workspaceDirPath) {
 		dirs = append(dirs, layerDir{
-			dir:     filepath.Join(anc, ".plect", kind),
-			workdir: anc == cleanWorkdir,
+			dir:          filepath.Join(anc, ".plect", kind),
+			workspaceDir: anc == cleanWorkspaceDir,
 		})
 	}
 	return dirs
 }
 
-// cascadeAncestors walks up from workdirDir, ordered outermost-first.
+// cascadeAncestors walks up from workspaceDirPath, ordered outermost-first.
 // $HOME is the exclusive upper bound because the user's global config lives
 // at `~/.config/plect/` and `$HOME/.plect/` would collide with that.
-func cascadeAncestors(workdirDir string) []string {
-	if workdirDir == "" {
+func cascadeAncestors(workspaceDirPath string) []string {
+	if workspaceDirPath == "" {
 		return nil
 	}
 	var cleanHome string
@@ -794,7 +798,7 @@ func cascadeAncestors(workdirDir string) []string {
 		cleanHome = filepath.Clean(home)
 	}
 	var chain []string
-	cur := filepath.Clean(workdirDir)
+	cur := filepath.Clean(workspaceDirPath)
 	for {
 		if cur == cleanHome || cur == string(filepath.Separator) {
 			break
@@ -824,7 +828,7 @@ func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
 	merged.Event.Channel = append([]EventChannel(nil), layers[0].Event.Channel...)
 	nameSource := ""
 	descSource := ""
-	providerSource := ""
+	workspaceProviderSource := ""
 	environmentSource := ""
 	environmentInputsSource := ""
 	autoSelectSource := ""
@@ -834,8 +838,8 @@ func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
 	if merged.Description != "" {
 		descSource = layers[0].SourcePath
 	}
-	if merged.Provider != "" {
-		providerSource = layers[0].SourcePath
+	if merged.WorkspaceProvider != "" {
+		workspaceProviderSource = layers[0].SourcePath
 	}
 	if merged.Environment != "" {
 		environmentSource = layers[0].SourcePath
@@ -877,12 +881,12 @@ func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
 			merged.Description = layer.Description
 			descSource = layer.SourcePath
 		}
-		if layer.Provider != "" {
-			if providerSource != "" {
-				return WorkflowFile{}, fmt.Errorf("workflow %q: `provider` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, providerSource, layer.SourcePath)
+		if layer.WorkspaceProvider != "" {
+			if workspaceProviderSource != "" {
+				return WorkflowFile{}, fmt.Errorf("workflow %q: `workspace_provider` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, workspaceProviderSource, layer.SourcePath)
 			}
-			merged.Provider = layer.Provider
-			providerSource = layer.SourcePath
+			merged.WorkspaceProvider = layer.WorkspaceProvider
+			workspaceProviderSource = layer.SourcePath
 		}
 		if layer.Environment != "" {
 			if environmentSource != "" {

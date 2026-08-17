@@ -98,13 +98,13 @@ func TestResourceStatus_ObserveTemplateSeesBranch(t *testing.T) {
 
 func TestResourceStatus_ObserveTemplateSeesWorkdirPath(t *testing.T) {
 	defs := map[string]config.ResourceDef{
-		"echo": {Match: `.*`, Observe: `printf '{"workdir_path":"%s"}' '{{.WorkdirPath}}'`},
+		"echo": {Match: `.*`, Observe: `printf '{"workspace_dir_path":"%s"}' '{{.WorkspaceDirPath}}'`},
 	}
 	state, _, ok, err := ResourceStatus(defs, "local-okf://kec/goals/x.md", "", "/tmp/wt/issue-632", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || state["workdir_path"] != "/tmp/wt/issue-632" {
+	if !ok || state["workspace_dir_path"] != "/tmp/wt/issue-632" {
 		t.Errorf("state = %v, want the passed workdir path echoed back", state)
 	}
 }

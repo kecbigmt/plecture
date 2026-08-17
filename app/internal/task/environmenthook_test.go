@@ -12,13 +12,13 @@ import (
 )
 
 func TestRunEnvironmentSetup_ProducesOutputs(t *testing.T) {
-	env := config.EnvironmentConfig{ID: "docker", Setup: `echo '{"workdir":"/env/wd"}'`}
+	env := config.EnvironmentConfig{ID: "docker", Setup: `echo '{"workspace_dir":"/env/wd"}'`}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunEnvironmentSetup(env, EnvironmentHookVars{ResourceID: "res-1", SessionName: "s"}, tasks, nil)
 	if err != nil {
 		t.Fatalf("RunEnvironmentSetup: %v", err)
 	}
-	if outputs["workdir"] != "/env/wd" {
+	if outputs["workspace_dir"] != "/env/wd" {
 		t.Errorf("outputs = %v", outputs)
 	}
 	st := tasks[contract.EnvironmentPseudoNodeID]
@@ -52,18 +52,18 @@ func TestRunEnvironmentSetup_EmptySetupProducesEmptyOutputs(t *testing.T) {
 func TestRunEnvironmentSetup_TemplateVars(t *testing.T) {
 	env := config.EnvironmentConfig{
 		ID:    "docker",
-		Setup: `echo "{\"resource\":\"{{.ResourceID}}\",\"workdir\":\"{{.WorkdirPath}}\",\"image\":\"{{get .EnvironmentInputs "image"}}\"}"`,
+		Setup: `echo "{\"resource\":\"{{.ResourceID}}\",\"workspace_dir\":\"{{.WorkspaceDirPath}}\",\"image\":\"{{get .EnvironmentInputs "image"}}\"}"`,
 	}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunEnvironmentSetup(env, EnvironmentHookVars{
 		ResourceID:        "res-1",
-		WorkdirPath:       "/work/x",
+		WorkspaceDirPath:  "/work/x",
 		EnvironmentInputs: map[string]any{"image": "myimage:latest"},
 	}, tasks, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outputs["resource"] != "res-1" || outputs["workdir"] != "/work/x" || outputs["image"] != "myimage:latest" {
+	if outputs["resource"] != "res-1" || outputs["workspace_dir"] != "/work/x" || outputs["image"] != "myimage:latest" {
 		t.Errorf("template vars not rendered: %v", outputs)
 	}
 }
@@ -74,14 +74,14 @@ func TestRunEnvironmentSetup_IdempotentSkip(t *testing.T) {
 		contract.EnvironmentPseudoNodeID: {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"workdir": "/env/wd"},
+			Outputs: map[string]any{"workspace_dir": "/env/wd"},
 		},
 	}
 	outputs, err := RunEnvironmentSetup(env, EnvironmentHookVars{}, tasks, nil)
 	if err != nil {
 		t.Fatalf("produced pseudo-node must short-circuit: %v", err)
 	}
-	if outputs["workdir"] != "/env/wd" {
+	if outputs["workspace_dir"] != "/env/wd" {
 		t.Errorf("outputs = %v", outputs)
 	}
 }
@@ -89,7 +89,7 @@ func TestRunEnvironmentSetup_IdempotentSkip(t *testing.T) {
 func TestRunEnvironmentSetup_OutputsSchemaEnforced(t *testing.T) {
 	env := config.EnvironmentConfig{
 		ID:    "docker",
-		Setup: `echo '{"workdir":"/env/wd","port":"not-a-number"}'`,
+		Setup: `echo '{"workspace_dir":"/env/wd","port":"not-a-number"}'`,
 		OutputsSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -130,13 +130,13 @@ func TestRunEnvironmentCleanup_RunsAndMarksClean(t *testing.T) {
 		ID:      "docker",
 		Setup:   "echo '{}'",
 		Exec:    `"$@"`,
-		Cleanup: `echo "{{.Self.workdir}}" > ` + marker,
+		Cleanup: `echo "{{.Self.workspace_dir}}" > ` + marker,
 	}
 	tasks := map[string]*contract.TaskState{
 		contract.EnvironmentPseudoNodeID: {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"workdir": "/env/wd"},
+			Outputs: map[string]any{"workspace_dir": "/env/wd"},
 		},
 	}
 	if err := RunEnvironmentCleanup(env, EnvironmentHookVars{}, tasks, nil); err != nil {
@@ -147,13 +147,13 @@ func TestRunEnvironmentCleanup_RunsAndMarksClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(string(data)) != "/env/wd" {
-		t.Errorf(".Self.workdir = %q", strings.TrimSpace(string(data)))
+		t.Errorf(".Self.workspace_dir = %q", strings.TrimSpace(string(data)))
 	}
 	st := tasks[contract.EnvironmentPseudoNodeID]
 	if st.Status != contract.TaskStatusCleaned {
 		t.Errorf("status = %q, want cleaned", st.Status)
 	}
-	if st.Outputs["workdir"] != "/env/wd" {
+	if st.Outputs["workspace_dir"] != "/env/wd" {
 		t.Error("outputs must survive cleanup for .Prev on retry")
 	}
 }
@@ -171,7 +171,7 @@ func TestRunEnvironmentCleanup_FailureMarksFailedButDoesNotPanic(t *testing.T) {
 		contract.EnvironmentPseudoNodeID: {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"workdir": "/env/wd"},
+			Outputs: map[string]any{"workspace_dir": "/env/wd"},
 		},
 	}
 	err := RunEnvironmentCleanup(env, EnvironmentHookVars{}, tasks, nil)

@@ -25,16 +25,16 @@ type WorkflowDetail struct {
 	ID          string `json:"id"`
 	Name        string `json:"name,omitempty"`
 	Description string `json:"description,omitempty"`
-	// Provider is the referenced resource provider's id; the resolved
-	// provider (resolver + hooks) rides along so `workflow show` can present
-	// the whole picture without a second lookup.
-	Provider     string                 `json:"provider,omitempty"`
-	ProviderInfo *config.ProviderConfig `json:"provider_info,omitempty"`
-	Display      map[string]string      `json:"display,omitempty"`
-	AutoSelect   bool                   `json:"auto_select"`
-	InputsSchema map[string]any         `json:"inputs_schema,omitempty"`
-	Nodes        []WorkflowNode         `json:"nodes"`
-	Channels     []WorkflowChannel      `json:"channels,omitempty"`
+	// WorkspaceProvider is the referenced workspace provider's id; the
+	// resolved workspace provider (resolver + hooks) rides along so
+	// `workflow show` can present the whole picture without a second lookup.
+	WorkspaceProvider     string                          `json:"workspace_provider,omitempty"`
+	WorkspaceProviderInfo *config.WorkspaceProviderConfig `json:"workspace_provider_info,omitempty"`
+	Display               map[string]string               `json:"display,omitempty"`
+	AutoSelect            bool                            `json:"auto_select"`
+	InputsSchema          map[string]any                  `json:"inputs_schema,omitempty"`
+	Nodes                 []WorkflowNode                  `json:"nodes"`
+	Channels              []WorkflowChannel               `json:"channels,omitempty"`
 	// Tick is the workflow's declared [tick] table (docs/wiki/verification-gate.md),
 	// nil when undeclared.
 	Tick *config.TickConfig `json:"tick,omitempty"`
@@ -62,10 +62,10 @@ type WorkflowNode struct {
 }
 
 // WorkflowList returns all discoverable workflows merged from the cascade
-// rooted at workdirDir, sorted by id for stable output. An empty workdirDir
-// still surfaces the global layer.
-func WorkflowList(cfg *config.Config, workdirDir string) ([]WorkflowSummary, error) {
-	workflows, err := cfg.LoadWorkflows(workdirDir)
+// rooted at workspaceDirPath, sorted by id for stable output. An empty
+// workspaceDirPath still surfaces the global layer.
+func WorkflowList(cfg *config.Config, workspaceDirPath string) ([]WorkflowSummary, error) {
+	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -86,8 +86,8 @@ func WorkflowList(cfg *config.Config, workdirDir string) ([]WorkflowSummary, err
 // DAG matches what `plect up` would actually execute. Returns an ErrInvalidInput
 // service error when the id isn't present in the cascade (mirrors the
 // "workflow not found" path in tasks.go's buildWorkflowPlan).
-func WorkflowShow(cfg *config.Config, workdirDir, id string) (*WorkflowDetail, error) {
-	workflows, err := cfg.LoadWorkflows(workdirDir)
+func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDetail, error) {
+	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
 		return nil, fmt.Errorf("load workflows: %w", err)
 	}
@@ -95,7 +95,7 @@ func WorkflowShow(cfg *config.Config, workdirDir, id string) (*WorkflowDetail, e
 	if !ok {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q not found", id)}
 	}
-	defs, err := cfg.LoadTaskDefinitions(workdirDir)
+	defs, err := cfg.LoadTaskDefinitions(workspaceDirPath)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}
@@ -111,20 +111,20 @@ func WorkflowShow(cfg *config.Config, workdirDir, id string) (*WorkflowDetail, e
 		nodes = append(nodes, resolvedToNode(r))
 	}
 	detail := &WorkflowDetail{
-		ID:           wf.ID,
-		Name:         wf.Name,
-		Description:  wf.Description,
-		Provider:     wf.Provider,
-		Display:      wf.Display,
-		AutoSelect:   workflowAutoSelect(wf),
-		InputsSchema: wf.InputsSchema,
-		Nodes:        nodes,
-		Tick:         wf.Tick,
+		ID:                wf.ID,
+		Name:              wf.Name,
+		Description:       wf.Description,
+		WorkspaceProvider: wf.WorkspaceProvider,
+		Display:           wf.Display,
+		AutoSelect:        workflowAutoSelect(wf),
+		InputsSchema:      wf.InputsSchema,
+		Nodes:             nodes,
+		Tick:              wf.Tick,
 	}
-	if wf.Provider != "" {
-		if providers, err := cfg.LoadProviders(); err == nil {
-			if prov, ok := providers[wf.Provider]; ok {
-				detail.ProviderInfo = &prov
+	if wf.WorkspaceProvider != "" {
+		if workspaceProviders, err := cfg.LoadWorkspaceProviders(); err == nil {
+			if prov, ok := workspaceProviders[wf.WorkspaceProvider]; ok {
+				detail.WorkspaceProviderInfo = &prov
 			}
 		}
 	}

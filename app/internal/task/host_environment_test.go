@@ -37,7 +37,7 @@ func TestHostEnvironment_ExplicitMatchesUnspecified(t *testing.T) {
 		t.Fatalf("compiled plans differ:\nunspecified:   %+v\nexplicit host: %+v", planUnspecified, planExplicitHost)
 	}
 
-	session := SessionVars{Name: "x", WorkdirPath: t.TempDir()}
+	session := SessionVars{Name: "x", WorkspaceDirPath: t.TempDir()}
 	tasksUnspecified := map[string]*contract.TaskState{}
 	tasksExplicitHost := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), planUnspecified.Run, session, tasksUnspecified, nil); err != nil {

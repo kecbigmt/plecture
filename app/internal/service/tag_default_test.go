@@ -15,15 +15,15 @@ func addSetupWorkflow(t *testing.T, baseDir, wfID, workdir string) {
 	if err := os.MkdirAll(filepath.Join(baseDir, "workflows"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(baseDir, "providers"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(baseDir, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wf := "provider = \"" + wfID + "\"\n[[nodes]]\nid = \"noop\"\n"
+	wf := "workspace_provider = \"" + wfID + "\"\n[[nodes]]\nid = \"noop\"\n"
 	if err := os.WriteFile(filepath.Join(baseDir, "workflows", wfID+".toml"), []byte(wf), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	prov := "setup = '''\nmkdir -p " + workdir + "\necho '{\"workdir\":\"" + workdir + "\"}'\n'''\n" + githubResolver
-	if err := os.WriteFile(filepath.Join(baseDir, "providers", wfID+".toml"), []byte(prov), 0o644); err != nil {
+	prov := "setup = '''\nmkdir -p " + workdir + "\necho '{\"workspace_dir\":\"" + workdir + "\"}'\n'''\n" + githubResolver
+	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", wfID+".toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -56,8 +56,8 @@ func TestCreate_DefaultTagSeparatesWorkflows(t *testing.T) {
 	if review.SessionName != "org/repo-1+codex" {
 		t.Errorf("codex session = %q, want org/repo-1+codex", review.SessionName)
 	}
-	if work.WorkdirPath == review.WorkdirPath {
-		t.Errorf("cross-tool sessions share a session %q; the default tag must separate them", work.WorkdirPath)
+	if work.WorkspaceDirPath == review.WorkspaceDirPath {
+		t.Errorf("cross-tool sessions share a session %q; the default tag must separate them", work.WorkspaceDirPath)
 	}
 	if store.Get("org/repo-1+claude") == nil || store.Get("org/repo-1+codex") == nil {
 		t.Fatal("both tagged sessions must persist")
