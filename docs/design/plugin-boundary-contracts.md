@@ -28,14 +28,14 @@ The load-bearing rules are:
 
 ## Plugin Ownership
 
-The reusable session runtime surface is split into independently selectable
+The reusable runtime surface is split into independently selectable
 plugins:
 
 | Plugin | Owns | Core contracts used | Excludes |
 |---|---|---|---|
-| `session/tmux` | tmux-backed interactive endpoint task and terminal operation declarations | interactive endpoint, terminal operations, task lifecycle | agent CLIs, agent-TUI submit/readiness logic, chat delivery, VCS guards |
-| `session/claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, structured Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
-| `session/codex` | Codex TUI and `codex exec` launch tasks, initial-prompt and terminal-submit readiness logic, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
+| `tmux` | tmux-backed interactive endpoint task and terminal operation declarations | interactive endpoint, terminal operations, task lifecycle | agent CLIs, agent-TUI submit/readiness logic, chat delivery, VCS guards |
+| `claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, structured Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
+| `codex` | Codex TUI and `codex exec` launch tasks, initial-prompt and terminal-submit readiness logic, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
 | `slack-delivery` | Slack adapter service, Slack thread binding, Slack event ingress and egress | conversation events, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
 | `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource definitions, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
 
@@ -85,7 +85,7 @@ other implementation-owned binding.
 
 ### Codex Terminal Submit
 
-`session/codex` owns Codex TUI submission because the burst split, readiness
+`codex` owns Codex TUI submission because the burst split, readiness
 predicate, retry policy, and fail-loud behavior describe the Codex TUI
 contract.
 
@@ -100,7 +100,7 @@ send_keys_cmd="$2"
 capture_cmd="$3"
 message="$4"
 
-# session/codex owns the burst split, readiness predicate, retry policy, and
+# codex owns the burst split, readiness predicate, retry policy, and
 # fail-loud behavior around these raw terminal calls.
 sh -c "$send_text_cmd" terminal-send-text "$message"
 sh -c "$send_keys_cmd" terminal-send-keys Enter
@@ -117,7 +117,7 @@ timeout = "45s"
 
 The channel command is static. Rendered `{{terminal "..."}}` values and event
 data ride in `args`, so event data can choose operands but not the executable.
-The readiness predicate and retry details live in the shipped `session/codex`
+The readiness predicate and retry details live in the shipped `codex`
 config.
 
 Claude Code delivery uses channel-server as its structured delivery path. A
@@ -158,8 +158,8 @@ A Slack-to-agent flow uses the bus as the rendezvous:
 
 1. `slack-delivery` receives a Slack message and publishes
    `conversation.message` with opaque Slack correlation metadata.
-2. `session/claude` consumes `conversation.message` through its structured
-   channel-server delivery path, or `session/codex` consumes the same event
+2. `claude` consumes `conversation.message` through its structured
+   channel-server delivery path, or `codex` consumes the same event
    through its terminal-submit channel.
 3. The agent runtime publishes `conversation.reply` or
    `conversation.permission_request`.

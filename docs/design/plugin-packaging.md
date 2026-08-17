@@ -902,9 +902,9 @@ One-time migration procedure:
 
 ## Walkthrough examples
 
-### Session runtime plugins
+### Runtime and delivery plugins
 
-The session runtime surface is split into plugins for the terminal
+The runtime surface is split into plugins for the terminal
 multiplexer, each agent runtime, and chat delivery. The split uses the
 core-owned contracts described in
 [`plugin-boundary-contracts.md`](plugin-boundary-contracts.md): an interactive
@@ -915,14 +915,14 @@ Catalog registration and plugin enablement:
 
 ```bash
 plect catalog add official git+https://github.com/example/plect-plugins --revision v0.3.0
-plect plugin add official/session/tmux
-plect plugin add official/session/claude
+plect plugin add official/tmux
+plect plugin add official/claude
 plect plugin add official/slack-delivery
-plect plugin update official/session/claude
+plect plugin update official/claude
 ```
 
-`plect plugin update official/session/claude` fetches the newest catalog
-snapshot and repoints only `official/session/claude`; `official/session/tmux`,
+`plect plugin update official/claude` fetches the newest catalog
+snapshot and repoints only `official/claude`; `official/tmux`,
 `official/slack-delivery`, and `official/github` stay at their locked
 coordinates until explicitly updated.
 
@@ -930,33 +930,33 @@ Catalog-owned files:
 
 ```text
 catalog.toml
-session/tmux/plugin.toml
-session/tmux/config/tasks/tmux.toml
-session/claude/plugin.toml
-session/claude/config/tasks/claude.toml
-session/claude/config/tasks/initial_prompt.toml
-session/claude/config/channels/claude.toml
-session/claude/scripts/plect-claude-agent-activity
-session/claude/src/channel-server/go.mod
-session/claude/src/channel-server/cmd/channel-server/main.go
-session/codex/plugin.toml
-session/codex/config/tasks/codex.toml
-session/codex/config/tasks/initial_prompt.toml
-session/codex/config/channels/terminal_submit.toml
-session/codex/config/tasks/codex_exec.toml
-session/codex/config/channels/codex_exec.toml
-session/codex/scripts/plect-codex-agent-activity
-session/codex/src/codex-helpers/go.mod
-session/codex/src/codex-helpers/cmd/plect-codex-exec-worker/main.go
-session/codex/src/codex-helpers/cmd/plect-codex-exec-enqueue/main.go
+tmux/plugin.toml
+tmux/config/tasks/tmux.toml
+claude/plugin.toml
+claude/config/tasks/claude.toml
+claude/config/tasks/initial_prompt.toml
+claude/config/channels/claude.toml
+claude/scripts/claude-agent-activity
+claude/src/channel-server/go.mod
+claude/src/channel-server/cmd/channel-server/main.go
+codex/plugin.toml
+codex/config/tasks/codex.toml
+codex/config/tasks/initial_prompt.toml
+codex/config/channels/terminal_submit.toml
+codex/config/tasks/codex_exec.toml
+codex/config/channels/codex_exec.toml
+codex/scripts/codex-agent-activity
+codex/src/codex-helpers/go.mod
+codex/src/codex-helpers/cmd/codex-exec-worker/main.go
+codex/src/codex-helpers/cmd/codex-exec-enqueue/main.go
 slack-delivery/plugin.toml
 slack-delivery/config/channels/slack.toml
 slack-delivery/src/slack-adapter/go.mod
 slack-delivery/src/slack-adapter/cmd/slack-adapter/main.go
 ```
 
-`session/claude/bin/channel-server`, `session/codex/bin/plect-codex-exec-worker`,
-`session/codex/bin/plect-codex-exec-enqueue`, and
+`claude/bin/channel-server`, `codex/bin/codex-exec-worker`,
+`codex/bin/codex-exec-enqueue`, and
 `slack-delivery/bin/slack-adapter` are what `plect plugin add`/`update`
 produce from source modules at add/update time — build output, not catalog
 content, so they are never committed (see the Package format section's
@@ -965,8 +965,8 @@ content, so they are never committed (see the Package format section's
 Plugin-owned templates:
 
 ```text
-session/claude/config/templates/work.md
-session/codex/config/templates/work.md
+claude/config/templates/work.md
+codex/config/templates/work.md
 ```
 
 Residual user config:

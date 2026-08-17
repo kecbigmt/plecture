@@ -108,7 +108,7 @@ channel-server socket subscriptions, moves the channel-server socket protocol
 out of `contracts/` when it has no cross-plugin consumer, splits the current
 session runtime package into the selected plugins, drops the `plect-` prefix
 from the session-runtime plugin executables when they move into
-`session/claude` and `session/codex`, moves `gh-guard` into the GitHub plugin,
+`claude` and `codex`, moves `gh-guard` into the GitHub plugin,
 and adds a `docs/migrations/` entry for no-channel-server interactive Claude
 configurations.
 
@@ -175,6 +175,20 @@ Herdr's richer semantic agent status, readiness waits, and event subscriptions
 are useful extension capabilities. They are not part of the required surface
 because tmux can provide portable terminal operations without providing
 semantic agent lifecycle events.
+
+### Group runtime plugins under `session/`
+
+Grouping the split plugins under `session/` is rejected because `session`
+discriminates nothing in this catalog: every plugin serves sessions. The group
+would mix different kinds of plugin, such as a terminal multiplexer and agent
+runtimes, even though dissolving their shared runtime contract is the point of
+this decision.
+
+Category directories are a second taxonomy to maintain and have already churned
+plugin ids. Flat ids such as `official/claude` and `official/tmux` are
+unambiguous because catalog entries are curated and enumerated. Classification
+lives in the design note's plugin table, not the filesystem. This can be
+revisited if the curated catalog grows beyond about twenty plugins.
 
 ### Put submit and readiness composition in the multiplexer plugin
 
