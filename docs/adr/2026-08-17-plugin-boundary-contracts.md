@@ -57,6 +57,20 @@ runtime plugins and channels call the operations through plect's common
 surface, so they contain no tmux commands, no tmux output field knowledge, and
 no concrete multiplexer plugin references.
 
+`create` and `cleanup` are the existing task `setup` and `cleanup` hooks viewed
+through this operation contract, not new parallel task fields. `attach`,
+`capture`, and `healthcheck` are the existing task-level declarations. The new
+operation declarations are `send_text` and `send_keys`.
+
+The send and capture operations are raw terminal verbs. Agent-runtime plugins
+own submit and readiness composition for their interactive TUIs: rendering the
+message, sending literal text, sending submit keys, checking prompt/readiness
+through capture, and retrying when the runtime treats a nearby Enter as a
+newline instead of submission. Initial-prompt tasks therefore belong to the
+agent runtime plugin whose TUI receives the prompt, not to the multiplexer
+plugin. A terminal-submit event channel for an interactive TUI belongs to the
+agent runtime plugin as well.
+
 Chat delivery and agent delivery rendezvous through provider-neutral
 conversation events on the Plecture event bus:
 `conversation.message`, `conversation.reply`,
@@ -116,12 +130,13 @@ knowledge, and use the GitHub guard without installing it as session-runtime
 behavior.
 
 Implementation work includes defining the task-level terminal operation
-surface, keeping `interactive_endpoint` as the opaque operation binding, adding
-the provider-neutral conversation event vocabulary, moving Slack delivery off
-channel-server socket subscriptions, moving the channel-server socket protocol
-out of `contracts/` when it has no cross-plugin consumer, splitting the current
-session runtime package into the selected plugins, and moving `gh-guard` into
-the GitHub plugin.
+surface, keeping `interactive_endpoint` as the opaque operation binding, moving
+initial-prompt and terminal-submit composition into the agent runtime plugins,
+adding the provider-neutral conversation event vocabulary, moving Slack
+delivery off channel-server socket subscriptions, moving the channel-server
+socket protocol out of `contracts/` when it has no cross-plugin consumer,
+splitting the current session runtime package into the selected plugins, and
+moving `gh-guard` into the GitHub plugin.
 
 This decision supersedes the plugin service lifecycle decision by carrying
 forward its service declaration and bus-supervision decisions while replacing
@@ -149,7 +164,7 @@ Workflow config can already connect a tmux task to an agent task by passing a
 provider-neutral output such as `session_name`, and task declarations already
 carry attach, capture, and healthcheck commands. That is enough for one local
 workflow overlay that edits the producer node, the consumer templates, and any
-input-delivery channel together.
+agent-runtime submit/readiness config together.
 
 It is not enough for a reusable plugin split. The output name is a convention
 owned by the concrete task, not a declared core capability. A consumer plugin
@@ -185,6 +200,21 @@ Herdr also offers semantic agent status, `agent.wait --until`, and
 polling such as an initial prompt may use them when declared. They are not part
 of the required surface because tmux can provide the portable terminal verbs
 without providing semantic agent lifecycle events.
+
+### Put submit and readiness composition in the multiplexer plugin
+
+The tmux-backed implementation already contains submit/readiness logic next to
+tmux commands because there was only one package. Keeping that logic in the
+multiplexer plugin after the split would make the multiplexer know agent-TUI
+details such as prompt glyphs, paste-burst behavior, and retry schedules. That
+would replace the original agent-to-tmux dependency with the opposite
+tmux-to-agent dependency.
+
+The multiplexer contract therefore stops at raw terminal operations. The agent
+runtime plugin composes those operations into the submit/readiness behavior its
+own TUI requires. This places Claude initial-prompt composition with
+`session/claude`, Codex initial-prompt composition with `session/codex`, and
+the interactive terminal-submit event channel with `session/codex`.
 
 ### Keep Slack delivery on the channel-server socket protocol
 

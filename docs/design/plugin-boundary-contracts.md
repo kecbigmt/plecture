@@ -29,9 +29,9 @@ plugins:
 
 | Plugin | Owns | Core contracts used | Excludes |
 |---|---|---|---|
-| `session/tmux` | tmux-backed interactive endpoint task and terminal operation declarations | interactive endpoint, terminal operations, task lifecycle | agent CLIs, chat delivery, VCS guards |
-| `session/claude` | Claude Code launch tasks, Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
-| `session/codex` | Codex TUI and `codex exec` launch tasks, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
+| `session/tmux` | tmux-backed interactive endpoint task and terminal operation declarations | interactive endpoint, terminal operations, task lifecycle | agent CLIs, agent-TUI submit/readiness logic, chat delivery, VCS guards |
+| `session/claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
+| `session/codex` | Codex TUI and `codex exec` launch tasks, initial-prompt and terminal-submit readiness logic, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
 | `slack-delivery` | Slack adapter service, Slack thread binding, Slack event ingress and egress | conversation events, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
 | `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource definitions, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
 
@@ -71,10 +71,11 @@ The terminal operation set is:
 | `cleanup` | Close the endpoint and release multiplexer-owned resources |
 
 The existing task-level `attach`, `capture`, and `healthcheck` declarations
-are members of this operation set. `create` and `cleanup` align with task
-lifecycle. `send_text` and `send_keys` extend the same task-declared operation
-model to delivery while preserving the semantic difference between literal
-text and key-combo input.
+are members of this operation set. Existing task `setup` declares `create`, and
+existing task `cleanup` declares `cleanup`; they are not new parallel config
+keys. `send_text` and `send_keys` extend the same task-declared operation model
+to delivery while preserving the semantic difference between literal text and
+key-combo input.
 
 The required operations map to concrete multiplexers without leaking those
 tools into consumers:
@@ -91,9 +92,22 @@ tools into consumers:
 
 Agent runtime plugins and channels call these operations through plect's common
 surface. They do not invoke multiplexer commands, inspect multiplexer-specific
-output fields, or name a concrete multiplexer plugin. The shipped text-input
-channel is generic and invokes `send_text` on the session's declared
-multiplexer endpoint.
+output fields, or name a concrete multiplexer plugin.
+
+Terminal operations are raw verbs. They do not define an agent submit protocol,
+readiness predicate, prompt-glyph vocabulary, retry schedule, or burst-splitting
+policy. An agent-runtime plugin that drives an interactive TUI owns that
+composition: it renders the message, calls `send_text` for literal text, calls
+`send_keys` for submit keys such as Enter, calls `capture` to evaluate the
+runtime's prompt/readiness state, and retries according to that runtime's TUI
+behavior.
+
+The initial-prompt task belongs to the agent runtime plugin whose TUI receives
+the prompt. `session/claude` and `session/codex` each ship an initial-prompt
+task that composes the raw terminal verbs with that runtime's readiness checks.
+`session/codex` also ships a terminal-submit event channel for its interactive
+TUI shape. `session/tmux` does not ship agent-TUI submit or readiness
+composition.
 
 The operation surface lets a workflow swap one multiplexer implementation for
 another by replacing the producer node. Agent plugins depend on the core
@@ -104,8 +118,10 @@ Richer multiplexers may expose optional capabilities outside the required
 operation set. Herdr exposes semantic agent status such as `working`,
 `blocked`, `idle`, and `done`; readiness waits such as `agent.wait --until`;
 and event subscriptions such as `events.subscribe`. Plecture workflows may use
-those extension capabilities when a selected multiplexer declares them, but the
-portable multiplexer contract does not require them.
+those extension capabilities when a selected multiplexer declares them, such as
+using `agent.wait` for initial-prompt readiness. The required-surface path uses
+the portable `capture` operation plus the agent runtime's prompt/readiness
+predicate.
 
 ## Conversation Events
 
