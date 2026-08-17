@@ -17,7 +17,8 @@ configuration is still a plugin.
 - Core owns generic mechanics: fetch, verify, mount, resolve, and fail-loud
   compatibility checks.
 - Plugins own technology or domain commitments: workspace provider adapters,
-  resource observation, session runtime surfaces, workflow packs, and templates.
+  resource observation, session runtime surfaces, exemplar workflow starters,
+  and text templates.
 - User-owned config remains the final authority.
 - No workspace-provider/resource/task/workflow contract changes are required by this
   design. Any discovered gap must become a later contract issue, not an
@@ -40,6 +41,10 @@ plugins = [
   "github",
   "session/runtime",
 ]
+
+workflow_exemplars = [
+  "okf-goal-review",
+]
 ```
 
 Catalog fields:
@@ -48,6 +53,7 @@ Catalog fields:
 |---|---:|---|
 | `schema_version` | yes | Catalog file-format version. Unknown values fail loud. |
 | `plugins` | yes | Explicit catalog-relative paths to directories that directly contain `plugin.toml`. |
+| `workflow_exemplars` | no | Explicit ids of exemplar workflow packages under `exemplars/workflows/`. |
 | `description` | no | Display-only summary for list/show commands. |
 
 Catalogs have no upstream identity field. A catalog name exists only as the
@@ -60,6 +66,11 @@ the catalog subtree that is not listed is also a validation error. This strict
 rule is intentional: reviewers can audit the exact published plugin set from
 one manifest, and catalogs that need fixture manifests can avoid the reserved
 filename.
+
+Every id listed in `workflow_exemplars` names a directory directly under
+`exemplars/workflows/`. Directory presence alone does not publish an exemplar.
+The `exemplars/` catalog-root directory is reserved for catalog-owned starter
+packages that are not mounted as plugin config.
 
 A plugin is a project root with a small fixed set of roles. Config declarations
 live under `config/`; build source lives under `src/`; committed executables
@@ -106,7 +117,9 @@ executables that need no build step at all; an entry with no `build` points
 A plugin with only build-less scripts needs no `src/`; a plugin with only
 shipped config needs neither.
 
-`plugin.toml` is the only required plugin-local file:
+`plugin.toml` is the only required plugin-local file. Cross-plugin workflow
+starters live at the catalog level under `exemplars/workflows/`, as specified
+by [`exemplar-workflows.md`](exemplar-workflows.md).
 
 ```toml
 schema_version = 1
@@ -231,7 +244,7 @@ The standard `config/` subdirectories with plugin-layer loader behavior are:
 | `config/resources/` | Mounted as `resources/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
 | `config/channels/` | Mounted as `channels/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
 | `config/tasks/` | Mounted as `tasks/`. Trusted layer plus trusted ancestor overlay. Same-id conflicts between plugin layers are load errors; user-owned layers replace whole definitions. |
-| `config/workflows/` | Mounted as `workflows/`. Trusted layer plus ancestor overlay. Same-id plugin-layer conflicts are load errors; user-owned layers can add nodes and channels, with singleton fields guarded against accidental redeclaration. |
+| `config/workflows/` | Mounted as `workflows/` for same-plugin runnable workflows only. Same-id conflicts between plugin workflow node ids, event channel names, or singleton fields are load errors; user-owned layers merge by adding nodes and event channels. Cross-plugin compositions live under catalog-level `exemplars/workflows/` and are copied into user-owned workflow config before use. |
 | `config/templates/` | Mounted as `templates/`. Read-only plugin base layer plus user-owned template layers. Same-id conflicts between plugin layers are load errors. |
 
 The template loader includes one generic read-only plugin layer. Lookup searches
@@ -970,7 +983,6 @@ github/config/workspaces/github.toml
 github/config/resources/github.toml
 github/config/tasks/github_work.toml
 github/config/tasks/github_review.toml
-github/config/workflows/github_coding.toml
 github/src/go.mod
 github/src/cmd/github-worktree/main.go
 github/src/cmd/github-issue-pr/main.go
@@ -1028,6 +1040,8 @@ okf/config/templates/goal_review.md
 okf/src/go.mod
 okf/src/cmd/okf-goal/main.go
 okf/src/cmd/okf-bundle/main.go
+exemplars/workflows/okf-goal-review/exemplar.toml
+exemplars/workflows/okf-goal-review/workflow.toml
 ```
 
 `okf/bin/okf-goal` and `okf/bin/okf-bundle` are what `plect plugin
@@ -1070,7 +1084,8 @@ Residual user config:
 - Which orchestrator workflow is used.
 - The `goal_review` workflow and which session runtime handles the work —
   an operator defines this workflow's nodes against their own
-  agent-runtime and channel plugins, or against a team-owned overlay.
+  agent-runtime and channel plugins, or starts from the catalog's
+  `okf-goal-review` exemplar and owns the scaffolded copy.
 - Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 
