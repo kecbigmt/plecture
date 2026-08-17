@@ -30,9 +30,11 @@ rendezvous through the event bus. A plugin boundary may not depend on another
 plugin's private package, executable, config shape, or provider-specific event
 schema.
 
-The multiplexer seam is a core-owned `interactive_endpoint` contract. A
-multiplexer plugin produces the endpoint. Agent runtime plugins consume it as
-an opaque text-terminal handle, so a workflow can substitute another
+The multiplexer seam is a core-owned `interactive_endpoint` task-output
+contract. It is not a new top-level config kind. A multiplexer task declares an
+interactive endpoint in its output schema and produces that endpoint through
+the existing workflow node-output mechanism. Agent runtime plugins consume it
+as an opaque text-terminal handle, so a workflow can substitute another
 multiplexer implementation without changing the agent plugin.
 
 Chat delivery and agent delivery rendezvous through provider-neutral
@@ -41,7 +43,10 @@ conversation events on the Plecture event bus:
 `conversation.permission_request`, and `conversation.permission_reply`.
 Chat plugins map concrete chat systems to those events. Agent runtime plugins
 consume and publish those events. The channel-server socket protocol is not
-the chat-to-agent boundary.
+the chat-to-agent boundary. After Slack delivery moves to event-bus
+rendezvous, the channel-server socket protocol moves out of shared
+`contracts/` ownership and belongs with the structured agent runtime
+implementation that uses it.
 
 The reusable session runtime surface splits into:
 
@@ -74,11 +79,12 @@ support independently, use Slack delivery without Claude-specific socket
 knowledge, and use the GitHub guard without installing it as session-runtime
 behavior.
 
-Implementation work includes defining the `interactive_endpoint` contract,
-adding the provider-neutral conversation event vocabulary, moving Slack
-delivery off channel-server socket subscriptions, splitting the current
-session runtime package into the selected plugins, and moving `gh-guard` into
-the GitHub plugin.
+Implementation work includes defining the task-level `interactive_endpoint`
+output contract, adding the provider-neutral conversation event vocabulary,
+moving Slack delivery off channel-server socket subscriptions, moving the
+channel-server socket protocol out of `contracts/` when it has no cross-plugin
+consumer, splitting the current session runtime package into the selected
+plugins, and moving `gh-guard` into the GitHub plugin.
 
 The existing plugin service lifecycle decision still governs `[[services]]`
 and bus supervision. This decision replaces only its plugin-boundary remedy.
@@ -98,6 +104,22 @@ Plugin dependency metadata could let one plugin name another plugin or require
 one of its capabilities. This loses for the same reason recorded in the
 service-lifecycle decision: identity edges hide the contract being consumed and
 pull Plecture toward version solving before there is a proven registry problem.
+
+### Config-only multiplexer composition
+
+Workflow config can already connect a tmux task to an agent task by passing a
+provider-neutral output such as `session_name`, and task declarations already
+carry attach, capture, and healthcheck commands. That is enough for one local
+workflow overlay that edits the producer node, the consumer templates, and the
+producer-owned delivery channel together.
+
+It is not enough for a reusable plugin split. The output name is a convention
+owned by the concrete task, not a declared core capability. A consumer plugin
+has no stable way to say it needs an attachable, capturable, text-sendable
+terminal endpoint without naming the concrete producer's node id or output
+shape. Config-only composition therefore describes the operator motion for
+choosing a multiplexer, but it does not carry the published swap guarantee
+between independently distributed plugins.
 
 ### Keep Slack delivery on the channel-server socket protocol
 

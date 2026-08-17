@@ -45,11 +45,16 @@ required executable adapter.
 The multiplexer seam is a core-owned workflow contract named
 `interactive_endpoint`.
 
+`interactive_endpoint` is a task-level output contract. A task declaration uses
+its output schema to say that one of its outputs carries an interactive
+endpoint. The value then travels through the existing workflow node-output
+mechanism. It is not a new top-level config kind.
+
 An interactive endpoint represents a live text terminal attached to a session.
 It is not a tmux pane, a process id, a worktree, an agent runtime, or a chat
 thread. A multiplexer plugin produces the endpoint and owns setup, cleanup,
 health, attach, capture, and text-send mechanics. Agent-runtime plugins consume
-the endpoint as an opaque value and never inspect the multiplexer-specific
+the endpoint as an opaque task output and never inspect the multiplexer-specific
 shape behind it.
 
 The endpoint contract lets a workflow swap one multiplexer implementation for
@@ -81,6 +86,11 @@ The channel-server socket protocol is an implementation protocol for a
 structured agent runtime. It is not the boundary between chat delivery and
 agent delivery. Chat-delivery plugins do not connect to channel-server sockets
 and do not import channel-server client packages.
+
+After the split, the channel-server socket protocol belongs with the structured
+agent runtime implementation that uses it. It does not remain a shared
+`contracts/` package unless another concrete consumer needs the same
+provider-neutral wire contract.
 
 ## Review Workflow Composition
 
