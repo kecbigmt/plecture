@@ -21,33 +21,34 @@ func main() {
 	}
 }
 
+// run dispatches directly to setup/cleanup with no intervening "provider"
+// subcommand group: the binary itself is the workspace provider realization
+// (mirroring github-worktree's flat setup/cleanup shape), so a group noun
+// naming that same concept again would be redundant.
 func run(args []string) error {
-	if len(args) < 2 {
-		return fmt.Errorf("usage: okf-bundle provider <setup|cleanup> [flags]")
+	if len(args) < 1 {
+		return fmt.Errorf("usage: okf-bundle <setup|cleanup> [flags]")
 	}
-	group, sub, rest := args[0], args[1], args[2:]
+	sub, rest := args[0], args[1:]
 
-	if group != "provider" {
-		return fmt.Errorf("unknown subcommand %q %q; expected: provider setup, provider cleanup", group, sub)
-	}
 	switch sub {
 	case "setup":
-		return runProviderSetup(rest)
+		return runSetup(rest)
 	case "cleanup":
-		return runProviderCleanup(rest)
+		return runCleanup(rest)
 	}
-	return fmt.Errorf("unknown subcommand %q %q; expected: provider setup, provider cleanup", group, sub)
+	return fmt.Errorf("unknown subcommand %q; expected: setup, cleanup", sub)
 }
 
-func runProviderSetup(args []string) error {
-	fs := flag.NewFlagSet("provider setup", flag.ContinueOnError)
+func runSetup(args []string) error {
+	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	resourceID := fs.String("resource", "", "resource identifier (local-okf://<owner>/<concept-id>)")
 	session := fs.String("session", "", "session name the workspace is acquired for")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *resourceID == "" || *session == "" {
-		return fmt.Errorf("provider setup requires --resource and --session")
+		return fmt.Errorf("setup requires --resource and --session")
 	}
 
 	result, err := workspace.Setup(cliexec.CLI{}, *resourceID, *session)
@@ -63,9 +64,9 @@ func runProviderSetup(args []string) error {
 	})
 }
 
-func runProviderCleanup(args []string) error {
-	fs := flag.NewFlagSet("provider cleanup", flag.ContinueOnError)
-	workspaceDir := fs.String("workspace-dir", "", "workspace directory recorded by provider setup")
+func runCleanup(args []string) error {
+	fs := flag.NewFlagSet("cleanup", flag.ContinueOnError)
+	workspaceDir := fs.String("workspace-dir", "", "workspace directory recorded by setup")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

@@ -62,12 +62,12 @@ func captureStdout(t *testing.T, fn func() error) (string, error) {
 
 const validGoal = "---\ntype: Goal\nstatus: open\n---\n## Done When\n\n- [ ] write the tests\n"
 
-func TestRun_providerSetupAndCleanup(t *testing.T) {
+func TestRun_setupAndCleanup(t *testing.T) {
 	workspaceDir := newBundle(t, validGoal)
 	withFakePlect(t, workspaceDir)
 
 	stdout, err := captureStdout(t, func() error {
-		return run([]string{"provider", "setup", "--resource", "local-okf://acme/goals/ship-it.md", "--session", "acme/review-1"})
+		return run([]string{"setup", "--resource", "local-okf://acme/goals/ship-it.md", "--session", "acme/review-1"})
 	})
 	if err != nil {
 		t.Fatalf("run setup: %v", err)
@@ -79,10 +79,10 @@ func TestRun_providerSetupAndCleanup(t *testing.T) {
 	}
 	scratchWorkspaceDir, _ := got["workspace_dir"].(string)
 	if scratchWorkspaceDir == "" {
-		t.Fatal("provider setup produced no workspace_dir")
+		t.Fatal("setup produced no workspace_dir")
 	}
 
-	if err := run([]string{"provider", "cleanup", "--workspace-dir", scratchWorkspaceDir}); err != nil {
+	if err := run([]string{"cleanup", "--workspace-dir", scratchWorkspaceDir}); err != nil {
 		t.Fatalf("run cleanup: %v", err)
 	}
 	if _, err := os.Lstat(scratchWorkspaceDir); !os.IsNotExist(err) {
@@ -91,7 +91,7 @@ func TestRun_providerSetupAndCleanup(t *testing.T) {
 }
 
 func TestRun_unknownSubcommand(t *testing.T) {
-	if err := run([]string{"provider", "explode"}); err == nil {
+	if err := run([]string{"explode"}); err == nil {
 		t.Error("want an error for an unknown subcommand")
 	}
 }
