@@ -6,13 +6,13 @@ This design is governed by
 ## Boundary Rule
 
 Plugin boundaries are package boundaries, not runtime-isolation boundaries.
-A plugin may collaborate with another plugin only through surfaces owned by
-Plecture core:
+A plugin may collaborate with another plugin only through these boundary
+surfaces:
 
-- workflow, task, channel, resource, workspace, and template composition;
-- provider-neutral Go contracts under `contracts/`;
-- provider-neutral event-bus types whose schema is owned by core;
-- opaque plugin-owned event types that other plugins do not interpret.
+- core-owned workflow, task, channel, resource, workspace, and template composition;
+- core-owned provider-neutral Go contracts under `contracts/`;
+- core-owned provider-neutral event-bus types;
+- opaque plugin-owned event types that other plugins treat as uninterpreted payloads.
 
 Shipped plugin configuration references only executables declared by the same
 plugin. User-owned workflow and task overlays compose definitions from multiple
@@ -30,7 +30,7 @@ plugins:
 | Plugin | Owns | Core contracts used | Excludes |
 |---|---|---|---|
 | `session/tmux` | tmux-backed interactive endpoint task and terminal operation declarations | interactive endpoint, terminal operations, task lifecycle | agent CLIs, agent-TUI submit/readiness logic, chat delivery, VCS guards |
-| `session/claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
+| `session/claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, structured Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
 | `session/codex` | Codex TUI and `codex exec` launch tasks, initial-prompt and terminal-submit readiness logic, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
 | `slack-delivery` | Slack adapter service, Slack thread binding, Slack event ingress and egress | conversation events, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
 | `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource definitions, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
@@ -105,9 +105,12 @@ behavior.
 The initial-prompt task belongs to the agent runtime plugin whose TUI receives
 the prompt. `session/claude` and `session/codex` each ship an initial-prompt
 task that composes the raw terminal verbs with that runtime's readiness checks.
-`session/codex` also ships a terminal-submit event channel for its interactive
-TUI shape. `session/tmux` does not ship agent-TUI submit or readiness
-composition.
+`session/claude` uses channel-server as its supported event-delivery path
+because structured delivery is more robust than terminal key submission. A
+no-channel-server interactive Claude configuration is outside this supported
+surface. `session/codex` ships a terminal-submit event channel for its
+interactive TUI shape because Codex interactive has no structured transport.
+`session/tmux` does not ship agent-TUI submit or readiness composition.
 
 The operation surface lets a workflow swap one multiplexer implementation for
 another by replacing the producer node. Agent plugins depend on the core

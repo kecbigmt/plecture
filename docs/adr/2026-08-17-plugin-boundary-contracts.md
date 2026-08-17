@@ -71,6 +71,13 @@ agent runtime plugin whose TUI receives the prompt, not to the multiplexer
 plugin. A terminal-submit event channel for an interactive TUI belongs to the
 agent runtime plugin as well.
 
+When an agent runtime has a structured delivery channel, that channel is the
+supported event-delivery path because it is more robust than terminal key
+submission. Claude Code delivery therefore uses channel-server, and a
+no-channel-server interactive Claude configuration is outside this decision's
+supported surface. Raw-verb terminal submit is the fallback for interactive
+TUIs without structured transport, such as Codex interactive.
+
 Chat delivery and agent delivery rendezvous through provider-neutral
 conversation events on the Plecture event bus:
 `conversation.message`, `conversation.reply`,
@@ -172,6 +179,8 @@ has no stable way to say it needs an attachable, capturable, input-receiving
 terminal endpoint without naming the concrete producer's node id or output
 shape.
 
+### Opaque endpoint binding without operations
+
 An opaque handle alone also loses. If the only common contract is
 `interactive_endpoint`, the plugin or channel that types into it still needs
 tool-specific command knowledge. That recreates the dependency the split is
@@ -214,7 +223,9 @@ The multiplexer contract therefore stops at raw terminal operations. The agent
 runtime plugin composes those operations into the submit/readiness behavior its
 own TUI requires. This places Claude initial-prompt composition with
 `session/claude`, Codex initial-prompt composition with `session/codex`, and
-the interactive terminal-submit event channel with `session/codex`.
+the interactive terminal-submit event channel with `session/codex`. Claude Code
+does not get a terminal-submit event channel in this split because its
+structured channel-server delivery is the supported path.
 
 ### Keep Slack delivery on the channel-server socket protocol
 
