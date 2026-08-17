@@ -223,16 +223,16 @@ Build-less script executables are the primary v1 form. They must carry their
 interpreter through a shebang. Built binaries are the additional case for
 plugins that need compilation.
 
-The standard `config/` subdirectories with plugin-layer loader behavior are:
+Plugin TOML configuration definitions live anywhere under `config/`.
+Declaration identity is specified by
+[`config-declaration-identity.md`](config-declaration-identity.md): each
+definition is introduced by a `[<kind>.<id>]` header, and subdirectories are
+author organization only. Shipped plugins may keep directories such as
+`config/tasks/` and `config/workflows/` as a convention, but the loader reads
+kind and id from the definition header.
 
-| Directory | Mount behavior |
-|---|---|
-| `config/workspaces/` | Mounted as `workspaces/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
-| `config/resources/` | Mounted as `resources/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
-| `config/channels/` | Mounted as `channels/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
-| `config/tasks/` | Mounted as `tasks/`. Trusted layer plus trusted ancestor overlay. Same-id conflicts between plugin layers are load errors; user-owned layers replace whole definitions. |
-| `config/workflows/` | Mounted as `workflows/`. Trusted layer plus ancestor overlay. Same-id plugin-layer conflicts are load errors; user-owned layers can add nodes and channels, with singleton fields guarded against accidental redeclaration. |
-| `config/templates/` | Mounted as `templates/`. Read-only plugin base layer plus user-owned template layers. Same-id conflicts between plugin layers are load errors. |
+`config/templates/` remains the standard location for plugin-owned Markdown
+template assets. Template assets are not TOML declarations.
 
 The template loader includes one generic read-only plugin layer. Lookup searches
 workspace-dir ancestor overlays, `~/.config/plect/templates/`, and mounted plugin
@@ -400,8 +400,7 @@ config, not inside cloned workspace-dir content. The global declaration file liv
 
 `~/.config/plect` here is the default config home. `--config-home` overrides
 it for the whole config tree (`config.toml`, `catalogs.toml`, `plect.lock`,
-and the global `templates/`, `tasks/`, `workflows/`, `workspaces/`,
-`resources/`, `environments/`, and `channels/` overlays); absent that flag,
+and global user-owned definition and template overlays); absent that flag,
 `PLECT_CONFIG_HOME` wins, then `$XDG_CONFIG_HOME/plect`, then the
 `~/.config/plect` default. The plugin cache and runtime state stay on the
 XDG data/cache dirs regardless of which of these resolves the config home.
@@ -792,27 +791,32 @@ For loaders that receive plugin dirs, resolution order is:
 3. Trusted ancestor overlays, outermost to innermost.
 4. Workspace-dir `.plect/` overlay, with the same restrictions.
 
-The user layer always wins because every user-owned layer is deeper than the
-plugin layers. Declaration order never chooses between same-id definitions from
-two plugin layers: that conflict is a load error, and the user must resolve it
-explicitly in global config by choosing one plugin or disabling one plugin.
+User-owned layers are deeper than other user-owned layers. Same-id conflicts
+inside one plugin are load errors. Different plugins may reuse an id because
+catalog-qualified references include the catalog alias and plugin path.
+Catalog-qualified references select catalog plugin definitions and are not
+shadowed by same-id relative definitions in user-owned layers.
 
 Same-id behavior by kind:
 
 | Kind | Same-id rule |
 |---|---|
-| Workspace providers, resources, environments, channels | Same-id conflicts between plugin layers fail. A deeper user-owned layer replaces the whole definition. No partial override. |
-| Tasks | Same-id conflicts between plugin layers fail. A deeper user-owned layer replaces the whole definition. No partial override. |
-| Workflows | Same-id conflicts between plugin workflow node ids, event channel names, or singleton fields fail. User-owned layers merge by adding nodes and event channels. Singleton fields cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
+| Workspace providers, resources, environments, channels | Same-id conflicts inside one plugin fail across that plugin's unified definition namespace. A deeper user-owned layer replaces a shallower user-owned whole definition only when the kind also matches. No partial override. |
+| Tasks | Same-id conflicts inside one plugin fail across that plugin's unified definition namespace. A deeper user-owned layer replaces a shallower user-owned whole definition only when the kind also matches. No partial override. |
+| Workflows | Same-id workflow definitions inside one plugin fail across that plugin's unified definition namespace. Same-kind user-owned workflow layers merge by adding nodes and event channels. Singleton fields cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
 | Workflow input schemas | Plugin-layer schemas for the same workflow id conflict unless they belong to the same selected plugin workflow. User-owned layer schemas combine with `allOf`. |
 | Templates | Same-id conflicts between plugin layers fail. Lookup then remains user-overridable: nearest workspace dir or ancestor template, then global user templates, then plugin templates. |
+
+A same-id definition with a different kind inside the same plugin or user-owned
+layer is always a load error. Kind mismatches are never replacements.
 
 Partial override model:
 
 - To partially customize a plugin workflow, add a same-named workflow file in a
   trusted overlay that adds new `[[nodes]]` or new `[[event.channel]]` entries.
-- To replace a plugin task, workspace provider, resource, environment, or channel, place a
-  full same-id definition in global config or a trusted overlay.
+- To replace a plugin task, workspace provider, resource, environment, or
+  channel, define a user-owned replacement and update user-owned references to
+  use its relative address.
 - To customize a template, place a same-named Markdown template in the nearest
   desired overlay.
 - A plugin-provided task cannot be edited in place through a patch mechanism.
@@ -821,10 +825,10 @@ Partial override model:
 This model keeps the existing loader semantics and makes plugin distribution a
 new source of base layers rather than a new merge language.
 
-Alternatives considered: letting declaration order decide same-id plugin
-conflicts would make behavior depend on list order in `catalogs.toml`. That is
-too easy to miss during review, especially for executable shell hooks, so plugin
-layer conflicts fail loud.
+Alternatives considered: letting declaration order decide same-id conflicts
+inside one plugin would make behavior depend on file walk order. That is too
+easy to miss during review, especially for executable shell hooks, so conflicts
+inside one plugin fail loud.
 
 ## Compatibility
 
@@ -886,14 +890,14 @@ tmux/plugin.toml
 tmux/config/tasks/tmux.toml
 claude/plugin.toml
 claude/config/tasks/claude.toml
-claude/config/tasks/initial_prompt.toml
+claude/config/tasks/claude_initial_prompt.toml
 claude/config/channels/claude.toml
 claude/scripts/claude-agent-activity
 claude/src/channel-server/go.mod
 claude/src/channel-server/cmd/channel-server/main.go
 codex/plugin.toml
 codex/config/tasks/codex.toml
-codex/config/tasks/initial_prompt.toml
+codex/config/tasks/codex_initial_prompt.toml
 codex/config/channels/terminal_submit.toml
 codex/config/tasks/codex_exec.toml
 codex/config/channels/codex_exec.toml
@@ -964,9 +968,15 @@ catalog.toml
 github/plugin.toml
 github/config/workspaces/github.toml
 github/config/resources/github.toml
-github/config/tasks/github_work.toml
-github/config/tasks/github_review.toml
-github/config/workflows/github_coding.toml
+github/config/tasks/gh_guard.toml
+github/config/tasks/investigate.toml
+github/config/tasks/respond.toml
+github/config/tasks/review.toml
+github/config/tasks/work.toml
+github/config/templates/investigate.md
+github/config/templates/respond.md
+github/config/templates/review.md
+github/config/templates/work.md
 github/src/go.mod
 github/src/cmd/github-worktree/main.go
 github/src/cmd/github-issue-pr/main.go
