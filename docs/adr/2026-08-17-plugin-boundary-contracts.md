@@ -142,8 +142,11 @@ initial-prompt and terminal-submit composition into the agent runtime plugins,
 adding the provider-neutral conversation event vocabulary, moving Slack
 delivery off channel-server socket subscriptions, moving the channel-server
 socket protocol out of `contracts/` when it has no cross-plugin consumer,
-splitting the current session runtime package into the selected plugins, and
-moving `gh-guard` into the GitHub plugin.
+splitting the current session runtime package into the selected plugins,
+dropping the `plect-` prefix from the session-runtime plugin executables when
+they move into `session/claude` and `session/codex`, moving `gh-guard` into the
+GitHub plugin, and adding a `docs/migrations/` entry for no-channel-server
+interactive Claude configurations.
 
 This decision supersedes the plugin service lifecycle decision by carrying
 forward its service declaration and bus-supervision decisions while replacing
