@@ -60,6 +60,7 @@ outer contract states them, but hidden widening is not.
 The outer task may use locals as private intermediate values from its setup.
 Locals can feed forwarded inner inputs, outer cleanup, or explicit public
 output wiring, but they are not outputs unless the outer task publishes them.
+The explicit public output wiring table is named `[publish]`.
 
 The reference field is named `inner`. It favors the lifecycle model over a
 pattern name: the reader can see that the referenced task is inside the outer
@@ -85,10 +86,11 @@ required machinery outputs, forwarded-input schema conflicts, repeated
 environment keys across layers, and invalid injected environment names.
 
 Core needs lifecycle execution that stores outer setup locals privately while
-publishing only the output keys wired by the outer task. Downstream workflow
-nodes, channels, status, chains, and nested-task done_when checks validate
-against the outer public contract, not against implicit inner outputs or
-private locals.
+publishing only the output keys wired by the outer task. Output wiring is a live
+projection rather than a setup-time copy. Downstream workflow nodes, channels,
+status, chain output bindings, and nested-task done_when output checks validate
+against the outer public contract, while chain judge ids resolve from the
+effective innermost done_when.
 
 Core needs task inspection output to show the nesting chain from the outermost
 task to the innermost plugin task, so an operator can audit provenance without
@@ -155,6 +157,13 @@ already uses configuration-level composition for workflow-layer combining, so
 reusing the term here would overload a reserved concept. Task nesting names the
 actual mechanism: containment through `inner`, LIFO lifecycle, and per-layer
 private locals.
+
+### Output wiring table named `[outputs]`
+
+Naming the explicit output wiring table `[outputs]` is rejected because task
+definitions already use `[[outputs]]` for dynamic output scripts. Reusing the
+same TOML key for a table and an array of tables would make the implementation
+depend on shape sniffing and make bracket typos select another feature.
 
 ### Alternative reference names
 

@@ -26,7 +26,10 @@ task may re-export inner outputs, rename inner outputs, or publish values
 computed by its own setup, but downstream consumers bind only to the outer
 task's declared public contract. Outer setup emits locals: always-private
 intermediate values available to outer cleanup, forwarding templates, and
-public output wiring.
+public output wiring. Public output wiring is a live projection, not a
+setup-time copy: reads render against the current inner output and local values.
+Direct inner-output publications route mutable writes to that inner output;
+computed publications are read-only.
 
 ## Configuration Shape
 
@@ -93,18 +96,18 @@ Task nesting fields:
 | `expose` | no | string array | Same-name re-export shorthand for inner public outputs. |
 | `[forward.inputs]` | no | string table | Templates that produce the inner task's inputs. |
 | `[forward.env]` | no | string table | Templates that produce the inner task's process environment additions. |
-| `[outputs]` | no | string table | Templates that wire the nested task's public outputs from inner outputs or locals. Renaming is explicit here. |
+| `[publish]` | no | string table | Templates that wire the nested task's public outputs from inner outputs or locals. Renaming is explicit here. |
 | `[inputs_schema]` / `inputs_schema_file` | no | JSON Schema | The outer task's workflow-facing inputs contract. |
 | `[locals_schema]` / `locals_schema_file` | no | JSON Schema | The private locals contract for outer setup emissions. |
 | `[outputs_schema]` / `outputs_schema_file` | no | JSON Schema | The nested task's explicit public output contract. Same-name `expose` entries import their inner schema. |
-| `[[chains]]` | no | chain entries | Chains attached to the nested task id, validated against the outer public done_when and output contract. |
+| `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the effective innermost `done_when` and output bindings validated against the outer public output contract. |
 
 The nested task's effective scope is the innermost task's scope. If an outer
 task declares `scope`, it must match the scope of its next inner task, and the
 rule repeats down the nesting chain.
 The inner task's `.Self` sees only the inner task's own outputs. Outer cleanup,
-forwarding templates, and `[outputs]` wiring read outer setup values from
-`.Locals`; `[outputs]` wiring also reads inner setup values from
+forwarding templates, and `[publish]` wiring read outer setup values from
+`.Locals`; `[publish]` wiring also reads inner setup values from
 `.Inner.outputs`.
 
 Inspection output such as `plect task show` prints the nesting chain from the
@@ -150,20 +153,22 @@ Loading nested task definitions fails when:
   `idle_after`, `healthcheck`, `movement_signal`, `requires`, `[terminal]`,
   `[done_when]`, or `[[outputs]]`.
 - `expose` names an output not declared by the inner task.
-- `[outputs]` references a source other than an inner public output or a local.
-- the same public output key is declared by both `expose` and `[outputs]`.
+- `[publish]` references a source other than an inner public output or a local.
+- the same public output key is declared by both `expose` and `[publish]`.
+- `[publish]` declares a computed template output mutable in `outputs_schema`.
 - `forward.inputs` omits an inner required input or forwards a key rejected by a
   closed inner schema.
 - a `forward.env` key is not a valid process environment name.
 - a `forward.env` key repeats a key from any other layer in the nesting chain.
-- a chain declared on the outer task references a judge id or public output not
-  declared by the outer public contract.
+- a chain declared on the outer task references a judge id not declared by the
+  effective innermost `done_when`, or a public output not declared by the outer
+  public contract.
 - a chain declared on the outer task references a local not wired into the outer
   public contract.
 - the inner task declares `[terminal]` and the outer public contract does not
   expose `interactive_endpoint`.
-- a nested task `done_when` or chain references an output not exposed by the
-  outer public contract.
+- a nested task `done_when` check or chain references an output not exposed by
+  the outer public contract.
 
 Running a nested task fails when:
 
@@ -207,7 +212,7 @@ adoption in their owning config kinds.
 | `tasks/claude.toml` | Different runtime inputs, extra agent-process env, path injection, chains. | 1 + 2 | Rung 2 forwards `tmux_session`/model/effort/path inputs and declares chains on the outer id. Rung 1 in the `claude` plugin provides an author-declared `launch_env` input whose exports are included in the terminal launch line. Workflow-owned defaults stay in the workflow node. |
 | `tasks/codex.toml` | Different runtime inputs, extra agent-process env, path injection, chains. | 1 + 2 | Rung 2 forwards the plugin task inputs and declares chains. Rung 1 in the `codex` plugin provides an author-declared `launch_env` input whose exports are included in the Codex TUI launch line. |
 | `tasks/codex_exec.toml` | Different runtime inputs, extra worker-process env, path injection, worker state location. | 1 + 2 | Rung 2 forwards runtime/path inputs and declares chains. Rung 1 in the `codex` plugin provides author-declared `launch_env` and `state_root` inputs for the worker's exported environment and state directory. |
-| `tasks/work.toml` | Different instruction input, explicit output boundary, and local chain attachment. | 2 | The outer task forwards `instruction` into `official/github/work`, re-exports the inner outputs it chooses to publish, wires any local computed output through `[outputs]`, and attaches chains to the outer id. Workflow-owned defaults stay in the workflow node. |
+| `tasks/work.toml` | Different instruction input, explicit output boundary, and local chain attachment. | 2 | The outer task forwards `instruction` into `official/github/work`, re-exports the inner outputs it chooses to publish, wires any local computed output through `[publish]`, and attaches chains to the outer id. Workflow-owned defaults stay in the workflow node. |
 | `channels/codex_exec.toml` | Queue timeout and message formatting around the shipped enqueue executable. | 1 | The channel adopts the plugin's shipped enqueue executable. Rung 1 in the `codex` plugin exposes `enqueue_timeout` and `message_envelope`; `message_envelope` is a formatting template over the existing event fields, not executable substitution. |
 | `workspaces/github.toml` | Workspace layout root, branch naming, cleanup policy, and local-only status outputs. | 1 | Rung 1 in the `github` plugin exposes `workspace_layout_root`, `issue_branch_template`, `tagged_branch_suffix`, and `delete_branch_default`. The plugin already owns `title`; the local-only `checks_status` output is dropped from workspace setup because resource observation owns CI status. |
 | `resources/github.toml` | Script-internal observation drift with the same public state keys, plus review-state observation needed outside workspace setup. | As-is + 1 | Adopt the plugin resource implementation as-is for the existing state keys. Rung 1 in the `github` plugin adds the concrete `review_decision` observed state key; no open-ended resource output hook is needed. |
