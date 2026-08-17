@@ -111,9 +111,7 @@ workspace provider's concrete workspace realization is a git worktree, so its
 single-purpose executable is `github-worktree`, not `github-workspace-provider`
 or `github-workspace`. The same layer rule keeps GitHub resource-observation
 executables on concrete resource names such as issue and pull request, not the
-abstract `resource definition` concept. A multipurpose executable may expose a
-`workspace-provider` subcommand when the top-level binary name covers broader
-plugin behavior.
+abstract `resource definition` concept.
 
 ## Consequences
 

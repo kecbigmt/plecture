@@ -61,9 +61,7 @@ concept name appears in prose, Go types, API fields, and command nouns.
 Executable names are not a mechanical copy of concept names. Single-purpose
 plugin executables use the plugin's concrete realization and do not use the
 host-binary `plect-` prefix. The GitHub workspace-provider executable name is
-`github-worktree` because GitHub realizes workspaces as git worktrees. A
-multipurpose executable may expose a `workspace-provider` subcommand when the
-top-level binary name covers broader plugin behavior.
+`github-worktree` because GitHub realizes workspaces as git worktrees.
 
 `provider` remains available as generic English for an external integration
 when prose is not naming the workspace provider contract. Core config keys, API
