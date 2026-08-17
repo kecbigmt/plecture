@@ -5,9 +5,12 @@ This design is governed by
 
 ## Design Core
 
-Task nesting lets a user-owned or configuration-only plugin task add
-lifecycle work, input binding, chains, and process environment to a plugin
-task without copying the plugin task file.
+Task nesting lets an outer task add lifecycle work, input binding, chains, and
+process environment to an inner task without copying the inner task's file.
+Any layer that owns task definitions writes outer tasks: user-owned
+configuration, a configuration-only plugin, and a plugin factoring its own
+tasks, such as runtime variants that share a common inner layer. The rules in
+this design do not vary with the layer that owns the outer task.
 
 A nested task has a chain of task definitions. The outermost task is the id
 named by a workflow node. Each outer task names its next inner task with
@@ -167,6 +170,14 @@ uses = "official/claude/claude"
 A qualified workflow `uses` lets a user-owned workflow opt out of a same-id
 shadow deliberately. Shipped plugin workflows continue to use task ids because
 catalog aliases are user-local.
+
+A plugin's own outer task names its inner task with the relative form, which
+resolves in the same-plugin namespace. Cross-plugin nesting is excluded by the
+reference grammar rather than by a validation rule: naming another plugin's
+task requires the catalog-qualified form, and catalog aliases are user-local,
+so plugin-authored config has no vocabulary for writing one. Reference forms
+and catalog-alias ownership are specified by
+[`config-declaration-identity.md`](config-declaration-identity.md).
 
 ## Validation Rules
 

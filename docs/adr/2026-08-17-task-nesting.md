@@ -73,6 +73,13 @@ selects the `claude` task from the enabled `official/claude` plugin without
 consulting same-id shadows. Workflow node `uses` accepts the same qualified
 form so a user-owned workflow can opt out of a shadow deliberately.
 
+A plugin may nest its own tasks, so a plugin author can factor a shared inner
+layer out of related variants instead of duplicating it. Cross-plugin nesting
+needs no rule of its own: an inner reference to another plugin would have to
+name a catalog alias, and aliases are user-local, so the plugin-layer reference
+grammar has no vocabulary for one. The boundary is enforced by grammar rather
+than by validation.
+
 Deep merge, patching, and override semantics are rejected. Extension surfaces
 are author-declared and closed by default.
 
