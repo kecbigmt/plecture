@@ -38,6 +38,8 @@ func configHomeSource() string {
 		return "--config-home flag"
 	case os.Getenv(confighome.EnvVar) != "":
 		return confighome.EnvVar + " env var"
+	case os.Getenv(confighome.XDGEnvVar) != "":
+		return confighome.XDGEnvVar + " env var"
 	default:
 		return "default"
 	}

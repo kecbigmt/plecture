@@ -13,6 +13,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 	"github.com/kecbigmt/plecture/app/internal/mcpserver"
 	"github.com/kecbigmt/plecture/app/internal/service"
 )
@@ -33,6 +34,11 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
+	// A runner environment that predefines XDG_CONFIG_HOME (GitHub Actions'
+	// ubuntu runners do) would otherwise leak through tests that fake HOME
+	// via t.Setenv but never touch XDG_CONFIG_HOME. Tests that want to
+	// simulate it opt back in with t.Setenv.
+	os.Unsetenv(confighome.XDGEnvVar)
 	os.Exit(m.Run())
 }
 

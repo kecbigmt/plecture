@@ -8,18 +8,22 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/confighome"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// TestMain unsets PLECT_SESSION_NAME before any test runs, so the suite stays
-// hermetic when `go test` itself runs inside a plect pane (this repo's own
-// dev loop) rather than depending on the invoking shell being ambient-free.
-// Tests that want to simulate a caller opt back in with t.Setenv.
+// TestMain unsets PLECT_SESSION_NAME and XDG_CONFIG_HOME before any test
+// runs, so the suite stays hermetic against both this repo's own dev loop
+// (a plect pane sets PLECT_SESSION_NAME) and a runner environment that
+// predefines XDG_CONFIG_HOME (GitHub Actions' ubuntu runners do), rather
+// than depending on the invoking shell being ambient-free. Tests that want
+// to simulate either opt back in with t.Setenv.
 func TestMain(m *testing.M) {
 	os.Unsetenv("PLECT_SESSION_NAME")
+	os.Unsetenv(confighome.XDGEnvVar)
 	os.Exit(m.Run())
 }
 

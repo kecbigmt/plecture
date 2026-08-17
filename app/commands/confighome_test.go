@@ -27,6 +27,7 @@ func TestConfigShow_DefaultsToXDGConfigPlect(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 	t.Setenv(confighome.EnvVar, "")
+	t.Setenv(confighome.XDGEnvVar, "")
 
 	out, err := execRoot(t, "config", "show")
 	if err != nil {
@@ -43,6 +44,44 @@ func TestConfigShow_DefaultsToXDGConfigPlect(t *testing.T) {
 
 func TestConfigShow_EnvVarOverridesDefault(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv(confighome.XDGEnvVar, "")
+	envDir := t.TempDir()
+	t.Setenv(confighome.EnvVar, envDir)
+
+	out, err := execRoot(t, "config", "show")
+	if err != nil {
+		t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+	}
+	if !strings.Contains(out, envDir) {
+		t.Errorf("output = %q, want to contain %q", out, envDir)
+	}
+	if !strings.Contains(out, confighome.EnvVar) {
+		t.Errorf("output = %q, want to name %s as the source", out, confighome.EnvVar)
+	}
+}
+
+func TestConfigShow_XDGConfigHomeOverridesDefault(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(confighome.EnvVar, "")
+	xdgConfigHome := t.TempDir()
+	t.Setenv(confighome.XDGEnvVar, xdgConfigHome)
+
+	out, err := execRoot(t, "config", "show")
+	if err != nil {
+		t.Fatalf("Execute() error = %v; output:\n%s", err, out)
+	}
+	want := filepath.Join(xdgConfigHome, "plect")
+	if !strings.Contains(out, want) {
+		t.Errorf("output = %q, want to contain %q", out, want)
+	}
+	if !strings.Contains(out, confighome.XDGEnvVar) {
+		t.Errorf("output = %q, want to name %s as the source", out, confighome.XDGEnvVar)
+	}
+}
+
+func TestConfigShow_EnvVarWinsOverXDGConfigHome(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(confighome.XDGEnvVar, t.TempDir())
 	envDir := t.TempDir()
 	t.Setenv(confighome.EnvVar, envDir)
 
@@ -60,6 +99,7 @@ func TestConfigShow_EnvVarOverridesDefault(t *testing.T) {
 
 func TestConfigShow_FlagWinsOverEnvVar(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv(confighome.XDGEnvVar, "")
 	envDir := t.TempDir()
 	flagDir := t.TempDir()
 	t.Setenv(confighome.EnvVar, envDir)
