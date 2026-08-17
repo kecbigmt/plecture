@@ -1,7 +1,9 @@
 # Workspace provider vocabulary
 
 This design is governed by
-[`../adr/2026-08-17-workspace-provider-vocabulary.md`](../adr/2026-08-17-workspace-provider-vocabulary.md).
+[`../adr/2026-08-17-workspace-provider-vocabulary.md`](../adr/2026-08-17-workspace-provider-vocabulary.md)
+and the resource-observer vocabulary in
+[`../adr/2026-08-17-config-declaration-identity.md`](../adr/2026-08-17-config-declaration-identity.md).
 
 ## Contract
 
@@ -22,7 +24,7 @@ implementation exposes the acquired location through a required setup output
 key named `workspace_dir`. Other outputs are provider-specific contract fields.
 
 Resource-state observation is outside the workspace provider contract and
-belongs to resource definitions.
+belongs to resource observers.
 
 ## Vocabulary
 
@@ -54,7 +56,7 @@ The workflow output namespace is `Workflow.outputs`. It names the workflow-level
 pseudo-node outputs visible to templates, not the configuration kind that
 produced them.
 
-Config directories use short plural nouns. Resource definitions live in
+Config directories use short plural nouns. Resource observers live in
 `resources/`; workspace provider declarations live in `workspaces/`. The full
 concept name appears in prose, Go types, API fields, and command nouns.
 
@@ -68,17 +70,17 @@ fields, command nouns, and Go identifiers use `workspace provider` or the short
 config-directory noun `workspace`; provider-neutral boundary tooling may use
 `provider` when it means an external integration boundary.
 
-## Pairing With Resource Definitions
+## Pairing With Resource Observers
 
-Resource definitions and workspace providers are separate declarations:
+Resource observers and workspace providers are separate declarations:
 
 | Question | Declaration |
 |---|---|
-| What is this resource's observable state? | resource definition |
+| What is this resource's observable state? | resource observer |
 | Where does this session's work happen, and how is that space acquired and released? | workspace provider |
 
 A workflow references one workspace provider by id. Resource state observation
-and finalization find a resource definition by matching the resource id.
+and finalization find a resource observer by matching the resource id.
 
 ## Workspace Disambiguation
 

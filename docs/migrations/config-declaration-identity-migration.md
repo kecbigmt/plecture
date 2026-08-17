@@ -40,17 +40,16 @@ plugin directory too. Runtime state stays under the XDG data dir even when
 
 ## Add Definition Tables
 
-For every TOML definition under `workspaces/`, `resources/`, `environments/`,
-`channels/`, `tasks/`, and `workflows/`, move the definition body under a
-top-level `[<id>]` table and add the required `kind` field.
+For every TOML definition under `workspaces/`, `resources/`, `channels/`,
+`tasks/`, and `workflows/`, move the definition body under a top-level
+`[<id>]` table and add the required `kind` field.
 
 Use this mapping from the old directory to the new `kind` value:
 
 | Old directory | `kind` value |
 |---|---|
-| `workspaces/` | `workspace` |
-| `resources/` | `resource` |
-| `environments/` | `environment` |
+| `workspaces/` | `workspace_provider` |
+| `resources/` | `resource_observer` |
 | `channels/` | `channel` |
 | `tasks/` | `task` |
 | `workflows/` | `workflow` |
@@ -158,11 +157,11 @@ ids, update them to the responsibility names:
 | `codex` | `codex_exec` | task | `exec_runtime` |
 | `codex` | `codex_initial_prompt` | task | `initial_prompt` |
 | `codex` | `codex_exec` | channel | `exec_delivery` |
-| `github` | `github` | workspace | `worktree` |
-| `github` | `github` | resource | `issue_pr` |
+| `github` | `github` | workspace_provider | `worktree` |
+| `github` | `github` | resource_observer | `issue_pr` |
 | `slack` | `slack` | channel | `thread_messages` |
-| `okf` | `local-okf` | workspace | `concept_workspace` |
-| `okf` | `okf_goal` | resource | `goal` |
+| `okf` | `local-okf` | workspace_provider | `concept_workspace` |
+| `okf` | `okf_goal` | resource_observer | `goal` |
 | `okf` | `goal_review` | workflow | `goal_review_session` |
 | `okf` | `goal_review` | task | `record_goal_verdict` |
 | `okf` | `goal_bootstrap` | task | `bootstrap_goals` |
@@ -223,7 +222,7 @@ same-id user-owned workflow fragments no longer append to plugin workflows.
 Before updating references, compare trusted user config and trusted repo
 overlays against the shipped plugin ids listed above and the keep-their-id list.
 
-For a same-id user-owned task, workspace provider, resource, environment, or
+For a same-id user-owned task, workspace provider, resource observer, or
 channel that previously replaced a plugin definition:
 
 1. Keep or rename the user-owned definition with a valid `[<id>]` table and
@@ -241,8 +240,8 @@ a plugin workflow:
    id.
 2. Manually merge the local nodes and event channels into that user-owned
    workflow.
-3. Use catalog-qualified references for plugin tasks, channels, resources, or
-   workspace providers that the workflow still composes.
+3. Use catalog-qualified references for plugin tasks, channels, resource
+   observers, or workspace providers that the workflow still composes.
 4. Update user-owned entrypoints and references to the relative workflow
    address, such as `review_session`.
 
@@ -271,6 +270,11 @@ config/review/session.toml
 
 The loader reads the definition table and required `kind`; it does not infer
 kind or id from either layout.
+
+Resource-observation implementation names and directories follow the same
+breaking migration. Existing `resources/` config directories migrate to
+`kind = "resource_observer"` definition tables, and follow-up Go identifier and
+directory renames ride this migration rather than adding compatibility aliases.
 
 ## Verification
 

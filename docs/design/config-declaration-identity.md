@@ -52,17 +52,24 @@ The `kind` vocabulary is:
 
 | Kind | Declaration |
 |---|---|
-| `workspace` | Workspace provider |
-| `resource` | Resource definition |
-| `environment` | Execution environment |
-| `channel` | Event channel |
 | `task` | Task definition |
+| `channel` | Event channel |
 | `workflow` | Workflow definition |
+| `workspace_provider` | Workspace provider |
+| `resource_observer` | Resource observer |
 
-`kind` uses the short code-facing config noun. The workflow field remains
-`workspace_provider` because it names the role a workflow selects, following
-[`workspace-provider-vocabulary.md`](workspace-provider-vocabulary.md); its
-value is a reference whose site expects a `workspace` definition.
+Kind values use ratified concept names. A kind uses its bare concept name when
+the declaration's runtime counterpart is its own instance: task definitions
+instantiate into task instances, channel definitions into channel deliveries,
+and workflow definitions into workflow executions. A kind uses a role compound
+when the declaration produces or observes a thing that exists apart from the
+declaration: a `workspace_provider` produces workspaces, and a
+`resource_observer` observes resources that exist externally.
+
+The workflow field `workspace_provider` has the same role-compound name as the
+kind value because it selects a workspace provider. Resource observation uses
+`resource_observer`; `resource_definition` is not a concept name because every
+TOML configuration block in this language is a definition.
 
 `id` is a TOML bare-key segment matching this regular expression:
 
@@ -144,7 +151,7 @@ cloned, untrusted content. It keeps the plugin-packaging trust restrictions:
 |---|---|
 | Workflow fragments | Loaded from `.plect/workflows/` under the workflow cascade rules. Fragment identity comes from the `[<id>]` table with `kind = "workflow"`; the directory is only an allowlist. |
 | Task definitions | Load error, because cloned content must not carry shell. |
-| Workspace, resource, environment, or channel definitions | Not loaded. |
+| Workspace provider, resource observer, or channel definitions | Not loaded. |
 
 Recursive free-layout discovery applies to trusted roots. The untrusted
 workspace-dir overlay stays path-restricted so cloned content cannot break a
@@ -176,7 +183,8 @@ user-owned replacement by referencing its relative address.
 | Same id, same kind, workflow | Merges with the shallower user-owned workflow by the workflow cascade rules. |
 | Same id, different kind | Load error. |
 
-Whole-definition kinds are workspace, resource, environment, channel, and task.
+Whole-definition kinds are workspace provider, resource observer, channel, and
+task.
 
 A user-owned replacement may intentionally reuse a plugin definition id, but it
 is a separate user-owned definition. Plugin-owned relative references still
@@ -226,7 +234,7 @@ Reference sites declare their expected kind:
 
 | Reference site | Expected target kind |
 |---|---|
-| `workflow.workspace_provider` | `workspace` |
+| `workflow.workspace_provider` | `workspace_provider` |
 | `workflow.nodes[].uses` | `task` |
 | `workflow.event.channel[].uses` | `channel` |
 | `task.chains[].workflow` | `workflow` |
@@ -267,7 +275,7 @@ config/review/session.toml
 
 ```toml
 [worktree]
-kind = "workspace"
+kind = "workspace_provider"
 root = "{{.Session.WorkspaceDirPath}}"
 ```
 

@@ -4,6 +4,9 @@
 
 This decision is specified by
 [`docs/design/config-declaration-identity.md`](../design/config-declaration-identity.md).
+It also amends the paired resource concept named by
+[`2026-08-17-workspace-provider-vocabulary`](2026-08-17-workspace-provider-vocabulary.md):
+the config kind is `resource_observer`, not `resource_definition`.
 
 Configuration kind has been inferred from directory placement:
 `tasks/`, `workspaces/`, `channels/`, `workflows/`, and neighboring kind
@@ -42,9 +45,20 @@ kind = "task"
 ```
 
 The table name is the definition id. The `kind` field is required. The kind
-values are `workspace`, `resource`, `environment`, `channel`, `task`, and
-`workflow`. Ids come only from definition table names. Filenames and directory
-names are organizational. Valid ids are TOML bare-key segments matching
+values are `task`, `channel`, `workflow`, `workspace_provider`, and
+`resource_observer`.
+
+Kind values use ratified concept names. A kind uses its bare concept name when
+the declaration's runtime counterpart is its own instance: task definitions
+instantiate into task instances, channel definitions into channel deliveries,
+and workflow definitions into workflow executions. A kind uses a role compound
+when the declaration produces or observes a thing that exists apart from it:
+`workspace_provider` produces workspaces, and `resource_observer` observes
+resources that exist externally. `resource_definition` loses because every
+TOML configuration block in this language is a definition.
+
+Ids come only from definition table names. Filenames and directory names are
+organizational. Valid ids are TOML bare-key segments matching
 `^[A-Za-z_][A-Za-z0-9_]*$`. Hyphens are not valid because task ids are also
 workflow node ids when a node omits `id`, and node ids must remain safe in
 dotted Go template fields.
@@ -91,11 +105,11 @@ named catalog alias; the remaining final segment is the definition id.
 
 Reference sites declare their expected kind. A workflow node `uses` field
 expects `task`, workflow event channel bindings expect `channel`,
-`workspace_provider` expects `workspace`, and task chain workflow references
-expect `workflow`. A reference carries no kind segment. After resolving the
-reference, the loader validates that the target definition's `kind` matches the
-site's expected kind. A mismatch is a load error naming the site, the reference,
-the expected kind, and the target's declared kind.
+`workspace_provider` expects `workspace_provider`, and task chain workflow
+references expect `workflow`. A reference carries no kind segment. After
+resolving the reference, the loader validates that the target definition's
+`kind` matches the site's expected kind. A mismatch is a load error naming the
+site, the reference, the expected kind, and the target's declared kind.
 
 Exemplar workflow designs may write alias-less plugin-qualified references such
 as `claude.runtime` as scaffold input. Scaffolding rewrites that form to the
@@ -113,9 +127,10 @@ blocks, and it must split arbitrary-depth plugin paths from executable names.
 The workspace-dir `.plect/` overlay keeps the existing trust boundary.
 Recursive free-layout discovery applies to trusted roots. The cloned
 workspace-dir overlay loads only workflow fragments from `.plect/workflows/`,
-rejects task definitions, and does not load workspace, resource, environment, or
-channel definitions. Workflow fragment identity still comes from a top-level
-definition table with `kind = "workflow"`; the directory is only an allowlist.
+rejects task definitions, and does not load workspace provider,
+resource observer, or channel definitions. Workflow fragment identity still
+comes from a top-level definition table with `kind = "workflow"`; the directory
+is only an allowlist.
 
 Shipped plugin definition ids are renamed to responsibility names as part of the
 migration:
@@ -130,11 +145,11 @@ migration:
 | `codex` | `codex_exec` | task | `exec_runtime` |
 | `codex` | `codex_initial_prompt` | task | `initial_prompt` |
 | `codex` | `codex_exec` | channel | `exec_delivery` |
-| `github` | `github` | workspace | `worktree` |
-| `github` | `github` | resource | `issue_pr` |
+| `github` | `github` | workspace_provider | `worktree` |
+| `github` | `github` | resource_observer | `issue_pr` |
 | `slack` | `slack` | channel | `thread_messages` |
-| `okf` | `local-okf` | workspace | `concept_workspace` |
-| `okf` | `okf_goal` | resource | `goal` |
+| `okf` | `local-okf` | workspace_provider | `concept_workspace` |
+| `okf` | `okf_goal` | resource_observer | `goal` |
 | `okf` | `goal_review` | workflow | `goal_review_session` |
 | `okf` | `goal_review` | task | `record_goal_verdict` |
 | `okf` | `goal_bootstrap` | task | `bootstrap_goals` |
@@ -154,6 +169,12 @@ a deciding argument for or against the field form.
 This is a breaking configuration change. Plecture is pre-1.0, so the
 implementation uses a one-time migration rather than compatibility shims that
 read both placement-as-kind and table-declared formats.
+
+The term `resource definition` from the workspace-provider vocabulary decision
+is replaced by `resource observer` for config vocabulary. Follow-up
+implementation work renames resource-observation Go identifiers, directories,
+and shipped config surfaces as part of this same breaking migration rather than
+adding aliases.
 
 Core loader code needs recursive definition scanning for trusted config roots,
 definition-table validation, required-kind validation, per-plugin and
@@ -247,10 +268,38 @@ address with ownership segments prepended.
 Kind-segment references such as `official.claude.task.runtime` were proposed as
 redundant validation. They lose because the reference-bearing key is already
 the type annotation: workflow node `uses` expects a task, event channel bindings
-expect a channel, and `workspace_provider` expects a workspace. The machine
-still validates kind by resolving the reference and comparing the target's
-declared `kind` to the site's expected kind, so the kind segment adds reader
-and parser noise without adding a distinct check.
+expect a channel, and `workspace_provider` expects a workspace provider. The
+machine still validates kind by resolving the reference and comparing the
+target's declared `kind` to the site's expected kind, so the kind segment adds
+reader and parser noise without adding a distinct check.
+
+### Bare workspace and resource kinds
+
+Bare `workspace` and `resource` kinds lose because those words name runtime or
+external things in Plecture prose. A workspace is the acquired work surface, not
+the declaration that produces it. A resource exists externally whether Plecture
+observes it or not. Using the bare words would either diverge from the shipped
+`workspace_provider` workflow field, force a new rename of that field, or
+reintroduce the two-sense ambiguity this vocabulary work removes. Kubernetes'
+`kind: Service` metonymy does not transfer because Plecture reserves these bare
+words for the runtime and external senses.
+
+### Resource definition
+
+`resource_definition` loses because the suffix discriminates nothing inside a
+configuration language where every top-level block is a definition. The name
+does not state the relation to the resource, the same tautology that removed
+the host-binary prefix from plugin executable names. `resource_observer` names
+the relation directly and pairs with `workspace_provider`: one role produces
+workspaces, the other observes resources.
+
+### All kinds with `_definition`
+
+Homogenizing kind values as `task_definition`, `channel_definition`,
+`workflow_definition`, `workspace_definition`, and `resource_definition` loses
+because it invents unratified names and repeats a tautological suffix across the
+definition namespace. The homogeneous shape is already provided by the `[id]`
+table plus required `kind` field.
 
 ### Optional alias when unambiguous
 

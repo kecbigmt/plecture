@@ -37,7 +37,7 @@ plugins:
 | `claude` | Claude Code launch tasks, initial-prompt submit/readiness logic, structured Claude Code delivery, channel-server service, Claude activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Codex, chat-service adapters, VCS guards |
 | `codex` | Codex TUI and `codex exec` launch tasks, initial-prompt and terminal-submit readiness logic, queue worker, enqueue channel, Codex activity hook | interactive endpoint, terminal operations, conversation events, task lifecycle | tmux, Claude, chat-service adapters, VCS guards |
 | `slack` | Slack adapter service, Slack thread binding, Slack event ingress and egress | conversation events, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
-| `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource definitions, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
+| `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource observers, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
 
 A plugin with only workflow, task, channel, template, or other configuration
 resources is still a plugin. A shared review workflow may be distributed as a
@@ -178,7 +178,7 @@ provider-neutral consumer.
 
 The team review workflow is configuration-level composition:
 
-1. a resource definition observes the review request;
+1. a resource observer observes the review request;
 2. a workspace provider acquires the work surface;
 3. a workflow starts a selected multiplexer endpoint and a selected agent
    runtime;
