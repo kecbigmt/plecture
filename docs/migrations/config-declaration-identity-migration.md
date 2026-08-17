@@ -12,6 +12,11 @@ placement-as-kind and table-declared layouts.
 
 ## Backup
 
+Stop any running resident `plect serve` process before backing up runtime
+state, using the service manager that starts it. The resident process writes
+`state.json`; stopping it avoids copying a half-written snapshot. Keep it
+stopped until any state rewrite in this migration is complete.
+
 Back up global config, runtime state, and any trusted repo overlays before
 editing:
 
@@ -40,9 +45,9 @@ plugin directory too. Runtime state stays under the XDG data dir even when
 
 ## Add Definition Tables
 
-For every TOML definition under `workspaces/`, `resources/`, `channels/`,
-`tasks/`, and `workflows/`, move the definition body under a top-level
-`[<id>]` table and add the required `kind` field.
+For every TOML definition under `workspaces/`, `resources/`, `environments/`,
+`channels/`, `tasks/`, and `workflows/`, move the definition body under a
+top-level `[<id>]` table and add the required `kind` field.
 
 Use this mapping from the old directory to the new `kind` value:
 
@@ -50,6 +55,7 @@ Use this mapping from the old directory to the new `kind` value:
 |---|---|
 | `workspaces/` | `workspace_provider` |
 | `resources/` | `resource_observer` |
+| `environments/` | `environment` |
 | `channels/` | `channel` |
 | `tasks/` | `task` |
 | `workflows/` | `workflow` |
@@ -139,8 +145,9 @@ For `uses = "official.claude.runtime"`, the default node id is `runtime`. Add
 explicit node ids when two nodes would otherwise default to the same id.
 
 Catalog aliases and plugin path segments must be non-empty dot-free segments
-matching `^[A-Za-z0-9_-]+$`, so dotted references can be parsed without
-ambiguity. Hyphens are valid in aliases and plugin path segments.
+matching `^[A-Za-z0-9][A-Za-z0-9_-]*$`, so dotted references can be parsed
+without ambiguity and leading hyphens do not look like CLI flags. Hyphens are
+valid after the first character in aliases and plugin path segments.
 
 ## Update Shipped Plugin References
 
@@ -196,6 +203,10 @@ jq -r --arg old "$OLD_WORKFLOW" '
 
 For each renamed workflow id, either destroy and recreate affected sessions with
 the new workflow id, or rewrite `state.json` after taking the backup above.
+Stop any running resident `plect serve` process before rewriting the state file,
+and restart it after the rewrite. The resident process owns state writes while
+it is running and can otherwise clobber or race a hand edit.
+
 Destroying and recreating is the normal remedy when a session's frozen workflow
 does not match the requested workflow. Rewriting preserves the session record:
 
@@ -222,8 +233,8 @@ same-id user-owned workflow fragments no longer append to plugin workflows.
 Before updating references, compare trusted user config and trusted repo
 overlays against the shipped plugin ids listed above and the keep-their-id list.
 
-For a same-id user-owned task, workspace provider, resource observer, or
-channel that previously replaced a plugin definition:
+For a same-id user-owned task, workspace provider, resource observer,
+environment, or channel that previously replaced a plugin definition:
 
 1. Keep or rename the user-owned definition with a valid `[<id>]` table and
    required `kind`.

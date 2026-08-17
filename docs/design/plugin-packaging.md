@@ -777,11 +777,12 @@ Threat model:
 - No auto-update exists. Plugin directories mounted by core are read-only during
   normal command execution.
 - Workspace-dir-owned cloned content cannot declare plugin references,
-  workspace providers, resource observers, channels, or task definitions.
+  workspace providers, resource observers, environments, channels, or task
+  definitions.
 
 Loader trust restrictions follow this shape:
 
-- Workspace providers, resource observers, and channels load only from
+- Workspace providers, resource observers, environments, and channels load only from
   plugin dirs and global config.
 - Tasks reject definitions inside the workspace-dir layer.
 - Workflows allow workspace-dir files only to add nodes.
@@ -808,7 +809,7 @@ Same-id behavior by kind:
 
 | Kind | Same-id rule |
 |---|---|
-| Workspace providers, resource observers, channels | Same-id conflicts inside one plugin fail across that plugin's unified definition namespace. A deeper user-owned layer replaces a shallower user-owned whole definition only when the kind also matches. No partial override. |
+| Workspace providers, resource observers, environments, channels | Same-id conflicts inside one plugin fail across that plugin's unified definition namespace. A deeper user-owned layer replaces a shallower user-owned whole definition only when the kind also matches. No partial override. |
 | Tasks | Same-id conflicts inside one plugin fail across that plugin's unified definition namespace. A deeper user-owned layer replaces a shallower user-owned whole definition only when the kind also matches. No partial override. |
 | Workflows | Same-id workflow definitions inside one plugin fail across that plugin's unified definition namespace. Same-kind user-owned workflow layers merge by adding nodes and event channels only with shallower user-owned workflow layers. Singleton fields cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
 | Workflow input schemas | Plugin-layer schemas for the same workflow id conflict unless they belong to the same selected plugin workflow. User-owned layer schemas combine with `allOf`. |
@@ -822,7 +823,7 @@ Partial override model:
 - To customize a plugin workflow, copy or recreate it as a user-owned workflow,
   merge the local nodes or event channels there, and update user-owned
   entrypoints or references to the relative workflow address.
-- To replace a plugin task, workspace provider, resource observer, or
+- To replace a plugin task, workspace provider, resource observer, environment, or
   channel, define a user-owned replacement and update user-owned references to
   use its relative address.
 - To customize a template, place a same-named Markdown template in the nearest
@@ -1007,8 +1008,9 @@ Residual user config:
 - Which session-runtime task surface the user composes the GitHub workflow with.
 - Project-board or watcher subscriptions that are local operating policy.
 
-Core still sees only workspace provider, resource observer, task, workflow, and
-channel contracts. It does not parse GitHub URLs or know GitHub exists.
+Core still sees only workspace provider, resource observer, environment, task,
+workflow, and channel contracts. It does not parse GitHub URLs or know GitHub
+exists.
 
 ### okf plugin
 

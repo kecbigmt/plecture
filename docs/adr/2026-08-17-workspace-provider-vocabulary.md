@@ -1,3 +1,7 @@
+---
+amended_by: 2026-08-17-config-declaration-identity
+---
+
 # Workspace provider vocabulary
 
 ## Context

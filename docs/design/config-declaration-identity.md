@@ -55,16 +55,18 @@ The `kind` vocabulary is:
 | `task` | Task definition |
 | `channel` | Event channel |
 | `workflow` | Workflow definition |
+| `environment` | Execution environment |
 | `workspace_provider` | Workspace provider |
 | `resource_observer` | Resource observer |
 
 Kind values use ratified concept names. A kind uses its bare concept name when
 the declaration's runtime counterpart is its own instance: task definitions
 instantiate into task instances, channel definitions into channel deliveries,
-and workflow definitions into workflow executions. A kind uses a role compound
-when the declaration produces or observes a thing that exists apart from the
-declaration: a `workspace_provider` produces workspaces, and a
-`resource_observer` observes resources that exist externally.
+workflow definitions into workflow executions, and environment definitions into
+environment execution contexts. A kind uses a role compound when the declaration
+produces or observes a thing that exists apart from the declaration: a
+`workspace_provider` produces workspaces, and a `resource_observer` observes
+resources that exist externally.
 
 The workflow field `workspace_provider` has the same role-compound name as the
 kind value because it selects a workspace provider. Resource observation uses
@@ -151,7 +153,7 @@ cloned, untrusted content. It keeps the plugin-packaging trust restrictions:
 |---|---|
 | Workflow fragments | Loaded from `.plect/workflows/` under the workflow cascade rules. Fragment identity comes from the `[<id>]` table with `kind = "workflow"`; the directory is only an allowlist. |
 | Task definitions | Load error, because cloned content must not carry shell. |
-| Workspace provider, resource observer, or channel definitions | Not loaded. |
+| Workspace provider, resource observer, environment, or channel definitions | Not loaded. |
 
 Recursive free-layout discovery applies to trusted roots. The untrusted
 workspace-dir overlay stays path-restricted so cloned content cannot break a
@@ -183,8 +185,8 @@ user-owned replacement by referencing its relative address.
 | Same id, same kind, workflow | Merges with the shallower user-owned workflow by the workflow cascade rules. |
 | Same id, different kind | Load error. |
 
-Whole-definition kinds are workspace provider, resource observer, channel, and
-task.
+Whole-definition kinds are workspace provider, resource observer, environment,
+channel, and task.
 
 A user-owned replacement may intentionally reuse a plugin definition id, but it
 is a separate user-owned definition. Plugin-owned relative references still
@@ -202,9 +204,11 @@ References are dotted addresses:
 ```
 
 Catalog aliases and plugin path segments are non-empty dot-free segments
-matching `^[A-Za-z0-9_-]+$`. Dots are not valid inside aliases or plugin path
-segments because dots separate address segments. Hyphens are valid because
-aliases and plugin path segments never become workflow node ids.
+matching `^[A-Za-z0-9][A-Za-z0-9_-]*$`. Dots are not valid inside aliases or
+plugin path segments because dots separate address segments. The first
+character is alphanumeric so aliases and path segments do not look like CLI
+flags. Hyphens are valid after the first character because aliases and plugin
+path segments never become workflow node ids.
 
 The relative form, `<id>`, refers to a definition in the same plugin or in the
 user-owned layer stack. In user-owned config, a relative reference that would
@@ -212,10 +216,9 @@ select catalog content is a load error; the reference must use the
 catalog-qualified form.
 
 The catalog-qualified form, `<catalog-alias>.<plugin-path>.<id>`, refers to a
-definition shipped by a catalog plugin. A plugin path with multiple catalog path
-segments uses those segments in order before the id segment. The parser selects
-the longest enabled plugin path under the named catalog alias; the remaining
-final segment is the definition id.
+definition shipped by a catalog plugin. The final segment is the definition id.
+The segments between the catalog alias and the final segment are the plugin
+path, which must name an enabled plugin under that catalog alias.
 
 Stored config has no alias-optional middle form. A user-owned layer that
 references catalog content uses the catalog-qualified form, so the reference's
@@ -227,17 +230,21 @@ are user-local and unknowable to plugin authors. Cross-plugin references from
 shipped plugin config remain banned by the plugin boundary rule.
 
 Exemplar workflow designs may use the scaffold-only form `<plugin>.<id>`, such
-as `claude.runtime`. Scaffolding rewrites that form to the user's catalog alias
-during copy-time verification before storing the workflow as config.
+as `claude.runtime`, only for single-segment plugin paths. Scaffolding rewrites
+that form to the user's catalog alias during copy-time verification before
+storing the workflow as config. Exemplar references for multi-segment plugin
+paths use scaffold metadata to identify the source plugin instead of adding
+more dotted segments.
 
 Reference sites declare their expected kind:
 
 | Reference site | Expected target kind |
 |---|---|
-| `workflow.workspace_provider` | `workspace_provider` |
-| `workflow.nodes[].uses` | `task` |
-| `workflow.event.channel[].uses` | `channel` |
-| `task.chains[].workflow` | `workflow` |
+| Workflow field `workspace_provider` | `workspace_provider` |
+| Workflow field `environment` | `environment` |
+| Workflow node field `uses` | `task` |
+| Workflow event channel field `uses` | `channel` |
+| Task chain field `workflow` | `workflow` |
 
 A reference carries no kind segment. After resolving the reference, the loader
 validates that the target definition's `kind` matches the reference site's
@@ -276,7 +283,8 @@ config/review/session.toml
 ```toml
 [worktree]
 kind = "workspace_provider"
-root = "{{.Session.WorkspaceDirPath}}"
+setup = "{{bin \"github-worktree\"}} setup"
+cleanup = "{{bin \"github-worktree\"}} cleanup"
 ```
 
 `config/review/runtime.toml`:
@@ -329,7 +337,7 @@ layer. The directory name `review/` has no semantic effect.
   even when their kinds differ.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
 - Catalog aliases and plugin path segments must match
-  `^[A-Za-z0-9_-]+$`.
+  `^[A-Za-z0-9][A-Za-z0-9_-]*$`.
 - A stored reference must use either the relative `<id>` form or the
   catalog-qualified `<catalog-alias>.<plugin-path>.<id>` form.
 - A user-owned reference to catalog content must include the catalog alias.

@@ -1,3 +1,7 @@
+---
+amends: 2026-08-17-workspace-provider-vocabulary
+---
+
 # Config declaration identity
 
 ## Context
@@ -45,17 +49,18 @@ kind = "task"
 ```
 
 The table name is the definition id. The `kind` field is required. The kind
-values are `task`, `channel`, `workflow`, `workspace_provider`, and
-`resource_observer`.
+values are `task`, `channel`, `workflow`, `environment`, `workspace_provider`,
+and `resource_observer`.
 
 Kind values use ratified concept names. A kind uses its bare concept name when
 the declaration's runtime counterpart is its own instance: task definitions
 instantiate into task instances, channel definitions into channel deliveries,
-and workflow definitions into workflow executions. A kind uses a role compound
-when the declaration produces or observes a thing that exists apart from it:
-`workspace_provider` produces workspaces, and `resource_observer` observes
-resources that exist externally. `resource_definition` loses because every
-TOML configuration block in this language is a definition.
+workflow definitions into workflow executions, and environment definitions into
+environment execution contexts. A kind uses a role compound when the declaration
+produces or observes a thing that exists apart from it: `workspace_provider`
+produces workspaces, and `resource_observer` observes resources that exist
+externally. `resource_definition` loses because every TOML configuration block
+in this language is a definition.
 
 Ids come only from definition table names. Filenames and directory names are
 organizational. Valid ids are TOML bare-key segments matching
@@ -97,24 +102,30 @@ rules. A user-owned relative reference that would select catalog content is a
 load error.
 
 Catalog aliases and plugin path segments are non-empty dot-free segments
-matching `^[A-Za-z0-9_-]+$`. Dots are not valid inside aliases or plugin path
-segments because dots separate address segments. Hyphens are valid because
-aliases and plugin path segments never become workflow node ids. A
-catalog-qualified reference selects the longest enabled plugin path under the
-named catalog alias; the remaining final segment is the definition id.
+matching `^[A-Za-z0-9][A-Za-z0-9_-]*$`. Dots are not valid inside aliases or
+plugin path segments because dots separate address segments. The first
+character is alphanumeric so aliases and path segments do not look like CLI
+flags. Hyphens are valid after the first character because aliases and plugin
+path segments never become workflow node ids. In a catalog-qualified reference,
+the final segment is the definition id; the segments between the alias and the
+final segment are the plugin path, which must name an enabled plugin under that
+catalog alias.
 
 Reference sites declare their expected kind. A workflow node `uses` field
 expects `task`, workflow event channel bindings expect `channel`,
-`workspace_provider` expects `workspace_provider`, and task chain workflow
-references expect `workflow`. A reference carries no kind segment. After
-resolving the reference, the loader validates that the target definition's
-`kind` matches the site's expected kind. A mismatch is a load error naming the
-site, the reference, the expected kind, and the target's declared kind.
+workflow `environment` expects `environment`, `workspace_provider` expects
+`workspace_provider`, and task chain workflow references expect `workflow`. A
+reference carries no kind segment. After resolving the reference, the loader
+validates that the target definition's `kind` matches the site's expected kind.
+A mismatch is a load error naming the site, the reference, the expected kind,
+and the target's declared kind.
 
 Exemplar workflow designs may write alias-less plugin-qualified references such
-as `claude.runtime` as scaffold input. Scaffolding rewrites that form to the
-user's catalog alias during copy-time verification before storing the workflow
-as config.
+as `claude.runtime` as scaffold input only for single-segment plugin paths.
+Scaffolding rewrites that form to the user's catalog alias during copy-time
+verification before storing the workflow as config. Exemplar references for
+multi-segment plugin paths use scaffold metadata to identify the source plugin
+instead of adding more dotted segments.
 
 Task-nesting and chain-spawn inner references use the same dotted grammar.
 If a workflow node omits `id`, its id defaults to the referenced task
@@ -128,9 +139,9 @@ The workspace-dir `.plect/` overlay keeps the existing trust boundary.
 Recursive free-layout discovery applies to trusted roots. The cloned
 workspace-dir overlay loads only workflow fragments from `.plect/workflows/`,
 rejects task definitions, and does not load workspace provider,
-resource observer, or channel definitions. Workflow fragment identity still
-comes from a top-level definition table with `kind = "workflow"`; the directory
-is only an allowlist.
+resource observer, environment, or channel definitions. Workflow fragment
+identity still comes from a top-level definition table with `kind = "workflow"`;
+the directory is only an allowlist.
 
 Shipped plugin definition ids are renamed to responsibility names as part of the
 migration:
@@ -159,11 +170,6 @@ already name responsibilities and keep their ids. The `codex` channel
 `terminal_submit` already names its responsibility and keeps its id. The `okf`
 task `pursue_goal` already names its responsibility and keeps its id.
 
-JSON Schema expression for definitions uses `if`/`then` with `const` checks, or
-a discriminator over the `kind` field. Naive `oneOf` output can produce noisy
-errors for the wrong variants, but that is a managed schema-authoring cost, not
-a deciding argument for or against the field form.
-
 ## Consequences
 
 This is a breaking configuration change. Plecture is pre-1.0, so the
@@ -181,6 +187,10 @@ definition-table validation, required-kind validation, per-plugin and
 per-user-layer namespace conflict detection, dotted reference parsing,
 alias-form validation, reference-site kind validation, and preservation of the
 restricted workspace-dir overlay.
+
+JSON Schema expression for definitions uses `if`/`then` with `const` checks, or
+a discriminator over the `kind` field. Naive `oneOf` output can produce noisy
+errors for the wrong variants, but that is a managed schema-authoring cost.
 
 Config authors can organize by feature, by kind, or flat layout. A moved file
 keeps its definition identity because the top-level table name, not the
@@ -268,10 +278,11 @@ address with ownership segments prepended.
 Kind-segment references such as `official.claude.task.runtime` were proposed as
 redundant validation. They lose because the reference-bearing key is already
 the type annotation: workflow node `uses` expects a task, event channel bindings
-expect a channel, and `workspace_provider` expects a workspace provider. The
-machine still validates kind by resolving the reference and comparing the
-target's declared `kind` to the site's expected kind, so the kind segment adds
-reader and parser noise without adding a distinct check.
+expect a channel, workflow `environment` expects an environment, and
+`workspace_provider` expects a workspace provider. The machine still validates
+kind by resolving the reference and comparing the target's declared `kind` to
+the site's expected kind, so the kind segment adds reader and parser noise
+without adding a distinct check.
 
 ### Bare workspace and resource kinds
 
