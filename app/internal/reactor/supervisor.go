@@ -3,13 +3,16 @@
 // the tick-side sibling of internal/dispatch (channel delivery): both are
 // per-session followers of the same durable event log, started and stopped
 // by an identical "one goroutine per up session" supervisor. They stay two
-// separate packages rather than one merged follower because they enforce two
-// different, independently evolving policies — channel delivery's
-// `TypeChannelError` exclusion vs. tick's self-excitation whitelist — and
-// because internal/service already imports internal/dispatch
-// (dispatch.SeedCursor, via createsetup.go), so a reactor that calls
-// service.TickSession cannot itself live inside internal/dispatch without an
-// import cycle.
+// separate packages rather than one merged follower because they answer two
+// different, independently evolving questions of the same log — dispatch what
+// may be delivered, tick what may be reacted to. Both refuse
+// `TypeChannelError`, but as mirror images of one structural rule (a failed
+// delivery must not feed whatever produced it), not as a shared policy;
+// tick's self-excitation whitelist has no counterpart on the delivery side at
+// all. They also stay separate because internal/service already imports
+// internal/dispatch (dispatch.SeedCursor, via createsetup.go), so a reactor
+// that calls service.TickSession cannot itself live inside internal/dispatch
+// without an import cycle.
 package reactor
 
 import (
@@ -178,12 +181,13 @@ func (sup *Supervisor) reconcile(ctx context.Context, active map[string]context.
 	}
 }
 
-// buildReactor resolves the session's `[tick]` declaration once at start
-// (mirroring dispatch.buildDispatcher's static channel resolution). A
-// workflow load failure degrades to an empty TickConfig rather than
-// abstaining entirely: the judge builtin trigger (AC2) is declaration-
-// independent, so a session must still be watched for it even when its
-// workflow config cannot be resolved.
+// buildReactor seeds the session's `[tick]`/`[healthcheck]` declarations for
+// a reactor that is about to start; the reactor re-reads `[tick]` for itself
+// from there on (sessionReactor.refreshTickConfig), so a load failure here is
+// recoverable rather than terminal. It degrades to an empty TickConfig rather
+// than abstaining entirely: the judge builtin trigger is
+// declaration-independent, so a session must still be watched for it even
+// when its workflow config cannot be resolved.
 func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReactor {
 	cfg := sup.cfg()
 	var tc config.TickConfig

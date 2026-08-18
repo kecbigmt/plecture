@@ -47,8 +47,10 @@ const channelHealthInterval = 30 * time.Second
 
 // sessionReactor follows one session's event log and ticks it when a
 // declared event pattern matches, the judge builtin fires, or `heartbeat`
-// has elapsed since the session's last tick. Static config (tick) is
-// resolved once by the supervisor, matching dispatch's sessionDispatcher.
+// has elapsed since the session's last tick. Its `[tick]` declaration is
+// seeded by the supervisor and re-read on every heartbeat sweep
+// (refreshTickConfig), unlike dispatch's sessionDispatcher, whose channels
+// stay as resolved at build.
 type sessionReactor struct {
 	session string
 	cfg     *config.Config
@@ -262,9 +264,11 @@ func isSelfEmitted(ev event.Event) bool {
 // inside a window where the config home was unresolvable: nothing rebuilds a
 // reactor whose session never goes down, so the empty declaration it settled
 // for would outlive the failure and stop heartbeat scheduling until the
-// process restarted. A failed re-read keeps the previous declaration instead
-// of dropping to none, the same fail-safe the periodic config refresh itself
-// applies.
+// process restarted. Only an unresolvable config keeps the previous
+// declaration — the same fail-safe the periodic config refresh itself applies.
+// A config that resolves cleanly is adopted whole, including a `[tick]` that
+// is now absent, since a workflow that stopped declaring one is a decision,
+// not a failure to read one.
 func (r *sessionReactor) refreshTickConfig() {
 	if r.cfgFn == nil {
 		return
