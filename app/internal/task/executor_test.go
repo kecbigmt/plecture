@@ -142,12 +142,12 @@ func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: `echo '{"ready":"yes"}'`}
 	r := resolveDef(t, def, "review#1")
 	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
-	outputs, _, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{})
+	result, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{})
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
-	if outputs["ready"] != "yes" {
-		t.Errorf("outputs = %v", outputs)
+	if result.Outputs["ready"] != "yes" {
+		t.Errorf("outputs = %v", result.Outputs)
 	}
 	if len(spy.requests) != 1 {
 		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)

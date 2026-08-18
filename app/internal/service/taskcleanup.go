@@ -77,6 +77,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	if def, ok := defs[taskID]; ok {
 		r.Cleanup = def.Cleanup
 		r.SourcePath = def.SourcePath
+		r.Layers = task.CleanupLayers(def)
 	}
 
 	// RunCleanup mutates st (the snapshot's entry) in place. Persist only that one

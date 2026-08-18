@@ -87,12 +87,12 @@ func TestExecuteTaskSetup_ParsesOutputs(t *testing.T) {
 	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: `echo '{"ready":"yes"}'`}
 	r := resolveDef(t, def, "review#1")
 
-	outputs, _, err := ExecuteTaskSetup(context.Background(), r, nil, SessionVars{Name: "x"}, map[string]*contract.TaskState{})
+	result, err := ExecuteTaskSetup(context.Background(), r, nil, SessionVars{Name: "x"}, map[string]*contract.TaskState{})
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
-	if outputs["ready"] != "yes" {
-		t.Errorf("outputs = %v", outputs)
+	if result.Outputs["ready"] != "yes" {
+		t.Errorf("outputs = %v", result.Outputs)
 	}
 }
 
@@ -115,7 +115,7 @@ func TestExecuteTaskSetup_InputSchemaRejection(t *testing.T) {
 	r := resolveDef(t, def, "work#1")
 	// No intent bound → schema validation fails; ExecuteTaskSetup returns an
 	// error and writes no state (the caller persists produced/failed).
-	if _, _, err := ExecuteTaskSetup(context.Background(), r, map[string]any{}, SessionVars{}, nil); err == nil {
+	if _, err := ExecuteTaskSetup(context.Background(), r, map[string]any{}, SessionVars{}, nil); err == nil {
 		t.Fatal("expected input schema validation error")
 	}
 }
@@ -152,11 +152,11 @@ func TestExecuteTaskSetup_SeesWorkflowOutputs(t *testing.T) {
 	wfTasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {Status: contract.TaskStatusProduced, Outputs: map[string]any{"branch": "feat/x"}},
 	}
-	outputs, _, err := ExecuteTaskSetup(context.Background(), r, nil, SessionVars{}, wfTasks)
+	result, err := ExecuteTaskSetup(context.Background(), r, nil, SessionVars{}, wfTasks)
 	if err != nil {
 		t.Fatalf("ExecuteTaskSetup: %v", err)
 	}
-	if outputs["branch"] != "feat/x" {
-		t.Errorf("expected @workflow outputs visible, got %v", outputs)
+	if result.Outputs["branch"] != "feat/x" {
+		t.Errorf("expected @workflow outputs visible, got %v", result.Outputs)
 	}
 }
