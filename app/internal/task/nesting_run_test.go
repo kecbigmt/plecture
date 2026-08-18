@@ -309,27 +309,142 @@ func TestRunCleanup_NestedUnwindsInsideOut(t *testing.T) {
 }
 
 // TestRunCleanup_NestedSkipsLayersThatNeverSetUp covers the partial-failure
-// unwind: an inner setup that fails after an outer setup succeeded leaves the
-// produced outer layer to clean and nothing else.
+// unwind: a middle setup that fails after the outermost succeeded leaves the
+// innermost layer — which the walk never reached — with nothing to release,
+// while the two layers that did run are both offered their cleanup, the way a
+// plain task whose setup failed still runs its own.
 func TestRunCleanup_NestedSkipsLayersThatNeverSetUp(t *testing.T) {
 	exec := withScriptedExecutor(t, &scriptedExecutor{
 		stdout: map[string]string{"outer-setup": `{"guard_dir":"/tmp/guard"}`},
-		failOn: "inner-setup",
+		failOn: "middle-setup",
 	})
 	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
+	middle := config.TaskDefinition{ID: "middle", Scope: "run", Setup: "middle-setup", Cleanup: "middle-cleanup"}
 	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
-	ordered := nestedPlan(t, outer, inner)
+	ordered := nestedPlan(t, outer, middle, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err == nil {
-		t.Fatal("RunSetup: want an error when the inner setup fails, got nil")
+		t.Fatal("RunSetup: want an error when the middle setup fails, got nil")
 	}
 	exec.requests = nil
 	if err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunCleanup: %v", err)
 	}
-	want := []string{"outer-cleanup"}
+	want := []string{"middle-cleanup", "outer-cleanup"}
 	if got := exec.commands(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("cleanup ran %v, want only the layer that reached setup: %v", got, want)
+		t.Fatalf("cleanup ran %v, want the layers that reached setup: %v", got, want)
+	}
+}
+
+// TestRunCleanup_NestedRetriesALayerWhoseCleanupFailed covers the retry a
+// plain task already gets: a layer that failed to release is still owed one,
+// and until it is released the composed task must not read as cleaned.
+func TestRunCleanup_NestedRetriesALayerWhoseCleanupFailed(t *testing.T) {
+	exec := withScriptedExecutor(t, &scriptedExecutor{failOn: "inner-cleanup"})
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
+	ordered := nestedPlan(t, outer, inner)
+	tasks := map[string]*contract.TaskState{}
+	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	if err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err == nil {
+		t.Fatal("RunCleanup: want the first cleanup to fail")
+	}
+	if got := tasks["outer"].Status; got != contract.TaskStatusFailed {
+		t.Fatalf("status after a failed release = %q, want %q", got, contract.TaskStatusFailed)
+	}
+	exec.failOn, exec.requests = "", nil
+	if err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	if got := exec.commands(); !reflect.DeepEqual(got, []string{"inner-cleanup"}) {
+		t.Fatalf("retry ran %v, want the layer whose cleanup failed", got)
+	}
+	if got := tasks["outer"].Status; got != contract.TaskStatusCleaned {
+		t.Errorf("status after a successful retry = %q, want %q", got, contract.TaskStatusCleaned)
+	}
+}
+
+// TestRunCleanup_NestedKeepsGoingPastAFailedLayer covers the unwind's
+// resilience and its first-error contract: an inner layer that refuses to
+// release must not strand the outer layers wrapping it.
+func TestRunCleanup_NestedKeepsGoingPastAFailedLayer(t *testing.T) {
+	exec := withScriptedExecutor(t, &scriptedExecutor{failOn: "inner-cleanup"})
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
+	ordered := nestedPlan(t, outer, inner)
+	tasks := map[string]*contract.TaskState{}
+	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	exec.requests = nil
+	err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil)
+	if err == nil {
+		t.Fatal("RunCleanup: want the failing layer's error, got nil")
+	}
+	if !strings.Contains(err.Error(), "inner") {
+		t.Errorf("error = %v, want it to name the layer that failed", err)
+	}
+	if got := exec.commands(); !reflect.DeepEqual(got, []string{"inner-cleanup", "outer-cleanup"}) {
+		t.Fatalf("cleanup ran %v, want the outer layer released despite the inner failure", got)
+	}
+	layers := tasks["outer"].Layers
+	if layers[0].Status != contract.TaskStatusCleaned || layers[1].Status != contract.TaskStatusFailed {
+		t.Errorf("layer statuses = %q/%q, want cleaned/failed", layers[0].Status, layers[1].Status)
+	}
+}
+
+// TestRunCleanup_NestedCleanupTemplateFailure covers the other failure branch
+// of the unwind: a cleanup body that cannot render leaves that layer owing a
+// release rather than silently counting as one.
+func TestRunCleanup_NestedCleanupTemplateFailure(t *testing.T) {
+	withScriptedExecutor(t, &scriptedExecutor{})
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "{{fail"}
+	ordered := nestedPlan(t, outer, inner)
+	tasks := map[string]*contract.TaskState{}
+	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil)
+	if err == nil {
+		t.Fatal("RunCleanup: want an error for a cleanup body that cannot render, got nil")
+	}
+	if !strings.Contains(err.Error(), "template") {
+		t.Errorf("error = %v, want it to name the template failure", err)
+	}
+	if got := tasks["outer"].Status; got != contract.TaskStatusFailed {
+		t.Errorf("status = %q, want %q", got, contract.TaskStatusFailed)
+	}
+}
+
+// TestRunCleanup_NestedDefinitionDriftLeavesTheDebtVisible covers a chain
+// edited between setup and teardown: running a script from a layer that is
+// not the one recorded would release the wrong thing, so nothing runs — and
+// the composed task must not read as cleaned while those records stand.
+func TestRunCleanup_NestedDefinitionDriftLeavesTheDebtVisible(t *testing.T) {
+	exec := withScriptedExecutor(t, &scriptedExecutor{})
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
+	ordered := nestedPlan(t, outer, inner)
+	tasks := map[string]*contract.TaskState{}
+	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	exec.requests = nil
+	// The author removed `inner` from the definition after setup.
+	drifted := ordered[0]
+	drifted.Layers = nil
+	err := RunCleanup(context.Background(), []Resolved{drifted}, SessionVars{Name: "s"}, tasks, nil)
+	if err == nil {
+		t.Fatal("RunCleanup: want an error while layer records still owe a release, got nil")
+	}
+	if len(exec.commands()) != 0 {
+		t.Errorf("cleanup ran %v, want nothing run against a chain that no longer matches", exec.commands())
+	}
+	if got := tasks["outer"].Status; got == contract.TaskStatusCleaned {
+		t.Error("the composed task reads as cleaned while its layer records still owe a release")
 	}
 }
 
