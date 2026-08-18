@@ -30,7 +30,7 @@ scope = "run"
 # the prompt re-sends on every `up`. State is wiped on destroy, so the next
 # `plect create` sends the prompt either way.
 setup = '''
-if [ '{{get .Inputs "repeat"}}' != "true" ] && [ '{{get .Prev "sent"}}' = "true" ]; then
+if [ '{{get .Inputs "repeat" ""}}' != "true" ] && [ '{{get .Prev "sent" ""}}' = "true" ]; then
   echo '{"sent":"true"}'
   exit 0
 fi

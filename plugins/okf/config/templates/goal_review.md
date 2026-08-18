@@ -1,9 +1,9 @@
 ---
 description: Review a local-okf goal file and record whether it is achieved
 ---
-{{- $work := get .SessionInputs "work_session" -}}
-{{- $instance := get .SessionInputs "instance" -}}
-{{- $judges := get .SessionInputs "judge_ids" -}}
+{{- $work := get .SessionInputs "work_session" "" -}}
+{{- $instance := get .SessionInputs "instance" "" -}}
+{{- $judges := get .SessionInputs "judge_ids" "" -}}
 Review the goal at {{.ResourceID}}.
 
 Steps:

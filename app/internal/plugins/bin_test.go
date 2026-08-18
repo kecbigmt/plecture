@@ -136,7 +136,7 @@ func TestResolveBin_NestedPluginCollisionFailsLoud(t *testing.T) {
 func TestBinRefs_FindsBareAndPipedReferences(t *testing.T) {
 	got := BinRefs(`{{bin "official/agent/runtime/plect-agent-activity"}} claude working` + "\n" +
 		`{{bin "github-watcher" | shellQuote}}` + "\n" +
-		`{{get .Inputs "model"}}`)
+		`{{get .Inputs "model" ""}}`)
 	want := []string{"official/agent/runtime/plect-agent-activity", "github-watcher"}
 	if len(got) != len(want) {
 		t.Fatalf("BinRefs = %v, want %v", got, want)

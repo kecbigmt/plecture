@@ -13,17 +13,21 @@ import (
 )
 
 // templateFuncs mirrors the task render context so optional vars can be
-// guarded the same way in templates: `{{get .SessionInputs "focus"}}`
-// returns "" when the key is absent instead of injecting "<no value>".
+// guarded the same way in templates: `{{get .SessionInputs "focus" ""}}`
+// yields the third argument when the key is absent instead of injecting
+// "<no value>".
 var templateFuncs = template.FuncMap{
-	"get": func(m map[string]any, key string) any {
+	// A present-but-empty value is a value and does not take the default;
+	// a nil one does, because rendering it would emit the "<no value>"
+	// this helper exists to avoid.
+	"get": func(m map[string]any, key string, def any) any {
 		if m == nil {
-			return ""
+			return def
 		}
 		if v, ok := m[key]; ok && v != nil {
 			return v
 		}
-		return ""
+		return def
 	},
 }
 

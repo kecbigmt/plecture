@@ -296,8 +296,8 @@ func TestRender_GetGuardsOptionalVars(t *testing.T) {
 	if err := os.MkdirAll(plectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// `get` returns "" for a missing key instead of "<no value>".
-	body := "[{{get .SessionInputs \"missing\"}}][{{get .SessionInputs \"focus\"}}]"
+	// `get` yields its third argument for a missing key instead of "<no value>".
+	body := "[{{get .SessionInputs \"missing\" \"none\"}}][{{get .SessionInputs \"focus\" \"none\"}}][{{get .SessionInputs \"missing\" \"\"}}]"
 	if err := os.WriteFile(filepath.Join(plectDir, "guard.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -307,8 +307,32 @@ func TestRender_GetGuardsOptionalVars(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Render() error: %v", err)
 	}
-	if result != "[][triage]" {
-		t.Errorf("Render() = %q, want %q", result, "[][triage]")
+	if result != "[none][triage][]" {
+		t.Errorf("Render() = %q, want %q", result, "[none][triage][]")
+	}
+}
+
+func TestRender_GetWithoutDefaultFails(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	workdir := t.TempDir()
+	plectDir := filepath.Join(workdir, ".plect", "templates")
+	if err := os.MkdirAll(plectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "[{{get .SessionInputs \"focus\"}}]"
+	if err := os.WriteFile(filepath.Join(plectDir, "arity.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	vars := Vars{Mode: "arity", SessionInputs: map[string]any{"focus": "triage"}}
+	_, err := Render("arity", workdir, nil, vars)
+	if err == nil {
+		t.Fatal("expected an error for a two-argument get")
+	}
+	if !strings.Contains(err.Error(), "get") {
+		t.Fatalf("error %q does not name the failing call site", err)
 	}
 }
 

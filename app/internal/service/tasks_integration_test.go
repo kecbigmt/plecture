@@ -21,7 +21,7 @@ import (
 func dependsOn(upstreams ...string) map[string]string {
 	out := make(map[string]string, len(upstreams))
 	for _, u := range upstreams {
-		out["_dep_"+u] = `{{get .Nodes.` + u + `.outputs "_link"}}`
+		out["_dep_"+u] = `{{get .Nodes.` + u + `.outputs "_link" ""}}`
 	}
 	return out
 }
@@ -279,7 +279,7 @@ func TestIntegration_DownUpPreservesPrev(t *testing.T) {
 			{
 				id:      "claude_like",
 				scope:   "run",
-				setup:   `PREV='{{get .Prev "session_id"}}'; SID=${PREV:-fresh-abc}; echo "{\"session_id\":\"$SID\"}"`,
+				setup:   `PREV='{{get .Prev "session_id" ""}}'; SID=${PREV:-fresh-abc}; echo "{\"session_id\":\"$SID\"}"`,
 				cleanup: "true",
 			},
 		},

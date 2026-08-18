@@ -252,34 +252,87 @@ func TestRender_MissingKeyIsError(t *testing.T) {
 
 // `get` provides a missingkey-safe lookup for callers that need to read
 // previous-run outputs (via .Prev) under the strict setup template option.
-func TestRender_GetReturnsPresentValue(t *testing.T) {
-	out, err := render(`{{get .Prev "session_id"}}`, RenderContext{
+// The third argument is the value an absent key yields.
+func TestRender_Get(t *testing.T) {
+	tests := []struct {
+		name string
+		tmpl string
+		prev map[string]any
+		want string
+	}{
+		{
+			name: "present key yields its value, not the default",
+			tmpl: `{{get .Prev "session_id" "fallback"}}`,
+			prev: map[string]any{"session_id": "abc-123"},
+			want: "abc-123",
+		},
+		{
+			name: "absent key yields the default",
+			tmpl: `X={{get .Prev "session_id" "fallback"}}Y`,
+			prev: map[string]any{},
+			want: "X=fallbackY",
+		},
+		{
+			name: "nil map yields the default",
+			tmpl: `{{get .Prev "anything" "fallback"}}`,
+			prev: nil,
+			want: "fallback",
+		},
+		{
+			name: "empty default keeps the absent case empty",
+			tmpl: `X={{get .Prev "session_id" ""}}Y`,
+			prev: map[string]any{},
+			want: "X=Y",
+		},
+		{
+			name: "present-but-empty is a value, not an absence",
+			tmpl: `X={{get .Prev "session_id" "fallback"}}Y`,
+			prev: map[string]any{"session_id": ""},
+			want: "X=Y",
+		},
+		{
+			name: "present-but-nil yields the default",
+			tmpl: `{{get .Prev "session_id" "fallback"}}`,
+			prev: map[string]any{"session_id": nil},
+			want: "fallback",
+		},
+		{
+			name: "non-string value renders as itself",
+			tmpl: `{{get .Prev "pid" "fallback"}}`,
+			prev: map[string]any{"pid": 12345},
+			want: "12345",
+		},
+		{
+			name: "non-string default renders as itself",
+			tmpl: `{{get .Prev "pid" 0}}`,
+			prev: map[string]any{},
+			want: "0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := render(tt.tmpl, RenderContext{Prev: tt.prev})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if out != tt.want {
+				t.Fatalf("got %q, want %q", out, tt.want)
+			}
+		})
+	}
+}
+
+// The default is mandatory: a two-argument call is the hidden-default form
+// this helper no longer has, and must fail loud rather than render.
+func TestRender_GetWithoutDefaultFails(t *testing.T) {
+	_, err := render(`SID='{{get .Prev "session_id"}}'`, RenderContext{
 		Prev: map[string]any{"session_id": "abc-123"},
 	})
-	if err != nil || out != "abc-123" {
-		t.Fatalf("got (%q, %v), want (%q, nil)", out, err, "abc-123")
+	if err == nil {
+		t.Fatal("expected an error for a two-argument get")
 	}
-}
-
-func TestRender_GetReturnsEmptyWhenAbsent(t *testing.T) {
-	out, err := render(`X={{get .Prev "session_id"}}Y`, RenderContext{
-		Prev: map[string]any{}, // no session_id key
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if out != "X=Y" {
-		t.Fatalf("got %q, want %q", out, "X=Y")
-	}
-}
-
-func TestRender_GetReturnsEmptyWhenPrevNil(t *testing.T) {
-	out, err := render(`{{get .Prev "anything"}}`, RenderContext{Prev: nil})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if out != "" {
-		t.Fatalf("got %q, want empty", out)
+	if !strings.Contains(err.Error(), "get") {
+		t.Fatalf("error %q does not name the failing call site", err)
 	}
 }
 
@@ -417,7 +470,7 @@ func TestRunSetup_PrevCarriesPreviousOutputs(t *testing.T) {
 		[]taskStub{{
 			id:    "claude",
 			scope: "run",
-			setup: `echo "{\"session_id\":\"{{get .Prev "session_id"}}\"}"`,
+			setup: `echo "{\"session_id\":\"{{get .Prev "session_id" ""}}\"}"`,
 		}},
 		[]nodeStub{{id: "claude"}},
 	)
@@ -446,7 +499,7 @@ func TestRunSetup_PrevEmptyOnFirstRun(t *testing.T) {
 		[]taskStub{{
 			id:    "claude",
 			scope: "run",
-			setup: `echo '{"session_id":"{{get .Prev "session_id"}}"}'`,
+			setup: `echo '{"session_id":"{{get .Prev "session_id" ""}}"}'`,
 		}},
 		[]nodeStub{{id: "claude"}},
 	)
@@ -503,7 +556,7 @@ func TestRunSetup_FailurePreservesPrevOutputs(t *testing.T) {
 // 3.052179e+06). Scripts compare the rendered value as a string, so the
 // renderer must emit integer-valued numbers without exponent.
 func TestRender_IntegerFloatNotScientific(t *testing.T) {
-	out, err := render(`pid={{get .Prev "pid"}};self={{.Self.pid}}`, RenderContext{
+	out, err := render(`pid={{get .Prev "pid" ""}};self={{.Self.pid}}`, RenderContext{
 		Self: map[string]any{"pid": float64(3052179)},
 		Prev: map[string]any{"pid": float64(3052179)},
 	})
@@ -1050,5 +1103,35 @@ func TestRunCapture_SurfacesStderrOnFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "can't find pane") {
 		t.Fatalf("error %q should carry stderr", err.Error())
+	}
+}
+
+// The default-value idiom this repository's shipped and user workflows carry
+// — an if/else over a presence test — collapses to a single three-argument
+// `get`. This pins the migration: for the model/effort defaulting cases the
+// two forms render byte-identically.
+func TestRender_ThreeArgGetMatchesIfElseDefaultIdiom(t *testing.T) {
+	const idiom = `{{if get .SessionInputs "model" ""}}{{get .SessionInputs "model" ""}}{{else}}fable{{end}}`
+	const collapsed = `{{get .SessionInputs "model" "fable"}}`
+
+	for _, inputs := range []map[string]any{
+		nil,
+		{},
+		{"effort": "high"},
+		{"model": "opus"},
+		{"model": "opus", "effort": "high"},
+	} {
+		ctx := RenderContext{Session: SessionVars{Inputs: inputs}}
+		before, err := render(idiom, ctx)
+		if err != nil {
+			t.Fatalf("render(idiom) with %v: %v", inputs, err)
+		}
+		after, err := render(collapsed, ctx)
+		if err != nil {
+			t.Fatalf("render(collapsed) with %v: %v", inputs, err)
+		}
+		if before != after {
+			t.Errorf("inputs %v: idiom rendered %q, three-argument get rendered %q", inputs, before, after)
+		}
 	}
 }

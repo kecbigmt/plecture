@@ -40,8 +40,10 @@ template:
   {{.Workflow.outputs.<key>}}  — workspace provider setup outputs (workspace_dir, plus whatever else the workspace provider declares)
   {{.SessionInputs.<key>}}     — session inputs and explicit --var values
 
-Guard optional vars with {{get .SessionInputs "key"}} (returns "" when absent)
-instead of {{.SessionInputs.key}} (renders "<no value>").
+Guard optional vars with {{get .SessionInputs "key" "default"}} (yields the
+third argument when the key is absent) instead of {{.SessionInputs.key}}
+(renders "<no value>"). The default is required: pass "" for an absent key
+that should render as nothing.
 
 The template name corresponds to files in the template search path:
   1. <workspace-dir>/.plect/templates/<name>.md  (session workspace-directory overlay)

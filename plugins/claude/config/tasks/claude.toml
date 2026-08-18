@@ -29,7 +29,7 @@ scope   = "run"
 #                  `{{.Nodes.gh_guard.outputs.dir}}`.
 #
 setup = '''
-PREV_SID='{{get .Prev "session_id"}}'
+PREV_SID='{{get .Prev "session_id" ""}}'
 if [ -n "$PREV_SID" ]; then
   SID="$PREV_SID"
   CLAUDE_ARG="--resume $SID"
@@ -85,7 +85,7 @@ EXPORTS="export PLECT_SESSION_NAME={{.SessionName}}; "
 # inputs_schema pattern restriction below — the same defense-in-depth
 # reasoning as model/effort's comment applies (a crafted value could break
 # out of this splice point otherwise).
-PATH_PREPEND='{{get .Inputs "path_prepend"}}'
+PATH_PREPEND='{{get .Inputs "path_prepend" ""}}'
 [ -n "$PATH_PREPEND" ] && EXPORTS="${EXPORTS}export PATH=$PATH_PREPEND:\$PATH; "
 
 # model/effort are free strings from --input, spliced directly into this
@@ -96,11 +96,11 @@ PATH_PREPEND='{{get .Inputs "path_prepend"}}'
 # both: it rejects anything but a plain token before this script ever
 # renders, so neither splice point can see a quote/newline/shell
 # metacharacter to begin with.
-MODEL='{{get .Inputs "model"}}'
+MODEL='{{get .Inputs "model" ""}}'
 MODEL_FLAG=""
 [ -n "$MODEL" ] && MODEL_FLAG="--model $MODEL"
 
-EFFORT='{{get .Inputs "effort"}}'
+EFFORT='{{get .Inputs "effort" ""}}'
 EFFORT_FLAG=""
 [ -n "$EFFORT" ] && EFFORT_FLAG="--effort $EFFORT"
 
@@ -145,7 +145,7 @@ sh -c "$send_keys_cmd" terminal-send-keys Enter
 # environment before the claude command even runs, and a warm pane still
 # clears in a couple of iterations, so the longer bound only costs time on
 # the failure path.
-PREV_PID='{{get .Prev "pid"}}'
+PREV_PID='{{get .Prev "pid" ""}}'
 PID=""
 i=0
 while [ "$i" -lt 60 ]; do
@@ -190,7 +190,7 @@ rm -f {{.Self.mcp_config}} {{.Self.socket_path}}
 # get, not .Self.hooks_settings: a session produced before this field
 # existed has no such key, and .Self's strict missingkey semantics would
 # error.
-HOOKS_SETTINGS='{{get .Self "hooks_settings"}}'
+HOOKS_SETTINGS='{{get .Self "hooks_settings" ""}}'
 [ -n "$HOOKS_SETTINGS" ] && rm -f "$HOOKS_SETTINGS"
 true
 '''
