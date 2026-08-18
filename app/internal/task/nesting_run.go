@@ -92,7 +92,7 @@ func CleanupLayers(def config.TaskDefinition) []ResolvedLayer {
 // persists them either way.
 func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderContext, nodeInputs map[string]any) ([]contract.TaskLayerState, []byte, error) {
 	states := make([]contract.TaskLayerState, 0, len(layers))
-	inputs := orEmptyAny(nodeInputs)
+	inputs := orEmpty(nodeInputs)
 	var env []string
 	var lastStderr []byte
 
@@ -188,24 +188,32 @@ func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderCo
 	return states, lastStderr, nil
 }
 
-// runNestedCleanup unwinds a produced chain inside-out, skipping every layer
-// that never reached setup. Like RunCleanup's own loop it keeps going past a
-// failure — an inner layer that refuses to release must not strand the outer
-// layers that wrap it — and returns the first error.
+// runNestedCleanup unwinds a chain inside-out. A layer that never reached
+// setup has no record here at all, which is what "cleanup skips layers that
+// never reached setup" amounts to; every layer that does have a record is
+// owed an attempt until it is cleaned, exactly as a plain task whose cleanup
+// failed is re-attempted rather than written off. Like RunCleanup's own loop
+// it keeps going past a failure — an inner layer that refuses to release must
+// not strand the outer layers that wrap it — and returns the first error.
+//
+// A layer left uncleaned is always an error, even when nothing was run for
+// it: the node's status is what `plect status` reads long after the
+// observer's line has scrolled away, so `cleaned` must never be reachable
+// while a record still owes a release.
 func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []contract.TaskLayerState, base RenderContext, obs Observer, scope, nodeID string) ([]byte, error) {
 	var firstErr error
 	var lastStderr []byte
 	for i := len(states) - 1; i >= 0; i-- {
 		state := &states[i]
-		if state.Status != contract.TaskStatusProduced {
-			obs.OnSkip(scope, nodeID, fmt.Sprintf("layer %q: %s", state.TaskID, layerSkipReason(state.Status)))
+		if state.Status == contract.TaskStatusCleaned {
+			obs.OnSkip(scope, nodeID, fmt.Sprintf("layer %q: already cleaned", state.TaskID))
 			continue
 		}
 		if i >= len(layers) || layers[i].TaskID != state.TaskID {
 			// The definition's chain no longer matches what was set up.
 			// Running a script from a layer that is not the one recorded
-			// would release the wrong thing, so leave the record standing
-			// for a human to reconcile.
+			// would release the wrong thing, so the record stands and the
+			// debt stays visible.
 			obs.OnSkip(scope, nodeID, fmt.Sprintf("layer %q: definition no longer declares this layer", state.TaskID))
 			continue
 		}
@@ -245,14 +253,12 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 		state.CleanedAt = now
 		state.Error = ""
 	}
-	return lastStderr, firstErr
-}
-
-func layerSkipReason(status string) string {
-	if status == contract.TaskStatusCleaned {
-		return "already cleaned"
+	for i := range states {
+		if states[i].Status != contract.TaskStatusCleaned && firstErr == nil {
+			firstErr = fmt.Errorf("layer %q is not released (%s)", states[i].TaskID, states[i].Status)
+		}
 	}
-	return "never reached setup"
+	return lastStderr, firstErr
 }
 
 // enclosingEnv is the process environment the layers outside index i
@@ -304,11 +310,4 @@ func renderBindings(bindings map[string]string, ctx RenderContext) (map[string]s
 		out[k] = rendered
 	}
 	return out, nil
-}
-
-func orEmptyAny(m map[string]any) map[string]any {
-	if m == nil {
-		return map[string]any{}
-	}
-	return m
 }
