@@ -21,7 +21,7 @@ import (
 func dependsOn(upstreams ...string) map[string]string {
 	out := make(map[string]string, len(upstreams))
 	for _, u := range upstreams {
-		out["_dep_"+u] = `{{get .Nodes.` + u + `.outputs "_link"}}`
+		out["_dep_"+u] = `{{get .Nodes.` + u + `.outputs "_link" ""}}`
 	}
 	return out
 }
