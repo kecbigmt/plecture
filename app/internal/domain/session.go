@@ -16,25 +16,26 @@ const (
 )
 
 // HealthState reports the outcome of evaluating a session's declared
-// healthcheck plus, when a movement signal is declared, whether the session
-// is actually moving rather than merely presenting a live surface.
+// `[health]` probes: the alive probe plus, when an activity probe is
+// declared, whether the session is actually moving rather than merely
+// presenting a live surface.
 //
-//   - Unhealthy: the declared healthcheck failed.
-//   - Undeclared: there is no basis to judge health or movement because no
-//     healthcheck is declared, or movement is expected but no movement signal
+//   - Unhealthy: a declared alive probe failed.
+//   - Undeclared: there is no basis to judge liveness or activity because no
+//     alive probe is declared, or activity is expected but no activity probe
 //     is declared to judge it.
-//   - Healthy: the surface check passes and either no movement is currently
-//     expected, or fresh movement evidence exists within the stall threshold.
-//   - Stalled: the surface is present, movement is expected, but no fresh
-//     movement evidence exists.
+//   - Healthy: the alive probe passes and either no activity is currently
+//     expected, or fresh activity evidence exists within the stall threshold.
+//   - Stalled: the surface is present, activity is expected, but no fresh
+//     activity evidence exists.
 type HealthState string
 
 const (
 	HealthHealthy    HealthState = "healthy"
 	HealthUnhealthy  HealthState = "unhealthy"
 	HealthUndeclared HealthState = "undeclared"
-	// HealthStalled means the execution surface is present and movement was
-	// expected, but no fresh movement evidence was found within the stall
+	// HealthStalled means the execution surface is present and activity was
+	// expected, but no fresh activity evidence was found within the stall
 	// threshold.
 	HealthStalled HealthState = "stalled"
 )

@@ -1,5 +1,9 @@
 # Healthcheck and heartbeat-budget migration
 
+> The `healthcheck` scalar, `movement_signal`, and `[tick.movement_source]`
+> this procedure produces are themselves retired. Apply
+> [`health-table-migration.md`](health-table-migration.md) after this one.
+
 This migration covers the state and workflow shape that replaced the old
 fact-change round budget.
 

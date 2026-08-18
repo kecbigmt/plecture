@@ -48,7 +48,7 @@ func assertChannelEscalations(t *testing.T, dir, target string, want int) []even
 
 func TestCheckChannelHealth_NoOpenStreakIsNoop(t *testing.T) {
 	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
+	cfg := aliveFixtureConfig(t, "false")
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -65,7 +65,7 @@ func TestCheckChannelHealth_NoOpenStreakIsNoop(t *testing.T) {
 
 func TestCheckChannelHealth_BelowThresholdDoesNotEscalate(t *testing.T) {
 	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
+	cfg := aliveFixtureConfig(t, "false")
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -89,7 +89,7 @@ func TestCheckChannelHealth_BelowThresholdDoesNotEscalate(t *testing.T) {
 
 func TestCheckChannelHealth_EscalatesOnceCountThresholdCrossed(t *testing.T) {
 	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
+	cfg := aliveFixtureConfig(t, "false")
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -140,7 +140,7 @@ func TestCheckChannelHealth_EscalatesOnceCountThresholdCrossed(t *testing.T) {
 
 func TestCheckChannelHealth_EscalatesWhenAgeThresholdCrossed(t *testing.T) {
 	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
+	cfg := aliveFixtureConfig(t, "false")
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -166,7 +166,7 @@ func TestCheckChannelHealth_EscalatesWhenAgeThresholdCrossed(t *testing.T) {
 
 func TestCheckChannelHealth_RecoveryStartsNewEpisode(t *testing.T) {
 	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
+	cfg := aliveFixtureConfig(t, "false")
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -215,7 +215,7 @@ func TestCheckChannelHealth_RecoveryStartsNewEpisode(t *testing.T) {
 // depend on the other's state.
 func TestCheckChannelHealth_ValidationAndDeliveryEscalateIndependently(t *testing.T) {
 	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "false")
+	cfg := aliveFixtureConfig(t, "false")
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")

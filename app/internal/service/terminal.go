@@ -85,7 +85,7 @@ func PublishTerminalToParent(cfg *config.Config, store *state.Store, origin stri
 // if another actor is concurrently bringing target up. wakeIfDown is false
 // for local no-live-ancestor fallback (recording `dead` back onto
 // the origin itself) — that target is the thing that just failed its own
-// healthcheck, so waking it would just re-run a setup that Up's own
+// alive probe, so waking it would just re-run a setup that Up's own
 // already-produced skip won't actually heal.
 func publishTerminalTo(cfg *config.Config, store *state.Store, origin, target string, wakeIfDown bool, p TerminalParams) (id string, wakeErr error, err error) {
 	if p.DedupKey != "" {

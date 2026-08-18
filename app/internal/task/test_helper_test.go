@@ -10,11 +10,11 @@ import (
 // Tests should keep it minimal — only the fields they care about. Scope
 // defaults to "run" so most callers can omit it.
 type taskStub struct {
-	id          string
-	scope       string
-	setup       string
-	cleanup     string
-	healthcheck string
+	id      string
+	scope   string
+	setup   string
+	cleanup string
+	alive   string
 	// attach/capture/sendText/sendKeys build a [terminal] table when any is
 	// set. All four must be set together (see config.TerminalConfig.Validate)
 	// — a stub setting only some of them is exercising the partial-table
@@ -89,7 +89,7 @@ func tryBuildPlanWithEnvironment(defs []taskStub, nodes []nodeStub, environment 
 			Scope:             s.scope,
 			Setup:             s.setup,
 			Cleanup:           s.cleanup,
-			Healthcheck:       s.healthcheck,
+			Health:            healthStub(s.alive),
 			Primary:           s.primary,
 			Terminal:          terminal,
 			IdleAfter:         s.idleAfter,
@@ -107,4 +107,13 @@ func tryBuildPlanWithEnvironment(defs []taskStub, nodes []nodeStub, environment 
 	}
 	wf := config.WorkflowFile{ID: "test", Nodes: wfNodes, Environment: environment}
 	return CompileWorkflow(wf, defMap)
+}
+
+// healthStub builds the `[health]` table a stub's alive probe implies, or nil
+// when the stub declares none.
+func healthStub(alive string) *config.HealthConfig {
+	if alive == "" {
+		return nil
+	}
+	return &config.HealthConfig{Alive: alive}
 }

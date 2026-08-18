@@ -274,7 +274,7 @@ func TestSessionReactor_HealthcheckRunsWithoutTickDeclaration(t *testing.T) {
 
 // TestSessionReactor_ChannelHealthRunsWithoutTickOrHealthcheckDeclaration
 // proves the channel-health sweep is unconditional, unlike heartbeat/
-// healthcheck: a session's event channel can fail regardless of whether it
+// alive: a session's event channel can fail regardless of whether it
 // declares [tick] or [healthcheck].
 func TestSessionReactor_ChannelHealthRunsWithoutTickOrHealthcheckDeclaration(t *testing.T) {
 	r, _, _ := newTestReactor(t, config.TickConfig{})

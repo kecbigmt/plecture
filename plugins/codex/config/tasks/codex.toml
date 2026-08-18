@@ -39,6 +39,12 @@ setup = '''
 # hook-related rides the command line here. `bypass_hook_trust` moves into
 # the profile file too, alongside the hooks table, since it's just a config
 # key.
+#
+# The reset drops any record a previous run left behind, so this run's
+# activity probe reports "no basis yet" until this run's first turn boundary
+# rather than inheriting a stale fingerprint.
+{{bin "codex-agent-activity"}} reset {{.SessionName}}
+
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 mkdir -p "$CODEX_HOME_DIR"
 PROFILE_NAME="plect-$(uuidgen)"
@@ -175,10 +181,18 @@ kill -KILL {{.Self.pid}} 2>/dev/null || true
 # has no such key, and .Self's strict missingkey semantics would error.
 PROFILE_PATH='{{get .Self "profile_path" ""}}'
 [ -n "$PROFILE_PATH" ] && rm -f "$PROFILE_PATH"
+{{bin "codex-agent-activity"}} reset {{.SessionName}}
 true
 '''
 
-healthcheck = 'kill -0 {{.Self.pid}}'
+# This task's [health] table. The turn-boundary hooks registered at setup are
+# this task's activity probe: the hook records each boundary and the probe
+# reads the record back, so one plugin executable owns both halves. The probe
+# reports status active while a turn is running and idle once it ends, which
+# is the only status that may narrow what core expects of this instance.
+[health]
+alive    = 'kill -0 {{.Self.pid}}'
+activity = '{{bin "codex-agent-activity"}} probe {{.SessionName}}'
 
 [inputs_schema]
 type                 = "object"

@@ -41,7 +41,7 @@ Slack-specific message relay + subscription broker.
 | `POST /threads` | Creates a Slack thread | plect task (`slack_thread`) |
 | `POST /messages` | Posts a message to a thread | `slack_thread` cleanup, `claude-slack-notify.sh` |
 | `POST /subscribe` / `DELETE /subscribe?thread_ts=...` | Register/unregister a subscription | plect task (`slack_subscribe`) |
-| `GET /subscribers` | Lists subscriptions (for healthcheck) | plect task (`slack_subscribe`) |
+| `GET /subscribers` | Lists subscriptions (for the `[health].alive` probe) | plect task (`slack_subscribe`) |
 | `POST /notify` | Notifies Slack + channel-server, keyed by `session_name` | deprecated rollback path (`github-watcher serve --allow-legacy-notify` only) |
 
 The `/notify` request body includes `change_type`; the broker inspects GitHub-derived `change_type` values (`ci_status`, `review_decision`, `state`, etc.) to build the emoji prefix and `[GitHub …]` framing. This is an exception to slack-adapter's source-agnostic principle, kept only as an explicit rollback path for when the current event bus / `[[event.channel]]` delivery isn't available.

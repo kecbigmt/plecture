@@ -104,7 +104,7 @@ var destroyTool = mcp.NewTool("plect_destroy",
 )
 
 var statusTool = mcp.NewTool("plect_status",
-	mcp.WithDescription("Report a session's four fact layers: identity (resource id / workflow / tag / tree position), runtime (declared-healthcheck liveness, workspace directory existence, run-scoped task state), work (each task instance's outputs, done_when evaluation, heartbeat budget, and chain plan), and flow (recent events). No workspace-provider-specific field — everything renders generically from outputs / done_when / events."),
+	mcp.WithDescription("Report a session's four fact layers: identity (resource id / workflow / tag / tree position), runtime (declared alive-probe liveness, workspace directory existence, run-scoped task state), work (each task instance's outputs, done_when evaluation, heartbeat budget, and chain plan), and flow (recent events). No workspace-provider-specific field — everything renders generically from outputs / done_when / events."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 	mcp.WithString("url",
 		mcp.Required(),

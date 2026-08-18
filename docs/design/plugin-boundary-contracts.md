@@ -49,7 +49,8 @@ configuration.
 A task that owns an interactive terminal endpoint declares:
 
 - `setup`, returning an `interactive_endpoint` output;
-- top-level `cleanup` and `healthcheck` task keys;
+- top-level `cleanup` and a `[health]` table (see
+  [`health-declaration.md`](health-declaration.md));
 - a `[terminal]` table with `attach`, `capture`, `send_text`, and `send_keys`.
 
 The `[terminal]` table is all-or-nothing: declaring any member requires all four
@@ -69,7 +70,7 @@ behavior.
 ### tmux Provider
 
 ```toml
-# The task also declares setup, cleanup, healthcheck, and an
+# The task also declares setup, cleanup, [health], and an
 # interactive_endpoint output.
 
 [terminal]
