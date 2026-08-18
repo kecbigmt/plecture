@@ -126,8 +126,8 @@ func (sup *Supervisor) checkDeadman(ctx context.Context) {
 		if !hasRunScopeUp(s.Tasks) {
 			continue
 		}
-		tc := resolveTickConfig(cfg, s)
-		if tc.Heartbeat.Duration <= 0 {
+		tc, err := resolveTickConfig(cfg, s)
+		if err != nil || tc.Heartbeat.Duration <= 0 {
 			continue
 		}
 		if _, err := fn(cfg, sup.state, name, tc, now); err != nil {
@@ -137,24 +137,26 @@ func (sup *Supervisor) checkDeadman(ctx context.Context) {
 }
 
 // resolveTickConfig resolves just the declared `[tick]` table for s. It
-// duplicates buildReactor's tc-resolution rather than sharing it:
-// buildReactor also resolves `[healthcheck]` from the same LoadWorkflows call
-// and runs once per session-startup transition, while this runs on its own
-// sweep cadence — keeping them separate avoids coupling two call sites with
-// different frequencies and different result shapes to one helper.
-func resolveTickConfig(cfg *config.Config, s *domain.Session) config.TickConfig {
+// duplicates buildReactor's tc-resolution rather than sharing it: buildReactor
+// resolves `[healthcheck]` from the same LoadWorkflows call, and merging the
+// two would make every caller pay for a result it does not use. A load failure
+// is returned rather than folded into an empty result: its callers
+// disagree about what an unresolvable config means — the deadman sweep has
+// nothing to check, while a running reactor must keep the declaration it
+// already had.
+func resolveTickConfig(cfg *config.Config, s *domain.Session) (config.TickConfig, error) {
 	if s.Workflow == "" {
-		return config.TickConfig{}
+		return config.TickConfig{}, nil
 	}
 	workflows, err := cfg.LoadWorkflows(s.WorkspaceDirPath)
 	if err != nil {
-		return config.TickConfig{}
+		return config.TickConfig{}, err
 	}
 	wf, ok := workflows[s.Workflow]
 	if !ok || wf.Tick == nil {
-		return config.TickConfig{}
+		return config.TickConfig{}, nil
 	}
-	return *wf.Tick
+	return *wf.Tick, nil
 }
 
 func (sup *Supervisor) reconcile(ctx context.Context, active map[string]context.CancelFunc, wg *sync.WaitGroup) {
@@ -200,6 +202,7 @@ func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReac
 	return &sessionReactor{
 		session:     name,
 		cfg:         cfg,
+		cfgFn:       sup.cfg,
 		state:       sup.state,
 		log:         sup.log,
 		hub:         sup.hub,

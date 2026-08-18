@@ -50,8 +50,13 @@ const channelHealthInterval = 30 * time.Second
 // has elapsed since the session's last tick. Static config (tick) is
 // resolved once by the supervisor, matching dispatch's sessionDispatcher.
 type sessionReactor struct {
-	session     string
-	cfg         *config.Config
+	session string
+	cfg     *config.Config
+	// cfgFn returns the daemon's current config, re-read on every heartbeat
+	// sweep so this loop recovers from a config that was unresolvable when it
+	// started. Nil in tests that inject cfg and tick directly, which is what
+	// keeps those cases from re-resolving over their injected declaration.
+	cfgFn       func() *config.Config
 	state       *state.Store
 	log         *eventlog.Store
 	hub         *sessionhub.Registry
@@ -130,6 +135,7 @@ func (r *sessionReactor) run(ctx context.Context) {
 		case <-wake.Wake():
 		case <-fallback.C:
 		case <-heartbeat.C:
+			r.refreshTickConfig()
 			r.checkHeartbeat(ctx)
 		case <-healthcheck:
 			r.checkHealth(ctx)
@@ -248,6 +254,33 @@ func isSelfEmitted(ev event.Event) bool {
 		return true
 	}
 	return strings.HasPrefix(ev.Type, event.TypeLifecyclePrefix)
+}
+
+// refreshTickConfig re-reads the session's `[tick]` declaration, and the
+// config every tick runs against, from the daemon's current config. Resolving
+// them once at startup wedges this loop whenever that moment happened to fall
+// inside a window where the config home was unresolvable: nothing rebuilds a
+// reactor whose session never goes down, so the empty declaration it settled
+// for would outlive the failure and stop heartbeat scheduling until the
+// process restarted. A failed re-read keeps the previous declaration instead
+// of dropping to none, the same fail-safe the periodic config refresh itself
+// applies.
+func (r *sessionReactor) refreshTickConfig() {
+	if r.cfgFn == nil {
+		return
+	}
+	cfg := r.cfgFn()
+	s := r.state.Get(r.session)
+	if cfg == nil || s == nil {
+		return
+	}
+	tc, err := resolveTickConfig(cfg, s)
+	if err != nil {
+		slog.Default().Warn("reactor: re-resolve [tick] failed; keeping the previous declaration", "session", r.session, "error", err)
+		return
+	}
+	r.cfg = cfg
+	r.tick = tc
 }
 
 // checkHeartbeat ticks the session when `heartbeat` (scaled by the quiet-tick
