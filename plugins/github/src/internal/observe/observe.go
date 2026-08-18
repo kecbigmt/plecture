@@ -33,6 +33,7 @@ type Result struct {
 	Revision       string
 	PRURL          string
 	MergeableState string // GitHub's own vocabulary, or "NULL" / "unknown"
+	ReviewDecision string // "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | "NULL"
 }
 
 // Options are the inputs Observe needs.
@@ -61,7 +62,7 @@ func Observe(ctx context.Context, opts Options) (*Result, error) {
 
 	parsed, err := github.ParseURL(opts.ResourceID)
 	if err != nil {
-		return &Result{ResourceKind: "unknown", ChecksStatus: "NULL", IssueStatus: "NULL", MergeableState: "NULL"}, nil
+		return &Result{ResourceKind: "unknown", ChecksStatus: "NULL", IssueStatus: "NULL", MergeableState: "NULL", ReviewDecision: "NULL"}, nil
 	}
 
 	if parsed.Type == github.URLTypePR {
@@ -86,6 +87,7 @@ func observePull(ctx context.Context, client github.GHClient, parsed *github.Par
 		Revision:       head.sha,
 		PRURL:          parsed.URL(),
 		MergeableState: head.mergeableState,
+		ReviewDecision: fetchReviewDecision(ctx, client, parsed.Owner, parsed.Repo, parsed.Number),
 	}, nil
 }
 
@@ -117,6 +119,7 @@ func observeIssue(ctx context.Context, client github.GHClient, parsed *github.Pa
 		IssueStatus:    issueStatus,
 		Revision:       "issue:" + meta.UpdatedAt,
 		MergeableState: "NULL",
+		ReviewDecision: "NULL",
 	}
 
 	prURL := discoverLinkedPR(ctx, client, parsed, opts)
@@ -143,7 +146,48 @@ func observeIssue(ctx context.Context, client github.GHClient, parsed *github.Pa
 	result.Revision = head.sha
 	result.ChecksStatus = checks
 	result.MergeableState = head.mergeableState
+	result.ReviewDecision = fetchReviewDecision(ctx, client, parsed.Owner, parsed.Repo, prNumber)
 	return result, nil
+}
+
+const reviewDecisionQuery = `query($owner:String!,$repo:String!,$number:Int!){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$number){ reviewDecision }
+  }
+}`
+
+// fetchReviewDecision reads GitHub's own aggregate review verdict, which only
+// GraphQL exposes — deriving it from the REST reviews list would ignore the
+// branch protection rules that decide how many approvals actually count. It
+// is the one read here that is not required for the checks/mergeability state
+// the rest of the observation exists to produce, so a failure degrades to
+// "NULL" instead of failing the whole observation.
+func fetchReviewDecision(ctx context.Context, client github.GHClient, owner, repo string, number int) string {
+	raw, err := client.JSON(ctx, "graphql",
+		"-F", "owner="+owner,
+		"-F", "repo="+repo,
+		"-F", fmt.Sprintf("number=%d", number),
+		"-f", "query="+reviewDecisionQuery,
+	)
+	if err != nil {
+		return "NULL"
+	}
+	var resp struct {
+		Data struct {
+			Repository struct {
+				PullRequest struct {
+					ReviewDecision string `json:"reviewDecision"`
+				} `json:"pullRequest"`
+			} `json:"repository"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(raw, &resp) != nil {
+		return "NULL"
+	}
+	if resp.Data.Repository.PullRequest.ReviewDecision == "" {
+		return "NULL"
+	}
+	return resp.Data.Repository.PullRequest.ReviewDecision
 }
 
 // discoverLinkedPR finds the PR that closes an issue: the session's checked
