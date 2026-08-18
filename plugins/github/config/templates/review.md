@@ -1,9 +1,9 @@
 ---
 description: Review a PR and provide feedback as comments
 ---
-{{- $pr := get .SessionInputs "pr_url" -}}
-{{- $work := get .SessionInputs "work_session" -}}
-{{- $judges := get .SessionInputs "judge_ids" -}}
+{{- $pr := get .SessionInputs "pr_url" "" -}}
+{{- $work := get .SessionInputs "work_session" "" -}}
+{{- $judges := get .SessionInputs "judge_ids" "" -}}
 {{- $target := or $pr .ResourceID -}}
 Review the PR {{$target}}.
 

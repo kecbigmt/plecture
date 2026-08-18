@@ -1,5 +1,5 @@
 scope       = "run"
-healthcheck = "tmux has-session -t {{.Self.session_name}}"
+healthcheck = 'tmux has-session -t {{.Self.session_name}}'
 
 # Session name / cwd come from the session itself, not from upstream nodes —
 # tmux has no node-level inputs. A workflow wires
@@ -13,7 +13,7 @@ tmux has-session -t {{.SessionName}} \
 echo '{"session_name":"{{.SessionName}}"}'
 '''
 
-cleanup = "tmux kill-session -t {{.Self.session_name}} 2>/dev/null || true"
+cleanup = 'tmux kill-session -t {{.Self.session_name}} 2>/dev/null || true'
 
 # The four verbs below are this task's [terminal] table: attach/capture are
 # consumed by `plect attach`/`plect capture`, and all four are reachable from
@@ -24,10 +24,10 @@ cleanup = "tmux kill-session -t {{.Self.session_name}} 2>/dev/null || true"
 # that table, so this must be the last table-free content in the file —
 # [outputs_schema] below is its own table and is unaffected.
 [terminal]
-attach     = "tmux attach -t {{.Self.session_name}}"
-capture    = "tmux capture-pane -p -t {{.Self.session_name}}"
-send_text  = "tmux send-keys -t {{.Self.session_name}} -- \"$1\""
-send_keys  = "tmux send-keys -t {{.Self.session_name}} \"$1\""
+attach     = 'tmux attach -t {{.Self.session_name}}'
+capture    = 'tmux capture-pane -p -t {{.Self.session_name}}'
+send_text  = 'tmux send-keys -t {{.Self.session_name}} -- "$1"'
+send_keys  = 'tmux send-keys -t {{.Self.session_name}} "$1"'
 
 [outputs_schema]
 type     = "object"

@@ -5,8 +5,8 @@
 # only the socket path (typically {{.Nodes.claude.outputs.socket_path}}).
 # `path`/`body` precede [input_schema] so TOML scopes them at top level.
 type = "unix_socket"
-path = "{{.Inputs.path}}"
-body = "{{ json .Event }}"
+path = '{{.Inputs.path}}'
+body = '{{ json .Event }}'
 
 [input_schema]
 path = { type = "string", required = true }

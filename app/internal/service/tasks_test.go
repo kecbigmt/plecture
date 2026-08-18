@@ -510,13 +510,13 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 			{
 				id:      "channel",
 				scope:   "session",
-				setup:   `printf '{"thread":"new-thread","prev":"%s"}' '{{get .Prev "thread"}}'`,
+				setup:   `printf '{"thread":"new-thread","prev":"%s"}' '{{get .Prev "thread" ""}}'`,
 				cleanup: fmt.Sprintf(`printf 'channel=%%s\n' '{{.Self.thread}}' >> %s`, cleanupLog),
 			},
 			{
 				id:      "runtime",
 				scope:   "run",
-				setup:   `printf '{"session_id":"new-runtime","prev":"%s"}' '{{get .Prev "session_id"}}'`,
+				setup:   `printf '{"session_id":"new-runtime","prev":"%s"}' '{{get .Prev "session_id" ""}}'`,
 				cleanup: fmt.Sprintf(`printf 'runtime=%%s\n' '{{.Self.session_id}}' >> %s`, cleanupLog),
 			},
 			{
@@ -531,7 +531,7 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch","prev":"%%s"}' '{{get .Prev "workspace_dir"}}'`, newWorkdirPath, newWorkdirPath)
+	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch","prev":"%%s"}' '{{get .Prev "workspace_dir" ""}}'`, newWorkdirPath, newWorkdirPath)
 	providerCleanup := fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog)
 	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\n", providerSetup, providerCleanup)), 0o644); err != nil {
 		t.Fatal(err)
@@ -540,7 +540,7 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if err := os.MkdirAll(envsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	envSetup := `printf '{"handle":"new-env","prev":"%s"}' '{{get .Prev "handle"}}'`
+	envSetup := `printf '{"handle":"new-env","prev":"%s"}' '{{get .Prev "handle" ""}}'`
 	envCleanup := fmt.Sprintf("printf 'environment=%%s\n' '{{.Self.handle}}' >> %s", cleanupLog)
 	if err := os.WriteFile(filepath.Join(envsDir, "local.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\nexec = %q\n", envSetup, envCleanup, `exec "$@"`)), 0o644); err != nil {
 		t.Fatal(err)
@@ -1272,13 +1272,13 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					{
 						id:      "channel",
 						scope:   "session",
-						setup:   `printf '{"thread":"new-thread","prev":"%s"}' '{{get .Prev "thread"}}'`,
+						setup:   `printf '{"thread":"new-thread","prev":"%s"}' '{{get .Prev "thread" ""}}'`,
 						cleanup: fmt.Sprintf(`printf 'channel=%%s\n' '{{.Self.thread}}' >> %s`, cleanupLog),
 					},
 					{
 						id:      "runtime",
 						scope:   "run",
-						setup:   `printf '{"session_id":"new-runtime","prev":"%s"}' '{{get .Prev "session_id"}}'`,
+						setup:   `printf '{"session_id":"new-runtime","prev":"%s"}' '{{get .Prev "session_id" ""}}'`,
 						cleanup: fmt.Sprintf(`printf 'runtime=%%s\n' '{{.Self.session_id}}' >> %s`, cleanupLog),
 					},
 				},

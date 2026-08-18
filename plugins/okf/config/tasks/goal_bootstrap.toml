@@ -16,7 +16,7 @@ setup = '''
   --workspace-dir {{.WorkspaceDirPath | shellQuote}} \
   --owner {{.Inputs.owner | shellQuote}} \
   --session {{.SessionName | shellQuote}} \
-  --assignees {{get .Inputs "assignees" | shellQuote}}
+  --assignees {{get .Inputs "assignees" "" | shellQuote}}
 '''
 
 [inputs_schema]

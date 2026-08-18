@@ -11,7 +11,7 @@ args = [
   "-sf",
   "--max-time", "10",
   "-X", "POST",
-  "{{.Inputs.base_url}}/messages",
+  '{{.Inputs.base_url}}/messages',
   "-H", "Content-Type: application/json",
   '-d', '{"thread_ts":{{json .Inputs.thread_ts}},"channel_id":{{json .Inputs.channel_id}},"text":{{if .Event.body}}{{json .Event.body}}{{else}}{{json .Event.summary}}{{end}}}',
 ]

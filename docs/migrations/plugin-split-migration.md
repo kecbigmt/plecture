@@ -101,8 +101,8 @@ wired anyway, unchanged, since it still forces the correct DAG ordering:
 ```toml
 [[nodes]]
 uses                = "claude_initial_prompt"   # was "initial_prompt"
-inputs.tmux_session = "{{.Nodes.tmux.outputs.session_name}}"
-inputs.template      = "{{get .SessionInputs \"template\"}}"
+inputs.tmux_session = '{{.Nodes.tmux.outputs.session_name}}'
+inputs.template     = '{{get .SessionInputs "template" ""}}'
 ```
 
 ## Update any `{{bin ...}}` references to renamed executables

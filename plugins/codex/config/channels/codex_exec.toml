@@ -7,16 +7,16 @@
 # the turn itself never happens inside this channel.
 #
 # A channel's `command` is never template-rendered (only its `args` are, and
-# only with the `json` function — no `{{bin ...}}`; that helper exists only
-# for task setup/cleanup hooks). So this plugin's `scripts/` directory must
-# be on `PATH` for codex-exec-enqueue to resolve here — see this plugin's
-# README.
+# only with the `json` and `{{terminal ...}}` helpers — no `{{bin ...}}`,
+# which is registered for hook rendering, not channel rendering). So this
+# plugin's `scripts/` directory must be on `PATH` for codex-exec-enqueue to
+# resolve here — see this plugin's README.
 # `command`/`args` precede [input_schema] so TOML scopes them at top level.
 type = "exec"
 command = "codex-exec-enqueue"
 args = [
-  "{{.Inputs.queue_dir}}",
-  "{{.Event.type}}",
+  '{{.Inputs.queue_dir}}',
+  '{{.Event.type}}',
   '[{{.Event.type}}] {{if .Event.body}}{{.Event.body}}{{else}}{{.Event.summary}}{{end}}{{with index .Event.metadata "url"}} ({{.}}){{end}}',
 ]
 timeout = "5s"

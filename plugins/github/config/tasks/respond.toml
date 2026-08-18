@@ -2,7 +2,7 @@ scope = "session"
 
 setup = '''
 set -euo pipefail
-EXTRA='{{get .Inputs "instruction"}}'
+EXTRA='{{get .Inputs "instruction" ""}}'
 INSTRUCTION=$(plect template render respond --session '{{.SessionName}}' --instruction "$EXTRA")
 if [ -z "$INSTRUCTION" ]; then
   echo "plect template render respond produced empty instruction" >&2
