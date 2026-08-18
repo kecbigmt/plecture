@@ -59,9 +59,9 @@ echo "terminal_submit: instruction still unsubmitted after 4 retries" >&2
 exit 1
 ''',
   "terminal_submit",
-  "{{terminal \"send_text\"}}",
-  "{{terminal \"send_keys\"}}",
-  "{{terminal \"capture\"}}",
+  '{{terminal "send_text"}}',
+  '{{terminal "send_keys"}}',
+  '{{terminal "capture"}}',
   '[{{.Event.type}}] {{if .Event.body}}{{.Event.body}}{{else}}{{.Event.summary}}{{end}}{{with index .Event.metadata "url"}} ({{.}}){{end}}',
 ]
 timeout = "45s"

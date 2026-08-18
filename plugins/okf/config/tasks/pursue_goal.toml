@@ -66,6 +66,6 @@ all = [
 
 [chains.inputs]
 task         = "goal_review"
-work_session = "{{.Work.session}}"
-instance     = "{{.Work.instance}}"
-judge_ids    = "{{.Work.done_when.pending_judge_ids}}"
+work_session = '{{.Work.session}}'
+instance     = '{{.Work.instance}}'
+judge_ids    = '{{.Work.done_when.pending_judge_ids}}'

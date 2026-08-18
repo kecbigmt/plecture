@@ -13,7 +13,7 @@
 # pattern to `goals/*.md` for the one concept kind this plugin currently
 # understands.
 match = '^local-okf://(?P<owner>[A-Za-z0-9][A-Za-z0-9-]*)/(?:[A-Za-z0-9._/-]*/)?(?P<slug>[A-Za-z0-9._-]+)\.md$'
-name  = "{{.owner}}/okf-{{.slug}}"
+name  = '{{.owner}}/okf-{{.slug}}'
 
 setup   = '{{bin "okf-bundle"}} setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}}'
 cleanup = '{{bin "okf-bundle"}} cleanup --workspace-dir {{.Self.workspace_dir | shellQuote}}'

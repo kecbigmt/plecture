@@ -670,16 +670,19 @@ type TerminalBinding struct {
 }
 
 var templateFuncs = template.FuncMap{
-	// get reads a key from a string-keyed map, returning "" if missing.
+	// get reads a key from a string-keyed map, yielding def if missing.
 	// Lets `.Prev` be safely read under setup's strict missingkey=error.
-	"get": func(m map[string]any, key string) any {
+	// A present-but-empty value is a value and does not take the default;
+	// a nil one does, because rendering it would emit the "<no value>"
+	// this helper exists to avoid.
+	"get": func(m map[string]any, key string, def any) any {
 		if m == nil {
-			return ""
+			return def
 		}
 		if v, ok := m[key]; ok && v != nil {
 			return v
 		}
-		return ""
+		return def
 	},
 	// shellQuote renders a value as a single-quoted POSIX shell word, so a
 	// hook author can interpolate a resource id, session name, or persisted

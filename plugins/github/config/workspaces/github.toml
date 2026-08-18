@@ -12,7 +12,7 @@
 # registered this catalog under.
 
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
-name  = "{{.owner}}/{{.repo}}-{{.number}}"
+name  = '{{.owner}}/{{.repo}}-{{.number}}'
 
 # Title/state fetches route through github-watcher's gh-api subcommand, so a
 # setup call and the daemon's own polling share one rate budget instead of

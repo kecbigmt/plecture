@@ -16,7 +16,7 @@ description = "Dispatch an agent session against a local-okf goal resource, then
 workspace_provider = "local-okf"
 
 [display]
-title  = "{{.Workflow.outputs.concept_id}}"
+title  = '{{.Workflow.outputs.concept_id}}'
 status = "goal_review"
 
 [inputs_schema]
@@ -60,16 +60,16 @@ uses = "tmux"
 # slack_thread's own outputs, so codex_exec only needs its tmux pane.
 [[nodes]]
 uses                = "codex_exec"
-inputs.tmux_session = "{{.Nodes.tmux.outputs.session_name}}"
+inputs.tmux_session = '{{.Nodes.tmux.outputs.session_name}}'
 
 [[nodes]]
 uses        = "initial_task"
-inputs.task = "{{get .SessionInputs \"task\"}}"
+inputs.task = '{{get .SessionInputs "task" ""}}'
 
 [[event.channel]]
 name             = "runtime"
 uses             = "codex_exec"
-inputs.queue_dir = "{{.Nodes.codex_exec.outputs.queue_dir}}"
+inputs.queue_dir = '{{.Nodes.codex_exec.outputs.queue_dir}}'
 include          = ["plect.instruction", "user.emit", "plect.terminal.*"]
 
 # No plugin in this catalog ships a channel named "slack_thread" (only the
@@ -79,6 +79,6 @@ include          = ["plect.instruction", "user.emit", "plect.terminal.*"]
 name              = "slack"
 uses              = "slack"
 inputs.base_url   = "http://127.0.0.1:7890"
-inputs.channel_id = "{{.Nodes.slack_thread.outputs.channel_id}}"
-inputs.thread_ts  = "{{.Nodes.slack_thread.outputs.thread_ts}}"
+inputs.channel_id = '{{.Nodes.slack_thread.outputs.channel_id}}'
+inputs.thread_ts  = '{{.Nodes.slack_thread.outputs.thread_ts}}'
 include           = ["user.emit"]
