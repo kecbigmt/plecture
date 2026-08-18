@@ -118,19 +118,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		return nil, &Error{Code: ErrExecutionFailed, Message: setupErr.Error()}
 	}
 
-	// Environment lifecycle: after workspace provider setup (the workspace
-	// exists), before session task setup. A no-op when the workflow declares
-	// no environment. Fail-closed like workspace provider setup — an
-	// environment setup failure must not let task setup start.
-	envSetupErr := runEnvironmentSetupForSession(cfg, wf, session, params.Observer)
-	session.UpdatedAt = time.Now()
-	if err := store.Put(session); err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
-	}
-	if envSetupErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: envSetupErr.Error()}
-	}
-
 	// The workspace now exists: resolve the full cascade (incl. overlays
 	// above and the node-only layer inside the workspace dir) and run
 	// session tasks.
@@ -138,11 +125,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	envExecutor, envExecErr := environmentExecutorForSession(cfg, wf, session)
-	if envExecErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: envExecErr.Error()}
-	}
-	tasksErr := task.RunSetup(context.Background(), plan.Session, sessionVars(cfg, session, plan), session.Tasks, params.Observer, envExecutor)
+	tasksErr := task.RunSetup(context.Background(), plan.Session, sessionVars(cfg, session, plan), session.Tasks, params.Observer)
 	session.UpdatedAt = time.Now()
 	// A session node (the initial_task dispatcher) can shell out to a nested
 	// `plect task setup` subprocess that writes its instance straight to disk.

@@ -45,14 +45,8 @@ type ResourceDef struct {
 	Finalize        string         `toml:"finalize"`
 	StateSchema     map[string]any `toml:"state_schema"`
 	StateSchemaFile string         `toml:"state_schema_file"`
-	// Execution names the desired execution plane ("host" default, or
-	// "environment") but is not yet consulted: resource observe/finalize
-	// always run on host, since they may be called standalone (`plect resource
-	// status`) with no session — and so no environment — in scope. Parsed and
-	// validated so config authors can declare it ahead of that wiring.
-	Execution  string `toml:"execution"`
-	BaseDir    string `toml:"-"`
-	SourcePath string `toml:"-"`
+	BaseDir         string         `toml:"-"`
+	SourcePath      string         `toml:"-"`
 }
 
 // ResolvedStateSchemaPath joins StateSchemaFile with BaseDir.
@@ -104,8 +98,14 @@ func loadResourceDefFile(path string) (ResourceDef, error) {
 		return ResourceDef{}, err
 	}
 	var r ResourceDef
-	if _, err := toml.DecodeFile(path, &r); err != nil {
+	md, err := toml.DecodeFile(path, &r)
+	if err != nil {
 		return r, err
+	}
+	for _, key := range md.Undecoded() {
+		if len(key) == 1 && key[0] == "execution" {
+			return r, fmt.Errorf("`execution` is retired along with the environment execution plane; see docs/migrations/")
+		}
 	}
 	r.ID = stem
 	r.SourcePath = path
@@ -118,9 +118,6 @@ func loadResourceDefFile(path string) (ResourceDef, error) {
 	}
 	if _, err := regexp.Compile(r.Match); err != nil {
 		return r, fmt.Errorf("`match` %q does not compile: %w", r.Match, err)
-	}
-	if r.Execution != "" && r.Execution != ExecutionHost && r.Execution != ExecutionEnvironment {
-		return r, fmt.Errorf("`execution` must be %q or %q, got %q", ExecutionHost, ExecutionEnvironment, r.Execution)
 	}
 	return r, nil
 }

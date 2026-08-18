@@ -39,11 +39,6 @@ type sessionDispatcher struct {
 	state    *state.Store
 	hub      *sessionhub.Registry
 	policy   channel.RetryPolicy
-	// envExecutor routes an exec channel's argv through the workflow's
-	// environment when the channel declares execution = "environment"; nil
-	// (host degeneration, or environment resolution failed) means every
-	// channel delivers exactly as it did before this field existed.
-	envExecutor channel.Executor
 	// plugins feeds {{bin ...}} inside a {{terminal "..."}} verb template,
 	// mirroring task.SessionVars.Plugins.
 	plugins []plugins.Mounted
@@ -201,7 +196,6 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 				return
 			}
 			opts := channel.DeliverOptions{
-				Executor: d.envExecutor,
 				Terminal: terminalResolver(s, d.terminalNodeID, d.terminalOps, task.SessionVars{
 					Name:             s.Name,
 					ResourceID:       s.ResourceID,

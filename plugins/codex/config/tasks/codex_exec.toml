@@ -1,5 +1,4 @@
 scope   = "run"
-primary = true
 
 # Inputs:
 #   tmux_session — the multiplexer's own session/pane identifier (typically

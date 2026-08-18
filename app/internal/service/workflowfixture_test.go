@@ -21,19 +21,17 @@ import (
 // stubs keep the other verbs inert instead of forcing every attach/capture
 // test to also spell out send_text/send_keys it never exercises.
 type taskFixture struct {
-	id        string
-	scope     string
-	setup     string
-	cleanup   string
-	alive     string
-	activity  string
-	attach    string
-	capture   string
-	sendText  string
-	sendKeys  string
-	primary   bool
-	execution string
-	extra     string
+	id       string
+	scope    string
+	setup    string
+	cleanup  string
+	alive    string
+	activity string
+	attach   string
+	capture  string
+	sendText string
+	sendKeys string
+	extra    string
 }
 
 // stubTerminalVerb fills an unset [terminal] verb with a trivial
@@ -83,12 +81,6 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 		}
 		if d.cleanup != "" {
 			fmt.Fprintf(&b, "cleanup = %q\n", d.cleanup)
-		}
-		if d.primary {
-			b.WriteString("primary = true\n")
-		}
-		if d.execution != "" {
-			fmt.Fprintf(&b, "execution = %q\n", d.execution)
 		}
 		if d.extra != "" {
 			b.WriteString(d.extra)

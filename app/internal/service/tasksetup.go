@@ -104,20 +104,6 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
-	if wfErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
-	}
-	resolvedExecution, execErr := task.ResolveExecution(def.Execution, wf.Environment)
-	if execErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: execErr.Error()}
-	}
-	resolved.Execution = resolvedExecution
-	envExecutor, envErr := environmentExecutorForSession(cfg, wf, session)
-	if envErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
-	}
-
 	if resolved.Scope == config.TaskScopeRun && !hasLiveRunTask(session.Tasks) {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q is run-scoped but the session's run scope is not up; run `plect up %s` first", params.TaskID, resolvedName)}
 	}
@@ -196,7 +182,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 
 	// Phase 2 — run setup WITHOUT the lock (it may shell out for a while). The
 	// @workflow outputs come from the pre-reservation snapshot (stable).
-	outputs, stderr, setupErr := task.ExecuteTaskSetup(context.Background(), resolved, inputs, vars, session.Tasks, envExecutor)
+	outputs, stderr, setupErr := task.ExecuteTaskSetup(context.Background(), resolved, inputs, vars, session.Tasks)
 
 	// Phase 3 — merge the result back into the reserved key under the lock,
 	// touching only that key (a blind store.Put would clobber concurrent writes

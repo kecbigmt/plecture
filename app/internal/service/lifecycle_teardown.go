@@ -90,10 +90,6 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}
-	// Best-effort: teardown must stay resilient to a workflow config that has
-	// since disappeared or broken (see the comment below), so an error here
-	// just leaves Execution at its zero value (host) rather than aborting.
-	wf, _ := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
 	// Sort dynamic keys for a deterministic input order before the stable sort
 	// (map iteration is random; equal-seq legacy entries would otherwise vary).
 	dynKeys := make([]string, 0, len(session.Tasks))
@@ -121,9 +117,6 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 		if def, ok := defs[taskID]; ok {
 			r.Cleanup = def.Cleanup
 			r.SourcePath = def.SourcePath
-			if resolved, execErr := task.ResolveExecution(def.Execution, wf.Environment); execErr == nil {
-				r.Execution = resolved
-			}
 		}
 		items = append(items, seqResolved{seq: st.Seq, r: r})
 	}

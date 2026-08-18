@@ -74,17 +74,9 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	if defErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", defErr)}
 	}
-	// Best-effort, mirroring unifiedTeardownList: teardown must stay resilient
-	// to a workflow config that has since disappeared or broken, so any error
-	// here just leaves Execution/envExecutor at their zero values (host).
-	wf, _ := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
-	envExecutor, _ := environmentExecutorForSession(cfg, wf, session)
 	if def, ok := defs[taskID]; ok {
 		r.Cleanup = def.Cleanup
 		r.SourcePath = def.SourcePath
-		if resolved, execErr := task.ResolveExecution(def.Execution, wf.Environment); execErr == nil {
-			r.Execution = resolved
-		}
 	}
 
 	// RunCleanup mutates st (the snapshot's entry) in place. Persist only that one
@@ -95,7 +87,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	// attach/capture and {{terminal "..."}} are unavailable in this
 	// instance's own cleanup, the same as any sibling-task output it hasn't
 	// explicitly depended on.
-	cleanupErr := task.RunCleanup(context.Background(), []task.Resolved{r}, sessionVars(cfg, session, nil), session.Tasks, params.Observer, envExecutor)
+	cleanupErr := task.RunCleanup(context.Background(), []task.Resolved{r}, sessionVars(cfg, session, nil), session.Tasks, params.Observer)
 	if cleanupErr != nil {
 		// Keep the failed status inspectable for retry, scoped to this key. A
 		// persist failure here means that inspectable status never lands, so it's

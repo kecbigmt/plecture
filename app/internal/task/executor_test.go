@@ -163,8 +163,7 @@ func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 // provider subscribe, resource observe/finalize) and defaultExecutor
 // (execHostScript — the 5 task exec paths). Swapping defaultExecutor for a
 // spy must never intercept runShell: those callers must always run for real
-// on the host, since they have no session/Environment to consult (or run
-// before one exists).
+// on the host.
 func TestExecutor_RunShellIsNeverRoutedThroughDefaultExecutor(t *testing.T) {
 	spy := withSpyExecutor(t)
 	stdout, _, err := runShell(`echo real`, "")

@@ -17,9 +17,9 @@ It has these responsibilities:
 - declare the setup output schema exposed to workflow nodes.
 
 A workspace is the session's acquired work surface. It is not the executor,
-the task runner, the environment, or the resource itself. The filesystem
-implementation exposes the acquired location through a required setup output
-key named `workspace_dir`. Other outputs are provider-specific contract fields.
+the task runner, or the resource itself. The filesystem implementation exposes
+the acquired location through a required setup output key named
+`workspace_dir`. Other outputs are provider-specific contract fields.
 
 Resource-state observation is outside the workspace provider contract and
 belongs to resource definitions.
@@ -83,7 +83,7 @@ and finalization find a resource definition by matching the resource id.
 ## Workspace Disambiguation
 
 The term workspace names the acquired session work surface. It does not name a
-workflow runner, an agent runtime, an environment setup hook, or an OKF bundle.
+workflow runner, an agent runtime, or an OKF bundle.
 
 Directory paths remain concrete in names:
 

@@ -130,11 +130,6 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 	} else {
 		recordValidationSuccess(sup.state, name)
 	}
-	envExecutor, envErr := buildChannelEnvironmentExecutor(cfg, wf, s)
-	if envErr != nil {
-		sup.logger.Warn("event channel environment executor unavailable; channels opting into execution=\"environment\" will fail",
-			"session", name, "workflow", wf.ID, "error", envErr)
-	}
 	terminalNodeID, terminalOps := resolveTerminalOwner(sup.logger, cfg, s, wf)
 	return &sessionDispatcher{
 		session:        name,
@@ -144,7 +139,6 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		state:          sup.state,
 		hub:            sup.hub,
 		policy:         channel.DefaultRetryPolicy(),
-		envExecutor:    envExecutor,
 		plugins:        cfg.Plugins,
 		terminalNodeID: terminalNodeID,
 		terminalOps:    terminalOps,
