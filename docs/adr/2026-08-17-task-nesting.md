@@ -59,14 +59,27 @@ condition they declared remains necessary. The composed completion contract is
 part of the nested task's public face, and the outer task already owns that face
 by the same responsibility transfer that makes it declare the public outputs.
 Judge ids merge into one namespace across the nesting chain and a repeated id is
-a load error, so extension cannot mask an inner judge. `[done_when.budget]`
-stays inner-owned: heartbeat policy is behavior, not a condition.
+a load error, so extension cannot mask an inner judge. Verdicts are recorded
+against a flat per-instance id namespace, so uniqueness across layers is what
+keeps each verdict's target unambiguous, and a repeated id is far more likely a
+copy-paste slip than an intent — the load error doubles as accident detection.
+
+`[done_when.budget]` is declarable per layer, with per-layer accounting. A
+budget is patience policy rather than a condition, so it stays outside the
+conjunction: each layer's budget watches only the conditions that layer
+declared, a heartbeat tick consumes it only while that layer's own items are
+unmet, and exhaustion escalates naming that layer and its unmet items. Two
+budgets in one chain account for disjoint condition sets, so no arbitration rule
+is needed and there is no collision to detect.
 
 `requires` is the validation companion for the outer's own additions. The outer
 `requires` names the public output keys the outer-added checks read, and the
 mutual validation runs against the outer `outputs_schema`. The inner `requires`
 stays inner-owned and validates the inner `done_when` against the inner outputs.
-Each layer validates only its own additions.
+
+These surfaces share one sentence: each layer declares, validates, and budgets
+only its own additions. Zero cross-layer interaction is what makes no-override
+hold by construction rather than by enumeration.
 
 `[terminal]` is conflict-banned rather than inner-owned. An outer task may
 declare it when no layer of its inner chain does, which composes an interactive
@@ -127,6 +140,11 @@ across layers, invalid injected environment names, repeated judge ids across
 layers, per-layer `requires` validation of each layer's own `done_when` checks,
 multiple `[terminal]` declarations in one nesting chain, and
 `interactive_endpoint` wiring from whichever layer declares `[terminal]`.
+
+Core needs per-layer heartbeat-budget accounting: a tick consumes a layer's
+budget only while that layer's own conditions are unmet, and the escalation it
+raises attributes the non-convergence to that layer and lists that layer's unmet
+items.
 
 Core needs lifecycle execution that stores outer setup locals privately while
 declaring only the output keys bound by the outer task. Output binding is a
@@ -194,6 +212,28 @@ inner condition, so every inner condition survives an outer addition intact.
 The ban also costs real coverage. A team that needs one extra completion gate on
 a plugin task has only a whole-file fork, which is precisely the hole in the
 zero-copy target this design exists to close.
+
+### Layer-qualified judge ids
+
+Qualifying a judge id by its declaring layer would make duplicates legal. It
+would also push layer addressing into the judge CLI, status output, and chain
+references, for no benefit any observed shadow asks for.
+
+### Outermost-wins budget selection
+
+Selecting one budget for the composed task, with the outermost declaration
+winning, keeps a single heartbeat counter. It is override wearing a policy hat:
+the winning layer nullifies a value an inner author declared. It also needs an
+arbitration rule to specify which declaration wins and why, and per-layer
+accounting makes that rule unnecessary by giving each layer its own counter over
+its own conditions.
+
+### Forbidding an outer budget entirely
+
+Keeping `[done_when.budget]` inner-owned misclassifies patience policy as
+behavior. A team whose only difference from a plugin task is how long to wait
+before escalating would be pushed to a whole-file fork for a pure policy delta,
+which is the outcome the customization ladder exists to avoid.
 
 ### Unconditionally inner-owned `[terminal]`
 

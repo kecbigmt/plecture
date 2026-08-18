@@ -13,6 +13,11 @@ configuration, a configuration-only plugin, and a plugin factoring its own
 tasks, such as runtime variants that share a common inner layer. The rules in
 this design do not vary with the layer that owns the outer task.
 
+Each layer declares, validates, and budgets only its own additions: `requires`
+scoped to its own checks, a budget scoped to its own conditions. Zero
+cross-layer interaction is what makes the no-override rule hold by
+construction.
+
 A nested task has a chain of task definitions. The outermost task is the id
 named by a workflow node. Each outer task names its next inner task with
 `inner`, and that inner task may itself be nested. The innermost task remains
@@ -119,7 +124,7 @@ Task nesting fields:
 | `[inputs_schema]` / `inputs_schema_file` | no | JSON Schema | The outer task's workflow-facing inputs contract. |
 | `[locals_schema]` / `locals_schema_file` | no | JSON Schema | The private locals contract for outer setup emissions. |
 | `[outputs_schema]` / `outputs_schema_file` | no | JSON Schema | The nested task's explicit public output contract. Every public output is declared here. |
-| `[done_when]` | no | leaf list | Completion conditions the outer layer adds to the inner effective `done_when`. Leaves only; `[done_when.budget]` stays inner-owned. |
+| `[done_when]` | no | leaf list plus budget | Completion conditions the outer layer adds to the inner effective `done_when`, with an optional `[done_when.budget]` accounting for those conditions alone. |
 | `requires` | no | string list | The public output keys the outer-added `done_when` checks read. |
 | `[terminal]` | no | terminal table | An interactive endpoint for a nesting chain whose other layers declare none. |
 | `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the composed effective `done_when` and chain output mappings validated against the outer public output contract. |
@@ -158,8 +163,18 @@ reasoning holds unchanged. The composed completion contract is part of the
 nested task's public face, which the outer task already owns through its public
 output contract.
 
-An outer `[done_when]` declares leaves only. `[done_when.budget]` is inner-owned
-behavior: the outer layer adds conditions, not a heartbeat policy.
+Each layer may declare `[done_when.budget]`. A budget is patience policy for one
+layer rather than a condition, so it sits outside the conjunction. A layer's
+budget watches only the conditions that layer declared: a heartbeat tick
+consumes it only while that layer's own items are unmet, and exhausting it
+escalates naming that layer and that layer's unmet items. A layer that declares
+no budget takes the same treatment as a standalone task that declares none;
+nesting adds no default of its own, so an inner budget behaves in composition
+exactly as it does standalone.
+
+Budgets never interact across layers. There is no arbitration rule, no
+outermost-wins selection, and no collision to detect, because two budgets in one
+chain account for disjoint condition sets.
 
 Outer `done_when` checks read only the outer public output contract, the same
 scope rule outer chains follow. Locals and unbound inner outputs are not visible
@@ -167,9 +182,13 @@ to them.
 
 Judge ids from outer leaves join the judge namespace of the inner effective
 `done_when`, and a judge id repeated anywhere in the nesting chain is a load
-error, so an outer layer cannot mask an inner judge. Chain judge ids resolve
-from the composed effective `done_when`, so a chain declared on the outer task
-may name an inner judge id or one the outer added.
+error, so an outer layer cannot mask an inner judge. Verdicts are recorded
+against a flat per-instance id namespace — a reviewer's verdict targets an id,
+not a layer — so cross-layer uniqueness is what keeps every verdict's target
+unambiguous. Budget accounting needs no such sharing, because budget
+attribution follows the declaration site. Chain judge ids resolve from the
+composed effective `done_when`, so a chain declared on the outer task may name
+an inner judge id or one the outer added.
 
 The outer task declares `requires` for its own added checks:
 
@@ -268,7 +287,6 @@ Loading nested task definitions fails when:
 - the outer task declares inner-owned behavior fields: `primary`, `execution`,
   `idle_after`, `healthcheck`, `movement_signal`, or `[[outputs]]`.
 - two layers of the nesting chain declare `[terminal]`.
-- the outer task declares `[done_when.budget]`.
 - an outer `done_when` judge id repeats a judge id declared by any other layer
   in the nesting chain.
 - an outer `done_when` check names a key missing from the outer `requires`, or
