@@ -89,9 +89,26 @@ func ApplyMutableOutputs(layers []ResolvedLayer, st *contract.TaskState, updates
 		}
 		st.Layers[layerIdx].Outputs[innerKey] = updates[key]
 	}
+	// A binding template reads only `.Inner.outputs` and `.Locals`, both of
+	// which the layer records carry, so the re-read needs no session — the
+	// load-time classification rejects any other source, including the two
+	// session-dependent template helpers.
 	projected, err := ProjectPublicOutputs(layers, st.Layers, SessionVars{})
 	if err != nil {
 		return err
+	}
+	// The projection owns the keys it binds and nothing else. A public key
+	// the outer layer produces itself is equally part of the contract, so
+	// replacing the map wholesale would drop it — and with it the value a
+	// completion check may already have been satisfied by.
+	for key, value := range st.Outputs {
+		if _, bound := findBinding(layers[0].BindOutputs, key); bound {
+			continue
+		}
+		if _, fresh := projected[key]; fresh {
+			continue
+		}
+		projected[key] = value
 	}
 	st.Outputs = projected
 	return nil

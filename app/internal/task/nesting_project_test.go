@@ -283,3 +283,44 @@ func TestRunSetup_DownstreamNodeReadsTheComposedContract(t *testing.T) {
 		t.Error("an inner output the joint never bound must not be reachable downstream")
 	}
 }
+
+// TestApplyMutableOutputs_NestedKeepsProducedOutputs covers the other half of
+// the contract a re-projection must respect: `[bind.outputs]` owns the keys
+// it binds, and a key the layer produces itself is equally public — so a
+// routed write must not take it away, which would flip a completion check
+// that was already satisfied back to pending.
+func TestApplyMutableOutputs_NestedKeepsProducedOutputs(t *testing.T) {
+	withScriptedExecutor(t, &scriptedExecutor{stdout: map[string]string{
+		"inner-setup": `{"pid":"1"}`,
+	}})
+	outer := config.TaskDefinition{
+		ID: "outer", Scope: "run",
+		Bind:           &config.BindConfig{Outputs: map[string]string{"agent_pid": "{{.Inner.outputs.pid}}"}},
+		DynamicOutputs: []config.DynamicOutput{{Name: "review_decision", Script: "echo APPROVED"}},
+		OutputsSchema: objectSchema(map[string]any{
+			"agent_pid":       map[string]any{"type": "string", "mutable": true},
+			"review_decision": map[string]any{"type": "string"},
+		}),
+	}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup",
+		OutputsSchema: objectSchema(map[string]any{"pid": map[string]any{"type": "string", "mutable": true}}),
+	}
+	ordered := nestedPlan(t, outer, inner)
+	tasks := map[string]*contract.TaskState{}
+	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	st := tasks["outer"]
+	// A dynamic-output refresh merges the produced value into the contract.
+	st.Outputs["review_decision"] = "APPROVED"
+
+	if err := ApplyMutableOutputs(ordered[0].Layers, st, map[string]any{"agent_pid": "99"}); err != nil {
+		t.Fatalf("ApplyMutableOutputs: %v", err)
+	}
+	if got := st.Outputs["agent_pid"]; got != "99" {
+		t.Errorf("agent_pid = %#v, want the routed write", got)
+	}
+	if got := st.Outputs["review_decision"]; got != "APPROVED" {
+		t.Errorf("review_decision = %#v, want the produced output to survive a routed write", got)
+	}
+}

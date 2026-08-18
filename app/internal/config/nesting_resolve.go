@@ -272,18 +272,9 @@ func validateLayer(outer, inner TaskDefinition) ([]OutputBinding, error) {
 		return nil, err
 	}
 
-	keys := make([]string, 0, len(bound))
-	for k := range bound {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	bindings := make([]OutputBinding, 0, len(keys))
-	for _, key := range keys {
-		b, err := ClassifyOutputBinding(key, bound[key])
-		if err != nil {
-			return nil, err
-		}
-		bindings = append(bindings, b)
+	bindings, err := outer.ClassifiedOutputBindings()
+	if err != nil {
+		return nil, err
 	}
 	for _, b := range bindings {
 		key := b.Key

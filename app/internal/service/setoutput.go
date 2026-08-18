@@ -147,7 +147,6 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 }
 
 // resolveSetOutputTarget maps the selected target to the Tasks map key plus
-// resolveSetOutputTarget maps the selected target to the Tasks map key plus
 // the mutable-key set, compiled outputs schema, and — for a nested task — the
 // layer chain a write routes through.
 func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params SetOutputParams) (target string, mutable []string, schema *jsonschema.Schema, layers []task.ResolvedLayer, err *Error) {

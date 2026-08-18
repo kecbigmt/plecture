@@ -281,12 +281,10 @@ func schemaPropertyMutable(props map[string]any, key string) bool {
 	return b
 }
 
-// SchemaRequiredNames returns the schema document's `required` list, and
-// SchemaIsClosed reports whether it sets `additionalProperties = false`.
-// Together they are what `bind.inputs` has to satisfy for the inner task:
-// every required input bound, and nothing bound that a closed schema rejects.
 // ClassifiedOutputBindings returns this layer's `[bind.outputs]` entries in
-// a stable key order, each classified as direct or computed.
+// a stable key order, each classified as direct or computed. Load-time
+// validation and the runtime projection read the same classification from
+// here rather than each deciding it again.
 func (d TaskDefinition) ClassifiedOutputBindings() ([]OutputBinding, error) {
 	bound := d.Bind.OutputBindings()
 	keys := make([]string, 0, len(bound))
@@ -305,6 +303,10 @@ func (d TaskDefinition) ClassifiedOutputBindings() ([]OutputBinding, error) {
 	return out, nil
 }
 
+// SchemaRequiredNames returns the schema document's `required` list, and
+// SchemaIsClosed reports whether it sets `additionalProperties = false`.
+// Together they are what `bind.inputs` has to satisfy for the inner task:
+// every required input bound, and nothing bound that a closed schema rejects.
 func SchemaRequiredNames(inline map[string]any, filePath string) ([]string, error) {
 	raw, err := loadRawSchema(inline, filePath)
 	if err != nil || raw == nil {

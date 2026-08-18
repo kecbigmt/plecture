@@ -456,3 +456,48 @@ func TestSetOutput_NestedRoutesWriteToTheBoundInnerOutput(t *testing.T) {
 		t.Errorf("public agent_pid = %v, want the re-read projection", got)
 	}
 }
+
+// TestSetOutput_NestedDynamicInstanceRoutesThroughItsLayers covers the
+// `--task` route: a dynamic instance of a nested task is the shape the
+// motivating consumer has, and it must route a write the same way a static
+// node does.
+func TestSetOutput_NestedDynamicInstanceRoutesThroughItsLayers(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{
+			{id: "runtime", scope: "session", setup: "echo '{}'", extra: nestedRuntimeInner},
+			{id: "team_runtime", scope: "session", extra: nestedRuntimeOuter},
+		},
+		[]nodeFixture{{id: "runtime"}})
+
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
+		"team_runtime#1": {
+			Scope:   contract.TaskScopeSession,
+			TaskID:  "team_runtime",
+			Dynamic: true,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"agent_pid": "1"},
+			Layers: []contract.TaskLayerState{
+				{TaskID: "team_runtime", Status: contract.TaskStatusProduced},
+				{TaskID: "runtime", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "1"}},
+			},
+			SetupAt: time.Now(),
+		},
+	})
+
+	if _, err := SetOutput(cfg, store, SetOutputParams{
+		Identifier: "org/repo-1",
+		Task:       "team_runtime#1",
+		Outputs:    map[string]any{"agent_pid": "9"},
+	}); err != nil {
+		t.Fatalf("SetOutput: %v", err)
+	}
+
+	st := store.Get("org/repo-1").Tasks["team_runtime#1"]
+	if got := st.Layers[1].Outputs["pid"]; got != "9" {
+		t.Errorf("inner pid = %v, want the routed write", got)
+	}
+	if got := st.Outputs["agent_pid"]; got != "9" {
+		t.Errorf("public agent_pid = %v, want the re-read projection", got)
+	}
+}
