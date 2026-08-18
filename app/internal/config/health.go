@@ -37,11 +37,6 @@ func (h *HealthConfig) Validate() error {
 	return nil
 }
 
-// IsDeclared reports whether h carries an actual probe declaration.
-func (h *HealthConfig) IsDeclared() bool {
-	return h != nil && (h.Alive != "" || h.Activity != "")
-}
-
 // AliveProbe returns the declared liveness probe command, or "" when none is
 // declared. Nil-safe so callers holding an optional table need no guard.
 func (h *HealthConfig) AliveProbe() string {
