@@ -207,6 +207,14 @@ func (r *sessionReactor) drain(ctx context.Context, startGen *string) {
 // on its own output. Only events that clear both checks are matched against
 // the declared patterns.
 func (r *sessionReactor) shouldTrigger(ev event.Event) bool {
+	if ev.Type == event.TypeChannelError {
+		// A delivery that exhausted its retries must not schedule work: the
+		// event it failed to deliver is often tick's own announcement, so
+		// reacting here closes a loop between the bus and the session at the
+		// retry cadence. Checked ahead of the judge builtin because a failed
+		// delivery is never itself evidence of progress, whatever it carried.
+		return false
+	}
 	if ev.Type == event.TypeJudgeRecorded {
 		return true
 	}

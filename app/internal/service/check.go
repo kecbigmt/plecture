@@ -70,17 +70,19 @@ type CheckUnmetItem struct {
 }
 
 // computedAction bundles one instance's done_when evaluation with the
-// record-time facts needed only by the actuator (plect tick): whether the last
-// persisted action was already "satisfied" (so a repeated `done` push can be
-// skipped) and which instance key it belongs to. CheckSession discards these
-// extras and reports only the action; TickSession consumes all three. result
-// is the raw leaf-level evaluation the action was derived from — Status's work
-// layer reuses it instead of re-evaluating done_when for the same instance.
+// record-time facts needed only by the actuator (plect tick): which instance
+// key it belongs to, and the action/fingerprint the previous tick persisted
+// for it (what an unchanged re-evaluation is recognized against).
+// CheckSession discards these extras and reports only the action; TickSession
+// consumes all of them. result is the raw leaf-level evaluation the action was
+// derived from — Status's work layer reuses it instead of re-evaluating
+// done_when for the same instance.
 type computedAction struct {
-	instance         string
-	action           CheckAction
-	alreadySatisfied bool
-	result           task.DoneWhenResult
+	instance        string
+	action          CheckAction
+	lastAction      string
+	lastFingerprint string
+	result          task.DoneWhenResult
 }
 
 // evaluateSessionActions runs the read-only half shared by CheckSession (plect
@@ -140,15 +142,19 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		if dw == nil {
 			continue
 		}
-		// Captured before a tick's persist overwrites LastAction, so the
-		// `done` push it may issue fires exactly once per instance (the goal
-		// loop's actuator layer owns `done` emission) rather than on every
-		// poll.
-		alreadySatisfied := st.DoneWhen != nil && st.DoneWhen.LastAction == "satisfied"
+		// Captured before a tick's persist overwrites them, so the actuator can
+		// tell a state it has already acted on from a fresh one: `done` fires
+		// exactly once per instance (the goal loop's actuator layer owns `done`
+		// emission) and an unchanged unmet state does not re-announce itself on
+		// every poll.
+		lastAction, lastFingerprint := "", ""
+		if st.DoneWhen != nil {
+			lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
+		}
 		eval := task.EvaluateTaskDoneWhenWithContext(dw, st.Outputs, doneWhenEvalContext(resolvedName, st, allSessions))
 		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger)
 		if action.Action != "" {
-			computed = append(computed, computedAction{instance: key, action: action, alreadySatisfied: alreadySatisfied, result: eval})
+			computed = append(computed, computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval})
 		}
 		if len(chains) == 0 {
 			continue

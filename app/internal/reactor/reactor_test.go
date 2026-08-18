@@ -787,3 +787,26 @@ func TestSessionReactor_DrainTriggeredInboundTickResetsBackoff(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+// TestSessionReactor_ChannelErrorNeverTriggers proves a failed delivery
+// cannot feed a tick. plect.channel.error is what a channel worker appends
+// after exhausting its retries — including retries of an event tick itself
+// published — so triggering on it would close a loop between the bus and the
+// session: announce, fail to deliver, tick, announce again, at the retry
+// cadence. Dispatch already refuses to deliver this type for the mirror-image
+// reason; the reactor must refuse to react to it even under `on = ["*"]`.
+func TestSessionReactor_ChannelErrorNeverTriggers(t *testing.T) {
+	r, st, log := newTestReactor(t, config.TickConfig{On: []string{"*"}})
+	stop := startReactor(t, r)
+	defer stop()
+	time.Sleep(50 * time.Millisecond)
+
+	floor := time.Now()
+	log.Append(event.Event{
+		SessionName: "o/r-1",
+		Type:        event.TypeChannelError,
+		Source:      event.SourcePlect,
+		Direction:   event.Internal,
+	})
+	assertNeverTicked(t, st, "o/r-1", floor)
+}
