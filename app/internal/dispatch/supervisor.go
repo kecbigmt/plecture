@@ -130,7 +130,7 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 	} else {
 		recordValidationSuccess(sup.state, name)
 	}
-	terminalNodeID, terminalOps := resolveTerminalOwner(sup.logger, cfg, s, wf)
+	terminalNodeID, terminalOps, terminalLayers := resolveTerminalOwner(sup.logger, cfg, s, wf)
 	return &sessionDispatcher{
 		session:        name,
 		channels:       wf.Event.Channel,
@@ -142,5 +142,6 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		plugins:        cfg.Plugins,
 		terminalNodeID: terminalNodeID,
 		terminalOps:    terminalOps,
+		terminalLayers: terminalLayers,
 	}, false
 }

@@ -98,9 +98,10 @@ func RefreshInstanceOutputs(cfg *config.Config, store *state.Store, sessionName,
 
 	// fetched is per layer: a layer's `[[outputs]]` produce keys in that
 	// layer's own contract, and the composed contract is re-read from there.
-	fetched := make([]map[string]any, len(refreshTargets(def, comp)))
+	targets := refreshTargets(def, st, comp)
+	fetched := make([]map[string]any, len(targets))
 	var results []OutputRefreshResult
-	for i, target := range refreshTargets(def, comp) {
+	for i, target := range targets {
 		fetched[i] = map[string]any{}
 		ctx := task.RenderContext{Self: target.Self, Inputs: target.Inputs, Session: vars, Workflow: workflowOutputs, SourcePath: target.SourcePath}
 		for _, src := range target.Outputs {
@@ -181,14 +182,27 @@ type refreshTarget struct {
 
 // refreshTargets returns one entry per layer (or one for a plain task), in
 // layer order, so a caller can index the fetched values back to the layer
-// that produced them.
-func refreshTargets(def config.TaskDefinition, comp *instanceComposition) []refreshTarget {
+// that produced them. Each target carries the contract its scripts are
+// written against and the environment they run with — a layer's own view and
+// its enclosing bind.env, the task's own outputs and inputs for a plain task.
+func refreshTargets(def config.TaskDefinition, st *contract.TaskState, comp *instanceComposition) []refreshTarget {
 	if comp == nil {
-		return []refreshTarget{{Outputs: def.DynamicOutputs, SourcePath: def.SourcePath}}
+		return []refreshTarget{{
+			Outputs:    def.DynamicOutputs,
+			Self:       st.Outputs,
+			Inputs:     st.Inputs,
+			SourcePath: def.SourcePath,
+		}}
 	}
 	targets := make([]refreshTarget, len(comp.Layers))
 	for i, layer := range comp.Layers {
-		targets[i] = refreshTarget{Outputs: layer.DynamicOutputs, Self: comp.Views[i], SourcePath: layer.SourcePath}
+		targets[i] = refreshTarget{
+			Outputs:    layer.DynamicOutputs,
+			Self:       comp.Views[i],
+			Inputs:     st.Layers[i].Inputs,
+			Env:        task.EnclosingEnv(st.Layers, i),
+			SourcePath: layer.SourcePath,
+		}
 	}
 	return targets
 }

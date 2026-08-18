@@ -277,3 +277,167 @@ script = "echo SUCCESS"
 		t.Errorf("composed pid = %v, want the projection to keep carrying the bound inner output", got)
 	}
 }
+
+// TestRefreshInstanceOutputs_PlainTaskScriptSeesSelfAndInputs is the
+// characterization this layer owed before restructuring the refresh path: a
+// plain task's output scripts render against that task's own outputs and
+// inputs, which is what the shipped review gates rely on.
+func TestRefreshInstanceOutputs_PlainTaskScriptSeesSelfAndInputs(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", []taskFixture{{
+		id: "review", scope: contract.TaskScopeSession,
+		extra: "\n[[outputs]]\nname = \"checks_status\"\nscript = \"echo {{.Self.prior}}-{{.Inputs.who}}\"\n",
+	}}, []nodeFixture{{id: "review"}})
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "wf", map[string]*contract.TaskState{
+		"review": {
+			Scope:   contract.TaskScopeSession,
+			Status:  contract.TaskStatusProduced,
+			Inputs:  map[string]any{"who": "bob"},
+			Outputs: map[string]any{"prior": "SUCCESS"},
+			SetupAt: time.Now(),
+		},
+	})
+
+	results, err := RefreshInstanceOutputs(cfg, store, "owner/repo-1", "review")
+	if err != nil {
+		t.Fatalf("RefreshInstanceOutputs: %v", err)
+	}
+	if len(results) != 1 || results[0].Value != "SUCCESS-bob" {
+		t.Fatalf("results = %+v, want checks_status=SUCCESS-bob", results)
+	}
+}
+
+// TestRefreshInstanceOutputs_NestedScriptSeesItsLayerAndEnclosingEnv covers
+// the same for a layer of a chain: its own contract, its own inputs, and the
+// environment the layers outside it inject.
+func TestRefreshInstanceOutputs_NestedScriptSeesItsLayerAndEnclosingEnv(t *testing.T) {
+	store := testStore(t)
+	cfg := nestedConfig(t,
+		taskFixture{extra: "\n[[outputs]]\nname = \"seen\"\nscript = \"echo $PLECT_GUARD-{{.Self.pid}}-{{.Inputs.who}}\"\n"},
+		`
+[bind.outputs]
+pid  = "{{.Inner.outputs.pid}}"
+seen = "{{.Inner.outputs.seen}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties.pid]
+type = "string"
+
+[outputs_schema.properties.seen]
+type = "string"
+`)
+	tasks := nestedTasks(map[string]any{"pid": "7"}, map[string]any{"pid": "7"}, map[string]string{"PLECT_GUARD": "on"})
+	tasks["runtime"].Layers[1].Inputs = map[string]any{"who": "bob"}
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", tasks)
+
+	results, err := RefreshInstanceOutputs(cfg, store, "owner/repo-1", "runtime")
+	if err != nil {
+		t.Fatalf("RefreshInstanceOutputs: %v", err)
+	}
+	if len(results) != 1 || results[0].Value != "on-7-bob" {
+		t.Fatalf("results = %+v, want seen=on-7-bob (enclosing env, own contract, own inputs)", results)
+	}
+	if got := store.Get("owner/repo-1").Tasks["runtime"].Outputs["seen"]; got != "on-7-bob" {
+		t.Errorf("composed seen = %v, want the fetched value projected outward", got)
+	}
+}
+
+// TestCapture_NestedTerminalRendersAgainstTheDeclaringLayer covers the last
+// surface that must read a layer's own contract: the verbs belong to the
+// layer that declared them and name that layer's keys, which the composed
+// contract may carry under other names.
+func TestCapture_NestedTerminalRendersAgainstTheDeclaringLayer(t *testing.T) {
+	store := testStore(t)
+	cfg := nestedConfig(t,
+		taskFixture{
+			attach:   "true",
+			capture:  "echo -n 'endpoint {{.Self.interactive_endpoint}} pid {{.Self.pid}}'",
+			sendText: "true",
+			sendKeys: "true",
+		},
+		`
+[bind.outputs]
+interactive_endpoint = "{{.Inner.outputs.interactive_endpoint}}"
+agent_pid            = "{{.Inner.outputs.pid}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties.interactive_endpoint]
+type = "string"
+
+[outputs_schema.properties.agent_pid]
+type = "string"
+`)
+	inner := map[string]any{"interactive_endpoint": "%1", "pid": "7"}
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default",
+		nestedTasks(map[string]any{"interactive_endpoint": "%1", "agent_pid": "7"}, inner, nil))
+
+	out, err := Capture(cfg, store, CaptureParams{Identifier: "owner/repo-1"})
+	if err != nil {
+		t.Fatalf("Capture: %v", err)
+	}
+	if out.Content != "endpoint %1 pid 7" {
+		t.Errorf("capture = %q, want the declaring layer's own keys resolved", out.Content)
+	}
+}
+
+// TestTick_NestedInstanceAddedLeavesGetTheirOwnPatience covers the leaves no
+// layer declared: `--done-when-json` extras are a condition set of their own,
+// so they converge or escalate on the instance's budget rather than waiting
+// on a patience nothing spends.
+func TestTick_NestedInstanceAddedLeavesGetTheirOwnPatience(t *testing.T) {
+	store := testStore(t)
+	cfg := nestedConfig(t,
+		taskFixture{extra: "\n[done_when]\nall = [ { check = \"pid\", ne = \"\" } ]\n"},
+		gateSchema)
+	tasks := nestedTasks(
+		map[string]any{"pid": "1", "state": "running"},
+		map[string]any{"pid": "1", "state": "running"}, nil)
+	tasks["runtime"].ExtraDoneWhen = []byte(`{"all":[{"check":"state","eq":"done"}],"budget":{"heartbeat_budget":1}}`)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", tasks)
+
+	_, computed, _, _, err := evaluateSessionActions(cfg, store, "owner/repo-1", false, TickTriggerHeartbeat)
+	if err != nil {
+		t.Fatalf("evaluateSessionActions: %v", err)
+	}
+	if len(computed) != 1 {
+		t.Fatalf("computed = %+v, want one action", computed)
+	}
+	action := computed[0].action
+	if action.Action != "escalate" {
+		t.Fatalf("action = %q, want the instance's own budget to escalate", action.Action)
+	}
+	if action.Layer != "" {
+		t.Errorf("escalation layer = %q, want an instance-level escalation for a leaf no layer declared", action.Layer)
+	}
+	if action.HeartbeatTicks != 1 || action.HeartbeatBudget != 1 {
+		t.Errorf("instance patience = %d/%d, want 1/1", action.HeartbeatTicks, action.HeartbeatBudget)
+	}
+}
+
+// TestFinalize_NestedRefusesWhenTheChainDrifted covers the one place a
+// drifted chain must not fail open: reading degrades to the outermost
+// layer's conditions, but recording completion against a gate that cannot be
+// composed would accept work the inner layers never cleared.
+func TestFinalize_NestedRefusesWhenTheChainDrifted(t *testing.T) {
+	store := testStore(t)
+	cfg := nestedConfig(t,
+		taskFixture{extra: "\n[done_when]\nall = [ { check = \"pid\", ne = \"\" } ]\n"},
+		gateSchema)
+	tasks := nestedTasks(map[string]any{"pid": "1"}, map[string]any{"pid": "1"}, nil)
+	// The instance was set up with three layers; the definition now declares two.
+	tasks["runtime"].Layers = append(tasks["runtime"].Layers,
+		contract.TaskLayerState{TaskID: "gone", Status: contract.TaskStatusProduced})
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", tasks)
+
+	_, err := FinalizeTask(cfg, store, FinalizeTaskParams{Instance: "runtime", SessionName: "owner/repo-1"})
+	if err == nil {
+		t.Fatal("FinalizeTask: want a refusal for a chain that no longer composes, got nil")
+	}
+	if !strings.Contains(err.Error(), "nesting layers") {
+		t.Errorf("error = %v, want it to name the drifted chain", err)
+	}
+}

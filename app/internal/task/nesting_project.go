@@ -163,3 +163,28 @@ func findBinding(bindings []config.OutputBinding, key string) (config.OutputBind
 	}
 	return config.OutputBinding{}, false
 }
+
+// TerminalSelf is the output contract a task's `[terminal]` verbs render
+// against as `.Self`: the declaring layer's own contract for a nesting chain,
+// the task's own outputs for a plain task. The verbs belong to the layer that
+// declared them and name that layer's keys, the same way its probes and
+// output scripts do — the composed contract may carry those keys under other
+// names, or not at all.
+//
+// A projection failure degrades to the composed outputs rather than erroring:
+// this feeds attach, capture, and status display, where refusing to render is
+// worse than rendering against the contract the instance already published.
+func TerminalSelf(layers []ResolvedLayer, st *contract.TaskState) map[string]any {
+	if st == nil {
+		return nil
+	}
+	i := TerminalLayer(layers)
+	if i < 0 || len(st.Layers) != len(layers) {
+		return st.Outputs
+	}
+	views, err := ProjectLayerOutputs(layers, st.Layers, SessionVars{})
+	if err != nil {
+		return st.Outputs
+	}
+	return views[i]
+}

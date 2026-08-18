@@ -142,6 +142,13 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		}
 		taskID := taskIDForInstance(key, st)
 		def := defs[taskID]
+		if chainDrifted(def, st) {
+			// The gate degrades to the outermost layer's own conditions,
+			// which is a quieter answer than the instance actually owes —
+			// so it is said out loud rather than left to be inferred from a
+			// suddenly shorter done_when.
+			legacyWarnings = append(legacyWarnings, fmt.Sprintf("instance %q was set up with %d nesting layers but task %q now declares %d; its inner layers' conditions are not being evaluated", key, len(st.Layers), taskID, len(def.InnerChain)+1))
+		}
 		comp, compErr := composeInstance(def, st, sessionVars(cfg, session, nil))
 		if compErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: compErr.Error()}
@@ -200,11 +207,12 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		// and names the outputs by its own layer's names for them — so each
 		// layer sees the composed contract re-keyed into its own namespace,
 		// carrying exactly the values that reached it.
+		exposure := task.LayerExposure(comp.Layers)
 		for i, layer := range comp.Layers {
 			if len(layer.Chains) == 0 {
 				continue
 			}
-			layerOutputs := layerFacts(comp, i, outputs)
+			layerOutputs := layerFacts(exposure, i, outputs)
 			facts := buildChainFacts(layerOutputs, eval)
 			published := make([]string, 0, len(layerOutputs))
 			for name := range layerOutputs {

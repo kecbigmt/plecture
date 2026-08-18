@@ -53,7 +53,7 @@ func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*Attac
 		}
 	}
 
-	cmdStr, err := task.RenderAttach(target.Terminal.Attach, st.Outputs, sessionVars(cfg, session, plan))
+	cmdStr, err := task.RenderAttach(target.Terminal.Attach, task.TerminalSelf(target.Layers, st), sessionVars(cfg, session, plan))
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("attach template: %v", err)}
 	}

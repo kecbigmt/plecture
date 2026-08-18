@@ -108,8 +108,10 @@ func terminalBinding(plan *task.Plan, s *domain.Session) *task.TerminalBinding {
 		return nil
 	}
 	outputs := map[string]any{}
-	if st, ok := s.Tasks[t.NodeID]; ok && st != nil && st.Outputs != nil {
-		outputs = st.Outputs
+	if st, ok := s.Tasks[t.NodeID]; ok && st != nil {
+		if self := task.TerminalSelf(t.Layers, st); self != nil {
+			outputs = self
+		}
 	}
 	return &task.TerminalBinding{Ops: t.Terminal, Outputs: outputs}
 }

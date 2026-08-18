@@ -87,6 +87,13 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
 	def := defs[taskIDForInstance(params.Instance, st)]
+	// Reading a drifted chain degrades to the outermost layer's own
+	// declarations, which is right for a status line and wrong here:
+	// recording completion against a gate whose inner conditions silently
+	// dropped out is the one thing that must not fail open.
+	if chainDrifted(def, st) {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q was set up with %d nesting layers but task %q now declares %d; finalize refuses to record completion against a gate it cannot compose", params.Instance, len(st.Layers), def.ID, len(def.InnerChain)+1)}
+	}
 	dw, gateOutputs, derr := instanceGate(cfg, session, def, st)
 	if derr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: derr.Error()}

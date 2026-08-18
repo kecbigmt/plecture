@@ -121,9 +121,19 @@ type layerBudgets struct {
 	// LeafOwner names the layer that declared each leaf of the composed
 	// done_when, in the same order, or -1 for a leaf the instance added.
 	LeafOwner []int
-	// NextTicks is the advanced per-layer counter the caller persists, set
-	// while the action is computed.
-	NextTicks []int
+	// InstanceBudget and InstanceTicks account for the leaves no layer
+	// declared — the ones `--done-when-json` added to this instance. They
+	// are patience for a condition set of their own, on the same footing as
+	// a layer's, so an instance's extras can converge or escalate rather
+	// than waiting forever.
+	InstanceBudget      int
+	InstanceTicks       int
+	InstanceEscalations int
+	HasInstanceLeaves   bool
+	// NextTicks and NextInstanceTicks are the advanced counters the caller
+	// persists, set while the action is computed.
+	NextTicks         []int
+	NextInstanceTicks int
 }
 
 // newLayerBudgets builds that accounting, or returns nil for a plain task.
@@ -154,12 +164,18 @@ func newLayerBudgets(comp *instanceComposition, st *contract.TaskState, leafOwne
 			continue
 		}
 		lb.LeafOwner[i] = -1
+		lb.HasInstanceLeaves = true
+	}
+	if st.DoneWhen != nil {
+		lb.InstanceTicks = st.DoneWhen.HeartbeatTicks
+		lb.InstanceEscalations = st.DoneWhen.HeartbeatEscalations
 	}
 	return lb
 }
 
-// unmetFor returns the items one layer still owes, which is the only thing
-// that layer's budget watches.
+// unmetFor returns the items one owner still owes, which is the only thing
+// that owner's budget watches. Layer -1 is the instance itself, holding the
+// leaves no layer declared.
 func (lb *layerBudgets) unmetFor(layer int, result task.DoneWhenResult) []CheckUnmetItem {
 	var out []CheckUnmetItem
 	for i, leaf := range result.Leaves {
@@ -174,13 +190,22 @@ func (lb *layerBudgets) unmetFor(layer int, result task.DoneWhenResult) []CheckU
 	return out
 }
 
+// chainDrifted reports whether a definition's chain no longer matches the
+// instance's layer records, which is the state where a composed view cannot
+// be built and only the outermost layer's own declarations remain readable.
+func chainDrifted(def config.TaskDefinition, st *contract.TaskState) bool {
+	if !def.IsNested() || st == nil || len(st.Layers) == 0 {
+		return false
+	}
+	return len(st.Layers) != len(def.InnerChain)+1
+}
+
 // layerFacts re-keys the composed contract into one layer's own namespace:
 // the keys that layer publishes, carrying the values they arrived under.
 // A layer's chain names its own keys, and a key the composed contract does
 // not carry is simply absent — which is the fire-time counterpart of the
 // load-time rule that such a chain could never fire.
-func layerFacts(comp *instanceComposition, layer int, composed map[string]any) map[string]any {
-	exposure := task.LayerExposure(comp.Layers)
+func layerFacts(exposure []map[string]string, layer int, composed map[string]any) map[string]any {
 	out := make(map[string]any, len(exposure[layer]))
 	for own, public := range exposure[layer] {
 		if v, ok := composed[public]; ok {

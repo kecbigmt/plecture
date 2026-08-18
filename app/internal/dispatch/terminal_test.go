@@ -40,7 +40,7 @@ id = "tmux"
 	wf := workflows["coding"]
 	s := &domain.Session{Name: "o/r-1"}
 
-	nodeID, ops := resolveTerminalOwner(slog.Default(), cfg, s, wf)
+	nodeID, ops, _ := resolveTerminalOwner(slog.Default(), cfg, s, wf)
 	if nodeID != "tmux" {
 		t.Fatalf("nodeID = %q, want %q", nodeID, "tmux")
 	}
@@ -73,7 +73,7 @@ id = "envfile"
 	wf := workflows["coding"]
 	s := &domain.Session{Name: "o/r-1"}
 
-	nodeID, ops := resolveTerminalOwner(slog.Default(), cfg, s, wf)
+	nodeID, ops, _ := resolveTerminalOwner(slog.Default(), cfg, s, wf)
 	if nodeID != "" || ops != nil {
 		t.Fatalf("nodeID/ops = %q/%+v, want empty when no node declares [terminal]", nodeID, ops)
 	}
@@ -106,7 +106,7 @@ id = "missing"
 
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	nodeID, ops := resolveTerminalOwner(logger, cfg, s, wf)
+	nodeID, ops, _ := resolveTerminalOwner(logger, cfg, s, wf)
 	if nodeID != "" || ops != nil {
 		t.Fatalf("nodeID/ops = %q/%+v, want empty on compile failure", nodeID, ops)
 	}
