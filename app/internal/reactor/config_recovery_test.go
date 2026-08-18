@@ -15,9 +15,13 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
+// max_heartbeat pins the quiet-tick backoff flat: these cases assert across
+// many consecutive unchanged sweeps, and an uncapped heartbeat * 2^n would
+// outgrow the test's own wait long before the assertion is due.
 const heartbeatWorkflow = `
 [tick]
 heartbeat = "1ms"
+max_heartbeat = "5ms"
 `
 
 // TestSessionReactor_ReArmsHeartbeatAfterWorkflowLoadRecovers reproduces the
