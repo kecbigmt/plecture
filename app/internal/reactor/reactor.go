@@ -264,11 +264,16 @@ func isSelfEmitted(ev event.Event) bool {
 // inside a window where the config home was unresolvable: nothing rebuilds a
 // reactor whose session never goes down, so the empty declaration it settled
 // for would outlive the failure and stop heartbeat scheduling until the
-// process restarted. Only an unresolvable config keeps the previous
-// declaration — the same fail-safe the periodic config refresh itself applies.
-// A config that resolves cleanly is adopted whole, including a `[tick]` that
-// is now absent, since a workflow that stopped declaring one is a decision,
-// not a failure to read one.
+// process restarted.
+//
+// A re-read that leaves nothing to schedule is refused while something is
+// scheduled now, and so is one that fails outright. Parsing cleanly does not
+// make a read true: a workflow file rewritten in place is readable at byte
+// states that parse to no declaration at all — zero length mid-truncate, or a
+// `[tick]` table whose keys are not written yet — so one sample cannot tell
+// "the declaration was removed" from "the declaration is being edited", and
+// believing the wrong one re-enters the very wedge this function exists to
+// leave. A genuine removal is honored the next time the session starts.
 func (r *sessionReactor) refreshTickConfig() {
 	if r.cfgFn == nil {
 		return
@@ -283,8 +288,19 @@ func (r *sessionReactor) refreshTickConfig() {
 		slog.Default().Warn("reactor: re-resolve [tick] failed; keeping the previous declaration", "session", r.session, "error", err)
 		return
 	}
+	if schedulesNothing(tc) && !schedulesNothing(r.tick) {
+		slog.Default().Warn("reactor: re-resolved [tick] schedules nothing; keeping the previous declaration", "session", r.session)
+		return
+	}
 	r.cfg = cfg
 	r.tick = tc
+}
+
+// schedulesNothing reports whether tc leaves the reactor with no clock and no
+// pattern of its own — the inert state a session cannot be scheduled out of
+// without being restarted.
+func schedulesNothing(tc config.TickConfig) bool {
+	return len(tc.On) == 0 && tc.Heartbeat.Duration <= 0
 }
 
 // checkHeartbeat ticks the session when `heartbeat` (scaled by the quiet-tick

@@ -1,6 +1,7 @@
 package reactor
 
 import (
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -15,13 +16,9 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// max_heartbeat pins the quiet-tick backoff flat: these cases assert across
-// many consecutive unchanged sweeps, and an uncapped heartbeat * 2^n would
-// outgrow the test's own wait long before the assertion is due.
 const heartbeatWorkflow = `
 [tick]
 heartbeat = "1ms"
-max_heartbeat = "5ms"
 `
 
 // TestSessionReactor_ReArmsHeartbeatAfterWorkflowLoadRecovers reproduces the
@@ -150,5 +147,83 @@ func TestSessionReactor_KeepsLastGoodTickConfigWhenWorkflowLoadFails(t *testing.
 			t.Fatal("heartbeat stopped when the workflow became unloadable; the last good declaration must stand")
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// newRefreshFixture builds a reactor over a workflow file the caller can
+// rewrite, wired the way production wires it (through the supervisor), and
+// returns the path so a case can drive refreshTickConfig across byte states.
+func newRefreshFixture(t *testing.T, body string) (*sessionReactor, string) {
+	t.Helper()
+	base := t.TempDir()
+	workflowPath := filepath.Join(base, "workflows", "wf.toml")
+	writeFile(t, workflowPath, body)
+	cfg := &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	log := eventlog.NewStore(t.TempDir())
+	hub := sessionhub.NewRegistry(log, sessionhub.WithPollInterval(2*time.Millisecond))
+	t.Cleanup(hub.Close)
+	st := state.NewStore(t.TempDir())
+	session := &domain.Session{
+		Name:     "o/r-1",
+		Workflow: "wf",
+		Tasks: map[string]*contract.TaskState{
+			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+		},
+	}
+	if err := st.Put(session); err != nil {
+		t.Fatal(err)
+	}
+	return NewSupervisor(func() *config.Config { return cfg }, st, log, hub).buildReactor("o/r-1", session), workflowPath
+}
+
+// A workflow file being rewritten in place is readable at byte states that
+// parse cleanly and declare nothing, so a re-read that would leave the
+// session with no clock and no pattern is not evidence that its declaration
+// was removed — adopting one re-enters the wedge the re-read exists to leave.
+// A re-read that still schedules something is adopted, torn or not, since it
+// cannot strand the session.
+func TestRefreshTickConfig_KeepsAndAdopts(t *testing.T) {
+	const declaresOnOnly = "\n[tick]\non = [\"resource.*\"]\n"
+	for _, tc := range []struct {
+		name      string
+		start     string
+		rewritten string
+		remove    bool
+		want      time.Duration
+	}{
+		{name: "zero-length mid-truncate", start: heartbeatWorkflow, rewritten: "", want: time.Millisecond},
+		{name: "table written, keys not yet", start: heartbeatWorkflow, rewritten: "\n[tick]\n", want: time.Millisecond},
+		{name: "unparseable", start: heartbeatWorkflow, rewritten: "this is not valid toml", want: time.Millisecond},
+		{name: "workflow file gone", start: heartbeatWorkflow, remove: true, want: time.Millisecond},
+		{name: "declaration changed", start: heartbeatWorkflow, rewritten: "\n[tick]\nheartbeat = \"7ms\"\n", want: 7 * time.Millisecond},
+		{name: "narrowed but still scheduling", start: heartbeatWorkflow, rewritten: declaresOnOnly, want: 0},
+		{name: "nothing to keep, so adopted", start: declaresOnOnly, rewritten: "", want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, path := newRefreshFixture(t, tc.start)
+			if tc.remove {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				writeFile(t, path, tc.rewritten)
+			}
+			r.refreshTickConfig()
+			if got := r.tick.Heartbeat.Duration; got != tc.want {
+				t.Fatalf("heartbeat after re-read = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The rule is stated over what the declaration schedules, not over how the
+// re-read failed, so a session left with a pattern but no clock keeps that
+// pattern.
+func TestRefreshTickConfig_KeepsPatternOnlyDeclaration(t *testing.T) {
+	r, path := newRefreshFixture(t, "\n[tick]\non = [\"resource.*\"]\n")
+	writeFile(t, path, "")
+	r.refreshTickConfig()
+	if len(r.tick.On) != 1 || r.tick.On[0] != "resource.*" {
+		t.Fatalf("on after a re-read declaring nothing = %+v, want the previous pattern kept", r.tick.On)
 	}
 }
