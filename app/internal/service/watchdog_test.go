@@ -12,6 +12,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -242,27 +243,27 @@ func activityFixtureConfig(t *testing.T, activity string) *config.Config {
 // activityProbeCmd renders a fixed JSON activity envelope as the probe's
 // entire behavior — a stub probe, standing in for whatever concrete plugin
 // implementation (pane fingerprint, agent turn-boundary record, ...) ships it.
-func activityProbeCmd(t *testing.T, supported, activityExpected bool, fingerprint string, observedAt time.Time) string {
+func activityProbeCmd(t *testing.T, status task.ActivityStatus, fingerprint string, observedAt time.Time) string {
 	t.Helper()
 	observed := ""
 	if !observedAt.IsZero() {
 		observed = observedAt.UTC().Format(time.RFC3339)
 	}
 	return fmt.Sprintf(
-		`echo '{"supported":%t,"activity_expected":%t,"fingerprint":%q,"observed_at":%q}'`,
-		supported, activityExpected, fingerprint, observed,
+		`echo '{"status":%q,"fingerprint":%q,"observed_at":%q}'`,
+		string(status), fingerprint, observed,
 	)
 }
 
 // TestEvaluateHealth_WedgedButAliveProbePassingReadsStalled replaces the
-// prior known gap this test used to pin: once a movement signal is declared
+// prior known gap this test used to pin: once an activity probe is declared
 // and reports stale evidence while unmet done_when work remains, evaluation
 // now reads stalled rather than healthy — a present-but-wedged session is
 // finally distinguishable from a genuinely healthy one.
 func TestEvaluateHealth_WedgedButAliveProbePassingReadsStalled(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, true, true, "fp-1", longAgo))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityActive, "fp-1", longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -275,7 +276,7 @@ func TestEvaluateHealth_WedgedButAliveProbePassingReadsStalled(t *testing.T) {
 		// LastTickAt far in the past and a stale "waiting" message stand in
 		// for a wedged-but-present execution surface. Neither is read by
 		// health evaluation (see TestEvaluateHealth_MessageDoesNotAffectHealthOutcome)
-		// — the stale movement-signal evidence is what actually drives the
+		// — the stale activity evidence is what actually drives the
 		// stalled outcome here.
 		s.LastTickAt = longAgo
 		s.Message = &domain.Message{Text: "waiting", UpdatedAt: longAgo}
@@ -290,20 +291,21 @@ func TestEvaluateHealth_WedgedButAliveProbePassingReadsStalled(t *testing.T) {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthStalled {
-		t.Fatalf("report = %+v, state = %q, want stalled (surface present, movement expected, evidence stale)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want stalled (surface present, activity expected, evidence stale)", report, report.State())
 	}
 }
 
-// TestEvaluateHealth_SignalNarrowsActivityExpectedToHealthy pins the signal's
-// own activity_expected contribution: done_when leaves unmet work, but the
-// declared signal itself reports activity_expected=false (e.g. "the turn
-// already ended") with stale evidence. The signal can only narrow — never
-// widen — done_when's expectation, so this instance's contribution drops out
-// and the session reads healthy, not stalled.
-func TestEvaluateHealth_SignalNarrowsActivityExpectedToHealthy(t *testing.T) {
+// TestEvaluateHealth_IdleStatusNarrowsExpectationToHealthy pins the one
+// status that moves expectation: done_when leaves unmet work, but the probe
+// reports idle (e.g. "the turn already ended") with stale evidence. Idle can
+// only narrow — never widen — done_when's expectation, so this instance's
+// contribution drops out and the session reads healthy, not stalled. Its
+// contrast is TestEvaluateHealth_ActivityFingerprintUnchangedPastWindowReadsStalled,
+// which is the same shape reporting opaque and reads stalled.
+func TestEvaluateHealth_IdleStatusNarrowsExpectationToHealthy(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, true, false, "fp-1", longAgo))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityIdle, "fp-1", longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -318,13 +320,13 @@ func TestEvaluateHealth_SignalNarrowsActivityExpectedToHealthy(t *testing.T) {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthHealthy {
-		t.Fatalf("report = %+v, state = %q, want healthy (signal narrowed activity_expected despite unmet done_when work)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want healthy (idle narrowed the expectation despite unmet done_when work)", report, report.State())
 	}
 }
 
 // TestEvaluateHealth_NoActivitySignalDeclaredStaysUndeclaredNotStalled pins
 // the explicit no-signal path: unmet done_when work exists (progress is
-// expected) but no movement signal is declared to judge it, so evaluation
+// expected) but no activity probe is declared to judge it, so evaluation
 // has no basis to call the session either healthy or stalled.
 func TestEvaluateHealth_NoActivitySignalDeclaredStaysUndeclaredNotStalled(t *testing.T) {
 	store := testStore(t)
@@ -343,17 +345,17 @@ func TestEvaluateHealth_NoActivitySignalDeclaredStaysUndeclaredNotStalled(t *tes
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthUndeclared {
-		t.Fatalf("report = %+v, state = %q, want undeclared (movement expected, nothing declared to judge it)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want undeclared (activity expected, nothing declared to judge it)", report, report.State())
 	}
 }
 
-// TestEvaluateHealth_ExplicitNoSignalDeclarationStaysUndeclared covers the
-// second no-basis path: a movement-signal command is declared but explicitly
-// reports "supported": false at evaluation time — the same as if nothing
-// were declared, not a stale/fresh judgment either way.
-func TestEvaluateHealth_ExplicitNoSignalDeclarationStaysUndeclared(t *testing.T) {
+// TestEvaluateHealth_ExplicitNoneStatusStaysUndeclared covers the second
+// no-basis path: an activity probe is declared but reports `none` at
+// evaluation time — the same as if nothing were declared, not a stale/fresh
+// judgment either way.
+func TestEvaluateHealth_ExplicitNoneStatusStaysUndeclared(t *testing.T) {
 	store := testStore(t)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, false, true, "fp-1", time.Now()))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityNone, "fp-1", time.Now()))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -368,23 +370,23 @@ func TestEvaluateHealth_ExplicitNoSignalDeclarationStaysUndeclared(t *testing.T)
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthUndeclared {
-		t.Fatalf("report = %+v, state = %q, want undeclared (explicit no-signal declaration)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want undeclared (explicit `none` status)", report, report.State())
 	}
 }
 
 // TestEvaluateHealth_LapsedProbeWithPriorActivityReadsStalledNotUndeclared
 // pins the fix for the undeclared predicate becoming historical: a session
-// that has recorded movement before must never fall back to undeclared just
-// because its movement signal source has since died (e.g. lost hook wiring
+// that has recorded activity before must never fall back to undeclared just
+// because its activity probe has since lost its basis (e.g. lost hook wiring
 // after a pane restart) — the recorded LastActivityAt is a permanent basis
-// to judge staleness, so a lapsed signal past the stall threshold reads
-// stalled, exactly like a signal that is still wired but stale.
+// to judge staleness, so a lapsed probe past the stall threshold reads
+// stalled, exactly like a probe that is still reporting but stale.
 func TestEvaluateHealth_LapsedProbeWithPriorActivityReadsStalledNotUndeclared(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	// supported=false: the signal itself now reports no basis to judge
-	// movement this tick, standing in for the source having died.
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, false, true, "", time.Time{}))
+	// `none`: the probe itself now reports no basis to judge activity this
+	// tick, standing in for its source having died.
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityNone, "", time.Time{}))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -397,7 +399,7 @@ func TestEvaluateHealth_LapsedProbeWithPriorActivityReadsStalledNotUndeclared(t 
 		s.Health = &contract.HealthState{LastFingerprint: "initial:fp-1", LastActivityAt: longAgo}
 		return nil
 	}); err != nil {
-		t.Fatalf("seed prior movement state: %v", err)
+		t.Fatalf("seed prior activity state: %v", err)
 	}
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -405,16 +407,16 @@ func TestEvaluateHealth_LapsedProbeWithPriorActivityReadsStalledNotUndeclared(t 
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthStalled {
-		t.Fatalf("report = %+v, state = %q, want stalled (prior movement observation must survive the signal source dying)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want stalled (prior activity observation must survive the probe losing its basis)", report, report.State())
 	}
 }
 
 // TestEvaluateHealth_FreshActivityEvidenceReadsHealthy is the positive
 // counterpart to the stalled test: the same unmet work, but the declared
-// movement signal reports evidence timestamped within the stall threshold.
+// activity probe reports evidence timestamped within the stall threshold.
 func TestEvaluateHealth_FreshActivityEvidenceReadsHealthy(t *testing.T) {
 	store := testStore(t)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, true, true, "fp-1", time.Now()))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityActive, "fp-1", time.Now()))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -429,20 +431,20 @@ func TestEvaluateHealth_FreshActivityEvidenceReadsHealthy(t *testing.T) {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthHealthy {
-		t.Fatalf("report = %+v, state = %q, want healthy (fresh movement evidence)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want healthy (fresh activity evidence)", report, report.State())
 	}
 }
 
 // TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal is the
 // orchestrator-idle-between-ticks case: done_when is already satisfied, so
-// movement is not currently expected of this session at all. It must read
-// healthy even though a movement signal is declared and its evidence is
+// activity is not currently expected of this session at all. It must read
+// healthy even though an activity probe is declared and its evidence is
 // stale — the session legitimately has nothing to move on right now, and
 // must never be flagged stalled for that.
 func TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, true, true, "fp-1", longAgo))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityActive, "fp-1", longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -457,7 +459,7 @@ func TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal(t *testing.T) 
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthHealthy {
-		t.Fatalf("report = %+v, state = %q, want healthy (no unmet work, movement not expected)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want healthy (no unmet work, activity not expected)", report, report.State())
 	}
 }
 
@@ -467,7 +469,7 @@ func TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal(t *testing.T) 
 func TestEvaluateHealth_EscalatedWorkStillExpectsActivity(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, true, true, "fp-1", longAgo))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityActive, "fp-1", longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -483,7 +485,7 @@ func TestEvaluateHealth_EscalatedWorkStillExpectsActivity(t *testing.T) {
 		s.Health = &contract.HealthState{LastFingerprint: "initial:fp-1", LastActivityAt: longAgo}
 		return nil
 	}); err != nil {
-		t.Fatalf("seed movement state: %v", err)
+		t.Fatalf("seed activity state: %v", err)
 	}
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -491,7 +493,7 @@ func TestEvaluateHealth_EscalatedWorkStillExpectsActivity(t *testing.T) {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthStalled {
-		t.Fatalf("report = %+v, state = %q, want stalled (escalation must not suppress movement expectation)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want stalled (escalation must not suppress activity expectation)", report, report.State())
 	}
 }
 
@@ -500,7 +502,7 @@ func TestEvaluateHealth_EscalatedWorkStillExpectsActivity(t *testing.T) {
 // by core's own comparison against the persisted fingerprint.
 func activityFingerprintCmd(t *testing.T, fingerprint string) string {
 	t.Helper()
-	return activityProbeCmd(t, true, true, fingerprint, time.Time{})
+	return activityProbeCmd(t, task.ActivityOpaque, fingerprint, time.Time{})
 }
 
 // setActivityState seeds the session's persisted HealthState activity fields,
@@ -518,8 +520,8 @@ func setActivityState(t *testing.T, store *state.Store, name, composite string, 
 }
 
 // TestEvaluateHealth_ActivityFingerprintUnchangedPastWindowReadsStalled
-// pins the core-side comparison the issue asks for: the declared movement
-// source keeps reporting the same fingerprint core already has on record,
+// pins the core-side comparison the issue asks for: the declared activity
+// probe keeps reporting the same fingerprint core already has on record,
 // and core's own ObservedAt for that fingerprint is far outside the
 // freshness window — unmet done_when work makes this stalled, not healthy.
 func TestEvaluateHealth_ActivityFingerprintUnchangedPastWindowReadsStalled(t *testing.T) {
@@ -626,7 +628,7 @@ func TestEvaluateHealth_NoActivityProbeDeclaredFallsBackToUndeclared(t *testing.
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthUndeclared {
-		t.Fatalf("report = %+v, state = %q, want undeclared (no movement source declared)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want undeclared (no activity probe declared)", report, report.State())
 	}
 }
 

@@ -217,9 +217,8 @@ true
 # activity: the turn-boundary hook this task registers at setup is this
 # task's activity probe — the hook records each boundary and the probe
 # reads the record back, so one plugin executable owns both halves. It
-# reports no activity_expected opinion: a turn boundary attests that the
-# agent moved, not whether more movement is owed, which is core's
-# done_when-derived judgment.
+# reports status active while a turn is running and idle once it ends, which
+# is the only status that may narrow what core expects of this instance.
 [health]
 alive = '''
 kill -0 {{.Self.pid}} 2>/dev/null && exit 0

@@ -27,8 +27,10 @@ PANE=$(tmux capture-pane -p -t {{.Self.session_name}}) || exit 1
 # cksum, not sha256sum/shasum: POSIX, present on both GNU and BSD userlands,
 # and this is a change detector rather than a security digest.
 FP=$(printf '%s' "$PANE" | cksum | tr -d ' \t')
+# status opaque, not idle/active: a pane fingerprint attests that the pane
+# changed, and nothing about whether the workload owes more movement.
 jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{supported: true, fingerprint: $fp, observed_at: $at}'
+  '{status: "opaque", fingerprint: $fp, observed_at: $at}'
 '''
 
 # The four verbs below are this task's [terminal] table: attach/capture are

@@ -29,9 +29,9 @@ case "${1:-}" in
     [ -n "$session" ] || { echo "probe: session name required" >&2; exit 1; }
     file="$(record_path "$session")"
     # No record yet means this run has not crossed a turn boundary — an
-    # explicit "nothing to say", not a stall.
-    [ -f "$file" ] || { printf '{"supported":false}\n'; exit 0; }
-    jq -c '{supported: true, fingerprint: .fingerprint, observed_at: .observed_at}' "$file"
+    # explicit "nothing to observe", not a stall.
+    [ -f "$file" ] || { printf '{"status":"none"}\n'; exit 0; }
+    jq -c '{status: .status, fingerprint: .fingerprint, observed_at: .observed_at}' "$file"
     exit $?
     ;;
   reset)
@@ -61,11 +61,19 @@ mkdir -p "$(dirname "$file")" 2>/dev/null
 # "no change" and starts a stall clock against a session that just moved.
 seq="$(jq -r '.seq // 0' "$file" 2>/dev/null)" || seq=0
 case "$seq" in ''|*[!0-9]*) seq=0 ;; esac
+# A turn that has started owes movement; one that has ended does not, and
+# only the latter may narrow what core expects of this instance.
+case "$activity" in
+  working) status=active ;;
+  waiting) status=idle ;;
+  *)       status=opaque ;;
+esac
 jq -nc \
   --arg activity "$activity" \
+  --arg status "$status" \
   --argjson seq "$((seq + 1))" \
   --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{seq: $seq, fingerprint: "\($activity):\($seq)", observed_at: $at}' \
+  '{seq: $seq, status: $status, fingerprint: "\($activity):\($seq)", observed_at: $at}' \
   > "$file" 2>/dev/null
 
 exit 0

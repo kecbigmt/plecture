@@ -39,6 +39,17 @@ alive    = '...'   # liveness probe: exit-code semantics
 activity = '...'   # activity probe: JSON fingerprint envelope
 ```
 
+The activity envelope is `{status, fingerprint, observed_at}`, where `status`
+is a closed set of four values classifying how the probe interpreted its
+observation attempt: `none` (nothing to observe — discard), `opaque`
+(observed, not interpretable further — count the fingerprint, leave the
+expectation alone), `idle` (observed, quiet is normal — narrow the
+expectation), and `active` (observed, activity is due). `idle` is the only
+value that moves the expectation, and only downward; nothing can manufacture
+an expectation `done_when` does not already see. The field is spelled
+`status` on the exit-status precedent: it names the outcome classification of
+an attempt, and the four values read naturally under it.
+
 `setup` / `cleanup` / `[health]` is the universal task lifecycle trio. The
 present-state specification — worked examples, validation rules, envelope
 fields, and composition — is
@@ -93,10 +104,10 @@ the health report's `movement_*` fields become `activity_*` across the CLI,
 the MCP surface, and health escalation metadata. A subscriber matching on
 those names updates with the migration.
 
-The activity envelope's `activity_expected` now defaults to true when omitted,
-matching `supported`. Under the old field a probe with no opinion silently
-narrowed the expectation core derived from `done_when`, which would have made
-every generic probe suppress the stall detection it exists to feed.
+An activity probe's envelope is rejected at parse time when `status` is absent
+or unrecognized. A probe author gets a named error instead of a silent
+fallback, which is the point of the enum: there is no value the parser could
+default to without either suppressing stall detection or fabricating it.
 
 A workflow's `[healthcheck]` table is untouched: it declares the sampling
 cycle (period, stall threshold, re-notification), not what health means.
@@ -133,12 +144,49 @@ would have preserved a split between what the probe is called in config and
 what the thing implementing it is called on disk. `activity` is equally honest
 about attesting change and collapses the lineage instead of extending it.
 
+### Two booleans (`supported` + `activity_expected`) instead of a status enum
+
+Rejected. The pair was the shape this decision first shipped, and it fails on
+both counts a sum type is for. It admits a combination that means nothing —
+`supported: false` together with `activity_expected: true` asserts an
+expectation about an instance that just declared it has no basis to judge one
+— so the parser accepts states the domain does not have. And it has no honest
+encoding for the most common case: a generic surface fingerprint observes
+something real while knowing nothing about whether activity is due. Under two
+booleans that state exists only as a default on an omitted field, and either
+default is wrong for someone. Defaulting `activity_expected` to false makes
+every generic probe silently narrow the expectation core derived from
+`done_when`, suppressing the stall detection the probe exists to feed;
+defaulting it to true makes any probe that legitimately means "quiet is
+normal" have to say so explicitly or produce false stalls. `opaque` makes that
+fourth state a value like any other, and illegal combinations stop being
+representable.
+
+The debate this settles is whether `activity_expected` should exist at all.
+It had no producer in the shipped tree — both agent tasks declined to emit it
+— which by this ADR's own test for a readiness probe made it an extension
+point with no present consumer. Merging it into `status` resolves that
+without losing the narrowing capability: every value in the set is emitted by
+a shipped probe.
+
 ### A readiness probe alongside alive and activity
 
 Rejected as a non-goal. Kubernetes needs readiness because traffic routing is
 a distinct decision from restarting a container. Plecture has no analogous
 consumer: nothing routes to a session on the strength of a readiness verdict.
 A third probe would ship an extension point with no present consumer.
+
+### Other spellings for the observed-but-not-interpretable status
+
+Rejected: `observing`, which reads as an ongoing action or a wait-and-see
+stance rather than a classification of an attempt that has already finished —
+exactly the misreading the enum exists to prevent; `unknown`, which carries an
+error-or-unset connotation and so contradicts the fact that an observation was
+made; and `indeterminate`, which says the right thing at twice the length.
+`opaque` states the interpretation outcome and is already this repository's
+vocabulary for the never-interprets-only-compares family — the opaque
+fingerprint token, the opaque interactive-endpoint binding, opaque provider
+values.
 
 ### AND composition for activity
 

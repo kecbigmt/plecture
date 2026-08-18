@@ -49,12 +49,26 @@ Both members are optional and independent — declare only the probes the task
 actually has. A `[health]` header declaring neither is a load error, as is any
 key other than `alive` and `activity`.
 
-If a task declared `movement_signal`, its JSON envelope renames
-`movement_expected` to `activity_expected`. Omitting the field now means "no
-opinion" (it defaults to true) rather than "activity is not expected", so a
-probe that meant to stay silent on the question can drop the field entirely,
-and one that genuinely means "no activity is expected right now" must state
-`"activity_expected": false` explicitly.
+If a task declared `movement_signal`, its JSON envelope changes shape: the
+`supported` and `movement_expected` booleans collapse into one required
+`status` field.
+
+```json
+{ "status": "opaque", "fingerprint": "...", "observed_at": "..." }
+```
+
+Translate the old booleans as:
+
+| Old envelope | New `status` |
+|---|---|
+| `"supported": false` | `none` |
+| `"supported": true`, no opinion on expectation | `opaque` |
+| `"supported": true`, `"movement_expected": false` | `idle` |
+| `"supported": true`, `"movement_expected": true` | `active` |
+
+`status` has no default. An envelope omitting it, or carrying a value outside
+the four, is a parse error naming the value set — the probe contributes no
+evidence for that evaluation, exactly as a non-zero exit would.
 
 ## Workflow config changes
 
@@ -120,7 +134,7 @@ Update any subscriber, dashboard, or relay task matching on those names.
 After migration:
 
 ```bash
-rg 'healthcheck *=|movement_signal|movement_source|movement_expected|last_movement_at' \
+rg 'healthcheck *=|movement_signal|movement_source|movement_expected|last_movement_at|"supported"' \
   "$DATA_DIR/state.json" "$CONFIG_DIR"
 plect ls
 plect status <session>

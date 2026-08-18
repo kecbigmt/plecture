@@ -26,12 +26,12 @@ probes for it, so default health coverage requires no user configuration.
 # The tmux plugin's pane task: liveness is a session lookup, and activity is
 # a fingerprint of the pane's visible contents.
 [health]
-alive = "tmux has-session -t {{.Self.session_name}}"
+alive = 'tmux has-session -t {{.Self.session_name}}'
 activity = '''
 PANE=$(tmux capture-pane -p -t {{.Self.session_name}}) || exit 1
 FP=$(printf '%s' "$PANE" | cksum | tr -d ' \t')
 jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{supported: true, fingerprint: $fp, observed_at: $at}'
+  '{status: "opaque", fingerprint: $fp, observed_at: $at}'
 '''
 ```
 
@@ -39,7 +39,7 @@ jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
 # An agent-runtime task: liveness is a process check, and activity is the
 # turn-boundary record the same plugin's hook writes.
 [health]
-alive    = "kill -0 {{.Self.pid}}"
+alive    = 'kill -0 {{.Self.pid}}'
 activity = '{{bin "codex-agent-activity"}} probe {{.SessionName}}'
 ```
 
@@ -80,8 +80,7 @@ Run via `bash -c`. Stdout is the activity envelope:
 
 ```json
 {
-  "supported": true,
-  "activity_expected": false,
+  "status": "idle",
   "fingerprint": "waiting:7",
   "observed_at": "2026-08-18T00:04:06Z"
 }
@@ -89,20 +88,28 @@ Run via `bash -c`. Stdout is the activity envelope:
 
 | Field | Meaning |
 |---|---|
-| `supported` | Whether this instance has any basis to judge activity right now. Omitted defaults to true. An explicit `false` is a declaration of "nothing to say", which evaluates the same as declaring no probe. |
-| `activity_expected` | The probe's own contribution to whether activity is expected of the declaring instance. Omitted defaults to true. |
+| `status` | How the probe interpreted its observation attempt. One of the four values below. Required — an absent or unrecognized value is a parse error. |
 | `fingerprint` | An opaque token that changes whenever the probe observes new activity. Core never parses it, only compares it. |
 | `observed_at` | RFC3339. Absent means the probe reports no timestamp of its own. |
 
+`status` is a closed set, and the value chosen decides what the observation
+does to the session's health:
+
+| Value | The probe is saying | Core's response |
+|---|---|---|
+| `none` | The attempt found nothing to observe. | Discard the observation — the same as declaring no probe at all. |
+| `opaque` | Something was observed, and it is not interpretable further. | Count the fingerprint for freshness. Leave the expectation alone. |
+| `idle` | Something was observed, and quiet is normal right now. | Count the fingerprint. Narrow the declaring instance's expectation. |
+| `active` | Something was observed, and activity is due. | Count the fingerprint. A frozen fingerprint is stall evidence. |
+
+`idle` is the only value that moves the expectation, and it can only narrow
+it. No value can manufacture an expectation core's own `done_when` evaluation
+does not already see, so `opaque` and `active` drive the same core decision
+today; they differ in what the probe asserts about its own surface.
+
 A non-zero exit, a render failure, or unparseable stdout is an error, and the
 instance contributes no activity evidence for that evaluation — the same
-outcome as an explicit `"supported": false`, and distinct from a fabricated
-fingerprint.
-
-`activity_expected` can only narrow the declaring instance's expectation (for
-example, "the turn already ended"); it can never manufacture an expectation
-core's own `done_when` evaluation does not already see. A probe with no
-opinion omits the field.
+outcome as `"status": "none"`, and distinct from a fabricated fingerprint.
 
 Freshness is judged against core's own clock, not against `observed_at`: core
 records when it first saw a given fingerprint, and a fingerprint that has not
@@ -122,7 +129,8 @@ A session's health is composed from every produced run-scoped task instance:
   moved.
 
 An instance declaring no `[health]` contributes nothing to either composition:
-it is vacuous in the AND and casts no vote in the OR.
+it is vacuous in the AND and casts no vote in the OR. So does one whose
+activity probe reports `none`.
 
 The two shapes are complementary in practice. A pane fingerprint attests
 within-turn movement that no turn boundary would show, and a turn-boundary

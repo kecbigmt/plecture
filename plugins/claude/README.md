@@ -28,7 +28,8 @@ independently selectable plugin this one composes through `{{terminal
 - `config/channels/claude.toml` — delivers a session event to the running
   Claude Code process over its channel-server Unix socket.
 - `scripts/claude-agent-activity` — both halves of the turn-boundary activity
-  fingerprint: the hook the `claude` task registers, and the `probe` verb that
+  fingerprint (reporting `status: active` inside a turn and `idle` once it
+  ends): the hook the `claude` task registers, and the `probe` verb that
   task declares as its `[health].activity`.
 - `src/channel-server/` — generic message delivery to Claude Code, with no
   knowledge of message sources (Slack or otherwise). See

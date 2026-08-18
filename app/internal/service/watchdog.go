@@ -204,22 +204,22 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 
 		if activity := def.Health.ActivityProbe(); activity != "" {
 			sig, sigErr := task.RunActivityProbe(context.Background(), activity, st.Outputs, st.Inputs, vars)
-			if sigErr == nil && sig.Supported {
+			// A failed run and an explicit `"status": "none"` both mean this
+			// instance has no basis to contribute activity evidence right
+			// now — the same as if no activity probe were declared.
+			if sigErr == nil && sig.Status != task.ActivityNone {
 				activityDeclared = true
-				// A supported probe's own ActivityExpected can only narrow
-				// this instance's contribution (e.g. "the turn already
-				// ended"), never manufacture an expectation done_when does
-				// not already see.
-				if !sig.ActivityExpected {
+				// Idle is the only status that moves this instance's
+				// expectation, and only downward: a probe may report that
+				// quiet is normal right now, but none of the statuses can
+				// manufacture an expectation done_when does not already see.
+				if sig.Status == task.ActivityIdle {
 					instanceExpected = false
 				}
 				if sig.Fingerprint != "" {
 					activityFingerprintParts = append(activityFingerprintParts, key+":"+sig.Fingerprint)
 				}
 			}
-			// A failed run or an explicit "supported": false both mean this
-			// instance has no basis to contribute activity evidence right
-			// now — the same as if no activity probe were declared.
 		}
 
 		if instanceExpected {
