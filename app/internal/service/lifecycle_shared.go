@@ -203,3 +203,29 @@ func loadSessionWorkflow(cfg *config.Config, workspaceDirPath string, session *d
 	}
 	return wf, nil
 }
+
+// resolveWorkspaceProviderInputs validates the workflow's
+// `[workspace_provider_inputs]` against the workspace provider's own
+// `[inputs_schema]`. A provider that declares no schema accepts no inputs at
+// all: silently ignoring a key the author never declared would let a typo'd
+// parameter read as configured.
+func resolveWorkspaceProviderInputs(prov config.WorkspaceProviderConfig, wf config.WorkflowFile) (map[string]any, error) {
+	schema, err := task.CompileSchema(prov.InputsSchema, prov.ResolvedInputsSchemaPath(), "plect:workspace:"+prov.ID+":inputs")
+	if err != nil {
+		return nil, fmt.Errorf("workspace provider %q inputs schema: %w", prov.ID, err)
+	}
+	if schema == nil {
+		if len(wf.WorkspaceProviderInputs) > 0 {
+			return nil, fmt.Errorf("workflow %q sets workspace_provider_inputs but workspace provider %q declares no inputs_schema", wf.ID, prov.ID)
+		}
+		return nil, nil
+	}
+	value := make(map[string]any, len(wf.WorkspaceProviderInputs))
+	for k, v := range wf.WorkspaceProviderInputs {
+		value[k] = v
+	}
+	if vErr := schema.Validate(value); vErr != nil {
+		return nil, fmt.Errorf("workflow %q workspace_provider_inputs: %s", wf.ID, task.DescribeValidationError(schema, vErr))
+	}
+	return value, nil
+}

@@ -91,11 +91,16 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		reused = true
 	}
 
+	provInputs, provInputsErr := resolveWorkspaceProviderInputs(prov, wf)
+	if provInputsErr != nil {
+		return nil, &Error{Code: ErrInvalidInput, Message: provInputsErr.Error()}
+	}
 	vars := task.WorkflowHookVars{
 		ResourceID:        resource,
 		SessionName:       sessionName,
 		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
 		SessionInputs:     session.Inputs,
+		Inputs:            provInputs,
 		Plugins:           cfg.Plugins,
 		SourcePath:        prov.SourcePath,
 	}

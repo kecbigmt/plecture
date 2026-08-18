@@ -28,7 +28,14 @@ type WorkflowHookVars struct {
 	SessionName       string
 	WorkspaceDirsRoot string
 	SessionInputs     map[string]any
-	Plugins           []plugins.Mounted
+	// Inputs are the workspace provider's author-declared parameters, already
+	// validated against its `[inputs_schema]`. Unlike SessionInputs (per-run
+	// values a caller passes to `plect up`) these are the workflow's static
+	// wiring of the provider itself. The `subscribe` hook does not receive
+	// them: it resolves a provider from the resource alone, with no workflow
+	// in scope to have set them.
+	Inputs  map[string]any
+	Plugins []plugins.Mounted
 	// SourcePath is the workspace provider definition's own file path
 	// (config.WorkspaceProviderConfig.SourcePath), threaded through so a
 	// `{{bin "<name>"}}` in Setup/Cleanup can resolve against the workspace
@@ -233,22 +240,27 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 		SessionName       string
 		WorkspaceDirsRoot string
 		SessionInputs     map[string]any
+		Inputs            map[string]any
 		Prev              map[string]any
 		Self              map[string]any
 		Force             bool
-		CleanupInputs     map[string]string
+		CleanupInputs     map[string]any
 	}{
 		ResourceID:        vars.ResourceID,
 		SessionName:       vars.SessionName,
 		WorkspaceDirsRoot: vars.WorkspaceDirsRoot,
 		SessionInputs:     normalizeOutputs(vars.SessionInputs),
+		Inputs:            normalizeOutputs(vars.Inputs),
 		Prev:              normalizeOutputs(prev),
 		Self:              normalizeOutputs(self),
 		Force:             vars.Force,
-		CleanupInputs:     vars.CleanupInputs,
+		CleanupInputs:     stringMapAsAny(vars.CleanupInputs),
 	}
 	if data.SessionInputs == nil {
 		data.SessionInputs = map[string]any{}
+	}
+	if data.Inputs == nil {
+		data.Inputs = map[string]any{}
 	}
 	if data.Prev == nil {
 		data.Prev = map[string]any{}
@@ -257,7 +269,7 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 		data.Self = map[string]any{}
 	}
 	if data.CleanupInputs == nil {
-		data.CleanupInputs = map[string]string{}
+		data.CleanupInputs = map[string]any{}
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
@@ -268,4 +280,18 @@ func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string
 		out = strings.ReplaceAll(out, "<no value>", "")
 	}
 	return out, nil
+}
+
+// stringMapAsAny widens CleanupInputs for the render data so the `get` helper
+// — which reads map[string]any — reaches a cleanup intent the caller may not
+// have expressed at all.
+func stringMapAsAny(in map[string]string) map[string]any {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

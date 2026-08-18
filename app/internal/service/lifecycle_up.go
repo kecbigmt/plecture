@@ -249,11 +249,16 @@ func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, sess
 	if !ok {
 		return nil, fmt.Errorf("workflow %q declares no workspace provider; its setup hook cannot run", wf.ID)
 	}
+	provInputs, inputsErr := resolveWorkspaceProviderInputs(prov, wf)
+	if inputsErr != nil {
+		return nil, inputsErr
+	}
 	vars := task.WorkflowHookVars{
 		ResourceID:        session.ResourceID,
 		SessionName:       session.Name,
 		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
 		SessionInputs:     session.Inputs,
+		Inputs:            provInputs,
 		Plugins:           cfg.Plugins,
 		SourcePath:        prov.SourcePath,
 	}

@@ -55,6 +55,15 @@ type WorkspaceProviderConfig struct {
 	// current session (.SessionName) and the opaque resource (.ResourceID) —
 	// everything resource-specific (a watcher registry, say) stays here.
 	Subscribe string `toml:"subscribe"`
+	// InputsSchema declares the author's parameters: the data-shaped values a
+	// workflow may set to steer this provider's hooks without replacing the
+	// file. Values arrive as literal strings from the workflow's
+	// `[workspace_provider_inputs]` table and reach the hooks as `.Inputs`.
+	// They are deliberately not templates: a hook runs before any workspace
+	// exists, so there is nothing session-specific left for a parameter to
+	// interpolate that the hook surface does not already carry.
+	InputsSchema     map[string]any `toml:"inputs_schema"`
+	InputsSchemaFile string         `toml:"inputs_schema_file"`
 	// OutputsSchema is the @workflow pseudo-node contract: what setup emits and
 	// which keys trusted side paths may explicitly update (`mutable = true`).
 	// `workspace_dir` is reserved always-immutable.
@@ -67,6 +76,11 @@ type WorkspaceProviderConfig struct {
 // ResolvedOutputsSchemaPath joins OutputsSchemaFile with BaseDir.
 func (p WorkspaceProviderConfig) ResolvedOutputsSchemaPath() string {
 	return resolveSchemaPath(p.OutputsSchemaFile, p.BaseDir)
+}
+
+// ResolvedInputsSchemaPath joins InputsSchemaFile with BaseDir.
+func (p WorkspaceProviderConfig) ResolvedInputsSchemaPath() string {
+	return resolveSchemaPath(p.InputsSchemaFile, p.BaseDir)
 }
 
 // HasResolver reports whether the workspace provider declares the
