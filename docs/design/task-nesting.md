@@ -296,9 +296,10 @@ Composition across the layers of a chain has the same dual shape as composition
 across instances. `alive` is the AND: any failing layer makes the composed task
 unhealthy, and the report names the failing layer. `activity` is the OR:
 evidence from any layer counts. A layer declaring no `[health]` contributes
-nothing to either composition — vacuous in the AND, no vote in the OR. Each
-layer declares only its own probes and never replaces another layer's, so
-composition needs no conflict rule.
+nothing to either composition — vacuous in the AND, no vote in the OR — and
+neither does one whose activity probe reports `none`. Each layer declares only
+its own probes and never replaces another layer's, so composition needs no
+conflict rule.
 
 A layer earns an activity probe only when its activity indicates session
 progress. A chatty sidecar layer with an activity probe would mask a stalled
