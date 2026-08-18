@@ -45,10 +45,10 @@ self-owned; it is not an edit to the inner task's schema.
 
 Task nesting is strictly additive. The outer task may never modify inner
 behavior; additive extension is permitted exactly where this design grants it:
-chains, `done_when` conjunction, public outputs, environment, forwarded inputs,
-layer health probes, and an interactive endpoint over a chain that declares
-none. The inner task has no reference to the outer task and no virtual dispatch
-point back into it.
+chains, `done_when` conjunction, public outputs, layer-produced dynamic
+outputs, environment, forwarded inputs, layer health probes, and an interactive
+endpoint over a chain that declares none. The inner task has no reference to
+the outer task and no virtual dispatch point back into it.
 
 An outer task may extend `done_when`. The composed effective `done_when` is the
 inner effective `done_when` conjoined with the outer's added leaves.
@@ -86,9 +86,16 @@ composition is decided by
 [`docs/adr/2026-08-18-health-declaration.md`](2026-08-18-health-declaration.md),
 which this decision follows.
 
-These surfaces share one sentence: each layer declares, validates, budgets, and
-probes only its own additions. Zero cross-layer interaction is what makes
-no-override hold by construction rather than by enumeration.
+A layer may declare `[[outputs]]`, so its added checks read live values on the
+same standing the inner task's own checks have rather than values frozen at
+setup. Output keys are layer-scoped: an inner-produced key is invisible until
+`[bind.outputs]` binds it, and every reference is layer-explicit, so an outer
+key may reuse an inner key's name. Collisions are banned only within one layer's
+public contract, where one public name must have one definition source.
+
+These surfaces share one sentence: each layer declares, validates, budgets,
+probes, and produces only its own additions. Zero cross-layer interaction is
+what makes no-override hold by construction rather than by enumeration.
 
 `[terminal]` is conflict-banned rather than inner-owned. An outer task may
 declare it when no layer of its inner chain does, which composes an interactive
@@ -180,9 +187,12 @@ third-party service is outside this decision. Whole-file forks remain available
 when behavior cannot be expressed by an author-declared input or by additive
 nesting.
 
-The retirement of the `healthcheck` scalar and `movement_signal` removes both
-from the inner-owned field list, leaving `primary`, `execution`, `idle_after`,
-and `[[outputs]]` unconditionally inner-owned.
+The retirement of the `healthcheck` scalar and `movement_signal`, and the
+layer-scoping of `[health]`, `[terminal]`, `[done_when]`, `requires`, and
+`[[outputs]]`, leave `primary`, `execution`, and `idle_after` unconditionally
+inner-owned. `primary` and `execution` are the essential instance-singular
+attributes; whether `idle_after` belongs beside them is a task-definition field
+question rather than a nesting question.
 
 ## Alternatives considered
 
@@ -221,6 +231,17 @@ inner condition, so every inner condition survives an outer addition intact.
 The ban also costs real coverage. A team that needs one extra completion gate on
 a plugin task has only a whole-file fork, which is precisely the hole in the
 zero-copy target this design exists to close.
+
+### Cross-layer uniqueness for output keys
+
+Banning an outer output key that repeats an inner-produced key imports the
+judge-id rule into a case that does not share its premise. Judge ids need
+uniqueness because verdicts are recorded against one flat per-instance
+namespace, so an ambiguous id would make a verdict's target unknowable. Output
+keys have no such join point: they are layer-scoped, every reference names its
+layer, and mutable writes address the outer public contract. The uniqueness that
+matters is within a single layer's public contract, which is where the rule is
+placed.
 
 ### Layer-qualified judge ids
 

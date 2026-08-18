@@ -13,10 +13,11 @@ configuration, a configuration-only plugin, and a plugin factoring its own
 tasks, such as runtime variants that share a common inner layer. The rules in
 this design do not vary with the layer that owns the outer task.
 
-Each layer declares, validates, and budgets only its own additions: `requires`
-scoped to its own checks, `[health]` probes for its own resources, a budget
-scoped to its own conditions. Zero cross-layer interaction is what makes the
-no-override rule hold by construction.
+Each layer declares only its own additions and answers only for them:
+`[[outputs]]` produces its own materials, `[done_when]` states its own
+conditions, `requires` validates its own checks, `[done_when.budget]` sets its
+own patience, and `[health]` probes its own resources. Zero cross-layer
+interaction is what makes the no-override rule hold by construction.
 
 A nested task has a chain of task definitions. The outermost task is the id
 named by a workflow node. Each outer task names its next inner task with
@@ -30,13 +31,13 @@ outermost setup -> ... -> innermost setup -> innermost cleanup -> ... -> outermo
 ```
 
 The nested task declares only the public outputs the outer task explicitly
-binds. Inner public outputs are not passed through automatically. The outer
-task may re-export inner outputs, rename inner outputs, or bind values computed
-by its own setup, but downstream consumers read only the outer task's declared
-public contract. Outer setup emits locals: always-private intermediate values
-available to outer cleanup, input and environment binding templates, and public
-output binding. Public output binding is a live projection, not a setup-time
-copy: reads render against the current inner output and local values.
+binds or produces. Inner public outputs are not passed through automatically.
+The outer task may re-export inner outputs, rename inner outputs, or bind values
+computed by its own setup, but downstream consumers read only the outer task's
+declared public contract. Outer setup emits locals: always-private intermediate
+values available to outer cleanup, input and environment binding templates, and
+public output binding. Public output binding is a live projection, not a
+setup-time copy: reads render against the current inner output and local values.
 Direct inner-output bindings route mutable writes to that inner output;
 computed bindings are rendered strings and are read-only.
 
@@ -128,6 +129,7 @@ Task nesting fields:
 | `requires` | no | string list | The public output keys the outer-added `done_when` checks read. |
 | `[terminal]` | no | terminal table | An interactive endpoint for a nesting chain whose other layers declare none. |
 | `[health]` | no | health table | Liveness and activity probes for the resources this layer brings up. |
+| `[[outputs]]` | no | dynamic output entries | Live value sources this layer produces into its own public contract. |
 | `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the composed effective `done_when` and chain output mappings validated against the outer public output contract. |
 
 The nested task's effective scope is the innermost task's scope. If an outer
@@ -152,6 +154,30 @@ needs a local schema property.
 
 Inspection output such as `plect task show` prints the nesting chain from the
 outermost task to the innermost plugin task.
+
+## Layer Outputs
+
+A layer declares `[[outputs]]` for values it needs live rather than frozen at
+setup: an observed resource-status key, or a script whose stdout is refreshed
+when a check reads it. An outer layer's added `done_when` checks then read
+current values on the same standing the inner task's own checks have.
+
+Output keys are layer-scoped. A key an inner layer produces lives in that
+layer's namespace and is invisible outside it until `[bind.outputs]` binds it,
+so an outer `[[outputs]]` key may carry the same name as an inner-produced key
+without colliding. References are always layer-explicit: `.Inner.outputs.<key>`
+names the inner layer's key and a public key names the outer contract's. Mutable
+writes address the outer public contract and route from there, so output keys
+have no flat cross-layer surface on which two same-named keys could meet.
+
+Collisions are banned within one layer's public contract, where one public name
+has one definition source. An outer-produced key colliding with a
+`[bind.outputs]`-bound key, or with another key the same layer produces, is a
+load error.
+
+Outer-produced keys are public outputs, declared in the outer `outputs_schema`
+like every other public field, and available to the outer `requires` and
+`done_when` under the per-layer scoping those surfaces already follow.
 
 ## Completion Conditions
 
@@ -307,7 +333,11 @@ Loading nested task definitions fails when:
 - `inner` forms a nesting cycle, including self-reference.
 - the outer task declares a `scope` that differs from the inner task's scope.
 - the outer task declares inner-owned behavior fields: `primary`, `execution`,
-  `idle_after`, or `[[outputs]]`.
+  or `idle_after`.
+- an outer `[[outputs]]`-produced key collides with a `[bind.outputs]`-bound key
+  or with another key the same layer produces.
+- an outer `[[outputs]]`-produced key is missing from the outer
+  `outputs_schema`.
 - two layers of the nesting chain declare `[terminal]`.
 - an outer `done_when` judge id repeats a judge id declared by any other layer
   in the nesting chain.
