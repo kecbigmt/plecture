@@ -5,7 +5,7 @@ scope   = "run"
 #                  {{.Nodes.tmux.outputs.session_name}} from whichever task
 #                  in the workflow declares [terminal]). Launch keystrokes
 #                  go through {{terminal "..."}} and never need this value
-#                  directly; the healthcheck below still does, to walk this
+#                  directly; the alive probe below still does, to walk this
 #                  pane's process tree with `tmux list-panes` — that
 #                  introspection has no [terminal] verb of its own, so it
 #                  stays a direct, explicit tmux dependency (a documented,
@@ -66,6 +66,12 @@ printf '%s' "$MCP_JSON" > "$MCP"
 # dedicated --settings file (not ~/.claude/settings.json) keeps this
 # session-scoped rather than colliding with any global hooks configuration
 # the user owns.
+#
+# The reset drops any record a previous run left behind, so this run's
+# activity probe reports "no basis yet" until this run's first turn
+# boundary rather than inheriting a stale fingerprint.
+{{bin "claude-agent-activity"}} reset {{.SessionName}}
+
 HOOKS=$(mktemp "${TMPDIR:-/tmp}/plect-hooks.XXXXXX")
 mv "$HOOKS" "$HOOKS.json" && HOOKS="$HOOKS.json"
 jq -nc '{
@@ -192,10 +198,13 @@ rm -f {{.Self.mcp_config}} {{.Self.socket_path}}
 # error.
 HOOKS_SETTINGS='{{get .Self "hooks_settings" ""}}'
 [ -n "$HOOKS_SETTINGS" ] && rm -f "$HOOKS_SETTINGS"
+{{bin "claude-agent-activity"}} reset {{.SessionName}}
 true
 '''
 
-# A bare `kill -0` only detects death, not restart-with-new-pid: the pane's
+# This task's [health] table.
+#
+# alive: a bare `kill -0` only detects death, not restart-with-new-pid: the pane's
 # claude process can get relaunched underneath plect (crash + relaunch,
 # manual --resume) with no other update path (outputs are otherwise
 # write-once at setup). On a stale pid, search this pane's process tree for
@@ -203,7 +212,14 @@ true
 # (the same discovery setup performs), then write it back via the mutable
 # outputs below — the next dispatch batch re-renders channel inputs from
 # persisted outputs, so delivery self-heals without a session down/up.
-healthcheck = '''
+#
+# activity: the turn-boundary hook this task registers at setup is this
+# task's activity probe — the hook records each boundary and the probe
+# reads the record back, so one plugin executable owns both halves. It
+# reports status active while a turn is running and idle once it ends, which
+# is the only status that may narrow what core expects of this instance.
+[health]
+alive = '''
 kill -0 {{.Self.pid}} 2>/dev/null && exit 0
 
 PANE_PID=$(tmux list-panes -t {{.Inputs.tmux_session}} -F '#{pane_pid}' 2>/dev/null | head -1)
@@ -235,6 +251,8 @@ plect state set-output {{.SessionName}} --node claude "$(jq -nc \
   --argjson pid "$FOUND_PID" --arg sid "$FOUND_SID" --arg sock "$SOCKET" \
   '{pid:$pid, session_id:$sid, socket_path:$sock}')"
 '''
+
+activity = '{{bin "claude-agent-activity"}} probe {{.SessionName}}'
 
 [inputs_schema]
 type                 = "object"

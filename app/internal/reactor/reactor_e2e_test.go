@@ -105,3 +105,77 @@ func TestSessionReactor_ReactiveTickReachesDoneWhenConsequence(t *testing.T) {
 	}
 	t.Fatal("declared event never drove the reactor to push plect.terminal.done to the parent")
 }
+
+// newPendingJudgeConfig writes a task whose done_when carries an unrecorded
+// judge leaf — the state a tick turns into review_required and, until a
+// verdict arrives, keeps turning into review_required.
+func newPendingJudgeConfig(t *testing.T) *config.Config {
+	t.Helper()
+	base := t.TempDir()
+	def := `
+scope = "session"
+
+[done_when]
+all = [
+  { judge = "AC met", id = "ac-met" },
+]
+`
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), def)
+	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+}
+
+// TestSessionReactor_UnchangedUnmetStateAnnouncesOnce: a burst of external
+// events re-evaluates the same unmet done_when many times over, and the
+// reactor announces it once. Without the debounce this is the
+// production loop — one review_required per drain, at the bus's cadence
+// rather than the session's.
+func TestSessionReactor_UnchangedUnmetStateAnnouncesOnce(t *testing.T) {
+	cfg := newPendingJudgeConfig(t)
+	st := state.NewStore(t.TempDir())
+	log := eventlog.NewStore(st.Dir())
+	hub := sessionhub.NewRegistry(log, sessionhub.WithPollInterval(2*time.Millisecond))
+	t.Cleanup(hub.Close)
+
+	if err := st.Put(&domain.Session{
+		Name: "o/r-1",
+		Tasks: map[string]*contract.TaskState{
+			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+			"initial": {
+				Scope:    contract.TaskScopeSession,
+				TaskID:   "work",
+				Status:   contract.TaskStatusProduced,
+				Resource: "https://github.com/o/r/pull/1",
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	r := &sessionReactor{
+		session: "o/r-1",
+		cfg:     cfg,
+		state:   st,
+		log:     log,
+		hub:     hub,
+		tick:    config.TickConfig{On: []string{"resource.*"}},
+	}
+	stop := startReactor(t, r)
+	defer stop()
+	time.Sleep(50 * time.Millisecond)
+
+	floor := time.Now()
+	for range 6 {
+		log.Append(event.Event{SessionName: "o/r-1", Type: "resource.updated", Source: event.SourceCLI})
+		time.Sleep(20 * time.Millisecond)
+	}
+	waitLastTickAt(t, st, "o/r-1", floor) // the reactor did evaluate the state
+	time.Sleep(100 * time.Millisecond)    // ...and any late drain has landed
+
+	evs, _, _, err := log.List("o/r-1", 0, event.Filter{Types: []string{event.TypeTickReviewRequired}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 1 {
+		t.Fatalf("review_required events = %d, want 1 for one unchanged unmet state", len(evs))
+	}
+}

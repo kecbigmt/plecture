@@ -11,9 +11,9 @@ import (
 )
 
 // defaultPlectListTimeout bounds Sweep's `plect ls --json` call. `plect ls`
-// fans out a healthcheck per session — one hung healthcheck (a movement
-// source script that never returns) must not block the watcher from ever
-// reaching its first Tick, which is what an unbounded call would risk.
+// fans out health probes per session — one hung probe (an activity probe
+// script that never returns) must not block the watcher from ever reaching
+// its first Tick, which is what an unbounded call would risk.
 const defaultPlectListTimeout = 15 * time.Second
 
 // Sweep drops every subscription whose owning session no longer exists.

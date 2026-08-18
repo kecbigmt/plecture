@@ -47,11 +47,18 @@ const channelHealthInterval = 30 * time.Second
 
 // sessionReactor follows one session's event log and ticks it when a
 // declared event pattern matches, the judge builtin fires, or `heartbeat`
-// has elapsed since the session's last tick. Static config (tick) is
-// resolved once by the supervisor, matching dispatch's sessionDispatcher.
+// has elapsed since the session's last tick. Its `[tick]` declaration is
+// seeded by the supervisor and re-read on every heartbeat sweep
+// (refreshTickConfig), unlike dispatch's sessionDispatcher, whose channels
+// stay as resolved at build.
 type sessionReactor struct {
-	session     string
-	cfg         *config.Config
+	session string
+	cfg     *config.Config
+	// cfgFn returns the daemon's current config, re-read on every heartbeat
+	// sweep so this loop recovers from a config that was unresolvable when it
+	// started. Nil in tests that inject cfg and tick directly, which is what
+	// keeps those cases from re-resolving over their injected declaration.
+	cfgFn       func() *config.Config
 	state       *state.Store
 	log         *eventlog.Store
 	hub         *sessionhub.Registry
@@ -130,6 +137,7 @@ func (r *sessionReactor) run(ctx context.Context) {
 		case <-wake.Wake():
 		case <-fallback.C:
 		case <-heartbeat.C:
+			r.refreshTickConfig()
 			r.checkHeartbeat(ctx)
 		case <-healthcheck:
 			r.checkHealth(ctx)
@@ -207,6 +215,14 @@ func (r *sessionReactor) drain(ctx context.Context, startGen *string) {
 // on its own output. Only events that clear both checks are matched against
 // the declared patterns.
 func (r *sessionReactor) shouldTrigger(ev event.Event) bool {
+	if ev.Type == event.TypeChannelError {
+		// A delivery that exhausted its retries must not schedule work: the
+		// event it failed to deliver is often tick's own announcement, so
+		// reacting here closes a loop between the bus and the session at the
+		// retry cadence. Checked ahead of the judge builtin because a failed
+		// delivery is never itself evidence of progress, whatever it carried.
+		return false
+	}
 	if ev.Type == event.TypeJudgeRecorded {
 		return true
 	}
@@ -240,6 +256,51 @@ func isSelfEmitted(ev event.Event) bool {
 		return true
 	}
 	return strings.HasPrefix(ev.Type, event.TypeLifecyclePrefix)
+}
+
+// refreshTickConfig re-reads the session's `[tick]` declaration, and the
+// config every tick runs against, from the daemon's current config. Resolving
+// them once at startup wedges this loop whenever that moment happened to fall
+// inside a window where the config home was unresolvable: nothing rebuilds a
+// reactor whose session never goes down, so the empty declaration it settled
+// for would outlive the failure and stop heartbeat scheduling until the
+// process restarted.
+//
+// A re-read that leaves nothing to schedule is refused while something is
+// scheduled now, and so is one that fails outright. Parsing cleanly does not
+// make a read true: a workflow file rewritten in place is readable at byte
+// states that parse to no declaration at all — zero length mid-truncate, or a
+// `[tick]` table whose keys are not written yet — so one sample cannot tell
+// "the declaration was removed" from "the declaration is being edited", and
+// believing the wrong one re-enters the very wedge this function exists to
+// leave. A genuine removal is honored the next time the session starts.
+func (r *sessionReactor) refreshTickConfig() {
+	if r.cfgFn == nil {
+		return
+	}
+	cfg := r.cfgFn()
+	s := r.state.Get(r.session)
+	if cfg == nil || s == nil {
+		return
+	}
+	tc, err := resolveTickConfig(cfg, s)
+	if err != nil {
+		slog.Default().Warn("reactor: re-resolve [tick] failed; keeping the previous declaration", "session", r.session, "error", err)
+		return
+	}
+	if schedulesNothing(tc) && !schedulesNothing(r.tick) {
+		slog.Default().Warn("reactor: re-resolved [tick] schedules nothing; keeping the previous declaration", "session", r.session)
+		return
+	}
+	r.cfg = cfg
+	r.tick = tc
+}
+
+// schedulesNothing reports whether tc leaves the reactor with no clock and no
+// pattern of its own — the inert state a session cannot be scheduled out of
+// without being restarted.
+func schedulesNothing(tc config.TickConfig) bool {
+	return len(tc.On) == 0 && tc.Heartbeat.Duration <= 0
 }
 
 // checkHeartbeat ticks the session when `heartbeat` (scaled by the quiet-tick

@@ -70,14 +70,14 @@ revision = "{{.Work.outputs.revision}}"
 
 func TestStatus_RuntimeCarriesHealthMovementTimestamps(t *testing.T) {
 	store := testStore(t)
-	cfg := healthcheckFixtureConfig(t, "true")
+	cfg := aliveFixtureConfig(t, "true")
 	lastCheckedAt := time.Now().Add(-time.Minute).UTC()
 	lastMovementAt := time.Now().Add(-2 * time.Minute).UTC()
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
 	})
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
-		s.Health = &contract.HealthState{LastCheckedAt: lastCheckedAt, LastMovementAt: lastMovementAt}
+		s.Health = &contract.HealthState{LastCheckedAt: lastCheckedAt, LastActivityAt: lastMovementAt}
 		return nil
 	}); err != nil {
 		t.Fatalf("seed health state: %v", err)
@@ -87,15 +87,15 @@ func TestStatus_RuntimeCarriesHealthMovementTimestamps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if result.Runtime.LastCheckedAt.IsZero() || result.Runtime.LastMovementAt.IsZero() {
+	if result.Runtime.LastCheckedAt.IsZero() || result.Runtime.LastActivityAt.IsZero() {
 		t.Fatalf("runtime = %+v, want health timestamps", result.Runtime)
 	}
 	b, err := json.Marshal(result)
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
-	if !strings.Contains(string(b), "last_movement_at") || strings.Contains(string(b), "last_progress_at") {
-		t.Fatalf("status JSON = %s, want last_movement_at only", b)
+	if !strings.Contains(string(b), "last_activity_at") || strings.Contains(string(b), "last_progress_at") {
+		t.Fatalf("status JSON = %s, want last_activity_at only", b)
 	}
 }
 

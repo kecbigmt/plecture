@@ -12,7 +12,7 @@ import (
 )
 
 // These tests cover cancellation for the five task exec paths (setup,
-// cleanup, healthcheck, capture, dynamic-output fetch): each accepts a
+// cleanup, alive probe, capture, dynamic-output fetch): each accepts a
 // context.Context, and cancelling it must terminate the child process (so
 // the marker file it would otherwise write never appears) and the error
 // must surface to the caller promptly instead of the call blocking for the
@@ -68,19 +68,19 @@ func TestCharacterization_RunCleanup_CancelledContextKillsHungChild(t *testing.T
 	}
 }
 
-func TestCharacterization_RunHealthcheck_CancelledContextKillsHungChild(t *testing.T) {
+func TestCharacterization_RunAliveProbe_CancelledContextKillsHungChild(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "marker")
 	session := SessionVars{Name: "x", WorkspaceDirPath: dir}
 	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	err := RunHealthcheck(goCtx, "sleep 5; touch '"+marker+"'", map[string]any{}, map[string]any{}, session)
+	err := RunAliveProbe(goCtx, "sleep 5; touch '"+marker+"'", map[string]any{}, map[string]any{}, session)
 	if err == nil {
-		t.Fatalf("RunHealthcheck: want an error surfaced from the cancelled context, got nil")
+		t.Fatalf("RunAliveProbe: want an error surfaced from the cancelled context, got nil")
 	}
 	if elapsed := time.Since(start); elapsed >= cancellationCharSleep {
-		t.Errorf("RunHealthcheck took %v, want it to return promptly once the context is cancelled", elapsed)
+		t.Errorf("RunAliveProbe took %v, want it to return promptly once the context is cancelled", elapsed)
 	}
 	if _, statErr := os.Stat(marker); statErr == nil {
 		t.Errorf("marker file exists: the child ran to completion despite the context being cancelled")

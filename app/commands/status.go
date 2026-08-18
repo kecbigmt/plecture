@@ -312,7 +312,7 @@ func formatRunLine(rt service.StatusRuntime) string {
 }
 
 // formatHealthLine renders the Health fact; a run=down session has nothing
-// evaluated (the healthcheck cycle only probes sessions with a produced run-scoped
+// evaluated (the health cycle only probes sessions with a produced run-scoped
 // task), so it shows "-" rather than a stale or misleading health value.
 func formatHealthLine(rt service.StatusRuntime) string {
 	if rt.Run != domain.RunUp {
@@ -322,8 +322,8 @@ func formatHealthLine(rt service.StatusRuntime) string {
 	if !rt.LastCheckedAt.IsZero() {
 		parts = append(parts, "last_checked_at "+rt.LastCheckedAt.Format("2006-01-02 15:04:05"))
 	}
-	if !rt.LastMovementAt.IsZero() {
-		parts = append(parts, "last_movement_at "+rt.LastMovementAt.Format("2006-01-02 15:04:05"))
+	if !rt.LastActivityAt.IsZero() {
+		parts = append(parts, "last_activity_at "+rt.LastActivityAt.Format("2006-01-02 15:04:05"))
 	}
 	return strings.Join(parts, "   ")
 }

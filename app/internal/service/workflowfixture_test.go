@@ -21,17 +21,17 @@ import (
 // stubs keep the other verbs inert instead of forcing every attach/capture
 // test to also spell out send_text/send_keys it never exercises.
 type taskFixture struct {
-	id             string
-	scope          string
-	setup          string
-	cleanup        string
-	healthcheck    string
-	movementSignal string
-	attach         string
-	capture        string
-	sendText       string
-	sendKeys       string
-	extra          string
+	id       string
+	scope    string
+	setup    string
+	cleanup  string
+	alive    string
+	activity string
+	attach   string
+	capture  string
+	sendText string
+	sendKeys string
+	extra    string
 }
 
 // stubTerminalVerb fills an unset [terminal] verb with a trivial
@@ -82,15 +82,18 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 		if d.cleanup != "" {
 			fmt.Fprintf(&b, "cleanup = %q\n", d.cleanup)
 		}
-		if d.healthcheck != "" {
-			fmt.Fprintf(&b, "healthcheck = %q\n", d.healthcheck)
-		}
-		if d.movementSignal != "" {
-			fmt.Fprintf(&b, "movement_signal = %q\n", d.movementSignal)
-		}
 		if d.extra != "" {
 			b.WriteString(d.extra)
 			b.WriteString("\n")
+		}
+		if d.alive != "" || d.activity != "" {
+			b.WriteString("\n[health]\n")
+			if d.alive != "" {
+				fmt.Fprintf(&b, "alive = %q\n", d.alive)
+			}
+			if d.activity != "" {
+				fmt.Fprintf(&b, "activity = %q\n", d.activity)
+			}
 		}
 		// [terminal] goes last: TOML scopes every bare key = value after a
 		// table header to that table, so anything else in this file must

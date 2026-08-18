@@ -44,7 +44,7 @@ type StatusRuntime struct {
 	Run                domain.RunState      `json:"run"`
 	Health             domain.HealthState   `json:"health,omitempty"`
 	LastCheckedAt      time.Time            `json:"last_checked_at,omitzero"`
-	LastMovementAt     time.Time            `json:"last_movement_at,omitzero"`
+	LastActivityAt     time.Time            `json:"last_activity_at,omitzero"`
 	Tasks              []StatusRuntimeTask  `json:"tasks,omitempty"`
 	WorkspaceDirPath   string               `json:"workspace_dir_path,omitempty"`
 	WorkspaceDirExists bool                 `json:"workspace_dir_exists"`
@@ -185,7 +185,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			Run:                runState,
 			Health:             healthState,
 			LastCheckedAt:      healthReport.LastCheckedAt,
-			LastMovementAt:     healthReport.LastMovementAt,
+			LastActivityAt:     healthReport.LastActivityAt,
 			Tasks:              runtimeTaskViews(session),
 			WorkspaceDirPath:   session.WorkspaceDirPath,
 			WorkspaceDirExists: wtExists,

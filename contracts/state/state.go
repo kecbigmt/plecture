@@ -102,7 +102,8 @@ const WorkflowPseudoNodeID = "@workflow"
 const OutputKeyWorkspaceDir = "workspace_dir"
 
 // TaskState records the persisted outcome of a task's setup/cleanup.
-// Runtime liveness is not stored here — it is determined on demand via healthcheck.
+// Runtime liveness is not stored here — it is determined on demand by the
+// task's declared alive probe.
 //
 // Inputs/Outputs are paired and consistently plural — `Inputs` is the map of
 // resolved input bindings persisted at setup time so cleanup can run without
@@ -171,8 +172,8 @@ type Session struct {
 	Workflow         string                `json:"workflow,omitempty"`
 	Inputs           map[string]any        `json:"inputs,omitempty"`
 	Tasks            map[string]*TaskState `json:"tasks,omitempty"`
-	// Health is the last healthcheck observation and movement fingerprint
-	// core recorded for this session. It is persisted so stall judgment and
+	// Health is the last probe observation and activity fingerprint core
+	// recorded for this session. It is persisted so stall judgment and
 	// parent re-notification use one durable history instead of a caller's
 	// transient poll cadence.
 	Health *HealthState `json:"health,omitempty"`
@@ -200,13 +201,13 @@ type Session struct {
 	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
-// HealthState is core's own record of the last opaque movement fingerprint,
+// HealthState is core's own record of the last opaque activity fingerprint,
 // the time core last observed that fingerprint change, and the last rendered
-// health judgment. LastMovementAt is core's own clock, not any timestamp a
-// source script may report.
+// health judgment. LastActivityAt is core's own clock, not any timestamp an
+// activity probe may report.
 type HealthState struct {
 	LastCheckedAt   time.Time `json:"last_checked_at,omitzero"`
-	LastMovementAt  time.Time `json:"last_movement_at,omitzero"`
+	LastActivityAt  time.Time `json:"last_activity_at,omitzero"`
 	LastFingerprint string    `json:"last_fingerprint,omitempty"`
 	LastState       string    `json:"last_state,omitempty"`
 	LastReason      string    `json:"last_reason,omitempty"`

@@ -13,7 +13,11 @@ Surface.
   agent CLI runs in. `[terminal].attach`/`.capture` let `plect attach`/
   `plect capture` reach the pane; `[terminal].send_text`/`.send_keys` are
   consumed by agent-runtime plugins (`claude`, `codex`) via
-  `{{terminal "..."}}`. `healthcheck` is a plain `tmux has-session`.
+  `{{terminal "..."}}`. `[health].alive` is a plain `tmux has-session`, and
+  `[health].activity` fingerprints the pane's visible contents so any
+  workload running in it, agent or not, contributes activity evidence; it
+  reports `status: active`, the residual reading, since a pane's contents
+  cannot establish that quiet is normal.
 
 No executables: every `[terminal]` verb is inline shell in `tmux.toml`, so
 this plugin ships config only.

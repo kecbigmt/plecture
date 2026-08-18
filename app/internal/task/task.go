@@ -35,12 +35,11 @@ import (
 // is the `uses` target — preserved for traceability and to render `.TaskID`
 // in templates when a node id has been customized.
 type Resolved struct {
-	NodeID      string
-	TaskID      string
-	Scope       string // canonical scope ("session" | "run")
-	Setup       string
-	Cleanup     string
-	Healthcheck string
+	NodeID  string
+	TaskID  string
+	Scope   string // canonical scope ("session" | "run")
+	Setup   string
+	Cleanup string
 	// Terminal is the task's declared `[terminal]` table, or nil for a task
 	// that owns no interactive endpoint. See config.TerminalConfig.
 	Terminal      *config.TerminalConfig
@@ -96,13 +95,13 @@ func RenderAttach(cmd string, selfOutputs map[string]any, session SessionVars) (
 	return render(cmd, RenderContext{Self: selfOutputs, Session: session})
 }
 
-// RunHealthcheck renders cmd against the task's own outputs, its resolved
-// node inputs (persisted at TaskState.Inputs — needed when a healthcheck
+// RunAliveProbe renders cmd against the task's own outputs, its resolved
+// node inputs (persisted at TaskState.Inputs — needed when a probe
 // re-derives a mutable output from an input like tmux_session, not just
 // .Self), and session vars (mirroring RenderAttach). Runs via bash -c. A
 // non-zero exit or a render failure is returned as an error carrying stderr;
-// nil means the probe reported healthy.
-func RunHealthcheck(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars) error {
+// nil means the execution surface is present.
+func RunAliveProbe(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars) error {
 	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Inputs: nodeInputs, Session: session})
 	if err != nil {
 		return err
@@ -289,7 +288,6 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		Setup:          def.Setup,
 		Cleanup:        def.Cleanup,
 		SourcePath:     def.SourcePath,
-		Healthcheck:    def.Healthcheck,
 		Terminal:       terminal,
 		InputsSchema:   inputsSchema,
 		OutputsSchema:  outputsSchema,
@@ -581,7 +579,7 @@ type RenderContext struct {
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the `{{bin "<name>"}}` bare-name
 	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a
-	// caller with no file origin (a test-built template, an attach/healthcheck
+	// caller with no file origin (a test-built template, an attach/probe
 	// template not tied to one definition) may safely leave it empty; only
 	// bare-name `{{bin}}` references stop resolving without it.
 	SourcePath string

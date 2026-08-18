@@ -92,10 +92,10 @@ down` / `destroy` cleanup.
 
 ### GET /subscribers
 
-Returns the current subscription list. Used by the task's healthcheck to
-determine whether its own `thread_ts` is still registered with the broker. If
-a broker restart dropped it, the healthcheck goes non-zero and the next `plect
-up` re-runs setup.
+Returns the current subscription list. Used by the task's `[health].alive`
+probe to determine whether its own `thread_ts` is still registered with the
+broker. If a broker restart dropped it, the probe goes non-zero and the next
+`plect up` re-runs setup.
 
 ```json
 {"subscribers": [{"thread_ts": "...", "channel_id": "...", "socket_path": "...", "since": "..."}]}

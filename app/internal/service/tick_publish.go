@@ -23,10 +23,11 @@ const escalationKindDoneWhenNonConvergence = "done_when.non_convergence"
 // non-nil error means the delivery itself failed. A terminal push's target
 // wake can fail independently of the push (the event is already recorded by
 // then), so that failure is reported as a warning rather than an error.
-func publishTickAction(cfg *config.Config, store *state.Store, sessionName, instance string, action CheckAction, alreadySatisfied bool) ([]string, error) {
+func publishTickAction(cfg *config.Config, store *state.Store, sessionName string, c computedAction, trigger TickTrigger) ([]string, error) {
+	instance, action := c.instance, c.action
 	switch action.Action {
 	case "satisfied":
-		if alreadySatisfied {
+		if c.lastAction == "satisfied" {
 			return nil, nil
 		}
 		_, wakeErr, err := PublishTerminalToParent(cfg, store, sessionName, TerminalParams{
@@ -40,6 +41,9 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 		}
 		return wakeWarnings(wakeErr), nil
 	case "review_required":
+		if repeatsUnchangedState(c, trigger) {
+			return nil, nil
+		}
 		if _, err := EventPublish(cfg, store, sessionName, EventPublishParams{
 			Type:      event.TypeTickReviewRequired,
 			Direction: event.Internal,
@@ -51,6 +55,9 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 			return nil, err
 		}
 	case "kick":
+		if repeatsUnchangedState(c, trigger) {
+			return nil, nil
+		}
 		if _, err := EventPublish(cfg, store, sessionName, EventPublishParams{
 			Type:      event.TypeUserEmit,
 			Direction: event.Outbound,
@@ -98,6 +105,21 @@ func publishTickAction(cfg *config.Config, store *state.Store, sessionName, inst
 		return wakeWarnings(wakeErr), nil
 	}
 	return nil, nil
+}
+
+// repeatsUnchangedState reports whether an event-triggered tick would
+// re-announce a state it already announced. Only the event path is debounced:
+// it is the one with no cadence of its own — an event arriving every few
+// seconds (a failed delivery of the announcement itself feeding events back
+// into the log, say) re-evaluates the same unmet state that fast, so
+// announcing on each pass turns the bus and the session into a feedback loop.
+// The heartbeat sweep and a manual `plect tick` both re-announce, since a
+// bounded cadence and an explicit human request are exactly when repeating an
+// unchanged signal is the point.
+func repeatsUnchangedState(c computedAction, trigger TickTrigger) bool {
+	return trigger == TickTriggerEvent &&
+		c.lastAction == c.action.Action &&
+		c.lastFingerprint == c.action.Fingerprint
 }
 
 func tickEscalationDedupKey(instance string, action CheckAction) string {
