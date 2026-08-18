@@ -76,22 +76,22 @@ record): the workflow-level `environment` / `environment_inputs` fields and the
 `environment` kind retire together with `execution` rather than staying as the
 redesign's anchor.** Three reasons.
 
-First, the evidence standard that condemns `execution` condemns them identically.
-Zero declarers is the finding, and it is the finding for all of them; keeping
-one half of a surface that nobody declares because the other half was retired
-does not make the kept half load-bearing.
+First, the evidence standard that condemns `execution` condemns them
+identically. Zero declarers is the finding, and it is the finding for all of
+them; keeping one half of a surface that nobody declares because the other half
+was retired does not make the kept half load-bearing.
 
 Second, keeping `environment` after `execution` is gone is not preservation, it
 is a silent redesign. `execution` was the per-node selector; the workflow's
 `environment` was the default every node inherited. Removing only the selector
-would leave an all-or-nothing, whole-workflow plane — a different design from the
-one that was frozen, arrived at by deletion rather than by decision, and with no
-consumer asking for it.
+would leave an all-or-nothing, whole-workflow plane — a different design from
+the one that was frozen, arrived at by deletion rather than by decision, and
+with no consumer asking for it.
 
 Third, the frozen plane's verdict was that revival happens on the redesign's own
 terms and must not build on the current plumbing. An anchor a future design is
-forbidden to build on is not an anchor. Git history preserves the reverted design
-better than a live config surface does, and a live surface keeps costing:
+forbidden to build on is not an anchor. Git history preserves the reverted
+design better than a live config surface does, and a live surface keeps costing:
 documentation, load paths, layer-conflict rules, and every subsequent field
 audit.
 
@@ -160,7 +160,7 @@ remove — and trains authors to ignore load output.
 
 ### Silently ignore retired keys
 
-Rejected because it reproduces the failure this decision is correcting. `primary`
-was declared in good faith for an entire arc precisely because a dropped key
-looks like an accepted one. A named load error is what makes a retirement
-observable to the author who declared the key.
+Rejected because it reproduces the failure this decision is correcting.
+`primary` was declared in good faith for an entire arc precisely because a
+dropped key looks like an accepted one. A named load error is what makes a
+retirement observable to the author who declared the key.

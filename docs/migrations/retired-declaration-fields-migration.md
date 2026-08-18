@@ -41,10 +41,18 @@ global `~/.config/plect/`, or a repo overlay's `.plect/`) for the globs above.
 
 ## Find every declaration
 
+This grep is the authoritative check, both here and in Verify below. Point it
+at every layer you own — the global config home, each repo overlay, and the
+source tree of any plugin you maintain:
+
 ```bash
 grep -rnE '^[[:space:]]*(primary|idle_after|execution|environment|environment_inputs)[[:space:]]*=|^\[environment_inputs\]' \
-  ~/.config/plect .plect
+  ~/.config/plect .plect /path/to/your-plugin/config
 ```
+
+Drop the roots that do not apply to you. A plugin you merely consume needs no
+edit from you — its author migrates it, and a plugin still declaring a retired
+key fails to load with the key named.
 
 ## Delete `primary` and `idle_after` from task definitions
 
@@ -140,10 +148,19 @@ read as `.Nodes.<id>.outputs.<key>`, or a value the hook computes for itself.
 
 ## Verify
 
-Loading is the check: every retired key is a load error naming that key.
+Re-run the grep from [Find every declaration](#find-every-declaration). No hits
+across your layers is the completion condition.
+
+The grep is authoritative rather than a stand-in for a command, because no
+single command loads all four declaration kinds. Each retired key is rejected
+by the loader that owns its kind — `workflows/`, `tasks/`, `channels/`,
+`resources/` — so a command only surfaces a stale key once it happens to load
+that kind. `plect workflow list` reads workflows and nothing else; a leftover
+`primary` in a task definition would pass it and fail later at `plect up`.
+
+Exercising a session afterwards is still worth doing as a smoke test — it
+confirms the migrated config actually runs, which the grep cannot:
 
 ```bash
-plect workflow list
+plect workflow show <workflow-id>   # workflows + their task definitions + channels
 ```
-
-A clean listing means nothing in your layers still declares a retired key.

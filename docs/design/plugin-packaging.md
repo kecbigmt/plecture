@@ -399,12 +399,12 @@ config, not inside cloned workspace-dir content. The global declaration file liv
 ```
 
 `~/.config/plect` here is the default config home. `--config-home` overrides
-it for the whole config tree (`config.toml`, `catalogs.toml`, `plect.lock`,
-and the global `templates/`, `tasks/`, `workflows/`, `workspaces/`,
-`resources/`, and `channels/` overlays); absent that flag,
-`PLECT_CONFIG_HOME` wins, then `$XDG_CONFIG_HOME/plect`, then the
-`~/.config/plect` default. The plugin cache and runtime state stay on the
-XDG data/cache dirs regardless of which of these resolves the config home.
+it for the whole config tree (`config.toml`, `catalogs.toml`, `plect.lock`, and
+the global `templates/`, `tasks/`, `workflows/`, `workspaces/`, `resources/`,
+and `channels/` overlays); absent that flag, `PLECT_CONFIG_HOME` wins, then
+`$XDG_CONFIG_HOME/plect`, then the `~/.config/plect` default. The plugin cache
+and runtime state stay on the XDG data/cache dirs regardless of which of these
+resolves the config home.
 
 Example:
 

@@ -20,12 +20,12 @@ is a config bug, and it surfaces at the site that made it.
 setup = 'launch --workspace-dir {{.WorkspaceDirPath | shellQuote}}'
 ```
 
-Cleanup hooks — a task's, a workspace provider's, an environment's — render
-with `missingkey=zero` instead, because a partial setup must still be torn
-down. So do a workflow's `[display]` templates, which read persisted outputs
-that may not exist yet. Markdown instruction templates are the third
-departure: an absent key renders as the literal `<no value>` rather than
-failing, which is precisely why optional access matters there.
+Cleanup hooks — a task's and a workspace provider's — render with
+`missingkey=zero` instead, because a partial setup must still be torn down. So
+do a workflow's `[display]` templates, which read persisted outputs that may
+not exist yet. Markdown instruction templates are the third departure: an
+absent key renders as the literal `<no value>` rather than failing, which is
+precisely why optional access matters there.
 
 ## Optional access states its own default
 
@@ -60,9 +60,9 @@ naming the template site.
 
 ## Where `get` is available
 
-`get` is registered for task hooks and node inputs, workspace provider and
-environment hooks, resource and subscribe hooks, a workflow's `[display]`
-templates, and Markdown instruction templates.
+`get` is registered for task hooks and node inputs, workspace provider hooks,
+resource and subscribe hooks, a workflow's `[display]` templates, and Markdown
+instruction templates.
 
 Three surfaces render without it, and a config author reaching for optional
 access there has to restructure instead: channel argument templates, chain

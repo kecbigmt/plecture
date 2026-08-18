@@ -186,9 +186,9 @@ func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool 
 	return false
 }
 
-// loadSessionWorkflow reloads the workflow a session is frozen to. Used by
-// lifecycle paths (up/down/destroy/task setup/cleanup) that only have the
-// session in hand, not an already-loaded WorkflowFile.
+// loadSessionWorkflow reloads the workflow a session is frozen to, for a
+// caller that has only the session in hand, not an already-loaded
+// WorkflowFile.
 func loadSessionWorkflow(cfg *config.Config, workspaceDirPath string, session *domain.Session) (config.WorkflowFile, error) {
 	if session == nil || session.Workflow == "" {
 		return config.WorkflowFile{}, nil
