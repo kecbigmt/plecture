@@ -3,13 +3,16 @@
 // the tick-side sibling of internal/dispatch (channel delivery): both are
 // per-session followers of the same durable event log, started and stopped
 // by an identical "one goroutine per up session" supervisor. They stay two
-// separate packages rather than one merged follower because they enforce two
-// different, independently evolving policies — channel delivery's
-// `TypeChannelError` exclusion vs. tick's self-excitation whitelist — and
-// because internal/service already imports internal/dispatch
-// (dispatch.SeedCursor, via createsetup.go), so a reactor that calls
-// service.TickSession cannot itself live inside internal/dispatch without an
-// import cycle.
+// separate packages rather than one merged follower because they answer two
+// different, independently evolving questions of the same log — dispatch what
+// may be delivered, tick what may be reacted to. Both refuse
+// `TypeChannelError`, but as mirror images of one structural rule (a failed
+// delivery must not feed whatever produced it), not as a shared policy;
+// tick's self-excitation whitelist has no counterpart on the delivery side at
+// all. They also stay separate because internal/service already imports
+// internal/dispatch (dispatch.SeedCursor, via createsetup.go), so a reactor
+// that calls service.TickSession cannot itself live inside internal/dispatch
+// without an import cycle.
 package reactor
 
 import (
@@ -126,8 +129,8 @@ func (sup *Supervisor) checkDeadman(ctx context.Context) {
 		if !hasRunScopeUp(s.Tasks) {
 			continue
 		}
-		tc := resolveTickConfig(cfg, s)
-		if tc.Heartbeat.Duration <= 0 {
+		tc, err := resolveTickConfig(cfg, s)
+		if err != nil || tc.Heartbeat.Duration <= 0 {
 			continue
 		}
 		if _, err := fn(cfg, sup.state, name, tc, now); err != nil {
@@ -137,24 +140,26 @@ func (sup *Supervisor) checkDeadman(ctx context.Context) {
 }
 
 // resolveTickConfig resolves just the declared `[tick]` table for s. It
-// duplicates buildReactor's tc-resolution rather than sharing it:
-// buildReactor also resolves `[healthcheck]` from the same LoadWorkflows call
-// and runs once per session-startup transition, while this runs on its own
-// sweep cadence — keeping them separate avoids coupling two call sites with
-// different frequencies and different result shapes to one helper.
-func resolveTickConfig(cfg *config.Config, s *domain.Session) config.TickConfig {
+// duplicates buildReactor's tc-resolution rather than sharing it: buildReactor
+// resolves `[healthcheck]` from the same LoadWorkflows call, and merging the
+// two would make every caller pay for a result it does not use. A load failure
+// is returned rather than folded into an empty result: its callers
+// disagree about what an unresolvable config means — the deadman sweep has
+// nothing to check, while a running reactor must keep the declaration it
+// already had.
+func resolveTickConfig(cfg *config.Config, s *domain.Session) (config.TickConfig, error) {
 	if s.Workflow == "" {
-		return config.TickConfig{}
+		return config.TickConfig{}, nil
 	}
 	workflows, err := cfg.LoadWorkflows(s.WorkspaceDirPath)
 	if err != nil {
-		return config.TickConfig{}
+		return config.TickConfig{}, err
 	}
 	wf, ok := workflows[s.Workflow]
 	if !ok || wf.Tick == nil {
-		return config.TickConfig{}
+		return config.TickConfig{}, nil
 	}
-	return *wf.Tick
+	return *wf.Tick, nil
 }
 
 func (sup *Supervisor) reconcile(ctx context.Context, active map[string]context.CancelFunc, wg *sync.WaitGroup) {
@@ -176,12 +181,13 @@ func (sup *Supervisor) reconcile(ctx context.Context, active map[string]context.
 	}
 }
 
-// buildReactor resolves the session's `[tick]` declaration once at start
-// (mirroring dispatch.buildDispatcher's static channel resolution). A
-// workflow load failure degrades to an empty TickConfig rather than
-// abstaining entirely: the judge builtin trigger (AC2) is declaration-
-// independent, so a session must still be watched for it even when its
-// workflow config cannot be resolved.
+// buildReactor seeds the session's `[tick]`/`[healthcheck]` declarations for
+// a reactor that is about to start; the reactor re-reads `[tick]` for itself
+// from there on (sessionReactor.refreshTickConfig), so a load failure here is
+// recoverable rather than terminal. It degrades to an empty TickConfig rather
+// than abstaining entirely: the judge builtin trigger is
+// declaration-independent, so a session must still be watched for it even
+// when its workflow config cannot be resolved.
 func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReactor {
 	cfg := sup.cfg()
 	var tc config.TickConfig
@@ -200,6 +206,7 @@ func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReac
 	return &sessionReactor{
 		session:     name,
 		cfg:         cfg,
+		cfgFn:       sup.cfg,
 		state:       sup.state,
 		log:         sup.log,
 		hub:         sup.hub,
