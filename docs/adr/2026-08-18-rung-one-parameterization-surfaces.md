@@ -44,11 +44,14 @@ task definitions carry, and workflows set it through a
 `[workspace_provider_inputs]` table. Values reach `setup` and `cleanup` as
 `.Inputs`. They are literal data, not templates: a workspace provider hook
 runs before any workspace exists, so there is no node output for a parameter
-to interpolate. A workflow that sets a parameter against a provider declaring
-no schema is a load error rather than a silently discarded value, so a
-misspelled key never reads as configured. The `subscribe` hook does not
-receive them — it resolves a provider from the resource alone, with no
-workflow in scope to have set one.
+to interpolate. Workspace providers and workflows load independently of one
+another, so the two are reconciled where a session first needs the values —
+create, up, and destroy — rather than at load. A workflow that names a
+parameter its provider never declared, or sets one against a provider
+declaring no schema at all, fails there rather than having the value silently
+discarded, so a misspelled key never reads as configured. The `subscribe`
+hook does not receive them — it resolves a provider from the resource alone,
+with no workflow in scope to have set one.
 
 Schema defaults are deliberately not applied on the workspace provider side.
 A hook reads an unset parameter through the `get` helper's default argument,

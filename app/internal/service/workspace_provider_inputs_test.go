@@ -1,10 +1,13 @@
 package service
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 func githubLikeProvider() config.WorkspaceProviderConfig {
@@ -72,5 +75,124 @@ func TestResolveWorkspaceProviderInputs_SchemaLessProviderWithNoInputs(t *testin
 	}
 	if got != nil {
 		t.Errorf("inputs = %v, want nil", got)
+	}
+}
+
+// TestWorkspaceProviderInputs_FromTOMLReachTheHook is the end-to-end guard for
+// the key a workflow author actually types: it starts from the two config
+// files on disk and ends at the rendered hook, so a decoding mistake between
+// them — a mis-tagged `workspace_provider_inputs`, a parameter that never
+// reaches `.Inputs` — fails here rather than silently doing nothing.
+func TestWorkspaceProviderInputs_FromTOMLReachTheHook(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
+	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeFile(t, filepath.Join(globalDir, "workspaces", "demo.toml"), `
+setup = 'printf "{\"workspace_dir\":\"%s\"}" {{get .Inputs "layout_root" "" | shellQuote}}'
+
+[inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[inputs_schema.properties]
+layout_root = { type = "string" }
+`)
+	writeFile(t, filepath.Join(globalDir, "workflows", "demo.toml"), `
+workspace_provider = "demo"
+
+[workspace_provider_inputs]
+layout_root = "~/worktrees"
+
+[[nodes]]
+uses = "noop"
+`)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflows, err := cfg.LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	wf, ok := workflows["demo"]
+	if !ok {
+		t.Fatal("workflow demo not loaded")
+	}
+	providers, err := cfg.LoadWorkspaceProviders()
+	if err != nil {
+		t.Fatalf("LoadWorkspaceProviders: %v", err)
+	}
+	prov, ok := providers["demo"]
+	if !ok {
+		t.Fatal("workspace provider demo not loaded")
+	}
+
+	inputs, err := resolveWorkspaceProviderInputs(prov, wf)
+	if err != nil {
+		t.Fatalf("resolveWorkspaceProviderInputs: %v", err)
+	}
+	if inputs["layout_root"] != "~/worktrees" {
+		t.Fatalf("inputs = %v, want the value the workflow file declared", inputs)
+	}
+
+	// The hook is actually run, not just rendered: it echoes the parameter
+	// back as its `workspace_dir` output, so the assertion below fails unless
+	// the value survived every step from the workflow file to the script.
+	outputs, err := task.RunWorkflowSetup(prov, task.WorkflowHookVars{
+		ResourceID:  "demo:1",
+		SessionName: "demo-1",
+		Inputs:      inputs,
+		SourcePath:  prov.SourcePath,
+	}, map[string]*contract.TaskState{}, nil)
+	if err != nil {
+		t.Fatalf("RunWorkflowSetup: %v", err)
+	}
+	if outputs["workspace_dir"] != "~/worktrees" {
+		t.Errorf("setup hook did not receive the parameter: outputs = %v", outputs)
+	}
+}
+
+// A workflow that names a parameter the workspace provider never declared is
+// rejected when the session resolves them, not discarded — the same reason
+// additionalProperties is closed on the shipped provider's schema.
+func TestWorkspaceProviderInputs_FromTOMLRejectsAnUndeclaredParameter(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
+	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeFile(t, filepath.Join(globalDir, "workspaces", "demo.toml"), `
+setup = 'acquire'
+
+[inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[inputs_schema.properties]
+layout_root = { type = "string" }
+`)
+	writeFile(t, filepath.Join(globalDir, "workflows", "demo.toml"), `
+workspace_provider = "demo"
+
+[workspace_provider_inputs]
+laoyut_root = "~/worktrees"
+
+[[nodes]]
+uses = "noop"
+`)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflows, err := cfg.LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	providers, err := cfg.LoadWorkspaceProviders()
+	if err != nil {
+		t.Fatalf("LoadWorkspaceProviders: %v", err)
+	}
+	if _, err := resolveWorkspaceProviderInputs(providers["demo"], workflows["demo"]); err == nil {
+		t.Fatal("expected a misspelled parameter to be rejected")
 	}
 }

@@ -26,9 +26,16 @@ Parameters are declared as `inputs_schema` on the workspace provider and set
 as `workspace_provider_inputs` on the workflow. Values are literal data, not
 templates, and reach `setup` and `cleanup` as `Inputs`. `subscribe` receives
 none: it resolves a workspace provider from the resource alone, with no
-workflow in scope to have set one. A workflow setting a parameter against a
-workspace provider that declares no `inputs_schema` is a load error. This is
-the parameterization rung of the customization ladder in
+workflow in scope to have set one.
+
+Workspace providers and workflows load independently of one another, so
+values are validated against the declaring workspace provider's schema where
+a session first needs them: at create, up, and destroy. A workflow setting a
+parameter the workspace provider does not declare, or setting one against a
+workspace provider that declares no `inputs_schema`, fails there rather than
+having the value discarded.
+
+This is the parameterization rung of the customization ladder in
 [`task-nesting.md`](task-nesting.md), governed by
 [`../adr/2026-08-18-rung-one-parameterization-surfaces.md`](../adr/2026-08-18-rung-one-parameterization-surfaces.md).
 
