@@ -4,13 +4,33 @@
 # a file and returns — it must never block on the turn itself, since it runs
 # inside the dispatcher's exec channel and shares its delivery timeout.
 #
-# Usage: codex-exec-enqueue <queue_dir> <event_type> <text>
+# Usage: codex-exec-enqueue <queue_dir> <envelope> <type> <body> <summary> <url>
 
 set -euo pipefail
 
 queue_dir="${1:?queue_dir required}"
-event_type="${2:?event_type required}"
-text="${3:?text required}"
+envelope="${2:?envelope required}"
+event_type="${3:?event_type required}"
+body="${4-}"
+summary="${5-}"
+url="${6-}"
+
+# The envelope is the channel's `message_envelope` parameter: a user-supplied
+# format string expanded here, against exactly the fields the channel passes
+# in. Substitution is bash parameter replacement, never eval — the envelope
+# chooses the message's shape, and nothing else.
+body_or_summary="$body"
+[ -n "$body_or_summary" ] || body_or_summary="$summary"
+url_suffix=""
+[ -n "$url" ] && url_suffix=" ($url)"
+
+text="$envelope"
+text="${text//\{type\}/$event_type}"
+text="${text//\{body_or_summary\}/$body_or_summary}"
+text="${text//\{body\}/$body}"
+text="${text//\{summary\}/$summary}"
+text="${text//\{url_suffix\}/$url_suffix}"
+text="${text//\{url\}/$url}"
 
 mkdir -p "$queue_dir"
 

@@ -39,20 +39,21 @@ func TestShippedCatalog_ChannelsRender(t *testing.T) {
 	terminal := func(verb string) (string, error) {
 		return "tmux " + verb + " -t test-session", nil
 	}
-	rctx := newRenderContext(
-		map[string]any{
-			"path":       "/run/claude-channel/x.sock",
-			"session":    "test-session",
-			"thread_ts":  "12.34",
-			"channel_id": "C0",
-			"base_url":   "http://127.0.0.1:7890",
-			"queue_dir":  "/tmp/plect-codex-exec/test-session/queue",
-		},
-		event.Event{Type: "github.ci_status", Summary: "CI failed: test"},
-		terminal,
-	)
+	baseInputs := map[string]any{
+		"path":       "/run/claude-channel/x.sock",
+		"session":    "test-session",
+		"thread_ts":  "12.34",
+		"channel_id": "C0",
+		"base_url":   "http://127.0.0.1:7890",
+		"queue_dir":  "/tmp/plect-codex-exec/test-session/queue",
+	}
+	ev := event.Event{Type: "github.ci_status", Summary: "CI failed: test"}
 	for id, def := range channels {
-		fields := map[string]string{"path": def.Path, "body": def.Body, "command": def.Command}
+		// Defaults are applied the way delivery applies them, so a definition
+		// referencing its own optional parameter is exercised exactly as a
+		// workflow that wires none of them would hit it.
+		rctx := newRenderContext(def.ApplyInputDefaults(baseInputs), ev, terminal)
+		fields := map[string]string{"path": def.Path, "body": def.Body, "command": def.Command, "timeout": def.Timeout}
 		for i, a := range def.Args {
 			fields[fmt.Sprintf("args[%d]", i)] = a
 		}
@@ -63,6 +64,9 @@ func TestShippedCatalog_ChannelsRender(t *testing.T) {
 			if _, rerr := renderField(name, tmpl, rctx); rerr != nil {
 				t.Errorf("channel %q %s render: %v", id, name, rerr)
 			}
+		}
+		if _, terr := ResolveTimeout(def, def.ApplyInputDefaults(baseInputs)); terr != nil {
+			t.Errorf("channel %q timeout: %v", id, terr)
 		}
 	}
 }
