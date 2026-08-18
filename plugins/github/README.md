@@ -22,7 +22,8 @@ session runs through.
   and acquires/releases the git worktree it maps to.
 - `resources/github.toml` — the standalone observation contract
   (`plect resource status`): resource kind, CI check rollup, issue
-  completion, revision, linked PR, and mergeability.
+  completion, revision, linked PR, mergeability, and GitHub's own aggregate
+  review decision.
 - `tasks/{work,review,respond,investigate}.toml` — the task pack a
   GitHub-flavored workflow composes: each renders its own instruction
   template and reads resource state via `from_resource_status`.
@@ -54,9 +55,35 @@ reads:
 plect destroy <session> --input delete_branch=true
 ```
 
-Left off, the branch stays (the safer default for a review-only or
+Left off, the branch decision falls through to the workspace provider's
+`delete_branch_default` parameter below, which is itself off unless a
+workflow says otherwise (the safer default for a review-only or
 shared-branch session). Branch deletion uses a safe `git branch -d`, so it
 still refuses a branch carrying unmerged commits regardless of this flag.
+
+## Parameters
+
+Author-declared values a workflow sets to steer this plugin's configs
+without replacing them (the parameterization rung of
+`docs/design/task-nesting.md`'s customization ladder). The workspace
+provider's parameters go in a workflow's `[workspace_provider_inputs]`
+table:
+
+| Parameter | Meaning |
+|---|---|
+| `workspace_layout_root` | Root the `github.com/<owner>/<repo>/<branch>` worktree containers are laid out under. Empty = the configured `workspace_dirs_root`. |
+| `issue_branch_template` | Branch name an issue resource maps to. Placeholders: `{owner}`, `{repo}`, `{number}`. Default `issue/{number}`. A pull request's branch always comes from its head ref. |
+| `tagged_branch_suffix` | Suffix appended for a tagged session, separator included. Placeholder: `{tag}`. Default `+{tag}`. |
+| `delete_branch_default` | `"true"` to reclaim the branch on destroy when the caller expressed no `delete_branch` intent. Default off. |
+
+```toml
+workspace_provider = "github"
+
+[workspace_provider_inputs]
+workspace_layout_root = "~/worktrees"
+issue_branch_template = "work/{number}"
+delete_branch_default = "true"
+```
 
 ## Install
 

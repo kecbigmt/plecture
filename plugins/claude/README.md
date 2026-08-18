@@ -35,6 +35,24 @@ independently selectable plugin this one composes through `{{terminal
   knowledge of message sources (Slack or otherwise). See
   `src/channel-server/CLAUDE.md`.
 
+## Parameters
+
+Author-declared values a workflow sets to steer these configs without
+replacing them (the parameterization rung of
+`docs/design/task-nesting.md`'s customization ladder):
+
+| Config | Parameter | Meaning |
+|---|---|---|
+| `tasks/claude.toml` | `launch_env` | JSON object of environment variables exported on the launch line. Keys must be valid environment variable names; values are shell-quoted. |
+
+```toml
+[[nodes]]
+id   = "claude"
+uses = "claude"
+inputs.tmux_session = "{{.Nodes.tmux.outputs.session_name}}"
+inputs.launch_env   = '{"PLECT_TEAM_CONTEXT":"acme"}'
+```
+
 ## Install
 
 ```bash

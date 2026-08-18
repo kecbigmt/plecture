@@ -14,12 +14,23 @@ It has these responsibilities:
 - run setup to acquire the session workspace;
 - run cleanup to release the acquired workspace or related state;
 - optionally subscribe an existing session to another resource;
-- declare the setup output schema exposed to workflow nodes.
+- declare the setup output schema exposed to workflow nodes;
+- optionally declare the parameters a workflow may set to steer those hooks.
 
 A workspace is the session's acquired work surface. It is not the executor,
 the task runner, or the resource itself. The filesystem implementation exposes
 the acquired location through a required setup output key named
 `workspace_dir`. Other outputs are provider-specific contract fields.
+
+Parameters are declared as `inputs_schema` on the workspace provider and set
+as `workspace_provider_inputs` on the workflow. Values are literal data, not
+templates, and reach `setup` and `cleanup` as `Inputs`. `subscribe` receives
+none: it resolves a workspace provider from the resource alone, with no
+workflow in scope to have set one. A workflow setting a parameter against a
+workspace provider that declares no `inputs_schema` is a load error. This is
+the parameterization rung of the customization ladder in
+[`task-nesting.md`](task-nesting.md), governed by
+[`../adr/2026-08-18-rung-one-parameterization-surfaces.md`](../adr/2026-08-18-rung-one-parameterization-surfaces.md).
 
 Resource-state observation is outside the workspace provider contract and
 belongs to resource definitions.
@@ -46,6 +57,8 @@ The code-facing vocabulary is:
 | Workflow detail JSON | `workspace_provider`, `workspace_provider_info` |
 | CLI command noun | `workspace-provider` |
 | Setup output path key | `workspace_dir` |
+| Parameter schema field | `inputs_schema` |
+| Workflow parameter table | `workspace_provider_inputs` |
 | State path field | `workspace_dir_path` |
 | Root path field | `workspace_dirs_root` |
 | Setup output namespace in template prose | workflow outputs |
