@@ -1,0 +1,358 @@
+# Task nesting without task override
+
+## Context
+
+Plugin task customization has relied on same-id shadowing: a user-owned task
+file replaces a plugin task file wholesale. That is a legitimate fork, but it
+freezes the fork point and hides plugin improvements that still mount from the
+catalog.
+
+The observed shadows decompose into a smaller set of intents: different input
+values, extra environment for an agent process, chain attachment, one command
+path, and workspace layout. Those intents do not all justify copying a full
+task definition.
+
+Plecture needs a three-rung customization ladder:
+
+1. parameterization through author-declared task inputs;
+2. task nesting for additive lifecycle, locals, env, chain,
+   input binding, and output-binding work;
+3. whole-file fork as the explicit last resort.
+
+Workflow definitions are user-owned exemplars, so user default values belong in
+workflow node inputs, not in the task-nesting mechanism.
+
+## Decision
+
+Plecture adds a task-nesting contract specified by
+[`docs/design/task-nesting.md`](../design/task-nesting.md).
+
+The governing principle is that inner and outer are homogeneous, so composition
+is closed. A nested task is, from the outside, exactly a task: it presents the
+same surfaces a plain task presents, and no consumer of tasks — workflow, chain,
+downstream node, status, or orchestrator — needs to know whether nesting is
+inside it. The joint is the only nesting-specific vocabulary the contract adds:
+`inner`, `locals`, and the `[bind.*]` tables. Nothing else nesting-only exists,
+and nothing else nesting-only is added later.
+
+A task definition may declare `inner = "<task-ref>"`. That task becomes the
+outer task. The referenced task is the inner task. The workflow names the outer
+task id, and chains attach to that id.
+
+An inner task reference may name another nested task. The lifecycle order is an
+N-layer LIFO stack:
+
+```text
+outermost setup -> ... -> innermost setup -> innermost cleanup -> ... -> outermost cleanup
+```
+
+The outer task may bind environment variables into the inner task's process
+executions and may bind its own validated inputs into the inner task's
+validated input object. The outer task's input schema is coherent and
+self-owned; it is not an edit to the inner task's schema.
+
+Task nesting is strictly additive. The outer task may never modify inner
+behavior, and it needs no grant to extend: closure already says that whatever a
+plain task declares, an outer task declares for its own layer, composing
+additively. The paragraphs below state how each surface composes, not which
+surfaces are permitted. The inner task has no reference to the outer task and no
+virtual dispatch point back into it.
+
+An outer task may extend `done_when`. The composed effective `done_when` is the
+inner effective `done_when` conjoined with the outer's added leaves.
+Additive-only is a grammar guarantee rather than a rule to police: `done_when`
+has one leaf list and no disjunction, negation, reordering, or removal syntax,
+so no outer layer can weaken or drop an inner condition. Values are held to the
+same guarantee: an output an inner check reads is bound directly from that inner
+output, since a computed binding or an outer-produced key in its place would
+neutralize the condition without removing it. Adding necessary conditions leaves
+the inner author's completion reasoning intact, because every condition they
+declared remains necessary. The composed completion contract is
+part of the nested task's public face, and the outer task already owns that face
+by the same responsibility transfer that makes it declare the public outputs.
+Judge ids merge into one namespace across the nesting chain and a repeated id is
+a load error, so extension cannot mask an inner judge. Verdicts are recorded
+against a flat per-instance id namespace, so uniqueness across layers is what
+keeps each verdict's target unambiguous, and a repeated id is far more likely a
+copy-paste slip than an intent — the load error doubles as accident detection.
+
+`[done_when.budget]` is declarable per layer, with per-layer accounting. A
+budget is patience policy rather than a condition, so it stays outside the
+conjunction: each layer's budget watches only the conditions that layer
+declared, a heartbeat tick consumes it only while that layer's own items are
+unmet, and exhaustion escalates naming that layer and its unmet items. Two
+budgets in one chain account for disjoint condition sets, so no arbitration rule
+is needed and there is no collision to detect.
+
+`requires` is the validation companion for the outer's own additions. The outer
+`requires` names the public output keys the outer-added checks read, and the
+mutual validation runs against the outer `outputs_schema`. The inner `requires`
+stays inner-owned and validates the inner `done_when` against the inner outputs.
+
+`[health]` is layer-scoped, completing the layer symmetry of `setup` and
+`cleanup`: each layer declares probes for the resources it brings up, `alive`
+composes as the AND across layers with the failing layer named, `activity`
+composes as the OR, and a layer declaring none contributes to neither. That
+composition is decided by
+[`docs/adr/2026-08-18-health-declaration.md`](2026-08-18-health-declaration.md),
+which this decision follows.
+
+A layer may declare `[[outputs]]`, so its added checks read live values on the
+same standing the inner task's own checks have rather than values frozen at
+setup. Output keys are layer-scoped: an inner-produced key is invisible until
+`[bind.outputs]` binds it, and every reference is layer-explicit, so an outer
+key may reuse an inner key's name. Collisions are banned only within one layer's
+public contract, where one public name must have one definition source.
+
+These surfaces share one sentence: each layer declares, validates, budgets,
+probes, and produces only its own additions. Zero cross-layer interaction is
+what makes no-override hold by construction rather than by enumeration.
+
+Closure also gives future field authors one question, which is what keeps this
+design's complexity from ratcheting: may an outer task declare its own layer's
+instance of this field, and if not, is the asymmetry forced by the joint? A
+field that fails both halves does not belong in the task definition.
+
+`[terminal]` is conflict-banned rather than inner-owned. An outer task may
+declare it when no layer of its inner chain does, which composes an interactive
+surface around a headless inner task without touching inner behavior. Two
+declarations in one chain are a load error, a rule this decision introduces.
+Plan assembly already rejects a plan whose nodes declare more than one
+`[terminal]`, but it counts nodes, and a nesting chain sits inside one node;
+the per-chain rule is what keeps that count sound, so a nested task contributes
+one terminal declaration or none and terminal-task resolution stays as it is.
+Whichever layer declares `[terminal]`, the composed public contract binds
+`interactive_endpoint` from that layer, and operation commands stay in the
+declaring layer's table where no other layer can inject or replace them.
+
+The nested task's public outputs are only what the outer task explicitly
+binds. Inner public outputs are not automatically promoted. This follows the
+Rust newtype shape: the outer owner gets a reviewable boundary and chooses what
+to re-export, while upgrades to the inner definition cannot silently widen the
+outer contract. Go-style embedding is rejected here because automatic promotion
+is ergonomics-first and makes inner upgrades change the nested task's public
+surface without an edit to the outer file. Kotlin delegation and TypeScript
+intersection types carry the same lesson: extra members are acceptable when the
+outer contract states them, but hidden widening is not.
+
+The outer task may use locals as private intermediate values from its setup.
+Locals can feed bound inner inputs, outer cleanup, or explicit public output
+binding, but they are not outputs unless the outer task binds them into the
+public contract. Boundary wiring uses one namespace: `[bind.inputs]`,
+`[bind.env]`, and `[bind.outputs]`.
+
+The reference field is named `inner`. It favors the lifecycle model over a
+pattern name: the reader can see that the referenced task is inside the outer
+task's setup/cleanup envelope.
+
+Task references gain a catalog-qualified form, following the same qualification
+principle as plugin executable references. `inner = "official/claude/claude"`
+selects the `claude` task from the enabled `official/claude` plugin without
+consulting same-id shadows. Workflow node `uses` accepts the same qualified
+form so a user-owned workflow can opt out of a shadow deliberately.
+
+A plugin may nest its own tasks, so a plugin author can factor a shared inner
+layer out of related variants instead of duplicating it. Cross-plugin nesting
+needs no rule of its own: an inner reference to another plugin would have to
+name a catalog alias, and aliases are user-local, so the plugin-layer reference
+grammar has no vocabulary for one. The boundary is enforced by grammar rather
+than by validation.
+
+Deep merge, patching, and override semantics are rejected. Extension surfaces
+are author-declared and closed by default.
+
+## Consequences
+
+Core needs task-reference resolution that can address both the merged task
+namespace and a task inside a specific enabled plugin.
+
+Core needs nested-task validation for unknown inner references, nesting cycles,
+scope conflicts, rejected outer behavior fields, explicit output binding,
+missing required machinery outputs, bound-input schema conflicts, direct-output
+schema compatibility, computed-output string typing, repeated environment keys
+across layers, invalid injected environment names, repeated judge ids across
+layers, per-layer `requires` validation of each layer's own `done_when` checks,
+multiple `[terminal]` declarations in one nesting chain, and
+`interactive_endpoint` wiring from whichever layer declares `[terminal]`.
+
+Core needs per-layer heartbeat-budget accounting: a tick consumes a layer's
+budget only while that layer's own conditions are unmet, and the escalation it
+raises attributes the non-convergence to that layer and lists that layer's unmet
+items.
+
+Core needs lifecycle execution that stores outer setup locals privately while
+declaring only the output keys bound by the outer task. Output binding is a
+live projection rather than a setup-time copy. Direct output bindings project
+the inner value without string rendering; computed output bindings render
+templates to strings. Downstream workflow nodes, channels, status, chain output
+mappings, and nested-task done_when output checks validate against the outer
+public contract, while chain judge ids resolve from the composed effective
+done_when.
+
+Core needs task inspection output to show the nesting chain from the outermost
+task to the innermost plugin task, so an operator can audit provenance without
+reconstructing it from resolved config files.
+
+The production fitness target is a zero-copy path for all seven
+plugin-counterpart shadows listed in the design note. Task nesting covers
+additive lifecycle, locals, input binding, path injection, chain attachment, and
+explicit output binding.
+Agent-process environment for terminal-launched runtimes, worker state
+location, queue message formatting, workspace layout, branch naming, cleanup
+defaults, and review-state observation remain author-declared parameterization
+surfaces in their owning plugins. Runtime argument wiring for a retiring
+third-party service is outside this decision. Whole-file forks remain available
+when behavior cannot be expressed by an author-declared input or by additive
+nesting.
+
+No task field remains unconditionally inner-owned. The `healthcheck` scalar and
+`movement_signal` retire with the health decision, `primary`, `execution`, and
+`idle_after` retire with the task-definition field audit, and every surviving
+surface is layer-scoped. Closure is realized in full, and what remains are
+conflict rules rather than ownership rules: at most one `[terminal]` per nesting
+chain, judge ids and `bind.env` keys unique across the chain, and one definition
+source per public output name within its layer.
+
+## Alternatives considered
+
+### Keep same-id shadowing as the only customization tool
+
+Whole-file replacement is simple and remains necessary for true forks. It is
+too coarse as the only customization surface: copying a plugin task to change a
+few values disconnects the user from later plugin improvements.
+
+### Deep merge or `extends`
+
+Deep merge would let a user patch arbitrary parts of a plugin task, but it
+makes provenance and final behavior difficult to audit. It also turns every
+nested field into an extension surface, including fields the task author never
+declared stable.
+
+### Task override
+
+An outer task that can overwrite inner fields recreates the fragile-base-class
+problem. The inner task author can no longer reason locally about setup,
+cleanup, health, terminal, outputs, or done_when behavior because a downstream
+config layer may replace pieces in place.
+
+The no-override rule follows the same shape as coherence and final-by-default
+systems: the owner of a definition declares its extension surface, and other
+parties create a named variant instead of mutating that definition in place.
+
+### Inner-owned `done_when` and `requires`
+
+Listing `[done_when]` and `requires` among fields only an inner task may
+declare is the strictest reading of no-override, and this decision started
+there. It over-applies the rule by treating any appearance of a field in an
+outer file as an override. Conjunction
+overrides nothing: the grammar offers no way to weaken, drop, or reorder an
+inner condition, so every inner condition survives an outer addition intact.
+The ban also costs real coverage. A team that needs one extra completion gate on
+a plugin task has only a whole-file fork, which is precisely the hole in the
+zero-copy target this design exists to close.
+
+### Cross-layer uniqueness for output keys
+
+Banning an outer output key that repeats an inner-produced key imports the
+judge-id rule into a case that does not share its premise. Judge ids need
+uniqueness because verdicts are recorded against one flat per-instance
+namespace, so an ambiguous id would make a verdict's target unknowable. Output
+keys have no such join point: they are layer-scoped, every reference names its
+layer, and mutable writes address the outer public contract. The uniqueness that
+matters is within a single layer's public contract, which is where the rule is
+placed.
+
+### Layer-qualified judge ids
+
+Qualifying a judge id by its declaring layer would make duplicates legal. It
+would also push layer addressing into the judge CLI, status output, and chain
+references, for no benefit any observed shadow asks for.
+
+### Outermost-wins budget selection
+
+Selecting one budget for the composed task, with the outermost declaration
+winning, keeps a single heartbeat counter. It is override wearing a policy hat:
+the winning layer nullifies a value an inner author declared. It also needs an
+arbitration rule to specify which declaration wins and why, and per-layer
+accounting makes that rule unnecessary by giving each layer its own counter over
+its own conditions.
+
+### Forbidding an outer budget entirely
+
+Keeping `[done_when.budget]` inner-owned misclassifies patience policy as
+behavior. A team whose only difference from a plugin task is how long to wait
+before escalating would be pushed to a whole-file fork for a pure policy delta,
+which is the outcome the customization ladder exists to avoid.
+
+### Unconditionally inner-owned `[terminal]`
+
+Banning `[terminal]` in outer tasks outright shares the shape of the
+`done_when` case: it reads the presence of a field as an override even when the
+inner chain declares none, so nothing can be overridden. A composed interactive
+surface around a headless inner task is addition. Conflict is the real hazard,
+and a per-chain at-most-one rule addresses it directly while keeping plan
+assembly's per-node count sound.
+
+### Single-level nesting only
+
+Single-level nesting would make the implementation smaller, but it guards
+against a problem this design does not have. Implicit cross-layer merge rules
+make multi-level systems hard to trace; this design avoids them because every
+layer owns a complete input schema, explicit public output boundary, and
+private locals. Go embedding, Rust newtypes, and middleware stacks all nest
+freely when each layer has an auditable boundary.
+
+### Innermost environment wins
+
+Letting the innermost `bind.env` value win on duplicate keys would keep
+execution moving, but it hides which layer changed the process environment.
+Plecture prefers fail-loud configuration errors for ambiguous ownership, so a
+repeated environment key anywhere in the nesting chain is a load error.
+
+### Task composition name
+
+Task composition is rejected as the feature name. The plugin-boundary decision
+already uses configuration-level composition for workflow-layer combining, so
+reusing the term here would overload a reserved concept. Task nesting names the
+actual mechanism: containment through `inner`, LIFO lifecycle, and per-layer
+private locals.
+
+### Output wiring table named `[outputs]`
+
+Naming the explicit output wiring table `[outputs]` is rejected because task
+definitions already use `[[outputs]]` for dynamic output scripts, whose Go type
+is `DynamicOutput`. Reusing the same TOML key for a table and an array of tables
+would make the implementation depend on shape sniffing and make bracket typos
+select another feature. Adopting `[outputs]` for public output binding would
+force a `[[dynamic_outputs]]` migration of shipped task configuration.
+
+### Boundary namespace named `[forward.*]`
+
+`[forward.inputs]` reads well for inner inputs, but forwarding is a relay word.
+It strains for environment values created by the outer layer and for public
+outputs flowing from inner outputs or locals to downstream consumers.
+
+### Boundary namespace named `[wire.*]`
+
+`[wire.*]` is rejected because Plecture configuration as a whole is a
+declarative wiring language. Naming one construct with the language's general
+character word would discriminate too little.
+
+### Same-name `expose` plus `[publish]`
+
+A same-name re-export shorthand plus a separate output table would create two
+vocabularies for one public boundary. Once every public field is declared in
+the outer output schema, the shorthand saves only one binding line per key while
+splitting the reviewable contract across two places.
+
+### Alternative reference names
+
+| Name | Result | Reason |
+|---|---|---|
+| `inner` | chosen | It makes the LIFO shape visible: the referenced task sits inside the outer task's lifecycle envelope. |
+| `decorates` | rejected | It has the right additive connotation, but the lifecycle order is not self-evident without pattern literacy. |
+| `around` | rejected | It hints at surrounding lifecycle, but also suggests aspect-style interception that this contract does not provide. |
+| `delegates` | rejected | It names dispatch semantics only and hides cleanup unwind. |
+| `wraps` | rejected | It suggests bidirectional interception and possible transformation of inner behavior. |
+| `extends` | rejected | It carries inheritance and deep-merge connotations that contradict the no-override rule. |
+| `embeds` | rejected | It recalls Go embedding, whose promotion rules are about lookup rather than lifecycle. |

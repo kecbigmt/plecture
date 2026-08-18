@@ -265,6 +265,8 @@ the breaking change — not as follow-up work.
   framing inside a design document is a smell that the content is ADR
   material.
 - Read `docs/design/README.md` before authoring or revising a design document.
+- Follow `docs/design/README.md` for configuration-language boundaries:
+  configuration is declarative wiring, not computation.
 - **Migration procedures** stay in `docs/migrations/` (see Compatibility
   policy above) — they are not ADRs or design documents.
 - All of the above is English-only prose; use `docs/naming.md` for project
