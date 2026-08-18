@@ -16,32 +16,32 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// HealthReport is the outcome of one healthcheck observation.
+// HealthReport is the outcome of one health-cycle observation.
 type HealthReport struct {
 	SessionName string `json:"session_name"`
 	Healthy     bool   `json:"healthy"`
 	// Declared reports whether any produced run-scoped task instance declares
-	// a healthcheck at all — distinguishes "ran and passed" from "nothing to
+	// an alive probe at all — distinguishes "ran and passed" from "nothing to
 	// evaluate" (State() surfaces the latter as HealthUndeclared).
 	Declared bool `json:"declared"`
-	// MovementExpected reports whether unmet run-scoped work exists that
+	// ActivityExpected reports whether unmet run-scoped work exists that
 	// this session is expected to act on next, derived from declared
 	// done_when/task state, never from Message.
-	MovementExpected bool `json:"movement_expected,omitempty"`
-	// MovementDeclared reports whether at least one produced run-scoped
-	// task instance declared a movement signal that reported itself
-	// supported. False when no movement signal is declared at all, or when
-	// every declared one explicitly reports unsupported (or fails to run) —
-	// both read as "no basis to judge movement."
-	MovementDeclared bool `json:"movement_declared,omitempty"`
-	// MovementFresh reports whether any supported movement signal reported
+	ActivityExpected bool `json:"activity_expected,omitempty"`
+	// ActivityDeclared reports whether at least one produced run-scoped
+	// task instance ran an activity probe that reported itself supported.
+	// False when no activity probe is declared at all, or when every
+	// declared one explicitly reports unsupported (or fails to run) — both
+	// read as "no basis to judge activity."
+	ActivityDeclared bool `json:"activity_declared,omitempty"`
+	// ActivityFresh reports whether any supported activity probe reported
 	// evidence within the stall threshold. Meaningless unless
-	// MovementDeclared and MovementExpected are both true.
-	MovementFresh       bool      `json:"movement_fresh,omitempty"`
+	// ActivityDeclared and ActivityExpected are both true.
+	ActivityFresh       bool      `json:"activity_fresh,omitempty"`
 	Reason              string    `json:"reason,omitempty"`
 	LastCheckedAt       time.Time `json:"last_checked_at,omitzero"`
-	LastMovementAt      time.Time `json:"last_movement_at,omitzero"`
-	MovementFingerprint string    `json:"-"`
+	LastActivityAt      time.Time `json:"last_activity_at,omitzero"`
+	ActivityFingerprint string    `json:"-"`
 	Pushed              bool      `json:"pushed,omitempty"`
 	PushTarget          string    `json:"push_target,omitempty"`
 	// WakeWarning is set when the dead event was recorded on PushTarget but
@@ -57,46 +57,46 @@ type HealthcheckParams struct {
 // State projects the report to the four-value display fact `plect status`
 // reports.
 //
-//   - Undeclared beats everything else when there is no declared healthcheck
-//     to evaluate at all and movement has never once been observed for this
+//   - Undeclared beats everything else when there is no declared alive probe
+//     to evaluate at all and activity has never once been observed for this
 //     session.
-//   - Unhealthy beats movement: a failing surface check is reported as such
-//     regardless of movement evidence.
-//   - When no movement is currently expected, a passing surface check is
+//   - Unhealthy beats activity: a failing alive probe is reported as such
+//     regardless of activity evidence.
+//   - When no activity is currently expected, a passing alive probe is
 //     healthy outright.
-//   - When movement is expected but no movement signal is declared this tick
-//     and none has ever been observed, there is no basis to call it either
-//     healthy or stalled.
-//   - Otherwise, fresh movement evidence is healthy and its absence is
-//     stalled — once movement has been observed at least once, a signal
-//     source dying afterward is a stall, not a reversion to undeclared: the
-//     basis to judge (LastMovementAt) survives the source that produced it.
+//   - When activity is expected but no activity probe reports support this
+//     tick and none has ever been observed, there is no basis to call it
+//     either healthy or stalled.
+//   - Otherwise, fresh activity evidence is healthy and its absence is
+//     stalled — once activity has been observed at least once, a probe
+//     dying afterward is a stall, not a reversion to undeclared: the
+//     basis to judge (LastActivityAt) survives the probe that produced it.
 func (r HealthReport) State() domain.HealthState {
-	everObserved := !r.LastMovementAt.IsZero()
-	if !r.Declared && !r.MovementDeclared && !everObserved {
+	everObserved := !r.LastActivityAt.IsZero()
+	if !r.Declared && !r.ActivityDeclared && !everObserved {
 		return domain.HealthUndeclared
 	}
 	if !r.Healthy {
 		return domain.HealthUnhealthy
 	}
-	if !r.MovementExpected {
+	if !r.ActivityExpected {
 		return domain.HealthHealthy
 	}
-	if !r.MovementDeclared && !everObserved {
+	if !r.ActivityDeclared && !everObserved {
 		return domain.HealthUndeclared
 	}
-	if r.MovementFresh {
+	if r.ActivityFresh {
 		return domain.HealthHealthy
 	}
 	return domain.HealthStalled
 }
 
-// EvaluateHealth runs every produced run-scoped task's declared healthcheck
-// for name. A session with no produced run-scoped tasks (already `plect down`,
-// or a purely session-scoped resource) has nothing to probe and reports
-// healthy — L2 only detects a process/runtime/subscription that died while it
-// was supposed to be up, not a session that was deliberately brought down.
-// The first failing healthcheck wins; Reason names the failing task.
+// EvaluateHealth runs every produced run-scoped task's declared `[health]`
+// probes for name. A session with no produced run-scoped tasks (already
+// `plect down`, or a purely session-scoped resource) has nothing to probe and
+// reports healthy — L2 only detects a process/runtime/subscription that died
+// while it was supposed to be up, not a session that was deliberately brought
+// down. The first failing alive probe wins; Reason names the failing task.
 func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (HealthReport, error) {
 	s, err := store.GetE(name)
 	if err != nil {
@@ -111,15 +111,12 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	}
 	wf := sessionWorkflowConfig(cfg, s.Workflow, s.WorkspaceDirPath)
 	healthCfg := config.DefaultHealthcheckConfig()
-	var tick *config.TickConfig
 	if wf != nil {
 		healthCfg = config.NormalizeHealthcheckConfig(wf.Healthcheck)
-		tick = wf.Tick
 	}
 	now := time.Now()
 	report := evaluateHealthFor(name, s.Tasks, defs, sessionVars(cfg, s, nil), healthCfg.StallThreshold.Duration, s.Health, now)
-	applyMovementSource(cfg, s, tick, &report)
-	finalizeMovementObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
+	finalizeActivityObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
 	persistHealthState(store, name, report, now)
 	return report, nil
 }
@@ -136,64 +133,21 @@ func sessionWorkflowConfig(cfg *config.Config, workflowID, workspaceDirPath stri
 	return &wf
 }
 
-// applyMovementSource layers a declared session-scoped movement source on
-// top of the per-task movement-signal evidence evaluateHealthFor already
-// computed. Fetched via the same task.FetchOutput plumbing a task instance's
-// dynamic outputs use, scoped to the session rather than any instance. Core
-// only compares the fetched value as an opaque fingerprint against the last
-// one it persisted for this session. It never interprets what the source
-// script actually observed, and freshness is judged against core's own clock.
-func applyMovementSource(cfg *config.Config, s *domain.Session, tick *config.TickConfig, report *HealthReport) {
-	if tick == nil || tick.MovementSource == nil {
-		return
-	}
-	src := *tick.MovementSource
-	names := src.OutputNames()
-	if len(names) == 0 {
-		return
-	}
-	values, err := task.FetchOutput(context.Background(), cfg, src, task.RenderContext{Session: sessionVars(cfg, s, nil)})
-	if err != nil {
-		// A fetch failure leaves this source with no basis to contribute
-		// right now — the same as if nothing were declared, not a stale
-		// judgment either way.
-		return
-	}
-	fingerprint := values[names[0]]
-	if fingerprint == "" {
-		return
-	}
-	report.MovementDeclared = true
-	addMovementFingerprint(report, "workflow:"+fingerprint)
-}
-
-func addMovementFingerprint(report *HealthReport, fingerprint string) {
-	if strings.TrimSpace(fingerprint) == "" {
-		return
-	}
-	report.MovementDeclared = true
-	if report.MovementFingerprint == "" {
-		report.MovementFingerprint = fingerprint
-	} else {
-		report.MovementFingerprint += "\x00" + fingerprint
-	}
-}
-
 func persistHealthState(store *state.Store, name string, report HealthReport, checkedAt time.Time) {
 	err := store.Update(name, func(s *domain.Session) error {
 		prev := s.Health
 		if prev == nil {
 			prev = &contract.HealthState{}
 		}
-		fingerprint := report.MovementFingerprint
-		lastMovementAt := prev.LastMovementAt
-		if report.MovementDeclared && fingerprint != "" && fingerprint != prev.LastFingerprint {
-			lastMovementAt = checkedAt
+		fingerprint := report.ActivityFingerprint
+		lastActivityAt := prev.LastActivityAt
+		if report.ActivityDeclared && fingerprint != "" && fingerprint != prev.LastFingerprint {
+			lastActivityAt = checkedAt
 		}
 		stateText := string(report.State())
 		s.Health = &contract.HealthState{
 			LastCheckedAt:   checkedAt,
-			LastMovementAt:  lastMovementAt,
+			LastActivityAt:  lastActivityAt,
 			LastFingerprint: fingerprint,
 			LastState:       stateText,
 			LastReason:      reportReason(report),
@@ -220,9 +174,9 @@ func reportReason(report HealthReport) string {
 // hold that data avoid a redundant load.
 func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs map[string]config.TaskDefinition, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
 	declared := false
-	movementExpected := false
-	movementDeclared := false
-	movementFingerprintParts := []string{}
+	activityExpected := false
+	activityDeclared := false
+	activityFingerprintParts := []string{}
 
 	for _, key := range sortedTaskKeys(tasks) {
 		st := tasks[key]
@@ -231,15 +185,15 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		}
 		def := defs[taskIDForInstance(key, st)]
 
-		if def.Healthcheck != "" {
+		if alive := def.Health.AliveProbe(); alive != "" {
 			declared = true
-			if hcErr := task.RunHealthcheck(context.Background(), def.Healthcheck, st.Outputs, st.Inputs, vars); hcErr != nil {
-				return HealthReport{SessionName: name, Healthy: false, Declared: true, Reason: fmt.Sprintf("%s: %v", key, hcErr), LastCheckedAt: now}
+			if aliveErr := task.RunAliveProbe(context.Background(), alive, st.Outputs, st.Inputs, vars); aliveErr != nil {
+				return HealthReport{SessionName: name, Healthy: false, Declared: true, Reason: fmt.Sprintf("%s: %v", key, aliveErr), LastCheckedAt: now}
 			}
 		}
 
 		// instanceExpected is this instance's own contribution to
-		// movement_expected, derived only from done_when/task state and never
+		// activity_expected, derived only from done_when/task state and never
 		// from the free-text message.
 		instanceExpected := false
 		if def.DoneWhen != nil {
@@ -248,28 +202,28 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 			}
 		}
 
-		if def.MovementSignal != "" {
-			sig, sigErr := task.RunMovementSignal(context.Background(), def.MovementSignal, st.Outputs, st.Inputs, vars)
+		if activity := def.Health.ActivityProbe(); activity != "" {
+			sig, sigErr := task.RunActivityProbe(context.Background(), activity, st.Outputs, st.Inputs, vars)
 			if sigErr == nil && sig.Supported {
-				movementDeclared = true
-				// A supported signal's own MovementExpected can only narrow
+				activityDeclared = true
+				// A supported probe's own ActivityExpected can only narrow
 				// this instance's contribution (e.g. "the turn already
 				// ended"), never manufacture an expectation done_when does
 				// not already see.
-				if !sig.MovementExpected {
+				if !sig.ActivityExpected {
 					instanceExpected = false
 				}
 				if sig.Fingerprint != "" {
-					movementFingerprintParts = append(movementFingerprintParts, key+":"+sig.Fingerprint)
+					activityFingerprintParts = append(activityFingerprintParts, key+":"+sig.Fingerprint)
 				}
 			}
-			// A failed run or an explicit "supported: false" both mean this
-			// instance has no basis to contribute movement evidence right
-			// now — the same as if no movement signal were declared.
+			// A failed run or an explicit "supported": false both mean this
+			// instance has no basis to contribute activity evidence right
+			// now — the same as if no activity probe were declared.
 		}
 
 		if instanceExpected {
-			movementExpected = true
+			activityExpected = true
 		}
 	}
 
@@ -277,39 +231,42 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		SessionName:      name,
 		Healthy:          true,
 		Declared:         declared,
-		MovementExpected: movementExpected,
-		MovementDeclared: movementDeclared,
+		ActivityExpected: activityExpected,
+		ActivityDeclared: activityDeclared,
 		LastCheckedAt:    now,
 	}
-	if len(movementFingerprintParts) > 0 {
-		slices.Sort(movementFingerprintParts)
-		report.MovementFingerprint = strings.Join(movementFingerprintParts, "\x00")
+	// Every declaring instance's fingerprint contributes: activity composes
+	// by OR, so a change anywhere in the session is evidence the session is
+	// moving. Sorting keeps the composite stable against map iteration order.
+	if len(activityFingerprintParts) > 0 {
+		slices.Sort(activityFingerprintParts)
+		report.ActivityFingerprint = strings.Join(activityFingerprintParts, "\x00")
 	}
 	return report
 }
 
-func finalizeMovementObservation(report *HealthReport, prev *contract.HealthState, stallThreshold time.Duration, now time.Time) {
-	lastMovementAt := time.Time{}
+func finalizeActivityObservation(report *HealthReport, prev *contract.HealthState, stallThreshold time.Duration, now time.Time) {
+	lastActivityAt := time.Time{}
 	lastFingerprint := ""
 	if prev != nil {
-		lastMovementAt = prev.LastMovementAt
+		lastActivityAt = prev.LastActivityAt
 		lastFingerprint = prev.LastFingerprint
 	}
-	if report.MovementDeclared && report.MovementFingerprint != "" && report.MovementFingerprint != lastFingerprint {
-		lastMovementAt = now
+	if report.ActivityDeclared && report.ActivityFingerprint != "" && report.ActivityFingerprint != lastFingerprint {
+		lastActivityAt = now
 	}
-	report.LastMovementAt = lastMovementAt
-	// A source that never contributed evidence (this tick or ever) has no
+	report.LastActivityAt = lastActivityAt
+	// A probe that never contributed evidence (this tick or ever) has no
 	// basis to judge freshness at all, so it defaults true rather than
-	// false — but once LastMovementAt is on record, that basis survives the
-	// current tick's source dying, and freshness must be judged against it
+	// false — but once LastActivityAt is on record, that basis survives the
+	// current tick's probe dying, and freshness must be judged against it
 	// rather than defaulted.
-	if !report.MovementExpected || (!report.MovementDeclared && lastMovementAt.IsZero()) {
-		report.MovementFresh = true
+	if !report.ActivityExpected || (!report.ActivityDeclared && lastActivityAt.IsZero()) {
+		report.ActivityFresh = true
 		return
 	}
-	if !lastMovementAt.IsZero() && now.Sub(lastMovementAt) <= stallThreshold {
-		report.MovementFresh = true
+	if !lastActivityAt.IsZero() && now.Sub(lastActivityAt) <= stallThreshold {
+		report.ActivityFresh = true
 	}
 }
 
@@ -376,8 +333,8 @@ func pushHealthEscalation(cfg *config.Config, store *state.Store, origin string,
 	if !report.LastCheckedAt.IsZero() {
 		meta["last_checked_at"] = report.LastCheckedAt.UTC().Format(time.RFC3339)
 	}
-	if !report.LastMovementAt.IsZero() {
-		meta["last_movement_at"] = report.LastMovementAt.UTC().Format(time.RFC3339)
+	if !report.LastActivityAt.IsZero() {
+		meta["last_activity_at"] = report.LastActivityAt.UTC().Format(time.RFC3339)
 	}
 	id, wakeErr, err := publishHealthEscalationToLiveAncestor(cfg, store, origin, TerminalParams{
 		Type:     event.TypeTerminalEscalate,
@@ -457,8 +414,8 @@ func healthEscalationBody(origin string, report *HealthReport) string {
 	if !report.LastCheckedAt.IsZero() {
 		lines = append(lines, "", "last_checked_at: "+report.LastCheckedAt.UTC().Format(time.RFC3339))
 	}
-	if !report.LastMovementAt.IsZero() {
-		lines = append(lines, "last_movement_at: "+report.LastMovementAt.UTC().Format(time.RFC3339))
+	if !report.LastActivityAt.IsZero() {
+		lines = append(lines, "last_activity_at: "+report.LastActivityAt.UTC().Format(time.RFC3339))
 	}
 	return strings.Join(lines, "\n")
 }

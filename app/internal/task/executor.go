@@ -82,7 +82,7 @@ func (hostExecutor) Run(ctx context.Context, req ExecRequest) (stdout, stderr []
 var alwaysHostExecutor Executor = hostExecutor{}
 
 // defaultExecutor backs execHostScript, the path used by task
-// setup/cleanup/healthcheck/capture, dynamic output fetch, and dynamic
+// setup/cleanup/health probes/capture, dynamic output fetch, and dynamic
 // instance setup (`plect task setup --resource`) — every exec point that runs
 // inside a session's task DAG, static or dynamically instantiated. It is the
 // seam a later PR will make Environment-aware; today it is always

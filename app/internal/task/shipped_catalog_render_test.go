@@ -52,7 +52,7 @@ func loadShippedCatalogTasks(t *testing.T) (map[string]config.TaskDefinition, []
 // catalog against a broken template: a `{{bin ...}}` reference that doesn't
 // resolve, or a `{{...}}` action that fails to parse, would otherwise only
 // surface the first time a real session runs the task. A kitchen-sink
-// context supplies every key any shipped task's setup/cleanup/healthcheck
+// context supplies every key any shipped task's setup/cleanup/health probe
 // references, so this exercises actual rendering, not just TOML decoding.
 func TestShippedCatalog_TasksRender(t *testing.T) {
 	tasks, mounted := loadShippedCatalogTasks(t)
@@ -79,7 +79,7 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 		},
 	}
 
-	// Superset of every key a shipped task's setup/cleanup/healthcheck reads
+	// Superset of every key a shipped task's setup/cleanup/health probe reads
 	// off .Prev/.Self, plus every input a shipped task declares.
 	kitchen := map[string]any{
 		"session_id":     "11111111-1111-1111-1111-111111111111",
@@ -124,9 +124,14 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 				t.Errorf("task %q cleanup: render: %v", id, err)
 			}
 		}
-		if def.Healthcheck != "" {
-			if _, err := render(def.Healthcheck, ctx); err != nil {
-				t.Errorf("task %q healthcheck: render: %v", id, err)
+		if alive := def.Health.AliveProbe(); alive != "" {
+			if _, err := render(alive, ctx); err != nil {
+				t.Errorf("task %q health.alive: render: %v", id, err)
+			}
+		}
+		if activity := def.Health.ActivityProbe(); activity != "" {
+			if _, err := render(activity, ctx); err != nil {
+				t.Errorf("task %q health.activity: render: %v", id, err)
 			}
 		}
 	}

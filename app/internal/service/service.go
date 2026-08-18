@@ -311,7 +311,7 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	displayWorkflows := loadDisplayWorkflows(cfg)
 	displayTasks := loadDisplayTasks(cfg)
 
-	// Each session may need a healthcheck subprocess. Doing 50+
+	// Each session may need a health probe subprocess. Doing 50+
 	// serially is the dominant cost, so fan out over a bounded pool and fill a
 	// preallocated slice by index; the sort below restores order.
 	tracked := make([]*domain.Session, 0, len(sessions))
@@ -341,7 +341,7 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 	return entries, nil
 }
 
-// listConcurrency bounds the per-session healthcheck fan-out in List.
+// listConcurrency bounds the per-session health-probe fan-out in List.
 const listConcurrency = 16
 
 // buildListEntry gathers one session's runtime status. Safe to call
@@ -379,7 +379,7 @@ func sessionRunState(s *domain.Session) domain.RunState {
 	return domain.RunDown
 }
 
-// sessionHealthState reports the "health" fact: the declared-healthcheck
+// sessionHealthState reports the "health" fact: the declared-alive-probe
 // evaluation, independent of run state. An evaluation error surfaces as
 // unhealthy — the same treatment the old three-value collapse gave it.
 func sessionHealthState(cfg *config.Config, store *state.Store, name string) domain.HealthState {

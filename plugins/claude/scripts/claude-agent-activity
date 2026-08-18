@@ -1,12 +1,45 @@
 #!/usr/bin/env bash
-# Claude Code turn-boundary hook: self-report status via
-# `plect state set-message`. Fire-and-forget — a failure here must never fail
-# the agent's turn, so every exit path is 0.
+# Claude Code turn-boundary activity: the record half is a hook, the read
+# half is this task's `[health].activity` probe, so one executable owns both
+# ends of one fingerprint format.
 #
-# Usage: claude-agent-activity <working|waiting>
-# Reads the hook event JSON from stdin (only hook_event_name is used).
+# Usage:
+#   claude-agent-activity working|waiting   # hook; session from $PLECT_SESSION_NAME
+#   claude-agent-activity probe <session>   # activity probe; writes the envelope
+#   claude-agent-activity reset <session>   # drop the record (setup/cleanup)
+#
+# The hook path reads the hook event JSON from stdin (only hook_event_name is
+# used) and is fire-and-forget by design: a failure here must never fail the
+# agent's turn, so every hook exit path is 0. The probe path is not
+# fire-and-forget — a probe that cannot produce an envelope must exit
+# non-zero so core reads "no basis" rather than a fabricated fingerprint.
 
 set -u
+
+# A session name carries a slash (owner/repo-1), which cannot appear in a
+# path component.
+record_path() {
+  local dir="${XDG_STATE_HOME:-$HOME/.local/state}/plect/claude-activity"
+  printf '%s/%s.json' "$dir" "$(printf '%s' "$1" | tr '/' '_')"
+}
+
+case "${1:-}" in
+  probe)
+    session="${2:-}"
+    [ -n "$session" ] || { echo "probe: session name required" >&2; exit 1; }
+    file="$(record_path "$session")"
+    # No record yet means this run has not crossed a turn boundary — an
+    # explicit "nothing to say", not a stall.
+    [ -f "$file" ] || { printf '{"supported":false}\n'; exit 0; }
+    jq -c '{supported: true, fingerprint: .fingerprint, observed_at: .observed_at}' "$file"
+    exit $?
+    ;;
+  reset)
+    session="${2:-}"
+    [ -n "$session" ] && rm -f "$(record_path "$session")"
+    exit 0
+    ;;
+esac
 
 activity="${1:-}"
 
@@ -20,5 +53,19 @@ text="$activity"
 [ -n "$event" ] && text="$activity (claude $event)"
 
 plect state set-message "$PLECT_SESSION_NAME" "$text" >/dev/null 2>&1
+
+file="$(record_path "$PLECT_SESSION_NAME")"
+mkdir -p "$(dirname "$file")" 2>/dev/null
+# A counter, not a timestamp: two boundaries inside the same second must
+# still produce two distinct fingerprints, or core reads the second one as
+# "no change" and starts a stall clock against a session that just moved.
+seq="$(jq -r '.seq // 0' "$file" 2>/dev/null)" || seq=0
+case "$seq" in ''|*[!0-9]*) seq=0 ;; esac
+jq -nc \
+  --arg activity "$activity" \
+  --argjson seq "$((seq + 1))" \
+  --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{seq: $seq, fingerprint: "\($activity):\($seq)", observed_at: $at}' \
+  > "$file" 2>/dev/null
 
 exit 0

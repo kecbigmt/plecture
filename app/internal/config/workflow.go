@@ -85,7 +85,9 @@ type WorkflowFile struct {
 	Tick *TickConfig `toml:"tick"`
 	// Healthcheck declares the dedicated health sampling clock for sessions
 	// produced by this workflow. Like `[tick]`, `[healthcheck]` is a
-	// deeper-wins whole-table runtime tuning declaration.
+	// deeper-wins whole-table runtime tuning declaration. It names the
+	// sampling cycle, not what health means: what each probe observes is a
+	// task-level `[health]` declaration (see HealthConfig).
 	Healthcheck      *HealthcheckConfig `toml:"healthcheck"`
 	InputsSchema     map[string]any     `toml:"inputs_schema"`
 	InputsSchemaFile string             `toml:"inputs_schema_file"`
@@ -118,14 +120,6 @@ type TickConfig struct {
 	// see no fingerprint change and no inbound event. Zero means the
 	// reactor's default (4h) applies — declaring it is optional.
 	MaxHeartbeat Duration `toml:"max_heartbeat"`
-	// MovementSource declares a session-scoped dynamic output (the same
-	// script-execution plumbing task.FetchOutput gives task-instance
-	// outputs) whose fetched value core treats as an opaque movement
-	// fingerprint (docs/wiki/verification-gate.md). Core never interprets
-	// what the fingerprint string means or how it was produced — it only
-	// compares the fetched value against the last one it persisted for this
-	// session. Nil means no movement source is declared for this workflow.
-	MovementSource *DynamicOutput `toml:"movement_source"`
 }
 
 // DefaultMaxHeartbeat caps the quiet-tick backoff interval when a workflow's
@@ -253,24 +247,16 @@ type EventChannel struct {
 //
 // Definitions intentionally have no `depends_on`: wiring is the workflow's job.
 type TaskDefinition struct {
-	ID          string `toml:"-"`
-	Scope       string `toml:"scope"`
-	Setup       string `toml:"setup"`
-	Cleanup     string `toml:"cleanup"`
-	Healthcheck string `toml:"healthcheck"`
-	// MovementSignal declares a provider-neutral command that reports opaque
-	// movement facts as JSON on stdout: {"supported": bool,
-	// "movement_expected": bool, "fingerprint": string, "observed_at":
-	// RFC3339 string}. Core never interprets what the command actually
-	// checked (a terminal pane, an agent transcript, a VCS workspace, ...) —
-	// it only compares the fingerprint and timestamp the command reports.
-	// Empty means no movement signal is declared for this task; a command
-	// that runs but reports "supported": false is an explicit declaration
-	// that this instance has no basis to judge movement right now, which
-	// evaluates the same as if nothing were declared.
-	MovementSignal string   `toml:"movement_signal"`
-	Primary        bool     `toml:"primary"`
-	IdleAfter      Duration `toml:"idle_after"`
+	ID      string `toml:"-"`
+	Scope   string `toml:"scope"`
+	Setup   string `toml:"setup"`
+	Cleanup string `toml:"cleanup"`
+	// Health declares the task's `[health]` table — the alive and activity
+	// probes that determine this task's contribution to session health. Nil
+	// for a task that declares neither. See HealthConfig.
+	Health    *HealthConfig `toml:"health"`
+	Primary   bool          `toml:"primary"`
+	IdleAfter Duration      `toml:"idle_after"`
 	// Execution selects the execution plane for this task's setup/cleanup:
 	// "host" or "environment". Empty defaults to the workflow's own
 	// Environment (environment when declared, host otherwise) — see
@@ -731,7 +717,7 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 }
 
 // taskHookSources flattens every {{bin ...}}-eligible template string a task
-// definition can carry — setup/cleanup/healthcheck/movement_signal/
+// definition can carry — setup/cleanup/health.alive/health.activity/
 // attach/capture plus each dynamic output's script — into hookSources for
 // checkBinRefs.
 func taskHookSources(defs map[string]TaskDefinition) []hookSource {
@@ -740,8 +726,8 @@ func taskHookSources(defs map[string]TaskDefinition) []hookSource {
 		hooks = append(hooks,
 			hookSource{desc: fmt.Sprintf("task %q setup", def.ID), sourcePath: def.SourcePath, script: def.Setup},
 			hookSource{desc: fmt.Sprintf("task %q cleanup", def.ID), sourcePath: def.SourcePath, script: def.Cleanup},
-			hookSource{desc: fmt.Sprintf("task %q healthcheck", def.ID), sourcePath: def.SourcePath, script: def.Healthcheck},
-			hookSource{desc: fmt.Sprintf("task %q movement_signal", def.ID), sourcePath: def.SourcePath, script: def.MovementSignal},
+			hookSource{desc: fmt.Sprintf("task %q health.alive", def.ID), sourcePath: def.SourcePath, script: def.Health.AliveProbe()},
+			hookSource{desc: fmt.Sprintf("task %q health.activity", def.ID), sourcePath: def.SourcePath, script: def.Health.ActivityProbe()},
 		)
 		if def.Terminal != nil {
 			hooks = append(hooks,
@@ -1056,6 +1042,13 @@ func loadWorkflowFile(path string) (WorkflowFile, error) {
 		if len(key) == 2 && key[0] == "tick" && key[1] == "max_stale_when" {
 			return wf, fmt.Errorf("workflow %s: `tick.max_stale_when` was renamed to `tick.max_heartbeat`; update the workflow file", path)
 		}
+		// The session-scoped movement source is retired: an activity probe is
+		// now a task-level `[health].activity` declaration the owning plugin
+		// ships, so nothing about default health coverage is wired in
+		// user-owned workflow config any more.
+		if len(key) >= 2 && key[0] == "tick" && key[1] == "movement_source" {
+			return wf, fmt.Errorf("workflow %s: `[tick.movement_source]` is retired; the task that owns the surface declares `[health].activity` instead; see docs/migrations/", path)
+		}
 	}
 	wf.ID = stem
 	wf.SourcePath = path
@@ -1103,11 +1096,28 @@ func loadTaskDefinitionFile(path string) (TaskDefinition, error) {
 		if len(key) == 2 && key[0] == "terminal" {
 			return def, fmt.Errorf("task %s: [terminal] has unknown field %q (want attach, capture, send_text, send_keys)", path, key[1])
 		}
+		// The liveness and activity declarations moved into one `[health]`
+		// table. Both retired keys are plain strings the decoder would drop
+		// in silence, leaving the task with no probe at all — a session
+		// whose runtime died would then read `undeclared` instead of
+		// `unhealthy`, which is the exact failure health exists to catch.
+		if len(key) == 1 && key[0] == "healthcheck" {
+			return def, fmt.Errorf("task %s: top-level `healthcheck` was replaced by `[health].alive`; see docs/migrations/", path)
+		}
+		if len(key) == 1 && key[0] == "movement_signal" {
+			return def, fmt.Errorf("task %s: top-level `movement_signal` was replaced by `[health].activity`; see docs/migrations/", path)
+		}
+		if len(key) == 2 && key[0] == "health" {
+			return def, fmt.Errorf("task %s: [health] has unknown field %q (want alive, activity)", path, key[1])
+		}
 	}
 	if err := def.DoneWhen.Validate(); err != nil {
 		return def, err
 	}
 	if err := def.Terminal.Validate(); err != nil {
+		return def, fmt.Errorf("task %s: %w", path, err)
+	}
+	if err := def.Health.Validate(); err != nil {
 		return def, fmt.Errorf("task %s: %w", path, err)
 	}
 	def.ID = stem

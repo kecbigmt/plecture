@@ -15,18 +15,21 @@ independently selectable plugin this one composes through `{{terminal
   "send_keys"}}`, waits for it to come up by polling
   `~/.claude/sessions/*.json`, wires a channel-server MCP socket when
   `channel-server` is on `PATH`, and registers turn-boundary activity
-  hooks. `healthcheck` self-heals a stale pid by re-deriving the live
+  hooks. `[health].alive` self-heals a stale pid by re-deriving the live
   process from the pane's process tree (still a direct, documented tmux
   dependency — no `[terminal]` verb covers process discovery), so a
   crash-and-relaunch or a manual `--resume` does not require a session
-  down/up to keep event delivery working.
+  down/up to keep event delivery working. `[health].activity` reads back the
+  record those turn-boundary hooks write, so hook and probe are two halves of
+  one fingerprint format.
 - `config/tasks/claude_initial_prompt.toml` — sends a session's initial prompt via
   `{{terminal "..."}}` once the CLI's input box is visible, or on every
   `plect up` when `repeat = "true"`.
 - `config/channels/claude.toml` — delivers a session event to the running
   Claude Code process over its channel-server Unix socket.
-- `scripts/claude-agent-activity` — the turn-boundary self-report hook the
-  `claude` task registers.
+- `scripts/claude-agent-activity` — both halves of the turn-boundary activity
+  fingerprint: the hook the `claude` task registers, and the `probe` verb that
+  task declares as its `[health].activity`.
 - `src/channel-server/` — generic message delivery to Claude Code, with no
   knowledge of message sources (Slack or otherwise). See
   `src/channel-server/CLAUDE.md`.
