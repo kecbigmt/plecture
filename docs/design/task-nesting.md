@@ -14,9 +14,9 @@ tasks, such as runtime variants that share a common inner layer. The rules in
 this design do not vary with the layer that owns the outer task.
 
 Each layer declares, validates, and budgets only its own additions: `requires`
-scoped to its own checks, a budget scoped to its own conditions. Zero
-cross-layer interaction is what makes the no-override rule hold by
-construction.
+scoped to its own checks, `[health]` probes for its own resources, a budget
+scoped to its own conditions. Zero cross-layer interaction is what makes the
+no-override rule hold by construction.
 
 A nested task has a chain of task definitions. The outermost task is the id
 named by a workflow node. Each outer task names its next inner task with
@@ -105,10 +105,10 @@ then `bind.inputs` renders the inner input object and validates it against
 the inner task's schema.
 
 The `bind.env` table injects environment variables into process executions
-owned by the inner task: setup, cleanup, healthcheck, movement signal, dynamic
-output scripts, and terminal operation commands. It does not affect the outer
-task's hooks, any sibling task, or commands the inner task sends into an
-interactive endpoint. Agent runtimes that launch by typing into a terminal
+owned by the inner task: setup, cleanup, `[health]` probes, dynamic output
+scripts, and terminal operation commands. It does not affect the outer task's
+hooks, any sibling task, or commands the inner task sends into an interactive
+endpoint. Agent runtimes that launch by typing into a terminal
 therefore need an author-declared input for launch-line environment exports.
 
 Task nesting fields:
@@ -127,6 +127,7 @@ Task nesting fields:
 | `[done_when]` | no | leaf list plus budget | Completion conditions the outer layer adds to the inner effective `done_when`, with an optional `[done_when.budget]` accounting for those conditions alone. |
 | `requires` | no | string list | The public output keys the outer-added `done_when` checks read. |
 | `[terminal]` | no | terminal table | An interactive endpoint for a nesting chain whose other layers declare none. |
+| `[health]` | no | health table | Liveness and activity probes for the resources this layer brings up. |
 | `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the composed effective `done_when` and chain output mappings validated against the outer public output contract. |
 
 The nested task's effective scope is the innermost task's scope. If an outer
@@ -240,6 +241,27 @@ Terminal operation commands belong to the declaring layer's `[terminal]` table.
 Other layers do not inject, wrap, or replace them, and consumers reach the
 declaring layer only through the composed public contract.
 
+## Layer Health
+
+`setup`, `cleanup`, and `[health]` are one lifecycle trio, and each layer of a
+nesting chain owns its own. An outer task declares `[health]` for the resources
+that layer brings up.
+
+Composition across the layers of a chain has the same dual shape as composition
+across instances. `alive` is the AND: any failing layer makes the composed task
+unhealthy, and the report names the failing layer. `activity` is the OR:
+evidence from any layer counts. A layer declaring no `[health]` contributes
+nothing to either composition — vacuous in the AND, no vote in the OR. Each
+layer declares only its own probes and never replaces another layer's, so
+composition needs no conflict rule.
+
+A layer earns an activity probe only when its activity indicates session
+progress. A chatty sidecar layer with an activity probe would mask a stalled
+agent.
+
+Probe semantics and the activity envelope are specified by
+[`health-declaration.md`](health-declaration.md).
+
 ## Reference Resolution
 
 `inner` accepts a normal task id or a catalog-qualified task reference:
@@ -285,7 +307,7 @@ Loading nested task definitions fails when:
 - `inner` forms a nesting cycle, including self-reference.
 - the outer task declares a `scope` that differs from the inner task's scope.
 - the outer task declares inner-owned behavior fields: `primary`, `execution`,
-  `idle_after`, `healthcheck`, `movement_signal`, or `[[outputs]]`.
+  `idle_after`, or `[[outputs]]`.
 - two layers of the nesting chain declare `[terminal]`.
 - an outer `done_when` judge id repeats a judge id declared by any other layer
   in the nesting chain.

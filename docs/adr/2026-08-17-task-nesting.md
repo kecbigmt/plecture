@@ -46,8 +46,9 @@ self-owned; it is not an edit to the inner task's schema.
 Task nesting is strictly additive. The outer task may never modify inner
 behavior; additive extension is permitted exactly where this design grants it:
 chains, `done_when` conjunction, public outputs, environment, forwarded inputs,
-and an interactive endpoint over a chain that declares none. The inner task has
-no reference to the outer task and no virtual dispatch point back into it.
+layer health probes, and an interactive endpoint over a chain that declares
+none. The inner task has no reference to the outer task and no virtual dispatch
+point back into it.
 
 An outer task may extend `done_when`. The composed effective `done_when` is the
 inner effective `done_when` conjoined with the outer's added leaves.
@@ -77,9 +78,17 @@ is needed and there is no collision to detect.
 mutual validation runs against the outer `outputs_schema`. The inner `requires`
 stays inner-owned and validates the inner `done_when` against the inner outputs.
 
-These surfaces share one sentence: each layer declares, validates, and budgets
-only its own additions. Zero cross-layer interaction is what makes no-override
-hold by construction rather than by enumeration.
+`[health]` is layer-scoped, completing the layer symmetry of `setup` and
+`cleanup`: each layer declares probes for the resources it brings up, `alive`
+composes as the AND across layers with the failing layer named, `activity`
+composes as the OR, and a layer declaring none contributes to neither. That
+composition is decided by
+[`docs/adr/2026-08-18-health-declaration.md`](2026-08-18-health-declaration.md),
+which this decision follows.
+
+These surfaces share one sentence: each layer declares, validates, budgets, and
+probes only its own additions. Zero cross-layer interaction is what makes
+no-override hold by construction rather than by enumeration.
 
 `[terminal]` is conflict-banned rather than inner-owned. An outer task may
 declare it when no layer of its inner chain does, which composes an interactive
@@ -171,9 +180,9 @@ third-party service is outside this decision. Whole-file forks remain available
 when behavior cannot be expressed by an author-declared input or by additive
 nesting.
 
-The same additive argument would extend `healthcheck`, but no observed shadow
-needs it, so `healthcheck` stays inner-owned and the question is revisited on
-evidence.
+The retirement of the `healthcheck` scalar and `movement_signal` removes both
+from the inner-owned field list, leaving `primary`, `execution`, `idle_after`,
+and `[[outputs]]` unconditionally inner-owned.
 
 ## Alternatives considered
 
