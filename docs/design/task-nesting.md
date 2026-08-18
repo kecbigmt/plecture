@@ -5,19 +5,38 @@ This design is governed by
 
 ## Design Core
 
-Task nesting lets an outer task add lifecycle work, input binding, chains,
-completion conditions, an interactive endpoint, and process environment to an
-inner task without copying the inner task's file.
-Any layer that owns task definitions writes outer tasks: user-owned
-configuration, a configuration-only plugin, and a plugin factoring its own
-tasks, such as runtime variants that share a common inner layer. The rules in
-this design do not vary with the layer that owns the outer task.
+Inner and outer are homogeneous, so composition is closed. From the outside a
+nested task is exactly a task: it presents the surfaces a plain task presents —
+an inputs schema, public outputs, `done_when`, `requires`, a budget,
+`[health]`, `[[outputs]]`, chains, and `[terminal]` — and nothing that consumes
+tasks needs to know whether nesting is inside it. Workflows, chains, downstream
+nodes, status, and the orchestrator address a nested task the way they address
+any other.
 
-Each layer declares only its own additions and answers only for them:
-`[[outputs]]` produces its own materials, `[done_when]` states its own
-conditions, `requires` validates its own checks, `[done_when.budget]` sets its
-own patience, and `[health]` probes its own resources. Zero cross-layer
-interaction is what makes the no-override rule hold by construction.
+The joint is the only nesting-specific vocabulary: `inner` names the next task
+inward, `locals` holds the joint's private intermediates, and the `[bind.*]`
+tables wire the boundary. No other nesting-only concept exists.
+
+Task nesting therefore lets an outer task add a layer of its own to an inner
+task without copying the inner task's file. Any layer that owns task
+definitions writes outer tasks: user-owned configuration, a configuration-only
+plugin, and a plugin factoring its own tasks, such as runtime variants that
+share a common inner layer. The rules in this design do not vary with the layer
+that owns the outer task.
+
+Closure decides the field rules, so they are corollaries rather than a list of
+exceptions. Whatever a plain task declares, an outer task declares for its own
+layer, and layers compose additively: `done_when` by conjunction, `requires`
+and `[done_when.budget]` per layer, `[health]` by AND on `alive` and OR on
+`activity`, `[[outputs]]` in the declaring layer's own key namespace, chains on
+the composed id. Each layer declares only its own additions and answers only
+for them, which is what makes the no-override rule hold by construction.
+
+Instance-singular attributes are the one constraint class closure does not
+dissolve. A surface an instance can hold only one of admits one declaration per
+nesting chain rather than one per layer: `[terminal]` is that case, and
+`primary`, `execution`, and `idle_after` stay with the innermost task as
+attributes of the instance itself.
 
 A nested task has a chain of task definitions. The outermost task is the id
 named by a workflow node. Each outer task names its next inner task with

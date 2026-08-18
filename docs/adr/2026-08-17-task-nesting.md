@@ -27,6 +27,14 @@ workflow node inputs, not in the task-nesting mechanism.
 Plecture adds a task-nesting contract specified by
 [`docs/design/task-nesting.md`](../design/task-nesting.md).
 
+The governing principle is that inner and outer are homogeneous, so composition
+is closed. A nested task is, from the outside, exactly a task: it presents the
+same surfaces a plain task presents, and no consumer of tasks — workflow, chain,
+downstream node, status, or orchestrator — needs to know whether nesting is
+inside it. The joint is the only nesting-specific vocabulary the contract adds:
+`inner`, `locals`, and the `[bind.*]` tables. Nothing else nesting-only exists,
+and nothing else nesting-only is added later.
+
 A task definition may declare `inner = "<task-ref>"`. That task becomes the
 outer task. The referenced task is the inner task. The workflow names the outer
 task id, and chains attach to that id.
@@ -44,11 +52,11 @@ validated input object. The outer task's input schema is coherent and
 self-owned; it is not an edit to the inner task's schema.
 
 Task nesting is strictly additive. The outer task may never modify inner
-behavior; additive extension is permitted exactly where this design grants it:
-chains, `done_when` conjunction, public outputs, layer-produced dynamic
-outputs, environment, forwarded inputs, layer health probes, and an interactive
-endpoint over a chain that declares none. The inner task has no reference to
-the outer task and no virtual dispatch point back into it.
+behavior, and it needs no grant to extend: closure already says that whatever a
+plain task declares, an outer task declares for its own layer, composing
+additively. The paragraphs below state how each surface composes, not which
+surfaces are permitted. The inner task has no reference to the outer task and no
+virtual dispatch point back into it.
 
 An outer task may extend `done_when`. The composed effective `done_when` is the
 inner effective `done_when` conjoined with the outer's added leaves.
@@ -96,6 +104,16 @@ public contract, where one public name must have one definition source.
 These surfaces share one sentence: each layer declares, validates, budgets,
 probes, and produces only its own additions. Zero cross-layer interaction is
 what makes no-override hold by construction rather than by enumeration.
+
+Closure also gives future field authors one question, which is what keeps this
+design's complexity from ratcheting: may an outer task declare its own layer's
+instance of this field, and if not, is the asymmetry forced by the joint? A
+field that fails both halves does not belong in the task definition.
+
+Instance-singular attributes are the one constraint class closure does not
+dissolve: a surface an instance can hold only one of admits one declaration per
+nesting chain rather than one per layer. `primary`, `execution`, and
+`idle_after` stay with the innermost task on that ground.
 
 `[terminal]` is conflict-banned rather than inner-owned. An outer task may
 declare it when no layer of its inner chain does, which composes an interactive
@@ -189,10 +207,9 @@ nesting.
 
 The retirement of the `healthcheck` scalar and `movement_signal`, and the
 layer-scoping of `[health]`, `[terminal]`, `[done_when]`, `requires`, and
-`[[outputs]]`, leave `primary`, `execution`, and `idle_after` unconditionally
-inner-owned. `primary` and `execution` are the essential instance-singular
-attributes; whether `idle_after` belongs beside them is a task-definition field
-question rather than a nesting question.
+`[[outputs]]`, leave `primary`, `execution`, and `idle_after` as the inner-owned
+instance attributes. Whether each of them survives as a task-definition field at
+all is a field-audit question rather than a nesting question.
 
 ## Alternatives considered
 
