@@ -12,7 +12,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -243,17 +242,21 @@ func activityFixtureConfig(t *testing.T, activity string) *config.Config {
 // activityProbeCmd renders a fixed JSON activity envelope as the probe's
 // entire behavior — a stub probe, standing in for whatever concrete plugin
 // implementation (pane fingerprint, agent turn-boundary record, ...) ships it.
-func activityProbeCmd(t *testing.T, status task.ActivityStatus, fingerprint string, observedAt time.Time) string {
+func activityProbeCmd(t *testing.T, fingerprint string, silenceExpected bool, observedAt time.Time) string {
 	t.Helper()
 	observed := ""
 	if !observedAt.IsZero() {
 		observed = observedAt.UTC().Format(time.RFC3339)
 	}
 	return fmt.Sprintf(
-		`echo '{"status":%q,"fingerprint":%q,"observed_at":%q}'`,
-		string(status), fingerprint, observed,
+		`echo '{"fingerprint":%q,"silence_expected":%t,"observed_at":%q}'`,
+		fingerprint, silenceExpected, observed,
 	)
 }
+
+// noBasisProbeCmd is the shape a probe with no evidence to report emits:
+// exit 0 and nothing on stdout.
+const noBasisProbeCmd = "true"
 
 // TestEvaluateHealth_WedgedButAliveProbePassingReadsStalled replaces the
 // prior known gap this test used to pin: once an activity probe is declared
@@ -263,7 +266,7 @@ func activityProbeCmd(t *testing.T, status task.ActivityStatus, fingerprint stri
 func TestEvaluateHealth_WedgedButAliveProbePassingReadsStalled(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityActive, "fp-1", longAgo))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -295,17 +298,18 @@ func TestEvaluateHealth_WedgedButAliveProbePassingReadsStalled(t *testing.T) {
 	}
 }
 
-// TestEvaluateHealth_IdleStatusNarrowsExpectationToHealthy pins the one
-// status that moves expectation: done_when leaves unmet work, but the probe
-// reports idle (e.g. "the turn already ended") with stale evidence. Idle can
-// only narrow — never widen — done_when's expectation, so this instance's
-// contribution drops out and the session reads healthy, not stalled. Its
-// contrast is TestEvaluateHealth_ActivityFingerprintUnchangedPastWindowReadsStalled,
-// which is the same shape reporting active and reads stalled.
-func TestEvaluateHealth_IdleStatusNarrowsExpectationToHealthy(t *testing.T) {
+// TestEvaluateHealth_SilenceExpectedNarrowsExpectationToHealthy pins the
+// pardon: done_when leaves unmet work, but the probe declares the
+// fingerprint's stability intended (e.g. "the turn already ended") with stale
+// evidence. The pardon can only narrow — never widen — done_when's
+// expectation, so this instance's contribution drops out and the session
+// reads healthy, not stalled. Its contrast is
+// TestEvaluateHealth_ActivityFingerprintUnchangedPastWindowReadsStalled,
+// which is the same shape without the pardon and reads stalled.
+func TestEvaluateHealth_SilenceExpectedNarrowsExpectationToHealthy(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityIdle, "fp-1", longAgo))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", true, longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -320,7 +324,10 @@ func TestEvaluateHealth_IdleStatusNarrowsExpectationToHealthy(t *testing.T) {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthHealthy {
-		t.Fatalf("report = %+v, state = %q, want healthy (idle narrowed the expectation despite unmet done_when work)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want healthy (the pardon narrowed the expectation despite unmet done_when work)", report, report.State())
+	}
+	if report.ActivityFingerprint != "initial:fp-1" {
+		t.Errorf("ActivityFingerprint = %q, want the pardoned envelope's fingerprint to still contribute", report.ActivityFingerprint)
 	}
 }
 
@@ -349,13 +356,13 @@ func TestEvaluateHealth_NoActivitySignalDeclaredStaysUndeclaredNotStalled(t *tes
 	}
 }
 
-// TestEvaluateHealth_ExplicitNoneStatusStaysUndeclared covers the second
-// no-basis path: an activity probe is declared but reports `none` at
-// evaluation time — the same as if nothing were declared, not a stale/fresh
-// judgment either way.
-func TestEvaluateHealth_ExplicitNoneStatusStaysUndeclared(t *testing.T) {
+// TestEvaluateHealth_EmptyProbeOutputStaysUndeclared covers the second
+// no-basis path: an activity probe is declared but exits 0 with empty stdout
+// at evaluation time — the same as if nothing were declared, not a
+// stale/fresh judgment either way, and not a fault worth warning about.
+func TestEvaluateHealth_EmptyProbeOutputStaysUndeclared(t *testing.T) {
 	store := testStore(t)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityNone, "fp-1", time.Now()))
+	cfg := activityFixtureConfig(t, noBasisProbeCmd)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -370,7 +377,88 @@ func TestEvaluateHealth_ExplicitNoneStatusStaysUndeclared(t *testing.T) {
 		t.Fatalf("EvaluateHealth: %v", err)
 	}
 	if report.State() != domain.HealthUndeclared {
-		t.Fatalf("report = %+v, state = %q, want undeclared (explicit `none` status)", report, report.State())
+		t.Fatalf("report = %+v, state = %q, want undeclared (exit 0, empty stdout)", report, report.State())
+	}
+	if len(report.ProbeErrors) != 0 {
+		t.Errorf("ProbeErrors = %+v, want none — declaring no evidence is not a fault", report.ProbeErrors)
+	}
+}
+
+// TestEvaluateHealth_ProbeExitFailureContributesNothingAndReportsFault pins
+// the orthogonality the envelope rests on: stdout decides contribution and
+// the exit code decides the health of the probe itself. A probe that cannot
+// run contributes no evidence, exactly like one with no basis, but it is
+// named in the report so a persistently broken probe stays observable
+// instead of passing for silence.
+func TestEvaluateHealth_ProbeExitFailureContributesNothingAndReportsFault(t *testing.T) {
+	store := testStore(t)
+	cfg := activityFixtureConfig(t, "echo 'pane is gone' >&2; exit 3")
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthUndeclared {
+		t.Fatalf("report = %+v, state = %q, want undeclared (a failed probe contributes nothing)", report, report.State())
+	}
+	if report.ActivityDeclared || report.ActivityFingerprint != "" {
+		t.Errorf("report = %+v, want no activity contribution", report)
+	}
+	if len(report.ProbeErrors) != 1 {
+		t.Fatalf("ProbeErrors = %+v, want exactly one entry", report.ProbeErrors)
+	}
+	got := report.ProbeErrors[0]
+	if got.Instance != "initial" {
+		t.Errorf("Instance = %q, want %q", got.Instance, "initial")
+	}
+	if !strings.Contains(got.Command, "pane is gone") {
+		t.Errorf("Command = %q, want the declared probe command", got.Command)
+	}
+	if got.ExitCode != 3 {
+		t.Errorf("ExitCode = %d, want 3", got.ExitCode)
+	}
+	if got.Stderr != "pane is gone" {
+		t.Errorf("Stderr = %q, want the stderr digest", got.Stderr)
+	}
+}
+
+// TestEvaluateHealth_InvalidEnvelopeContributesNothingAndWarns covers the
+// third non-contributing shape: the probe ran and printed something, but the
+// envelope carries no fingerprint (the retired status-enum shape lands here
+// too). Neither discarding it silently nor fabricating a fingerprint is safe,
+// so it is reported as a fault the same way an unrunnable probe is.
+func TestEvaluateHealth_InvalidEnvelopeContributesNothingAndWarns(t *testing.T) {
+	store := testStore(t)
+	cfg := activityFixtureConfig(t, `echo '{"status":"active"}'`)
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runner",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"done": "no"},
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.ActivityDeclared || report.ActivityFingerprint != "" {
+		t.Errorf("report = %+v, want no activity contribution", report)
+	}
+	if len(report.ProbeErrors) != 1 {
+		t.Fatalf("ProbeErrors = %+v, want exactly one entry", report.ProbeErrors)
+	}
+	if !strings.Contains(report.ProbeErrors[0].Reason, "fingerprint") {
+		t.Errorf("Reason = %q, want it to name the missing field", report.ProbeErrors[0].Reason)
 	}
 }
 
@@ -384,9 +472,9 @@ func TestEvaluateHealth_ExplicitNoneStatusStaysUndeclared(t *testing.T) {
 func TestEvaluateHealth_LapsedProbeWithPriorActivityReadsStalledNotUndeclared(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	// `none`: the probe itself now reports no basis to judge activity this
-	// tick, standing in for its source having died.
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityNone, "", time.Time{}))
+	// The probe itself now reports no basis to judge activity this tick,
+	// standing in for its source having died.
+	cfg := activityFixtureConfig(t, noBasisProbeCmd)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -416,7 +504,7 @@ func TestEvaluateHealth_LapsedProbeWithPriorActivityReadsStalledNotUndeclared(t 
 // activity probe reports evidence timestamped within the stall threshold.
 func TestEvaluateHealth_FreshActivityEvidenceReadsHealthy(t *testing.T) {
 	store := testStore(t)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityActive, "fp-1", time.Now()))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, time.Now()))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -444,7 +532,7 @@ func TestEvaluateHealth_FreshActivityEvidenceReadsHealthy(t *testing.T) {
 func TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityActive, "fp-1", longAgo))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -469,7 +557,7 @@ func TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal(t *testing.T) 
 func TestEvaluateHealth_EscalatedWorkStillExpectsActivity(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
-	cfg := activityFixtureConfig(t, activityProbeCmd(t, task.ActivityActive, "fp-1", longAgo))
+	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:   contract.TaskScopeRun,
@@ -502,7 +590,7 @@ func TestEvaluateHealth_EscalatedWorkStillExpectsActivity(t *testing.T) {
 // by core's own comparison against the persisted fingerprint.
 func activityFingerprintCmd(t *testing.T, fingerprint string) string {
 	t.Helper()
-	return activityProbeCmd(t, task.ActivityActive, fingerprint, time.Time{})
+	return activityProbeCmd(t, fingerprint, false, time.Time{})
 }
 
 // setActivityState seeds the session's persisted HealthState activity fields,

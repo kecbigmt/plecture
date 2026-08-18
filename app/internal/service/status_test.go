@@ -99,6 +99,32 @@ func TestStatus_RuntimeCarriesHealthMovementTimestamps(t *testing.T) {
 	}
 }
 
+// TestStatus_SurfacesActivityProbeFaultsAsWarnings pins the user-facing half
+// of the probe-fault report: a probe that cannot produce an envelope
+// contributes nothing to health, so without a warning it would be
+// indistinguishable from a session that is simply quiet.
+func TestStatus_SurfacesActivityProbeFaultsAsWarnings(t *testing.T) {
+	store := testStore(t)
+	cfg := activityFixtureConfig(t, "echo 'pane is gone' >&2; exit 3")
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+
+	result, err := Status(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	found := false
+	for _, w := range result.Warnings {
+		if strings.Contains(w, "initial") && strings.Contains(w, "pane is gone") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Warnings = %q, want one naming the failing activity probe", result.Warnings)
+	}
+}
+
 // Summarize is the default `plect status --json` projection: only instances
 // with a done_when, and only the leaf/chain fields an orchestrator needs —
 // never the instance's full (unfiltered) outputs map.

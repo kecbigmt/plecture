@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -30,24 +31,41 @@ type HealthReport struct {
 	// of a stall: an activity probe can pardon silence but never raise it.
 	ActivityDue bool `json:"activity_due,omitempty"`
 	// ActivityDeclared reports whether at least one produced run-scoped
-	// task instance ran an activity probe that reported itself supported.
-	// False when no activity probe is declared at all, or when every
-	// declared one explicitly reports unsupported (or fails to run) — both
-	// read as "no basis to judge activity."
+	// task instance ran an activity probe that produced an envelope. False
+	// when no activity probe is declared at all, and when every declared one
+	// reports no basis (or fails to produce a usable envelope) — both read
+	// as "no basis to judge activity."
 	ActivityDeclared bool `json:"activity_declared,omitempty"`
 	// ActivityFresh reports whether any contributing activity probe reported
 	// evidence within the stall threshold. Meaningless unless
 	// ActivityDeclared and ActivityDue are both true.
-	ActivityFresh       bool      `json:"activity_fresh,omitempty"`
-	Reason              string    `json:"reason,omitempty"`
-	LastCheckedAt       time.Time `json:"last_checked_at,omitzero"`
-	LastActivityAt      time.Time `json:"last_activity_at,omitzero"`
-	ActivityFingerprint string    `json:"-"`
-	Pushed              bool      `json:"pushed,omitempty"`
-	PushTarget          string    `json:"push_target,omitempty"`
+	ActivityFresh bool `json:"activity_fresh,omitempty"`
+	// ProbeErrors names the declared activity probes that failed to produce
+	// an envelope this cycle. They contribute no evidence, exactly like a
+	// probe reporting no basis, so without this list a persistently broken
+	// probe would be indistinguishable from a quiet one.
+	ProbeErrors         []ProbeError `json:"probe_errors,omitempty"`
+	Reason              string       `json:"reason,omitempty"`
+	LastCheckedAt       time.Time    `json:"last_checked_at,omitzero"`
+	LastActivityAt      time.Time    `json:"last_activity_at,omitzero"`
+	ActivityFingerprint string       `json:"-"`
+	Pushed              bool         `json:"pushed,omitempty"`
+	PushTarget          string       `json:"push_target,omitempty"`
 	// WakeWarning is set when the dead event was recorded on PushTarget but
 	// best-effort waking it (Up) failed — the push itself still succeeded.
 	WakeWarning string `json:"wake_warning,omitempty"`
+}
+
+// ProbeError is one declared activity probe that failed to contribute this
+// cycle. ExitCode and Stderr are populated only when the command itself failed
+// to run to completion; a probe that ran and printed an unusable envelope
+// carries Reason alone.
+type ProbeError struct {
+	Instance string `json:"instance"`
+	Command  string `json:"command"`
+	ExitCode int    `json:"exit_code,omitempty"`
+	Stderr   string `json:"stderr,omitempty"`
+	Reason   string `json:"reason"`
 }
 
 type HealthcheckParams struct {
@@ -177,6 +195,7 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 	activityDue := false
 	activityDeclared := false
 	activityFingerprintParts := []string{}
+	probeErrors := []ProbeError{}
 
 	for _, key := range sortedTaskKeys(tasks) {
 		st := tasks[key]
@@ -188,7 +207,7 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		if alive := def.Health.AliveProbe(); alive != "" {
 			declared = true
 			if aliveErr := task.RunAliveProbe(context.Background(), alive, st.Outputs, st.Inputs, vars); aliveErr != nil {
-				return HealthReport{SessionName: name, Healthy: false, Declared: true, Reason: fmt.Sprintf("%s: %v", key, aliveErr), LastCheckedAt: now}
+				return HealthReport{SessionName: name, Healthy: false, Declared: true, ProbeErrors: probeErrors, Reason: fmt.Sprintf("%s: %v", key, aliveErr), LastCheckedAt: now}
 			}
 		}
 
@@ -204,21 +223,18 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 
 		if activity := def.Health.ActivityProbe(); activity != "" {
 			sig, sigErr := task.RunActivityProbe(context.Background(), activity, st.Outputs, st.Inputs, vars)
-			// A failed run and an explicit `"status": "none"` both mean this
-			// instance has no basis to contribute activity evidence right
-			// now — the same as if no activity probe were declared.
-			if sigErr == nil && sig.Status != task.ActivityNone {
+			switch {
+			case sigErr != nil:
+				probeErrors = append(probeErrors, activityProbeError(key, activity, sigErr))
+			case sig != nil:
 				activityDeclared = true
-				// Idle is the only status that moves this instance's
-				// expectation, and only downward: a probe may pardon
-				// silence, but no status can manufacture an expectation
-				// done_when does not already see.
-				if sig.Status == task.ActivityIdle {
+				// A probe may only lower this instance's expectation: no
+				// envelope can manufacture an expectation done_when does not
+				// already see.
+				if sig.SilenceExpected {
 					instanceDue = false
 				}
-				if sig.Fingerprint != "" {
-					activityFingerprintParts = append(activityFingerprintParts, key+":"+sig.Fingerprint)
-				}
+				activityFingerprintParts = append(activityFingerprintParts, key+":"+sig.Fingerprint)
 			}
 		}
 
@@ -235,6 +251,9 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		ActivityDeclared: activityDeclared,
 		LastCheckedAt:    now,
 	}
+	if len(probeErrors) > 0 {
+		report.ProbeErrors = probeErrors
+	}
 	// Every declaring instance's fingerprint contributes: activity composes
 	// by OR, so a change anywhere in the session is evidence the session is
 	// moving. Sorting keeps the composite stable against map iteration order.
@@ -243,6 +262,29 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		report.ActivityFingerprint = strings.Join(activityFingerprintParts, "\x00")
 	}
 	return report
+}
+
+func activityProbeError(instance, cmd string, err error) ProbeError {
+	entry := ProbeError{Instance: instance, Command: cmd, Reason: err.Error()}
+	var execErr *task.ActivityProbeExecError
+	if errors.As(err, &execErr) {
+		entry.ExitCode = execErr.ExitCode
+		entry.Stderr = stderrDigest(execErr.Stderr)
+	}
+	return entry
+}
+
+// probeStderrDigestLimit bounds how much of a runaway probe's stderr the
+// report carries. The head is what survives, because a script's first error
+// line is the one that names the cause.
+const probeStderrDigestLimit = 512
+
+func stderrDigest(stderr string) string {
+	stderr = strings.TrimSpace(stderr)
+	if len(stderr) <= probeStderrDigestLimit {
+		return stderr
+	}
+	return strings.ToValidUTF8(stderr[:probeStderrDigestLimit], "") + "..."
 }
 
 func finalizeActivityObservation(report *HealthReport, prev *contract.HealthState, stallThreshold time.Duration, now time.Time) {

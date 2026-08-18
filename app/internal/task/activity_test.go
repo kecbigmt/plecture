@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -9,43 +10,53 @@ import (
 
 func TestRunActivityProbe_Envelope(t *testing.T) {
 	tests := []struct {
-		name             string
-		stdout           string
-		wantStatus       ActivityStatus
-		wantFingerprint  string
-		wantObservedAt   string
-		wantErrSubstring string
+		name                string
+		stdout              string
+		wantNoSignal        bool
+		wantFingerprint     string
+		wantSilenceExpected bool
+		wantObservedAt      string
+		wantErrSubstring    string
 	}{
 		{
 			name:            "full envelope",
-			stdout:          `{"status":"active","fingerprint":"fp-1","observed_at":"2026-08-18T00:04:06Z"}`,
-			wantStatus:      ActivityActive,
+			stdout:          `{"fingerprint":"fp-1","observed_at":"2026-08-18T00:04:06Z"}`,
 			wantFingerprint: "fp-1",
 			wantObservedAt:  "2026-08-18T00:04:06Z",
 		},
 		{
-			name:       "none is the no-basis declaration",
-			stdout:     `{"status":"none"}`,
-			wantStatus: ActivityNone,
+			name:                "silence_expected is the pardon",
+			stdout:              `{"fingerprint":"fp-1","silence_expected":true}`,
+			wantFingerprint:     "fp-1",
+			wantSilenceExpected: true,
 		},
 		{
-			name:            "idle",
-			stdout:          `{"status":"idle","fingerprint":"fp-1"}`,
-			wantStatus:      ActivityIdle,
+			name:            "silence_expected false reads as no pardon",
+			stdout:          `{"fingerprint":"fp-1","silence_expected":false}`,
 			wantFingerprint: "fp-1",
 		},
 		{
-			// Neither candidate default is safe: idle would pardon every
-			// silence and hide real stalls, active would accuse probes that
-			// never opted in.
-			name:             "absent status is a parse error naming the value set",
-			stdout:           `{"fingerprint":"fp-1"}`,
-			wantErrSubstring: "none, idle, active",
+			name:         "empty stdout is the no-basis declaration",
+			stdout:       "",
+			wantNoSignal: true,
 		},
 		{
-			name:             "unknown status is a parse error naming the offending value",
-			stdout:           `{"status":"opaque","fingerprint":"fp-1"}`,
-			wantErrSubstring: `unknown status "opaque"`,
+			name:         "blank stdout is the no-basis declaration",
+			stdout:       "   \n",
+			wantNoSignal: true,
+		},
+		{
+			// The two candidate readings of a fingerprint-less envelope are
+			// a silent discard and a fabricated fingerprint; both hide a
+			// broken probe, so it is rejected instead.
+			name:             "envelope without a fingerprint is invalid output",
+			stdout:           `{"silence_expected":true}`,
+			wantErrSubstring: `no "fingerprint" field`,
+		},
+		{
+			name:             "the retired status enum is invalid output",
+			stdout:           `{"status":"active"}`,
+			wantErrSubstring: `no "fingerprint" field`,
 		},
 		{
 			name:             "malformed JSON is an error",
@@ -54,7 +65,7 @@ func TestRunActivityProbe_Envelope(t *testing.T) {
 		},
 		{
 			name:             "unparseable observed_at is an error",
-			stdout:           `{"status":"active","observed_at":"yesterday"}`,
+			stdout:           `{"fingerprint":"fp-1","observed_at":"yesterday"}`,
 			wantErrSubstring: "parse observed_at",
 		},
 	}
@@ -71,11 +82,20 @@ func TestRunActivityProbe_Envelope(t *testing.T) {
 			if err != nil {
 				t.Fatalf("RunActivityProbe: %v", err)
 			}
-			if got.Status != tt.wantStatus {
-				t.Errorf("Status = %q, want %q", got.Status, tt.wantStatus)
+			if tt.wantNoSignal {
+				if got != nil {
+					t.Fatalf("signal = %+v, want nil (no basis)", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("signal = nil, want an envelope")
 			}
 			if got.Fingerprint != tt.wantFingerprint {
 				t.Errorf("Fingerprint = %q, want %q", got.Fingerprint, tt.wantFingerprint)
+			}
+			if got.SilenceExpected != tt.wantSilenceExpected {
+				t.Errorf("SilenceExpected = %v, want %v", got.SilenceExpected, tt.wantSilenceExpected)
 			}
 			wantObserved := time.Time{}
 			if tt.wantObservedAt != "" {
@@ -88,13 +108,20 @@ func TestRunActivityProbe_Envelope(t *testing.T) {
 	}
 }
 
-func TestRunActivityProbe_NonZeroExitCarriesStderr(t *testing.T) {
+func TestRunActivityProbe_NonZeroExitCarriesExitCodeAndStderr(t *testing.T) {
 	session := SessionVars{Name: "owner/repo-1", WorkspaceDirPath: t.TempDir()}
-	_, err := RunActivityProbe(context.Background(), "echo 'pane is gone' >&2; exit 3", nil, nil, session)
-	if err == nil {
-		t.Fatal("expected an error for a non-zero exit")
+	sig, err := RunActivityProbe(context.Background(), "echo 'pane is gone' >&2; exit 3", nil, nil, session)
+	if sig != nil {
+		t.Fatalf("signal = %+v, want nil", sig)
 	}
-	if !strings.Contains(err.Error(), "pane is gone") {
-		t.Errorf("err = %q, want it to carry stderr", err.Error())
+	var execErr *ActivityProbeExecError
+	if !errors.As(err, &execErr) {
+		t.Fatalf("err = %v, want *ActivityProbeExecError", err)
+	}
+	if execErr.ExitCode != 3 {
+		t.Errorf("ExitCode = %d, want 3", execErr.ExitCode)
+	}
+	if execErr.Stderr != "pane is gone" {
+		t.Errorf("Stderr = %q, want %q", execErr.Stderr, "pane is gone")
 	}
 }
