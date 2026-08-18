@@ -131,6 +131,16 @@ hooks, any sibling task, or commands the inner task sends into an interactive
 endpoint. Agent runtimes that launch by typing into a terminal
 therefore need an author-declared input for launch-line environment exports.
 
+Among the terminal operations, the injection reaches the ones plect runs
+itself: `capture`. `send_text` and `send_keys` resolve into another execution
+through the `{{terminal "..."}}` helper and carry whatever environment that
+execution runs with. `attach` resolves to a command string the caller's own
+shell executes, and carries the caller's environment: placing bound values
+there would mean synthesizing quoted assignments into a rendered command, and
+this design specifies no quoting for that. A runtime needing bound
+environment on the attach line declares an author-declared launch input for
+it, the same rung-1 answer terminal-launched agent runtimes already take.
+
 Task nesting fields:
 
 | Field | Required | Type | Meaning |
