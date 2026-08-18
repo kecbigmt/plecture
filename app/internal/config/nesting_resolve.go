@@ -155,7 +155,7 @@ func validateNesting(layers []TaskDefinition) error {
 	if err := validateChainEnv(layers); err != nil {
 		return err
 	}
-	bindings := make([][]outputBinding, len(layers))
+	bindings := make([][]OutputBinding, len(layers))
 	for i := 0; i+1 < len(layers); i++ {
 		b, err := validateLayer(layers[i], layers[i+1])
 		if err != nil {
@@ -242,7 +242,7 @@ func validateChainEnv(layers []TaskDefinition) error {
 
 // validateLayer checks one outer layer against its next inner task and
 // returns its classified `[bind.outputs]` entries.
-func validateLayer(outer, inner TaskDefinition) ([]outputBinding, error) {
+func validateLayer(outer, inner TaskDefinition) ([]OutputBinding, error) {
 	outerProps, err := SchemaProperties(outer.OutputsSchema, outer.ResolvedOutputsSchemaPath())
 	if err != nil {
 		return nil, fmt.Errorf("outputs schema: %w", err)
@@ -277,9 +277,9 @@ func validateLayer(outer, inner TaskDefinition) ([]outputBinding, error) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	bindings := make([]outputBinding, 0, len(keys))
+	bindings := make([]OutputBinding, 0, len(keys))
 	for _, key := range keys {
-		b, err := classifyOutputBinding(key, bound[key])
+		b, err := ClassifyOutputBinding(key, bound[key])
 		if err != nil {
 			return nil, err
 		}
@@ -360,7 +360,7 @@ func validateBoundInputs(outer, inner TaskDefinition) error {
 // composedExposure maps, for each layer, the layer's own public output keys
 // that reach the composed public contract through an unbroken run of direct
 // bindings, to the public name they arrive under.
-func composedExposure(layers []TaskDefinition, bindings [][]outputBinding) ([]map[string]string, error) {
+func composedExposure(layers []TaskDefinition, bindings [][]OutputBinding) ([]map[string]string, error) {
 	exposure := make([]map[string]string, len(layers))
 	outerProps, err := SchemaProperties(layers[0].OutputsSchema, layers[0].ResolvedOutputsSchemaPath())
 	if err != nil {
@@ -384,7 +384,7 @@ func composedExposure(layers []TaskDefinition, bindings [][]outputBinding) ([]ma
 	return exposure, nil
 }
 
-func validateChainTerminalEndpoint(layers []TaskDefinition, bindings [][]outputBinding, exposure []map[string]string) error {
+func validateChainTerminalEndpoint(layers []TaskDefinition, bindings [][]OutputBinding, exposure []map[string]string) error {
 	declaring := -1
 	for i, layer := range layers {
 		if layer.Terminal.IsDeclared() {
@@ -413,7 +413,7 @@ func validateChainTerminalEndpoint(layers []TaskDefinition, bindings [][]outputB
 // from the composed public contract. An inner layer's check additionally has
 // to read the inner output itself: a computed binding in its place would let
 // the outer layer choose what the inner gate sees.
-func validateComposedDoneWhen(layers []TaskDefinition, bindings [][]outputBinding, exposure []map[string]string) error {
+func validateComposedDoneWhen(layers []TaskDefinition, bindings [][]OutputBinding, exposure []map[string]string) error {
 	for i, layer := range layers {
 		if layer.DoneWhen == nil {
 			continue
@@ -435,7 +435,7 @@ func validateComposedDoneWhen(layers []TaskDefinition, bindings [][]outputBindin
 	return nil
 }
 
-func referencedByBinding(bindings []outputBinding, innerKey string) bool {
+func referencedByBinding(bindings []OutputBinding, innerKey string) bool {
 	for _, b := range bindings {
 		for _, ref := range b.InnerRefs {
 			if ref == innerKey {

@@ -98,7 +98,11 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 	}
 	if len(r.Layers) > 0 {
 		layers, stderr, err := runNestedSetup(goCtx, r.Layers, ctx, inputs)
-		return InstanceSetup{Outputs: map[string]any{}, Layers: layers, Stderr: stderr}, err
+		if err != nil {
+			return InstanceSetup{Layers: layers, Stderr: stderr}, err
+		}
+		outputs, projErr := projectNestedOutputs(r, layers, session)
+		return InstanceSetup{Outputs: outputs, Layers: layers, Stderr: stderr}, projErr
 	}
 	cmdStr, err := render(r.Setup, ctx)
 	if err != nil {

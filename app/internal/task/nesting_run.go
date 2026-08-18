@@ -27,6 +27,10 @@ type ResolvedLayer struct {
 	// environment added to every execution inside this layer.
 	BindInputs map[string]string
 	BindEnv    map[string]string
+	// BindOutputs is this layer's joint outward: the classified
+	// `[bind.outputs]` entries that project the layer inside it into this
+	// layer's own public contract.
+	BindOutputs []config.OutputBinding
 	// InputsSchema validates the inputs this layer is set up with, and
 	// LocalsSchema the intermediates its setup emits. OutputsSchema is set
 	// only for the innermost layer, whose setup emits the chain's actual
@@ -36,9 +40,9 @@ type ResolvedLayer struct {
 	OutputsSchema *jsonschema.Schema
 }
 
-// resolveLayers compiles the schemas of every layer of def's nesting chain,
-// outermost first. Returns nil for a plain task.
-func resolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
+// ResolveLayers compiles the schemas and output bindings of every layer of
+// def's nesting chain, outermost first. Returns nil for a plain task.
+func ResolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
 	if !def.IsNested() {
 		return nil, nil
 	}
@@ -53,7 +57,11 @@ func resolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
 			BindInputs: d.Bind.InputBindings(),
 			BindEnv:    d.Bind.EnvBindings(),
 		}
-		var err error
+		bindings, err := d.ClassifiedOutputBindings()
+		if err != nil {
+			return nil, fmt.Errorf("layer %q: %w", d.ID, err)
+		}
+		layer.BindOutputs = bindings
 		if layer.InputsSchema, err = CompileSchema(d.InputsSchema, d.ResolvedInputsSchemaPath(), "plect:task:"+d.ID+":inputs"); err != nil {
 			return nil, fmt.Errorf("layer %q: input schema: %w", d.ID, err)
 		}
@@ -310,4 +318,20 @@ func renderBindings(bindings map[string]string, ctx RenderContext) (map[string]s
 		out[k] = rendered
 	}
 	return out, nil
+}
+
+// projectNestedOutputs renders the composed public contract a produced chain
+// presents and holds it to the composed task's own outputs schema, the same
+// obligation a plain task's setup output carries.
+func projectNestedOutputs(r Resolved, states []contract.TaskLayerState, session SessionVars) (map[string]any, error) {
+	outputs, err := ProjectPublicOutputs(r.Layers, states, session)
+	if err != nil {
+		return nil, err
+	}
+	if r.OutputsSchema != nil {
+		if vErr := r.OutputsSchema.Validate(outputs); vErr != nil {
+			return nil, fmt.Errorf("outputs schema: %w", vErr)
+		}
+	}
+	return outputs, nil
 }

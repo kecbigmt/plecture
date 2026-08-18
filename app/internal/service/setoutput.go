@@ -80,7 +80,7 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 		return nil, guardErr
 	}
 
-	target, mutable, schema, resolveErr := resolveSetOutputTarget(cfg, session, params)
+	target, mutable, schema, layers, resolveErr := resolveSetOutputTarget(cfg, session, params)
 	if resolveErr != nil {
 		return nil, resolveErr
 	}
@@ -109,6 +109,21 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 		if st.Status != contract.TaskStatusProduced {
 			return &Error{Code: ErrNotProduced, Message: fmt.Sprintf("%s is %q, not %q; outputs of non-live tasks are immutable", target, st.Status, contract.TaskStatusProduced)}
 		}
+		// A nested task's public contract is a projection, not a stored
+		// object: the write addresses the inner output its direct binding
+		// publishes, and the contract is re-read from there.
+		if len(layers) > 0 {
+			if applyErr := task.ApplyMutableOutputs(layers, st, params.Outputs); applyErr != nil {
+				return &Error{Code: ErrInvalidInput, Message: applyErr.Error()}
+			}
+			if schema != nil {
+				if vErr := schema.Validate(st.Outputs); vErr != nil {
+					return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("merged outputs violate schema: %v", vErr)}
+				}
+			}
+			s.UpdatedAt = time.Now()
+			return nil
+		}
 		merged := make(map[string]any, len(st.Outputs)+len(params.Outputs))
 		maps.Copy(merged, st.Outputs)
 		maps.Copy(merged, params.Outputs)
@@ -132,78 +147,84 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 }
 
 // resolveSetOutputTarget maps the selected target to the Tasks map key plus
-// the mutable-key set and compiled outputs schema that govern it.
-func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params SetOutputParams) (target string, mutable []string, schema *jsonschema.Schema, err *Error) {
+// resolveSetOutputTarget maps the selected target to the Tasks map key plus
+// the mutable-key set, compiled outputs schema, and — for a nested task — the
+// layer chain a write routes through.
+func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params SetOutputParams) (target string, mutable []string, schema *jsonschema.Schema, layers []task.ResolvedLayer, err *Error) {
 	if params.Workflow {
 		workflows, loadErr := cfg.LoadWorkflows(session.WorkspaceDirPath)
 		if loadErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", loadErr)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", loadErr)}
 		}
 		wf, ok := workflows[session.Workflow]
 		if !ok {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q not found in .plect/workflows or global config", session.Workflow)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q not found in .plect/workflows or global config", session.Workflow)}
 		}
 		workspaceProviders, loadErr := cfg.LoadWorkspaceProviders()
 		if loadErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", loadErr)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", loadErr)}
 		}
 		prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
 		if provErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
 		}
 		if !ok {
-			return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no workspace provider; the @workflow pseudo-node has no outputs contract", session.Workflow)}
+			return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no workspace provider; the @workflow pseudo-node has no outputs contract", session.Workflow)}
 		}
 		mutableKeys, mErr := task.MutableOutputKeys(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath())
 		if mErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, mErr)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, mErr)}
 		}
 		compiled, cErr := task.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
 		if cErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, cErr)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, cErr)}
 		}
-		return contract.WorkflowPseudoNodeID, mutableKeys, compiled, nil
+		return contract.WorkflowPseudoNodeID, mutableKeys, compiled, nil, nil
 	}
 
 	if params.Task != "" {
 		handle := params.Task
 		st, ok := session.Tasks[handle]
 		if !ok || st == nil {
-			return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task handle %q not found in session %q", handle, session.Name)}
+			return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task handle %q not found in session %q", handle, session.Name)}
 		}
 		if !st.Dynamic {
-			return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("%q is a static workflow node, not a runtime task; use --node", handle)}
+			return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("%q is a static workflow node, not a runtime task; use --node", handle)}
 		}
 		taskID := taskIDForInstance(handle, st)
 		defs, loadErr := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
 		if loadErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", loadErr)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", loadErr)}
 		}
 		def, ok := defs[taskID]
 		if !ok {
-			return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q for handle %q not found in any config layer", taskID, handle)}
+			return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q for handle %q not found in any config layer", taskID, handle)}
 		}
 		mutableKeys, mErr := task.MutableOutputKeys(def.OutputsSchema, def.ResolvedOutputsSchemaPath())
 		if mErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, mErr)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, mErr)}
 		}
 		compiled, cErr := task.CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plect:task:"+taskID+":outputs")
 		if cErr != nil {
-			return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, cErr)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, cErr)}
 		}
-		return handle, mutableKeys, compiled, nil
+		resolvedLayers, lErr := task.ResolveLayers(def)
+		if lErr != nil {
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: %v", taskID, lErr)}
+		}
+		return handle, mutableKeys, compiled, resolvedLayers, nil
 	}
 
 	plan, planErr := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if planErr != nil {
-		return "", nil, nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
+		return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: planErr.Error()}
 	}
 	for _, list := range [][]task.Resolved{plan.Session, plan.Run} {
 		for i := range list {
 			if list[i].NodeID == params.Node {
-				return params.Node, list[i].MutableOutputs, list[i].OutputsSchema, nil
+				return params.Node, list[i].MutableOutputs, list[i].OutputsSchema, list[i].Layers, nil
 			}
 		}
 	}
-	return "", nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("node %q not found in workflow %q", params.Node, session.Workflow)}
+	return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("node %q not found in workflow %q", params.Node, session.Workflow)}
 }

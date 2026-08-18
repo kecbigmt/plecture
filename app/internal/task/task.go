@@ -285,7 +285,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 	if err := config.ValidateDynamicOutputs(def.DynamicOutputs); err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
-	layers, err := resolveLayers(def)
+	layers, err := ResolveLayers(def)
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
@@ -589,6 +589,10 @@ type RenderContext struct {
 	// emitted from its own setup, visible to that layer's cleanup and to its
 	// own binding templates and nowhere else. Empty for a plain task.
 	Locals map[string]any
+	// Inner is the public contract of the layer one step inward, read by a
+	// `[bind.outputs]` template as `.Inner.outputs.<key>`. Empty everywhere
+	// but a projection render.
+	Inner map[string]any
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the `{{bin "<name>"}}` bare-name
 	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a
@@ -774,6 +778,7 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		Nodes            map[string]map[string]any
 		Inputs           map[string]any
 		Locals           map[string]any
+		Inner            map[string]any
 		Workflow         map[string]any
 		SessionInputs    map[string]any
 		SessionName      string
@@ -788,6 +793,7 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		Nodes:            nodes,
 		Inputs:           normalizeOutputs(ctx.Inputs),
 		Locals:           normalizeOutputs(ctx.Locals),
+		Inner:            map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Inner))},
 		Workflow:         map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Workflow))},
 		SessionInputs:    normalizeOutputs(ctx.Session.Inputs),
 		SessionName:      ctx.Session.Name,
@@ -1003,12 +1009,21 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, stderr)
 				return wrapped
 			}
+			outputs, projErr := projectNestedOutputs(r, layers, session)
+			if projErr != nil {
+				failed := failedState(r, now, projErr.Error(), prev, resolvedInputs)
+				failed.Layers = layers
+				tasks[r.NodeID] = failed
+				wrapped := fmt.Errorf("task %q: %w", r.NodeID, projErr)
+				obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, stderr)
+				return wrapped
+			}
 			tasks[r.NodeID] = &contract.TaskState{
 				Scope:   r.Scope,
 				TaskID:  taskIDFor(r),
 				Status:  contract.TaskStatusProduced,
 				Inputs:  resolvedInputs,
-				Outputs: map[string]any{},
+				Outputs: outputs,
 				Layers:  layers,
 				Seq:     nextSeq(tasks),
 				SetupAt: now,
