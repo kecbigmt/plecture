@@ -61,12 +61,11 @@ mkdir -p "$(dirname "$file")" 2>/dev/null
 # "no change" and starts a stall clock against a session that just moved.
 seq="$(jq -r '.seq // 0' "$file" 2>/dev/null)" || seq=0
 case "$seq" in ''|*[!0-9]*) seq=0 ;; esac
-# A turn that has started owes movement; one that has ended does not, and
-# only the latter may narrow what core expects of this instance.
+# Only a turn known to have ended establishes that quiet is normal, so only
+# that case pardons silence; anything else falls through to the residual.
 case "$activity" in
-  working) status=active ;;
   waiting) status=idle ;;
-  *)       status=opaque ;;
+  *)       status=active ;;
 esac
 jq -nc \
   --arg activity "$activity" \

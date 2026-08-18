@@ -301,7 +301,7 @@ func TestEvaluateHealth_WedgedButAliveProbePassingReadsStalled(t *testing.T) {
 // only narrow — never widen — done_when's expectation, so this instance's
 // contribution drops out and the session reads healthy, not stalled. Its
 // contrast is TestEvaluateHealth_ActivityFingerprintUnchangedPastWindowReadsStalled,
-// which is the same shape reporting opaque and reads stalled.
+// which is the same shape reporting active and reads stalled.
 func TestEvaluateHealth_IdleStatusNarrowsExpectationToHealthy(t *testing.T) {
 	store := testStore(t)
 	longAgo := time.Now().Add(-24 * time.Hour)
@@ -497,12 +497,12 @@ func TestEvaluateHealth_EscalatedWorkStillExpectsActivity(t *testing.T) {
 	}
 }
 
-// activityFingerprintCmd is a stub activity probe reporting the given opaque
+// activityFingerprintCmd is a stub activity probe reporting the given
 // fingerprint with no observed_at of its own, so freshness is judged purely
 // by core's own comparison against the persisted fingerprint.
 func activityFingerprintCmd(t *testing.T, fingerprint string) string {
 	t.Helper()
-	return activityProbeCmd(t, task.ActivityOpaque, fingerprint, time.Time{})
+	return activityProbeCmd(t, task.ActivityActive, fingerprint, time.Time{})
 }
 
 // setActivityState seeds the session's persisted HealthState activity fields,

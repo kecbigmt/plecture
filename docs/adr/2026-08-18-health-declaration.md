@@ -39,16 +39,22 @@ alive    = '...'   # liveness probe: exit-code semantics
 activity = '...'   # activity probe: JSON fingerprint envelope
 ```
 
-The activity envelope is `{status, fingerprint, observed_at}`, where `status`
-is a closed set of four values classifying how the probe interpreted its
-observation attempt: `none` (nothing to observe — discard), `opaque`
-(observed, not interpretable further — count the fingerprint, leave the
-expectation alone), `idle` (observed, quiet is normal — narrow the
-expectation), and `active` (observed, activity is due). `idle` is the only
-value that moves the expectation, and only downward; nothing can manufacture
-an expectation `done_when` does not already see. The field is spelled
-`status` on the exit-status precedent: it names the outcome classification of
-an attempt, and the four values read naturally under it.
+The activity envelope is `{status, fingerprint, observed_at}`. The
+fingerprint carries the fact of activity; `status` carries what its absence
+would mean, as a closed set of three: `none` (silence means nothing — nothing
+was observed, so the observation is discarded), `idle` (silence is normal,
+pardoned by the surface's own phase — the expectation is narrowed), and
+`active` (silence stands unpardoned). `active` is the residual: something was
+observed and `idle` was not established, so activity cannot be ruled out.
+
+Only `idle` requires positive establishment, and only `idle` changes what
+core concludes. A wrong pardon hides a real stall; a wrongly withheld pardon
+is safe, because core's own `done_when`-derived expectation still has to
+agree before anything is called stalled. The accusation is always core's; a
+probe holds only the pardon channel.
+
+The field is spelled `status` on the exit-status precedent: it names the
+outcome classification of an attempt, and the values read naturally under it.
 
 `setup` / `cleanup` / `[health]` is the universal task lifecycle trio. The
 present-state specification — worked examples, validation rules, envelope
@@ -106,8 +112,13 @@ those names updates with the migration.
 
 An activity probe's envelope is rejected at parse time when `status` is absent
 or unrecognized. A probe author gets a named error instead of a silent
-fallback, which is the point of the enum: there is no value the parser could
-default to without either suppressing stall detection or fabricating it.
+fallback, because neither candidate default is safe: `idle` would pardon every
+silence and hide real stalls, and `active` would accuse probes that never
+opted in.
+
+The health report's own `activity_expected` field is renamed `activity_due`.
+It is core's derived accusation, not a probe's report, and the old spelling
+would have kept the retired envelope field's name alive on a second surface.
 
 A workflow's `[healthcheck]` table is untouched: it declares the sampling
 cycle (period, stall threshold, re-notification), not what health means.
@@ -144,28 +155,41 @@ would have preserved a split between what the probe is called in config and
 what the thing implementing it is called on disk. `activity` is equally honest
 about attesting change and collapses the lineage instead of extending it.
 
+### A four-value status set with a separate `opaque`
+
+Rejected as an intermediate. The set was `none` / `opaque` / `idle` /
+`active`, where `opaque` meant "observed, not interpretable further" and
+`active` meant "observed, activity is due". Because no status may manufacture
+an expectation, the two drove exactly the same core decision — one machine
+behavior wearing two names, a distinction that lives only in prose and has to
+be explained away wherever the set is documented.
+
+Redefining `active` as the residual — observed, and `idle` not established —
+absorbs the honesty concern that motivated `opaque`. A pane fingerprint that
+cannot establish quiet is normal is not making a claim it lacks grounds for
+when it reports `active`; it is declining to pardon, which is exactly what it
+knows. That leaves one value per core behavior: `none` discards, `idle`
+narrows, `active` counts without narrowing.
+
 ### Two booleans (`supported` + `activity_expected`) instead of a status enum
 
-Rejected. The pair was the shape this decision first shipped, and it fails on
-both counts a sum type is for. It admits a combination that means nothing —
-`supported: false` together with `activity_expected: true` asserts an
-expectation about an instance that just declared it has no basis to judge one
-— so the parser accepts states the domain does not have. And it has no honest
-encoding for the most common case: a generic surface fingerprint observes
-something real while knowing nothing about whether activity is due. Under two
-booleans that state exists only as a default on an omitted field, and either
-default is wrong for someone. Defaulting `activity_expected` to false makes
-every generic probe silently narrow the expectation core derived from
-`done_when`, suppressing the stall detection the probe exists to feed;
-defaulting it to true makes any probe that legitimately means "quiet is
-normal" have to say so explicitly or produce false stalls. `opaque` makes that
-fourth state a value like any other, and illegal combinations stop being
-representable.
+Rejected. The pair fails on both counts a sum type is for. It admits a
+combination that means nothing — `supported: false` together with
+`activity_expected: true` asserts an expectation about an instance that just
+declared it has no basis to judge one — so the parser accepts states the
+domain does not have. And the meaning of a probe that declines to pardon
+silence exists only as a default on an omitted field, where either default is
+wrong for someone: defaulting `activity_expected` to false makes every
+generic probe silently narrow the expectation core derived from `done_when`,
+suppressing the stall detection the probe exists to feed, and defaulting it
+to true makes any probe that legitimately means "quiet is normal" say so
+explicitly or produce false stalls. Under `status` that reading is a value
+like any other, and illegal combinations stop being representable.
 
 The debate this settles is whether `activity_expected` should exist at all.
-It had no producer in the shipped tree — both agent tasks declined to emit it
-— which by this ADR's own test for a readiness probe made it an extension
-point with no present consumer. Merging it into `status` resolves that
+It had no producer in the shipped tree — both agent tasks declined to emit
+it — which by this ADR's own test for a readiness probe made it an extension
+point with no present consumer. Folding it into `status` resolves that
 without losing the narrowing capability: every value in the set is emitted by
 a shipped probe.
 
@@ -175,18 +199,6 @@ Rejected as a non-goal. Kubernetes needs readiness because traffic routing is
 a distinct decision from restarting a container. Plecture has no analogous
 consumer: nothing routes to a session on the strength of a readiness verdict.
 A third probe would ship an extension point with no present consumer.
-
-### Other spellings for the observed-but-not-interpretable status
-
-Rejected: `observing`, which reads as an ongoing action or a wait-and-see
-stance rather than a classification of an attempt that has already finished —
-exactly the misreading the enum exists to prevent; `unknown`, which carries an
-error-or-unset connotation and so contradicts the fact that an observation was
-made; and `indeterminate`, which says the right thing at twice the length.
-`opaque` states the interpretation outcome and is already this repository's
-vocabulary for the never-interprets-only-compares family — the opaque
-fingerprint token, the opaque interactive-endpoint binding, opaque provider
-values.
 
 ### AND composition for activity
 

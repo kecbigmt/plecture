@@ -31,7 +31,7 @@ activity = '''
 PANE=$(tmux capture-pane -p -t {{.Self.session_name}}) || exit 1
 FP=$(printf '%s' "$PANE" | cksum | tr -d ' \t')
 jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{status: "opaque", fingerprint: $fp, observed_at: $at}'
+  '{status: "active", fingerprint: $fp, observed_at: $at}'
 '''
 ```
 
@@ -88,24 +88,31 @@ Run via `bash -c`. Stdout is the activity envelope:
 
 | Field | Meaning |
 |---|---|
-| `status` | How the probe interpreted its observation attempt. One of the four values below. Required — an absent or unrecognized value is a parse error. |
+| `status` | What the absence of new activity would mean, as the probe reads its own surface. One of the three values below. Required — an absent or unrecognized value is a parse error. |
 | `fingerprint` | An opaque token that changes whenever the probe observes new activity. Core never parses it, only compares it. |
 | `observed_at` | RFC3339. Absent means the probe reports no timestamp of its own. |
 
-`status` is a closed set, and the value chosen decides what the observation
-does to the session's health:
+The fingerprint carries the fact of activity; `status` carries what its
+absence would mean:
 
-| Value | The probe is saying | Core's response |
+| Value | Silence means | Core's response |
 |---|---|---|
-| `none` | The attempt found nothing to observe. | Discard the observation — the same as declaring no probe at all. |
-| `opaque` | Something was observed, and it is not interpretable further. | Count the fingerprint for freshness. Leave the expectation alone. |
-| `idle` | Something was observed, and quiet is normal right now. | Count the fingerprint. Narrow the declaring instance's expectation. |
-| `active` | Something was observed, and activity is due. | Count the fingerprint. A frozen fingerprint is stall evidence. |
+| `none` | Nothing — the attempt found nothing to observe. | Discard the observation, the same as declaring no probe at all. |
+| `idle` | Silence is normal, pardoned by the surface's own phase. | Count the fingerprint. Narrow the declaring instance's expectation. |
+| `active` | Silence stands unpardoned. | Count the fingerprint. Silence becomes stall evidence where core's own expectation agrees. |
 
-`idle` is the only value that moves the expectation, and it can only narrow
-it. No value can manufacture an expectation core's own `done_when` evaluation
-does not already see, so `opaque` and `active` drive the same core decision
-today; they differ in what the probe asserts about its own surface.
+`active` is the residual: something was observed and `idle` was not
+established, so activity cannot be ruled out. A generic surface fingerprint
+reports it honestly — a pane's contents cannot establish that quiet is
+normal.
+
+Only `idle` requires the probe to have positively established anything (the
+turn is over, the queue is empty), and only `idle` changes what core
+concludes. The asymmetry is deliberate: a wrong pardon hides a real stall,
+while a wrongly withheld pardon is safe, because core's own
+`done_when`-derived expectation still has to agree before anything is called
+stalled. The accusation is always core's; a probe holds only the pardon
+channel.
 
 A non-zero exit, a render failure, or unparseable stdout is an error, and the
 instance contributes no activity evidence for that evaluation — the same

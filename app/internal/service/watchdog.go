@@ -24,19 +24,20 @@ type HealthReport struct {
 	// an alive probe at all — distinguishes "ran and passed" from "nothing to
 	// evaluate" (State() surfaces the latter as HealthUndeclared).
 	Declared bool `json:"declared"`
-	// ActivityExpected reports whether unmet run-scoped work exists that
-	// this session is expected to act on next, derived from declared
-	// done_when/task state, never from Message.
-	ActivityExpected bool `json:"activity_expected,omitempty"`
+	// ActivityDue reports whether unmet run-scoped work exists that this
+	// session is expected to act on next, derived from declared
+	// done_when/task state, never from Message. This is the accusation side
+	// of a stall: an activity probe can pardon silence but never raise it.
+	ActivityDue bool `json:"activity_due,omitempty"`
 	// ActivityDeclared reports whether at least one produced run-scoped
 	// task instance ran an activity probe that reported itself supported.
 	// False when no activity probe is declared at all, or when every
 	// declared one explicitly reports unsupported (or fails to run) — both
 	// read as "no basis to judge activity."
 	ActivityDeclared bool `json:"activity_declared,omitempty"`
-	// ActivityFresh reports whether any supported activity probe reported
+	// ActivityFresh reports whether any contributing activity probe reported
 	// evidence within the stall threshold. Meaningless unless
-	// ActivityDeclared and ActivityExpected are both true.
+	// ActivityDeclared and ActivityDue are both true.
 	ActivityFresh       bool      `json:"activity_fresh,omitempty"`
 	Reason              string    `json:"reason,omitempty"`
 	LastCheckedAt       time.Time `json:"last_checked_at,omitzero"`
@@ -62,11 +63,10 @@ type HealthcheckParams struct {
 //     session.
 //   - Unhealthy beats activity: a failing alive probe is reported as such
 //     regardless of activity evidence.
-//   - When no activity is currently expected, a passing alive probe is
-//     healthy outright.
-//   - When activity is expected but no activity probe reports support this
-//     tick and none has ever been observed, there is no basis to call it
-//     either healthy or stalled.
+//   - When no activity is due, a passing alive probe is healthy outright.
+//   - When activity is due but no activity probe contributes this tick and
+//     none has ever been observed, there is no basis to call it either
+//     healthy or stalled.
 //   - Otherwise, fresh activity evidence is healthy and its absence is
 //     stalled — once activity has been observed at least once, a probe
 //     dying afterward is a stall, not a reversion to undeclared: the
@@ -79,7 +79,7 @@ func (r HealthReport) State() domain.HealthState {
 	if !r.Healthy {
 		return domain.HealthUnhealthy
 	}
-	if !r.ActivityExpected {
+	if !r.ActivityDue {
 		return domain.HealthHealthy
 	}
 	if !r.ActivityDeclared && !everObserved {
@@ -174,7 +174,7 @@ func reportReason(report HealthReport) string {
 // hold that data avoid a redundant load.
 func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs map[string]config.TaskDefinition, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
 	declared := false
-	activityExpected := false
+	activityDue := false
 	activityDeclared := false
 	activityFingerprintParts := []string{}
 
@@ -192,13 +192,13 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 			}
 		}
 
-		// instanceExpected is this instance's own contribution to
-		// activity_expected, derived only from done_when/task state and never
-		// from the free-text message.
-		instanceExpected := false
+		// instanceDue is this instance's own contribution to activity_due,
+		// derived only from done_when/task state and never from the
+		// free-text message.
+		instanceDue := false
 		if def.DoneWhen != nil {
 			if task.EvaluateTaskDoneWhen(def.DoneWhen, st.Outputs).Overall != task.DoneSatisfied {
-				instanceExpected = true
+				instanceDue = true
 			}
 		}
 
@@ -210,11 +210,11 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 			if sigErr == nil && sig.Status != task.ActivityNone {
 				activityDeclared = true
 				// Idle is the only status that moves this instance's
-				// expectation, and only downward: a probe may report that
-				// quiet is normal right now, but none of the statuses can
-				// manufacture an expectation done_when does not already see.
+				// expectation, and only downward: a probe may pardon
+				// silence, but no status can manufacture an expectation
+				// done_when does not already see.
 				if sig.Status == task.ActivityIdle {
-					instanceExpected = false
+					instanceDue = false
 				}
 				if sig.Fingerprint != "" {
 					activityFingerprintParts = append(activityFingerprintParts, key+":"+sig.Fingerprint)
@@ -222,8 +222,8 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 			}
 		}
 
-		if instanceExpected {
-			activityExpected = true
+		if instanceDue {
+			activityDue = true
 		}
 	}
 
@@ -231,7 +231,7 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		SessionName:      name,
 		Healthy:          true,
 		Declared:         declared,
-		ActivityExpected: activityExpected,
+		ActivityDue:      activityDue,
 		ActivityDeclared: activityDeclared,
 		LastCheckedAt:    now,
 	}
@@ -261,7 +261,7 @@ func finalizeActivityObservation(report *HealthReport, prev *contract.HealthStat
 	// false — but once LastActivityAt is on record, that basis survives the
 	// current tick's probe dying, and freshness must be judged against it
 	// rather than defaulted.
-	if !report.ActivityExpected || (!report.ActivityDeclared && lastActivityAt.IsZero()) {
+	if !report.ActivityDue || (!report.ActivityDeclared && lastActivityAt.IsZero()) {
 		report.ActivityFresh = true
 		return
 	}

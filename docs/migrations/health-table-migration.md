@@ -54,7 +54,7 @@ If a task declared `movement_signal`, its JSON envelope changes shape: the
 `status` field.
 
 ```json
-{ "status": "opaque", "fingerprint": "...", "observed_at": "..." }
+{ "status": "active", "fingerprint": "...", "observed_at": "..." }
 ```
 
 Translate the old booleans as:
@@ -62,12 +62,16 @@ Translate the old booleans as:
 | Old envelope | New `status` |
 |---|---|
 | `"supported": false` | `none` |
-| `"supported": true`, no opinion on expectation | `opaque` |
 | `"supported": true`, `"movement_expected": false` | `idle` |
-| `"supported": true`, `"movement_expected": true` | `active` |
+| anything else supported | `active` |
+
+`active` is the residual: emit it whenever the probe observed something but
+cannot positively establish that quiet is normal. `idle` is the only value
+that changes what core concludes, so reach for it only when the probe really
+knows the surface is between turns.
 
 `status` has no default. An envelope omitting it, or carrying a value outside
-the four, is a parse error naming the value set — the probe contributes no
+the three, is a parse error naming the value set — the probe contributes no
 evidence for that evaluation, exactly as a non-zero exit would.
 
 ## Workflow config changes
@@ -122,8 +126,11 @@ The JSON surfaces rename alongside it:
 
 - `plect status --json`: `runtime.last_movement_at` → `runtime.last_activity_at`.
 - health report JSON: `movement_expected` / `movement_declared` /
-  `movement_fresh` / `last_movement_at` → `activity_expected` /
-  `activity_declared` / `activity_fresh` / `last_activity_at`.
+  `movement_fresh` / `last_movement_at` → `activity_due` /
+  `activity_declared` / `activity_fresh` / `last_activity_at`. The
+  expectation field is `activity_due`, not `activity_expected`: it is core's
+  own derived accusation, and reusing the retired envelope field's name would
+  have kept that name alive on a second surface.
 - health escalation metadata: the `last_movement_at` key becomes
   `last_activity_at`.
 
@@ -134,7 +141,7 @@ Update any subscriber, dashboard, or relay task matching on those names.
 After migration:
 
 ```bash
-rg 'healthcheck *=|movement_signal|movement_source|movement_expected|last_movement_at|"supported"' \
+rg 'healthcheck *=|movement_signal|movement_source|movement_expected|activity_expected|last_movement_at|"supported"' \
   "$DATA_DIR/state.json" "$CONFIG_DIR"
 plect ls
 plect status <session>

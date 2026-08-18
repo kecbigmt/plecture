@@ -16,8 +16,8 @@ Surface.
   `{{terminal "..."}}`. `[health].alive` is a plain `tmux has-session`, and
   `[health].activity` fingerprints the pane's visible contents so any
   workload running in it, agent or not, contributes activity evidence; it
-  reports `status: opaque`, since a pane fingerprint attests change and
-  nothing about whether more is due.
+  reports `status: active`, the residual reading, since a pane's contents
+  cannot establish that quiet is normal.
 
 No executables: every `[terminal]` verb is inline shell in `tmux.toml`, so
 this plugin ships config only.

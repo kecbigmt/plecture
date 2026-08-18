@@ -29,30 +29,23 @@ func TestRunActivityProbe_Envelope(t *testing.T) {
 			wantStatus: ActivityNone,
 		},
 		{
-			name:            "opaque carries a fingerprint with no phase claim",
-			stdout:          `{"status":"opaque","fingerprint":"fp-1"}`,
-			wantStatus:      ActivityOpaque,
-			wantFingerprint: "fp-1",
-		},
-		{
 			name:            "idle",
 			stdout:          `{"status":"idle","fingerprint":"fp-1"}`,
 			wantStatus:      ActivityIdle,
 			wantFingerprint: "fp-1",
 		},
 		{
-			// The enum exists so that every state is stated. Defaulting an
-			// absent status would reintroduce exactly the trap it replaced:
-			// whichever value were chosen would either kill stall detection
-			// or manufacture false stalls for probes that never opted in.
+			// Neither candidate default is safe: idle would pardon every
+			// silence and hide real stalls, active would accuse probes that
+			// never opted in.
 			name:             "absent status is a parse error naming the value set",
 			stdout:           `{"fingerprint":"fp-1"}`,
-			wantErrSubstring: "none, opaque, idle, active",
+			wantErrSubstring: "none, idle, active",
 		},
 		{
 			name:             "unknown status is a parse error naming the offending value",
-			stdout:           `{"status":"supported","fingerprint":"fp-1"}`,
-			wantErrSubstring: `unknown status "supported"`,
+			stdout:           `{"status":"opaque","fingerprint":"fp-1"}`,
+			wantErrSubstring: `unknown status "opaque"`,
 		},
 		{
 			name:             "malformed JSON is an error",
@@ -61,7 +54,7 @@ func TestRunActivityProbe_Envelope(t *testing.T) {
 		},
 		{
 			name:             "unparseable observed_at is an error",
-			stdout:           `{"status":"opaque","observed_at":"yesterday"}`,
+			stdout:           `{"status":"active","observed_at":"yesterday"}`,
 			wantErrSubstring: "parse observed_at",
 		},
 	}
