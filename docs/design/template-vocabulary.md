@@ -2,8 +2,10 @@
 
 Plect config is a wiring language: task hooks, node inputs, channel arguments,
 and instruction templates are Go `text/template` strings rendered against a
-session's own render context. This document specifies how a reference resolves,
-how optional access is written, and how a template-bearing value is quoted.
+session's own render context. This document specifies how a reference
+resolves, how optional access is written, and how a template-bearing value is
+quoted. Which helpers a surface registers varies, so availability is stated
+here only for the helper this document specifies.
 
 Decision record: [`docs/adr/2026-08-18-template-get-default-argument.md`](../adr/2026-08-18-template-get-default-argument.md).
 
@@ -18,9 +20,12 @@ is a config bug, and it surfaces at the site that made it.
 setup = 'launch --workspace-dir {{.WorkspaceDirPath | shellQuote}}'
 ```
 
-Task `cleanup` and `done_when` are the two exceptions: they render with
-`missingkey=zero`, because a partial setup must still be torn down and a
-not-yet-observed output must still evaluate.
+Cleanup hooks — a task's, a workspace provider's, an environment's — render
+with `missingkey=zero` instead, because a partial setup must still be torn
+down. So do a workflow's `[display]` templates, which read persisted outputs
+that may not exist yet. Markdown instruction templates are the third
+departure: an absent key renders as the literal `<no value>` rather than
+failing, which is precisely why optional access matters there.
 
 ## Optional access states its own default
 
@@ -53,22 +58,15 @@ if [ '{{get .Prev "sent" ""}}' = "true" ]; then exit 0; fi
 A call with any argument count other than three fails the render with an error
 naming the template site.
 
-## Helper availability
+## Where `get` is available
 
-A helper exists only where its render context can supply it, so the vocabulary
-differs per surface.
+`get` is registered for task hooks and node inputs, workspace provider and
+environment hooks, resource and subscribe hooks, a workflow's `[display]`
+templates, and Markdown instruction templates.
 
-| Surface | Helpers |
-|---|---|
-| Task hooks (`setup`, `cleanup`, `healthcheck`, `done_when`), node inputs, resource and subscribe hooks | `get`, `shellQuote`, `bin`, `terminal` |
-| Markdown instruction templates (`plect template render`) | `get` |
-| Channel argument templates | `json`, `bin`, `terminal` |
-| Chain input templates, workspace provider session-name resolver | none — field references only |
-
-`{{bin "..."}}` and `{{terminal "..."}}` resolve against the plugins and
-terminal verbs in scope for that render; see
-[`plugin-packaging.md`](plugin-packaging.md) and
-[`plugin-boundary-contracts.md`](plugin-boundary-contracts.md).
+Three surfaces render without it, and a config author reaching for optional
+access there has to restructure instead: channel argument templates, chain
+input templates, and a workspace provider's session-name resolver.
 
 ## Quoting a template-bearing value
 

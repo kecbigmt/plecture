@@ -17,11 +17,9 @@ import (
 // yields the third argument when the key is absent instead of injecting
 // "<no value>".
 var templateFuncs = template.FuncMap{
-	// The default is a required argument, not an optional one: templates
-	// have no reified absence to hand back, so a two-argument form would
-	// have to invent an invisible one. A present-but-empty value is a
-	// value, and does not take the default; a nil one does, because
-	// rendering it would emit the "<no value>" this helper exists to avoid.
+	// A present-but-empty value is a value and does not take the default;
+	// a nil one does, because rendering it would emit the "<no value>"
+	// this helper exists to avoid.
 	"get": func(m map[string]any, key string, def any) any {
 		if m == nil {
 			return def
