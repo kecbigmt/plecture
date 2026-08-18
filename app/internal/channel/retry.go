@@ -38,12 +38,6 @@ func DeliverWithRetry(ctx context.Context, def config.ChannelDefinition, inputs 
 	})
 }
 
-// DeliverWithRetryAndExecutor is DeliverWithRetry with an execution-plane
-// override — see DeliverWithExecutor.
-func DeliverWithRetryAndExecutor(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, policy RetryPolicy, executor Executor) (int, error) {
-	return DeliverWithRetryAndOptions(ctx, def, inputs, ev, policy, DeliverOptions{Executor: executor})
-}
-
 // DeliverWithRetryAndOptions is DeliverWithRetry with the full set of
 // per-delivery overrides — see DeliverWithOptions.
 func DeliverWithRetryAndOptions(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, policy RetryPolicy, opts DeliverOptions) (int, error) {

@@ -95,12 +95,6 @@ const (
 // real workflow node.
 const WorkflowPseudoNodeID = "@workflow"
 
-// EnvironmentPseudoNodeID is the reserved Session.Tasks key for the
-// environment-level setup/cleanup pseudo-node, mirroring
-// WorkflowPseudoNodeID. A workflow that declares no environment (host
-// degeneration) never creates this key.
-const EnvironmentPseudoNodeID = "@environment"
-
 // OutputKeyWorkspaceDir is the reserved output key naming the session's
 // acquired workspace directory. It is always immutable: declaring it
 // `mutable = true` in an outputs schema is a load error, and

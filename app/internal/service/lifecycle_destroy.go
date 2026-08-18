@@ -96,15 +96,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
-	if wfErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
-	}
-	envExecutor, envErr := environmentExecutorForSession(cfg, wf, session)
-	if envErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
-	}
-	if cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session.Tasks, params.Observer, envExecutor); cleanupErr != nil {
+	if cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session.Tasks, params.Observer); cleanupErr != nil {
 		session.UpdatedAt = time.Now()
 		putBestEffort(store, session, "run cleanup failure")
 		if !params.Force {
@@ -118,18 +110,6 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	// user wants to inspect state.json post hoc.
 	session.UpdatedAt = time.Now()
 	putBestEffort(store, session, "post-run-cleanup checkpoint")
-
-	// Environment cleanup: after run+session task cleanup, before workspace
-	// provider cleanup (tasks -> environment -> workspace provider). A no-op
-	// when the workflow declares no environment, or its setup never ran.
-	if envCleanupErr := runEnvironmentCleanupForSession(cfg, wf, session, params.Observer); envCleanupErr != nil {
-		session.UpdatedAt = time.Now()
-		putBestEffort(store, session, "environment cleanup failure")
-		if !params.Force {
-			return nil, &Error{Code: ErrExecutionFailed, Message: envCleanupErr.Error()}
-		}
-		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("environment cleanup: %v", envCleanupErr))
-	}
 
 	if wfState, ok := session.Tasks[contract.WorkflowPseudoNodeID]; ok && wfState != nil {
 		// Workflow setup acquired the workspace, so workflow cleanup owns

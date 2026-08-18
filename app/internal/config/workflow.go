@@ -39,29 +39,6 @@ type WorkflowFile struct {
 	// (nodes, inputs, done_when, display). A workflow without one cannot
 	// acquire a workspace, so it cannot back a session.
 	WorkspaceProvider string `toml:"workspace_provider"`
-	// Environment names the environment definition (environments/<id>.toml in
-	// the trusted base layers) this workflow's task Executor runs in. Empty
-	// or the built-in "host" value are the same thing — no environment
-	// lifecycle, tasks run directly on this machine (host degeneration) — so
-	// declaring `environment = "host"` explicitly changes nothing observable.
-	// Any other value is resolved against LoadEnvironments and its setup runs
-	// after workspace provider setup, before session task setup (see
-	// EnvironmentConfig); a node's own `execution` decides whether it
-	// actually runs there.
-	Environment string `toml:"environment"`
-	// EnvironmentInputs is a passthrough table for values a non-host
-	// Environment needs (e.g. a Docker image/tag). Core does not interpret
-	// its contents, the same way TaskDefinition inputs pass through
-	// untouched to setup/cleanup templates.
-	//
-	// TOML cannot nest a table under the same key as the `environment`
-	// scalar above (`[environment.inputs]` would conflict with
-	// `environment = "..."`), so this is its own top-level table:
-	//
-	//	environment = "docker"
-	//	[environment_inputs]
-	//	image = "myimage:latest"
-	EnvironmentInputs map[string]any `toml:"environment_inputs"`
 	// Display declares the values shown by `plect ls` / `show` / the web UI as
 	// templates over the session's persisted outputs:
 	//
@@ -268,15 +245,7 @@ type TaskDefinition struct {
 	// that runs but reports "supported": false is an explicit declaration
 	// that this instance has no basis to judge movement right now, which
 	// evaluates the same as if nothing were declared.
-	MovementSignal string   `toml:"movement_signal"`
-	Primary        bool     `toml:"primary"`
-	IdleAfter      Duration `toml:"idle_after"`
-	// Execution selects the execution plane for this task's setup/cleanup:
-	// "host" or "environment". Empty defaults to the workflow's own
-	// Environment (environment when declared, host otherwise) — see
-	// task.ResolveExecution. Declaring "environment" on a workflow with no
-	// Environment is a compile-time error, not a silent fallback to host.
-	Execution string `toml:"execution"`
+	MovementSignal string `toml:"movement_signal"`
 	// Terminal declares the task's `[terminal]` table: the task owns an
 	// interactive endpoint and offers attach/capture/send_text/send_keys
 	// against it. `plect attach` / `plect capture` resolve through it, and
@@ -650,12 +619,6 @@ func validateWorkspaceDirLayerWorkflow(wf WorkflowFile) error {
 	if wf.WorkspaceProvider != "" {
 		offending = append(offending, "workspace_provider")
 	}
-	if wf.Environment != "" {
-		offending = append(offending, "environment")
-	}
-	if len(wf.EnvironmentInputs) > 0 {
-		offending = append(offending, "environment_inputs")
-	}
 	if len(wf.Display) > 0 {
 		offending = append(offending, "display")
 	}
@@ -833,8 +796,6 @@ func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
 	nameSource := ""
 	descSource := ""
 	workspaceProviderSource := ""
-	environmentSource := ""
-	environmentInputsSource := ""
 	autoSelectSource := ""
 	if merged.Name != "" {
 		nameSource = layers[0].SourcePath
@@ -844,12 +805,6 @@ func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
 	}
 	if merged.WorkspaceProvider != "" {
 		workspaceProviderSource = layers[0].SourcePath
-	}
-	if merged.Environment != "" {
-		environmentSource = layers[0].SourcePath
-	}
-	if len(merged.EnvironmentInputs) > 0 {
-		environmentInputsSource = layers[0].SourcePath
 	}
 	if merged.AutoSelect != nil {
 		autoSelectSource = layers[0].SourcePath
@@ -891,20 +846,6 @@ func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
 			}
 			merged.WorkspaceProvider = layer.WorkspaceProvider
 			workspaceProviderSource = layer.SourcePath
-		}
-		if layer.Environment != "" {
-			if environmentSource != "" {
-				return WorkflowFile{}, fmt.Errorf("workflow %q: `environment` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, environmentSource, layer.SourcePath)
-			}
-			merged.Environment = layer.Environment
-			environmentSource = layer.SourcePath
-		}
-		if len(layer.EnvironmentInputs) > 0 {
-			if environmentInputsSource != "" {
-				return WorkflowFile{}, fmt.Errorf("workflow %q: `environment_inputs` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, environmentInputsSource, layer.SourcePath)
-			}
-			merged.EnvironmentInputs = layer.EnvironmentInputs
-			environmentInputsSource = layer.SourcePath
 		}
 		if layer.AutoSelect != nil {
 			if autoSelectSource != "" {
@@ -1047,6 +988,9 @@ func loadWorkflowFile(path string) (WorkflowFile, error) {
 		return wf, err
 	}
 	for _, key := range md.Undecoded() {
+		if len(key) == 1 && (key[0] == "environment" || key[0] == "environment_inputs") {
+			return wf, fmt.Errorf("`%s` is retired along with the environment execution plane; see docs/migrations/", key[0])
+		}
 		if len(key) == 1 && key[0] == "done_when" {
 			return wf, fmt.Errorf("workflow %s: `done_when` is retired at the workflow level; declare the completion predicate on the task definition's `[done_when]` instead", path)
 		}
@@ -1092,6 +1036,12 @@ func loadTaskDefinitionFile(path string) (TaskDefinition, error) {
 	// target at all, discovered only much later at `plect attach` time. Fail
 	// loudly here instead, pointing at the migration.
 	for _, key := range md.Undecoded() {
+		// Retired keys are rejected rather than dropped: the decoder would
+		// otherwise load the file clean and leave the author believing a
+		// declaration that no longer has any consumer is still in force.
+		if len(key) == 1 && (key[0] == "primary" || key[0] == "idle_after" || key[0] == "execution") {
+			return def, fmt.Errorf("`%s` is retired; see docs/migrations/", key[0])
+		}
 		if len(key) == 1 && (key[0] == "attach" || key[0] == "capture") {
 			return def, fmt.Errorf("task %s: top-level `%s` was moved under `[terminal]` (attach/capture/send_text/send_keys declared together); see docs/migrations/", path, key[0])
 		}

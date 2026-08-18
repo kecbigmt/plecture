@@ -90,37 +90,6 @@ match = '^x'
 	}
 }
 
-func TestLoadResourceDefs_InvalidExecution(t *testing.T) {
-	baseDir := t.TempDir()
-	writeFile(t, filepath.Join(baseDir, "resources", "broken.toml"), `
-match     = '^x'
-observe   = "echo '{}'"
-execution = "docker"
-`)
-	cfg := &Config{BaseDir: baseDir}
-	_, err := cfg.LoadResourceDefs()
-	if err == nil || !strings.Contains(err.Error(), "execution") {
-		t.Fatalf("expected execution-validation error, got %v", err)
-	}
-}
-
-func TestLoadResourceDefs_ExecutionEnvironmentAccepted(t *testing.T) {
-	baseDir := t.TempDir()
-	writeFile(t, filepath.Join(baseDir, "resources", "ok.toml"), `
-match     = '^x'
-observe   = "echo '{}'"
-execution = "environment"
-`)
-	cfg := &Config{BaseDir: baseDir}
-	got, err := cfg.LoadResourceDefs()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got["ok"].Execution != ExecutionEnvironment {
-		t.Errorf("Execution = %q, want %q", got["ok"].Execution, ExecutionEnvironment)
-	}
-}
-
 func TestLoadResourceDefs_BadMatchRegex(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "resources", "broken.toml"), `

@@ -41,11 +41,9 @@ type Resolved struct {
 	Setup       string
 	Cleanup     string
 	Healthcheck string
-	Primary     bool
 	// Terminal is the task's declared `[terminal]` table, or nil for a task
 	// that owns no interactive endpoint. See config.TerminalConfig.
 	Terminal      *config.TerminalConfig
-	IdleAfter     config.Duration
 	Inputs        map[string]string  // template strings rendered at setup time → .Input.<key>
 	InputsSchema  *jsonschema.Schema // optional: validated against resolved inputs
 	OutputsSchema *jsonschema.Schema
@@ -62,12 +60,6 @@ type Resolved struct {
 	// nil for pure lifecycle-only tasks. Evaluated against the instance's own
 	// outputs for `plect status` / `ls` display.
 	DoneWhen *config.DoneWhen
-	// Execution is the resolved execution plane ("host" or "environment") —
-	// always one of those two after ResolveExecution runs, never the raw
-	// possibly-empty TaskDefinition.Execution. CompileWorkflow resolves it for
-	// static nodes; the dynamic `plect task setup` path resolves it separately
-	// (ResolveDefinition has no workflow to consult).
-	Execution string
 }
 
 // Plan groups tasks by scope, in topo-sorted order.
@@ -234,11 +226,6 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 			return nil, err
 		}
 		resolved.Inputs = cloneInputs(node.Inputs)
-		resolvedExecution, err := ResolveExecution(resolved.Execution, wf.Environment)
-		if err != nil {
-			return nil, fmt.Errorf("workflow %q: node %q: %w", wf.ID, nodeID, err)
-		}
-		resolved.Execution = resolvedExecution
 		out = append(out, resolved)
 	}
 	if err := deriveDependsOn(out); err != nil {
@@ -303,47 +290,12 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		Cleanup:        def.Cleanup,
 		SourcePath:     def.SourcePath,
 		Healthcheck:    def.Healthcheck,
-		Primary:        def.Primary,
 		Terminal:       terminal,
-		IdleAfter:      def.IdleAfter,
 		InputsSchema:   inputsSchema,
 		OutputsSchema:  outputsSchema,
 		MutableOutputs: mutableOutputs,
 		DoneWhen:       def.DoneWhen,
-		// Execution starts as the raw declared value (possibly empty); callers
-		// resolve it against the workflow's Environment via ResolveExecution.
-		// CompileWorkflow does so for static nodes; the dynamic `plect task
-		// setup` path (which has no Resolved.Inputs/DependsOn either) does the
-		// same against the session's frozen workflow.
-		Execution: def.Execution,
 	}, nil
-}
-
-// ResolveExecution resolves a task's declared `execution` against the
-// workflow's `environment`: "" defaults to "environment" when the workflow
-// declares a non-host environment, else "host"; an explicit "host" or
-// "environment" is returned as-is, except "environment" on a workflow with
-// no environment is an error — that combination can never actually run in
-// the environment plane, so failing at compile time beats a silent host
-// fallback.
-func ResolveExecution(declared, workflowEnvironment string) (string, error) {
-	hasEnvironment := workflowEnvironment != "" && workflowEnvironment != config.ExecutionHost
-	switch declared {
-	case "":
-		if hasEnvironment {
-			return config.ExecutionEnvironment, nil
-		}
-		return config.ExecutionHost, nil
-	case config.ExecutionHost:
-		return config.ExecutionHost, nil
-	case config.ExecutionEnvironment:
-		if !hasEnvironment {
-			return "", fmt.Errorf("execution = %q but the workflow declares no environment", config.ExecutionEnvironment)
-		}
-		return config.ExecutionEnvironment, nil
-	default:
-		return "", fmt.Errorf("invalid execution %q (want %q or %q)", declared, config.ExecutionHost, config.ExecutionEnvironment)
-	}
 }
 
 // applyBlocks turns each WorkflowNode.Blocks entry into a reverse dependency
@@ -615,22 +567,17 @@ func topoSortNodes(list []Resolved) ([]Resolved, error) {
 //	Workflow — the workflow pseudo-node's outputs, exposed as
 //	           `.Workflow.outputs.<key>` (workspace_dir, branch, ...). Empty for
 //	           sessions whose workflow declares no setup hook.
-//	Environment — the environment pseudo-node's outputs, exposed as
-//	           `.Environment.outputs.<key>`. Empty for sessions whose
-//	           workflow declares no environment (host degeneration) or whose
-//	           environment declares no setup.
 //
 // `.Nodes.<id>.outputs.<key>` is the canonical reference for upstream node
 // outputs in setup/cleanup templates; `.Tasks.<id>.<key>` is a shorter
 // alias that resolves to the same value.
 type RenderContext struct {
-	Self        map[string]any
-	Prev        map[string]any
-	Tasks       map[string]map[string]any
-	Inputs      map[string]any
-	Workflow    map[string]any
-	Environment map[string]any
-	Session     SessionVars
+	Self     map[string]any
+	Prev     map[string]any
+	Tasks    map[string]map[string]any
+	Inputs   map[string]any
+	Workflow map[string]any
+	Session  SessionVars
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the `{{bin "<name>"}}` bare-name
 	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a
@@ -748,16 +695,6 @@ func workflowOutputs(tasks map[string]*contract.TaskState) map[string]any {
 	return nil
 }
 
-// environmentOutputs extracts the environment pseudo-node's outputs from the
-// persisted tasks map (empty when the workflow declares no environment, or
-// the environment declares no setup).
-func environmentOutputs(tasks map[string]*contract.TaskState) map[string]any {
-	if st, ok := tasks[contract.EnvironmentPseudoNodeID]; ok && st != nil {
-		return st.Outputs
-	}
-	return nil
-}
-
 // render is the setup-template renderer (missingkey=error: a missing
 // dependency is a contract violation, surface it).
 func render(cmd string, ctx RenderContext) (string, error) {
@@ -823,7 +760,6 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		Nodes            map[string]map[string]any
 		Inputs           map[string]any
 		Workflow         map[string]any
-		Environment      map[string]any
 		SessionInputs    map[string]any
 		SessionName      string
 		ResourceID       string
@@ -837,7 +773,6 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		Nodes:            nodes,
 		Inputs:           normalizeOutputs(ctx.Inputs),
 		Workflow:         map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Workflow))},
-		Environment:      map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Environment))},
 		SessionInputs:    normalizeOutputs(ctx.Session.Inputs),
 		SessionName:      ctx.Session.Name,
 		ResourceID:       ctx.Session.ResourceID,
@@ -875,13 +810,9 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 // so the resulting map can be persisted to TaskState.Inputs and exposed to
 // setup as `.Input.<key>`.
 //
-// envOutputs is optional (variadic so every pre-existing call site keeps
-// compiling unchanged): the environment pseudo-node's outputs, exposed as
-// `.Environment.outputs.<key>` alongside `.Workflow.outputs.<key>`.
-//
 // Inputs are rendered eagerly with missingkey=error so a typo in a reference
 // fails fast rather than producing a silent empty value.
-func RenderInputs(inputs map[string]string, deps map[string]map[string]any, wfOutputs map[string]any, session SessionVars, envOutputs ...map[string]any) (map[string]any, error) {
+func RenderInputs(inputs map[string]string, deps map[string]map[string]any, wfOutputs map[string]any, session SessionVars) (map[string]any, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
@@ -890,9 +821,6 @@ func RenderInputs(inputs map[string]string, deps map[string]map[string]any, wfOu
 		Tasks:    deps,
 		Workflow: wfOutputs,
 		Session:  session,
-	}
-	if len(envOutputs) > 0 {
-		ctx.Environment = envOutputs[0]
 	}
 	for k, tmpl := range inputs {
 		v, err := render(tmpl, ctx)
@@ -943,41 +871,13 @@ func dependencyOutputs(deps []string, tasks map[string]*contract.TaskState) map[
 	return out
 }
 
-// firstExecutor returns the first (only meaningful) element of a variadic
-// Executor slice, or nil — the shared helper behind every RunSetup/RunCleanup/
-// ExecuteTaskSetup call site that accepts an optional envExecutor.
-func firstExecutor(envExecutor []Executor) Executor {
-	if len(envExecutor) > 0 {
-		return envExecutor[0]
-	}
-	return nil
-}
-
-// execForNode runs cmdStr through the node's resolved execution plane. Host
-// always runs via execHostScript. Environment requires a non-nil envExecutor
-// — a nil envExecutor (the workflow's environment setup failed, was never
-// produced, or the caller never resolved one) is a fail-closed error, NOT a
-// silent fallback to host: a node declaring execution="environment" must
-// never run outside the environment it asked for, since a caller might rely
-// on that isolation for credentials, tools, or a container-only filesystem.
-func execForNode(goCtx context.Context, execution string, envExecutor Executor, cmdStr, workDir string) (stdout, stderr []byte, err error) {
-	if execution == config.ExecutionEnvironment {
-		if envExecutor == nil {
-			return nil, nil, fmt.Errorf("execution = %q but no environment executor is available (environment setup may have failed, not run yet, or been torn down)", config.ExecutionEnvironment)
-		}
-		return envExecutor.Run(goCtx, ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir})
-	}
-	return execHostScript(goCtx, cmdStr, workDir)
-}
-
 // runShell executes the given (already-rendered) command via "bash -c" on
-// the host — always, regardless of any workflow's Environment (see
-// alwaysHostExecutor). stdout is captured (parsed as JSON outputs); stderr is
+// the host through the pinned alwaysHostExecutor. stdout is captured (parsed as JSON outputs); stderr is
 // captured separately so the caller can decide when to surface it —
 // streaming it during the run would interleave with the progress spinner.
 // If workDir is non-empty and exists, it is used as the command's cwd.
-// runShell's callers (workspace provider setup/cleanup/subscribe, workflow and
-// environment hooks, resource observe/finalize) have no caller-supplied
+// runShell's callers (workspace provider setup/cleanup/subscribe, workflow
+// hooks, resource observe/finalize) have no caller-supplied
 // context to thread through yet, so it always runs with context.Background();
 // giving those paths a cancellable context is separate follow-up work.
 func runShell(cmdStr, workDir string) (stdout, stderr []byte, err error) {
@@ -1028,13 +928,8 @@ func observerOr(o Observer) Observer {
 // "failed", "cleaned") are re-run with a fresh setup attempt. Task authors
 // must make their setup scripts cope with this by verifying the desired
 // state rather than blindly recreating; see README "Task model" section.
-//
-// envExecutor is optional (variadic so every pre-existing call site keeps
-// compiling unchanged): when supplied, a node whose resolved Execution is
-// "environment" runs through it instead of the host.
-func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer, envExecutor ...Executor) error {
+func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
-	ee := firstExecutor(envExecutor)
 	for _, r := range ordered {
 		if existing, ok := tasks[r.NodeID]; ok && existing != nil && existing.Status == contract.TaskStatusProduced {
 			obs.OnSkip(r.Scope, r.NodeID, "already produced")
@@ -1052,7 +947,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			prev = existing.Outputs
 		}
 		deps := dependencyOutputs(r.DependsOn, tasks)
-		resolvedInputs, inputErr := RenderInputs(r.Inputs, deps, workflowOutputs(tasks), session, environmentOutputs(tasks))
+		resolvedInputs, inputErr := RenderInputs(r.Inputs, deps, workflowOutputs(tasks), session)
 		if inputErr != nil {
 			tasks[r.NodeID] = failedState(r, now, inputErr.Error(), prev, nil)
 			wrapped := fmt.Errorf("node %q input: %w", r.NodeID, inputErr)
@@ -1068,14 +963,13 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			}
 		}
 		ctx := RenderContext{
-			Self:        map[string]any{},
-			Prev:        prev,
-			Tasks:       deps,
-			Inputs:      resolvedInputs,
-			Workflow:    workflowOutputs(tasks),
-			Environment: environmentOutputs(tasks),
-			Session:     session,
-			SourcePath:  r.SourcePath,
+			Self:       map[string]any{},
+			Prev:       prev,
+			Tasks:      deps,
+			Inputs:     resolvedInputs,
+			Workflow:   workflowOutputs(tasks),
+			Session:    session,
+			SourcePath: r.SourcePath,
 		}
 		cmdStr, err := render(r.Setup, ctx)
 		if err != nil {
@@ -1087,7 +981,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		outputs := map[string]any{}
 		var stderrCaptured []byte
 		if strings.TrimSpace(cmdStr) != "" {
-			stdout, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorkspaceDirPath)
+			stdout, stderr, runErr := execHostScript(goCtx, cmdStr, session.WorkspaceDirPath)
 			stderrCaptured = stderr
 			if runErr != nil {
 				tasks[r.NodeID] = failedState(r, now, runErr.Error(), prev, resolvedInputs)
@@ -1189,13 +1083,8 @@ func toJSONShape(m map[string]any) map[string]any {
 // .Input bound to the inputs persisted at setup time — so cleanup never
 // depends on the original CLI invocation.
 // Cleanup errors are collected but do not stop the loop — all cleanups attempt.
-//
-// envExecutor is optional (variadic so every pre-existing call site keeps
-// compiling unchanged): when supplied, a node whose resolved Execution is
-// "environment" runs through it instead of the host.
-func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer, envExecutor ...Executor) error {
+func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
-	ee := firstExecutor(envExecutor)
 	var firstErr error
 	for i := len(ordered) - 1; i >= 0; i-- {
 		r := ordered[i]
@@ -1229,13 +1118,12 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			sess.ResourceID = state.Resource
 		}
 		ctx := RenderContext{
-			Self:        state.Outputs,
-			Tasks:       dependencyOutputs(r.DependsOn, tasks),
-			Inputs:      state.Inputs,
-			Workflow:    workflowOutputs(tasks),
-			Environment: environmentOutputs(tasks),
-			Session:     sess,
-			SourcePath:  r.SourcePath,
+			Self:       state.Outputs,
+			Tasks:      dependencyOutputs(r.DependsOn, tasks),
+			Inputs:     state.Inputs,
+			Workflow:   workflowOutputs(tasks),
+			Session:    sess,
+			SourcePath: r.SourcePath,
 		}
 		cmdStr, err := renderCleanup(r.Cleanup, ctx)
 		if err != nil {
@@ -1249,7 +1137,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
 			continue
 		}
-		_, stderr, runErr := execForNode(goCtx, r.Execution, ee, cmdStr, session.WorkspaceDirPath)
+		_, stderr, runErr := execHostScript(goCtx, cmdStr, session.WorkspaceDirPath)
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = runErr.Error()

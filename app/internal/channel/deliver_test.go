@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -212,87 +211,6 @@ func TestDeliver_TerminalWithNoResolverFailsLoud(t *testing.T) {
 	err := Deliver(context.Background(), def, nil, event.Event{Type: event.TypeInstruction})
 	if err == nil {
 		t.Fatal("expected an error when {{terminal ...}} has no resolver")
-	}
-}
-
-// fakeExecutor records the argv it receives and returns a canned result, so
-// tests can assert routing without shelling out.
-type fakeExecutor struct {
-	argv   [][]string
-	stdout []byte
-	stderr []byte
-	err    error
-}
-
-func (f *fakeExecutor) Run(argv []string) (stdout, stderr []byte, err error) {
-	f.argv = append(f.argv, argv)
-	return f.stdout, f.stderr, f.err
-}
-
-func TestDeliverWithExecutor_EnvironmentExecutionRoutesThroughExecutor(t *testing.T) {
-	def := config.ChannelDefinition{
-		Type:      config.ChannelTypeExec,
-		Command:   "tmux",
-		Args:      []string{"send-keys", "{{.Event.type}}"},
-		Execution: config.ExecutionEnvironment,
-	}
-	ev := event.Event{Type: event.TypeInstruction}
-	ex := &fakeExecutor{}
-	if err := DeliverWithExecutor(context.Background(), def, nil, ev, ex); err != nil {
-		t.Fatalf("DeliverWithExecutor: %v", err)
-	}
-	if len(ex.argv) != 1 {
-		t.Fatalf("argv calls = %d, want 1: %+v", len(ex.argv), ex.argv)
-	}
-	want := []string{"tmux", "send-keys", event.TypeInstruction}
-	if !reflect.DeepEqual(ex.argv[0], want) {
-		t.Errorf("argv = %+v, want %+v", ex.argv[0], want)
-	}
-}
-
-func TestDeliverWithExecutor_HostExecutionIgnoresExecutor(t *testing.T) {
-	// Execution unset (host default): even with a non-nil executor supplied,
-	// delivery must run on the host exactly as Deliver always has.
-	dir := t.TempDir()
-	def := config.ChannelDefinition{
-		Type:    config.ChannelTypeExec,
-		Command: "touch",
-		Args:    []string{"{{.Inputs.dir}}/{{.Event.type}}"},
-	}
-	ev := event.Event{Type: event.TypeInstruction}
-	ex := &fakeExecutor{}
-	if err := DeliverWithExecutor(context.Background(), def, map[string]any{"dir": dir}, ev, ex); err != nil {
-		t.Fatalf("DeliverWithExecutor: %v", err)
-	}
-	if len(ex.argv) != 0 {
-		t.Errorf("executor should not run for a host-plane channel, got %+v", ex.argv)
-	}
-	if _, err := os.Stat(filepath.Join(dir, event.TypeInstruction)); err != nil {
-		t.Errorf("expected touched file (host execution): %v", err)
-	}
-}
-
-func TestDeliverWithExecutor_NilExecutorFailsClosed(t *testing.T) {
-	// Execution=="environment" but no executor supplied (e.g. environment
-	// resolution failed) must fail closed — it must NEVER silently deliver on
-	// the host, since the channel explicitly asked for the environment plane.
-	dir := t.TempDir()
-	def := config.ChannelDefinition{
-		Type:      config.ChannelTypeExec,
-		Command:   "touch",
-		Args:      []string{"{{.Inputs.dir}}/{{.Event.type}}"},
-		Execution: config.ExecutionEnvironment,
-	}
-	ev := event.Event{Type: event.TypeInstruction}
-	err := DeliverWithExecutor(context.Background(), def, map[string]any{"dir": dir}, ev, nil)
-	if err == nil {
-		t.Fatal("expected fail-closed error, got nil")
-	}
-	if !strings.Contains(err.Error(), "environment executor") {
-		t.Errorf("unexpected message: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, event.TypeInstruction)); err == nil {
-		t.Error("must not have delivered on host")
 	}
 }
 

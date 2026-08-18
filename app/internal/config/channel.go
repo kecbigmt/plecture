@@ -43,10 +43,6 @@ type ChannelDefinition struct {
 	// Timeout bounds a single delivery attempt — a shared deadline applied by
 	// whichever primitive supports one (exec today; a socket write later).
 	Timeout Duration `toml:"timeout"`
-	// Execution selects the execution plane for an exec channel: "host"
-	// (default) or "environment". unix_socket has no argv to place in a
-	// plane, so declaring it there is a load error.
-	Execution string `toml:"execution"`
 }
 
 // Validate rejects the other primitive's fields so a typo in `type` surfaces
@@ -61,18 +57,12 @@ func (d ChannelDefinition) Validate() error {
 		if d.Command != "" || len(d.Args) > 0 {
 			return fmt.Errorf("unix_socket channel must not set exec fields (`command`/`args`)")
 		}
-		if d.Execution != "" {
-			return fmt.Errorf("unix_socket channel must not set `execution` (it has no argv to place in a plane)")
-		}
 	case ChannelTypeExec:
 		if d.Command == "" || len(d.Args) == 0 {
 			return fmt.Errorf("exec channel requires `command` and at least one `args` entry")
 		}
 		if d.Path != "" || d.Body != "" {
 			return fmt.Errorf("exec channel must not set unix_socket fields (`path`/`body`)")
-		}
-		if d.Execution != "" && d.Execution != ExecutionHost && d.Execution != ExecutionEnvironment {
-			return fmt.Errorf("exec channel `execution` must be %q or %q, got %q", ExecutionHost, ExecutionEnvironment, d.Execution)
 		}
 	case "":
 		return fmt.Errorf("channel `type` is required (%q or %q)", ChannelTypeUnixSocket, ChannelTypeExec)
@@ -117,8 +107,14 @@ func loadChannelFile(path string) (ChannelDefinition, error) {
 		return ChannelDefinition{}, err
 	}
 	var d ChannelDefinition
-	if _, err := toml.DecodeFile(path, &d); err != nil {
+	md, err := toml.DecodeFile(path, &d)
+	if err != nil {
 		return d, err
+	}
+	for _, key := range md.Undecoded() {
+		if len(key) == 1 && key[0] == "execution" {
+			return d, fmt.Errorf("`execution` is retired along with the environment execution plane; see docs/migrations/")
+		}
 	}
 	d.ID = stem
 	if err := d.Validate(); err != nil {

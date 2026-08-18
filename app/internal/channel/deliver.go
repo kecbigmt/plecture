@@ -110,22 +110,10 @@ func renderField(name, tmplStr string, rctx renderContext) (string, error) {
 	return b.String(), nil
 }
 
-// Executor runs an exec channel's argv when the channel opts into the
-// environment plane (config.ChannelDefinition.Execution == "environment").
-// Deliberately narrower than task.Executor (argv only, no ExecRequest) so
-// this package stays free of a dependency on internal/task; dispatch (which
-// already depends on both) adapts a task.Executor to this shape.
-type Executor interface {
-	Run(argv []string) (stdout, stderr []byte, err error)
-}
-
 // DeliverOptions carries optional per-delivery overrides beyond the channel
 // definition and event itself. The zero value is what Deliver uses: no
-// execution-plane override, no {{terminal "..."}} binding.
+// {{terminal "..."}} binding.
 type DeliverOptions struct {
-	// Executor routes an exec channel's argv through it when def.Execution
-	// == "environment"; nil always runs on the host, unchanged.
-	Executor Executor
 	// Terminal resolves {{terminal "..."}} in this delivery's templates; nil
 	// means a channel that references it gets a clear "no binding" error
 	// rather than resolving to an empty command.
@@ -140,16 +128,7 @@ func Deliver(ctx context.Context, def config.ChannelDefinition, inputs map[strin
 	return deliver(ctx, def, inputs, ev, DeliverOptions{})
 }
 
-// DeliverWithExecutor is Deliver with an execution-plane override: executor
-// routes an exec channel's argv through it when def.Execution ==
-// "environment"; nil (what Deliver uses) always runs on the host, unchanged.
-func DeliverWithExecutor(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, executor Executor) error {
-	return deliver(ctx, def, inputs, ev, DeliverOptions{Executor: executor})
-}
-
-// DeliverWithOptions is Deliver with the full set of per-delivery overrides —
-// use this over DeliverWithExecutor when the caller also has a
-// {{terminal "..."}} binding to supply.
+// DeliverWithOptions is Deliver with the full set of per-delivery overrides.
 func DeliverWithOptions(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, opts DeliverOptions) error {
 	return deliver(ctx, def, inputs, ev, opts)
 }
@@ -160,7 +139,7 @@ func deliver(ctx context.Context, def config.ChannelDefinition, inputs map[strin
 	case config.ChannelTypeUnixSocket:
 		return deliverUnixSocket(ctx, def, rctx)
 	case config.ChannelTypeExec:
-		return deliverExec(ctx, def, rctx, opts.Executor)
+		return deliverExec(ctx, def, rctx)
 	default:
 		return fmt.Errorf("unknown channel type %q", def.Type)
 	}
@@ -218,7 +197,7 @@ func writeFramed(conn net.Conn, data []byte) error {
 	return err
 }
 
-func deliverExec(ctx context.Context, def config.ChannelDefinition, rctx renderContext, executor Executor) error {
+func deliverExec(ctx context.Context, def config.ChannelDefinition, rctx renderContext) error {
 	args := make([]string, len(def.Args))
 	for i, a := range def.Args {
 		v, err := renderField(fmt.Sprintf("args[%d]", i), a, rctx)
@@ -229,22 +208,6 @@ func deliverExec(ctx context.Context, def config.ChannelDefinition, rctx renderC
 	}
 	// Command is verbatim, never templated, so event/input data can never choose
 	// the executable — only the argv values are rendered.
-	if def.Execution == config.ExecutionEnvironment {
-		// A nil executor (environment resolution failed, or its setup hasn't
-		// succeeded) is a fail-closed error, NOT a silent fallback to host —
-		// this channel asked for the environment plane specifically.
-		if executor == nil {
-			return fmt.Errorf("exec %s: execution = %q but no environment executor is available", def.Command, config.ExecutionEnvironment)
-		}
-		_, stderr, err := executor.Run(append([]string{def.Command}, args...))
-		if err != nil {
-			if msg := strings.TrimSpace(string(stderr)); msg != "" {
-				return fmt.Errorf("exec %s: %w: %s", def.Command, err, msg)
-			}
-			return fmt.Errorf("exec %s: %w", def.Command, err)
-		}
-		return nil
-	}
 	cmd := exec.CommandContext(ctx, def.Command, args...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr

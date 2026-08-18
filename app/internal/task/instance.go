@@ -68,13 +68,9 @@ func NextInstanceNumber(taskID string, tasks map[string]*contract.TaskState) int
 //
 // inputs are the already-bound input values (the caller applies the
 // --input > workspace-provider/workflow outputs > session vars precedence). workflowTasks
-// is the session's tasks map, read only to expose the @workflow (and
-// @environment) pseudo-nodes' outputs to the setup template.
-//
-// envExecutor is optional (variadic so every pre-existing call site keeps
-// compiling unchanged): when supplied, a resolved Execution of "environment"
-// runs through it instead of the host.
-func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, session SessionVars, workflowTasks map[string]*contract.TaskState, envExecutor ...Executor) (map[string]any, []byte, error) {
+// is the session's tasks map, read only to expose the @workflow pseudo-node's
+// outputs to the setup template.
+func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, session SessionVars, workflowTasks map[string]*contract.TaskState) (map[string]any, []byte, error) {
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
@@ -84,12 +80,11 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 		}
 	}
 	ctx := RenderContext{
-		Self:        map[string]any{},
-		Inputs:      inputs,
-		Workflow:    workflowOutputs(workflowTasks),
-		Environment: environmentOutputs(workflowTasks),
-		Session:     session,
-		SourcePath:  r.SourcePath,
+		Self:       map[string]any{},
+		Inputs:     inputs,
+		Workflow:   workflowOutputs(workflowTasks),
+		Session:    session,
+		SourcePath: r.SourcePath,
 	}
 	cmdStr, err := render(r.Setup, ctx)
 	if err != nil {
@@ -99,7 +94,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 	outputs := map[string]any{}
 	var stderr []byte
 	if strings.TrimSpace(cmdStr) != "" {
-		stdout, capturedStderr, runErr := execForNode(goCtx, r.Execution, firstExecutor(envExecutor), cmdStr, session.WorkspaceDirPath)
+		stdout, capturedStderr, runErr := execHostScript(goCtx, cmdStr, session.WorkspaceDirPath)
 		stderr = capturedStderr
 		if runErr != nil {
 			return nil, stderr, fmt.Errorf("setup: %w", runErr)

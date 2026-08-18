@@ -33,15 +33,11 @@ func channelInputs(s *domain.Session, ch config.EventChannel) (map[string]any, e
 	if st := s.Tasks[contract.WorkflowPseudoNodeID]; st != nil {
 		wfOutputs = st.Outputs
 	}
-	var envOutputs map[string]any
-	if st := s.Tasks[contract.EnvironmentPseudoNodeID]; st != nil {
-		envOutputs = st.Outputs
-	}
 	return task.RenderInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
 		Name:             s.Name,
 		ResourceID:       s.ResourceID,
 		WorkspaceDirPath: s.WorkspaceDirPath,
 		Branch:           s.Branch,
 		Inputs:           s.Inputs,
-	}, envOutputs)
+	})
 }

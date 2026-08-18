@@ -536,21 +536,12 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\n", providerSetup, providerCleanup)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	envsDir := filepath.Join(cfg.BaseDir, "environments")
-	if err := os.MkdirAll(envsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	envSetup := `printf '{"handle":"new-env","prev":"%s"}' '{{get .Prev "handle"}}'`
-	envCleanup := fmt.Sprintf("printf 'environment=%%s\n' '{{.Self.handle}}' >> %s", cleanupLog)
-	if err := os.WriteFile(filepath.Join(envsDir, "local.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\nexec = %q\n", envSetup, envCleanup, `exec "$@"`)), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
 	wfData, err := os.ReadFile(wfPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \"default\"\nenvironment = \"local\"\n"), wfData...), 0o644); err != nil {
+	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \"default\"\n"), wfData...), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	sessionName := "org/repo-12"
@@ -561,12 +552,6 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 			Status:  contract.TaskStatusProduced,
 			Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdirPath, "branch": "old-branch"},
 			Seq:     1,
-		},
-		contract.EnvironmentPseudoNodeID: {
-			Scope:   contract.TaskScopeSession,
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"handle": "old-env"},
-			Seq:     2,
 		},
 		"channel": {
 			Scope:   contract.TaskScopeSession,
@@ -623,10 +608,6 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if workflow == nil || workflow.Outputs[contract.OutputKeyWorkspaceDir] != newWorkdirPath || workflow.Outputs["prev"] != "" {
 		t.Fatalf("workflow task = %+v, want provider setup rerun without Prev", workflow)
 	}
-	env := result.Tasks[contract.EnvironmentPseudoNodeID]
-	if env == nil || env.Outputs["handle"] != "new-env" || env.Outputs["prev"] != "" {
-		t.Fatalf("environment task = %+v, want environment setup rerun without Prev", env)
-	}
 	channel := result.Tasks["channel"]
 	if channel == nil || channel.Outputs["thread"] != "new-thread" || channel.Outputs["prev"] != "" {
 		t.Fatalf("channel task = %+v, want fresh setup without Prev", channel)
@@ -679,7 +660,7 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 		t.Fatalf("read cleanup log: %v", err)
 	}
 	log := string(data)
-	for _, want := range []string{"runtime=old-runtime\n", "channel=old-thread\n", "work=preserved\n", "environment=old-env\n", "workflow=" + oldWorkdirPath + "\n"} {
+	for _, want := range []string{"runtime=old-runtime\n", "channel=old-thread\n", "work=preserved\n", "workflow=" + oldWorkdirPath + "\n"} {
 		if !strings.Contains(log, want) {
 			t.Fatalf("cleanup log = %q, missing %q", log, want)
 		}
@@ -722,21 +703,12 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\n", providerSetup, providerCleanup)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	envsDir := filepath.Join(cfg.BaseDir, "environments")
-	if err := os.MkdirAll(envsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	envSetup := `echo '{"handle":"new-env"}'`
-	envCleanup := fmt.Sprintf("printf 'environment=%%s\n' '{{.Self.handle}}' >> %s", cleanupLog)
-	if err := os.WriteFile(filepath.Join(envsDir, "local.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\nexec = %q\n", envSetup, envCleanup, `exec "$@"`)), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
 	wfData, err := os.ReadFile(wfPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \"default\"\nenvironment = \"local\"\n"), wfData...), 0o644); err != nil {
+	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \"default\"\n"), wfData...), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	sessionName := "org/repo-15"
@@ -747,12 +719,6 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 			Status:  contract.TaskStatusProduced,
 			Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdirPath, "branch": "old-branch"},
 			Seq:     1,
-		},
-		contract.EnvironmentPseudoNodeID: {
-			Scope:   contract.TaskScopeSession,
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"handle": "old-env"},
-			Seq:     2,
 		},
 		"channel": {
 			Scope:   contract.TaskScopeSession,
@@ -823,10 +789,6 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 	if workflow == nil || workflow.Status != contract.TaskStatusProduced || workflow.Outputs[contract.OutputKeyWorkspaceDir] != oldWorkdirPath {
 		t.Fatalf("@workflow state = %+v, want preserved produced state", workflow)
 	}
-	env := persisted.Tasks[contract.EnvironmentPseudoNodeID]
-	if env == nil || env.Status != contract.TaskStatusProduced || env.Outputs["handle"] != "old-env" {
-		t.Fatalf("@environment state = %+v, want preserved produced state", env)
-	}
 	runtime := persisted.Tasks["runtime"]
 	if runtime == nil || runtime.Status != contract.TaskStatusFailed || runtime.Outputs["session_id"] != "old-runtime" {
 		t.Fatalf("runtime task = %+v, want failed cleanup state with prior outputs", runtime)
@@ -852,7 +814,7 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 			t.Fatalf("cleanup log = %q, missing %q", log, want)
 		}
 	}
-	for _, notWant := range []string{"environment=old-env\n", "workflow=" + oldWorkdirPath + "\n"} {
+	for _, notWant := range []string{"workflow=" + oldWorkdirPath + "\n"} {
 		if strings.Contains(log, notWant) {
 			t.Fatalf("cleanup log = %q, should not contain %q", log, notWant)
 		}
@@ -1010,14 +972,14 @@ func TestRecreateSessionRuntimeTeardownListFailureLeavesStateUntouched(t *testin
 	session.WorkspaceDirPath = oldWorkdirPath
 	session.Branch = "old-branch"
 
-	_, _, err := recreateSessionRuntime(cfg, store, sessionName, session, config.WorkflowFile{ID: "default"}, &taskpkg.Plan{
+	_, err := recreateSessionRuntime(cfg, store, sessionName, session, config.WorkflowFile{ID: "default"}, &taskpkg.Plan{
 		Run: []taskpkg.Resolved{{
 			NodeID:  "runtime",
 			TaskID:  "runtime",
 			Scope:   contract.TaskScopeRun,
 			Cleanup: "true",
 		}},
-	}, nil, nil)
+	}, nil)
 	if err == nil {
 		t.Fatal("expected force recreate to fail when teardown list construction fails")
 	}
@@ -1061,34 +1023,6 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 
 	cases := []failureCase{
 		{
-			name:       "environment cleanup failure stops before reset",
-			sessionNum: 21,
-			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
-				writeForceRecreateProvider(t, cfg,
-					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
-					fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog),
-				)
-				writeForceRecreateEnvironment(t, cfg,
-					`printf '{"handle":"new-env"}'`,
-					fmt.Sprintf("printf 'environment=%%s\n' '{{.Self.handle}}' >> %s; exit 24", cleanupLog),
-				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\nenvironment = \"local\"\n")
-			},
-			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
-				return expectations{
-					workdirPath: oldWorkdirPath,
-					branch:      "old-branch",
-					oldExists:   true,
-					tasks: map[string]string{
-						contract.WorkflowPseudoNodeID:    contract.TaskStatusProduced,
-						contract.EnvironmentPseudoNodeID: contract.TaskStatusFailed,
-						"runtime":                        contract.TaskStatusCleaned,
-						"channel":                        contract.TaskStatusCleaned,
-					},
-				}
-			},
-		},
-		{
 			name:       "workflow cleanup failure stops before reset",
 			sessionNum: 22,
 			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
@@ -1096,11 +1030,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
 					fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; exit 25", cleanupLog),
 				)
-				writeForceRecreateEnvironment(t, cfg,
-					`printf '{"handle":"new-env"}'`,
-					fmt.Sprintf("printf 'environment=%%s\n' '{{.Self.handle}}' >> %s", cleanupLog),
-				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\nenvironment = \"local\"\n")
+				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
 			},
 			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
 				return expectations{
@@ -1108,10 +1038,9 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					branch:      "old-branch",
 					oldExists:   true,
 					tasks: map[string]string{
-						contract.WorkflowPseudoNodeID:    contract.TaskStatusFailed,
-						contract.EnvironmentPseudoNodeID: contract.TaskStatusCleaned,
-						"runtime":                        contract.TaskStatusCleaned,
-						"channel":                        contract.TaskStatusCleaned,
+						contract.WorkflowPseudoNodeID: contract.TaskStatusFailed,
+						"runtime":                     contract.TaskStatusCleaned,
+						"channel":                     contract.TaskStatusCleaned,
 					},
 				}
 			},
@@ -1136,7 +1065,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					tasks: map[string]string{
 						contract.WorkflowPseudoNodeID: contract.TaskStatusProduced,
 					},
-					absentTasks: []string{contract.EnvironmentPseudoNodeID, "runtime", "channel"},
+					absentTasks: []string{"runtime", "channel"},
 				}
 			},
 		},
@@ -1160,63 +1089,6 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					tasks: map[string]string{
 						contract.WorkflowPseudoNodeID: contract.TaskStatusProduced,
 					},
-					absentTasks: []string{contract.EnvironmentPseudoNodeID, "runtime", "channel"},
-				}
-			},
-		},
-		{
-			name:       "environment setup failure persists reset state",
-			sessionNum: 25,
-			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
-				writeForceRecreateProvider(t, cfg,
-					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
-					fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog),
-				)
-				writeForceRecreateEnvironment(t, cfg,
-					`printf 'environment setup failed\n' >&2; exit 26`,
-					fmt.Sprintf("printf 'environment=%%s\n' '{{.Self.handle}}' >> %s", cleanupLog),
-				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\nenvironment = \"local\"\n")
-			},
-			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
-				return expectations{
-					workdirPath: newWorkdirPath,
-					branch:      "new-branch",
-					oldExists:   false,
-					newExists:   true,
-					tasks: map[string]string{
-						contract.WorkflowPseudoNodeID:    contract.TaskStatusProduced,
-						contract.EnvironmentPseudoNodeID: contract.TaskStatusFailed,
-					},
-					absentTasks: []string{"runtime", "channel"},
-				}
-			},
-		},
-		{
-			name:       "environmentExecutorForSession failure persists reset state",
-			sessionNum: 26,
-			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
-				envPath := filepath.Join(cfg.BaseDir, "environments", "local.toml")
-				writeForceRecreateProvider(t, cfg,
-					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
-					fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog),
-				)
-				writeForceRecreateEnvironment(t, cfg,
-					fmt.Sprintf(`rm -f %s && printf '{"handle":"new-env"}'`, envPath),
-					fmt.Sprintf("printf 'environment=%%s\n' '{{.Self.handle}}' >> %s", cleanupLog),
-				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\nenvironment = \"local\"\n")
-			},
-			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
-				return expectations{
-					workdirPath: newWorkdirPath,
-					branch:      "new-branch",
-					oldExists:   false,
-					newExists:   true,
-					tasks: map[string]string{
-						contract.WorkflowPseudoNodeID:    contract.TaskStatusProduced,
-						contract.EnvironmentPseudoNodeID: contract.TaskStatusProduced,
-					},
 					absentTasks: []string{"runtime", "channel"},
 				}
 			},
@@ -1229,11 +1101,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
 					fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog),
 				)
-				writeForceRecreateEnvironment(t, cfg,
-					`printf '{"handle":"new-env"}'`,
-					fmt.Sprintf("printf 'environment=%%s\n' '{{.Self.handle}}' >> %s", cleanupLog),
-				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\nenvironment = \"local\"\n")
+				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
 				writeTaskFixture(t, cfg, taskFixture{
 					id:      "channel",
 					scope:   "session",
@@ -1248,9 +1116,8 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					oldExists:   false,
 					newExists:   true,
 					tasks: map[string]string{
-						contract.WorkflowPseudoNodeID:    contract.TaskStatusProduced,
-						contract.EnvironmentPseudoNodeID: contract.TaskStatusProduced,
-						"channel":                        contract.TaskStatusFailed,
+						contract.WorkflowPseudoNodeID: contract.TaskStatusProduced,
+						"channel":                     contract.TaskStatusFailed,
 					},
 					absentTasks: []string{"runtime"},
 				}
@@ -1294,12 +1161,6 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					Status:  contract.TaskStatusProduced,
 					Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdirPath, "branch": "old-branch"},
 					Seq:     1,
-				},
-				contract.EnvironmentPseudoNodeID: {
-					Scope:   contract.TaskScopeSession,
-					Status:  contract.TaskStatusProduced,
-					Outputs: map[string]any{"handle": "old-env"},
-					Seq:     2,
 				},
 				"channel": {
 					Scope:   contract.TaskScopeSession,
@@ -1395,17 +1256,6 @@ func writeForceRecreateProvider(t *testing.T, cfg *config.Config, setup, cleanup
 	}
 }
 
-func writeForceRecreateEnvironment(t *testing.T, cfg *config.Config, setup, cleanup string) {
-	t.Helper()
-	envsDir := filepath.Join(cfg.BaseDir, "environments")
-	if err := os.MkdirAll(envsDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(envsDir, "local.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\nexec = %q\n", setup, cleanup, `exec "$@"`)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func prependForceRecreateWorkflow(t *testing.T, cfg *config.Config, prefix string) {
 	t.Helper()
 	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
@@ -1429,9 +1279,6 @@ func writeTaskFixture(t *testing.T, cfg *config.Config, fixture taskFixture) {
 	}
 	if fixture.cleanup != "" {
 		fmt.Fprintf(&b, "cleanup = %q\n", fixture.cleanup)
-	}
-	if fixture.execution != "" {
-		fmt.Fprintf(&b, "execution = %q\n", fixture.execution)
 	}
 	if fixture.extra != "" {
 		b.WriteString(fixture.extra)

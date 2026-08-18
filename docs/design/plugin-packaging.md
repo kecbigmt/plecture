@@ -401,7 +401,7 @@ config, not inside cloned workspace-dir content. The global declaration file liv
 `~/.config/plect` here is the default config home. `--config-home` overrides
 it for the whole config tree (`config.toml`, `catalogs.toml`, `plect.lock`,
 and the global `templates/`, `tasks/`, `workflows/`, `workspaces/`,
-`resources/`, `environments/`, and `channels/` overlays); absent that flag,
+`resources/`, and `channels/` overlays); absent that flag,
 `PLECT_CONFIG_HOME` wins, then `$XDG_CONFIG_HOME/plect`, then the
 `~/.config/plect` default. The plugin cache and runtime state stay on the
 XDG data/cache dirs regardless of which of these resolves the config home.
@@ -737,8 +737,8 @@ Alternatives considered:
 ## Trust boundary
 
 Plecture config can run shell on the user's machine. Plugin config has the same
-power because workspace provider setup, resource observe/finalize, task setup/cleanup,
-environment exec, and exec channels all execute commands.
+power because workspace provider setup, resource observe/finalize, task
+setup/cleanup, and exec channels all execute commands.
 
 Threat model:
 
@@ -772,12 +772,12 @@ Threat model:
 - No auto-update exists. Plugin directories mounted by core are read-only during
   normal command execution.
 - Workspace-dir-owned cloned content cannot declare plugin references,
-  workspace providers, resources, environments, channels, or task definitions.
+  workspace providers, resources, channels, or task definitions.
 
 Loader trust restrictions follow this shape:
 
-- Workspace providers, resources, environments, and channels load only from
-  plugin dirs and global config.
+- Workspace providers, resources, and channels load only from plugin dirs and
+  global config.
 - Tasks reject definitions inside the workspace-dir layer.
 - Workflows allow workspace-dir files only to add nodes.
 - Templates can be overridden by workspace-dir content, but templates are rendered as
@@ -801,7 +801,7 @@ Same-id behavior by kind:
 
 | Kind | Same-id rule |
 |---|---|
-| Workspace providers, resources, environments, channels | Same-id conflicts between plugin layers fail. A deeper user-owned layer replaces the whole definition. No partial override. |
+| Workspace providers, resources, channels | Same-id conflicts between plugin layers fail. A deeper user-owned layer replaces the whole definition. No partial override. |
 | Tasks | Same-id conflicts between plugin layers fail. A deeper user-owned layer replaces the whole definition. No partial override. |
 | Workflows | Same-id conflicts between plugin workflow node ids, event channel names, or singleton fields fail. User-owned layers merge by adding nodes and event channels. Singleton fields cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
 | Workflow input schemas | Plugin-layer schemas for the same workflow id conflict unless they belong to the same selected plugin workflow. User-owned layer schemas combine with `allOf`. |
@@ -811,7 +811,7 @@ Partial override model:
 
 - To partially customize a plugin workflow, add a same-named workflow file in a
   trusted overlay that adds new `[[nodes]]` or new `[[event.channel]]` entries.
-- To replace a plugin task, workspace provider, resource, environment, or channel, place a
+- To replace a plugin task, workspace provider, resource, or channel, place a
   full same-id definition in global config or a trusted overlay.
 - To customize a template, place a same-named Markdown template in the nearest
   desired overlay.

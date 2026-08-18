@@ -52,14 +52,6 @@ const (
 	TaskScopeRun     = "run"
 )
 
-// Execution plane values for TaskDefinition.Execution / ChannelDefinition.Execution
-// / ResourceDef.Execution. "" (unset) means the context-specific default applies
-// (see each field's doc comment).
-const (
-	ExecutionHost        = "host"
-	ExecutionEnvironment = "environment"
-)
-
 type Config struct {
 	WorkspaceDirsRoot string `toml:"workspace_dirs_root"`
 	// ResourceAllowlist is the security boundary for session creation: regex

@@ -54,17 +54,7 @@ func Down(cfg *config.Config, store *state.Store, params DownParams) (*DownResul
 	if teardownErr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: teardownErr.Error()}
 	}
-	wf, wfErr := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
-	if wfErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: wfErr.Error()}
-	}
-	envExecutor, envErr := environmentExecutorForSession(cfg, wf, session)
-	if envErr != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: envErr.Error()}
-	}
-	// Down never touches @environment itself (only Destroy does) — the
-	// environment stays alive across down/up, same as @workflow.
-	cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session.Tasks, params.Observer, envExecutor)
+	cleanupErr := task.RunCleanup(context.Background(), teardown, sessionVars(cfg, session, plan), session.Tasks, params.Observer)
 	session.UpdatedAt = time.Now()
 	if err := store.Put(session); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}

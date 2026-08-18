@@ -175,7 +175,7 @@ not a default:
 - **Fold it into a user-owned override.** Per the shadowing and precedence
   rules in the design, the user layer (global config or a trusted ancestor
   overlay) always wins over plugin layers. For workspace providers, resources,
-  environments, tasks, channels, and templates this means placing a full
+  tasks, channels, and templates this means placing a full
   same-id definition in global config or an overlay — there is no
   partial-field patch for these kinds. For workflows, a same-named
   workflow file in an overlay can add new `[[nodes]]` or

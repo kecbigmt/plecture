@@ -31,8 +31,6 @@ type taskFixture struct {
 	capture        string
 	sendText       string
 	sendKeys       string
-	primary        bool
-	execution      string
 	extra          string
 }
 
@@ -89,12 +87,6 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 		}
 		if d.movementSignal != "" {
 			fmt.Fprintf(&b, "movement_signal = %q\n", d.movementSignal)
-		}
-		if d.primary {
-			b.WriteString("primary = true\n")
-		}
-		if d.execution != "" {
-			fmt.Fprintf(&b, "execution = %q\n", d.execution)
 		}
 		if d.extra != "" {
 			b.WriteString(d.extra)

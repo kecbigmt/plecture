@@ -185,3 +185,21 @@ func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool 
 	}
 	return false
 }
+
+// loadSessionWorkflow reloads the workflow a session is frozen to. Used by
+// lifecycle paths (up/down/destroy/task setup/cleanup) that only have the
+// session in hand, not an already-loaded WorkflowFile.
+func loadSessionWorkflow(cfg *config.Config, workspaceDirPath string, session *domain.Session) (config.WorkflowFile, error) {
+	if session == nil || session.Workflow == "" {
+		return config.WorkflowFile{}, nil
+	}
+	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
+	if err != nil {
+		return config.WorkflowFile{}, fmt.Errorf("load workflows: %w", err)
+	}
+	wf, ok := workflows[session.Workflow]
+	if !ok {
+		return config.WorkflowFile{}, fmt.Errorf("workflow %q not found", session.Workflow)
+	}
+	return wf, nil
+}

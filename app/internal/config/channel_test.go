@@ -62,24 +62,6 @@ func TestChannelDefinition_Validate(t *testing.T) {
 			def:     ChannelDefinition{Type: ChannelTypeExec, Command: "c", Args: []string{"a"}, InputSchema: map[string]ChannelInputSpec{"session": {Required: true}}},
 			wantErr: "`type` is required",
 		},
-		{
-			name: "exec with execution=environment ok",
-			def:  ChannelDefinition{Type: ChannelTypeExec, Command: "tmux", Args: []string{"send-keys"}, Execution: ExecutionEnvironment},
-		},
-		{
-			name: "exec with execution=host ok",
-			def:  ChannelDefinition{Type: ChannelTypeExec, Command: "tmux", Args: []string{"send-keys"}, Execution: ExecutionHost},
-		},
-		{
-			name:    "exec with invalid execution",
-			def:     ChannelDefinition{Type: ChannelTypeExec, Command: "tmux", Args: []string{"send-keys"}, Execution: "docker"},
-			wantErr: "`execution` must be",
-		},
-		{
-			name:    "unix_socket must not set execution",
-			def:     ChannelDefinition{Type: ChannelTypeUnixSocket, Path: "p", Body: "b", Execution: ExecutionHost},
-			wantErr: "must not set `execution`",
-		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
