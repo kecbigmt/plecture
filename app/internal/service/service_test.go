@@ -520,7 +520,7 @@ func TestTaskViews_EvaluatesDoneWhenPerRuntimeTaskOutputs(t *testing.T) {
 		},
 	}
 
-	views := taskViews(defs, s, map[string]*domain.Session{s.Name: s})
+	views := taskViews(&config.Config{}, defs, s, map[string]*domain.Session{s.Name: s})
 	if len(views) != 2 {
 		t.Fatalf("len(taskViews) = %d, want 2", len(views))
 	}

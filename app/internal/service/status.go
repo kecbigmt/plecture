@@ -209,7 +209,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			Message:            session.Message,
 			AttachCommand:      attachCommandFor(cfg, session),
 		},
-		Work:     statusTaskViews(loadDisplayTasks(cfg), session, sessions, actionsByInstance, chainsByInstance),
+		Work:     statusTaskViews(cfg, loadDisplayTasks(cfg), session, sessions, actionsByInstance, chainsByInstance),
 		Flow:     StatusFlow{Events: events},
 		Warnings: warnings,
 	}, nil
@@ -267,12 +267,12 @@ func runtimeTaskViews(session *domain.Session) []StatusRuntimeTask {
 // already-evaluated done_when result per produced instance (from
 // evaluateSessionActions, the same evaluation `plect check`/`plect tick` act on),
 // so sessionTaskItems reuses it instead of evaluating done_when a second time.
-func statusTaskViews(defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session, actions map[string]computedAction, chains map[string][]StatusChain) []StatusTask {
+func statusTaskViews(cfg *config.Config, defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session, actions map[string]computedAction, chains map[string][]StatusChain) []StatusTask {
 	cached := make(map[string]task.DoneWhenResult, len(actions))
 	for key, a := range actions {
 		cached[key] = a.result
 	}
-	items := sessionTaskItems(defs, session, sessions, cached)
+	items := sessionTaskItems(cfg, defs, session, sessions, cached)
 	if items == nil {
 		return nil
 	}

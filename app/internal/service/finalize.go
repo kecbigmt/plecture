@@ -87,7 +87,7 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
 	def := defs[taskIDForInstance(params.Instance, st)]
-	dw, derr := effectiveDoneWhen(def.DoneWhen, st)
+	dw, gateOutputs, derr := instanceGate(cfg, session, def, st)
 	if derr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: derr.Error()}
 	}
@@ -99,7 +99,7 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 	if err != nil {
 		return nil, err
 	}
-	eval := task.EvaluateTaskDoneWhenWithContext(dw, st.Outputs, doneWhenEvalContext(resolvedName, st, allSessions))
+	eval := task.EvaluateTaskDoneWhenWithContext(dw, gateOutputs, doneWhenEvalContext(resolvedName, st, allSessions))
 	if eval.Overall != task.DoneSatisfied {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q done_when is %s, not satisfied; finalize refuses to record completion or clean up", params.Instance, eval.Overall)}
 	}

@@ -203,29 +203,41 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 			continue
 		}
 		def := defs[taskIDForInstance(key, st)]
-
-		if alive := def.Health.AliveProbe(); alive != "" {
-			declared = true
-			if aliveErr := task.RunAliveProbe(context.Background(), alive, st.Outputs, st.Inputs, vars); aliveErr != nil {
-				return HealthReport{SessionName: name, Healthy: false, Declared: true, ProbeErrors: probeErrors, Reason: fmt.Sprintf("%s: %v", key, aliveErr), LastCheckedAt: now}
-			}
+		comp, compErr := composeInstance(def, st, vars)
+		if compErr != nil {
+			probeErrors = append(probeErrors, ProbeError{Instance: key, Reason: compErr.Error()})
+			continue
 		}
 
 		// instanceDue is this instance's own contribution to activity_due,
 		// derived only from done_when/task state and never from the
-		// free-text message.
+		// free-text message. A chain's layers share it: the composed
+		// done_when is one conjunction, so any layer's unmet condition means
+		// the instance still owes progress.
 		instanceDue := false
-		if def.DoneWhen != nil {
-			if task.EvaluateTaskDoneWhen(def.DoneWhen, st.Outputs).Overall != task.DoneSatisfied {
+		if dw, _ := instanceDoneWhen(def, comp); dw != nil {
+			if task.EvaluateTaskDoneWhen(dw, instanceOutputs(st, comp)).Overall != task.DoneSatisfied {
 				instanceDue = true
 			}
 		}
 
-		if activity := def.Health.ActivityProbe(); activity != "" {
-			sig, sigErr := task.RunActivityProbe(context.Background(), activity, st.Outputs, st.Inputs, vars)
+		// alive composes by AND and activity by OR across the layers of a
+		// chain exactly as they compose across instances, so both fall out of
+		// walking one flat target list.
+		for _, target := range probeTargets(key, def, st, comp) {
+			if target.Alive != "" {
+				declared = true
+				if aliveErr := task.RunAliveProbe(context.Background(), target.Alive, target.Self, target.Inputs, vars, target.Env...); aliveErr != nil {
+					return HealthReport{SessionName: name, Healthy: false, Declared: true, ProbeErrors: probeErrors, Reason: fmt.Sprintf("%s: %v", target.Label, aliveErr), LastCheckedAt: now}
+				}
+			}
+			if target.Activity == "" {
+				continue
+			}
+			sig, sigErr := task.RunActivityProbe(context.Background(), target.Activity, target.Self, target.Inputs, vars, target.Env...)
 			switch {
 			case sigErr != nil:
-				probeErrors = append(probeErrors, activityProbeError(key, activity, sigErr))
+				probeErrors = append(probeErrors, activityProbeError(target.Label, target.Activity, sigErr))
 			case sig != nil:
 				activityDeclared = true
 				// A probe may only lower this instance's expectation: no
@@ -234,7 +246,7 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 				if sig.SilenceExpected {
 					instanceDue = false
 				}
-				activityFingerprintParts = append(activityFingerprintParts, key+":"+sig.Fingerprint)
+				activityFingerprintParts = append(activityFingerprintParts, target.Label+":"+sig.Fingerprint)
 			}
 		}
 

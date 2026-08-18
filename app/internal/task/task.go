@@ -105,12 +105,12 @@ func RenderAttach(cmd string, selfOutputs map[string]any, session SessionVars) (
 // .Self), and session vars (mirroring RenderAttach). Runs via bash -c. A
 // non-zero exit or a render failure is returned as an error carrying stderr;
 // nil means the execution surface is present.
-func RunAliveProbe(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars) error {
+func RunAliveProbe(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars, env ...string) error {
 	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Inputs: nodeInputs, Session: session})
 	if err != nil {
 		return err
 	}
-	_, stderr, err := execHostScript(goCtx, rendered, session.WorkspaceDirPath)
+	_, stderr, err := execHostScript(goCtx, rendered, session.WorkspaceDirPath, env...)
 	if err != nil {
 		if len(stderr) > 0 {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -126,12 +126,12 @@ func RunAliveProbe(goCtx context.Context, cmd string, selfOutputs map[string]any
 // stdout is never JSON-parsed. A non-zero exit or a render failure is
 // returned as an error carrying stderr (e.g. a pane that no longer exists),
 // so an orphaned channel never succeeds with empty output.
-func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, session SessionVars) (string, error) {
+func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, session SessionVars, env ...string) (string, error) {
 	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Session: session})
 	if err != nil {
 		return "", err
 	}
-	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorkspaceDirPath)
+	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorkspaceDirPath, env...)
 	if err != nil {
 		if len(stderr) > 0 {
 			return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -270,7 +270,21 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 	if err := def.Terminal.Validate(); err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
+	layers, err := ResolveLayers(def)
+	if err != nil {
+		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
+	}
 	terminal := def.Terminal
+	doneWhen := def.DoneWhen
+	if len(layers) > 0 {
+		// A nested task presents one [terminal] and one done_when, whichever
+		// layers declared them: from the outside it is exactly a task, so
+		// nothing downstream asks which layer answered.
+		if t := TerminalLayer(layers); t >= 0 {
+			terminal = layers[t].Terminal
+		}
+		doneWhen, _ = ComposeDoneWhen(layers)
+	}
 	if !terminal.IsDeclared() {
 		// A bare `[terminal]` header with every member left empty carries no
 		// obligation (Validate accepts it), but it must not read as "this
@@ -285,10 +299,6 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 	if err := config.ValidateDynamicOutputs(def.DynamicOutputs); err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
-	layers, err := ResolveLayers(def)
-	if err != nil {
-		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
-	}
 	return Resolved{
 		NodeID:         nodeID,
 		TaskID:         def.ID,
@@ -300,7 +310,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		InputsSchema:   inputsSchema,
 		OutputsSchema:  outputsSchema,
 		MutableOutputs: mutableOutputs,
-		DoneWhen:       def.DoneWhen,
+		DoneWhen:       doneWhen,
 		Layers:         layers,
 	}, nil
 }

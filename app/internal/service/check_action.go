@@ -10,8 +10,14 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-func checkActionForResult(sessionName, instance, resource string, dw *config.DoneWhen, st *contract.TaskState, result task.DoneWhenResult, trigger TickTrigger) CheckAction {
+func checkActionForResult(sessionName, instance, resource string, dw *config.DoneWhen, st *contract.TaskState, result task.DoneWhenResult, trigger TickTrigger, lb *layerBudgets) CheckAction {
 	heartbeatBudget := doneWhenHeartbeatBudget(dw)
+	if lb != nil {
+		// A nested task has no instance-level budget of its own: the
+		// composed done_when carries no budget table, and each layer's
+		// budget accounts only for the conditions that layer declared.
+		heartbeatBudget = 0
+	}
 	heartbeatTicks := 0
 	heartbeatEscalations := 0
 	if st.DoneWhen != nil {
@@ -44,6 +50,11 @@ func checkActionForResult(sessionName, instance, resource string, dw *config.Don
 	if trigger == TickTriggerHeartbeat {
 		nextHeartbeatTicks++
 		consumedHeartbeat = true
+	}
+	if lb != nil {
+		if action, ok := layerBudgetAction(sessionName, instance, st, result, trigger, lb, fingerprint); ok {
+			return action
+		}
 	}
 	if len(unmetItems) == 0 && result.Overall == task.DonePending {
 		return CheckAction{
@@ -371,4 +382,57 @@ func heartbeatBudgetText(heartbeatTicks, heartbeatBudget int) string {
 		return fmt.Sprintf("%d/unbounded", heartbeatTicks)
 	}
 	return fmt.Sprintf("%d/%d", heartbeatTicks, heartbeatBudget)
+}
+
+// layerBudgetAction advances each layer's own patience and escalates for the
+// first layer to exhaust it, naming that layer and the items it declared.
+// Budgets never interact across layers, so the walk needs no arbitration —
+// only an order, and outermost-first is the order a reader expects.
+//
+// The bool reports whether an escalation is owed; the advanced counters ride
+// along on whatever action the caller returns instead, so a tick that
+// escalates for no layer still records the patience it consumed.
+func layerBudgetAction(sessionName, instance string, st *contract.TaskState, result task.DoneWhenResult, trigger TickTrigger, lb *layerBudgets, fingerprint string) (CheckAction, bool) {
+	next := append([]int(nil), lb.Ticks...)
+	escalating := -1
+	var escalatingItems []CheckUnmetItem
+	for i := range lb.Budget {
+		unmet := lb.unmetFor(i, result)
+		if len(unmet) == 0 {
+			continue
+		}
+		if trigger != TickTriggerHeartbeat {
+			continue
+		}
+		next[i]++
+		if escalating < 0 && lb.Budget[i] > 0 && next[i] >= lb.Budget[i] {
+			escalating = i
+			escalatingItems = unmet
+		}
+	}
+	lb.NextTicks = next
+	if escalating < 0 {
+		return CheckAction{}, false
+	}
+	items := unmetItemSummaries(escalatingItems)
+	body := fmt.Sprintf("done_when remains unmet for %s layer %q after %d/%d heartbeat tick(s).\n\nUnmet items:\n%s",
+		instance, lb.TaskIDs[escalating], next[escalating], lb.Budget[escalating], unmetItemBulletList(escalatingItems))
+	return CheckAction{
+		SessionName:         sessionName,
+		Instance:            instance,
+		Layer:               lb.TaskIDs[escalating],
+		LayerIndex:          escalating,
+		Action:              "escalate",
+		HeartbeatTicks:      next[escalating],
+		HeartbeatBudget:     lb.Budget[escalating],
+		HeartbeatEscalation: lb.Escalations[escalating] + 1,
+		HeartbeatChanged:    true,
+		LayerTicks:          next,
+		Items:               items,
+		UnmetItems:          escalatingItems,
+		Summary:             fmt.Sprintf("done_when non-convergence for %s layer %q", instance, lb.TaskIDs[escalating]),
+		Body:                body,
+		Fingerprint:         fingerprint,
+		EscalationKind:      escalationKindDoneWhenNonConvergence,
+	}, true
 }

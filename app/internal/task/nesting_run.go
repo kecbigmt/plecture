@@ -38,6 +38,16 @@ type ResolvedLayer struct {
 	InputsSchema  *jsonschema.Schema
 	LocalsSchema  *jsonschema.Schema
 	OutputsSchema *jsonschema.Schema
+	// Health, DoneWhen, DynamicOutputs, and Terminal are what this layer
+	// declares for itself. They compose across the chain rather than
+	// override: alive by AND, activity by OR, done_when by conjunction,
+	// produced outputs into this layer's own contract, and at most one
+	// [terminal] per chain.
+	Health         *config.HealthConfig
+	DoneWhen       *config.DoneWhen
+	DynamicOutputs []config.DynamicOutput
+	Terminal       *config.TerminalConfig
+	Chains         []config.ChainDefinition
 }
 
 // ResolveLayers compiles the schemas and output bindings of every layer of
@@ -50,12 +60,19 @@ func ResolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
 	out := make([]ResolvedLayer, 0, len(defs))
 	for i, d := range defs {
 		layer := ResolvedLayer{
-			TaskID:     d.ID,
-			Setup:      d.Setup,
-			Cleanup:    d.Cleanup,
-			SourcePath: d.SourcePath,
-			BindInputs: d.Bind.InputBindings(),
-			BindEnv:    d.Bind.EnvBindings(),
+			TaskID:         d.ID,
+			Setup:          d.Setup,
+			Cleanup:        d.Cleanup,
+			SourcePath:     d.SourcePath,
+			BindInputs:     d.Bind.InputBindings(),
+			BindEnv:        d.Bind.EnvBindings(),
+			Health:         d.Health,
+			DoneWhen:       d.DoneWhen,
+			DynamicOutputs: d.DynamicOutputs,
+			Chains:         d.Chains,
+		}
+		if d.Terminal.IsDeclared() {
+			layer.Terminal = d.Terminal
 		}
 		bindings, err := d.ClassifiedOutputBindings()
 		if err != nil {
@@ -246,7 +263,7 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 			}
 			continue
 		}
-		_, stderr, runErr := execHostScript(goCtx, cmdStr, base.Session.WorkspaceDirPath, enclosingEnv(states, i)...)
+		_, stderr, runErr := execHostScript(goCtx, cmdStr, base.Session.WorkspaceDirPath, EnclosingEnv(states, i)...)
 		lastStderr = stderr
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
@@ -269,9 +286,10 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 	return lastStderr, firstErr
 }
 
-// enclosingEnv is the process environment the layers outside index i
-// contribute to it, which is exactly what its setup ran with.
-func enclosingEnv(states []contract.TaskLayerState, i int) []string {
+// EnclosingEnv is the process environment the layers outside index i inject
+// into its executions: its setup and cleanup, and equally its probes, output
+// scripts, and terminal operation commands.
+func EnclosingEnv(states []contract.TaskLayerState, i int) []string {
 	var env []string
 	for _, outer := range states[:i] {
 		env = append(env, envAssignments(outer.Env)...)

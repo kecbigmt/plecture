@@ -19,41 +19,65 @@ import (
 // empty string would read as a value the check leaves and templates would
 // then act on.
 func ProjectPublicOutputs(layers []ResolvedLayer, states []contract.TaskLayerState, session SessionVars) (map[string]any, error) {
-	if len(layers) == 0 {
+	views, err := ProjectLayerOutputs(layers, states, session)
+	if err != nil {
+		return nil, err
+	}
+	if len(views) == 0 {
 		return map[string]any{}, nil
+	}
+	return views[0], nil
+}
+
+// ProjectLayerOutputs returns every layer's own public contract, outermost
+// first: what the layer outside it reads, and what that layer's own probes,
+// output scripts, and completion conditions are written against. Index 0 is
+// the composed task's contract.
+//
+// A layer's contract is its `[bind.outputs]` projection of the layer inside
+// it plus the values that layer produces itself — the two sources one public
+// name may never share, which is why merging them needs no precedence rule.
+func ProjectLayerOutputs(layers []ResolvedLayer, states []contract.TaskLayerState, session SessionVars) ([]map[string]any, error) {
+	if len(layers) == 0 {
+		return nil, nil
 	}
 	if len(states) != len(layers) {
 		return nil, fmt.Errorf("nesting chain has %d layers but %d layer records", len(layers), len(states))
 	}
-	current := orEmpty(states[len(states)-1].Outputs)
+	views := make([]map[string]any, len(layers))
+	views[len(layers)-1] = orEmpty(states[len(layers)-1].Outputs)
 	for i := len(layers) - 2; i >= 0; i-- {
+		inner := views[i+1]
 		ctx := RenderContext{
-			Inner:      current,
+			Inner:      inner,
 			Locals:     states[i].Locals,
 			Inputs:     states[i].Inputs,
 			Session:    session,
 			SourcePath: layers[i].SourcePath,
 		}
-		next := make(map[string]any, len(layers[i].BindOutputs))
+		view := make(map[string]any, len(layers[i].BindOutputs)+len(states[i].Outputs))
 		for _, b := range layers[i].BindOutputs {
 			if b.Direct {
-				if v, ok := current[b.InnerKey]; ok {
-					next[b.Key] = v
+				if v, ok := inner[b.InnerKey]; ok {
+					view[b.Key] = v
 				}
 				continue
 			}
-			if !allProduced(current, b.InnerRefs) {
+			if !allProduced(inner, b.InnerRefs) {
 				continue
 			}
 			rendered, err := render(b.Template, ctx)
 			if err != nil {
 				return nil, fmt.Errorf("layer %q bind.outputs %q: %w", layers[i].TaskID, b.Key, err)
 			}
-			next[b.Key] = rendered
+			view[b.Key] = rendered
 		}
-		current = next
+		for k, v := range states[i].Outputs {
+			view[k] = v
+		}
+		views[i] = view
 	}
-	return current, nil
+	return views, nil
 }
 
 func allProduced(outputs map[string]any, keys []string) bool {
