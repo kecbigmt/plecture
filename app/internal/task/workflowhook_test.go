@@ -63,7 +63,7 @@ func TestRunWorkflowSetup_ProducesWorkspaceDir(t *testing.T) {
 func TestRunWorkflowSetup_TemplateVars(t *testing.T) {
 	prov := config.WorkspaceProviderConfig{
 		ID:    "wf",
-		Setup: `echo "{\"workspace_dir\":\"/tmp/x\",\"resource\":\"{{.ResourceID}}\",\"session\":\"{{.SessionName}}\",\"root\":\"{{.WorkspaceDirsRoot}}\",\"tpl\":\"{{get .SessionInputs "template"}}\"}"`,
+		Setup: `echo "{\"workspace_dir\":\"/tmp/x\",\"resource\":\"{{.ResourceID}}\",\"session\":\"{{.SessionName}}\",\"root\":\"{{.WorkspaceDirsRoot}}\",\"tpl\":\"{{get .SessionInputs "template" ""}}\"}"`,
 	}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{
@@ -150,7 +150,7 @@ func TestRunWorkflowSetup_PrevSurvivesRetry(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "prev.txt")
 	prov := config.WorkspaceProviderConfig{
 		ID:    "wf",
-		Setup: `echo "{{get .Prev "workspace_dir"}}" > ` + marker + `; echo '{"workspace_dir":"/tmp/new"}'`,
+		Setup: `echo "{{get .Prev "workspace_dir" ""}}" > ` + marker + `; echo '{"workspace_dir":"/tmp/new"}'`,
 	}
 	tasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {

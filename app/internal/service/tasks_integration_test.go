@@ -279,7 +279,7 @@ func TestIntegration_DownUpPreservesPrev(t *testing.T) {
 			{
 				id:      "claude_like",
 				scope:   "run",
-				setup:   `PREV='{{get .Prev "session_id"}}'; SID=${PREV:-fresh-abc}; echo "{\"session_id\":\"$SID\"}"`,
+				setup:   `PREV='{{get .Prev "session_id" ""}}'; SID=${PREV:-fresh-abc}; echo "{\"session_id\":\"$SID\"}"`,
 				cleanup: "true",
 			},
 		},

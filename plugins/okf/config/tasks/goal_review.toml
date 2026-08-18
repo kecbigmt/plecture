@@ -13,7 +13,7 @@
 scope = "session"
 
 setup = '''
-INSTRUCTION=$(plect template render goal_review --session {{.SessionName | shellQuote}} --instruction {{get .Inputs "instruction" | shellQuote}})
+INSTRUCTION=$(plect template render goal_review --session {{.SessionName | shellQuote}} --instruction {{get .Inputs "instruction" "" | shellQuote}})
 if [ -z "$INSTRUCTION" ]; then
   echo "plect template render goal_review produced empty instruction" >&2
   exit 1

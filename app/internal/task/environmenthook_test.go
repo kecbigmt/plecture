@@ -52,7 +52,7 @@ func TestRunEnvironmentSetup_EmptySetupProducesEmptyOutputs(t *testing.T) {
 func TestRunEnvironmentSetup_TemplateVars(t *testing.T) {
 	env := config.EnvironmentConfig{
 		ID:    "docker",
-		Setup: `echo "{\"resource\":\"{{.ResourceID}}\",\"workspace_dir\":\"{{.WorkspaceDirPath}}\",\"image\":\"{{get .EnvironmentInputs "image"}}\"}"`,
+		Setup: `echo "{\"resource\":\"{{.ResourceID}}\",\"workspace_dir\":\"{{.WorkspaceDirPath}}\",\"image\":\"{{get .EnvironmentInputs "image" ""}}\"}"`,
 	}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunEnvironmentSetup(env, EnvironmentHookVars{

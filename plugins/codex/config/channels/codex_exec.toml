@@ -15,8 +15,8 @@
 type = "exec"
 command = "codex-exec-enqueue"
 args = [
-  "{{.Inputs.queue_dir}}",
-  "{{.Event.type}}",
+  '{{.Inputs.queue_dir}}',
+  '{{.Event.type}}',
   '[{{.Event.type}}] {{if .Event.body}}{{.Event.body}}{{else}}{{.Event.summary}}{{end}}{{with index .Event.metadata "url"}} ({{.}}){{end}}',
 ]
 timeout = "5s"
