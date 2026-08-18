@@ -205,7 +205,11 @@ An outer task may declare `[done_when]`. The composed task's effective
 leaves. The addition can only narrow completion: `done_when` has one leaf list,
 `all`, and no disjunction, negation, reordering, or removal syntax, so every
 condition the inner author declared stays necessary and their completion
-reasoning holds unchanged. The composed completion contract is part of the
+reasoning holds unchanged. The guarantee covers values as well as leaves: an
+output an inner layer's `done_when` check reads is bound as a direct binding of
+that inner output. A computed binding or an outer-produced key in its place
+would let the outer layer choose what the inner gate sees, neutralizing the
+condition without removing it. The composed completion contract is part of the
 nested task's public face, which the outer task already owns through its public
 output contract.
 
@@ -269,9 +273,12 @@ surface around a headless inner task, which is addition rather than
 modification. Two layers of one chain declaring `[terminal]` is a load error
 naming both layers.
 
-At most one `[terminal]` declaration per nesting chain keeps plan assembly's
-at-most-one-per-plan rule unambiguous. A nested task contributes either one
-terminal declaration or none, so terminal-task resolution for attach, capture,
+The per-chain rule is one this design introduces, and it is what keeps plan
+assembly's existing count sound. Plan assembly rejects a plan whose nodes
+declare more than one `[terminal]`, counting nodes; a nesting chain sits inside
+one node, so without a per-chain rule two layers could place two declarations
+behind a single node and pass that count. With it, a nested task contributes one
+terminal declaration or none, and terminal-task resolution for attach, capture,
 and the `{{terminal "..."}}` helper needs no nesting-aware tie-break.
 
 Whichever layer declares `[terminal]`, the composed public contract carries
@@ -297,8 +304,8 @@ across instances. `alive` is the AND: any failing layer makes the composed task
 unhealthy, and the report names the failing layer. `activity` is the OR:
 evidence from any layer counts. A layer declaring no `[health]` contributes
 nothing to either composition — vacuous in the AND, no vote in the OR — and
-neither does one whose activity probe reports `none`. Each layer declares only
-its own probes and never replaces another layer's, so composition needs no
+neither does one whose activity probe emits no envelope. Each layer declares
+only its own probes and never replaces another layer's, so composition needs no
 conflict rule.
 
 A layer earns an activity probe only when its activity indicates session
@@ -340,9 +347,9 @@ A plugin's own outer task names its inner task with the relative form, which
 resolves in the same-plugin namespace. Cross-plugin nesting is excluded by the
 reference grammar rather than by a validation rule: naming another plugin's
 task requires the catalog-qualified form, and catalog aliases are user-local,
-so plugin-authored config has no vocabulary for writing one. Reference forms
-and catalog-alias ownership are specified by
-[`config-declaration-identity.md`](config-declaration-identity.md).
+so plugin-authored config has no vocabulary for writing one.
+Catalog-qualified plugin identity, and the user-chosen local alias it starts
+with, are specified by [`plugin-packaging.md`](plugin-packaging.md).
 
 ## Validation Rules
 
@@ -385,6 +392,9 @@ Loading nested task definitions fails when:
   contract does not bind `interactive_endpoint` from that layer.
 - a `done_when` check at any layer of the composed effective `done_when`, or a
   chain, references an output not bound by the outer public contract.
+- an output read by an inner layer's `done_when` check is bound by anything
+  other than a direct binding of that inner output, including a computed
+  binding or a key the outer layer produces.
 
 Running a nested task fails when:
 

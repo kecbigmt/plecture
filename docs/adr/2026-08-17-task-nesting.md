@@ -62,9 +62,12 @@ An outer task may extend `done_when`. The composed effective `done_when` is the
 inner effective `done_when` conjoined with the outer's added leaves.
 Additive-only is a grammar guarantee rather than a rule to police: `done_when`
 has one leaf list and no disjunction, negation, reordering, or removal syntax,
-so no outer layer can weaken or drop an inner condition. Adding necessary
-conditions leaves the inner author's completion reasoning intact, because every
-condition they declared remains necessary. The composed completion contract is
+so no outer layer can weaken or drop an inner condition. Values are held to the
+same guarantee: an output an inner check reads is bound directly from that inner
+output, since a computed binding or an outer-produced key in its place would
+neutralize the condition without removing it. Adding necessary conditions leaves
+the inner author's completion reasoning intact, because every condition they
+declared remains necessary. The composed completion contract is
 part of the nested task's public face, and the outer task already owns that face
 by the same responsibility transfer that makes it declare the public outputs.
 Judge ids merge into one namespace across the nesting chain and a repeated id is
@@ -113,11 +116,13 @@ field that fails both halves does not belong in the task definition.
 `[terminal]` is conflict-banned rather than inner-owned. An outer task may
 declare it when no layer of its inner chain does, which composes an interactive
 surface around a headless inner task without touching inner behavior. Two
-declarations in one chain are a load error. The plan-level at-most-one rule
-generalizes to at most one declaration per nesting chain, so a nested task
-contributes one terminal declaration or none and terminal-task resolution stays
-as it is. Whichever layer declares `[terminal]`, the composed public contract
-binds `interactive_endpoint` from that layer, and operation commands stay in the
+declarations in one chain are a load error, a rule this decision introduces.
+Plan assembly already rejects a plan whose nodes declare more than one
+`[terminal]`, but it counts nodes, and a nesting chain sits inside one node;
+the per-chain rule is what keeps that count sound, so a nested task contributes
+one terminal declaration or none and terminal-task resolution stays as it is.
+Whichever layer declares `[terminal]`, the composed public contract binds
+`interactive_endpoint` from that layer, and operation commands stay in the
 declaring layer's table where no other layer can inject or replace them.
 
 The nested task's public outputs are only what the outer task explicitly
@@ -286,7 +291,7 @@ Banning `[terminal]` in outer tasks outright shares the shape of the
 inner chain declares none, so nothing can be overridden. A composed interactive
 surface around a headless inner task is addition. Conflict is the real hazard,
 and a per-chain at-most-one rule addresses it directly while keeping plan
-assembly's existing guarantee intact.
+assembly's per-node count sound.
 
 ### Single-level nesting only
 
