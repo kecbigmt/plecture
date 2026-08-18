@@ -303,13 +303,6 @@ func validateTaskChains(def *TaskDefinition) error {
 
 // stampTaskChains records the declaring task on each chain and rejects a
 // chain id declared twice in one file.
-func unboundReason(composed bool) string {
-	if composed {
-		return "the composed public contract does not bind"
-	}
-	return "is not declared in this task's outputs_schema"
-}
-
 func stampTaskChains(def *TaskDefinition) error {
 	seen := make(map[string]bool, len(def.Chains))
 	for i := range def.Chains {
@@ -327,12 +320,24 @@ func stampTaskChains(def *TaskDefinition) error {
 	return nil
 }
 
+func unboundReason(composed bool) string {
+	if composed {
+		return "this layer does not project into the composed public contract"
+	}
+	return "is not declared in this task's outputs_schema"
+}
+
 // validateChainReferences resolves each chain's judge ids and output
 // references against the judge namespace and public contract it was declared
 // over — this task's own for a plain task, the composed ones for a layer of a
-// nesting chain (composed). A chain fires against instances of the composed
-// task and reads that task's public outputs, so every layer's chains answer
-// to the composed contract, not to the layer's own.
+// nesting chain (composed).
+//
+// A layer's chain names that layer's own output keys, the same vocabulary its
+// done_when leaves use; what the composed contract decides is whether those
+// keys reach it at all. So a chain keeps naming the key its own layer
+// publishes even where an outer layer re-exports it under a different public
+// name, and declaredOutputs for a layer of a nesting chain is the set of that
+// layer's own keys that project outward.
 func validateChainReferences(def TaskDefinition, judgeIDs, declaredOutputs map[string]bool, composed bool) error {
 	for _, ch := range def.Chains {
 		for j, fact := range ch.When.All {

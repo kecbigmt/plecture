@@ -449,9 +449,16 @@ func referencedByBinding(bindings []outputBinding, innerKey string) bool {
 // validateComposedChains resolves every layer's chain references — the
 // innermost plugin task's as much as the outermost's — against the judge
 // namespace of the composed effective done_when and against the composed
-// public contract. A chain fires against instances of the composed task and
-// reads that task's public outputs, so a chain an inner layer declared reads
-// nothing the outer layers did not bind.
+// public contract.
+//
+// A chain an inner layer declared reads nothing the outer layers did not
+// bind, and it names that output by its own layer's name for it: references
+// are layer-explicit, so an inner author's declarations keep working when an
+// outer layer renames what it re-exports. The composed contract decides
+// reachability, not spelling — which is why the reachable set is the layer's
+// own keys that project outward, and why evaluating those declarations
+// against a composed instance resolves each key through the same exposure map
+// that proved it reachable here.
 func validateComposedChains(layers []TaskDefinition, exposure []map[string]string) error {
 	judgeIDs := map[string]bool{}
 	for _, layer := range layers {

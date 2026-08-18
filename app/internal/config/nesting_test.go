@@ -660,6 +660,33 @@ pid = { type = "integer", mutable = true }
 			wantErr: `"socket_path"`,
 		},
 		{
+			name: "a chain an inner layer declared names the outer layer's post-rename public key",
+			files: map[string]string{
+				"work": innerGated + `
+[[chains]]
+id       = "review"
+workflow = "claude"
+[chains.when]
+all = [ { check = "review_decision", eq = "APPROVED" } ]
+[chains.inputs]
+decision = "{{.Work.outputs.decision}}"
+`,
+				"outer": `
+inner = "work"
+
+[bind.outputs]
+decision = "{{.Inner.outputs.review_decision}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+decision = { type = "string" }
+`,
+			},
+			wantErr: `"decision"`,
+		},
+		{
 			name: "a chain a middle layer declared reads an output the composed contract does not bind",
 			files: map[string]string{
 				"claude": innerRuntime,
@@ -913,6 +940,32 @@ type = "object"
 [outputs_schema.properties]
 pid         = { type = "integer", mutable = true }
 socket_path = { type = "string" }
+`,
+			},
+		},
+		{
+			name: "an inner layer's chain naming its own key across an outer rename",
+			files: map[string]string{
+				"work": innerGated + `
+[[chains]]
+id       = "review"
+workflow = "claude"
+[chains.when]
+all = [ { check = "review_decision", eq = "APPROVED" } ]
+[chains.inputs]
+decision = "{{.Work.outputs.review_decision}}"
+`,
+				"outer": `
+inner = "work"
+
+[bind.outputs]
+decision = "{{.Inner.outputs.review_decision}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+decision = { type = "string" }
 `,
 			},
 		},
