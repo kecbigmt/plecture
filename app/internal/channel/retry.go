@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -33,7 +34,11 @@ func DefaultRetryPolicy() RetryPolicy {
 // Each attempt is bounded by the channel's own timeout, falling back to
 // policy.Timeout. A cancelled ctx ends the loop and is returned.
 func DeliverWithRetry(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, policy RetryPolicy) (int, error) {
-	return retry(ctx, policy, def.Timeout.Duration, func(attemptCtx context.Context) error {
+	timeout, err := ResolveTimeout(def, inputs)
+	if err != nil {
+		return 0, err
+	}
+	return retry(ctx, policy, timeout, func(attemptCtx context.Context) error {
 		return Deliver(attemptCtx, def, inputs, ev)
 	})
 }
@@ -41,9 +46,33 @@ func DeliverWithRetry(ctx context.Context, def config.ChannelDefinition, inputs 
 // DeliverWithRetryAndOptions is DeliverWithRetry with the full set of
 // per-delivery overrides — see DeliverWithOptions.
 func DeliverWithRetryAndOptions(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, policy RetryPolicy, opts DeliverOptions) (int, error) {
-	return retry(ctx, policy, def.Timeout.Duration, func(attemptCtx context.Context) error {
+	timeout, err := ResolveTimeout(def, inputs)
+	if err != nil {
+		return 0, err
+	}
+	return retry(ctx, policy, timeout, func(attemptCtx context.Context) error {
 		return DeliverWithOptions(attemptCtx, def, inputs, ev, opts)
 	})
+}
+
+// ResolveTimeout renders a definition's `timeout` against the resolved
+// channel inputs and parses the result. Rendering sees only `.Inputs`: the
+// per-attempt deadline is a property of the channel wiring, and letting one
+// event's payload shorten or lengthen it would make delivery timing an
+// attacker-influenced value.
+func ResolveTimeout(def config.ChannelDefinition, inputs map[string]any) (time.Duration, error) {
+	if !def.TimeoutIsTemplate() {
+		return config.ParseDuration(def.Timeout)
+	}
+	rendered, err := renderField("timeout", def.Timeout, renderContext{Inputs: inputs})
+	if err != nil {
+		return 0, err
+	}
+	d, err := config.ParseDuration(strings.TrimSpace(rendered))
+	if err != nil {
+		return 0, fmt.Errorf("channel timeout %q: %w", rendered, err)
+	}
+	return d, nil
 }
 
 // retry runs attempt up to policy.MaxAttempts with exponential backoff, bounding

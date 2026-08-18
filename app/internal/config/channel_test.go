@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestChannelDefinition_Validate(t *testing.T) {
@@ -25,7 +24,7 @@ func TestChannelDefinition_Validate(t *testing.T) {
 		},
 		{
 			name: "unix_socket with timeout ok",
-			def:  ChannelDefinition{Type: ChannelTypeUnixSocket, Path: "p", Body: "b", Timeout: Duration{Duration: 5 * time.Second}},
+			def:  ChannelDefinition{Type: ChannelTypeUnixSocket, Path: "p", Body: "b", Timeout: "5s"},
 		},
 		{
 			name:    "unix_socket missing body",
@@ -128,7 +127,7 @@ session = { type = "string", required = true }
 	if !ok {
 		t.Fatalf("tmux_send_keys missing from %+v", got)
 	}
-	if tk.Type != ChannelTypeExec || tk.Timeout.Duration.String() != "5s" || len(tk.Args) != 4 {
+	if tk.Type != ChannelTypeExec || tk.Timeout != "5s" || len(tk.Args) != 4 {
 		t.Errorf("tmux_send_keys decoded wrong: %+v", tk)
 	}
 }
@@ -452,5 +451,60 @@ include = ["github.*"]
 	_, err := cfg.LoadWorkflows(workdirDir)
 	if err == nil || !strings.Contains(err.Error(), "event.channel") {
 		t.Fatalf("LoadWorkflows = %v, want error mentioning event.channel", err)
+	}
+}
+
+func TestChannelDefinition_ApplyInputDefaults(t *testing.T) {
+	def := ChannelDefinition{InputSchema: map[string]ChannelInputSpec{
+		"queue_dir":        {Type: "string", Required: true},
+		"enqueue_timeout":  {Type: "string", Default: "5s"},
+		"message_envelope": {Type: "string", Default: "[{type}] {body}"},
+		"undeclared":       {Type: "string"},
+	}}
+	got := def.ApplyInputDefaults(map[string]any{
+		"queue_dir":       "/q",
+		"enqueue_timeout": "30s",
+	})
+	want := map[string]any{
+		"queue_dir":        "/q",
+		"enqueue_timeout":  "30s",
+		"message_envelope": "[{type}] {body}",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("inputs = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("input %q = %v, want %v", k, got[k], v)
+		}
+	}
+}
+
+func TestChannelDefinition_Validate_RejectsRequiredWithDefault(t *testing.T) {
+	def := ChannelDefinition{Type: ChannelTypeExec, Command: "c", Args: []string{"a"},
+		InputSchema: map[string]ChannelInputSpec{"x": {Type: "string", Required: true, Default: "d"}}}
+	if err := def.Validate(); err == nil {
+		t.Fatal("expected `required` + `default` to be rejected")
+	}
+}
+
+func TestChannelDefinition_Validate_RejectsUnparsableLiteralTimeout(t *testing.T) {
+	def := ChannelDefinition{Type: ChannelTypeExec, Command: "c", Args: []string{"a"}, Timeout: "5 seconds"}
+	if err := def.Validate(); err == nil {
+		t.Fatal("expected an unparsable literal timeout to be rejected at load")
+	}
+}
+
+// A templated timeout is resolved per delivery, so load-time parsing has
+// nothing to check.
+func TestChannelDefinition_Validate_AcceptsTemplatedTimeout(t *testing.T) {
+	def := ChannelDefinition{Type: ChannelTypeExec, Command: "c", Args: []string{"a"},
+		Timeout:     `{{.Inputs.enqueue_timeout}}`,
+		InputSchema: map[string]ChannelInputSpec{"enqueue_timeout": {Type: "string", Default: "5s"}}}
+	if err := def.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if !def.TimeoutIsTemplate() {
+		t.Error("TimeoutIsTemplate = false")
 	}
 }

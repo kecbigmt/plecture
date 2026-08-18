@@ -185,7 +185,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 		}
 		matched = true // set on the main goroutine, before any worker starts — no lock needed
 		wg.Go(func() {
-			inputs, err := channelInputs(s, ch)
+			inputs, err := channelInputs(s, ch, def)
 			if err != nil {
 				d.recordFailure(ctx, ev, ch.Name, 0, err)
 				mu.Lock()
