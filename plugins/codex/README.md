@@ -36,8 +36,8 @@ dependency.
   interactive shape exists to solve do not apply here — there is no input
   box to wedge.
 - `scripts/codex-agent-activity` — both halves of the turn-boundary activity
-  fingerprint (reporting `status: active` inside a turn and `idle` once it
-  ends): the hook the `codex`/`codex_exec` tasks register, and the
+  fingerprint (setting `silence_expected` once a turn ends, and withholding it
+  inside a turn): the hook the `codex`/`codex_exec` tasks register, and the
   `probe` verb those tasks declare as their `[health].activity`.
 - `scripts/codex-exec-worker` — the worker script `codex_exec.toml`
   launches, resolved through `{{bin ...}}` so it needs no `PATH` entry of

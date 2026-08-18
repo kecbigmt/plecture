@@ -187,8 +187,9 @@ true
 # This task's [health] table. The turn-boundary hooks registered at setup are
 # this task's activity probe: the hook records each boundary and the probe
 # reads the record back, so one plugin executable owns both halves. The probe
-# reports status active while a turn is running and idle once it ends, which
-# is the only status that may narrow what core expects of this instance.
+# withholds silence_expected while a turn is running and sets it once the
+# turn ends, which is the only way a probe may narrow what core expects of
+# this instance.
 [health]
 alive    = 'kill -0 {{.Self.pid}}'
 activity = '{{bin "codex-agent-activity"}} probe {{.SessionName}}'

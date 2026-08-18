@@ -50,29 +50,18 @@ actually has. A `[health]` header declaring neither is a load error, as is any
 key other than `alive` and `activity`.
 
 If a task declared `movement_signal`, its JSON envelope changes shape: the
-`supported` and `movement_expected` booleans collapse into one required
-`status` field.
+`supported` and `movement_expected` booleans are gone, and the envelope is
+built around a required `fingerprint`. Translate the old booleans as:
 
-```json
-{ "status": "active", "fingerprint": "...", "observed_at": "..." }
-```
-
-Translate the old booleans as:
-
-| Old envelope | New `status` |
+| Old envelope | New envelope |
 |---|---|
-| `"supported": false` | `none` |
-| `"supported": true`, `"movement_expected": false` | `idle` |
-| anything else supported | `active` |
+| `"supported": false` | print nothing and exit 0 |
+| `"supported": true`, `"movement_expected": false` | `{ "fingerprint": "...", "silence_expected": true, "observed_at": "..." }` |
+| anything else supported | `{ "fingerprint": "...", "observed_at": "..." }` |
 
-`active` is the residual: emit it whenever the probe observed something but
-cannot positively establish that quiet is normal. `idle` is the only value
-that changes what core concludes, so reach for it only when the probe really
-knows the surface is between turns.
-
-`status` has no default. An envelope omitting it, or carrying a value outside
-the three, is a parse error naming the value set — the probe contributes no
-evidence for that evaluation, exactly as a non-zero exit would.
+[`activity-envelope-migration.md`](activity-envelope-migration.md) specifies
+the envelope in full, including what the exit code means and how a probe
+reports having nothing to say.
 
 ## Workflow config changes
 

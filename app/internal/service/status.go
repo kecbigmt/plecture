@@ -117,6 +117,21 @@ type StatusResult struct {
 	DestroyedAt time.Time `json:"destroyed_at,omitzero"`
 }
 
+// probeFaultWarnings renders each activity probe that failed to produce an
+// envelope. A failed probe contributes no evidence at all, so without this it
+// would be indistinguishable from a surface that is simply quiet.
+func probeFaultWarnings(report HealthReport) []string {
+	out := make([]string, 0, len(report.ProbeErrors))
+	for _, pe := range report.ProbeErrors {
+		line := fmt.Sprintf("%s: %s", pe.Instance, pe.Reason)
+		if pe.Stderr != "" {
+			line += ": " + pe.Stderr
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
 // Status returns the four-layer fact report for a session. It reads persisted
 // state only — pass refresh=true to re-fetch dynamic outputs from the source
 // of truth first (mirrors the old `plect show --refresh`).
@@ -141,6 +156,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	if err != nil {
 		return nil, err
 	}
+	warnings = append(warnings, probeFaultWarnings(healthReport)...)
 	actionsByInstance := make(map[string]computedAction, len(computed))
 	for _, c := range computed {
 		actionsByInstance[c.instance] = c

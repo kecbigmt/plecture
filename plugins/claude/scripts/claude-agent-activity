@@ -11,8 +11,8 @@
 # The hook path reads the hook event JSON from stdin (only hook_event_name is
 # used) and is fire-and-forget by design: a failure here must never fail the
 # agent's turn, so every hook exit path is 0. The probe path is not
-# fire-and-forget — a probe that cannot produce an envelope must exit
-# non-zero so core reads "no basis" rather than a fabricated fingerprint.
+# fire-and-forget — a probe that cannot read its record must exit non-zero so
+# core reports a broken probe rather than reading it as a quiet surface.
 
 set -u
 
@@ -28,10 +28,10 @@ case "${1:-}" in
     session="${2:-}"
     [ -n "$session" ] || { echo "probe: session name required" >&2; exit 1; }
     file="$(record_path "$session")"
-    # No record yet means this run has not crossed a turn boundary — an
-    # explicit "nothing to observe", not a stall.
-    [ -f "$file" ] || { printf '{"status":"none"}\n'; exit 0; }
-    jq -c '{status: .status, fingerprint: .fingerprint, observed_at: .observed_at}' "$file"
+    # No record yet means this run has not crossed a turn boundary — no
+    # evidence to report, which is exit 0 with empty stdout, not a stall.
+    [ -f "$file" ] || exit 0
+    jq -c '{fingerprint: .fingerprint, silence_expected: (.silence_expected // false), observed_at: .observed_at}' "$file"
     exit $?
     ;;
   reset)
@@ -61,18 +61,18 @@ mkdir -p "$(dirname "$file")" 2>/dev/null
 # "no change" and starts a stall clock against a session that just moved.
 seq="$(jq -r '.seq // 0' "$file" 2>/dev/null)" || seq=0
 case "$seq" in ''|*[!0-9]*) seq=0 ;; esac
-# Only a turn known to have ended establishes that quiet is normal, so only
-# that case pardons silence; anything else falls through to the residual.
+# Only a turn known to have ended establishes that quiet is intended, so only
+# that case pardons silence; anything else declines to pardon.
 case "$activity" in
-  waiting) status=idle ;;
-  *)       status=active ;;
+  waiting) silence_expected=true ;;
+  *)       silence_expected=false ;;
 esac
 jq -nc \
   --arg activity "$activity" \
-  --arg status "$status" \
+  --argjson silence_expected "$silence_expected" \
   --argjson seq "$((seq + 1))" \
   --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{seq: $seq, status: $status, fingerprint: "\($activity):\($seq)", observed_at: $at}' \
+  '{seq: $seq, silence_expected: $silence_expected, fingerprint: "\($activity):\($seq)", observed_at: $at}' \
   > "$file" 2>/dev/null
 
 exit 0

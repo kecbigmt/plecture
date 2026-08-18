@@ -1,7 +1,9 @@
 # Health declaration
 
 This design is governed by
-[`../adr/2026-08-18-health-declaration.md`](../adr/2026-08-18-health-declaration.md).
+[`../adr/2026-08-18-health-declaration.md`](../adr/2026-08-18-health-declaration.md)
+and, for the activity envelope's shape,
+[`../adr/2026-08-18-activity-envelope-fingerprint-centric.md`](../adr/2026-08-18-activity-envelope-fingerprint-centric.md).
 
 ## Design Core
 
@@ -11,7 +13,8 @@ two probes:
 - **`alive`** — the liveness probe. Exit-code semantics: zero means the
   execution surface this task owns is present.
 - **`activity`** — the activity probe. Fingerprint semantics: it writes a JSON
-  activity envelope whose opaque fingerprint core compares across evaluations.
+  activity envelope whose opaque fingerprint core compares across evaluations,
+  and its exit code reports whether the probe itself is well.
 
 `setup`, `cleanup`, and `[health]` are the universal task lifecycle trio: what
 brings the surface up, what takes it down, and what says whether it is still
@@ -31,7 +34,7 @@ activity = '''
 PANE=$(tmux capture-pane -p -t {{.Self.session_name}}) || exit 1
 FP=$(printf '%s' "$PANE" | cksum | tr -d ' \t')
 jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{status: "active", fingerprint: $fp, observed_at: $at}'
+  '{fingerprint: $fp, observed_at: $at}'
 '''
 ```
 
@@ -76,47 +79,51 @@ named in the reported reason. The first failing probe ends the evaluation.
 
 ### activity
 
-Run via `bash -c`. Stdout is the activity envelope:
+Run via `bash -c`. Stdout decides what the instance contributes, and the exit
+code decides the health of the probe itself. The two are orthogonal: a probe
+that contributes nothing may be perfectly well, and a broken probe is a fault
+whatever it managed to print.
+
+Stdout is the activity envelope, which has exactly two legal shapes:
 
 ```json
-{
-  "status": "idle",
-  "fingerprint": "waiting:7",
-  "observed_at": "2026-08-18T00:04:06Z"
-}
+{ "fingerprint": "waiting:7", "observed_at": "2026-08-18T00:04:06Z" }
+{ "fingerprint": "waiting:7", "silence_expected": true, "observed_at": "2026-08-18T00:04:06Z" }
 ```
 
 | Field | Meaning |
 |---|---|
-| `status` | What the absence of new activity would mean, as the probe reads its own surface. One of the three values below. Required — an absent or unrecognized value is a parse error. |
-| `fingerprint` | An opaque token that changes whenever the probe observes new activity. Core never parses it, only compares it. |
+| `fingerprint` | An opaque token that changes whenever the probe observes new activity. Core never parses it, only compares it. Required. |
+| `silence_expected` | `true` says this fingerprint's stability is intended, so its silence is pardoned: the declaring instance's expectation is narrowed. Absent or `false` withholds the pardon. |
 | `observed_at` | RFC3339. Absent means the probe reports no timestamp of its own. |
 
-The fingerprint carries the fact of activity; `status` carries what its
-absence would mean:
+The envelope is fingerprint-centric: it always carries evidence, and
+`silence_expected` annotates how that evidence's stability should be read. A
+pardon therefore cannot exist without evidence to pardon.
 
-| Value | Silence means | Core's response |
+A probe holds only the pardon channel — it may lower the expectation core
+derived from `done_when`, never raise one. The asymmetry is deliberate: a
+wrong pardon hides a real stall, while a wrongly withheld pardon is safe,
+because core's own `done_when`-derived expectation still has to agree before
+anything is called stalled. The accusation is always core's. So a generic
+surface fingerprint withholds `silence_expected` — a pane's contents cannot
+establish that quiet is intended — while a turn-boundary probe sets it once
+the turn it watches has ended.
+
+Three outcomes contribute no activity evidence for an evaluation, and they
+differ only in what the health report says about the probe:
+
+| Outcome | Shape | Health report |
 |---|---|---|
-| `none` | Nothing — the attempt found nothing to observe. | Discard the observation, the same as declaring no probe at all. |
-| `idle` | Silence is normal, pardoned by the surface's own phase. | Count the fingerprint. Narrow the declaring instance's expectation. |
-| `active` | Silence stands unpardoned. | Count the fingerprint. Silence becomes stall evidence where core's own expectation agrees. |
+| No basis | Exit 0, empty stdout. | Silent — the instance evaluates as if it declared no probe at all. |
+| Probe error | Non-zero exit. | A `probe_error` entry naming the instance, the probe command, the exit code, and a digest of stderr. |
+| Invalid output | Exit 0, stdout that is not an envelope carrying a `fingerprint`. | A `probe_error` entry naming the instance, the command, and the reason. |
 
-`active` is the residual: something was observed and `idle` was not
-established, so activity cannot be ruled out. A generic surface fingerprint
-reports it honestly — a pane's contents cannot establish that quiet is
-normal.
-
-Only `idle` requires the probe to have positively established anything (the
-turn is over, the queue is empty), and only `idle` changes what core
-concludes. The asymmetry is deliberate: a wrong pardon hides a real stall,
-while a wrongly withheld pardon is safe, because core's own
-`done_when`-derived expectation still has to agree before anything is called
-stalled. The accusation is always core's; a probe holds only the pardon
-channel.
-
-A non-zero exit, a render failure, or unparseable stdout is an error, and the
-instance contributes no activity evidence for that evaluation — the same
-outcome as `"status": "none"`, and distinct from a fabricated fingerprint.
+"No basis" is structural absence rather than a declared value, so a probe with
+nothing to report cannot be confused with one whose output was rejected. A
+persistently broken probe surfaces as a fault instead of passing for a quiet
+surface, which is why a fingerprint-less envelope is rejected rather than
+discarded or filled in.
 
 Freshness is judged against core's own clock, not against `observed_at`: core
 records when it first saw a given fingerprint, and a fingerprint that has not
@@ -137,7 +144,7 @@ A session's health is composed from every produced run-scoped task instance:
 
 An instance declaring no `[health]` contributes nothing to either composition:
 it is vacuous in the AND and casts no vote in the OR. So does one whose
-activity probe reports `none`.
+activity probe emits no envelope.
 
 The two shapes are complementary in practice. A pane fingerprint attests
 within-turn movement that no turn boundary would show, and a turn-boundary
