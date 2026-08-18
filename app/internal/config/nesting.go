@@ -84,6 +84,69 @@ type outputBinding struct {
 	InnerRefs []string
 }
 
+// walkTemplateNodes visits every node of a parsed template, descending into
+// the branches of if/range/with. Every static reference scan in this package
+// shares it: a rule that stops at the top level would let the same reference
+// through unexamined merely for sitting inside a conditional.
+func walkTemplateNodes(n parse.Node, visit func(parse.Node)) {
+	if n == nil {
+		return
+	}
+	visit(n)
+	switch x := n.(type) {
+	case *parse.ListNode:
+		if x == nil {
+			return
+		}
+		for _, c := range x.Nodes {
+			walkTemplateNodes(c, visit)
+		}
+	case *parse.ActionNode:
+		walkTemplateNodes(x.Pipe, visit)
+	case *parse.PipeNode:
+		if x == nil {
+			return
+		}
+		for _, c := range x.Cmds {
+			walkTemplateNodes(c, visit)
+		}
+	case *parse.CommandNode:
+		for _, a := range x.Args {
+			walkTemplateNodes(a, visit)
+		}
+	case *parse.IfNode:
+		walkBranch(x.BranchNode, visit)
+	case *parse.RangeNode:
+		walkBranch(x.BranchNode, visit)
+	case *parse.WithNode:
+		walkBranch(x.BranchNode, visit)
+	}
+}
+
+func walkBranch(b parse.BranchNode, visit func(parse.Node)) {
+	walkTemplateNodes(b.Pipe, visit)
+	walkTemplateNodes(b.List, visit)
+	walkTemplateNodes(b.ElseList, visit)
+}
+
+// TemplateFieldRefs returns every field reference a template makes, as the
+// dotted identifier chain of each (`.Work.outputs.pid` yields
+// ["Work","outputs","pid"]), including references inside if/range/with
+// branches.
+func TemplateFieldRefs(tmplStr string) ([][]string, error) {
+	t, err := template.New("ref-scan").Parse(tmplStr)
+	if err != nil {
+		return nil, err
+	}
+	var out [][]string
+	walkTemplateNodes(t.Root, func(n parse.Node) {
+		if f, ok := n.(*parse.FieldNode); ok {
+			out = append(out, f.Ident)
+		}
+	})
+	return out, nil
+}
+
 // classifyOutputBinding decides whether tmpl is a direct inner-output
 // binding and collects the sources it reads, rejecting any source that is
 // neither an inner public output nor a local.
@@ -95,44 +158,11 @@ func classifyOutputBinding(key, tmpl string) (outputBinding, error) {
 	}
 	var refErr error
 	seen := map[string]bool{}
-	var walk func(n parse.Node)
-	walk = func(n parse.Node) {
-		if n == nil || refErr != nil {
+	walkTemplateNodes(t.Root, func(n parse.Node) {
+		if refErr != nil {
 			return
 		}
 		switch x := n.(type) {
-		case *parse.ListNode:
-			if x == nil {
-				return
-			}
-			for _, c := range x.Nodes {
-				walk(c)
-			}
-		case *parse.ActionNode:
-			walk(x.Pipe)
-		case *parse.PipeNode:
-			if x == nil {
-				return
-			}
-			for _, c := range x.Cmds {
-				walk(c)
-			}
-		case *parse.CommandNode:
-			for _, a := range x.Args {
-				walk(a)
-			}
-		case *parse.IfNode:
-			walk(x.Pipe)
-			walk(x.List)
-			walk(x.ElseList)
-		case *parse.RangeNode:
-			walk(x.Pipe)
-			walk(x.List)
-			walk(x.ElseList)
-		case *parse.WithNode:
-			walk(x.Pipe)
-			walk(x.List)
-			walk(x.ElseList)
 		case *parse.FieldNode:
 			switch {
 			case x.Ident[0] == "Inner":
@@ -151,8 +181,7 @@ func classifyOutputBinding(key, tmpl string) (outputBinding, error) {
 		case *parse.DotNode:
 			refErr = fmt.Errorf("bind.outputs %q reads the whole render context, which is neither an inner public output nor a local", key)
 		}
-	}
-	walk(t.Root)
+	})
 	if refErr != nil {
 		return b, refErr
 	}
@@ -212,41 +241,16 @@ func chainLocalRefs(inputs map[string]string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
 	for _, tmplStr := range inputs {
-		t, err := template.New("chain-input").Parse(tmplStr)
+		refs, err := TemplateFieldRefs(tmplStr)
 		if err != nil {
 			return nil, err
 		}
-		var walk func(n parse.Node)
-		walk = func(n parse.Node) {
-			switch x := n.(type) {
-			case *parse.ListNode:
-				if x == nil {
-					return
-				}
-				for _, c := range x.Nodes {
-					walk(c)
-				}
-			case *parse.ActionNode:
-				walk(x.Pipe)
-			case *parse.PipeNode:
-				if x == nil {
-					return
-				}
-				for _, c := range x.Cmds {
-					walk(c)
-				}
-			case *parse.CommandNode:
-				for _, a := range x.Args {
-					walk(a)
-				}
-			case *parse.FieldNode:
-				if len(x.Ident) >= 3 && x.Ident[0] == "Work" && x.Ident[1] == "locals" && !seen[x.Ident[2]] {
-					seen[x.Ident[2]] = true
-					out = append(out, x.Ident[2])
-				}
+		for _, ident := range refs {
+			if len(ident) >= 3 && ident[0] == "Work" && ident[1] == "locals" && !seen[ident[2]] {
+				seen[ident[2]] = true
+				out = append(out, ident[2])
 			}
 		}
-		walk(t.Root)
 	}
 	sort.Strings(out)
 	return out, nil

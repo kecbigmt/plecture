@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 	"text/template"
-	"text/template/parse"
 )
 
 // Chain placement values: where the spawned workflow session attaches in the
@@ -236,46 +235,20 @@ func ChainWiredOutputs(inputs map[string]string) ([]string, error) {
 	return keys, nil
 }
 
-// chainOutputRefs walks a binding template's parse tree for
-// `.Work.outputs.<key>` field accesses. A static reference scan (not a
-// render) so a missing output reads as "not yet wired" rather than rendering
-// to an empty string.
+// chainOutputRefs scans a binding template for `.Work.outputs.<key>` field
+// accesses. A static reference scan (not a render) so a missing output reads
+// as "not yet wired" rather than rendering to an empty string.
 func chainOutputRefs(tmplStr string) ([]string, error) {
-	t, err := template.New("chain-input").Parse(tmplStr)
+	refs, err := TemplateFieldRefs(tmplStr)
 	if err != nil {
 		return nil, err
 	}
 	var out []string
-	var walk func(n parse.Node)
-	walk = func(n parse.Node) {
-		switch x := n.(type) {
-		case *parse.ListNode:
-			if x == nil {
-				return
-			}
-			for _, c := range x.Nodes {
-				walk(c)
-			}
-		case *parse.ActionNode:
-			walk(x.Pipe)
-		case *parse.PipeNode:
-			if x == nil {
-				return
-			}
-			for _, c := range x.Cmds {
-				walk(c)
-			}
-		case *parse.CommandNode:
-			for _, a := range x.Args {
-				walk(a)
-			}
-		case *parse.FieldNode:
-			if len(x.Ident) >= 3 && x.Ident[0] == "Work" && x.Ident[1] == "outputs" {
-				out = append(out, x.Ident[2])
-			}
+	for _, ident := range refs {
+		if len(ident) >= 3 && ident[0] == "Work" && ident[1] == "outputs" {
+			out = append(out, ident[2])
 		}
 	}
-	walk(t.Root)
 	return out, nil
 }
 
@@ -322,7 +295,7 @@ func validateTaskChains(def *TaskDefinition) error {
 	for _, p := range outputProps {
 		declaredOutputs[p] = true
 	}
-	if err := validateChainReferences(*def, judgeIDs, declaredOutputs); err != nil {
+	if err := validateChainReferences(*def, judgeIDs, declaredOutputs, false); err != nil {
 		return fmt.Errorf("task %q: %w", def.ID, err)
 	}
 	return nil
@@ -330,6 +303,13 @@ func validateTaskChains(def *TaskDefinition) error {
 
 // stampTaskChains records the declaring task on each chain and rejects a
 // chain id declared twice in one file.
+func unboundReason(composed bool) string {
+	if composed {
+		return "the composed public contract does not bind"
+	}
+	return "is not declared in this task's outputs_schema"
+}
+
 func stampTaskChains(def *TaskDefinition) error {
 	seen := make(map[string]bool, len(def.Chains))
 	for i := range def.Chains {
@@ -350,8 +330,10 @@ func stampTaskChains(def *TaskDefinition) error {
 // validateChainReferences resolves each chain's judge ids and output
 // references against the judge namespace and public contract it was declared
 // over — this task's own for a plain task, the composed ones for a layer of a
-// nesting chain.
-func validateChainReferences(def TaskDefinition, judgeIDs, declaredOutputs map[string]bool) error {
+// nesting chain (composed). A chain fires against instances of the composed
+// task and reads that task's public outputs, so every layer's chains answer
+// to the composed contract, not to the layer's own.
+func validateChainReferences(def TaskDefinition, judgeIDs, declaredOutputs map[string]bool, composed bool) error {
 	for _, ch := range def.Chains {
 		for j, fact := range ch.When.All {
 			id := fact.JudgePending
@@ -366,7 +348,10 @@ func validateChainReferences(def TaskDefinition, judgeIDs, declaredOutputs map[s
 			}
 		}
 
-		if len(declaredOutputs) == 0 {
+		// A plain task with no outputs_schema has no contract to violate; a
+		// layer of a nesting chain always has one, since the composed task
+		// declares its whole public contract explicitly.
+		if len(declaredOutputs) == 0 && !composed {
 			continue
 		}
 		wired, err := ChainWiredOutputs(ch.Inputs)
@@ -375,19 +360,19 @@ func validateChainReferences(def TaskDefinition, judgeIDs, declaredOutputs map[s
 		}
 		for _, key := range wired {
 			if !declaredOutputs[key] {
-				return fmt.Errorf("chain %q: input binding wires output %q, which is not declared in this task's outputs_schema", ch.ID, key)
+				return fmt.Errorf("chain %q: input binding wires output %q, which %s", ch.ID, key, unboundReason(composed))
 			}
 		}
-		if !def.IsNested() {
+		if !composed {
 			continue
 		}
-		// A nested layer declares its whole public contract explicitly, so a
-		// chain fact reading anything else — a key outside the contract, or a
-		// local the joint kept private — has no value to read at fire time.
+		// The composed task declares its whole public contract explicitly, so
+		// a chain fact reading anything else — a key outside the contract, or
+		// a local the joint kept private — has no value to read at fire time.
 		for j, fact := range ch.When.All {
 			key := strings.TrimSpace(fact.Check)
 			if key != "" && !declaredOutputs[key] {
-				return fmt.Errorf("chain %q when.all[%d]: reads output %q, which is not declared in this task's outputs_schema", ch.ID, j, key)
+				return fmt.Errorf("chain %q when.all[%d]: reads output %q, which %s", ch.ID, j, key, unboundReason(composed))
 			}
 		}
 		locals, err := chainLocalRefs(ch.Inputs)

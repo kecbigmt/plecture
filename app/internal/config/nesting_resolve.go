@@ -173,7 +173,7 @@ func validateNesting(layers []TaskDefinition) error {
 	if err := validateComposedDoneWhen(layers, bindings, exposure); err != nil {
 		return err
 	}
-	return validateComposedChains(layers)
+	return validateComposedChains(layers, exposure)
 }
 
 func validateChainScope(layers []TaskDefinition) error {
@@ -292,6 +292,13 @@ func validateLayer(outer, inner TaskDefinition) ([]outputBinding, error) {
 		}
 		declaredType, hasType := schemaPropertyType(outerProps, key)
 		mutable := schemaPropertyMutable(outerProps, key)
+		// The bound inner key itself is not checked for existence: a task's
+		// outputs are not exhaustively declared — setup stdout may carry keys
+		// an open outputs_schema never lists, and `[[outputs]]`-produced keys
+		// are not schema properties at all — so an unknown-key rule would
+		// reject working configurations. The type and mutability rules below
+		// consequently apply only where the inner layer declared something to
+		// disagree with.
 		if b.Direct {
 			innerType, innerHasType := schemaPropertyType(innerProps, b.InnerKey)
 			if hasType && innerHasType && declaredType != innerType {
@@ -439,35 +446,33 @@ func referencedByBinding(bindings []outputBinding, innerKey string) bool {
 	return false
 }
 
-// validateComposedChains resolves each outer layer's chain references against
-// the judge namespace of the effective done_when composed from that layer
-// inward, and against that layer's own public contract.
-func validateComposedChains(layers []TaskDefinition) error {
-	for i := 0; i+1 < len(layers); i++ {
-		layer := layers[i]
+// validateComposedChains resolves every layer's chain references — the
+// innermost plugin task's as much as the outermost's — against the judge
+// namespace of the composed effective done_when and against the composed
+// public contract. A chain fires against instances of the composed task and
+// reads that task's public outputs, so a chain an inner layer declared reads
+// nothing the outer layers did not bind.
+func validateComposedChains(layers []TaskDefinition, exposure []map[string]string) error {
+	judgeIDs := map[string]bool{}
+	for _, layer := range layers {
+		if layer.DoneWhen == nil {
+			continue
+		}
+		for _, leaf := range layer.DoneWhen.All {
+			if leaf.ID != "" {
+				judgeIDs[leaf.ID] = true
+			}
+		}
+	}
+	for i, layer := range layers {
 		if len(layer.Chains) == 0 {
 			continue
 		}
-		judgeIDs := map[string]bool{}
-		for _, inner := range layers[i:] {
-			if inner.DoneWhen == nil {
-				continue
-			}
-			for _, leaf := range inner.DoneWhen.All {
-				if leaf.ID != "" {
-					judgeIDs[leaf.ID] = true
-				}
-			}
+		reachable := make(map[string]bool, len(exposure[i]))
+		for key := range exposure[i] {
+			reachable[key] = true
 		}
-		props, err := SchemaProperties(layer.OutputsSchema, layer.ResolvedOutputsSchemaPath())
-		if err != nil {
-			return fmt.Errorf("layer %q: outputs schema: %w", layer.ID, err)
-		}
-		declared := make(map[string]bool, len(props))
-		for k := range props {
-			declared[k] = true
-		}
-		if err := validateChainReferences(layer, judgeIDs, declared); err != nil {
+		if err := validateChainReferences(layer, judgeIDs, reachable, true); err != nil {
 			return fmt.Errorf("layer %q: %w", layer.ID, err)
 		}
 	}

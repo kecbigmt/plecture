@@ -243,6 +243,13 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 // those, and the dynamic `plect task setup` path leaves them empty (it binds
 // input values directly rather than via node templates).
 func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, error) {
+	// Nesting is parsed and validated but nothing executes it yet: compiling
+	// a nested definition into a plan would run the outermost setup alone and
+	// silently drop `inner` and every `[bind.*]` table, which is worse than
+	// refusing the definition. Removed by the layer that runs the chain.
+	if def.IsNested() {
+		return Resolved{}, fmt.Errorf("task %q: task nesting is declared (`inner = %q`) but not yet executable", def.ID, def.Inner)
+	}
 	scope := def.EffectiveScope()
 	if scope != config.TaskScopeSession && scope != config.TaskScopeRun {
 		return Resolved{}, fmt.Errorf("task %q: invalid scope %q (want %q or %q)",

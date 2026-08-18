@@ -633,6 +633,100 @@ all = [ { check = "socket_path", eq = "x" } ]
 			wantErr: `"socket_path"`,
 		},
 		{
+			name: "a chain an inner layer declared reads an output the composed contract does not bind",
+			files: map[string]string{
+				"claude": innerRuntime + `
+[[chains]]
+id       = "review"
+workflow = "claude"
+[chains.when]
+all = [ { check = "pid", ne = "" } ]
+[chains.inputs]
+socket = "{{.Work.outputs.socket_path}}"
+`,
+				"outer": `
+inner = "claude"
+
+[bind.outputs]
+pid = "{{.Inner.outputs.pid}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+pid = { type = "integer", mutable = true }
+`,
+			},
+			wantErr: `"socket_path"`,
+		},
+		{
+			name: "a chain a middle layer declared reads an output the composed contract does not bind",
+			files: map[string]string{
+				"claude": innerRuntime,
+				"middle": `
+inner = "claude"
+
+[bind.outputs]
+pid         = "{{.Inner.outputs.pid}}"
+socket_path = "{{.Inner.outputs.socket_path}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+pid         = { type = "integer", mutable = true }
+socket_path = { type = "string" }
+
+[[chains]]
+id       = "review"
+workflow = "claude"
+[chains.when]
+all = [ { check = "socket_path", ne = "" } ]
+`,
+				"outer": `
+inner = "middle"
+
+[bind.outputs]
+pid = "{{.Inner.outputs.pid}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+pid = { type = "integer", mutable = true }
+`,
+			},
+			wantErr: `"socket_path"`,
+		},
+		{
+			name: "a chain reads a local from inside a conditional branch",
+			files: map[string]string{
+				"claude": innerRuntime,
+				"outer": `
+inner = "claude"
+setup = "jq -nc '{guard_dir:\"/tmp/guard\"}'"
+
+[bind.outputs]
+pid = "{{.Inner.outputs.pid}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+pid = { type = "integer", mutable = true }
+
+[[chains]]
+id       = "review"
+workflow = "claude"
+[chains.when]
+all = [ { check = "pid", ne = "" } ]
+[chains.inputs]
+guard_dir = "{{if .Work.locals.guard_dir}}{{.Work.locals.guard_dir}}{{end}}"
+`,
+			},
+			wantErr: "local",
+		},
+		{
 			name: "a chain references a local not bound into the outer public contract",
 			files: map[string]string{
 				"claude": innerRuntime,
@@ -791,6 +885,34 @@ release_ready   = { type = "string" }
 [[outputs]]
 name   = "release_ready"
 script = "echo yes"
+`,
+			},
+		},
+		{
+			name: "an inner layer's chain reading an output the composed contract binds directly",
+			files: map[string]string{
+				"claude": innerRuntime + `
+[[chains]]
+id       = "review"
+workflow = "claude"
+[chains.when]
+all = [ { check = "pid", ne = "" } ]
+[chains.inputs]
+socket = "{{.Work.outputs.socket_path}}"
+`,
+				"outer": `
+inner = "claude"
+
+[bind.outputs]
+pid         = "{{.Inner.outputs.pid}}"
+socket_path = "{{.Inner.outputs.socket_path}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+pid         = { type = "integer", mutable = true }
+socket_path = { type = "string" }
 `,
 			},
 		},
