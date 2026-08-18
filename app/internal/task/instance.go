@@ -59,24 +59,34 @@ func NextInstanceNumber(taskID string, tasks map[string]*contract.TaskState) int
 	return max + 1
 }
 
+// InstanceSetup is what one dynamic instance's setup produced. Layers is the
+// per-layer record of a nested task's chain and is populated on failure too:
+// the layers that did produce still have to be unwound by the next cleanup,
+// so the caller persists it either way.
+type InstanceSetup struct {
+	Outputs map[string]any
+	Layers  []contract.TaskLayerState
+	Stderr  []byte
+}
+
 // ExecuteTaskSetup runs a dynamic instance's setup — input-schema validation,
 // template render, shell, output parse, and output-schema validation — and
 // returns the parsed outputs. It does NOT touch session state: the caller
 // reserves the instance key under the state lock, runs this WITHOUT the lock
 // (setup may shell out for a while), then merges the result back under the lock.
-// stderr is returned so the caller's observer can surface diagnostic output.
+// Stderr is returned so the caller's observer can surface diagnostic output.
 //
 // inputs are the already-bound input values (the caller applies the
 // --input > workspace-provider/workflow outputs > session vars precedence). workflowTasks
 // is the session's tasks map, read only to expose the @workflow pseudo-node's
 // outputs to the setup template.
-func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, session SessionVars, workflowTasks map[string]*contract.TaskState) (map[string]any, []byte, error) {
+func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, session SessionVars, workflowTasks map[string]*contract.TaskState) (InstanceSetup, error) {
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
 	if r.InputsSchema != nil {
 		if vErr := r.InputsSchema.Validate(toJSONShape(inputs)); vErr != nil {
-			return nil, nil, fmt.Errorf("input schema: %w", vErr)
+			return InstanceSetup{}, fmt.Errorf("input schema: %w", vErr)
 		}
 	}
 	ctx := RenderContext{
@@ -86,9 +96,13 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 		Session:    session,
 		SourcePath: r.SourcePath,
 	}
+	if len(r.Layers) > 0 {
+		layers, stderr, err := runNestedSetup(goCtx, r.Layers, ctx, inputs)
+		return InstanceSetup{Outputs: map[string]any{}, Layers: layers, Stderr: stderr}, err
+	}
 	cmdStr, err := render(r.Setup, ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("setup template: %w", err)
+		return InstanceSetup{}, fmt.Errorf("setup template: %w", err)
 	}
 
 	outputs := map[string]any{}
@@ -97,18 +111,18 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 		stdout, capturedStderr, runErr := execHostScript(goCtx, cmdStr, session.WorkspaceDirPath)
 		stderr = capturedStderr
 		if runErr != nil {
-			return nil, stderr, fmt.Errorf("setup: %w", runErr)
+			return InstanceSetup{Stderr: stderr}, fmt.Errorf("setup: %w", runErr)
 		}
 		parsed, parseErr := ParseOutputs(stdout)
 		if parseErr != nil {
-			return nil, stderr, fmt.Errorf("setup: %w", parseErr)
+			return InstanceSetup{Stderr: stderr}, fmt.Errorf("setup: %w", parseErr)
 		}
 		outputs = parsed
 	}
 	if r.OutputsSchema != nil {
 		if vErr := r.OutputsSchema.Validate(outputs); vErr != nil {
-			return nil, stderr, fmt.Errorf("setup: outputs schema: %w", vErr)
+			return InstanceSetup{Stderr: stderr}, fmt.Errorf("setup: outputs schema: %w", vErr)
 		}
 	}
-	return outputs, stderr, nil
+	return InstanceSetup{Outputs: outputs, Stderr: stderr}, nil
 }
