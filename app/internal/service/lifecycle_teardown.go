@@ -35,11 +35,16 @@ func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, f
 	if !ok {
 		return fmt.Errorf("workflow %q declares no workspace provider; its cleanup hook cannot run", session.Workflow)
 	}
+	provInputs, inputsErr := resolveWorkspaceProviderInputs(prov, wf)
+	if inputsErr != nil {
+		return inputsErr
+	}
 	vars := task.WorkflowHookVars{
 		ResourceID:        session.ResourceID,
 		SessionName:       session.Name,
 		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
 		SessionInputs:     session.Inputs,
+		Inputs:            provInputs,
 		Plugins:           cfg.Plugins,
 		SourcePath:        prov.SourcePath,
 		Force:             force,

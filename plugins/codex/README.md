@@ -49,6 +49,35 @@ dependency.
   this script must be reachable on `PATH` under its own name for the
   channel to work.
 
+## Parameters
+
+Author-declared values a workflow sets to steer these configs without
+replacing them (the parameterization rung of
+`docs/design/task-nesting.md`'s customization ladder):
+
+| Config | Parameter | Meaning |
+|---|---|---|
+| `tasks/codex.toml`, `tasks/codex_exec.toml` | `launch_env` | JSON object of environment variables exported on the launch line. Keys must be valid environment variable names; values are shell-quoted. |
+| `tasks/codex_exec.toml` | `state_root` | Directory the worker's per-session queue and state live under. Empty = a temporary directory. |
+| `channels/codex_exec.toml` | `enqueue_timeout` | Per-attempt delivery deadline. Default `5s`. |
+| `channels/codex_exec.toml` | `message_envelope` | Format of the queued message. Placeholders: `{type}`, `{body}`, `{summary}`, `{body_or_summary}`, `{url}`, `{url_suffix}`. Default `[{type}] {body_or_summary}{url_suffix}`. |
+
+```toml
+[[nodes]]
+id   = "codex_exec"
+uses = "codex_exec"
+inputs.launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}'
+inputs.state_root = "/var/lib/plect/codex-exec"
+
+[[event.channel]]
+name = "runtime"
+uses = "codex_exec"
+inputs.queue_dir        = "{{.Nodes.codex_exec.outputs.queue_dir}}"
+inputs.enqueue_timeout  = "30s"
+inputs.message_envelope = "{type}: {body_or_summary}"
+include = ["plect.instruction", "resource.*"]
+```
+
 ## Install
 
 ```bash

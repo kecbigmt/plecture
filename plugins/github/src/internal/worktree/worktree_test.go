@@ -303,7 +303,7 @@ func TestCleanup_DeleteBranchOptIn(t *testing.T) {
 	if err := Cleanup(context.Background(), CleanupOptions{
 		WorkspaceDir: "/roots/wt/issue-42-review",
 		Branch:       "issue/42+review",
-		DeleteBranch: true,
+		DeleteBranch: "true",
 		Manager:      mgr,
 	}); err != nil {
 		t.Fatalf("Cleanup: %v", err)
@@ -347,7 +347,7 @@ func TestCleanup_FailurePropagates(t *testing.T) {
 	}
 }
 
-func TestWorkspaceDirsRootComesFromHookArgumentNotCoreConfig(t *testing.T) {
+func TestLayoutRootComesFromHookArgumentNotCoreConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	configDir := filepath.Join(home, ".config", "plect")
@@ -358,13 +358,100 @@ func TestWorkspaceDirsRootComesFromHookArgumentNotCoreConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := workspaceDirsRoot(""), filepath.Join(home, "workspace_dirs"); got != want {
-		t.Fatalf("workspaceDirsRoot(\"\") = %q, want default %q instead of config.toml", got, want)
+	if got, want := layoutRoot("", ""), filepath.Join(home, "workspace_dirs"); got != want {
+		t.Fatalf("layoutRoot with neither set = %q, want default %q instead of config.toml", got, want)
 	}
-	if got, want := workspaceDirsRoot("~/custom"), filepath.Join(home, "custom"); got != want {
-		t.Fatalf("workspaceDirsRoot(\"~/custom\") = %q, want %q", got, want)
+	if got, want := layoutRoot("", "~/custom"), filepath.Join(home, "custom"); got != want {
+		t.Fatalf("layoutRoot from the workspace-dirs root = %q, want %q", got, want)
 	}
-	if got := workspaceDirsRoot("/explicit/root"); got != "/explicit/root" {
-		t.Fatalf("workspaceDirsRoot override = %q, want /explicit/root", got)
+	if got := layoutRoot("", "/explicit/root"); got != "/explicit/root" {
+		t.Fatalf("layoutRoot from the workspace-dirs root = %q, want /explicit/root", got)
+	}
+}
+
+func TestLayoutRoot_DeclaredParameterWinsOverTheWorkspaceDirsRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if got, want := layoutRoot("~/worktrees", "/machine/root"), filepath.Join(home, "worktrees"); got != want {
+		t.Errorf("layoutRoot = %q, want %q", got, want)
+	}
+}
+
+func TestResolveDeleteBranch(t *testing.T) {
+	tests := []struct {
+		name      string
+		requested string
+		declared  string
+		want      bool
+	}{
+		{name: "no intent and no default is off"},
+		{name: "declared default on", declared: "true", want: true},
+		{name: "caller opts in", requested: "true", want: true},
+		{name: "caller opts out over a default that is on", requested: "false", declared: "true"},
+		{name: "caller opts in over a default that is off", requested: "true", declared: "false", want: true},
+		{name: "a misspelled default never turns deletion on", declared: "yes"},
+		{name: "a misspelled request never turns deletion on", requested: "yes", declared: "true"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ResolveDeleteBranch(tt.requested, tt.declared); got != tt.want {
+				t.Errorf("ResolveDeleteBranch(%q, %q) = %v, want %v", tt.requested, tt.declared, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCleanup_DeleteBranchDefaultAppliesWhenTheCallerExpressedNoIntent(t *testing.T) {
+	mgr := &fakeManager{}
+	if err := Cleanup(context.Background(), CleanupOptions{
+		WorkspaceDir:        "/roots/wt/issue-42",
+		Branch:              "issue/42",
+		DeleteBranchDefault: "true",
+		Manager:             mgr,
+	}); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+	if !mgr.removes[0].deleteBranch {
+		t.Error("cleanup must reclaim the branch when the workflow declares delete_branch_default = true")
+	}
+}
+
+func TestSetup_DeclaredBranchNamingParametersSteerTheAcquiredBranch(t *testing.T) {
+	mgr := &fakeManager{addInfo: &workspace.WorkspaceInfo{WorktreePath: "/roots/wt/work-issue-42-review"}}
+	_, err := Setup(context.Background(), SetupOptions{
+		ResourceID:          "https://github.com/acme/widgets/issues/42",
+		SessionName:         "acme/widgets-42+review",
+		IssueBranchTemplate: "work/{repo}-{number}",
+		TaggedBranchSuffix:  "/{tag}",
+		Manager:             mgr,
+		GHClient:            &fakeGHClient{err: errors.New("no gh-api client configured for this test")},
+	})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	add := mgr.adds[0]
+	if add.BaseBranch != "work/widgets-42" || add.Branch != "work/widgets-42/review" {
+		t.Errorf("add params = %+v", add)
+	}
+}
+
+// A pull request's branch is the head ref GitHub reports, so the issue naming
+// parameter must not reshape it.
+func TestSetup_IssueBranchTemplateDoesNotApplyToAPullRequest(t *testing.T) {
+	mgr := &fakeManager{addInfo: &workspace.WorkspaceInfo{WorktreePath: "/roots/wt/feat-login"}}
+	_, err := Setup(context.Background(), SetupOptions{
+		ResourceID:          "https://github.com/acme/widgets/pull/44",
+		SessionName:         "acme/widgets-44",
+		IssueBranchTemplate: "work/{number}",
+		Manager:             mgr,
+		GHClient: &fakeGHClient{responses: map[string]string{
+			"repos/acme/widgets/pulls/44": `{"head":{"ref":"feat/login"},"title":"Add login","state":"open"}`,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	if mgr.adds[0].Branch != "feat/login" {
+		t.Errorf("branch = %q, want the head ref", mgr.adds[0].Branch)
 	}
 }

@@ -22,6 +22,15 @@ scope   = "run"
 #                  worker appends `-c model_reasoning_effort=<value>` the
 #                  same way. Empty = codex's own config default. Same
 #                  restriction as model.
+#   launch_env   — when set, a JSON object of environment variables exported
+#                  on the launch line, so the agent process inherits them.
+#                  Data only: keys must be valid environment variable names
+#                  and values are shell-quoted, so nothing here can add a
+#                  command to what gets launched.
+#   state_root   — when set, the directory the worker's per-session queue and
+#                  state live under. Empty = a temporary directory, which a
+#                  reboot or a tmp sweep may reclaim; a workflow that wants
+#                  the queue to survive that names a durable root here.
 #   path_prepend — when set, a directory prepended to this session's PATH.
 #                  Generic by design (docs/design/plugin-boundary-contracts.md's
 #                  GitHub CLI Guard section): this plugin carries no
@@ -55,7 +64,9 @@ UserPromptSubmit = [{type = "command", command = ["{{bin "codex-agent-activity"}
 Stop = [{type = "command", command = ["{{bin "codex-agent-activity"}}", "waiting"]}]
 HOOKS_TOML
 
-STATE_DIR="${TMPDIR:-/tmp}/plect-codex-exec/{{.SessionName}}"
+STATE_ROOT='{{get .Inputs "state_root" ""}}'
+[ -n "$STATE_ROOT" ] || STATE_ROOT="${TMPDIR:-/tmp}/plect-codex-exec"
+STATE_DIR="$STATE_ROOT/{{.SessionName}}"
 QUEUE_DIR="$STATE_DIR/queue"
 mkdir -p "$QUEUE_DIR"
 
@@ -69,6 +80,24 @@ EXPORTS="export PLECT_SESSION_NAME={{.SessionName}}; "
 # it can't resolve a bin-lookup reference itself for its own activity-hook
 # calls; resolve it here and hand it down as an env var instead.
 EXPORTS="${EXPORTS}export PLECT_AGENT_ACTIVITY_BIN={{bin "codex-agent-activity" | shellQuote}}; "
+
+# launch_env is spliced into this script's source at render time and again
+# into the keystrokes sent to the pane, the same two shell boundaries
+# model/effort cross. The inputs_schema pattern (no single quotes) closes the
+# first; jq's @sh closes the second by quoting each value, and the key test
+# rejects anything that is not an environment variable name — an unquoted or
+# oddly-named key is the only way a data-shaped parameter could turn into a
+# command.
+LAUNCH_ENV='{{get .Inputs "launch_env" ""}}'
+if [ -n "$LAUNCH_ENV" ]; then
+  LAUNCH_EXPORTS=$(printf '%s' "$LAUNCH_ENV" | jq -er '
+    to_entries
+    | map(if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) then .
+          else error("launch_env key \(.key) is not a valid environment variable name") end)
+    | map("export \(.key)=\(.value | tostring | @sh); ")
+    | add // ""') || exit 1
+  EXPORTS="${EXPORTS}${LAUNCH_EXPORTS}"
+fi
 
 # path_prepend is a plain directory path, not shell-quoted here beyond the
 # inputs_schema pattern restriction below — the same defense-in-depth
@@ -170,6 +199,13 @@ additionalProperties = false
 tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+# launch_env: a JSON object, restricted to a single-quote-free charset because
+# the value is spliced inside a single-quoted shell assignment above. jq
+# rejects anything that is not an object of scalars at launch time.
+launch_env   = { type = "string", pattern = "^[^']*$" }
+# state_root: a plain path charset, same splice point and same reasoning as
+# path_prepend below.
+state_root   = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 # path_prepend: a plain path charset (no quotes, whitespace, or shell
 # metacharacters), same reasoning as model/effort above.
 path_prepend = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }

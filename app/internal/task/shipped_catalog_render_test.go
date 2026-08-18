@@ -179,3 +179,40 @@ func TestShippedCatalog_ModelEffortInputsRejectShellMetacharacters(t *testing.T)
 		t.Fatal("no shipped task declares a model input; this test is checking nothing")
 	}
 }
+
+// TestShippedCatalog_LaunchEnvRejectsQuoteBreakout: launch_env crosses the
+// same splice point model/effort do — the setup script assigns it inside a
+// single-quoted literal — so a value carrying a single quote must be rejected
+// before the script ever renders, no matter how carefully the jq expansion
+// downstream quotes what it parses.
+func TestShippedCatalog_LaunchEnvRejectsQuoteBreakout(t *testing.T) {
+	tasks, _ := loadShippedCatalogTasks(t)
+
+	breakout := map[string]any{"tmux_session": "s", "launch_env": `{"A":"x'; touch /tmp/pwned; echo '"}`}
+	benign := map[string]any{"tmux_session": "s", "launch_env": `{"PLECT_TEAM_CONTEXT":"acme"}`}
+
+	checked := 0
+	for id, def := range tasks {
+		props, ok := def.InputsSchema["properties"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, ok := props["launch_env"]; !ok {
+			continue
+		}
+		checked++
+		schema, err := CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "test:"+id)
+		if err != nil {
+			t.Fatalf("task %q: CompileSchema: %v", id, err)
+		}
+		if err := schema.Validate(toJSONShape(breakout)); err == nil {
+			t.Errorf("task %q: inputs_schema accepted a launch_env value containing a single quote", id)
+		}
+		if err := schema.Validate(toJSONShape(benign)); err != nil {
+			t.Errorf("task %q: inputs_schema rejected a plain launch_env object: %v", id, err)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no shipped task declares a launch_env input; this test is checking nothing")
+	}
+}

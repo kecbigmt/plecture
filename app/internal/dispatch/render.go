@@ -16,8 +16,10 @@ import (
 // channelInputs renders an [[event.channel]]'s input templates against the
 // session's persisted node outputs — the same pass task node inputs use, so
 // {{.Nodes.claude.outputs.socket_path}} resolves to the live value. Rendered
-// fresh per batch because a down/up re-creates run-scoped outputs.
-func channelInputs(s *domain.Session, ch config.EventChannel) (map[string]any, error) {
+// fresh per batch because a down/up re-creates run-scoped outputs. The
+// definition's own [input_schema] defaults fill whatever this wiring left
+// unset, so an author-declared optional parameter needs no per-workflow line.
+func channelInputs(s *domain.Session, ch config.EventChannel, def config.ChannelDefinition) (map[string]any, error) {
 	deps := make(map[string]map[string]any, len(s.Tasks))
 	for id, st := range s.Tasks {
 		if st == nil {
@@ -33,11 +35,15 @@ func channelInputs(s *domain.Session, ch config.EventChannel) (map[string]any, e
 	if st := s.Tasks[contract.WorkflowPseudoNodeID]; st != nil {
 		wfOutputs = st.Outputs
 	}
-	return task.RenderInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
+	rendered, err := task.RenderInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
 		Name:             s.Name,
 		ResourceID:       s.ResourceID,
 		WorkspaceDirPath: s.WorkspaceDirPath,
 		Branch:           s.Branch,
 		Inputs:           s.Inputs,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return def.ApplyInputDefaults(rendered), nil
 }

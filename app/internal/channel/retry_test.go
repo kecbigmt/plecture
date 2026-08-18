@@ -121,3 +121,51 @@ func TestChannelErrorEvent_NilCause(t *testing.T) {
 		t.Errorf("nil-cause error event malformed: %+v", ce)
 	}
 }
+
+func TestResolveTimeout_LiteralAndTemplate(t *testing.T) {
+	tests := []struct {
+		name    string
+		def     config.ChannelDefinition
+		inputs  map[string]any
+		want    time.Duration
+		wantErr bool
+	}{
+		{name: "empty is zero", def: config.ChannelDefinition{}},
+		{name: "literal", def: config.ChannelDefinition{Timeout: "5s"}, want: 5 * time.Second},
+		{
+			name:   "template reads the resolved input",
+			def:    config.ChannelDefinition{Timeout: `{{.Inputs.enqueue_timeout}}`},
+			inputs: map[string]any{"enqueue_timeout": "30s"},
+			want:   30 * time.Second,
+		},
+		{
+			name:    "template rendering to a non-duration fails delivery",
+			def:     config.ChannelDefinition{Timeout: `{{.Inputs.enqueue_timeout}}`},
+			inputs:  map[string]any{"enqueue_timeout": "soon"},
+			wantErr: true,
+		},
+		{
+			name:    "template over an unset input fails delivery",
+			def:     config.ChannelDefinition{Timeout: `{{.Inputs.enqueue_timeout}}`},
+			inputs:  map[string]any{},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveTimeout(tt.def, tt.inputs)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("ResolveTimeout = %v, want an error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ResolveTimeout: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("ResolveTimeout = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

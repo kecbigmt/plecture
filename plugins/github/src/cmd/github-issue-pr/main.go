@@ -61,6 +61,7 @@ func run(args []string) error {
 			"revision":        result.Revision,
 			"pr_url":          result.PRURL,
 			"mergeable_state": result.MergeableState,
+			"review_decision": result.ReviewDecision,
 		})
 	default:
 		return fmt.Errorf("unknown subcommand %q; expected observe", args[0])

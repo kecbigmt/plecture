@@ -39,6 +39,11 @@ type WorkflowFile struct {
 	// (nodes, inputs, done_when, display). A workflow without one cannot
 	// acquire a workspace, so it cannot back a session.
 	WorkspaceProvider string `toml:"workspace_provider"`
+	// WorkspaceProviderInputs sets the workspace provider's author-declared
+	// parameters (its `[inputs_schema]`). Values are literal data, not
+	// templates — the provider's hooks run before any workspace exists, so
+	// there is no node output for a parameter to reference.
+	WorkspaceProviderInputs map[string]string `toml:"workspace_provider_inputs"`
 	// Display declares the values shown by `plect ls` / `show` / the web UI as
 	// templates over the session's persisted outputs:
 	//
@@ -799,6 +804,10 @@ func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
 	if len(merged.Display) > 0 {
 		displaySource = layers[0].SourcePath
 	}
+	wsInputsSource := ""
+	if len(merged.WorkspaceProviderInputs) > 0 {
+		wsInputsSource = layers[0].SourcePath
+	}
 	nodeSource := make(map[string]string, len(merged.Nodes))
 	for _, n := range merged.Nodes {
 		if n.ID != "" {
@@ -846,6 +855,13 @@ func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
 			}
 			merged.Display = layer.Display
 			displaySource = layer.SourcePath
+		}
+		if len(layer.WorkspaceProviderInputs) > 0 {
+			if wsInputsSource != "" {
+				return WorkflowFile{}, fmt.Errorf("workflow %q: `workspace_provider_inputs` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, wsInputsSource, layer.SourcePath)
+			}
+			merged.WorkspaceProviderInputs = layer.WorkspaceProviderInputs
+			wsInputsSource = layer.SourcePath
 		}
 		// Runtime tuning tables are deeper-wins whole-table replacements, not
 		// additive/no-redeclare like identity fields. A local trusted layer's

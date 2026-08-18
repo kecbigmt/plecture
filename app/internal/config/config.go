@@ -23,26 +23,29 @@ type Duration struct {
 // UnmarshalText parses a duration string. Accepts standard Go durations plus
 // the "d" (day) suffix as a convenience (7d = 168h).
 func (d *Duration) UnmarshalText(text []byte) error {
-	s := string(text)
-	if s == "" {
-		d.Duration = 0
-		return nil
-	}
-	// Translate trailing "d" (days) into hours since time.ParseDuration doesn't accept it.
-	if n := len(s); n > 1 && s[n-1] == 'd' {
-		head := s[:n-1]
-		days, err := time.ParseDuration(head + "h")
-		if err == nil {
-			d.Duration = days * 24
-			return nil
-		}
-	}
-	dur, err := time.ParseDuration(s)
+	dur, err := ParseDuration(string(text))
 	if err != nil {
 		return err
 	}
 	d.Duration = dur
 	return nil
+}
+
+// ParseDuration is Duration's own grammar, exported for the fields that carry
+// a duration as a plain string rather than as a decoded Duration (a channel's
+// `timeout`, which is a template resolved at delivery). The empty string is
+// zero, not an error, matching UnmarshalText on an absent value.
+func ParseDuration(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	// Translate trailing "d" (days) into hours since time.ParseDuration doesn't accept it.
+	if n := len(s); n > 1 && s[n-1] == 'd' {
+		if days, err := time.ParseDuration(s[:n-1] + "h"); err == nil {
+			return days * 24, nil
+		}
+	}
+	return time.ParseDuration(s)
 }
 
 // Task scope constants mirror contracts/state.TaskScope* but are duplicated

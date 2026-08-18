@@ -22,14 +22,19 @@ setup = '''
   --resource {{.ResourceID | shellQuote}} \
   --session {{.SessionName | shellQuote}} \
   --workspace-dirs-root {{.WorkspaceDirsRoot | shellQuote}} \
+  --workspace-layout-root {{get .Inputs "workspace_layout_root" "" | shellQuote}} \
+  --issue-branch-template {{get .Inputs "issue_branch_template" "" | shellQuote}} \
+  --tagged-branch-suffix {{get .Inputs "tagged_branch_suffix" "" | shellQuote}} \
   --watcher-bin {{bin "github-watcher" | shellQuote}}
 '''
 
 # --delete-branch reads the delete_branch cleanup input (`plect destroy
 # --input delete_branch=true`, or the plect_destroy MCP tool's cleanup_inputs
 # object) — a workspace-provider-level opt-in, not a core flag, so core
-# carries no branch vocabulary. Default is off: a branch left behind after
-# worktree removal is safer than one silently reclaimed.
+# carries no branch vocabulary. A caller who expressed no intent falls through
+# to the `delete_branch_default` parameter, which is itself off unless a
+# workflow says otherwise: a branch left behind after worktree removal is
+# safer than one silently reclaimed.
 #
 # The watcher unsubscribe runs unconditionally after worktree cleanup and
 # never gates its exit status: dropping this session's watcher
@@ -43,8 +48,10 @@ cleanup = '''
   --workspace-dir {{.Self.workspace_dir | shellQuote}} \
   --branch {{.Self.branch | shellQuote}} \
   --workspace-dirs-root {{.WorkspaceDirsRoot | shellQuote}} \
+  --workspace-layout-root {{get .Inputs "workspace_layout_root" "" | shellQuote}} \
   --force={{.Force}} \
-  --delete-branch={{eq .CleanupInputs.delete_branch "true"}}
+  --delete-branch={{get .CleanupInputs "delete_branch" "" | shellQuote}} \
+  --delete-branch-default={{get .Inputs "delete_branch_default" "" | shellQuote}}
 status=$?
 {{bin "github-watcher"}} unsubscribe --session {{.SessionName | shellQuote}}
 exit $status
@@ -54,6 +61,32 @@ exit $status
 # verb) — the same watcher subscription registry `cleanup` unsubscribes from
 # on destroy, additive, never replacing.
 subscribe = '{{bin "github-watcher"}} subscribe --session {{.SessionName | shellQuote}} --resource {{.ResourceID | shellQuote}}'
+
+# Author-declared parameters, set by a workflow's
+# `[workspace_provider_inputs]`. Every one is data — a path, a naming
+# template, a boolean — so wiring one can change where and under what name a
+# worktree lands but never what the hooks run. The naming templates use
+# single-brace placeholders (`{number}`, `{tag}`) rather than Go template
+# actions because these values are themselves rendered by plect before
+# github-worktree ever sees them.
+#
+# `subscribe` deliberately reads none of them: it resolves this provider from
+# the resource alone, with no workflow in scope to have set one.
+[inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[inputs_schema.properties]
+# A plain path charset, no shell metacharacters: this value is spliced into
+# the hook script above, and shellQuote alone leaves the rendered command's
+# shape to a crafted value.
+workspace_layout_root = { type = "string", pattern = "^[A-Za-z0-9_./~:-]*$" }
+issue_branch_template = { type = "string", pattern = "^[A-Za-z0-9_./{}-]*$" }
+tagged_branch_suffix  = { type = "string", pattern = "^[A-Za-z0-9_./+{}-]*$" }
+# A string, not a TOML boolean: a workflow's [workspace_provider_inputs] table
+# carries data values as strings, so the schema states the two that mean
+# something rather than accepting any spelling.
+delete_branch_default = { type = "string", enum = ["true", "false"] }
 
 # Outputs contract. `workspace_dir`/`branch` are always present; the rest
 # degrade to absent when their gh-api fetch is tolerated as best-effort (see

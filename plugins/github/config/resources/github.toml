@@ -18,7 +18,7 @@ observe = '{{bin "github-issue-pr"}} observe --resource {{.ResourceID | shellQuo
 
 [state_schema]
 type     = "object"
-required = ["resource_kind", "checks_status", "issue_status", "revision", "mergeable_state"]
+required = ["resource_kind", "checks_status", "issue_status", "revision", "mergeable_state", "review_decision"]
 
 [state_schema.properties]
 resource_kind   = { type = "string", enum = ["pull", "issue", "unknown"] }
@@ -31,3 +31,8 @@ pr_url          = { type = "string" }
 # distinct from "unknown" (a real PR whose mergeability GitHub is still
 # computing), since only "unknown" must never read as a rebase prompt.
 mergeable_state = { type = "string", enum = ["clean", "dirty", "unstable", "blocked", "behind", "unknown", "draft", "has_hooks", "NULL"] }
+# GitHub's own aggregate review verdict (GraphQL `reviewDecision`), plus the
+# "NULL" sentinel shared with checks_status/issue_status: no pull request
+# observed, or GitHub reporting no decision because the pull request requires
+# no reviewer.
+review_decision = { type = "string", enum = ["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", "NULL"] }

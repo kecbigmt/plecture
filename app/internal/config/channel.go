@@ -21,6 +21,12 @@ const (
 type ChannelInputSpec struct {
 	Type     string `toml:"type"`
 	Required bool   `toml:"required"`
+	// Default is the value delivery uses when the referencing
+	// [[event.channel]] sets no such input. Without it an optional input is
+	// unusable: rendering runs under missingkey=error, so a definition
+	// referencing an unset key fails delivery rather than rendering empty.
+	// An empty string means no default was declared.
+	Default string `toml:"default"`
 }
 
 // ChannelDefinition binds a workflow's [[event.channel]] to a built-in delivery
@@ -42,7 +48,35 @@ type ChannelDefinition struct {
 	Args    []string `toml:"args"`    // exec: argv[1:]
 	// Timeout bounds a single delivery attempt — a shared deadline applied by
 	// whichever primitive supports one (exec today; a socket write later).
-	Timeout Duration `toml:"timeout"`
+	// It is a template over `.Inputs` so an author can expose the deadline as
+	// a declared parameter; a literal like "5s" is simply a template with no
+	// actions. Empty means the caller's retry policy decides.
+	Timeout string `toml:"timeout"`
+}
+
+// TimeoutIsTemplate reports whether Timeout defers to a channel input rather
+// than naming a duration outright.
+func (d ChannelDefinition) TimeoutIsTemplate() bool {
+	return strings.Contains(d.Timeout, "{{")
+}
+
+// ApplyInputDefaults returns inputs with every [input_schema] default filled
+// in for a key the caller left unset, so a definition may reference an
+// author-declared optional parameter without every workflow wiring it.
+func (d ChannelDefinition) ApplyInputDefaults(inputs map[string]any) map[string]any {
+	out := make(map[string]any, len(inputs)+len(d.InputSchema))
+	for k, v := range inputs {
+		out[k] = v
+	}
+	for key, spec := range d.InputSchema {
+		if spec.Default == "" {
+			continue
+		}
+		if _, set := out[key]; !set {
+			out[key] = spec.Default
+		}
+	}
+	return out
 }
 
 // Validate rejects the other primitive's fields so a typo in `type` surfaces
@@ -72,6 +106,14 @@ func (d ChannelDefinition) Validate() error {
 	for key, spec := range d.InputSchema {
 		if spec.Type == "" {
 			return fmt.Errorf("input_schema %q: `type` is required", key)
+		}
+		if spec.Required && spec.Default != "" {
+			return fmt.Errorf("input_schema %q: `required` and `default` are mutually exclusive", key)
+		}
+	}
+	if d.Timeout != "" && !d.TimeoutIsTemplate() {
+		if _, err := ParseDuration(d.Timeout); err != nil {
+			return fmt.Errorf("`timeout` %q: %w", d.Timeout, err)
 		}
 	}
 	return nil

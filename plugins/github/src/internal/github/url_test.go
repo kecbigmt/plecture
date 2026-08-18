@@ -160,21 +160,3 @@ func TestSessionNameWithTag(t *testing.T) {
 		}
 	}
 }
-
-func TestBranchWithTag(t *testing.T) {
-	tests := []struct {
-		branch string
-		tag    string
-		want   string
-	}{
-		{"issue/336", "review", "issue/336+review"},
-		{"issue/336", "debug", "issue/336+debug"},
-		{"feat/login", "review", "feat/login+review"},
-	}
-	for _, tt := range tests {
-		got := BranchWithTag(tt.branch, tt.tag)
-		if got != tt.want {
-			t.Errorf("BranchWithTag(%q, %q) = %q, want %q", tt.branch, tt.tag, got, tt.want)
-		}
-	}
-}

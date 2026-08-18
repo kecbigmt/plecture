@@ -221,3 +221,84 @@ func TestRollupChecks(t *testing.T) {
 		})
 	}
 }
+
+func TestObserve_Pull_ReviewDecision(t *testing.T) {
+	tests := []struct {
+		name    string
+		graphql string
+		want    string
+	}{
+		{
+			name:    "approved",
+			graphql: `{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED"}}}}`,
+			want:    "APPROVED",
+		},
+		{
+			name:    "changes requested",
+			graphql: `{"data":{"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED"}}}}`,
+			want:    "CHANGES_REQUESTED",
+		},
+		{
+			name:    "no reviewer is required, so GitHub reports none",
+			graphql: `{"data":{"repository":{"pullRequest":{"reviewDecision":null}}}}`,
+			want:    "NULL",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &fakeGHClient{responses: map[string]string{
+				"repos/acme/widgets/pulls/44":                  `{"head":{"sha":"abc123"},"mergeable_state":"clean"}`,
+				"repos/acme/widgets/commits/abc123/check-runs": `{"check_runs":[]}`,
+				"repos/acme/widgets/commits/abc123/status":     `{"statuses":[]}`,
+				"graphql": tt.graphql,
+			}}
+			result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/pull/44", GHClient: client})
+			if err != nil {
+				t.Fatalf("Observe: %v", err)
+			}
+			if result.ReviewDecision != tt.want {
+				t.Errorf("review_decision = %q, want %q", result.ReviewDecision, tt.want)
+			}
+		})
+	}
+}
+
+// The review decision is an extra GraphQL read on top of the REST reads the
+// rest of the observation needs, so a failure there must not cost the caller
+// the checks/mergeability state it came for.
+func TestObserve_Pull_ReviewDecisionFetchFailureIsTolerated(t *testing.T) {
+	client := &fakeGHClient{
+		responses: map[string]string{
+			"repos/acme/widgets/pulls/44":                  `{"head":{"sha":"abc123"},"mergeable_state":"clean"}`,
+			"repos/acme/widgets/commits/abc123/check-runs": `{"check_runs":[{"conclusion":"success"}]}`,
+			"repos/acme/widgets/commits/abc123/status":     `{"statuses":[]}`,
+		},
+		errs: map[string]error{"graphql": errors.New("HTTP 502")},
+	}
+	result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/pull/44", GHClient: client})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	if result.ChecksStatus != "SUCCESS" {
+		t.Errorf("checks_status = %q, want the observation to survive", result.ChecksStatus)
+	}
+	if result.ReviewDecision != "NULL" {
+		t.Errorf("review_decision = %q, want NULL on a failed fetch", result.ReviewDecision)
+	}
+}
+
+func TestObserve_Issue_ReviewDecisionIsNullWithoutALinkedPR(t *testing.T) {
+	client := &fakeGHClient{
+		responses: map[string]string{
+			"repos/acme/widgets/issues/7": `{"state":"open","updated_at":"2026-08-18T00:00:00Z"}`,
+			"graphql":                     `{"data":{"repository":{"issue":{"closedByPullRequestsReferences":{"nodes":[]}}}}}`,
+		},
+	}
+	result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/issues/7", GHClient: client})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	if result.ReviewDecision != "NULL" {
+		t.Errorf("review_decision = %q, want NULL", result.ReviewDecision)
+	}
+}
