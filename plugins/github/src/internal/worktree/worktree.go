@@ -37,6 +37,16 @@ type SetupOptions struct {
 	SessionName string
 	// WorkspaceDirsRoot overrides the configured workspace-dirs root.
 	WorkspaceDirsRoot string
+	// WorkspaceLayoutRoot is the author-declared `workspace_layout_root`
+	// parameter: the root this provider lays its `github.com/<owner>/<repo>/
+	// <branch>` containers out under. Empty falls back to WorkspaceDirsRoot,
+	// so a machine that wants one root for every provider configures it once
+	// in core rather than per provider.
+	WorkspaceLayoutRoot string
+	// IssueBranchTemplate and TaggedBranchSuffix are the author-declared
+	// branch-naming parameters; empty means the shipped convention.
+	IssueBranchTemplate string
+	TaggedBranchSuffix  string
 	// Manager lets tests observe acquisition without a real repository.
 	Manager WorktreeManager
 	// GHClient fetches title/state metadata. Defaults to ghapi.Direct(); a
@@ -69,19 +79,19 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 		}
 		baseBranch, title, state = meta.HeadRef, meta.Title, meta.State
 	} else {
-		baseBranch = github.IssueBranch(parsed.Number)
+		baseBranch = github.ExpandIssueBranch(opts.IssueBranchTemplate, parsed.Owner, parsed.Repo, parsed.Number)
 		meta := github.FetchIssueMeta(ctx, client, parsed.OwnerRepo, parsed.Number)
 		title, state = meta.Title, meta.State
 	}
 
 	branch := baseBranch
 	if tag := SessionTag(opts.SessionName); tag != "" {
-		branch = github.BranchWithTag(baseBranch, tag)
+		branch = github.ExpandTaggedBranch(opts.TaggedBranchSuffix, baseBranch, tag)
 	}
 
 	mgr := opts.Manager
 	if mgr == nil {
-		mgr = workspace.NewManager(workspaceDirsRoot(opts.WorkspaceDirsRoot))
+		mgr = workspace.NewManager(layoutRoot(opts.WorkspaceLayoutRoot, opts.WorkspaceDirsRoot))
 	}
 	params := workspace.AddParams{
 		Repo:        github.RepoSlug(parsed.OwnerRepo),
@@ -130,15 +140,23 @@ type CleanupOptions struct {
 	// Force removes the worktree even when it carries uncommitted changes,
 	// mirroring the caller's `plect destroy --force` intent.
 	Force bool
-	// DeleteBranch reclaims the branch setup created, mirroring the caller's
-	// `plect destroy --input delete_branch=true` intent
-	// (workspaces/github.toml's cleanup hook). Opt-in, not derived from
-	// Branch being non-empty: a branch left behind after worktree removal is
-	// the safer default, since deleting one is not always what a
-	// review-only or shared-branch session wants.
-	DeleteBranch bool
+	// DeleteBranch mirrors the caller's `plect destroy --input
+	// delete_branch=<v>` intent (workspaces/github.toml's cleanup hook): the
+	// empty string means the caller expressed none, so the workflow's
+	// `delete_branch_default` parameter decides.
+	DeleteBranch string
+	// DeleteBranchDefault is the author-declared `delete_branch_default`
+	// parameter, used when the caller expressed no intent. Empty means off: a
+	// branch left behind after worktree removal is the safer default, since
+	// deleting one is not always what a review-only or shared-branch session
+	// wants.
+	DeleteBranchDefault string
 	// WorkspaceDirsRoot overrides the configured workspace-dirs root.
 	WorkspaceDirsRoot string
+	// WorkspaceLayoutRoot is setup's parameter of the same name; cleanup
+	// needs it only to build a Manager, since the workspace directory it
+	// releases is read back from setup's own outputs.
+	WorkspaceLayoutRoot string
 	// Manager lets tests observe release without a real repository.
 	Manager WorktreeManager
 }
@@ -153,14 +171,14 @@ func Cleanup(ctx context.Context, opts CleanupOptions) error {
 	}
 	mgr := opts.Manager
 	if mgr == nil {
-		mgr = workspace.NewManager(workspaceDirsRoot(opts.WorkspaceDirsRoot))
+		mgr = workspace.NewManager(layoutRoot(opts.WorkspaceLayoutRoot, opts.WorkspaceDirsRoot))
 	}
 	container := workspace.ContainerDir(opts.WorkspaceDir)
 	gitDir, err := mgr.FindGitDir(container, opts.WorkspaceDir)
 	if err != nil {
 		return fmt.Errorf("release worktree: %w", err)
 	}
-	if err := mgr.RemoveByPath(ctx, opts.WorkspaceDir, gitDir, opts.Branch, opts.Force, opts.DeleteBranch); err != nil {
+	if err := mgr.RemoveByPath(ctx, opts.WorkspaceDir, gitDir, opts.Branch, opts.Force, ResolveDeleteBranch(opts.DeleteBranch, opts.DeleteBranchDefault)); err != nil {
 		return fmt.Errorf("release worktree: %w", err)
 	}
 	return nil
@@ -185,14 +203,35 @@ func resolve(ctx context.Context, resource string) (*github.ParsedURL, error) {
 	return github.ParseURL(resource)
 }
 
-func workspaceDirsRoot(override string) string {
-	home, _ := os.UserHomeDir()
-	root := filepath.Join(home, "workspace_dirs")
-	if override != "" {
-		root = override
+// ResolveDeleteBranch decides whether cleanup reclaims the branch. A caller's
+// explicit intent wins over the workflow's declared default; anything other
+// than "true" is off, so a misspelled value never turns branch deletion on by
+// accident.
+func ResolveDeleteBranch(requested, declaredDefault string) bool {
+	if requested != "" {
+		return requested == "true"
 	}
+	return declaredDefault == "true"
+}
+
+// layoutRoot picks the root this provider lays worktree containers out under:
+// the author-declared parameter when a workflow set one, otherwise the
+// machine's configured workspace-dirs root.
+func layoutRoot(layoutRoot, workspaceDirsRoot string) string {
+	if layoutRoot != "" {
+		return expandRoot(layoutRoot)
+	}
+	if workspaceDirsRoot != "" {
+		return expandRoot(workspaceDirsRoot)
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "workspace_dirs")
+}
+
+func expandRoot(root string) string {
 	if strings.HasPrefix(root, "~/") {
-		root = filepath.Join(home, root[2:])
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, root[2:])
 	}
 	return root
 }

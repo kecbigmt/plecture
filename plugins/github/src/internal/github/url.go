@@ -80,12 +80,6 @@ func SessionNameWithTag(ownerRepo string, number int, tag string) string {
 	return fmt.Sprintf("%s-%d+%s", ownerRepo, number, tag)
 }
 
-// BranchWithTag appends a tag to a branch name.
-// e.g. "issue/79" + "review" → "issue/79+review"
-func BranchWithTag(branch, tag string) string {
-	return branch + "+" + tag
-}
-
 func SanitizeBranch(branch string) string {
 	r := strings.NewReplacer("/", "-", ":", "-", "+", "-")
 	return r.Replace(branch)

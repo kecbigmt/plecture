@@ -44,13 +44,24 @@ func run(args []string) error {
 		session := fs.String("session", "", "session name the workspace is acquired for")
 		workspaceDirsRoot := fs.String("workspace-dirs-root", "", "configured workspace-dirs root")
 		watcherBin := fs.String("watcher-bin", "", "path to a github-watcher binary; gh-api calls route through its shared rate budget when set, otherwise call gh directly")
+		layoutRoot := fs.String("workspace-layout-root", "", "root this provider lays repository worktree containers out under (default: the workspace-dirs root)")
+		issueBranchTemplate := fs.String("issue-branch-template", "", "branch name for an issue resource, with {owner}/{repo}/{number} placeholders (default: issue/{number})")
+		taggedBranchSuffix := fs.String("tagged-branch-suffix", "", "suffix appended to the branch for a tagged session, with a {tag} placeholder (default: +{tag})")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
 		if *resource == "" || *session == "" {
 			return fmt.Errorf("setup requires --resource and --session")
 		}
-		outputs, err := worktree.Setup(ctx, worktree.SetupOptions{ResourceID: *resource, SessionName: *session, WorkspaceDirsRoot: *workspaceDirsRoot, GHClient: ghClient(*watcherBin)})
+		outputs, err := worktree.Setup(ctx, worktree.SetupOptions{
+			ResourceID:          *resource,
+			SessionName:         *session,
+			WorkspaceDirsRoot:   *workspaceDirsRoot,
+			WorkspaceLayoutRoot: *layoutRoot,
+			IssueBranchTemplate: *issueBranchTemplate,
+			TaggedBranchSuffix:  *taggedBranchSuffix,
+			GHClient:            ghClient(*watcherBin),
+		})
 		if err != nil {
 			return err
 		}
@@ -63,11 +74,21 @@ func run(args []string) error {
 		branch := fs.String("branch", "", "branch recorded by setup")
 		workspaceDirsRoot := fs.String("workspace-dirs-root", "", "configured workspace-dirs root")
 		force := fs.Bool("force", false, "remove the workspace directory even when it carries uncommitted changes")
-		deleteBranch := fs.Bool("delete-branch", false, "also delete the branch recorded by setup")
+		deleteBranch := fs.String("delete-branch", "", "\"true\"/\"false\" to also delete the branch recorded by setup; empty defers to --delete-branch-default")
+		deleteBranchDefault := fs.String("delete-branch-default", "", "\"true\" to delete the branch when the caller expressed no intent")
+		layoutRoot := fs.String("workspace-layout-root", "", "root this provider lays repository worktree containers out under (default: the workspace-dirs root)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		return worktree.Cleanup(ctx, worktree.CleanupOptions{WorkspaceDir: *workspaceDir, Branch: *branch, WorkspaceDirsRoot: *workspaceDirsRoot, Force: *force, DeleteBranch: *deleteBranch})
+		return worktree.Cleanup(ctx, worktree.CleanupOptions{
+			WorkspaceDir:        *workspaceDir,
+			Branch:              *branch,
+			WorkspaceDirsRoot:   *workspaceDirsRoot,
+			WorkspaceLayoutRoot: *layoutRoot,
+			Force:               *force,
+			DeleteBranch:        *deleteBranch,
+			DeleteBranchDefault: *deleteBranchDefault,
+		})
 	default:
 		return fmt.Errorf("unknown subcommand %q; expected setup or cleanup", args[0])
 	}
