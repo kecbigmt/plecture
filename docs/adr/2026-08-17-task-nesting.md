@@ -110,11 +110,6 @@ design's complexity from ratcheting: may an outer task declare its own layer's
 instance of this field, and if not, is the asymmetry forced by the joint? A
 field that fails both halves does not belong in the task definition.
 
-Instance-singular attributes are the one constraint class closure does not
-dissolve: a surface an instance can hold only one of admits one declaration per
-nesting chain rather than one per layer. `primary`, `execution`, and
-`idle_after` stay with the innermost task on that ground.
-
 `[terminal]` is conflict-banned rather than inner-owned. An outer task may
 declare it when no layer of its inner chain does, which composes an interactive
 surface around a headless inner task without touching inner behavior. Two
@@ -205,11 +200,13 @@ third-party service is outside this decision. Whole-file forks remain available
 when behavior cannot be expressed by an author-declared input or by additive
 nesting.
 
-The retirement of the `healthcheck` scalar and `movement_signal`, and the
-layer-scoping of `[health]`, `[terminal]`, `[done_when]`, `requires`, and
-`[[outputs]]`, leave `primary`, `execution`, and `idle_after` as the inner-owned
-instance attributes. Whether each of them survives as a task-definition field at
-all is a field-audit question rather than a nesting question.
+No task field remains unconditionally inner-owned. The `healthcheck` scalar and
+`movement_signal` retire with the health decision, `primary`, `execution`, and
+`idle_after` retire with the task-definition field audit, and every surviving
+surface is layer-scoped. Closure is realized in full, and what remains are
+conflict rules rather than ownership rules: at most one `[terminal]` per nesting
+chain, judge ids and `bind.env` keys unique across the chain, and one definition
+source per public output name within its layer.
 
 ## Alternatives considered
 
@@ -239,10 +236,10 @@ parties create a named variant instead of mutating that definition in place.
 
 ### Inner-owned `done_when` and `requires`
 
-Listing `[done_when]` and `requires` among the inner-owned fields, alongside
-`primary`, `execution`, and `[terminal]`, is the strictest reading of
-no-override, and this decision started there. It over-applies the rule by
-treating any appearance of a field in an outer file as an override. Conjunction
+Listing `[done_when]` and `requires` among fields only an inner task may
+declare is the strictest reading of no-override, and this decision started
+there. It over-applies the rule by treating any appearance of a field in an
+outer file as an override. Conjunction
 overrides nothing: the grammar offers no way to weaken, drop, or reorder an
 inner condition, so every inner condition survives an outer addition intact.
 The ban also costs real coverage. A team that needs one extra completion gate on

@@ -32,11 +32,11 @@ and `[done_when.budget]` per layer, `[health]` by AND on `alive` and OR on
 the composed id. Each layer declares only its own additions and answers only
 for them, which is what makes the no-override rule hold by construction.
 
-Instance-singular attributes are the one constraint class closure does not
-dissolve. A surface an instance can hold only one of admits one declaration per
-nesting chain rather than one per layer: `[terminal]` is that case, and
-`primary`, `execution`, and `idle_after` stay with the innermost task as
-attributes of the instance itself.
+No task field is unconditionally inner-owned, so closure is realized in full.
+What remains are conflict rules rather than ownership rules: `[terminal]`
+admits at most one declaration per nesting chain, judge ids and `bind.env` keys
+are unique across the chain, and a public output name has one definition source
+within its layer.
 
 A nested task has a chain of task definitions. The outermost task is the id
 named by a workflow node. Each outer task names its next inner task with
@@ -351,8 +351,6 @@ Loading nested task definitions fails when:
   a task missing from the selected plugin.
 - `inner` forms a nesting cycle, including self-reference.
 - the outer task declares a `scope` that differs from the inner task's scope.
-- the outer task declares inner-owned behavior fields: `primary`, `execution`,
-  or `idle_after`.
 - an outer `[[outputs]]`-produced key collides with a `[bind.outputs]`-bound key
   or with another key the same layer produces.
 - an outer `[[outputs]]`-produced key is missing from the outer
