@@ -293,7 +293,17 @@ func chainOutputRefs(tmplStr string) ([]string, error) {
 // It also stamps TaskID/SourcePath on each chain and rejects a chain id
 // declared more than once within the same task file.
 func validateTaskChains(def *TaskDefinition) error {
+	if err := stampTaskChains(def); err != nil {
+		return err
+	}
 	if len(def.Chains) == 0 {
+		return nil
+	}
+	// An outer layer's chain resolves against the effective done_when and
+	// public contract composed across the whole nesting chain, which is only
+	// known once `inner` has been resolved — so a nested definition defers
+	// its reference checks to resolveNestedDefinitions.
+	if def.IsNested() {
 		return nil
 	}
 	judgeIDs := make(map[string]bool)
@@ -312,7 +322,15 @@ func validateTaskChains(def *TaskDefinition) error {
 	for _, p := range outputProps {
 		declaredOutputs[p] = true
 	}
+	if err := validateChainReferences(*def, judgeIDs, declaredOutputs); err != nil {
+		return fmt.Errorf("task %q: %w", def.ID, err)
+	}
+	return nil
+}
 
+// stampTaskChains records the declaring task on each chain and rejects a
+// chain id declared twice in one file.
+func stampTaskChains(def *TaskDefinition) error {
 	seen := make(map[string]bool, len(def.Chains))
 	for i := range def.Chains {
 		ch := &def.Chains[i]
@@ -325,7 +343,16 @@ func validateTaskChains(def *TaskDefinition) error {
 			return fmt.Errorf("task %q: chain id %q is declared more than once", def.ID, ch.ID)
 		}
 		seen[ch.ID] = true
+	}
+	return nil
+}
 
+// validateChainReferences resolves each chain's judge ids and output
+// references against the judge namespace and public contract it was declared
+// over — this task's own for a plain task, the composed ones for a layer of a
+// nesting chain.
+func validateChainReferences(def TaskDefinition, judgeIDs, declaredOutputs map[string]bool) error {
+	for _, ch := range def.Chains {
 		for j, fact := range ch.When.All {
 			id := fact.JudgePending
 			if id == "" {
@@ -335,7 +362,7 @@ func validateTaskChains(def *TaskDefinition) error {
 				continue
 			}
 			if !judgeIDs[id] {
-				return fmt.Errorf("task %q chain %q when.all[%d]: judge id %q is not declared in this task's done_when", def.ID, ch.ID, j, id)
+				return fmt.Errorf("chain %q when.all[%d]: judge id %q is not declared in this task's done_when", ch.ID, j, id)
 			}
 		}
 
@@ -344,12 +371,31 @@ func validateTaskChains(def *TaskDefinition) error {
 		}
 		wired, err := ChainWiredOutputs(ch.Inputs)
 		if err != nil {
-			return fmt.Errorf("task %q chain %q: %w", def.ID, ch.ID, err)
+			return fmt.Errorf("chain %q: %w", ch.ID, err)
 		}
 		for _, key := range wired {
 			if !declaredOutputs[key] {
-				return fmt.Errorf("task %q chain %q: input binding wires output %q, which is not declared in this task's outputs_schema", def.ID, ch.ID, key)
+				return fmt.Errorf("chain %q: input binding wires output %q, which is not declared in this task's outputs_schema", ch.ID, key)
 			}
+		}
+		if !def.IsNested() {
+			continue
+		}
+		// A nested layer declares its whole public contract explicitly, so a
+		// chain fact reading anything else — a key outside the contract, or a
+		// local the joint kept private — has no value to read at fire time.
+		for j, fact := range ch.When.All {
+			key := strings.TrimSpace(fact.Check)
+			if key != "" && !declaredOutputs[key] {
+				return fmt.Errorf("chain %q when.all[%d]: reads output %q, which is not declared in this task's outputs_schema", ch.ID, j, key)
+			}
+		}
+		locals, err := chainLocalRefs(ch.Inputs)
+		if err != nil {
+			return fmt.Errorf("chain %q: %w", ch.ID, err)
+		}
+		if len(locals) > 0 {
+			return fmt.Errorf("chain %q: input binding reads local %q; locals are private to the joint, so bind the value into the public contract and read it as an output", ch.ID, locals[0])
 		}
 	}
 	return nil

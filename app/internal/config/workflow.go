@@ -228,6 +228,22 @@ type TaskDefinition struct {
 	Scope   string `toml:"scope"`
 	Setup   string `toml:"setup"`
 	Cleanup string `toml:"cleanup"`
+	// Inner names the next task inward, making this definition the outer
+	// layer of a nesting chain: either a plain task id (resolved in the
+	// merged namespace, or in the declaring plugin's own namespace when the
+	// declaration is plugin-authored) or a catalog-qualified reference. See
+	// docs/design/task-nesting.md.
+	Inner string `toml:"inner"`
+	// Bind is the joint wiring the boundary to the inner task. See BindConfig.
+	Bind *BindConfig `toml:"bind"`
+	// LocalsSchema / LocalsSchemaFile is the contract for the private
+	// intermediates this layer's setup emits.
+	LocalsSchema     map[string]any `toml:"locals_schema"`
+	LocalsSchemaFile string         `toml:"locals_schema_file"`
+	// InnerChain is the nesting chain inward from this task, next-inner
+	// first and innermost last, stamped by load-time resolution. Empty for a
+	// plain task.
+	InnerChain []TaskDefinition `toml:"-"`
 	// Health declares the task's `[health]` table — the alive and activity
 	// probes that determine this task's contribution to session health. Nil
 	// for a task that declares neither. See HealthConfig.
@@ -482,12 +498,18 @@ func withBuiltinOutputs(def TaskDefinition) TaskDefinition {
 	return def
 }
 
-// EffectiveScope returns the scope, defaulting to "run" when unset.
+// EffectiveScope returns the scope, defaulting to "run" when unset. A nested
+// task that declares none takes the innermost task's scope rather than the
+// plain-task default: the chain runs as one task, so the layer that owns the
+// actual resource decides the lifecycle it belongs to.
 func (d TaskDefinition) EffectiveScope() string {
-	if d.Scope == "" {
-		return TaskScopeRun
+	if d.Scope != "" {
+		return d.Scope
 	}
-	return d.Scope
+	if n := len(d.InnerChain); n > 0 {
+		return d.InnerChain[n-1].EffectiveScope()
+	}
+	return TaskScopeRun
 }
 
 // ResolvedOutputsSchemaPath joins OutputsSchemaFile with BaseDir.
@@ -534,6 +556,10 @@ type layerDir struct {
 	dir          string
 	workspaceDir bool
 	plugin       bool
+	// pluginID is the catalog-qualified identity of the plugin this layer
+	// was mounted from, empty for a hand-authored plugin_dirs entry (which
+	// carries no catalog identity) and for the non-plugin layers.
+	pluginID string
 }
 
 // LoadWorkflows merges plugin + global + ancestor `.plect/workflows/` layers so
@@ -650,6 +676,11 @@ func validateWorkspaceDirLayerWorkflow(wf WorkflowFile) error {
 func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDefinition, error) {
 	out := make(map[string]TaskDefinition)
 	pluginOwner := make(map[string]string)
+	// all keeps every definition file that was read, including a plugin
+	// definition a same-id user task shadows in out: a catalog-qualified
+	// `inner` reference exists precisely to reach one.
+	var all []TaskDefinition
+	pluginOfSource := make(map[string]string)
 	dirs := c.tasksSearchDirs(workspaceDirPath)
 	for _, layer := range dirs {
 		entries, err := listTOMLFiles(layer.dir)
@@ -669,9 +700,19 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 					return nil, fmt.Errorf("task %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, path)
 				}
 				pluginOwner[def.ID] = path
+				if layer.pluginID != "" {
+					pluginOfSource[def.SourcePath] = layer.pluginID
+				}
 			}
-			out[def.ID] = withBuiltinOutputs(def)
+			def = withBuiltinOutputs(def)
+			all = append(all, def)
+			out[def.ID] = def
 		}
+	}
+	if err := resolveNestedDefinitions(out, all, pluginOfSource, func(ref string) string {
+		return describeMissingPlugin(ref, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot)
+	}); err != nil {
+		return nil, err
 	}
 	if err := checkBinRefs(taskHookSources(out), c.Plugins, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot); err != nil {
 		return nil, err
@@ -719,9 +760,13 @@ func (c *Config) tasksSearchDirs(workspaceDirPath string) []layerDir {
 }
 
 func (c *Config) searchDirs(workspaceDirPath, kind string) []layerDir {
+	pluginIDs := make(map[string]string, len(c.Plugins))
+	for _, m := range c.Plugins {
+		pluginIDs[m.Dir] = m.ID
+	}
 	var dirs []layerDir
 	for _, plugin := range c.PluginDirs {
-		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, "config", kind), plugin: true})
+		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, "config", kind), plugin: true, pluginID: pluginIDs[plugin]})
 	}
 	if c.BaseDir != "" {
 		dirs = append(dirs, layerDir{dir: filepath.Join(c.BaseDir, kind)})
@@ -1059,6 +1104,16 @@ func loadTaskDefinitionFile(path string) (TaskDefinition, error) {
 		}
 		if len(key) == 2 && key[0] == "health" {
 			return def, fmt.Errorf("task %s: [health] has unknown field %q (want alive, activity)", path, key[1])
+		}
+		// A misspelled bind table (`[bind.output]`) would otherwise decode
+		// clean and leave the joint wiring nothing, discovered only when a
+		// downstream consumer reads an output the composed task never bound.
+		if len(key) >= 2 && key[0] == "bind" {
+			switch key[1] {
+			case "inputs", "env", "outputs":
+			default:
+				return def, fmt.Errorf("task %s: [bind] has unknown table %q (want inputs, env, outputs)", path, key[1])
+			}
 		}
 	}
 	if err := def.DoneWhen.Validate(); err != nil {

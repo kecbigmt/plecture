@@ -275,7 +275,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		// nodes that actually declared verbs.
 		terminal = nil
 	}
-	if err := validateTaskRequires(def); err != nil {
+	if err := config.ValidateTaskRequires(def); err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
 	if err := config.ValidateDynamicOutputs(def.DynamicOutputs); err != nil {
