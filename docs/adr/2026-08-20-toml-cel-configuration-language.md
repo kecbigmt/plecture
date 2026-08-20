@@ -354,7 +354,45 @@ The audit must specifically settle:
 * exec `command` versus plugin-owned `bin` rules;
 * static typing derived from JSON Schema;
 * computed nested-output typing;
-* all migration interactions with the config-declaration-identity change;
+* the dissolution of dynamic outputs into the value model. The audit
+  classifies every existing `[[outputs]]` entry as a projection, a
+  computation, or an action residue; if the residue is empty, no
+  outputs-action construct is introduced, and re-evaluation semantics ride
+  on root liveness rather than on a separate syntax group. The two shipped
+  variants are expected to dissolve as follows.
+
+  The `from_resource_status` bulk copy becomes per-key projections:
+
+  ```toml
+  # current
+  [[outputs]]
+  produces             = ["resource_kind", "checks_status", "revision"]
+  from_resource_status = true
+
+  # after
+  [outputs.bind]
+  resource_kind = { from = "resource.status.resource_kind" }
+  checks_status = { from = "resource.status.checks_status" }
+  revision      = { from = "resource.status.revision" }
+  ```
+
+  A script-computed output becomes a CEL computation over live roots:
+
+  ```toml
+  # current: a shell script comparing plect resource status output
+  # against {{.Self.verdict_revision}} and echoing true/false
+
+  # after
+  [outputs.bind]
+  verdict_current = { expr = "self.verdict_revision == resource.status.revision" }
+  ```
+
+  A value whose `from` or `expr` reads a live root (`resource.*`,
+  `self.*`) is current as of each evaluation; a direct projection of an
+  inner output keeps write-through semantics. Nothing about being
+  "dynamic" needs its own declaration form;
+* all migration interactions with the config-declaration-identity change
+  and with the symmetric per-layer evaluation direction (#192);
 * whether existing config can be migrated mechanically and which cases require manual review.
 
 Representative configs used during this ADR are evidence for the direction, not evidence of completeness.
