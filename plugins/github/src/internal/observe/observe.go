@@ -122,7 +122,10 @@ func observeIssue(ctx context.Context, client github.GHClient, parsed *github.Pa
 		ReviewDecision: "NULL",
 	}
 
-	prURL := discoverLinkedPR(ctx, client, parsed, opts)
+	prURL, err := discoverLinkedPR(ctx, client, parsed, opts)
+	if err != nil {
+		return nil, err
+	}
 	if prURL == "" {
 		return result, nil
 	}
@@ -190,29 +193,69 @@ func fetchReviewDecision(ctx context.Context, client github.GHClient, owner, rep
 	return resp.Data.Repository.PullRequest.ReviewDecision
 }
 
-// discoverLinkedPR finds the PR that closes an issue: the session's checked
-// out branch first (a fact about this session, not a GitHub-inferred
-// relation), the GraphQL closing-PR reference as a fallback. Both steps are
-// best-effort — any failure degrades to "no linked PR yet" rather than
-// failing the observation, matching production's tolerance for a resource
-// that legitimately has no PR at all.
-func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) string {
+// discoverLinkedPR finds the PR that closes an issue. The issue's own
+// closing-PR references bound the answer, and the session's checked out
+// branch picks among them: a session that builds several branches in one
+// worktree (the stacked-PR pattern) leaves HEAD on a later branch whose PR
+// closes a different issue, so the branch alone would report that PR's head
+// as this issue's revision and make every judge recorded on the real PR read
+// as stale. The branch still decides when the issue has no closing reference
+// at all — a PR whose body never named the issue is invisible to GitHub's
+// relation — and when several references compete.
+//
+// A reference lookup that fails is therefore not the same as one that
+// returns nothing: with a branch pull request in hand and no way to check it
+// against the issue, reporting it would resurrect exactly the wrong-revision
+// failure above, and degrading to the issue-only state would move the
+// revision off the reviewed head just as destructively, so the observation
+// fails and the last observed values stand. With no branch pull request
+// there is nothing the references could contradict, and the failure still
+// degrades to "no linked PR yet".
+func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) (string, error) {
+	refs, refsErr := closingPRRefs(ctx, client, parsed)
+	branchPR := branchPullRequest(ctx, client, parsed, opts)
+	if refsErr != nil {
+		if branchPR == "" {
+			return "", nil
+		}
+		return "", fmt.Errorf("fetch closing pull request references: %w", refsErr)
+	}
+	if branchPR != "" && (len(refs) == 0 || containsPR(refs, branchPR)) {
+		return branchPR, nil
+	}
+	return preferOpenPR(refs), nil
+}
+
+func branchPullRequest(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) string {
 	branchOf := opts.WorkspaceDirBranch
 	if branchOf == nil {
 		branchOf = defaultWorkspaceDirBranch
 	}
-	if branch := branchOf(ctx, opts.WorkspaceDirPath); branch != "" {
-		path := fmt.Sprintf("repos/%s/%s/pulls?head=%s:%s&state=all", parsed.Owner, parsed.Repo, parsed.Owner, branch)
-		if raw, err := client.JSON(ctx, path); err == nil {
-			var prs []struct {
-				HTMLURL string `json:"html_url"`
-			}
-			if json.Unmarshal(raw, &prs) == nil && len(prs) > 0 && prs[0].HTMLURL != "" {
-				return prs[0].HTMLURL
-			}
+	branch := branchOf(ctx, opts.WorkspaceDirPath)
+	if branch == "" {
+		return ""
+	}
+	path := fmt.Sprintf("repos/%s/%s/pulls?head=%s:%s&state=all", parsed.Owner, parsed.Repo, parsed.Owner, branch)
+	raw, err := client.JSON(ctx, path)
+	if err != nil {
+		return ""
+	}
+	var prs []struct {
+		HTMLURL string `json:"html_url"`
+	}
+	if json.Unmarshal(raw, &prs) != nil || len(prs) == 0 {
+		return ""
+	}
+	return prs[0].HTMLURL
+}
+
+func containsPR(refs []closingPRRef, url string) bool {
+	for _, r := range refs {
+		if r.URL == url {
+			return true
 		}
 	}
-	return discoverLinkedPRViaGraphQL(ctx, client, parsed)
+	return false
 }
 
 const closingPRsQuery = `query($owner:String!,$repo:String!,$number:Int!){
@@ -225,7 +268,14 @@ const closingPRsQuery = `query($owner:String!,$repo:String!,$number:Int!){
   }
 }`
 
-func discoverLinkedPRViaGraphQL(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) string {
+// closingPRRef is one pull request GitHub reports as closing the issue.
+type closingPRRef struct {
+	URL       string `json:"url"`
+	State     string `json:"state"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func closingPRRefs(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) ([]closingPRRef, error) {
 	raw, err := client.JSON(ctx, "graphql",
 		"-F", "owner="+parsed.Owner,
 		"-F", "repo="+parsed.Repo,
@@ -233,34 +283,33 @@ func discoverLinkedPRViaGraphQL(ctx context.Context, client github.GHClient, par
 		"-f", "query="+closingPRsQuery,
 	)
 	if err != nil {
-		return ""
+		return nil, err
 	}
 	var resp struct {
 		Data struct {
 			Repository struct {
 				Issue struct {
 					ClosedByPullRequestsReferences struct {
-						Nodes []struct {
-							URL       string `json:"url"`
-							State     string `json:"state"`
-							UpdatedAt string `json:"updatedAt"`
-						} `json:"nodes"`
+						Nodes []closingPRRef `json:"nodes"`
 					} `json:"closedByPullRequestsReferences"`
 				} `json:"issue"`
 			} `json:"repository"`
 		} `json:"data"`
 	}
-	if json.Unmarshal(raw, &resp) != nil {
-		return ""
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parse closing pull request references: %w", err)
 	}
-	nodes := resp.Data.Repository.Issue.ClosedByPullRequestsReferences.Nodes
-	if len(nodes) == 0 {
+	return resp.Data.Repository.Issue.ClosedByPullRequestsReferences.Nodes, nil
+}
+
+func preferOpenPR(refs []closingPRRef) string {
+	if len(refs) == 0 {
 		return ""
 	}
 	// Prefer the first OPEN reference; ISO 8601 timestamps sort correctly as
 	// plain strings, so the most recently updated otherwise wins.
-	latest := nodes[0]
-	for _, n := range nodes {
+	latest := refs[0]
+	for _, n := range refs {
 		if strings.EqualFold(n.State, "OPEN") {
 			return n.URL
 		}
