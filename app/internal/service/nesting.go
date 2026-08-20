@@ -193,8 +193,13 @@ func (lb *layerBudgets) unmetFor(layer int, result task.DoneWhenResult) []CheckU
 // chainDrifted reports whether a definition's chain no longer matches the
 // instance's layer records, which is the state where a composed view cannot
 // be built and only the outermost layer's own declarations remain readable.
+//
+// No layer records at all counts: a nested task's setup writes a record for
+// every layer it reaches, so an instance of one carrying none was produced
+// before the task was nested. That is the widest drift there is, not an
+// exemption from it.
 func chainDrifted(def config.TaskDefinition, st *contract.TaskState) bool {
-	if !def.IsNested() || st == nil || len(st.Layers) == 0 {
+	if !def.IsNested() || st == nil {
 		return false
 	}
 	return len(st.Layers) != len(def.InnerChain)+1

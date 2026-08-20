@@ -418,6 +418,37 @@ func TestTick_NestedInstanceAddedLeavesGetTheirOwnPatience(t *testing.T) {
 	}
 }
 
+// TestFinalize_NestedRefusesWithNoLayerRecords covers the widest drift there
+// is: an instance produced before its task was nested carries no layer
+// records at all, so the composed gate cannot be built and only the outermost
+// layer's own conditions would be checked. Recording completion there accepts
+// work no inner layer ever cleared.
+func TestFinalize_NestedRefusesWithNoLayerRecords(t *testing.T) {
+	store := testStore(t)
+	// The outer layer's own condition holds while the inner layer's does not,
+	// which is the shape where fail-open does damage: without the composed
+	// view only the outer condition is checked, and completion is recorded
+	// against a gate the inner author never cleared.
+	cfg := nestedConfig(t,
+		taskFixture{extra: "\n[done_when]\nall = [ { check = \"pid\", eq = \"99\" } ]\n"},
+		gateSchema+"\n[done_when]\nall = [ { check = \"state\", eq = \"done\" } ]\n")
+	tasks := nestedTasks(map[string]any{"pid": "1", "state": "done"}, map[string]any{"pid": "1", "state": "done"}, nil)
+	tasks["runtime"].Layers = nil
+
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", tasks)
+
+	_, err := FinalizeTask(cfg, store, FinalizeTaskParams{Instance: "runtime", SessionName: "owner/repo-1"})
+	if err == nil {
+		t.Fatal("FinalizeTask: recorded completion for a nested task whose inner condition was never evaluated")
+	}
+	if !strings.Contains(err.Error(), "nesting layers") {
+		t.Errorf("error = %v, want it to name the chain it cannot compose", err)
+	}
+	if !store.Get("owner/repo-1").Tasks["runtime"].FinalizedAt.IsZero() {
+		t.Error("a refused finalize must not stamp the instance finalized")
+	}
+}
+
 // TestFinalize_NestedRefusesWhenTheChainDrifted covers the one place a
 // drifted chain must not fail open: reading degrades to the outermost
 // layer's conditions, but recording completion against a gate that cannot be
