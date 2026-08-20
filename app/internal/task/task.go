@@ -59,6 +59,10 @@ type Resolved struct {
 	// nil for pure lifecycle-only tasks. Evaluated against the instance's own
 	// outputs for `plect status` / `ls` display.
 	DoneWhen *config.DoneWhen
+	// Layers is the node's nesting chain, outermost first, when its task
+	// definition declares `inner`. Empty for a plain task, which is the one
+	// distinction the lifecycle runners make between the two.
+	Layers []ResolvedLayer
 }
 
 // Plan groups tasks by scope, in topo-sorted order.
@@ -243,13 +247,6 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 // those, and the dynamic `plect task setup` path leaves them empty (it binds
 // input values directly rather than via node templates).
 func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, error) {
-	// Nesting is parsed and validated but nothing executes it yet: compiling
-	// a nested definition into a plan would run the outermost setup alone and
-	// silently drop `inner` and every `[bind.*]` table, which is worse than
-	// refusing the definition. Removed by the layer that runs the chain.
-	if def.IsNested() {
-		return Resolved{}, fmt.Errorf("task %q: task nesting is declared (`inner = %q`) but not yet executable", def.ID, def.Inner)
-	}
 	scope := def.EffectiveScope()
 	if scope != config.TaskScopeSession && scope != config.TaskScopeRun {
 		return Resolved{}, fmt.Errorf("task %q: invalid scope %q (want %q or %q)",
@@ -288,6 +285,10 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 	if err := config.ValidateDynamicOutputs(def.DynamicOutputs); err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
+	layers, err := resolveLayers(def)
+	if err != nil {
+		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
+	}
 	return Resolved{
 		NodeID:         nodeID,
 		TaskID:         def.ID,
@@ -300,6 +301,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		OutputsSchema:  outputsSchema,
 		MutableOutputs: mutableOutputs,
 		DoneWhen:       def.DoneWhen,
+		Layers:         layers,
 	}, nil
 }
 
@@ -583,6 +585,10 @@ type RenderContext struct {
 	Inputs   map[string]any
 	Workflow map[string]any
 	Session  SessionVars
+	// Locals are the private intermediates one layer of a nesting chain
+	// emitted from its own setup, visible to that layer's cleanup and to its
+	// own binding templates and nowhere else. Empty for a plain task.
+	Locals map[string]any
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the `{{bin "<name>"}}` bare-name
 	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a
@@ -767,6 +773,7 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		Tasks            map[string]map[string]any
 		Nodes            map[string]map[string]any
 		Inputs           map[string]any
+		Locals           map[string]any
 		Workflow         map[string]any
 		SessionInputs    map[string]any
 		SessionName      string
@@ -780,6 +787,7 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 		Tasks:            tasks,
 		Nodes:            nodes,
 		Inputs:           normalizeOutputs(ctx.Inputs),
+		Locals:           normalizeOutputs(ctx.Locals),
 		Workflow:         map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Workflow))},
 		SessionInputs:    normalizeOutputs(ctx.Session.Inputs),
 		SessionName:      ctx.Session.Name,
@@ -802,6 +810,9 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 	}
 	if data.Inputs == nil {
 		data.Inputs = map[string]any{}
+	}
+	if data.Locals == nil {
+		data.Locals = map[string]any{}
 	}
 	if data.SessionInputs == nil {
 		data.SessionInputs = map[string]any{}
@@ -980,6 +991,31 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			Session:    session,
 			SourcePath: r.SourcePath,
 		}
+		if len(r.Layers) > 0 {
+			layers, stderr, nestErr := runNestedSetup(goCtx, r.Layers, ctx, resolvedInputs)
+			if nestErr != nil {
+				// The layers that did produce are persisted with the
+				// failure: the next cleanup has to unwind exactly those.
+				failed := failedState(r, now, nestErr.Error(), prev, resolvedInputs)
+				failed.Layers = layers
+				tasks[r.NodeID] = failed
+				wrapped := fmt.Errorf("task %q: %w", r.NodeID, nestErr)
+				obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, stderr)
+				return wrapped
+			}
+			tasks[r.NodeID] = &contract.TaskState{
+				Scope:   r.Scope,
+				TaskID:  taskIDFor(r),
+				Status:  contract.TaskStatusProduced,
+				Inputs:  resolvedInputs,
+				Outputs: map[string]any{},
+				Layers:  layers,
+				Seq:     nextSeq(tasks),
+				SetupAt: now,
+			}
+			obs.OnSuccess(r.Scope, r.NodeID, time.Since(now), stderr)
+			continue
+		}
 		cmdStr, err := render(r.Setup, ctx)
 		if err != nil {
 			tasks[r.NodeID] = failedState(r, now, err.Error(), prev, resolvedInputs)
@@ -1106,6 +1142,35 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 		}
 		if state.Status == contract.TaskStatusCleaned {
 			obs.OnSkip(r.Scope, r.NodeID, "already cleaned")
+			continue
+		}
+		if len(state.Layers) > 0 {
+			obs.OnStart(r.Scope, r.NodeID)
+			sess := session
+			if state.Resource != "" {
+				sess.ResourceID = state.Resource
+			}
+			base := RenderContext{
+				Tasks:    dependencyOutputs(r.DependsOn, tasks),
+				Workflow: workflowOutputs(tasks),
+				Session:  sess,
+			}
+			stderr, nestErr := runNestedCleanup(goCtx, r.Layers, state.Layers, base, obs, r.Scope, r.NodeID)
+			if nestErr != nil {
+				state.Status = contract.TaskStatusFailed
+				state.Error = nestErr.Error()
+				state.FailedAt = now
+				wrapped := fmt.Errorf("task %q cleanup: %w", r.NodeID, nestErr)
+				if firstErr == nil {
+					firstErr = wrapped
+				}
+				obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, stderr)
+				continue
+			}
+			state.Status = contract.TaskStatusCleaned
+			state.CleanedAt = now
+			state.Error = ""
+			obs.OnSuccess(r.Scope, r.NodeID, time.Since(now), stderr)
 			continue
 		}
 		if strings.TrimSpace(r.Cleanup) == "" {

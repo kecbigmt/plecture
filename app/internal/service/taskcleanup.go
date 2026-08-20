@@ -12,6 +12,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // TaskCleanupParams are the inputs to TaskCleanup (the `plect task cleanup`
@@ -77,6 +78,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	if def, ok := defs[taskID]; ok {
 		r.Cleanup = def.Cleanup
 		r.SourcePath = def.SourcePath
+		r.Layers = task.CleanupLayers(def)
 	}
 
 	// RunCleanup mutates st (the snapshot's entry) in place. Persist only that one
@@ -97,6 +99,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 				cur.Status = st.Status
 				cur.Error = st.Error
 				cur.FailedAt = st.FailedAt
+				mergeLayerLifecycle(cur, st)
 			}
 			s.UpdatedAt = time.Now()
 			return nil
@@ -113,4 +116,30 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	}
 	recordLifecycle(store, resolvedName, "task_cleanup", fmt.Sprintf("reclaimed %s", params.Instance))
 	return &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true}, nil
+}
+
+// mergeLayerLifecycle carries a partial unwind's per-layer outcome from the
+// snapshot the cleanup mutated into the entry under the lock. Without it a
+// retry reloads every layer as still produced and releases one that was
+// already released — the exactly-the-owing-layer guarantee only holds if the
+// record of what was owed survives the failure.
+//
+// Only the lifecycle fields move: a layer's outputs, locals, and environment
+// belong to whatever wrote them last, which for a concurrent set-output on
+// this same instance is the store's copy, not this stale snapshot.
+func mergeLayerLifecycle(cur, snapshot *contract.TaskState) {
+	if len(cur.Layers) != len(snapshot.Layers) {
+		return
+	}
+	for i := range snapshot.Layers {
+		if cur.Layers[i].TaskID != snapshot.Layers[i].TaskID {
+			return
+		}
+	}
+	for i := range snapshot.Layers {
+		cur.Layers[i].Status = snapshot.Layers[i].Status
+		cur.Layers[i].CleanedAt = snapshot.Layers[i].CleanedAt
+		cur.Layers[i].FailedAt = snapshot.Layers[i].FailedAt
+		cur.Layers[i].Error = snapshot.Layers[i].Error
+	}
 }

@@ -128,22 +128,46 @@ const OutputKeyWorkspaceDir = "workspace_dir"
 //     a second `setup --name <name>` collides. Empty for the numbered
 //     `<task>#<n>` form. Shown by `plect status` / `ls`.
 type TaskState struct {
-	Scope         string          `json:"scope"`              // "session" | "run"
-	TaskID        string          `json:"task_id,omitempty"`  // workflow node's `uses` target; omitted when node id == task id (legacy)
-	Status        string          `json:"status"`             // "produced" | "failed" | "cleaned"
-	Inputs        map[string]any  `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
-	Outputs       map[string]any  `json:"outputs,omitempty"`  // parsed JSON from setup stdout
-	Seq           int             `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
-	Dynamic       bool            `json:"dynamic,omitempty"`  // true for runtime `plect task setup` instances
-	Resource      string          `json:"resource,omitempty"` // bound --resource at instantiation
-	Name          string          `json:"name,omitempty"`     // --name instance identity (key == name when set)
-	DoneWhen      *DoneWhenState  `json:"done_when,omitempty"`
-	ExtraDoneWhen json.RawMessage `json:"extra_done_when,omitempty"`
-	SetupAt       time.Time       `json:"setup_at,omitzero"`
-	FailedAt      time.Time       `json:"failed_at,omitzero"`
-	CleanedAt     time.Time       `json:"cleaned_at,omitzero"`
-	FinalizedAt   time.Time       `json:"finalized_at,omitzero"` // set by `plect task finalize`; instance still awaits `plect task cleanup`
-	Error         string          `json:"error,omitempty"`
+	Scope         string           `json:"scope"`              // "session" | "run"
+	TaskID        string           `json:"task_id,omitempty"`  // workflow node's `uses` target; omitted when node id == task id (legacy)
+	Status        string           `json:"status"`             // "produced" | "failed" | "cleaned"
+	Inputs        map[string]any   `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
+	Outputs       map[string]any   `json:"outputs,omitempty"`  // parsed JSON from setup stdout
+	Seq           int              `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
+	Dynamic       bool             `json:"dynamic,omitempty"`  // true for runtime `plect task setup` instances
+	Resource      string           `json:"resource,omitempty"` // bound --resource at instantiation
+	Name          string           `json:"name,omitempty"`     // --name instance identity (key == name when set)
+	Layers        []TaskLayerState `json:"layers,omitempty"`   // per-layer record for a nested task; empty for a plain one
+	DoneWhen      *DoneWhenState   `json:"done_when,omitempty"`
+	ExtraDoneWhen json.RawMessage  `json:"extra_done_when,omitempty"`
+	SetupAt       time.Time        `json:"setup_at,omitzero"`
+	FailedAt      time.Time        `json:"failed_at,omitzero"`
+	CleanedAt     time.Time        `json:"cleaned_at,omitzero"`
+	FinalizedAt   time.Time        `json:"finalized_at,omitzero"` // set by `plect task finalize`; instance still awaits `plect task cleanup`
+	Error         string           `json:"error,omitempty"`
+}
+
+// TaskLayerState is one layer of a nested task's lifecycle, recorded
+// outermost-first. Cleanup unwinds these inside-out and skips any layer that
+// never reached setup, so each layer carries its own status rather than
+// inheriting the composed task's.
+//
+// Locals are the layer's private intermediates (its setup's stdout, validated
+// against its locals schema); Outputs is the innermost layer's own setup
+// output object. Env is the process environment this layer contributes to the
+// executions of the layers inside it, persisted at setup so a later cleanup
+// injects exactly what the setup did rather than re-deriving it.
+type TaskLayerState struct {
+	TaskID    string            `json:"task_id"`
+	Status    string            `json:"status"` // "produced" | "failed" | "cleaned"
+	Inputs    map[string]any    `json:"inputs,omitempty"`
+	Locals    map[string]any    `json:"locals,omitempty"`
+	Outputs   map[string]any    `json:"outputs,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	SetupAt   time.Time         `json:"setup_at,omitzero"`
+	FailedAt  time.Time         `json:"failed_at,omitzero"`
+	CleanedAt time.Time         `json:"cleaned_at,omitzero"`
+	Error     string            `json:"error,omitempty"`
 }
 
 // Session is the shared representation of a plect session in state.json.

@@ -84,6 +84,8 @@ var defaultExecutor Executor = hostExecutor{}
 // execHostScript renders down to the same host semantics as runShell, but
 // through the swappable defaultExecutor rather than the pinned
 // alwaysHostExecutor — see the two vars' docs for why the distinction matters.
-func execHostScript(ctx context.Context, cmdStr, workDir string) (stdout, stderr []byte, err error) {
-	return defaultExecutor.Run(ctx, ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir})
+// env carries the KEY=VALUE additions the enclosing layers of a nesting chain
+// inject into this execution; it is empty for every plain task.
+func execHostScript(ctx context.Context, cmdStr, workDir string, env ...string) (stdout, stderr []byte, err error) {
+	return defaultExecutor.Run(ctx, ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir, Env: env})
 }
