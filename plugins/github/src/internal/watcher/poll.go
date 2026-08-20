@@ -482,10 +482,44 @@ func (p *Poller) ghAPI(cacheKey, apiPath string, jqArgs ...string) ([]byte, bool
 }
 
 // statusCheck is one classified check entry, fed by either REST check-runs
-// (conclusion) or the REST combined status API (state).
+// (conclusion, plus the identity and ordering fields latestCheckPerName needs)
+// or the REST combined status API (state).
 type statusCheck struct {
 	Conclusion string `json:"conclusion"`
 	State      string `json:"state"`
+	Name       string `json:"name"`
+	StartedAt  string `json:"started_at"`
+	ID         int64  `json:"id"`
+}
+
+// latestCheckPerName keeps only the newest check-run for each check name. A
+// commit accumulates every check-run ever created for it, so a workflow run
+// superseded by a force-push or by concurrency cancellation leaves CANCELLED
+// runs behind forever; rolling those up would pin the commit to FAILURE for
+// the rest of its life, while gh and the GitHub UI report the re-run's
+// verdict. Run ids are monotonic, so they break ties when two runs of the
+// same name share a start time. Combined-status entries carry no name and
+// must not be passed here — the status API already reports one entry per
+// context, and deduping them by an empty name would collapse them into one.
+func latestCheckPerName(runs []statusCheck) []statusCheck {
+	latest := make(map[string]statusCheck, len(runs))
+	order := make([]string, 0, len(runs))
+	for _, r := range runs {
+		prev, seen := latest[r.Name]
+		if !seen {
+			order = append(order, r.Name)
+			latest[r.Name] = r
+			continue
+		}
+		if r.StartedAt > prev.StartedAt || (r.StartedAt == prev.StartedAt && r.ID > prev.ID) {
+			latest[r.Name] = r
+		}
+	}
+	out := make([]statusCheck, 0, len(order))
+	for _, name := range order {
+		out = append(out, latest[name])
+	}
+	return out
 }
 
 // fetchChecks aggregates REST check-runs + the combined status API into the
@@ -494,7 +528,7 @@ type statusCheck struct {
 // rather than guessing — a partial read must not overwrite a good baseline.
 func (p *Poller) fetchChecks(owner, repo, sha string) (string, bool) {
 	runsPath := fmt.Sprintf("repos/%s/%s/commits/%s/check-runs", owner, repo, sha)
-	runsOut, ok := p.ghAPI(runsPath, runsPath, "--paginate", "--jq", ".check_runs[]? | {conclusion:.conclusion}")
+	runsOut, ok := p.ghAPI(runsPath, runsPath, "--paginate", "--jq", ".check_runs[]? | {conclusion:.conclusion, name:.name, started_at:.started_at, id:.id}")
 	if !ok {
 		return "", false
 	}
@@ -503,7 +537,7 @@ func (p *Poller) fetchChecks(owner, repo, sha string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	checks := parseCheckLines(runsOut)
+	checks := latestCheckPerName(parseCheckLines(runsOut))
 	checks = append(checks, parseCheckLines(statusOut)...)
 	return checksRollup(checks), true
 }
