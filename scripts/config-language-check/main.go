@@ -3,9 +3,11 @@
 // worked example in docs/language/ is byte-identical to the fixture it names.
 //
 // It is a one-time verification tool for the specification PR, not a standing
-// check: nothing wires it into CI. Run it from the repository root:
+// check: nothing wires it into CI. This module is deliberately not a go.work
+// member, so it is run from its own directory with the workspace disabled;
+// it locates the repository root itself:
 //
-//	go run ./scripts/config-language-check
+//	cd scripts/config-language-check && GOWORK=off go run .
 package main
 
 import (
