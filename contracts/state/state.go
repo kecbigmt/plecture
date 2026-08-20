@@ -158,16 +158,22 @@ type TaskState struct {
 // executions of the layers inside it, persisted at setup so a later cleanup
 // injects exactly what the setup did rather than re-deriving it.
 type TaskLayerState struct {
-	TaskID    string            `json:"task_id"`
-	Status    string            `json:"status"` // "produced" | "failed" | "cleaned"
-	Inputs    map[string]any    `json:"inputs,omitempty"`
-	Locals    map[string]any    `json:"locals,omitempty"`
-	Outputs   map[string]any    `json:"outputs,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
-	SetupAt   time.Time         `json:"setup_at,omitzero"`
-	FailedAt  time.Time         `json:"failed_at,omitzero"`
-	CleanedAt time.Time         `json:"cleaned_at,omitzero"`
-	Error     string            `json:"error,omitempty"`
+	TaskID  string            `json:"task_id"`
+	Status  string            `json:"status"` // "produced" | "failed" | "cleaned"
+	Inputs  map[string]any    `json:"inputs,omitempty"`
+	Locals  map[string]any    `json:"locals,omitempty"`
+	Outputs map[string]any    `json:"outputs,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	// HeartbeatTicks and HeartbeatEscalations are this layer's own patience
+	// accounting. A layer's budget watches only the conditions that layer
+	// declared, so the counters are per layer rather than per instance and
+	// two layers' budgets never interact.
+	HeartbeatTicks       int       `json:"heartbeat_ticks,omitempty"`
+	HeartbeatEscalations int       `json:"heartbeat_escalations,omitempty"`
+	SetupAt              time.Time `json:"setup_at,omitzero"`
+	FailedAt             time.Time `json:"failed_at,omitzero"`
+	CleanedAt            time.Time `json:"cleaned_at,omitzero"`
+	Error                string    `json:"error,omitempty"`
 }
 
 // Session is the shared representation of a plect session in state.json.

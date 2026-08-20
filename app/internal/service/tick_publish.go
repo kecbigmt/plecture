@@ -184,15 +184,29 @@ func persistTickAction(store *state.Store, sessionName, instance string, action 
 		st.DoneWhen.LastReason = action.Summary
 		st.DoneWhen.LastUnsatisfied = append([]string(nil), action.Items...)
 		st.DoneWhen.LastBody = action.Body
-		if action.HeartbeatChanged {
+		if action.HeartbeatChanged && action.Layer == "" {
 			st.DoneWhen.HeartbeatTicks = action.HeartbeatTicks
+		}
+		// A chain's layers each keep their own patience, so the advanced
+		// counters land per layer rather than on the instance.
+		for i := range action.LayerTicks {
+			if i < len(st.Layers) {
+				st.Layers[i].HeartbeatTicks = action.LayerTicks[i]
+			}
 		}
 		if action.Action == "escalate" {
 			st.DoneWhen.EscalatedAt = now
 			st.DoneWhen.EscalateReason = action.Body
 			if action.EscalationKind == escalationKindDoneWhenNonConvergence {
-				st.DoneWhen.HeartbeatTicks = 0
-				st.DoneWhen.HeartbeatEscalations = action.HeartbeatEscalation
+				if action.Layer != "" {
+					if action.LayerIndex < len(st.Layers) {
+						st.Layers[action.LayerIndex].HeartbeatTicks = 0
+						st.Layers[action.LayerIndex].HeartbeatEscalations = action.HeartbeatEscalation
+					}
+				} else {
+					st.DoneWhen.HeartbeatTicks = 0
+					st.DoneWhen.HeartbeatEscalations = action.HeartbeatEscalation
+				}
 			}
 		}
 		s.UpdatedAt = now

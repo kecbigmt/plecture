@@ -92,7 +92,7 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
 	def := defs[taskIDForInstance(params.Instance, st)]
-	dw, err := effectiveDoneWhen(def.DoneWhen, st)
+	dw, _, err := instanceGate(cfg, session, def, st)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

@@ -43,7 +43,7 @@ func RefreshSessionOutputs(cfg *config.Config, store *state.Store, sessionName s
 		if st == nil || st.Status == contract.TaskStatusCleaned {
 			continue
 		}
-		if len(defs[taskIDForInstance(key, st)].DynamicOutputs) == 0 {
+		if !declaresDynamicOutputs(defs[taskIDForInstance(key, st)]) {
 			continue
 		}
 		results, rerr := RefreshInstanceOutputs(cfg, store, resolvedName, key)
@@ -76,7 +76,7 @@ func RefreshInstanceOutputs(cfg *config.Config, store *state.Store, sessionName,
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
 	def := defs[taskIDForInstance(instanceKey, st)]
-	if len(def.DynamicOutputs) == 0 {
+	if !declaresDynamicOutputs(def) {
 		return nil, nil
 	}
 
@@ -87,43 +87,80 @@ func RefreshInstanceOutputs(cfg *config.Config, store *state.Store, sessionName,
 	if st.Resource != "" {
 		vars.ResourceID = st.Resource
 	}
-	ctx := task.RenderContext{Self: st.Outputs, Inputs: st.Inputs, Session: vars}
+	comp, compErr := composeInstance(def, st, vars)
+	if compErr != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: compErr.Error()}
+	}
+	workflowOutputs := map[string]any(nil)
 	if w := session.Tasks[contract.WorkflowPseudoNodeID]; w != nil {
-		ctx.Workflow = w.Outputs
+		workflowOutputs = w.Outputs
 	}
 
-	fetched := map[string]any{}
+	// fetched is per layer: a layer's `[[outputs]]` produce keys in that
+	// layer's own contract, and the composed contract is re-read from there.
+	targets := refreshTargets(def, st, comp)
+	fetched := make([]map[string]any, len(targets))
 	var results []OutputRefreshResult
-	for _, src := range def.DynamicOutputs {
-		values, ferr := task.FetchOutput(context.Background(), cfg, src, ctx)
-		for _, name := range src.OutputNames() {
-			if ferr != nil {
-				results = append(results, OutputRefreshResult{Name: name, Error: ferr.Error()})
-				continue
+	for i, target := range targets {
+		fetched[i] = map[string]any{}
+		ctx := task.RenderContext{Self: target.Self, Inputs: target.Inputs, Session: vars, Workflow: workflowOutputs, SourcePath: target.SourcePath}
+		for _, src := range target.Outputs {
+			values, ferr := task.FetchOutput(context.Background(), cfg, src, ctx, target.Env...)
+			for _, name := range src.OutputNames() {
+				if ferr != nil {
+					results = append(results, OutputRefreshResult{Name: name, Error: ferr.Error()})
+					continue
+				}
+				v, ok := values[name]
+				if !ok {
+					results = append(results, OutputRefreshResult{Name: name})
+					continue
+				}
+				fetched[i][name] = v
+				results = append(results, OutputRefreshResult{Name: name, Value: v, Fetched: true})
 			}
-			v, ok := values[name]
-			if !ok {
-				results = append(results, OutputRefreshResult{Name: name})
-				continue
-			}
-			fetched[name] = v
-			results = append(results, OutputRefreshResult{Name: name, Value: v, Fetched: true})
 		}
 	}
 
-	if len(fetched) > 0 {
+	if anyFetched(fetched) {
 		now := time.Now()
 		if uerr := store.Update(resolvedName, func(s *domain.Session) error {
 			cur := s.Tasks[instanceKey]
 			if cur == nil || cur.Status == contract.TaskStatusCleaned {
 				return nil
 			}
-			if cur.Outputs == nil {
-				cur.Outputs = map[string]any{}
+			if comp == nil {
+				if cur.Outputs == nil {
+					cur.Outputs = map[string]any{}
+				}
+				for k, v := range fetched[0] {
+					cur.Outputs[k] = v
+				}
+				s.UpdatedAt = now
+				return nil
 			}
-			for k, v := range fetched {
-				cur.Outputs[k] = v
+			if len(cur.Layers) != len(comp.Layers) {
+				return nil
 			}
+			for i := range fetched {
+				if len(fetched[i]) == 0 {
+					continue
+				}
+				if cur.Layers[i].Outputs == nil {
+					cur.Layers[i].Outputs = map[string]any{}
+				}
+				for k, v := range fetched[i] {
+					cur.Layers[i].Outputs[k] = v
+				}
+			}
+			// A refreshed layer value is an underlying value of the composed
+			// contract, so the projection is re-read rather than left to go
+			// stale beside it.
+			projected, perr := task.ProjectPublicOutputs(comp.Layers, cur.Layers, vars)
+			if perr != nil {
+				return perr
+			}
+			cur.Outputs = projected
 			s.UpdatedAt = now
 			return nil
 		}); uerr != nil {
@@ -131,4 +168,62 @@ func RefreshInstanceOutputs(cfg *config.Config, store *state.Store, sessionName,
 		}
 	}
 	return results, nil
+}
+
+// refreshTarget is one unit whose `[[outputs]]` are fetched together: a plain
+// task, or one layer of a nesting chain against its own contract.
+type refreshTarget struct {
+	Outputs    []config.DynamicOutput
+	Self       map[string]any
+	Inputs     map[string]any
+	Env        []string
+	SourcePath string
+}
+
+// refreshTargets returns one entry per layer (or one for a plain task), in
+// layer order, so a caller can index the fetched values back to the layer
+// that produced them. Each target carries the contract its scripts are
+// written against and the environment they run with — a layer's own view and
+// its enclosing bind.env, the task's own outputs and inputs for a plain task.
+func refreshTargets(def config.TaskDefinition, st *contract.TaskState, comp *instanceComposition) []refreshTarget {
+	if comp == nil {
+		return []refreshTarget{{
+			Outputs:    def.DynamicOutputs,
+			Self:       st.Outputs,
+			Inputs:     st.Inputs,
+			SourcePath: def.SourcePath,
+		}}
+	}
+	targets := make([]refreshTarget, len(comp.Layers))
+	for i, layer := range comp.Layers {
+		targets[i] = refreshTarget{
+			Outputs:    layer.DynamicOutputs,
+			Self:       comp.Views[i],
+			Inputs:     st.Layers[i].Inputs,
+			Env:        task.EnclosingEnv(st.Layers, i),
+			SourcePath: layer.SourcePath,
+		}
+	}
+	return targets
+}
+
+func declaresDynamicOutputs(def config.TaskDefinition) bool {
+	if len(def.DynamicOutputs) > 0 {
+		return true
+	}
+	for _, inner := range def.InnerChain {
+		if len(inner.DynamicOutputs) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func anyFetched(fetched []map[string]any) bool {
+	for _, m := range fetched {
+		if len(m) > 0 {
+			return true
+		}
+	}
+	return false
 }

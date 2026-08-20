@@ -19,10 +19,17 @@ type CheckParams struct {
 }
 
 type CheckAction struct {
-	SessionName         string           `json:"session_name"`
-	Instance            string           `json:"instance"`
-	Action              string           `json:"action"`
-	HeartbeatTicks      int              `json:"heartbeat_ticks,omitempty"`
+	SessionName    string `json:"session_name"`
+	Instance       string `json:"instance"`
+	Action         string `json:"action"`
+	HeartbeatTicks int    `json:"heartbeat_ticks,omitempty"`
+	// Layer names the layer of a nesting chain a budget escalation is
+	// attributed to, empty for an instance-level one. LayerTicks carries
+	// every layer's next tick count, since a chain advances each layer's
+	// patience independently.
+	Layer               string           `json:"layer,omitempty"`
+	LayerIndex          int              `json:"-"`
+	LayerTicks          []int            `json:"layer_ticks,omitempty"`
 	HeartbeatBudget     int              `json:"heartbeat_budget,omitempty"`
 	HeartbeatEscalation int              `json:"heartbeat_escalation,omitempty"`
 	Items               []string         `json:"items,omitempty"`
@@ -135,7 +142,20 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		}
 		taskID := taskIDForInstance(key, st)
 		def := defs[taskID]
-		dw, err := effectiveDoneWhen(def.DoneWhen, st)
+		if chainDrifted(def, st) {
+			// The gate degrades to the outermost layer's own conditions,
+			// which is a quieter answer than the instance actually owes —
+			// so it is said out loud rather than left to be inferred from a
+			// suddenly shorter done_when.
+			legacyWarnings = append(legacyWarnings, fmt.Sprintf("instance %q was set up with %d nesting layers but task %q now declares %d; its inner layers' conditions are not being evaluated", key, len(st.Layers), taskID, len(def.InnerChain)+1))
+		}
+		comp, compErr := composeInstance(def, st, sessionVars(cfg, session, nil))
+		if compErr != nil {
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: compErr.Error()}
+		}
+		layerDoneWhen, leafOwner := instanceDoneWhen(def, comp)
+		outputs := instanceOutputs(st, comp)
+		dw, err := effectiveDoneWhen(layerDoneWhen, st)
 		if err != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 		}
@@ -151,15 +171,18 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		if st.DoneWhen != nil {
 			lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
 		}
-		eval := task.EvaluateTaskDoneWhenWithContext(dw, st.Outputs, doneWhenEvalContext(resolvedName, st, allSessions))
-		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger)
+		eval := task.EvaluateTaskDoneWhenWithContext(dw, outputs, doneWhenEvalContext(resolvedName, st, allSessions))
+		budgets := newLayerBudgets(comp, st, leafOwner, len(eval.Leaves))
+		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger, budgets)
+		if budgets != nil {
+			action.LayerTicks = budgets.NextTicks
+		}
 		if action.Action != "" {
 			computed = append(computed, computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval})
 		}
-		if len(chains) == 0 {
+		if len(chains) == 0 && comp == nil {
 			continue
 		}
-		facts := buildChainFacts(st.Outputs, eval)
 		resource := sessionResourceForCheck(session, st)
 		// The upstream output contract: the published output keys a chain's
 		// `{{.Work.outputs.X}}` bindings may reference. Empty when the task
@@ -168,13 +191,42 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		if schemaErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, schemaErr)}
 		}
-		for _, ch := range chains {
-			if ch.TaskID != "" && ch.TaskID != taskID {
+		if comp == nil {
+			facts := buildChainFacts(st.Outputs, eval)
+			for _, ch := range chains {
+				if ch.TaskID != "" && ch.TaskID != taskID {
+					continue
+				}
+				sp := evalChain(cfg, store, ch, resolvedName, session, key, resource, facts, upstreamOutputs)
+				sp.Task = taskID
+				chainPlan = append(chainPlan, sp)
+			}
+			continue
+		}
+		// A chain declared by any layer fires against the composed instance,
+		// and names the outputs by its own layer's names for them — so each
+		// layer sees the composed contract re-keyed into its own namespace,
+		// carrying exactly the values that reached it.
+		exposure := task.LayerExposure(comp.Layers)
+		for i, layer := range comp.Layers {
+			if len(layer.Chains) == 0 {
 				continue
 			}
-			sp := evalChain(cfg, store, ch, resolvedName, session, key, resource, facts, upstreamOutputs)
-			sp.Task = taskID
-			chainPlan = append(chainPlan, sp)
+			facts := buildChainFacts(layerFacts(exposure, i, outputs), eval)
+			// The declared contract is what the layer's keys can reach, not
+			// what they happen to carry right now: a reachable key with no
+			// value yet is a chain waiting on an output, not a chain wired to
+			// something that was never published.
+			published := make([]string, 0, len(exposure[i]))
+			for name := range exposure[i] {
+				published = append(published, name)
+			}
+			slices.Sort(published)
+			for _, ch := range layer.Chains {
+				sp := evalChain(cfg, store, ch, resolvedName, session, key, resource, facts, published)
+				sp.Task = taskID
+				chainPlan = append(chainPlan, sp)
+			}
 		}
 	}
 	return resolvedName, computed, chainPlan, legacyWarnings, nil

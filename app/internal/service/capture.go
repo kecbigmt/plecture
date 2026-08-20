@@ -51,7 +51,10 @@ func Capture(cfg *config.Config, store *state.Store, params CaptureParams) (*Cap
 		}
 	}
 
-	content, err := task.RunCapture(context.Background(), target.Terminal.Capture, st.Outputs, sessionVars(cfg, session, plan))
+	// The verbs belong to whichever layer declared [terminal], and run with
+	// the environment the layers outside it inject, exactly as that layer's
+	// setup did.
+	content, err := task.RunCapture(context.Background(), target.Terminal.Capture, task.TerminalSelf(target.Layers, st), sessionVars(cfg, session, plan), terminalLayerEnv(target, st)...)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture failed for %q: %v", sessionName, err)}
 	}

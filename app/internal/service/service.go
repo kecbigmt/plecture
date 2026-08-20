@@ -161,7 +161,7 @@ type sessionTaskItem struct {
 // e.g. evaluateSessionActions, which Status calls first — so this projection
 // doesn't redundantly re-evaluate it; a cache miss (not produced, or no
 // done_when-bearing evaluation ran) still evaluates it directly.
-func sessionTaskItems(defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session, cached map[string]task.DoneWhenResult) []sessionTaskItem {
+func sessionTaskItems(cfg *config.Config, defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session, cached map[string]task.DoneWhenResult) []sessionTaskItem {
 	if session == nil || len(session.Tasks) == 0 {
 		return nil
 	}
@@ -185,9 +185,9 @@ func sessionTaskItems(defs map[string]config.TaskDefinition, session *domain.Ses
 			rc := r
 			dwResult = &rc
 		} else if def, ok := defs[taskID]; ok {
-			dw, err := effectiveDoneWhen(def.DoneWhen, st)
+			dw, outputs, err := instanceGate(cfg, session, def, st)
 			if err == nil && dw != nil {
-				res := task.EvaluateTaskDoneWhenWithContext(dw, st.Outputs, doneWhenEvalContext(session.Name, st, sessions))
+				res := task.EvaluateTaskDoneWhenWithContext(dw, outputs, doneWhenEvalContext(session.Name, st, sessions))
 				dwResult = &res
 			}
 		}
@@ -211,8 +211,8 @@ func sessionTaskItems(defs map[string]config.TaskDefinition, session *domain.Ses
 
 // taskViews projects a session's task instances for display. See
 // sessionTaskItems for the shared projection logic.
-func taskViews(defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session) []TaskInstanceView {
-	items := sessionTaskItems(defs, session, sessions, nil)
+func taskViews(cfg *config.Config, defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session) []TaskInstanceView {
+	items := sessionTaskItems(cfg, defs, session, sessions, nil)
 	if items == nil {
 		return nil
 	}
@@ -364,7 +364,7 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 		Branch:           s.Branch,
 		WorkspaceDirPath: s.WorkspaceDirPath,
 		ParentSession:    s.ParentSession,
-		Tasks:            taskViews(displayTasks, s, sessions),
+		Tasks:            taskViews(cfg, displayTasks, s, sessions),
 	}
 
 	return entry

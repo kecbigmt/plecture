@@ -19,41 +19,65 @@ import (
 // empty string would read as a value the check leaves and templates would
 // then act on.
 func ProjectPublicOutputs(layers []ResolvedLayer, states []contract.TaskLayerState, session SessionVars) (map[string]any, error) {
-	if len(layers) == 0 {
+	views, err := ProjectLayerOutputs(layers, states, session)
+	if err != nil {
+		return nil, err
+	}
+	if len(views) == 0 {
 		return map[string]any{}, nil
+	}
+	return views[0], nil
+}
+
+// ProjectLayerOutputs returns every layer's own public contract, outermost
+// first: what the layer outside it reads, and what that layer's own probes,
+// output scripts, and completion conditions are written against. Index 0 is
+// the composed task's contract.
+//
+// A layer's contract is its `[bind.outputs]` projection of the layer inside
+// it plus the values that layer produces itself — the two sources one public
+// name may never share, which is why merging them needs no precedence rule.
+func ProjectLayerOutputs(layers []ResolvedLayer, states []contract.TaskLayerState, session SessionVars) ([]map[string]any, error) {
+	if len(layers) == 0 {
+		return nil, nil
 	}
 	if len(states) != len(layers) {
 		return nil, fmt.Errorf("nesting chain has %d layers but %d layer records", len(layers), len(states))
 	}
-	current := orEmpty(states[len(states)-1].Outputs)
+	views := make([]map[string]any, len(layers))
+	views[len(layers)-1] = orEmpty(states[len(layers)-1].Outputs)
 	for i := len(layers) - 2; i >= 0; i-- {
+		inner := views[i+1]
 		ctx := RenderContext{
-			Inner:      current,
+			Inner:      inner,
 			Locals:     states[i].Locals,
 			Inputs:     states[i].Inputs,
 			Session:    session,
 			SourcePath: layers[i].SourcePath,
 		}
-		next := make(map[string]any, len(layers[i].BindOutputs))
+		view := make(map[string]any, len(layers[i].BindOutputs)+len(states[i].Outputs))
 		for _, b := range layers[i].BindOutputs {
 			if b.Direct {
-				if v, ok := current[b.InnerKey]; ok {
-					next[b.Key] = v
+				if v, ok := inner[b.InnerKey]; ok {
+					view[b.Key] = v
 				}
 				continue
 			}
-			if !allProduced(current, b.InnerRefs) {
+			if !allProduced(inner, b.InnerRefs) {
 				continue
 			}
 			rendered, err := render(b.Template, ctx)
 			if err != nil {
 				return nil, fmt.Errorf("layer %q bind.outputs %q: %w", layers[i].TaskID, b.Key, err)
 			}
-			next[b.Key] = rendered
+			view[b.Key] = rendered
 		}
-		current = next
+		for k, v := range states[i].Outputs {
+			view[k] = v
+		}
+		views[i] = view
 	}
-	return current, nil
+	return views, nil
 }
 
 func allProduced(outputs map[string]any, keys []string) bool {
@@ -138,4 +162,29 @@ func findBinding(bindings []config.OutputBinding, key string) (config.OutputBind
 		}
 	}
 	return config.OutputBinding{}, false
+}
+
+// TerminalSelf is the output contract a task's `[terminal]` verbs render
+// against as `.Self`: the declaring layer's own contract for a nesting chain,
+// the task's own outputs for a plain task. The verbs belong to the layer that
+// declared them and name that layer's keys, the same way its probes and
+// output scripts do — the composed contract may carry those keys under other
+// names, or not at all.
+//
+// A projection failure degrades to the composed outputs rather than erroring:
+// this feeds attach, capture, and status display, where refusing to render is
+// worse than rendering against the contract the instance already published.
+func TerminalSelf(layers []ResolvedLayer, st *contract.TaskState) map[string]any {
+	if st == nil {
+		return nil
+	}
+	i := TerminalLayer(layers)
+	if i < 0 || len(st.Layers) != len(layers) {
+		return st.Outputs
+	}
+	views, err := ProjectLayerOutputs(layers, st.Layers, SessionVars{})
+	if err != nil {
+		return st.Outputs
+	}
+	return views[i]
 }
