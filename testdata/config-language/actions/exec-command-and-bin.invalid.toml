@@ -1,0 +1,9 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-ACTION-BIN-AND-COMMAND entry=definitions
+# reason: an exec action names its executable exactly once, through either bin or command.
+
+[notify]
+kind    = "channel"
+type    = "exec"
+command = "curl"
+bin     = "slack-post"
+args    = [{ from = "event.type" }]

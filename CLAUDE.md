@@ -267,6 +267,12 @@ the breaking change — not as follow-up work.
 - Read `docs/design/README.md` before authoring or revising a design document.
 - Follow `docs/design/README.md` for configuration-language boundaries:
   configuration is declarative wiring, not computation.
+- **The configuration-language reference** lives in `docs/language/`. It is
+  the semantic specification: thin, present-tense prose per construct and per
+  definition kind. Its companions are `plecture.schema.json` (structural
+  shape) and `testdata/config-language/` (the conformance fixtures that are
+  the detailed executable specification). A chapter's worked example is a
+  fixture quoted verbatim, so prose cannot drift from behavior.
 - **Migration procedures** stay in `docs/migrations/` (see Compatibility
   policy above) — they are not ADRs or design documents.
 - All of the above is English-only prose; use `docs/naming.md` for project

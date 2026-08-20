@@ -1,0 +1,5 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-FIELD-UNKNOWN entry=config
+# reason: an unknown field is a load error rather than being silently ignored.
+
+workspace_dirs_root = "~/worktrees"
+worktrees_root      = "~/worktrees"

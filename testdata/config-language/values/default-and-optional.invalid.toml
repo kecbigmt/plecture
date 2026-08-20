@@ -1,0 +1,10 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-VALUE-DEFAULT-AND-OPTIONAL entry=definitions
+# reason: default and optional are mutually exclusive missing-value behaviors.
+
+[bootstrap]
+kind = "task"
+
+[bootstrap.setup]
+type = "exec"
+bin  = "okf-goal"
+args = ["--assignees", { from = "inputs.assignees", default = "", optional = true }]

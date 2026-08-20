@@ -1,0 +1,17 @@
+# plect-fixture: result=valid entry=definitions
+# reason: default supplies the value when the source is absent.
+
+[bootstrap]
+kind = "task"
+
+[bootstrap.setup]
+type = "exec"
+bin  = "okf-goal"
+args = ["task", "bootstrap", "--assignees", { from = "inputs.assignees", default = "" }]
+
+[bootstrap.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[bootstrap.inputs_schema.properties]
+assignees = { type = "string" }

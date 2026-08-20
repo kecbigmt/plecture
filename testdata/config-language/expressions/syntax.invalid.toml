@@ -1,0 +1,8 @@
+# plect-fixture: result=invalid layer=cel diagnostic=PLECT-CFG-CEL-SYNTAX entry=definitions
+# reason: the expression does not parse as CEL.
+
+[notify]
+kind    = "channel"
+type    = "exec"
+command = "curl"
+args    = [{ expr = "event.body ? " }]

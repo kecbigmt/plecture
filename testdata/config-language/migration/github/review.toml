@@ -1,0 +1,72 @@
+# plect-fixture: result=valid entry=definitions
+# reason: translation of plugins/github/config/tasks/review.toml; the verdict_current script becomes a computation over live roots.
+
+[review]
+kind     = "task"
+scope    = "session"
+requires = ["resource_kind", "verdict_current"]
+
+[review.setup]
+type = "shell"
+script = '''
+set -euo pipefail
+INSTRUCTION=$(plect template render review --session "$session_name" --instruction "$extra")
+if [ -z "$INSTRUCTION" ]; then
+  echo "plect template render review produced empty instruction" >&2
+  exit 1
+fi
+jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
+'''
+
+[review.setup.bind]
+session_name = { from = "session.name" }
+extra        = { from = "inputs.instruction", default = "" }
+
+# There is no third party to judge a reviewer, so review's done_when cannot
+# use a judge leaf. Completion is the reviewer's own self-report of "I
+# recorded a verdict", captured as a revision rather than a boolean so a
+# later push invalidates it automatically:
+#
+#   verdict_revision = revision the reviewer last recorded a verdict against
+#   verdict_current  = true iff that revision is still the resource's current
+#                      one — derived on every evaluation, never set directly,
+#                      so the reviewer cannot flip it back
+#
+# Both operands read live roots, so the comparison is evaluated against the
+# same observation rather than against a snapshot taken before this pass.
+[review.outputs.bind]
+resource_kind   = { from = "resource.status.resource_kind" }
+checks_status   = { from = "resource.status.checks_status" }
+issue_status    = { from = "resource.status.issue_status" }
+revision        = { from = "resource.status.revision" }
+verdict_current = { expr = "self.verdict_revision == resource.status.revision" }
+
+[review.done_when]
+all = [
+  { check = "resource_kind", in = ["pull", "issue"] },
+  { check = "verdict_current", in = [true] },
+]
+
+[review.done_when.budget]
+heartbeat_budget = 3
+on_exhaust       = "escalate"
+
+[review.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[review.inputs_schema.properties]
+instruction = { type = "string" }
+
+[review.outputs_schema]
+type     = "object"
+required = ["instruction"]
+
+[review.outputs_schema.properties]
+instruction      = { type = "string" }
+resource_kind    = { type = "string", mutable = true }
+checks_status    = { type = "string", mutable = true }
+issue_status     = { type = "string", mutable = true }
+revision         = { type = "string", mutable = true }
+verdict_revision = { type = "string", mutable = true }
+verdict_current  = { type = "boolean" }

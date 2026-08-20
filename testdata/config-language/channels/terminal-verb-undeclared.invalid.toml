@@ -1,0 +1,30 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-TERMINAL-UNAVAILABLE entry=definitions
+# reason: the terminal capability requires a task in the plan to declare the requested verb.
+
+[session]
+kind = "workflow"
+
+[[session.nodes]]
+uses = "worker"
+
+[[session.event.channel]]
+name    = "runtime"
+uses    = "terminal_submit"
+include = ["user.emit"]
+
+[worker]
+kind = "task"
+
+[worker.setup]
+type = "exec"
+bin  = "codex-exec-worker"
+args = ["start"]
+
+[terminal_submit]
+kind   = "channel"
+type   = "shell"
+script = 'sh -c "$send_text" terminal-send-text "$message"'
+
+[terminal_submit.bind]
+send_text = { terminal = "send_text" }
+message   = { from = "event.summary" }

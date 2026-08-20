@@ -1,0 +1,21 @@
+# plect-fixture: result=valid entry=definitions
+# reason: acceptance check — a channel's exec action resolves a plugin-owned executable directly, with no PATH-mangling wrapper.
+
+[exec_delivery]
+kind = "channel"
+type = "exec"
+bin  = "codex-exec-enqueue"
+args = [
+  { from = "inputs.queue_dir" },
+  { from = "inputs.message_envelope" },
+  { from = "event.type" },
+  { from = "event.body" },
+  { from = "event.summary" },
+  { from = "event.metadata.url", default = "" },
+]
+timeout = { from = "inputs.enqueue_timeout", default = "5s" }
+
+[exec_delivery.input_schema]
+queue_dir        = { type = "string", required = true }
+enqueue_timeout  = { type = "string", default = "5s" }
+message_envelope = { type = "string", default = "[{type}] {body_or_summary}{url_suffix}" }

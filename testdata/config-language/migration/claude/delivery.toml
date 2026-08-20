@@ -1,0 +1,11 @@
+# plect-fixture: result=valid entry=definitions
+# reason: translation of plugins/claude/config/channels/claude.toml.
+
+[delivery]
+kind = "channel"
+type = "unix_socket"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
+
+[delivery.input_schema]
+path = { type = "string", required = true }

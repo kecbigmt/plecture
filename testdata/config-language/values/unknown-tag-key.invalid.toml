@@ -1,0 +1,10 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-VALUE-TAG-UNKNOWN entry=definitions
+# reason: fallback is not part of the tagged-value vocabulary.
+
+[bootstrap]
+kind = "task"
+
+[bootstrap.setup]
+type = "exec"
+bin  = "okf-goal"
+args = ["--owner", { from = "inputs.owner", fallback = "unknown" }]

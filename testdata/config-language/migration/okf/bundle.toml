@@ -1,0 +1,32 @@
+# plect-fixture: result=valid entry=definitions
+# reason: translation of plugins/okf/config/workspaces/local-okf.toml; the id loses its hyphen because definition ids are also node ids.
+
+[bundle]
+kind = "workspace_provider"
+
+# The leading path segments before the final <slug>.md are optional and
+# unnamed, since the workspace provider is concept-kind agnostic; the goal
+# observer narrows the pattern to goals/*.md for the one concept kind this
+# plugin currently understands.
+match = '^local-okf://(?P<owner>[A-Za-z0-9][A-Za-z0-9-]*)/(?:[A-Za-z0-9._/-]*/)?(?P<slug>[A-Za-z0-9._-]+)\.md$'
+name  = { expr = "match.owner + '/okf-' + match.slug" }
+
+[bundle.setup]
+type = "exec"
+bin  = "okf-bundle"
+args = ["setup", "--resource", { from = "resource.id" }, "--session", { from = "session.name" }]
+
+[bundle.cleanup]
+type = "exec"
+bin  = "okf-bundle"
+args = ["cleanup", "--workspace-dir", { from = "self.workspace_dir" }]
+
+[bundle.outputs_schema]
+type     = "object"
+required = ["workspace_dir", "owner", "concept_id", "concept_path"]
+
+[bundle.outputs_schema.properties]
+workspace_dir = { type = "string" }
+owner         = { type = "string" }
+concept_id    = { type = "string" }
+concept_path  = { type = "string" }

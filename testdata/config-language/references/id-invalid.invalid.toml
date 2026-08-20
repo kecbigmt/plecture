@@ -1,0 +1,10 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-ID-INVALID entry=definitions
+# reason: a hyphen is not valid in a definition id, because task ids are also workflow node ids.
+
+[local-okf]
+kind = "workspace_provider"
+
+[local-okf.setup]
+type = "exec"
+bin  = "okf-bundle"
+args = ["setup"]

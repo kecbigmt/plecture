@@ -1,0 +1,11 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a TOML literal is already a value and takes no wrapper.
+
+[guard]
+kind  = "task"
+scope = "session"
+
+[guard.setup]
+type    = "exec"
+bin     = "gh-guard"
+args    = ["install", "--mode", "deny-write"]

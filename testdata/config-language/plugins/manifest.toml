@@ -1,0 +1,23 @@
+# plect-fixture: result=valid entry=plugin
+# reason: a plugin manifest declares the package's identity, its executables, and the services the resident process supervises.
+
+schema_version    = 1
+version           = "0.1.0"
+plect_min_version = "0.0.0"
+description       = "GitHub workspace provider, resource observation, watcher subscription, and the work/review/respond/investigate task pack."
+
+[[executables]]
+name  = "github-worktree"
+path  = "bin/github-worktree"
+build = "go -C src build -o ../bin/github-worktree ./cmd/github-worktree"
+
+[[executables]]
+name = "gh-guard"
+path = "scripts/gh-guard"
+
+[[services]]
+name       = "github-watcher"
+executable = "github-watcher"
+args       = ["serve"]
+restart    = "on-failure"
+health     = { type = "process" }

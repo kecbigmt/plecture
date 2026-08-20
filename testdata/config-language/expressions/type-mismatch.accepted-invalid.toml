@@ -1,0 +1,20 @@
+# plect-fixture: result=accepted-invalid layer=cel diagnostic=PLECT-CFG-CEL-TYPE entry=definitions
+# reason: JSON Schema to CEL type projection is the sanctioned first check to drop, so this loads while result-type checking is disabled.
+
+[review]
+kind = "task"
+
+[review.setup]
+type = "exec"
+bin  = "github-issue-pr"
+args = ["render-instruction"]
+
+[review.outputs.bind]
+verdict_current = { expr = "self.verdict_revision + 1" }
+
+[review.outputs_schema]
+type = "object"
+
+[review.outputs_schema.properties]
+verdict_revision = { type = "string", mutable = true }
+verdict_current  = { type = "boolean" }

@@ -1,0 +1,42 @@
+# plect-fixture: result=valid entry=definitions
+# reason: acceptance check — an outer layer passes a structured record through to an inner agent task, which serializes it into the agent's own configuration.
+
+[team_runtime]
+kind  = "task"
+scope = "run"
+
+[team_runtime.inner]
+uses = "official.claude.runtime"
+
+[team_runtime.inner.inputs]
+tmux_session = { from = "nodes.pane.outputs.session_name" }
+mcp_servers  = { from = "inputs.mcp_servers", optional = true }
+
+[team_runtime.outputs.bind]
+pid         = { from = "inner.outputs.pid" }
+socket_path = { from = "inner.outputs.socket_path" }
+
+[team_runtime.outputs_schema]
+type = "object"
+
+[team_runtime.outputs_schema.properties]
+pid         = { type = "integer", mutable = true }
+socket_path = { type = "string", mutable = true }
+
+[team_runtime.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[team_runtime.inputs_schema.properties.mcp_servers]
+type = "array"
+
+[team_runtime.inputs_schema.properties.mcp_servers.items]
+type                 = "object"
+required             = ["name", "command"]
+additionalProperties = false
+
+[team_runtime.inputs_schema.properties.mcp_servers.items.properties]
+name    = { type = "string" }
+command = { type = "string" }
+args    = { type = "array", items = { type = "string" } }
+env     = { type = "object" }

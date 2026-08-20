@@ -1,0 +1,210 @@
+# plect-fixture: result=valid entry=definitions
+# reason: translation of plugins/codex/config/tasks/codex.toml.
+
+[runtime]
+kind  = "task"
+scope = "run"
+
+[runtime.setup]
+type = "shell"
+script = '''
+# Hook registration is written to a per-session codex profile file, not
+# assembled as a `-c` value on the launch command: the JSON-in-CLI-arg form
+# gets mangled once relayed through the terminal, so nothing hook-related
+# rides the command line here.
+#
+# The reset drops any record a previous run left behind, so this run's
+# activity probe reports "no basis yet" until this run's first turn boundary
+# rather than inheriting a stale fingerprint.
+"$activity_bin" reset "$session_name"
+
+CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
+mkdir -p "$CODEX_HOME_DIR"
+PROFILE_NAME="plect-$(uuidgen)"
+PROFILE_PATH="$CODEX_HOME_DIR/$PROFILE_NAME.config.toml"
+{
+  printf 'bypass_hook_trust = true\n\n[hooks]\n'
+  printf 'UserPromptSubmit = [{type = "command", command = ["%s", "working"]}]\n' "$activity_bin"
+  printf 'Stop = [{type = "command", command = ["%s", "waiting"]}]\n' "$activity_bin"
+} > "$PROFILE_PATH"
+
+MODEL_FLAG=""
+[ -n "$model" ] && MODEL_FLAG="-m $(printf '%q' "$model")"
+EFFORT_FLAG=""
+[ -n "$effort" ] && EFFORT_FLAG="-c model_reasoning_effort=$(printf '%q' "$effort")"
+
+if [ -n "$prev_session_id" ]; then
+  CODEX_CMD="codex resume --dangerously-bypass-approvals-and-sandbox --profile $PROFILE_NAME $MODEL_FLAG $EFFORT_FLAG $prev_session_id"
+else
+  CODEX_CMD="codex --dangerously-bypass-approvals-and-sandbox --profile $PROFILE_NAME $MODEL_FLAG $EFFORT_FLAG"
+fi
+
+# Runtime plect commands use this as their current session and as the default
+# parent when they dispatch child sessions.
+EXPORTS="export PLECT_SESSION_NAME=$(printf '%q' "$session_name"); "
+
+# The pane's own shell interprets EXPORTS as keystrokes, so every value
+# crossing that boundary is quoted here. jq's @sh quotes each launch_env
+# value and the key test rejects anything that is not an environment
+# variable name.
+LAUNCH_EXPORTS=$(printf '%s' "$launch_env" | jq -er '
+  to_entries
+  | map(if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) then .
+        else error("launch_env key \(.key) is not a valid environment variable name") end)
+  | map("export \(.key)=\(.value | tostring | @sh); ")
+  | add // ""') || exit 1
+EXPORTS="${EXPORTS}${LAUNCH_EXPORTS}"
+
+[ -n "$path_prepend" ] && EXPORTS="${EXPORTS}export PATH=$(printf '%q' "$path_prepend"):\$PATH; "
+
+MARKER=$(mktemp)
+touch "$MARKER"
+TIMEOUT_SECONDS="${PLECT_CODEX_STARTUP_TIMEOUT_SECONDS:-60}"
+ATTEMPTS=$((TIMEOUT_SECONDS * 2))
+
+# No `exec`: Codex runs as a child of the pane shell, so exiting Codex
+# returns to the shell instead of closing the pane — which would otherwise
+# tear down the whole tmux session out from under an attached user. The pane
+# pid is therefore the shell, not Codex; its real pid is the matching child,
+# found below.
+sh -c "$send_text" terminal-send-text "${EXPORTS}${CODEX_CMD}"
+sh -c "$send_keys" terminal-send-keys Enter
+
+PANE_PID=$(tmux display-message -p -t "$tmux_session" '#{pane_pid}')
+PID=""
+SID=""
+for _ in $(seq 1 "$ATTEMPTS"); do
+  sleep 0.5
+  kill -0 "$PANE_PID" 2>/dev/null || continue
+  for child in $(pgrep -P "$PANE_PID" 2>/dev/null); do
+    COMM=$(ps -p "$child" -o comm= 2>/dev/null | tr -d '[:space:]')
+    case "$COMM" in codex|codex-*) PID="$child"; break ;; esac
+  done
+
+  SID=$(find "$HOME/.codex/sessions" -type f -newer "$MARKER" -name '*.jsonl' 2>/dev/null \
+    | while IFS= read -r file; do
+        head -n 1 "$file" | jq -r --arg cwd "$workspace_dir" \
+          'select(.type == "session_meta" and .payload.cwd == $cwd) | (.payload.session_id // empty)' 2>/dev/null
+      done \
+    | grep -E '^[0-9a-fA-F-]{36}$' \
+    | tail -1)
+  [ -n "$PID" ] && break
+done
+if [ -z "$PID" ]; then
+  echo "codex not detected within ${TIMEOUT_SECONDS}s under pane pid $PANE_PID" >&2
+  rm -f "$MARKER"
+  exit 1
+fi
+rm -f "$MARKER"
+
+# A detected pid only means Codex has started, not that its TUI/MCP is done
+# booting and can accept a submit. Delivering the initial instruction before
+# that point types it into the input box without an Enter that actually
+# submits, so it silently merges into whatever turn kicks the session later.
+# Wait for the boot banner to clear and the prompt to hold steady across
+# consecutive samples, since MCP boot time varies.
+READY_TIMEOUT_SECONDS="${PLECT_CODEX_READY_TIMEOUT_SECONDS:-60}"
+READY_ATTEMPTS=$((READY_TIMEOUT_SECONDS * 2))
+STABLE_STREAK=0
+STABLE_STREAK_REQUIRED=3
+READY=0
+for _ in $(seq 1 "$READY_ATTEMPTS"); do
+  sleep 0.5
+  PANE=$(sh -c "$capture" terminal-capture 2>/dev/null)
+  if printf '%s' "$PANE" | grep -qE 'Booting MCP server|esc to interrupt'; then
+    STABLE_STREAK=0
+    continue
+  fi
+  STABLE_STREAK=$((STABLE_STREAK + 1))
+  if [ "$STABLE_STREAK" -ge "$STABLE_STREAK_REQUIRED" ]; then
+    READY=1
+    break
+  fi
+done
+if [ "$READY" -ne 1 ]; then
+  echo "codex pid $PID detected but TUI not ready (boot banner / busy indicator still present) within ${READY_TIMEOUT_SECONDS}s" >&2
+  exit 1
+fi
+
+jq -nc \
+  --argjson pid "$PID" \
+  --arg sid "$SID" \
+  --arg profile "$PROFILE_PATH" \
+  '{pid:$pid, session_id:$sid, profile_path:$profile}'
+'''
+
+[runtime.setup.bind]
+session_name    = { from = "session.name" }
+workspace_dir   = { from = "workspace.dir" }
+tmux_session    = { from = "inputs.tmux_session" }
+model           = { from = "inputs.model", default = "" }
+effort          = { from = "inputs.effort", default = "" }
+path_prepend    = { from = "inputs.path_prepend", default = "" }
+launch_env      = { json = { from = "inputs.launch_env", default = {} } }
+prev_session_id = { from = "prev.session_id", default = "" }
+activity_bin    = { bin = "codex-agent-activity" }
+send_text       = { terminal = "send_text" }
+send_keys       = { terminal = "send_keys" }
+capture         = { terminal = "capture" }
+
+[runtime.cleanup]
+type = "shell"
+script = '''
+kill -TERM "$pid" 2>/dev/null || exit 0
+for _ in 1 2 3 4 5; do
+  sleep 0.5
+  kill -0 "$pid" 2>/dev/null || break
+done
+kill -KILL "$pid" 2>/dev/null || true
+[ -n "$profile_path" ] && rm -f "$profile_path"
+"$activity_bin" reset "$session_name"
+true
+'''
+
+[runtime.cleanup.bind]
+session_name = { from = "session.name" }
+pid          = { from = "self.pid" }
+profile_path = { from = "self.profile_path", default = "" }
+activity_bin = { bin = "codex-agent-activity" }
+
+# The turn-boundary hooks registered at setup are this task's activity probe:
+# the hook records each boundary and the probe reads the record back, so one
+# plugin executable owns both halves.
+[runtime.health.alive]
+type   = "shell"
+script = 'kill -0 "$pid"'
+
+[runtime.health.alive.bind]
+pid = { from = "self.pid" }
+
+[runtime.health.activity]
+type = "exec"
+bin  = "codex-agent-activity"
+args = ["probe", { from = "session.name" }]
+
+[runtime.inputs_schema]
+type                 = "object"
+required             = ["tmux_session"]
+additionalProperties = false
+
+# model/effort/path_prepend keep their plain-token charsets: the render-time
+# splice is gone, but the launch line still crosses into the pane's own shell
+# as keystrokes.
+[runtime.inputs_schema.properties]
+tmux_session = { type = "string" }
+model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+path_prepend = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
+
+[runtime.inputs_schema.properties.launch_env]
+type                 = "object"
+additionalProperties = { type = "string" }
+
+[runtime.outputs_schema]
+type     = "object"
+required = ["pid"]
+
+[runtime.outputs_schema.properties]
+pid          = { type = "integer", mutable = true }
+session_id   = { type = "string", mutable = true }
+profile_path = { type = "string" }

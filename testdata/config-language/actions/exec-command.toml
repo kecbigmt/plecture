@@ -1,0 +1,25 @@
+# plect-fixture: result=valid entry=definitions
+# reason: command names a literal OS command resolved through the process environment.
+
+[notify]
+kind    = "channel"
+type    = "exec"
+command = "curl"
+args = [
+  "-sf",
+  "--max-time",
+  "10",
+  "-X",
+  "POST",
+  { expr = "inputs.base_url + '/messages'" },
+  "-H",
+  "Content-Type: application/json",
+  "-d",
+  { json = { thread_ts = { from = "inputs.thread_ts" }, channel_id = { from = "inputs.channel_id" }, text = { expr = "event.body != '' ? event.body : event.summary" } } },
+]
+timeout = "10s"
+
+[notify.input_schema]
+base_url   = { type = "string", required = true }
+channel_id = { type = "string", required = true }
+thread_ts  = { type = "string", required = true }

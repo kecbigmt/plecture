@@ -1,0 +1,10 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-FROM-ROOT entry=definitions
+# reason: event is not an available root on a task setup surface, so this is well-formed TOML the compiler rejects.
+
+[bootstrap]
+kind = "task"
+
+[bootstrap.setup]
+type = "exec"
+bin  = "okf-goal"
+args = ["--owner", { from = "event.metadata.owner" }]

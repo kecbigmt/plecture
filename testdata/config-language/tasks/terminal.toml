@@ -1,0 +1,53 @@
+# plect-fixture: result=valid entry=definitions
+# reason: each terminal verb is a shell action; send_text and send_keys receive their operand as the first positional argument.
+
+[pane]
+kind = "task"
+
+[pane.setup]
+type   = "shell"
+script = 'printf %s "$session_name"'
+
+[pane.setup.bind]
+session_name = { from = "session.name" }
+
+[pane.terminal.attach]
+type   = "shell"
+script = 'tmux attach -t "$session_name"'
+
+[pane.terminal.attach.bind]
+session_name = { from = "self.session_name" }
+
+[pane.terminal.capture]
+type   = "shell"
+script = 'tmux capture-pane -p -t "$session_name"'
+
+[pane.terminal.capture.bind]
+session_name = { from = "self.session_name" }
+
+[pane.terminal.send_text]
+type   = "shell"
+script = 'tmux send-keys -t "$session_name" -- "$1"'
+
+[pane.terminal.send_text.bind]
+session_name = { from = "self.session_name" }
+
+[pane.terminal.send_keys]
+type   = "shell"
+script = 'tmux send-keys -t "$session_name" "$1"'
+
+[pane.terminal.send_keys.bind]
+session_name = { from = "self.session_name" }
+
+[pane.outputs_schema]
+type     = "object"
+required = ["session_name"]
+
+[pane.outputs_schema.properties]
+session_name = { type = "string" }
+
+[pane_session]
+kind = "workflow"
+
+[[pane_session.nodes]]
+uses = "pane"

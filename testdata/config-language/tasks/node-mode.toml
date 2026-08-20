@@ -1,0 +1,38 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a task reached through a workflow node declares only node-applicable fields.
+
+[pane]
+kind  = "task"
+scope = "run"
+
+[pane.setup]
+type = "shell"
+script = '''
+tmux has-session -t "$session_name" 2>/dev/null \
+  || tmux new-session -d -s "$session_name" -c "$workspace_dir"
+printf '{"session_name":"%s"}\n' "$session_name"
+'''
+
+[pane.setup.bind]
+session_name  = { from = "session.name" }
+workspace_dir = { from = "workspace.dir" }
+
+[pane.cleanup]
+type   = "shell"
+script = 'tmux kill-session -t "$session_name" 2>/dev/null || true'
+
+[pane.cleanup.bind]
+session_name = { from = "self.session_name" }
+
+[pane.outputs_schema]
+type     = "object"
+required = ["session_name"]
+
+[pane.outputs_schema.properties]
+session_name = { type = "string" }
+
+[pane_session]
+kind = "workflow"
+
+[[pane_session.nodes]]
+uses = "pane"

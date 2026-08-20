@@ -1,0 +1,20 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a shell action keeps literal shell source and declares the values and capabilities it needs outside that source.
+
+[runtime]
+kind  = "task"
+scope = "run"
+
+[runtime.setup]
+type = "shell"
+script = '''
+"$activity_bin" reset "$session_name"
+sh -c "$send_text" terminal-send-text "ready"
+sh -c "$send_keys" terminal-send-keys Enter
+'''
+
+[runtime.setup.bind]
+session_name = { from = "session.name" }
+send_text    = { terminal = "send_text" }
+send_keys    = { terminal = "send_keys" }
+activity_bin = { bin = "codex-agent-activity" }

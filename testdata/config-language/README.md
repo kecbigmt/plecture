@@ -1,0 +1,78 @@
+# Config-language conformance fixtures
+
+These fixtures are the executable specification of the Plecture configuration
+language. Prose in [`../../docs/language/`](../../docs/language/) carries
+meaning; this directory carries exact behavior at valid, invalid, and boundary
+cases.
+
+They are deliberately implementation-independent, so the same corpus can serve
+the compiler, an editor server, migration tooling, schema-generation
+verification, and an alternative implementation.
+
+## Layout
+
+| Directory | Area |
+|---|---|
+| `values/` | The five value forms and the tagged-value vocabulary |
+| `references/` | Declaration identity, ids, and the dotted reference grammar |
+| `actions/` | `exec` and `shell` actions, `bin` versus `command`, bindings |
+| `expressions/` | The CEL profile |
+| `nesting/` | The nesting joint and its output boundary |
+| `tasks/` | The task kind, including per-field mode applicability |
+| `workflows/` | The workflow kind |
+| `channels/` | The channel kind |
+| `providers/` | The workspace provider kind |
+| `observers/` | The resource observer kind |
+| `chains/` | Chains |
+| `plugins/` | Plugin and catalog manifests |
+| `config/` | The reserved root files |
+| `migration/` | Every shipped plugin config translated to the new shape |
+
+## Fixture grammar
+
+Every fixture begins with an expectation header, then a `# reason:` line
+stating what it pins down:
+
+```toml
+# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-VALUE-FROM-AND-EXPR entry=definitions
+# reason: a value declares both from and expr, so its form is ambiguous.
+```
+
+| Field | Values |
+|---|---|
+| `result` | `valid`, `invalid`, `accepted-invalid` |
+| `layer` | `structural`, `semantic`, `cel` — required unless `result=valid` |
+| `diagnostic` | The `PLECT-CFG-*` code, which must appear in the diagnostics table in [`../../docs/language/overview.md`](../../docs/language/overview.md) |
+| `entry` | Which schema entry validates it: `definitions` (default), `config`, `catalogs`, `lock`, `plugin`, `catalog` |
+
+`result=accepted-invalid` records a rule the language states but the
+implementation is permitted not to enforce — the sanctioned static-typing cut
+line. The fixture loads today and documents what a complete checker would
+reject.
+
+A fixture's filename carries `.invalid` or `.accepted-invalid` before `.toml`
+so a reader sees the outcome without opening it.
+
+## Running the checker
+
+```bash
+cd scripts/config-language-check && GOWORK=off go run .
+```
+
+The checker asserts that:
+
+- every fixture parses as TOML and declares a well-formed expectation;
+- a `valid` fixture passes [`../../plecture.schema.json`](../../plecture.schema.json);
+- an `invalid` fixture with `layer=structural` is rejected by that schema, and
+  rejected by a rule the schema annotates with the declared diagnostic;
+- an `invalid` fixture with `layer=semantic` or `layer=cel`, and an
+  `accepted-invalid` fixture, all pass the structural schema — which is what
+  makes "the compiler rejects this" a claim about a later layer rather than an
+  accident of shape;
+- every diagnostic code is both documented and exercised;
+- every worked example in `docs/language/` is byte-identical to the fixture it
+  names.
+
+It is a one-time verification tool for the specification, not a standing check:
+nothing wires it into CI, and it has no invariant to guard once the
+implementation's own conformance suite reads these fixtures directly.

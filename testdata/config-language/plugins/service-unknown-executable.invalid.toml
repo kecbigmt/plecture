@@ -1,0 +1,17 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-UNKNOWN-REF entry=plugin
+# reason: a service's executable names one of this manifest's own executables.
+
+schema_version    = 1
+version           = "0.1.0"
+plect_min_version = "0.0.0"
+description       = "A plugin whose service names an executable it does not declare."
+
+[[executables]]
+name = "github-worktree"
+path = "bin/github-worktree"
+
+[[services]]
+name       = "github-watcher"
+executable = "github-watcher"
+restart    = "on-failure"
+health     = { type = "process" }

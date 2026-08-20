@@ -1,0 +1,46 @@
+# plect-fixture: result=valid entry=definitions
+# reason: translation of plugins/okf/config/tasks/goal_bootstrap.toml; assignees is promoted from a JSON-array string to a typed array.
+
+# Auto-recreates missing pursue_goal instances for every open local-okf goal
+# under the orchestrator workspace directory's knowledge/bundle/goals/. A
+# pursue_goal instance is session-scoped, so a destroy-then-up cycle silently
+# drops it and the tick reactor's heartbeat starves. scope = "run" re-scans on
+# every up.
+[goal_bootstrap]
+kind  = "task"
+scope = "run"
+
+[goal_bootstrap.setup]
+type = "exec"
+bin  = "okf-goal"
+args = [
+  "task",
+  "bootstrap",
+  "--workspace-dir", { from = "workspace.dir" },
+  "--owner", { from = "inputs.owner" },
+  "--session", { from = "session.name" },
+]
+stdin = { json = { from = "inputs.assignees", default = [] } }
+
+[goal_bootstrap.inputs_schema]
+type                 = "object"
+required             = ["owner"]
+additionalProperties = false
+
+[goal_bootstrap.inputs_schema.properties]
+owner = { type = "string" }
+
+# assignees carries this orchestrator's own identity strings ("user:<login>" /
+# "team:<slug>", the vocabulary a goal file's frontmatter assignee field
+# uses). An empty array means the filter is inactive: every open goal
+# instantiates regardless of assignee.
+[goal_bootstrap.inputs_schema.properties.assignees]
+type  = "array"
+items = { type = "string", pattern = "^(user|team):[A-Za-z0-9._-]+$" }
+
+[goal_bootstrap.outputs_schema]
+type     = "object"
+required = ["created"]
+
+[goal_bootstrap.outputs_schema.properties]
+created = { type = "string" }

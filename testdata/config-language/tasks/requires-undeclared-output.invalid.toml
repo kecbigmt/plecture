@@ -1,0 +1,21 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-REQUIRES-UNDECLARED entry=definitions
+# reason: every done_when check names a required output, and every required output is an outputs-schema property.
+
+[work]
+kind     = "task"
+scope    = "session"
+requires = ["checks_status"]
+
+[work.setup]
+type = "exec"
+bin  = "github-issue-pr"
+args = ["render-instruction"]
+
+[work.outputs_schema]
+type = "object"
+
+[work.outputs_schema.properties]
+instruction = { type = "string" }
+
+[work.done_when]
+all = [{ check = "checks_status", in = ["SUCCESS"] }]

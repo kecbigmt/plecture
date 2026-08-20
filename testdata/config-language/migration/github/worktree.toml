@@ -1,0 +1,99 @@
+# plect-fixture: result=valid entry=definitions
+# reason: translation of plugins/github/config/workspaces/github.toml.
+
+[worktree]
+kind  = "workspace_provider"
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+# Title/state fetches route through github-watcher's gh-api subcommand, so a
+# setup call and the daemon's own polling share one rate budget instead of
+# each independently re-tripping GitHub's secondary rate limit.
+[worktree.setup]
+type = "exec"
+bin  = "github-worktree"
+args = [
+  "setup",
+  "--resource", { from = "resource.id" },
+  "--session", { from = "session.name" },
+  "--workspace-dirs-root", { from = "config.workspace_dirs_root" },
+  "--workspace-layout-root", { from = "inputs.workspace_layout_root", default = "" },
+  "--issue-branch-template", { from = "inputs.issue_branch_template", default = "" },
+  "--tagged-branch-suffix", { from = "inputs.tagged_branch_suffix", default = "" },
+  "--watcher-bin", { bin = "github-watcher" },
+]
+
+# The watcher unsubscribe runs after worktree cleanup and never gates its exit
+# status: dropping this session's watcher subscriptions is orthogonal to
+# whether the worktree came out clean, and a dirty-worktree failure must still
+# fail destroy. Without it a destroyed session's subscriptions poll forever.
+[worktree.cleanup]
+type = "shell"
+script = '''
+"$worktree_bin" cleanup \
+  --workspace-dir "$workspace_dir" \
+  --branch "$branch" \
+  --workspace-dirs-root "$workspace_dirs_root" \
+  --workspace-layout-root "$workspace_layout_root" \
+  --force="$force" \
+  --delete-branch="$delete_branch" \
+  --delete-branch-default="$delete_branch_default"
+status=$?
+"$watcher_bin" unsubscribe --session "$session_name"
+exit $status
+'''
+
+[worktree.cleanup.bind]
+session_name          = { from = "session.name" }
+workspace_dir         = { from = "self.workspace_dir" }
+branch                = { from = "self.branch" }
+workspace_dirs_root   = { from = "config.workspace_dirs_root" }
+workspace_layout_root = { from = "inputs.workspace_layout_root", default = "" }
+force                 = { from = "force" }
+delete_branch         = { from = "cleanup.inputs.delete_branch", default = "" }
+delete_branch_default = { from = "inputs.delete_branch_default", default = "" }
+worktree_bin          = { bin = "github-worktree" }
+watcher_bin           = { bin = "github-watcher" }
+
+[worktree.subscribe]
+type = "exec"
+bin  = "github-watcher"
+args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
+
+# Author-declared parameters, set by a workflow's workspace_provider_inputs.
+# Every one is data — a path, a naming template, a boolean — so wiring one can
+# change where and under what name a worktree lands but never what the hooks
+# run. The naming templates use single-brace placeholders because
+# github-worktree expands them itself.
+#
+# The charset patterns the previous shape carried for splice safety are gone:
+# these values reach an exec argv and a literal shell variable, never a
+# rendered command line.
+[worktree.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[worktree.inputs_schema.properties]
+workspace_layout_root = { type = "string" }
+issue_branch_template = { type = "string" }
+tagged_branch_suffix  = { type = "string" }
+delete_branch_default = { type = "string", enum = ["true", "false"] }
+
+# workspace_dir/branch are always present; the rest degrade to absent when
+# their gh-api fetch is tolerated as best-effort. mutable keys may
+# additionally be merged from trusted side paths.
+[worktree.outputs_schema]
+type     = "object"
+required = ["workspace_dir", "branch"]
+
+[worktree.outputs_schema.properties]
+workspace_dir = { type = "string" }
+branch        = { type = "string" }
+url           = { type = "string" }
+owner_repo    = { type = "string" }
+owner         = { type = "string" }
+repo          = { type = "string" }
+number        = { type = "integer" }
+title         = { type = "string", mutable = true }
+pr_state      = { type = "string", mutable = true }
+issue_state   = { type = "string", mutable = true }

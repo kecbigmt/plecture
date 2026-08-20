@@ -1,0 +1,10 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-KIND-MISSING entry=definitions
+# reason: a definition table without kind declares no contract.
+
+[runtime]
+scope = "run"
+
+[runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch"]

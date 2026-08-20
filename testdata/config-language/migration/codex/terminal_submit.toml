@@ -1,0 +1,41 @@
+# plect-fixture: result=valid entry=definitions
+# reason: translation of plugins/codex/config/channels/terminal_submit.toml; the script stops riding `bash -c` argv and becomes a shell action.
+
+[terminal_submit]
+kind = "channel"
+type = "shell"
+script = '''
+set -u
+sh -c "$send_text" terminal-send-text "$message"
+sleep 1
+sh -c "$send_keys" terminal-send-keys Enter
+# A single sleep before Enter is not enough: on long or multi-line
+# instructions the TUI's paste-burst detection window can still be open, so
+# the trailing Enter is absorbed as a newline inside the burst instead of
+# acting as submit — a separate race from pane-boot readiness. The ❯ glyph
+# is followed by NBSP (U+00A0) in observed pane output, so normalize it
+# before the case match.
+for delay in 2 4 8 16; do
+  input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
+  input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
+  case "$input" in
+    ''|'›'|'› '|'❯'|'❯ ') exit 0 ;;
+  esac
+  sleep "$delay"
+  sh -c "$send_keys" terminal-send-keys Enter
+done
+input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
+input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
+case "$input" in
+  ''|'›'|'› '|'❯'|'❯ ') exit 0 ;;
+esac
+echo "terminal_submit: instruction still unsubmitted after 4 retries" >&2
+exit 1
+'''
+timeout = "45s"
+
+[terminal_submit.bind]
+send_text = { terminal = "send_text" }
+send_keys = { terminal = "send_keys" }
+capture   = { terminal = "capture" }
+message   = { expr = "'[' + event.type + '] ' + (event.body != '' ? event.body : event.summary) + (has(event.metadata.url) ? ' (' + event.metadata.url + ')' : '')" }

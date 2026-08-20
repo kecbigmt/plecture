@@ -1,0 +1,69 @@
+# plect-fixture: result=valid entry=definitions
+# reason: translation of plugins/okf/config/tasks/goal_review.toml.
+
+# A session that reviews one local-okf goal, spawned by pursue_goal's chain
+# once the goal's checklist is satisfied. There is no third party to judge a
+# reviewer, so this task's own done_when cannot use a judge leaf either.
+# Completion is this reviewer's self-report of "I recorded the goal-met
+# verdict on the target session", captured as a revision so a later goal file
+# edit invalidates it automatically.
+[goal_review]
+kind     = "task"
+scope    = "session"
+requires = ["goal_parse_status", "verdict_current"]
+
+[goal_review.setup]
+type = "shell"
+script = '''
+INSTRUCTION=$(plect template render goal_review --session "$session_name" --instruction "$extra")
+if [ -z "$INSTRUCTION" ]; then
+  echo "plect template render goal_review produced empty instruction" >&2
+  exit 1
+fi
+jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
+'''
+
+[goal_review.setup.bind]
+session_name = { from = "session.name" }
+extra        = { from = "inputs.instruction", default = "" }
+
+[goal_review.outputs.bind]
+goal_parse_status = { from = "resource.status.goal_parse_status" }
+goal_status       = { from = "resource.status.goal_status" }
+checklist_status  = { from = "resource.status.checklist_status" }
+goal_revision     = { from = "resource.status.goal_revision" }
+revision          = { from = "resource.status.revision" }
+open_items        = { from = "resource.status.open_items" }
+verdict_current   = { expr = "self.verdict_revision == resource.status.revision" }
+
+[goal_review.done_when]
+all = [
+  { check = "goal_parse_status", in = ["SUCCESS"] },
+  { check = "verdict_current", in = [true] },
+]
+
+[goal_review.done_when.budget]
+heartbeat_budget = 3
+on_exhaust       = "escalate"
+
+[goal_review.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[goal_review.inputs_schema.properties]
+instruction = { type = "string" }
+
+[goal_review.outputs_schema]
+type     = "object"
+required = ["instruction"]
+
+[goal_review.outputs_schema.properties]
+instruction       = { type = "string" }
+goal_parse_status = { type = "string", mutable = true }
+goal_status       = { type = "string", mutable = true }
+checklist_status  = { type = "string", mutable = true }
+goal_revision     = { type = "string", mutable = true }
+revision          = { type = "string", mutable = true }
+open_items        = { type = "string", mutable = true }
+verdict_revision  = { type = "string", mutable = true }
+verdict_current   = { type = "boolean" }

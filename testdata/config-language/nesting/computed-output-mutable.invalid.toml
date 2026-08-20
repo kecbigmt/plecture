@@ -1,0 +1,17 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-NESTING-OUTPUT-MUTABLE entry=definitions
+# reason: only a direct projection carries write-through, so a computed nested output cannot be mutable.
+
+[labelled_runtime]
+kind = "task"
+
+[labelled_runtime.inner]
+uses = "official.claude.runtime"
+
+[labelled_runtime.outputs.bind]
+label = { expr = "'pid-' + string(inner.outputs.pid)" }
+
+[labelled_runtime.outputs_schema]
+type = "object"
+
+[labelled_runtime.outputs_schema.properties]
+label = { type = "string", mutable = true }

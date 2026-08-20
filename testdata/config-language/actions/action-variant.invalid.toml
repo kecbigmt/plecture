@@ -1,0 +1,10 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-ACTION-VARIANT entry=definitions
+# reason: args belongs to the exec variant, and script to the shell variant.
+
+[runtime]
+kind = "task"
+
+[runtime.setup]
+type   = "shell"
+script = "true"
+args   = ["--flag"]
