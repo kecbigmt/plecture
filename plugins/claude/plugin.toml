@@ -11,6 +11,10 @@ name = "claude-agent-activity"
 path = "scripts/claude-agent-activity"
 
 [[executables]]
+name = "claude-mcp-servers"
+path = "scripts/claude-mcp-servers"
+
+[[executables]]
 name = "channel-server"
 path = "bin/channel-server"
 build = "go -C src/channel-server build -o ../../bin/channel-server ./cmd/channel-server"

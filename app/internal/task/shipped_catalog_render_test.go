@@ -100,6 +100,7 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 		"model":          "fable",
 		"effort":         "high",
 		"path_prepend":   "/tmp/plect-gh-guard.x",
+		"mcp_servers":    `[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]`,
 		"template":       "",
 		"agent_session":  "",
 		"repeat":         "",
@@ -214,5 +215,42 @@ func TestShippedCatalog_LaunchEnvRejectsQuoteBreakout(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no shipped task declares a launch_env input; this test is checking nothing")
+	}
+}
+
+// TestShippedCatalog_McpServersRejectsQuoteBreakout: mcp_servers never reaches
+// a command line, but its JSON does cross the same single-quoted assignment
+// launch_env crosses, so a value carrying a single quote must be rejected
+// before the setup script renders — the serialization step downstream is only
+// reached if that guard holds.
+func TestShippedCatalog_McpServersRejectsQuoteBreakout(t *testing.T) {
+	tasks, _ := loadShippedCatalogTasks(t)
+
+	breakout := map[string]any{"tmux_session": "s", "mcp_servers": `[{"name":"x'; touch /tmp/pwned; echo '","command":"y"}]`}
+	benign := map[string]any{"tmux_session": "s", "mcp_servers": `[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]`}
+
+	checked := 0
+	for id, def := range tasks {
+		props, ok := def.InputsSchema["properties"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, ok := props["mcp_servers"]; !ok {
+			continue
+		}
+		checked++
+		schema, err := CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "test:"+id)
+		if err != nil {
+			t.Fatalf("task %q: CompileSchema: %v", id, err)
+		}
+		if err := schema.Validate(toJSONShape(breakout)); err == nil {
+			t.Errorf("task %q: inputs_schema accepted an mcp_servers value containing a single quote", id)
+		}
+		if err := schema.Validate(toJSONShape(benign)); err != nil {
+			t.Errorf("task %q: inputs_schema rejected a plain mcp_servers array: %v", id, err)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no shipped task declares an mcp_servers input; this test is checking nothing")
 	}
 }

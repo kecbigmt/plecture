@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Serializes the claude task's mcp_servers parameter into the MCP config that
+# task assembles: the base config arrives on stdin, the records arrive in
+# CLAUDE_MCP_SERVERS, and the merged config leaves on stdout.
+#
+# The records reach jq through $ENV rather than --argjson, and never through
+# argv: a process's argv is world-readable on a shared host, so a record
+# carrying a credential in `env` would otherwise leak to anything watching
+# /proc. Keeping the value in the environment for its whole path is what makes
+# the parameter data the task serializes rather than input to a command line.
+#
+# A malformed record fails the launch rather than being dropped: a silently
+# missing registration surfaces much later, as a tool the agent cannot find.
+
+set -euo pipefail
+
+if [ -z "${CLAUDE_MCP_SERVERS:-}" ]; then
+  cat
+  exit 0
+fi
+
+jq '
+  def known: ["name", "command", "args", "env"];
+  def name_of($i; $rec):
+    if ($rec | type) == "object" and ($rec.name | type) == "string" and $rec.name != ""
+    then "\"\($rec.name)\""
+    else "at index \($i)"
+    end;
+  def fail($i; $rec; $msg):
+    error("mcp_servers record \(name_of($i; $rec)) \($msg)");
+
+  ($ENV.CLAUDE_MCP_SERVERS
+   | (try fromjson catch error("mcp_servers is not valid JSON"))
+   | if type == "array" then .
+     else error("mcp_servers must be a JSON array of server records")
+     end) as $recs
+  | reduce range(0; $recs | length) as $i (.;
+      $recs[$i] as $rec
+      | if ($rec | type) != "object" then
+          fail($i; $rec; "is not an object")
+        elif ($rec | has("name") | not) then
+          fail($i; $rec; "is missing required field \"name\"")
+        elif ($rec.name | type) != "string" or $rec.name == "" then
+          fail($i; $rec; "field \"name\" must be a non-empty string")
+        elif ($rec | has("command") | not) then
+          fail($i; $rec; "is missing required field \"command\"")
+        elif ($rec.command | type) != "string" or $rec.command == "" then
+          fail($i; $rec; "field \"command\" must be a non-empty string")
+        elif (($rec | keys) - known) != [] then
+          fail($i; $rec; "declares unsupported field \"\((($rec | keys) - known)[0])\"")
+        elif ($rec | has("args"))
+             and (($rec.args | type) != "array"
+                  or ([$rec.args[] | select(type != "string")] | length) > 0) then
+          fail($i; $rec; "field \"args\" must be an array of strings")
+        elif ($rec | has("env"))
+             and (($rec.env | type) != "object"
+                  or ([$rec.env[] | select(type != "string")] | length) > 0) then
+          fail($i; $rec; "field \"env\" must be an object of strings")
+        elif ((.mcpServers // {}) | has($rec.name)) then
+          fail($i; $rec; "collides with a registration this task already made")
+        else
+          .mcpServers[$rec.name] = ({command: $rec.command}
+            + (if $rec | has("args") then {args: $rec.args} else {} end)
+            + (if $rec | has("env") then {env: $rec.env} else {} end))
+        end)
+'

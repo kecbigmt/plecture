@@ -25,6 +25,13 @@ scope   = "run"
 #                  Data only: keys must be valid environment variable names
 #                  and values are shell-quoted, so nothing here can add a
 #                  command to what gets launched.
+#   mcp_servers  — when set, a JSON array of MCP server registration records
+#                  ({name, command, args?, env?}) merged into the
+#                  --mcp-config JSON this task already assembles, so a
+#                  deployment can widen or scope the session's tool access
+#                  without forking the task. Data only: the records reach
+#                  claude-mcp-servers through the environment and end up in
+#                  the config file, never on a command line.
 #   path_prepend — when set, a directory prepended to this session's PATH.
 #                  Generic by design (docs/design/plugin-boundary-contracts.md's
 #                  GitHub CLI Guard section): this plugin carries no
@@ -63,6 +70,14 @@ if command -v channel-server >/dev/null 2>&1; then
     '.mcpServers["channel-server"]={command:"channel-server",env:{CHANNEL_SOCKET_PATH:$sock}}')
   CHANNELS_FLAG="--dangerously-load-development-channels server:channel-server"
 fi
+# mcp_servers crosses the same single-quoted assignment launch_env crosses,
+# and the inputs_schema pattern below closes it the same way. From here the
+# records travel only in the environment: claude-mcp-servers serializes them
+# into this config file, so a record's contents never reach a command line.
+MCP_SERVERS='{{get .Inputs "mcp_servers" ""}}'
+MCP_JSON=$(printf '%s' "$MCP_JSON" \
+  | CLAUDE_MCP_SERVERS="$MCP_SERVERS" {{bin "claude-mcp-servers"}}) || exit 1
+
 printf '%s' "$MCP_JSON" > "$MCP"
 
 # agent_activity self-report hooks: UserPromptSubmit/Stop call
@@ -294,6 +309,10 @@ effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 # the value is spliced inside a single-quoted shell assignment above. jq
 # rejects anything that is not an object of scalars at launch time.
 launch_env   = { type = "string", pattern = "^[^']*$" }
+# mcp_servers: a JSON array, restricted to a single-quote-free charset for the
+# same reason launch_env is. claude-mcp-servers rejects anything that is not an
+# array of well-formed registration records at launch time.
+mcp_servers  = { type = "string", pattern = "^[^']*$" }
 # path_prepend: a plain path charset (no quotes, whitespace, or shell
 # metacharacters), same reasoning as model/effort above — the value crosses
 # the same setup-script splice point.
