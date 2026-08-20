@@ -81,47 +81,6 @@ type DoneWhenResult struct {
 	Leaves  []DoneLeafResult `json:"leaves,omitempty"`
 }
 
-// validateTaskRequires enforces the `requires` contract: when an
-// task declares `requires`, every done_when check leaf must read a required
-// output, and every required output must be a property of the task's outputs
-// schema. This makes the done_when ↔ observed-output wiring explicit and catches
-// typos at compile time. A nil/empty `requires` is unconstrained (opt-in).
-func validateTaskRequires(def config.TaskDefinition) error {
-	if len(def.Requires) == 0 {
-		return nil
-	}
-	required := make(map[string]bool, len(def.Requires))
-	for _, r := range def.Requires {
-		required[r] = true
-	}
-	if def.DoneWhen != nil {
-		for i, leaf := range def.DoneWhen.All {
-			if strings.TrimSpace(leaf.Check) == "" {
-				continue
-			}
-			if !required[leaf.Check] {
-				return fmt.Errorf("done_when.all[%d] reads output %q which is not declared in `requires` %v", i, leaf.Check, def.Requires)
-			}
-		}
-	}
-	props, err := SchemaPropertyNames(def.OutputsSchema, def.ResolvedOutputsSchemaPath())
-	if err != nil {
-		return fmt.Errorf("outputs schema: %w", err)
-	}
-	if len(props) > 0 {
-		declared := make(map[string]bool, len(props))
-		for _, p := range props {
-			declared[p] = true
-		}
-		for _, r := range def.Requires {
-			if !declared[r] {
-				return fmt.Errorf("`requires` names output %q which the outputs schema does not declare", r)
-			}
-		}
-	}
-	return nil
-}
-
 // EvaluateTaskDoneWhen evaluates a task's done_when against a single
 // instance's outputs. Each check leaf compares the named output's value with
 // the leaf's operator; a judge leaf reads persisted reviewer action.

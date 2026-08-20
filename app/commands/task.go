@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -22,6 +25,8 @@ var (
 	taskCleanupSession string
 
 	taskFinalizeSession string
+
+	taskShowJSON bool
 )
 
 var taskCmd = &cobra.Command{
@@ -173,6 +178,69 @@ Example:
 	},
 }
 
+var taskShowCmd = &cobra.Command{
+	Use:   "show <task-id>",
+	Short: "Show a task definition, including its nesting chain",
+	Long: `Print one task definition as the cascade resolves it: its id, the scope its
+instances take, the file it was loaded from, and — when the task is nested —
+every layer of the chain from the outermost task inward to the innermost one,
+with each layer's 'inner' reference and the file it resolved to.
+
+Use --json for the same picture as a structured document.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getwd: %w", err)
+		}
+		detail, err := service.TaskShow(cfg, cwd, args[0])
+		if err != nil {
+			return err
+		}
+		if taskShowJSON {
+			b, err := json.MarshalIndent(detail, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), string(b))
+			return nil
+		}
+		return writeTaskDetail(cmd.OutOrStdout(), detail)
+	},
+}
+
+// writeTaskDetail renders the header fields as an aligned block and the
+// nesting chain as an indented outline, matching `workflow show`'s node
+// listing: the indent is what carries "inner", so no arrows are needed.
+func writeTaskDetail(out io.Writer, d *service.TaskDetail) error {
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "ID:\t%s\n", d.ID)
+	fmt.Fprintf(w, "Scope:\t%s\n", d.Scope)
+	if d.SourcePath != "" {
+		fmt.Fprintf(w, "Source:\t%s\n", d.SourcePath)
+	}
+	if err := w.Flush(); err != nil {
+		return err
+	}
+	if len(d.Nesting) == 0 {
+		return nil
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Nesting chain (outermost first):")
+	for i, layer := range d.Nesting {
+		line := strings.Repeat("  ", i+1) + layer.ID
+		if layer.Inner != "" {
+			line += fmt.Sprintf(" (inner = %q)", layer.Inner)
+		}
+		fmt.Fprintln(out, line)
+	}
+	return nil
+}
+
 // parseKeyValues turns repeated "key=value" flags into a map. An entry without
 // '=' is an error so a typo surfaces instead of binding an empty value.
 func parseKeyValues(pairs []string) (map[string]string, error) {
@@ -201,5 +269,7 @@ func init() {
 	taskCmd.AddCommand(taskSetupCmd)
 	taskCmd.AddCommand(taskCleanupCmd)
 	taskCmd.AddCommand(taskFinalizeCmd)
+	taskShowCmd.Flags().BoolVar(&taskShowJSON, "json", false, "Output the definition as JSON")
+	taskCmd.AddCommand(taskShowCmd)
 	rootCmd.AddCommand(taskCmd)
 }
