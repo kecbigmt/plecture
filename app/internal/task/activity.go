@@ -62,8 +62,10 @@ type activitySignalWire struct {
 // render failure, unparseable stdout, or an envelope missing the required
 // fingerprint is a plain error. None of the three contributes evidence; the
 // distinction only decides what the health report says about the probe.
-func RunActivityProbe(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars, env ...string) (*ActivitySignal, error) {
-	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Inputs: nodeInputs, Session: session})
+//
+// sourcePath carries the same meaning it does for RunAliveProbe.
+func RunActivityProbe(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars, sourcePath string, env ...string) (*ActivitySignal, error) {
+	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Inputs: nodeInputs, Session: session, SourcePath: sourcePath})
 	if err != nil {
 		return nil, err
 	}

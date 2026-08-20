@@ -75,7 +75,7 @@ func TestCharacterization_RunAliveProbe_CancelledContextKillsHungChild(t *testin
 	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	err := RunAliveProbe(goCtx, "sleep 5; touch '"+marker+"'", map[string]any{}, map[string]any{}, session)
+	err := RunAliveProbe(goCtx, "sleep 5; touch '"+marker+"'", map[string]any{}, map[string]any{}, session, "")
 	if err == nil {
 		t.Fatalf("RunAliveProbe: want an error surfaced from the cancelled context, got nil")
 	}

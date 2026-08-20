@@ -82,7 +82,7 @@ func TestExecutor_RunAliveProbeIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte("ok")
 	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
-	if err := RunAliveProbe(context.Background(), `echo ok`, map[string]any{}, map[string]any{}, session); err != nil {
+	if err := RunAliveProbe(context.Background(), `echo ok`, map[string]any{}, map[string]any{}, session, ""); err != nil {
 		t.Fatalf("alive probe: %v", err)
 	}
 	if len(spy.requests) != 1 {

@@ -54,6 +54,10 @@ type probeTarget struct {
 	Self     map[string]any
 	Inputs   map[string]any
 	Env      []string
+	// SourcePath is the file this unit's probes were declared in — one
+	// layer's own definition for a nesting chain — so a plugin-local bare
+	// `{{bin "<name>"}}` resolves against the plugin that ships it.
+	SourcePath string
 }
 
 // probeTargets returns what to probe for one instance. A layer that declares
@@ -65,11 +69,12 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 			return nil
 		}
 		return []probeTarget{{
-			Label:    instance,
-			Alive:    def.Health.AliveProbe(),
-			Activity: def.Health.ActivityProbe(),
-			Self:     st.Outputs,
-			Inputs:   st.Inputs,
+			Label:      instance,
+			Alive:      def.Health.AliveProbe(),
+			Activity:   def.Health.ActivityProbe(),
+			Self:       st.Outputs,
+			Inputs:     st.Inputs,
+			SourcePath: def.SourcePath,
 		}}
 	}
 	var targets []probeTarget
@@ -78,12 +83,13 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 			continue
 		}
 		targets = append(targets, probeTarget{
-			Label:    fmt.Sprintf("%s layer %q", instance, layer.TaskID),
-			Alive:    layer.Health.AliveProbe(),
-			Activity: layer.Health.ActivityProbe(),
-			Self:     comp.Views[i],
-			Inputs:   st.Layers[i].Inputs,
-			Env:      task.EnclosingEnv(st.Layers, i),
+			Label:      fmt.Sprintf("%s layer %q", instance, layer.TaskID),
+			Alive:      layer.Health.AliveProbe(),
+			Activity:   layer.Health.ActivityProbe(),
+			Self:       comp.Views[i],
+			Inputs:     st.Layers[i].Inputs,
+			Env:        task.EnclosingEnv(st.Layers, i),
+			SourcePath: layer.SourcePath,
 		})
 	}
 	return targets

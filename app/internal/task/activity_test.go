@@ -72,7 +72,7 @@ func TestRunActivityProbe_Envelope(t *testing.T) {
 	session := SessionVars{Name: "owner/repo-1", WorkspaceDirPath: t.TempDir()}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := RunActivityProbe(context.Background(), "cat <<'EOF'\n"+tt.stdout+"\nEOF", nil, nil, session)
+			got, err := RunActivityProbe(context.Background(), "cat <<'EOF'\n"+tt.stdout+"\nEOF", nil, nil, session, "")
 			if tt.wantErrSubstring != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErrSubstring) {
 					t.Fatalf("err = %v, want substring %q", err, tt.wantErrSubstring)
@@ -110,7 +110,7 @@ func TestRunActivityProbe_Envelope(t *testing.T) {
 
 func TestRunActivityProbe_NonZeroExitCarriesExitCodeAndStderr(t *testing.T) {
 	session := SessionVars{Name: "owner/repo-1", WorkspaceDirPath: t.TempDir()}
-	sig, err := RunActivityProbe(context.Background(), "echo 'pane is gone' >&2; exit 3", nil, nil, session)
+	sig, err := RunActivityProbe(context.Background(), "echo 'pane is gone' >&2; exit 3", nil, nil, session, "")
 	if sig != nil {
 		t.Fatalf("signal = %+v, want nil", sig)
 	}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -513,5 +514,32 @@ state = "{{.Work.outputs.state}}"
 	}
 	if len(sp.MissingOutputs) != 1 || sp.MissingOutputs[0] != "state" {
 		t.Errorf("MissingOutputs = %v, want the one key without a value yet", sp.MissingOutputs)
+	}
+}
+
+// Each layer's probes resolve `{{bin}}` against the file that layer was
+// declared in, so a chain whose inner task ships in a plugin keeps its own
+// plugin's executables reachable no matter which file names it from outside.
+func TestProbeTargets_CarryEachLayersOwnSourcePath(t *testing.T) {
+	cfg := nestedConfig(t, taskFixture{alive: "true"}, bindPid+"\n[health]\nalive = \"true\"\n")
+	defs, err := cfg.LoadTaskDefinitions("")
+	if err != nil {
+		t.Fatalf("LoadTaskDefinitions: %v", err)
+	}
+	def := defs["team_runtime"]
+	st := nestedTasks(map[string]any{"pid": "1"}, map[string]any{"pid": "1"}, nil)["runtime"]
+
+	comp, err := composeInstance(def, st, task.SessionVars{Name: "s"})
+	if err != nil {
+		t.Fatalf("composeInstance: %v", err)
+	}
+	targets := probeTargets("runtime", def, st, comp)
+	if len(targets) != 2 {
+		t.Fatalf("targets = %d, want one per layer", len(targets))
+	}
+	for i, want := range []string{"team_runtime.toml", "runtime.toml"} {
+		if !strings.HasSuffix(targets[i].SourcePath, want) {
+			t.Errorf("layer %d SourcePath = %q, want a path ending in %q", i, targets[i].SourcePath, want)
+		}
 	}
 }
