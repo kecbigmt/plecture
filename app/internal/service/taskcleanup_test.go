@@ -181,3 +181,62 @@ func TestTaskCleanup_JoinsPersistFailureWithCleanupFailure(t *testing.T) {
 		t.Errorf("expected the persist failure to be joined into the returned error, got: %s", err.Error())
 	}
 }
+
+// A partial unwind's record has to survive the failure that produced it: the
+// per-layer outcome is what tells the retry which layers are still owed, and
+// it lives only in the snapshot the cleanup mutated in place. Without it the
+// retry reloads every layer as produced and releases one twice.
+func TestTaskCleanup_NestedPartialUnwindSurvivesForTheRetry(t *testing.T) {
+	dir := t.TempDir()
+	innerLog := filepath.Join(dir, "inner-runs")
+	gate := filepath.Join(dir, "outer-may-succeed")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{
+			{id: "runtime", scope: "session", setup: `echo '{}'`, cleanup: "echo ran >> " + innerLog},
+			{id: "team_runtime", scope: "session", cleanup: "test -f " + gate,
+				extra: "inner = \"runtime\"\n"},
+		},
+		[]nodeFixture{{id: "team_runtime"}},
+	)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "team_runtime", SessionName: "o/r-1", Name: "initial"}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "initial", SessionName: "o/r-1"}); err == nil {
+		t.Fatal("TaskCleanup: want the outer layer's cleanup to fail")
+	}
+
+	st := store.Get("o/r-1").Tasks["initial"]
+	if st == nil {
+		t.Fatal("a failed cleanup must leave the instance inspectable for retry")
+	}
+	if len(st.Layers) != 2 {
+		t.Fatalf("Layers = %+v, want both layer records persisted", st.Layers)
+	}
+	if st.Layers[1].Status != contract.TaskStatusCleaned {
+		t.Errorf("inner layer = %q, want %q — it released successfully", st.Layers[1].Status, contract.TaskStatusCleaned)
+	}
+	if st.Layers[0].Status != contract.TaskStatusFailed {
+		t.Errorf("outer layer = %q, want %q", st.Layers[0].Status, contract.TaskStatusFailed)
+	}
+
+	// The operator fixes what made the outer layer fail and retries.
+	if err := os.WriteFile(gate, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "initial", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	runs, err := os.ReadFile(innerLog)
+	if err != nil {
+		t.Fatalf("read inner cleanup log: %v", err)
+	}
+	if got := strings.Count(string(runs), "ran"); got != 1 {
+		t.Errorf("inner cleanup ran %d times, want exactly once — the retry owes only the layer that failed", got)
+	}
+	if store.Get("o/r-1").Tasks["initial"] != nil {
+		t.Error("a successful retry must reclaim the instance")
+	}
+}
