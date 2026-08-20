@@ -4,10 +4,10 @@ go 1.25.6
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/kecbigmt/plecture/contracts/atomicfile v0.0.0-20260815035651-ea03a1435561
-	github.com/kecbigmt/plecture/contracts/channel-protocol v0.0.0-20260815035651-ea03a1435561
-	github.com/kecbigmt/plecture/contracts/event v0.0.0-20260815035651-ea03a1435561
-	github.com/kecbigmt/plecture/contracts/state v0.0.0-20260815035651-ea03a1435561
+	github.com/kecbigmt/plecture/contracts/atomicfile v0.0.0-20260820120124-c60a0d848ca1
+	github.com/kecbigmt/plecture/contracts/channel-protocol v0.0.0-20260820120124-c60a0d848ca1
+	github.com/kecbigmt/plecture/contracts/event v0.0.0-20260820120124-c60a0d848ca1
+	github.com/kecbigmt/plecture/contracts/state v0.0.0-20260820120124-c60a0d848ca1
 	github.com/mark3labs/mcp-go v0.48.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
