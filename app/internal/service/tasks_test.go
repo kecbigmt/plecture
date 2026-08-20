@@ -1476,3 +1476,92 @@ func TestDestroy_ForceOrphansChildrenWithWarning(t *testing.T) {
 		t.Errorf("expected child ParentSession cleared after orphaning, got %q", got.ParentSession)
 	}
 }
+
+// TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs is the
+// end-to-end shape of the reported failure: on a recreate the whole task map
+// is reset, so a downstream node's {{terminal "..."}} has to resolve against
+// the [terminal]-declaring node's outputs from the very pass it is running
+// in, not from the emptied state the pass started with.
+func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	store := testStore(t)
+	oldWorkdirPath := filepath.Join(t.TempDir(), "old-workdir")
+	newWorkdirPath := filepath.Join(t.TempDir(), "new-workdir")
+	if err := os.MkdirAll(oldWorkdirPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeWorkflowFixture(t, oldWorkdirPath, "default",
+		[]taskFixture{
+			{
+				id:       "terminal",
+				scope:    "session",
+				setup:    `echo '{"session_name":"agent-recreated"}'`,
+				sendText: `printf 'sent=%s' '{{.Self.session_name}}'`,
+			},
+			{
+				id:    "prompt",
+				scope: "session",
+				setup: `printf '{"delivered":"%s"}' "$({{terminal "send_text"}})"`,
+			},
+		},
+		[]nodeFixture{
+			{id: "terminal"},
+			{id: "prompt", inputs: map[string]string{"session": "{{.Nodes.terminal.outputs.session_name}}"}},
+		},
+	)
+	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
+	if err := os.MkdirAll(providersDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q}'`, newWorkdirPath, newWorkdirPath)
+	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"),
+		[]byte(fmt.Sprintf("setup = %q\ncleanup = \"true\"\n", providerSetup)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
+	wfData, err := os.ReadFile(wfPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \"default\"\n"), wfData...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sessionName := "org/repo-14"
+	seedSession(t, store, sessionName, "org/repo", 14, "default", map[string]*contract.TaskState{
+		contract.WorkflowPseudoNodeID: {
+			Scope:   contract.TaskScopeSession,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdirPath},
+			Seq:     1,
+		},
+		"terminal": {
+			Scope:   contract.TaskScopeSession,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"session_name": "agent-old"},
+			Seq:     2,
+		},
+		"prompt": {
+			Scope:   contract.TaskScopeSession,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"delivered": "sent=agent-old"},
+			Seq:     3,
+		},
+	})
+	if err := store.Update(sessionName, func(s *domain.Session) error {
+		s.WorkspaceDirPath = oldWorkdirPath
+		return nil
+	}); err != nil {
+		t.Fatalf("update session: %v", err)
+	}
+
+	result, err := Up(cfg, store, UpParams{Identifier: sessionName, ForceRecreate: true})
+	if err != nil {
+		t.Fatalf("Up --force-recreate: %v", err)
+	}
+	prompt := result.Tasks["prompt"]
+	if prompt == nil || prompt.Outputs["delivered"] != "sent=agent-recreated" {
+		t.Fatalf("prompt task = %+v, want the terminal verb rendered against this pass's session_name", prompt)
+	}
+}
