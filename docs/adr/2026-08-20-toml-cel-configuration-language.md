@@ -94,7 +94,7 @@ literal = "value"
 
 required_projection = { from = "inputs.owner" }
 
-optional_projection = { from = "inputs.model", default = "" }
+optional_projection = { from = "inputs.model", default = "fable" }
 
 computed = { expr = "inputs.left + inputs.right" }
 ```
@@ -222,8 +222,8 @@ uses = "official.claude.runtime"
 
 [inner.inputs]
 tmux_session = { from = "inputs.tmux_session" }
-model        = { from = "inputs.model", default = "" }
-effort       = { from = "inputs.effort", default = "" }
+model        = { from = "inputs.model", default = "fable" }
+effort       = { from = "inputs.effort", default = "low" }
 path_prepend = { from = "locals.guard_dir" }
 
 [inner.env]
@@ -347,6 +347,7 @@ That inventory must classify each existing dynamic use as one of:
 The audit must specifically settle:
 
 * the complete `from` path vocabulary for each surface;
+* an absence-propagating optional projection (a missing source omits the key instead of supplying an empty-string sentinel), consistent with absent-source bindings in task nesting;
 * the CEL version and Plecture CEL profile;
 * whether any CEL custom functions are actually necessary;
 * the complete tagged-value vocabulary;
