@@ -432,9 +432,22 @@ Task nesting is the middle rung:
 Workflow node inputs remain the home for user default values. Script-internal
 variation remains parameterization work for the plugin task author.
 Author-declared parameters are data-shaped: values, paths, naming templates,
-booleans, and environment maps. They are never behavior-shaped script hooks,
+booleans, environment maps, and structured records the task serializes into
+data for the program it launches. They are never behavior-shaped script hooks,
 executable substitution, or output-shape hooks; a behavior-shaped parameter
 hides a shadow behind a keyhole and breaks final-by-default ownership.
+
+What separates the two is where the value lands, not what it names. A
+parameter must never reach the task's own lifecycle commands or shell source.
+A structured record that the task serializes, through an author-fixed
+mechanism, into data consumed by the inner program — an agent's config file,
+for instance — is data even when the record's fields include a command for
+that program to manage: the task's own execution is identical either way, so
+there is no shadow behind the keyhole. `path_prepend` sits on the same side of
+the line while being the more behavioral of the two, which is what makes the
+criterion consistent with it: a prepended path changes which binary the task's
+own commands resolve to, where a serialized registration record changes only a
+file the launched program reads.
 
 ## Plugin-Counterpart Shadow Mapping
 

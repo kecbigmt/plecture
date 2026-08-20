@@ -27,6 +27,10 @@ independently selectable plugin this one composes through `{{terminal
   `plect up` when `repeat = "true"`.
 - `config/channels/claude.toml` — delivers a session event to the running
   Claude Code process over its channel-server Unix socket.
+- `scripts/claude-mcp-servers` — the author-fixed serialization step behind the
+  `claude` task's `mcp_servers` parameter: it merges the declared registration
+  records into the MCP config that task assembles, and fails the launch on a
+  malformed record rather than dropping it.
 - `scripts/claude-agent-activity` — both halves of the turn-boundary activity
   fingerprint (setting `silence_expected` once a turn ends, and withholding it
   inside a turn): the hook the `claude` task registers, and the `probe` verb
@@ -44,6 +48,7 @@ replacing them (the parameterization rung of
 | Config | Parameter | Meaning |
 |---|---|---|
 | `tasks/claude.toml` | `launch_env` | JSON object of environment variables exported on the launch line. Keys must be valid environment variable names; values are shell-quoted. |
+| `tasks/claude.toml` | `mcp_servers` | JSON array of MCP server registration records — `{name, command, args?, env?}` — merged into the `--mcp-config` JSON alongside this task's own registrations. A record only ever reaches the agent's config file, never a command line; a name that collides with a registration the task already made, or a record missing `name`/`command`, fails the launch. |
 
 ```toml
 [[nodes]]
@@ -51,6 +56,7 @@ id   = "claude"
 uses = "claude"
 inputs.tmux_session = "{{.Nodes.tmux.outputs.session_name}}"
 inputs.launch_env   = '{"PLECT_TEAM_CONTEXT":"acme"}'
+inputs.mcp_servers  = '[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]'
 ```
 
 ## Install
