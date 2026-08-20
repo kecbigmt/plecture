@@ -122,7 +122,10 @@ func observeIssue(ctx context.Context, client github.GHClient, parsed *github.Pa
 		ReviewDecision: "NULL",
 	}
 
-	prURL := discoverLinkedPR(ctx, client, parsed, opts)
+	prURL, err := discoverLinkedPR(ctx, client, parsed, opts)
+	if err != nil {
+		return nil, err
+	}
 	if prURL == "" {
 		return result, nil
 	}
@@ -198,17 +201,29 @@ func fetchReviewDecision(ctx context.Context, client github.GHClient, owner, rep
 // as this issue's revision and make every judge recorded on the real PR read
 // as stale. The branch still decides when the issue has no closing reference
 // at all — a PR whose body never named the issue is invisible to GitHub's
-// relation — and when several references compete. Both steps are
-// best-effort: any failure degrades to "no linked PR yet" rather than
-// failing the observation, matching production's tolerance for a resource
-// that legitimately has no PR at all.
-func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) string {
-	refs := closingPRRefs(ctx, client, parsed)
+// relation — and when several references compete.
+//
+// A reference lookup that fails is therefore not the same as one that
+// returns nothing: with a branch pull request in hand and no way to check it
+// against the issue, reporting it would resurrect exactly the wrong-revision
+// failure above, and degrading to the issue-only state would move the
+// revision off the reviewed head just as destructively, so the observation
+// fails and the last observed values stand. With no branch pull request
+// there is nothing the references could contradict, and the failure still
+// degrades to "no linked PR yet".
+func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) (string, error) {
+	refs, refsErr := closingPRRefs(ctx, client, parsed)
 	branchPR := branchPullRequest(ctx, client, parsed, opts)
-	if branchPR != "" && (len(refs) == 0 || containsPR(refs, branchPR)) {
-		return branchPR
+	if refsErr != nil {
+		if branchPR == "" {
+			return "", nil
+		}
+		return "", fmt.Errorf("fetch closing pull request references: %w", refsErr)
 	}
-	return preferOpenPR(refs)
+	if branchPR != "" && (len(refs) == 0 || containsPR(refs, branchPR)) {
+		return branchPR, nil
+	}
+	return preferOpenPR(refs), nil
 }
 
 func branchPullRequest(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) string {
@@ -260,7 +275,7 @@ type closingPRRef struct {
 	UpdatedAt string `json:"updatedAt"`
 }
 
-func closingPRRefs(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) []closingPRRef {
+func closingPRRefs(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) ([]closingPRRef, error) {
 	raw, err := client.JSON(ctx, "graphql",
 		"-F", "owner="+parsed.Owner,
 		"-F", "repo="+parsed.Repo,
@@ -268,7 +283,7 @@ func closingPRRefs(ctx context.Context, client github.GHClient, parsed *github.P
 		"-f", "query="+closingPRsQuery,
 	)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var resp struct {
 		Data struct {
@@ -281,10 +296,10 @@ func closingPRRefs(ctx context.Context, client github.GHClient, parsed *github.P
 			} `json:"repository"`
 		} `json:"data"`
 	}
-	if json.Unmarshal(raw, &resp) != nil {
-		return nil
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parse closing pull request references: %w", err)
 	}
-	return resp.Data.Repository.Issue.ClosedByPullRequestsReferences.Nodes
+	return resp.Data.Repository.Issue.ClosedByPullRequestsReferences.Nodes, nil
 }
 
 func preferOpenPR(refs []closingPRRef) string {
