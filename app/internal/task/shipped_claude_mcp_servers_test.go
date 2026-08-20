@@ -213,3 +213,45 @@ mcp_servers  = { type = "string" }
 		t.Fatalf("team_claude did not resolve its inner claude layer")
 	}
 }
+
+// The records must stay out of every process argv, not just out of the setup
+// script's own command lines: argv is world-readable on a shared host, so a
+// record carrying a credential in `env` would leak to any local process
+// watching /proc. A stub jq that logs its own argv is what makes the
+// serialization step's exec boundary observable — the merge itself is covered
+// above, so this case cares only about what crosses argv.
+func TestShippedClaude_McpServersStaysOutOfProcessArgv(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq not available")
+	}
+	const marker = "MCPSERVERSMARKER"
+	binDir := t.TempDir()
+	argvLog := filepath.Join(t.TempDir(), "argv.log")
+	stub := "#!/usr/bin/env bash\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> \"" + argvLog + "\"; done\necho '{}'\n"
+	if err := os.WriteFile(filepath.Join(binDir, "jq"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	script := filepath.Join(repoRootForTest(t), "plugins", "claude", "scripts", "claude-mcp-servers")
+	cmd := exec.Command(script)
+	cmd.Stdin = strings.NewReader(claudeMCPBase)
+	cmd.Env = append(os.Environ(),
+		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		`CLAUDE_MCP_SERVERS=[{"name":"`+marker+`","command":"`+marker+`-mcp","env":{"TOKEN":"`+marker+`-secret"}}]`,
+	)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("claude-mcp-servers: %v (stderr: %s)", err, stderr.String())
+	}
+
+	logged, err := os.ReadFile(argvLog)
+	if err != nil {
+		t.Fatalf("the stub jq was never executed, so this test is checking nothing: %v", err)
+	}
+	for _, arg := range strings.Split(strings.TrimSpace(string(logged)), "\n") {
+		if strings.Contains(arg, marker) {
+			t.Errorf("an mcp_servers record reaches a child process argv: %q", arg)
+		}
+	}
+}

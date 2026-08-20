@@ -1,30 +1,25 @@
 #!/usr/bin/env bash
 # Serializes the claude task's mcp_servers parameter into the MCP config that
 # task assembles: the base config arrives on stdin, the records arrive in
-# CLAUDE_MCP_SERVERS, and the merged config leaves on stdout. Records travel
-# through the environment rather than argv so no part of one can reach a
-# command line — that is what keeps the parameter data instead of an
-# executable hook into the task's own lifecycle.
+# CLAUDE_MCP_SERVERS, and the merged config leaves on stdout.
+#
+# The records reach jq through $ENV rather than --argjson, and never through
+# argv: a process's argv is world-readable on a shared host, so a record
+# carrying a credential in `env` would otherwise leak to anything watching
+# /proc. Keeping the value in the environment for its whole path is what makes
+# the parameter data the task serializes rather than input to a command line.
 #
 # A malformed record fails the launch rather than being dropped: a silently
 # missing registration surfaces much later, as a tool the agent cannot find.
 
 set -euo pipefail
 
-records="${CLAUDE_MCP_SERVERS:-}"
-if [ -z "$records" ]; then
+if [ -z "${CLAUDE_MCP_SERVERS:-}" ]; then
   cat
   exit 0
 fi
 
-# Validated before --argjson sees it, because jq's own parse error names its
-# command-line flag rather than the parameter the operator wrote.
-if ! printf '%s' "$records" | jq -e . >/dev/null 2>&1; then
-  echo "mcp_servers is not valid JSON" >&2
-  exit 1
-fi
-
-jq --argjson records "$records" '
+jq '
   def known: ["name", "command", "args", "env"];
   def name_of($i; $rec):
     if ($rec | type) == "object" and ($rec.name | type) == "string" and $rec.name != ""
@@ -34,7 +29,8 @@ jq --argjson records "$records" '
   def fail($i; $rec; $msg):
     error("mcp_servers record \(name_of($i; $rec)) \($msg)");
 
-  ($records
+  ($ENV.CLAUDE_MCP_SERVERS
+   | (try fromjson catch error("mcp_servers is not valid JSON"))
    | if type == "array" then .
      else error("mcp_servers must be a JSON array of server records")
      end) as $recs
