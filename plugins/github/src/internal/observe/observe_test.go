@@ -411,3 +411,66 @@ func TestObserve_Pull_SupersededCancelledRuns(t *testing.T) {
 		})
 	}
 }
+
+// A single worktree that builds several stacked branches leaves HEAD on a
+// later branch than the one the observed issue's pull request was opened
+// from, so the branch fact must not outrank the issue's own closing-PR
+// references.
+func TestObserve_Issue_BranchOnAnotherStackedPRPrefersClosingReference(t *testing.T) {
+	client := &fakeGHClient{responses: map[string]string{
+		"repos/acme/widgets/issues/7":                `{"state":"open","updated_at":"2026-01-01T00:00:00Z"}`,
+		"repos/acme/widgets/pulls?head=acme:issue/8": `[{"html_url":"https://github.com/acme/widgets/pull/20"}]`,
+		"graphql -F owner=acme -F repo=widgets -F number=7": `{"data":{"repository":{"issue":{"closedByPullRequestsReferences":{"nodes":[
+			{"url":"https://github.com/acme/widgets/pull/9","state":"OPEN","updatedAt":"2026-01-02T00:00:00Z"}
+		]}}}}}`,
+		"repos/acme/widgets/pulls/9":               `{"head":{"sha":"r1"},"mergeable_state":"clean"}`,
+		"repos/acme/widgets/commits/r1/check-runs": `{"check_runs":[]}`,
+		"repos/acme/widgets/commits/r1/status":     `{"statuses":[]}`,
+		"repos/acme/widgets/pulls/20":              `{"head":{"sha":"r2"},"mergeable_state":"clean"}`,
+		"repos/acme/widgets/commits/r2/check-runs": `{"check_runs":[]}`,
+		"repos/acme/widgets/commits/r2/status":     `{"statuses":[]}`,
+	}}
+	result, err := Observe(context.Background(), Options{
+		ResourceID:         "https://github.com/acme/widgets/issues/7",
+		WorkspaceDirPath:   "/roots/wt/stack",
+		WorkspaceDirBranch: func(ctx context.Context, workspaceDir string) string { return "issue/8" },
+		GHClient:           client,
+	})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	if result.PRURL != "https://github.com/acme/widgets/pull/9" {
+		t.Errorf("pr_url = %q, want the issue's own pull request", result.PRURL)
+	}
+	if result.Revision != "r1" {
+		t.Errorf("revision = %q, want the observed issue's pull request head", result.Revision)
+	}
+}
+
+// Among several closing references, the branch the session actually checked
+// out identifies which pull request is this session's work.
+func TestObserve_Issue_BranchPRWinsAmongClosingReferences(t *testing.T) {
+	client := &fakeGHClient{responses: map[string]string{
+		"repos/acme/widgets/issues/7":                `{"state":"open","updated_at":"2026-01-01T00:00:00Z"}`,
+		"repos/acme/widgets/pulls?head=acme:issue/7": `[{"html_url":"https://github.com/acme/widgets/pull/9"}]`,
+		"graphql -F owner=acme -F repo=widgets -F number=7": `{"data":{"repository":{"issue":{"closedByPullRequestsReferences":{"nodes":[
+			{"url":"https://github.com/acme/widgets/pull/12","state":"OPEN","updatedAt":"2026-01-03T00:00:00Z"},
+			{"url":"https://github.com/acme/widgets/pull/9","state":"OPEN","updatedAt":"2026-01-02T00:00:00Z"}
+		]}}}}}`,
+		"repos/acme/widgets/pulls/9":               `{"head":{"sha":"r1"},"mergeable_state":"clean"}`,
+		"repos/acme/widgets/commits/r1/check-runs": `{"check_runs":[]}`,
+		"repos/acme/widgets/commits/r1/status":     `{"statuses":[]}`,
+	}}
+	result, err := Observe(context.Background(), Options{
+		ResourceID:         "https://github.com/acme/widgets/issues/7",
+		WorkspaceDirPath:   "/roots/wt/issue-7",
+		WorkspaceDirBranch: func(ctx context.Context, workspaceDir string) string { return "issue/7" },
+		GHClient:           client,
+	})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	if result.PRURL != "https://github.com/acme/widgets/pull/9" {
+		t.Errorf("pr_url = %q, want the session's own branch pull request", result.PRURL)
+	}
+}

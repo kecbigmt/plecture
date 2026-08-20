@@ -190,29 +190,57 @@ func fetchReviewDecision(ctx context.Context, client github.GHClient, owner, rep
 	return resp.Data.Repository.PullRequest.ReviewDecision
 }
 
-// discoverLinkedPR finds the PR that closes an issue: the session's checked
-// out branch first (a fact about this session, not a GitHub-inferred
-// relation), the GraphQL closing-PR reference as a fallback. Both steps are
-// best-effort — any failure degrades to "no linked PR yet" rather than
+// discoverLinkedPR finds the PR that closes an issue. The issue's own
+// closing-PR references bound the answer, and the session's checked out
+// branch picks among them: a session that builds several branches in one
+// worktree (the stacked-PR pattern) leaves HEAD on a later branch whose PR
+// closes a different issue, so the branch alone would report that PR's head
+// as this issue's revision and make every judge recorded on the real PR read
+// as stale. The branch still decides when the issue has no closing reference
+// at all — a PR whose body never named the issue is invisible to GitHub's
+// relation — and when several references compete. Both steps are
+// best-effort: any failure degrades to "no linked PR yet" rather than
 // failing the observation, matching production's tolerance for a resource
 // that legitimately has no PR at all.
 func discoverLinkedPR(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) string {
+	refs := closingPRRefs(ctx, client, parsed)
+	branchPR := branchPullRequest(ctx, client, parsed, opts)
+	if branchPR != "" && (len(refs) == 0 || containsPR(refs, branchPR)) {
+		return branchPR
+	}
+	return preferOpenPR(refs)
+}
+
+func branchPullRequest(ctx context.Context, client github.GHClient, parsed *github.ParsedURL, opts Options) string {
 	branchOf := opts.WorkspaceDirBranch
 	if branchOf == nil {
 		branchOf = defaultWorkspaceDirBranch
 	}
-	if branch := branchOf(ctx, opts.WorkspaceDirPath); branch != "" {
-		path := fmt.Sprintf("repos/%s/%s/pulls?head=%s:%s&state=all", parsed.Owner, parsed.Repo, parsed.Owner, branch)
-		if raw, err := client.JSON(ctx, path); err == nil {
-			var prs []struct {
-				HTMLURL string `json:"html_url"`
-			}
-			if json.Unmarshal(raw, &prs) == nil && len(prs) > 0 && prs[0].HTMLURL != "" {
-				return prs[0].HTMLURL
-			}
+	branch := branchOf(ctx, opts.WorkspaceDirPath)
+	if branch == "" {
+		return ""
+	}
+	path := fmt.Sprintf("repos/%s/%s/pulls?head=%s:%s&state=all", parsed.Owner, parsed.Repo, parsed.Owner, branch)
+	raw, err := client.JSON(ctx, path)
+	if err != nil {
+		return ""
+	}
+	var prs []struct {
+		HTMLURL string `json:"html_url"`
+	}
+	if json.Unmarshal(raw, &prs) != nil || len(prs) == 0 {
+		return ""
+	}
+	return prs[0].HTMLURL
+}
+
+func containsPR(refs []closingPRRef, url string) bool {
+	for _, r := range refs {
+		if r.URL == url {
+			return true
 		}
 	}
-	return discoverLinkedPRViaGraphQL(ctx, client, parsed)
+	return false
 }
 
 const closingPRsQuery = `query($owner:String!,$repo:String!,$number:Int!){
@@ -225,7 +253,14 @@ const closingPRsQuery = `query($owner:String!,$repo:String!,$number:Int!){
   }
 }`
 
-func discoverLinkedPRViaGraphQL(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) string {
+// closingPRRef is one pull request GitHub reports as closing the issue.
+type closingPRRef struct {
+	URL       string `json:"url"`
+	State     string `json:"state"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+func closingPRRefs(ctx context.Context, client github.GHClient, parsed *github.ParsedURL) []closingPRRef {
 	raw, err := client.JSON(ctx, "graphql",
 		"-F", "owner="+parsed.Owner,
 		"-F", "repo="+parsed.Repo,
@@ -233,34 +268,33 @@ func discoverLinkedPRViaGraphQL(ctx context.Context, client github.GHClient, par
 		"-f", "query="+closingPRsQuery,
 	)
 	if err != nil {
-		return ""
+		return nil
 	}
 	var resp struct {
 		Data struct {
 			Repository struct {
 				Issue struct {
 					ClosedByPullRequestsReferences struct {
-						Nodes []struct {
-							URL       string `json:"url"`
-							State     string `json:"state"`
-							UpdatedAt string `json:"updatedAt"`
-						} `json:"nodes"`
+						Nodes []closingPRRef `json:"nodes"`
 					} `json:"closedByPullRequestsReferences"`
 				} `json:"issue"`
 			} `json:"repository"`
 		} `json:"data"`
 	}
 	if json.Unmarshal(raw, &resp) != nil {
-		return ""
+		return nil
 	}
-	nodes := resp.Data.Repository.Issue.ClosedByPullRequestsReferences.Nodes
-	if len(nodes) == 0 {
+	return resp.Data.Repository.Issue.ClosedByPullRequestsReferences.Nodes
+}
+
+func preferOpenPR(refs []closingPRRef) string {
+	if len(refs) == 0 {
 		return ""
 	}
 	// Prefer the first OPEN reference; ISO 8601 timestamps sort correctly as
 	// plain strings, so the most recently updated otherwise wins.
-	latest := nodes[0]
-	for _, n := range nodes {
+	latest := refs[0]
+	for _, n := range refs {
 		if strings.EqualFold(n.State, "OPEN") {
 			return n.URL
 		}
