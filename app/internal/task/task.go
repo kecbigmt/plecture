@@ -972,7 +972,9 @@ func observerOr(o Observer) Observer {
 // state rather than blindly recreating; see README "Task model" section.
 func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
+	terminalOwner := terminalOwnerIn(ordered)
 	for _, r := range ordered {
+		session = withFreshTerminalOutputs(session, terminalOwner, tasks)
 		if existing, ok := tasks[r.NodeID]; ok && existing != nil && existing.Status == contract.TaskStatusProduced {
 			obs.OnSkip(r.Scope, r.NodeID, "already produced")
 			continue
@@ -1094,6 +1096,42 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		obs.OnSuccess(r.Scope, r.NodeID, time.Since(now), stderrCaptured)
 	}
 	return nil
+}
+
+// terminalOwnerIn returns the node in this run list that declares
+// `[terminal]`, or nil when the plan's declaring node runs elsewhere (a
+// different scope, or an earlier pass).
+func terminalOwnerIn(ordered []Resolved) *Resolved {
+	for i, r := range ordered {
+		if r.Terminal != nil {
+			return &ordered[i]
+		}
+	}
+	return nil
+}
+
+// withFreshTerminalOutputs re-resolves the {{terminal "..."}} binding's
+// .Self from the live state map. The caller builds the binding once, before
+// the pass starts, so a downstream node would otherwise render the verb
+// templates against whatever the declaring node's state held back then —
+// nothing at all on a fresh create or a --force-recreate, which resets the
+// map before this pass repopulates it.
+func withFreshTerminalOutputs(session SessionVars, owner *Resolved, tasks map[string]*contract.TaskState) SessionVars {
+	if owner == nil || session.Terminal == nil {
+		return session
+	}
+	st, ok := tasks[owner.NodeID]
+	if !ok || st == nil {
+		return session
+	}
+	self := TerminalSelf(owner.Layers, st)
+	if self == nil {
+		return session
+	}
+	refreshed := *session.Terminal
+	refreshed.Outputs = self
+	session.Terminal = &refreshed
+	return session
 }
 
 // NextSeq is the exported form of nextSeq: the next instantiation sequence
