@@ -212,10 +212,13 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 			if len(layer.Chains) == 0 {
 				continue
 			}
-			layerOutputs := layerFacts(exposure, i, outputs)
-			facts := buildChainFacts(layerOutputs, eval)
-			published := make([]string, 0, len(layerOutputs))
-			for name := range layerOutputs {
+			facts := buildChainFacts(layerFacts(exposure, i, outputs), eval)
+			// The declared contract is what the layer's keys can reach, not
+			// what they happen to carry right now: a reachable key with no
+			// value yet is a chain waiting on an output, not a chain wired to
+			// something that was never published.
+			published := make([]string, 0, len(exposure[i]))
+			for name := range exposure[i] {
 				published = append(published, name)
 			}
 			slices.Sort(published)

@@ -472,3 +472,46 @@ func TestFinalize_NestedRefusesWhenTheChainDrifted(t *testing.T) {
 		t.Errorf("error = %v, want it to name the drifted chain", err)
 	}
 }
+
+// TestTick_NestedChainWaitsOnAReachableOutputWithNoValueYet separates the two
+// answers a blocked chain can give. A key the composed contract can carry but
+// has not produced yet means wait; only a key it could never carry means the
+// wiring is wrong. Conflating them tells an operator to fix a config that is
+// correct.
+func TestTick_NestedChainWaitsOnAReachableOutputWithNoValueYet(t *testing.T) {
+	store := testStore(t)
+	cfg := nestedConfig(t,
+		taskFixture{extra: `
+[done_when]
+all = [ { check = "pid", ne = "" } ]
+
+[[chains]]
+id       = "review"
+workflow = "default"
+[chains.when]
+all = [ { check = "pid", ne = "" } ]
+[chains.inputs]
+pid   = "{{.Work.outputs.pid}}"
+state = "{{.Work.outputs.state}}"
+`},
+		gateSchema)
+	// Both keys are reachable through the contract; only pid has a value.
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default",
+		nestedTasks(map[string]any{"pid": "42"}, map[string]any{"pid": "42"}, nil))
+
+	_, _, chainPlan, _, err := evaluateSessionActions(cfg, store, "owner/repo-1", false, TickTriggerHeartbeat)
+	if err != nil {
+		t.Fatalf("evaluateSessionActions: %v", err)
+	}
+	if len(chainPlan) != 1 {
+		t.Fatalf("chain plan = %+v, want the inner layer's chain evaluated", chainPlan)
+	}
+	sp := chainPlan[0]
+	if sp.BlockedReason != chainBlockedOutputsMissing {
+		t.Fatalf("blocked reason = %q (warnings %v), want %q — the key is reachable, just not produced yet",
+			sp.BlockedReason, sp.Warnings, chainBlockedOutputsMissing)
+	}
+	if len(sp.MissingOutputs) != 1 || sp.MissingOutputs[0] != "state" {
+		t.Errorf("MissingOutputs = %v, want the one key without a value yet", sp.MissingOutputs)
+	}
+}
