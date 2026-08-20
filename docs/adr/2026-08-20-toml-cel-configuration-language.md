@@ -347,7 +347,7 @@ That inventory must classify each existing dynamic use as one of:
 The audit must specifically settle:
 
 * the complete `from` path vocabulary for each surface;
-* an absence-propagating optional projection (a missing source omits the key instead of supplying an empty-string sentinel), consistent with absent-source bindings in task nesting;
+* an absence-propagating optional projection (a missing source omits the key instead of supplying an empty-string sentinel), consistent with absent-source bindings in task nesting. The recommended spelling is `{ from = ..., optional = true }`, mutually exclusive with `default` (enforced structurally); the audit confirms whether any surface needs a further missing-value behavior before growing this beyond a boolean;
 * the CEL version and Plecture CEL profile;
 * whether any CEL custom functions are actually necessary;
 * the complete tagged-value vocabulary;
