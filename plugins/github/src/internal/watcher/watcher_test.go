@@ -1498,3 +1498,82 @@ func TestPoller_SweepBoundsHungPlectListCall(t *testing.T) {
 		t.Error("Sweep must leave subscriptions untouched when plect ls times out")
 	}
 }
+
+func TestLatestCheckPerName_SupersededRuns(t *testing.T) {
+	tests := []struct {
+		name   string
+		checks []statusCheck
+		want   string
+	}{
+		{
+			name: "cancelled run superseded by a later success",
+			checks: []statusCheck{
+				{Name: "build", Conclusion: "cancelled", StartedAt: "2026-08-20T10:00:00Z", ID: 1},
+				{Name: "build", Conclusion: "success", StartedAt: "2026-08-20T11:00:00Z", ID: 2},
+			},
+			want: "SUCCESS",
+		},
+		{
+			name: "identical start times fall back to the higher run id",
+			checks: []statusCheck{
+				{Name: "build", Conclusion: "success", StartedAt: "2026-08-20T10:00:00Z", ID: 9},
+				{Name: "build", Conclusion: "cancelled", StartedAt: "2026-08-20T10:00:00Z", ID: 4},
+			},
+			want: "SUCCESS",
+		},
+		{
+			name: "latest run failing still fails the rollup",
+			checks: []statusCheck{
+				{Name: "build", Conclusion: "success", StartedAt: "2026-08-20T10:00:00Z", ID: 1},
+				{Name: "build", Conclusion: "failure", StartedAt: "2026-08-20T11:00:00Z", ID: 2},
+			},
+			want: "FAILURE",
+		},
+		{
+			name: "a check name with only cancelled runs still fails the rollup",
+			checks: []statusCheck{
+				{Name: "build", Conclusion: "success", StartedAt: "2026-08-20T11:00:00Z", ID: 1},
+				{Name: "lint", Conclusion: "cancelled", StartedAt: "2026-08-20T10:00:00Z", ID: 2},
+			},
+			want: "FAILURE",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := checksRollup(latestCheckPerName(tt.checks)); got != tt.want {
+				t.Errorf("checksRollup(latestCheckPerName(...)) = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// A combined-status entry carries no check-run name, so name-based deduping
+// must not collapse distinct status contexts into one.
+func TestLatestCheckPerName_KeepsCombinedStatusEntries(t *testing.T) {
+	checks := []statusCheck{{State: "success"}, {State: "error"}}
+	if got := checksRollup(append(latestCheckPerName(nil), checks...)); got != "FAILURE" {
+		t.Errorf("rollup = %q, want FAILURE", got)
+	}
+}
+
+func TestFetchChecks_SupersededCancelledRunDoesNotFail(t *testing.T) {
+	binDir := t.TempDir()
+	gh := fakeGh(t, binDir, "", []ghRoute{
+		{match: "check-runs", stdout: `{"id":1,"name":"build","conclusion":"cancelled","started_at":"2026-08-20T10:00:00Z"}
+{"id":2,"name":"build","conclusion":"success","started_at":"2026-08-20T11:00:00Z"}`},
+		{match: "/status", stdout: ""},
+	})
+	p := &Poller{
+		Store:  NewStore(t.TempDir()),
+		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		GhBin:  gh,
+		Guard:  ratebudget.NewGuard(t.TempDir()),
+	}
+	got, ok := p.fetchChecks("org", "repo", "deadbeef")
+	if !ok {
+		t.Fatal("fetchChecks failed")
+	}
+	if got != "SUCCESS" {
+		t.Errorf("checks = %q, want SUCCESS", got)
+	}
+}

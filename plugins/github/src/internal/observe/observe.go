@@ -386,6 +386,50 @@ func checksRollup(ctx context.Context, client github.GHClient, owner, repo, sha 
 	return rollupChecks(append(runs, statuses...)), nil
 }
 
+// checkRun is one check-run as the REST endpoint reports it, carrying the
+// identity and ordering fields latestCheckRunPerName needs on top of the
+// classification fields.
+type checkRun struct {
+	ID         int64  `json:"id"`
+	Name       string `json:"name"`
+	Conclusion string `json:"conclusion"`
+	Status     string `json:"status"`
+	StartedAt  string `json:"started_at"`
+}
+
+// latestCheckRunPerName keeps only the newest run for each check name. A
+// commit accumulates every check-run ever created for it, so a workflow run
+// superseded by a force-push or by concurrency cancellation leaves CANCELLED
+// runs behind forever; rolling those up would pin the commit to FAILURE for
+// the rest of its life, while gh and the GitHub UI report the re-run's
+// verdict. Run ids are monotonic, so they break ties when two runs of the
+// same name share a start time.
+func latestCheckRunPerName(runs []checkRun) []checkEntry {
+	latest := make(map[string]checkRun, len(runs))
+	order := make([]string, 0, len(runs))
+	for _, r := range runs {
+		prev, seen := latest[r.Name]
+		if !seen {
+			order = append(order, r.Name)
+			latest[r.Name] = r
+			continue
+		}
+		if r.StartedAt > prev.StartedAt || (r.StartedAt == prev.StartedAt && r.ID > prev.ID) {
+			latest[r.Name] = r
+		}
+	}
+	entries := make([]checkEntry, 0, len(order))
+	for _, name := range order {
+		r := latest[name]
+		if r.Conclusion != "" {
+			entries = append(entries, checkEntry{conclusion: strings.ToUpper(r.Conclusion)})
+		} else {
+			entries = append(entries, checkEntry{state: strings.ToUpper(r.Status)})
+		}
+	}
+	return entries
+}
+
 // fetchCheckRuns reads one page of check-runs. Production paginates this
 // endpoint; a resource whose check suite exceeds one page (GitHub's default
 // is 30) is a known gap here, left for a follow-up if it proves to matter in
@@ -396,23 +440,12 @@ func fetchCheckRuns(ctx context.Context, client github.GHClient, owner, repo, sh
 		return nil, fmt.Errorf("fetch check runs: %w", err)
 	}
 	var resp struct {
-		CheckRuns []struct {
-			Conclusion string `json:"conclusion"`
-			Status     string `json:"status"`
-		} `json:"check_runs"`
+		CheckRuns []checkRun `json:"check_runs"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, fmt.Errorf("parse check runs: %w", err)
 	}
-	entries := make([]checkEntry, 0, len(resp.CheckRuns))
-	for _, r := range resp.CheckRuns {
-		if r.Conclusion != "" {
-			entries = append(entries, checkEntry{conclusion: strings.ToUpper(r.Conclusion)})
-		} else {
-			entries = append(entries, checkEntry{state: strings.ToUpper(r.Status)})
-		}
-	}
-	return entries, nil
+	return latestCheckRunPerName(resp.CheckRuns), nil
 }
 
 func fetchCombinedStatus(ctx context.Context, client github.GHClient, owner, repo, sha string) ([]checkEntry, error) {

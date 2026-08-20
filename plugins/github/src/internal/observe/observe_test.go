@@ -40,7 +40,7 @@ func TestObserve_UnknownResourceKind(t *testing.T) {
 func TestObserve_Pull_ComputesChecksAndMergeable(t *testing.T) {
 	client := &fakeGHClient{responses: map[string]string{
 		"repos/acme/widgets/pulls/44":                  `{"head":{"sha":"abc123"},"mergeable_state":"clean"}`,
-		"repos/acme/widgets/commits/abc123/check-runs": `{"check_runs":[{"conclusion":"success"},{"conclusion":null,"status":"in_progress"}]}`,
+		"repos/acme/widgets/commits/abc123/check-runs": `{"check_runs":[{"id":1,"name":"build","conclusion":"success"},{"id":2,"name":"lint","conclusion":null,"status":"in_progress"}]}`,
 		"repos/acme/widgets/commits/abc123/status":     `{"statuses":[]}`,
 	}}
 	result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/pull/44", GHClient: client})
@@ -300,5 +300,114 @@ func TestObserve_Issue_ReviewDecisionIsNullWithoutALinkedPR(t *testing.T) {
 	}
 	if result.ReviewDecision != "NULL" {
 		t.Errorf("review_decision = %q, want NULL", result.ReviewDecision)
+	}
+}
+
+func TestLatestCheckRunPerName(t *testing.T) {
+	tests := []struct {
+		name string
+		runs []checkRun
+		want []checkEntry
+	}{
+		{
+			name: "cancelled run superseded by a later success",
+			runs: []checkRun{
+				{Name: "build", Conclusion: "cancelled", StartedAt: "2026-08-20T10:00:00Z", ID: 1},
+				{Name: "build", Conclusion: "success", StartedAt: "2026-08-20T11:00:00Z", ID: 2},
+			},
+			want: []checkEntry{{conclusion: "SUCCESS"}},
+		},
+		{
+			name: "identical start times fall back to the higher run id",
+			runs: []checkRun{
+				{Name: "build", Conclusion: "success", StartedAt: "2026-08-20T10:00:00Z", ID: 9},
+				{Name: "build", Conclusion: "cancelled", StartedAt: "2026-08-20T10:00:00Z", ID: 4},
+			},
+			want: []checkEntry{{conclusion: "SUCCESS"}},
+		},
+		{
+			name: "only cancelled runs keep the failing entry",
+			runs: []checkRun{
+				{Name: "build", Conclusion: "cancelled", StartedAt: "2026-08-20T10:00:00Z", ID: 1},
+				{Name: "build", Conclusion: "cancelled", StartedAt: "2026-08-20T11:00:00Z", ID: 2},
+			},
+			want: []checkEntry{{conclusion: "CANCELLED"}},
+		},
+		{
+			name: "an unfinished latest run reports its status",
+			runs: []checkRun{
+				{Name: "build", Conclusion: "cancelled", StartedAt: "2026-08-20T10:00:00Z", ID: 1},
+				{Name: "build", Status: "in_progress", StartedAt: "2026-08-20T11:00:00Z", ID: 2},
+			},
+			want: []checkEntry{{state: "IN_PROGRESS"}},
+		},
+		{
+			name: "distinct names are kept independently",
+			runs: []checkRun{
+				{Name: "build", Conclusion: "success", StartedAt: "2026-08-20T10:00:00Z", ID: 1},
+				{Name: "lint", Conclusion: "failure", StartedAt: "2026-08-20T10:00:00Z", ID: 2},
+			},
+			want: []checkEntry{{conclusion: "SUCCESS"}, {conclusion: "FAILURE"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := latestCheckRunPerName(tt.runs)
+			if len(got) != len(tt.want) {
+				t.Fatalf("latestCheckRunPerName() = %v, want %v", got, tt.want)
+			}
+			for _, w := range tt.want {
+				found := false
+				for _, g := range got {
+					if g == w {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("latestCheckRunPerName() = %v, missing %v", got, w)
+				}
+			}
+		})
+	}
+}
+
+func TestObserve_Pull_SupersededCancelledRuns(t *testing.T) {
+	tests := []struct {
+		name      string
+		checkRuns string
+		want      string
+	}{
+		{
+			name:      "cancelled run of a superseded workflow run does not fail the rollup",
+			checkRuns: `{"check_runs":[{"id":1,"name":"build","status":"completed","conclusion":"cancelled","started_at":"2026-08-20T10:00:00Z"},{"id":2,"name":"build","status":"completed","conclusion":"success","started_at":"2026-08-20T11:00:00Z"}]}`,
+			want:      "SUCCESS",
+		},
+		{
+			name:      "latest run failing still fails the rollup",
+			checkRuns: `{"check_runs":[{"id":1,"name":"build","status":"completed","conclusion":"success","started_at":"2026-08-20T10:00:00Z"},{"id":2,"name":"build","status":"completed","conclusion":"failure","started_at":"2026-08-20T11:00:00Z"}]}`,
+			want:      "FAILURE",
+		},
+		{
+			name:      "a check name with only cancelled runs still fails the rollup",
+			checkRuns: `{"check_runs":[{"id":1,"name":"build","status":"completed","conclusion":"success","started_at":"2026-08-20T11:00:00Z"},{"id":2,"name":"lint","status":"completed","conclusion":"cancelled","started_at":"2026-08-20T10:00:00Z"}]}`,
+			want:      "FAILURE",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &fakeGHClient{responses: map[string]string{
+				"repos/acme/widgets/pulls/44":                  `{"head":{"sha":"abc123"},"mergeable_state":"clean"}`,
+				"repos/acme/widgets/commits/abc123/check-runs": tt.checkRuns,
+				"repos/acme/widgets/commits/abc123/status":     `{"statuses":[]}`,
+			}}
+			result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/pull/44", GHClient: client})
+			if err != nil {
+				t.Fatalf("Observe: %v", err)
+			}
+			if result.ChecksStatus != tt.want {
+				t.Errorf("checks_status = %q, want %q", result.ChecksStatus, tt.want)
+			}
+		})
 	}
 }
