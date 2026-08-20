@@ -54,16 +54,29 @@ func run(args []string) error {
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(map[string]any{
-			"resource_kind":   result.ResourceKind,
-			"checks_status":   result.ChecksStatus,
-			"issue_status":    result.IssueStatus,
-			"revision":        result.Revision,
-			"pr_url":          result.PRURL,
-			"mergeable_state": result.MergeableState,
-			"review_decision": result.ReviewDecision,
-		})
+		return enc.Encode(observeDocument(*result))
 	default:
 		return fmt.Errorf("unknown subcommand %q; expected observe", args[0])
 	}
+}
+
+// observeDocument renders one observation as the state document the resource
+// definition's [state_schema] describes.
+//
+// `pr_url` is absent, not empty, until a pull request exists: a chain wiring
+// it renders its inputs under missingkey=error, so absence is what keeps such
+// a chain from firing before there is a pull request to hand it.
+func observeDocument(result observe.Result) map[string]any {
+	doc := map[string]any{
+		"resource_kind":   result.ResourceKind,
+		"checks_status":   result.ChecksStatus,
+		"issue_status":    result.IssueStatus,
+		"revision":        result.Revision,
+		"mergeable_state": result.MergeableState,
+		"review_decision": result.ReviewDecision,
+	}
+	if result.PRURL != "" {
+		doc["pr_url"] = result.PRURL
+	}
+	return doc
 }
