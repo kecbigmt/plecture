@@ -105,8 +105,14 @@ func RenderAttach(cmd string, selfOutputs map[string]any, session SessionVars) (
 // .Self), and session vars (mirroring RenderAttach). Runs via bash -c. A
 // non-zero exit or a render failure is returned as an error carrying stderr;
 // nil means the execution surface is present.
-func RunAliveProbe(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars, env ...string) error {
-	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Inputs: nodeInputs, Session: session})
+//
+// sourcePath is the file the probe was declared in, which for one layer of a
+// nesting chain is that layer's own definition and not the outermost one: a
+// bare `{{bin "<name>"}}` resolves against the plugin that ships the file,
+// so passing the wrong layer's path would look for the executable in the
+// wrong plugin.
+func RunAliveProbe(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars, sourcePath string, env ...string) error {
+	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Inputs: nodeInputs, Session: session, SourcePath: sourcePath})
 	if err != nil {
 		return err
 	}
