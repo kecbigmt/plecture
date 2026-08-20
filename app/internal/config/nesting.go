@@ -66,15 +66,18 @@ func (d TaskDefinition) ResolvedLocalsSchemaPath() string {
 // the shell at run time.
 var envNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// outputBinding is one `[bind.outputs]` entry after classification.
+// OutputBinding is one `[bind.outputs]` entry after classification.
 //
 // Direct bindings project the inner output's native value and route mutable
 // writes to it; computed bindings are rendered strings. The two carry
-// different schema obligations, so which one an entry is has to be decided
-// statically, from the template body alone.
-type outputBinding struct {
+// different schema obligations and different runtime behavior, so which one
+// an entry is has to be decided statically, from the template body alone.
+type OutputBinding struct {
 	// Key is the public output name this entry defines.
 	Key string
+	// Template is the entry's declared template body, which the projection
+	// renders for a computed binding.
+	Template string
 	// Direct is true when the whole template body is exactly one
 	// `.Inner.outputs.<key>` reference.
 	Direct bool
@@ -147,11 +150,11 @@ func TemplateFieldRefs(tmplStr string) ([][]string, error) {
 	return out, nil
 }
 
-// classifyOutputBinding decides whether tmpl is a direct inner-output
+// ClassifyOutputBinding decides whether tmpl is a direct inner-output
 // binding and collects the sources it reads, rejecting any source that is
 // neither an inner public output nor a local.
-func classifyOutputBinding(key, tmpl string) (outputBinding, error) {
-	b := outputBinding{Key: key}
+func ClassifyOutputBinding(key, tmpl string) (OutputBinding, error) {
+	b := OutputBinding{Key: key, Template: tmpl}
 	t, err := template.New("bind-output").Parse(tmpl)
 	if err != nil {
 		return b, fmt.Errorf("bind.outputs %q: %w", key, err)
@@ -276,6 +279,28 @@ func schemaPropertyMutable(props map[string]any, key string) bool {
 	}
 	b, _ := prop["mutable"].(bool)
 	return b
+}
+
+// ClassifiedOutputBindings returns this layer's `[bind.outputs]` entries in
+// a stable key order, each classified as direct or computed. Load-time
+// validation and the runtime projection read the same classification from
+// here rather than each deciding it again.
+func (d TaskDefinition) ClassifiedOutputBindings() ([]OutputBinding, error) {
+	bound := d.Bind.OutputBindings()
+	keys := make([]string, 0, len(bound))
+	for k := range bound {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]OutputBinding, 0, len(keys))
+	for _, k := range keys {
+		b, err := ClassifyOutputBinding(k, bound[k])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, nil
 }
 
 // SchemaRequiredNames returns the schema document's `required` list, and
