@@ -60,9 +60,6 @@ func run(args []string) error {
 	}
 }
 
-// observeDocument renders one observation as the state document the resource
-// definition's [state_schema] describes.
-//
 // `pr_url` is absent, not empty, until a pull request exists: a chain wiring
 // it renders its inputs under missingkey=error, so absence is what keeps such
 // a chain from firing before there is a pull request to hand it.
