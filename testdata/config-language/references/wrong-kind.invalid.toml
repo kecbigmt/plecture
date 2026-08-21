@@ -1,5 +1,5 @@
 # plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-KIND-MISMATCH entry=definitions
-# reason: a node's uses expects kind task, and the resolved target declares kind channel.
+# reason: a node's uses expects kind effect, and the resolved target declares kind channel.
 
 [delivery]
 kind    = "channel"

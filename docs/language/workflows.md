@@ -25,7 +25,7 @@ nodes it cannot modify.
 kind               = "workflow"
 name               = "goal-review agent (local-okf)"
 description        = "Dispatch an agent session against a local-okf goal resource, then deliver the goal_review task's instructions."
-workspace_provider = "local_okf"
+workspace_provider = "okf_bundle"
 
 [goal_reviewer.display]
 title  = { from = "workflow.outputs.concept_id" }
