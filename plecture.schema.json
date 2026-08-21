@@ -22,7 +22,7 @@
       "required": [
         "kind"
       ],
-      "$comment": "PLECT-CFG-KIND-MISSING when kind is absent; PLECT-CFG-KIND-UNKNOWN when it is outside the vocabulary.",
+      "$comment": "PLECT-CFG-KIND-MISSING when kind is absent; PLECT-CFG-KIND-UNKNOWN when it is outside the vocabulary; PLECT-CFG-WORK-IN-TOML-DOCUMENT when a kind whose declaration needs a body appears in a TOML definition document.",
       "properties": {
         "kind": {
           "enum": [
@@ -40,9 +40,6 @@
           "$ref": "#/$defs/taskDefinition"
         },
         {
-          "$ref": "#/$defs/workDefinition"
-        },
-        {
           "$ref": "#/$defs/channelDefinition"
         },
         {
@@ -55,7 +52,17 @@
           "$ref": "#/$defs/resourceObserverDefinition"
         }
       ],
-      "description": "A definition block. Every kind is declared the same way: a table named by the definition id, carrying kind. A work block additionally appears only as the single block of a Markdown file's frontmatter."
+      "description": "A definition block in a TOML definition document. Every kind is declared the same way \u2014 a table named by the definition id, carrying kind \u2014 but a kind with a body, which today means work, is declared in a Markdown file's frontmatter instead and is validated at #work.",
+      "not": {
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "const": "work"
+          }
+        }
+      }
     },
     "staticReference": {
       "type": "string",

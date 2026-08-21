@@ -25,12 +25,16 @@ kind = "<kind>"
 The kind vocabulary is `task`, `work`, `channel`, `workflow`,
 `workspace_provider`, and `resource_observer`.
 
-`work` is the one kind that is not a TOML table. A work document is a Markdown
-file whose `+++` frontmatter declares `kind = "work"` and its `id`, and whose
-body is the instruction. Its id lives in the frontmatter for the same reason a
-TOML definition's lives in its table name: the declaration carries its own
-identity, and the filename does not. Everything else in this chapter — the id
-grammar, the namespace, the reference grammar — applies to it unchanged. See
+Every kind is declared the same way, `work` included: a `[<id>]` table carrying
+`kind`. What differs is the file a declaration lives in. A kind with a body is a
+Markdown file whose `+++` TOML frontmatter holds that one declaration and whose
+body belongs to it; a kind without a body is a TOML file. `work` is the one kind
+with a body today, so a work declaration appears only in frontmatter, and a TOML
+definition document carrying `kind = "work"` is a load error — the declaration
+would have no instruction.
+
+Nothing else changes for it: the id is the table name, the id grammar holds, the
+namespace is shared, and references resolve the same way. See
 [`work.md`](work.md).
 
 A kind uses its bare concept name when the declaration's runtime counterpart
@@ -238,6 +242,8 @@ executable name. See [`actions.md`](actions.md).
   error.
 - A work document opens with `+++` frontmatter holding exactly one declaration,
   whose kind is `work`.
+- A TOML definition document declaring `kind = "work"` is a load error: a kind
+  with a body is declared in frontmatter.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
 - Two definitions with the same id in one layer are a load error, whatever
   their kinds.

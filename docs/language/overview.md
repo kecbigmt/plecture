@@ -115,6 +115,8 @@ may improve over time.
 | `PLECT-CFG-REF-DYNAMIC` | structural | A statically discoverable field carries a computed value. |
 | `PLECT-CFG-CHANNEL-TIMEOUT-ROOT` | structural | A channel `timeout` reads author-declared parameters only. |
 | `PLECT-CFG-WORK-FRONTMATTER-MISSING` | structural | A work document does not open with `+++` frontmatter. |
+| `PLECT-CFG-WORK-BLOCK-COUNT` | structural | A work document's frontmatter holds other than exactly one declaration. |
+| `PLECT-CFG-WORK-IN-TOML-DOCUMENT` | structural | A TOML definition document declares a kind whose declaration needs a body. |
 | `PLECT-CFG-UNKNOWN-REF` | semantic | A reference resolves to no definition. |
 | `PLECT-CFG-KIND-MISMATCH` | semantic | A reference site's expected kind differs from the target's declared kind. |
 | `PLECT-CFG-ID-DUPLICATE` | semantic | One layer declares the same definition id twice. |
