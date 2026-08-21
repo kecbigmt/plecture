@@ -22,7 +22,6 @@ schema_version = 1
 workspace_dirs_root = "~/worktrees"
 resource_allowlist  = ["^https://github\\.com/kecbigmt/"]
 plugin_dirs         = ["~/.config/plect/plugins"]
-detached            = true
 channels            = ["notify"]
 
 [inputs_schema]
@@ -39,12 +38,15 @@ task = { type = "string" }
 | `workspace_dirs_root` | Where workspace directories are created. |
 | `resource_allowlist` | Patterns a resource identifier must match to be accepted. |
 | `plugin_dirs` | Additional plugin mount directories, after the catalog-resolved ones. |
-| `detached` | Whether dispatch detaches by default. |
 | `channels` | Channel definitions delivering for every session. |
 | `inputs_schema` | Contract for the session inputs this machine accepts. |
 
 `workspace_dirs_root` is the value a workspace provider projects as
 `config.workspace_dirs_root`.
+
+There is no field for whether dispatch detaches. Detachment is a property of the
+invoking context — the flag given, whether a terminal is attached, whether an
+attach target exists — and none of those is durable configuration.
 
 ### The dialect declaration
 

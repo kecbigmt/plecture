@@ -6,7 +6,6 @@ schema_version = 1
 workspace_dirs_root = "~/worktrees"
 resource_allowlist  = ["^https://github\\.com/kecbigmt/"]
 plugin_dirs         = ["~/.config/plect/plugins"]
-detached            = true
 channels            = ["notify"]
 
 [inputs_schema]
