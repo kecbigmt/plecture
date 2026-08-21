@@ -118,6 +118,8 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-FIELD-UNKNOWN` | structural | A field is not part of the containing kind's surface. |
 | `PLECTURE-CFG-FIELD-REQUIRED` | structural | A required field is absent. |
 | `PLECTURE-CFG-FIELD-TYPE` | structural | A field's TOML shape is not the one its surface accepts. |
+| `PLECTURE-CFG-SCHEMA-VERSION-OLDER` | semantic | A tree declares a superseded dialect; the error names the migration that carries it forward. |
+| `PLECTURE-CFG-SCHEMA-VERSION-NEWER` | semantic | A tree declares a dialect this binary does not know; the error names the binary as too old. |
 | `PLECTURE-CFG-VALUE-FROM-AND-EXPR` | structural | One value declares both `from` and `expr`. |
 | `PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL` | structural | `default` and `optional` are mutually exclusive. |
 | `PLECTURE-CFG-VALUE-TAG-UNKNOWN` | structural | A tagged value uses a key outside the vocabulary. |

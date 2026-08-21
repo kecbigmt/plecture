@@ -1,6 +1,8 @@
 # plect-fixture: result=valid entry=config
 # reason: config.toml is a reserved root file carrying machine-wide settings, not definition blocks.
 
+schema_version = 1
+
 workspace_dirs_root = "~/worktrees"
 resource_allowlist  = ["^https://github\\.com/kecbigmt/"]
 plugin_dirs         = ["~/.config/plect/plugins"]

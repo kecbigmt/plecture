@@ -17,6 +17,8 @@ sweep reads every other `.toml` file as a definition document.
 
 <!-- fixture: config/config.toml -->
 ```toml
+schema_version = 1
+
 workspace_dirs_root = "~/worktrees"
 resource_allowlist  = ["^https://github\\.com/kecbigmt/"]
 plugin_dirs         = ["~/.config/plect/plugins"]
@@ -33,6 +35,7 @@ task = { type = "string" }
 
 | Field | Meaning |
 |---|---|
+| `schema_version` | The dialect this config tree is written in. |
 | `workspace_dirs_root` | Where workspace directories are created. |
 | `resource_allowlist` | Patterns a resource identifier must match to be accepted. |
 | `plugin_dirs` | Additional plugin mount directories, after the catalog-resolved ones. |
@@ -42,6 +45,35 @@ task = { type = "string" }
 
 `workspace_dirs_root` is the value a workspace provider projects as
 `config.workspace_dirs_root`.
+
+### The dialect declaration
+
+`schema_version` states which dialect of this language the tree is written in.
+It is required: a tree that does not say gets a load error rather than an assumed
+default.
+
+Versioning is per package, never per file. This one declaration governs the whole
+user tree — every definition document and every task document under it inherits
+it — and a plugin declares its own in its manifest. A dialect is a property of a
+body of configuration that moves together, not of the files it happens to be
+split across.
+
+It is a different axis from `plect_min_version`, which is binary compatibility:
+one says what language the configuration speaks, the other what program can run
+it.
+
+Loading compares the declared dialect against the one the binary knows, three
+ways:
+
+| Declared | Behavior |
+|---|---|
+| The known dialect | Load. |
+| Older | Error naming the migration that carries the tree forward. |
+| Newer | Error naming the binary as too old. |
+
+No case guesses. A version increment ships together with its migration
+procedure in [`../migrations/`](../migrations/), so the older branch always has
+something to name.
 
 ## catalogs.toml
 
@@ -78,7 +110,10 @@ edit.
 
 - A definition table in a reserved root file is a load error.
 - An unknown field is a load error rather than being ignored.
-- `schema_version` is required in `catalogs.toml` and `plect.lock`.
+- `schema_version` is required in `config.toml`, `catalogs.toml`, and
+  `plect.lock`.
+- A declared dialect that is not the one the binary knows is a load error, in
+  the direction the comparison found.
 - A catalog alias matches `^[A-Za-z0-9][A-Za-z0-9_-]*$`.
 - Every `channels` entry resolves to a definition of kind `channel`.
 - A missing `catalogs.toml` means no catalogs are registered, which is not an

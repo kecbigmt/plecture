@@ -1188,12 +1188,17 @@
       }
     },
     "configFile": {
-      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN: a reserved root file's surface is closed, and a definition table is not part of it.",
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED: a reserved root file's surface is closed, a definition table is not part of it, and the dialect declaration is not optional.",
       "$anchor": "config",
       "type": "object",
       "additionalProperties": false,
       "description": "config.toml, a reserved root file. It is not a definition file.",
       "properties": {
+        "schema_version": {
+          "type": "integer",
+          "description": "The dialect this user config tree is written in. It governs the whole tree \u2014 split definition documents and task documents inherit it \u2014 and is orthogonal to plect_min_version, which is binary compatibility rather than language dialect.",
+          "$comment": "PLECTURE-CFG-SCHEMA-VERSION-OLDER, PLECTURE-CFG-SCHEMA-VERSION-NEWER: which dialects are accepted is the loader's three-way comparison, not a structural bound, so no range is asserted here."
+        },
         "workspace_dirs_root": {
           "type": "string"
         },
@@ -1224,7 +1229,10 @@
         "inputs_schema_file": {
           "type": "string"
         }
-      }
+      },
+      "required": [
+        "schema_version"
+      ]
     },
     "catalogsFile": {
       "$anchor": "catalogs",
