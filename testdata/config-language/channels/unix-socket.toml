@@ -1,0 +1,11 @@
+# plect-fixture: result=valid entry=definitions
+# reason: the unix_socket primitive dials path and writes body as one framed message; json is the boundary serializer.
+
+[delivery]
+kind = "channel"
+type = "unix_socket"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
+
+[delivery.input_schema]
+path = { type = "string", required = true }

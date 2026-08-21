@@ -1,0 +1,54 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a direct projection of an inner output keeps write-through semantics for a mutable output.
+
+[guarded_runtime]
+kind  = "effect"
+scope = "run"
+
+[guarded_runtime.setup]
+type   = "shell"
+script = '''
+dir=$(mktemp -d)
+printf '{"guard_dir":"%s"}\n' "$dir"
+'''
+
+[guarded_runtime.locals_schema]
+type     = "object"
+required = ["guard_dir"]
+
+[guarded_runtime.locals_schema.properties]
+guard_dir = { type = "string" }
+
+[guarded_runtime.inner]
+uses = "official.claude.runtime"
+
+[guarded_runtime.inner.inputs]
+tmux_session = { from = "inputs.tmux_session" }
+model        = { from = "inputs.model", default = "fable" }
+path_prepend = { from = "locals.guard_dir" }
+
+[guarded_runtime.inner.env]
+PLECT_TEAM_CONTEXT = { from = "session.name" }
+
+[guarded_runtime.outputs.bind]
+pid         = { from = "inner.outputs.pid" }
+socket_path = { from = "inner.outputs.socket_path" }
+guard_dir   = { from = "locals.guard_dir" }
+
+[guarded_runtime.outputs_schema]
+type     = "object"
+required = ["pid", "socket_path"]
+
+[guarded_runtime.outputs_schema.properties]
+pid         = { type = "integer", mutable = true }
+socket_path = { type = "string", mutable = true }
+guard_dir   = { type = "string" }
+
+[guarded_runtime.inputs_schema]
+type                 = "object"
+required             = ["tmux_session"]
+additionalProperties = false
+
+[guarded_runtime.inputs_schema.properties]
+tmux_session = { type = "string" }
+model        = { type = "string" }

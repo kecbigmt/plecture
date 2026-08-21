@@ -1,0 +1,14 @@
+# plect-fixture: result=valid entry=catalog
+# reason: explicit enumeration, not directory presence, is what publishes a plugin in a catalog.
+
+schema_version = 1
+description    = "Plecture's official plugin catalog: reusable workspace provider, resource observer, task, and channel packs."
+
+plugins = [
+  "tmux",
+  "claude",
+  "codex",
+  "slack",
+  "okf",
+  "github",
+]

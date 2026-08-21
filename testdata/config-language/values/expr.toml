@@ -1,0 +1,10 @@
+# plect-fixture: result=valid entry=definitions
+# reason: expr carries a CEL expression and is reserved for actual computation.
+
+[notify]
+kind = "channel"
+type = "exec"
+bin  = "slack-post"
+args = [
+  { expr = "event.body != '' ? event.body : event.summary" },
+]

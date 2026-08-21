@@ -1,0 +1,12 @@
+# plect-fixture: result=valid entry=definitions
+# reason: blocks declares a reverse dependency edge, so an overlay can insert itself ahead of base nodes it cannot edit.
+
+[session]
+kind = "workflow"
+
+[[session.nodes]]
+uses = "pane"
+
+[[session.nodes]]
+uses   = "reaper"
+blocks = ["pane"]

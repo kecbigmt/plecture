@@ -1,0 +1,10 @@
+# plect-fixture: result=valid entry=catalogs
+# reason: catalogs.toml registers catalog aliases and the plugins enabled under each.
+
+schema_version = 1
+
+[[catalogs]]
+alias   = "official"
+source  = "https://github.com/kecbigmt/plecture"
+subdir  = "plugins"
+plugins = ["tmux", "claude", "github"]

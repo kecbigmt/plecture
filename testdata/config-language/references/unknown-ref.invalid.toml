@@ -1,0 +1,8 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-UNKNOWN-REF entry=definitions
+# reason: no definition named absent_effect resolves in this layer stack.
+
+[session]
+kind = "workflow"
+
+[[session.nodes]]
+uses = "absent_effect"

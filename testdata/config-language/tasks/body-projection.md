@@ -1,0 +1,32 @@
+<!-- plect-fixture: result=valid entry=task -->
+<!-- reason: a projection in prose position is the same from projection, over the roots the instruction is about, stringified on the way out. -->
++++
+[review]
+kind              = "task"
+description       = "Review a pull request, addressing it by what the observer reports"
+resource_observer = "issue_pr"
+
+[review.inputs_schema]
+type = "object"
+
+[review.inputs_schema.properties]
+instruction = { type = "string" }
+
+[review.state_schema]
+type = "object"
+
+[review.state_schema.properties]
+verdict_revision = { type = "string" }
+
+[review.done_when]
+all = [
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { expr = "self.state.verdict_revision == resource.state.revision" },
+]
++++
+Review {{ resource.id }} at revision {{ resource.state.revision }}.
+
+You are working as session {{ session.name }}. The last verdict recorded here
+was against {{ self.state.verdict_revision }}.
+
+Additional instructions: {{ inputs.instruction }}

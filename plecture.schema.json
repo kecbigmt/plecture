@@ -1,0 +1,1628 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/kecbigmt/plecture/plecture.schema.json",
+  "title": "Plecture configuration language",
+  "description": "Structural schema for Plecture configuration. The root schema describes a definition document: a TOML file whose top-level tables are definition blocks. A task document is a Markdown file whose TOML frontmatter is validated at #task. The reserved root files and the plugin/catalog manifests have their own entry points too, so the full set of anchors is #definitions, #task, #config, #catalogs, #lock, #plugin, and #catalog. This schema is authoritative for accepted structural shapes until the implementation lands a schema generator whose output is conformance-tested against it. It deliberately does not encode cross-definition or evaluation-context rules, which are Plecture semantic validation, nor expression correctness, which is CEL validation.",
+  "$ref": "#/$defs/definitionDocument",
+  "$defs": {
+    "definitionDocument": {
+      "$anchor": "definitions",
+      "type": "object",
+      "description": "A discovered TOML file in a trusted definition root. Every top-level table is a definition block whose table name is the definition id.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+        "$comment": "PLECTURE-CFG-ID-INVALID. Dots separate address segments and hyphens are excluded because a task id is also a workflow node id."
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/definition"
+      }
+    },
+    "definition": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "$comment": "PLECTURE-CFG-KIND-MISSING when kind is absent; PLECTURE-CFG-KIND-UNKNOWN when it is outside the vocabulary; PLECTURE-CFG-TASK-IN-TOML-DOCUMENT when a kind whose declaration needs a body appears in a TOML definition document.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "effect",
+            "task",
+            "channel",
+            "workflow",
+            "workspace_provider",
+            "resource_observer"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/effectDefinition"
+        },
+        {
+          "$ref": "#/$defs/channelDefinition"
+        },
+        {
+          "$ref": "#/$defs/workflowDefinition"
+        },
+        {
+          "$ref": "#/$defs/workspaceProviderDefinition"
+        },
+        {
+          "$ref": "#/$defs/resourceObserverDefinition"
+        }
+      ],
+      "description": "A definition block in a TOML definition document. Every kind is declared the same way \u2014 a table named by the definition id, carrying kind \u2014 but a kind with a body, which today means task, is declared in a Markdown file's frontmatter instead and is validated at #task.",
+      "not": {
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "const": "task"
+          }
+        }
+      }
+    },
+    "staticReference": {
+      "type": "string",
+      "description": "A dotted definition address: the relative form <id>, or the catalog-qualified form <catalog-alias>.<plugin-path>.<id>. Never a tagged value, because static topology stays statically discoverable.",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9][A-Za-z0-9_-]*)*$",
+      "$comment": "PLECTURE-CFG-REF-DYNAMIC when a tagged value appears here."
+    },
+    "executableName": {
+      "type": "string",
+      "description": "A plugin-owned executable. A bare name resolves against the containing plugin's own executables. User-authored config uses the catalog-qualified slash form <catalog-alias>/<plugin-path> or <catalog-alias>/<plugin-path>/<executable-name>. Executable lookup is a separate namespace from definition references and keeps the slash grammar, because it must split an arbitrary-depth plugin path from an executable name.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_./-]*$"
+    },
+    "literalScalar": {
+      "$comment": "PLECTURE-CFG-VALUE-TAG-SURFACE: a surface accepting a literal only rejects any tagged value.",
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean"
+      ]
+    },
+    "fromValue": {
+      "$comment": "PLECTURE-CFG-VALUE-FROM-AND-EXPR, PLECTURE-CFG-VALUE-TAG-UNKNOWN, PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL.",
+      "type": "object",
+      "required": [
+        "from"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "A projection path. Its leading segment is the root; which roots are available is surface-specific and checked by Plecture semantic validation.",
+          "pattern": "^[a-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$"
+        },
+        "default": {
+          "description": "The value used when the source is absent. Mutually exclusive with optional."
+        },
+        "optional": {
+          "const": true,
+          "description": "Absence propagates: a missing source omits the key rather than supplying a sentinel. Mutually exclusive with default."
+        }
+      },
+      "not": {
+        "required": [
+          "default",
+          "optional"
+        ],
+        "$comment": "PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL."
+      }
+    },
+    "exprValue": {
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN.",
+      "type": "object",
+      "required": [
+        "expr"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "expr": {
+          "type": "string",
+          "description": "One CEL expression, parsed and checked against the environment declared for this expression site."
+        }
+      }
+    },
+    "terminalValue": {
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN.",
+      "type": "object",
+      "required": [
+        "terminal"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "terminal": {
+          "enum": [
+            "attach",
+            "capture",
+            "send_text",
+            "send_keys"
+          ],
+          "description": "A terminal capability, resolved through whichever task in the plan declares the interactive endpoint."
+        }
+      }
+    },
+    "binValue": {
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN.",
+      "type": "object",
+      "required": [
+        "bin"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "bin": {
+          "$ref": "#/$defs/executableName"
+        }
+      }
+    },
+    "jsonValue": {
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN.",
+      "type": "object",
+      "required": [
+        "json"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "json": {
+          "description": "A boundary serializer, not a CEL function. Its operand is a value tree whose leaves are literals or tagged values.",
+          "$ref": "#/$defs/jsonOperand"
+        }
+      }
+    },
+    "jsonOperand": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/fromValue"
+        },
+        {
+          "$ref": "#/$defs/exprValue"
+        },
+        {
+          "$ref": "#/$defs/literalScalar"
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/jsonOperand"
+          }
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/jsonOperand"
+          }
+        }
+      ]
+    },
+    "taggedValue": {
+      "description": "The complete tagged-value vocabulary. An object under a dynamic-value field that matches none of these forms is a structural error.",
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/fromValue"
+        },
+        {
+          "$ref": "#/$defs/exprValue"
+        },
+        {
+          "$ref": "#/$defs/terminalValue"
+        },
+        {
+          "$ref": "#/$defs/binValue"
+        },
+        {
+          "$ref": "#/$defs/jsonValue"
+        }
+      ],
+      "$comment": "PLECTURE-CFG-VALUE-FROM-AND-EXPR, PLECTURE-CFG-VALUE-TAG-UNKNOWN."
+    },
+    "projectionOrComputation": {
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/fromValue"
+        },
+        {
+          "$ref": "#/$defs/exprValue"
+        }
+      ]
+    },
+    "dataValue": {
+      "description": "A value on a surface that consumes data only: a literal, a projection, a computation, or a JSON serialization. No capability tags.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/literalScalar"
+        },
+        {
+          "$ref": "#/$defs/fromValue"
+        },
+        {
+          "$ref": "#/$defs/exprValue"
+        },
+        {
+          "$ref": "#/$defs/jsonValue"
+        }
+      ],
+      "$comment": "PLECTURE-CFG-VALUE-TAG-SURFACE when a capability tag appears here."
+    },
+    "bindingValue": {
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN, PLECTURE-CFG-VALUE-FROM-AND-EXPR, PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL.",
+      "description": "A value on an action-binding surface, which may additionally consume a Plecture capability.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/literalScalar"
+        },
+        {
+          "$ref": "#/$defs/fromValue"
+        },
+        {
+          "$ref": "#/$defs/exprValue"
+        },
+        {
+          "$ref": "#/$defs/jsonValue"
+        },
+        {
+          "$ref": "#/$defs/terminalValue"
+        },
+        {
+          "$ref": "#/$defs/binValue"
+        }
+      ]
+    },
+    "bindTable": {
+      "type": "object",
+      "description": "An action binding: the values and capabilities crossing the Plecture/action boundary. Each key becomes a shell variable name.",
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/bindingValue"
+      }
+    },
+    "execAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "exec"
+        },
+        "bin": {
+          "$ref": "#/$defs/executableName"
+        },
+        "command": {
+          "type": "string",
+          "description": "A literal OS command name or path, resolved through the process environment. Never dynamic."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingValue"
+          }
+        },
+        "stdin": {
+          "$ref": "#/$defs/bindingValue",
+          "description": "A value written to the process's standard input instead of its argv, for data that must not be visible in the process table."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "bin"
+          ],
+          "not": {
+            "required": [
+              "command"
+            ]
+          }
+        },
+        {
+          "required": [
+            "command"
+          ],
+          "not": {
+            "required": [
+              "bin"
+            ]
+          }
+        }
+      ],
+      "$comment": "PLECTURE-CFG-ACTION-BIN-AND-COMMAND when both are set or neither is."
+    },
+    "shellAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "script"
+      ],
+      "properties": {
+        "type": {
+          "const": "shell"
+        },
+        "script": {
+          "$comment": "PLECTURE-CFG-SHELL-INTERPOLATION.",
+          "type": "string",
+          "description": "Literal shell source. Plecture and CEL interpolation do not occur inside it.",
+          "not": {
+            "pattern": "\\{\\{"
+          }
+        },
+        "bind": {
+          "$ref": "#/$defs/bindTable"
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/execAction"
+        },
+        {
+          "$ref": "#/$defs/shellAction"
+        }
+      ],
+      "$comment": "PLECTURE-CFG-ACTION-TYPE-UNKNOWN for an unknown type; PLECTURE-CFG-ACTION-VARIANT when a field of the other variant is present."
+    },
+    "schemaDocument": {
+      "type": "object",
+      "description": "A JSON Schema document, inline in TOML. Plecture annotations such as mutable may extend it. Plecture tagged values may not appear in it.",
+      "properties": {
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/schemaPropertySpec"
+          }
+        },
+        "items": {
+          "$ref": "#/$defs/schemaPropertySpec"
+        }
+      }
+    },
+    "schemaPropertySpec": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "from"
+                ]
+              },
+              {
+                "required": [
+                  "expr"
+                ]
+              },
+              {
+                "required": [
+                  "terminal"
+                ]
+              },
+              {
+                "required": [
+                  "bin"
+                ]
+              },
+              {
+                "required": [
+                  "json"
+                ]
+              }
+            ]
+          },
+          "$comment": "PLECTURE-CFG-VALUE-TAG-SURFACE: a contract document declares types, not values."
+        }
+      ]
+    },
+    "innerTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uses"
+      ],
+      "description": "The nesting joint, read from the surface being configured: the inner task's input object and its environment additions.",
+      "properties": {
+        "uses": {
+          "$ref": "#/$defs/staticReference"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/dataValue"
+          }
+        },
+        "env": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/dataValue"
+          }
+        }
+      }
+    },
+    "healthTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "alive": {
+          "$ref": "#/$defs/action"
+        },
+        "activity": {
+          "$ref": "#/$defs/action"
+        }
+      }
+    },
+    "terminalTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The task owns an interactive endpoint. send_text and send_keys receive their operand as the action's first positional argument.",
+      "properties": {
+        "attach": {
+          "$ref": "#/$defs/action"
+        },
+        "capture": {
+          "$ref": "#/$defs/action"
+        },
+        "send_text": {
+          "$ref": "#/$defs/action"
+        },
+        "send_keys": {
+          "$ref": "#/$defs/action"
+        }
+      }
+    },
+    "checkLeaf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check"
+      ],
+      "properties": {
+        "check": {
+          "$ref": "#/$defs/completionKeyPath"
+        },
+        "eq": {},
+        "ne": {},
+        "in": {
+          "type": "array"
+        },
+        "gte": {
+          "type": "number"
+        },
+        "lte": {
+          "type": "number"
+        }
+      }
+    },
+    "judgeLeaf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "judge",
+        "id"
+      ],
+      "properties": {
+        "judge": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "relation": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "sibling",
+              "parent",
+              "child"
+            ]
+          }
+        }
+      }
+    },
+    "doneWhen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "all"
+      ],
+      "properties": {
+        "all": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "oneOf": [
+              {
+                "$ref": "#/$defs/checkLeaf"
+              },
+              {
+                "$ref": "#/$defs/exprLeaf"
+              },
+              {
+                "$ref": "#/$defs/judgeLeaf"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "chainWhenFact": {
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/checkLeaf"
+        },
+        {
+          "$ref": "#/$defs/exprLeaf"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "judge_pending"
+          ],
+          "properties": {
+            "judge_pending": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "judge_action",
+            "is"
+          ],
+          "properties": {
+            "judge_action": {
+              "type": "string"
+            },
+            "is": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "chainDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "workflow",
+        "when"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "workflow": {
+          "$ref": "#/$defs/staticReference"
+        },
+        "placement": {
+          "enum": [
+            "sibling",
+            "child"
+          ]
+        },
+        "when": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "all"
+          ],
+          "properties": {
+            "all": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/chainWhenFact"
+              }
+            }
+          }
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/dataValue"
+          }
+        }
+      },
+      "description": "A chain fires against instances of the task document that declared it."
+    },
+    "effectDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "An effect is a lifecycle-managed provider: contracts, health, an optional interactive capability, and composition. Its outputs are production records \u2014 immutable facts from setup plus nested projections. No completion contract and no live re-evaluation live here; both belong to the task document.",
+      "properties": {
+        "kind": {
+          "const": "effect"
+        },
+        "scope": {
+          "enum": [
+            "session",
+            "run"
+          ]
+        },
+        "setup": {
+          "$ref": "#/$defs/action"
+        },
+        "cleanup": {
+          "$ref": "#/$defs/action"
+        },
+        "inner": {
+          "$ref": "#/$defs/innerTable"
+        },
+        "locals_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        "locals_schema_file": {
+          "type": "string"
+        },
+        "outputs": {
+          "$ref": "#/$defs/effectOutputsTable"
+        },
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        "inputs_schema_file": {
+          "type": "string"
+        },
+        "outputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        "outputs_schema_file": {
+          "type": "string"
+        },
+        "health": {
+          "$ref": "#/$defs/healthTable"
+        },
+        "terminal": {
+          "$ref": "#/$defs/terminalTable",
+          "description": "The task owns an interactive endpoint. At most one task in a plan declares it."
+        }
+      },
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN: the effect grammar is closed, and the completion contract is not in it."
+    },
+    "workflowDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "workflow"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "workspace_provider": {
+          "$ref": "#/$defs/staticReference"
+        },
+        "workspace_provider_inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/literalScalar"
+          },
+          "description": "Literal data only: a workspace provider's hooks run before any node output exists."
+        },
+        "display": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/dataValue"
+          }
+        },
+        "auto_select": {
+          "type": "boolean"
+        },
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        "inputs_schema_file": {
+          "type": "string"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "uses"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "uses": {
+                "$ref": "#/$defs/staticReference"
+              },
+              "inputs": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "#/$defs/dataValue"
+                }
+              },
+              "blocks": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
+              }
+            }
+          }
+        },
+        "event": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "uses"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "uses": {
+                    "$ref": "#/$defs/staticReference"
+                  },
+                  "inputs": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "$ref": "#/$defs/dataValue"
+                    }
+                  },
+                  "include": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tick": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "on": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "heartbeat": {
+              "type": "string"
+            },
+            "max_heartbeat": {
+              "type": "string"
+            }
+          }
+        },
+        "healthcheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "period": {
+              "type": "string"
+            },
+            "stall_threshold": {
+              "type": "string"
+            },
+            "renotify_every": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "channelInputSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "description": "A channel's per-key parameter shorthand, deliberately not a full JSON Schema document: only a channel input's presence is checked before delivery.",
+      "properties": {
+        "type": {
+          "const": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "default": {
+          "type": "string"
+        }
+      }
+    },
+    "channelDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "type"
+      ],
+      "properties": {
+        "kind": {
+          "const": "channel"
+        },
+        "type": {
+          "enum": [
+            "unix_socket",
+            "exec",
+            "shell"
+          ]
+        },
+        "input_schema": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/channelInputSpec"
+          }
+        },
+        "timeout": {
+          "description": "A delivery deadline, bounding one attempt. It reads author-declared parameters only; event data is excluded, so a delivery's own deadline can never be chosen by the event being delivered.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "allOf": [
+                {
+                  "$ref": "#/$defs/fromValue"
+                },
+                {
+                  "properties": {
+                    "from": {
+                      "pattern": "^inputs\\."
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "$comment": "PLECTURE-CFG-CHANNEL-TIMEOUT-ROOT."
+        },
+        "path": {
+          "$ref": "#/$defs/dataValue"
+        },
+        "body": {
+          "$ref": "#/$defs/dataValue"
+        },
+        "bin": {
+          "$ref": "#/$defs/executableName"
+        },
+        "command": {
+          "$comment": "PLECTURE-CFG-REF-DYNAMIC: a channel's command is never chosen by data.",
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bindingValue"
+          }
+        },
+        "stdin": {
+          "$ref": "#/$defs/bindingValue"
+        },
+        "script": {
+          "$comment": "PLECTURE-CFG-SHELL-INTERPOLATION.",
+          "type": "string",
+          "not": {
+            "pattern": "\\{\\{"
+          }
+        },
+        "bind": {
+          "$ref": "#/$defs/bindTable"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "unix_socket"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$comment": "PLECTURE-CFG-ACTION-VARIANT, PLECTURE-CFG-FIELD-REQUIRED.",
+            "required": [
+              "path",
+              "body"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "bin"
+                  ]
+                },
+                {
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "required": [
+                    "args"
+                  ]
+                },
+                {
+                  "required": [
+                    "script"
+                  ]
+                },
+                {
+                  "required": [
+                    "bind"
+                  ]
+                },
+                {
+                  "required": [
+                    "stdin"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "exec"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$comment": "PLECTURE-CFG-ACTION-BIN-AND-COMMAND, PLECTURE-CFG-ACTION-VARIANT.",
+            "oneOf": [
+              {
+                "required": [
+                  "bin"
+                ],
+                "not": {
+                  "required": [
+                    "command"
+                  ]
+                }
+              },
+              {
+                "required": [
+                  "command"
+                ],
+                "not": {
+                  "required": [
+                    "bin"
+                  ]
+                }
+              }
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "path"
+                  ]
+                },
+                {
+                  "required": [
+                    "body"
+                  ]
+                },
+                {
+                  "required": [
+                    "script"
+                  ]
+                },
+                {
+                  "required": [
+                    "bind"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "shell"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$comment": "PLECTURE-CFG-ACTION-VARIANT, PLECTURE-CFG-FIELD-REQUIRED.",
+            "required": [
+              "script"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "path"
+                  ]
+                },
+                {
+                  "required": [
+                    "body"
+                  ]
+                },
+                {
+                  "required": [
+                    "bin"
+                  ]
+                },
+                {
+                  "required": [
+                    "command"
+                  ]
+                },
+                {
+                  "required": [
+                    "args"
+                  ]
+                },
+                {
+                  "required": [
+                    "stdin"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "workspaceProviderDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "workspace_provider"
+        },
+        "match": {
+          "type": "string"
+        },
+        "name": {
+          "$ref": "#/$defs/dataValue"
+        },
+        "setup": {
+          "$ref": "#/$defs/action"
+        },
+        "cleanup": {
+          "$ref": "#/$defs/action"
+        },
+        "subscribe": {
+          "$ref": "#/$defs/action"
+        },
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        "inputs_schema_file": {
+          "type": "string"
+        },
+        "outputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        "outputs_schema_file": {
+          "type": "string"
+        }
+      }
+    },
+    "resourceObserverDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "resource_observer"
+        },
+        "match": {
+          "type": "string"
+        },
+        "observe": {
+          "$ref": "#/$defs/action"
+        },
+        "finalize": {
+          "$ref": "#/$defs/action"
+        },
+        "state_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        "state_schema_file": {
+          "type": "string"
+        }
+      }
+    },
+    "configFile": {
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED: a reserved root file's surface is closed, a definition table is not part of it, and the dialect declaration is not optional.",
+      "$anchor": "config",
+      "type": "object",
+      "additionalProperties": false,
+      "description": "config.toml, a reserved root file. It is not a definition file.",
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "description": "The dialect this user config tree is written in. It governs the whole tree \u2014 split definition documents and task documents inherit it \u2014 and is orthogonal to plect_min_version, which is binary compatibility rather than language dialect.",
+          "$comment": "PLECTURE-CFG-SCHEMA-VERSION-OLDER, PLECTURE-CFG-SCHEMA-VERSION-NEWER: which dialects are accepted is the loader's three-way comparison, not a structural bound, so no range is asserted here."
+        },
+        "workspace_dirs_root": {
+          "type": "string"
+        },
+        "resource_allowlist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plugin_dirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/staticReference"
+          }
+        },
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        "inputs_schema_file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version"
+      ]
+    },
+    "catalogsFile": {
+      "$anchor": "catalogs",
+      "type": "object",
+      "additionalProperties": false,
+      "description": "catalogs.toml, a reserved root file: the catalog aliases registered on this machine and the plugins enabled under each.",
+      "required": [
+        "schema_version"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "catalogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "alias",
+              "source"
+            ],
+            "properties": {
+              "alias": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+              },
+              "source": {
+                "type": "string"
+              },
+              "subdir": {
+                "type": "string"
+              },
+              "plugins": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "lockFile": {
+      "$anchor": "lock",
+      "type": "object",
+      "additionalProperties": false,
+      "description": "plect.lock, a reserved root file: the resolved revisions and content hashes mounting is verified against.",
+      "required": [
+        "schema_version"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "catalogs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "alias",
+              "catalog_source",
+              "catalog_resolved_revision"
+            ],
+            "properties": {
+              "alias": {
+                "type": "string"
+              },
+              "catalog_source": {
+                "type": "string"
+              },
+              "subdir": {
+                "type": "string"
+              },
+              "catalog_resolved_revision": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "plugins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "catalog_alias",
+              "path",
+              "content_hash"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "catalog_alias": {
+                "type": "string"
+              },
+              "catalog_source": {
+                "type": "string"
+              },
+              "catalog_resolved_revision": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "content_hash": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "plect_min_version": {
+                "type": "string"
+              },
+              "editable": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "pluginManifest": {
+      "$comment": "PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-FIELD-UNKNOWN.",
+      "$anchor": "plugin",
+      "type": "object",
+      "additionalProperties": false,
+      "description": "plugin.toml at a plugin's root: the package's identity, its executables, and the services the resident process supervises.",
+      "required": [
+        "schema_version",
+        "version",
+        "plect_min_version",
+        "description"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "version": {
+          "type": "string"
+        },
+        "plect_min_version": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "executables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "path"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/executableName"
+              },
+              "path": {
+                "type": "string"
+              },
+              "build": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "executable"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "executable": {
+                "$ref": "#/$defs/executableName"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "required_env": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "restart": {
+                "enum": [
+                  "never",
+                  "on-failure",
+                  "always"
+                ]
+              },
+              "health": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "process"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "catalogManifest": {
+      "$anchor": "catalog",
+      "type": "object",
+      "additionalProperties": false,
+      "description": "catalog.toml at a catalog root: the plugins the catalog publishes. Explicit enumeration, not directory presence, is what publishes a plugin.",
+      "required": [
+        "schema_version",
+        "plugins"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "plugins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "effectOutputsTable": {
+      "$comment": "PLECTURE-CFG-FIELD-TYPE, PLECTURE-CFG-FIELD-UNKNOWN.",
+      "type": "object",
+      "additionalProperties": false,
+      "description": "An effect's public output wiring. Its roots are the nesting joint's: an inner output or this layer's locals. A live root belongs to a task document's completion predicate, so re-evaluation is not a task concern.",
+      "properties": {
+        "bind": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/effectOutputValue"
+          }
+        }
+      }
+    },
+    "effectOutputValue": {
+      "$comment": "PLECTURE-CFG-FROM-ROOT: a task output projects inner.outputs.* or locals.* only.",
+      "type": "object",
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/fromValue"
+            },
+            {
+              "properties": {
+                "from": {
+                  "pattern": "^(inner\\.outputs|locals)\\."
+                }
+              }
+            }
+          ]
+        },
+        {
+          "$ref": "#/$defs/exprValue"
+        }
+      ]
+    },
+    "taskDefinition": {
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "resource_observer"
+      ],
+      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a task document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
+      "properties": {
+        "kind": {
+          "const": "task"
+        },
+        "description": {
+          "type": "string"
+        },
+        "resource_observer": {
+          "$ref": "#/$defs/staticReference",
+          "description": "The resource observer this task is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front."
+        },
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument",
+          "description": "The instruction's author-declared parameters."
+        },
+        "inputs_schema_file": {
+          "type": "string"
+        },
+        "state_schema": {
+          "$ref": "#/$defs/schemaDocument",
+          "description": "This task's own state: the keys a reviewer or another session writes into an instance. Plain JSON Schema, with no mutability annotation \u2014 state is mutable by definition. Any state-holding definition declares its state this way."
+        },
+        "state_schema_file": {
+          "type": "string"
+        },
+        "done_when": {
+          "$ref": "#/$defs/doneWhen"
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "heartbeat_budget": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "on_exhaust": {
+              "enum": [
+                "escalate",
+                "stop"
+              ]
+            }
+          }
+        },
+        "chains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/chainDefinition"
+          }
+        }
+      }
+    },
+    "taskFrontmatter": {
+      "$anchor": "task",
+      "$comment": "PLECTURE-CFG-TASK-BLOCK-COUNT: a task document's frontmatter holds exactly one declaration.",
+      "type": "object",
+      "description": "The TOML frontmatter of a task document: one definition block, whose kind is task. Nothing about the grammar forks \u2014 these are two validation rules over the ordinary definition document.",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/taskDefinition"
+      }
+    },
+    "completionKeyPath": {
+      "$comment": "PLECTURE-CFG-FROM-ROOT: a completion key reads resource.state.* or self.state.*.",
+      "type": "string",
+      "pattern": "^(resource\\.state|self\\.state)\\.[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "exprLeaf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expr"
+      ],
+      "description": "A predicate computed over the roots this surface observes.",
+      "properties": {
+        "expr": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

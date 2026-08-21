@@ -1,0 +1,8 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-KIND-MISMATCH entry=definitions
+# reason: a workflow node is a position in a lifecycle graph, so it references an effect; a task arrives afterward, against the session that graph produced.
+
+[review_session]
+kind = "workflow"
+
+[[review_session.nodes]]
+uses = "review"

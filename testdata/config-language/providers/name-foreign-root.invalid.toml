@@ -1,0 +1,7 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
+# reason: name is resolved before a session exists, so match is the only root it observes.
+
+[worktree]
+kind  = "workspace_provider"
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
+name  = { from = "session.name" }

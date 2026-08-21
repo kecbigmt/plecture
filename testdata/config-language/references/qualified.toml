@@ -1,0 +1,24 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a user-owned layer references catalog content through the catalog-qualified dotted form.
+
+[my_review]
+kind               = "workflow"
+workspace_provider = "official.github.worktree"
+
+[[my_review.nodes]]
+uses = "official.tmux.pane"
+
+[[my_review.nodes]]
+id   = "agent"
+uses = "official.claude.runtime"
+
+[my_review.nodes.inputs]
+tmux_session = { from = "nodes.pane.outputs.session_name" }
+
+[[my_review.event.channel]]
+name    = "runtime"
+uses    = "official.claude.delivery"
+include = ["plect.instruction", "user.emit"]
+
+[my_review.event.channel.inputs]
+path = { from = "nodes.agent.outputs.socket_path" }

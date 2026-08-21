@@ -229,11 +229,11 @@ Plecture should therefore prefer structured, stable diagnostics over relying onl
 For example:
 
 ```text
-PLECT-CFG-UNKNOWN-REF
-PLECT-CFG-KIND-MISMATCH
-PLECT-CFG-FROM-MISSING
-PLECT-CFG-CEL-TYPE
-PLECT-CFG-NESTING-CYCLE
+PLECTURE-CFG-UNKNOWN-REF
+PLECTURE-CFG-KIND-MISMATCH
+PLECTURE-CFG-FROM-MISSING
+PLECTURE-CFG-CEL-TYPE
+PLECTURE-CFG-NESTING-CYCLE
 ```
 
 The exact naming scheme can be decided separately, but the principle is that:
@@ -365,7 +365,7 @@ A minimal language documentation set may contain:
 ```text
 docs/
   language/
-    overview.md
+    README.md
     values.md
     expressions.md
 

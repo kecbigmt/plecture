@@ -1,0 +1,33 @@
+# plect-fixture: result=valid entry=definitions
+# reason: standard comprehension macros compute over a structured input without a custom function.
+
+[team_runtime]
+kind = "effect"
+
+[team_runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch"]
+
+[team_runtime.outputs.bind]
+mcp_server_names = { expr = "inputs.mcp_servers.map(s, s.name).join(',')" }
+
+[team_runtime.outputs_schema]
+type = "object"
+
+[team_runtime.outputs_schema.properties]
+mcp_server_names = { type = "string" }
+
+[team_runtime.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[team_runtime.inputs_schema.properties.mcp_servers]
+type = "array"
+
+[team_runtime.inputs_schema.properties.mcp_servers.items]
+type     = "object"
+required = ["name"]
+
+[team_runtime.inputs_schema.properties.mcp_servers.items.properties]
+name = { type = "string" }

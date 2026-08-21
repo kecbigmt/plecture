@@ -1,0 +1,26 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a reference written inside a plugin uses the relative form, because catalog aliases are user-local.
+
+[worktree]
+kind = "workspace_provider"
+
+[worktree.setup]
+type = "exec"
+bin  = "github-worktree"
+args = ["setup", "--resource", { from = "resource.id" }]
+
+[runtime]
+kind  = "effect"
+scope = "run"
+
+[runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch"]
+
+[review_session]
+kind               = "workflow"
+workspace_provider = "worktree"
+
+[[review_session.nodes]]
+uses = "runtime"

@@ -1,0 +1,14 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-NESTING-CYCLE entry=definitions
+# reason: a nesting chain that reaches itself has no innermost layer.
+
+[outer_runtime]
+kind = "effect"
+
+[outer_runtime.inner]
+uses = "middle_runtime"
+
+[middle_runtime]
+kind = "effect"
+
+[middle_runtime.inner]
+uses = "outer_runtime"

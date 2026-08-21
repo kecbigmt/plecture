@@ -1,0 +1,19 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-WORKFLOW-CYCLE entry=definitions
+# reason: the dependencies derived from the nodes roots form a cycle.
+
+[session]
+kind = "workflow"
+
+[[session.nodes]]
+id   = "first"
+uses = "pane"
+
+[session.nodes.inputs]
+peer = { from = "nodes.second.outputs.session_name" }
+
+[[session.nodes]]
+id   = "second"
+uses = "pane"
+
+[session.nodes.inputs]
+peer = { from = "nodes.first.outputs.session_name" }

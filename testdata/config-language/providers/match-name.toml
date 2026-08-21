@@ -1,0 +1,56 @@
+# plect-fixture: result=valid entry=definitions
+# reason: name projects the named captures of match, which is the only root available on that surface.
+
+[worktree]
+kind  = "workspace_provider"
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[worktree.setup]
+type = "exec"
+bin  = "github-worktree"
+args = [
+  "setup",
+  "--resource",
+  { from = "resource.id" },
+  "--session",
+  { from = "session.name" },
+  "--workspace-dirs-root",
+  { from = "config.workspace_dirs_root" },
+  "--workspace-layout-root",
+  { from = "inputs.workspace_layout_root", default = "" },
+]
+
+[worktree.cleanup]
+type = "exec"
+bin  = "github-worktree"
+args = [
+  "cleanup",
+  "--workspace-dir",
+  { from = "self.outputs.workspace_dir" },
+  "--force",
+  { from = "force" },
+  "--delete-branch",
+  { from = "cleanup.inputs.delete_branch", default = "" },
+]
+
+[worktree.subscribe]
+type = "exec"
+bin  = "github-watcher"
+args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
+
+[worktree.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[worktree.inputs_schema.properties]
+workspace_layout_root = { type = "string" }
+
+[worktree.outputs_schema]
+type     = "object"
+required = ["workspace_dir", "branch"]
+
+[worktree.outputs_schema.properties]
+workspace_dir = { type = "string" }
+branch        = { type = "string" }
+title         = { type = "string", mutable = true }

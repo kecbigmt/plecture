@@ -1,0 +1,4 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-REQUIRED entry=config
+# reason: the dialect declaration is required, so a tree that does not state which language it is written in is a load error rather than an assumed default.
+
+workspace_dirs_root = "~/worktrees"

@@ -1,0 +1,6 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-REF-DYNAMIC entry=definitions
+# reason: workspace_provider is static topology and is never computed.
+
+[session]
+kind               = "workflow"
+workspace_provider = { from = "session.inputs.provider" }

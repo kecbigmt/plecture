@@ -1,0 +1,11 @@
+# plect-fixture: result=valid entry=definitions
+# reason: the standard CEL macros are enabled, so has and the comprehension macros need no Plecture extension.
+
+[notify]
+kind    = "channel"
+type    = "exec"
+command = "curl"
+args = [
+  "-d",
+  { json = { text = { expr = "has(event.metadata.url) ? event.summary + ' (' + event.metadata.url + ')' : event.summary" } } },
+]

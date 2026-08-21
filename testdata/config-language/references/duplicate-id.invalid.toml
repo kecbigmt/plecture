@@ -1,0 +1,16 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-ID-DUPLICATE entry=definitions
+# reason: one layer has a single definition id namespace across all kinds, so the same id declared as a task and as a workflow is an error; TOML rejects a repeated header inside one file, so this pair stands for two files the loader concatenates.
+
+[goal_review]
+kind = "effect"
+
+[goal_review.setup]
+type = "exec"
+bin  = "okf-goal"
+args = ["task", "validate-goal-resource"]
+
+[goal_review_duplicate]
+kind = "workflow"
+
+[[goal_review_duplicate.nodes]]
+uses = "goal_review"

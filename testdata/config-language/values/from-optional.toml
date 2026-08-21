@@ -1,0 +1,11 @@
+# plect-fixture: result=valid entry=definitions
+# reason: optional propagates absence — a missing source omits the key instead of supplying a sentinel.
+
+[enqueue]
+kind = "channel"
+type = "exec"
+bin  = "codex-exec-enqueue"
+args = [
+  { from = "event.type" },
+  { from = "event.metadata.url", optional = true },
+]

@@ -1,0 +1,17 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-NESTING-PROJECTION-MISMATCH entry=definitions
+# reason: a direct projection carries the inner output's type and mutability, so the outer contract must agree with the inner one.
+
+[labelled_runtime]
+kind = "effect"
+
+[labelled_runtime.inner]
+uses = "official.claude.runtime"
+
+[labelled_runtime.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+
+[labelled_runtime.outputs_schema]
+type = "object"
+
+[labelled_runtime.outputs_schema.properties]
+pid = { type = "string" }

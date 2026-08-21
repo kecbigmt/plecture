@@ -1,0 +1,9 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-VALUE-TAG-SURFACE entry=definitions
+# reason: a workspace provider's hooks run before any node output exists, so its parameters are literal data.
+
+[session]
+kind               = "workflow"
+workspace_provider = "worktree"
+
+[session.workspace_provider_inputs]
+workspace_layout_root = { from = "nodes.pane.outputs.session_name" }

@@ -1,0 +1,19 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a channel that types into the session's interactive endpoint consumes the terminal capability instead of naming a multiplexer.
+
+[terminal_submit]
+kind = "channel"
+type = "shell"
+script = '''
+set -u
+sh -c "$send_text" terminal-send-text "$message"
+sleep 1
+sh -c "$send_keys" terminal-send-keys Enter
+'''
+timeout = "45s"
+
+[terminal_submit.bind]
+send_text = { terminal = "send_text" }
+send_keys = { terminal = "send_keys" }
+capture   = { terminal = "capture" }
+message   = { expr = "'[' + event.type + '] ' + (event.body != '' ? event.body : event.summary)" }

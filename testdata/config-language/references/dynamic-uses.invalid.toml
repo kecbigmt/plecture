@@ -1,0 +1,8 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-REF-DYNAMIC entry=definitions
+# reason: static topology must stay statically discoverable, so uses never carries a tagged value.
+
+[session]
+kind = "workflow"
+
+[[session.nodes]]
+uses = { from = "session.inputs.runtime" }

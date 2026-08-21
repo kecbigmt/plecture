@@ -1,0 +1,9 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-CHANNEL-TIMEOUT-ROOT entry=definitions
+# reason: a delivery deadline is an author-declared parameter, so timeout reads inputs only and event data is excluded.
+
+[exec_delivery]
+kind    = "channel"
+type    = "exec"
+bin     = "codex-exec-enqueue"
+args    = [{ from = "event.type" }]
+timeout = { from = "event.metadata.timeout" }

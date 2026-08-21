@@ -1,0 +1,14 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=definitions
+# reason: a completion contract belongs to a task document; an effect brings things up and takes them down, and never judges whether the work is finished.
+
+[render]
+kind  = "effect"
+scope = "session"
+
+[render.setup]
+type = "exec"
+bin  = "github-issue-pr"
+args = ["render-instruction"]
+
+[render.done_when]
+all = [{ check = "checks_status", in = ["SUCCESS", "NULL"] }]

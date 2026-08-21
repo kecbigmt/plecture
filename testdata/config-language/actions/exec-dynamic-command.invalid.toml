@@ -1,0 +1,8 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-REF-DYNAMIC entry=definitions
+# reason: an exec action's command is never dynamic, so event or input data can never choose what runs.
+
+[notify]
+kind    = "channel"
+type    = "exec"
+command = { from = "inputs.command" }
+args    = [{ from = "event.type" }]

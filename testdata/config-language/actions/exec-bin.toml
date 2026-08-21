@@ -1,0 +1,31 @@
+# plect-fixture: result=valid entry=definitions
+# reason: simple process execution is structural, so no shell quoting is involved.
+
+[bootstrap]
+kind  = "effect"
+scope = "run"
+
+[bootstrap.setup]
+type = "exec"
+bin  = "okf-goal"
+args = [
+  "task",
+  "bootstrap",
+  "--workspace-dir",
+  { from = "workspace.dir" },
+  "--owner",
+  { from = "inputs.owner" },
+  "--session",
+  { from = "session.name" },
+  "--assignees",
+  { from = "inputs.assignees", default = "" },
+]
+
+[bootstrap.inputs_schema]
+type                 = "object"
+required             = ["owner"]
+additionalProperties = false
+
+[bootstrap.inputs_schema.properties]
+owner     = { type = "string" }
+assignees = { type = "string" }

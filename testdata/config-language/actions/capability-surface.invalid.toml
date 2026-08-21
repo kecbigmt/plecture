@@ -1,0 +1,15 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-VALUE-TAG-SURFACE entry=definitions
+# reason: the terminal capability is consumed by an action binding, not by an inputs-schema default.
+
+[runtime]
+kind = "effect"
+
+[runtime.setup]
+type   = "shell"
+script = "true"
+
+[runtime.inputs_schema]
+type = "object"
+
+[runtime.inputs_schema.properties]
+sender = { terminal = "send_text" }

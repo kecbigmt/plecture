@@ -1,0 +1,5 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-KIND-UNKNOWN entry=definitions
+# reason: environment is outside the kind vocabulary.
+
+[sandbox]
+kind = "environment"

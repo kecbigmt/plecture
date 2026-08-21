@@ -1,0 +1,17 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
+# reason: a nested outputs binding observes only inner outputs and this layer's locals.
+
+[labelled_runtime]
+kind = "effect"
+
+[labelled_runtime.inner]
+uses = "official.claude.runtime"
+
+[labelled_runtime.outputs.bind]
+owner = { from = "session.inputs.owner" }
+
+[labelled_runtime.outputs_schema]
+type = "object"
+
+[labelled_runtime.outputs_schema.properties]
+owner = { type = "string" }
