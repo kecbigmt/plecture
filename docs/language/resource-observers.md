@@ -72,12 +72,32 @@ vocabulary, and an effect's outputs are its own production records.
 evaluation, and one observer serves a standalone status read and every instance
 alike.
 
+### Error semantics
+
+An `observe` action's exit code signals health and its stdout contributes state,
+and the consequence of a non-zero exit depends on when it happens.
+
+| When | Consequence |
+|---|---|
+| The first observation, at instantiation | Instantiation is rejected with this error. No instance is created. |
+| Any later observation | Recorded degradation. The instance survives; its state reads as unobserved until the next success. |
+
+This is why domain validation belongs here rather than in a lifecycle action.
+The observer is the thing that knows what the resource is, so an unparseable
+file or an absent record is its answer to give — and giving it at the first
+observation means a task instance never exists in a state its own resource
+cannot support. A partial answer is different from an error: an observer that
+reaches its resource but finds it malformed reports that as state, in a status
+key, and exits zero.
+
 Because the observer is named in the document, a key this `state_schema` does
 not declare is a load error, `PLECTURE-CFG-FROM-PATH`.
 
 ## Validation rules
 
 - `observe` is declared; `finalize` is optional.
+- A non-zero `observe` exit rejects instantiation at the first observation, and
+  is recorded degradation at every later one.
 - A `resource.state.<key>` projection names a `state_schema` property.
 - A `match` that no resource identifier can satisfy is still a valid
   definition; recognizing nothing is not a load error.

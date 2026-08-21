@@ -278,6 +278,12 @@ Every shipped task document is written for exactly one resource type, so this
 dependency already existed — it was hiding in a runtime convention. Declaring it
 is the move this language makes everywhere else.
 
+An observer that reports more than one kind of thing is a sign the observer wants
+splitting rather than the declaration wanting widening. Where a document's
+completion depends on which kind it got — a pull request's checks against an
+issue's timestamp, say — two observers state that better than one observer plus a
+kind check.
+
 A `done_when` check on the observer's own kind key remains useful for narrowing
 *within* one observer, where a single observer publishes more than one subtype:
 `resource.state.resource_kind in ["pull", "issue"]` distinguishes two shapes
@@ -298,5 +304,7 @@ against the session that graph produced.
   `state_schema` declares, and a `self.state.*` key one this document's declares —
   both checked at load.
 - An instance's resource resolves to the declared observer.
+- Instantiation observes the resource once; a failed first observation rejects
+  instantiation, and no instance is created.
 - A lifecycle field is not part of the task grammar.
 - A workflow node referencing a task document is a kind mismatch.
