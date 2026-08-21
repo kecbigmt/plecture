@@ -41,7 +41,7 @@ type expectation struct {
 }
 
 // A fixture's expectation header is a TOML comment in a definition document
-// and an HTML comment in a work document, whose frontmatter must start the
+// and an HTML comment in a task document, whose frontmatter must start the
 // file once the header is stripped.
 var (
 	headerRe   = regexp.MustCompile(`^(?:#|<!--)\s*plect-fixture:\s*(.*?)\s*(?:-->)?$`)
@@ -122,14 +122,14 @@ func body(src string) string {
 	return strings.Join(lines[i:], "\n")
 }
 
-// frontmatter splits a work document into its frontmatter and its
+// frontmatter splits a task document into its frontmatter and its
 // instruction body. The frontmatter is TOML, delimited by +++, so the
 // document's completion contract is written in the same grammar every other
 // definition uses and validates against the same schema.
 func frontmatter(src string) (string, error) {
 	const delim = "+++\n"
 	if !strings.HasPrefix(src, delim) {
-		return "", fmt.Errorf("no frontmatter: a work document opens with %q", strings.TrimSuffix(delim, "\n"))
+		return "", fmt.Errorf("no frontmatter: a task document opens with %q", strings.TrimSuffix(delim, "\n"))
 	}
 	rest := src[len(delim):]
 	end := strings.Index(rest, "\n"+delim)
