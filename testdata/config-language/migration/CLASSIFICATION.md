@@ -25,15 +25,15 @@ behavior needing a separate language or semantic decision.
 | `plugins/github/config/workspaces/github.toml` | `github/worktree.toml` | `match` captures in `name`, `.ResourceID`, `.SessionName`, `.WorkspaceDirsRoot`, `get .Inputs` ×4, `get .CleanupInputs`, `.Force`, `.Self.*` ×2, `bin` ×2, `shellQuote` ×8 | P, C, K, B, S |
 | `plugins/github/config/resources/github.toml` | `github/issue_pr.toml` | `.ResourceID`, `.WorkspaceDirPath`, `bin` ×2 | P, K |
 | `plugins/github/config/tasks/gh_guard.toml` | `github/gh_guard.toml` | `bin`, `.Self.dir` | P, K, B, S |
-| `plugins/github/config/tasks/work.toml` | `github/work.toml` | `get .Inputs`, `.SessionName`, `from_resource_status` bulk copy | P, B, S |
-| `plugins/github/config/tasks/respond.toml` | `github/respond.toml` | same as `work` | P, B, S |
-| `plugins/github/config/tasks/investigate.toml` | `github/investigate.toml` | same as `work` | P, B, S |
-| `plugins/github/config/tasks/review.toml` | `github/review.toml` | `get .Inputs`, `.SessionName`, `from_resource_status`, the `verdict_current` script | P, C, B, S, **D** |
+| `.../tasks/work.toml` + `.../templates/work.md` | `github/work.md` | `from_resource_status` bulk copy; `.ResourceID`, `.Instruction` in the body | P, L |
+| `.../tasks/respond.toml` + `.../templates/respond.md` | `github/respond.md` | same as `work` | P, L |
+| `.../tasks/investigate.toml` + `.../templates/investigate.md` | `github/investigate.md` | same as `work` | P, L |
+| `.../tasks/review.toml` + `.../templates/review.md` | `github/review.md` | `from_resource_status`; the `verdict_current` script; body variable assignment and `or` | P, C, **D** |
 | `plugins/okf/config/workspaces/local-okf.toml` | `okf/bundle.toml` | `match` captures in `name`, `.ResourceID`, `.SessionName`, `.Self.workspace_dir`, `bin` ×2 | P, C, K |
 | `plugins/okf/config/resources/okf_goal.toml` | `okf/goal.toml` | `.ResourceID`, `.Revision`, `.JudgesJSON` heredoc, `bin` ×2 | P, K |
 | `plugins/okf/config/tasks/goal_bootstrap.toml` | `okf/goal_bootstrap.toml` | `.WorkspaceDirPath`, `.Inputs.owner`, `.SessionName`, `get .Inputs`, `bin` | P, K |
-| `plugins/okf/config/tasks/pursue_goal.toml` | `okf/pursue_goal.toml` | `.ResourceID`, `bin`, `from_resource_status`, chain `.Work.*` ×3 | P, R, K |
-| `plugins/okf/config/tasks/goal_review.toml` | `okf/goal_review.toml` | `.SessionName`, `get .Inputs`, `from_resource_status`, the `verdict_current` script | P, C, B, S |
+| `plugins/okf/config/tasks/pursue_goal.toml` | `okf/pursue_goal.md` | `from_resource_status`, chain `.Work.*` ×3; the setup gate and the absent instruction body are residues below | P, R, **D** |
+| `.../tasks/goal_review.toml` + `.../templates/goal_review.md` | `okf/goal_review.md` | `from_resource_status`, the `verdict_current` script; body variable assignment | P, C, **D** |
 | `plugins/okf/config/workflows/goal_review.toml` | `okf/goal_review_session.toml` | `.Workflow.outputs.concept_id`, `.Nodes.*.outputs.*` ×4, `get .SessionInputs` | P, R, L |
 | `plugins/*/plugin.toml` | `../plugins/manifest.toml` | none: names, paths, build commands, service wiring are all literal | L, R |
 | `plugins/catalog.toml` | `../plugins/catalog.toml` | none | L |
@@ -42,29 +42,64 @@ Class **S** appears wherever the source's imperative logic survives as a shell
 action's literal script. Class **B** appears wherever a value that was
 interpolated into that script becomes a binding.
 
-## Class D: the one residue
+The six work-genre declarations lose classes **S** and **B** entirely. Their
+shipped setup was a shell wrapper whose only job was to render an instruction
+template and echo it as an output; with the instruction living in the work
+document's body, that wrapper has nothing left to do. Nothing about those six
+files is imperative any more.
 
-`github/review.toml`'s `verdict_current` is the only translated behavior whose
-semantics are not settled by the ratified language.
+## Class D: the residues
 
-The shipped script does not compare against the observer's revision directly.
-It derives the reviewed pull request's branch from the session branch, reads
-that branch's head with `git ls-remote`, and only falls back to
-`plect resource status` when that yields nothing. The ratified dissolution is
+Four things do not map cleanly. None is silently widened; each is an owner call.
+
+**1. `review`'s and `goal_review`'s `verdict_revision` has no declared home.**
+Both documents complete on a reviewer's self-report, recorded as a revision. As
+tasks, that key was an `outputs_schema` property with `mutable = true`. The
+ratified work frontmatter is `kind`, `inputs`, `observe`, `done_when`,
+`requires`, `budget`, `chains` — and `verdict_revision` is written by the
+reviewer, not observed from the resource, so it belongs to none of them.
+
+The mappings use a `[records]` table for it, and the schema declares that table
+as proposed. Without something in this position, neither verdict-based document
+can be expressed at all.
+
+**2. `github/review`'s `verdict_current` compares a different revision than the
+shipped script.** The shipped script derives the reviewed pull request's branch
+from the session branch, reads that branch's head with `git ls-remote`, and only
+falls back to `plect resource status`. The ratified dissolution always compares
+against the observer's revision:
 
 ```toml
 verdict_current = { expr = "self.verdict_revision == resource.status.revision" }
 ```
 
-which always compares against the observer's revision.
-
 The two differ when the observer's revision is not the reviewed PR's head — an
 issue-keyed resource whose revision is a timestamp rather than a commit. The
-translation above adopts the ratified form, so the `git ls-remote` path is not
-carried over. Whether that is a correct simplification or a regression is a
-semantic question about what `revision` means for an issue-keyed resource, not
-a question about the language, and is listed for owner decision rather than
-settled here.
+mapping adopts the ratified form, so the `git ls-remote` path is not carried
+over. Whether that is a correct simplification or a regression is a question
+about what `revision` means for an issue-keyed resource.
+
+**3. `pursue_goal` is the one work-genre declaration that does not fit the
+genre's evidence.** It has no instruction template, and its `setup` is a
+validation gate (`okf-goal task validate-goal-resource`) rather than a
+`plect template render` wrapper — so the survey statement "their setup is a
+one-line template-render wrapper" holds for five of the six.
+
+Two consequences follow. Its body had to be written here rather than mapped,
+because a tracking instance has no shipped instruction; and its gate has nowhere
+to go, since a work document owns no lifecycle. The mapping drops the gate on
+the reasoning that `goal_parse_status in ["SUCCESS"]` already keeps an
+unparseable goal from ever satisfying. That trades a fast failure at
+`plect task setup` for an instance that exists but never completes.
+
+**4. The instruction body's interpolation model is unsettled beyond
+projection.** `review.md` and `goal_review.md` open with variable assignment,
+`get`, and `or`, and all five templates end with an `if` around the extra
+instruction. Simple projections map to the value model directly
+(`{{.ResourceID}}` becomes `{{ resource.id }}`). Assignment, defaulting, and
+conditionals do not, and the ADR explicitly left Markdown asset interpolation
+to a separate decision. The mappings keep those constructs in the body and
+change only the roots.
 
 Every other dynamic use in every shipped configuration maps onto classes L, R,
 P, C, K, B, or S.
@@ -99,8 +134,16 @@ These are behavior-visible outcomes of the shape change, not open questions.
   finalize and `okf/goal_bootstrap.toml`'s assignee filter use `stdin`.
 - **Two ids change.** The `local-okf` workspace provider becomes `bundle`,
   because a definition id admits no hyphen. The okf workflow becomes
-  `goal_review_session`, because its plugin's task already owns `goal_review`
-  and one layer has a single id namespace across kinds.
+  `goal_review_session`, because its plugin's work document already owns
+  `goal_review` and one layer has a single id namespace across kinds.
+- **The instruction template and the task collapse into one file.** Each of the
+  six work documents replaces a `tasks/*.toml` plus a `templates/*.md`, and with
+  them the `plect template render` wrapper, its empty-output check, its
+  `jq` re-emission, and the `instruction` output that carried the result.
+- **The frontmatter delimiter changes for the shipped templates.** All five
+  shipped instruction templates open with `---`, and
+  `app/internal/template.parseFrontmatter` requires exactly that. Work
+  documents use `+++`, so those five files and that parser both migrate.
 - **String-encoded structured inputs become typed.** `launch_env` becomes an
   object, `mcp_servers` an array of records, and `assignees` an array of
   identity strings, each with a schema the receiving executable's own reading

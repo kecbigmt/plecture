@@ -1,0 +1,18 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-FIELD-UNKNOWN entry=definitions
+# reason: a chain fires off a work document's instances, so it is not part of the task grammar.
+
+[render]
+kind = "task"
+
+[render.setup]
+type = "exec"
+bin  = "github-issue-pr"
+args = ["render-instruction"]
+
+[[render.chains]]
+id        = "review"
+workflow  = "review_session"
+placement = "sibling"
+
+[render.chains.when]
+all = [{ judge_pending = "ac-met" }]

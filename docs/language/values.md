@@ -122,7 +122,9 @@ receiving everything and relying on a later check to reject the rest.
 | Task `health` probes | `self.<key>`, `inputs.<key>`, `session.*`, `workspace.*` |
 | Task `terminal` verbs | `self.<key>`, `session.*` |
 | Task `inner.inputs`, `inner.env` | `inputs.<key>`, `locals.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
-| Task `outputs.bind` | `inner.outputs.<key>` (when the task declares `inner`), `locals.<key>`, `resource.status.<key>`, `self.<key>` |
+| Task `outputs.bind` | `inner.outputs.<key>`, `locals.<key>` |
+| Work `observe` | `resource.status.<key>`, `self.<key>` |
+| Work instruction body | `resource.id`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
 | Chain `inputs` | `work.session`, `work.instance`, `work.workflow`, `work.outputs.<key>`, `work.done_when.pending_judge_ids`, `work.revision` |
 
 A projection naming a root the surface does not observe is
@@ -135,37 +137,32 @@ declare is `PLECT-CFG-FROM-PATH`.
 current as of each evaluation. Nothing about a value being "dynamic" needs its
 own declaration form — re-evaluation rides on root liveness.
 
-<!-- fixture: values/live-root.toml -->
-```toml
-[review]
-kind     = "task"
-scope    = "session"
-requires = ["resource_kind", "verdict_current"]
+The live roots appear on exactly one surface: a work document's `observe`. A
+task's outputs are production records, so its `outputs.bind` reads the nesting
+joint's roots only.
 
-[review.setup]
-type = "exec"
-bin  = "github-issue-pr"
-args = ["render-instruction", "--session", { from = "session.name" }]
+<!-- fixture: values/live-root.md -->
+```markdown
++++
+kind        = "work"
+description = "Review a resource and record a verdict against its revision"
+requires    = ["resource_kind", "verdict_current"]
 
-[review.outputs.bind]
+[records]
+verdict_revision = { type = "string" }
+
+[observe]
 resource_kind   = { from = "resource.status.resource_kind" }
 revision        = { from = "resource.status.revision" }
 verdict_current = { expr = "self.verdict_revision == resource.status.revision" }
 
-[review.outputs_schema]
-type = "object"
-
-[review.outputs_schema.properties]
-resource_kind    = { type = "string", mutable = true }
-revision         = { type = "string", mutable = true }
-verdict_revision = { type = "string", mutable = true }
-verdict_current  = { type = "boolean" }
-
-[review.done_when]
+[done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "verdict_current", in = [true] },
 ]
++++
+Review {{ resource.id }} and record a verdict against its current revision.
 ```
 
 A direct projection of an inner output, `{ from = "inner.outputs.<key>" }`,

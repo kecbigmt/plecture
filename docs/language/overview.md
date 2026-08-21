@@ -21,18 +21,23 @@ general-purpose expression language of its own.
 
 | Chapter | Subject |
 |---|---|
-| [`declarations.md`](declarations.md) | Definition blocks, discovery, namespaces, and the reference grammar |
-| [`values.md`](values.md) | The five value forms, the tagged-value vocabulary, and the per-surface `from` roots |
-| [`expressions.md`](expressions.md) | The Plecture CEL profile |
-| [`actions.md`](actions.md) | `exec` and `shell` actions, `bin` versus `command`, and the binding transport |
-| [`tasks.md`](tasks.md) | The task kind, its two instantiation modes, nesting, health, terminal, and outputs |
+| [`work.md`](work.md) | The work document: the completion contract and the instruction |
+| [`chains.md`](chains.md) | Chains: what a work document spawns, and when |
+| [`tasks.md`](tasks.md) | The task kind: lifecycle, health, terminal, and nesting |
 | [`workflows.md`](workflows.md) | The workflow kind: nodes, event channels, display, and the clocks |
 | [`channels.md`](channels.md) | The channel kind and its delivery primitives |
 | [`workspace-providers.md`](workspace-providers.md) | The workspace provider kind |
 | [`resource-observers.md`](resource-observers.md) | The resource observer kind |
-| [`chains.md`](chains.md) | Chains, a task-owned construct |
+| [`declarations.md`](declarations.md) | Definition blocks, discovery, namespaces, and the reference grammar |
+| [`values.md`](values.md) | The five value forms, the tagged-value vocabulary, and the per-surface roots |
+| [`expressions.md`](expressions.md) | The Plecture CEL profile |
+| [`actions.md`](actions.md) | `exec` and `shell` actions, `bin` versus `command`, and the binding transport |
 | [`plugins.md`](plugins.md) | Plugin and catalog manifests |
 | [`config.md`](config.md) | The reserved root files |
+
+Work comes first because work is what the system is for: Plecture gives
+autonomous work a place to go, and tasks and workflows are the housing that
+gives it somewhere to run.
 
 ## Layers of specification
 
@@ -108,15 +113,15 @@ may improve over time.
 | `PLECT-CFG-SHELL-INTERPOLATION` | structural | Shell source is literal; it carries no Plecture or CEL interpolation. |
 | `PLECT-CFG-REF-DYNAMIC` | structural | A statically discoverable field carries a computed value. |
 | `PLECT-CFG-CHANNEL-TIMEOUT-ROOT` | structural | A channel `timeout` reads author-declared parameters only. |
+| `PLECT-CFG-WORK-FRONTMATTER-MISSING` | structural | A work document does not open with `+++` frontmatter. |
 | `PLECT-CFG-UNKNOWN-REF` | semantic | A reference resolves to no definition. |
 | `PLECT-CFG-KIND-MISMATCH` | semantic | A reference site's expected kind differs from the target's declared kind. |
 | `PLECT-CFG-ID-DUPLICATE` | semantic | One layer declares the same definition id twice. |
 | `PLECT-CFG-REF-ALIAS-REQUIRED` | semantic | A user-owned reference to catalog content omits its catalog alias. |
 | `PLECT-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
-| `PLECT-CFG-FROM-ROOT` | semantic | A projection names a root the containing surface does not observe. |
+| `PLECT-CFG-FROM-ROOT` | structural / semantic | A projection names a root the containing surface does not observe. It is structural where a surface's roots are a fixed prefix set, as on a task's `outputs.bind` and a work document's `observe`, and semantic otherwise. |
 | `PLECT-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
-| `PLECT-CFG-FIELD-MODE` | semantic | A task field is used outside the instantiation modes it is valid in. |
-| `PLECT-CFG-REQUIRES-UNDECLARED` | semantic | A `done_when` check, or a `requires` entry, names an output no contract declares. |
+| `PLECT-CFG-REQUIRES-UNDECLARED` | semantic | A `done_when` check, or a `requires` entry, names a key no contract declares. |
 | `PLECT-CFG-BIN-UNKNOWN` | semantic | An executable reference resolves to no declared executable. |
 | `PLECT-CFG-TERMINAL-UNAVAILABLE` | semantic | A terminal capability is consumed where no task in the plan declares that verb. |
 | `PLECT-CFG-NESTING-CYCLE` | semantic | A nesting chain reaches itself. |

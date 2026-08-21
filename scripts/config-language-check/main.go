@@ -40,7 +40,14 @@ type expectation struct {
 	Reason     string
 }
 
-var headerRe = regexp.MustCompile(`^#\s*plect-fixture:\s*(.*)$`)
+// A fixture's expectation header is a TOML comment in a definition document
+// and an HTML comment in a work document, whose frontmatter must start the
+// file once the header is stripped.
+var (
+	headerRe   = regexp.MustCompile(`^(?:#|<!--)\s*plect-fixture:\s*(.*?)\s*(?:-->)?$`)
+	reasonRe   = regexp.MustCompile(`^(?:#|<!--)\s*reason:\s*(.*?)\s*(?:-->)?$`)
+	isHeaderRe = regexp.MustCompile(`^(?:#|<!--)\s*(?:plect-fixture|reason):`)
+)
 
 func parseHeader(src string) (expectation, error) {
 	var exp expectation
@@ -70,8 +77,10 @@ func parseHeader(src string) (expectation, error) {
 			return exp, fmt.Errorf("unknown header field %q", k)
 		}
 	}
-	if len(lines) > 1 && strings.HasPrefix(lines[1], "# reason:") {
-		exp.Reason = strings.TrimSpace(strings.TrimPrefix(lines[1], "# reason:"))
+	if len(lines) > 1 {
+		if r := reasonRe.FindStringSubmatch(lines[1]); r != nil {
+			exp.Reason = r[1]
+		}
 	}
 	if exp.Entry == "" {
 		exp.Entry = "definitions"
@@ -104,13 +113,30 @@ func parseHeader(src string) (expectation, error) {
 func body(src string) string {
 	lines := strings.Split(src, "\n")
 	i := 0
-	for i < len(lines) && strings.HasPrefix(lines[i], "# plect-fixture:") || i < len(lines) && strings.HasPrefix(lines[i], "# reason:") {
+	for i < len(lines) && isHeaderRe.MatchString(lines[i]) {
 		i++
 	}
 	for i < len(lines) && strings.TrimSpace(lines[i]) == "" {
 		i++
 	}
 	return strings.Join(lines[i:], "\n")
+}
+
+// frontmatter splits a work document into its frontmatter and its
+// instruction body. The frontmatter is TOML, delimited by +++, so the
+// document's completion contract is written in the same grammar every other
+// definition uses and validates against the same schema.
+func frontmatter(src string) (string, error) {
+	const delim = "+++\n"
+	if !strings.HasPrefix(src, delim) {
+		return "", fmt.Errorf("no frontmatter: a work document opens with %q", strings.TrimSuffix(delim, "\n"))
+	}
+	rest := src[len(delim):]
+	end := strings.Index(rest, "\n"+delim)
+	if end < 0 {
+		return "", fmt.Errorf("unterminated frontmatter")
+	}
+	return rest[:end+1], nil
 }
 
 // normalize round-trips a TOML-decoded value through JSON so the validator
@@ -160,7 +186,7 @@ func run() error {
 	}
 
 	entries := map[string]*jsonschema.Schema{}
-	for _, anchor := range []string{"definitions", "config", "catalogs", "lock", "plugin", "catalog"} {
+	for _, anchor := range []string{"definitions", "work", "config", "catalogs", "lock", "plugin", "catalog"} {
 		s, err := compiler.Compile(schemaPath + "#" + anchor)
 		if err != nil {
 			return fmt.Errorf("compile entry %q: %w", anchor, err)
@@ -181,7 +207,8 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasSuffix(path, ".toml") {
+		if !info.IsDir() && (strings.HasSuffix(path, ".toml") || strings.HasSuffix(path, ".md")) &&
+			filepath.Base(path) != "README.md" && filepath.Base(path) != "CLASSIFICATION.md" {
 			paths = append(paths, path)
 		}
 		return nil
@@ -218,9 +245,25 @@ func run() error {
 			continue
 		}
 
+		// A fixture that does not decode at all is rejected before any schema
+		// rule can be blamed, so a structural expectation is satisfied by the
+		// decode failure itself and its diagnostic is taken on trust.
 		var decoded map[string]any
-		if _, err := toml.Decode(src, &decoded); err != nil {
-			rep.fail("%s: TOML does not parse: %v", rel, err)
+		var decodeErr error
+		if strings.HasSuffix(path, ".md") {
+			fm, err := frontmatter(body(src))
+			if err != nil {
+				decodeErr = err
+			} else if _, err := toml.Decode(fm, &decoded); err != nil {
+				decodeErr = fmt.Errorf("frontmatter does not parse as TOML: %w", err)
+			}
+		} else if _, err := toml.Decode(src, &decoded); err != nil {
+			decodeErr = fmt.Errorf("TOML does not parse: %w", err)
+		}
+		if decodeErr != nil {
+			if exp.Result != "invalid" || exp.Layer != "structural" {
+				rep.fail("%s: %v", rel, decodeErr)
+			}
 			continue
 		}
 		instance, err := normalize(decoded)
@@ -415,7 +458,7 @@ func documentedDiagnostics() (map[string]bool, error) {
 	return out, nil
 }
 
-var docFixtureRe = regexp.MustCompile("(?m)^<!-- fixture: (\\S+) -->\\n```toml\\n((?s:.*?))```\\n")
+var docFixtureRe = regexp.MustCompile("(?m)^<!-- fixture: (\\S+) -->\\n```(?:toml|markdown)\\n((?s:.*?))```\\n")
 
 // checkDocExamples enforces that a chapter's worked example is the fixture,
 // not a paraphrase of it: prose that drifts from the executable specification

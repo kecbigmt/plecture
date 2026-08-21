@@ -1,23 +1,15 @@
-# plect-fixture: result=valid entry=definitions
-# reason: translation of plugins/okf/config/tasks/pursue_goal.toml.
-
-# One instance tracks one local-okf goal Concept. setup only gates the
-# resource kind — goal-specific completion conditions live in the goal file's
-# "## Done When" checklist, not in generated done_when config.
-[pursue_goal]
-kind  = "task"
-scope = "session"
-
-[pursue_goal.setup]
-type = "exec"
-bin  = "okf-goal"
-args = ["task", "validate-goal-resource", "--resource", { from = "resource.id" }]
+<!-- plect-fixture: result=valid entry=work -->
+<!-- reason: translation of plugins/okf/config/tasks/pursue_goal.toml; it is the one work-genre declaration with no instruction template, so its body is written here. -->
++++
+kind        = "work"
+description = "Track one local-okf goal Concept until an independent reviewer confirms it"
+requires    = ["goal_parse_status", "goal_status", "checklist_status"]
 
 # Observed goal state is projected per key from the goal observer, so
 # `plect resource status`, show, and this instance all read one contract.
 # revision (= goal_revision) is the key judge staleness compares, so editing
 # the goal file re-pends a recorded judge.
-[pursue_goal.outputs.bind]
+[observe]
 goal_parse_status = { from = "resource.status.goal_parse_status" }
 goal_status       = { from = "resource.status.goal_status" }
 checklist_status  = { from = "resource.status.checklist_status" }
@@ -26,13 +18,13 @@ revision          = { from = "resource.status.revision" }
 open_items        = { from = "resource.status.open_items" }
 
 # goal_parse_status must be SUCCESS: FAILURE (malformed file) and UNRESOLVED
-# (goal not locatable) both keep the check unsatisfied. goal_status must still
-# be "open": completed is the consequence of satisfaction, never its
-# precondition. The goal usually lives on the session-tree root, which has no
-# parent and supervises its own children — so child is deliberately excluded
-# (a supervised child approving its own supervisor's goal is a back door, not
-# independence).
-[pursue_goal.done_when]
+# (goal not locatable) both keep the check unsatisfied — which is also what
+# replaces the shipped setup gate, since a resource that cannot be parsed as a
+# goal can never satisfy this check. goal_status must still be "open":
+# completed is the consequence of satisfaction, never its precondition. The
+# goal usually lives on the session-tree root, which has no parent and
+# supervises its own children, so child is deliberately excluded.
+[done_when]
 all = [
   { check = "goal_parse_status", in = ["SUCCESS"] },
   { check = "goal_status", in = ["open"] },
@@ -45,14 +37,14 @@ all = [
 
 # Once the checklist is fully satisfied and only goal-met is pending, spawn an
 # independent reviewer as this session's sibling. The chain instance is keyed
-# by this pursue_goal instance, so each goal tracked on the same session gets
-# its own reviewer instead of colliding on one chain-spawn tag.
-[[pursue_goal.chains]]
+# by this instance, so each goal tracked on the same session gets its own
+# reviewer instead of colliding on one chain-spawn tag.
+[[chains]]
 id        = "goal_review"
 workflow  = "goal_review_session"
 placement = "sibling"
 
-[pursue_goal.chains.when]
+[chains.when]
 all = [
   { check = "goal_parse_status", in = ["SUCCESS"] },
   { check = "goal_status", in = ["open"] },
@@ -60,19 +52,14 @@ all = [
   { judge_pending = "goal-met" },
 ]
 
-[pursue_goal.chains.inputs]
+[chains.inputs]
 task         = "goal_review"
 work_session = { from = "work.session" }
 instance     = { from = "work.instance" }
 judge_ids    = { from = "work.done_when.pending_judge_ids" }
++++
+Pursue the goal at {{ resource.id }}.
 
-[pursue_goal.outputs_schema]
-type = "object"
-
-[pursue_goal.outputs_schema.properties]
-goal_parse_status = { type = "string", mutable = true }
-goal_status       = { type = "string", mutable = true }
-checklist_status  = { type = "string", mutable = true }
-goal_revision     = { type = "string", mutable = true }
-revision          = { type = "string", mutable = true }
-open_items        = { type = "string", mutable = true }
+Work its "## Done When" checklist to completion, recording evidence as you go.
+Goal-specific completion conditions live in the goal file's checklist, not
+here.

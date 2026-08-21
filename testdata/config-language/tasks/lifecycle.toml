@@ -1,5 +1,5 @@
 # plect-fixture: result=valid entry=definitions
-# reason: a task reached through a workflow node declares only node-applicable fields.
+# reason: a task is a lifecycle-managed provider: contracts, health, an optional interactive capability, and composition.
 
 [pane]
 kind  = "task"

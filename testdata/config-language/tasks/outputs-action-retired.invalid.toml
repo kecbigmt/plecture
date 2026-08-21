@@ -1,14 +1,14 @@
 # plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-FIELD-TYPE entry=definitions
 # reason: dynamic outputs dissolve into the value model, so neither an outputs array nor from_resource_status exists.
 
-[work]
+[render]
 kind = "task"
 
-[work.setup]
+[render.setup]
 type = "exec"
 bin  = "github-issue-pr"
 args = ["render-instruction"]
 
-[[work.outputs]]
+[[render.outputs]]
 produces             = ["resource_kind", "checks_status"]
 from_resource_status = true

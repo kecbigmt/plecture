@@ -1,54 +1,26 @@
 # Tasks
 
-A task definition describes one unit of lifecycle: what to bring up, how to
-observe it, what its public outputs are, and — for an instance — when it is
-done.
+A task is a lifecycle-managed provider: contracts, health, an optional
+interactive capability, and composition.
 
-## Two instantiation modes
+It brings something up, keeps it observable, and takes it down. It does not
+decide whether work is finished — that is a [work document](work.md).
 
-The kind is one and the contract is one, but a task is instantiated two ways.
+## Surface
 
-| Mode | Reached by | Identity |
-|---|---|---|
-| Node | A workflow's `[[nodes]]` | Position in the workflow DAG |
-| Instance | `plect task setup` | The resource plus the instance name |
-
-Every field declares which modes it is valid in. The structural schema records
-this per field as `x-plect-modes`; Plecture semantic validation reports a field
-used outside its modes as `PLECT-CFG-FIELD-MODE` once the reference graph makes
-the mode known — a task reached by a workflow node is in node mode.
-
-| Field | Modes |
+| Field | Meaning |
 |---|---|
-| `scope` | node, instance |
-| `setup`, `cleanup` | node, instance |
-| `inner` | node, instance |
-| `locals_schema`, `locals_schema_file` | node, instance |
-| `inputs_schema`, `inputs_schema_file` | node, instance |
-| `outputs_schema`, `outputs_schema_file` | node, instance |
-| `outputs` | node, instance |
-| `health` | node, instance |
-| `terminal` | node |
-| `done_when` | instance |
-| `requires` | instance |
-| `chains` | instance |
+| `scope` | `run` or `session`, defaulting to `run`. |
+| `setup`, `cleanup` | The lifecycle actions. See [`actions.md`](actions.md). |
+| `inputs_schema`, `outputs_schema` | The task's contracts. |
+| `[health]` | The `alive` and `activity` probes. |
+| `[terminal]` | The interactive endpoint, if this task owns one. |
+| `inner`, `[inner.inputs]`, `[inner.env]`, `[outputs.bind]`, `locals_schema` | The nesting joint. |
 
-`terminal` is node-only because the session's interactive endpoint is resolved
-through the node plan, which a dynamic instance is not part of. `done_when`,
-`requires`, and `chains` are instance-only because a completion predicate is
-evaluated per instance, and a chain fires against instances of the task that
-declared it.
+That is the whole grammar. A completion predicate, the keys it reads, its
+budget, and the workflows it spawns all belong to a work document.
 
-The shared portion of the contract dominates: lifecycle, contracts, nesting,
-outputs, and health are common, and the disjoint portion is one node-only table
-and three instance-only fields. The kind is therefore not split.
-
-`scope` is `run` or `session`, defaulting to `run`. A nested task that declares
-none takes the innermost layer's scope.
-
-## Node mode
-
-<!-- fixture: tasks/node-mode.toml -->
+<!-- fixture: tasks/lifecycle.toml -->
 ```toml
 [pane]
 kind  = "task"
@@ -87,117 +59,43 @@ kind = "workflow"
 uses = "pane"
 ```
 
-## Instance mode
+A nested task that declares no `scope` takes the innermost layer's scope.
 
-<!-- fixture: tasks/instance-mode.toml -->
+## Outputs are production records
+
+A task's outputs are facts it produced: what setup wrote to stdout, and what a
+nesting joint projected outward. They are records of what happened, not a view
+of something that keeps changing.
+
+So `[outputs.bind]` projects `inner.outputs.*` and `locals.*` — nothing else. A
+live root belongs to a work document's `observe`, and re-evaluation semantics
+exist only there.
+
+<!-- fixture: tasks/live-root-output.invalid.toml -->
 ```toml
-[pursue_goal]
-kind     = "task"
-scope    = "session"
-requires = ["goal_parse_status", "goal_status", "checklist_status"]
+[render]
+kind  = "task"
+scope = "session"
 
-[pursue_goal.setup]
-type = "exec"
-bin  = "okf-goal"
-args = ["task", "validate-goal-resource", "--resource", { from = "resource.id" }]
-
-[pursue_goal.outputs.bind]
-goal_parse_status = { from = "resource.status.goal_parse_status" }
-goal_status       = { from = "resource.status.goal_status" }
-checklist_status  = { from = "resource.status.checklist_status" }
-goal_revision     = { from = "resource.status.goal_revision" }
-revision          = { from = "resource.status.revision" }
-open_items        = { from = "resource.status.open_items" }
-
-[pursue_goal.outputs_schema]
-type = "object"
-
-[pursue_goal.outputs_schema.properties]
-goal_parse_status = { type = "string", mutable = true }
-goal_status       = { type = "string", mutable = true }
-checklist_status  = { type = "string", mutable = true }
-goal_revision     = { type = "string", mutable = true }
-revision          = { type = "string", mutable = true }
-open_items        = { type = "string", mutable = true }
-
-[pursue_goal.done_when]
-all = [
-  { check = "goal_parse_status", in = ["SUCCESS"] },
-  { check = "goal_status", in = ["open"] },
-  { check = "checklist_status", in = ["SUCCESS"] },
-  { judge = "goal is achieved according to the goal file and event evidence", id = "goal-met", relation = ["sibling"] },
-]
-
-[[pursue_goal.chains]]
-id        = "goal_review"
-workflow  = "goal_review"
-placement = "sibling"
-
-[pursue_goal.chains.when]
-all = [
-  { check = "checklist_status", in = ["SUCCESS"] },
-  { judge_pending = "goal-met" },
-]
-
-[pursue_goal.chains.inputs]
-task         = "goal_review"
-work_session = { from = "work.session" }
-instance     = { from = "work.instance" }
-judge_ids    = { from = "work.done_when.pending_judge_ids" }
-```
-
-## Outputs
-
-`[<id>.outputs.bind]` wires the public output contract. Each key is projected
-or computed.
-
-Dynamic outputs dissolve into this value model. There is no outputs action
-construct and no bulk-copy flag: a task's observed resource state is declared
-per key, with renames where the task wants them, and re-evaluation rides on
-root liveness rather than on a separate syntax group.
-
-<!-- fixture: observers/per-key-outputs.toml -->
-```toml
-[review]
-kind     = "task"
-scope    = "session"
-requires = ["kind", "checks"]
-
-[review.setup]
+[render.setup]
 type = "exec"
 bin  = "github-issue-pr"
-args = ["render-instruction", "--session", { from = "session.name" }]
+args = ["render-instruction"]
 
-[review.outputs.bind]
-kind     = { from = "resource.status.resource_kind" }
-checks   = { from = "resource.status.checks_status" }
-revision = { from = "resource.status.revision" }
-pr_url   = { from = "resource.status.pr_url", optional = true }
+[render.outputs.bind]
+checks_status = { from = "resource.status.checks_status" }
 
-[review.outputs_schema]
+[render.outputs_schema]
 type = "object"
 
-[review.outputs_schema.properties]
-kind     = { type = "string", mutable = true }
-checks   = { type = "string", mutable = true }
-revision = { type = "string", mutable = true }
-pr_url   = { type = "string", mutable = true }
-
-[review.done_when]
-all = [
-  { check = "kind", in = ["pull", "issue"] },
-  { check = "checks", in = ["SUCCESS", "NULL"] },
-]
+[render.outputs_schema.properties]
+checks_status = { type = "string" }
 ```
-
-An output whose value reads a live root is current as of each evaluation. A
-direct projection of an inner output keeps write-through; a computed one does
-not, so a computed nested output cannot be declared mutable.
 
 ## Health
 
-`[<id>.health]` declares this task's contribution to session health: an
-`alive` probe and an `activity` probe, each an action.
+`[health]` declares this task's contribution to session health: an `alive`
+probe and an `activity` probe, each an action.
 
 <!-- fixture: tasks/health.toml -->
 ```toml
@@ -240,7 +138,7 @@ session_name = { type = "string" }
 
 ## Terminal
 
-`[<id>.terminal]` declares that the task owns an interactive endpoint, offering
+`[terminal]` declares that the task owns an interactive endpoint, offering
 `attach`, `capture`, `send_text`, and `send_keys` against it. At most one task
 in a plan declares it. `plect attach` and `plect capture` resolve through it,
 and the `terminal` capability reaches all four verbs without the consumer
@@ -370,6 +268,11 @@ tmux_session = { type = "string" }
 model        = { type = "string" }
 ```
 
+Write-through is a property of this joint: a direct projection of a mutable
+inner output carries later writes outward, and a computed binding does not.
+Nesting is a task concept only — work composes in document vocabulary, never
+through this joint.
+
 A structured record passes through the joint as data and is serialized by the
 inner task's own fixed logic — it does not become shell source and does not
 ride child argv:
@@ -417,29 +320,14 @@ args    = { type = "array", items = { type = "string" } }
 env     = { type = "object" }
 ```
 
-## Completion
-
-`[<id>.done_when]` is a conjunction of leaves plus an optional budget. A check
-leaf compares an observed output; a judge leaf waits for independent reviewer
-input recorded by `plect judge`, optionally restricted to reviewers in a
-declared relation.
-
-`requires` names the output keys those checks read. Every check names a
-required output, and every required output is an outputs-schema property, so a
-typo in either surfaces at load time.
-
-Omitting `budget` leaves completion unbounded, which is what a long-lived goal
-needs: a heartbeat budget is a convergence bound, and continuing to exist is
-not exhaustion.
-
 ## Validation rules
 
-- A field used outside its modes is a load error.
-- Every `done_when` check names a `requires` entry, and every `requires` entry
-  is an outputs-schema property.
+- The task grammar is closed: a completion field is not part of it.
+- `[outputs.bind]` projects `inner.outputs.*` or `locals.*`.
 - A nesting chain that reaches itself is a load error.
 - A direct nested projection agrees with the inner output's type and
   mutability.
 - A computed nested output is not mutable.
-- A nested `outputs.bind` observes inner outputs and this layer's locals only.
-- At most one task in a plan declares `terminal`.
+- At most one task in a plan declares `[terminal]`.
+- A `plect task setup` target resolving to a task is a kind mismatch: dynamic
+  instantiation targets work documents.

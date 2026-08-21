@@ -22,8 +22,14 @@ kind = "<kind>"
 | `<id>` | The responsibility name references use. |
 | `kind` | The declaration contract this block implements. |
 
-The kind vocabulary is `task`, `channel`, `workflow`, `workspace_provider`,
-and `resource_observer`.
+The kind vocabulary is `task`, `work`, `channel`, `workflow`,
+`workspace_provider`, and `resource_observer`.
+
+`work` is the one kind that is not a TOML table. A work document is a Markdown
+file whose `+++` frontmatter declares `kind = "work"` and whose body is the
+instruction; its id is the filename stem. Everything else in this chapter — the
+id grammar, the namespace, the reference grammar — applies to it unchanged. See
+[`work.md`](work.md).
 
 A kind uses its bare concept name when the declaration's runtime counterpart
 is its own instance: tasks instantiate into task instances, channels into
@@ -80,8 +86,10 @@ Each trusted config layer has a definition root: a plugin's `config/`
 directory, the user config home excluding reserved root files, and a trusted
 ancestor overlay's `.plect/` directory.
 
-Within a definition root, every `.toml` file that is not a reserved root file
-is read recursively, in lexicographic order by slash-separated relative path.
+Within a definition root, every `.toml` file that is not a reserved root file,
+and every `.md` file opening with `+++` frontmatter, is read recursively in
+lexicographic order by slash-separated relative path. A `.md` file without that
+frontmatter is a template asset, not a definition.
 Subdirectories are author organization only: one definition per file and
 kind-named directories such as `config/tasks/` are equally valid and mean the
 same thing.
@@ -118,7 +126,7 @@ alias and plugin path.
 | Same id, different kind | Load error. |
 
 The whole-definition kinds are workspace provider, resource observer, channel,
-and task.
+task, and work.
 
 Catalog-qualified references select catalog plugin definitions and are not
 shadowed by a same-id relative definition in a user-owned layer. A same-id
@@ -198,7 +206,9 @@ A reference carries no kind segment. After resolution, the target's declared
 | Workflow node `uses` | `task` |
 | Workflow event channel `uses` | `channel` |
 | Task `inner.uses` | `task` |
-| Task chain `workflow` | `workflow` |
+| Work chain `workflow` | `workflow` |
+| `plect task setup` target | `work` |
+| Chain spawn target | `work` |
 | `config.toml` `channels` | `channel` |
 
 A mismatch names the site, the reference, the expected kind, and the target's
@@ -224,6 +234,8 @@ executable name. See [`actions.md`](actions.md).
   definition table is a load error unless it is a reserved root file.
 - A definition table missing `kind`, or carrying an unknown `kind`, is a load
   error.
+- A work document not opening with `+++` frontmatter that declares
+  `kind = "work"` is not a work document.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
 - Two definitions with the same id in one layer are a load error, whatever
   their kinds.

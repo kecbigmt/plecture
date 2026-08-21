@@ -98,25 +98,23 @@ dropped. A check that is dropped becomes an accepted-invalid conformance
 fixture, so what the language would reject stays recorded even while the
 implementation accepts it:
 
-<!-- fixture: expressions/type-mismatch.accepted-invalid.toml -->
-```toml
-[review]
-kind = "task"
+<!-- fixture: expressions/type-mismatch.accepted-invalid.md -->
+```markdown
++++
+kind        = "work"
+description = "A work document whose computed observation does not type-check"
+requires    = ["verdict_current"]
 
-[review.setup]
-type = "exec"
-bin  = "github-issue-pr"
-args = ["render-instruction"]
+[records]
+verdict_revision = { type = "string" }
 
-[review.outputs.bind]
+[observe]
 verdict_current = { expr = "self.verdict_revision + 1" }
 
-[review.outputs_schema]
-type = "object"
-
-[review.outputs_schema.properties]
-verdict_revision = { type = "string", mutable = true }
-verdict_current  = { type = "boolean" }
+[done_when]
+all = [{ check = "verdict_current", in = [true] }]
++++
+Review {{ resource.id }} and record a verdict.
 ```
 
 Constraints that do not map naturally into the CEL type system — patterns,
@@ -126,5 +124,5 @@ at runtime validation.
 ## Computed nested outputs
 
 A computed nested output binding produces a string. Typed computed nested
-outputs are deferred; a non-nested computed output may be typed and validated
-against its output schema.
+outputs are deferred; a computed observation in a work document may be typed
+and validated against its declared key.
