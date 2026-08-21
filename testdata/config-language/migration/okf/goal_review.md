@@ -1,20 +1,27 @@
 <!-- plect-fixture: result=valid entry=work -->
 <!-- reason: translation of plugins/okf/config/tasks/goal_review.toml plus plugins/okf/config/templates/goal_review.md. -->
 +++
+[goal_review]
 kind        = "work"
 description = "Review a local-okf goal file and record whether it is achieved"
 requires    = ["goal_parse_status", "verdict_current"]
 
-[inputs]
+[goal_review.inputs_schema]
+type = "object"
+
+[goal_review.inputs_schema.properties]
 instruction  = { type = "string" }
 work_session = { type = "string" }
 instance     = { type = "string" }
 judge_ids    = { type = "string" }
 
-[records]
+[goal_review.state_schema]
+type = "object"
+
+[goal_review.state_schema.properties]
 verdict_revision = { type = "string" }
 
-[observe]
+[goal_review.observe]
 goal_parse_status = { from = "resource.status.goal_parse_status" }
 goal_status       = { from = "resource.status.goal_status" }
 checklist_status  = { from = "resource.status.checklist_status" }
@@ -23,13 +30,13 @@ revision          = { from = "resource.status.revision" }
 open_items        = { from = "resource.status.open_items" }
 verdict_current   = { expr = "self.verdict_revision == resource.status.revision" }
 
-[done_when]
+[goal_review.done_when]
 all = [
   { check = "goal_parse_status", in = ["SUCCESS"] },
   { check = "verdict_current", in = [true] },
 ]
 
-[budget]
+[goal_review.budget]
 heartbeat_budget = 3
 on_exhaust       = "escalate"
 +++

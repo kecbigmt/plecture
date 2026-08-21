@@ -13,7 +13,7 @@ verification, and an alternative implementation.
 
 | Directory | Area |
 |---|---|
-| `work/` | The work document: frontmatter contract and instruction body |
+| `work/` | The work document: its id, contracts, observation, and instruction body |
 | `values/` | The five value forms and the tagged-value vocabulary |
 | `references/` | Declaration identity, ids, and the dotted reference grammar |
 | `actions/` | `exec` and `shell` actions, `bin` versus `command`, bindings |

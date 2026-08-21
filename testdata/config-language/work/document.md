@@ -1,21 +1,25 @@
 <!-- plect-fixture: result=valid entry=work -->
 <!-- reason: a work document's frontmatter is its completion contract and its body is the instruction. -->
 +++
+[work]
 kind        = "work"
 description = "Implement a fix or feature for an issue and create a PR"
 requires    = ["resource_kind", "checks_status", "issue_status"]
 
-[inputs]
+[work.inputs_schema]
+type = "object"
+
+[work.inputs_schema.properties]
 instruction = { type = "string" }
 
-[observe]
+[work.observe]
 resource_kind = { from = "resource.status.resource_kind" }
 checks_status = { from = "resource.status.checks_status" }
 issue_status  = { from = "resource.status.issue_status" }
 revision      = { from = "resource.status.revision" }
 pr_url        = { from = "resource.status.pr_url", optional = true }
 
-[done_when]
+[work.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "checks_status", in = ["SUCCESS", "NULL"] },
@@ -23,7 +27,7 @@ all = [
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
 
-[budget]
+[work.budget]
 heartbeat_budget = 3
 on_exhaust       = "escalate"
 +++

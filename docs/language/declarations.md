@@ -26,9 +26,11 @@ The kind vocabulary is `task`, `work`, `channel`, `workflow`,
 `workspace_provider`, and `resource_observer`.
 
 `work` is the one kind that is not a TOML table. A work document is a Markdown
-file whose `+++` frontmatter declares `kind = "work"` and whose body is the
-instruction; its id is the filename stem. Everything else in this chapter — the
-id grammar, the namespace, the reference grammar — applies to it unchanged. See
+file whose `+++` frontmatter declares `kind = "work"` and its `id`, and whose
+body is the instruction. Its id lives in the frontmatter for the same reason a
+TOML definition's lives in its table name: the declaration carries its own
+identity, and the filename does not. Everything else in this chapter — the id
+grammar, the namespace, the reference grammar — applies to it unchanged. See
 [`work.md`](work.md).
 
 A kind uses its bare concept name when the declaration's runtime counterpart
@@ -234,8 +236,8 @@ executable name. See [`actions.md`](actions.md).
   definition table is a load error unless it is a reserved root file.
 - A definition table missing `kind`, or carrying an unknown `kind`, is a load
   error.
-- A work document not opening with `+++` frontmatter that declares
-  `kind = "work"` is not a work document.
+- A work document opens with `+++` frontmatter holding exactly one declaration,
+  whose kind is `work`.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
 - Two definitions with the same id in one layer are a load error, whatever
   their kinds.

@@ -40,6 +40,9 @@
           "$ref": "#/$defs/taskDefinition"
         },
         {
+          "$ref": "#/$defs/workDefinition"
+        },
+        {
           "$ref": "#/$defs/channelDefinition"
         },
         {
@@ -52,7 +55,7 @@
           "$ref": "#/$defs/resourceObserverDefinition"
         }
       ],
-      "description": "A TOML definition block. The work kind is not here: a work document is a Markdown file with frontmatter, validated through the #work entry."
+      "description": "A definition block. Every kind is declared the same way: a table named by the definition id, carrying kind. A work block additionally appears only as the single block of a Markdown file's frontmatter."
     },
     "staticReference": {
       "type": "string",
@@ -1510,85 +1513,6 @@
         }
       ]
     },
-    "workDocument": {
-      "$anchor": "work",
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "kind"
-      ],
-      "description": "The frontmatter of a work document. A work document is a Markdown file: its frontmatter is the completion contract and its body is the instruction. It is the unit autonomous work is dispatched as \u2014 created by `plect task setup` or by a chain spawn, never referenced by a workflow node.",
-      "properties": {
-        "kind": {
-          "const": "work"
-        },
-        "description": {
-          "type": "string"
-        },
-        "inputs": {
-          "type": "object",
-          "description": "The instruction's author-declared parameters.",
-          "propertyNames": {
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/schemaPropertySpec"
-          }
-        },
-        "observe": {
-          "type": "object",
-          "description": "The keys this work reads from its resource and its own recorded state. Every value here is current as of each evaluation: live re-evaluation exists only on this surface.",
-          "propertyNames": {
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/observeValue"
-          }
-        },
-        "records": {
-          "type": "object",
-          "description": "Keys a reviewer or another session writes through `plect state set-output`, rather than keys observed from the resource. Proposed by the shipped-config mapping and awaiting ratification: without it a recorded revision such as verdict_revision has no declaration.",
-          "propertyNames": {
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/schemaPropertySpec"
-          }
-        },
-        "requires": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "done_when": {
-          "$ref": "#/$defs/doneWhen"
-        },
-        "chains": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/chainDefinition"
-          }
-        },
-        "budget": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "heartbeat_budget": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "on_exhaust": {
-              "enum": [
-                "escalate",
-                "stop"
-              ]
-            }
-          }
-        }
-      },
-      "$comment": "PLECT-CFG-FIELD-UNKNOWN, PLECT-CFG-FIELD-REQUIRED, PLECT-CFG-KIND-MISSING."
-    },
     "observeValue": {
       "$comment": "PLECT-CFG-FROM-ROOT: observe reads resource.status.* and self.*, the two live roots.",
       "type": "object",
@@ -1611,6 +1535,92 @@
           "$ref": "#/$defs/exprValue"
         }
       ]
+    },
+    "workDefinition": {
+      "$comment": "PLECT-CFG-FIELD-UNKNOWN, PLECT-CFG-FIELD-REQUIRED, PLECT-CFG-KIND-MISSING.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "description": "A work declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a work document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction.",
+      "properties": {
+        "kind": {
+          "const": "work"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument",
+          "description": "The instruction's author-declared parameters."
+        },
+        "inputs_schema_file": {
+          "type": "string"
+        },
+        "state_schema": {
+          "$ref": "#/$defs/schemaDocument",
+          "description": "This work's own state: the keys a reviewer or another session writes through `plect state set-output`. Plain JSON Schema, with no mutability annotation \u2014 state is mutable by definition. Any state-holding definition declares its state this way."
+        },
+        "state_schema_file": {
+          "type": "string"
+        },
+        "observe": {
+          "type": "object",
+          "description": "The keys this work reads from its resource and its own recorded state. Every value here is current as of each evaluation: live re-evaluation exists only on this surface.",
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/observeValue"
+          }
+        },
+        "requires": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "done_when": {
+          "$ref": "#/$defs/doneWhen"
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "heartbeat_budget": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "on_exhaust": {
+              "enum": [
+                "escalate",
+                "stop"
+              ]
+            }
+          }
+        },
+        "chains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/chainDefinition"
+          }
+        }
+      }
+    },
+    "workFrontmatter": {
+      "$anchor": "work",
+      "$comment": "PLECT-CFG-WORK-BLOCK-COUNT: a work document's frontmatter holds exactly one declaration.",
+      "type": "object",
+      "description": "The TOML frontmatter of a work document: one definition block, whose kind is work. Nothing about the grammar forks \u2014 these are two validation rules over the ordinary definition document.",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "propertyNames": {
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/workDefinition"
+      }
     }
   }
 }

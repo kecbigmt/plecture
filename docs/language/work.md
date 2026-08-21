@@ -14,21 +14,25 @@ it somewhere to run.
 <!-- fixture: work/document.md -->
 ```markdown
 +++
+[work]
 kind        = "work"
 description = "Implement a fix or feature for an issue and create a PR"
 requires    = ["resource_kind", "checks_status", "issue_status"]
 
-[inputs]
+[work.inputs_schema]
+type = "object"
+
+[work.inputs_schema.properties]
 instruction = { type = "string" }
 
-[observe]
+[work.observe]
 resource_kind = { from = "resource.status.resource_kind" }
 checks_status = { from = "resource.status.checks_status" }
 issue_status  = { from = "resource.status.issue_status" }
 revision      = { from = "resource.status.revision" }
 pr_url        = { from = "resource.status.pr_url", optional = true }
 
-[done_when]
+[work.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "checks_status", in = ["SUCCESS", "NULL"] },
@@ -36,7 +40,7 @@ all = [
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
 
-[budget]
+[work.budget]
 heartbeat_budget = 3
 on_exhaust       = "escalate"
 +++
@@ -53,14 +57,26 @@ Steps:
 
 ## Serialization
 
-Frontmatter is TOML, delimited by `+++`.
+The rule across the language is: a kind with a body is a Markdown file carrying
+a TOML-frontmatter declaration block; a kind without a body is a TOML file.
+Grammar consistency comes from the frontmatter being the uniform declaration
+form, not from every kind living in the same file format.
 
-One serialization means one grammar, one structural schema, one validator, and
-one fixture set. The frontmatter carries the language's value model —
-projections, computations, tagged values, completion entries — so a second
-serialization would specify every construct twice, and would reintroduce
-implicit typing into completion contracts, where `NULL` and `true` are load-
-bearing values.
+Frontmatter is TOML, delimited by `+++`. One serialization means one grammar,
+one structural schema, one validator, and one fixture set. The frontmatter
+carries the language's value model — projections, computations, tagged values,
+completion entries — so a second serialization would specify every construct
+twice, and would reintroduce implicit typing into completion contracts, where
+`NULL` and `true` are load-bearing values.
+
+The instruction is not a TOML string field, for four reasons. Triple-quote
+escaping breaks structurally on an instruction that quotes TOML examples
+containing multi-line strings, which shipped instructions do. The container
+should match the majority medium: prose dominates a work document, making it a
+document with declaration metadata rather than config with an embedded document
+— the reverse of a task, which is why a task is a TOML file. Authoring,
+reviewing, and exchanging work reads and diffs as prose. And the goal file it
+converges with is already a document.
 
 The body below the closing `+++` is the instruction. Its interpolation uses the
 same value model, but not the same roots as the frontmatter: the body reads what
@@ -70,23 +86,66 @@ listed in [`values.md`](values.md).
 
 ## Frontmatter
 
+The frontmatter is an ordinary definition document. A work declaration is a
+`[<id>]` table carrying `kind = "work"`, with every field under that table —
+exactly how every other kind is declared. Work gets no identity spelling of its
+own.
+
 | Field | Meaning |
 |---|---|
 | `kind` | `work`. |
 | `description` | What this work is for. |
-| `[inputs]` | The instruction's author-declared parameters. |
-| `[observe]` | The keys this work reads from its resource and its own recorded state. |
-| `[records]` | Keys a reviewer or another session writes, rather than keys observed. |
+| `[<id>.inputs_schema]` | The instruction's author-declared parameters. |
+| `[<id>.state_schema]` | This work's own state: the keys something else writes. |
+| `[<id>.observe]` | The keys this work reads from its resource and from its own state. |
 | `requires` | The keys `done_when` reads. |
-| `[done_when]` | The completion predicate. |
-| `[budget]` | The convergence bound, if any. |
-| `[[chains]]` | What this work spawns, and when. See [`chains.md`](chains.md). |
+| `[<id>.done_when]` | The completion predicate. |
+| `[<id>.budget]` | The convergence bound, if any. |
+| `[[<id>.chains]]` | What this work spawns, and when. See [`chains.md`](chains.md). |
+
+Two rules turn that document into a work document: its frontmatter holds
+exactly one declaration, and that declaration's kind is `work`. The body is
+that declaration's instruction. Neither rule forks the grammar — the parser,
+the schema, and the validator are the ones a TOML config file already uses, so
+the work declaration form is independent of the document sugar around it.
+
+Identity follows [`declarations.md`](declarations.md) unchanged: the id is the
+table name, filename and directory stay non-semantic, work ids share the one
+per-layer namespace every kind shares, and references use the same dotted forms
+validated against `kind = "work"`.
+
+Instance identity is separate and orthogonal: the id names the declaration,
+while an instance is identified by its resource and instance name.
+
+## State
+
+`state_schema` declares this work's own state: the keys a reviewer or another
+session writes through `plect state set-output`. It is plain JSON Schema, and it
+carries no mutability annotation — state is mutable by definition.
+
+One rule covers the whole language: any definition that holds state declares it
+with `state_schema`. A resource observer declares the state it publishes about a
+resource; a work document declares the state it holds about itself.
+
+That closes a chain:
+
+```text
+resource observer  state_schema   the keys it publishes about the resource
+        ↓
+work document      observe        subscribes to those keys, and to its own state
+        ↓
+work document      state_schema   the keys it holds itself
+```
+
+`verdict_revision` in the example below is a convention, not a reserved key.
+Core special-cases nothing about it: it is an ordinary declared state key whose
+meaning lives entirely in the configuration that reads it.
 
 ## Observation
 
-`[observe]` is the only surface in the language with live roots. Every value in
+`observe` is the only surface in the language with live roots. Every value in
 it is current as of each evaluation: `resource.status.*` reads the resource
-observer's state, and `self.*` reads this work's own recorded keys.
+observer's published state, and `self.*` reads this work's own declared state.
 
 Observation is declared per key, with renames where this work wants different
 names than the observer uses:
@@ -94,17 +153,18 @@ names than the observer uses:
 <!-- fixture: observers/per-key-outputs.md -->
 ```markdown
 +++
+[review]
 kind        = "work"
 description = "Review a pull request, reading the observer's state under this work's own names"
 requires    = ["kind", "checks"]
 
-[observe]
+[review.observe]
 kind     = { from = "resource.status.resource_kind" }
 checks   = { from = "resource.status.checks_status" }
 revision = { from = "resource.status.revision" }
 pr_url   = { from = "resource.status.pr_url", optional = true }
 
-[done_when]
+[review.done_when]
 all = [
   { check = "kind", in = ["pull", "issue"] },
   { check = "checks", in = ["SUCCESS", "NULL"] },
@@ -123,31 +183,38 @@ recorded state stays correct at the moment the resource changes:
 <!-- fixture: work/observe-live-roots.md -->
 ```markdown
 +++
+[review]
 kind        = "work"
 description = "Review a pull request and record a verdict"
 requires    = ["resource_kind", "verdict_current"]
 
-[inputs]
+[review.inputs_schema]
+type = "object"
+
+[review.inputs_schema.properties]
 instruction = { type = "string" }
 
-# verdict_revision is written by the reviewer through `plect state
-# set-output`, not observed from the resource, so it is declared rather than
-# projected.
-[records]
+# verdict_revision is this work's own state: written by the reviewer through
+# `plect state set-output` rather than observed from the resource. It carries no
+# mutability annotation, because state is mutable by definition.
+[review.state_schema]
+type = "object"
+
+[review.state_schema.properties]
 verdict_revision = { type = "string" }
 
-[observe]
+[review.observe]
 resource_kind   = { from = "resource.status.resource_kind" }
 revision        = { from = "resource.status.revision" }
 verdict_current = { expr = "self.verdict_revision == resource.status.revision" }
 
-[done_when]
+[review.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "verdict_current", in = [true] },
 ]
 
-[budget]
+[review.budget]
 heartbeat_budget = 3
 on_exhaust       = "escalate"
 +++
@@ -180,15 +247,16 @@ dispatched into a session a workflow has already built.
 <!-- fixture: work/lifecycle-field.invalid.md -->
 ```markdown
 +++
+[broken_work]
 kind        = "work"
 description = "A work document that tries to own a lifecycle"
 
-[setup]
+[broken_work.setup]
 type = "exec"
 bin  = "github-issue-pr"
 args = ["render-instruction"]
 
-[done_when]
+[broken_work.done_when]
 all = [{ check = "checks_status", in = ["SUCCESS"] }]
 +++
 Resolve the issue at {{ resource.id }}.
@@ -206,10 +274,13 @@ session that graph produced.
 ## Validation rules
 
 - A work document opens with `+++` frontmatter declaring `kind = "work"`.
-- `[observe]` projects `resource.status.*` and `self.*` only.
+- A work document's frontmatter holds exactly one declaration, whose kind is
+  `work`.
+- `observe` projects `resource.status.*` and `self.*` only.
+- A `self.*` projection names a `state_schema` property.
 - An observed key names a property the resolved resource observer's
   `state_schema` declares.
 - Every `done_when` check names a `requires` entry, and every `requires` entry
-  is declared in `[observe]` or `[records]`.
+  is declared in `observe` or `state_schema`.
 - A lifecycle field is not part of the work grammar.
 - A workflow node referencing a work document is a kind mismatch.

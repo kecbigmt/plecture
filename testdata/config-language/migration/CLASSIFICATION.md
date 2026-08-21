@@ -50,18 +50,19 @@ files is imperative any more.
 
 ## Class D: the residues
 
-Four things do not map cleanly. None is silently widened; each is an owner call.
+Three things do not map cleanly, and one — the reviewer-recorded revision — was
+resolved by the state_schema ratification and is kept here as a record of where
+it landed. None is silently widened.
 
-**1. `review`'s and `goal_review`'s `verdict_revision` has no declared home.**
-Both documents complete on a reviewer's self-report, recorded as a revision. As
-tasks, that key was an `outputs_schema` property with `mutable = true`. The
-ratified work frontmatter is `kind`, `inputs`, `observe`, `done_when`,
-`requires`, `budget`, `chains` — and `verdict_revision` is written by the
-reviewer, not observed from the resource, so it belongs to none of them.
+**1. `review`'s and `goal_review`'s `verdict_revision`.** Both documents
+complete on a reviewer's self-report, recorded as a revision. As tasks that key
+was an `outputs_schema` property with `mutable = true`. It is now declared in the
+work document's `[state_schema]`, under the language's one rule for state:
+any definition that holds state declares it with `state_schema`, as plain JSON
+Schema and with no mutability annotation.
 
-The mappings use a `[records]` table for it, and the schema declares that table
-as proposed. Without something in this position, neither verdict-based document
-can be expressed at all.
+`verdict_revision` is a convention, not a reserved key. Core special-cases
+nothing about it — its meaning lives entirely in the configuration that reads it.
 
 **2. `github/review`'s `verdict_current` compares a different revision than the
 shipped script.** The shipped script derives the reviewed pull request's branch
@@ -132,6 +133,11 @@ These are behavior-visible outcomes of the shape change, not open questions.
   binding.
 - **Judge evidence and assignee lists move off argv.** `okf/goal.toml`'s
   finalize and `okf/goal_bootstrap.toml`'s assignee filter use `stdin`.
+- **A work document is declared the uniform way.** Its frontmatter is an
+  ordinary definition document holding one `[<id>]` block with
+  `kind = "work"`, so filename and directory stay non-semantic exactly as a
+  TOML definition's do, and the frontmatter needs no parser, schema, or
+  validator of its own.
 - **Two ids change.** The `local-okf` workspace provider becomes `bundle`,
   because a definition id admits no hyphen. The okf workflow becomes
   `goal_review_session`, because its plugin's work document already owns

@@ -1,11 +1,15 @@
 <!-- plect-fixture: result=valid entry=work -->
 <!-- reason: translation of plugins/github/config/tasks/investigate.toml plus plugins/github/config/templates/investigate.md into one work document. -->
 +++
+[investigate]
 kind        = "work"
 description = "Investigate an issue and summarize feasible approaches"
 requires    = ["resource_kind", "checks_status", "issue_status"]
 
-[inputs]
+[investigate.inputs_schema]
+type = "object"
+
+[investigate.inputs_schema.properties]
 instruction = { type = "string" }
 
 # Resource status is kept as several observed keys rather than one rolled-up
@@ -13,7 +17,7 @@ instruction = { type = "string" }
 # single value erases the failure-versus-pending distinction the check needs.
 # A status that does not apply to this resource kind is the literal sentinel
 # "NULL", which `in` accepts without it ever satisfying on its own.
-[observe]
+[investigate.observe]
 resource_kind   = { from = "resource.status.resource_kind" }
 checks_status   = { from = "resource.status.checks_status" }
 issue_status    = { from = "resource.status.issue_status" }
@@ -21,7 +25,7 @@ revision        = { from = "resource.status.revision" }
 pr_url          = { from = "resource.status.pr_url", optional = true }
 mergeable_state = { from = "resource.status.mergeable_state", optional = true }
 
-[done_when]
+[investigate.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "checks_status", in = ["SUCCESS", "NULL"] },
@@ -29,7 +33,7 @@ all = [
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
 
-[budget]
+[investigate.budget]
 heartbeat_budget = 3
 on_exhaust       = "escalate"
 +++

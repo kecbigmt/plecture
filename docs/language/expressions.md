@@ -101,17 +101,21 @@ implementation accepts it:
 <!-- fixture: expressions/type-mismatch.accepted-invalid.md -->
 ```markdown
 +++
+[review]
 kind        = "work"
 description = "A work document whose computed observation does not type-check"
 requires    = ["verdict_current"]
 
-[records]
+[review.state_schema]
+type = "object"
+
+[review.state_schema.properties]
 verdict_revision = { type = "string" }
 
-[observe]
+[review.observe]
 verdict_current = { expr = "self.verdict_revision + 1" }
 
-[done_when]
+[review.done_when]
 all = [{ check = "verdict_current", in = [true] }]
 +++
 Review {{ resource.id }} and record a verdict.

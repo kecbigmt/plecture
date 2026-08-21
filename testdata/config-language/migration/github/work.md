@@ -1,11 +1,15 @@
 <!-- plect-fixture: result=valid entry=work -->
 <!-- reason: translation of plugins/github/config/tasks/work.toml plus plugins/github/config/templates/work.md into one work document. -->
 +++
+[work]
 kind        = "work"
 description = "Implement a fix or feature for an issue and create a PR"
 requires    = ["resource_kind", "checks_status", "issue_status"]
 
-[inputs]
+[work.inputs_schema]
+type = "object"
+
+[work.inputs_schema.properties]
 instruction = { type = "string" }
 
 # Resource status is kept as several observed keys rather than one rolled-up
@@ -13,7 +17,7 @@ instruction = { type = "string" }
 # single value erases the failure-versus-pending distinction the check needs.
 # A status that does not apply to this resource kind is the literal sentinel
 # "NULL", which `in` accepts without it ever satisfying on its own.
-[observe]
+[work.observe]
 resource_kind   = { from = "resource.status.resource_kind" }
 checks_status   = { from = "resource.status.checks_status" }
 issue_status    = { from = "resource.status.issue_status" }
@@ -21,7 +25,7 @@ revision        = { from = "resource.status.revision" }
 pr_url          = { from = "resource.status.pr_url", optional = true }
 mergeable_state = { from = "resource.status.mergeable_state", optional = true }
 
-[done_when]
+[work.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "checks_status", in = ["SUCCESS", "NULL"] },
@@ -29,7 +33,7 @@ all = [
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
 
-[budget]
+[work.budget]
 heartbeat_budget = 3
 on_exhaust       = "escalate"
 +++

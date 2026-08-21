@@ -144,19 +144,23 @@ joint's roots only.
 <!-- fixture: values/live-root.md -->
 ```markdown
 +++
+[review]
 kind        = "work"
 description = "Review a resource and record a verdict against its revision"
 requires    = ["resource_kind", "verdict_current"]
 
-[records]
+[review.state_schema]
+type = "object"
+
+[review.state_schema.properties]
 verdict_revision = { type = "string" }
 
-[observe]
+[review.observe]
 resource_kind   = { from = "resource.status.resource_kind" }
 revision        = { from = "resource.status.revision" }
 verdict_current = { expr = "self.verdict_revision == resource.status.revision" }
 
-[done_when]
+[review.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "verdict_current", in = [true] },

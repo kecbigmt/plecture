@@ -1,6 +1,7 @@
 <!-- plect-fixture: result=valid entry=work -->
 <!-- reason: translation of plugins/okf/config/tasks/pursue_goal.toml; it is the one work-genre declaration with no instruction template, so its body is written here. -->
 +++
+[pursue_goal]
 kind        = "work"
 description = "Track one local-okf goal Concept until an independent reviewer confirms it"
 requires    = ["goal_parse_status", "goal_status", "checklist_status"]
@@ -9,7 +10,7 @@ requires    = ["goal_parse_status", "goal_status", "checklist_status"]
 # `plect resource status`, show, and this instance all read one contract.
 # revision (= goal_revision) is the key judge staleness compares, so editing
 # the goal file re-pends a recorded judge.
-[observe]
+[pursue_goal.observe]
 goal_parse_status = { from = "resource.status.goal_parse_status" }
 goal_status       = { from = "resource.status.goal_status" }
 checklist_status  = { from = "resource.status.checklist_status" }
@@ -24,7 +25,7 @@ open_items        = { from = "resource.status.open_items" }
 # completed is the consequence of satisfaction, never its precondition. The
 # goal usually lives on the session-tree root, which has no parent and
 # supervises its own children, so child is deliberately excluded.
-[done_when]
+[pursue_goal.done_when]
 all = [
   { check = "goal_parse_status", in = ["SUCCESS"] },
   { check = "goal_status", in = ["open"] },
@@ -39,12 +40,12 @@ all = [
 # independent reviewer as this session's sibling. The chain instance is keyed
 # by this instance, so each goal tracked on the same session gets its own
 # reviewer instead of colliding on one chain-spawn tag.
-[[chains]]
+[[pursue_goal.chains]]
 id        = "goal_review"
 workflow  = "goal_review_session"
 placement = "sibling"
 
-[chains.when]
+[pursue_goal.chains.when]
 all = [
   { check = "goal_parse_status", in = ["SUCCESS"] },
   { check = "goal_status", in = ["open"] },
@@ -52,7 +53,7 @@ all = [
   { judge_pending = "goal-met" },
 ]
 
-[chains.inputs]
+[pursue_goal.chains.inputs]
 task         = "goal_review"
 work_session = { from = "work.session" }
 instance     = { from = "work.instance" }
