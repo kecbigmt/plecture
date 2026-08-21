@@ -108,7 +108,7 @@ receiving everything and relying on a later check to reject the rest.
 |---|---|
 | Workspace provider `name` | `match.<capture>` |
 | Workspace provider `setup` | `resource.id`, `session.name`, `session.inputs.<key>`, `inputs.<key>`, `prev.<key>`, `config.workspace_dirs_root` |
-| Workspace provider `cleanup` | `self.<key>`, `inputs.<key>`, `cleanup.inputs.<key>`, `session.name`, `config.workspace_dirs_root`, `force` |
+| Workspace provider `cleanup` | `self.outputs.<key>`, `inputs.<key>`, `cleanup.inputs.<key>`, `session.name`, `config.workspace_dirs_root`, `force` |
 | Workspace provider `subscribe` | `session.name`, `resource.id` |
 | Resource observer `observe` | `resource.id`, `workspace.dir`, `workspace.branch` |
 | Resource observer `finalize` | `resource.id`, `session.name`, `task.instance`, `resource.revision`, `judges` |
@@ -118,14 +118,14 @@ receiving everything and relying on a later check to reject the rest.
 | Channel `args`, `path`, `body`, `bind` | `event.*`, `event.metadata.<key>`, `inputs.<key>`, and the terminal capability |
 | Channel `timeout` | `inputs.<key>` only |
 | Task `setup` | `inputs.<key>`, `prev.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>`, `workspace.*`, `resource.id` |
-| Task `cleanup` | `self.<key>`, `inputs.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
-| Task `health` probes | `self.<key>`, `inputs.<key>`, `session.*`, `workspace.*` |
-| Task `terminal` verbs | `self.<key>`, `session.*` |
+| Task `cleanup` | `self.outputs.<key>`, `inputs.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
+| Task `health` probes | `self.outputs.<key>`, `inputs.<key>`, `session.*`, `workspace.*` |
+| Task `terminal` verbs | `self.outputs.<key>`, `session.*` |
 | Task `inner.inputs`, `inner.env` | `inputs.<key>`, `locals.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
 | Task `outputs.bind` | `inner.outputs.<key>`, `locals.<key>` |
-| Work `done_when`, chain `when` | `resource.state.<key>`, `self.<key>` |
+| Work `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
 | Work instruction body | `resource.id`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
-| Chain `inputs` | `work.session`, `work.instance`, `work.workflow`, `work.done_when.pending_judge_ids`, `resource.state.<key>`, `self.<key>` |
+| Chain `inputs` | `work.session`, `work.instance`, `work.workflow`, `work.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
 
 A projection naming a root the surface does not observe is
 `PLECTURE-CFG-FROM-ROOT`; one naming a field the resolved contract does not
@@ -133,7 +133,7 @@ declare is `PLECTURE-CFG-FROM-PATH`.
 
 ## Live roots and write-through
 
-`resource.state.*` and `self.*` are live roots: a value reading one is current
+`resource.state.*` and `self.state.*` are live roots: a value reading one is current
 as of each evaluation. Nothing about a value being "dynamic" needs its own
 declaration form — re-evaluation rides on root liveness.
 
@@ -158,7 +158,7 @@ verdict_revision = { type = "string" }
 [review.done_when]
 all = [
   { check = "resource.state.resource_kind", in = ["pull", "issue"] },
-  { expr = "self.verdict_revision == resource.state.revision" },
+  { expr = "self.state.verdict_revision == resource.state.revision" },
 ]
 +++
 Review {{ resource.id }} and record a verdict against its current revision.

@@ -67,7 +67,7 @@ verdict.
 
 Chain inputs project the facts of the instance that fired — which session and
 instance it was, which workflow, its pending judge ids — and the live roots it
-reads, `resource.state.*` and `self.*`.
+reads, `resource.state.*` and `self.state.*`.
 
 They read public facts only. A task layer's private locals do not cross into a
 spawned session.

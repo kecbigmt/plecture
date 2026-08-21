@@ -41,7 +41,7 @@ bin  = "github-worktree"
 args = [
   "cleanup",
   "--workspace-dir",
-  { from = "self.workspace_dir" },
+  { from = "self.outputs.workspace_dir" },
   "--force",
   { from = "force" },
   "--delete-branch",
@@ -80,7 +80,7 @@ title         = { type = "string", mutable = true }
 
 `setup` reads the resource, the session, the configured workspace root, and the
 provider's own parameters. `cleanup` additionally reads the provider's recorded
-outputs through `self.*`, the caller's cleanup inputs, and `force`.
+outputs through `self.outputs.*`, the caller's cleanup inputs, and `force`.
 `subscribe` resolves the provider from the resource alone — no workflow is in
 scope to have set a parameter — so it reads only the session name and the
 resource id.
@@ -101,4 +101,4 @@ value.
 - `name` projects `match` captures only.
 - A capture named in `name` exists in `match`.
 - Provider parameters are data; no capability tag appears among them.
-- `cleanup` reads `self.*` keys the provider's `outputs_schema` declares.
+- `cleanup` reads `self.outputs.*` keys the provider's `outputs_schema` declares.

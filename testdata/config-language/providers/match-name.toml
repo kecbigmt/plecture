@@ -27,7 +27,7 @@ bin  = "github-worktree"
 args = [
   "cleanup",
   "--workspace-dir",
-  { from = "self.workspace_dir" },
+  { from = "self.outputs.workspace_dir" },
   "--force",
   { from = "force" },
   "--delete-branch",

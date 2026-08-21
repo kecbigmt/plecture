@@ -15,7 +15,7 @@ verdict_revision = { type = "string" }
 [review.done_when]
 all = [
   { check = "resource.state.resource_kind", in = ["pull", "issue"] },
-  { expr = "self.verdict_revision == resource.state.revision" },
+  { expr = "self.state.verdict_revision == resource.state.revision" },
 ]
 +++
 Review {{ resource.id }} and record a verdict against its current revision.

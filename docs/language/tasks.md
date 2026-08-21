@@ -43,7 +43,7 @@ type   = "shell"
 script = 'tmux kill-session -t "$session_name" 2>/dev/null || true'
 
 [pane.cleanup.bind]
-session_name = { from = "self.session_name" }
+session_name = { from = "self.outputs.session_name" }
 
 [pane.outputs_schema]
 type     = "object"
@@ -114,7 +114,7 @@ type   = "shell"
 script = 'tmux has-session -t "$session_name"'
 
 [pane.health.alive.bind]
-session_name = { from = "self.session_name" }
+session_name = { from = "self.outputs.session_name" }
 
 [pane.health.activity]
 type = "shell"
@@ -126,7 +126,7 @@ jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
 '''
 
 [pane.health.activity.bind]
-session_name = { from = "self.session_name" }
+session_name = { from = "self.outputs.session_name" }
 
 [pane.outputs_schema]
 type     = "object"
@@ -164,28 +164,28 @@ type   = "shell"
 script = 'tmux attach -t "$session_name"'
 
 [pane.terminal.attach.bind]
-session_name = { from = "self.session_name" }
+session_name = { from = "self.outputs.session_name" }
 
 [pane.terminal.capture]
 type   = "shell"
 script = 'tmux capture-pane -p -t "$session_name"'
 
 [pane.terminal.capture.bind]
-session_name = { from = "self.session_name" }
+session_name = { from = "self.outputs.session_name" }
 
 [pane.terminal.send_text]
 type   = "shell"
 script = 'tmux send-keys -t "$session_name" -- "$1"'
 
 [pane.terminal.send_text.bind]
-session_name = { from = "self.session_name" }
+session_name = { from = "self.outputs.session_name" }
 
 [pane.terminal.send_keys]
 type   = "shell"
 script = 'tmux send-keys -t "$session_name" "$1"'
 
 [pane.terminal.send_keys.bind]
-session_name = { from = "self.session_name" }
+session_name = { from = "self.outputs.session_name" }
 
 [pane.outputs_schema]
 type     = "object"

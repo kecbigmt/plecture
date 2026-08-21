@@ -85,11 +85,12 @@ the environment declared for that site.
 The implementation may reorder these for efficiency; the responsibility
 boundaries do not move.
 
-Whatever a `state_schema` declares is read under a state root: `resource.state.*`
-for the observer a work document is bound to, and `self.*` for a definition's
-own facts. `self` is the universal own-facts root — a task's outputs, a
-provider's outputs, a work document's state — and which store backs it follows
-from the declaration, never from the spelling.
+A reference is always `<subject>.<store>.<key>`. The subject says whose facts
+these are — `self`, `inner`, `resource`, `nodes.<id>`, `workflow` — and the
+store says which of that subject's contracts they come from: `outputs`, `state`,
+`inputs`. So a task reads its own production records as `self.outputs.<key>`, a
+work document its own state as `self.state.<key>`, and the observer it is bound
+to as `resource.state.<key>`.
 
 Static resolution — references, kinds, and root existence — is never dropped. Projecting JSON Schema into CEL type information, and checking an
 expression's result type against its field, is the first thing dropped if

@@ -60,15 +60,20 @@ gathered, so it records rather than gates. Judge evidence arrives on the
 process's standard input: judge reasons are arbitrary text, and argv is both
 size-bounded and readable by anything that can see the process table.
 
-## State and tasks
+## State and work
 
-A work document observes state per key, renaming where it wants to, so a
-standalone status read and every instance read one contract.
-`resource.state.*` is a live root, so those projections are current as of each
-evaluation.
+`state_schema` is the contract a work document reads. A work document declares
+the observer it is written for, and its completion leaves and chains then read
+that observer's keys as `resource.state.<key>` — directly, with no intermediate
+declaration re-listing them. Tasks read nothing here: `resource.state.*` is work
+vocabulary, and a task's outputs are its own production records.
 
-A projection naming a key the observer's `state_schema` does not declare is
-`PLECTURE-CFG-FROM-PATH`.
+`resource.state.*` is a live root, so every read is current as of that
+evaluation, and one observer serves a standalone status read and every instance
+alike.
+
+Because the observer is named in the document, a key this `state_schema` does
+not declare is a load error, `PLECTURE-CFG-FROM-PATH`.
 
 ## Validation rules
 

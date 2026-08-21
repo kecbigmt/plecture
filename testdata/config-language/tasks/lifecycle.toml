@@ -22,7 +22,7 @@ type   = "shell"
 script = 'tmux kill-session -t "$session_name" 2>/dev/null || true'
 
 [pane.cleanup.bind]
-session_name = { from = "self.session_name" }
+session_name = { from = "self.outputs.session_name" }
 
 [pane.outputs_schema]
 type     = "object"

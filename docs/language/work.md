@@ -120,7 +120,7 @@ with `state_schema`. A resource observer declares the state it publishes about a
 resource; a work document declares the state it holds about itself.
 
 Those two schemas are the two roots a completion predicate reads:
-`resource.state.*` for what the observer publishes, and `self.*` for what this
+`resource.state.*` for what the observer publishes, and `self.state.*` for what this
 work holds. Both are live — every read is current as of that evaluation.
 
 There is no intermediate declaration between a schema and the predicate that
@@ -158,7 +158,7 @@ verdict_revision = { type = "string" }
 [review.done_when]
 all = [
   { check = "resource.state.resource_kind", in = ["pull", "issue"] },
-  { expr = "self.verdict_revision == resource.state.revision" },
+  { expr = "self.state.verdict_revision == resource.state.revision" },
 ]
 
 [review.budget]
@@ -177,7 +177,7 @@ of its own to hang on. A judge leaf waits for independent reviewer input
 recorded against the instance, optionally restricted to reviewers in a declared
 relation.
 
-A leaf reads `resource.state.*` or `self.*`, and nothing else. Both are
+A leaf reads `resource.state.*` or `self.state.*`, and nothing else. Both are
 resolved at load against the schemas that declare them, so a misspelled key
 fails before anything runs.
 
@@ -275,9 +275,9 @@ against the session that graph produced.
 - A work document's frontmatter holds exactly one declaration, whose kind is
   `work`, and declares a `resource_observer`.
 - `resource_observer` resolves to a definition of that kind.
-- A completion key reads `resource.state.*` or `self.*`.
+- A completion key reads `resource.state.*` or `self.state.*`.
 - A `resource.state.*` key names a property the declared observer's
-  `state_schema` declares, and a `self.*` key one this document's declares —
+  `state_schema` declares, and a `self.state.*` key one this document's declares —
   both checked at load.
 - An instance's resource resolves to the declared observer.
 - A lifecycle field is not part of the work grammar.
