@@ -4,6 +4,7 @@
 [pursue_goal]
 kind        = "work"
 description = "A work document leaking a private local into its chain"
+resource    = "goal"
 
 [[pursue_goal.chains]]
 id        = "review"

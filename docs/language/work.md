@@ -17,6 +17,7 @@ it somewhere to run.
 [work]
 kind        = "work"
 description = "Implement a fix or feature for an issue and create a PR"
+resource    = "issue_pr"
 requires    = ["resource_kind", "checks_status", "issue_status"]
 
 [work.inputs_schema]
@@ -95,6 +96,7 @@ own.
 |---|---|
 | `kind` | `work`. |
 | `description` | What this work is for. |
+| `resource` | The resource definition this work is written for. |
 | `[<id>.inputs_schema]` | The instruction's author-declared parameters. |
 | `[<id>.state_schema]` | This work's own state: the keys something else writes. |
 | `[<id>.observe]` | The keys this work reads from its resource and from its own state. |
@@ -156,6 +158,7 @@ names than the observer uses:
 [review]
 kind        = "work"
 description = "Review a pull request, reading the observer's state under this work's own names"
+resource    = "issue_pr"
 requires    = ["kind", "checks"]
 
 [review.observe]
@@ -186,6 +189,7 @@ recorded state stays correct at the moment the resource changes:
 [review]
 kind        = "work"
 description = "Review a pull request and record a verdict"
+resource    = "issue_pr"
 requires    = ["resource_kind", "verdict_current"]
 
 [review.inputs_schema]
@@ -250,6 +254,7 @@ dispatched into a session a workflow has already built.
 [broken_work]
 kind        = "work"
 description = "A work document that tries to own a lifecycle"
+resource    = "issue_pr"
 
 [broken_work.setup]
 type = "exec"
@@ -280,30 +285,42 @@ evaluated per instance.
 
 ## Resource binding
 
-An instance is a document paired with a resource. The document is
-resource-agnostic: it declares key names and never names a concrete resource.
+A work document declares the resource it is written for:
 
-The resource arrives at instantiation — from the session's default, or given
-explicitly — and resolves by pattern matching to a resource observer. That is
-the moment the chain closes:
+```toml
+resource = "issue_pr"
+```
+
+That is an ordinary dotted reference, validated against `kind =
+"resource_observer"` like every other reference site. An instance is still a
+document paired with a resource — the document is *type-declared and
+instance-late-bound*: which resource, it learns at instantiation; what kind of
+resource, it states up front.
+
+Declaring it closes the chain at load time:
 
 ```text
 resource observer  state_schema   the keys it publishes
         ↓
-work instance      observe        subscribes to those keys
+work document      observe        subscribes to those keys
         ↓
-work instance      done_when      evaluates over them
+work document      done_when      evaluates over them
 ```
 
-One honest consequence: an observed key's existence cannot be validated when
-the document loads, because which observer will publish it is unknown until a
-resource is bound. Load-time validation of `observe` is structural only — the
-roots are checked, the key names are not. Key existence is checked at
-instantiation, against the observer the resource resolved to.
+Because the observer is known from the declaration, an observed key that no
+observer publishes is a load error, not a surprise at run time. And because the
+declaration states a type, instantiation checks compatibility up front: binding
+an instance to a resource that does not resolve to the declared definition
+fails immediately, rather than producing an instance that can never satisfy.
 
-The convention for constraining what a document expects is a `done_when` check
-on the observer's own kind key, which keeps a document from satisfying against
-a resource it was not written for.
+Every shipped work document is written for exactly one resource type, so this
+dependency already existed — it was hiding in a runtime convention. Declaring
+it is the move this language makes everywhere else.
+
+A `done_when` check on the observer's own kind key remains useful for narrowing
+*within* one observer, where a single observer publishes more than one subtype:
+`resource_kind in ["pull", "issue"]` distinguishes two shapes the same observer
+reports.
 
 A workflow's `[[nodes]]` never reference a work document. A node names a task,
 because a node is a position in a lifecycle graph; work arrives afterward,
@@ -313,11 +330,13 @@ against the session that graph produced.
 
 - A work document opens with `+++` frontmatter declaring `kind = "work"`.
 - A work document's frontmatter holds exactly one declaration, whose kind is
-  `work`.
+  `work`, and declares a `resource`.
+- `resource` resolves to a definition of kind `resource_observer`.
 - `observe` projects `resource.status.*` and `self.*` only.
 - A `self.*` projection names a `state_schema` property.
-- An observed key names a property the resolved resource observer's
-  `state_schema` declares.
+- An observed key names a property the declared resource observer's
+  `state_schema` declares, checked at load.
+- An instance's resource resolves to the declared resource definition.
 - Every `done_when` check names a `requires` entry, and every `requires` entry
   is declared in `observe` or `state_schema`.
 - A lifecycle field is not part of the work grammar.

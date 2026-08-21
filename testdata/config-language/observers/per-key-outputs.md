@@ -4,6 +4,7 @@
 [review]
 kind        = "work"
 description = "Review a pull request, reading the observer's state under this work's own names"
+resource    = "issue_pr"
 requires    = ["kind", "checks"]
 
 [review.observe]

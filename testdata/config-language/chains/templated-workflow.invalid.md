@@ -4,6 +4,7 @@
 [pursue_goal]
 kind        = "work"
 description = "A work document choosing its reviewer workflow at run time"
+resource    = "goal"
 
 [[pursue_goal.chains]]
 id        = "review"

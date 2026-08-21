@@ -4,6 +4,7 @@
 [work]
 kind        = "work"
 description = "One of two declarations competing for the same body"
+resource    = "issue_pr"
 
 [work.done_when]
 all = [{ check = "checks_status", in = ["SUCCESS"] }]

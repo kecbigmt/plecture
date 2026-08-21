@@ -4,6 +4,7 @@
 [broken_work]
 kind        = "work"
 description = "A work document that tries to own a lifecycle"
+resource    = "issue_pr"
 
 [broken_work.setup]
 type = "exec"

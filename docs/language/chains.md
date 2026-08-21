@@ -26,6 +26,7 @@ document that declared it.
 [pursue_goal]
 kind        = "work"
 description = "Pursue one goal until an independent reviewer confirms it"
+resource    = "goal"
 requires    = ["checklist_status"]
 
 [pursue_goal.observe]

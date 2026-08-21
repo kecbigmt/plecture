@@ -4,6 +4,7 @@
 [review]
 kind        = "work"
 description = "Review a pull request and record a verdict"
+resource    = "issue_pr"
 requires    = ["resource_kind", "verdict_current"]
 
 [review.inputs_schema]

@@ -4,6 +4,7 @@
 [broken_requires]
 kind        = "work"
 description = "A work document whose check reads nothing it observes"
+resource    = "issue_pr"
 requires    = ["checks_status"]
 
 [broken_requires.observe]

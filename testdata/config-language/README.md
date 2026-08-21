@@ -86,10 +86,10 @@ The checker asserts that:
   structural schema — which is what makes "something later rejects this" a
   claim about a later layer rather than an accident of shape;
 
-`layer=instantiation` marks a rule that cannot run statically at all: a work
-document is resource-agnostic, so the observer publishing its observed keys is
-unknown until a resource is bound, and those key names are checked when an
-instance is created.
+`layer=instantiation` marks a rule that only a binding can break: a work
+document declares the kind of resource it is written for, so its observed keys
+are checked at load, but whether the resource an instance is actually bound to
+matches that declaration is known only when the instance is created.
 - every diagnostic code is both documented and exercised;
 - every worked example in `docs/language/` is byte-identical to the fixture it
   names.

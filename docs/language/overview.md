@@ -84,12 +84,6 @@ the environment declared for that site.
 The implementation may reorder these for efficiency; the responsibility
 boundaries do not move.
 
-Not every check can run statically. A work document is resource-agnostic, so the
-observer that will publish its observed keys is unknown until a resource is
-bound; those key names are therefore checked at instantiation rather than at
-load, and the document's load-time validation covers its roots only. See
-[`work.md`](work.md).
-
 Static resolution — references, kinds, and `from`-root existence — is never
 dropped. Projecting JSON Schema into CEL type information, and checking an
 expression's result type against its field, is the first thing dropped if
@@ -136,7 +130,8 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-REF-ALIAS-REQUIRED` | semantic | A user-owned reference to catalog content omits its catalog alias. |
 | `PLECTURE-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
 | `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A projection names a root the containing surface does not observe. It is structural where a surface's roots are a fixed prefix set, as on a task's `outputs.bind` and a work document's `observe`, and semantic otherwise. |
-| `PLECTURE-CFG-FROM-PATH` | semantic / instantiation | A projection names a field the resolved contract does not declare. It is deferred to instantiation where the contract is a resource observer's, since which observer applies is unknown until a resource is bound. |
+| `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
+| `PLECTURE-CFG-RESOURCE-MISMATCH` | instantiation | An instance's resource does not resolve to the resource definition its work document declares. |
 | `PLECTURE-CFG-REQUIRES-UNDECLARED` | semantic | A `done_when` check, or a `requires` entry, names a key no contract declares. |
 | `PLECTURE-CFG-BIN-UNKNOWN` | semantic | An executable reference resolves to no declared executable. |
 | `PLECTURE-CFG-TERMINAL-UNAVAILABLE` | semantic | A terminal capability is consumed where no task in the plan declares that verb. |

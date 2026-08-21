@@ -4,6 +4,7 @@
 [broken_observe]
 kind        = "work"
 description = "A work document reaching for a node output"
+resource    = "issue_pr"
 requires    = ["session_name"]
 
 [broken_observe.observe]

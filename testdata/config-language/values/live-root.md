@@ -4,6 +4,7 @@
 [review]
 kind        = "work"
 description = "Review a resource and record a verdict against its revision"
+resource    = "issue_pr"
 requires    = ["resource_kind", "verdict_current"]
 
 [review.state_schema]

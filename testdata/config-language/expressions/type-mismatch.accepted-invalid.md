@@ -4,6 +4,7 @@
 [review]
 kind        = "work"
 description = "A work document whose computed observation does not type-check"
+resource    = "issue_pr"
 requires    = ["verdict_current"]
 
 [review.state_schema]

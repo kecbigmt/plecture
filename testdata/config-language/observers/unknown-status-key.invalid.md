@@ -1,9 +1,10 @@
-<!-- plect-fixture: result=invalid layer=instantiation diagnostic=PLECTURE-CFG-FROM-PATH entry=work -->
-<!-- reason: an observation names a key no observer publishes; the document loads, because which observer applies is unknown until a resource is bound, and instantiation is where this fails. -->
+<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=work -->
+<!-- reason: an observation names a key the declared observer's state schema does not publish, which the declaration makes a load error rather than a run-time surprise. -->
 +++
 [broken_observe]
 kind        = "work"
 description = "A work document misspelling an observed key"
+resource    = "issue_pr"
 requires    = ["checks"]
 
 [broken_observe.observe]

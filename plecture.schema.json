@@ -1548,7 +1548,8 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "kind"
+        "kind",
+        "resource"
       ],
       "description": "A work declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a work document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
       "properties": {
@@ -1557,6 +1558,10 @@
         },
         "description": {
           "type": "string"
+        },
+        "resource": {
+          "$ref": "#/$defs/staticReference",
+          "description": "The resource definition this work is written for. Declaring it is what lets observed keys be checked against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front."
         },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument",

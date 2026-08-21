@@ -4,6 +4,7 @@
 [work]
 kind        = "work"
 description = "Implement a fix or feature for an issue and create a PR"
+resource    = "issue_pr"
 requires    = ["resource_kind", "checks_status", "issue_status"]
 
 [work.inputs_schema]
