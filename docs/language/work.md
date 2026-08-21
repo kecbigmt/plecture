@@ -278,6 +278,33 @@ authored, declared, and referenced; an instance is created, evaluated, and
 finalized. `observe` and `done_when` are declared once on the document and
 evaluated per instance.
 
+## Resource binding
+
+An instance is a document paired with a resource. The document is
+resource-agnostic: it declares key names and never names a concrete resource.
+
+The resource arrives at instantiation — from the session's default, or given
+explicitly — and resolves by pattern matching to a resource observer. That is
+the moment the chain closes:
+
+```text
+resource observer  state_schema   the keys it publishes
+        ↓
+work instance      observe        subscribes to those keys
+        ↓
+work instance      done_when      evaluates over them
+```
+
+One honest consequence: an observed key's existence cannot be validated when
+the document loads, because which observer will publish it is unknown until a
+resource is bound. Load-time validation of `observe` is structural only — the
+roots are checked, the key names are not. Key existence is checked at
+instantiation, against the observer the resource resolved to.
+
+The convention for constraining what a document expects is a `done_when` check
+on the observer's own kind key, which keeps a document from satisfying against
+a resource it was not written for.
+
 A workflow's `[[nodes]]` never reference a work document. A node names a task,
 because a node is a position in a lifecycle graph; work arrives afterward,
 against the session that graph produced.

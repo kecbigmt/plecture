@@ -1,5 +1,5 @@
-<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=work -->
-<!-- reason: an observation names a key the resolved observer's state schema does not declare. -->
+<!-- plect-fixture: result=invalid layer=instantiation diagnostic=PLECTURE-CFG-FROM-PATH entry=work -->
+<!-- reason: an observation names a key no observer publishes; the document loads, because which observer applies is unknown until a resource is bound, and instantiation is where this fails. -->
 +++
 [broken_observe]
 kind        = "work"

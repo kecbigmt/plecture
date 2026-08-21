@@ -95,7 +95,7 @@ func parseHeader(src string) (expectation, error) {
 			return exp, fmt.Errorf("result=%s requires both layer and diagnostic", exp.Result)
 		}
 		switch exp.Layer {
-		case "structural", "semantic", "cel":
+		case "structural", "semantic", "cel", "instantiation":
 		default:
 			return exp, fmt.Errorf("unknown layer %q", exp.Layer)
 		}
@@ -274,9 +274,9 @@ func run() error {
 		verr := schema.Validate(instance)
 
 		// A valid fixture, and one whose declared failure belongs to a later
-		// validation layer, must both pass the structural schema: that is what
-		// makes "the compiler rejects this" a meaningful claim rather than an
-		// accident of shape.
+		// layer — semantic, CEL, or deferred to instantiation — must all pass
+		// the structural schema: that is what makes "something later rejects
+		// this" a meaningful claim rather than an accident of shape.
 		structuralMustFail := exp.Result == "invalid" && exp.Layer == "structural"
 		switch {
 		case structuralMustFail && verr == nil:

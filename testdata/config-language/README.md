@@ -56,7 +56,7 @@ frontmatter has to start the file once the header is stripped:
 | Field | Values |
 |---|---|
 | `result` | `valid`, `invalid`, `accepted-invalid` |
-| `layer` | `structural`, `semantic`, `cel` — required unless `result=valid` |
+| `layer` | `structural`, `semantic`, `cel`, `instantiation` — required unless `result=valid` |
 | `diagnostic` | The `PLECTURE-CFG-*` code, which must appear in the diagnostics table in [`../../docs/language/overview.md`](../../docs/language/overview.md) |
 | `entry` | Which schema entry validates it: `definitions` (default), `work`, `config`, `catalogs`, `lock`, `plugin`, `catalog` |
 
@@ -81,10 +81,15 @@ The checker asserts that:
 - a `valid` fixture passes [`../../plecture.schema.json`](../../plecture.schema.json);
 - an `invalid` fixture with `layer=structural` is rejected by that schema, and
   rejected by a rule the schema annotates with the declared diagnostic;
-- an `invalid` fixture with `layer=semantic` or `layer=cel`, and an
-  `accepted-invalid` fixture, all pass the structural schema — which is what
-  makes "the compiler rejects this" a claim about a later layer rather than an
-  accident of shape;
+- an `invalid` fixture with `layer=semantic`, `layer=cel`, or
+  `layer=instantiation`, and an `accepted-invalid` fixture, all pass the
+  structural schema — which is what makes "something later rejects this" a
+  claim about a later layer rather than an accident of shape;
+
+`layer=instantiation` marks a rule that cannot run statically at all: a work
+document is resource-agnostic, so the observer publishing its observed keys is
+unknown until a resource is bound, and those key names are checked when an
+instance is created.
 - every diagnostic code is both documented and exercised;
 - every worked example in `docs/language/` is byte-identical to the fixture it
   names.
