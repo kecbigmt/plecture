@@ -140,8 +140,8 @@ session_name = { type = "string" }
 
 `[terminal]` declares that the task owns an interactive endpoint, offering
 `attach`, `capture`, `send_text`, and `send_keys` against it. At most one task
-in a plan declares it. `plect attach` and `plect capture` resolve through it,
-and the `terminal` capability reaches all four verbs without the consumer
+in a plan declares it. The CLI's attach and capture commands resolve through
+it, and the `terminal` capability reaches all four verbs without the consumer
 knowing what is behind them.
 
 `send_text` and `send_keys` receive their operand — the literal text to type,
@@ -329,5 +329,5 @@ env     = { type = "object" }
   mutability.
 - A computed nested output is not mutable.
 - At most one task in a plan declares `[terminal]`.
-- A `plect task setup` target resolving to a task is a kind mismatch: dynamic
-  instantiation targets work documents.
+- A dynamic-instantiation target resolving to a task is a kind mismatch:
+  instantiation creates a work instance from a work document.

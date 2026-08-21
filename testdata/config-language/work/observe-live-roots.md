@@ -12,9 +12,9 @@ type = "object"
 [review.inputs_schema.properties]
 instruction = { type = "string" }
 
-# verdict_revision is this work's own state: written by the reviewer through
-# `plect state set-output` rather than observed from the resource. It carries no
-# mutability annotation, because state is mutable by definition.
+# verdict_revision is this work's own state: written into the instance by the
+# reviewer rather than observed from the resource. It carries no mutability
+# annotation, because state is mutable by definition.
 [review.state_schema]
 type = "object"
 

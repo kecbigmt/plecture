@@ -1550,7 +1550,7 @@
       "required": [
         "kind"
       ],
-      "description": "A work declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a work document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction.",
+      "description": "A work declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a work document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
       "properties": {
         "kind": {
           "const": "work"
@@ -1567,7 +1567,7 @@
         },
         "state_schema": {
           "$ref": "#/$defs/schemaDocument",
-          "description": "This work's own state: the keys a reviewer or another session writes through `plect state set-output`. Plain JSON Schema, with no mutability annotation \u2014 state is mutable by definition. Any state-holding definition declares its state this way."
+          "description": "This work's own state: the keys a reviewer or another session writes into an instance. Plain JSON Schema, with no mutability annotation \u2014 state is mutable by definition. Any state-holding definition declares its state this way."
         },
         "state_schema_file": {
           "type": "string"

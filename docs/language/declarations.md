@@ -213,7 +213,7 @@ A reference carries no kind segment. After resolution, the target's declared
 | Workflow event channel `uses` | `channel` |
 | Task `inner.uses` | `task` |
 | Work chain `workflow` | `workflow` |
-| `plect task setup` target | `work` |
+| Dynamic-instantiation target | `work` |
 | Chain spawn target | `work` |
 | `config.toml` `channels` | `channel` |
 

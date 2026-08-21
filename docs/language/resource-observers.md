@@ -62,8 +62,8 @@ size-bounded and readable by anything that can see the process table.
 
 ## State and tasks
 
-A task projects observed state per key, renaming where it wants to, so
-`plect resource status`, `show`, and every instance read one contract.
+A work document observes state per key, renaming where it wants to, so a
+standalone status read and every instance read one contract.
 `resource.status.*` is a live root, so those projections are current as of each
 evaluation.
 

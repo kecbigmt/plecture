@@ -81,7 +81,8 @@ select the same channel definition under different names and includes.
 
 ## Display
 
-`[<id>.display]` declares the values `plect ls`, `show`, and the web UI render.
+`[<id>.display]` declares the values the CLI's listing and show commands, and
+the web UI, render.
 They read persisted outputs only — no network — so their freshness follows
 whatever cadence updates those outputs.
 
@@ -91,8 +92,8 @@ whatever cadence updates those outputs.
 judge builtin trigger. `on` is a list of event-type globs whose match ticks the
 session; `heartbeat` ticks when that long has passed since the last tick;
 `max_heartbeat` caps the quiet-tick backoff interval. Both fields are optional
-and independent: neither declared means manual `plect tick` and the judge
-builtin are the only drivers.
+and independent: neither declared means a manual tick and the judge builtin
+are the only drivers.
 
 `[<id>.healthcheck]` declares the health sampling cycle: `period`,
 `stall_threshold`, and `renotify_every`. It names the cycle, not what health

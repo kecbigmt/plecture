@@ -120,8 +120,8 @@ while an instance is identified by its resource and instance name.
 ## State
 
 `state_schema` declares this work's own state: the keys a reviewer or another
-session writes through `plect state set-output`. It is plain JSON Schema, and it
-carries no mutability annotation — state is mutable by definition.
+session writes into an instance. It is plain JSON Schema, and it carries no
+mutability annotation — state is mutable by definition.
 
 One rule covers the whole language: any definition that holds state declares it
 with `state_schema`. A resource observer declares the state it publishes about a
@@ -194,9 +194,9 @@ type = "object"
 [review.inputs_schema.properties]
 instruction = { type = "string" }
 
-# verdict_revision is this work's own state: written by the reviewer through
-# `plect state set-output` rather than observed from the resource. It carries no
-# mutability annotation, because state is mutable by definition.
+# verdict_revision is this work's own state: written into the instance by the
+# reviewer rather than observed from the resource. It carries no mutability
+# annotation, because state is mutable by definition.
 [review.state_schema]
 type = "object"
 
@@ -227,8 +227,8 @@ Re-evaluation rides on root liveness.
 ## Completion
 
 `[done_when]` is a conjunction of leaves. A check leaf compares an observed or
-recorded key; a judge leaf waits for independent reviewer input recorded by
-`plect judge`, optionally restricted to reviewers in a declared relation.
+recorded key; a judge leaf waits for independent reviewer input recorded against the
+instance, optionally restricted to reviewers in a declared relation.
 
 `requires` names the keys those checks read. Every check names a `requires`
 entry, and every `requires` entry is observed or recorded, so a typo in either
@@ -262,14 +262,25 @@ all = [{ check = "checks_status", in = ["SUCCESS"] }]
 Resolve the issue at {{ resource.id }}.
 ```
 
-## Instantiation
+## Documents and instances
 
-A work document is created by `plect task setup` or by another work document's
-chain spawn. Its identity comes from its resource and its instance name.
+A work document is authored. Its identity is the id its frontmatter declares,
+in the one per-layer namespace every kind shares, and references resolve to it
+by that id.
 
-A workflow's `[[nodes]]` never reference it. A node names a task, because a
-node is a position in a lifecycle graph; work arrives afterward, against the
-session that graph produced.
+A work instance is created from a document, by dynamic instantiation or by
+another document's chain spawn. Its identity is its resource plus its instance
+name. The two identities are orthogonal: one document backs many instances, and
+an instance's resource says nothing about which id declared it.
+
+The distinction runs through the rest of this specification. A document is
+authored, declared, and referenced; an instance is created, evaluated, and
+finalized. `observe` and `done_when` are declared once on the document and
+evaluated per instance.
+
+A workflow's `[[nodes]]` never reference a work document. A node names a task,
+because a node is a position in a lifecycle graph; work arrives afterward,
+against the session that graph produced.
 
 ## Validation rules
 
