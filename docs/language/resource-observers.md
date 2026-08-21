@@ -68,7 +68,7 @@ A task projects observed state per key, renaming where it wants to, so
 evaluation.
 
 A projection naming a key the observer's `state_schema` does not declare is
-`PLECT-CFG-FROM-PATH`.
+`PLECTURE-CFG-FROM-PATH`.
 
 ## Validation rules
 

@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-REF-CROSS-PLUGIN entry=definitions
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-REF-CROSS-PLUGIN entry=definitions
 # reason: a reference written inside a plugin uses only the relative form, so naming a catalog alias or another plugin's ownership segment is an error.
 
 [review_session]

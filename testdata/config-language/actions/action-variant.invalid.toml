@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-ACTION-VARIANT entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-ACTION-VARIANT entry=definitions
 # reason: args belongs to the exec variant, and script to the shell variant.
 
 [runtime]

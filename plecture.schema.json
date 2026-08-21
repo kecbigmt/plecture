@@ -11,7 +11,7 @@
       "description": "A discovered TOML file in a trusted definition root. Every top-level table is a definition block whose table name is the definition id.",
       "propertyNames": {
         "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-        "$comment": "PLECT-CFG-ID-INVALID. Dots separate address segments and hyphens are excluded because a task id is also a workflow node id."
+        "$comment": "PLECTURE-CFG-ID-INVALID. Dots separate address segments and hyphens are excluded because a task id is also a workflow node id."
       },
       "additionalProperties": {
         "$ref": "#/$defs/definition"
@@ -22,7 +22,7 @@
       "required": [
         "kind"
       ],
-      "$comment": "PLECT-CFG-KIND-MISSING when kind is absent; PLECT-CFG-KIND-UNKNOWN when it is outside the vocabulary; PLECT-CFG-WORK-IN-TOML-DOCUMENT when a kind whose declaration needs a body appears in a TOML definition document.",
+      "$comment": "PLECTURE-CFG-KIND-MISSING when kind is absent; PLECTURE-CFG-KIND-UNKNOWN when it is outside the vocabulary; PLECTURE-CFG-WORK-IN-TOML-DOCUMENT when a kind whose declaration needs a body appears in a TOML definition document.",
       "properties": {
         "kind": {
           "enum": [
@@ -68,7 +68,7 @@
       "type": "string",
       "description": "A dotted definition address: the relative form <id>, or the catalog-qualified form <catalog-alias>.<plugin-path>.<id>. Never a tagged value, because static topology stays statically discoverable.",
       "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9][A-Za-z0-9_-]*)*$",
-      "$comment": "PLECT-CFG-REF-DYNAMIC when a tagged value appears here."
+      "$comment": "PLECTURE-CFG-REF-DYNAMIC when a tagged value appears here."
     },
     "executableName": {
       "type": "string",
@@ -76,7 +76,7 @@
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_./-]*$"
     },
     "literalScalar": {
-      "$comment": "PLECT-CFG-VALUE-TAG-SURFACE: a surface accepting a literal only rejects any tagged value.",
+      "$comment": "PLECTURE-CFG-VALUE-TAG-SURFACE: a surface accepting a literal only rejects any tagged value.",
       "type": [
         "string",
         "number",
@@ -85,7 +85,7 @@
       ]
     },
     "fromValue": {
-      "$comment": "PLECT-CFG-VALUE-FROM-AND-EXPR, PLECT-CFG-VALUE-TAG-UNKNOWN, PLECT-CFG-VALUE-DEFAULT-AND-OPTIONAL.",
+      "$comment": "PLECTURE-CFG-VALUE-FROM-AND-EXPR, PLECTURE-CFG-VALUE-TAG-UNKNOWN, PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL.",
       "type": "object",
       "required": [
         "from"
@@ -110,11 +110,11 @@
           "default",
           "optional"
         ],
-        "$comment": "PLECT-CFG-VALUE-DEFAULT-AND-OPTIONAL."
+        "$comment": "PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL."
       }
     },
     "exprValue": {
-      "$comment": "PLECT-CFG-VALUE-TAG-UNKNOWN.",
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN.",
       "type": "object",
       "required": [
         "expr"
@@ -128,7 +128,7 @@
       }
     },
     "terminalValue": {
-      "$comment": "PLECT-CFG-VALUE-TAG-UNKNOWN.",
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN.",
       "type": "object",
       "required": [
         "terminal"
@@ -147,7 +147,7 @@
       }
     },
     "binValue": {
-      "$comment": "PLECT-CFG-VALUE-TAG-UNKNOWN.",
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN.",
       "type": "object",
       "required": [
         "bin"
@@ -160,7 +160,7 @@
       }
     },
     "jsonValue": {
-      "$comment": "PLECT-CFG-VALUE-TAG-UNKNOWN.",
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN.",
       "type": "object",
       "required": [
         "json"
@@ -218,7 +218,7 @@
           "$ref": "#/$defs/jsonValue"
         }
       ],
-      "$comment": "PLECT-CFG-VALUE-FROM-AND-EXPR, PLECT-CFG-VALUE-TAG-UNKNOWN."
+      "$comment": "PLECTURE-CFG-VALUE-FROM-AND-EXPR, PLECTURE-CFG-VALUE-TAG-UNKNOWN."
     },
     "projectionOrComputation": {
       "type": "object",
@@ -247,10 +247,10 @@
           "$ref": "#/$defs/jsonValue"
         }
       ],
-      "$comment": "PLECT-CFG-VALUE-TAG-SURFACE when a capability tag appears here."
+      "$comment": "PLECTURE-CFG-VALUE-TAG-SURFACE when a capability tag appears here."
     },
     "bindingValue": {
-      "$comment": "PLECT-CFG-VALUE-TAG-UNKNOWN, PLECT-CFG-VALUE-FROM-AND-EXPR, PLECT-CFG-VALUE-DEFAULT-AND-OPTIONAL.",
+      "$comment": "PLECTURE-CFG-VALUE-TAG-UNKNOWN, PLECTURE-CFG-VALUE-FROM-AND-EXPR, PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL.",
       "description": "A value on an action-binding surface, which may additionally consume a Plecture capability.",
       "anyOf": [
         {
@@ -333,7 +333,7 @@
           }
         }
       ],
-      "$comment": "PLECT-CFG-ACTION-BIN-AND-COMMAND when both are set or neither is."
+      "$comment": "PLECTURE-CFG-ACTION-BIN-AND-COMMAND when both are set or neither is."
     },
     "shellAction": {
       "type": "object",
@@ -347,7 +347,7 @@
           "const": "shell"
         },
         "script": {
-          "$comment": "PLECT-CFG-SHELL-INTERPOLATION.",
+          "$comment": "PLECTURE-CFG-SHELL-INTERPOLATION.",
           "type": "string",
           "description": "Literal shell source. Plecture and CEL interpolation do not occur inside it.",
           "not": {
@@ -369,7 +369,7 @@
           "$ref": "#/$defs/shellAction"
         }
       ],
-      "$comment": "PLECT-CFG-ACTION-TYPE-UNKNOWN for an unknown type; PLECT-CFG-ACTION-VARIANT when a field of the other variant is present."
+      "$comment": "PLECTURE-CFG-ACTION-TYPE-UNKNOWN for an unknown type; PLECTURE-CFG-ACTION-VARIANT when a field of the other variant is present."
     },
     "schemaDocument": {
       "type": "object",
@@ -421,7 +421,7 @@
               }
             ]
           },
-          "$comment": "PLECT-CFG-VALUE-TAG-SURFACE: a contract document declares types, not values."
+          "$comment": "PLECTURE-CFG-VALUE-TAG-SURFACE: a contract document declares types, not values."
         }
       ]
     },
@@ -695,7 +695,7 @@
           "description": "The task owns an interactive endpoint. At most one task in a plan declares it."
         }
       },
-      "$comment": "PLECT-CFG-FIELD-UNKNOWN: the task grammar is closed, and the completion contract is not in it."
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN: the task grammar is closed, and the completion contract is not in it."
     },
     "workflowDefinition": {
       "type": "object",
@@ -911,7 +911,7 @@
               ]
             }
           ],
-          "$comment": "PLECT-CFG-CHANNEL-TIMEOUT-ROOT."
+          "$comment": "PLECTURE-CFG-CHANNEL-TIMEOUT-ROOT."
         },
         "path": {
           "$ref": "#/$defs/dataValue"
@@ -923,7 +923,7 @@
           "$ref": "#/$defs/executableName"
         },
         "command": {
-          "$comment": "PLECT-CFG-REF-DYNAMIC: a channel's command is never chosen by data.",
+          "$comment": "PLECTURE-CFG-REF-DYNAMIC: a channel's command is never chosen by data.",
           "type": "string"
         },
         "args": {
@@ -936,7 +936,7 @@
           "$ref": "#/$defs/bindingValue"
         },
         "script": {
-          "$comment": "PLECT-CFG-SHELL-INTERPOLATION.",
+          "$comment": "PLECTURE-CFG-SHELL-INTERPOLATION.",
           "type": "string",
           "not": {
             "pattern": "\\{\\{"
@@ -959,7 +959,7 @@
             ]
           },
           "then": {
-            "$comment": "PLECT-CFG-ACTION-VARIANT, PLECT-CFG-FIELD-REQUIRED.",
+            "$comment": "PLECTURE-CFG-ACTION-VARIANT, PLECTURE-CFG-FIELD-REQUIRED.",
             "required": [
               "path",
               "body"
@@ -1012,7 +1012,7 @@
             ]
           },
           "then": {
-            "$comment": "PLECT-CFG-ACTION-BIN-AND-COMMAND, PLECT-CFG-ACTION-VARIANT.",
+            "$comment": "PLECTURE-CFG-ACTION-BIN-AND-COMMAND, PLECTURE-CFG-ACTION-VARIANT.",
             "oneOf": [
               {
                 "required": [
@@ -1073,7 +1073,7 @@
             ]
           },
           "then": {
-            "$comment": "PLECT-CFG-ACTION-VARIANT, PLECT-CFG-FIELD-REQUIRED.",
+            "$comment": "PLECTURE-CFG-ACTION-VARIANT, PLECTURE-CFG-FIELD-REQUIRED.",
             "required": [
               "script"
             ],
@@ -1182,7 +1182,7 @@
       }
     },
     "configFile": {
-      "$comment": "PLECT-CFG-FIELD-UNKNOWN: a reserved root file's surface is closed, and a definition table is not part of it.",
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN: a reserved root file's surface is closed, and a definition table is not part of it.",
       "$anchor": "config",
       "type": "object",
       "additionalProperties": false,
@@ -1348,7 +1348,7 @@
       }
     },
     "pluginManifest": {
-      "$comment": "PLECT-CFG-FIELD-REQUIRED, PLECT-CFG-FIELD-UNKNOWN.",
+      "$comment": "PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-FIELD-UNKNOWN.",
       "$anchor": "plugin",
       "type": "object",
       "additionalProperties": false,
@@ -1481,7 +1481,7 @@
       }
     },
     "taskOutputsTable": {
-      "$comment": "PLECT-CFG-FIELD-TYPE, PLECT-CFG-FIELD-UNKNOWN.",
+      "$comment": "PLECTURE-CFG-FIELD-TYPE, PLECTURE-CFG-FIELD-UNKNOWN.",
       "type": "object",
       "additionalProperties": false,
       "description": "A task's public output wiring. Its roots are the nesting joint's: an inner output or this layer's locals. A live root belongs to a work document's observe, so re-evaluation is not a task concern.",
@@ -1498,7 +1498,7 @@
       }
     },
     "taskOutputValue": {
-      "$comment": "PLECT-CFG-FROM-ROOT: a task output projects inner.outputs.* or locals.* only.",
+      "$comment": "PLECTURE-CFG-FROM-ROOT: a task output projects inner.outputs.* or locals.* only.",
       "type": "object",
       "oneOf": [
         {
@@ -1521,7 +1521,7 @@
       ]
     },
     "observeValue": {
-      "$comment": "PLECT-CFG-FROM-ROOT: observe reads resource.status.* and self.*, the two live roots.",
+      "$comment": "PLECTURE-CFG-FROM-ROOT: observe reads resource.status.* and self.*, the two live roots.",
       "type": "object",
       "oneOf": [
         {
@@ -1544,7 +1544,7 @@
       ]
     },
     "workDefinition": {
-      "$comment": "PLECT-CFG-FIELD-UNKNOWN, PLECT-CFG-FIELD-REQUIRED, PLECT-CFG-KIND-MISSING.",
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -1617,7 +1617,7 @@
     },
     "workFrontmatter": {
       "$anchor": "work",
-      "$comment": "PLECT-CFG-WORK-BLOCK-COUNT: a work document's frontmatter holds exactly one declaration.",
+      "$comment": "PLECTURE-CFG-WORK-BLOCK-COUNT: a work document's frontmatter holds exactly one declaration.",
       "type": "object",
       "description": "The TOML frontmatter of a work document: one definition block, whose kind is work. Nothing about the grammar forks \u2014 these are two validation rules over the ordinary definition document.",
       "minProperties": 1,

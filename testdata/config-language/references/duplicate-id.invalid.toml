@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-ID-DUPLICATE entry=definitions
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-ID-DUPLICATE entry=definitions
 # reason: one layer has a single definition id namespace across all kinds, so the same id declared as a task and as a workflow is an error; TOML rejects a repeated header inside one file, so this pair stands for two files the loader concatenates.
 
 [goal_review]

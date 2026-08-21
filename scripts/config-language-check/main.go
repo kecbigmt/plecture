@@ -433,7 +433,7 @@ func indent(s string) string {
 	return strings.ReplaceAll(s, "\n", "\n    ")
 }
 
-var diagnosticRe = regexp.MustCompile(`\bPLECT-CFG-[A-Z0-9-]+\b`)
+var diagnosticRe = regexp.MustCompile(`\bPLECTURE-CFG-[A-Z0-9-]+\b`)
 
 // documentedDiagnostics reads the diagnostic codes listed in the overview's
 // diagnostics table. Codes are the tooling interface, so every code a fixture

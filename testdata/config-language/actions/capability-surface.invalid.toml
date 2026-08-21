@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-VALUE-TAG-SURFACE entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-VALUE-TAG-SURFACE entry=definitions
 # reason: the terminal capability is consumed by an action binding, not by an inputs-schema default.
 
 [runtime]

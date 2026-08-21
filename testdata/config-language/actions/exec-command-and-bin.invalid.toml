@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-ACTION-BIN-AND-COMMAND entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-ACTION-BIN-AND-COMMAND entry=definitions
 # reason: an exec action names its executable exactly once, through either bin or command.
 
 [notify]

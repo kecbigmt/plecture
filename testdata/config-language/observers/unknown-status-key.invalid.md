@@ -1,4 +1,4 @@
-<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-FROM-PATH entry=work -->
+<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=work -->
 <!-- reason: an observation names a key the resolved observer's state schema does not declare. -->
 +++
 [broken_observe]

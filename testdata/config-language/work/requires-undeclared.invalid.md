@@ -1,4 +1,4 @@
-<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-REQUIRES-UNDECLARED entry=work -->
+<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-REQUIRES-UNDECLARED entry=work -->
 <!-- reason: every done_when check names a required key, and every required key is observed or recorded. -->
 +++
 [broken_requires]

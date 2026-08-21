@@ -96,45 +96,52 @@ Diagnostics are part of the tooling interface. A code identifies the language
 rule that was broken and the layer that found it; the human-readable message
 may improve over time.
 
+Codes carry the `PLECTURE-` prefix because they belong to the language, not to
+one program. Any implementation emits them — an editor server, an independent
+checker, a generator — so they sit on the Plecture side of the project's naming
+split: prose about the language and its specification is Plecture, while
+`plect` names the command, its environment, and its state. A code prefixed with
+the CLI's name would claim the language's rules for one of its consumers.
+
 | Code | Layer | Rule |
 |---|---|---|
-| `PLECT-CFG-KIND-MISSING` | structural | A definition table declares no `kind`. |
-| `PLECT-CFG-KIND-UNKNOWN` | structural | `kind` is outside the vocabulary. |
-| `PLECT-CFG-ID-INVALID` | structural | A definition id does not match `^[A-Za-z_][A-Za-z0-9_]*$`. |
-| `PLECT-CFG-FIELD-UNKNOWN` | structural | A field is not part of the containing kind's surface. |
-| `PLECT-CFG-FIELD-REQUIRED` | structural | A required field is absent. |
-| `PLECT-CFG-FIELD-TYPE` | structural | A field's TOML shape is not the one its surface accepts. |
-| `PLECT-CFG-VALUE-FROM-AND-EXPR` | structural | One value declares both `from` and `expr`. |
-| `PLECT-CFG-VALUE-DEFAULT-AND-OPTIONAL` | structural | `default` and `optional` are mutually exclusive. |
-| `PLECT-CFG-VALUE-TAG-UNKNOWN` | structural | A tagged value uses a key outside the vocabulary. |
-| `PLECT-CFG-VALUE-TAG-SURFACE` | structural | A capability tag appears on a surface that consumes data only. |
-| `PLECT-CFG-ACTION-TYPE-UNKNOWN` | structural | An action's `type` is neither `exec` nor `shell`. |
-| `PLECT-CFG-ACTION-VARIANT` | structural | An action carries a field belonging to the other variant. |
-| `PLECT-CFG-ACTION-BIN-AND-COMMAND` | structural | An exec action names its executable through `bin` or `command`, exactly once. |
-| `PLECT-CFG-SHELL-INTERPOLATION` | structural | Shell source is literal; it carries no Plecture or CEL interpolation. |
-| `PLECT-CFG-REF-DYNAMIC` | structural | A statically discoverable field carries a computed value. |
-| `PLECT-CFG-CHANNEL-TIMEOUT-ROOT` | structural | A channel `timeout` reads author-declared parameters only. |
-| `PLECT-CFG-WORK-FRONTMATTER-MISSING` | structural | A work document does not open with `+++` frontmatter. |
-| `PLECT-CFG-WORK-BLOCK-COUNT` | structural | A work document's frontmatter holds other than exactly one declaration. |
-| `PLECT-CFG-WORK-IN-TOML-DOCUMENT` | structural | A TOML definition document declares a kind whose declaration needs a body. |
-| `PLECT-CFG-UNKNOWN-REF` | semantic | A reference resolves to no definition. |
-| `PLECT-CFG-KIND-MISMATCH` | semantic | A reference site's expected kind differs from the target's declared kind. |
-| `PLECT-CFG-ID-DUPLICATE` | semantic | One layer declares the same definition id twice. |
-| `PLECT-CFG-REF-ALIAS-REQUIRED` | semantic | A user-owned reference to catalog content omits its catalog alias. |
-| `PLECT-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
-| `PLECT-CFG-FROM-ROOT` | structural / semantic | A projection names a root the containing surface does not observe. It is structural where a surface's roots are a fixed prefix set, as on a task's `outputs.bind` and a work document's `observe`, and semantic otherwise. |
-| `PLECT-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
-| `PLECT-CFG-REQUIRES-UNDECLARED` | semantic | A `done_when` check, or a `requires` entry, names a key no contract declares. |
-| `PLECT-CFG-BIN-UNKNOWN` | semantic | An executable reference resolves to no declared executable. |
-| `PLECT-CFG-TERMINAL-UNAVAILABLE` | semantic | A terminal capability is consumed where no task in the plan declares that verb. |
-| `PLECT-CFG-NESTING-CYCLE` | semantic | A nesting chain reaches itself. |
-| `PLECT-CFG-NESTING-OUTPUT-MUTABLE` | semantic | A computed nested output is marked mutable. |
-| `PLECT-CFG-NESTING-PROJECTION-MISMATCH` | semantic | A direct nested projection disagrees with the inner output's type or mutability. |
-| `PLECT-CFG-WORKFLOW-CYCLE` | semantic | The dependencies derived from node projections form a cycle. |
-| `PLECT-CFG-CEL-SYNTAX` | cel | An expression does not parse as CEL. |
-| `PLECT-CFG-CEL-UNKNOWN-NAME` | cel | An expression names a variable not visible at its site. |
-| `PLECT-CFG-CEL-TYPE` | cel | An operation, or a result type, does not satisfy the site's expected type. |
-| `PLECT-CFG-CEL-CUSTOM-FUNCTION` | cel | An expression calls a function the profile does not define. |
+| `PLECTURE-CFG-KIND-MISSING` | structural | A definition table declares no `kind`. |
+| `PLECTURE-CFG-KIND-UNKNOWN` | structural | `kind` is outside the vocabulary. |
+| `PLECTURE-CFG-ID-INVALID` | structural | A definition id does not match `^[A-Za-z_][A-Za-z0-9_]*$`. |
+| `PLECTURE-CFG-FIELD-UNKNOWN` | structural | A field is not part of the containing kind's surface. |
+| `PLECTURE-CFG-FIELD-REQUIRED` | structural | A required field is absent. |
+| `PLECTURE-CFG-FIELD-TYPE` | structural | A field's TOML shape is not the one its surface accepts. |
+| `PLECTURE-CFG-VALUE-FROM-AND-EXPR` | structural | One value declares both `from` and `expr`. |
+| `PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL` | structural | `default` and `optional` are mutually exclusive. |
+| `PLECTURE-CFG-VALUE-TAG-UNKNOWN` | structural | A tagged value uses a key outside the vocabulary. |
+| `PLECTURE-CFG-VALUE-TAG-SURFACE` | structural | A capability tag appears on a surface that consumes data only. |
+| `PLECTURE-CFG-ACTION-TYPE-UNKNOWN` | structural | An action's `type` is neither `exec` nor `shell`. |
+| `PLECTURE-CFG-ACTION-VARIANT` | structural | An action carries a field belonging to the other variant. |
+| `PLECTURE-CFG-ACTION-BIN-AND-COMMAND` | structural | An exec action names its executable through `bin` or `command`, exactly once. |
+| `PLECTURE-CFG-SHELL-INTERPOLATION` | structural | Shell source is literal; it carries no Plecture or CEL interpolation. |
+| `PLECTURE-CFG-REF-DYNAMIC` | structural | A statically discoverable field carries a computed value. |
+| `PLECTURE-CFG-CHANNEL-TIMEOUT-ROOT` | structural | A channel `timeout` reads author-declared parameters only. |
+| `PLECTURE-CFG-WORK-FRONTMATTER-MISSING` | structural | A work document does not open with `+++` frontmatter. |
+| `PLECTURE-CFG-WORK-BLOCK-COUNT` | structural | A work document's frontmatter holds other than exactly one declaration. |
+| `PLECTURE-CFG-WORK-IN-TOML-DOCUMENT` | structural | A TOML definition document declares a kind whose declaration needs a body. |
+| `PLECTURE-CFG-UNKNOWN-REF` | semantic | A reference resolves to no definition. |
+| `PLECTURE-CFG-KIND-MISMATCH` | semantic | A reference site's expected kind differs from the target's declared kind. |
+| `PLECTURE-CFG-ID-DUPLICATE` | semantic | One layer declares the same definition id twice. |
+| `PLECTURE-CFG-REF-ALIAS-REQUIRED` | semantic | A user-owned reference to catalog content omits its catalog alias. |
+| `PLECTURE-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
+| `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A projection names a root the containing surface does not observe. It is structural where a surface's roots are a fixed prefix set, as on a task's `outputs.bind` and a work document's `observe`, and semantic otherwise. |
+| `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
+| `PLECTURE-CFG-REQUIRES-UNDECLARED` | semantic | A `done_when` check, or a `requires` entry, names a key no contract declares. |
+| `PLECTURE-CFG-BIN-UNKNOWN` | semantic | An executable reference resolves to no declared executable. |
+| `PLECTURE-CFG-TERMINAL-UNAVAILABLE` | semantic | A terminal capability is consumed where no task in the plan declares that verb. |
+| `PLECTURE-CFG-NESTING-CYCLE` | semantic | A nesting chain reaches itself. |
+| `PLECTURE-CFG-NESTING-OUTPUT-MUTABLE` | semantic | A computed nested output is marked mutable. |
+| `PLECTURE-CFG-NESTING-PROJECTION-MISMATCH` | semantic | A direct nested projection disagrees with the inner output's type or mutability. |
+| `PLECTURE-CFG-WORKFLOW-CYCLE` | semantic | The dependencies derived from node projections form a cycle. |
+| `PLECTURE-CFG-CEL-SYNTAX` | cel | An expression does not parse as CEL. |
+| `PLECTURE-CFG-CEL-UNKNOWN-NAME` | cel | An expression names a variable not visible at its site. |
+| `PLECTURE-CFG-CEL-TYPE` | cel | An operation, or a result type, does not satisfy the site's expected type. |
+| `PLECTURE-CFG-CEL-CUSTOM-FUNCTION` | cel | An expression calls a function the profile does not define. |
 
 ## Scope
 

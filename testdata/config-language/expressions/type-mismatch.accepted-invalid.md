@@ -1,4 +1,4 @@
-<!-- plect-fixture: result=accepted-invalid layer=cel diagnostic=PLECT-CFG-CEL-TYPE entry=work -->
+<!-- plect-fixture: result=accepted-invalid layer=cel diagnostic=PLECTURE-CFG-CEL-TYPE entry=work -->
 <!-- reason: JSON Schema to CEL type projection is the sanctioned first check to drop, so this loads while result-type checking is disabled. -->
 +++
 [review]

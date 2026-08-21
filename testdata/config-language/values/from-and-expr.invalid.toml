@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-VALUE-FROM-AND-EXPR entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-VALUE-FROM-AND-EXPR entry=definitions
 # reason: a value declares both from and expr, so its form is ambiguous.
 
 [bootstrap]

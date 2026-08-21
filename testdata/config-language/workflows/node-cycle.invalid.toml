@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-WORKFLOW-CYCLE entry=definitions
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-WORKFLOW-CYCLE entry=definitions
 # reason: the dependencies derived from the nodes roots form a cycle.
 
 [session]

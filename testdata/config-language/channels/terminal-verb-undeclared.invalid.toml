@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-TERMINAL-UNAVAILABLE entry=definitions
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-TERMINAL-UNAVAILABLE entry=definitions
 # reason: the terminal capability requires a task in the plan to declare the requested verb.
 
 [session]

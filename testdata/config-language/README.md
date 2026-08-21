@@ -41,7 +41,7 @@ Every fixture begins with an expectation header, then a `reason:` line stating
 what it pins down. A definition document writes them as TOML comments:
 
 ```toml
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-VALUE-FROM-AND-EXPR entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-VALUE-FROM-AND-EXPR entry=definitions
 # reason: a value declares both from and expr, so its form is ambiguous.
 ```
 
@@ -57,7 +57,7 @@ frontmatter has to start the file once the header is stripped:
 |---|---|
 | `result` | `valid`, `invalid`, `accepted-invalid` |
 | `layer` | `structural`, `semantic`, `cel` — required unless `result=valid` |
-| `diagnostic` | The `PLECT-CFG-*` code, which must appear in the diagnostics table in [`../../docs/language/overview.md`](../../docs/language/overview.md) |
+| `diagnostic` | The `PLECTURE-CFG-*` code, which must appear in the diagnostics table in [`../../docs/language/overview.md`](../../docs/language/overview.md) |
 | `entry` | Which schema entry validates it: `definitions` (default), `work`, `config`, `catalogs`, `lock`, `plugin`, `catalog` |
 
 `result=accepted-invalid` records a rule the language states but the

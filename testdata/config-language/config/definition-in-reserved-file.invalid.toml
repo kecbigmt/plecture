@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-FIELD-UNKNOWN entry=config
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=config
 # reason: a reserved root file is not a definition file, so a definition table cannot appear in it.
 
 workspace_dirs_root = "~/worktrees"

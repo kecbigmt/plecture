@@ -1,4 +1,4 @@
-<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-FROM-ROOT entry=work -->
+<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FROM-ROOT entry=work -->
 <!-- reason: observe reads the resource and this work's own recorded state; a node output is workflow wiring, not an observation. -->
 +++
 [broken_observe]

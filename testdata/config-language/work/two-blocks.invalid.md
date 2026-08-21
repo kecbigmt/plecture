@@ -1,4 +1,4 @@
-<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-WORK-BLOCK-COUNT entry=work -->
+<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-WORK-BLOCK-COUNT entry=work -->
 <!-- reason: the body belongs to one declaration, so a frontmatter holding two has no way to say which. -->
 +++
 [work]

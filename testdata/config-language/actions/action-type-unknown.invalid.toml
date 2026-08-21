@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-ACTION-TYPE-UNKNOWN entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-ACTION-TYPE-UNKNOWN entry=definitions
 # reason: exec and shell are the only action variants.
 
 [runtime]

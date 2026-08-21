@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-FROM-ROOT entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
 # reason: a nested outputs binding observes only inner outputs and this layer's locals.
 
 [labelled_runtime]

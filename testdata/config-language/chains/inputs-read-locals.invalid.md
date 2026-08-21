@@ -1,4 +1,4 @@
-<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-FROM-ROOT entry=work -->
+<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=work -->
 <!-- reason: a chain passes on public work facts; a task layer's private locals do not cross into a spawned session. -->
 +++
 [pursue_goal]

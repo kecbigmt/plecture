@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=cel diagnostic=PLECT-CFG-CEL-UNKNOWN-NAME entry=definitions
+# plect-fixture: result=invalid layer=cel diagnostic=PLECTURE-CFG-CEL-UNKNOWN-NAME entry=definitions
 # reason: workflow is not a visible variable on a channel argument surface.
 
 [notify]

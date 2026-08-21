@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-FIELD-REQUIRED entry=plugin
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-REQUIRED entry=plugin
 # reason: schema_version is required so a manifest's format is identifiable before anything else is read.
 
 version           = "0.1.0"

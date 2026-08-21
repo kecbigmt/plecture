@@ -74,7 +74,7 @@ executable ownership, terminal capabilities, task nesting, layer boundaries,
 custom functions is not a reason to move any of them there.
 
 An expression calling a function the profile does not define is
-`PLECT-CFG-CEL-CUSTOM-FUNCTION` — including one that looks like a Plecture
+`PLECTURE-CFG-CEL-CUSTOM-FUNCTION` — including one that looks like a Plecture
 capability:
 
 <!-- fixture: expressions/custom-function.invalid.toml -->

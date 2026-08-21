@@ -1,4 +1,4 @@
-<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-FIELD-UNKNOWN entry=work -->
+<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=work -->
 <!-- reason: lifecycle belongs to a task; a work document brings nothing up and takes nothing down. -->
 +++
 [broken_work]

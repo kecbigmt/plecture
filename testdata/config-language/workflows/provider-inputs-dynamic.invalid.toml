@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-VALUE-TAG-SURFACE entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-VALUE-TAG-SURFACE entry=definitions
 # reason: a workspace provider's hooks run before any node output exists, so its parameters are literal data.
 
 [session]

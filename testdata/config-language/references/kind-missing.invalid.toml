@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-KIND-MISSING entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-KIND-MISSING entry=definitions
 # reason: a definition table without kind declares no contract.
 
 [runtime]

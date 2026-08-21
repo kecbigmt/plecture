@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-FIELD-TYPE entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-TYPE entry=definitions
 # reason: dynamic outputs dissolve into the value model, so neither an outputs array nor from_resource_status exists.
 
 [render]

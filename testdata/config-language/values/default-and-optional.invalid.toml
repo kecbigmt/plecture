@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-VALUE-DEFAULT-AND-OPTIONAL entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL entry=definitions
 # reason: default and optional are mutually exclusive missing-value behaviors.
 
 [bootstrap]

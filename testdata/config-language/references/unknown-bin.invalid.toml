@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-BIN-UNKNOWN entry=definitions
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-BIN-UNKNOWN entry=definitions
 # reason: a bare bin name resolves against the containing plugin's own executables, and this plugin declares no such executable.
 
 [bootstrap]

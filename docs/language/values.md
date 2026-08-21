@@ -128,8 +128,8 @@ receiving everything and relying on a later check to reject the rest.
 | Chain `inputs` | `work.session`, `work.instance`, `work.workflow`, `work.outputs.<key>`, `work.done_when.pending_judge_ids`, `work.revision` |
 
 A projection naming a root the surface does not observe is
-`PLECT-CFG-FROM-ROOT`; one naming a field the resolved contract does not
-declare is `PLECT-CFG-FROM-PATH`.
+`PLECTURE-CFG-FROM-ROOT`; one naming a field the resolved contract does not
+declare is `PLECTURE-CFG-FROM-PATH`.
 
 ## Live roots and write-through
 
@@ -178,7 +178,7 @@ output reaches the outer contract. A computed value does not write through.
 Fields that determine topology are never computed, so the shape of a
 configuration is discoverable before anything is evaluated: `kind`, `uses`,
 `workspace_provider`, `inner.uses`, a chain's `workflow`, and an exec action's
-`command`. A tagged value on one of them is `PLECT-CFG-REF-DYNAMIC`.
+`command`. A tagged value on one of them is `PLECTURE-CFG-REF-DYNAMIC`.
 
 ## Validation rules
 

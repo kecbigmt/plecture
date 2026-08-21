@@ -1,4 +1,4 @@
-<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-REF-DYNAMIC entry=work -->
+<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-REF-DYNAMIC entry=work -->
 <!-- reason: a chain's workflow reference is static, so templated selection is not part of the language. -->
 +++
 [pursue_goal]

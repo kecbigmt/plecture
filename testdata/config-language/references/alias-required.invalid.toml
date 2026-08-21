@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=semantic diagnostic=PLECT-CFG-REF-ALIAS-REQUIRED entry=definitions
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-REF-ALIAS-REQUIRED entry=definitions
 # reason: in user-owned config a relative reference that would select catalog content must carry its catalog alias.
 
 [my_session]

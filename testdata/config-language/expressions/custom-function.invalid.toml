@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=cel diagnostic=PLECT-CFG-CEL-CUSTOM-FUNCTION entry=definitions
+# plect-fixture: result=invalid layer=cel diagnostic=PLECTURE-CFG-CEL-CUSTOM-FUNCTION entry=definitions
 # reason: the profile declares no custom functions, so Plecture capabilities stay structural rather than becoming CEL calls.
 
 [notify]

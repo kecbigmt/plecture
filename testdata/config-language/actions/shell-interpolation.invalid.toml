@@ -1,4 +1,4 @@
-# plect-fixture: result=invalid layer=structural diagnostic=PLECT-CFG-SHELL-INTERPOLATION entry=definitions
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-SHELL-INTERPOLATION entry=definitions
 # reason: shell source is literal, so a Plecture or CEL interpolation inside script is rejected.
 
 [runtime]
