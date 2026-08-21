@@ -24,17 +24,13 @@ document that declared it.
 ```markdown
 +++
 [pursue_goal]
-kind        = "work"
-description = "Pursue one goal until an independent reviewer confirms it"
-resource    = "goal"
-requires    = ["checklist_status"]
-
-[pursue_goal.observe]
-checklist_status = { from = "resource.status.checklist_status" }
+kind              = "work"
+description       = "Pursue one goal until an independent reviewer confirms it"
+resource_observer = "goal"
 
 [pursue_goal.done_when]
 all = [
-  { check = "checklist_status", in = ["SUCCESS"] },
+  { check = "resource.status.checklist_status", in = ["SUCCESS"] },
   { judge = "goal is achieved according to the goal file and event evidence", id = "goal-met", relation = ["sibling"] },
 ]
 
@@ -45,7 +41,7 @@ placement = "sibling"
 
 [pursue_goal.chains.when]
 all = [
-  { check = "checklist_status", in = ["SUCCESS"] },
+  { check = "resource.status.checklist_status", in = ["SUCCESS"] },
   { judge_pending = "goal-met" },
 ]
 
@@ -60,16 +56,18 @@ Pursue the goal at {{ resource.id }} until its checklist is satisfied.
 
 ## Triggers
 
-`when.all` is a conjunction of facts. A check fact compares an observed key the
-same way a completion check does. `judge_pending` holds while a named judge leaf
-is still awaiting a verdict — which is how a chain spawns the reviewer that will
-supply it. `judge_action` with `is` matches a recorded verdict.
+`when.all` is a conjunction of facts, reading the same roots a completion leaf
+does. A check fact compares one key and an expression fact states a computed
+predicate, both exactly as in `done_when`. `judge_pending` holds while a named
+judge leaf is still awaiting a verdict — which is how a chain spawns the
+reviewer that will supply it. `judge_action` with `is` matches a recorded
+verdict.
 
 ## Inputs
 
-Chain inputs project the work facts of the instance that fired: which session
-and instance it was, which workflow, its public outputs, its pending judge ids,
-and its revision.
+Chain inputs project the facts of the instance that fired — which session and
+instance it was, which workflow, its pending judge ids — and the live roots it
+reads, `resource.status.*` and `state.*`.
 
 They read public facts only. A task layer's private locals do not cross into a
 spawned session.
@@ -86,6 +84,7 @@ consumer.
 - `workflow` resolves to a definition of kind `workflow`.
 - `workflow` is never a computed value.
 - A `when` judge id names a judge leaf this document's `done_when` declares.
-- A check fact names a key this document observes or records.
+- A check fact names a key the declared observer publishes, or one this
+  document's `state_schema` declares.
 - Chain inputs project public work facts, not locals.
 - Chain inputs satisfy the target workflow's `inputs_schema`.

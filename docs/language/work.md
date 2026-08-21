@@ -15,10 +15,9 @@ it somewhere to run.
 ```markdown
 +++
 [work]
-kind        = "work"
-description = "Implement a fix or feature for an issue and create a PR"
-resource    = "issue_pr"
-requires    = ["resource_kind", "checks_status", "issue_status"]
+kind              = "work"
+description       = "Implement a fix or feature for an issue and create a PR"
+resource_observer = "issue_pr"
 
 [work.inputs_schema]
 type = "object"
@@ -26,17 +25,10 @@ type = "object"
 [work.inputs_schema.properties]
 instruction = { type = "string" }
 
-[work.observe]
-resource_kind = { from = "resource.status.resource_kind" }
-checks_status = { from = "resource.status.checks_status" }
-issue_status  = { from = "resource.status.issue_status" }
-revision      = { from = "resource.status.revision" }
-pr_url        = { from = "resource.status.pr_url", optional = true }
-
 [work.done_when]
 all = [
-  { check = "resource_kind", in = ["pull", "issue"] },
-  { check = "checks_status", in = ["SUCCESS", "NULL"] },
+  { check = "resource.status.resource_kind", in = ["pull", "issue"] },
+  { check = "resource.status.checks_status", in = ["SUCCESS", "NULL"] },
   { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
@@ -80,10 +72,10 @@ reviewing, and exchanging work reads and diffs as prose. And the goal file it
 converges with is already a document.
 
 The body below the closing `+++` is the instruction. Its interpolation uses the
-same value model, but not the same roots as the frontmatter: the body reads what
-the instruction is about — the resource, this work's parameters, the session —
-while `[observe]` reads the live state completion depends on. Both root sets are
-listed in [`values.md`](values.md).
+same value model, but not the same roots as `done_when`: the body reads what the
+instruction is about — the resource, this work's parameters, the session — while
+completion reads the live state it depends on. Both root sets are listed in
+[`values.md`](values.md).
 
 ## Frontmatter
 
@@ -96,11 +88,9 @@ own.
 |---|---|
 | `kind` | `work`. |
 | `description` | What this work is for. |
-| `resource` | The resource definition this work is written for. |
+| `resource_observer` | The resource observer this work is written for. |
 | `[<id>.inputs_schema]` | The instruction's author-declared parameters. |
 | `[<id>.state_schema]` | This work's own state: the keys something else writes. |
-| `[<id>.observe]` | The keys this work reads from its resource and from its own state. |
-| `requires` | The keys `done_when` reads. |
 | `[<id>.done_when]` | The completion predicate. |
 | `[<id>.budget]` | The convergence bound, if any. |
 | `[[<id>.chains]]` | What this work spawns, and when. See [`chains.md`](chains.md). |
@@ -129,68 +119,26 @@ One rule covers the whole language: any definition that holds state declares it
 with `state_schema`. A resource observer declares the state it publishes about a
 resource; a work document declares the state it holds about itself.
 
-That closes a chain:
+Those two schemas are the two roots a completion predicate reads:
+`resource.status.*` for what the observer publishes, and `state.*` for what this
+work holds. Both are live — every read is current as of that evaluation.
 
-```text
-resource observer  state_schema   the keys it publishes about the resource
-        ↓
-work document      observe        subscribes to those keys, and to its own state
-        ↓
-work document      state_schema   the keys it holds itself
-```
+There is no intermediate declaration between a schema and the predicate that
+reads it. A key does not have to be re-listed to be readable: the observer's
+`state_schema` already says what exists, and this document's `state_schema` says
+what it keeps.
 
-`verdict_revision` in the example below is a convention, not a reserved key.
+`verdict_revision` in the examples here is a convention, not a reserved key.
 Core special-cases nothing about it: it is an ordinary declared state key whose
 meaning lives entirely in the configuration that reads it.
-
-## Observation
-
-`observe` is the only surface in the language with live roots. Every value in
-it is current as of each evaluation: `resource.status.*` reads the resource
-observer's published state, and `self.*` reads this work's own declared state.
-
-Observation is declared per key, with renames where this work wants different
-names than the observer uses:
-
-<!-- fixture: observers/per-key-outputs.md -->
-```markdown
-+++
-[review]
-kind        = "work"
-description = "Review a pull request, reading the observer's state under this work's own names"
-resource    = "issue_pr"
-requires    = ["kind", "checks"]
-
-[review.observe]
-kind     = { from = "resource.status.resource_kind" }
-checks   = { from = "resource.status.checks_status" }
-revision = { from = "resource.status.revision" }
-pr_url   = { from = "resource.status.pr_url", optional = true }
-
-[review.done_when]
-all = [
-  { check = "kind", in = ["pull", "issue"] },
-  { check = "checks", in = ["SUCCESS", "NULL"] },
-]
-+++
-Review the pull request at {{ resource.id }}.
-```
-
-Because observation is per key, a status that does not apply to a resource kind
-is a literal sentinel rather than an absence — `in ["SUCCESS", "NULL"]` accepts
-it without it ever satisfying on its own.
-
-An observation may also be computed, which is how a comparison against
-recorded state stays correct at the moment the resource changes:
 
 <!-- fixture: work/observe-live-roots.md -->
 ```markdown
 +++
 [review]
-kind        = "work"
-description = "Review a pull request and record a verdict"
-resource    = "issue_pr"
-requires    = ["resource_kind", "verdict_current"]
+kind              = "work"
+description       = "Review a pull request and record a verdict"
+resource_observer = "issue_pr"
 
 [review.inputs_schema]
 type = "object"
@@ -199,7 +147,7 @@ type = "object"
 instruction = { type = "string" }
 
 # verdict_revision is this work's own state: written into the instance by the
-# reviewer rather than observed from the resource. It carries no mutability
+# reviewer rather than published by the observer. It carries no mutability
 # annotation, because state is mutable by definition.
 [review.state_schema]
 type = "object"
@@ -207,15 +155,10 @@ type = "object"
 [review.state_schema.properties]
 verdict_revision = { type = "string" }
 
-[review.observe]
-resource_kind   = { from = "resource.status.resource_kind" }
-revision        = { from = "resource.status.revision" }
-verdict_current = { expr = "self.verdict_revision == resource.status.revision" }
-
 [review.done_when]
 all = [
-  { check = "resource_kind", in = ["pull", "issue"] },
-  { check = "verdict_current", in = [true] },
+  { check = "resource.status.resource_kind", in = ["pull", "issue"] },
+  { expr = "state.verdict_revision == resource.status.revision" },
 ]
 
 [review.budget]
@@ -225,21 +168,21 @@ on_exhaust       = "escalate"
 Review the pull request at {{ resource.id }} and record your verdict.
 ```
 
-Nothing about a value being "dynamic" needs its own declaration form.
-Re-evaluation rides on root liveness.
-
 ## Completion
 
-`[done_when]` is a conjunction of leaves. A check leaf compares an observed or
-recorded key; a judge leaf waits for independent reviewer input recorded against the
-instance, optionally restricted to reviewers in a declared relation.
+`done_when` is a conjunction of leaves. A check leaf compares one key, named by
+its root path. An expression leaf states a predicate computed over those roots —
+which is how a recorded verdict is compared against a live revision, with no key
+of its own to hang on. A judge leaf waits for independent reviewer input
+recorded against the instance, optionally restricted to reviewers in a declared
+relation.
 
-`requires` names the keys those checks read. Every check names a `requires`
-entry, and every `requires` entry is observed or recorded, so a typo in either
-surfaces at load time.
+A leaf reads `resource.status.*` or `state.*`, and nothing else. Both are
+resolved at load against the schemas that declare them, so a misspelled key
+fails before anything runs.
 
-`[budget]` bounds convergence. Omitting it leaves completion unbounded, which
-is what a standing goal needs: continuing to exist is not exhaustion.
+`budget` bounds convergence. Omitting it leaves completion unbounded, which is
+what a standing goal needs: continuing to exist is not exhaustion.
 
 ## What a work document is not
 
@@ -252,9 +195,9 @@ dispatched into a session a workflow has already built.
 ```markdown
 +++
 [broken_work]
-kind        = "work"
-description = "A work document that tries to own a lifecycle"
-resource    = "issue_pr"
+kind              = "work"
+description       = "A work document that tries to own a lifecycle"
+resource_observer = "issue_pr"
 
 [broken_work.setup]
 type = "exec"
@@ -262,7 +205,7 @@ bin  = "github-issue-pr"
 args = ["render-instruction"]
 
 [broken_work.done_when]
-all = [{ check = "checks_status", in = ["SUCCESS"] }]
+all = [{ check = "resource.status.checks_status", in = ["SUCCESS"] }]
 +++
 Resolve the issue at {{ resource.id }}.
 ```
@@ -280,47 +223,47 @@ an instance's resource says nothing about which id declared it.
 
 The distinction runs through the rest of this specification. A document is
 authored, declared, and referenced; an instance is created, evaluated, and
-finalized. `observe` and `done_when` are declared once on the document and
+finalized. `done_when` is declared once on the document and
 evaluated per instance.
 
 ## Resource binding
 
-A work document declares the resource it is written for:
+A work document declares the observer it is written for:
 
 ```toml
-resource = "issue_pr"
+resource_observer = "issue_pr"
 ```
 
-That is an ordinary dotted reference, validated against `kind =
-"resource_observer"` like every other reference site. An instance is still a
-document paired with a resource — the document is *type-declared and
-instance-late-bound*: which resource, it learns at instantiation; what kind of
-resource, it states up front.
+The field is named after the kind it references, the same way a workflow's
+`workspace_provider` is, and it is validated the same way — an ordinary dotted
+reference whose target must declare `kind = "resource_observer"`.
+
+An instance is still a document paired with a resource. The document is
+*type-declared and instance-late-bound*: which resource, it learns at
+instantiation; what kind of resource, it states up front.
 
 Declaring it closes the chain at load time:
 
 ```text
 resource observer  state_schema   the keys it publishes
         ↓
-work document      observe        subscribes to those keys
-        ↓
-work document      done_when      evaluates over them
+work document      done_when      reads them as resource.status.*
 ```
 
-Because the observer is known from the declaration, an observed key that no
-observer publishes is a load error, not a surprise at run time. And because the
-declaration states a type, instantiation checks compatibility up front: binding
-an instance to a resource that does not resolve to the declared definition
-fails immediately, rather than producing an instance that can never satisfy.
+Because the observer is known from the declaration, a key it does not publish is
+a load error rather than a surprise at run time. And because the declaration
+states a type, instantiation checks compatibility up front: binding an instance
+to a resource that does not resolve to the declared observer fails immediately,
+rather than producing an instance that can never satisfy.
 
 Every shipped work document is written for exactly one resource type, so this
-dependency already existed — it was hiding in a runtime convention. Declaring
-it is the move this language makes everywhere else.
+dependency already existed — it was hiding in a runtime convention. Declaring it
+is the move this language makes everywhere else.
 
 A `done_when` check on the observer's own kind key remains useful for narrowing
 *within* one observer, where a single observer publishes more than one subtype:
-`resource_kind in ["pull", "issue"]` distinguishes two shapes the same observer
-reports.
+`resource.status.resource_kind in ["pull", "issue"]` distinguishes two shapes
+the same observer reports.
 
 A workflow's `[[nodes]]` never reference a work document. A node names a task,
 because a node is a position in a lifecycle graph; work arrives afterward,
@@ -330,14 +273,14 @@ against the session that graph produced.
 
 - A work document opens with `+++` frontmatter declaring `kind = "work"`.
 - A work document's frontmatter holds exactly one declaration, whose kind is
-  `work`, and declares a `resource`.
-- `resource` resolves to a definition of kind `resource_observer`.
+  `work`, and declares a `resource_observer`.
+- `resource_observer` resolves to a definition of that kind.
 - `observe` projects `resource.status.*` and `self.*` only.
 - A `self.*` projection names a `state_schema` property.
-- An observed key names a property the declared resource observer's
-  `state_schema` declares, checked at load.
-- An instance's resource resolves to the declared resource definition.
-- Every `done_when` check names a `requires` entry, and every `requires` entry
-  is declared in `observe` or `state_schema`.
+- A completion key reads `resource.status.*` or `state.*`.
+- A `resource.status.*` key names a property the declared observer's
+  `state_schema` declares, and a `state.*` key one this document's declares —
+  both checked at load.
+- An instance's resource resolves to the declared observer.
 - A lifecycle field is not part of the work grammar.
 - A workflow node referencing a work document is a kind mismatch.

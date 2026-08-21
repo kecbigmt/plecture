@@ -123,9 +123,9 @@ receiving everything and relying on a later check to reject the rest.
 | Task `terminal` verbs | `self.<key>`, `session.*` |
 | Task `inner.inputs`, `inner.env` | `inputs.<key>`, `locals.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
 | Task `outputs.bind` | `inner.outputs.<key>`, `locals.<key>` |
-| Work `observe` | `resource.status.<key>`, `self.<key>` |
+| Work `done_when`, chain `when` | `resource.status.<key>`, `state.<key>` |
 | Work instruction body | `resource.id`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
-| Chain `inputs` | `work.session`, `work.instance`, `work.workflow`, `work.outputs.<key>`, `work.done_when.pending_judge_ids`, `work.revision` |
+| Chain `inputs` | `work.session`, `work.instance`, `work.workflow`, `work.done_when.pending_judge_ids`, `resource.status.<key>`, `state.<key>` |
 
 A projection naming a root the surface does not observe is
 `PLECTURE-CFG-FROM-ROOT`; one naming a field the resolved contract does not
@@ -133,22 +133,21 @@ declare is `PLECTURE-CFG-FROM-PATH`.
 
 ## Live roots and write-through
 
-`resource.status.*` and `self.*` are live roots: a value reading one is
-current as of each evaluation. Nothing about a value being "dynamic" needs its
-own declaration form — re-evaluation rides on root liveness.
+`resource.status.*` and `state.*` are live roots: a value reading one is current
+as of each evaluation. Nothing about a value being "dynamic" needs its own
+declaration form — re-evaluation rides on root liveness.
 
-The live roots appear on exactly one surface: a work document's `observe`. A
-task's outputs are production records, so its `outputs.bind` reads the nesting
-joint's roots only.
+The live roots appear only in a work document, where a completion predicate and
+a chain read them. A task's outputs are production records, so its
+`outputs.bind` reads the nesting joint's roots only.
 
 <!-- fixture: values/live-root.md -->
 ```markdown
 +++
 [review]
-kind        = "work"
-description = "Review a resource and record a verdict against its revision"
-resource    = "issue_pr"
-requires    = ["resource_kind", "verdict_current"]
+kind              = "work"
+description       = "Review a resource and record a verdict against its revision"
+resource_observer = "issue_pr"
 
 [review.state_schema]
 type = "object"
@@ -156,15 +155,10 @@ type = "object"
 [review.state_schema.properties]
 verdict_revision = { type = "string" }
 
-[review.observe]
-resource_kind   = { from = "resource.status.resource_kind" }
-revision        = { from = "resource.status.revision" }
-verdict_current = { expr = "self.verdict_revision == resource.status.revision" }
-
 [review.done_when]
 all = [
-  { check = "resource_kind", in = ["pull", "issue"] },
-  { check = "verdict_current", in = [true] },
+  { check = "resource.status.resource_kind", in = ["pull", "issue"] },
+  { expr = "state.verdict_revision == resource.status.revision" },
 ]
 +++
 Review {{ resource.id }} and record a verdict against its current revision.

@@ -492,7 +492,7 @@
       ],
       "properties": {
         "check": {
-          "type": "string"
+          "$ref": "#/$defs/completionKeyPath"
         },
         "eq": {},
         "ne": {},
@@ -550,6 +550,9 @@
                 "$ref": "#/$defs/checkLeaf"
               },
               {
+                "$ref": "#/$defs/exprLeaf"
+              },
+              {
                 "$ref": "#/$defs/judgeLeaf"
               }
             ]
@@ -562,6 +565,9 @@
       "oneOf": [
         {
           "$ref": "#/$defs/checkLeaf"
+        },
+        {
+          "$ref": "#/$defs/exprLeaf"
         },
         {
           "type": "object",
@@ -1549,7 +1555,7 @@
       "additionalProperties": false,
       "required": [
         "kind",
-        "resource"
+        "resource_observer"
       ],
       "description": "A work declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a work document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
       "properties": {
@@ -1559,9 +1565,9 @@
         "description": {
           "type": "string"
         },
-        "resource": {
+        "resource_observer": {
           "$ref": "#/$defs/staticReference",
-          "description": "The resource definition this work is written for. Declaring it is what lets observed keys be checked against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front."
+          "description": "The resource observer this work is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front."
         },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument",
@@ -1576,22 +1582,6 @@
         },
         "state_schema_file": {
           "type": "string"
-        },
-        "observe": {
-          "type": "object",
-          "description": "The keys this work reads from its resource and its own recorded state. Every value here is current as of each evaluation: live re-evaluation exists only on this surface.",
-          "propertyNames": {
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/observeValue"
-          }
-        },
-        "requires": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
         },
         "done_when": {
           "$ref": "#/$defs/doneWhen"
@@ -1632,6 +1622,24 @@
       },
       "additionalProperties": {
         "$ref": "#/$defs/workDefinition"
+      }
+    },
+    "completionKeyPath": {
+      "$comment": "PLECTURE-CFG-FROM-ROOT: a completion key reads resource.status.* or state.*.",
+      "type": "string",
+      "pattern": "^(resource\\.status|state)\\.[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "exprLeaf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expr"
+      ],
+      "description": "A predicate computed over the roots this surface observes.",
+      "properties": {
+        "expr": {
+          "type": "string"
+        }
       }
     }
   }

@@ -131,8 +131,7 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
 | `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A projection names a root the containing surface does not observe. It is structural where a surface's roots are a fixed prefix set, as on a task's `outputs.bind` and a work document's `observe`, and semantic otherwise. |
 | `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
-| `PLECTURE-CFG-RESOURCE-MISMATCH` | instantiation | An instance's resource does not resolve to the resource definition its work document declares. |
-| `PLECTURE-CFG-REQUIRES-UNDECLARED` | semantic | A `done_when` check, or a `requires` entry, names a key no contract declares. |
+| `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | instantiation | An instance's resource does not resolve to the observer its work document declares. |
 | `PLECTURE-CFG-BIN-UNKNOWN` | semantic | An executable reference resolves to no declared executable. |
 | `PLECTURE-CFG-TERMINAL-UNAVAILABLE` | semantic | A terminal capability is consumed where no task in the plan declares that verb. |
 | `PLECTURE-CFG-NESTING-CYCLE` | semantic | A nesting chain reaches itself. |

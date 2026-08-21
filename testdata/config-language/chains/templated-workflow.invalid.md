@@ -2,9 +2,9 @@
 <!-- reason: a chain's workflow reference is static, so templated selection is not part of the language. -->
 +++
 [pursue_goal]
-kind        = "work"
-description = "A work document choosing its reviewer workflow at run time"
-resource    = "goal"
+kind              = "work"
+description       = "A work document choosing its reviewer workflow at run time"
+resource_observer = "goal"
 
 [[pursue_goal.chains]]
 id        = "review"

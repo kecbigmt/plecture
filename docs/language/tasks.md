@@ -68,8 +68,8 @@ nesting joint projected outward. They are records of what happened, not a view
 of something that keeps changing.
 
 So `[outputs.bind]` projects `inner.outputs.*` and `locals.*` — nothing else. A
-live root belongs to a work document's `observe`, and re-evaluation semantics
-exist only there.
+live root belongs to a work document's completion predicate, and re-evaluation
+semantics exist only there.
 
 <!-- fixture: tasks/live-root-output.invalid.toml -->
 ```toml
