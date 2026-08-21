@@ -1,12 +1,12 @@
 # plect-fixture: result=valid entry=definitions
 # reason: a name that needs no computation is a single projection of one capture.
 
-[bundle]
+[okf_bundle]
 kind  = "workspace_provider"
 match = '^local-okf://(?P<owner>[A-Za-z0-9][A-Za-z0-9-]*)/(?P<slug>[A-Za-z0-9._-]+)\.md$'
 name  = { from = "match.owner" }
 
-[bundle.setup]
+[okf_bundle.setup]
 type = "exec"
 bin  = "okf-bundle"
 args = ["setup", "--resource", { from = "resource.id" }]

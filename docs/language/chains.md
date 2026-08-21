@@ -36,7 +36,7 @@ all = [
 
 [[pursue_goal.chains]]
 id        = "goal_review"
-workflow  = "goal_review_session"
+workflow  = "goal_reviewer"
 placement = "sibling"
 
 [pursue_goal.chains.when]

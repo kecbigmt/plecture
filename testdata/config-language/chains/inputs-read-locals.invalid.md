@@ -8,7 +8,7 @@ resource_observer = "goal"
 
 [[pursue_goal.chains]]
 id        = "review"
-workflow  = "goal_review_session"
+workflow  = "goal_reviewer"
 placement = "sibling"
 
 [pursue_goal.chains.when]

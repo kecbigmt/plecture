@@ -21,51 +21,51 @@ nodes it cannot modify.
 
 <!-- fixture: workflows/nodes.toml -->
 ```toml
-[goal_review_session]
+[goal_reviewer]
 kind               = "workflow"
 name               = "goal-review agent (local-okf)"
 description        = "Dispatch an agent session against a local-okf goal resource, then deliver the goal_review task's instructions."
 workspace_provider = "local_okf"
 
-[goal_review_session.display]
+[goal_reviewer.display]
 title  = { from = "workflow.outputs.concept_id" }
 status = "goal_review"
 
-[goal_review_session.inputs_schema]
+[goal_reviewer.inputs_schema]
 type                 = "object"
 required             = ["task"]
 additionalProperties = false
 
-[goal_review_session.inputs_schema.properties.task]
+[goal_reviewer.inputs_schema.properties.task]
 type        = "string"
 description = "Initial task to instantiate for this session."
 enum        = ["goal_review", "none"]
 
-[[goal_review_session.nodes]]
+[[goal_reviewer.nodes]]
 uses = "pane"
 
-[[goal_review_session.nodes]]
+[[goal_reviewer.nodes]]
 id   = "worker"
 uses = "official.codex.exec_runtime"
 
-[goal_review_session.nodes.inputs]
+[goal_reviewer.nodes.inputs]
 tmux_session = { from = "nodes.pane.outputs.session_name" }
 
-[[goal_review_session.nodes]]
+[[goal_reviewer.nodes]]
 uses = "initial_task"
 
-[goal_review_session.nodes.inputs]
+[goal_reviewer.nodes.inputs]
 task = { from = "session.inputs.task", default = "" }
 
-[[goal_review_session.event.channel]]
+[[goal_reviewer.event.channel]]
 name    = "runtime"
 uses    = "official.codex.exec_delivery"
 include = ["plect.instruction", "user.emit", "plect.terminal.*"]
 
-[goal_review_session.event.channel.inputs]
+[goal_reviewer.event.channel.inputs]
 queue_dir = { from = "nodes.worker.outputs.queue_dir" }
 
-[goal_review_session.tick]
+[goal_reviewer.tick]
 on        = ["resource.*"]
 heartbeat = "15m"
 ```
