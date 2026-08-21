@@ -5,8 +5,8 @@ external resource: how to recognize it, how to observe its state, and — when
 the resource is something a session finishes — how to record that completion.
 
 An observer is independent of any workspace provider. It consolidates one
-observation into a standalone contract, callable outside any task instance, and
-it is what a task's `resource.state.*` projections read.
+observation into a standalone contract, callable on its own, and it is what a
+work document's `resource.state.*` reads resolve against.
 
 ## Surface
 
