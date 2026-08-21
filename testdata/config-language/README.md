@@ -9,6 +9,13 @@ They are deliberately implementation-independent, so the same corpus can serve
 the compiler, an editor server, migration tooling, schema-generation
 verification, and an alternative implementation.
 
+They are not a migration answer sheet. Every shipped plugin configuration was
+translated to this shape once, to verify that each dynamic use maps onto a
+class the audit defines; those translations were verification evidence rather
+than fixtures, and migration tooling regenerates them against then-current
+config when migration happens. The exercise's result is recorded on the audit
+issue, and the residues it surfaced are owner calls on the specification PR.
+
 ## Layout
 
 | Directory | Area |
@@ -27,7 +34,6 @@ verification, and an alternative implementation.
 | `chains/` | Chains, a work-document construct |
 | `plugins/` | Plugin and catalog manifests |
 | `config/` | The reserved root files |
-| `migration/` | Every shipped plugin config translated to the new shape, including the six work documents |
 
 ## Fixture grammar
 
