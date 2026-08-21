@@ -36,10 +36,10 @@ general-purpose expression language of its own.
 | [`plugins.md`](plugins.md) | Plugin and catalog manifests |
 | [`config.md`](config.md) | The reserved root files |
 
-Tasks come first because work is what the system is for: Plecture gives
-autonomous work a place to go, and effects and workflows are the housing that
-gives it somewhere to run. Work is the uncountable phenomenon; it is divided
-into tasks, and a task is what a document declares and an instance carries out.
+Tasks come first because work is what the system is for. A task document is a
+piece of that work made explicit; effects and workflows are the housing that
+gives it somewhere to run. Work is the uncountable phenomenon, divided into
+tasks — and a task is what a document declares and an instance carries out.
 
 ## Layers of specification
 
@@ -149,6 +149,14 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-CEL-UNKNOWN-NAME` | cel | An expression names a variable not visible at its site. |
 | `PLECTURE-CFG-CEL-TYPE` | cel | An operation, or a result type, does not satisfy the site's expected type. |
 | `PLECTURE-CFG-CEL-CUSTOM-FUNCTION` | cel | An expression calls a function the profile does not define. |
+
+## Open decisions
+
+Control flow inside a task document's instruction body is not specified. A
+projection there is the language's own (see [`tasks.md`](tasks.md)), but CEL is
+expression-only, so conditional blocks need a construct that does not exist yet.
+Instruction bodies carried over from the template assets keep their existing
+conditional and defaulting forms until that decision is made.
 
 ## Scope
 

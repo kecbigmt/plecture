@@ -124,8 +124,13 @@ receiving everything and relying on a later check to reject the rest.
 | Effect `inner.inputs`, `inner.env` | `inputs.<key>`, `locals.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
 | Effect `outputs.bind` | `inner.outputs.<key>`, `locals.<key>` |
 | Task `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
-| Task instruction body | `resource.id`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
+| Task instruction body | `resource.id`, `resource.state.<key>`, `self.state.<key>`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
 | Chain `inputs` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
+
+A projection in a task document's instruction body is spelled `{{ <path> }}`
+rather than as a tagged value, because prose has no room for a table; it is the
+same projection, validated the same way, and stringified on the way out. See
+[`tasks.md`](tasks.md).
 
 A projection naming a root the surface does not observe is
 `PLECTURE-CFG-FROM-ROOT`; one naming a field the resolved contract does not

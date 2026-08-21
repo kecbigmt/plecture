@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/kecbigmt/plecture/plecture.schema.json",
   "title": "Plecture configuration language",
-  "description": "Structural schema for Plecture configuration. The root schema describes a definition document: a TOML file whose top-level tables are definition blocks. A work document is a Markdown file whose TOML frontmatter is validated at #work. The reserved root files and the plugin/catalog manifests have their own entry points too, so the full set of anchors is #definitions, #work, #config, #catalogs, #lock, #plugin, and #catalog. This schema is authoritative for accepted structural shapes until the implementation lands a schema generator whose output is conformance-tested against it. It deliberately does not encode cross-definition or evaluation-context rules, which are Plecture semantic validation, nor expression correctness, which is CEL validation.",
+  "description": "Structural schema for Plecture configuration. The root schema describes a definition document: a TOML file whose top-level tables are definition blocks. A task document is a Markdown file whose TOML frontmatter is validated at #task. The reserved root files and the plugin/catalog manifests have their own entry points too, so the full set of anchors is #definitions, #task, #config, #catalogs, #lock, #plugin, and #catalog. This schema is authoritative for accepted structural shapes until the implementation lands a schema generator whose output is conformance-tested against it. It deliberately does not encode cross-definition or evaluation-context rules, which are Plecture semantic validation, nor expression correctness, which is CEL validation.",
   "$ref": "#/$defs/definitionDocument",
   "$defs": {
     "definitionDocument": {
@@ -52,14 +52,14 @@
           "$ref": "#/$defs/resourceObserverDefinition"
         }
       ],
-      "description": "A definition block in a TOML definition document. Every kind is declared the same way \u2014 a table named by the definition id, carrying kind \u2014 but a kind with a body, which today means work, is declared in a Markdown file's frontmatter instead and is validated at #work.",
+      "description": "A definition block in a TOML definition document. Every kind is declared the same way \u2014 a table named by the definition id, carrying kind \u2014 but a kind with a body, which today means task, is declared in a Markdown file's frontmatter instead and is validated at #task.",
       "not": {
         "required": [
           "kind"
         ],
         "properties": {
           "kind": {
-            "const": "work"
+            "const": "task"
           }
         }
       }
@@ -1555,7 +1555,7 @@
         },
         "state_schema": {
           "$ref": "#/$defs/schemaDocument",
-          "description": "This work's own state: the keys a reviewer or another session writes into an instance. Plain JSON Schema, with no mutability annotation \u2014 state is mutable by definition. Any state-holding definition declares its state this way."
+          "description": "This task's own state: the keys a reviewer or another session writes into an instance. Plain JSON Schema, with no mutability annotation \u2014 state is mutable by definition. Any state-holding definition declares its state this way."
         },
         "state_schema_file": {
           "type": "string"
@@ -1591,7 +1591,7 @@
       "$anchor": "task",
       "$comment": "PLECTURE-CFG-TASK-BLOCK-COUNT: a task document's frontmatter holds exactly one declaration.",
       "type": "object",
-      "description": "The TOML frontmatter of a task document: one definition block, whose kind is work. Nothing about the grammar forks \u2014 these are two validation rules over the ordinary definition document.",
+      "description": "The TOML frontmatter of a task document: one definition block, whose kind is task. Nothing about the grammar forks \u2014 these are two validation rules over the ordinary definition document.",
       "minProperties": 1,
       "maxProperties": 1,
       "propertyNames": {

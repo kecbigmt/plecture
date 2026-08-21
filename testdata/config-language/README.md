@@ -96,7 +96,7 @@ resolves to that observer is known only when the instance is created.
 
 A fixture that does not decode at all is rejected before any schema rule can be
 blamed, so a decode failure satisfies a structural expectation and its
-diagnostic is taken on trust — `work/no-frontmatter.invalid.md` is the one such
+diagnostic is taken on trust — `tasks/no-frontmatter.invalid.md` is the one such
 case.
 
 It is a one-time verification tool for the specification, not a standing check:

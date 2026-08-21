@@ -84,6 +84,19 @@ structurally on an instruction that quotes TOML examples containing multi-line
 strings, which shipped instructions do; and the container should match the
 majority medium, which for a task is prose and for an effect is configuration.
 
+### The instruction body's interpolation
+
+A projection in the body is the language's own construct, not asset templating:
+`{{ <path> }}` in prose is the `from` projection in prose position, over the
+roots the instruction is about, validated at load against the environment the
+surface declares. The delimiters are inherited from the Go templates the
+instruction assets used. Prose position stringifies the projected value.
+
+Control flow in the body is left undecided. CEL is expression-only, so a
+conditional block requires a construct this language does not have, and none is
+introduced here. Instruction bodies carried over from the template assets keep
+their existing conditional and defaulting forms transitionally.
+
 ### Naming
 
 `effect` is revived rather than coined. The word described this contract before

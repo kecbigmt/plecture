@@ -1,15 +1,17 @@
 # Tasks
 
-Plecture gives autonomous work a place to go. A task document is that place.
+Plecture gives autonomous work a place to go. A task document is the work — one
+piece of it, made explicit enough to hand over.
 
-A task document is a Markdown file. Its frontmatter is the completion
-contract — what this task observes, when it is done, who may judge it, what it
-spawns — and its body is the instruction. One file carries both, because an
-instruction and the conditions for calling it finished are one statement about
-one piece of work.
+A task document is a Markdown file. Its body says what is to be done. Its
+frontmatter says the rest: `done_when` when it is done, `resource_observer` what
+it is about, `[[chains]]` what follows from it. One file carries all of it,
+because an instruction and the conditions for calling it finished are one
+statement about one task.
 
-The task document is the language's first-class primitive. Work is divided into
-tasks, and effects and workflows exist to give a task somewhere to run.
+The place that work goes is a session — assembled from effects by a workflow,
+and described in the chapters after this one. Work is divided into tasks; a task
+document declares one, and an instance carries it out.
 
 <!-- fixture: tasks/document.md -->
 ```markdown
@@ -71,11 +73,27 @@ document with declaration metadata rather than config with an embedded document
 reviewing, and exchanging task reads and diffs as prose. And the goal file it
 converges with is already a document.
 
-The body below the closing `+++` is the instruction. Its interpolation uses the
-same value model, but not the same roots as `done_when`: the body reads what the
-instruction is about — the resource, this task's parameters, the session — while
-completion reads the live state it depends on. Both root sets are listed in
-[`values.md`](values.md).
+## The instruction body
+
+The body below the closing `+++` is the instruction.
+
+Its interpolation is part of the language, not asset templating. `{{ <path> }}`
+in prose is exactly the `from` projection in prose position: the same root
+vocabulary, resolved and validated at load against the environment this surface
+declares. The `{{ }}` delimiters are inherited from the Go templates the
+instruction assets used, and are the mustache-family spelling a reader already
+knows.
+
+The roots are the ones the instruction is *about* — `inputs.<key>`,
+`resource.id`, `resource.state.<key>`, `self.state.<key>`, `session.*` — listed
+in [`values.md`](values.md) alongside the roots `done_when` reads. A projection
+preserves its native type everywhere else in the language; in prose position it
+is stringified, because prose has nowhere to put a list.
+
+Control flow in the body is an open decision. CEL is expression-only, so a
+conditional block needs a construct of its own, and none is introduced here. The
+instruction assets carried into this shape keep the conditional and defaulting
+forms they already had, transitionally, until that decision is made.
 
 ## Frontmatter
 

@@ -13,9 +13,9 @@ task document's `resource.state.*` reads resolve against.
 | Field | Meaning |
 |---|---|
 | `match` | Regular expression recognizing the resource identifier. |
-| `observe` | Action producing the resource's current self. |
+| `observe` | Action producing the resource's current state. |
 | `finalize` | Action recording completion and its judge evidence. |
-| `state_schema` | JSON Schema contract for the observed self. |
+| `state_schema` | JSON Schema contract for the observed state. |
 
 <!-- fixture: observers/observe-finalize.toml -->
 ```toml

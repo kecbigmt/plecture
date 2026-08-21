@@ -47,9 +47,9 @@ all = [
 
 [pursue_goal.chains.inputs]
 task         = "goal_review"
-work_session = { from = "work.session" }
-instance     = { from = "work.instance" }
-judge_ids    = { from = "work.done_when.pending_judge_ids" }
+work_session = { from = "task.session" }
+instance     = { from = "task.instance" }
+judge_ids    = { from = "task.done_when.pending_judge_ids" }
 +++
 Pursue the goal at {{ resource.id }} until its checklist is satisfied.
 ```
