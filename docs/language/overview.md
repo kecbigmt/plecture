@@ -38,7 +38,8 @@ general-purpose expression language of its own.
 
 Work comes first because work is what the system is for: Plecture gives
 autonomous work a place to go, and tasks and workflows are the housing that
-gives it somewhere to run.
+gives it somewhere to run. The chapter's name stays singular because work is
+uncountable; what can be counted is work documents and work instances.
 
 ## Layers of specification
 
