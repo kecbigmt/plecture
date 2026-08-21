@@ -113,7 +113,7 @@ type = "object"
 verdict_revision = { type = "string" }
 
 [review.done_when]
-all = [{ expr = "state.verdict_revision + 1" }]
+all = [{ expr = "self.verdict_revision + 1" }]
 +++
 Review {{ resource.id }} and record a verdict.
 ```

@@ -12,6 +12,6 @@ bin  = "github-issue-pr"
 args = ["render-instruction"]
 
 [broken_work.done_when]
-all = [{ check = "resource.status.checks_status", in = ["SUCCESS"] }]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 +++
 Resolve the issue at {{ resource.id }}.

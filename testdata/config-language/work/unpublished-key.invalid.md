@@ -7,6 +7,6 @@ description       = "A work document reading a key its observer never publishes"
 resource_observer = "issue_pr"
 
 [broken_key.done_when]
-all = [{ check = "resource.status.mergeability", in = ["clean"] }]
+all = [{ check = "resource.state.mergeability", in = ["clean"] }]
 +++
 Resolve the issue at {{ resource.id }}.

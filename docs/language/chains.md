@@ -30,7 +30,7 @@ resource_observer = "goal"
 
 [pursue_goal.done_when]
 all = [
-  { check = "resource.status.checklist_status", in = ["SUCCESS"] },
+  { check = "resource.state.checklist_status", in = ["SUCCESS"] },
   { judge = "goal is achieved according to the goal file and event evidence", id = "goal-met", relation = ["sibling"] },
 ]
 
@@ -41,7 +41,7 @@ placement = "sibling"
 
 [pursue_goal.chains.when]
 all = [
-  { check = "resource.status.checklist_status", in = ["SUCCESS"] },
+  { check = "resource.state.checklist_status", in = ["SUCCESS"] },
   { judge_pending = "goal-met" },
 ]
 
@@ -67,7 +67,7 @@ verdict.
 
 Chain inputs project the facts of the instance that fired — which session and
 instance it was, which workflow, its pending judge ids — and the live roots it
-reads, `resource.status.*` and `state.*`.
+reads, `resource.state.*` and `self.*`.
 
 They read public facts only. A task layer's private locals do not cross into a
 spawned session.

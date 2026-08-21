@@ -27,8 +27,8 @@ instruction = { type = "string" }
 
 [work.done_when]
 all = [
-  { check = "resource.status.resource_kind", in = ["pull", "issue"] },
-  { check = "resource.status.checks_status", in = ["SUCCESS", "NULL"] },
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS", "NULL"] },
   { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
@@ -120,7 +120,7 @@ with `state_schema`. A resource observer declares the state it publishes about a
 resource; a work document declares the state it holds about itself.
 
 Those two schemas are the two roots a completion predicate reads:
-`resource.status.*` for what the observer publishes, and `state.*` for what this
+`resource.state.*` for what the observer publishes, and `self.*` for what this
 work holds. Both are live — every read is current as of that evaluation.
 
 There is no intermediate declaration between a schema and the predicate that
@@ -157,8 +157,8 @@ verdict_revision = { type = "string" }
 
 [review.done_when]
 all = [
-  { check = "resource.status.resource_kind", in = ["pull", "issue"] },
-  { expr = "state.verdict_revision == resource.status.revision" },
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { expr = "self.verdict_revision == resource.state.revision" },
 ]
 
 [review.budget]
@@ -177,7 +177,7 @@ of its own to hang on. A judge leaf waits for independent reviewer input
 recorded against the instance, optionally restricted to reviewers in a declared
 relation.
 
-A leaf reads `resource.status.*` or `state.*`, and nothing else. Both are
+A leaf reads `resource.state.*` or `self.*`, and nothing else. Both are
 resolved at load against the schemas that declare them, so a misspelled key
 fails before anything runs.
 
@@ -205,7 +205,7 @@ bin  = "github-issue-pr"
 args = ["render-instruction"]
 
 [broken_work.done_when]
-all = [{ check = "resource.status.checks_status", in = ["SUCCESS"] }]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 +++
 Resolve the issue at {{ resource.id }}.
 ```
@@ -247,7 +247,7 @@ Declaring it closes the chain at load time:
 ```text
 resource observer  state_schema   the keys it publishes
         ↓
-work document      done_when      reads them as resource.status.*
+work document      done_when      reads them as resource.state.*
 ```
 
 Because the observer is known from the declaration, a key it does not publish is
@@ -262,7 +262,7 @@ is the move this language makes everywhere else.
 
 A `done_when` check on the observer's own kind key remains useful for narrowing
 *within* one observer, where a single observer publishes more than one subtype:
-`resource.status.resource_kind in ["pull", "issue"]` distinguishes two shapes
+`resource.state.resource_kind in ["pull", "issue"]` distinguishes two shapes
 the same observer reports.
 
 A workflow's `[[nodes]]` never reference a work document. A node names a task,
@@ -275,9 +275,9 @@ against the session that graph produced.
 - A work document's frontmatter holds exactly one declaration, whose kind is
   `work`, and declares a `resource_observer`.
 - `resource_observer` resolves to a definition of that kind.
-- A completion key reads `resource.status.*` or `state.*`.
-- A `resource.status.*` key names a property the declared observer's
-  `state_schema` declares, and a `state.*` key one this document's declares —
+- A completion key reads `resource.state.*` or `self.*`.
+- A `resource.state.*` key names a property the declared observer's
+  `state_schema` declares, and a `self.*` key one this document's declares —
   both checked at load.
 - An instance's resource resolves to the declared observer.
 - A lifecycle field is not part of the work grammar.

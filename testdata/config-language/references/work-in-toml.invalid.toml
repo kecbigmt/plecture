@@ -7,4 +7,4 @@ description       = "A work declaration with nowhere to keep its instruction"
 resource_observer = "issue_pr"
 
 [work.done_when]
-all = [{ check = "resource.status.checks_status", in = ["SUCCESS"] }]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]

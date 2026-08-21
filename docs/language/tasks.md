@@ -83,7 +83,7 @@ bin  = "github-issue-pr"
 args = ["render-instruction"]
 
 [render.outputs.bind]
-checks_status = { from = "resource.status.checks_status" }
+checks_status = { from = "resource.state.checks_status" }
 
 [render.outputs_schema]
 type = "object"

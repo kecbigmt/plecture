@@ -365,7 +365,7 @@ A minimal language documentation set may contain:
 ```text
 docs/
   language/
-    overview.md
+    README.md
     values.md
     expressions.md
 

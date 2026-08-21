@@ -8,8 +8,8 @@ resource_observer = "issue_pr"
 
 [review.done_when]
 all = [
-  { check = "resource.status.resource_kind", in = ["pull", "issue"] },
-  { check = "resource.status.checks_status", in = ["SUCCESS", "NULL"] },
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS", "NULL"] },
 ]
 +++
 Review the pull request at {{ resource.id }}.

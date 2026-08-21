@@ -1602,9 +1602,9 @@
       }
     },
     "completionKeyPath": {
-      "$comment": "PLECTURE-CFG-FROM-ROOT: a completion key reads resource.status.* or state.*.",
+      "$comment": "PLECTURE-CFG-FROM-ROOT: a completion key reads resource.state.* or self.*.",
       "type": "string",
-      "pattern": "^(resource\\.status|state)\\.[A-Za-z_][A-Za-z0-9_]*$"
+      "pattern": "^(resource\\.state|self)\\.[A-Za-z_][A-Za-z0-9_]*$"
     },
     "exprLeaf": {
       "type": "object",

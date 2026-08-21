@@ -1,5 +1,5 @@
 # plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
-# reason: a task's outputs are production records — an inner output or this layer's locals. A live root is re-read on every evaluation, which is a work document's observe.
+# reason: a task's outputs are production records — an inner output or this layer's locals. A live root is re-read on every evaluation, which is a work document's completion predicate.
 
 [render]
 kind  = "task"
@@ -11,7 +11,7 @@ bin  = "github-issue-pr"
 args = ["render-instruction"]
 
 [render.outputs.bind]
-checks_status = { from = "resource.status.checks_status" }
+checks_status = { from = "resource.state.checks_status" }
 
 [render.outputs_schema]
 type = "object"

@@ -8,7 +8,7 @@ resource_observer = "goal"
 
 [pursue_goal.done_when]
 all = [
-  { check = "resource.status.checklist_status", in = ["SUCCESS"] },
+  { check = "resource.state.checklist_status", in = ["SUCCESS"] },
   { judge = "goal is achieved according to the goal file and event evidence", id = "goal-met", relation = ["sibling"] },
 ]
 
@@ -19,7 +19,7 @@ placement = "sibling"
 
 [pursue_goal.chains.when]
 all = [
-  { check = "resource.status.checklist_status", in = ["SUCCESS"] },
+  { check = "resource.state.checklist_status", in = ["SUCCESS"] },
   { judge_pending = "goal-met" },
 ]
 

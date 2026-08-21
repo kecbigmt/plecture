@@ -6,16 +6,16 @@ the resource is something a session finishes — how to record that completion.
 
 An observer is independent of any workspace provider. It consolidates one
 observation into a standalone contract, callable outside any task instance, and
-it is what a task's `resource.status.*` projections read.
+it is what a task's `resource.state.*` projections read.
 
 ## Surface
 
 | Field | Meaning |
 |---|---|
 | `match` | Regular expression recognizing the resource identifier. |
-| `observe` | Action producing the resource's current state. |
+| `observe` | Action producing the resource's current self. |
 | `finalize` | Action recording completion and its judge evidence. |
-| `state_schema` | JSON Schema contract for the observed state. |
+| `state_schema` | JSON Schema contract for the observed self. |
 
 <!-- fixture: observers/observe-finalize.toml -->
 ```toml
@@ -64,7 +64,7 @@ size-bounded and readable by anything that can see the process table.
 
 A work document observes state per key, renaming where it wants to, so a
 standalone status read and every instance read one contract.
-`resource.status.*` is a live root, so those projections are current as of each
+`resource.state.*` is a live root, so those projections are current as of each
 evaluation.
 
 A projection naming a key the observer's `state_schema` does not declare is
@@ -73,6 +73,6 @@ A projection naming a key the observer's `state_schema` does not declare is
 ## Validation rules
 
 - `observe` is declared; `finalize` is optional.
-- A `resource.status.<key>` projection names a `state_schema` property.
+- A `resource.state.<key>` projection names a `state_schema` property.
 - A `match` that no resource identifier can satisfy is still a valid
   definition; recognizing nothing is not a load error.

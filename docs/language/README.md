@@ -85,8 +85,13 @@ the environment declared for that site.
 The implementation may reorder these for efficiency; the responsibility
 boundaries do not move.
 
-Static resolution — references, kinds, and `from`-root existence — is never
-dropped. Projecting JSON Schema into CEL type information, and checking an
+Whatever a `state_schema` declares is read under a state root: `resource.state.*`
+for the observer a work document is bound to, and `self.*` for a definition's
+own facts. `self` is the universal own-facts root — a task's outputs, a
+provider's outputs, a work document's state — and which store backs it follows
+from the declaration, never from the spelling.
+
+Static resolution — references, kinds, and root existence — is never dropped. Projecting JSON Schema into CEL type information, and checking an
 expression's result type against its field, is the first thing dropped if
 implementation complexity grows; a dropped check is recorded as an
 accepted-invalid conformance fixture rather than forgotten.
@@ -101,7 +106,7 @@ Codes carry the `PLECTURE-` prefix because they belong to the language, not to
 one program. Any implementation emits them — an editor server, an independent
 checker, a generator — so they sit on the Plecture side of the project's naming
 split: prose about the language and its specification is Plecture, while
-`plect` names the command, its environment, and its state. A code prefixed with
+`plect` names the command, its environment, and its self. A code prefixed with
 the CLI's name would claim the language's rules for one of its consumers.
 
 | Code | Layer | Rule |
@@ -130,7 +135,7 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-ID-DUPLICATE` | semantic | One layer declares the same definition id twice. |
 | `PLECTURE-CFG-REF-ALIAS-REQUIRED` | semantic | A user-owned reference to catalog content omits its catalog alias. |
 | `PLECTURE-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
-| `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A projection names a root the containing surface does not observe. It is structural where a surface's roots are a fixed prefix set, as on a task's `outputs.bind` and a work document's `observe`, and semantic otherwise. |
+| `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A value reads a root the containing surface does not offer. It is structural where a surface's roots are a fixed prefix set, as on a task's `outputs.bind` and a work document's completion leaves, and semantic otherwise. |
 | `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
 | `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | instantiation | An instance's resource does not resolve to the observer its work document declares. |
 | `PLECTURE-CFG-BIN-UNKNOWN` | semantic | An executable reference resolves to no declared executable. |

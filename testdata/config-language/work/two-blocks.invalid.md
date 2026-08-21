@@ -7,7 +7,7 @@ description       = "One of two declarations competing for the same body"
 resource_observer = "issue_pr"
 
 [work.done_when]
-all = [{ check = "resource.status.checks_status", in = ["SUCCESS"] }]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 
 [review]
 kind              = "work"
@@ -15,6 +15,6 @@ description       = "The other one"
 resource_observer = "issue_pr"
 
 [review.done_when]
-all = [{ check = "resource.status.checks_status", in = ["SUCCESS"] }]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 +++
 Resolve the issue at {{ resource.id }}.

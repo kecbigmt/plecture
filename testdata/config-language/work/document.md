@@ -14,8 +14,8 @@ instruction = { type = "string" }
 
 [work.done_when]
 all = [
-  { check = "resource.status.resource_kind", in = ["pull", "issue"] },
-  { check = "resource.status.checks_status", in = ["SUCCESS", "NULL"] },
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS", "NULL"] },
   { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]

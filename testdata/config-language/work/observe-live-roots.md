@@ -23,8 +23,8 @@ verdict_revision = { type = "string" }
 
 [review.done_when]
 all = [
-  { check = "resource.status.resource_kind", in = ["pull", "issue"] },
-  { expr = "state.verdict_revision == resource.status.revision" },
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { expr = "self.verdict_revision == resource.state.revision" },
 ]
 
 [review.budget]
