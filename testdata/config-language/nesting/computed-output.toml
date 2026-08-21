@@ -2,7 +2,7 @@
 # reason: a computed nested output binding produces a string and does not write through.
 
 [labelled_runtime]
-kind = "task"
+kind = "effect"
 
 [labelled_runtime.inner]
 uses = "official.claude.runtime"

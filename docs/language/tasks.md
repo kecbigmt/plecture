@@ -1,333 +1,284 @@
 # Tasks
 
-A task is a lifecycle-managed provider: contracts, health, an optional
-interactive capability, and composition.
+Plecture gives autonomous work a place to go. A task document is that place.
 
-It brings something up, keeps it observable, and takes it down. It does not
-decide whether work is finished — that is a [work document](work.md).
+A task document is a Markdown file. Its frontmatter is the completion
+contract — what this task observes, when it is done, who may judge it, what it
+spawns — and its body is the instruction. One file carries both, because an
+instruction and the conditions for calling it finished are one statement about
+one piece of work.
 
-## Surface
+The task document is the language's first-class primitive. Work is divided into
+tasks, and effects and workflows exist to give a task somewhere to run.
+
+<!-- fixture: tasks/document.md -->
+```markdown
++++
+[work]
+kind              = "task"
+description       = "Implement a fix or feature for an issue and create a PR"
+resource_observer = "issue_pr"
+
+[work.inputs_schema]
+type = "object"
+
+[work.inputs_schema.properties]
+instruction = { type = "string" }
+
+[work.done_when]
+all = [
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS", "NULL"] },
+  { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
+  { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
+]
+
+[work.budget]
+heartbeat_budget = 3
+on_exhaust       = "escalate"
++++
+Resolve the issue at {{ resource.id }}.
+
+Steps:
+
+1. Understand the issue
+2. Investigate the relevant code
+3. Implement the changes
+4. Write and run tests
+5. Commit and push, then open a pull request
+```
+
+## Serialization
+
+The rule across the language is: a kind with a body is a Markdown file carrying
+a TOML-frontmatter declaration block; a kind without a body is a TOML file.
+Grammar consistency comes from the frontmatter being the uniform declaration
+form, not from every kind living in the same file format.
+
+Frontmatter is TOML, delimited by `+++`. One serialization means one grammar,
+one structural schema, one validator, and one fixture set. The frontmatter
+carries the language's value model — projections, computations, tagged values,
+completion entries — so a second serialization would specify every construct
+twice, and would reintroduce implicit typing into completion contracts, where
+`NULL` and `true` are load-bearing values.
+
+The instruction is not a TOML string field, for four reasons. Triple-quote
+escaping breaks structurally on an instruction that quotes TOML examples
+containing multi-line strings, which shipped instructions do. The container
+should match the majority medium: prose dominates a task document, making it a
+document with declaration metadata rather than config with an embedded document
+— the reverse of an effect, which is why an effect is a TOML file. Authoring,
+reviewing, and exchanging task reads and diffs as prose. And the goal file it
+converges with is already a document.
+
+The body below the closing `+++` is the instruction. Its interpolation uses the
+same value model, but not the same roots as `done_when`: the body reads what the
+instruction is about — the resource, this task's parameters, the session — while
+completion reads the live state it depends on. Both root sets are listed in
+[`values.md`](values.md).
+
+## Frontmatter
+
+The frontmatter is an ordinary definition document. A task declaration is a
+`[<id>]` table carrying `kind = "task"`, with every field under that table —
+exactly how every other kind is declared. Task gets no identity spelling of its
+own.
 
 | Field | Meaning |
 |---|---|
-| `scope` | `run` or `session`, defaulting to `run`. |
-| `setup`, `cleanup` | The lifecycle actions. See [`actions.md`](actions.md). |
-| `inputs_schema`, `outputs_schema` | The task's contracts. |
-| `[health]` | The `alive` and `activity` probes. |
-| `[terminal]` | The interactive endpoint, if this task owns one. |
-| `inner`, `[inner.inputs]`, `[inner.env]`, `[outputs.bind]`, `locals_schema` | The nesting joint. |
+| `kind` | `task`. |
+| `description` | What this task is for. |
+| `resource_observer` | The resource observer this task is written for. |
+| `[<id>.inputs_schema]` | The instruction's author-declared parameters. |
+| `[<id>.state_schema]` | This task's own state: the keys something else writes. |
+| `[<id>.done_when]` | The completion predicate. |
+| `[<id>.budget]` | The convergence bound, if any. |
+| `[[<id>.chains]]` | What this task spawns, and when. See [`chains.md`](chains.md). |
 
-That is the whole grammar. A completion predicate, the keys it reads, its
-budget, and the workflows it spawns all belong to a work document.
+Two rules turn that document into a task document: its frontmatter holds
+exactly one declaration, and that declaration's kind is `task`. The body is
+that declaration's instruction. Neither rule forks the grammar — the parser,
+the schema, and the validator are the ones a TOML config file already uses, so
+the task declaration form is independent of the document sugar around it.
 
-<!-- fixture: tasks/lifecycle.toml -->
-```toml
-[pane]
-kind  = "task"
-scope = "run"
+Identity follows [`declarations.md`](declarations.md) unchanged: the id is the
+table name, filename and directory stay non-semantic, task ids share the one
+per-layer namespace every kind shares, and references use the same dotted forms
+validated against `kind = "task"`.
 
-[pane.setup]
-type = "shell"
-script = '''
-tmux has-session -t "$session_name" 2>/dev/null \
-  || tmux new-session -d -s "$session_name" -c "$workspace_dir"
-printf '{"session_name":"%s"}\n' "$session_name"
-'''
+Instance identity is separate and orthogonal: the id names the declaration,
+while an instance is identified by its resource and instance name.
 
-[pane.setup.bind]
-session_name  = { from = "session.name" }
-workspace_dir = { from = "workspace.dir" }
+## State
 
-[pane.cleanup]
-type   = "shell"
-script = 'tmux kill-session -t "$session_name" 2>/dev/null || true'
+`state_schema` declares this task's own state: the keys a reviewer or another
+session writes into an instance. It is plain JSON Schema, and it carries no
+mutability annotation — state is mutable by definition.
 
-[pane.cleanup.bind]
-session_name = { from = "self.outputs.session_name" }
+One rule covers the whole language: any definition that holds state declares it
+with `state_schema`. A resource observer declares the state it publishes about a
+resource; a task document declares the state it holds about itself.
 
-[pane.outputs_schema]
-type     = "object"
-required = ["session_name"]
+Those two schemas are the two roots a completion predicate reads:
+`resource.state.*` for what the observer publishes, and `self.state.*` for what this
+task holds. Both are live — every read is current as of that evaluation.
 
-[pane.outputs_schema.properties]
-session_name = { type = "string" }
+There is no intermediate declaration between a schema and the predicate that
+reads it. A key does not have to be re-listed to be readable: the observer's
+`state_schema` already says what exists, and this document's `state_schema` says
+what it keeps.
 
-[pane_session]
-kind = "workflow"
+`verdict_revision` in the examples here is a convention, not a reserved key.
+Core special-cases nothing about it: it is an ordinary declared state key whose
+meaning lives entirely in the configuration that reads it.
 
-[[pane_session.nodes]]
-uses = "pane"
+<!-- fixture: tasks/observe-live-roots.md -->
+```markdown
++++
+[review]
+kind              = "task"
+description       = "Review a pull request and record a verdict"
+resource_observer = "issue_pr"
+
+[review.inputs_schema]
+type = "object"
+
+[review.inputs_schema.properties]
+instruction = { type = "string" }
+
+# verdict_revision is this task's own state: written into the instance by the
+# reviewer rather than published by the observer. It carries no mutability
+# annotation, because state is mutable by definition.
+[review.state_schema]
+type = "object"
+
+[review.state_schema.properties]
+verdict_revision = { type = "string" }
+
+[review.done_when]
+all = [
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { expr = "self.state.verdict_revision == resource.state.revision" },
+]
+
+[review.budget]
+heartbeat_budget = 3
+on_exhaust       = "escalate"
++++
+Review the pull request at {{ resource.id }} and record your verdict.
 ```
 
-A nested task that declares no `scope` takes the innermost layer's scope.
+## Completion
 
-## Outputs are production records
+`done_when` is a conjunction of leaves. A check leaf compares one key, named by
+its root path. An expression leaf states a predicate computed over those roots —
+which is how a recorded verdict is compared against a live revision, with no key
+of its own to hang on. A judge leaf waits for independent reviewer input
+recorded against the instance, optionally restricted to reviewers in a declared
+relation.
 
-A task's outputs are facts it produced: what setup wrote to stdout, and what a
-nesting joint projected outward. They are records of what happened, not a view
-of something that keeps changing.
+A leaf reads `resource.state.*` or `self.state.*`, and nothing else. Both are
+resolved at load against the schemas that declare them, so a misspelled key
+fails before anything runs.
 
-So `[outputs.bind]` projects `inner.outputs.*` and `locals.*` — nothing else. A
-live root belongs to a work document's completion predicate, and re-evaluation
-semantics exist only there.
+`budget` bounds convergence. Omitting it leaves completion unbounded, which is
+what a standing goal needs: continuing to exist is not exhaustion.
 
-<!-- fixture: tasks/live-root-output.invalid.toml -->
-```toml
-[render]
-kind  = "task"
-scope = "session"
+## What a task document is not
 
-[render.setup]
+A task document owns no lifecycle. It has no `setup`, no `cleanup`, no health
+probe, no interactive endpoint, and no nesting joint. It brings nothing up and
+takes nothing down — those are an effect's concerns, and a task document is
+dispatched into a session a workflow has already built.
+
+<!-- fixture: tasks/lifecycle-field.invalid.md -->
+```markdown
++++
+[broken_task]
+kind              = "task"
+description       = "A task document that tries to own a lifecycle"
+resource_observer = "issue_pr"
+
+[broken_task.setup]
 type = "exec"
 bin  = "github-issue-pr"
 args = ["render-instruction"]
 
-[render.outputs.bind]
-checks_status = { from = "resource.state.checks_status" }
-
-[render.outputs_schema]
-type = "object"
-
-[render.outputs_schema.properties]
-checks_status = { type = "string" }
+[broken_task.done_when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
++++
+Resolve the issue at {{ resource.id }}.
 ```
 
-## Health
+## Documents and instances
 
-`[health]` declares this task's contribution to session health: an `alive`
-probe and an `activity` probe, each an action.
+A task document is authored. Its identity is the id its frontmatter declares,
+in the one per-layer namespace every kind shares, and references resolve to it
+by that id.
 
-<!-- fixture: tasks/health.toml -->
+A task instance is created from a document, by dynamic instantiation or by
+another document's chain spawn. Its identity is its resource plus its instance
+name. The two identities are orthogonal: one document backs many instances, and
+an instance's resource says nothing about which id declared it.
+
+The distinction runs through the rest of this specification. A document is
+authored, declared, and referenced; an instance is created, evaluated, and
+finalized. `done_when` is declared once on the document and
+evaluated per instance.
+
+## Resource binding
+
+A task document declares the observer it is written for:
+
 ```toml
-[pane]
-kind = "task"
-
-[pane.setup]
-type   = "shell"
-script = 'printf %s "$session_name"'
-
-[pane.setup.bind]
-session_name = { from = "session.name" }
-
-[pane.health.alive]
-type   = "shell"
-script = 'tmux has-session -t "$session_name"'
-
-[pane.health.alive.bind]
-session_name = { from = "self.outputs.session_name" }
-
-[pane.health.activity]
-type = "shell"
-script = '''
-PANE=$(tmux capture-pane -p -t "$session_name") || exit 1
-FP=$(printf '%s' "$PANE" | cksum | tr -d ' \t')
-jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{fingerprint: $fp, observed_at: $at}'
-'''
-
-[pane.health.activity.bind]
-session_name = { from = "self.outputs.session_name" }
-
-[pane.outputs_schema]
-type     = "object"
-required = ["session_name"]
-
-[pane.outputs_schema.properties]
-session_name = { type = "string" }
+resource_observer = "issue_pr"
 ```
 
-## Terminal
+The field is named after the kind it references, the same way a workflow's
+`workspace_provider` is, and it is validated the same way — an ordinary dotted
+reference whose target must declare `kind = "resource_observer"`.
 
-`[terminal]` declares that the task owns an interactive endpoint, offering
-`attach`, `capture`, `send_text`, and `send_keys` against it. At most one task
-in a plan declares it. The CLI's attach and capture commands resolve through
-it, and the `terminal` capability reaches all four verbs without the consumer
-knowing what is behind them.
+An instance is still a document paired with a resource. The document is
+*type-declared and instance-late-bound*: which resource, it learns at
+instantiation; what kind of resource, it states up front.
 
-`send_text` and `send_keys` receive their operand — the literal text to type,
-or a key token — as the action's first positional argument.
+Declaring it closes the chain at load time:
 
-<!-- fixture: tasks/terminal.toml -->
-```toml
-[pane]
-kind = "task"
-
-[pane.setup]
-type   = "shell"
-script = 'printf %s "$session_name"'
-
-[pane.setup.bind]
-session_name = { from = "session.name" }
-
-[pane.terminal.attach]
-type   = "shell"
-script = 'tmux attach -t "$session_name"'
-
-[pane.terminal.attach.bind]
-session_name = { from = "self.outputs.session_name" }
-
-[pane.terminal.capture]
-type   = "shell"
-script = 'tmux capture-pane -p -t "$session_name"'
-
-[pane.terminal.capture.bind]
-session_name = { from = "self.outputs.session_name" }
-
-[pane.terminal.send_text]
-type   = "shell"
-script = 'tmux send-keys -t "$session_name" -- "$1"'
-
-[pane.terminal.send_text.bind]
-session_name = { from = "self.outputs.session_name" }
-
-[pane.terminal.send_keys]
-type   = "shell"
-script = 'tmux send-keys -t "$session_name" "$1"'
-
-[pane.terminal.send_keys.bind]
-session_name = { from = "self.outputs.session_name" }
-
-[pane.outputs_schema]
-type     = "object"
-required = ["session_name"]
-
-[pane.outputs_schema.properties]
-session_name = { type = "string" }
-
-[pane_session]
-kind = "workflow"
-
-[[pane_session.nodes]]
-uses = "pane"
+```text
+resource observer  state_schema   the keys it publishes
+        ↓
+task document      done_when      reads them as resource.state.*
 ```
 
-## Nesting
+Because the observer is known from the declaration, a key it does not publish is
+a load error rather than a surprise at run time. And because the declaration
+states a type, instantiation checks compatibility up front: binding an instance
+to a resource that does not resolve to the declared observer fails immediately,
+rather than producing an instance that can never satisfy.
 
-`inner` makes a definition the outer layer of a nesting chain. Inner and outer
-tasks are homogeneous, nesting is additive, lifecycle execution is LIFO,
-private locals stay layer-local, and inner outputs are never implicitly
-promoted into the outer public contract.
+Every shipped task document is written for exactly one resource type, so this
+dependency already existed — it was hiding in a runtime convention. Declaring it
+is the move this language makes everywhere else.
 
-The joint reads from the surface being configured: `inner.inputs` is the input
-object passed inward, `inner.env` adds environment to the inner task's
-executions, and `outputs.bind` projects or computes the outer task's public
-outputs.
+A `done_when` check on the observer's own kind key remains useful for narrowing
+*within* one observer, where a single observer publishes more than one subtype:
+`resource.state.resource_kind in ["pull", "issue"]` distinguishes two shapes
+the same observer reports.
 
-<!-- fixture: nesting/direct-output.toml -->
-```toml
-[guarded_runtime]
-kind  = "task"
-scope = "run"
-
-[guarded_runtime.setup]
-type   = "shell"
-script = '''
-dir=$(mktemp -d)
-printf '{"guard_dir":"%s"}\n' "$dir"
-'''
-
-[guarded_runtime.locals_schema]
-type     = "object"
-required = ["guard_dir"]
-
-[guarded_runtime.locals_schema.properties]
-guard_dir = { type = "string" }
-
-[guarded_runtime.inner]
-uses = "official.claude.runtime"
-
-[guarded_runtime.inner.inputs]
-tmux_session = { from = "inputs.tmux_session" }
-model        = { from = "inputs.model", default = "fable" }
-path_prepend = { from = "locals.guard_dir" }
-
-[guarded_runtime.inner.env]
-PLECT_TEAM_CONTEXT = { from = "session.name" }
-
-[guarded_runtime.outputs.bind]
-pid         = { from = "inner.outputs.pid" }
-socket_path = { from = "inner.outputs.socket_path" }
-guard_dir   = { from = "locals.guard_dir" }
-
-[guarded_runtime.outputs_schema]
-type     = "object"
-required = ["pid", "socket_path"]
-
-[guarded_runtime.outputs_schema.properties]
-pid         = { type = "integer", mutable = true }
-socket_path = { type = "string", mutable = true }
-guard_dir   = { type = "string" }
-
-[guarded_runtime.inputs_schema]
-type                 = "object"
-required             = ["tmux_session"]
-additionalProperties = false
-
-[guarded_runtime.inputs_schema.properties]
-tmux_session = { type = "string" }
-model        = { type = "string" }
-```
-
-Write-through is a property of this joint: a direct projection of a mutable
-inner output carries later writes outward, and a computed binding does not.
-Nesting is a task concept only — work composes in document vocabulary, never
-through this joint.
-
-A structured record passes through the joint as data and is serialized by the
-inner task's own fixed logic — it does not become shell source and does not
-ride child argv:
-
-<!-- fixture: nesting/structured-record-passthrough.toml -->
-```toml
-[team_runtime]
-kind  = "task"
-scope = "run"
-
-[team_runtime.inner]
-uses = "official.claude.runtime"
-
-[team_runtime.inner.inputs]
-tmux_session = { from = "nodes.pane.outputs.session_name" }
-mcp_servers  = { from = "inputs.mcp_servers", optional = true }
-
-[team_runtime.outputs.bind]
-pid         = { from = "inner.outputs.pid" }
-socket_path = { from = "inner.outputs.socket_path" }
-
-[team_runtime.outputs_schema]
-type = "object"
-
-[team_runtime.outputs_schema.properties]
-pid         = { type = "integer", mutable = true }
-socket_path = { type = "string", mutable = true }
-
-[team_runtime.inputs_schema]
-type                 = "object"
-additionalProperties = false
-
-[team_runtime.inputs_schema.properties.mcp_servers]
-type = "array"
-
-[team_runtime.inputs_schema.properties.mcp_servers.items]
-type                 = "object"
-required             = ["name", "command"]
-additionalProperties = false
-
-[team_runtime.inputs_schema.properties.mcp_servers.items.properties]
-name    = { type = "string" }
-command = { type = "string" }
-args    = { type = "array", items = { type = "string" } }
-env     = { type = "object" }
-```
+A workflow's `[[nodes]]` never reference a task document. A node names an effect,
+because a node is a position in a lifecycle graph; task arrives afterward,
+against the session that graph produced.
 
 ## Validation rules
 
-- The task grammar is closed: a completion field is not part of it.
-- `[outputs.bind]` projects `inner.outputs.*` or `locals.*`.
-- A nesting chain that reaches itself is a load error.
-- A direct nested projection agrees with the inner output's type and
-  mutability.
-- A computed nested output is not mutable.
-- At most one task in a plan declares `[terminal]`.
-- A dynamic-instantiation target resolving to a task is a kind mismatch:
-  instantiation creates a work instance from a work document.
+- A task document opens with `+++` frontmatter declaring `kind = "task"`.
+- A task document's frontmatter holds exactly one declaration, whose kind is
+  `task`, and declares a `resource_observer`.
+- `resource_observer` resolves to a definition of that kind.
+- A completion key reads `resource.state.*` or `self.state.*`.
+- A `resource.state.*` key names a property the declared observer's
+  `state_schema` declares, and a `self.state.*` key one this document's declares —
+  both checked at load.
+- An instance's resource resolves to the declared observer.
+- A lifecycle field is not part of the task grammar.
+- A workflow node referencing a task document is a kind mismatch.

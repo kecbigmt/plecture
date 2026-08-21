@@ -2,7 +2,7 @@
 # reason: a bare bin name resolves against the containing plugin's own executables, and this plugin declares no such executable.
 
 [bootstrap]
-kind = "task"
+kind = "effect"
 
 [bootstrap.setup]
 type = "exec"

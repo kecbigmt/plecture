@@ -2,7 +2,7 @@
 # reason: a nested outputs binding observes only inner outputs and this layer's locals.
 
 [labelled_runtime]
-kind = "task"
+kind = "effect"
 
 [labelled_runtime.inner]
 uses = "official.claude.runtime"

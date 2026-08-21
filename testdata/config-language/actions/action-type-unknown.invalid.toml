@@ -2,7 +2,7 @@
 # reason: exec and shell are the only action variants.
 
 [runtime]
-kind = "task"
+kind = "effect"
 
 [runtime.setup]
 type = "python"

@@ -1,6 +1,6 @@
 # Actions
 
-An action is a lifecycle execution: a task's `setup` or `cleanup`, a health or
+An action is a lifecycle execution: an effect's `setup` or `cleanup`, a health or
 terminal probe, a workspace provider's `setup`, `cleanup`, or `subscribe`, a
 resource observer's `observe` or `finalize`, and a channel's delivery.
 
@@ -14,7 +14,7 @@ question arises.
 <!-- fixture: actions/exec-bin.toml -->
 ```toml
 [bootstrap]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [bootstrap.setup]
@@ -64,7 +64,7 @@ source, in a `bind` table:
 <!-- fixture: actions/shell-bind.toml -->
 ```toml
 [runtime]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [runtime.setup]
@@ -153,4 +153,4 @@ An exec action names its executable exactly once, through `bin` or `command`.
 - An exec action's `command` is never a computed value.
 - A capability tag appears only where that capability is consumable: an action
   binding, or an argv element of an action that accepts one.
-- A `terminal` capability requires some task in the plan to declare that verb.
+- A `terminal` capability requires some effect in the plan to declare that verb.

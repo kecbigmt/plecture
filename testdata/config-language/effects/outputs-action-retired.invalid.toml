@@ -2,7 +2,7 @@
 # reason: dynamic outputs dissolve into the value model, so neither an outputs array nor from_resource_status exists.
 
 [render]
-kind = "task"
+kind = "effect"
 
 [render.setup]
 type = "exec"

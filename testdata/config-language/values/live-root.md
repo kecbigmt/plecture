@@ -1,8 +1,8 @@
-<!-- plect-fixture: result=valid entry=work -->
+<!-- plect-fixture: result=valid entry=task -->
 <!-- reason: a value reading a live root is current as of each evaluation, so no separate dynamic-output form exists. -->
 +++
 [review]
-kind              = "work"
+kind              = "task"
 description       = "Review a resource and record a verdict against its revision"
 resource_observer = "issue_pr"
 

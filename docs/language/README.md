@@ -1,7 +1,7 @@
 # The Plecture configuration language
 
 Plecture configuration is a language of its own, built from established
-substrates. TOML is its serialization syntax — for a work document, as
+substrates. TOML is its serialization syntax — for a task document, as
 frontmatter in a Markdown file — JSON Schema its contract language, and CEL its
 computation sublanguage. Everything else — definitions,
 identity, references, values, actions, lifecycle, layers, nesting, plugins,
@@ -22,9 +22,9 @@ general-purpose expression language of its own.
 
 | Chapter | Subject |
 |---|---|
-| [`work.md`](work.md) | The work document: the completion contract and the instruction |
-| [`chains.md`](chains.md) | Chains: what a work document spawns, and when |
-| [`tasks.md`](tasks.md) | The task kind: lifecycle, health, terminal, and nesting |
+| [`tasks.md`](tasks.md) | The task document: the completion contract and the instruction |
+| [`chains.md`](chains.md) | Chains: what a task document spawns, and when |
+| [`effects.md`](effects.md) | The effect kind: lifecycle, health, terminal, and nesting |
 | [`workflows.md`](workflows.md) | The workflow kind: nodes, event channels, display, and the clocks |
 | [`channels.md`](channels.md) | The channel kind and its delivery primitives |
 | [`workspace-providers.md`](workspace-providers.md) | The workspace provider kind |
@@ -36,10 +36,10 @@ general-purpose expression language of its own.
 | [`plugins.md`](plugins.md) | Plugin and catalog manifests |
 | [`config.md`](config.md) | The reserved root files |
 
-Work comes first because work is what the system is for: Plecture gives
-autonomous work a place to go, and tasks and workflows are the housing that
-gives it somewhere to run. The chapter's name stays singular because work is
-uncountable; what can be counted is work documents and work instances.
+Tasks come first because work is what the system is for: Plecture gives
+autonomous work a place to go, and effects and workflows are the housing that
+gives it somewhere to run. Work is the uncountable phenomenon; it is divided
+into tasks, and a task is what a document declares and an instance carries out.
 
 ## Layers of specification
 
@@ -88,8 +88,8 @@ boundaries do not move.
 A reference is always `<subject>.<store>.<key>`. The subject says whose facts
 these are — `self`, `inner`, `resource`, `nodes.<id>`, `workflow` — and the
 store says which of that subject's contracts they come from: `outputs`, `state`,
-`inputs`. So a task reads its own production records as `self.outputs.<key>`, a
-work document its own state as `self.state.<key>`, and the observer it is bound
+`inputs`. So an effect reads its own production records as `self.outputs.<key>`, a
+task document its own state as `self.state.<key>`, and the observer it is bound
 to as `resource.state.<key>`.
 
 Static resolution — references, kinds, and root existence — is never dropped. Projecting JSON Schema into CEL type information, and checking an
@@ -128,19 +128,19 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-SHELL-INTERPOLATION` | structural | Shell source is literal; it carries no Plecture or CEL interpolation. |
 | `PLECTURE-CFG-REF-DYNAMIC` | structural | A statically discoverable field carries a computed value. |
 | `PLECTURE-CFG-CHANNEL-TIMEOUT-ROOT` | structural | A channel `timeout` reads author-declared parameters only. |
-| `PLECTURE-CFG-WORK-FRONTMATTER-MISSING` | structural | A work document does not open with `+++` frontmatter. |
-| `PLECTURE-CFG-WORK-BLOCK-COUNT` | structural | A work document's frontmatter holds other than exactly one declaration. |
-| `PLECTURE-CFG-WORK-IN-TOML-DOCUMENT` | structural | A TOML definition document declares a kind whose declaration needs a body. |
+| `PLECTURE-CFG-TASK-FRONTMATTER-MISSING` | structural | A task document does not open with `+++` frontmatter. |
+| `PLECTURE-CFG-TASK-BLOCK-COUNT` | structural | A task document's frontmatter holds other than exactly one declaration. |
+| `PLECTURE-CFG-TASK-IN-TOML-DOCUMENT` | structural | A TOML definition document declares a kind whose declaration needs a body. |
 | `PLECTURE-CFG-UNKNOWN-REF` | semantic | A reference resolves to no definition. |
 | `PLECTURE-CFG-KIND-MISMATCH` | semantic | A reference site's expected kind differs from the target's declared kind. |
 | `PLECTURE-CFG-ID-DUPLICATE` | semantic | One layer declares the same definition id twice. |
 | `PLECTURE-CFG-REF-ALIAS-REQUIRED` | semantic | A user-owned reference to catalog content omits its catalog alias. |
 | `PLECTURE-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
-| `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A value reads a root the containing surface does not offer. It is structural where a surface's roots are a fixed prefix set, as on a task's `outputs.bind` and a work document's completion leaves, and semantic otherwise. |
+| `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A value reads a root the containing surface does not offer. It is structural where a surface's roots are a fixed prefix set, as on an effect's `outputs.bind` and a task document's completion leaves, and semantic otherwise. |
 | `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
-| `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | instantiation | An instance's resource does not resolve to the observer its work document declares. |
+| `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | instantiation | An instance's resource does not resolve to the observer its task document declares. |
 | `PLECTURE-CFG-BIN-UNKNOWN` | semantic | An executable reference resolves to no declared executable. |
-| `PLECTURE-CFG-TERMINAL-UNAVAILABLE` | semantic | A terminal capability is consumed where no task in the plan declares that verb. |
+| `PLECTURE-CFG-TERMINAL-UNAVAILABLE` | semantic | A terminal capability is consumed where no effect in the plan declares that verb. |
 | `PLECTURE-CFG-NESTING-CYCLE` | semantic | A nesting chain reaches itself. |
 | `PLECTURE-CFG-NESTING-OUTPUT-MUTABLE` | semantic | A computed nested output is marked mutable. |
 | `PLECTURE-CFG-NESTING-PROJECTION-MISMATCH` | semantic | A direct nested projection disagrees with the inner output's type or mutability. |
@@ -153,10 +153,10 @@ the CLI's name would claim the language's rules for one of its consumers.
 ## Scope
 
 This language governs configuration definitions in two file forms: TOML
-documents, whose top-level tables are definition blocks, and work documents,
+documents, whose top-level tables are definition blocks, and task documents,
 which are Markdown files with TOML frontmatter.
 
 A Markdown file that carries no `+++` frontmatter is a template asset rather
 than a definition. Template assets keep their own interpolation model, and a
-work document's instruction body is the one place where that model and this
-language meet — see [`work.md`](work.md).
+task document's instruction body is the one place where that model and this
+language meet — see [`tasks.md`](tasks.md).

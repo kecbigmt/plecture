@@ -4,4 +4,4 @@
 workspace_dirs_root = "~/worktrees"
 
 [runtime]
-kind = "task"
+kind = "effect"

@@ -2,7 +2,7 @@
 # reason: a TOML literal is already a value and takes no wrapper.
 
 [guard]
-kind  = "task"
+kind  = "effect"
 scope = "session"
 
 [guard.setup]

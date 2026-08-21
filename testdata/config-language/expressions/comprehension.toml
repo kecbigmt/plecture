@@ -2,7 +2,7 @@
 # reason: standard comprehension macros compute over a structured input without a custom function.
 
 [team_runtime]
-kind = "task"
+kind = "effect"
 
 [team_runtime.setup]
 type = "exec"

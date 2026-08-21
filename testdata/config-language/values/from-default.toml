@@ -2,7 +2,7 @@
 # reason: default supplies the value when the source is absent.
 
 [bootstrap]
-kind = "task"
+kind = "effect"
 
 [bootstrap.setup]
 type = "exec"

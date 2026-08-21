@@ -2,7 +2,7 @@
 # reason: a direct projection of an inner output keeps write-through semantics for a mutable output.
 
 [guarded_runtime]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [guarded_runtime.setup]

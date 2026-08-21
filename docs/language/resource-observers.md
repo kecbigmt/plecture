@@ -6,7 +6,7 @@ the resource is something a session finishes — how to record that completion.
 
 An observer is independent of any workspace provider. It consolidates one
 observation into a standalone contract, callable on its own, and it is what a
-work document's `resource.state.*` reads resolve against.
+task document's `resource.state.*` reads resolve against.
 
 ## Surface
 
@@ -60,13 +60,13 @@ gathered, so it records rather than gates. Judge evidence arrives on the
 process's standard input: judge reasons are arbitrary text, and argv is both
 size-bounded and readable by anything that can see the process table.
 
-## State and work
+## State and task
 
-`state_schema` is the contract a work document reads. A work document declares
+`state_schema` is the contract a task document reads. A task document declares
 the observer it is written for, and its completion leaves and chains then read
 that observer's keys as `resource.state.<key>` — directly, with no intermediate
-declaration re-listing them. Tasks read nothing here: `resource.state.*` is work
-vocabulary, and a task's outputs are its own production records.
+declaration re-listing them. Effects read nothing here: `resource.state.*` is task
+vocabulary, and an effect's outputs are its own production records.
 
 `resource.state.*` is a live root, so every read is current as of that
 evaluation, and one observer serves a standalone status read and every instance

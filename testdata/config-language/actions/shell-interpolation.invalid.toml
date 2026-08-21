@@ -2,7 +2,7 @@
 # reason: shell source is literal, so a Plecture or CEL interpolation inside script is rejected.
 
 [runtime]
-kind = "task"
+kind = "effect"
 
 [runtime.setup]
 type = "shell"

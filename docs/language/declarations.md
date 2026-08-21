@@ -22,23 +22,23 @@ kind = "<kind>"
 | `<id>` | The responsibility name references use. |
 | `kind` | The declaration contract this block implements. |
 
-The kind vocabulary is `task`, `work`, `channel`, `workflow`,
+The kind vocabulary is `effect`, `task`, `channel`, `workflow`,
 `workspace_provider`, and `resource_observer`.
 
-Every kind is declared the same way, `work` included: a `[<id>]` table carrying
+Every kind is declared the same way, `task` included: a `[<id>]` table carrying
 `kind`. What differs is the file a declaration lives in. A kind with a body is a
 Markdown file whose `+++` TOML frontmatter holds that one declaration and whose
-body belongs to it; a kind without a body is a TOML file. `work` is the one kind
-with a body today, so a work declaration appears only in frontmatter, and a TOML
-definition document carrying `kind = "work"` is a load error — the declaration
+body belongs to it; a kind without a body is a TOML file. `task` is the one kind
+with a body today, so a task declaration appears only in frontmatter, and a TOML
+definition document carrying `kind = "task"` is a load error — the declaration
 would have no instruction.
 
 Nothing else changes for it: the id is the table name, the id grammar holds, the
 namespace is shared, and references resolve the same way. See
-[`work.md`](work.md).
+[`tasks.md`](tasks.md).
 
 A kind uses its bare concept name when the declaration's runtime counterpart
-is its own instance: tasks instantiate into task instances, channels into
+is its own instance: effects instantiate into task instances, channels into
 channel deliveries, workflows into workflow executions. A kind uses a role
 compound when the declaration produces or observes something that exists apart
 from the declaration: a `workspace_provider` produces workspaces, and a
@@ -47,11 +47,11 @@ this language is a definition, so no kind name says so.
 
 An id is a TOML bare-key segment matching `^[A-Za-z_][A-Za-z0-9_]*$`. Quoted
 keys are not ids. Dots are excluded because dots separate address segments.
-Hyphens are excluded because a task id is also a workflow node id when a node
+Hyphens are excluded because an effect id is also a workflow node id when a node
 omits `id`, and a node id must be a safe dotted path segment.
 
 An id names a responsibility, not a provider repeated for qualification: a
-Claude Code plugin's launch task is `[runtime]`, so its catalog-qualified
+Claude Code plugin's launch effect is `[runtime]`, so its catalog-qualified
 address reads `official.claude.runtime`.
 
 Nested and array tables stay under the definition table:
@@ -67,7 +67,7 @@ bin  = "github-worktree"
 args = ["setup", "--resource", { from = "resource.id" }]
 
 [runtime]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [runtime.setup]
@@ -97,7 +97,7 @@ and every `.md` file opening with `+++` frontmatter, is read recursively in
 lexicographic order by slash-separated relative path. A `.md` file without that
 frontmatter is a template asset, not a definition.
 Subdirectories are author organization only: one definition per file and
-kind-named directories such as `config/tasks/` are equally valid and mean the
+kind-named directories such as `config/effects/` are equally valid and mean the
 same thing.
 
 The reserved root files are `config.toml`, `catalogs.toml`, and `plect.lock`.
@@ -112,7 +112,7 @@ The workspace-dir `.plect/` overlay is cloned, untrusted content and is not a
 full definition root. It loads only workflow fragments, from
 `.plect/workflows/`, under the workflow cascade rules; fragment identity comes
 from the `[<id>]` table with `kind = "workflow"`, and the directory is only an
-allowlist. Task definitions there are a load error, because cloned content
+allowlist. Effect definitions there are a load error, because cloned content
 must not carry shell. Workspace provider, resource observer, and channel
 definitions are not loaded at all.
 
@@ -132,12 +132,12 @@ alias and plugin path.
 | Same id, different kind | Load error. |
 
 The whole-definition kinds are workspace provider, resource observer, channel,
-task, and work.
+effect, and task.
 
 Catalog-qualified references select catalog plugin definitions and are not
 shadowed by a same-id relative definition in a user-owned layer. A same-id
 user-owned definition does not extend a plugin-owned workflow either: a
-user-owned workflow or task selects a user-owned replacement by referencing
+user-owned workflow or effect selects a user-owned replacement by referencing
 its relative address.
 
 ## References
@@ -209,13 +209,13 @@ A reference carries no kind segment. After resolution, the target's declared
 | Reference site | Expected kind |
 |---|---|
 | Workflow `workspace_provider` | `workspace_provider` |
-| Workflow node `uses` | `task` |
+| Workflow node `uses` | `effect` |
 | Workflow event channel `uses` | `channel` |
-| Task `inner.uses` | `task` |
-| Work field `resource_observer` | `resource_observer` |
-| Work chain `workflow` | `workflow` |
-| Dynamic-instantiation target | `work` |
-| Chain spawn target | `work` |
+| Effect `inner.uses` | `effect` |
+| Task field `resource_observer` | `resource_observer` |
+| Task chain `workflow` | `workflow` |
+| Dynamic-instantiation target | `task` |
+| Chain spawn target | `task` |
 | `config.toml` `channels` | `channel` |
 
 A mismatch names the site, the reference, the expected kind, and the target's
@@ -241,9 +241,9 @@ executable name. See [`actions.md`](actions.md).
   definition table is a load error unless it is a reserved root file.
 - A definition table missing `kind`, or carrying an unknown `kind`, is a load
   error.
-- A work document opens with `+++` frontmatter holding exactly one declaration,
-  whose kind is `work`.
-- A TOML definition document declaring `kind = "work"` is a load error: a kind
+- A task document opens with `+++` frontmatter holding exactly one declaration,
+  whose kind is `task`.
+- A TOML definition document declaring `kind = "task"` is a load error: a kind
   with a body is declared in frontmatter.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
 - Two definitions with the same id in one layer are a load error, whatever

@@ -2,7 +2,7 @@
 # reason: a shell action keeps literal shell source and declares the values and capabilities it needs outside that source.
 
 [runtime]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [runtime.setup]

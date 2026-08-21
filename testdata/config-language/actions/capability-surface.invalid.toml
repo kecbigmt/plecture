@@ -2,7 +2,7 @@
 # reason: the terminal capability is consumed by an action binding, not by an inputs-schema default.
 
 [runtime]
-kind = "task"
+kind = "effect"
 
 [runtime.setup]
 type   = "shell"

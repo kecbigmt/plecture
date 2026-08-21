@@ -2,7 +2,7 @@
 # reason: args belongs to the exec variant, and script to the shell variant.
 
 [runtime]
-kind = "task"
+kind = "effect"
 
 [runtime.setup]
 type   = "shell"

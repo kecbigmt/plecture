@@ -1,8 +1,8 @@
-<!-- plect-fixture: result=valid entry=work -->
-<!-- reason: acceptance check — a work document reads the observer's published keys directly, with no intermediate re-listing of them. -->
+<!-- plect-fixture: result=valid entry=task -->
+<!-- reason: acceptance check — a task document reads the observer's published keys directly, with no intermediate re-listing of them. -->
 +++
 [review]
-kind              = "work"
+kind              = "task"
 description       = "Review a pull request against the keys its observer publishes"
 resource_observer = "issue_pr"
 

@@ -2,7 +2,7 @@
 # reason: acceptance check — an outer layer passes a structured record through to an inner agent task, which serializes it into the agent's own configuration.
 
 [team_runtime]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [team_runtime.inner]

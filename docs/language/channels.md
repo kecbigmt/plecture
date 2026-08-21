@@ -60,7 +60,7 @@ message   = { expr = "'[' + event.type + '] ' + (event.body != '' ? event.body :
 
 `[<id>.input_schema]` declares the channel's parameters per key: a `type`, a
 `required` flag, and an optional `default`. This is deliberately not the full
-JSON Schema document tasks and providers carry — only a channel input's
+JSON Schema document effects and providers carry — only a channel input's
 presence is checked before delivery, and a `default` is what makes an optional
 parameter usable at all.
 
@@ -79,4 +79,4 @@ policy.
 - A `shell` channel declares `script`, containing no interpolation.
 - `command` is never a computed value.
 - `timeout` projects `inputs.*` only.
-- A terminal capability requires some task in the plan to declare that verb.
+- A terminal capability requires some effect in the plan to declare that verb.

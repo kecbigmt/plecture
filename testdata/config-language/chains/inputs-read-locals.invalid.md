@@ -1,9 +1,9 @@
-<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=work -->
-<!-- reason: a chain passes on public work facts and observed state; a task layer's private locals do not cross into a spawned session. -->
+<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=task -->
+<!-- reason: a chain passes on public work facts and observed state; an effect layer's private locals do not cross into a spawned session. -->
 +++
 [pursue_goal]
-kind              = "work"
-description       = "A work document leaking a private local into its chain"
+kind              = "task"
+description       = "A task document leaking a private local into its chain"
 resource_observer = "goal"
 
 [[pursue_goal.chains]]

@@ -1,8 +1,8 @@
 # plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=definitions
-# reason: a chain fires off a work document's instances, so it is not part of the task grammar.
+# reason: a chain fires off a task document's instances, so it is not part of the effect grammar.
 
 [render]
-kind = "task"
+kind = "effect"
 
 [render.setup]
 type = "exec"

@@ -20,18 +20,18 @@ issue, and the residues it surfaced are owner calls on the specification PR.
 
 | Directory | Area |
 |---|---|
-| `work/` | The work document: its id, contracts, observation, and instruction body |
+| `tasks/` | The task document: its contracts, completion predicate, and instruction body |
 | `values/` | The five value forms and the tagged-value vocabulary |
 | `references/` | Declaration identity, ids, and the dotted reference grammar |
 | `actions/` | `exec` and `shell` actions, `bin` versus `command`, bindings |
 | `expressions/` | The CEL profile |
 | `nesting/` | The nesting joint and its output boundary |
-| `tasks/` | The task kind: lifecycle, health, terminal, nesting |
+| `effects/` | The effect kind: lifecycle, health, terminal, nesting |
 | `workflows/` | The workflow kind |
 | `channels/` | The channel kind |
 | `providers/` | The workspace provider kind |
 | `observers/` | The resource observer kind |
-| `chains/` | Chains, a work-document construct |
+| `chains/` | Chains, a task-document construct |
 | `plugins/` | Plugin and catalog manifests |
 | `config/` | The reserved root files |
 
@@ -45,12 +45,12 @@ what it pins down. A definition document writes them as TOML comments:
 # reason: a value declares both from and expr, so its form is ambiguous.
 ```
 
-A work document writes them as HTML comments, because its own `+++`
+A task document writes them as HTML comments, because its own `+++`
 frontmatter has to start the file once the header is stripped:
 
 ```markdown
-<!-- plect-fixture: result=valid entry=work -->
-<!-- reason: a work document's frontmatter is its completion contract and its body is the instruction. -->
+<!-- plect-fixture: result=valid entry=task -->
+<!-- reason: a task document's frontmatter is its completion contract and its body is the instruction. -->
 ```
 
 | Field | Values |
@@ -58,7 +58,7 @@ frontmatter has to start the file once the header is stripped:
 | `result` | `valid`, `invalid`, `accepted-invalid` |
 | `layer` | `structural`, `semantic`, `cel`, `instantiation` — required unless `result=valid` |
 | `diagnostic` | The `PLECTURE-CFG-*` code, which must appear in the diagnostics table in [`../../docs/language/README.md`](../../docs/language/README.md) |
-| `entry` | Which schema entry validates it: `definitions` (default), `work`, `config`, `catalogs`, `lock`, `plugin`, `catalog` |
+| `entry` | Which schema entry validates it: `definitions` (default), `task`, `config`, `catalogs`, `lock`, `plugin`, `catalog` |
 
 `result=accepted-invalid` records a rule the language states but the
 implementation is permitted not to enforce — the sanctioned static-typing cut
@@ -77,7 +77,7 @@ cd scripts/config-language-check && GOWORK=off go run .
 The checker asserts that:
 
 - every fixture declares a well-formed expectation, and decodes — as TOML for
-  a definition document, or as TOML frontmatter for a work document;
+  a definition document, or as TOML frontmatter for a task document;
 - a `valid` fixture passes [`../../plecture.schema.json`](../../plecture.schema.json);
 - an `invalid` fixture with `layer=structural` is rejected by that schema, and
   rejected by a rule the schema annotates with the declared diagnostic;
@@ -86,10 +86,10 @@ The checker asserts that:
   structural schema — which is what makes "something later rejects this" a
   claim about a later layer rather than an accident of shape;
 
-`layer=instantiation` marks a rule that only a binding can break: a work
-document declares the kind of resource it is written for, so its observed keys
-are checked at load, but whether the resource an instance is actually bound to
-matches that declaration is known only when the instance is created.
+`layer=instantiation` marks a rule that only a binding can break: a task
+document declares the observer it is written for, so the keys it reads are
+checked at load, but whether the resource an instance is actually bound to
+resolves to that observer is known only when the instance is created.
 - every diagnostic code is both documented and exercised;
 - every worked example in `docs/language/` is byte-identical to the fixture it
   names.

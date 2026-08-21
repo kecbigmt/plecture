@@ -1,9 +1,9 @@
-<!-- plect-fixture: result=accepted-invalid layer=cel diagnostic=PLECTURE-CFG-CEL-TYPE entry=work -->
+<!-- plect-fixture: result=accepted-invalid layer=cel diagnostic=PLECTURE-CFG-CEL-TYPE entry=task -->
 <!-- reason: JSON Schema to CEL type projection is the sanctioned first check to drop, so this loads while result-type checking is disabled. -->
 +++
 [review]
-kind              = "work"
-description       = "A work document whose computed leaf does not type-check"
+kind              = "task"
+description       = "A task document whose computed leaf does not type-check"
 resource_observer = "issue_pr"
 
 [review.state_schema]

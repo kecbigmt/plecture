@@ -2,7 +2,7 @@
 # reason: fallback is not part of the tagged-value vocabulary.
 
 [bootstrap]
-kind = "task"
+kind = "effect"
 
 [bootstrap.setup]
 type = "exec"

@@ -2,7 +2,7 @@
 # reason: default and optional are mutually exclusive missing-value behaviors.
 
 [bootstrap]
-kind = "task"
+kind = "effect"
 
 [bootstrap.setup]
 type = "exec"

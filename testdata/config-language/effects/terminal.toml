@@ -2,7 +2,7 @@
 # reason: each terminal verb is a shell action; send_text and send_keys receive their operand as the first positional argument.
 
 [pane]
-kind = "task"
+kind = "effect"
 
 [pane.setup]
 type   = "shell"

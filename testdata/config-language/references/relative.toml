@@ -10,7 +10,7 @@ bin  = "github-worktree"
 args = ["setup", "--resource", { from = "resource.id" }]
 
 [runtime]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [runtime.setup]

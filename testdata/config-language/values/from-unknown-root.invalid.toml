@@ -2,7 +2,7 @@
 # reason: event is not an available root on a task setup surface, so this is well-formed TOML the compiler rejects.
 
 [bootstrap]
-kind = "task"
+kind = "effect"
 
 [bootstrap.setup]
 type = "exec"

@@ -2,7 +2,7 @@
 # reason: only a direct projection carries write-through, so a computed nested output cannot be mutable.
 
 [labelled_runtime]
-kind = "task"
+kind = "effect"
 
 [labelled_runtime.inner]
 uses = "official.claude.runtime"

@@ -186,7 +186,7 @@ func run() error {
 	}
 
 	entries := map[string]*jsonschema.Schema{}
-	for _, anchor := range []string{"definitions", "work", "config", "catalogs", "lock", "plugin", "catalog"} {
+	for _, anchor := range []string{"definitions", "task", "config", "catalogs", "lock", "plugin", "catalog"} {
 		s, err := compiler.Compile(schemaPath + "#" + anchor)
 		if err != nil {
 			return fmt.Errorf("compile entry %q: %w", anchor, err)

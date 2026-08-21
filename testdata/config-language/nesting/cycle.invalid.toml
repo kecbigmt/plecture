@@ -2,13 +2,13 @@
 # reason: a nesting chain that reaches itself has no innermost layer.
 
 [outer_runtime]
-kind = "task"
+kind = "effect"
 
 [outer_runtime.inner]
 uses = "middle_runtime"
 
 [middle_runtime]
-kind = "task"
+kind = "effect"
 
 [middle_runtime.inner]
 uses = "outer_runtime"

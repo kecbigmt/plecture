@@ -1,8 +1,8 @@
-<!-- plect-fixture: result=valid entry=work -->
-<!-- reason: a work document's frontmatter is its completion contract and its body is the instruction. -->
+<!-- plect-fixture: result=valid entry=task -->
+<!-- reason: a task document's frontmatter is its completion contract and its body is the instruction. -->
 +++
 [work]
-kind              = "work"
+kind              = "task"
 description       = "Implement a fix or feature for an issue and create a PR"
 resource_observer = "issue_pr"
 

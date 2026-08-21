@@ -19,7 +19,7 @@ native type.
 <!-- fixture: values/from.toml -->
 ```toml
 [bootstrap]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [bootstrap.setup]
@@ -77,7 +77,7 @@ The complete tagged-value vocabulary is:
 { json = { from = "event" } }
 ```
 
-`terminal` is a Plecture capability, resolved through whichever task in the
+`terminal` is a Plecture capability, resolved through whichever effect in the
 plan declares the interactive endpoint. `bin` is a plugin-owned executable.
 `json` is a boundary serializer, not a CEL function: its operand is a value
 tree whose leaves are literals, projections, or computations.
@@ -111,21 +111,21 @@ receiving everything and relying on a later check to reject the rest.
 | Workspace provider `cleanup` | `self.outputs.<key>`, `inputs.<key>`, `cleanup.inputs.<key>`, `session.name`, `config.workspace_dirs_root`, `force` |
 | Workspace provider `subscribe` | `session.name`, `resource.id` |
 | Resource observer `observe` | `resource.id`, `workspace.dir`, `workspace.branch` |
-| Resource observer `finalize` | `resource.id`, `session.name`, `task.instance`, `resource.revision`, `judges` |
+| Resource observer `finalize` | `resource.id`, `session.name`, `effect.instance`, `resource.revision`, `judges` |
 | Workflow `display` | `workflow.outputs.<key>`, `session.inputs.<key>` |
 | Workflow node `inputs` | `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>`, `workspace.*` |
 | Workflow event-channel `inputs` | same as workflow node inputs |
 | Channel `args`, `path`, `body`, `bind` | `event.*`, `event.metadata.<key>`, `inputs.<key>`, and the terminal capability |
 | Channel `timeout` | `inputs.<key>` only |
-| Task `setup` | `inputs.<key>`, `prev.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>`, `workspace.*`, `resource.id` |
-| Task `cleanup` | `self.outputs.<key>`, `inputs.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
-| Task `health` probes | `self.outputs.<key>`, `inputs.<key>`, `session.*`, `workspace.*` |
-| Task `terminal` verbs | `self.outputs.<key>`, `session.*` |
-| Task `inner.inputs`, `inner.env` | `inputs.<key>`, `locals.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
-| Task `outputs.bind` | `inner.outputs.<key>`, `locals.<key>` |
-| Work `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
-| Work instruction body | `resource.id`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
-| Chain `inputs` | `work.session`, `work.instance`, `work.workflow`, `work.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
+| Effect `setup` | `inputs.<key>`, `prev.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>`, `workspace.*`, `resource.id` |
+| Effect `cleanup` | `self.outputs.<key>`, `inputs.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
+| Effect `health` probes | `self.outputs.<key>`, `inputs.<key>`, `session.*`, `workspace.*` |
+| Effect `terminal` verbs | `self.outputs.<key>`, `session.*` |
+| Effect `inner.inputs`, `inner.env` | `inputs.<key>`, `locals.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
+| Effect `outputs.bind` | `inner.outputs.<key>`, `locals.<key>` |
+| Task `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
+| Task instruction body | `resource.id`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
+| Chain `inputs` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
 
 A projection naming a root the surface does not observe is
 `PLECTURE-CFG-FROM-ROOT`; one naming a field the resolved contract does not
@@ -137,15 +137,15 @@ declare is `PLECTURE-CFG-FROM-PATH`.
 as of each evaluation. Nothing about a value being "dynamic" needs its own
 declaration form — re-evaluation rides on root liveness.
 
-The live roots appear only in a work document, where a completion predicate and
-a chain read them. A task's outputs are production records, so its
+The live roots appear only in a task document, where a completion predicate and
+a chain read them. An effect's outputs are production records, so its
 `outputs.bind` reads the nesting joint's roots only.
 
 <!-- fixture: values/live-root.md -->
 ```markdown
 +++
 [review]
-kind              = "work"
+kind              = "task"
 description       = "Review a resource and record a verdict against its revision"
 resource_observer = "issue_pr"
 

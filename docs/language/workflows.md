@@ -2,13 +2,13 @@
 
 A workflow is a named bundle of nodes plus the event channels, display values,
 and clocks for the sessions it produces. It selects a workspace provider; the
-provider owns the resource-kind knowledge, and the workflow owns the task shape
+provider owns the resource-kind knowledge, and the workflow owns the effect shape
 on top of it. A workflow without one cannot acquire a workspace, so it cannot
 back a session.
 
 ## Nodes
 
-Each node selects a task through `uses` and binds that task's inputs. A node's
+Each node selects an effect through `uses` and binds that effect's inputs. A node's
 `id` defaults to the referenced definition's id.
 
 The setup and cleanup graph is derived from the node bindings: a projection
@@ -72,7 +72,7 @@ heartbeat = "15m"
 
 ## Event channels
 
-`[[<id>.event.channel]]` selects a channel definition instead of a task and
+`[[<id>.event.channel]]` selects a channel definition instead of an effect and
 adds an `include` allowlist of event-type globs. Its `inputs` are values over
 the same roots node inputs use, evaluated at delivery.
 
@@ -97,7 +97,7 @@ are the only drivers.
 
 `[<id>.healthcheck]` declares the health sampling cycle: `period`,
 `stall_threshold`, and `renotify_every`. It names the cycle, not what health
-means; what each probe observes is a task-level `[health]` declaration.
+means; what each probe observes is an effect-level `[health]` declaration.
 
 Unlike the rest of a workflow's fields, `[tick]` and `[healthcheck]` are
 whole-table runtime tuning: a deeper cascade layer replaces a shallower layer's
@@ -116,7 +116,7 @@ workspace or node output exists, so there is nothing for a projection to read.
 - Two nodes may not share an id, including after `id` defaulting.
 - Dependencies derived from `nodes.<id>.outputs` projections form no cycle.
 - A node input projecting `nodes.<id>.outputs.<key>` names a node in this
-  workflow and an output that node's task declares.
+  workflow and an output that node's effect declares.
 - `workspace_provider_inputs` values are literals.
 - A cascade layer may add fields but not redeclare one a shallower layer set,
   except for the whole-table clocks.

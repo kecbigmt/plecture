@@ -2,7 +2,7 @@
 # reason: the health probes are shell actions whose bindings replace interpolation into their source.
 
 [pane]
-kind = "task"
+kind = "effect"
 
 [pane.setup]
 type   = "shell"

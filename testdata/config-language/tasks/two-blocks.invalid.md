@@ -1,8 +1,8 @@
-<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-WORK-BLOCK-COUNT entry=work -->
+<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-TASK-BLOCK-COUNT entry=task -->
 <!-- reason: the body belongs to one declaration, so a frontmatter holding two has no way to say which. -->
 +++
 [work]
-kind              = "work"
+kind              = "task"
 description       = "One of two declarations competing for the same body"
 resource_observer = "issue_pr"
 
@@ -10,7 +10,7 @@ resource_observer = "issue_pr"
 all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 
 [review]
-kind              = "work"
+kind              = "task"
 description       = "The other one"
 resource_observer = "issue_pr"
 

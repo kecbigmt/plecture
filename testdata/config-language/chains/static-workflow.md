@@ -1,8 +1,8 @@
-<!-- plect-fixture: result=valid entry=work -->
+<!-- plect-fixture: result=valid entry=task -->
 <!-- reason: a chain names its workflow with a static reference and projects the work facts it passes on. -->
 +++
 [pursue_goal]
-kind              = "work"
+kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
 resource_observer = "goal"
 

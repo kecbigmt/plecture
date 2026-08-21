@@ -1,8 +1,8 @@
 # plect-fixture: result=valid entry=definitions
-# reason: a task is a lifecycle-managed provider: contracts, health, an optional interactive capability, and composition.
+# reason: an effect is a lifecycle-managed provider: contracts, health, an optional interactive capability, and composition.
 
 [pane]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [pane.setup]

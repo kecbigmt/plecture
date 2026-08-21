@@ -2,7 +2,7 @@
 # reason: nested-task selection is static topology and is never computed.
 
 [outer_runtime]
-kind = "task"
+kind = "effect"
 
 [outer_runtime.inner]
 uses = { from = "inputs.runtime" }

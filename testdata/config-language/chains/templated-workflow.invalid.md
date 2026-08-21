@@ -1,9 +1,9 @@
-<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-REF-DYNAMIC entry=work -->
+<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-REF-DYNAMIC entry=task -->
 <!-- reason: a chain's workflow reference is static, so templated selection is not part of the language. -->
 +++
 [pursue_goal]
-kind              = "work"
-description       = "A work document choosing its reviewer workflow at run time"
+kind              = "task"
+description       = "A task document choosing its reviewer workflow at run time"
 resource_observer = "goal"
 
 [[pursue_goal.chains]]

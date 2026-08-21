@@ -22,12 +22,12 @@
       "required": [
         "kind"
       ],
-      "$comment": "PLECTURE-CFG-KIND-MISSING when kind is absent; PLECTURE-CFG-KIND-UNKNOWN when it is outside the vocabulary; PLECTURE-CFG-WORK-IN-TOML-DOCUMENT when a kind whose declaration needs a body appears in a TOML definition document.",
+      "$comment": "PLECTURE-CFG-KIND-MISSING when kind is absent; PLECTURE-CFG-KIND-UNKNOWN when it is outside the vocabulary; PLECTURE-CFG-TASK-IN-TOML-DOCUMENT when a kind whose declaration needs a body appears in a TOML definition document.",
       "properties": {
         "kind": {
           "enum": [
+            "effect",
             "task",
-            "work",
             "channel",
             "workflow",
             "workspace_provider",
@@ -37,7 +37,7 @@
       },
       "oneOf": [
         {
-          "$ref": "#/$defs/taskDefinition"
+          "$ref": "#/$defs/effectDefinition"
         },
         {
           "$ref": "#/$defs/channelDefinition"
@@ -644,18 +644,18 @@
           }
         }
       },
-      "description": "A chain fires against instances of the work document that declared it."
+      "description": "A chain fires against instances of the task document that declared it."
     },
-    "taskDefinition": {
+    "effectDefinition": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "kind"
       ],
-      "description": "A task is a lifecycle-managed provider: contracts, health, an optional interactive capability, and composition. Its outputs are production records \u2014 immutable facts from setup plus nested projections. No completion contract and no live re-evaluation live here; both belong to the work document.",
+      "description": "An effect is a lifecycle-managed provider: contracts, health, an optional interactive capability, and composition. Its outputs are production records \u2014 immutable facts from setup plus nested projections. No completion contract and no live re-evaluation live here; both belong to the task document.",
       "properties": {
         "kind": {
-          "const": "task"
+          "const": "effect"
         },
         "scope": {
           "enum": [
@@ -679,7 +679,7 @@
           "type": "string"
         },
         "outputs": {
-          "$ref": "#/$defs/taskOutputsTable"
+          "$ref": "#/$defs/effectOutputsTable"
         },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument"
@@ -701,7 +701,7 @@
           "description": "The task owns an interactive endpoint. At most one task in a plan declares it."
         }
       },
-      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN: the task grammar is closed, and the completion contract is not in it."
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN: the effect grammar is closed, and the completion contract is not in it."
     },
     "workflowDefinition": {
       "type": "object",
@@ -1486,11 +1486,11 @@
         }
       }
     },
-    "taskOutputsTable": {
+    "effectOutputsTable": {
       "$comment": "PLECTURE-CFG-FIELD-TYPE, PLECTURE-CFG-FIELD-UNKNOWN.",
       "type": "object",
       "additionalProperties": false,
-      "description": "A task's public output wiring. Its roots are the nesting joint's: an inner output or this layer's locals. A live root belongs to a work document's completion predicate, so re-evaluation is not a task concern.",
+      "description": "An effect's public output wiring. Its roots are the nesting joint's: an inner output or this layer's locals. A live root belongs to a task document's completion predicate, so re-evaluation is not a task concern.",
       "properties": {
         "bind": {
           "type": "object",
@@ -1498,12 +1498,12 @@
             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
           },
           "additionalProperties": {
-            "$ref": "#/$defs/taskOutputValue"
+            "$ref": "#/$defs/effectOutputValue"
           }
         }
       }
     },
-    "taskOutputValue": {
+    "effectOutputValue": {
       "$comment": "PLECTURE-CFG-FROM-ROOT: a task output projects inner.outputs.* or locals.* only.",
       "type": "object",
       "oneOf": [
@@ -1526,7 +1526,7 @@
         }
       ]
     },
-    "workDefinition": {
+    "taskDefinition": {
       "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING.",
       "type": "object",
       "additionalProperties": false,
@@ -1534,17 +1534,17 @@
         "kind",
         "resource_observer"
       ],
-      "description": "A work declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a work document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
+      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a task document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
       "properties": {
         "kind": {
-          "const": "work"
+          "const": "task"
         },
         "description": {
           "type": "string"
         },
         "resource_observer": {
           "$ref": "#/$defs/staticReference",
-          "description": "The resource observer this work is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front."
+          "description": "The resource observer this task is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front."
         },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument",
@@ -1587,18 +1587,18 @@
         }
       }
     },
-    "workFrontmatter": {
-      "$anchor": "work",
-      "$comment": "PLECTURE-CFG-WORK-BLOCK-COUNT: a work document's frontmatter holds exactly one declaration.",
+    "taskFrontmatter": {
+      "$anchor": "task",
+      "$comment": "PLECTURE-CFG-TASK-BLOCK-COUNT: a task document's frontmatter holds exactly one declaration.",
       "type": "object",
-      "description": "The TOML frontmatter of a work document: one definition block, whose kind is work. Nothing about the grammar forks \u2014 these are two validation rules over the ordinary definition document.",
+      "description": "The TOML frontmatter of a task document: one definition block, whose kind is work. Nothing about the grammar forks \u2014 these are two validation rules over the ordinary definition document.",
       "minProperties": 1,
       "maxProperties": 1,
       "propertyNames": {
         "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
       },
       "additionalProperties": {
-        "$ref": "#/$defs/workDefinition"
+        "$ref": "#/$defs/taskDefinition"
       }
     },
     "completionKeyPath": {

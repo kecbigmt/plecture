@@ -2,7 +2,7 @@
 # reason: simple process execution is structural, so no shell quoting is involved.
 
 [bootstrap]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [bootstrap.setup]

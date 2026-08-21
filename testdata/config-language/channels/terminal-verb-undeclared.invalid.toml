@@ -1,5 +1,5 @@
 # plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-TERMINAL-UNAVAILABLE entry=definitions
-# reason: the terminal capability requires a task in the plan to declare the requested verb.
+# reason: the terminal capability requires an effect in the plan to declare the requested verb.
 
 [session]
 kind = "workflow"
@@ -13,7 +13,7 @@ uses    = "terminal_submit"
 include = ["user.emit"]
 
 [worker]
-kind = "task"
+kind = "effect"
 
 [worker.setup]
 type = "exec"

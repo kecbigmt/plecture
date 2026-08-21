@@ -2,7 +2,7 @@
 # reason: a value declares both from and expr, so its form is ambiguous.
 
 [bootstrap]
-kind = "task"
+kind = "effect"
 
 [bootstrap.setup]
 type = "exec"

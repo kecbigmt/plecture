@@ -35,7 +35,7 @@ The macros need no Plecture extension to be useful:
 <!-- fixture: expressions/comprehension.toml -->
 ```toml
 [team_runtime]
-kind = "task"
+kind = "effect"
 
 [team_runtime.setup]
 type = "exec"
@@ -69,7 +69,7 @@ name = { type = "string" }
 ## What stays out of CEL
 
 Plecture concepts are structural in TOML, not CEL APIs: definition references,
-executable ownership, terminal capabilities, task nesting, layer boundaries,
+executable ownership, terminal capabilities, effect nesting, layer boundaries,
 `from` projections, action bindings, and JSON serialization. CEL hosting
 custom functions is not a reason to move any of them there.
 
@@ -102,8 +102,8 @@ implementation accepts it:
 ```markdown
 +++
 [review]
-kind              = "work"
-description       = "A work document whose computed leaf does not type-check"
+kind              = "task"
+description       = "A task document whose computed leaf does not type-check"
 resource_observer = "issue_pr"
 
 [review.state_schema]
@@ -125,5 +125,5 @@ at runtime validation.
 ## Computed nested outputs
 
 A computed nested output binding produces a string. Typed computed nested
-outputs are deferred; a computed observation in a work document may be typed
+outputs are deferred; a computed observation in a task document may be typed
 and validated against its declared key.

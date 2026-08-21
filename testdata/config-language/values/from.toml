@@ -2,7 +2,7 @@
 # reason: a required projection selects one statically identifiable value and preserves its native type.
 
 [bootstrap]
-kind  = "task"
+kind  = "effect"
 scope = "run"
 
 [bootstrap.setup]

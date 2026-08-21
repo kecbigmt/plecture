@@ -1,13 +1,13 @@
 # Chains
 
-A chain is a deterministic rule for spawning work off a work document's
+A chain is a deterministic rule for spawning task off a task document's
 instances: once this instance reaches this state, run that workflow.
 
-Chains live in the declaring work document's frontmatter because a chain's
+Chains live in the declaring task document's frontmatter because a chain's
 `when` judge ids and `inputs` projections are references into that same
 document's completion contract and observed keys — colocation is what lets
 those references be checked at load time rather than at fire time. Evaluation
-is scoped the same way: a chain fires only against instances of the work
+is scoped the same way: a chain fires only against instances of the task
 document that declared it.
 
 ## Surface
@@ -24,7 +24,7 @@ document that declared it.
 ```markdown
 +++
 [pursue_goal]
-kind              = "work"
+kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
 resource_observer = "goal"
 
@@ -69,7 +69,7 @@ Chain inputs project the facts of the instance that fired — which session and
 instance it was, which workflow, its pending judge ids — and the live roots it
 reads, `resource.state.*` and `self.state.*`.
 
-They read public facts only. A task layer's private locals do not cross into a
+They read public facts only. An effect layer's private locals do not cross into a
 spawned session.
 
 ## Static workflow references
