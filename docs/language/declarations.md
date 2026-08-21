@@ -212,7 +212,7 @@ A reference carries no kind segment. After resolution, the target's declared
 | Workflow node `uses` | `task` |
 | Workflow event channel `uses` | `channel` |
 | Task `inner.uses` | `task` |
-| Work field `resource` | `resource_observer` |
+| Work field `resource_observer` | `resource_observer` |
 | Work chain `workflow` | `workflow` |
 | Dynamic-instantiation target | `work` |
 | Chain spawn target | `work` |

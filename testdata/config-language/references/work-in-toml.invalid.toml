@@ -2,12 +2,9 @@
 # reason: a kind with a body is declared in a Markdown file's frontmatter, so a work block in a TOML definition document would have no instruction.
 
 [work]
-kind        = "work"
-description = "A work declaration with nowhere to keep its instruction"
-requires    = ["checks_status"]
-
-[work.observe]
-checks_status = { from = "resource.status.checks_status" }
+kind              = "work"
+description       = "A work declaration with nowhere to keep its instruction"
+resource_observer = "issue_pr"
 
 [work.done_when]
-all = [{ check = "checks_status", in = ["SUCCESS"] }]
+all = [{ check = "resource.status.checks_status", in = ["SUCCESS"] }]

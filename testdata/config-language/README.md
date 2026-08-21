@@ -57,7 +57,7 @@ frontmatter has to start the file once the header is stripped:
 |---|---|
 | `result` | `valid`, `invalid`, `accepted-invalid` |
 | `layer` | `structural`, `semantic`, `cel`, `instantiation` — required unless `result=valid` |
-| `diagnostic` | The `PLECTURE-CFG-*` code, which must appear in the diagnostics table in [`../../docs/language/overview.md`](../../docs/language/overview.md) |
+| `diagnostic` | The `PLECTURE-CFG-*` code, which must appear in the diagnostics table in [`../../docs/language/README.md`](../../docs/language/README.md) |
 | `entry` | Which schema entry validates it: `definitions` (default), `work`, `config`, `catalogs`, `lock`, `plugin`, `catalog` |
 
 `result=accepted-invalid` records a rule the language states but the

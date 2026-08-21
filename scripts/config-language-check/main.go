@@ -28,7 +28,7 @@ const (
 	schemaPath   = "plecture.schema.json"
 	fixtureRoot  = "testdata/config-language"
 	docsRoot     = "docs/language"
-	diagnosticsD = "docs/language/overview.md"
+	diagnosticsD = "docs/language/README.md"
 )
 
 // expectation is a fixture's declared outcome, parsed from its header.

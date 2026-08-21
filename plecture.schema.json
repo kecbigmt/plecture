@@ -1490,7 +1490,7 @@
       "$comment": "PLECTURE-CFG-FIELD-TYPE, PLECTURE-CFG-FIELD-UNKNOWN.",
       "type": "object",
       "additionalProperties": false,
-      "description": "A task's public output wiring. Its roots are the nesting joint's: an inner output or this layer's locals. A live root belongs to a work document's observe, so re-evaluation is not a task concern.",
+      "description": "A task's public output wiring. Its roots are the nesting joint's: an inner output or this layer's locals. A live root belongs to a work document's completion predicate, so re-evaluation is not a task concern.",
       "properties": {
         "bind": {
           "type": "object",
@@ -1516,29 +1516,6 @@
               "properties": {
                 "from": {
                   "pattern": "^(inner\\.outputs|locals)\\."
-                }
-              }
-            }
-          ]
-        },
-        {
-          "$ref": "#/$defs/exprValue"
-        }
-      ]
-    },
-    "observeValue": {
-      "$comment": "PLECTURE-CFG-FROM-ROOT: observe reads resource.status.* and self.*, the two live roots.",
-      "type": "object",
-      "oneOf": [
-        {
-          "allOf": [
-            {
-              "$ref": "#/$defs/fromValue"
-            },
-            {
-              "properties": {
-                "from": {
-                  "pattern": "^(resource\\.status|self)\\."
                 }
               }
             }

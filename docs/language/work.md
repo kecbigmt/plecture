@@ -275,8 +275,6 @@ against the session that graph produced.
 - A work document's frontmatter holds exactly one declaration, whose kind is
   `work`, and declares a `resource_observer`.
 - `resource_observer` resolves to a definition of that kind.
-- `observe` projects `resource.status.*` and `self.*` only.
-- A `self.*` projection names a `state_schema` property.
 - A completion key reads `resource.status.*` or `state.*`.
 - A `resource.status.*` key names a property the declared observer's
   `state_schema` declares, and a `state.*` key one this document's declares —
