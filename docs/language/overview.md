@@ -1,8 +1,9 @@
 # The Plecture configuration language
 
 Plecture configuration is a language of its own, built from established
-substrates. TOML is its serialization syntax, JSON Schema its contract
-language, and CEL its computation sublanguage. Everything else — definitions,
+substrates. TOML is its serialization syntax — for a work document, as
+frontmatter in a Markdown file — JSON Schema its contract language, and CEL its
+computation sublanguage. Everything else — definitions,
 identity, references, values, actions, lifecycle, layers, nesting, plugins,
 trust, and composition — is Plecture semantics.
 
@@ -135,6 +136,11 @@ may improve over time.
 
 ## Scope
 
-This language governs TOML configuration definitions. Markdown
-instruction-template assets are template assets, not definition blocks, and
-their interpolation model is specified elsewhere.
+This language governs configuration definitions in two file forms: TOML
+documents, whose top-level tables are definition blocks, and work documents,
+which are Markdown files with TOML frontmatter.
+
+A Markdown file that carries no `+++` frontmatter is a template asset rather
+than a definition. Template assets keep their own interpolation model, and a
+work document's instruction body is the one place where that model and this
+language meet — see [`work.md`](work.md).

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/kecbigmt/plecture/plecture.schema.json",
   "title": "Plecture configuration language",
-  "description": "Structural schema for Plecture TOML configuration. The root schema describes a definition document: a TOML file whose top-level tables are definition blocks. The reserved root files and the plugin/catalog manifests have their own entry points, reachable by anchor: #config, #catalogs, #lock, #plugin, #catalog. This schema is authoritative for accepted structural shapes until the implementation lands a schema generator whose output is conformance-tested against it. It deliberately does not encode cross-definition or evaluation-context rules, which are Plecture semantic validation, nor expression correctness, which is CEL validation.",
+  "description": "Structural schema for Plecture configuration. The root schema describes a definition document: a TOML file whose top-level tables are definition blocks. A work document is a Markdown file whose TOML frontmatter is validated at #work. The reserved root files and the plugin/catalog manifests have their own entry points too, so the full set of anchors is #definitions, #work, #config, #catalogs, #lock, #plugin, and #catalog. This schema is authoritative for accepted structural shapes until the implementation lands a schema generator whose output is conformance-tested against it. It deliberately does not encode cross-definition or evaluation-context rules, which are Plecture semantic validation, nor expression correctness, which is CEL validation.",
   "$ref": "#/$defs/definitionDocument",
   "$defs": {
     "definitionDocument": {

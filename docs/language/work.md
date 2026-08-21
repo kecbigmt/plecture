@@ -63,7 +63,10 @@ implicit typing into completion contracts, where `NULL` and `true` are load-
 bearing values.
 
 The body below the closing `+++` is the instruction. Its interpolation uses the
-same roots the frontmatter does.
+same value model, but not the same roots as the frontmatter: the body reads what
+the instruction is about — the resource, this work's parameters, the session —
+while `[observe]` reads the live state completion depends on. Both root sets are
+listed in [`values.md`](values.md).
 
 ## Frontmatter
 
