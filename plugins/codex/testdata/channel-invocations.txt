@@ -1,0 +1,42 @@
+== codex_exec / with-body
+type: exec
+argv[0]: <plugin>/scripts/codex-exec-enqueue
+argv[1]: stand-in-queue_dir
+argv[2]: [{type}] {body_or_summary}{url_suffix}
+argv[3]: user.emit
+argv[4]: a <tag> & an "amp"
+argv[5]: a summary
+argv[6]: https://example.test/x
+timeout: 5s
+
+== codex_exec / summary-only
+type: exec
+argv[0]: <plugin>/scripts/codex-exec-enqueue
+argv[1]: stand-in-queue_dir
+argv[2]: [{type}] {body_or_summary}{url_suffix}
+argv[3]: example.status
+argv[4]: 
+argv[5]: only a summary
+argv[6]: 
+timeout: 5s
+
+== terminal_submit / with-body
+type: shell
+bind.capture: terminal:capture
+bind.message: [user.emit] a <tag> & an "amp" (https://example.test/x)
+bind.send_keys: terminal:send_keys
+bind.send_text: terminal:send_text
+timeout: 45s
+observed[0]: send_text:[user.emit] a <tag> & an "amp" (https://example.test/x)
+observed[1]: send_keys:Enter
+
+== terminal_submit / summary-only
+type: shell
+bind.capture: terminal:capture
+bind.message: [example.status] only a summary
+bind.send_keys: terminal:send_keys
+bind.send_text: terminal:send_text
+timeout: 45s
+observed[0]: send_text:[example.status] only a summary
+observed[1]: send_keys:Enter
+

@@ -138,6 +138,11 @@ func TestLoadChannels_RejectedDeclarations(t *testing.T) {
 			want: "timeout",
 		},
 		{
+			name: "input_schema declaring an unreadable parameter name",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\n\"bad-key\" = { type = \"string\" }\n",
+			want: "a parameter name matches",
+		},
+		{
 			name: "input_schema declaring a non-boolean required",
 			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"string\", required = \"true\" }\n",
 			want: "\"required\" is a boolean",

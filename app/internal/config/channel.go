@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -203,6 +204,9 @@ func channelInputSchema(raw any) (map[string]ChannelInputSpec, error) {
 	}
 	out := make(map[string]ChannelInputSpec, len(table))
 	for key, entry := range table {
+		if !channelInputName.MatchString(key) {
+			return nil, fmt.Errorf("input_schema %q: a parameter name matches %s", key, channelInputName)
+		}
 		spec, ok := entry.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("input_schema %q: expected a table", key)
@@ -245,6 +249,11 @@ func channelInputSchema(raw any) (map[string]ChannelInputSpec, error) {
 	}
 	return out, nil
 }
+
+// channelInputName is the parameter-name grammar: a projection reads a
+// parameter as `inputs.<key>`, so a key that is not a bare path segment is
+// unreadable rather than merely unconventional.
+var channelInputName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func specFieldType(field string) string {
 	if field == "required" {

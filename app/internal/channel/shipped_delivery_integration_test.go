@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
 
@@ -79,7 +81,7 @@ func shippedEval(t *testing.T, def config.ChannelDefinition, inputs map[string]a
 	bins := config.MountedBins{Mounted: mounted, SourcePath: def.SourcePath}
 	return deliveryEval(inputs, ev, DeliverOptions{
 		Bin:      func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
-		Terminal: func(verb string) (string, error) { return "true", nil },
+		Terminal: func(verb string) (string, error) { return "terminal:" + verb, nil },
 	})
 }
 
@@ -94,7 +96,9 @@ func standInInputs(def config.ChannelDefinition, value string) map[string]any {
 		if spec.HasDefault {
 			continue
 		}
-		inputs[key] = value
+		// The stand-in names its own key, so exchanging two parameters in a
+		// declaration is visible rather than invisible behind one value.
+		inputs[key] = value + "-" + key
 	}
 	return def.ApplyInputDefaults(inputs)
 }
@@ -121,65 +125,226 @@ func declaredValues(def config.ChannelDefinition) map[string]*lang.Value {
 	return values
 }
 
-// Every value a shipped channel declares has to resolve against an event and
-// its own declared parameters — a broken projection, an expression naming a
-// root the surface does not offer, or an unresolvable executable would
-// otherwise only surface on the first event that channel is asked to deliver.
-func TestShippedChannels_EveryDeclaredValueResolves(t *testing.T) {
-	ev := event.Event{
-		ID:          "01ABC",
-		SessionName: "acme/widget-1",
-		Type:        event.TypeUserEmit,
-		Summary:     "a summary",
-		Body:        `a <tag> & an "amp"`,
-		Time:        time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC),
-		Metadata:    map[string]string{"url": "https://example.test/x"},
+// sampleEvents are the two shapes every shipped channel is written for: one
+// carrying a body, and one carrying only a summary. They are fixed so a
+// plugin's recorded invocation is reproducible, and generic so recording one
+// puts no provider vocabulary in core.
+func sampleEvents() []struct {
+	Name  string
+	Event event.Event
+} {
+	return []struct {
+		Name  string
+		Event event.Event
+	}{
+		{
+			Name: "with-body",
+			Event: event.Event{
+				ID:          "01ABC",
+				SessionName: "acme/widget-1",
+				Type:        event.TypeUserEmit,
+				Source:      event.SourcePlect,
+				Direction:   event.Inbound,
+				Summary:     "a summary",
+				Body:        `a <tag> & an "amp"`,
+				Time:        time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC),
+				Metadata:    map[string]string{"url": "https://example.test/x"},
+			},
+		},
+		{
+			Name: "summary-only",
+			Event: event.Event{
+				ID:          "01DEF",
+				SessionName: "acme/widget-1",
+				Type:        "example.status",
+				Source:      event.SourcePlect,
+				Direction:   event.Internal,
+				Summary:     "only a summary",
+				Time:        time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC),
+			},
+		},
 	}
+}
+
+// recordInvocation renders what this channel hands its receiver: the argv and
+// standard input of a process delivery, the bound values of a shell one (a
+// shell delivery's argv is a generated wrapper path, so the bindings are the
+// receiver-visible part), or the dial target and framed payload of a socket
+// delivery.
+func recordInvocation(t *testing.T, def config.ChannelDefinition, eval lang.Eval, inputs map[string]any, ev event.Event) (string, error) {
+	root := pluginRootOf(t, def.SourcePath)
+	relative := func(value string) string {
+		if rest, ok := strings.CutPrefix(value, root+string(filepath.Separator)); ok {
+			return "<plugin>/" + filepath.ToSlash(rest)
+		}
+		return value
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "type: %s\n", def.Type)
+	switch def.Type {
+	case config.ChannelTypeUnixSocket:
+		path, _, err := eval.Argument(def.Path)
+		if err != nil {
+			return "", fmt.Errorf("path: %w", err)
+		}
+		body, _, err := eval.Bytes(def.Body)
+		if err != nil {
+			return "", fmt.Errorf("body: %w", err)
+		}
+		fmt.Fprintf(&b, "path: %s\nbody: %s\n", path, body)
+	case config.ChannelTypeExec:
+		execution, err := eval.Exec(def.Action)
+		if err != nil {
+			return "", err
+		}
+		for i, arg := range execution.Argv {
+			fmt.Fprintf(&b, "argv[%d]: %s\n", i, relative(arg))
+		}
+		if len(execution.Stdin) > 0 {
+			fmt.Fprintf(&b, "stdin: %s\n", execution.Stdin)
+		}
+	case config.ChannelTypeShell:
+		names := make([]string, 0, len(def.Action.Bind))
+		for name := range def.Action.Bind {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			value, absent, err := eval.Argument(def.Action.Bind[name])
+			if err != nil {
+				return "", fmt.Errorf("bind.%s: %w", name, err)
+			}
+			if absent {
+				fmt.Fprintf(&b, "bind.%s: <unset>\n", name)
+				continue
+			}
+			fmt.Fprintf(&b, "bind.%s: %s\n", name, relative(value))
+		}
+	}
+	timeout, err := ResolveTimeout(def, inputs)
+	if err != nil {
+		return "", fmt.Errorf("timeout: %w", err)
+	}
+	fmt.Fprintf(&b, "timeout: %s\n", timeout)
+	if def.Type == config.ChannelTypeShell {
+		observed, err := observeShellDelivery(t, def, inputs, ev)
+		if err != nil {
+			return "", err
+		}
+		for i, line := range observed {
+			fmt.Fprintf(&b, "observed[%d]: %s\n", i, line)
+		}
+	}
+	return b.String(), nil
+}
+
+// observeShellDelivery runs a shell channel for real, with every capability
+// it consumes bound to a stub that records what it was asked to do. A shell
+// script is the plugin's own logic, so what its receiver observes is the
+// sequence of capability calls — reordering the script, dropping a step, or
+// merging two of them changes this and nothing else would.
+func observeShellDelivery(t *testing.T, def config.ChannelDefinition, inputs map[string]any, ev event.Event) ([]string, error) {
+	log := filepath.Join(t.TempDir(), "observed.log")
+	terminal := func(verb string) (string, error) {
+		switch verb {
+		case "capture":
+			// A capture reports an already-submitted input box, which is what
+			// lets a readiness loop finish instead of exhausting its backoff.
+			return `printf '\n'`, nil
+		default:
+			return `printf '` + verb + `:%s\n' "$1" >> ` + log, nil
+		}
+	}
+	opts := DeliverOptions{Terminal: terminal}
+	if err := DeliverWithOptions(context.Background(), def, inputs, ev, opts); err != nil {
+		return nil, fmt.Errorf("shell delivery: %w", err)
+	}
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		return nil, fmt.Errorf("read observed log: %w", err)
+	}
+	return strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n"), nil
+}
+
+// TestShippedChannels_InvocationsMatchTheirPluginsRecord is the link between a
+// shipped channel declaration and what its receiver gets. Each plugin that
+// ships channels records, in its own testdata, the invocation those channels
+// must produce for the fixed sample events above; this regenerates that record
+// and compares. Swapping two argv values, renaming a payload key, or dropping
+// a binding changes the record, so the diff a reviewer sees is the receiver
+// contract changing.
+//
+// Set PLECT_UPDATE_CHANNEL_RECORDS=1 to rewrite the records after an
+// intended contract change.
+func TestShippedChannels_InvocationsMatchTheirPluginsRecord(t *testing.T) {
+	byPlugin := map[string]map[string]config.ChannelDefinition{}
 	for id, def := range shippedChannels(t) {
-		t.Run(id, func(t *testing.T) {
-			inputs := standInInputs(def, "stand-in")
-			eval := shippedEval(t, def, inputs, ev)
-			for where, value := range declaredValues(def) {
-				resolved, absent, err := eval.Bytes(value)
-				if err != nil {
-					t.Errorf("%s: %v", where, err)
-					continue
-				}
-				if absent {
-					continue
-				}
-				// A serializing operand has to produce a parseable document:
-				// that is the whole reason it is an operand rather than a
-				// string a value could malform.
-				if value.Form == lang.FormJSON {
-					var parsed any
-					if err := json.Unmarshal(resolved, &parsed); err != nil {
-						t.Errorf("%s: serialized operand is not JSON: %v (%s)", where, err, resolved)
+		root := pluginRootOf(t, def.SourcePath)
+		if byPlugin[root] == nil {
+			byPlugin[root] = map[string]config.ChannelDefinition{}
+		}
+		byPlugin[root][id] = def
+	}
+	for root, channels := range byPlugin {
+		t.Run(filepath.Base(root), func(t *testing.T) {
+			var b strings.Builder
+			ids := make([]string, 0, len(channels))
+			for id := range channels {
+				ids = append(ids, id)
+			}
+			sort.Strings(ids)
+			for _, id := range ids {
+				def := channels[id]
+				inputs := standInInputs(def, "stand-in")
+				for _, sample := range sampleEvents() {
+					fmt.Fprintf(&b, "== %s / %s\n", id, sample.Name)
+					record, err := recordInvocation(t, def, shippedEval(t, def, inputs, sample.Event), inputs, sample.Event)
+					if err != nil {
+						t.Fatalf("%s / %s: %v", id, sample.Name, err)
 					}
+					b.WriteString(record)
+					b.WriteString("\n")
 				}
 			}
-			if _, err := ResolveTimeout(def, inputs); err != nil {
-				t.Errorf("timeout: %v", err)
+			record := filepath.Join(root, "testdata", "channel-invocations.txt")
+			if os.Getenv("PLECT_UPDATE_CHANNEL_RECORDS") == "1" {
+				if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(record, []byte(b.String()), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				t.Logf("rewrote %s", record)
+				return
+			}
+			want, err := os.ReadFile(record)
+			if err != nil {
+				t.Fatalf("a plugin shipping channels records the invocations they must produce: %v", err)
+			}
+			if string(want) != b.String() {
+				t.Errorf("invocations changed.\n--- recorded\n%s\n--- produced\n%s", want, b.String())
 			}
 		})
 	}
 }
 
-// An event with no body must resolve as readily as one with a body: a
-// fallback to the summary is the shape every shipped channel is written for,
-// and an unset optional field is empty rather than absent.
-func TestShippedChannels_ResolveWithoutABody(t *testing.T) {
-	ev := event.Event{Type: "example.status", Summary: "only a summary"}
-	for id, def := range shippedChannels(t) {
-		t.Run(id, func(t *testing.T) {
-			eval := shippedEval(t, def, standInInputs(def, "stand-in"), ev)
-			for where, value := range declaredValues(def) {
-				if _, _, err := eval.Bytes(value); err != nil {
-					t.Errorf("%s: %v", where, err)
-				}
-			}
-		})
+// pluginRootOf walks up from a definition's file to the plugin directory that
+// mounted it, which is where that plugin's own testdata lives.
+func pluginRootOf(t *testing.T, sourcePath string) string {
+	t.Helper()
+	dir := filepath.Dir(sourcePath)
+	for i := 0; i < 8; i++ {
+		if _, err := os.Stat(filepath.Join(dir, "plugin.toml")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
 	}
+	t.Fatalf("no plugin.toml above %s", sourcePath)
+	return ""
 }
 
 // A unix_socket channel's receiver decodes one framed envelope per delivery,
@@ -219,10 +384,14 @@ func TestShippedChannels_UnixSocketDeliversOneFramedEnvelope(t *testing.T) {
 				}
 			}()
 
-			// Every declared parameter gets the socket path, so whichever one
-			// this channel's `path` projects resolves to the listener without
-			// this test knowing its name.
-			if err := Deliver(context.Background(), def, standInInputs(def, sock), ev); err != nil {
+			// Every declared parameter gets the socket path verbatim, so
+			// whichever one this channel's `path` projects resolves to the
+			// listener without this test knowing its name.
+			inputs := make(map[string]any, len(def.InputSchema))
+			for key := range def.InputSchema {
+				inputs[key] = sock
+			}
+			if err := Deliver(context.Background(), def, inputs, ev); err != nil {
 				t.Fatalf("Deliver: %v", err)
 			}
 			var data []byte
@@ -232,10 +401,14 @@ func TestShippedChannels_UnixSocketDeliversOneFramedEnvelope(t *testing.T) {
 				t.Fatal("no framed message arrived")
 			}
 			var envelope struct {
+				Type    string                `json:"type"`
 				Payload struct{ Text string } `json:"payload"`
 			}
 			if err := json.Unmarshal(data, &envelope); err != nil {
 				t.Fatalf("envelope is not JSON: %v (%s)", err, data)
+			}
+			if envelope.Type != string(protocol.MsgMessage) {
+				t.Errorf("envelope type = %q, want %q", envelope.Type, protocol.MsgMessage)
 			}
 			var carried map[string]any
 			if err := json.Unmarshal([]byte(envelope.Payload.Text), &carried); err != nil {

@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Proves this plugin's enqueue script honours the argv contract its channel
-# (config/channels/codex_exec.toml) delivers against: six positional
-# arguments, and a message_envelope expanded against exactly the event fields
-# the channel passes in. A drift on either side would silently queue the
-# wrong text for the worker to run.
+# Proves the script-side half of this plugin's enqueue contract: given the
+# six positional arguments its channel delivers, the message_envelope is
+# expanded against exactly those fields, by parameter replacement and never
+# by eval.
+#
+# The argv side — that the channel actually passes those fields in that
+# order — is pinned by testdata/channel-invocations.txt, which is regenerated
+# from the shipped declaration. Neither half alone connects the declaration
+# to what the worker reads: this one would still pass if the channel swapped
+# two arguments, and that one would still pass if the expansion broke.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
