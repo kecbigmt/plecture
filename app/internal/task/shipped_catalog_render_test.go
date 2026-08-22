@@ -10,24 +10,34 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// loadShippedCatalogTasks loads this repository's own official catalog
-// (plugins/catalog.toml plus the plugin directories it lists) the same way
-// a real config load would, returning every shipped task definition plus
-// the mounted-plugin list `{{bin ...}}` resolves against.
+// loadShippedCatalogTasks returns every shipped effect declaration plus the
+// mounted-plugin list a `bin` reference resolves against.
 func loadShippedCatalogTasks(t *testing.T) (map[string]config.TaskDefinition, []plugins.Mounted) {
+	t.Helper()
+	cfg := shippedCatalogConfig(t)
+	tasks, err := cfg.LoadTaskDefinitions("")
+	if err != nil {
+		t.Fatalf("LoadTaskDefinitions(shipped catalog): %v", err)
+	}
+	return tasks, cfg.Plugins
+}
+
+// shippedCatalogConfig mounts this repository's own official catalog
+// (plugins/catalog.toml plus the plugin directories it lists) the way a real
+// config load would, so a test over shipped declarations reads them through
+// the same loaders a session does.
+func shippedCatalogConfig(t *testing.T) *config.Config {
 	t.Helper()
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
-	catalogRoot := filepath.Join(repoRoot, "plugins")
+	catalogRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "plugins")
 
 	manifest, err := plugins.LoadCatalogManifest(catalogRoot)
 	if err != nil {
 		t.Fatalf("LoadCatalogManifest(catalog root): %v", err)
 	}
-
 	var pluginDirs []string
 	var mounted []plugins.Mounted
 	for _, rel := range manifest.Plugins {
@@ -36,17 +46,10 @@ func loadShippedCatalogTasks(t *testing.T) (map[string]config.TaskDefinition, []
 		if err != nil {
 			t.Fatalf("LoadManifest(%s): %v", rel, err)
 		}
-		id := "official/" + rel
-		mounted = append(mounted, plugins.Mounted{ID: id, Dir: dir, Manifest: m})
+		mounted = append(mounted, plugins.Mounted{ID: "official/" + rel, Dir: dir, Manifest: m})
 		pluginDirs = append(pluginDirs, dir)
 	}
-
-	cfg := &config.Config{PluginDirs: pluginDirs, Plugins: mounted}
-	tasks, err := cfg.LoadTaskDefinitions("")
-	if err != nil {
-		t.Fatalf("LoadTaskDefinitions(shipped catalog): %v", err)
-	}
-	return tasks, mounted
+	return &config.Config{PluginDirs: pluginDirs, Plugins: mounted}
 }
 
 // TestShippedCatalog_EffectActionsResolve guards this repository's own
