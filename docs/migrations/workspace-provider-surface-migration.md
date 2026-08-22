@@ -153,12 +153,24 @@ not consume a following argument for a bool) is one reason to prefer a shell
 action: an exec action's argv cannot join a literal to a value. The
 alternative is `{ expr = "'--force=' + string(force)" }`.
 
-### One rule that tightened
+### Rules that tightened
 
 A field outside the provider surface is now a load error
 (`PLECTURE-CFG-FIELD-UNKNOWN`). The surface is `match`, `name`, `setup`,
 `cleanup`, `subscribe`, `inputs_schema`, `inputs_schema_file`,
 `outputs_schema`, and `outputs_schema_file`.
+
+Two contract rules are checked at load, both `PLECTURE-CFG-FROM-PATH`:
+
+- `name` may only name a capture its own `match` declares.
+- `cleanup` may only read a `self.outputs.<key>` its own `outputs_schema`
+  declares — inline or through `outputs_schema_file`. **A provider declaring
+  no outputs contract declares no key**, so a cleanup that reads one fails
+  the load: add the contract rather than dropping the read, since the read is
+  what teardown needs.
+
+An uncompilable `match` now reports itself rather than surfacing as an
+unresolvable capture in `name`.
 
 ## Verification
 

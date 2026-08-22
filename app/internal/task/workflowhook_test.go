@@ -104,8 +104,6 @@ func TestRunWorkflowSetup_ReadsItsSurfaceRoots(t *testing.T) {
 	}
 }
 
-// TestRunWorkflowSetup_ShellQuoteNeutralizesMetacharacters pins the
-
 // An exec action passes a value as one argv element, never as command text,
 // so a resource id carrying shell metacharacters reaches the invoked
 // executable literally and its injected command never runs.
@@ -249,12 +247,9 @@ func TestRunWorkflowCleanup_RunsAndMarksClean(t *testing.T) {
 	}
 }
 
-// TestRunWorkflowCleanup_CleanupInputsReachTemplate pins the generic escape
-// hatch a workspace provider's cleanup script reads its own intents through
-// (e.g. the shipped github workspace provider's delete_branch key) — core
-// forwards the map opaquely, so a new intent never needs a core vocabulary
-// addition.
-func TestRunWorkflowCleanup_CleanupInputsReachTemplate(t *testing.T) {
+// Core forwards a caller's cleanup intents opaquely, so a new one never
+// needs a core vocabulary addition.
+func TestRunWorkflowCleanup_CleanupInputsReachTheAction(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "delete_branch.txt")
 	prov := config.WorkspaceProviderConfig{
 		ID:    "wf",
@@ -337,7 +332,7 @@ func TestRunWorkflowCleanup_FailureMarksFailed(t *testing.T) {
 	}
 }
 
-// Node templates can reference the pseudo-node's outputs.
+// A task node can reference the pseudo-node's outputs.
 func TestRunSetup_ExposesWorkflowOutputs(t *testing.T) {
 	resolved := []Resolved{{
 		NodeID: "echoer",

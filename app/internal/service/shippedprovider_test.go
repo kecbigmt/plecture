@@ -51,10 +51,9 @@ func loadShippedWorkspaceProvider(t *testing.T, pluginDir, id string) config.Wor
 	return prov
 }
 
-// TestShippedWorkspaceProvider_ResolvesResourceIdentifiersOffline pins that
-// the shipped workspace provider's resolver derives session ids from
-// resource identifiers with regex and template alone — the core never asks a
-// network for a name.
+// The shipped provider's resolver derives a session id from a resource
+// identifier with a regular expression and a computation over its captures
+// alone — core never asks a network for a name.
 func TestShippedWorkspaceProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
 	prov := loadShippedWorkspaceProvider(t, "github", "github")
 	if !prov.HasResolver() {
@@ -109,7 +108,7 @@ func TestShippedWorkspaceProvider_SetupHookDoesNotShellInjectResourceID(t *testi
 	_, _ = task.RunWorkflowSetup(prov, vars, tasks, nil)
 
 	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("resource id was shell-interpreted: injected command executed")
+		t.Fatal("the injected command executed: a resource id reached the shell as syntax")
 	}
 }
 
@@ -131,7 +130,7 @@ func TestShippedWorkspaceProvider_CleanupHookDoesNotShellInjectWorkspaceDirOrBra
 	_ = task.RunWorkflowCleanup(prov, vars, tasks, nil)
 
 	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("branch was shell-interpreted: injected command executed")
+		t.Fatal("the injected command executed: a recorded branch reached the shell as syntax")
 	}
 }
 

@@ -273,6 +273,12 @@ func TestDestroy_RunsWorkflowCleanup(t *testing.T) {
 type    = "exec"
 command = "sh"
 args    = ["-c", 'rm -rf "$1" && touch "$2"', "provider", { from = "self.outputs.workspace_dir" }, %q]
+
+[wf.outputs_schema]
+type = "object"
+
+[wf.outputs_schema.properties]
+workspace_dir = { type = "string" }
 `, marker))
 
 	url := "https://github.com/org/repo/issues/7"
@@ -320,6 +326,12 @@ args = [
   { from = "cleanup.inputs.delete_branch", default = "" },
   %q,
 ]
+
+[wf.outputs_schema]
+type = "object"
+
+[wf.outputs_schema.properties]
+workspace_dir = { type = "string" }
 `, marker))
 
 	url := "https://github.com/org/repo/issues/8"

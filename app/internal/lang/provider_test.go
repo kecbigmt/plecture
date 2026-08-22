@@ -187,8 +187,8 @@ bin  = "okf-bundle"
 			layer: LayerStructural,
 		},
 		{
-			// A provider declaring no outputs contract has nothing to check a
-			// key against; demanding one is a different rule than this.
+			// A provider declaring no contract declares no property, so the
+			// read fails closed rather than being waved through.
 			name: "a cleanup reading an output where no contract is declared",
 			src: `[p]
 kind = "workspace_provider"
@@ -201,6 +201,22 @@ bin  = "okf-bundle"
 type = "exec"
 bin  = "okf-bundle"
 args = [{ from = "self.outputs.branch" }]
+`,
+			want: CodeFromPath,
+		},
+		{
+			name: "a cleanup reading nothing needs no contract",
+			src: `[p]
+kind = "workspace_provider"
+
+[p.setup]
+type = "exec"
+bin  = "okf-bundle"
+
+[p.cleanup]
+type = "exec"
+bin  = "okf-bundle"
+args = ["cleanup", { from = "session.name" }]
 `,
 		},
 	}

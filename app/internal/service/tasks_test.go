@@ -1587,5 +1587,14 @@ args    = ["-c", %[2]q, "provider"%[3]s]
 type    = "exec"
 command = "sh"
 args    = ["-c", %[4]q, "provider"%[5]s]
+
+# A cleanup reading an output has to declare it: the contract is what makes
+# the read resolvable at load.
+[%[1]s.outputs_schema]
+type = "object"
+
+[%[1]s.outputs_schema.properties]
+workspace_dir = { type = "string" }
+branch        = { type = "string" }
 `, id, setup, setupArgs, cleanup, cleanupArgs)
 }

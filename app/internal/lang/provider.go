@@ -40,13 +40,13 @@ func (v Validation) providerContracts(def *Definition, pos Position) error {
 		if err != nil {
 			return err
 		}
-		outputs, declared, err := contractProperties(def, "outputs_schema", pos)
+		outputs, err := contractProperties(def, "outputs_schema", pos)
 		if err != nil {
 			return err
 		}
 		for _, value := range action.values() {
 			for _, path := range valuePaths(value, surfaceProviderCleanup) {
-				if err := resolveOutput(path, outputs, declared, childPos(pos, "cleanup")); err != nil {
+				if err := resolveOutput(path, outputs, childPos(pos, "cleanup")); err != nil {
 					return err
 				}
 			}
@@ -84,26 +84,25 @@ func matchCaptures(def *Definition, pos Position) (captures map[string]bool, kno
 }
 
 // contractProperties reads one contract's declared properties, from the
-// inline table or from the document the `<field>_file` names. declared is
-// false only when the definition declares no contract at all: there is then
-// nothing to check a key against, and requiring a contract is a different
-// rule than checking against one.
-func contractProperties(def *Definition, field string, pos Position) (properties map[string]bool, declared bool, err error) {
+// inline table or from the document the `<field>_file` names. A definition
+// declaring no contract declares no property, which is why a read against it
+// fails rather than being waved through.
+func contractProperties(def *Definition, field string, pos Position) (map[string]bool, error) {
 	if raw, ok := def.Body[field]; ok {
 		table, ok := raw.(map[string]any)
 		if !ok {
-			return nil, false, newDiag(CodeFieldType, LayerStructural, childPos(pos, field),
+			return nil, newDiag(CodeFieldType, LayerStructural, childPos(pos, field),
 				field+" is a JSON Schema document")
 		}
-		return declaredProperties(table), true, nil
+		return declaredProperties(table), nil
 	}
 	raw, ok := def.Body[field+"_file"]
 	if !ok {
-		return nil, false, nil
+		return nil, nil
 	}
 	name, ok := raw.(string)
 	if !ok {
-		return nil, false, newDiag(CodeFieldType, LayerStructural, childPos(pos, field+"_file"),
+		return nil, newDiag(CodeFieldType, LayerStructural, childPos(pos, field+"_file"),
 			field+"_file is a path")
 	}
 	path := name
@@ -118,13 +117,13 @@ func contractProperties(def *Definition, field string, pos Position) (properties
 	}
 	data, readErr := os.ReadFile(path)
 	if readErr != nil {
-		return nil, false, fmt.Errorf("%s: %s: %w", pos, field+"_file", readErr)
+		return nil, fmt.Errorf("%s: %s: %w", pos, field+"_file", readErr)
 	}
 	var table map[string]any
 	if err := json.Unmarshal(data, &table); err != nil {
-		return nil, false, fmt.Errorf("%s: %s: %w", pos, field+"_file", err)
+		return nil, fmt.Errorf("%s: %s: %w", pos, field+"_file", err)
 	}
-	return declaredProperties(table), true, nil
+	return declaredProperties(table), nil
 }
 
 // valuePaths yields every root path one value reads, whether it projects one
@@ -175,12 +174,12 @@ func resolveCapture(path string, captures map[string]bool, pos Position) error {
 		fmt.Sprintf("%q names no capture this provider's match declares", path))
 }
 
-func resolveOutput(path string, outputs map[string]bool, declared bool, pos Position) error {
+func resolveOutput(path string, outputs map[string]bool, pos Position) error {
 	segments := strings.Split(path, ".")
 	if len(segments) < 3 || segments[0] != "self" || segments[1] != "outputs" {
 		return nil
 	}
-	if !declared || outputs[segments[2]] {
+	if outputs[segments[2]] {
 		return nil
 	}
 	return newDiag(CodeFromPath, LayerSemantic, pos,

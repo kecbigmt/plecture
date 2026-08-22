@@ -1,5 +1,5 @@
 # plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=definitions
-# reason: cleanup reads the provider's own production records, so a key its outputs_schema does not declare is unresolvable rather than merely empty at teardown.
+# reason: cleanup reads the provider's own production records, so a key its outputs_schema does not declare is unresolvable rather than merely empty at teardown. A provider declaring no contract at all declares no key, so such a read fails the same way.
 
 [worktree]
 kind = "workspace_provider"
