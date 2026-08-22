@@ -16,6 +16,10 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
+// judgeLeafDoneWhen is the `--done-when-json` form of one judge leaf, which
+// is how an instance carries a leaf its declaration did not.
+var judgeLeafDoneWhen = json.RawMessage(`{"all":[{"judge":"acceptance criteria are satisfied","id":"ac-met"}]}`)
+
 func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
@@ -26,6 +30,9 @@ func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
 			Status:  contract.TaskStatusProduced,
 			Dynamic: true,
 			Outputs: map[string]any{"revision": "sha1"},
+			// The instance carries the judge leaf its verdict is recorded
+			// against: a verdict on a leaf nothing declares is refused.
+			ExtraDoneWhen: judgeLeafDoneWhen,
 		},
 	})
 
@@ -73,6 +80,9 @@ func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 			Status:  contract.TaskStatusProduced,
 			Dynamic: true,
 			Outputs: map[string]any{"revision": "sha1"},
+			// The instance carries the judge leaf its verdict is recorded
+			// against: a verdict on a leaf nothing declares is refused.
+			ExtraDoneWhen: judgeLeafDoneWhen,
 		},
 	})
 
@@ -119,6 +129,9 @@ func TestRecordJudge_StampsRelationAndWorkflow(t *testing.T) {
 			Status:  contract.TaskStatusProduced,
 			Dynamic: true,
 			Outputs: map[string]any{"revision": "sha1"},
+			// The instance carries the judge leaf its verdict is recorded
+			// against: a verdict on a leaf nothing declares is refused.
+			ExtraDoneWhen: judgeLeafDoneWhen,
 		},
 	})
 	// Make the reviewer a sibling of the work session under a shared parent.
@@ -233,6 +246,9 @@ func TestRecordJudge_RequiresReviewerSession(t *testing.T) {
 			Status:  contract.TaskStatusProduced,
 			Dynamic: true,
 			Outputs: map[string]any{"revision": "sha1"},
+			// The instance carries the judge leaf its verdict is recorded
+			// against: a verdict on a leaf nothing declares is refused.
+			ExtraDoneWhen: judgeLeafDoneWhen,
 		},
 	})
 
@@ -261,6 +277,9 @@ func TestRecordJudge_RejectsSelfReview(t *testing.T) {
 			Status:  contract.TaskStatusProduced,
 			Dynamic: true,
 			Outputs: map[string]any{"revision": "sha1"},
+			// The instance carries the judge leaf its verdict is recorded
+			// against: a verdict on a leaf nothing declares is refused.
+			ExtraDoneWhen: judgeLeafDoneWhen,
 		},
 	})
 

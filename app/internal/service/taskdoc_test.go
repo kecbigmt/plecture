@@ -671,3 +671,67 @@ func TestSetTaskState_InstanceRequired(t *testing.T) {
 		t.Fatal("expected a rejection when no instance is named")
 	}
 }
+
+// An instance whose declaration has no completion predicate has no judge
+// leaves either, so a verdict recorded against one names a leaf that cannot
+// exist. Accepting it persisted a record nothing could ever consume.
+func TestRecordJudge_InstanceWithNoGateRejectsEveryLeaf(t *testing.T) {
+	store := testStore(t)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, gatelessDocument)
+	seedSession(t, store, "org/repo-0", "org/repo", 0, "wf", nil)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+	seedSession(t, store, "org/repo-2", "org/repo", 2, "wf", nil)
+	setParent(t, store, "org/repo-1", "org/repo-0")
+	setParent(t, store, "org/repo-2", "org/repo-0")
+
+	setup, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "note", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	_, err = RecordJudge(cfg, store, JudgeParams{
+		SessionName: "org/repo-1", Instance: setup.Instance, LeafID: "ac-met",
+		Action: task.JudgeActionApprove, Reason: "r", ReviewerSession: "org/repo-2",
+	})
+	if err == nil {
+		t.Fatal("expected a verdict against an instance with no completion predicate to be rejected")
+	}
+	if st := store.Get("org/repo-1").Tasks[setup.Instance]; st != nil && st.DoneWhen != nil && len(st.DoneWhen.Judges) > 0 {
+		t.Errorf("a judge record was persisted anyway: %+v", st.DoneWhen.Judges)
+	}
+}
+
+// gatelessDocument declares no completion predicate: it is work with nothing
+// to reconfirm, which the language allows.
+const gatelessDocument = `+++
+[note]
+kind              = "task"
+description       = "Work with nothing to reconfirm"
+resource_observer = "issue_pr"
++++
+Note something about {{ resource.id }}.
+`
+
+// The outputs write path reads both kinds through the shared loader, so a
+// document that will not load is reported as that rather than as a
+// declaration nobody wrote.
+func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
+	store := testStore(t)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "broken.md"), []byte("no frontmatter here\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
+		"watch#1": {Scope: contract.TaskScopeSession, TaskID: "watch", Status: contract.TaskStatusProduced, Dynamic: true, SetupAt: time.Now()},
+	})
+	_, err := SetOutput(cfg, store, SetOutputParams{
+		Identifier: "org/repo-1", Task: "watch#1", Outputs: map[string]any{"pr_state": "merged"},
+	})
+	if err == nil {
+		t.Fatal("expected the unloadable document to be reported")
+	}
+	if strings.Contains(err.Error(), "not found in any config layer") {
+		t.Errorf("error = %v, want the load failure rather than a missing-declaration report", err)
+	}
+}

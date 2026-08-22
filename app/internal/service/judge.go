@@ -95,7 +95,13 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	if _, ok := findJudgeLeaf(dw, params.LeafID); !ok && dw != nil {
+	// An instance with no completion predicate has no judge leaves either, so
+	// every leaf id is unknown rather than unverifiable: recording one
+	// persists a verdict nothing can ever consume.
+	if _, ok := findJudgeLeaf(dw, params.LeafID); !ok {
+		if dw == nil {
+			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q declares no done_when, so it has no judge leaf %q to record a verdict against", params.Instance, params.LeafID)}
+		}
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("judge leaf %q not found on instance %q", params.LeafID, params.Instance)}
 	}
 	// self-review is structurally rejected regardless of leaf policy: a session
