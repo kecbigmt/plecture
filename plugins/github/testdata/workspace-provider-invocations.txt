@@ -1,0 +1,10 @@
+== github / setup
+call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "stand-in-workspace_layout_root" "--issue-branch-template" "stand-in-issue_branch_template" "--tagged-branch-suffix" "stand-in-tagged_branch_suffix" "--watcher-bin" "<plugin>/bin/github-watcher"
+
+== github / cleanup
+call[0]: "github-worktree" "cleanup" "--workspace-dir" "/spy/workspace" "--branch" "spy-branch" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "stand-in-workspace_layout_root" "--force=true" "--delete-branch=true" "--delete-branch-default=stand-in-delete_branch_default"
+call[1]: "github-watcher" "unsubscribe" "--session" "acme/widget-1"
+
+== github / subscribe
+call[0]: "github-watcher" "subscribe" "--session" "acme/widget-1" "--resource" "example://acme/widget/1"
+
