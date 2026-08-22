@@ -4,82 +4,41 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
-	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
 
-// TestShippedChannelDefsRender renders every shipped channel definition's
-// template fields against a sample event, so a typo in config/plect/channels (e.g.
-// the slack_thread curl -d JSON body) fails CI, not only at delivery.
-func TestShippedChannelDefsRender(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
+// channelDef loads one channel declaration the way a real config home does,
+// so these tests exercise the declarations an author writes rather than a
+// hand-built runtime struct.
+func channelDef(t *testing.T, body string) config.ChannelDefinition {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "channels", "test.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	cfgDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "..", "..", "config", "plect")
-	if _, err := os.Stat(cfgDir); err != nil {
-		t.Skipf("shipped config not found at %s: %v", cfgDir, err)
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	channels, err := (&config.Config{BaseDir: cfgDir}).LoadChannels()
+	defs, err := (&config.Config{BaseDir: dir}).LoadChannels()
 	if err != nil {
-		t.Fatalf("LoadChannels(shipped): %v", err)
+		t.Fatalf("load channel: %v", err)
 	}
-	rctx := newRenderContext(
-		map[string]any{"path": "/run/c.sock", "session": "o/r-1", "thread_ts": "12.34", "channel_id": "C0", "queue_dir": "/run/codex-exec/o-r-1/queue"},
-		event.Event{Type: "github.ci_status", Summary: "CI failed: test"},
-		nil,
-	)
-	for id, def := range channels {
-		fields := map[string]string{"path": def.Path, "body": def.Body, "command": def.Command}
-		for i, a := range def.Args {
-			fields[fmt.Sprintf("args[%d]", i)] = a
-		}
-		for name, tmpl := range fields {
-			if tmpl == "" {
-				continue
-			}
-			if _, rerr := renderField(name, tmpl, rctx); rerr != nil {
-				t.Errorf("channel %q %s render: %v", id, name, rerr)
-			}
-		}
+	if len(defs) != 1 {
+		t.Fatalf("loaded %d channels, want 1", len(defs))
 	}
-	// Exercise both branches of the slack curl -d body (summary fallback and a
-	// body with characters that must be JSON-escaped) so a template/escaping
-	// regression fails CI.
-	slack, ok := channels["slack_thread"]
-	if !ok || len(slack.Args) == 0 {
-		t.Fatal("shipped slack_thread channel missing or has no args")
+	for _, def := range defs {
+		return def
 	}
-	body := slack.Args[len(slack.Args)-1] // the -d JSON payload is the final arg
-	for _, tc := range []struct {
-		ev   event.Event
-		want string
-	}{
-		{event.Event{Type: "github.ci_status", Summary: "CI failed: test"}, "CI failed: test"},
-		{event.Event{Type: event.TypeUserEmit, Summary: "s", Body: "kick \"now\"\nplease"}, "kick \"now\"\nplease"},
-	} {
-		rc := newRenderContext(map[string]any{"thread_ts": "12.34", "channel_id": "C0"}, tc.ev, nil)
-		got, err := renderField("-d", body, rc)
-		if err != nil {
-			t.Fatalf("slack -d render: %v", err)
-		}
-		var parsed map[string]any
-		if err := json.Unmarshal([]byte(got), &parsed); err != nil {
-			t.Errorf("slack -d body is not valid JSON: %v (%s)", err, got)
-		} else if parsed["text"] != tc.want {
-			t.Errorf("slack -d text = %q, want %q", parsed["text"], tc.want)
-		}
-	}
+	panic("unreachable")
 }
 
 func readFramed(conn net.Conn) ([]byte, error) {
@@ -95,6 +54,16 @@ func readFramed(conn net.Conn) ([]byte, error) {
 }
 
 func TestDeliver_UnixSocket(t *testing.T) {
+	def := channelDef(t, `
+[c]
+kind = "channel"
+type = "unix_socket"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
+
+[c.input_schema]
+path = { type = "string", required = true }
+`)
 	sock := filepath.Join(t.TempDir(), "c.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
@@ -102,193 +71,237 @@ func TestDeliver_UnixSocket(t *testing.T) {
 	}
 	defer ln.Close()
 
-	type result struct {
-		data []byte
-		err  error
-	}
-	got := make(chan result, 1)
+	got := make(chan []byte, 1)
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
-			got <- result{err: err}
 			return
 		}
 		defer conn.Close()
 		data, err := readFramed(conn)
-		got <- result{data: data, err: err}
+		if err != nil {
+			return
+		}
+		got <- data
 	}()
 
-	def := config.ChannelDefinition{Type: config.ChannelTypeUnixSocket, Path: sock, Body: "{{ json .Event }}"}
-	ev := event.Event{ID: "01ABC", SessionName: "o/r-1", Type: event.TypeInstruction, Body: "resolve #1"}
-	if err := Deliver(context.Background(), def, nil, ev); err != nil {
+	ev := event.Event{Type: event.TypeUserEmit, Body: "hello"}
+	if err := Deliver(context.Background(), def, map[string]any{"path": sock}, ev); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
-
-	r := <-got
-	if r.err != nil {
-		t.Fatal(r.err)
+	data := <-got
+	var envelope struct {
+		Payload struct{ Text string } `json:"payload"`
 	}
-	var env protocol.Envelope
-	if err := json.Unmarshal(r.data, &env); err != nil {
-		t.Fatalf("unmarshal envelope: %v", err)
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		t.Fatalf("envelope: %v (%s)", err, data)
 	}
-	if env.Type != protocol.MsgMessage {
-		t.Errorf("envelope type = %q, want %q", env.Type, protocol.MsgMessage)
+	var carried map[string]any
+	if err := json.Unmarshal([]byte(envelope.Payload.Text), &carried); err != nil {
+		t.Fatalf("payload is not the event as JSON: %v (%s)", err, envelope.Payload.Text)
 	}
-	var pl protocol.MessagePayload
-	if err := env.UnmarshalPayload(&pl); err != nil {
-		t.Fatal(err)
-	}
-	if pl.Source != "" {
-		t.Errorf("Source = %q, want empty (content events must not look like a verdict)", pl.Source)
-	}
-	// Text is the rendered body = the event as JSON.
-	var sent map[string]any
-	if err := json.Unmarshal([]byte(pl.Text), &sent); err != nil {
-		t.Fatalf("payload text is not the event JSON: %v (text=%q)", err, pl.Text)
-	}
-	if sent["type"] != event.TypeInstruction || sent["body"] != "resolve #1" {
-		t.Errorf("delivered event = %+v", sent)
+	if carried["body"] != "hello" {
+		t.Errorf("carried body = %v, want hello", carried["body"])
 	}
 }
 
 func TestDeliver_Exec(t *testing.T) {
 	dir := t.TempDir()
-	def := config.ChannelDefinition{
-		Type:    config.ChannelTypeExec,
-		Command: "touch",
-		Args:    []string{"{{.Inputs.dir}}/{{.Event.type}}"},
-	}
+	def := channelDef(t, `
+[c]
+kind    = "channel"
+type    = "exec"
+command = "touch"
+args    = [{ expr = "inputs.dir + '/' + event.type" }]
+
+[c.input_schema]
+dir = { type = "string", required = true }
+`)
 	ev := event.Event{Type: event.TypeInstruction}
 	if err := Deliver(context.Background(), def, map[string]any{"dir": dir}, ev); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
-	// argv rendered from both .Inputs and .Event, run without a shell.
 	if _, err := os.Stat(filepath.Join(dir, event.TypeInstruction)); err != nil {
 		t.Errorf("expected touched file: %v", err)
 	}
 }
 
-// TestDeliverWithOptions_TerminalResolverFeedsArgs exercises {{terminal
-// "..."}} end-to-end through DeliverWithOptions, the same path the shipped
-// tmux_send_keys.toml channel goes through.
-func TestDeliverWithOptions_TerminalResolverFeedsArgs(t *testing.T) {
-	dir := t.TempDir()
-	def := config.ChannelDefinition{
-		Type:    config.ChannelTypeExec,
-		Command: "bash",
-		Args:    []string{"-c", `echo "$1" > "$2"`, "terminal_resolver_test", `{{terminal "send_text"}}`, filepath.Join(dir, "out")},
+// An exec channel may hand its payload to the process's standard input
+// instead of its argv, which keeps a large or sensitive body out of the
+// process table.
+func TestDeliver_ExecStdin(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "stdin.out")
+	def := channelDef(t, `
+[c]
+kind    = "channel"
+type    = "exec"
+command = "sh"
+args    = ["-c", 'cat > "$1"', "channel", { from = "inputs.out" }]
+stdin   = { json = { from = "event" } }
+
+[c.input_schema]
+out = { type = "string", required = true }
+`)
+	ev := event.Event{Type: event.TypeUserEmit, Body: "piped"}
+	if err := Deliver(context.Background(), def, map[string]any{"out": out}, ev); err != nil {
+		t.Fatalf("Deliver: %v", err)
 	}
-	ev := event.Event{Type: event.TypeInstruction}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var carried map[string]any
+	if err := json.Unmarshal(raw, &carried); err != nil {
+		t.Fatalf("stdin is not the event as JSON: %v (%s)", err, raw)
+	}
+	if carried["body"] != "piped" {
+		t.Errorf("carried body = %v, want piped", carried["body"])
+	}
+}
+
+// A shell channel's script is literal: the event reaches it through the
+// binding transport, never as part of the command.
+func TestDeliver_Shell(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "shell.out")
+	def := channelDef(t, `
+[c]
+kind   = "channel"
+type   = "shell"
+script = 'printf "%s" "$message" > "$out"'
+
+[c.bind]
+out     = { from = "inputs.out" }
+message = { expr = "'[' + event.type + '] ' + event.body" }
+
+[c.input_schema]
+out = { type = "string", required = true }
+`)
+	ev := event.Event{Type: event.TypeUserEmit, Body: `a "quoted" $body; rm -rf /`}
+	if err := Deliver(context.Background(), def, map[string]any{"out": out}, ev); err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "[" + ev.Type + "] " + ev.Body; string(raw) != want {
+		t.Errorf("script saw %q, want %q — a bound value is data, not command text", raw, want)
+	}
+}
+
+func TestDeliverWithOptions_TerminalCapabilityReachesTheScript(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out")
+	def := channelDef(t, `
+[c]
+kind   = "channel"
+type   = "shell"
+script = 'sh -c "$send" channel-send "$message" > "$out"'
+
+[c.bind]
+send    = { terminal = "send_text" }
+message = { from = "event.body" }
+out     = { from = "inputs.out" }
+
+[c.input_schema]
+out = { type = "string", required = true }
+`)
 	terminal := func(verb string) (string, error) {
 		if verb != "send_text" {
 			t.Fatalf("resolver called with verb %q, want send_text", verb)
 		}
-		return "tmux send-keys -t mysession", nil
+		return `printf '%s' "$1"`, nil
 	}
-	if err := DeliverWithOptions(context.Background(), def, nil, ev, DeliverOptions{Terminal: terminal}); err != nil {
+	ev := event.Event{Type: event.TypeInstruction, Body: "typed"}
+	err := DeliverWithOptions(context.Background(), def, map[string]any{"out": out}, ev, DeliverOptions{Terminal: terminal})
+	if err != nil {
 		t.Fatalf("DeliverWithOptions: %v", err)
 	}
-	got, err := os.ReadFile(filepath.Join(dir, "out"))
+	raw, err := os.ReadFile(out)
 	if err != nil {
-		t.Fatalf("read output: %v", err)
+		t.Fatal(err)
 	}
-	if want := "tmux send-keys -t mysession\n"; string(got) != want {
-		t.Errorf("output = %q, want %q", string(got), want)
+	if string(raw) != "typed" {
+		t.Errorf("output = %q, want the terminal command to have carried the body", raw)
 	}
 }
 
-// TestDeliver_TerminalWithNoResolverFailsLoud guards a channel that
-// references {{terminal "..."}} when the caller supplied no resolver (Deliver,
-// not DeliverWithOptions) — it must fail the delivery, not render an empty
-// command a receiving script would otherwise run against nothing.
+// A channel consuming a terminal capability with no resolver in scope must
+// fail the delivery, not run against an empty command.
 func TestDeliver_TerminalWithNoResolverFailsLoud(t *testing.T) {
-	def := config.ChannelDefinition{
-		Type:    config.ChannelTypeExec,
-		Command: "true",
-		Args:    []string{`{{terminal "send_text"}}`},
-	}
+	def := channelDef(t, `
+[c]
+kind   = "channel"
+type   = "shell"
+script = 'true'
+
+[c.bind]
+send = { terminal = "send_text" }
+`)
 	err := Deliver(context.Background(), def, nil, event.Event{Type: event.TypeInstruction})
-	if err == nil {
-		t.Fatal("expected an error when {{terminal ...}} has no resolver")
+	if err == nil || !strings.Contains(err.Error(), "send_text") {
+		t.Fatalf("expected a terminal-unavailable error naming send_text, got %v", err)
 	}
 }
 
-func TestDeliver_EmptyOptionalFieldRendersEmpty(t *testing.T) {
+// An event's optional field is present-and-empty rather than absent, so a
+// projection of an unset body resolves to empty instead of failing.
+func TestDeliver_EmptyOptionalEventFieldResolvesEmpty(t *testing.T) {
 	dir := t.TempDir()
-	// An event whose optional fields (body) are unset must still
-	// deliver — {{.Event.body}} renders empty, not an error.
-	def := config.ChannelDefinition{
-		Type:    config.ChannelTypeExec,
-		Command: "touch",
-		Args:    []string{"{{.Inputs.dir}}/got-{{.Event.body}}"},
-	}
+	def := channelDef(t, `
+[c]
+kind    = "channel"
+type    = "exec"
+command = "touch"
+args    = [{ expr = "inputs.dir + '/got-' + event.body" }]
+
+[c.input_schema]
+dir = { type = "string", required = true }
+`)
 	ev := event.Event{Type: "github.state", Summary: "CI failed"} // Body empty
 	if err := Deliver(context.Background(), def, map[string]any{"dir": dir}, ev); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "got-")); err != nil {
-		t.Errorf("expected file from empty-field render: %v", err)
+		t.Errorf("expected file from the empty-field resolution: %v", err)
 	}
 }
 
-func TestRenderField_OptionalEventFieldEmpty(t *testing.T) {
-	// The shipped tmux_send_keys.toml arg pattern: fall back to .summary when
-	// .body is empty (github.* events carry their text in .summary), and append
-	// the resource URL from metadata so a multi-PR session knows which one
-	// changed. `with index` keeps the URL absent for events without one, and an
-	// all-empty event must still render without failing under missingkey=error.
-	const arg = `[{{.Event.type}}] {{if .Event.body}}{{.Event.body}}{{else}}{{.Event.summary}}{{end}}{{with index .Event.metadata "url"}} ({{.}}){{end}}`
-
-	rctx := newRenderContext(nil, event.Event{
-		Type:     "github.ci_status",
-		Summary:  "CI failed",
-		Metadata: map[string]string{"url": "https://github.com/o/r/pull/404"},
-	}, nil)
-	got, err := renderField("arg", arg, rctx)
-	if err != nil {
-		t.Fatalf("renderField: %v", err)
-	}
-	if want := "[github.ci_status] CI failed (https://github.com/o/r/pull/404)"; got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-
-	rctx = newRenderContext(nil, event.Event{Type: "plect.instruction", Body: "do it"}, nil)
-	got, err = renderField("arg", arg, rctx)
-	if err != nil {
-		t.Fatalf("renderField (no url): %v", err)
-	}
-	if got != "[plect.instruction] do it" {
-		t.Errorf("got %q, want %q", got, "[plect.instruction] do it")
+func TestDeliver_ExecFailureCarriesStderr(t *testing.T) {
+	def := channelDef(t, `
+[c]
+kind    = "channel"
+type    = "exec"
+command = "sh"
+args    = ["-c", "echo boom >&2; exit 3"]
+`)
+	err := Deliver(context.Background(), def, nil, event.Event{Type: event.TypeInstruction})
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("expected the failure to carry stderr, got %v", err)
 	}
 }
 
-func TestDeliver_ExecRenderError(t *testing.T) {
-	def := config.ChannelDefinition{Type: config.ChannelTypeExec, Command: "true", Args: []string{"{{.Inputs.missing}}"}}
-	err := Deliver(context.Background(), def, map[string]any{}, event.Event{})
-	if err == nil || !strings.Contains(err.Error(), "template") {
-		t.Fatalf("Deliver = %v, want a template error before exec", err)
-	}
-}
+// An unwired input has nothing to resolve, and delivery fails rather than
+// sending an empty value the receiver would read as real.
+func TestDeliver_MissingInputFailsDelivery(t *testing.T) {
+	def := channelDef(t, `
+[c]
+kind    = "channel"
+type    = "exec"
+command = "true"
+args    = [{ from = "inputs.absent" }]
 
-func TestDeliver_ExecFailure(t *testing.T) {
-	def := config.ChannelDefinition{Type: config.ChannelTypeExec, Command: "false", Args: []string{"x"}}
-	if err := Deliver(context.Background(), def, nil, event.Event{}); err == nil {
-		t.Fatal("expected error from a non-zero exit")
-	}
-}
-
-func TestDeliver_MissingInput(t *testing.T) {
-	def := config.ChannelDefinition{Type: config.ChannelTypeUnixSocket, Path: "{{.Inputs.path}}", Body: "x"}
-	err := Deliver(context.Background(), def, map[string]any{}, event.Event{})
-	if err == nil || !strings.Contains(err.Error(), "template") {
-		t.Fatalf("Deliver = %v, want a template error for the missing input", err)
+[c.input_schema]
+absent = { type = "string" }
+`)
+	err := Deliver(context.Background(), def, nil, event.Event{Type: event.TypeInstruction})
+	if err == nil || !strings.Contains(err.Error(), "inputs.absent") {
+		t.Fatalf("expected an unresolved-input error, got %v", err)
 	}
 }
 
 func TestDeliver_UnknownType(t *testing.T) {
-	def := config.ChannelDefinition{Type: "webhook"}
-	if err := Deliver(context.Background(), def, nil, event.Event{}); err == nil {
-		t.Fatal("expected error for unknown channel type")
+	def := config.ChannelDefinition{Type: "carrier-pigeon"}
+	if err := Deliver(context.Background(), def, nil, event.Event{Type: event.TypeInstruction}); err == nil {
+		t.Fatal("expected an unknown-type error")
 	}
 }

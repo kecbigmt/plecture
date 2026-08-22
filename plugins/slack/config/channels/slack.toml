@@ -1,23 +1,28 @@
 # Channel: deliver a session event to its Slack thread via this plugin's
 # slack-adapter service (see this plugin's src/slack-adapter and its
 # [[services]] declaration in plugin.toml) over that service's HTTP API.
-# exec runs argv directly (no shell); the event interpolates only as JSON
-# values (json quotes/escapes them), never as the command or URL.
-# `command`/`args` precede [input_schema] so TOML scopes them at top level.
+# exec runs argv directly (no shell); the event reaches the adapter only as
+# JSON values the serializer quotes and escapes, never as the command or URL.
 # Posts the event body, falling back to its summary.
-type = "exec"
+[slack]
+kind    = "channel"
+type    = "exec"
 command = "curl"
 args = [
   "-sf",
-  "--max-time", "10",
-  "-X", "POST",
-  '{{.Inputs.base_url}}/messages',
-  "-H", "Content-Type: application/json",
-  '-d', '{"thread_ts":{{json .Inputs.thread_ts}},"channel_id":{{json .Inputs.channel_id}},"text":{{if .Event.body}}{{json .Event.body}}{{else}}{{json .Event.summary}}{{end}}}',
+  "--max-time",
+  "10",
+  "-X",
+  "POST",
+  { expr = "inputs.base_url + '/messages'" },
+  "-H",
+  "Content-Type: application/json",
+  "-d",
+  { json = { thread_ts = { from = "inputs.thread_ts" }, channel_id = { from = "inputs.channel_id" }, text = { expr = "event.body != '' ? event.body : event.summary" } } },
 ]
 timeout = "10s"
 
-[input_schema]
+[slack.input_schema]
 base_url   = { type = "string", required = true }
 channel_id = { type = "string", required = true }
 thread_ts  = { type = "string", required = true }

@@ -57,20 +57,3 @@ func TestLoadWorkflows_RetiredEnvironmentFieldsRejected(t *testing.T) {
 		})
 	}
 }
-
-func TestLoadChannels_RetiredExecutionRejected(t *testing.T) {
-	base := t.TempDir()
-	writeFile(t, filepath.Join(base, "channels", "notify.toml"), `
-type    = "exec"
-command = "tmux"
-args    = ["send-keys"]
-execution = "environment"
-`)
-	_, err := (&Config{BaseDir: base}).LoadChannels()
-	if err == nil {
-		t.Fatal("expected a load error naming the retired `execution` field")
-	}
-	if !strings.Contains(err.Error(), "`execution`") {
-		t.Errorf("error does not name the retired field: %v", err)
-	}
-}

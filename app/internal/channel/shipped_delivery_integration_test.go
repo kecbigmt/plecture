@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
@@ -36,16 +37,42 @@ func shippedChannels(t *testing.T) map[string]config.ChannelDefinition {
 		t.Fatal("runtime.Caller failed")
 	}
 	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
-	dirs := []string{
-		filepath.Join(repoRoot, "plugins", "claude"),
-		filepath.Join(repoRoot, "plugins", "codex"),
-		filepath.Join(repoRoot, "plugins", "slack"),
+	var dirs []string
+	var mounted []plugins.Mounted
+	for _, name := range []string{"claude", "codex", "slack"} {
+		dir := filepath.Join(repoRoot, "plugins", name)
+		manifest, err := plugins.LoadManifest(dir)
+		if err != nil {
+			t.Fatalf("LoadManifest(%s): %v", name, err)
+		}
+		dirs = append(dirs, dir)
+		// The alias is deliberately not "official": a shipped channel that
+		// silently re-depended on one specific catalog alias would otherwise
+		// pass unnoticed.
+		mounted = append(mounted, plugins.Mounted{ID: "acme-mirror/" + name, Dir: dir, Manifest: manifest})
 	}
-	channels, err := (&config.Config{PluginDirs: dirs}).LoadChannels()
+	channels, err := (&config.Config{PluginDirs: dirs, Plugins: mounted}).LoadChannels()
 	if err != nil {
 		t.Fatalf("LoadChannels(shipped catalog): %v", err)
 	}
 	return channels
+}
+
+// shippedBin resolves a shipped channel's `bin` the way the dispatcher does.
+func shippedBin(def config.ChannelDefinition) BinResolver {
+	_, thisFile, _, _ := runtime.Caller(0)
+	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+	var mounted []plugins.Mounted
+	for _, name := range []string{"claude", "codex", "slack"} {
+		dir := filepath.Join(repoRoot, "plugins", name)
+		manifest, err := plugins.LoadManifest(dir)
+		if err != nil {
+			continue
+		}
+		mounted = append(mounted, plugins.Mounted{ID: "acme-mirror/" + name, Dir: dir, Manifest: manifest})
+	}
+	bins := config.MountedBins{Mounted: mounted, SourcePath: def.SourcePath}
+	return func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) }
 }
 
 func shippedChannel(t *testing.T, id string) config.ChannelDefinition {
@@ -144,12 +171,6 @@ func TestShippedDelivery_ClaudeWritesTheEventAsAFramedMessage(t *testing.T) {
 // is where its effect is observable.
 func TestShippedDelivery_CodexExecQueuesAnExpandedEnvelope(t *testing.T) {
 	def := shippedChannel(t, "codex_exec")
-	// The shipped definition names its executable without a path, so the
-	// plugin's scripts directory has to be reachable for this delivery.
-	_, thisFile, _, _ := runtime.Caller(0)
-	scripts := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "plugins", "codex", "scripts")
-	t.Setenv("PATH", scripts+string(os.PathListSeparator)+os.Getenv("PATH"))
-
 	queueDir := filepath.Join(t.TempDir(), "queue")
 	ev := event.Event{
 		Type:     event.TypeUserEmit,
@@ -158,8 +179,8 @@ func TestShippedDelivery_CodexExecQueuesAnExpandedEnvelope(t *testing.T) {
 		Metadata: map[string]string{"url": "https://example.test/pr/1"},
 	}
 	inputs := def.ApplyInputDefaults(map[string]any{"queue_dir": queueDir})
-	if err := Deliver(context.Background(), def, inputs, ev); err != nil {
-		t.Fatalf("Deliver: %v", err)
+	if err := DeliverWithOptions(context.Background(), def, inputs, ev, DeliverOptions{Bin: shippedBin(def)}); err != nil {
+		t.Fatalf("DeliverWithOptions: %v", err)
 	}
 
 	entries, err := os.ReadDir(queueDir)
@@ -194,15 +215,11 @@ func TestShippedDelivery_CodexExecQueuesAnExpandedEnvelope(t *testing.T) {
 // status event takes.
 func TestShippedDelivery_CodexExecFallsBackToTheSummary(t *testing.T) {
 	def := shippedChannel(t, "codex_exec")
-	_, thisFile, _, _ := runtime.Caller(0)
-	scripts := filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "plugins", "codex", "scripts")
-	t.Setenv("PATH", scripts+string(os.PathListSeparator)+os.Getenv("PATH"))
-
 	queueDir := filepath.Join(t.TempDir(), "queue")
 	ev := event.Event{Type: "github.ci_status", Summary: "CI failed"}
 	inputs := def.ApplyInputDefaults(map[string]any{"queue_dir": queueDir})
-	if err := Deliver(context.Background(), def, inputs, ev); err != nil {
-		t.Fatalf("Deliver: %v", err)
+	if err := DeliverWithOptions(context.Background(), def, inputs, ev, DeliverOptions{Bin: shippedBin(def)}); err != nil {
+		t.Fatalf("DeliverWithOptions: %v", err)
 	}
 	entries, err := os.ReadDir(queueDir)
 	if err != nil || len(entries) != 1 {
@@ -264,8 +281,8 @@ func TestShippedDelivery_SlackPostsTheEventAsJSON(t *testing.T) {
 				"channel_id": "C0",
 				"thread_ts":  "12.34",
 			})
-			if err := Deliver(context.Background(), def, inputs, tc.ev); err != nil {
-				t.Fatalf("Deliver: %v", err)
+			if err := DeliverWithOptions(context.Background(), def, inputs, tc.ev, DeliverOptions{Bin: shippedBin(def)}); err != nil {
+				t.Fatalf("DeliverWithOptions: %v", err)
 			}
 			select {
 			case p := <-got:

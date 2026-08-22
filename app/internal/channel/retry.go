@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
 
@@ -55,22 +56,26 @@ func DeliverWithRetryAndOptions(ctx context.Context, def config.ChannelDefinitio
 	})
 }
 
-// ResolveTimeout renders a definition's `timeout` against the resolved
-// channel inputs and parses the result. Rendering sees only `.Inputs`: the
-// per-attempt deadline is a property of the channel wiring, and letting one
-// event's payload shorten or lengthen it would make delivery timing an
+// ResolveTimeout resolves a definition's `timeout` against the resolved
+// channel inputs. The evaluation carries inputs alone: the per-attempt
+// deadline is a property of the channel wiring, and letting one event's
+// payload shorten or lengthen it would make delivery timing an
 // attacker-influenced value.
 func ResolveTimeout(def config.ChannelDefinition, inputs map[string]any) (time.Duration, error) {
-	if !def.TimeoutIsTemplate() {
-		return config.ParseDuration(def.Timeout)
+	if def.Timeout == nil {
+		return 0, nil
 	}
-	rendered, err := renderField("timeout", def.Timeout, renderContext{Inputs: inputs})
-	if err != nil {
-		return 0, err
+	if inputs == nil {
+		inputs = map[string]any{}
 	}
-	d, err := config.ParseDuration(strings.TrimSpace(rendered))
+	eval := lang.Eval{Env: lang.Environment{"inputs": inputs}}
+	resolved, _, err := eval.Argument(def.Timeout)
 	if err != nil {
-		return 0, fmt.Errorf("channel timeout %q: %w", rendered, err)
+		return 0, fmt.Errorf("channel timeout: %w", err)
+	}
+	d, err := config.ParseDuration(strings.TrimSpace(resolved))
+	if err != nil {
+		return 0, fmt.Errorf("channel timeout %q: %w", resolved, err)
 	}
 	return d, nil
 }
