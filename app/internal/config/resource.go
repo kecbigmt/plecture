@@ -27,6 +27,11 @@ import (
 // being the same declaration — they answer different questions.
 type ResourceDef struct {
 	ID string
+	// Definition is the declaration this observer was read from, kept so a
+	// reference to it resolves against the real thing rather than a
+	// reconstruction: a task document's completion keys are checked against
+	// this observer's own state contract.
+	Definition *lang.Definition
 	// Match is a regex a resource id must satisfy to be this kind. Required —
 	// unlike WorkspaceProviderConfig's optional resolver, an observer exists
 	// only to recognize and observe ids, so it has no other reason to load.
@@ -123,6 +128,7 @@ func (c *Config) loadResourceObservers(path string, fromPlugin bool) ([]Resource
 func resourceDefFrom(def *lang.Definition, path string, fromPlugin bool) (ResourceDef, error) {
 	r := ResourceDef{
 		ID:         def.ID,
+		Definition: def,
 		BaseDir:    configFileDir(path),
 		SourcePath: path,
 		FromPlugin: fromPlugin,

@@ -75,27 +75,34 @@ type StatusChain struct {
 // instance, so orchestrator consumers reading `plect status --json` lose
 // nothing by that CLI's retirement.
 type StatusTask struct {
-	Instance          string                  `json:"instance"`
-	TaskID            string                  `json:"task_id,omitempty"`
-	Scope             string                  `json:"scope"`
-	Status            string                  `json:"status"`
-	Dynamic           bool                    `json:"dynamic,omitempty"`
-	Name              string                  `json:"name,omitempty"`
-	Resource          string                  `json:"resource,omitempty"`
-	Outputs           map[string]any          `json:"outputs,omitempty"`
-	DoneWhen          *task.DoneWhenResult    `json:"done_when,omitempty"`
-	Action            string                  `json:"action,omitempty"` // satisfied|wait|review_required|kick|escalate
-	HeartbeatTicks    int                     `json:"heartbeat_ticks,omitempty"`
-	HeartbeatBudget   int                     `json:"heartbeat_budget,omitempty"`
-	Summary           string                  `json:"summary,omitempty"`
-	Body              string                  `json:"body,omitempty"`
-	ReviewerCommand   string                  `json:"reviewer_command,omitempty"`
-	JudgeCommands     []string                `json:"judge_commands,omitempty"`
-	UnmetItems        []CheckUnmetItem        `json:"unmet_items,omitempty"`
-	Fingerprint       string                  `json:"fingerprint,omitempty"`
-	Chains            []StatusChain           `json:"chains,omitempty"`
-	Finalized         bool                    `json:"finalized,omitempty"`
-	PersistedDoneWhen *contract.DoneWhenState `json:"persisted_done_when,omitempty"`
+	Instance string         `json:"instance"`
+	TaskID   string         `json:"task_id,omitempty"`
+	Scope    string         `json:"scope"`
+	Status   string         `json:"status"`
+	Dynamic  bool           `json:"dynamic,omitempty"`
+	Name     string         `json:"name,omitempty"`
+	Resource string         `json:"resource,omitempty"`
+	Outputs  map[string]any `json:"outputs,omitempty"`
+	// State is what this instance holds about itself, read by its completion
+	// predicate as `self.state.*`.
+	State map[string]any `json:"state,omitempty"`
+	// Observed is the last observation of this instance's resource and when
+	// it was taken. Reporting renders it rather than taking a new one, so the
+	// timestamp is what tells a reader how old these facts are.
+	Observed          *contract.ResourceObservation `json:"observed,omitempty"`
+	DoneWhen          *task.DoneWhenResult          `json:"done_when,omitempty"`
+	Action            string                        `json:"action,omitempty"` // satisfied|wait|review_required|kick|escalate
+	HeartbeatTicks    int                           `json:"heartbeat_ticks,omitempty"`
+	HeartbeatBudget   int                           `json:"heartbeat_budget,omitempty"`
+	Summary           string                        `json:"summary,omitempty"`
+	Body              string                        `json:"body,omitempty"`
+	ReviewerCommand   string                        `json:"reviewer_command,omitempty"`
+	JudgeCommands     []string                      `json:"judge_commands,omitempty"`
+	UnmetItems        []CheckUnmetItem              `json:"unmet_items,omitempty"`
+	Fingerprint       string                        `json:"fingerprint,omitempty"`
+	Chains            []StatusChain                 `json:"chains,omitempty"`
+	Finalized         bool                          `json:"finalized,omitempty"`
+	PersistedDoneWhen *contract.DoneWhenState       `json:"persisted_done_when,omitempty"`
 }
 
 // StatusFlow is layer 4: the session's recent inbound/outbound traffic.
@@ -275,12 +282,12 @@ func runtimeTaskViews(session *domain.Session) []StatusRuntimeTask {
 // already-evaluated done_when result per produced instance (from
 // evaluateSessionActions, the same evaluation `plect check`/`plect tick` act on),
 // so sessionTaskItems reuses it instead of evaluating done_when a second time.
-func statusTaskViews(cfg *config.Config, defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session, actions map[string]computedAction, chains map[string][]StatusChain) []StatusTask {
+func statusTaskViews(cfg *config.Config, declarations taskDeclarations, session *domain.Session, sessions map[string]*domain.Session, actions map[string]computedAction, chains map[string][]StatusChain) []StatusTask {
 	cached := make(map[string]task.DoneWhenResult, len(actions))
 	for key, a := range actions {
 		cached[key] = a.result
 	}
-	items := sessionTaskItems(cfg, defs, session, sessions, cached)
+	items := sessionTaskItems(cfg, declarations, session, sessions, cached)
 	if items == nil {
 		return nil
 	}
@@ -295,6 +302,8 @@ func statusTaskViews(cfg *config.Config, defs map[string]config.TaskDefinition, 
 			Name:      it.name,
 			Resource:  it.resource,
 			Outputs:   it.outputs,
+			State:     it.state,
+			Observed:  it.observed,
 			DoneWhen:  it.doneWhen,
 			Chains:    chains[it.instance],
 			Finalized: it.finalized,
@@ -333,6 +342,8 @@ func tombstoneStatusResult(tomb *contract.Tombstone) *StatusResult {
 			Name:              st.Name,
 			Resource:          st.Resource,
 			Outputs:           st.Outputs,
+			State:             st.State,
+			Observed:          st.Observed,
 			Finalized:         !st.FinalizedAt.IsZero(),
 			PersistedDoneWhen: st.DoneWhen,
 		})

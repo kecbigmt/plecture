@@ -68,7 +68,7 @@ func deliveryEval(inputs map[string]any, ev event.Event, opts DeliverOptions, ru
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
-	e := lang.Eval{Env: lang.Environment{"event": eventMap(ev), "inputs": inputs}}
+	e := lang.Eval{Roots: lang.Roots{"event": eventMap(ev), "inputs": inputs}}
 	if opts.Terminal != nil {
 		e.Terminal = func(verb string) (string, error) { return opts.Terminal(verb, runDir) }
 	}

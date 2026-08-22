@@ -106,7 +106,7 @@ func tryResolveName(prov config.WorkspaceProviderConfig, resource string) (strin
 			captures[group] = m[i]
 		}
 	}
-	eval := lang.Eval{Env: lang.Environment{"match": captures}}
+	eval := lang.Eval{Roots: lang.Roots{"match": captures}}
 	resolved, _, err := eval.Argument(prov.Name)
 	if err != nil {
 		return "", false, fmt.Errorf("workspace provider %q resolver name: %w", prov.ID, err)

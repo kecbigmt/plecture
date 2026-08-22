@@ -8,13 +8,13 @@ import (
 	"cel.dev/cel-go/cel"
 )
 
-// Environment holds what a surface's roots contain at one evaluation: a tree
+// Roots holds what a surface's roots contain at one evaluation: a tree
 // mirroring the dotted root paths values.md declares, so
 // `{ from = "workspace.dir" }` reads the "dir" key of the "workspace" root.
 // A root that has nothing to report is absent from the tree rather than
 // present and empty, which is what lets `default` and `optional` tell the
 // two apart.
-type Environment map[string]any
+type Roots map[string]any
 
 // Eval is Validation's runtime counterpart: where Validation checks a value
 // against the roots its surface declares, Eval resolves it against what
@@ -23,7 +23,7 @@ type Environment map[string]any
 // machine and this session rather than about the configuration; a nil hook
 // makes that capability unavailable rather than resolving to nothing.
 type Eval struct {
-	Env      Environment
+	Roots    Roots
 	Bin      func(ref string) (string, error)
 	Terminal func(verb string) (string, error)
 }
@@ -197,7 +197,7 @@ func (e Eval) resolveBin(ref string) (string, error) {
 // whether the contract declares that field is a load-time question, already
 // answered by the time anything is evaluated.
 func (e Eval) project(path string) (any, bool) {
-	var current any = map[string]any(e.Env)
+	var current any = map[string]any(e.Roots)
 	for _, segment := range strings.Split(path, ".") {
 		tbl, ok := current.(map[string]any)
 		if !ok {
@@ -221,8 +221,8 @@ func (e Eval) expr(src string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	opts := make([]cel.EnvOption, 0, len(e.Env))
-	for name := range e.Env {
+	opts := make([]cel.EnvOption, 0, len(e.Roots))
+	for name := range e.Roots {
 		opts = append(opts, cel.Variable(name, cel.DynType))
 	}
 	env, err := base.Extend(opts...)
@@ -237,7 +237,7 @@ func (e Eval) expr(src string) (any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("expr %q: %w", src, err)
 	}
-	out, _, err := program.Eval(map[string]any(e.Env))
+	out, _, err := program.Eval(map[string]any(e.Roots))
 	if err != nil {
 		return nil, fmt.Errorf("expr %q: %w", src, err)
 	}

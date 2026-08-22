@@ -149,6 +149,8 @@ type sessionTaskItem struct {
 	name      string
 	resource  string
 	outputs   map[string]any
+	state     map[string]any
+	observed  *contract.ResourceObservation
 	doneWhen  *task.DoneWhenResult
 	finalized bool
 }
@@ -161,7 +163,7 @@ type sessionTaskItem struct {
 // e.g. evaluateSessionActions, which Status calls first — so this projection
 // doesn't redundantly re-evaluate it; a cache miss (not produced, or no
 // done_when-bearing evaluation ran) still evaluates it directly.
-func sessionTaskItems(cfg *config.Config, defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session, cached map[string]task.DoneWhenResult) []sessionTaskItem {
+func sessionTaskItems(cfg *config.Config, declarations taskDeclarations, session *domain.Session, sessions map[string]*domain.Session, cached map[string]task.DoneWhenResult) []sessionTaskItem {
 	if session == nil || len(session.Tasks) == 0 {
 		return nil
 	}
@@ -184,10 +186,10 @@ func sessionTaskItems(cfg *config.Config, defs map[string]config.TaskDefinition,
 		if r, ok := cached[key]; ok {
 			rc := r
 			dwResult = &rc
-		} else if def, ok := defs[taskID]; ok {
-			dw, outputs, err := instanceGate(cfg, session, def, st)
+		} else if declarations.declares(taskID) {
+			dw, live, err := declarations.gate(cfg, session, key, st)
 			if err == nil && dw != nil {
-				res := task.EvaluateTaskDoneWhenWithContext(dw, outputs, doneWhenEvalContext(session.Name, st, sessions))
+				res := task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(session.Name, st, sessions))
 				dwResult = &res
 			}
 		}
@@ -197,6 +199,7 @@ func sessionTaskItems(cfg *config.Config, defs map[string]config.TaskDefinition,
 		items = append(items, sessionTaskItem{
 			seq: st.Seq, instance: key, taskID: st.TaskID, scope: st.Scope, status: st.Status,
 			dynamic: st.Dynamic, name: st.Name, resource: st.Resource, outputs: st.Outputs,
+			state: st.State, observed: st.Observed,
 			doneWhen: dwResult, finalized: !st.FinalizedAt.IsZero(),
 		})
 	}
@@ -211,8 +214,8 @@ func sessionTaskItems(cfg *config.Config, defs map[string]config.TaskDefinition,
 
 // taskViews projects a session's task instances for display. See
 // sessionTaskItems for the shared projection logic.
-func taskViews(cfg *config.Config, defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session) []TaskInstanceView {
-	items := sessionTaskItems(cfg, defs, session, sessions, nil)
+func taskViews(cfg *config.Config, declarations taskDeclarations, session *domain.Session, sessions map[string]*domain.Session) []TaskInstanceView {
+	items := sessionTaskItems(cfg, declarations, session, sessions, nil)
 	if items == nil {
 		return nil
 	}
@@ -233,19 +236,21 @@ func taskViews(cfg *config.Config, defs map[string]config.TaskDefinition, sessio
 	return out
 }
 
-// loadDisplayTasks loads the trusted-layer task definitions once for
-// done_when display across sessions. Task definitions are trusted-layer-only
-// (the workdir layer cannot contribute shell), so the workdir-independent load
-// is sufficient — mirroring loadDisplayWorkflows.
-func loadDisplayTasks(cfg *config.Config) map[string]config.TaskDefinition {
+// loadDisplayTasks loads the trusted-layer task declarations once for
+// done_when display across sessions. Declarations are trusted-layer-only (the
+// workdir layer cannot contribute shell), so the workdir-independent load is
+// sufficient — mirroring loadDisplayWorkflows. A load failure leaves display
+// without predicates rather than failing a listing: nothing here decides
+// anything.
+func loadDisplayTasks(cfg *config.Config) taskDeclarations {
 	if cfg == nil {
-		return nil
+		return taskDeclarations{}
 	}
-	defs, err := cfg.LoadTaskDefinitions("")
+	docs, effects, err := cfg.LoadTaskDeclarations("")
 	if err != nil {
-		return nil
+		return taskDeclarations{}
 	}
-	return defs
+	return taskDeclarations{docs: docs, effects: effects}
 }
 
 // lookupTombstone resolves identifier to a session name the same way
@@ -347,7 +352,7 @@ const listConcurrency = 16
 // buildListEntry gathers one session's runtime status. Safe to call
 // concurrently: it only reads the shared workflows and spawns its own
 // subprocesses.
-func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map[string]config.WorkflowFile, displayTasks map[string]config.TaskDefinition, s *domain.Session, sessions map[string]*domain.Session) ListEntry {
+func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map[string]config.WorkflowFile, displayTasks taskDeclarations, s *domain.Session, sessions map[string]*domain.Session) ListEntry {
 	var cached cachedInfo
 	applyDisplay(displayWorkflows, s, &cached)
 

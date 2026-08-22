@@ -77,7 +77,7 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 		observer := def
 		bins := config.MountedBins{Mounted: mounted, SourcePath: observer.SourcePath}
 		eval := lang.Eval{
-			Env: lang.Environment{
+			Roots: lang.Roots{
 				"resource":  map[string]any{"id": "owner:test", "revision": "abc123"},
 				"workspace": map[string]any{"dir": "/tmp/wd", "branch": "b"},
 				"session":   map[string]any{"name": "test-session"},
@@ -104,7 +104,7 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 		provider := prov
 		bins := config.MountedBins{Mounted: mounted, SourcePath: provider.SourcePath}
 		eval := lang.Eval{
-			Env: lang.Environment{
+			Roots: lang.Roots{
 				"resource": map[string]any{"id": "example://acme/widget/1"},
 				"session":  map[string]any{"name": "test-session", "inputs": map[string]any{}},
 				"inputs":   map[string]any{},
@@ -154,11 +154,11 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 			if action == nil {
 				continue
 			}
-			env := setupEnvironment(ctx)
+			env := setupRoots(ctx)
 			if strings.HasPrefix(field, "health") {
-				env = healthEnvironment(ctx)
+				env = healthRoots(ctx)
 			} else if field == "cleanup" {
-				env = cleanupEnvironment(ctx)
+				env = cleanupRoots(ctx)
 			}
 			resolved, err := resolveEffect(action, env, ctx, def.Ownership(), nil)
 			if err != nil {

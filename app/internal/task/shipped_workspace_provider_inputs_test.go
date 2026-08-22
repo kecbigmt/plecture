@@ -45,12 +45,12 @@ func loadShippedWorkspaceProviders(t *testing.T) (map[string]config.WorkspacePro
 // providerResolution resolves one shipped provider hook into the values it
 // hands its executable, so a parameter declared but never wired into a flag
 // fails here instead of silently doing nothing in production.
-func providerResolution(t *testing.T, prov config.WorkspaceProviderConfig, mounted []plugins.Mounted, action *lang.Action, env lang.Environment) string {
+func providerResolution(t *testing.T, prov config.WorkspaceProviderConfig, mounted []plugins.Mounted, action *lang.Action, env lang.Roots) string {
 	t.Helper()
 	bins := config.MountedBins{Mounted: mounted, SourcePath: prov.SourcePath}
 	eval := lang.Eval{
-		Env: env,
-		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, prov.Ownership()) },
+		Roots: env,
+		Bin:   func(ref string) (string, error) { return bins.ResolveBin(ref, prov.Ownership()) },
 	}
 	if action.Type == lang.ActionShell {
 		var parts []string
@@ -74,8 +74,8 @@ func providerResolution(t *testing.T, prov config.WorkspaceProviderConfig, mount
 	return strings.Join(execution.Argv, "\n")
 }
 
-func githubProviderEnv(inputs, cleanupInputs map[string]any) lang.Environment {
-	return lang.Environment{
+func githubProviderEnv(inputs, cleanupInputs map[string]any) lang.Roots {
+	return lang.Roots{
 		"resource": map[string]any{"id": "https://github.com/acme/widgets/issues/42"},
 		"session":  map[string]any{"name": "acme/widgets-42", "inputs": map[string]any{}},
 		"inputs":   inputs,

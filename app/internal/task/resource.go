@@ -59,7 +59,17 @@ func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branc
 	if err != nil || !ok {
 		return nil, def, ok, err
 	}
-	env := lang.Environment{"resource": map[string]any{"id": resourceID}}
+	state, err := ObserveResource(def, resourceID, branch, workspaceDirPath, mountedPlugins)
+	return state, def, true, err
+}
+
+// ObserveResource runs one named observer's `observe` action against a
+// resource id and validates the result against its state schema. It is the
+// path a declaration takes when it states which observer it is written for,
+// so nothing is matched by pattern: the declaration already said which
+// observer reports this resource.
+func ObserveResource(def config.ResourceDef, resourceID string, branch string, workspaceDirPath string, mountedPlugins []plugins.Mounted) (map[string]any, error) {
+	env := lang.Roots{"resource": map[string]any{"id": resourceID}}
 	// An absent workspace is absent from the environment rather than present
 	// and empty: that is what lets a standalone observation's `default` fire
 	// instead of handing the executable an empty flag value it cannot tell
@@ -70,24 +80,24 @@ func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branc
 	stdout, stderr, runErr := runResourceAction(def, def.Observe, env, mountedPlugins)
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {
-			return nil, def, true, fmt.Errorf("resource %s: %w: %s", def.ID, runErr, msg)
+			return nil, fmt.Errorf("resource %s: %w: %s", def.ID, runErr, msg)
 		}
-		return nil, def, true, fmt.Errorf("resource %s: %w", def.ID, runErr)
+		return nil, fmt.Errorf("resource %s: %w", def.ID, runErr)
 	}
 	obj, perr := ParseOutputs(stdout)
 	if perr != nil {
-		return nil, def, true, fmt.Errorf("resource %s: %w", def.ID, perr)
+		return nil, fmt.Errorf("resource %s: %w", def.ID, perr)
 	}
 	schema, serr := CompileSchema(def.StateSchema, def.ResolvedStateSchemaPath(), "resource:"+def.ID)
 	if serr != nil {
-		return nil, def, true, fmt.Errorf("resource %s: state_schema: %w", def.ID, serr)
+		return nil, fmt.Errorf("resource %s: state_schema: %w", def.ID, serr)
 	}
 	if schema != nil {
 		if verr := schema.Validate(obj); verr != nil {
-			return nil, def, true, fmt.Errorf("resource %s: observed state does not match state_schema: %s", def.ID, DescribeValidationError(schema, verr))
+			return nil, fmt.Errorf("resource %s: observed state does not match state_schema: %s", def.ID, DescribeValidationError(schema, verr))
 		}
 	}
-	return normalizeOutputs(obj), def, true, nil
+	return normalizeOutputs(obj), nil
 }
 
 // FinalizeJudgeEvidence is one judge leaf's satisfied verdict, carried into a
@@ -134,7 +144,7 @@ func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourc
 	for _, judge := range params.Judges {
 		judges = append(judges, judge)
 	}
-	env := lang.Environment{
+	env := lang.Roots{
 		"resource": map[string]any{"id": params.ResourceID, "revision": params.Revision},
 		"judges":   judges,
 	}
@@ -156,11 +166,11 @@ func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourc
 // transport, created only when there is a shell action to transport
 // bindings for — an observation runs on every tick, and an exec action
 // touches no filesystem of its own.
-func runResourceAction(def config.ResourceDef, action *lang.Action, env lang.Environment, mountedPlugins []plugins.Mounted) (stdout, stderr []byte, err error) {
+func runResourceAction(def config.ResourceDef, action *lang.Action, env lang.Roots, mountedPlugins []plugins.Mounted) (stdout, stderr []byte, err error) {
 	bins := config.MountedBins{Mounted: mountedPlugins, SourcePath: def.SourcePath}
 	eval := lang.Eval{
-		Env: env,
-		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
+		Roots: env,
+		Bin:   func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
 	}
 	runDir := ""
 	if action.Type == lang.ActionShell {

@@ -7,16 +7,17 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 // DoneStatus is the evaluation result of a done_when leaf (and, aggregated,
 // of a whole done_when).
 //
 //   - DoneSatisfied   — the predicate holds (✓).
-//   - DoneUnsatisfied — the output is present and the predicate is false (✗).
+//   - DoneUnsatisfied — the fact is present and the predicate is false (✗).
 //   - DonePending     — the predicate cannot be evaluated yet: a check leaf
-//     reads an output the instance has not produced, or a judge leaf has no
-//     reviewer action.
+//     reads a key nothing has reported, an expression reads one, or a judge
+//     leaf has no reviewer action.
 type DoneStatus string
 
 const (
@@ -81,38 +82,89 @@ type DoneWhenResult struct {
 	Leaves  []DoneLeafResult `json:"leaves,omitempty"`
 }
 
-// EvaluateTaskDoneWhen evaluates a task's done_when against a single
-// instance's outputs. Each check leaf compares the named output's value with
-// the leaf's operator; a judge leaf reads persisted reviewer action.
-func EvaluateTaskDoneWhen(dw *config.DoneWhen, outputs map[string]any) DoneWhenResult {
-	return EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{})
+// CompletionState is the pair of live roots a completion predicate reads:
+// what the declared observer publishes about the resource, and what this task
+// holds about itself. Both are current as of the evaluation that reads them —
+// re-evaluation rides on that, so nothing here declares itself dynamic.
+type CompletionState struct {
+	Resource map[string]any
+	Self     map[string]any
+}
+
+// Lookup resolves one completion key path. Absence is the pending case, so it
+// is reported rather than defaulted.
+func (s CompletionState) Lookup(path string) (any, bool) {
+	root, key, ok := splitCompletionKey(path)
+	if !ok {
+		// An unrooted key is the pre-language spelling, still carried by the
+		// declarations whose completion surface has not moved yet; it reads
+		// the instance's own facts. It goes away with the last of them.
+		val, ok := s.Self[path]
+		return val, ok && val != nil
+	}
+	var from map[string]any
+	switch root {
+	case "resource":
+		from = s.Resource
+	case "self":
+		from = s.Self
+	default:
+		return nil, false
+	}
+	val, ok := from[key]
+	return val, ok && val != nil
+}
+
+// Roots renders the two live roots as the tree an expression leaf is
+// evaluated against.
+func (s CompletionState) Roots() lang.Roots {
+	return lang.Roots{
+		"resource": map[string]any{"state": orEmpty(normalizeOutputs(s.Resource))},
+		"self":     map[string]any{"state": orEmpty(normalizeOutputs(s.Self))},
+	}
+}
+
+func splitCompletionKey(path string) (root, key string, ok bool) {
+	segments := strings.Split(path, ".")
+	if len(segments) != 3 || segments[1] != "state" {
+		return "", "", false
+	}
+	return segments[0], segments[2], true
+}
+
+// EvaluateTaskDoneWhen evaluates a task's done_when against one instance's
+// live state. Each check leaf compares the key it names with the leaf's
+// operator, an expression leaf states its whole predicate, and a judge leaf
+// reads persisted reviewer action.
+func EvaluateTaskDoneWhen(dw *config.DoneWhen, state CompletionState) DoneWhenResult {
+	return EvaluateTaskDoneWhenWithContext(dw, state, DoneWhenEvalContext{})
 }
 
 // EvaluateTaskDoneWhenWithContext evaluates a done_when with reviewer action
 // context for judge leaves. Evaluation is read-only: stale, missing, or
 // self-review action is pending; current request_changes is unsatisfied.
-func EvaluateTaskDoneWhenWithContext(dw *config.DoneWhen, outputs map[string]any, ctx DoneWhenEvalContext) DoneWhenResult {
+func EvaluateTaskDoneWhenWithContext(dw *config.DoneWhen, state CompletionState, ctx DoneWhenEvalContext) DoneWhenResult {
 	if dw == nil || len(dw.All) == 0 {
 		return DoneWhenResult{}
 	}
-	normalized := normalizeOutputs(outputs)
-	if normalized == nil {
-		normalized = map[string]any{}
-	}
+	state.Resource = orEmpty(normalizeOutputs(state.Resource))
+	state.Self = orEmpty(normalizeOutputs(state.Self))
 
 	leaves := make([]DoneLeafResult, 0, len(dw.All))
 	satisfied, unsatisfied := 0, 0
 	for i, leaf := range dw.All {
 		var res DoneLeafResult
-		if strings.TrimSpace(leaf.Judge) != "" {
+		switch {
+		case leaf.IsJudge():
 			res = evalJudgeLeaf(i, leaf, ctx)
-		} else {
-			val, observed := normalized[leaf.Check]
-			observed = observed && val != nil
+		case leaf.IsExpr():
+			res = evalExprLeaf(leaf, state)
+		default:
+			val, observed := state.Lookup(leaf.Check)
 			res = DoneLeafResult{
 				Kind:     "check",
 				Expr:     checkExpr(leaf),
-				Status:   evalCheckLeaf(leaf, normalized),
+				Status:   evalCheckLeaf(leaf, state),
 				Output:   leaf.Check,
 				Observed: observed,
 			}
@@ -211,21 +263,51 @@ func JudgeLeafID(i int, leaf config.DoneWhenLeaf) string {
 	return fmt.Sprintf("judge:%d", i)
 }
 
-// CheckLeafStatus evaluates a single check leaf against raw (un-normalized)
-// outputs. It is the check-fact primitive the chaining engine's `when` shares
+// CheckLeafStatus evaluates a single check leaf against one instance's live
+// state. It is the check-fact primitive the chaining engine's `when` shares
 // with done_when, so a chain `{ check = ..., in = [...] }` reads identically to
 // the same done_when leaf.
-func CheckLeafStatus(leaf config.DoneWhenLeaf, outputs map[string]any) DoneStatus {
-	return evalCheckLeaf(leaf, normalizeOutputs(outputs))
+func CheckLeafStatus(leaf config.DoneWhenLeaf, state CompletionState) DoneStatus {
+	state.Resource = orEmpty(normalizeOutputs(state.Resource))
+	state.Self = orEmpty(normalizeOutputs(state.Self))
+	if leaf.IsExpr() {
+		return evalExprLeaf(leaf, state).Status
+	}
+	return evalCheckLeaf(leaf, state)
 }
 
-// evalCheckLeaf applies the leaf's comparison operator to the named output. A
-// missing output is pending (data not yet observed); a present output that
-// fails the predicate is unsatisfied. gte/lte against a non-numeric value reads
-// as unsatisfied — the value exists but cannot satisfy a numeric bound.
-func evalCheckLeaf(leaf config.DoneWhenLeaf, outputs map[string]any) DoneStatus {
-	val, ok := outputs[leaf.Check]
-	if !ok || val == nil {
+// evalCheckLeaf applies the leaf's comparison operator to the key it names. A
+// key nothing has reported is pending (no fact yet); a present one that fails
+// the predicate is unsatisfied. gte/lte against a non-numeric value reads as
+// unsatisfied — the value exists but cannot satisfy a numeric bound.
+// evalExprLeaf evaluates one expression leaf. A predicate that cannot be
+// evaluated is pending, not unsatisfied: an expression comparing a recorded
+// value against a live one reads as "nothing recorded yet" before it reads as
+// "they differ", and only the second is a reason to stop waiting. A
+// non-boolean result is a declaration error the language rejects at load, so
+// it is pending here rather than guessed at.
+func evalExprLeaf(leaf config.DoneWhenLeaf, state CompletionState) DoneLeafResult {
+	res := DoneLeafResult{Kind: "expr", Expr: leaf.Expr, Status: DonePending}
+	eval := lang.Eval{Roots: state.Roots()}
+	resolved, _, err := eval.Value(&lang.Value{Form: lang.FormExpr, Expr: leaf.Expr})
+	if err != nil {
+		res.PendingReason = "unevaluable_expression"
+		return res
+	}
+	held, ok := resolved.(bool)
+	if !ok {
+		res.PendingReason = "non_boolean_expression"
+		return res
+	}
+	res.Observed = true
+	res.Value = toString(held)
+	res.Status = boolStatus(held)
+	return res
+}
+
+func evalCheckLeaf(leaf config.DoneWhenLeaf, state CompletionState) DoneStatus {
+	val, ok := state.Lookup(leaf.Check)
+	if !ok {
 		return DonePending
 	}
 	switch {

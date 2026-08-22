@@ -63,7 +63,7 @@ type activitySignalWire struct {
 // distinction only decides what the health report says about the probe.
 func RunActivityProbe(goCtx context.Context, p Probe, session SessionVars) (*ActivitySignal, error) {
 	ctx := p.context(session)
-	resolved, err := resolveEffect(p.Action, healthEnvironment(ctx), ctx, p.From, nil)
+	resolved, err := resolveEffect(p.Action, healthRoots(ctx), ctx, p.From, nil)
 	if err != nil {
 		return nil, err
 	}

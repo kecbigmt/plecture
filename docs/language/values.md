@@ -142,6 +142,13 @@ declare is `PLECTURE-CFG-FROM-PATH`.
 as of each evaluation. Nothing about a value being "dynamic" needs its own
 declaration form — re-evaluation rides on root liveness.
 
+An evaluation is a pass that decides something: a completion predicate, a
+chain condition. Such a pass observes the resource once, and every leaf of
+that pass reads that one observation, so no two leaves of a single decision
+disagree about what the resource says. Rendering a display is not an
+evaluation: it reports the last observation, along with when that observation
+was taken.
+
 The live roots appear only in a task document, where a completion predicate and
 a chain read them. An effect's outputs are production records, so its
 `outputs.bind` observes no live root: what it reads is fixed when the layer is

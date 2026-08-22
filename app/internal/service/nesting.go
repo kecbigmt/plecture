@@ -245,6 +245,16 @@ func layerFacts(exposure []map[string]string, layer int, composed map[string]any
 	return out
 }
 
+// layerCompletionState re-keys one layer's view of the self root into that
+// layer's own names, leaving the resource root alone: what an observer
+// publishes about the resource is the same fact whichever layer reads it.
+func layerCompletionState(state task.CompletionState, exposure []map[string]string, layer int) task.CompletionState {
+	return task.CompletionState{
+		Resource: state.Resource,
+		Self:     layerFacts(exposure, layer, state.Self),
+	}
+}
+
 // terminalLayerEnv is the process environment the terminal-declaring layer's
 // operation commands run with: what the layers outside it inject. Empty for a
 // plain task and for a chain whose outermost layer declares the endpoint.
@@ -264,15 +274,39 @@ func terminalLayerEnv(target *task.Resolved, st *contract.TaskState) []string {
 // task's own for a plain one, with any instance-added leaves appended in both
 // cases. It is the single place every consumer of a done_when — status,
 // judge, finalize, tick — asks what an instance owes.
-func instanceGate(cfg *config.Config, session *domain.Session, def config.TaskDefinition, st *contract.TaskState) (*config.DoneWhen, map[string]any, error) {
+func instanceGate(cfg *config.Config, session *domain.Session, def config.TaskDefinition, st *contract.TaskState) (*config.DoneWhen, task.CompletionState, error) {
 	comp, err := composeInstance(def, st, sessionVars(cfg, session, nil))
 	if err != nil {
-		return nil, nil, err
+		return nil, task.CompletionState{}, err
 	}
 	base, _ := instanceDoneWhen(def, comp)
 	dw, err := effectiveDoneWhen(base, st)
 	if err != nil {
-		return nil, nil, err
+		return nil, task.CompletionState{}, err
 	}
-	return dw, instanceOutputs(st, comp), nil
+	return dw, instanceCompletionState(st, comp), nil
+}
+
+// instanceCompletionState is the pair of live roots one instance's predicates
+// read: the last observation of its resource, and what the instance holds
+// about itself. A pass that acts refreshes the observation before evaluating,
+// so every leaf of that pass reads one snapshot; a pass that only reports
+// reads the snapshot as it stands.
+//
+// An effect's outputs are folded into the self root while the effect and task
+// surfaces are still one declaration: a carried `[[outputs]]` entry writes
+// there, and a document's own state_schema is what will declare those keys.
+func instanceCompletionState(st *contract.TaskState, comp *instanceComposition) task.CompletionState {
+	self := map[string]any{}
+	for key, value := range instanceOutputs(st, comp) {
+		self[key] = value
+	}
+	for key, value := range st.State {
+		self[key] = value
+	}
+	state := task.CompletionState{Self: self}
+	if st.Observed != nil {
+		state.Resource = st.Observed.State
+	}
+	return state
 }

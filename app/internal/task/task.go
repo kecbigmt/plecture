@@ -122,7 +122,7 @@ func (p Probe) context(session SessionVars) RenderContext {
 // surface is present.
 func RunAliveProbe(goCtx context.Context, p Probe, session SessionVars) error {
 	ctx := p.context(session)
-	resolved, err := resolveEffect(p.Action, healthEnvironment(ctx), ctx, p.From, nil)
+	resolved, err := resolveEffect(p.Action, healthRoots(ctx), ctx, p.From, nil)
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func runTerminalVerb(goCtx context.Context, binding *TerminalBinding, verb strin
 		return nil, nil, err
 	}
 	ctx := RenderContext{Self: binding.Outputs, Session: session, SourcePath: binding.SourcePath}
-	resolved, err := resolveEffect(action, terminalEnvironment(binding.Outputs, session), ctx, binding.From, operands)
+	resolved, err := resolveEffect(action, terminalRoots(binding.Outputs, session), ctx, binding.From, operands)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1024,7 +1024,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		outputs := map[string]any{}
 		var stderrCaptured []byte
 		if r.Setup != nil {
-			resolved, resolveErr := resolveEffect(r.Setup, setupEnvironment(ctx), ctx, r.From, nil)
+			resolved, resolveErr := resolveEffect(r.Setup, setupRoots(ctx), ctx, r.From, nil)
 			if resolveErr != nil {
 				tasks[r.NodeID] = failedState(r, now, resolveErr.Error(), prev, resolvedInputs)
 				wrapped := fmt.Errorf("effect %q setup: %w", r.NodeID, resolveErr)
@@ -1241,7 +1241,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			Session:    sess,
 			SourcePath: r.SourcePath,
 		}
-		resolved, resolveErr := resolveEffect(r.Cleanup, cleanupEnvironment(ctx), ctx, r.From, nil)
+		resolved, resolveErr := resolveEffect(r.Cleanup, cleanupRoots(ctx), ctx, r.From, nil)
 		if resolveErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = resolveErr.Error()

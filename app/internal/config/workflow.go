@@ -328,16 +328,29 @@ type DoneWhen struct {
 //	    structural. Which reviewer workflow runs is a chaining concern, not a leaf
 //	    field.
 type DoneWhenLeaf struct {
-	Check    string   `toml:"check" json:"check,omitempty"`
-	Eq       *string  `toml:"eq" json:"eq,omitempty"`
-	Ne       *string  `toml:"ne" json:"ne,omitempty"`
-	In       []any    `toml:"in" json:"in,omitempty"`
-	Gte      *float64 `toml:"gte" json:"gte,omitempty"`
-	Lte      *float64 `toml:"lte" json:"lte,omitempty"`
+	// Check names one completion key by its root path — `resource.state.<key>`
+	// for what the declared observer publishes, `self.state.<key>` for what
+	// this task holds.
+	Check string   `toml:"check" json:"check,omitempty"`
+	Eq    *string  `toml:"eq" json:"eq,omitempty"`
+	Ne    *string  `toml:"ne" json:"ne,omitempty"`
+	In    []any    `toml:"in" json:"in,omitempty"`
+	Gte   *float64 `toml:"gte" json:"gte,omitempty"`
+	Lte   *float64 `toml:"lte" json:"lte,omitempty"`
+	// Expr states a predicate computed over those same roots, which is how a
+	// recorded value is compared against a live one — a comparison with no key
+	// of its own to hang on.
+	Expr     string   `toml:"expr" json:"expr,omitempty"`
 	Judge    string   `toml:"judge" json:"judge,omitempty"`
 	ID       string   `toml:"id" json:"id,omitempty"`
 	Relation []string `toml:"relation" json:"relation,omitempty"`
 }
+
+// IsCheck / IsJudge / IsExpr name which of the three leaf kinds this is.
+// Exactly one holds for a valid leaf.
+func (l DoneWhenLeaf) IsCheck() bool { return strings.TrimSpace(l.Check) != "" }
+func (l DoneWhenLeaf) IsJudge() bool { return strings.TrimSpace(l.Judge) != "" }
+func (l DoneWhenLeaf) IsExpr() bool  { return strings.TrimSpace(l.Expr) != "" }
 
 // operatorCount returns how many comparison operators the leaf sets.
 func (l DoneWhenLeaf) operatorCount() int {
@@ -360,11 +373,12 @@ func (l DoneWhenLeaf) operatorCount() int {
 	return n
 }
 
-// Validate checks the structural invariants of a done_when: it must declare at
-// least one leaf, a check leaf must name an output and set exactly one operator,
-// a judge leaf must set no operators, and the two leaf kinds are exclusive.
-// Operator value typing (e.g. gte must be numeric) is enforced at TOML decode by
-// the field types.
+// Validate checks the structural invariants of a done_when: it declares at
+// least one leaf, and each leaf is exactly one of the three kinds — a check
+// naming one key and setting one operator, an expression, or a judge.
+// Operator value typing (e.g. gte must be numeric) is enforced at TOML decode
+// by the field types; which roots a key or an expression may read is the
+// language's own check.
 func (d *DoneWhen) Validate() error {
 	if d == nil {
 		return nil
@@ -373,13 +387,17 @@ func (d *DoneWhen) Validate() error {
 		return fmt.Errorf("done_when declares no leaves; add at least one `all` entry or remove the table")
 	}
 	for i, leaf := range d.All {
-		hasCheck := strings.TrimSpace(leaf.Check) != ""
-		hasJudge := strings.TrimSpace(leaf.Judge) != ""
+		kinds := 0
+		for _, is := range []bool{leaf.IsCheck(), leaf.IsExpr(), leaf.IsJudge()} {
+			if is {
+				kinds++
+			}
+		}
 		ops := leaf.operatorCount()
 		switch {
-		case hasCheck && hasJudge:
-			return fmt.Errorf("done_when.all[%d] sets both `check` and `judge`; exactly one is allowed", i)
-		case hasJudge:
+		case kinds > 1:
+			return fmt.Errorf("done_when.all[%d] sets more than one of `check`, `expr`, and `judge`; exactly one is allowed", i)
+		case leaf.IsJudge():
 			if ops > 0 {
 				return fmt.Errorf("done_when.all[%d] is a judge leaf and must not set comparison operators (eq/ne/in/gte/lte)", i)
 			}
@@ -388,7 +406,14 @@ func (d *DoneWhen) Validate() error {
 					return fmt.Errorf("done_when.all[%d] judge relation %q is not assignable; use sibling/parent/child (self is always rejected)", i, r)
 				}
 			}
-		case hasCheck:
+		case leaf.IsExpr():
+			if ops > 0 {
+				return fmt.Errorf("done_when.all[%d] is an expression leaf and must not set comparison operators (eq/ne/in/gte/lte); the expression states the whole predicate", i)
+			}
+			if len(leaf.Relation) > 0 {
+				return fmt.Errorf("done_when.all[%d] expression leaf must not set judge relation policy", i)
+			}
+		case leaf.IsCheck():
 			if ops != 1 {
 				return fmt.Errorf("done_when.all[%d] check %q must set exactly one operator (eq/ne/in/gte/lte), got %d", i, leaf.Check, ops)
 			}
@@ -397,9 +422,9 @@ func (d *DoneWhen) Validate() error {
 			}
 		default:
 			if ops > 0 {
-				return fmt.Errorf("done_when.all[%d] sets a comparison operator without a `check` output name", i)
+				return fmt.Errorf("done_when.all[%d] sets a comparison operator without a `check` key", i)
 			}
-			return fmt.Errorf("done_when.all[%d] sets neither `check` nor `judge`; exactly one is required", i)
+			return fmt.Errorf("done_when.all[%d] sets none of `check`, `expr`, and `judge`; exactly one is required", i)
 		}
 	}
 	return nil

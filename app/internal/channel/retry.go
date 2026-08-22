@@ -68,7 +68,7 @@ func ResolveTimeout(def config.ChannelDefinition, inputs map[string]any) (time.D
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
-	eval := lang.Eval{Env: lang.Environment{"inputs": inputs}}
+	eval := lang.Eval{Roots: lang.Roots{"inputs": inputs}}
 	resolved, _, err := eval.Argument(def.Timeout)
 	if err != nil {
 		return 0, fmt.Errorf("channel timeout: %w", err)

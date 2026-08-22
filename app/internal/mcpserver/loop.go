@@ -64,7 +64,7 @@ var taskFinalizeTool = mcp.NewTool("plect_task_finalize",
 )
 
 var checkTool = mcp.NewTool("plect_check",
-	mcp.WithDescription("Observation-only: evaluate each done_when-bearing task instance for a session — and, against those same facts, its [[chains]] — and report the result, with zero side effects — no heartbeat budget advance, no event published, no session woken or spawned, and no dynamic output refresh (reads whatever plect_tick, or the initial produce, last persisted). Repeated calls never change session state. Returns one action per instance: satisfied, wait, review_required, kick, or escalate — each with heartbeat_budget, heartbeat_ticks, a fingerprint for unchanged-poll detection, and unmet_items carrying machine-readable check/judge state. Also returns one chains[] entry per (chain, instance): fired/already-active/blocked (with blocked_reason), never spawned. Use plect_tick to actually advance the gate, refresh outputs, and fire chains."),
+	mcp.WithDescription("Observation-only: evaluate each done_when-bearing task instance for a session — and, against those same facts, its [[chains]] — and report the result, with zero side effects — no heartbeat budget advance, no event published, no session woken or spawned, and no observation and no dynamic output refresh (reads whatever plect_tick, or the initial produce, last persisted). Repeated calls never change session state. Returns one action per instance: satisfied, wait, review_required, kick, or escalate — each with heartbeat_budget, heartbeat_ticks, a fingerprint for unchanged-poll detection, and unmet_items carrying machine-readable check/judge state. Also returns one chains[] entry per (chain, instance): fired/already-active/blocked (with blocked_reason), never spawned. Use plect_tick to actually observe, advance the gate, and fire chains."),
 	mcp.WithString("session",
 		mcp.Required(),
 		mcp.Description("Resource identifier, or session name (e.g. session-123)"),
@@ -78,7 +78,7 @@ var tickTool = mcp.NewTool("plect_tick",
 		mcp.Description("Resource identifier, or session name (e.g. session-123)"),
 	),
 	mcp.WithBoolean("no_refresh",
-		mcp.Description("Read persisted outputs without refreshing dynamic outputs from the source of truth first"),
+		mcp.Description("Decide against the last observation, without observing each resource first"),
 	),
 )
 

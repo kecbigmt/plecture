@@ -191,9 +191,16 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 			return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("%q is a static workflow node, not a runtime task; use --node", handle)}
 		}
 		taskID := taskIDForInstance(handle, st)
-		defs, loadErr := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
+		// Both kinds are loaded together, so which one this id names is the
+		// loader's answer rather than this branch's guess — and a document
+		// that will not load is reported as that rather than as a missing
+		// declaration.
+		docs, defs, loadErr := cfg.LoadTaskDeclarations(session.WorkspaceDirPath)
 		if loadErr != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", loadErr)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task declarations: %v", loadErr)}
+		}
+		if _, isDoc := docs[taskID]; isDoc {
+			return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q is a task document, which produces no outputs; record what it holds about itself with `plect state set --instance %s` instead", taskID, handle)}
 		}
 		def, ok := defs[taskID]
 		if !ok {

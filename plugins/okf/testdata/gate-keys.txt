@@ -1,0 +1,9 @@
+== goal_review
+goal_parse_status  observed  done_when   okf_goal
+verdict_current    derived   done_when
+
+== pursue_goal
+checklist_status   observed  chain.goal_review+done_when   okf_goal
+goal-met           judged    chain.goal_review+done_when
+goal_parse_status  observed  chain.goal_review+done_when   okf_goal
+goal_status        observed  chain.goal_review+done_when   okf_goal

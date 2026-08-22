@@ -65,6 +65,17 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 	// that just failed leaves that reconfirmation unproven, not merely stale.
 	// Fail closed rather than silently evaluate against the untouched old
 	// value as if it were freshly confirmed.
+	// Same trade for the observation this instance's predicate reads: an
+	// observation that just failed leaves the reconfirmation unproven, so
+	// finalize refuses rather than recording completion against whatever the
+	// resource last said.
+	observation, err := ObserveInstanceResource(cfg, store, sessionName, params.Instance)
+	if err != nil {
+		return nil, err
+	}
+	if observation != nil && observation.Error != "" {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("instance %q: observing its resource failed (%s); finalize refuses to reconfirm against a stale observation", params.Instance, observation.Error)}
+	}
 	refreshed, err := RefreshInstanceOutputs(cfg, store, sessionName, params.Instance)
 	if err != nil {
 		return nil, err
@@ -82,11 +93,11 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q not found in session %s", params.Instance, resolvedName)}
 	}
 
-	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
+	declarations, err := loadDeclarations(cfg, session)
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
+		return nil, err
 	}
-	def := defs[taskIDForInstance(params.Instance, st)]
+	def := declarations.effects[taskIDForInstance(params.Instance, st)]
 	// Reading a drifted chain degrades to the outermost layer's own
 	// declarations, which is right for a status line and wrong here:
 	// recording completion against a gate whose inner conditions silently
@@ -94,7 +105,7 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 	if chainDrifted(def, st) {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q was set up with %d nesting layers but task %q now declares %d; finalize refuses to record completion against a gate it cannot compose", params.Instance, len(st.Layers), def.ID, len(def.InnerChain)+1)}
 	}
-	dw, gateOutputs, derr := instanceGate(cfg, session, def, st)
+	dw, gateOutputs, derr := declarations.gate(cfg, session, params.Instance, st)
 	if derr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: derr.Error()}
 	}
@@ -125,7 +136,7 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 		ran, matched, ferr := task.FinalizeResource(resDefs, task.FinalizeResourceParams{
 			ResourceID:  resourceID,
 			SessionName: resolvedName,
-			Revision:    currentRevision(st.Outputs),
+			Revision:    instanceRevision(st),
 			Judges:      judgeEvidenceFromLeaves(eval.Leaves),
 			Plugins:     cfg.Plugins,
 		})

@@ -30,8 +30,12 @@ type TaskSetupParams struct {
 	// Resource is bound to the instance (exposed to its setup/done_when as
 	// .ResourceID) — it is no longer part of the instance key, so the same
 	// task can be instantiated repeatedly regardless of resource.
-	Resource          string
-	Inputs            map[string]string // raw --input k=v bindings
+	Resource string
+	Inputs   map[string]string // raw --input k=v bindings
+	// Instruction is extra instruction text a caller adds to the rendered
+	// body. Carried with the conditional and defaulting forms the instruction
+	// assets already had.
+	Instruction       string
 	ExtraDoneWhenJSON string
 	Observer          task.Observer
 }
@@ -45,6 +49,9 @@ type TaskSetupResult struct {
 	Name        string         `json:"name,omitempty"`
 	Resource    string         `json:"resource,omitempty"`
 	Outputs     map[string]any `json:"outputs,omitempty"`
+	// Instruction is the rendered body of a task document instance. Empty for
+	// an effect instance, whose instruction is an output of its setup.
+	Instruction string `json:"instruction,omitempty"`
 }
 
 // TaskSetup instantiates a task definition at runtime against a live
@@ -88,13 +95,16 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
 
-	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
+	docs, defs, err := loadTaskDeclarations(cfg, session)
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
+		return nil, err
+	}
+	if doc, ok := docs[params.TaskID]; ok {
+		return setupTaskDocument(cfg, store, resolvedName, session, doc, params)
 	}
 	def, ok := defs[params.TaskID]
 	if !ok {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q not found; add tasks/%s.toml to a trusted config layer", params.TaskID, params.TaskID)}
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q not found; add a task document or an effect declaration for it to a trusted config layer", params.TaskID)}
 	}
 
 	// The instance key (NodeID) is allocated under the lock below; ResolveDefinition

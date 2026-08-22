@@ -94,7 +94,7 @@ type computedAction struct {
 
 // evaluateSessionActions runs the read-only half shared by CheckSession (plect
 // status / plect_check) and TickSession (plect tick): optionally refresh outputs,
-// resolve the session, and evaluate
+// observe each instance's resource, resolve the session, and evaluate
 // done_when — and, against those same facts, [[chains]] — for every produced
 // task instance. It never writes state, spawns a session, or publishes events:
 // CheckSession returns its result verbatim (a dry-run chain plan), while
@@ -111,6 +111,12 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass a session or run inside a plect session pane"}
 	}
 	if refresh {
+		// Observation comes first and lands in state before anything reads
+		// it, so every leaf of this pass — a completion predicate and the
+		// chain conditions beside it — decides against one snapshot.
+		if _, err := ObserveSessionResources(cfg, store, sessionName); err != nil {
+			return "", nil, nil, nil, err
+		}
 		if _, err := RefreshSessionOutputs(cfg, store, sessionName); err != nil {
 			return "", nil, nil, nil, err
 		}
@@ -123,9 +129,9 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 	if err != nil {
 		return "", nil, nil, nil, err
 	}
-	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
+	docs, defs, err := loadTaskDeclarations(cfg, session)
 	if err != nil {
-		return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
+		return "", nil, nil, nil, err
 	}
 	legacyWarnings, err := cfg.LegacyChainsDirNotice()
 	if err != nil {
@@ -141,6 +147,19 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 			continue
 		}
 		taskID := taskIDForInstance(key, st)
+		if doc, ok := docs[taskID]; ok {
+			action, warning, derr := evaluateDocumentInstance(doc, resolvedName, session, key, st, allSessions, trigger)
+			if derr != nil {
+				return "", nil, nil, nil, derr
+			}
+			if warning != "" {
+				legacyWarnings = append(legacyWarnings, warning)
+			}
+			if action != nil {
+				computed = append(computed, *action)
+			}
+			continue
+		}
 		def := defs[taskID]
 		if chainDrifted(def, st) {
 			// The gate degrades to the outermost layer's own conditions,
@@ -154,7 +173,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: compErr.Error()}
 		}
 		layerDoneWhen, leafOwner := instanceDoneWhen(def, comp)
-		outputs := instanceOutputs(st, comp)
+		live := instanceCompletionState(st, comp)
 		dw, err := effectiveDoneWhen(layerDoneWhen, st)
 		if err != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
@@ -171,7 +190,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		if st.DoneWhen != nil {
 			lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
 		}
-		eval := task.EvaluateTaskDoneWhenWithContext(dw, outputs, doneWhenEvalContext(resolvedName, st, allSessions))
+		eval := task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(resolvedName, st, allSessions))
 		budgets := newLayerBudgets(comp, st, leafOwner, len(eval.Leaves))
 		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger, budgets)
 		if budgets != nil {
@@ -192,7 +211,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, schemaErr)}
 		}
 		if comp == nil {
-			facts := buildChainFacts(st.Outputs, eval)
+			facts := buildChainFacts(live, eval)
 			for _, ch := range chains {
 				if ch.TaskID != "" && ch.TaskID != taskID {
 					continue
@@ -212,7 +231,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 			if len(layer.Chains) == 0 {
 				continue
 			}
-			facts := buildChainFacts(layerFacts(exposure, i, outputs), eval)
+			facts := buildChainFacts(layerCompletionState(live, exposure, i), eval)
 			// The declared contract is what the layer's keys can reach, not
 			// what they happen to carry right now: a reachable key with no
 			// value yet is a chain waiting on an output, not a chain wired to

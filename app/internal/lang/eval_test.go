@@ -25,10 +25,10 @@ func parseActionSource(t *testing.T, src string) *Action {
 	return action
 }
 
-func observerEval(env Environment) Eval {
+func observerEval(env Roots) Eval {
 	return Eval{
-		Env: env,
-		Bin: func(ref string) (string, error) { return "/plugins/bin/" + ref, nil },
+		Roots: env,
+		Bin:   func(ref string) (string, error) { return "/plugins/bin/" + ref, nil },
 	}
 }
 
@@ -48,7 +48,7 @@ args = [
   { expr = "'pr-' + resource.id" },
 ]
 `)
-	got, err := observerEval(Environment{
+	got, err := observerEval(Roots{
 		"resource": map[string]any{"id": "https://example.test/pull/1"},
 	}).Exec(action)
 	if err != nil {
@@ -76,7 +76,7 @@ type    = "exec"
 command = "git"
 args    = ["rev-parse", { from = "workspace.branch" }]
 `)
-	got, err := observerEval(Environment{
+	got, err := observerEval(Roots{
 		"workspace": map[string]any{"branch": "main"},
 	}).Exec(action)
 	if err != nil {
@@ -94,7 +94,7 @@ bin   = "okf-goal"
 args  = ["resource", "finalize"]
 stdin = { json = { from = "judges" } }
 `)
-	got, err := observerEval(Environment{
+	got, err := observerEval(Roots{
 		"judges": []any{map[string]any{"id": "ac-met", "reason": "it's fine"}},
 	}).Exec(action)
 	if err != nil {
@@ -111,7 +111,7 @@ type = "exec"
 bin  = "github-issue-pr"
 args = [{ from = "workspace.dir" }]
 `)
-	_, err := observerEval(Environment{}).Exec(action)
+	_, err := observerEval(Roots{}).Exec(action)
 	if err == nil || !strings.Contains(err.Error(), "workspace.dir") {
 		t.Fatalf("expected an absent-root error naming workspace.dir, got %v", err)
 	}
@@ -123,7 +123,7 @@ type = "exec"
 bin  = "github-issue-pr"
 args = ["observe", { from = "workspace.dir", optional = true }]
 `)
-	got, err := observerEval(Environment{}).Exec(action)
+	got, err := observerEval(Roots{}).Exec(action)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestEvalStringifiesNativeScalarTypes(t *testing.T) {
 		{"float", 1.5, "1.5"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, absent, err := observerEval(Environment{"inputs": map[string]any{"v": tc.val}}).
+			got, absent, err := observerEval(Roots{"inputs": map[string]any{"v": tc.val}}).
 				Argument(&Value{Form: FormFrom, From: "inputs.v"})
 			if err != nil || absent {
 				t.Fatalf("absent=%v err=%v", absent, err)
@@ -157,7 +157,7 @@ func TestEvalStringifiesNativeScalarTypes(t *testing.T) {
 }
 
 func TestEvalArgumentRejectsAComposite(t *testing.T) {
-	_, _, err := observerEval(Environment{"inputs": map[string]any{"v": []any{"a", "b"}}}).
+	_, _, err := observerEval(Roots{"inputs": map[string]any{"v": []any{"a", "b"}}}).
 		Argument(&Value{Form: FormFrom, From: "inputs.v"})
 	if err == nil || !strings.Contains(err.Error(), "json") {
 		t.Fatalf("expected an error pointing at the json serializer, got %v", err)
@@ -165,7 +165,7 @@ func TestEvalArgumentRejectsAComposite(t *testing.T) {
 }
 
 func TestEvalExprNamingAnAbsentRootFails(t *testing.T) {
-	_, _, err := observerEval(Environment{}).
+	_, _, err := observerEval(Roots{}).
 		Argument(&Value{Form: FormExpr, Expr: "resource.id"})
 	if err == nil || !strings.Contains(err.Error(), "resource") {
 		t.Fatalf("expected an unresolved-name error naming resource, got %v", err)
@@ -182,7 +182,7 @@ resource_id = { from = "resource.id" }
 watcher     = { bin = "github-watcher" }
 `)
 	dir := t.TempDir()
-	got, err := observerEval(Environment{
+	got, err := observerEval(Roots{
 		"resource": map[string]any{"id": "https://example.test/pull/1"},
 	}).Shell(filepath.Join(dir, "run"), action, nil)
 	if err != nil {
@@ -215,7 +215,7 @@ dir     = { from = "workspace.dir", optional = true }
 present = { from = "resource.id" }
 `)
 	dir := t.TempDir()
-	got, err := observerEval(Environment{
+	got, err := observerEval(Roots{
 		"resource": map[string]any{"id": "r1"},
 	}).Shell(filepath.Join(dir, "run"), action, nil)
 	if err != nil {
@@ -250,7 +250,7 @@ script = "echo hi\n"
 [bind]
 dir = { from = "workspace.dir" }
 `)
-	_, err := observerEval(Environment{}).Shell(t.TempDir(), action, nil)
+	_, err := observerEval(Roots{}).Shell(t.TempDir(), action, nil)
 	if err == nil || !strings.Contains(err.Error(), "dir") {
 		t.Fatalf("expected an unresolved-binding error naming dir, got %v", err)
 	}

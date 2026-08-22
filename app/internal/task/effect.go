@@ -18,7 +18,7 @@ import (
 // absent from the tree rather than present and ignored — which is also what
 // lets a value's own `default` fire instead of reading an empty string.
 
-func setupEnvironment(ctx RenderContext) lang.Environment {
+func setupRoots(ctx RenderContext) lang.Roots {
 	env := sessionRoots(ctx)
 	env["inputs"] = normalizeOutputs(ctx.Inputs)
 	env["prev"] = normalizeOutputs(ctx.Prev)
@@ -30,7 +30,7 @@ func setupEnvironment(ctx RenderContext) lang.Environment {
 	return env
 }
 
-func cleanupEnvironment(ctx RenderContext) lang.Environment {
+func cleanupRoots(ctx RenderContext) lang.Roots {
 	env := sessionRoots(ctx)
 	env["self"] = map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Self))}
 	env["inputs"] = normalizeOutputs(ctx.Inputs)
@@ -39,21 +39,21 @@ func cleanupEnvironment(ctx RenderContext) lang.Environment {
 	return env
 }
 
-func healthEnvironment(ctx RenderContext) lang.Environment {
+func healthRoots(ctx RenderContext) lang.Roots {
 	env := sessionRoots(ctx)
 	env["self"] = map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Self))}
 	env["inputs"] = normalizeOutputs(ctx.Inputs)
 	return env
 }
 
-func terminalEnvironment(self map[string]any, session SessionVars) lang.Environment {
+func terminalRoots(self map[string]any, session SessionVars) lang.Roots {
 	env := sessionRoots(RenderContext{Session: session})
 	delete(env, "workspace")
 	env["self"] = map[string]any{"outputs": orEmpty(normalizeOutputs(self))}
 	return env
 }
 
-func innerEnvironment(ctx RenderContext) lang.Environment {
+func innerRoots(ctx RenderContext) lang.Roots {
 	env := sessionRoots(ctx)
 	env["inputs"] = normalizeOutputs(ctx.Inputs)
 	env["locals"] = normalizeOutputs(ctx.Locals)
@@ -62,17 +62,17 @@ func innerEnvironment(ctx RenderContext) lang.Environment {
 	return env
 }
 
-// outputsBindEnvironment observes no live root and no session: an effect's
+// outputsBindRoots observes no live root and no session: an effect's
 // outputs are production records, fixed when the layer is instantiated.
-func outputsBindEnvironment(ctx RenderContext) lang.Environment {
-	return lang.Environment{
+func outputsBindRoots(ctx RenderContext) lang.Roots {
+	return lang.Roots{
 		"inner":  map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Inner))},
 		"locals": normalizeOutputs(ctx.Locals),
 		"inputs": normalizeOutputs(ctx.Inputs),
 	}
 }
 
-func sessionRoots(ctx RenderContext) lang.Environment {
+func sessionRoots(ctx RenderContext) lang.Roots {
 	session := map[string]any{"name": ctx.Session.Name}
 	if ctx.Session.ParentSession != "" {
 		session["parent"] = ctx.Session.ParentSession
@@ -80,7 +80,7 @@ func sessionRoots(ctx RenderContext) lang.Environment {
 	if inputs := normalizeOutputs(ctx.Session.Inputs); len(inputs) > 0 {
 		session["inputs"] = inputs
 	}
-	env := lang.Environment{"session": session}
+	env := lang.Roots{"session": session}
 	if workspace := presentStrings(map[string]string{
 		"dir":    ctx.Session.WorkspaceDirPath,
 		"branch": ctx.Session.Branch,
@@ -119,11 +119,11 @@ func nodeRoots(tasks map[string]map[string]any) map[string]any {
 // dir is the private run directory a materialized terminal verb is written
 // into, so a resolved verb lives exactly as long as the execution consuming
 // it.
-func effectEval(env lang.Environment, ctx RenderContext, from lang.Ownership, dir string) lang.Eval {
+func effectEval(env lang.Roots, ctx RenderContext, from lang.Ownership, dir string) lang.Eval {
 	bins := config.MountedBins{Mounted: ctx.Session.Plugins, SourcePath: ctx.SourcePath}
 	eval := lang.Eval{
-		Env: env,
-		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
+		Roots: env,
+		Bin:   func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
 	}
 	if binding := ctx.Session.Terminal; binding != nil {
 		eval.Terminal = func(verb string) (string, error) {
@@ -150,7 +150,7 @@ func TerminalCommand(binding *TerminalBinding, verb string, session SessionVars,
 		return "", err
 	}
 	eval := lang.Eval{
-		Env: terminalEnvironment(binding.Outputs, session),
+		Roots: terminalRoots(binding.Outputs, session),
 		Bin: func(ref string) (string, error) {
 			bins := config.MountedBins{Mounted: session.Plugins, SourcePath: binding.SourcePath}
 			return bins.ResolveBin(ref, binding.From)
@@ -184,7 +184,7 @@ type effectExecution struct {
 // resolveEffect resolves one effect action against its surface. Resolution
 // is separate from running so a value that cannot be resolved is reported as
 // the configuration error it is rather than as a failed execution.
-func resolveEffect(action *lang.Action, env lang.Environment, ctx RenderContext, from lang.Ownership, operands []string) (*effectExecution, error) {
+func resolveEffect(action *lang.Action, env lang.Roots, ctx RenderContext, from lang.Ownership, operands []string) (*effectExecution, error) {
 	dir, err := os.MkdirTemp("", "plect-effect-")
 	if err != nil {
 		return nil, err
@@ -213,7 +213,7 @@ func (e *effectExecution) close() {
 // environment — into the strings the next layer inward receives. Keys are
 // walked in order so a diagnostic and a recorded execution are reproducible
 // rather than map-ordered.
-func resolveValues(values map[string]*lang.Value, env lang.Environment, ctx RenderContext, from lang.Ownership) (map[string]string, error) {
+func resolveValues(values map[string]*lang.Value, env lang.Roots, ctx RenderContext, from lang.Ownership) (map[string]string, error) {
 	if len(values) == 0 {
 		return nil, nil
 	}

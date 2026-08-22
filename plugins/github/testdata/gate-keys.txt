@@ -1,0 +1,21 @@
+== investigate
+ac-met             judged    done_when
+checks_status      observed  done_when   issue, pull
+resource_kind      observed  done_when   issue, pull
+solves             judged    done_when
+
+== respond
+ac-met             judged    done_when
+checks_status      observed  done_when   issue, pull
+resource_kind      observed  done_when   issue, pull
+solves             judged    done_when
+
+== review
+resource_kind      observed  done_when   issue, pull
+verdict_current    derived   done_when
+
+== work
+ac-met             judged    done_when
+checks_status      observed  done_when   issue, pull
+resource_kind      observed  done_when   issue, pull
+solves             judged    done_when

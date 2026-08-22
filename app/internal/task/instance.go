@@ -107,7 +107,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 	outputs := map[string]any{}
 	var stderr []byte
 	if r.Setup != nil {
-		resolved, resolveErr := resolveEffect(r.Setup, setupEnvironment(ctx), ctx, r.From, nil)
+		resolved, resolveErr := resolveEffect(r.Setup, setupRoots(ctx), ctx, r.From, nil)
 		if resolveErr != nil {
 			return InstanceSetup{}, fmt.Errorf("setup: %w", resolveErr)
 		}

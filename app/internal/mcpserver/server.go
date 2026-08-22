@@ -111,7 +111,7 @@ var statusTool = mcp.NewTool("plect_status",
 		mcp.Description("Resource identifier or session name (e.g. session-123)"),
 	),
 	mcp.WithBoolean("refresh",
-		mcp.Description("Re-fetch dynamic outputs from the source of truth before reporting, so the reported done_when reflects current state rather than the last persisted value."),
+		mcp.Description("Observe each resource before reporting, so the reported facts are current as of this call rather than as of the last observation. Without it, reporting renders the last observation and says when it was taken."),
 	),
 )
 
@@ -340,6 +340,9 @@ func handleStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 	}
 
 	if request.GetBool("refresh", false) {
+		if _, err := service.ObserveSessionResources(cfg, store, url); err != nil {
+			return errorResult(err), nil
+		}
 		if _, err := service.RefreshSessionOutputs(cfg, store, url); err != nil {
 			return errorResult(err), nil
 		}

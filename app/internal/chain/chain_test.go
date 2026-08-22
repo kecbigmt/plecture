@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 func strp(s string) *string { return &s }
 
 func TestWhenSatisfied(t *testing.T) {
 	facts := Facts{
-		Outputs: map[string]any{"checks_status": "SUCCESS"},
+		State: task.CompletionState{Self: map[string]any{"checks_status": "SUCCESS"}},
 		Judges: map[string]JudgeFact{
 			"ac-met": {Pending: true},
 			"solves": {Pending: false, Action: "request_changes"},

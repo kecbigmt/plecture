@@ -127,7 +127,7 @@ func TestEvaluateTaskDoneWhen(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := EvaluateTaskDoneWhen(tt.dw, tt.outputs)
+			got := EvaluateTaskDoneWhen(tt.dw, CompletionState{Self: tt.outputs})
 			if got.Overall != tt.want {
 				t.Errorf("overall = %q, want %q (leaves: %+v)", got.Overall, tt.want, got.Leaves)
 			}
@@ -140,7 +140,7 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 	outputs := map[string]any{"revision": "sha1"}
 
 	t.Run("approve action from current independent review satisfies", func(t *testing.T) {
-		got := EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{
+		got := EvaluateTaskDoneWhenWithContext(dw, CompletionState{Self: outputs}, DoneWhenEvalContext{
 			WorkSession:     "work",
 			CurrentRevision: "sha1",
 			Judges: map[string]Judge{
@@ -153,7 +153,7 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 	})
 
 	t.Run("changes requested current judge is unsatisfied", func(t *testing.T) {
-		got := EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{
+		got := EvaluateTaskDoneWhenWithContext(dw, CompletionState{Self: outputs}, DoneWhenEvalContext{
 			WorkSession:     "work",
 			CurrentRevision: "sha1",
 			Judges: map[string]Judge{
@@ -166,7 +166,7 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 	})
 
 	t.Run("stale judge is pending", func(t *testing.T) {
-		got := EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{
+		got := EvaluateTaskDoneWhenWithContext(dw, CompletionState{Self: outputs}, DoneWhenEvalContext{
 			WorkSession:     "work",
 			CurrentRevision: "sha2",
 			Judges: map[string]Judge{
@@ -179,7 +179,7 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 	})
 
 	t.Run("self review is pending", func(t *testing.T) {
-		got := EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{
+		got := EvaluateTaskDoneWhenWithContext(dw, CompletionState{Self: outputs}, DoneWhenEvalContext{
 			WorkSession:     "work",
 			CurrentRevision: "sha1",
 			Judges: map[string]Judge{
@@ -192,7 +192,7 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 	})
 
 	t.Run("empty reviewer is self review pending", func(t *testing.T) {
-		got := EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{
+		got := EvaluateTaskDoneWhenWithContext(dw, CompletionState{Self: outputs}, DoneWhenEvalContext{
 			WorkSession:     "work",
 			CurrentRevision: "sha1",
 			Judges: map[string]Judge{
@@ -205,7 +205,7 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 	})
 
 	t.Run("default policy accepts a parent reviewer", func(t *testing.T) {
-		got := EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{
+		got := EvaluateTaskDoneWhenWithContext(dw, CompletionState{Self: outputs}, DoneWhenEvalContext{
 			WorkSession:     "work",
 			CurrentRevision: "sha1",
 			Judges: map[string]Judge{
@@ -218,7 +218,7 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 	})
 
 	t.Run("default policy rejects a child reviewer as relation_not_accepted", func(t *testing.T) {
-		got := EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{
+		got := EvaluateTaskDoneWhenWithContext(dw, CompletionState{Self: outputs}, DoneWhenEvalContext{
 			WorkSession:     "work",
 			CurrentRevision: "sha1",
 			Judges: map[string]Judge{
@@ -232,7 +232,7 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 
 	t.Run("explicit child policy accepts a child reviewer", func(t *testing.T) {
 		dw := &config.DoneWhen{All: []config.DoneWhenLeaf{{Judge: "acceptance criteria", ID: "ac-met", Relation: []string{"child"}}}}
-		got := EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{
+		got := EvaluateTaskDoneWhenWithContext(dw, CompletionState{Self: outputs}, DoneWhenEvalContext{
 			WorkSession:     "work",
 			CurrentRevision: "sha1",
 			Judges: map[string]Judge{
@@ -246,7 +246,7 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 
 	t.Run("explicit policy that omits sibling rejects a sibling reviewer", func(t *testing.T) {
 		dw := &config.DoneWhen{All: []config.DoneWhenLeaf{{Judge: "acceptance criteria", ID: "ac-met", Relation: []string{"parent"}}}}
-		got := EvaluateTaskDoneWhenWithContext(dw, outputs, DoneWhenEvalContext{
+		got := EvaluateTaskDoneWhenWithContext(dw, CompletionState{Self: outputs}, DoneWhenEvalContext{
 			WorkSession:     "work",
 			CurrentRevision: "sha1",
 			Judges: map[string]Judge{
@@ -290,7 +290,7 @@ func TestEvaluateTaskDoneWhen_TaskResourceStatus(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := EvaluateTaskDoneWhen(dw, tt.outputs); got.Overall != tt.want {
+			if got := EvaluateTaskDoneWhen(dw, CompletionState{Self: tt.outputs}); got.Overall != tt.want {
 				t.Errorf("overall = %q, want %q (leaves: %+v)", got.Overall, tt.want, got.Leaves)
 			}
 		})
@@ -301,7 +301,7 @@ func TestEvaluateTaskDoneWhen_NormalizesIntegers(t *testing.T) {
 	// JSON unmarshal leaves integers as float64; eq compares via the normalized
 	// int string form, so an integral coverage value still matches "3".
 	dw := &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "count", Eq: strp("3")}}}
-	if got := EvaluateTaskDoneWhen(dw, map[string]any{"count": float64(3)}); got.Overall != DoneSatisfied {
+	if got := EvaluateTaskDoneWhen(dw, CompletionState{Self: map[string]any{"count": float64(3)}}); got.Overall != DoneSatisfied {
 		t.Errorf("overall = %q, want satisfied", got.Overall)
 	}
 }
@@ -312,7 +312,7 @@ func TestEvaluateTaskDoneWhen_LeafCarriesObservedValue(t *testing.T) {
 		{Check: "checks_status", Eq: strp("SUCCESS")},
 		{Judge: "reviewer approved"},
 	}}
-	got := EvaluateTaskDoneWhen(dw, map[string]any{"workdir_dirty": "2"})
+	got := EvaluateTaskDoneWhen(dw, CompletionState{Self: map[string]any{"workdir_dirty": "2"}})
 
 	dirty := got.Leaves[0]
 	if !dirty.Observed || dirty.Value != "2" || dirty.Output != "workdir_dirty" {
@@ -374,4 +374,106 @@ func TestResolveDefinition_Requires(t *testing.T) {
 			t.Errorf("no requires should be unconstrained, got %v", err)
 		}
 	})
+}
+
+func TestEvaluateTaskDoneWhen_RootedKeys(t *testing.T) {
+	dw := &config.DoneWhen{All: []config.DoneWhenLeaf{
+		{Check: "resource.state.checks_status", Eq: strp("SUCCESS")},
+		{Check: "self.state.verdict_revision", Eq: strp("sha1")},
+	}}
+	tests := []struct {
+		name  string
+		state CompletionState
+		want  DoneStatus
+	}{
+		{
+			name: "each root reads its own key",
+			state: CompletionState{
+				Resource: map[string]any{"checks_status": "SUCCESS"},
+				Self:     map[string]any{"verdict_revision": "sha1"},
+			},
+			want: DoneSatisfied,
+		},
+		{
+			name: "a key present in the other root is not visible",
+			state: CompletionState{
+				Resource: map[string]any{"checks_status": "SUCCESS", "verdict_revision": "sha1"},
+			},
+			want: DonePending,
+		},
+		{
+			name: "an unknown root is pending, not a lookup into nothing",
+			state: CompletionState{
+				Resource: map[string]any{"checks_status": "SUCCESS"},
+				Self:     map[string]any{"verdict_revision": "sha0"},
+			},
+			want: DoneUnsatisfied,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := EvaluateTaskDoneWhen(dw, tt.state); got.Overall != tt.want {
+				t.Errorf("overall = %q, want %q", got.Overall, tt.want)
+			}
+		})
+	}
+}
+
+// The verdict flow is the case the expression leaf exists for: a recorded
+// revision compared against the live one, with no key of its own to hang on.
+func TestEvaluateTaskDoneWhen_ExprLeaf(t *testing.T) {
+	dw := &config.DoneWhen{All: []config.DoneWhenLeaf{
+		{Expr: "self.state.verdict_revision == resource.state.revision"},
+	}}
+	tests := []struct {
+		name  string
+		state CompletionState
+		want  DoneStatus
+	}{
+		{
+			name: "nothing recorded yet is pending, not a difference",
+			state: CompletionState{
+				Resource: map[string]any{"revision": "sha2"},
+			},
+			want: DonePending,
+		},
+		{
+			name: "a verdict against an older revision is unsatisfied",
+			state: CompletionState{
+				Resource: map[string]any{"revision": "sha2"},
+				Self:     map[string]any{"verdict_revision": "sha1"},
+			},
+			want: DoneUnsatisfied,
+		},
+		{
+			name: "a verdict against the live revision satisfies",
+			state: CompletionState{
+				Resource: map[string]any{"revision": "sha2"},
+				Self:     map[string]any{"verdict_revision": "sha2"},
+			},
+			want: DoneSatisfied,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EvaluateTaskDoneWhen(dw, tt.state)
+			if got.Overall != tt.want {
+				t.Errorf("overall = %q, want %q (leaves: %+v)", got.Overall, tt.want, got.Leaves)
+			}
+			if got.Leaves[0].Kind != "expr" {
+				t.Errorf("leaf kind = %q, want expr", got.Leaves[0].Kind)
+			}
+		})
+	}
+}
+
+func TestEvaluateTaskDoneWhen_ExprLeafNonBooleanIsPending(t *testing.T) {
+	dw := &config.DoneWhen{All: []config.DoneWhenLeaf{{Expr: "resource.state.revision"}}}
+	got := EvaluateTaskDoneWhen(dw, CompletionState{Resource: map[string]any{"revision": "sha2"}})
+	if got.Overall != DonePending {
+		t.Fatalf("overall = %q, want %q", got.Overall, DonePending)
+	}
+	if got.Leaves[0].PendingReason != "non_boolean_expression" {
+		t.Errorf("pending reason = %q, want non_boolean_expression", got.Leaves[0].PendingReason)
+	}
 }

@@ -60,11 +60,11 @@ type WorkflowHookVars struct {
 // workflowHookScope is the Observer scope label for pseudo-node events.
 const workflowHookScope = "workflow"
 
-// providerEnvironment builds the roots one provider hook observes. self and
+// providerRoots builds the roots one provider hook observes. self and
 // cleanup-only roots are absent for setup, which is what keeps a setup
 // action from projecting an output it is itself producing.
-func providerEnvironment(vars WorkflowHookVars, prev, self map[string]any, cleanup bool) lang.Environment {
-	env := lang.Environment{
+func providerRoots(vars WorkflowHookVars, prev, self map[string]any, cleanup bool) lang.Roots {
+	env := lang.Roots{
 		"resource": map[string]any{"id": vars.ResourceID},
 		"session": map[string]any{
 			"name":   vars.SessionName,
@@ -85,11 +85,11 @@ func providerEnvironment(vars WorkflowHookVars, prev, self map[string]any, clean
 
 // providerEval resolves a provider hook's values, with `bin` resolving
 // against the plugin that declared it.
-func providerEval(env lang.Environment, mounted []plugins.Mounted, sourcePath string, from lang.Ownership) lang.Eval {
+func providerEval(env lang.Roots, mounted []plugins.Mounted, sourcePath string, from lang.Ownership) lang.Eval {
 	bins := config.MountedBins{Mounted: mounted, SourcePath: sourcePath}
 	return lang.Eval{
-		Env: env,
-		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
+		Roots: env,
+		Bin:   func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
 	}
 }
 
@@ -157,7 +157,7 @@ func RunWorkflowSetup(prov config.WorkspaceProviderConfig, vars WorkflowHookVars
 		}
 	}
 
-	eval := providerEval(providerEnvironment(vars, prev, nil, false), vars.Plugins, vars.SourcePath, prov.Ownership())
+	eval := providerEval(providerRoots(vars, prev, nil, false), vars.Plugins, vars.SourcePath, prov.Ownership())
 	stdout, stderr, runErr := runProviderAction(prov.Setup, eval)
 	if runErr != nil {
 		fail(runErr.Error())
@@ -238,7 +238,7 @@ func RunWorkflowCleanup(prov config.WorkspaceProviderConfig, vars WorkflowHookVa
 	}
 
 	obs.OnStart(workflowHookScope, id)
-	eval := providerEval(providerEnvironment(vars, nil, state.Outputs, true), vars.Plugins, vars.SourcePath, prov.Ownership())
+	eval := providerEval(providerRoots(vars, nil, state.Outputs, true), vars.Plugins, vars.SourcePath, prov.Ownership())
 	_, stderr, runErr := runProviderAction(prov.Cleanup, eval)
 	if runErr != nil {
 		state.Status = contract.TaskStatusFailed
