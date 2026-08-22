@@ -42,7 +42,9 @@ change out of scope for this plugin's extraction.
   ship that `goal_review` workflow as runnable config. A host enabling this
   plugin must define its own `goal_review` workflow in local config before
   the chain can spawn one; without it, the chain spawn fails with the
-  standard unknown-workflow diagnostic.
+  standard unknown-workflow diagnostic. A prior version of this plugin's
+  own `config/workflows/goal_review.toml` is still readable from this
+  repository's git history as a starting point.
 - `templates/goal_review.md` — the review instruction template
   `tasks/goal_review.toml` renders; shipped, runnable config.
 
