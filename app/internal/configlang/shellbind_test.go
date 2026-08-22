@@ -32,9 +32,9 @@ func materializeForTest(t *testing.T, script string, bound map[string]string, op
 	return exe, dir
 }
 
-func TestMaterializeShellActionKeepsBoundValuesOutOfArgvAndEnv(t *testing.T) {
+func TestMaterializeShellActionKeepsBoundValuesOutOfArgv(t *testing.T) {
 	const secret = "s3cr3t-token"
-	exe, _ := materializeForTest(t, bindingScript, map[string]string{
+	exe, dir := materializeForTest(t, bindingScript, map[string]string{
 		"session_name": secret,
 		"send_text":    "tmux send-keys -t " + secret,
 	}, "ready")
@@ -44,13 +44,62 @@ func TestMaterializeShellActionKeepsBoundValuesOutOfArgvAndEnv(t *testing.T) {
 			t.Errorf("a bound value reached argv: %q", arg)
 		}
 	}
-	for _, entry := range exe.Env {
-		if strings.Contains(entry, secret) {
-			t.Errorf("a bound value reached the environment: %q", entry)
-		}
-	}
 	if len(exe.Operands) != 1 || exe.Operands[0] != "ready" {
 		t.Errorf("an operand is passed positionally: got %q", exe.Operands)
+	}
+	wrapper, err := os.ReadFile(filepath.Join(dir, "run.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(wrapper), secret) {
+		t.Errorf("a bound value reached the generated wrapper: %q", wrapper)
+	}
+}
+
+// TestMaterializeShellActionTakesItsSourceFromNoVariable is the other half of
+// "a bound value is data": nothing a binding or an ambient variable can set
+// may decide which shell source runs.
+func TestMaterializeShellActionTakesItsSourceFromNoVariable(t *testing.T) {
+	tmp := t.TempDir()
+	elsewhere := filepath.Join(tmp, "elsewhere.sh")
+	if err := os.WriteFile(elsewhere, []byte("printf ELSEWHERE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	exe, _ := materializeForTest(t, "printf AUTHORS-SCRIPT\n", map[string]string{
+		"session_name": elsewhere,
+		"send_text":    elsewhere,
+	})
+
+	cmd := exec.Command(exe.Path, exe.Operands...)
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"),
+		"PLECT_SHELL_SCRIPT=" + elsewhere,
+		"PLECT_SHELL_BINDINGS=" + elsewhere,
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if string(out) != "AUTHORS-SCRIPT" {
+		t.Errorf("an ambient variable chose the source that ran: got %q", out)
+	}
+}
+
+// TestMaterializeShellActionRejectsAReservedBindKey guards the namespace a
+// wrapper reading its paths from the environment would have exposed.
+func TestMaterializeShellActionRejectsAReservedBindKey(t *testing.T) {
+	a, err := ParseAction(map[string]any{
+		"type":   "shell",
+		"script": "true\n",
+		"bind":   map[string]any{"PLECT_SHELL_SCRIPT": map[string]any{"from": "event.body"}},
+	}, Position{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = MaterializeShellAction(filepath.Join(t.TempDir(), "run"),
+		a, map[string]string{"PLECT_SHELL_SCRIPT": "/tmp/elsewhere"}, nil)
+	if err == nil {
+		t.Error("a binding may not claim a name in Plecture's own namespace")
 	}
 }
 
@@ -114,7 +163,6 @@ func TestMaterializeShellActionRoundTripsHostileValues(t *testing.T) {
 	exe, _ := materializeForTest(t, bindingScript, hostile, "ready $(id)")
 
 	cmd := exec.Command(exe.Path, exe.Operands...)
-	cmd.Env = append(os.Environ(), exe.Env...)
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("run: %v", err)
