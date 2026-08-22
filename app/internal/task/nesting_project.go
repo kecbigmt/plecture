@@ -88,7 +88,7 @@ func ProjectLayerOutputs(layers []ResolvedLayer, states []contract.TaskLayerStat
 // and no session, so it needs neither: the layer records carry everything
 // `[outputs.bind]` may read.
 func computeBoundOutput(b config.OutputBinding, ctx RenderContext, from lang.Ownership) (any, bool, error) {
-	eval := effectEval(outputsBindEnvironment(ctx), ctx, from, "")
+	eval := effectEval(outputsBindRoots(ctx), ctx, from, "")
 	return eval.Value(b.Value)
 }
 

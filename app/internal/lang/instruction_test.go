@@ -3,7 +3,7 @@ package lang
 import "testing"
 
 func TestRenderInstruction(t *testing.T) {
-	env := Environment{
+	env := Roots{
 		"resource": map[string]any{
 			"id":    "https://example.test/r/1",
 			"state": map[string]any{"revision": "sha2", "checks_count": 3},
@@ -58,7 +58,7 @@ func TestRenderInstruction(t *testing.T) {
 // a projection that resolves to nothing fails rather than rendering an empty
 // space where a fact was supposed to be.
 func TestRenderInstruction_AbsentProjectionFails(t *testing.T) {
-	_, err := RenderInstruction("At {{ resource.state.revision }}.", Environment{
+	_, err := RenderInstruction("At {{ resource.state.revision }}.", Roots{
 		"resource": map[string]any{"state": map[string]any{}},
 	})
 	if err == nil {

@@ -69,7 +69,7 @@ func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branc
 // so nothing is matched by pattern: the declaration already said which
 // observer reports this resource.
 func ObserveResource(def config.ResourceDef, resourceID string, branch string, workspaceDirPath string, mountedPlugins []plugins.Mounted) (map[string]any, error) {
-	env := lang.Environment{"resource": map[string]any{"id": resourceID}}
+	env := lang.Roots{"resource": map[string]any{"id": resourceID}}
 	// An absent workspace is absent from the environment rather than present
 	// and empty: that is what lets a standalone observation's `default` fire
 	// instead of handing the executable an empty flag value it cannot tell
@@ -144,7 +144,7 @@ func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourc
 	for _, judge := range params.Judges {
 		judges = append(judges, judge)
 	}
-	env := lang.Environment{
+	env := lang.Roots{
 		"resource": map[string]any{"id": params.ResourceID, "revision": params.Revision},
 		"judges":   judges,
 	}
@@ -166,11 +166,11 @@ func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourc
 // transport, created only when there is a shell action to transport
 // bindings for — an observation runs on every tick, and an exec action
 // touches no filesystem of its own.
-func runResourceAction(def config.ResourceDef, action *lang.Action, env lang.Environment, mountedPlugins []plugins.Mounted) (stdout, stderr []byte, err error) {
+func runResourceAction(def config.ResourceDef, action *lang.Action, env lang.Roots, mountedPlugins []plugins.Mounted) (stdout, stderr []byte, err error) {
 	bins := config.MountedBins{Mounted: mountedPlugins, SourcePath: def.SourcePath}
 	eval := lang.Eval{
-		Env: env,
-		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
+		Roots: env,
+		Bin:   func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
 	}
 	runDir := ""
 	if action.Type == lang.ActionShell {

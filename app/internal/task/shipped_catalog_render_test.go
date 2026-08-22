@@ -127,12 +127,12 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		for _, probe := range []struct {
 			field  string
 			action *lang.Action
-			env    lang.Environment
+			env    lang.Roots
 		}{
-			{"setup", def.Setup, setupEnvironment(ctx)},
-			{"cleanup", def.Cleanup, cleanupEnvironment(ctx)},
-			{"health.alive", def.Health.AliveProbe(), healthEnvironment(ctx)},
-			{"health.activity", def.Health.ActivityProbe(), healthEnvironment(ctx)},
+			{"setup", def.Setup, setupRoots(ctx)},
+			{"cleanup", def.Cleanup, cleanupRoots(ctx)},
+			{"health.alive", def.Health.AliveProbe(), healthRoots(ctx)},
+			{"health.activity", def.Health.ActivityProbe(), healthRoots(ctx)},
 		} {
 			if probe.action == nil {
 				continue
@@ -152,7 +152,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 			if err != nil {
 				continue // a verb this effect does not offer
 			}
-			resolved, err := resolveEffect(action, terminalEnvironment(kitchen, session), ctx, def.Ownership(), nil)
+			resolved, err := resolveEffect(action, terminalRoots(kitchen, session), ctx, def.Ownership(), nil)
 			if err != nil {
 				t.Errorf("effect %q terminal.%s: %v", id, verb, err)
 				continue

@@ -150,7 +150,7 @@ func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderCo
 
 		emitted := map[string]any{}
 		if layer.Setup != nil {
-			resolved, resolveErr := resolveEffect(layer.Setup, setupEnvironment(ctx), ctx, layer.From, nil)
+			resolved, resolveErr := resolveEffect(layer.Setup, setupRoots(ctx), ctx, layer.From, nil)
 			if resolveErr != nil {
 				state.Status = contract.TaskStatusFailed
 				state.FailedAt = now
@@ -204,7 +204,7 @@ func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderCo
 			// A joint that fails to render leaves this layer produced, not
 			// failed: its setup ran and took effect, so the unwind still owes
 			// it a cleanup. The node-level state carries why the chain stopped.
-			jointEnv := innerEnvironment(jointCtx)
+			jointEnv := innerRoots(jointCtx)
 			injected, err := resolveValues(layer.InnerEnv, jointEnv, jointCtx, layer.From)
 			if err != nil {
 				return append(states, state), lastStderr, fmt.Errorf("layer %q inner.env: %w", layer.TaskID, err)
@@ -269,7 +269,7 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 		ctx.Self = layerSelf(layers, states, i)
 		ctx.Inputs = state.Inputs
 		ctx.SourcePath = layers[i].SourcePath
-		resolved, resolveErr := resolveEffect(layers[i].Cleanup, cleanupEnvironment(ctx), ctx, layers[i].From, nil)
+		resolved, resolveErr := resolveEffect(layers[i].Cleanup, cleanupRoots(ctx), ctx, layers[i].From, nil)
 		if resolveErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.FailedAt = now

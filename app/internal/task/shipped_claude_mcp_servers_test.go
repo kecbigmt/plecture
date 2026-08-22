@@ -157,7 +157,7 @@ func TestShippedClaude_McpServersStaysOffEveryCommandLine(t *testing.T) {
 		},
 		SourcePath: def.SourcePath,
 	}
-	resolved, err := resolveEffect(def.Setup, setupEnvironment(ctx), ctx, def.Ownership(), nil)
+	resolved, err := resolveEffect(def.Setup, setupRoots(ctx), ctx, def.Ownership(), nil)
 	if err != nil {
 		t.Fatalf("resolve setup: %v", err)
 	}

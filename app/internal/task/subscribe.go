@@ -36,7 +36,7 @@ func RunWorkspaceProviderSubscribe(prov config.WorkspaceProviderConfig, vars Sub
 	if prov.Subscribe == nil {
 		return fmt.Errorf("workspace provider %q declares no subscribe hook", prov.ID)
 	}
-	env := lang.Environment{
+	env := lang.Roots{
 		"session":  map[string]any{"name": vars.SessionName},
 		"resource": map[string]any{"id": vars.ResourceID},
 	}

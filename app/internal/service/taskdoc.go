@@ -282,7 +282,7 @@ func renderInstruction(cfg *config.Config, session *domain.Session, doc config.T
 	if w := session.Tasks[contract.WorkflowPseudoNodeID]; w != nil && w.Outputs != nil {
 		workflowOutputs = w.Outputs
 	}
-	env := lang.Environment{
+	env := lang.Roots{
 		"resource": map[string]any{"id": resourceID, "state": observed},
 		"self":     map[string]any{"state": map[string]any{}},
 		"inputs":   inputs,

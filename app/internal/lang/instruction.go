@@ -10,8 +10,8 @@ import (
 // same root vocabulary, already checked at load against the roots this
 // surface declares — so it resolves the same way, and stringifies, because
 // prose has nowhere to put a list.
-func RenderInstruction(body string, env Environment) (string, error) {
-	eval := Eval{Env: env}
+func RenderInstruction(body string, env Roots) (string, error) {
+	eval := Eval{Roots: env}
 	var err error
 	rendered := bodyProjection.ReplaceAllStringFunc(body, func(match string) string {
 		if err != nil {

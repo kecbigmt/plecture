@@ -115,10 +115,10 @@ func (s CompletionState) Lookup(path string) (any, bool) {
 	return val, ok && val != nil
 }
 
-// Environment renders the two roots as the tree an expression leaf is
+// Roots renders the two live roots as the tree an expression leaf is
 // evaluated against.
-func (s CompletionState) Environment() lang.Environment {
-	return lang.Environment{
+func (s CompletionState) Roots() lang.Roots {
+	return lang.Roots{
 		"resource": map[string]any{"state": orEmpty(normalizeOutputs(s.Resource))},
 		"self":     map[string]any{"state": orEmpty(normalizeOutputs(s.Self))},
 	}
@@ -288,7 +288,7 @@ func CheckLeafStatus(leaf config.DoneWhenLeaf, state CompletionState) DoneStatus
 // it is pending here rather than guessed at.
 func evalExprLeaf(leaf config.DoneWhenLeaf, state CompletionState) DoneLeafResult {
 	res := DoneLeafResult{Kind: "expr", Expr: leaf.Expr, Status: DonePending}
-	eval := lang.Eval{Env: state.Environment()}
+	eval := lang.Eval{Roots: state.Roots()}
 	resolved, _, err := eval.Value(&lang.Value{Form: lang.FormExpr, Expr: leaf.Expr})
 	if err != nil {
 		res.PendingReason = "unevaluable_expression"
