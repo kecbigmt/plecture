@@ -41,9 +41,6 @@ var fixtureExecutables = []string{
 // fixture leaves this map when that check lands; nothing else may be
 // skipped.
 var nativeDeferred = map[string]string{
-	"effects/chains-field.invalid.toml":            "per-kind closed-surface validation",
-	"effects/completion-field.invalid.toml":        "per-kind closed-surface validation",
-	"tasks/lifecycle-field.invalid.md":             "per-kind closed-surface validation",
 	"nesting/computed-output-mutable.invalid.toml": "the nesting joint's mutability agreement",
 	"nesting/cycle.invalid.toml":                   "nesting chain resolution",
 	"nesting/projection-mismatch.invalid.toml":     "the nesting joint's type agreement",

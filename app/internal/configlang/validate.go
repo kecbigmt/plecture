@@ -19,6 +19,9 @@ type Validation struct {
 // checks, and a definition that breaks one of those still passes here.
 func (v Validation) ValidateDefinition(def *Definition) error {
 	pos := Position{File: def.File, Path: def.ID}
+	if err := checkKindSurface(def, pos); err != nil {
+		return err
+	}
 	if err := v.checkStaticTopology(def, pos); err != nil {
 		return err
 	}
