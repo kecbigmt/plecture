@@ -39,20 +39,12 @@ change out of scope for this plugin's extraction.
   goal to completion and chains into a `goal_review` workflow once its
   checklist is satisfied; `goal_bootstrap` re-creates any `pursue_goal`
   instance a session lost across a destroy→up cycle. This plugin does not
-  ship that `goal_review` workflow as runnable config — see
-  `exemplars/workflows/goal_review.toml` below. A host enabling this plugin
-  must define its own `goal_review` workflow (copied from that exemplar and
-  adjusted) before the chain can spawn one; without it, the chain spawn
-  fails with the standard unknown-workflow diagnostic.
+  ship that `goal_review` workflow as runnable config. A host enabling this
+  plugin must define its own `goal_review` workflow in local config before
+  the chain can spawn one; without it, the chain spawn fails with the
+  standard unknown-workflow diagnostic.
 - `templates/goal_review.md` — the review instruction template
   `tasks/goal_review.toml` renders; shipped, runnable config.
-- `exemplars/workflows/goal_review.toml` — a copy-me example, not loaded by
-  plect. It dispatches an agent session to record a `goal_review` verdict,
-  composing node kinds (`tmux`, `envfile`, `codex_exec`, `slack_thread`,
-  `initial_task`) this plugin does not define — which agent runtime and
-  channel plugin actually supply them is the operator's choice, not okf's.
-  Copy it into your own workflow config and swap the node `uses` values for
-  your own agent-runtime plugin's task ids if they differ.
 
 ## Install
 
@@ -85,4 +77,4 @@ own copied outputs.
 - A knowledge bundle at `<orchestrator workspace directory>/knowledge/bundle/`,
   with goal Concept files under `goals/`.
 - A host-defined `goal_review` workflow in local config for
-  `tasks/pursue_goal.toml`'s chain to spawn — see `exemplars/workflows/goal_review.toml`.
+  `tasks/pursue_goal.toml`'s chain to spawn.

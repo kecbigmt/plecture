@@ -1025,7 +1025,6 @@ okf/config/tasks/pursue_goal.toml
 okf/config/tasks/goal_review.toml
 okf/config/tasks/goal_bootstrap.toml
 okf/config/templates/goal_review.md
-okf/exemplars/workflows/goal_review.toml
 okf/src/go.mod
 okf/src/cmd/okf-goal/main.go
 okf/src/cmd/okf-bundle/main.go
@@ -1035,10 +1034,6 @@ okf/src/cmd/okf-bundle/main.go
 add`/`update` produce from `okf/src` at add/update time — build output, not
 catalog content, so they are never committed (see the Package format
 section's `src`/`bin`/`scripts` split).
-
-`okf/exemplars/workflows/goal_review.toml` is catalog-shipped but not
-catalog-loaded: it is a copy-me example, not a `config/workflows/*.toml`
-file, so `LoadWorkflows` never mounts it.
 
 Plugin-owned behavior:
 
@@ -1065,20 +1060,17 @@ Internally separable plugin behavior:
 Not plugin-owned:
 
 - Retrospectives or other bundle records without machine semantics.
-- The `goal_review` workflow itself. `okf/exemplars/workflows/goal_review.toml`
-  is a copy-me example, not runnable config; the host must define its own
-  `goal_review` workflow before `pursue_goal`'s chain can spawn one.
+- The `goal_review` workflow itself: not runnable config this plugin ships.
+  The host must define its own `goal_review` workflow before
+  `pursue_goal`'s chain can spawn one.
 
 Residual user config:
 
 - Which goal roots or owners are allowed.
 - Which orchestrator workflow is used.
 - The `goal_review` workflow and which session runtime handles the work —
-  the exemplar's `tmux` / `envfile` / `codex_exec` / `slack_thread` /
-  `initial_task` nodes are a reference composition; an operator copies it
-  into local config, swaps the node `uses` values for their own session
-  runtime's task ids, or replaces the workflow with their own team-owned
-  overlay entirely.
+  an operator defines this workflow's nodes against their own
+  agent-runtime and channel plugins, or against a team-owned overlay.
 - Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 
