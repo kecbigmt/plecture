@@ -1,7 +1,9 @@
 # Task nesting
 
 This design is governed by
-[`../adr/2026-08-17-task-nesting.md`](../adr/2026-08-17-task-nesting.md).
+[`../adr/2026-08-17-task-nesting.md`](../adr/2026-08-17-task-nesting.md), with
+its gate-binding rules narrowed by
+[`../adr/2026-08-22-retire-nested-gate-binding-rules.md`](../adr/2026-08-22-retire-nested-gate-binding-rules.md).
 
 ## Design Core
 
@@ -159,7 +161,7 @@ Task nesting fields:
 | `[terminal]` | no | terminal table | An interactive endpoint for a nesting chain whose other layers declare none. |
 | `[health]` | no | health table | Liveness and activity probes for the resources this layer brings up. |
 | `[[outputs]]` | no | dynamic output entries | Live value sources this layer produces into its own public contract. |
-| `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the composed effective `done_when` and chain output mappings validated against the outer public output contract. |
+| `[[chains]]` | no | chain entries | Chains attached to the nested task id, with judge ids resolved from the composed effective `done_when`. |
 
 The nested task's effective scope is the innermost task's scope. If an outer
 task declares `scope`, it must match the scope of its next inner task, and the
@@ -212,16 +214,15 @@ like every other public field, and available to the outer `requires` and
 
 An outer task may declare `[done_when]`. The composed task's effective
 `done_when` is the inner effective `done_when` conjoined with the outer's added
-leaves. The addition can only narrow completion: `done_when` has one leaf list,
-`all`, and no disjunction, negation, reordering, or removal syntax, so every
-condition the inner author declared stays necessary and their completion
-reasoning holds unchanged. The guarantee covers values as well as leaves: an
-output an inner layer's `done_when` check reads is bound as a direct binding of
-that inner output. A computed binding or an outer-produced key in its place
-would let the outer layer choose what the inner gate sees, neutralizing the
-condition without removing it. The composed completion contract is part of the
-nested task's public face, which the outer task already owns through its public
-output contract.
+leaves. The leaf list is additive: `done_when` has one leaf list, `all`, and no
+disjunction, negation, reordering, or removal syntax, so every condition the
+inner author declared remains present. Value provenance is separate. An inner
+check key is rewritten when direct output bindings carry it into the composed
+public contract. A key without that route retains its declared spelling and is
+evaluated against the composed output map. Loading does not require a
+completion fact to reach that map or require its route to use direct bindings,
+so composition does not guarantee that an inner check observes the value its
+declaring layer produced.
 
 Each layer may declare `[done_when.budget]`. A budget is patience policy for one
 layer rather than a condition, so it sits outside the conjunction. A layer's
@@ -363,6 +364,10 @@ with, are specified by [`plugin-packaging.md`](plugin-packaging.md).
 
 ## Validation Rules
 
+Nested gate output references do not participate in output-binding validation.
+Loading does not require a completion fact or chain output reference to reach
+the composed public contract.
+
 Loading nested task definitions fails when:
 
 - `inner` names an unknown task, an unknown catalog alias, a disabled plugin, or
@@ -394,17 +399,10 @@ Loading nested task definitions fails when:
 - a `bind.env` key is not a valid process environment name.
 - a `bind.env` key repeats a key from any other layer in the nesting chain.
 - a chain declared on the outer task references a judge id not declared by the
-  composed effective `done_when`, or a public output not declared by the outer
-  public contract.
-- a chain declared on the outer task references a local not bound into the outer
-  public contract.
+  composed effective `done_when`.
+- a chain references a layer local; locals are private to the nesting joint.
 - a layer of the nesting chain declares `[terminal]` and the outer public
   contract does not bind `interactive_endpoint` from that layer.
-- a `done_when` check at any layer of the composed effective `done_when`, or a
-  chain, references an output not bound by the outer public contract.
-- an output read by an inner layer's `done_when` check is bound by anything
-  other than a direct binding of that inner output, including a computed
-  binding or a key the outer layer produces.
 
 Running a nested task fails when:
 

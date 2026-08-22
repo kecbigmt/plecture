@@ -170,10 +170,7 @@ func validateNesting(layers []TaskDefinition) error {
 	if err := validateChainTerminalEndpoint(layers, bindings, exposure); err != nil {
 		return err
 	}
-	if err := validateComposedDoneWhen(layers, bindings, exposure); err != nil {
-		return err
-	}
-	return validateComposedChains(layers, exposure)
+	return validateComposedChains(layers)
 }
 
 func validateChainScope(layers []TaskDefinition) error {
@@ -400,57 +397,11 @@ func validateChainTerminalEndpoint(layers []TaskDefinition, bindings [][]OutputB
 	return fmt.Errorf("layer %q declares [terminal] but the composed public contract does not bind %q from that layer", layers[declaring].ID, OutputKeyInteractiveEndpoint)
 }
 
-// validateComposedDoneWhen keeps every layer's completion conditions readable
-// from the composed public contract. An inner layer's check additionally has
-// to read the inner output itself: a computed binding in its place would let
-// the outer layer choose what the inner gate sees.
-func validateComposedDoneWhen(layers []TaskDefinition, bindings [][]OutputBinding, exposure []map[string]string) error {
-	for i, layer := range layers {
-		if layer.DoneWhen == nil {
-			continue
-		}
-		for _, leaf := range layer.DoneWhen.All {
-			key := strings.TrimSpace(leaf.Check)
-			if key == "" {
-				continue
-			}
-			if _, ok := exposure[i][key]; ok {
-				continue
-			}
-			if i > 0 && referencedByBinding(bindings[i-1], key) {
-				return fmt.Errorf("layer %q done_when reads output %q, which layer %q binds by a computed template; an inner condition's value must come from a direct binding of that inner output", layer.ID, key, layers[i-1].ID)
-			}
-			return fmt.Errorf("layer %q done_when reads output %q, which the composed public contract does not bind", layer.ID, key)
-		}
-	}
-	return nil
-}
-
-func referencedByBinding(bindings []OutputBinding, innerKey string) bool {
-	for _, b := range bindings {
-		for _, ref := range b.InnerRefs {
-			if ref == innerKey {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// validateComposedChains resolves every layer's chain references — the
-// innermost plugin task's as much as the outermost's — against the judge
-// namespace of the composed effective done_when and against the composed
-// public contract.
-//
-// A chain an inner layer declared reads nothing the outer layers did not
-// bind, and it names that output by its own layer's name for it: references
-// are layer-explicit, so an inner author's declarations keep working when an
-// outer layer renames what it re-exports. The composed contract decides
-// reachability, not spelling — which is why the reachable set is the layer's
-// own keys that project outward, and why evaluating those declarations
-// against a composed instance resolves each key through the same exposure map
-// that proved it reachable here.
-func validateComposedChains(layers []TaskDefinition, exposure []map[string]string) error {
+// validateComposedChains resolves judge ids across the nesting chain and keeps
+// locals private. Output reachability is deliberately absent: gate fields are
+// leaving nested definitions, so binding rules must not constrain their
+// eventual flat-task vocabulary.
+func validateComposedChains(layers []TaskDefinition) error {
 	judgeIDs := map[string]bool{}
 	for _, layer := range layers {
 		if layer.DoneWhen == nil {
@@ -462,15 +413,11 @@ func validateComposedChains(layers []TaskDefinition, exposure []map[string]strin
 			}
 		}
 	}
-	for i, layer := range layers {
+	for _, layer := range layers {
 		if len(layer.Chains) == 0 {
 			continue
 		}
-		reachable := make(map[string]bool, len(exposure[i]))
-		for key := range exposure[i] {
-			reachable[key] = true
-		}
-		if err := validateChainReferences(layer, judgeIDs, reachable, true); err != nil {
+		if err := validateChainReferences(layer, judgeIDs, nil, true); err != nil {
 			return fmt.Errorf("layer %q: %w", layer.ID, err)
 		}
 	}

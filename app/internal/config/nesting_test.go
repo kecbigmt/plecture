@@ -608,124 +608,6 @@ all = [ { judge_pending = "ac-met" } ]
 			wantErr: `judge id "ac-met"`,
 		},
 		{
-			name: "a chain references a public output not declared by the outer contract",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-inner = "claude"
-
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-
-[[chains]]
-id       = "review"
-workflow = "claude"
-[chains.when]
-all = [ { check = "socket_path", eq = "x" } ]
-`,
-			},
-			wantErr: `"socket_path"`,
-		},
-		{
-			name: "a chain an inner layer declared reads an output the composed contract does not bind",
-			files: map[string]string{
-				"claude": innerRuntime + `
-[[chains]]
-id       = "review"
-workflow = "claude"
-[chains.when]
-all = [ { check = "pid", ne = "" } ]
-[chains.inputs]
-socket = "{{.Work.outputs.socket_path}}"
-`,
-				"outer": `
-inner = "claude"
-
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-`,
-			},
-			wantErr: `"socket_path"`,
-		},
-		{
-			name: "a chain an inner layer declared names the outer layer's post-rename public key",
-			files: map[string]string{
-				"work": innerGated + `
-[[chains]]
-id       = "review"
-workflow = "claude"
-[chains.when]
-all = [ { check = "review_decision", eq = "APPROVED" } ]
-[chains.inputs]
-decision = "{{.Work.outputs.decision}}"
-`,
-				"outer": `
-inner = "work"
-
-[bind.outputs]
-decision = "{{.Inner.outputs.review_decision}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-decision = { type = "string" }
-`,
-			},
-			wantErr: `"decision"`,
-		},
-		{
-			name: "a chain a middle layer declared reads an output the composed contract does not bind",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"middle": `
-inner = "claude"
-
-[bind.outputs]
-pid         = "{{.Inner.outputs.pid}}"
-socket_path = "{{.Inner.outputs.socket_path}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-pid         = { type = "integer", mutable = true }
-socket_path = { type = "string" }
-
-[[chains]]
-id       = "review"
-workflow = "claude"
-[chains.when]
-all = [ { check = "socket_path", ne = "" } ]
-`,
-				"outer": `
-inner = "middle"
-
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-`,
-			},
-			wantErr: `"socket_path"`,
-		},
-		{
 			name: "a chain reads a local from inside a conditional branch",
 			files: map[string]string{
 				"claude": innerRuntime,
@@ -754,7 +636,7 @@ guard_dir = "{{if .Work.locals.guard_dir}}{{.Work.locals.guard_dir}}{{end}}"
 			wantErr: "local",
 		},
 		{
-			name: "a chain references a local not bound into the outer public contract",
+			name: "a chain references a layer local",
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
@@ -805,41 +687,6 @@ pid = { type = "integer", mutable = true }
 `,
 			},
 			wantErr: "interactive_endpoint",
-		},
-		{
-			name: "an inner done_when check reads an output the outer contract does not bind",
-			files: map[string]string{
-				"work": innerGated,
-				"outer": `
-inner = "work"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-instruction = { type = "string" }
-`,
-			},
-			wantErr: "review_decision",
-		},
-		{
-			name: "an output read by an inner done_when check is bound by a computed binding",
-			files: map[string]string{
-				"work": innerGated,
-				"outer": `
-inner = "work"
-
-[bind.outputs]
-review_decision = "{{.Inner.outputs.review_decision}}-checked"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-review_decision = { type = "string" }
-`,
-			},
-			wantErr: "direct",
 		},
 	}
 
@@ -916,6 +763,39 @@ script = "echo yes"
 			},
 		},
 		{
+			name: "an inner done_when output omitted from the outer contract",
+			files: map[string]string{
+				"work": innerGated,
+				"outer": `
+inner = "work"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+instruction = { type = "string" }
+`,
+			},
+		},
+		{
+			name: "an inner done_when output exported through a computed binding",
+			files: map[string]string{
+				"work": innerGated,
+				"outer": `
+inner = "work"
+
+[bind.outputs]
+decision = "{{.Inner.outputs.review_decision}}-checked"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+decision = { type = "string" }
+`,
+			},
+		},
+		{
 			name: "an inner layer's chain reading an output the composed contract binds directly",
 			files: map[string]string{
 				"claude": innerRuntime + `
@@ -966,6 +846,94 @@ type = "object"
 
 [outputs_schema.properties]
 decision = { type = "string" }
+`,
+			},
+		},
+		{
+			name: "an outer chain output outside the composed public contract",
+			files: map[string]string{
+				"claude": innerRuntime,
+				"outer": `
+inner = "claude"
+
+[bind.outputs]
+pid = "{{.Inner.outputs.pid}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+pid = { type = "integer", mutable = true }
+
+[[chains]]
+id       = "review"
+workflow = "claude"
+[chains.when]
+all = [ { check = "socket_path", eq = "x" } ]
+`,
+			},
+		},
+		{
+			name: "an inner chain input omitted from the composed public contract",
+			files: map[string]string{
+				"claude": innerRuntime + `
+[[chains]]
+id       = "review"
+workflow = "claude"
+[chains.when]
+all = [ { check = "pid", ne = "" } ]
+[chains.inputs]
+socket = "{{.Work.outputs.socket_path}}"
+`,
+				"outer": `
+inner = "claude"
+
+[bind.outputs]
+pid = "{{.Inner.outputs.pid}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+pid = { type = "integer", mutable = true }
+`,
+			},
+		},
+		{
+			name: "a middle layer chain output omitted from the composed public contract",
+			files: map[string]string{
+				"claude": innerRuntime,
+				"middle": `
+inner = "claude"
+
+[bind.outputs]
+pid         = "{{.Inner.outputs.pid}}"
+socket_path = "{{.Inner.outputs.socket_path}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+pid         = { type = "integer", mutable = true }
+socket_path = { type = "string" }
+
+[[chains]]
+id       = "review"
+workflow = "claude"
+[chains.when]
+all = [ { check = "socket_path", ne = "" } ]
+`,
+				"outer": `
+inner = "middle"
+
+[bind.outputs]
+pid = "{{.Inner.outputs.pid}}"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties]
+pid = { type = "integer", mutable = true }
 `,
 			},
 		},
