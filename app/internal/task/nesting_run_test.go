@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -15,16 +16,20 @@ import (
 // recorded requests still show the order the layers ran in.
 type scriptedExecutor struct {
 	requests []ExecRequest
-	// stdout maps a rendered command to the stdout that command produces.
-	// A command with no entry produces "{}".
+	scripts  []string
+	bindings []string
+	// stdout maps a resolved script to the stdout it produces. A script with
+	// no entry produces "{}".
 	stdout map[string]string
-	// failOn makes the named rendered command exit non-zero.
+	// failOn makes the named script exit non-zero.
 	failOn string
 }
 
 func (s *scriptedExecutor) Run(_ context.Context, req ExecRequest) ([]byte, []byte, error) {
 	s.requests = append(s.requests, req)
-	cmd := req.Argv[len(req.Argv)-1]
+	cmd, bindings := readShellRun(req)
+	s.scripts = append(s.scripts, cmd)
+	s.bindings = append(s.bindings, bindings)
 	if s.failOn != "" && cmd == s.failOn {
 		return nil, []byte("boom"), errNestedTestFailure
 	}
@@ -48,12 +53,18 @@ func withScriptedExecutor(t *testing.T, e *scriptedExecutor) *scriptedExecutor {
 	return e
 }
 
+// commands reports what each recorded execution ran, read while its run
+// directory still existed.
 func (s *scriptedExecutor) commands() []string {
-	out := make([]string, len(s.requests))
-	for i, r := range s.requests {
-		out[i] = r.Argv[len(r.Argv)-1]
-	}
-	return out
+	return s.scripts
+}
+
+// reset forgets everything recorded so far, for a case that drives setup and
+// then asserts only on what the cleanup ran.
+func (s *scriptedExecutor) reset() {
+	s.requests = nil
+	s.scripts = nil
+	s.bindings = nil
 }
 
 // nestedPlan compiles a one-node plan whose task is the outermost of the
@@ -96,9 +107,9 @@ func TestRunSetup_NestedChainRunsOutsideIn(t *testing.T) {
 		"inner-setup":  `{"pid":"42"}`,
 	}})
 	ordered := nestedPlan(t,
-		config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup"},
-		config.TaskDefinition{ID: "middle", Scope: "run", Setup: "middle-setup"},
-		config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"},
+		config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup")},
+		config.TaskDefinition{ID: "middle", Scope: "run", Setup: shellStub("middle-setup")},
+		config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")},
 	)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
@@ -137,14 +148,14 @@ func TestRunSetup_NestedBindInputsRenderInnerInputObject(t *testing.T) {
 		"outer-setup": `{"guard_dir":"/tmp/guard"}`,
 	}})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "outer-setup",
-		Bind: &config.BindConfig{Inputs: map[string]string{
-			"tmux_session": "{{.Inputs.tmux_session}}",
-			"path_prepend": "{{.Locals.guard_dir}}",
-		}},
+		ID: "outer", Scope: "run", Setup: shellStub("outer-setup"),
+		InnerInputs: map[string]*lang.Value{
+			"tmux_session": fromValue("inputs.tmux_session"),
+			"path_prepend": fromValue("locals.guard_dir"),
+		},
 	}
 	inner := config.TaskDefinition{
-		ID: "inner", Scope: "run", Setup: "inner-setup",
+		ID: "inner", Scope: "run", Setup: shellStub("inner-setup"),
 		InputsSchema: objectSchema(map[string]any{
 			"tmux_session": map[string]any{"type": "string"},
 			"path_prepend": map[string]any{"type": "string"},
@@ -169,11 +180,11 @@ func TestRunSetup_NestedBindInputsRenderInnerInputObject(t *testing.T) {
 func TestRunSetup_NestedBoundInputsValidatedAgainstInnerSchema(t *testing.T) {
 	exec := withScriptedExecutor(t, &scriptedExecutor{})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "outer-setup",
-		Bind: &config.BindConfig{Inputs: map[string]string{"model": "opus"}},
+		ID: "outer", Scope: "run", Setup: shellStub("outer-setup"),
+		InnerInputs: map[string]*lang.Value{"model": literalValue("opus")},
 	}
 	inner := config.TaskDefinition{
-		ID: "inner", Scope: "run", Setup: "inner-setup",
+		ID: "inner", Scope: "run", Setup: shellStub("inner-setup"),
 		InputsSchema: objectSchema(map[string]any{
 			"model":        map[string]any{"type": "string"},
 			"tmux_session": map[string]any{"type": "string"},
@@ -202,13 +213,13 @@ func TestRunSetup_NestedBindEnvReachesInnerExecutionsOnly(t *testing.T) {
 		"outer-setup": `{"guard_dir":"/tmp/guard"}`,
 	}})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "outer-setup",
-		Bind: &config.BindConfig{Env: map[string]string{
-			"PLECT_TEAM_CONTEXT": "{{.SessionName}}",
-			"PLECT_GUARD_DIR":    "{{.Locals.guard_dir}}",
-		}},
+		ID: "outer", Scope: "run", Setup: shellStub("outer-setup"),
+		InnerEnv: map[string]*lang.Value{
+			"PLECT_TEAM_CONTEXT": fromValue("session.name"),
+			"PLECT_GUARD_DIR":    fromValue("locals.guard_dir"),
+		},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), nestedPlan(t, outer, inner), SessionVars{Name: "team/x"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)
@@ -233,12 +244,12 @@ func TestRunSetup_NestedOuterLocalsValidatedAgainstLocalsSchema(t *testing.T) {
 		"outer-setup": `{"unexpected":"value"}`,
 	}})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "outer-setup",
+		ID: "outer", Scope: "run", Setup: shellStub("outer-setup"),
 		LocalsSchema: objectSchema(map[string]any{
 			"guard_dir": map[string]any{"type": "string"},
 		}, "guard_dir"),
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	tasks := map[string]*contract.TaskState{}
 	err := RunSetup(context.Background(), nestedPlan(t, outer, inner), SessionVars{Name: "s"}, tasks, nil)
 	if err == nil {
@@ -254,43 +265,53 @@ func TestRunSetup_NestedOuterLocalsValidatedAgainstLocalsSchema(t *testing.T) {
 func TestRunSetup_NestedBindingTemplateRenderFailure(t *testing.T) {
 	withScriptedExecutor(t, &scriptedExecutor{})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "outer-setup",
-		Bind: &config.BindConfig{Inputs: map[string]string{"model": "{{.Locals.absent}}"}},
+		ID: "outer", Scope: "run", Setup: shellStub("outer-setup"),
+		InnerInputs: map[string]*lang.Value{"model": fromValue("locals.absent")},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	tasks := map[string]*contract.TaskState{}
 	err := RunSetup(context.Background(), nestedPlan(t, outer, inner), SessionVars{Name: "s"}, tasks, nil)
 	if err == nil {
-		t.Fatal("RunSetup: want an error for a binding template that cannot render, got nil")
+		t.Fatal("RunSetup: want an error for a joint value that cannot resolve, got nil")
 	}
-	if !strings.Contains(err.Error(), "bind.inputs") {
+	if !strings.Contains(err.Error(), "inner.inputs") {
 		t.Errorf("error = %v, want it to name the failing binding table", err)
 	}
 }
 
 // TestRunCleanup_NestedUnwindsInsideOut covers the LIFO stack's cleanup half,
-// including each layer reading its own locals.
+// including each layer reading its own public contract — which is how a
+// layer releases what its setup produced as a private local: by projecting
+// it outward.
 func TestRunCleanup_NestedUnwindsInsideOut(t *testing.T) {
 	exec := withScriptedExecutor(t, &scriptedExecutor{stdout: map[string]string{
 		"outer-setup": `{"guard_dir":"/tmp/guard"}`,
 	}})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "rm -rf {{.Locals.guard_dir}}",
-		Bind: &config.BindConfig{Env: map[string]string{"PLECT_GUARD": "on"}},
+		ID: "outer", Scope: "run", Setup: shellStub("outer-setup"), Cleanup: &lang.Action{
+			Type:   lang.ActionShell,
+			Script: "rm -rf $guard_dir",
+			Bind:   map[string]*lang.Value{"guard_dir": fromValue("self.outputs.guard_dir")},
+		},
+		OutputsBind: map[string]*lang.Value{"guard_dir": fromValue("locals.guard_dir")},
+		InnerEnv:    map[string]*lang.Value{"PLECT_GUARD": literalValue("on")},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup"), Cleanup: shellStub("inner-cleanup")}
 	ordered := nestedPlan(t, outer, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
-	exec.requests = nil
+	exec.reset()
 	if err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunCleanup: %v", err)
 	}
-	want := []string{"inner-cleanup", "rm -rf /tmp/guard"}
+	want := []string{"inner-cleanup", "rm -rf $guard_dir"}
 	if got := exec.commands(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("cleanup order = %v, want %v", got, want)
+	}
+	if !strings.Contains(exec.bindings[1], "/tmp/guard") {
+		t.Errorf("outer cleanup bindings = %q, want the projected local", exec.bindings[1])
 	}
 	if len(exec.requests[0].Env) != 1 || exec.requests[0].Env[0] != "PLECT_GUARD=on" {
 		t.Errorf("inner cleanup env = %v, want the outer layer's bind.env", exec.requests[0].Env)
@@ -318,15 +339,15 @@ func TestRunCleanup_NestedSkipsLayersThatNeverSetUp(t *testing.T) {
 		stdout: map[string]string{"outer-setup": `{"guard_dir":"/tmp/guard"}`},
 		failOn: "middle-setup",
 	})
-	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
-	middle := config.TaskDefinition{ID: "middle", Scope: "run", Setup: "middle-setup", Cleanup: "middle-cleanup"}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup"), Cleanup: shellStub("outer-cleanup")}
+	middle := config.TaskDefinition{ID: "middle", Scope: "run", Setup: shellStub("middle-setup"), Cleanup: shellStub("middle-cleanup")}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup"), Cleanup: shellStub("inner-cleanup")}
 	ordered := nestedPlan(t, outer, middle, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err == nil {
 		t.Fatal("RunSetup: want an error when the middle setup fails, got nil")
 	}
-	exec.requests = nil
+	exec.reset()
 	if err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunCleanup: %v", err)
 	}
@@ -341,8 +362,8 @@ func TestRunCleanup_NestedSkipsLayersThatNeverSetUp(t *testing.T) {
 // and until it is released the composed task must not read as cleaned.
 func TestRunCleanup_NestedRetriesALayerWhoseCleanupFailed(t *testing.T) {
 	exec := withScriptedExecutor(t, &scriptedExecutor{failOn: "inner-cleanup"})
-	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup"), Cleanup: shellStub("outer-cleanup")}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup"), Cleanup: shellStub("inner-cleanup")}
 	ordered := nestedPlan(t, outer, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
@@ -354,7 +375,8 @@ func TestRunCleanup_NestedRetriesALayerWhoseCleanupFailed(t *testing.T) {
 	if got := tasks["outer"].Status; got != contract.TaskStatusFailed {
 		t.Fatalf("status after a failed release = %q, want %q", got, contract.TaskStatusFailed)
 	}
-	exec.failOn, exec.requests = "", nil
+	exec.failOn = ""
+	exec.reset()
 	if err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("retry: %v", err)
 	}
@@ -371,14 +393,14 @@ func TestRunCleanup_NestedRetriesALayerWhoseCleanupFailed(t *testing.T) {
 // release must not strand the outer layers wrapping it.
 func TestRunCleanup_NestedKeepsGoingPastAFailedLayer(t *testing.T) {
 	exec := withScriptedExecutor(t, &scriptedExecutor{failOn: "inner-cleanup"})
-	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup"), Cleanup: shellStub("outer-cleanup")}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup"), Cleanup: shellStub("inner-cleanup")}
 	ordered := nestedPlan(t, outer, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
-	exec.requests = nil
+	exec.reset()
 	err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil)
 	if err == nil {
 		t.Fatal("RunCleanup: want the failing layer's error, got nil")
@@ -395,13 +417,17 @@ func TestRunCleanup_NestedKeepsGoingPastAFailedLayer(t *testing.T) {
 	}
 }
 
-// TestRunCleanup_NestedCleanupTemplateFailure covers the other failure branch
-// of the unwind: a cleanup body that cannot render leaves that layer owing a
-// release rather than silently counting as one.
-func TestRunCleanup_NestedCleanupTemplateFailure(t *testing.T) {
+// TestRunCleanup_NestedCleanupValueFailure covers the other failure branch of
+// the unwind: a cleanup whose values cannot be resolved leaves that layer
+// owing a release rather than silently counting as one.
+func TestRunCleanup_NestedCleanupValueFailure(t *testing.T) {
 	withScriptedExecutor(t, &scriptedExecutor{})
-	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "{{fail"}
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup"), Cleanup: shellStub("outer-cleanup")}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup"), Cleanup: &lang.Action{
+		Type:   lang.ActionShell,
+		Script: "inner-cleanup",
+		Bind:   map[string]*lang.Value{"missing": fromValue("self.outputs.never_produced")},
+	}}
 	ordered := nestedPlan(t, outer, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
@@ -409,10 +435,10 @@ func TestRunCleanup_NestedCleanupTemplateFailure(t *testing.T) {
 	}
 	err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil)
 	if err == nil {
-		t.Fatal("RunCleanup: want an error for a cleanup body that cannot render, got nil")
+		t.Fatal("RunCleanup: want an error for a cleanup value that cannot resolve, got nil")
 	}
-	if !strings.Contains(err.Error(), "template") {
-		t.Errorf("error = %v, want it to name the template failure", err)
+	if !strings.Contains(err.Error(), "never_produced") {
+		t.Errorf("error = %v, want it to name the unresolvable value", err)
 	}
 	if got := tasks["outer"].Status; got != contract.TaskStatusFailed {
 		t.Errorf("status = %q, want %q", got, contract.TaskStatusFailed)
@@ -425,14 +451,14 @@ func TestRunCleanup_NestedCleanupTemplateFailure(t *testing.T) {
 // the composed task must not read as cleaned while those records stand.
 func TestRunCleanup_NestedDefinitionDriftLeavesTheDebtVisible(t *testing.T) {
 	exec := withScriptedExecutor(t, &scriptedExecutor{})
-	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup", Cleanup: "outer-cleanup"}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup"), Cleanup: shellStub("outer-cleanup")}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup"), Cleanup: shellStub("inner-cleanup")}
 	ordered := nestedPlan(t, outer, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
-	exec.requests = nil
+	exec.reset()
 	// The author removed `inner` from the definition after setup.
 	drifted := ordered[0]
 	drifted.Layers = nil
@@ -454,14 +480,14 @@ func TestRunCleanup_NestedDefinitionDriftLeavesTheDebtVisible(t *testing.T) {
 // must not read as "the whole chain is already released".
 func TestRunCleanup_NestedOuterWithoutCleanupStillUnwindsInner(t *testing.T) {
 	exec := withScriptedExecutor(t, &scriptedExecutor{})
-	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup"}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup", Cleanup: "inner-cleanup"}
+	outer := config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup")}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup"), Cleanup: shellStub("inner-cleanup")}
 	ordered := nestedPlan(t, outer, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)
 	}
-	exec.requests = nil
+	exec.reset()
 	if err := RunCleanup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunCleanup: %v", err)
 	}
@@ -479,8 +505,8 @@ func TestExecuteTaskSetup_NestedRunsTheWholeChain(t *testing.T) {
 		"inner-setup": `{"pid":"7"}`,
 	}})
 	ordered := nestedPlan(t,
-		config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup"},
-		config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"},
+		config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup")},
+		config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")},
 	)
 	result, err := ExecuteTaskSetup(context.Background(), ordered[0], nil, SessionVars{Name: "s"}, nil)
 	if err != nil {
@@ -503,8 +529,8 @@ func TestExecuteTaskSetup_NestedFailureKeepsProducedLayers(t *testing.T) {
 		failOn: "inner-setup",
 	})
 	ordered := nestedPlan(t,
-		config.TaskDefinition{ID: "outer", Scope: "run", Setup: "outer-setup"},
-		config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"},
+		config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup")},
+		config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")},
 	)
 	result, err := ExecuteTaskSetup(context.Background(), ordered[0], nil, SessionVars{Name: "s"}, nil)
 	if err == nil {
@@ -526,8 +552,8 @@ func TestExecuteTaskSetup_NestedFailureKeepsProducedLayers(t *testing.T) {
 // one and the compiled plan carries the whole chain, so `plect up` runs every
 // layer rather than the outermost script alone.
 func TestCompileWorkflow_NestedNodeCarriesItsLayers(t *testing.T) {
-	inner := config.TaskDefinition{ID: "claude", Scope: "run", Setup: "inner-setup"}
-	outer := config.TaskDefinition{ID: "team_claude", Scope: "run", Setup: "outer-setup", Inner: "claude", InnerChain: []config.TaskDefinition{inner}}
+	inner := config.TaskDefinition{ID: "claude", Scope: "run", Setup: shellStub("inner-setup")}
+	outer := config.TaskDefinition{ID: "team_claude", Scope: "run", Setup: shellStub("outer-setup"), Inner: "claude", InnerChain: []config.TaskDefinition{inner}}
 	plan, err := CompileWorkflow(
 		config.WorkflowFile{ID: "test", Nodes: []config.WorkflowNode{{ID: "runtime", Uses: "team_claude"}}},
 		map[string]config.TaskDefinition{"team_claude": outer, "claude": inner},

@@ -5,11 +5,12 @@ import (
 	"sort"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// ProjectPublicOutputs renders the composed task's public contract from the
-// per-layer records, innermost outward: each layer's `[bind.outputs]` reads
+// ProjectPublicOutputs resolves the composed task's public contract from the
+// per-layer records, innermost outward: each layer's `[outputs.bind]` reads
 // the layer inside it and produces the contract the layer outside it reads,
 // so the value that arrives is the current one rather than a copy taken at
 // setup.
@@ -34,7 +35,7 @@ func ProjectPublicOutputs(layers []ResolvedLayer, states []contract.TaskLayerSta
 // output scripts, and completion conditions are written against. Index 0 is
 // the composed task's contract.
 //
-// A layer's contract is its `[bind.outputs]` projection of the layer inside
+// A layer's contract is its `[outputs.bind]` projection of the layer inside
 // it plus the values that layer produces itself — the two sources one public
 // name may never share, which is why merging them needs no precedence rule.
 func ProjectLayerOutputs(layers []ResolvedLayer, states []contract.TaskLayerState, session SessionVars) ([]map[string]any, error) {
@@ -66,11 +67,14 @@ func ProjectLayerOutputs(layers []ResolvedLayer, states []contract.TaskLayerStat
 			if !allProduced(inner, b.InnerRefs) {
 				continue
 			}
-			rendered, err := render(b.Template, ctx)
+			resolved, absent, err := computeBoundOutput(b, ctx, layers[i].From)
 			if err != nil {
-				return nil, fmt.Errorf("layer %q bind.outputs %q: %w", layers[i].TaskID, b.Key, err)
+				return nil, fmt.Errorf("layer %q outputs.bind %q: %w", layers[i].TaskID, b.Key, err)
 			}
-			view[b.Key] = rendered
+			if absent {
+				continue
+			}
+			view[b.Key] = resolved
 		}
 		for k, v := range states[i].Outputs {
 			view[k] = v
@@ -78,6 +82,14 @@ func ProjectLayerOutputs(layers []ResolvedLayer, states []contract.TaskLayerStat
 		views[i] = view
 	}
 	return views, nil
+}
+
+// computeBoundOutput resolves one computed binding. It observes no live root
+// and no session, so it needs neither: the layer records carry everything
+// `[outputs.bind]` may read.
+func computeBoundOutput(b config.OutputBinding, ctx RenderContext, from lang.Ownership) (any, bool, error) {
+	eval := effectEval(outputsBindEnvironment(ctx), ctx, from, "")
+	return eval.Value(b.Value)
 }
 
 func allProduced(outputs map[string]any, keys []string) bool {
@@ -113,10 +125,9 @@ func ApplyMutableOutputs(layers []ResolvedLayer, st *contract.TaskState, updates
 		}
 		st.Layers[layerIdx].Outputs[innerKey] = updates[key]
 	}
-	// A binding template reads only `.Inner.outputs` and `.Locals`, both of
-	// which the layer records carry, so the re-read needs no session — the
-	// load-time classification rejects any other source, including the two
-	// session-dependent template helpers.
+	// A binding reads only `inner.outputs`, `locals`, and this layer's own
+	// `inputs`, all of which the layer records carry, so the re-read needs no
+	// session — the surface offers no session root to begin with.
 	projected, err := ProjectPublicOutputs(layers, st.Layers, SessionVars{})
 	if err != nil {
 		return err
@@ -148,7 +159,7 @@ func routeMutableKey(layers []ResolvedLayer, key string) (int, string, error) {
 			return 0, "", fmt.Errorf("output %q is not bound by layer %q, so a write has no inner output to address", current, layers[i].TaskID)
 		}
 		if !b.Direct {
-			return 0, "", fmt.Errorf("output %q is a computed template binding and read-only; only a direct binding of an inner output routes a write", key)
+			return 0, "", fmt.Errorf("output %q is a computed binding and read-only; only a direct projection of an inner output routes a write", key)
 		}
 		current = b.InnerKey
 	}
@@ -164,16 +175,17 @@ func findBinding(bindings []config.OutputBinding, key string) (config.OutputBind
 	return config.OutputBinding{}, false
 }
 
-// TerminalSelf is the output contract a task's `[terminal]` verbs render
-// against as `.Self`: the declaring layer's own contract for a nesting chain,
-// the task's own outputs for a plain task. The verbs belong to the layer that
-// declared them and name that layer's keys, the same way its probes and
-// output scripts do — the composed contract may carry those keys under other
-// names, or not at all.
+// TerminalSelf is the output contract an effect's `[terminal]` verbs resolve
+// against as `self.outputs`: the declaring layer's own contract for a nesting
+// chain, the effect's own outputs for a plain effect. The verbs belong to the
+// layer that declared them and name that layer's keys, the same way its
+// probes and output scripts do — the composed contract may carry those keys
+// under other names, or not at all.
 //
 // A projection failure degrades to the composed outputs rather than erroring:
-// this feeds attach, capture, and status display, where refusing to render is
-// worse than rendering against the contract the instance already published.
+// this feeds attach, capture, and status display, where refusing to resolve
+// is worse than resolving against the contract the instance already
+// published.
 func TerminalSelf(layers []ResolvedLayer, st *contract.TaskState) map[string]any {
 	if st == nil {
 		return nil

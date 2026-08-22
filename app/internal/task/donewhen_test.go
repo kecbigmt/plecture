@@ -339,7 +339,7 @@ func TestResolveDefinition_Requires(t *testing.T) {
 			"checks_status": map[string]any{"type": "string", "mutable": true},
 		},
 	}
-	base := config.TaskDefinition{ID: "review", Scope: "session", Setup: "echo '{}'", OutputsSchema: schema}
+	base := config.TaskDefinition{ID: "review", Scope: "session", Setup: shellStub("echo '{}'"), OutputsSchema: schema}
 
 	t.Run("valid: check in requires in schema", func(t *testing.T) {
 		def := base

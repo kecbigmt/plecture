@@ -16,14 +16,18 @@ func TestResolveTerminalOwner_FindsDeclaringNode(t *testing.T) {
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
+[tmux]
+kind  = "effect"
 scope = "run"
-setup = "echo '{}'"
 
-[terminal]
-attach     = "tmux attach -t {{.Self.session_name}}"
-capture    = "tmux capture-pane -p -t {{.Self.session_name}}"
-send_text  = "tmux send-keys -t {{.Self.session_name}} -- \"$1\""
-send_keys  = "tmux send-keys -t {{.Self.session_name}} \"$1\""
+[tmux.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[tmux.terminal.send_text]
+type    = "exec"
+command = "tmux"
+args    = ["send-keys", "-t", { from = "self.outputs.session_name" }, "--"]
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [[nodes]]
@@ -40,12 +44,12 @@ id = "tmux"
 	wf := workflows["coding"]
 	s := &domain.Session{Name: "o/r-1"}
 
-	nodeID, ops, _ := resolveTerminalOwner(slog.Default(), cfg, s, wf)
-	if nodeID != "tmux" {
-		t.Fatalf("nodeID = %q, want %q", nodeID, "tmux")
+	owner := resolveTerminalOwner(slog.Default(), cfg, s, wf)
+	if owner == nil || owner.NodeID != "tmux" {
+		t.Fatalf("owner = %+v, want the tmux node", owner)
 	}
-	if ops == nil || ops.SendText == "" {
-		t.Fatalf("ops = %+v, want a populated [terminal] table", ops)
+	if _, err := owner.Ops.Verb("send_text"); err != nil {
+		t.Fatalf("send_text: %v", err)
 	}
 }
 
@@ -55,8 +59,13 @@ func TestResolveTerminalOwner_NilWhenNoNodeDeclaresTerminal(t *testing.T) {
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "tasks", "envfile.toml"), `
+[envfile]
+kind  = "effect"
 scope = "session"
-setup = "echo '{}'"
+
+[envfile.setup]
+type   = "shell"
+script = "echo '{}'"
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [[nodes]]
@@ -73,16 +82,15 @@ id = "envfile"
 	wf := workflows["coding"]
 	s := &domain.Session{Name: "o/r-1"}
 
-	nodeID, ops, _ := resolveTerminalOwner(slog.Default(), cfg, s, wf)
-	if nodeID != "" || ops != nil {
-		t.Fatalf("nodeID/ops = %q/%+v, want empty when no node declares [terminal]", nodeID, ops)
+	if owner := resolveTerminalOwner(slog.Default(), cfg, s, wf); owner != nil {
+		t.Fatalf("owner = %+v, want none when no effect declares an interactive endpoint", owner)
 	}
 }
 
 // TestResolveTerminalOwner_CompileFailureIsNonFatal guards the tolerant
-// contract documented on resolveTerminalOwner: a broken task graph (a
-// workflow node the config no longer has a definition for) must not stop
-// the dispatcher from building — it only means {{terminal "..."}} is
+// contract documented on resolveTerminalOwner: a broken plan (a workflow
+// node the config no longer has a declaration for) must not stop the
+// dispatcher from building — it only means the terminal capability is
 // unavailable, logged rather than propagated.
 func TestResolveTerminalOwner_CompileFailureIsNonFatal(t *testing.T) {
 	tmpHome := t.TempDir()
@@ -106,9 +114,8 @@ id = "missing"
 
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	nodeID, ops, _ := resolveTerminalOwner(logger, cfg, s, wf)
-	if nodeID != "" || ops != nil {
-		t.Fatalf("nodeID/ops = %q/%+v, want empty on compile failure", nodeID, ops)
+	if owner := resolveTerminalOwner(logger, cfg, s, wf); owner != nil {
+		t.Fatalf("owner = %+v, want none on compile failure", owner)
 	}
 	if !bytes.Contains(logs.Bytes(), []byte("compile plan failed")) {
 		t.Errorf("expected a compile-failure warning to be logged, got %q", logs.String())

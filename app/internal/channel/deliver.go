@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,12 +25,14 @@ import (
 )
 
 // TerminalResolver resolves one [terminal] verb (attach/capture/send_text/
-// send_keys) to its already-rendered command string, backing a
-// `{ terminal = "..." }` capability in a channel's delivery. Defined here as
-// a plain function type — not imported from internal/task — so this package
-// stays free of a dependency on internal/task; dispatch (which already
-// depends on both) builds the closure.
-type TerminalResolver func(verb string) (string, error)
+// send_keys) to the command string a script runs it by, backing a
+// `{ terminal = "..." }` capability in a channel's delivery. dir is this
+// delivery's private run directory: a verb declared as a shell action is
+// materialized there, so it stays runnable exactly as long as the delivery
+// that consumes it. Defined here as a plain function type — not imported
+// from internal/task — so this package stays free of a dependency on
+// internal/task; dispatch (which already depends on both) builds the closure.
+type TerminalResolver func(verb, dir string) (string, error)
 
 // BinResolver resolves a channel's `bin` reference to the executable it
 // names. Supplied per delivery for the same reason TerminalResolver is: the
@@ -61,13 +64,13 @@ func eventMap(ev event.Event) map[string]any {
 // deliveryEval is the evaluation this delivery's values resolve against: the
 // event and the resolved channel inputs, plus whichever capabilities the
 // caller supplied.
-func deliveryEval(inputs map[string]any, ev event.Event, opts DeliverOptions) lang.Eval {
+func deliveryEval(inputs map[string]any, ev event.Event, opts DeliverOptions, runDir string) lang.Eval {
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
 	e := lang.Eval{Env: lang.Environment{"event": eventMap(ev), "inputs": inputs}}
 	if opts.Terminal != nil {
-		e.Terminal = opts.Terminal
+		e.Terminal = func(verb string) (string, error) { return opts.Terminal(verb, runDir) }
 	}
 	if opts.Bin != nil {
 		e.Bin = opts.Bin
@@ -102,12 +105,25 @@ func DeliverWithOptions(ctx context.Context, def config.ChannelDefinition, input
 }
 
 func deliver(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, opts DeliverOptions) error {
-	eval := deliveryEval(inputs, ev, opts)
+	// One private run directory per delivery, holding whatever the delivery
+	// materializes: the binding transport for a shell channel, and a
+	// terminal verb declared as a shell action for either variant. A
+	// unix_socket delivery runs no process and materializes nothing.
+	runDir := ""
+	if def.Type != config.ChannelTypeUnixSocket {
+		dir, err := os.MkdirTemp("", "plect-channel-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+		runDir = dir
+	}
+	eval := deliveryEval(inputs, ev, opts, runDir)
 	switch def.Type {
 	case config.ChannelTypeUnixSocket:
 		return deliverUnixSocket(ctx, def, eval)
 	case config.ChannelTypeExec, config.ChannelTypeShell:
-		return deliverProcess(ctx, def, eval)
+		return deliverProcess(ctx, def, eval, runDir)
 	default:
 		return fmt.Errorf("unknown channel type %q", def.Type)
 	}
@@ -165,20 +181,11 @@ func writeFramed(conn net.Conn, data []byte) error {
 	return err
 }
 
-// deliverProcess runs an exec or shell channel. A shell channel gets a
-// private run directory for the binding transport, created only for that
-// variant — an exec delivery touches no filesystem of its own.
-func deliverProcess(ctx context.Context, def config.ChannelDefinition, eval lang.Eval) error {
-	runDir := ""
-	if def.Action.Type == lang.ActionShell {
-		dir, err := os.MkdirTemp("", "plect-channel-")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(dir)
-		runDir = dir
-	}
-	execution, err := eval.Run(runDir, def.Action, nil)
+// deliverProcess runs an exec or shell channel in the delivery's own run
+// directory: the binding transport writes there for a shell channel, and an
+// exec delivery touches no filesystem of its own.
+func deliverProcess(ctx context.Context, def config.ChannelDefinition, eval lang.Eval, runDir string) error {
+	execution, err := eval.Run(filepath.Join(runDir, "action"), def.Action, nil)
 	if err != nil {
 		return fmt.Errorf("channel %s: %w", def.Type, err)
 	}

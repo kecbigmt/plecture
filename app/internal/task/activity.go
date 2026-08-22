@@ -51,25 +51,24 @@ type activitySignalWire struct {
 	ObservedAt      string `json:"observed_at"`
 }
 
-// RunActivityProbe renders cmd against the task's own outputs, its resolved
-// node inputs, and session vars (mirroring RunAliveProbe), runs it via
-// bash -c, and parses its stdout as an ActivitySignal.
+// RunActivityProbe runs one activity probe and parses its stdout as an
+// ActivitySignal.
 //
 // Stdout decides contribution and the exit code decides the health of the
 // probe itself, so exiting 0 with empty stdout is how a probe says it has no
 // evidence this time: a nil signal and no error, indistinguishable from an
 // undeclared probe. A non-zero exit is an *ActivityProbeExecError, while a
-// render failure, unparseable stdout, or an envelope missing the required
+// resolution failure, unparseable stdout, or an envelope missing the required
 // fingerprint is a plain error. None of the three contributes evidence; the
 // distinction only decides what the health report says about the probe.
-//
-// sourcePath carries the same meaning it does for RunAliveProbe.
-func RunActivityProbe(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars, sourcePath string, env ...string) (*ActivitySignal, error) {
-	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Inputs: nodeInputs, Session: session, SourcePath: sourcePath})
+func RunActivityProbe(goCtx context.Context, p Probe, session SessionVars) (*ActivitySignal, error) {
+	ctx := p.context(session)
+	resolved, err := resolveEffect(p.Action, healthEnvironment(ctx), ctx, p.From, nil)
 	if err != nil {
 		return nil, err
 	}
-	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorkspaceDirPath, env...)
+	defer resolved.close()
+	stdout, stderr, err := resolved.run(goCtx, session.WorkspaceDirPath, p.Env...)
 	if err != nil {
 		return nil, &ActivityProbeExecError{ExitCode: probeExitCode(err), Stderr: strings.TrimSpace(string(stderr))}
 	}

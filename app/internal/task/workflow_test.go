@@ -22,8 +22,8 @@ func TestCompileWorkflow_DerivesDAGFromInputs(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"tmux":   {ID: "tmux", Scope: "run", Setup: "true"},
-		"claude": {ID: "claude", Scope: "run", Setup: "true"},
+		"tmux":   {ID: "tmux", Scope: "run", Setup: shellStub("true")},
+		"claude": {ID: "claude", Scope: "run", Setup: shellStub("true")},
 	}
 	plan, err := CompileWorkflow(wf, defs)
 	if err != nil {
@@ -49,7 +49,7 @@ func TestCompileWorkflow_NodeIDDifferentFromTaskID(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"claude": {ID: "claude", Scope: "run", Setup: "true"},
+		"claude": {ID: "claude", Scope: "run", Setup: shellStub("true")},
 	}
 	plan, err := CompileWorkflow(wf, defs)
 	if err != nil {
@@ -88,7 +88,7 @@ func TestCompileWorkflow_UnknownNodeRef(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"a": {ID: "a", Scope: "run", Setup: "true"},
+		"a": {ID: "a", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "unknown node") {
@@ -105,7 +105,7 @@ func TestCompileWorkflow_Cycle(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"x": {ID: "x", Scope: "run", Setup: "true"},
+		"x": {ID: "x", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "cycle") {
@@ -124,8 +124,8 @@ func TestCompileWorkflow_ScopeViolation(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"s": {ID: "s", Scope: "session", Setup: "true"},
-		"r": {ID: "r", Scope: "run", Setup: "true"},
+		"s": {ID: "s", Scope: "session", Setup: shellStub("true")},
+		"r": {ID: "r", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "session-scoped") {
@@ -151,8 +151,8 @@ func TestCompileWorkflow_NodeIDDefaultsToUses(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"tmux":   {ID: "tmux", Scope: "run", Setup: "true"},
-		"claude": {ID: "claude", Scope: "run", Setup: "true"},
+		"tmux":   {ID: "tmux", Scope: "run", Setup: shellStub("true")},
+		"claude": {ID: "claude", Scope: "run", Setup: shellStub("true")},
 	}
 	plan, err := CompileWorkflow(wf, defs)
 	if err != nil {
@@ -184,7 +184,7 @@ func TestCompileWorkflow_HyphenInNodeIDRejected(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"x": {ID: "x", Scope: "run", Setup: "true"},
+		"x": {ID: "x", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "Go template identifier") {
@@ -202,7 +202,7 @@ func TestCompileWorkflow_InputRefSelfRejected(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"x": {ID: "x", Scope: "run", Setup: "true"},
+		"x": {ID: "x", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "itself") {
@@ -222,8 +222,8 @@ func TestCompileWorkflow_BlocksAddsReverseEdge(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"tmux":     {ID: "tmux", Scope: "run", Setup: "true"},
-		"teardown": {ID: "teardown", Scope: "run", Setup: "true"},
+		"tmux":     {ID: "tmux", Scope: "run", Setup: shellStub("true")},
+		"teardown": {ID: "teardown", Scope: "run", Setup: shellStub("true")},
 	}
 	plan, err := CompileWorkflow(wf, defs)
 	if err != nil {
@@ -246,7 +246,7 @@ func TestCompileWorkflow_BlocksUnknownTarget(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"a": {ID: "a", Scope: "run", Setup: "true"},
+		"a": {ID: "a", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "blocks unknown node") {
@@ -262,7 +262,7 @@ func TestCompileWorkflow_BlocksSelfRejected(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"a": {ID: "a", Scope: "run", Setup: "true"},
+		"a": {ID: "a", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "blocks itself") {
@@ -281,8 +281,8 @@ func TestCompileWorkflow_BlocksRunBlockingSessionRejected(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"a": {ID: "a", Scope: "run", Setup: "true"},
-		"b": {ID: "b", Scope: "session", Setup: "true"},
+		"a": {ID: "a", Scope: "run", Setup: shellStub("true")},
+		"b": {ID: "b", Scope: "session", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "must not depend") {
@@ -300,8 +300,8 @@ func TestCompileWorkflow_BlocksCycle(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"a": {ID: "a", Scope: "run", Setup: "true"},
-		"b": {ID: "b", Scope: "run", Setup: "true"},
+		"a": {ID: "a", Scope: "run", Setup: shellStub("true")},
+		"b": {ID: "b", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "cycle") {
@@ -322,7 +322,7 @@ func TestCompileWorkflow_BlocksResolvesByNodeIDNotTaskID(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"stub": {ID: "stub", Scope: "run", Setup: "true"},
+		"stub": {ID: "stub", Scope: "run", Setup: shellStub("true")},
 	}
 	plan, err := CompileWorkflow(wf, defs)
 	if err != nil {
@@ -366,8 +366,8 @@ func TestCompileWorkflow_BlocksMixedCycle(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"a": {ID: "a", Scope: "run", Setup: "true"},
-		"b": {ID: "b", Scope: "run", Setup: "true"},
+		"a": {ID: "a", Scope: "run", Setup: shellStub("true")},
+		"b": {ID: "b", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
 	if err == nil || !strings.Contains(err.Error(), "cycle") {
@@ -392,8 +392,8 @@ func TestCompileWorkflow_BlocksIdempotentWithExistingDep(t *testing.T) {
 		},
 	}
 	defs := map[string]config.TaskDefinition{
-		"tmux":   {ID: "tmux", Scope: "run", Setup: "true"},
-		"claude": {ID: "claude", Scope: "run", Setup: "true"},
+		"tmux":   {ID: "tmux", Scope: "run", Setup: shellStub("true")},
+		"claude": {ID: "claude", Scope: "run", Setup: shellStub("true")},
 	}
 	plan, err := CompileWorkflow(wf, defs)
 	if err != nil {

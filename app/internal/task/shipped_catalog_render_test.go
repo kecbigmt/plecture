@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
@@ -48,39 +49,40 @@ func loadShippedCatalogTasks(t *testing.T) (map[string]config.TaskDefinition, []
 	return tasks, mounted
 }
 
-// TestShippedCatalog_TasksRender guards this repository's own official
-// catalog against a broken template: a `{{bin ...}}` reference that doesn't
-// resolve, or a `{{...}}` action that fails to parse, would otherwise only
-// surface the first time a real session runs the task. A kitchen-sink
-// context supplies every key any shipped task's setup/cleanup/health probe
-// references, so this exercises actual rendering, not just TOML decoding.
-func TestShippedCatalog_TasksRender(t *testing.T) {
+// TestShippedCatalog_EffectActionsResolve guards this repository's own
+// official catalog against a declaration nothing can run: an unresolvable
+// `bin`, a projection of a root that has nothing to report, a computation
+// that does not evaluate. Any of those would otherwise surface the first
+// time a real session ran the effect. A kitchen-sink context supplies every
+// key any shipped action reads, so this exercises actual resolution rather
+// than TOML decoding.
+func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 	tasks, mounted := loadShippedCatalogTasks(t)
 
 	session := SessionVars{
 		Name:             "test-session",
 		ResourceID:       "owner:test",
 		WorkspaceDirPath: "/tmp/test-workdir",
+		Branch:           "issue/1",
 		Plugins:          mounted,
-		ParentSession:    "",
 		Inputs:           map[string]any{},
-		// Every shipped claude/codex task hook composes {{terminal "..."}}
-		// against whichever task in the plan declares [terminal] — this
-		// kitchen-sink render has no real tmux task in scope, so a stub
-		// binding stands in for it.
+		// Every shipped agent effect composes the plan's terminal verbs
+		// against whichever effect declares them — this kitchen-sink
+		// resolution has no real multiplexer in scope, so a stand-in stands
+		// for it.
 		Terminal: &TerminalBinding{
 			Ops: &config.TerminalConfig{
-				Attach:   "tmux attach -t test-session",
-				Capture:  "tmux capture-pane -p -t test-session",
-				SendText: `tmux send-keys -t test-session -- "$1"`,
-				SendKeys: `tmux send-keys -t test-session "$1"`,
+				Attach:   shellStub("tmux attach -t test-session"),
+				Capture:  shellStub("tmux capture-pane -p -t test-session"),
+				SendText: shellStub(`tmux send-keys -t test-session -- "$1"`),
+				SendKeys: shellStub(`tmux send-keys -t test-session "$1"`),
 			},
 			Outputs: map[string]any{"session_name": "test-session"},
 		},
 	}
 
-	// Superset of every key a shipped task's setup/cleanup/health probe reads
-	// off .Prev/.Self, plus every input a shipped task declares.
+	// Superset of every key a shipped action reads off self/prev, plus every
+	// input a shipped effect declares.
 	kitchen := map[string]any{
 		"session_id":     "11111111-1111-1111-1111-111111111111",
 		"pid":            12345,
@@ -101,10 +103,14 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 		"effort":         "high",
 		"path_prepend":   "/tmp/plect-gh-guard.x",
 		"mcp_servers":    `[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]`,
-		"template":       "",
+		"launch_env":     `{"PLECT_TEAM_CONTEXT":"acme"}`,
+		"state_root":     "/tmp/plect-codex-exec",
+		"template":       "work",
 		"agent_session":  "",
 		"repeat":         "",
 		"owner":          "acme",
+		"assignees":      "",
+		"instruction":    "",
 	}
 
 	for id, def := range tasks {
@@ -115,25 +121,40 @@ func TestShippedCatalog_TasksRender(t *testing.T) {
 			Session:    session,
 			SourcePath: def.SourcePath,
 		}
-		if def.Setup != "" {
-			if _, err := render(def.Setup, ctx); err != nil {
-				t.Errorf("task %q setup: render: %v", id, err)
+		for _, probe := range []struct {
+			field  string
+			action *lang.Action
+			env    lang.Environment
+		}{
+			{"setup", def.Setup, setupEnvironment(ctx)},
+			{"cleanup", def.Cleanup, cleanupEnvironment(ctx)},
+			{"health.alive", def.Health.AliveProbe(), healthEnvironment(ctx)},
+			{"health.activity", def.Health.ActivityProbe(), healthEnvironment(ctx)},
+		} {
+			if probe.action == nil {
+				continue
 			}
+			resolved, err := resolveEffect(probe.action, probe.env, ctx, def.Ownership(), nil)
+			if err != nil {
+				t.Errorf("effect %q %s: %v", id, probe.field, err)
+				continue
+			}
+			resolved.close()
 		}
-		if def.Cleanup != "" {
-			if _, err := renderCleanup(def.Cleanup, ctx); err != nil {
-				t.Errorf("task %q cleanup: render: %v", id, err)
-			}
+		if def.Terminal == nil {
+			continue
 		}
-		if alive := def.Health.AliveProbe(); alive != "" {
-			if _, err := render(alive, ctx); err != nil {
-				t.Errorf("task %q health.alive: render: %v", id, err)
+		for _, verb := range []string{"attach", "capture", "send_text", "send_keys"} {
+			action, err := def.Terminal.Verb(verb)
+			if err != nil {
+				continue // a verb this effect does not offer
 			}
-		}
-		if activity := def.Health.ActivityProbe(); activity != "" {
-			if _, err := render(activity, ctx); err != nil {
-				t.Errorf("task %q health.activity: render: %v", id, err)
+			resolved, err := resolveEffect(action, terminalEnvironment(kitchen, session), ctx, def.Ownership(), nil)
+			if err != nil {
+				t.Errorf("effect %q terminal.%s: %v", id, verb, err)
+				continue
 			}
+			resolved.close()
 		}
 	}
 }

@@ -1,13 +1,14 @@
-scope   = "run"
+[claude]
+kind  = "effect"
+scope = "run"
 
 # Inputs:
 #   tmux_session — the multiplexer's own session/pane identifier (typically
-#                  {{.Nodes.tmux.outputs.session_name}} from whichever task
-#                  in the workflow declares [terminal]). Launch keystrokes
-#                  go through {{terminal "..."}} and never need this value
-#                  directly; the alive probe below still does, to walk this
-#                  pane's process tree with `tmux list-panes` — that
-#                  introspection has no [terminal] verb of its own, so it
+#                  this workflow's pane node's `session_name` output). Launch
+#                  keystrokes go through the plan's terminal verbs and never
+#                  need this value directly; the alive probe below still does,
+#                  to walk this pane's process tree with `tmux list-panes` —
+#                  that introspection has no terminal verb of its own, so it
 #                  stays a direct, explicit tmux dependency (a documented,
 #                  scoped-out gap: see docs/design/plugin-boundary-contracts.md's
 #                  Terminal Operation Surface, which covers attach/capture/
@@ -27,21 +28,27 @@ scope   = "run"
 #                  command to what gets launched.
 #   mcp_servers  — when set, a JSON array of MCP server registration records
 #                  ({name, command, args?, env?}) merged into the
-#                  --mcp-config JSON this task already assembles, so a
+#                  --mcp-config JSON this effect already assembles, so a
 #                  deployment can widen or scope the session's tool access
-#                  without forking the task. Data only: the records reach
-#                  claude-mcp-servers through the environment and end up in
-#                  the config file, never on a command line.
+#                  without forking the declaration. Data only: the records
+#                  reach claude-mcp-servers through the environment and end up
+#                  in the config file, never on a command line.
 #   path_prepend — when set, a directory prepended to this session's PATH.
 #                  Generic by design (docs/design/plugin-boundary-contracts.md's
 #                  GitHub CLI Guard section): this plugin carries no
 #                  GitHub-specific guard switch of its own. A workflow that
-#                  wants the write guard wires this from the github
-#                  plugin's own gh_guard task output, e.g.
-#                  `{{.Nodes.gh_guard.outputs.dir}}`.
+#                  wants the write guard wires this from the github plugin's
+#                  own gh_guard effect output.
 #
-setup = '''
-PREV_SID='{{get .Prev "session_id" ""}}'
+# Every value the script needs arrives through the binding transport, so
+# nothing below is spliced into this source and no value can become part of
+# a command: model/effort/launch_env/mcp_servers/path_prepend all cross one
+# further boundary of the script's own — the keystrokes typed into the
+# pane — and the script owns the quoting at that boundary.
+[claude.setup]
+type   = "shell"
+script = '''
+PREV_SID="${prev_session_id-}"
 if [ -n "$PREV_SID" ]; then
   SID="$PREV_SID"
   CLAUDE_ARG="--resume $SID"
@@ -62,7 +69,7 @@ mv "$MCP" "$MCP.json" && MCP="$MCP.json"
 # Only register channel-server as an MCP server when it is actually
 # installed: claude fails the whole launch on an MCP entry pointing at a
 # missing command, and channel-server (this catalog's unix-socket delivery
-# target) is an optional companion, not a hard dependency of this task.
+# target) is an optional companion, not a hard dependency of this effect.
 MCP_JSON='{"mcpServers":{}}'
 CHANNELS_FLAG=""
 if command -v channel-server >/dev/null 2>&1; then
@@ -70,13 +77,11 @@ if command -v channel-server >/dev/null 2>&1; then
     '.mcpServers["channel-server"]={command:"channel-server",env:{CHANNEL_SOCKET_PATH:$sock}}')
   CHANNELS_FLAG="--dangerously-load-development-channels server:channel-server"
 fi
-# mcp_servers crosses the same single-quoted assignment launch_env crosses,
-# and the inputs_schema pattern below closes it the same way. From here the
-# records travel only in the environment: claude-mcp-servers serializes them
-# into this config file, so a record's contents never reach a command line.
-MCP_SERVERS='{{get .Inputs "mcp_servers" ""}}'
+# From here the records travel only in the environment: claude-mcp-servers
+# serializes them into this config file, so a record's contents never reach a
+# command line.
 MCP_JSON=$(printf '%s' "$MCP_JSON" \
-  | CLAUDE_MCP_SERVERS="$MCP_SERVERS" {{bin "claude-mcp-servers"}}) || exit 1
+  | CLAUDE_MCP_SERVERS="${mcp_servers-}" "$mcp_servers_bin") || exit 1
 
 printf '%s' "$MCP_JSON" > "$MCP"
 
@@ -90,14 +95,14 @@ printf '%s' "$MCP_JSON" > "$MCP"
 # The reset drops any record a previous run left behind, so this run's
 # activity probe reports "no basis yet" until this run's first turn
 # boundary rather than inheriting a stale fingerprint.
-{{bin "claude-agent-activity"}} reset {{.SessionName}}
+"$activity_bin" reset "$session_name"
 
 HOOKS=$(mktemp "${TMPDIR:-/tmp}/plect-hooks.XXXXXX")
 mv "$HOOKS" "$HOOKS.json" && HOOKS="$HOOKS.json"
-jq -nc '{
+jq -nc --arg activity "$activity_bin" '{
   hooks: {
-    UserPromptSubmit: [{hooks: [{type: "command", command: "{{bin "claude-agent-activity"}} working"}]}],
-    Stop:             [{hooks: [{type: "command", command: "{{bin "claude-agent-activity"}} waiting"}]}]
+    UserPromptSubmit: [{hooks: [{type: "command", command: ($activity + " working")}]}],
+    Stop:             [{hooks: [{type: "command", command: ($activity + " waiting")}]}]
   }
 }' > "$HOOKS"
 
@@ -105,16 +110,14 @@ jq -nc '{
 # it as the subscriber, and create/up use it as the default parent for
 # dispatched sessions. The session id grammar is metacharacter-free, so it
 # is safe unquoted.
-EXPORTS="export PLECT_SESSION_NAME={{.SessionName}}; "
+EXPORTS="export PLECT_SESSION_NAME=$session_name; "
 
-# launch_env is spliced into this script's source at render time and again
-# into the keystrokes sent to the pane, the same two shell boundaries
-# model/effort cross below. The inputs_schema pattern (no single quotes)
-# closes the first; jq's @sh closes the second by quoting each value, and the
-# key test rejects anything that is not an environment variable name — an
+# launch_env crosses one boundary the binding transport does not close: the
+# keystrokes sent to the pane. jq's @sh closes it by quoting each value, and
+# the key test rejects anything that is not an environment variable name — an
 # unquoted or oddly-named key is the only way a data-shaped parameter could
 # turn into a command.
-LAUNCH_ENV='{{get .Inputs "launch_env" ""}}'
+LAUNCH_ENV="${launch_env-}"
 if [ -n "$LAUNCH_ENV" ]; then
   LAUNCH_EXPORTS=$(printf '%s' "$LAUNCH_ENV" | jq -er '
     to_entries
@@ -125,26 +128,18 @@ if [ -n "$LAUNCH_ENV" ]; then
   EXPORTS="${EXPORTS}${LAUNCH_EXPORTS}"
 fi
 
-# path_prepend is a plain directory path, not shell-quoted here beyond the
-# inputs_schema pattern restriction below — the same defense-in-depth
-# reasoning as model/effort's comment applies (a crafted value could break
-# out of this splice point otherwise).
-PATH_PREPEND='{{get .Inputs "path_prepend" ""}}'
+PATH_PREPEND="${path_prepend-}"
 [ -n "$PATH_PREPEND" ] && EXPORTS="${EXPORTS}export PATH=$PATH_PREPEND:\$PATH; "
 
-# model/effort are free strings from --input, spliced directly into this
-# setup script's own source at render time (before bash ever sees it) and
-# again later as EXPORTS keystrokes re-sent to the pane's shell — two shell
-# boundaries a crafted value (e.g. one containing a single quote) could
-# break out of. The inputs_schema pattern below is what actually closes
-# both: it rejects anything but a plain token before this script ever
-# renders, so neither splice point can see a quote/newline/shell
-# metacharacter to begin with.
-MODEL='{{get .Inputs "model" ""}}'
+# model/effort reach the pane's shell as keystrokes, which is why the
+# inputs_schema pattern below restricts them to a plain token: a value
+# carrying a quote or a newline would otherwise be able to break out of the
+# command line the pane's shell parses.
+MODEL="${model-}"
 MODEL_FLAG=""
 [ -n "$MODEL" ] && MODEL_FLAG="--model $MODEL"
 
-EFFORT='{{get .Inputs "effort" ""}}'
+EFFORT="${effort-}"
 EFFORT_FLAG=""
 [ -n "$EFFORT" ] && EFFORT_FLAG="--effort $EFFORT"
 
@@ -163,16 +158,11 @@ if [ -n "$PREV_SID" ]; then
   CLAUDE_CMD="$CLAUDE_CMD || claude --session-id $SID --mcp-config $MCP --settings $HOOKS $CHANNELS_FLAG $MODEL_FLAG $EFFORT_FLAG $DISALLOWED_FLAG"
 fi
 
-# The terminal template helper composes against whichever task in this
-# workflow declares its interactive endpoint — never a concrete
-# multiplexer named here directly. (Spelled out as prose, not as the
-# literal helper call, because this comment is inside the setup string
-# itself and Go's template engine parses delimiters wherever they appear,
-# comment or not.)
-send_text_cmd={{terminal "send_text" | shellQuote}}
-send_keys_cmd={{terminal "send_keys" | shellQuote}}
-sh -c "$send_text_cmd" terminal-send-text "${EXPORTS}${CLAUDE_CMD}"
-sh -c "$send_keys_cmd" terminal-send-keys Enter
+# The terminal verbs compose against whichever effect in this workflow
+# declares the interactive endpoint — never a concrete multiplexer named
+# here directly.
+sh -c "$send_text" terminal-send-text "${EXPORTS}${CLAUDE_CMD}"
+sh -c "$send_keys" terminal-send-keys Enter
 
 # Keep sending Enter until the session JSON file appears, then confirm the
 # PID is alive. claude's own startup can stall on a warning banner (e.g. the
@@ -183,13 +173,13 @@ sh -c "$send_keys_cmd" terminal-send-keys Enter
 # reappears on --resume, so the same loop covers both cases).
 #
 # On --resume, the session JSON can still carry the previous run's now-dead
-# pid, so skip any candidate matching .Prev.pid and confirm liveness with
-# kill -0 before accepting it.
+# pid, so skip any candidate matching the previous pid and confirm liveness
+# with kill -0 before accepting it.
 # 30s, not 10s: a cold pane can spend several seconds loading its shell
 # environment before the claude command even runs, and a warm pane still
 # clears in a couple of iterations, so the longer bound only costs time on
 # the failure path.
-PREV_PID='{{get .Prev "pid" ""}}'
+PREV_PID="${prev_pid-}"
 PID=""
 i=0
 while [ "$i" -lt 60 ]; do
@@ -201,7 +191,7 @@ while [ "$i" -lt 60 ]; do
     # No session JSON yet — most likely still stuck on the warning banner.
     # Send another Enter and keep polling; once the JSON appears, this
     # branch stops being taken, so extra Enters stop being sent.
-    sh -c "$send_keys_cmd" terminal-send-keys Enter
+    sh -c "$send_keys" terminal-send-keys Enter
     continue
   fi
   [ -n "$PREV_PID" ] && [ "$CANDIDATE" = "$PREV_PID" ] && continue
@@ -223,45 +213,59 @@ jq -nc \
   '{pid:$pid, session_id:$sid, socket_path:$sock, mcp_config:$mcp, hooks_settings:$hooks}'
 '''
 
-cleanup = '''
-kill -TERM {{.Self.pid}} 2>/dev/null || exit 0
+[claude.setup.bind]
+session_name     = { from = "session.name" }
+prev_session_id  = { from = "prev.session_id", optional = true }
+prev_pid         = { from = "prev.pid", optional = true }
+model            = { from = "inputs.model", optional = true }
+effort           = { from = "inputs.effort", optional = true }
+launch_env       = { from = "inputs.launch_env", optional = true }
+mcp_servers      = { from = "inputs.mcp_servers", optional = true }
+path_prepend     = { from = "inputs.path_prepend", optional = true }
+activity_bin     = { bin = "claude-agent-activity" }
+mcp_servers_bin  = { bin = "claude-mcp-servers" }
+send_text        = { terminal = "send_text" }
+send_keys        = { terminal = "send_keys" }
+
+[claude.cleanup]
+type   = "shell"
+script = '''
+kill -TERM "$pid" 2>/dev/null || exit 0
 for _ in 1 2 3 4 5; do
   sleep 0.5
-  kill -0 {{.Self.pid}} 2>/dev/null || break
+  kill -0 "$pid" 2>/dev/null || break
 done
-kill -KILL {{.Self.pid}} 2>/dev/null || true
-rm -f {{.Self.mcp_config}} {{.Self.socket_path}}
-# get, not .Self.hooks_settings: a session produced before this field
-# existed has no such key, and .Self's strict missingkey semantics would
-# error.
-HOOKS_SETTINGS='{{get .Self "hooks_settings" ""}}'
-[ -n "$HOOKS_SETTINGS" ] && rm -f "$HOOKS_SETTINGS"
-{{bin "claude-agent-activity"}} reset {{.SessionName}}
+kill -KILL "$pid" 2>/dev/null || true
+rm -f "$mcp_config" "$socket_path"
+# optional, not required: a session produced before this field existed has
+# no such key, and a required projection of it would fail the release.
+[ -n "${hooks_settings-}" ] && rm -f "$hooks_settings"
+"$activity_bin" reset "$session_name"
 true
 '''
 
-# This task's [health] table.
-#
-# alive: a bare `kill -0` only detects death, not restart-with-new-pid: the pane's
-# claude process can get relaunched underneath plect (crash + relaunch,
-# manual --resume) with no other update path (outputs are otherwise
-# write-once at setup). On a stale pid, search this pane's process tree for
-# a live claude and re-derive its identity from ~/.claude/sessions/*.json
-# (the same discovery setup performs), then write it back via the mutable
-# outputs below — the next dispatch batch re-renders channel inputs from
-# persisted outputs, so delivery self-heals without a session down/up.
-#
-# activity: the turn-boundary hook this task registers at setup is this
-# task's activity probe — the hook records each boundary and the probe
-# reads the record back, so one plugin executable owns both halves. It
-# withholds silence_expected while a turn is running and sets it once the
-# turn ends, which is the only way a probe may narrow what core expects of
-# this instance.
-[health]
-alive = '''
-kill -0 {{.Self.pid}} 2>/dev/null && exit 0
+[claude.cleanup.bind]
+pid             = { from = "self.outputs.pid", optional = true }
+mcp_config      = { from = "self.outputs.mcp_config", optional = true }
+socket_path     = { from = "self.outputs.socket_path", optional = true }
+hooks_settings  = { from = "self.outputs.hooks_settings", optional = true }
+session_name    = { from = "session.name" }
+activity_bin    = { bin = "claude-agent-activity" }
 
-PANE_PID=$(tmux list-panes -t {{.Inputs.tmux_session}} -F '#{pane_pid}' 2>/dev/null | head -1)
+# alive: a bare `kill -0` only detects death, not restart-with-new-pid: the
+# pane's claude process can get relaunched underneath plect (crash +
+# relaunch, manual --resume) with no other update path (outputs are otherwise
+# write-once at setup). On a stale pid, search this pane's process tree for a
+# live claude and re-derive its identity from ~/.claude/sessions/*.json (the
+# same discovery setup performs), then write it back via the mutable outputs
+# below — the next dispatch batch re-resolves channel inputs from persisted
+# outputs, so delivery self-heals without a session down/up.
+[claude.health.alive]
+type   = "shell"
+script = '''
+kill -0 "$pid" 2>/dev/null && exit 0
+
+PANE_PID=$(tmux list-panes -t "$tmux_session" -F '#{pane_pid}' 2>/dev/null | head -1)
 [ -n "$PANE_PID" ] || exit 1
 
 FOUND_PID=""
@@ -286,43 +290,58 @@ done
 [ -n "$FOUND_PID" ] && [ -n "$FOUND_SID" ] || exit 1
 
 SOCKET="${XDG_RUNTIME_DIR:-/tmp}/claude-channel/$FOUND_SID.sock"
-plect state set-output {{.SessionName}} --node claude "$(jq -nc \
+plect state set-output "$session_name" --node claude "$(jq -nc \
   --argjson pid "$FOUND_PID" --arg sid "$FOUND_SID" --arg sock "$SOCKET" \
   '{pid:$pid, session_id:$sid, socket_path:$sock}')"
 '''
 
-activity = '{{bin "claude-agent-activity"}} probe {{.SessionName}}'
+[claude.health.alive.bind]
+pid          = { from = "self.outputs.pid", optional = true }
+tmux_session = { from = "inputs.tmux_session" }
+session_name = { from = "session.name" }
 
-[inputs_schema]
+# activity: the turn-boundary hook this effect registers at setup is its
+# activity probe — the hook records each boundary and the probe reads the
+# record back, so one plugin executable owns both halves. It withholds
+# silence_expected while a turn is running and sets it once the turn ends,
+# which is the only way a probe may narrow what core expects of this
+# instance.
+[claude.health.activity]
+type = "exec"
+bin  = "claude-agent-activity"
+args = ["probe", { from = "session.name" }]
+
+[claude.inputs_schema]
 type                 = "object"
 required             = ["tmux_session"]
 additionalProperties = false
 
 # model/effort: restricted to a plain-token charset (no quotes, whitespace,
-# or newlines) so a malicious value is rejected here, before it ever reaches
-# the setup script's template splice — see the setup script's comment above.
-[inputs_schema.properties]
+# or newlines) because they reach the pane's shell as keystrokes — see the
+# setup script's comment above.
+[claude.inputs_schema.properties]
 tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
-# launch_env: a JSON object, restricted to a single-quote-free charset because
-# the value is spliced inside a single-quoted shell assignment above. jq
-# rejects anything that is not an object of scalars at launch time.
+# launch_env: a JSON object. jq rejects anything that is not an object of
+# scalars at launch time and quotes each value on its way into the
+# keystrokes; the quote-free charset is the defense in depth behind that,
+# since the keystrokes are a boundary the binding transport does not own.
 launch_env   = { type = "string", pattern = "^[^']*$" }
-# mcp_servers: a JSON array, restricted to a single-quote-free charset for the
-# same reason launch_env is. claude-mcp-servers rejects anything that is not an
-# array of well-formed registration records at launch time.
+# mcp_servers: a JSON array. claude-mcp-servers rejects anything that is not
+# an array of well-formed registration records at launch time, and the
+# records never leave the environment; same defense in depth as launch_env.
 mcp_servers  = { type = "string", pattern = "^[^']*$" }
 # path_prepend: a plain path charset (no quotes, whitespace, or shell
 # metacharacters), same reasoning as model/effort above — the value crosses
-# the same setup-script splice point.
+# the same keystroke boundary.
 path_prepend = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 
-[outputs_schema]
+[claude.outputs_schema]
 type     = "object"
 required = ["pid", "session_id", "socket_path", "mcp_config"]
 
-[outputs_schema.properties]
+[claude.outputs_schema.properties]
 pid            = { type = "integer", mutable = true }
 session_id     = { type = "string", mutable = true }
 socket_path    = { type = "string", mutable = true }

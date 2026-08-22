@@ -31,8 +31,13 @@ func setupWorkflowFixture(t *testing.T) (*config.Config, string) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
+[tmux]
+kind = "effect"
 scope = "run"
-setup = "echo '{}'"
+
+[tmux.setup]
+type   = "shell"
+script = "echo '{}'"
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 name        = "Coding agent"
@@ -109,7 +114,15 @@ func TestWorkflowShow_PopulatesChannels(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), "scope = \"run\"\nsetup = \"echo '{}'\"\n")
+	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
+[tmux]
+kind  = "effect"
+scope = "run"
+
+[tmux.setup]
+type   = "shell"
+script = "echo '{}'"
+`)
 	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
 [claude_channel]
 kind = "channel"
@@ -160,7 +173,15 @@ func TestWorkflowShow_ChannelLoadErrorIsWrapped(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), "scope = \"run\"\nsetup = \"echo '{}'\"\n")
+	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
+[tmux]
+kind  = "effect"
+scope = "run"
+
+[tmux.setup]
+type   = "shell"
+script = "echo '{}'"
+`)
 	// unix_socket missing `body` => LoadChannels itself fails (not a validation
 	// mismatch), so WorkflowShow returns the wrapped load error, not ErrInvalidInput.
 	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), "[claude_channel]\nkind = \"channel\"\ntype = \"unix_socket\"\npath = { from = \"inputs.path\" }\n")
@@ -200,7 +221,15 @@ func TestWorkflowShow_InvalidChannelReturnsInvalidInput(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), "scope = \"run\"\nsetup = \"echo '{}'\"\n")
+	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
+[tmux]
+kind  = "effect"
+scope = "run"
+
+[tmux.setup]
+type   = "shell"
+script = "echo '{}'"
+`)
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
 [[nodes]]
 uses = "tmux"

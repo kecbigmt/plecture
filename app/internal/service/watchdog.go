@@ -225,19 +225,19 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		// chain exactly as they compose across instances, so both fall out of
 		// walking one flat target list.
 		for _, target := range probeTargets(key, def, st, comp) {
-			if target.Alive != "" {
+			if target.Alive != nil {
 				declared = true
-				if aliveErr := task.RunAliveProbe(context.Background(), target.Alive, target.Self, target.Inputs, vars, target.SourcePath, target.Env...); aliveErr != nil {
+				if aliveErr := task.RunAliveProbe(context.Background(), target.probe(target.Alive), vars); aliveErr != nil {
 					return HealthReport{SessionName: name, Healthy: false, Declared: true, ProbeErrors: probeErrors, Reason: fmt.Sprintf("%s: %v", target.Label, aliveErr), LastCheckedAt: now}
 				}
 			}
-			if target.Activity == "" {
+			if target.Activity == nil {
 				continue
 			}
-			sig, sigErr := task.RunActivityProbe(context.Background(), target.Activity, target.Self, target.Inputs, vars, target.SourcePath, target.Env...)
+			sig, sigErr := task.RunActivityProbe(context.Background(), target.probe(target.Activity), vars)
 			switch {
 			case sigErr != nil:
-				probeErrors = append(probeErrors, activityProbeError(target.Label, target.Activity, sigErr))
+				probeErrors = append(probeErrors, activityProbeError(target.Label, target.Activity.Source(), sigErr))
 			case sig != nil:
 				activityDeclared = true
 				// A probe may only lower this instance's expectation: no

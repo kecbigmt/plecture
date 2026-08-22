@@ -24,14 +24,27 @@ func writeTaskFile(t *testing.T, base, id, body string) {
 func TestTaskShow_ReportsNestingChainOutermostFirst(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "claude", `
+[claude]
+kind = "effect"
 scope = "session"
-setup = "true"
+
+[claude.setup]
+type   = "shell"
+script = "true"
 `)
 	writeTaskFile(t, base, "guarded", `
-inner = "claude"
+[guarded]
+kind = "effect"
+
+[guarded.inner]
+uses = "claude"
 `)
 	writeTaskFile(t, base, "team", `
-inner = "guarded"
+[team]
+kind = "effect"
+
+[team.inner]
+uses = "guarded"
 `)
 
 	detail, err := TaskShow(&config.Config{BaseDir: base}, "", "team")
@@ -64,8 +77,13 @@ inner = "guarded"
 func TestTaskShow_PlainTaskReportsNoChain(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "claude", `
+[claude]
+kind = "effect"
 scope = "run"
-setup = "true"
+
+[claude.setup]
+type   = "shell"
+script = "true"
 `)
 	detail, err := TaskShow(&config.Config{BaseDir: base}, "", "claude")
 	if err != nil {

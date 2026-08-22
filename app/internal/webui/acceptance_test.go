@@ -55,6 +55,14 @@ func mountResolverOnlyWorkspaceProvider(t *testing.T, cfg *config.Config) {
 	}
 }
 
+// isolateMachineConfig strips the layers this machine owns, so a case that
+// loads a real config still answers only for what it declares itself.
+func isolateMachineConfig(cfg *config.Config) {
+	cfg.BaseDir = ""
+	cfg.PluginDirs = nil
+	cfg.Plugins = nil
+}
+
 // Acceptance: the real service stack (state.Store + service.List), driven
 // through the HTTP handler, surfaces a session that exists in state.json.
 //
@@ -115,6 +123,11 @@ func TestAcceptance_SessionDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// An acceptance case answers for this stack, not for whatever config the
+	// machine running it happens to own: a session's detail view loads the
+	// declarations its workflow names, so leaving the machine's own layers in
+	// the load would make this pass or fail on their strength.
+	isolateMachineConfig(cfg)
 	svc := newLiveService(cfg, store)
 	rec := get(t, svc, "/sessions/acceptance/web-2")
 

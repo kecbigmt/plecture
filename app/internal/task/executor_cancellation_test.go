@@ -75,7 +75,7 @@ func TestCharacterization_RunAliveProbe_CancelledContextKillsHungChild(t *testin
 	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	err := RunAliveProbe(goCtx, "sleep 5; touch '"+marker+"'", map[string]any{}, map[string]any{}, session, "")
+	err := RunAliveProbe(goCtx, Probe{Action: shellStub("sleep 5; touch '" + marker + "'")}, session)
 	if err == nil {
 		t.Fatalf("RunAliveProbe: want an error surfaced from the cancelled context, got nil")
 	}
@@ -94,7 +94,8 @@ func TestCharacterization_RunCapture_CancelledContextKillsHungChild(t *testing.T
 	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, err := RunCapture(goCtx, "sleep 5; touch '"+marker+"'; echo done", map[string]any{}, session)
+	binding := &TerminalBinding{Ops: &config.TerminalConfig{Capture: shellStub("sleep 5; touch '" + marker + "'; echo done")}}
+	_, err := RunCapture(goCtx, binding, session)
 	if err == nil {
 		t.Fatalf("RunCapture: want an error surfaced from the cancelled context, got nil")
 	}

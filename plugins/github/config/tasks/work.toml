@@ -1,9 +1,13 @@
-scope = "session"
+[work]
+kind     = "effect"
+scope    = "session"
+requires = ["resource_kind", "checks_status", "issue_status"]
 
-setup = '''
-set -euo pipefail
-EXTRA='{{get .Inputs "instruction" ""}}'
-INSTRUCTION=$(plect template render work --session '{{.SessionName}}' --instruction "$EXTRA")
+[work.setup]
+type   = "shell"
+script = '''
+set -eu
+INSTRUCTION=$(plect template render work --session "$session" --instruction "$extra")
 if [ -z "$INSTRUCTION" ]; then
   echo "plect template render work produced empty instruction" >&2
   exit 1
@@ -11,7 +15,9 @@ fi
 jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
 '''
 
-requires = ["resource_kind", "checks_status", "issue_status"]
+[work.setup.bind]
+session = { from = "session.name" }
+extra   = { from = "inputs.instruction", default = "" }
 
 # Resource status is kept as first-class outputs rather than one rolled-up
 # "completion" flag: collapsing a failing PR check and a still-running one onto a
@@ -22,7 +28,7 @@ requires = ["resource_kind", "checks_status", "issue_status"]
 # satisfying on its own. A gh failure exits non-zero so the whole fetch stays
 # pending (prior values retained), never silently flipping a check to "NULL".
 #
-# This task is written against either resource kind, so it reads only the keys
+# This effect is written against either resource kind, so it reads only the keys
 # both observers publish. issue_status is an issue observation's alone: a
 # pull-keyed instance never receives it, which is why done_when does not read
 # it. mergeable_state is deliberately absent from done_when too — a merge
@@ -31,11 +37,11 @@ requires = ["resource_kind", "checks_status", "issue_status"]
 # or resources/pull.toml, whichever recognizes this instance's resource)
 # rather than fetched by a task-local script, so `plect resource status`, show,
 # and this instance all read one contract.
-[[outputs]]
+[[work.outputs]]
 produces = ["resource_kind", "checks_status", "issue_status", "revision", "pr_url", "mergeable_state"]
 from_resource_status = true
 
-[done_when]
+[work.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "checks_status", in = ["SUCCESS", "NULL"] },
@@ -43,22 +49,22 @@ all = [
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
 
-[done_when.budget]
+[work.done_when.budget]
 heartbeat_budget = 3
 on_exhaust = "escalate"
 
-[inputs_schema]
+[work.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[inputs_schema.properties]
+[work.inputs_schema.properties]
 instruction = { type = "string" }
 
-[outputs_schema]
+[work.outputs_schema]
 type     = "object"
 required = ["instruction"]
 
-[outputs_schema.properties]
+[work.outputs_schema.properties]
 instruction     = { type = "string" }
 resource_kind   = { type = "string", mutable = true }
 checks_status   = { type = "string", mutable = true }

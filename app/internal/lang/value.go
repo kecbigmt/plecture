@@ -335,3 +335,38 @@ func childPos(pos Position, segment string) Position {
 	}
 	return Position{File: pos.File, Path: pos.Path + "." + segment}
 }
+
+// ValueLeaves flattens one value into the leaves that reach a root: the
+// value itself, or every leaf of a json operand's tree. A consumer asking
+// what a value reads walks these rather than reimplementing the operand
+// shape.
+func ValueLeaves(v *Value) []*Value {
+	if v == nil {
+		return nil
+	}
+	if v.Form != FormJSON {
+		return []*Value{v}
+	}
+	return operandLeaves(v.JSON)
+}
+
+func operandLeaves(op *JSONOperand) []*Value {
+	switch {
+	case op == nil:
+		return nil
+	case op.Leaf != nil:
+		return ValueLeaves(op.Leaf)
+	case op.Object != nil:
+		var out []*Value
+		for _, key := range sortedOperandKeys(op.Object) {
+			out = append(out, operandLeaves(op.Object[key])...)
+		}
+		return out
+	default:
+		var out []*Value
+		for _, child := range op.Array {
+			out = append(out, operandLeaves(child)...)
+		}
+		return out
+	}
+}

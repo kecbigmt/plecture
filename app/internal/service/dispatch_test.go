@@ -111,7 +111,7 @@ func TestDispatchResource_AmbiguousIsError(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(baseDir, "tasks"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("setup = \"echo '{}'\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("[noop]\nkind = \"effect\"\n\n[noop.setup]\ntype = \"shell\"\nscript = \"echo '{}'\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{BaseDir: baseDir}
@@ -136,7 +136,7 @@ func TestDispatchResource_AutoSelectFalseSkippedUnlessExplicit(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "github.toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("setup = \"echo '{}'\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("[noop]\nkind = \"effect\"\n\n[noop.setup]\ntype = \"shell\"\nscript = \"echo '{}'\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "claude.toml"), []byte("workspace_provider = \"github\"\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
@@ -407,7 +407,7 @@ func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(baseDir, "tasks"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("setup = \"echo '{}'\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("[noop]\nkind = \"effect\"\n\n[noop.setup]\ntype = \"shell\"\nscript = \"echo '{}'\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir(), BaseDir: baseDir}

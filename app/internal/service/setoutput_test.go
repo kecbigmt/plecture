@@ -401,8 +401,8 @@ mutable = true
 const nestedRuntimeOuter = `
 inner = "runtime"
 
-[bind.outputs]
-agent_pid = "{{.Inner.outputs.pid}}"
+[outputs.bind]
+agent_pid = { from = "inner.outputs.pid" }
 
 [outputs_schema]
 type = "object"

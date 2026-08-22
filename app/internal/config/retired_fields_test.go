@@ -6,29 +6,25 @@ import (
 	"testing"
 )
 
-// A retired key the decoder would otherwise drop silently must name itself in
-// the load error: a task that still declares `primary` or `execution` would
-// otherwise load clean and leave the author believing the declaration is live.
-func TestLoadTaskDefinitions_RetiredFieldsRejected(t *testing.T) {
-	tests := []struct {
-		name string
-		body string
-		want string
-	}{
-		{name: "primary", body: "scope = \"session\"\nsetup = \"true\"\nprimary = true\n", want: "`primary`"},
-		{name: "idle_after", body: "scope = \"session\"\nsetup = \"true\"\nidle_after = \"30m\"\n", want: "`idle_after`"},
-		{name: "execution", body: "scope = \"session\"\nsetup = \"true\"\nexecution = \"environment\"\n", want: "`execution`"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+// The effect grammar is closed, so a field outside it names itself in the
+// load error rather than being read as a declaration with no consumer. A
+// declaration left un-migrated fails on its missing `kind` before any field
+// is examined at all, which is why the rows below carry one.
+func TestLoadTaskDefinitions_FieldOutsideTheSurfaceRejected(t *testing.T) {
+	for _, field := range []string{"primary", "idle_after", "execution"} {
+		t.Run(field, func(t *testing.T) {
 			base := t.TempDir()
-			writeTaskFile(t, base, "work", tt.body)
+			writeTaskFile(t, base, "work", "[work]\nkind = \"effect\"\nscope = \"session\"\n"+field+" = \"x\"\n"+`
+[work.setup]
+type   = "shell"
+script = "true"
+`)
 			_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
 			if err == nil {
-				t.Fatalf("expected a load error naming the retired %s field", tt.name)
+				t.Fatalf("expected a load error naming the %s field", field)
 			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Errorf("error does not name the retired field: %v", err)
+			if !strings.Contains(err.Error(), field) {
+				t.Errorf("error does not name the field: %v", err)
 			}
 		})
 	}

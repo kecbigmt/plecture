@@ -26,8 +26,35 @@ func setUpConfigHomeWithCapture(t *testing.T) {
 	baseDir := filepath.Join(home, ".config", "plect")
 
 	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"),
-		[]byte("scope = \"session\"\nsetup = \"echo '{}'\"\ncleanup = \"true\"\n\n"+
-			"[terminal]\nattach = \"true\"\ncapture = \"echo -n hello\"\nsend_text = \"true\"\nsend_keys = \"true\"\n"), 0o644); err != nil {
+		[]byte(`
+[noop]
+kind  = "effect"
+scope = "session"
+
+[noop.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[noop.cleanup]
+type   = "shell"
+script = "true"
+
+[noop.terminal.attach]
+type   = "shell"
+script = "true"
+
+[noop.terminal.capture]
+type   = "shell"
+script = "echo -n hello"
+
+[noop.terminal.send_text]
+type   = "shell"
+script = "true"
+
+[noop.terminal.send_keys]
+type   = "shell"
+script = "true"
+`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

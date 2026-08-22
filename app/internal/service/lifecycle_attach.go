@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/state"
@@ -22,8 +23,8 @@ type AttachResult struct {
 	Command     string `json:"command"`
 }
 
-// Attach resolves the session, locates the task declaring `attach`, and
-// renders its template against that task's own outputs. It does not exec
+// Attach resolves the session, locates the effect declaring the attach verb,
+// and resolves it against that effect's own outputs. It does not exec
 // anything — the CLI handles syscall.Exec so this stays testable.
 func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*AttachResult, error) {
 	sessionName, session, err := resolveSession(cfg, store, params.Identifier)
@@ -53,9 +54,17 @@ func Attach(cfg *config.Config, store *state.Store, params AttachParams) (*Attac
 		}
 	}
 
-	cmdStr, err := task.RenderAttach(target.Terminal.Attach, task.TerminalSelf(target.Layers, st), sessionVars(cfg, session, plan))
+	// The run directory a shell attach verb materializes into is deliberately
+	// left behind: the caller replaces its own process with this command, so
+	// nothing of ours runs afterwards to remove it.
+	dir, err := os.MkdirTemp("", "plect-attach-")
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("attach template: %v", err)}
+		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	cmdStr, err := task.TerminalCommand(terminalBinding(plan, session), "attach", sessionVars(cfg, session, plan), dir)
+	if err != nil {
+		os.RemoveAll(dir)
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("attach: %v", err)}
 	}
 
 	return &AttachResult{

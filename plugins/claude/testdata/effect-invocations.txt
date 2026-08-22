@@ -20,9 +20,9 @@ call[0]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == claude_initial_prompt / setup
-call[0]: "terminal-capture" ""
+call[0]: "terminal-capture"
 call[1]: "plect" "template" "render" "work" "--session" "acme/widget-1"
 call[2]: "terminal-send_text" "rendered instruction"
 call[3]: "terminal-send_keys" "Enter"
-call[4]: "terminal-capture" ""
+call[4]: "terminal-capture"
 outputs: {"sent":"true"}

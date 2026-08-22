@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -20,15 +21,15 @@ func TestRunSetup_NestedProjectsThePublicContract(t *testing.T) {
 		"inner-setup": `{"pid":42,"socket_path":"/tmp/sock","session_id":"abc"}`,
 	}})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "outer-setup",
-		Bind: &config.BindConfig{Outputs: map[string]string{
-			"pid":           "{{.Inner.outputs.pid}}",
-			"agent_session": "{{.Inner.outputs.session_id}}",
-			"socket_label":  "socket:{{.Inner.outputs.socket_path}}",
-			"guard_dir":     "{{.Locals.guard_dir}}",
-		}},
+		ID: "outer", Scope: "run", Setup: shellStub("outer-setup"),
+		OutputsBind: map[string]*lang.Value{
+			"pid":           fromValue("inner.outputs.pid"),
+			"agent_session": fromValue("inner.outputs.session_id"),
+			"socket_label":  exprValue(`'socket:' + string(inner.outputs.socket_path)`),
+			"guard_dir":     fromValue("locals.guard_dir"),
+		},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), nestedPlan(t, outer, inner), SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)
@@ -56,14 +57,14 @@ func TestRunSetup_NestedDirectBindingKeepsTheInnerNativeType(t *testing.T) {
 		"inner-setup": `{"pid":42,"ready":true}`,
 	}})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "",
-		Bind: &config.BindConfig{Outputs: map[string]string{
-			"pid":      "{{.Inner.outputs.pid}}",
-			"ready":    "{{ .Inner.outputs.ready }}",
-			"pid_text": "{{.Inner.outputs.pid}}!",
-		}},
+		ID: "outer", Scope: "run", Setup: shellStub(""),
+		OutputsBind: map[string]*lang.Value{
+			"pid":      fromValue("inner.outputs.pid"),
+			"ready":    fromValue("inner.outputs.ready"),
+			"pid_text": exprValue(`string(inner.outputs.pid) + '!'`),
+		},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), nestedPlan(t, outer, inner), SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)
@@ -90,13 +91,13 @@ func TestRunSetup_NestedProjectionOmitsUnavailableInnerOutputs(t *testing.T) {
 	}})
 	outer := config.TaskDefinition{
 		ID: "outer", Scope: "run",
-		Bind: &config.BindConfig{Outputs: map[string]string{
-			"pid":            "{{.Inner.outputs.pid}}",
-			"review":         "{{.Inner.outputs.review_decision}}",
-			"review_display": "decision: {{.Inner.outputs.review_decision}}",
-		}},
+		OutputsBind: map[string]*lang.Value{
+			"pid":            fromValue("inner.outputs.pid"),
+			"review":         fromValue("inner.outputs.review_decision"),
+			"review_display": exprValue(`'decision: ' + string(inner.outputs.review_decision)`),
+		},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), nestedPlan(t, outer, inner), SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)
@@ -121,10 +122,10 @@ func TestRunSetup_NestedPublicOutputsValidatedAgainstOuterSchema(t *testing.T) {
 	}})
 	outer := config.TaskDefinition{
 		ID: "outer", Scope: "run",
-		Bind:          &config.BindConfig{Outputs: map[string]string{"pid": "{{.Inner.outputs.pid}}"}},
+		OutputsBind:   map[string]*lang.Value{"pid": fromValue("inner.outputs.pid")},
 		OutputsSchema: objectSchema(map[string]any{"pid": map[string]any{"type": "string"}}, "pid"),
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	tasks := map[string]*contract.TaskState{}
 	err := RunSetup(context.Background(), nestedPlan(t, outer, inner), SessionVars{Name: "s"}, tasks, nil)
 	if err == nil {
@@ -135,23 +136,23 @@ func TestRunSetup_NestedPublicOutputsValidatedAgainstOuterSchema(t *testing.T) {
 	}
 }
 
-// TestRunSetup_NestedPublicBindingRenderFailure covers the other half of that
-// rule: a binding template that cannot render at all.
-func TestRunSetup_NestedPublicBindingRenderFailure(t *testing.T) {
+// TestRunSetup_NestedPublicBindingResolutionFailure covers the other half of
+// that rule: a binding that cannot be resolved at all.
+func TestRunSetup_NestedPublicBindingResolutionFailure(t *testing.T) {
 	withScriptedExecutor(t, &scriptedExecutor{stdout: map[string]string{
 		"outer-setup": `{"guard_dir":"/tmp/guard"}`,
 	}})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "outer-setup",
-		Bind: &config.BindConfig{Outputs: map[string]string{"guard": "{{.Locals.absent}}/x"}},
+		ID: "outer", Scope: "run", Setup: shellStub("outer-setup"),
+		OutputsBind: map[string]*lang.Value{"guard": exprValue(`string(locals.absent) + '/x'`)},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	tasks := map[string]*contract.TaskState{}
 	err := RunSetup(context.Background(), nestedPlan(t, outer, inner), SessionVars{Name: "s"}, tasks, nil)
 	if err == nil {
-		t.Fatal("RunSetup: want an error for a public binding that cannot render, got nil")
+		t.Fatal("RunSetup: want an error for a public binding that cannot resolve, got nil")
 	}
-	if !strings.Contains(err.Error(), "bind.outputs") {
+	if !strings.Contains(err.Error(), "outputs.bind") {
 		t.Errorf("error = %v, want it to name the failing binding table", err)
 	}
 }
@@ -165,13 +166,13 @@ func TestRunSetup_NestedProjectionTraversesEveryLayer(t *testing.T) {
 	}})
 	outer := config.TaskDefinition{
 		ID: "outer", Scope: "run",
-		Bind: &config.BindConfig{Outputs: map[string]string{"agent_pid": "{{.Inner.outputs.runtime_pid}}"}},
+		OutputsBind: map[string]*lang.Value{"agent_pid": fromValue("inner.outputs.runtime_pid")},
 	}
 	middle := config.TaskDefinition{
 		ID: "middle", Scope: "run",
-		Bind: &config.BindConfig{Outputs: map[string]string{"runtime_pid": "{{.Inner.outputs.pid}}"}},
+		OutputsBind: map[string]*lang.Value{"runtime_pid": fromValue("inner.outputs.pid")},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), nestedPlan(t, outer, middle, inner), SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)
@@ -191,13 +192,13 @@ func TestApplyMutableOutputs_NestedRoutesThroughDirectBindings(t *testing.T) {
 	}})
 	outer := config.TaskDefinition{
 		ID: "outer", Scope: "run",
-		Bind: &config.BindConfig{Outputs: map[string]string{"agent_pid": "{{.Inner.outputs.runtime_pid}}"}},
+		OutputsBind: map[string]*lang.Value{"agent_pid": fromValue("inner.outputs.runtime_pid")},
 	}
 	middle := config.TaskDefinition{
 		ID: "middle", Scope: "run",
-		Bind: &config.BindConfig{Outputs: map[string]string{"runtime_pid": "{{.Inner.outputs.pid}}"}},
+		OutputsBind: map[string]*lang.Value{"runtime_pid": fromValue("inner.outputs.pid")},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	ordered := nestedPlan(t, outer, middle, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
@@ -224,13 +225,13 @@ func TestApplyMutableOutputs_NestedRefusesComputedBindings(t *testing.T) {
 		"inner-setup": `{"pid":"1"}`,
 	}})
 	outer := config.TaskDefinition{
-		ID: "outer", Scope: "run", Setup: "outer-setup",
-		Bind: &config.BindConfig{Outputs: map[string]string{
-			"label":     "pid-{{.Inner.outputs.pid}}",
-			"guard_dir": "{{.Locals.guard_dir}}",
-		}},
+		ID: "outer", Scope: "run", Setup: shellStub("outer-setup"),
+		OutputsBind: map[string]*lang.Value{
+			"label":     exprValue(`'pid-' + string(inner.outputs.pid)`),
+			"guard_dir": fromValue("locals.guard_dir"),
+		},
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	ordered := nestedPlan(t, outer, inner)
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
@@ -255,13 +256,13 @@ func TestRunSetup_DownstreamNodeReadsTheComposedContract(t *testing.T) {
 	withScriptedExecutor(t, &scriptedExecutor{stdout: map[string]string{
 		"inner-setup": `{"pid":"11","socket_path":"/tmp/sock"}`,
 	}})
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup"}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
 	outer := config.TaskDefinition{
 		ID: "runtime", Scope: "run", Inner: "inner", InnerChain: []config.TaskDefinition{inner},
-		Bind:          &config.BindConfig{Outputs: map[string]string{"agent_pid": "{{.Inner.outputs.pid}}"}},
+		OutputsBind:   map[string]*lang.Value{"agent_pid": fromValue("inner.outputs.pid")},
 		OutputsSchema: objectSchema(map[string]any{"agent_pid": map[string]any{"type": "string"}}),
 	}
-	consumer := config.TaskDefinition{ID: "consumer", Scope: "run", Setup: "consumer-setup"}
+	consumer := config.TaskDefinition{ID: "consumer", Scope: "run", Setup: shellStub("consumer-setup")}
 	plan, err := CompileWorkflow(
 		config.WorkflowFile{ID: "test", Nodes: []config.WorkflowNode{
 			{ID: "runtime"},
@@ -295,14 +296,14 @@ func TestApplyMutableOutputs_NestedKeepsProducedOutputs(t *testing.T) {
 	}})
 	outer := config.TaskDefinition{
 		ID: "outer", Scope: "run",
-		Bind:           &config.BindConfig{Outputs: map[string]string{"agent_pid": "{{.Inner.outputs.pid}}"}},
+		OutputsBind:    map[string]*lang.Value{"agent_pid": fromValue("inner.outputs.pid")},
 		DynamicOutputs: []config.DynamicOutput{{Name: "review_decision", Script: "echo APPROVED"}},
 		OutputsSchema: objectSchema(map[string]any{
 			"agent_pid":       map[string]any{"type": "string", "mutable": true},
 			"review_decision": map[string]any{"type": "string"},
 		}),
 	}
-	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: "inner-setup",
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup"),
 		OutputsSchema: objectSchema(map[string]any{"pid": map[string]any{"type": "string", "mutable": true}}),
 	}
 	ordered := nestedPlan(t, outer, inner)

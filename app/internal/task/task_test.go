@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -336,32 +338,57 @@ func TestRender_GetWithoutDefaultFails(t *testing.T) {
 	}
 }
 
-// Cleanup must survive a setup that failed before populating Self outputs.
-// Task scripts are expected to be shell-defensive against empty values.
-func TestRenderCleanup_MissingKeyRendersAsZero(t *testing.T) {
-	out, err := renderCleanup(
-		`kill -TERM {{.Self.pid}} || exit 0; rm -f {{.Self.mcp_config}}`,
-		RenderContext{Self: map[string]any{}},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+// Cleanup after a setup that produced nothing: an output the instance never
+// recorded is absent, not empty, so a cleanup that has to tolerate it says
+// so. `optional` propagates the absence into the shell as an unset
+// variable, which a shell-defensive script tells from a value.
+func TestRunCleanup_OptionalSelfOutputPropagatesAbsence(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
 	}
-	want := "kill -TERM  || exit 0; rm -f "
-	if out != want {
-		t.Fatalf("unexpected output: got %q want %q", out, want)
+	marker := filepath.Join(t.TempDir(), "seen")
+	r := Resolved{NodeID: "a", Scope: config.TaskScopeRun, Cleanup: &lang.Action{
+		Type:   lang.ActionShell,
+		Script: `printf '%s' "${pid-unset}" > "$marker"`,
+		Bind: map[string]*lang.Value{
+			"pid":    {Form: lang.FormFrom, From: "self.outputs.pid", Optional: true},
+			"marker": {Form: lang.FormLiteral, Literal: marker},
+		},
+	}}
+	tasks := map[string]*contract.TaskState{
+		"a": {Scope: config.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
+	}
+	if err := RunCleanup(context.Background(), []Resolved{r}, SessionVars{}, tasks, nil); err != nil {
+		t.Fatalf("RunCleanup: %v", err)
+	}
+	data, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatalf("read marker: %v", err)
+	}
+	if string(data) != "unset" {
+		t.Errorf("cleanup saw %q, want the variable left unset", data)
 	}
 }
 
-func TestRenderCleanup_PresentKeyStillRenders(t *testing.T) {
-	out, err := renderCleanup(
-		`kill -TERM {{.Self.pid}}`,
-		RenderContext{Self: map[string]any{"pid": 12345}},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+// The other half of the same rule: a cleanup binding that declares neither
+// default nor optional is a claim that the output exists, so its absence is
+// a failure that leaves the release owed rather than a silently empty value
+// the script acts on.
+func TestRunCleanup_RequiredSelfOutputAbsenceFailsTheRelease(t *testing.T) {
+	r := Resolved{NodeID: "a", Scope: config.TaskScopeRun, Cleanup: &lang.Action{
+		Type:   lang.ActionShell,
+		Script: `true`,
+		Bind:   map[string]*lang.Value{"pid": {Form: lang.FormFrom, From: "self.outputs.pid"}},
+	}}
+	tasks := map[string]*contract.TaskState{
+		"a": {Scope: config.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	}
-	if out != "kill -TERM 12345" {
-		t.Fatalf("unexpected output: %q", out)
+	err := RunCleanup(context.Background(), []Resolved{r}, SessionVars{}, tasks, nil)
+	if err == nil {
+		t.Fatal("RunCleanup: want the unresolvable binding surfaced")
+	}
+	if tasks["a"].Status != contract.TaskStatusFailed {
+		t.Errorf("status = %q, want %q", tasks["a"].Status, contract.TaskStatusFailed)
 	}
 }
 
@@ -372,7 +399,11 @@ func TestRunSetup_CapturesOutputsAndRespectsDeps(t *testing.T) {
 	plan := buildPlan(t,
 		[]taskStub{
 			{id: "a", scope: "run", setup: `echo '{"value":"first"}'`},
-			{id: "b", scope: "run", setup: `echo "{\"saw\":\"{{.Tasks.a.value}}\"}"`},
+			{id: "b", scope: "run", setupAction: &lang.Action{
+				Type:   lang.ActionShell,
+				Script: `jq -nc --arg saw "$saw" '{saw:$saw}'`,
+				Bind:   map[string]*lang.Value{"saw": {Form: lang.FormFrom, From: "nodes.a.outputs.value"}},
+			}},
 		},
 		[]nodeStub{
 			{id: "a"},
@@ -470,7 +501,11 @@ func TestRunSetup_PrevCarriesPreviousOutputs(t *testing.T) {
 		[]taskStub{{
 			id:    "claude",
 			scope: "run",
-			setup: `echo "{\"session_id\":\"{{get .Prev "session_id" ""}}\"}"`,
+			setupAction: &lang.Action{
+				Type:   lang.ActionShell,
+				Script: `jq -nc --arg sid "$prev_sid" '{session_id:$sid}'`,
+				Bind:   map[string]*lang.Value{"prev_sid": {Form: lang.FormFrom, From: "prev.session_id", HasDefault: true, Default: ""}},
+			},
 		}},
 		[]nodeStub{{id: "claude"}},
 	)
@@ -490,7 +525,8 @@ func TestRunSetup_PrevCarriesPreviousOutputs(t *testing.T) {
 	}
 }
 
-// First-ever setup has no Prev. `get` must return empty, not error.
+// First-ever setup has no prior outputs, so a projection of one falls to its
+// declared default rather than failing.
 func TestRunSetup_PrevEmptyOnFirstRun(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
@@ -499,7 +535,11 @@ func TestRunSetup_PrevEmptyOnFirstRun(t *testing.T) {
 		[]taskStub{{
 			id:    "claude",
 			scope: "run",
-			setup: `echo '{"session_id":"{{get .Prev "session_id" ""}}"}'`,
+			setupAction: &lang.Action{
+				Type:   lang.ActionShell,
+				Script: `jq -nc --arg sid "$prev_sid" '{session_id:$sid}'`,
+				Bind:   map[string]*lang.Value{"prev_sid": {Form: lang.FormFrom, From: "prev.session_id", HasDefault: true, Default: ""}},
+			},
 		}},
 		[]nodeStub{{id: "claude"}},
 	)
@@ -1014,62 +1054,85 @@ func TestPlan_TerminalTaskNilWhenNoneDeclared(t *testing.T) {
 	}
 }
 
-// TestResolveDefinition_PartialTerminalTableRejected guards the same
-// all-or-nothing rule the config package enforces at file-load time, this
-// time as ResolveDefinition sees a config.TaskDefinition built by any other
-// caller (e.g. the dynamic `plect task setup` path, which never goes through
-// loadTaskDefinitionFile).
-func TestResolveDefinition_PartialTerminalTableRejected(t *testing.T) {
-	_, err := tryBuildPlan(
+// A verb is available on its own, so an effect declaring only the verbs it
+// can honor compiles: what a consumer asks for either resolves or fails
+// where it is consumed.
+func TestResolveDefinition_PartialTerminalTableAccepted(t *testing.T) {
+	plan, err := tryBuildPlan(
 		[]taskStub{{id: "tmux", scope: "run", setup: "true", attach: "attach tmux"}},
 		[]nodeStub{{id: "tmux"}},
 	)
-	if err == nil || !strings.Contains(err.Error(), "capture") {
-		t.Fatalf("expected partial [terminal] table error naming the missing members, got %v", err)
-	}
-}
-
-func TestRenderAttach_ExpandsSelfAndSessionVars(t *testing.T) {
-	out, err := RenderAttach(
-		"tmux attach -t {{.Self.session_name}} ({{.SessionName}})",
-		map[string]any{"session_name": "owner/repo-1"},
-		SessionVars{Name: "owner/repo-1"},
-	)
 	if err != nil {
-		t.Fatalf("render: %v", err)
+		t.Fatalf("tryBuildPlan: %v", err)
 	}
-	want := "tmux attach -t owner/repo-1 (owner/repo-1)"
+	target := plan.TerminalTask()
+	if target == nil {
+		t.Fatal("expected the declaring node to own the plan's terminal endpoint")
+	}
+	if _, err := target.Terminal.Verb("capture"); err == nil {
+		t.Error("capture resolved, but this effect declares no such verb")
+	}
+}
+
+func terminalBindingForTest(verb string, action *lang.Action, self map[string]any) *TerminalBinding {
+	ops := &config.TerminalConfig{}
+	switch verb {
+	case "attach":
+		ops.Attach = action
+	case "capture":
+		ops.Capture = action
+	}
+	return &TerminalBinding{Ops: ops, Outputs: self}
+}
+
+func TestTerminalCommand_ResolvesSelfAndSessionRoots(t *testing.T) {
+	action := &lang.Action{
+		Type:    lang.ActionExec,
+		Command: "tmux",
+		Args: []*lang.Value{
+			{Form: lang.FormLiteral, Literal: "attach"},
+			{Form: lang.FormLiteral, Literal: "-t"},
+			{Form: lang.FormFrom, From: "self.outputs.session_name"},
+			{Form: lang.FormFrom, From: "session.name"},
+		},
+	}
+	binding := terminalBindingForTest("attach", action, map[string]any{"session_name": "owner/repo-1"})
+	out, err := TerminalCommand(binding, "attach", SessionVars{Name: "owner/repo-1"}, t.TempDir())
+	if err != nil {
+		t.Fatalf("TerminalCommand: %v", err)
+	}
+	want := `'tmux' 'attach' '-t' 'owner/repo-1' 'owner/repo-1' "$@"`
 	if out != want {
-		t.Fatalf("render = %q, want %q", out, want)
+		t.Fatalf("TerminalCommand = %q, want %q", out, want)
 	}
 }
 
-func TestRenderAttach_MissingSelfKeyErrors(t *testing.T) {
-	// Attach uses strict missingkey semantics — a missing .Self.<key> is a
-	// contract violation, not a silently-empty TTY command.
-	_, err := RenderAttach(
-		"tmux attach -t {{.Self.session_name}}",
-		map[string]any{},
-		SessionVars{},
-	)
-	if err == nil {
-		t.Fatal("expected error for missing Self key")
+// A verb projecting an output the declaring effect never recorded is a
+// contract violation, not a silently-empty command a consumer would run
+// against nothing.
+func TestTerminalCommand_MissingSelfOutputErrors(t *testing.T) {
+	action := &lang.Action{
+		Type:    lang.ActionExec,
+		Command: "tmux",
+		Args:    []*lang.Value{{Form: lang.FormFrom, From: "self.outputs.session_name"}},
+	}
+	binding := terminalBindingForTest("attach", action, map[string]any{})
+	if _, err := TerminalCommand(binding, "attach", SessionVars{}, t.TempDir()); err == nil {
+		t.Fatal("expected an error for an output the effect never recorded")
 	}
 }
 
-// Capture resolution is covered by TestPlan_TerminalTaskNilWhenNoneDeclared
-// and TestPlan_SingleTerminalAccepted above: capture is no longer an
-// independent declaration (see TestPlan_MultipleTerminalDeclarationsRejected
-// for why a capture-only ambiguity can no longer arise — any second
-// capture-declaring node is already a second [terminal] declaration, and
-// assemblePlan rejects that before CaptureTask-style resolution ever runs).
-
-func TestRenderCapture_ExpandsSelfAndSessionVars(t *testing.T) {
-	out, err := RunCapture(context.Background(),
-		"echo -n 'view of {{.Self.session_name}} ({{.SessionName}})'",
-		map[string]any{"session_name": "owner/repo-1"},
-		SessionVars{Name: "owner/repo-1"},
-	)
+func TestRunCapture_ResolvesSelfAndSessionRoots(t *testing.T) {
+	action := &lang.Action{
+		Type:   lang.ActionShell,
+		Script: `printf '%s' "view of $pane ($session)"`,
+		Bind: map[string]*lang.Value{
+			"pane":    {Form: lang.FormFrom, From: "self.outputs.session_name"},
+			"session": {Form: lang.FormFrom, From: "session.name"},
+		},
+	}
+	binding := terminalBindingForTest("capture", action, map[string]any{"session_name": "owner/repo-1"})
+	out, err := RunCapture(context.Background(), binding, SessionVars{Name: "owner/repo-1"})
 	if err != nil {
 		t.Fatalf("RunCapture: %v", err)
 	}
@@ -1079,25 +1142,11 @@ func TestRenderCapture_ExpandsSelfAndSessionVars(t *testing.T) {
 	}
 }
 
-func TestRunCapture_MissingSelfKeyErrors(t *testing.T) {
-	_, err := RunCapture(context.Background(),
-		"echo {{.Self.session_name}}",
-		map[string]any{},
-		SessionVars{},
-	)
-	if err == nil {
-		t.Fatal("expected error for missing Self key")
-	}
-}
-
 func TestRunCapture_SurfacesStderrOnFailure(t *testing.T) {
 	// An orphaned pane (script exits non-zero) must be a hard error, not a
 	// success with empty output.
-	_, err := RunCapture(context.Background(),
-		`echo "can't find pane" >&2; exit 1`,
-		map[string]any{},
-		SessionVars{},
-	)
+	binding := terminalBindingForTest("capture", shellStub(`echo "can't find pane" >&2; exit 1`), map[string]any{})
+	_, err := RunCapture(context.Background(), binding, SessionVars{})
 	if err == nil {
 		t.Fatal("expected error for non-zero exit")
 	}

@@ -92,7 +92,7 @@ func TestCreate_RecordsParentSession(t *testing.T) {
 	}
 
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{{id: "probe", scope: "session", setup: `echo "{\"parent\":\"{{.ParentSession}}\"}"`}},
+		[]taskFixture{{id: "probe", scope: "session", setup: `jq -nc --arg parent "{{.ParentSession}}" '{parent:$parent}'`}},
 		[]nodeFixture{{id: "probe"}})
 	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
 echo '{"workspace_dir":"%s"}'

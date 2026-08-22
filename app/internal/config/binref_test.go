@@ -6,11 +6,12 @@ import (
 	"testing"
 )
 
-// TestLoad_UnresolvedCrossPluginBinRefNamesPluginToEnable covers a shipped
-// config's {{bin ...}} reference to an executable of a plugin that exists in
+// TestLoad_UnresolvedCrossPluginBinRefNamesPluginToEnable covers a
+// user-authored `bin` reference to an executable of a plugin that exists in
 // the catalog but is not enabled: it must fail loud at config load, naming
-// the plugin to enable — not wait until that hook is actually rendered
-// mid-session.
+// the plugin to enable — not wait until that action is actually run
+// mid-session. (Shipped plugin config cannot name another plugin at all, so
+// the reference has to come from a user-owned layer.)
 func TestLoad_UnresolvedCrossPluginBinRefNamesPluginToEnable(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -32,9 +33,16 @@ path = "bin/activity"
 schema_version = 1
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "claude", "config", "tasks", "claude.toml"), `
+	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "")
+	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "tasks", "claude.toml"), `
+[claude]
+kind  = "effect"
 scope = "run"
-setup = '{{bin "local/runtime/activity"}} claude working'
+
+[claude.setup]
+type = "exec"
+bin  = "local/runtime/activity"
+args = ["claude", "working"]
 `)
 
 	writeCatalogsToml(t, tmpHome, `
@@ -53,7 +61,7 @@ plugins = ["claude"]
 
 	_, err = cfg.LoadTaskDefinitions("")
 	if err == nil {
-		t.Fatal("LoadTaskDefinitions: want an error for a {{bin}} reference to an unmounted plugin, got nil")
+		t.Fatal("LoadTaskDefinitions: want an error for a bin reference to an unmounted plugin, got nil")
 	}
 	if !strings.Contains(err.Error(), "local/runtime") {
 		t.Errorf("LoadTaskDefinitions error = %v, want it to name the missing plugin \"local/runtime\"", err)
@@ -64,8 +72,8 @@ plugins = ["claude"]
 }
 
 // TestLoad_PluginLocalBinRefStillResolves is a regression guard: a
-// bare-name {{bin}} reference inside a file mounted from its own plugin
-// must keep resolving once bin-ref checking moves to load time.
+// bare-name `bin` reference inside a file mounted from its own plugin
+// keeps resolving.
 func TestLoad_PluginLocalBinRefStillResolves(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -84,8 +92,14 @@ name = "okf-goal"
 path = "bin/okf-goal"
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "config", "tasks", "goal.toml"), `
+[goal]
+kind = "effect"
 scope = "run"
-setup = '{{bin "okf-goal"}} task bootstrap'
+
+[goal.setup]
+type = "exec"
+bin  = "okf-goal"
+args = ["task", "bootstrap"]
 `)
 
 	writeCatalogsToml(t, tmpHome, `
@@ -102,7 +116,7 @@ plugins = ["okf"]
 		t.Fatalf("Load: unexpected error: %v", err)
 	}
 	if _, err := cfg.LoadTaskDefinitions(""); err != nil {
-		t.Fatalf("LoadTaskDefinitions: unexpected error for a plugin-local {{bin}} reference: %v", err)
+		t.Fatalf("LoadTaskDefinitions: unexpected error for a plugin-local bin reference: %v", err)
 	}
 }
 
@@ -124,8 +138,14 @@ schema_version = 1
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(catalogDir, "claude", "config", "tasks", "claude.toml"), `
+[claude]
+kind = "effect"
 scope = "run"
-setup = '{{bin "nonexistent/runtime/activity"}} claude working'
+
+[claude.setup]
+type = "exec"
+bin  = "nonexistent/runtime/activity"
+args = ["claude", "working"]
 `)
 
 	writeCatalogsToml(t, tmpHome, `
@@ -203,7 +223,7 @@ plugins = ["github"]
 
 	_, err = cfg.LoadWorkspaceProviders()
 	if err == nil {
-		t.Fatal("LoadWorkspaceProviders: want an error for a {{bin}} reference to an unmounted plugin, got nil")
+		t.Fatal("LoadWorkspaceProviders: want an error for a bin reference to an unmounted plugin, got nil")
 	}
 	if !strings.Contains(err.Error(), "local/runtime") {
 		t.Errorf("LoadWorkspaceProviders error = %v, want it to name the missing plugin \"local/runtime\"", err)
@@ -262,7 +282,7 @@ plugins = ["github"]
 
 	_, err = cfg.LoadResourceDefs()
 	if err == nil {
-		t.Fatal("LoadResourceDefs: want an error for a {{bin}} reference to an unmounted plugin, got nil")
+		t.Fatal("LoadResourceDefs: want an error for a bin reference to an unmounted plugin, got nil")
 	}
 	if !strings.Contains(err.Error(), "local/runtime") {
 		t.Errorf("LoadResourceDefs error = %v, want it to name the missing plugin \"local/runtime\"", err)

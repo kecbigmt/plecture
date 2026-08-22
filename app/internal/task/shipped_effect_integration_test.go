@@ -17,6 +17,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -381,19 +382,19 @@ func (s effectScenario) hooks(def config.TaskDefinition) []string {
 		return s.Hooks
 	}
 	out := []string{}
-	if strings.TrimSpace(def.Setup) != "" {
+	if def.Setup != nil {
 		out = append(out, "setup")
 	}
-	if def.Health.AliveProbe() != "" {
+	if def.Health.AliveProbe() != nil {
 		out = append(out, "health.alive")
 	}
-	if def.Health.ActivityProbe() != "" {
+	if def.Health.ActivityProbe() != nil {
 		out = append(out, "health.activity")
 	}
-	if def.Terminal.IsDeclared() {
+	if def.Terminal != nil && def.Terminal.Capture != nil {
 		out = append(out, "terminal.capture")
 	}
-	if strings.TrimSpace(def.Cleanup) != "" {
+	if def.Cleanup != nil {
 		out = append(out, "cleanup")
 	}
 	return out
@@ -415,8 +416,8 @@ func (h *effectHarness) sessionVars() SessionVars {
 // endpoint. Each verb resolves to a stand-in that records what it received,
 // which is what makes a launch sequence's keystrokes part of the record.
 func (h *effectHarness) terminalBinding() *TerminalBinding {
-	verb := func(name string) string {
-		return filepath.Join(h.spyDir, "terminal-"+name) + ` "$1"`
+	verb := func(name string) *lang.Action {
+		return &lang.Action{Type: lang.ActionExec, Command: filepath.Join(h.spyDir, "terminal-"+name)}
 	}
 	return &TerminalBinding{
 		Ops: &config.TerminalConfig{
@@ -453,12 +454,12 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 		}
 		return "cleaned"
 	case "health.alive":
-		if err := RunAliveProbe(ctx, def.Health.AliveProbe(), self, inputs, session, def.SourcePath); err != nil {
+		if err := RunAliveProbe(ctx, h.probe(def, def.Health.AliveProbe(), self, inputs), session); err != nil {
 			return "declined: " + err.Error()
 		}
 		return "alive"
 	case "health.activity":
-		signal, err := RunActivityProbe(ctx, def.Health.ActivityProbe(), self, inputs, session, def.SourcePath)
+		signal, err := RunActivityProbe(ctx, h.probe(def, def.Health.ActivityProbe(), self, inputs), session)
 		switch {
 		case err != nil:
 			return "declined: " + err.Error()
@@ -468,7 +469,8 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 			return fmt.Sprintf("activity: fingerprint=%q silence_expected=%v", signal.Fingerprint, signal.SilenceExpected)
 		}
 	case "terminal.capture":
-		out, err := RunCapture(ctx, def.Terminal.Capture, self, session)
+		binding := &TerminalBinding{Ops: def.Terminal, Outputs: self, SourcePath: def.SourcePath, From: def.Ownership()}
+		out, err := RunCapture(ctx, binding, session)
 		if err != nil {
 			return "declined: " + err.Error()
 		}
@@ -477,6 +479,10 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 		t.Fatalf("scenario names unknown hook %q", hook)
 		return ""
 	}
+}
+
+func (h *effectHarness) probe(def config.TaskDefinition, action *lang.Action, self, inputs map[string]any) Probe {
+	return Probe{Action: action, Self: self, Inputs: inputs, SourcePath: def.SourcePath, From: def.Ownership()}
 }
 
 func jsonLine(t *testing.T, v any) string {

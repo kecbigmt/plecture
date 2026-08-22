@@ -56,45 +56,65 @@ func (v Validation) validateEffect(def *Definition, pos Position) error {
 	if err := v.action(def.Body, "cleanup", surfaceEffectCleanup, pos); err != nil {
 		return err
 	}
+	// Each of the four tables below is closed the way the definition surface
+	// itself is: a misspelled probe, verb, or joint key is a declaration with
+	// no consumer, and reading it as an unset one would leave the author
+	// believing it is in force.
 	if health, ok := def.Body["health"]; ok {
-		tbl, err := table(health, childPos(pos, "health"))
+		at := childPos(pos, "health")
+		tbl, err := table(health, at)
 		if err != nil {
 			return err
 		}
+		if err := rejectUnknownFields(tbl, at, "alive", "activity"); err != nil {
+			return err
+		}
 		for _, probe := range []string{"alive", "activity"} {
-			if err := v.action(tbl, probe, surfaceEffectHealth, childPos(pos, "health")); err != nil {
+			if err := v.action(tbl, probe, surfaceEffectHealth, at); err != nil {
 				return err
 			}
 		}
 	}
 	if terminal, ok := def.Body["terminal"]; ok {
-		tbl, err := table(terminal, childPos(pos, "terminal"))
+		at := childPos(pos, "terminal")
+		tbl, err := table(terminal, at)
 		if err != nil {
 			return err
 		}
+		if err := rejectUnknownFields(tbl, at, terminalVerbOrder...); err != nil {
+			return err
+		}
 		for _, verb := range terminalVerbOrder {
-			if err := v.action(tbl, verb, surfaceEffectTerminal, childPos(pos, "terminal")); err != nil {
+			if err := v.action(tbl, verb, surfaceEffectTerminal, at); err != nil {
 				return err
 			}
 		}
 	}
 	if inner, ok := def.Body["inner"]; ok {
-		tbl, err := table(inner, childPos(pos, "inner"))
+		at := childPos(pos, "inner")
+		tbl, err := table(inner, at)
 		if err != nil {
 			return err
 		}
+		if err := rejectUnknownFields(tbl, at, "uses", "inputs", "env"); err != nil {
+			return err
+		}
 		for _, field := range []string{"inputs", "env"} {
-			if err := v.valueTable(tbl, field, ClassData, surfaceEffectInner, childPos(pos, "inner")); err != nil {
+			if err := v.valueTable(tbl, field, ClassData, surfaceEffectInner, at); err != nil {
 				return err
 			}
 		}
 	}
 	if outputs, ok := def.Body["outputs"]; ok {
-		tbl, err := table(outputs, childPos(pos, "outputs"))
+		at := childPos(pos, "outputs")
+		tbl, err := table(outputs, at)
 		if err != nil {
 			return err
 		}
-		if err := v.valueTable(tbl, "bind", ClassData, surfaceEffectOutputsBind, childPos(pos, "outputs")); err != nil {
+		if err := rejectUnknownFields(tbl, at, "bind"); err != nil {
+			return err
+		}
+		if err := v.valueTable(tbl, "bind", ClassData, surfaceEffectOutputsBind, at); err != nil {
 			return err
 		}
 	}

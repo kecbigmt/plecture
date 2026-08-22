@@ -15,6 +15,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	taskpkg "github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -980,7 +981,7 @@ func TestRecreateSessionRuntimeTeardownListFailureLeavesStateUntouched(t *testin
 			NodeID:  "runtime",
 			TaskID:  "runtime",
 			Scope:   contract.TaskScopeRun,
-			Cleanup: "true",
+			Cleanup: &lang.Action{Type: lang.ActionShell, Script: "true"},
 		}},
 	}, nil)
 	if err == nil {
@@ -1272,25 +1273,68 @@ func prependForceRecreateWorkflow(t *testing.T, cfg *config.Config, prefix strin
 	}
 }
 
+// writeTaskFixture renders one effect declaration: the definition table, its
+// lifecycle actions as shell actions, and whatever else the case declares
+// under that table. A fixture's `extra` is written as the definition's own
+// body — bare keys on the definition table, tables under it — so a case
+// states only the fields it is about.
 func writeTaskFixture(t *testing.T, cfg *config.Config, fixture taskFixture) {
 	t.Helper()
+	bare, tables := splitFixtureExtra(fixture.id, fixture.extra)
 	var b strings.Builder
+	fmt.Fprintf(&b, "[%s]\nkind = \"effect\"\n", fixture.id)
 	if fixture.scope != "" {
 		fmt.Fprintf(&b, "scope = %q\n", fixture.scope)
 	}
-	if fixture.setup != "" {
-		fmt.Fprintf(&b, "setup = %q\n", fixture.setup)
+	b.WriteString(bare)
+	for _, hook := range []struct {
+		name   string
+		script string
+	}{{"setup", fixture.setup}, {"cleanup", fixture.cleanup}} {
+		if hook.script == "" {
+			continue
+		}
+		b.WriteString(shellFixtureAction(fixture.id, hook.name, hook.script))
 	}
-	if fixture.cleanup != "" {
-		fmt.Fprintf(&b, "cleanup = %q\n", fixture.cleanup)
-	}
-	if fixture.extra != "" {
-		b.WriteString(fixture.extra)
-		b.WriteString("\n")
-	}
+	b.WriteString(tables)
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", fixture.id+".toml"), []byte(b.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// splitFixtureExtra separates a fixture's extra body into the definition
+// table's own keys and the tables below it, re-anchoring each table under the
+// definition id. `inner` becomes the joint's own table, since the joint names
+// what it wraps through `uses`.
+func splitFixtureExtra(id, extra string) (bare, tables string) {
+	var bareLines, tableLines []string
+	inTable := false
+	for _, line := range strings.Split(extra, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "[["):
+			inTable = true
+			tableLines = append(tableLines, "[["+id+"."+strings.TrimPrefix(trimmed, "[["))
+		case strings.HasPrefix(trimmed, "["):
+			inTable = true
+			tableLines = append(tableLines, "["+id+"."+strings.TrimPrefix(trimmed, "["))
+		case inTable:
+			tableLines = append(tableLines, line)
+		case strings.HasPrefix(trimmed, "inner ="):
+			tableLines = append(tableLines, "", "["+id+".inner]", "uses ="+strings.TrimPrefix(trimmed, "inner ="))
+			inTable = true
+		case trimmed == "":
+		default:
+			bareLines = append(bareLines, trimmed)
+		}
+	}
+	if len(bareLines) > 0 {
+		bare = strings.Join(bareLines, "\n") + "\n"
+	}
+	if len(tableLines) > 0 {
+		tables = "\n" + strings.Join(tableLines, "\n") + "\n"
+	}
+	return bare, tables
 }
 
 func TestDestroy_WritesTombstone(t *testing.T) {
@@ -1507,7 +1551,7 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 			{
 				id:    "prompt",
 				scope: "session",
-				setup: `printf '{"delivered":"%s"}' "$({{terminal "send_text"}})"`,
+				setup: `printf '{"delivered":"%s"}' "$(sh -c "{{terminal "send_text"}}" send-text)"`,
 			},
 		},
 		[]nodeFixture{
