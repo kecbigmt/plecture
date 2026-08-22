@@ -71,7 +71,7 @@ func writeWorkflowFile(t *testing.T, cfg *config.Config, id, body string) {
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	prov := "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n" + githubResolver
+	prov := providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`)
 	if err := os.WriteFile(filepath.Join(providersDir, id+".toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}

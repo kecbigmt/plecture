@@ -3,10 +3,12 @@ package task
 import (
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
@@ -40,76 +42,95 @@ func loadShippedWorkspaceProviders(t *testing.T) (map[string]config.WorkspacePro
 	return provs, mounted
 }
 
-// TestShippedGithubProvider_ParametersReachTheHooks renders the shipped
-// GitHub workspace provider's hooks with every declared parameter set, so a
-// parameter that is declared but never wired into the executable's flags
+// providerResolution resolves one shipped provider hook into the values it
+// hands its executable, so a parameter declared but never wired into a flag
 // fails here instead of silently doing nothing in production.
+func providerResolution(t *testing.T, prov config.WorkspaceProviderConfig, mounted []plugins.Mounted, action *lang.Action, env lang.Environment) string {
+	t.Helper()
+	bins := config.MountedBins{Mounted: mounted, SourcePath: prov.SourcePath}
+	eval := lang.Eval{
+		Env: env,
+		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, prov.Ownership()) },
+	}
+	if action.Type == lang.ActionShell {
+		var parts []string
+		for name, bound := range action.Bind {
+			value, absent, err := eval.Argument(bound)
+			if err != nil {
+				t.Fatalf("bind.%s: %v", name, err)
+			}
+			if absent {
+				continue
+			}
+			parts = append(parts, name+"="+value)
+		}
+		sort.Strings(parts)
+		return strings.Join(parts, "\n")
+	}
+	execution, err := eval.Exec(action)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	return strings.Join(execution.Argv, "\n")
+}
+
+func githubProviderEnv(inputs, cleanupInputs map[string]any) lang.Environment {
+	return lang.Environment{
+		"resource": map[string]any{"id": "https://github.com/acme/widgets/issues/42"},
+		"session":  map[string]any{"name": "acme/widgets-42", "inputs": map[string]any{}},
+		"inputs":   inputs,
+		"config":   map[string]any{"workspace_dirs_root": "/tmp/workspace_dirs"},
+		"prev":     map[string]any{},
+		"self":     map[string]any{"outputs": map[string]any{"workspace_dir": "/tmp/wd", "branch": "b"}},
+		"cleanup":  map[string]any{"inputs": cleanupInputs},
+		"force":    false,
+	}
+}
+
 func TestShippedGithubProvider_ParametersReachTheHooks(t *testing.T) {
 	provs, mounted := loadShippedWorkspaceProviders(t)
 	prov, ok := provs["github"]
 	if !ok {
 		t.Fatal("shipped catalog has no github workspace provider")
 	}
-	vars := WorkflowHookVars{
-		ResourceID:        "https://github.com/acme/widgets/issues/42",
-		SessionName:       "acme/widgets-42",
-		WorkspaceDirsRoot: "/tmp/workspace_dirs",
-		Plugins:           mounted,
-		SourcePath:        prov.SourcePath,
-		Inputs: map[string]any{
-			"workspace_layout_root": "~/worktrees",
-			"issue_branch_template": "work/{number}",
-			"tagged_branch_suffix":  "/{tag}",
-			"delete_branch_default": "true",
-		},
+	inputs := map[string]any{
+		"workspace_layout_root": "~/worktrees",
+		"issue_branch_template": "work/{number}",
+		"tagged_branch_suffix":  "/{tag}",
+		"delete_branch_default": "true",
 	}
-	setup, err := renderWorkflowHook(prov.Setup, vars, map[string]any{}, nil, "missingkey=error")
-	if err != nil {
-		t.Fatalf("setup render: %v", err)
-	}
-	for _, want := range []string{"--workspace-layout-root '~/worktrees'", "--issue-branch-template 'work/{number}'", "--tagged-branch-suffix '/{tag}'"} {
+	setup := providerResolution(t, prov, mounted, prov.Setup, githubProviderEnv(inputs, map[string]any{}))
+	for _, want := range []string{"~/worktrees", "work/{number}", "/{tag}"} {
 		if !strings.Contains(setup, want) {
-			t.Errorf("setup does not pass %s:\n%s", want, setup)
+			t.Errorf("setup does not pass %q:\n%s", want, setup)
 		}
 	}
 
-	self := map[string]any{"workspace_dir": "/tmp/wd", "branch": "b"}
-	vars.CleanupInputs = map[string]string{"delete_branch": "false"}
-	cleanup, err := renderWorkflowHook(prov.Cleanup, vars, nil, self, "missingkey=zero")
-	if err != nil {
-		t.Fatalf("cleanup render: %v", err)
-	}
-	if !strings.Contains(cleanup, "--delete-branch='false'") || !strings.Contains(cleanup, "--delete-branch-default='true'") {
+	cleanup := providerResolution(t, prov, mounted, prov.Cleanup,
+		githubProviderEnv(inputs, map[string]any{"delete_branch": "false"}))
+	if !strings.Contains(cleanup, "delete_branch=false") || !strings.Contains(cleanup, "delete_branch_default=true") {
 		t.Errorf("cleanup does not carry both the caller's intent and the declared default:\n%s", cleanup)
 	}
 }
 
-// A workflow that declares no parameters must still render: every reference
-// goes through `get`, so the executable keeps owning the defaults.
-func TestShippedGithubProvider_HooksRenderWithNoParametersDeclared(t *testing.T) {
+// A workflow that declares no parameters must still resolve: every reference
+// declares a default, so the executable keeps owning what an unset one means.
+func TestShippedGithubProvider_HooksResolveWithNoParametersDeclared(t *testing.T) {
 	provs, mounted := loadShippedWorkspaceProviders(t)
 	prov := provs["github"]
-	vars := WorkflowHookVars{
-		ResourceID:        "https://github.com/acme/widgets/issues/42",
-		SessionName:       "acme/widgets-42",
-		WorkspaceDirsRoot: "/tmp/workspace_dirs",
-		Plugins:           mounted,
-		SourcePath:        prov.SourcePath,
+	env := githubProviderEnv(map[string]any{}, map[string]any{})
+	setup := providerResolution(t, prov, mounted, prov.Setup, env)
+	// The flag is still passed, with an empty value the executable reads as
+	// "no template declared".
+	if !strings.Contains(setup, "--issue-branch-template\n\n") && !strings.HasSuffix(setup, "--issue-branch-template\n") {
+		t.Errorf("setup does not pass an empty naming template:\n%q", setup)
 	}
-	setup, err := renderWorkflowHook(prov.Setup, vars, map[string]any{}, nil, "missingkey=error")
-	if err != nil {
-		t.Fatalf("setup render: %v", err)
-	}
-	if !strings.Contains(setup, "--issue-branch-template ''") {
-		t.Errorf("setup does not pass an empty naming template:\n%s", setup)
-	}
-	if _, err := renderWorkflowHook(prov.Cleanup, vars, nil, map[string]any{"workspace_dir": "/tmp/wd", "branch": "b"}, "missingkey=zero"); err != nil {
-		t.Fatalf("cleanup render: %v", err)
-	}
+	providerResolution(t, prov, mounted, prov.Cleanup, env)
 }
 
-// The declared parameters must reject the shell metacharacters that would
-// otherwise break out of the single-quoted splice points in the hooks above.
+// The declared parameters keep their charset restrictions: nothing is spliced
+// into a command line any more, but these values still bound what reaches
+// github-worktree's own path and template handling.
 func TestShippedGithubProvider_ParametersRejectShellMetacharacters(t *testing.T) {
 	provs, _ := loadShippedWorkspaceProviders(t)
 	prov := provs["github"]

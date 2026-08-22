@@ -27,4 +27,3 @@ argv[8]: "Content-Type: application/json"
 argv[9]: "-d"
 argv[10]: "{\"channel_id\":\"stand-in-channel_id\",\"text\":\"only a summary\",\"thread_ts\":\"stand-in-thread_ts\"}"
 timeout: 10s
-

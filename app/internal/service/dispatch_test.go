@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,16 +11,55 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-const githubResolver = `
-match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issues|pull)/(?P<number>\d+)'
-name  = "{{.owner}}/{{.repo}}-{{.number}}"
+// githubResolverFields is the resolver pair a fixture provider declares
+// under its own table.
+const githubResolverFields = `match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(issues|pull)/(?P<number>\d+)'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 `
+
+// providerDoc wraps one provider's fields as a declaration document. fields
+// carries the table's own keys; tables holds any nested table, with %[1]s
+// standing for the id so a fixture never repeats it.
+func providerDoc(id, fields, tables string) string {
+	doc := "[" + id + "]\nkind = \"workspace_provider\"\n" + fields
+	if tables != "" {
+		doc += "\n" + fmt.Sprintf(tables, id)
+	}
+	return doc
+}
+
+// providerRunningScript builds a fixture provider whose setup runs one
+// literal script. The script is quoted into the document rather than
+// embedded raw, so a fixture may use whatever quoting its shell needs.
+func providerRunningScript(id, script string) string {
+	return providerDoc(id, githubResolverFields, `[%[1]s.setup]
+type    = "exec"
+command = "sh"
+args    = ["-c", `+fmt.Sprintf("%q", script)+`, "provider"]
+`)
+}
+
+// providerCreatingWorkspace is the provider a fixture needs when the session
+// must actually have a directory: setup creates it, then reports it.
+func providerCreatingWorkspace(id, workspaceDir string) string {
+	return providerRunningScript(id, fmt.Sprintf("mkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workspaceDir, workspaceDir))
+}
+
+// providerEchoingOutputs is the provider most fixtures need: a resolver, and
+// a setup that reports one fixed outputs document.
+func providerEchoingOutputs(id, outputsJSON string) string {
+	return providerDoc(id, githubResolverFields, `[%[1]s.setup]
+type    = "exec"
+command = "printf"
+args    = ['`+outputsJSON+`']
+`)
+}
 
 func TestDispatchResource_AutoUniqueMatch(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n"+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerEchoingOutputs("gh", `{"workdir":"/tmp/x"}`))
 
 	disp, matched, err := dispatchResource(cfg, "", "https://github.com/org/repo/issues/42")
 	if err != nil {
@@ -40,7 +80,7 @@ func TestDispatchResource_NoMatchFallsThrough(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n"+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerEchoingOutputs("gh", `{"workdir":"/tmp/x"}`))
 
 	_, matched, err := dispatchResource(cfg, "", "https://jira.example.com/browse/PROJ-1")
 	if err != nil {
@@ -59,7 +99,7 @@ func TestDispatchResource_AmbiguousIsError(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		prov := "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n" + githubResolver
+		prov := providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`)
 		if err := os.WriteFile(filepath.Join(baseDir, "workspaces", id+".toml"), []byte(prov), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +132,7 @@ func TestDispatchResource_AutoSelectFalseSkippedUnlessExplicit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	prov := "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n" + githubResolver
+	prov := providerEchoingOutputs("github", `{"workdir":"/tmp/x"}`)
 	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "github.toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +169,7 @@ func TestDispatchResource_FlagWithResolverMismatchIsError(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n"+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerEchoingOutputs("gh", `{"workdir":"/tmp/x"}`))
 
 	_, _, err := dispatchResource(cfg, "gh", "not-a-github-url")
 	if err == nil {
@@ -174,12 +214,7 @@ func TestCreate_ResolverPath(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", `
-setup = '''
-mkdir -p `+workdir+`
-echo '{"workspace_dir":"`+workdir+`"}'
-'''
-`+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerCreatingWorkspace("gh", workdir))
 
 	url := "https://github.com/org/repo/issues/42"
 	result, err := Create(cfg, store, CreateParams{URL: url})
@@ -204,12 +239,11 @@ func TestCreate_IdentityPath(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "scratch",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "scratch", `
-setup = '''
-mkdir -p `+workdir+`
-echo '{"workspace_dir":"`+workdir+`"}'
-'''
-`)
+	writeSetupWorkflow(t, cfg, "scratch", providerDoc("scratch", "", `[%[1]s.setup]
+type    = "exec"
+command = "sh"
+args    = ["-c", `+fmt.Sprintf("%q", "mkdir -p "+workdir+"\nprintf '{\"workspace_dir\":\""+workdir+"\"}'\n")+`, "provider"]
+`))
 
 	result, err := Create(cfg, store, CreateParams{URL: "my-experiment", Workflow: "scratch"})
 	if err != nil {
@@ -246,9 +280,7 @@ func TestCreate_ResourceAllowlistBlocks(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	cfg.ResourceAllowlist = []string{`^https://github\.com/allowed-org/`}
-	writeSetupWorkflow(t, cfg, "gh", `
-setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
-`+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerEchoingOutputs("gh", `{"workspace_dir":"/tmp/x"}`))
 
 	_, err := Create(cfg, store, CreateParams{URL: "https://github.com/evil-org/repo/issues/1"})
 	if err == nil {
@@ -268,9 +300,7 @@ func TestCreate_SessionGuardBlocksCrossOwner(t *testing.T) {
 	// The orchestrator pane exports this guard; it matches resolved names like
 	// "acme/repo-1" but not "exampleorg/repo-26".
 	cfg.SessionGuard = "^acme/"
-	writeSetupWorkflow(t, cfg, "gh", `
-setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
-`+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerEchoingOutputs("gh", `{"workspace_dir":"/tmp/x"}`))
 
 	// acme's orchestrator must not be able to dispatch exampleorg work.
 	_, err := Create(cfg, store, CreateParams{URL: "https://github.com/exampleorg/repo/issues/26"})
@@ -289,12 +319,7 @@ func TestResolveSession_ByAliasAndResolver(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", `
-setup = '''
-mkdir -p `+workdir+`
-echo '{"workspace_dir":"`+workdir+`"}'
-'''
-`+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerCreatingWorkspace("gh", workdir))
 
 	url := "https://github.com/org/repo/issues/77"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -319,9 +344,7 @@ func TestResolveSession_ResolverDerivationAfterRuleChange(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", `
-setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
-`+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerEchoingOutputs("gh", `{"workspace_dir":"/tmp/x"}`))
 
 	// seedSession sets URL to .../issues/1 — look up via a never-stored URL
 	// shape that the resolver derives to the right name. Note: pull URL for
@@ -341,12 +364,7 @@ func TestUp_ResolverAutoCreate(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", `
-setup = '''
-mkdir -p `+workdir+`
-echo '{"workspace_dir":"`+workdir+`"}'
-'''
-`+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerCreatingWorkspace("gh", workdir))
 
 	url := "https://github.com/org/repo/issues/88"
 	result, err := Up(cfg, store, UpParams{Identifier: url})
@@ -377,7 +395,7 @@ func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"a", "b"} {
-		prov := "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\n" + githubResolver
+		prov := providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`)
 		if err := os.WriteFile(filepath.Join(providersDir, id+".toml"), []byte(prov), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -410,12 +428,7 @@ func TestCreate_SetsResourceIDAndAlias(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "bridge",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "bridge", `
-setup = '''
-mkdir -p `+workdir+`
-echo '{"workspace_dir":"`+workdir+`"}'
-'''
-`+githubResolver)
+	writeSetupWorkflow(t, cfg, "bridge", providerCreatingWorkspace("bridge", workdir))
 	url := "https://github.com/org/repo/issues/55"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
 		t.Fatal(err)
@@ -434,12 +447,7 @@ func TestWorkdir_ResolverAndAliasLookup(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", `
-setup = '''
-mkdir -p `+workdir+`
-echo '{"workspace_dir":"`+workdir+`"}'
-'''
-`+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerCreatingWorkspace("gh", workdir))
 
 	url := "https://github.com/org/repo/issues/66"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {

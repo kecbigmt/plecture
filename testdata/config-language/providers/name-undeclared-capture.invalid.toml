@@ -1,0 +1,12 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=definitions
+# reason: name reads the right root, but names a capture this provider's own match does not declare — the root exists, the key inside it does not.
+
+[worktree]
+kind  = "workspace_provider"
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)$'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[worktree.setup]
+type = "exec"
+bin  = "github-worktree"
+args = ["setup", "--session", { from = "session.name" }]

@@ -32,7 +32,12 @@ schema_version = 1
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "config", "workspaces", "okf.toml"), `
-setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
+[okf]
+kind = "workspace_provider"
+
+[okf.setup]
+type    = "exec"
+command = "true"
 `)
 
 	writeCatalogsToml(t, tmpHome, `

@@ -12,24 +12,33 @@
 # today, other OKF concepts later); resources/okf_goal.toml narrows the
 # pattern to `goals/*.md` for the one concept kind this plugin currently
 # understands.
+[local_okf]
+kind  = "workspace_provider"
 match = '^local-okf://(?P<owner>[A-Za-z0-9][A-Za-z0-9-]*)/(?:[A-Za-z0-9._/-]*/)?(?P<slug>[A-Za-z0-9._-]+)\.md$'
-name  = '{{.owner}}/okf-{{.slug}}'
+name  = { expr = "match.owner + '/okf-' + match.slug" }
 
-setup   = '{{bin "okf-bundle"}} setup --resource {{.ResourceID | shellQuote}} --session {{.SessionName | shellQuote}}'
-cleanup = '{{bin "okf-bundle"}} cleanup --workspace-dir {{.Self.workspace_dir | shellQuote}}'
+[local_okf.setup]
+type = "exec"
+bin  = "okf-bundle"
+args = ["setup", "--resource", { from = "resource.id" }, "--session", { from = "session.name" }]
 
-[outputs_schema]
+[local_okf.cleanup]
+type = "exec"
+bin  = "okf-bundle"
+args = ["cleanup", "--workspace-dir", { from = "self.outputs.workspace_dir" }]
+
+[local_okf.outputs_schema]
 type     = "object"
 required = ["workspace_dir", "owner", "concept_id", "concept_path"]
 
-[outputs_schema.properties.workspace_dir]
+[local_okf.outputs_schema.properties.workspace_dir]
 type = "string"
 
-[outputs_schema.properties.owner]
+[local_okf.outputs_schema.properties.owner]
 type = "string"
 
-[outputs_schema.properties.concept_id]
+[local_okf.outputs_schema.properties.concept_id]
 type = "string"
 
-[outputs_schema.properties.concept_path]
+[local_okf.outputs_schema.properties.concept_path]
 type = "string"

@@ -9,4 +9,3 @@ type: unix_socket
 path: "stand-in-path"
 body: "{\"body\":\"\",\"direction\":\"internal\",\"id\":\"01DEF\",\"metadata\":{},\"session_name\":\"acme/widget-1\",\"source\":\"plect\",\"summary\":\"only a summary\",\"time\":\"2026-08-22T09:00:00Z\",\"type\":\"example.status\"}"
 timeout: 0s
-

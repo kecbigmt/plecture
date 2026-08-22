@@ -47,12 +47,9 @@ func TestCreate_WorkflowSetupPath(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{id: "probe", scope: "session", setup: `echo "{\"cwd\":\"$(pwd)\"}"`}},
 		[]nodeFixture{{id: "probe"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
 echo '{"workspace_dir":"%s","branch":"issue/5","title":"T"}'
-'''
-`, workdir, workdir)+githubResolver)
+`, workdir, workdir)))
 
 	result, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/5"})
 	if err != nil {
@@ -97,12 +94,9 @@ func TestCreate_RecordsParentSession(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{id: "probe", scope: "session", setup: `echo "{\"parent\":\"{{.ParentSession}}\"}"`}},
 		[]nodeFixture{{id: "probe"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
 echo '{"workspace_dir":"%s"}'
-'''
-`, workdir, workdir)+githubResolver)
+`, workdir, workdir)))
 
 	if _, err := Create(cfg, store, CreateParams{
 		URL:           "https://github.com/org/repo/issues/6",
@@ -150,12 +144,9 @@ echo '{}'`
 	cfg := writeWorkflowFixture(t, t.TempDir(), "claude",
 		[]taskFixture{{id: "dispatcher", scope: "session", setup: dispatcher}},
 		[]nodeFixture{{id: "dispatcher"}})
-	writeSetupWorkflow(t, cfg, "claude", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
+	writeSetupWorkflow(t, cfg, "claude", providerRunningScript("claude", fmt.Sprintf(`mkdir -p %s
 echo '{"workspace_dir":"%s"}'
-'''
-`, workdir, workdir)+githubResolver)
+`, workdir, workdir)))
 
 	url := "https://github.com/org/repo/issues/11"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -190,12 +181,9 @@ func TestCreate_WorkflowSetupRecordsLifecycleCreated(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
 echo '{"workspace_dir":"%s"}'
-'''
-`, workdir, workdir)+githubResolver)
+`, workdir, workdir)))
 
 	url := "https://github.com/org/repo/issues/7"
 	countCreated := func() int {
@@ -231,13 +219,10 @@ func TestCreate_WorkflowSetupFailureLeavesRetryableState(t *testing.T) {
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	// Fails until the gate file exists — simulates a transient gh outage.
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-[ -f %s ] || { echo "transient" >&2; exit 1; }
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`[ -f %s ] || { echo "transient" >&2; exit 1; }
 mkdir -p %s
 echo '{"workspace_dir":"%s"}'
-'''
-`, gate, workdir, workdir)+githubResolver)
+`, gate, workdir, workdir)))
 
 	url := "https://github.com/org/repo/issues/6"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err == nil {
@@ -282,16 +267,19 @@ func TestDestroy_RunsWorkflowCleanup(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-'''
-cleanup = '''
-rm -rf "{{.Self.workspace_dir}}"
-touch %s
-'''
-`, workdir, workdir, marker)+githubResolver)
+	writeSetupWorkflow(t, cfg, "wf",
+		providerCreatingWorkspace("wf", workdir)+fmt.Sprintf(`
+[wf.cleanup]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'rm -rf "$1" && touch "$2"', "provider", { from = "self.outputs.workspace_dir" }, %q]
+
+[wf.outputs_schema]
+type = "object"
+
+[wf.outputs_schema.properties]
+workspace_dir = { type = "string" }
+`, marker))
 
 	url := "https://github.com/org/repo/issues/7"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -325,16 +313,26 @@ func TestDestroy_ForwardsCleanupInputsToWorkflowCleanup(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-'''
-cleanup = '''
-rm -rf "{{.Self.workspace_dir}}"
-echo {{eq .CleanupInputs.delete_branch "true"}} > %s
-'''
-`, workdir, workdir, marker)+githubResolver)
+	writeSetupWorkflow(t, cfg, "wf",
+		providerCreatingWorkspace("wf", workdir)+fmt.Sprintf(`
+[wf.cleanup]
+type    = "exec"
+command = "sh"
+args = [
+  "-c",
+  'rm -rf "$1" && printf "%%s" "$2" > "$3"',
+  "provider",
+  { from = "self.outputs.workspace_dir" },
+  { from = "cleanup.inputs.delete_branch", default = "" },
+  %q,
+]
+
+[wf.outputs_schema]
+type = "object"
+
+[wf.outputs_schema.properties]
+workspace_dir = { type = "string" }
+`, marker))
 
 	url := "https://github.com/org/repo/issues/8"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -363,13 +361,9 @@ func TestDestroy_WorkflowCleanupFailureBlocksWithoutForce(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-'''
-cleanup = "exit 9"
-`, workdir, workdir)+githubResolver)
+	writeSetupWorkflow(t, cfg, "wf",
+		providerRunningScript("wf", fmt.Sprintf("mkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workdir, workdir))+
+			"\n[wf.cleanup]\ntype = \"exec\"\ncommand = \"sh\"\nargs = [\"-c\", \"exit 9\"]\n")
 
 	url := "https://github.com/org/repo/issues/8"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -407,13 +401,9 @@ func TestUp_RecoversFailedWorkflowSetup(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "wf", fmt.Sprintf(`
-setup = '''
-[ -f %s ] || { echo "transient" >&2; exit 1; }
-mkdir -p %s
-echo '{"workspace_dir":"%s"}'
-'''
-`, gate, workdir, workdir)+githubResolver)
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(
+		"[ -f %s ] || { echo transient >&2; exit 1; }\nmkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n",
+		gate, workdir, workdir)))
 
 	url := "https://github.com/org/repo/issues/9"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err == nil {

@@ -140,13 +140,13 @@ func printWorkflowDetail(out io.Writer, d *service.WorkflowDetail) error {
 	}
 	if d.WorkspaceProviderInfo != nil {
 		if d.WorkspaceProviderInfo.Match != "" {
-			fmt.Fprintf(w, "Resolver:\t%s → %s\n", d.WorkspaceProviderInfo.Match, d.WorkspaceProviderInfo.Name)
+			fmt.Fprintf(w, "Resolver:\t%s → %s\n", d.WorkspaceProviderInfo.Match, d.WorkspaceProviderInfo.Name.Source())
 		}
 		var hooks []string
-		if d.WorkspaceProviderInfo.Setup != "" {
+		if d.WorkspaceProviderInfo.Setup != nil {
 			hooks = append(hooks, "setup")
 		}
-		if d.WorkspaceProviderInfo.Cleanup != "" {
+		if d.WorkspaceProviderInfo.Cleanup != nil {
 			hooks = append(hooks, "cleanup")
 		}
 		if len(hooks) > 0 {

@@ -1,14 +1,13 @@
 package service
 
 import (
-	"bytes"
 	"fmt"
 	"regexp"
 	"sort"
 	"strings"
-	"text/template"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 // validSessionNameRE is plect's own conservative session id charset: ids
@@ -91,7 +90,7 @@ func resolveName(prov config.WorkspaceProviderConfig, resource string) (string, 
 }
 
 // tryResolveName attempts the resolver match, reporting (name, matched, err).
-// Pure: regex + template only, no I/O.
+// Pure: a regex match and one value resolution, no I/O.
 func tryResolveName(prov config.WorkspaceProviderConfig, resource string) (string, bool, error) {
 	re, err := regexp.Compile(prov.Match)
 	if err != nil {
@@ -101,21 +100,18 @@ func tryResolveName(prov config.WorkspaceProviderConfig, resource string) (strin
 	if m == nil {
 		return "", false, nil
 	}
-	captures := map[string]string{}
+	captures := map[string]any{}
 	for i, group := range re.SubexpNames() {
 		if group != "" && i < len(m) {
 			captures[group] = m[i]
 		}
 	}
-	tmpl, err := template.New("resolver").Option("missingkey=error").Parse(prov.Name)
+	eval := lang.Eval{Env: lang.Environment{"match": captures}}
+	resolved, _, err := eval.Argument(prov.Name)
 	if err != nil {
-		return "", false, fmt.Errorf("workspace provider %q resolver name template: %w", prov.ID, err)
+		return "", false, fmt.Errorf("workspace provider %q resolver name: %w", prov.ID, err)
 	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, captures); err != nil {
-		return "", false, fmt.Errorf("workspace provider %q resolver name template: %w", prov.ID, err)
-	}
-	name := strings.TrimSpace(buf.String())
+	name := strings.TrimSpace(resolved)
 	if name == "" {
 		return "", false, fmt.Errorf("workspace provider %q resolver produced an empty session id for %q", prov.ID, resource)
 	}

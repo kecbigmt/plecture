@@ -100,29 +100,36 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 	}
 
 	for id, prov := range provDefs {
-		vars := WorkflowHookVars{
-			ResourceID:        "owner:test",
-			SessionName:       "test-session",
-			WorkspaceDirsRoot: "/tmp/workspace_dirs",
-			SessionInputs:     map[string]any{},
-			Plugins:           mounted,
-			SourcePath:        prov.SourcePath,
+		provider := prov
+		bins := config.MountedBins{Mounted: mounted, SourcePath: provider.SourcePath}
+		eval := lang.Eval{
+			Env: lang.Environment{
+				"resource": map[string]any{"id": "example://acme/widget/1"},
+				"session":  map[string]any{"name": "test-session", "inputs": map[string]any{}},
+				"inputs":   map[string]any{},
+				"config":   map[string]any{"workspace_dirs_root": "/tmp/workspace_dirs"},
+				"prev":     map[string]any{},
+				"self":     map[string]any{"outputs": map[string]any{"workspace_dir": "/tmp/wd", "branch": "b"}},
+				"cleanup":  map[string]any{"inputs": map[string]any{}},
+				"force":    false,
+			},
+			Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, provider.Ownership()) },
 		}
-		if prov.Setup != "" {
-			if _, err := renderWorkflowHook(prov.Setup, vars, map[string]any{}, nil, "missingkey=error"); err != nil {
-				t.Errorf("workspace provider %q setup: %v", id, err)
+		for field, action := range map[string]*lang.Action{
+			"setup":     provider.Setup,
+			"cleanup":   provider.Cleanup,
+			"subscribe": provider.Subscribe,
+		} {
+			if action == nil {
+				continue
 			}
-		}
-		if prov.Cleanup != "" {
-			self := map[string]any{"workspace_dir": "/tmp/wd", "branch": "b"}
-			if _, err := renderWorkflowHook(prov.Cleanup, vars, nil, self, "missingkey=zero"); err != nil {
-				t.Errorf("workspace provider %q cleanup: %v", id, err)
+			execution, err := eval.Run(t.TempDir(), action, nil)
+			if err != nil {
+				t.Errorf("workspace provider %q %s: %v", id, field, err)
+				continue
 			}
-		}
-		if prov.Subscribe != "" {
-			subVars := SubscribeHookVars{ResourceID: "owner:test", SessionName: "test-session", Plugins: mounted, SourcePath: prov.SourcePath}
-			if _, err := renderSubscribeHook(prov.Subscribe, subVars); err != nil {
-				t.Errorf("workspace provider %q subscribe: %v", id, err)
+			if !strings.HasPrefix(execution.Argv[0], pluginsRoot) && action.Type != lang.ActionShell {
+				t.Errorf("workspace provider %q %s: argv[0] = %q, want an executable inside %s", id, field, execution.Argv[0], pluginsRoot)
 			}
 		}
 	}

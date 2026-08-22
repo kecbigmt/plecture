@@ -24,13 +24,22 @@ func writeSubscribeProvider(t *testing.T, id, match, recordPath string) *config.
 		t.Fatal(err)
 	}
 	body := fmt.Sprintf(`
-setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
-match = %q
-name  = "{{.owner}}/{{.repo}}-{{.number}}"
-subscribe = '''
-printf '%%s\n%%s\n' "{{.SessionName}}" "{{.ResourceID}}" > %s
-'''
-`, match, recordPath)
+[%[1]s]
+kind  = "workspace_provider"
+match = %[2]q
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[%[1]s.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workspace_dir":"/tmp/x"}']
+
+[%[1]s.subscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'printf "%%s\n%%s\n" "$1" "$2" > "$3"', "provider",
+  { from = "session.name" }, { from = "resource.id" }, %[3]q]
+`, id, match, recordPath)
 	if err := os.WriteFile(filepath.Join(providersDir, id+".toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -154,8 +163,17 @@ func TestSubscribe_ProviderWithoutSubscribeHook(t *testing.T) {
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\nmatch = " +
-		fmt.Sprintf("%q", ghMatch) + "\nname  = \"{{.owner}}/{{.repo}}-{{.number}}\"\n"
+	body := fmt.Sprintf(`
+[github]
+kind  = "workspace_provider"
+match = %q
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[github.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workdir":"/tmp/x"}']
+`, ghMatch)
 	if err := os.WriteFile(filepath.Join(providersDir, "github.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -177,9 +195,22 @@ func TestSubscribe_HookFailureSurfacesStderr(t *testing.T) {
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := "setup = \"echo '{\\\"workdir\\\":\\\"/tmp/x\\\"}'\"\nmatch = " +
-		fmt.Sprintf("%q", ghMatch) + "\nname  = \"{{.owner}}/{{.repo}}-{{.number}}\"\n" +
-		"subscribe = '''\necho boom >&2\nexit 3\n'''\n"
+	body := fmt.Sprintf(`
+[github]
+kind  = "workspace_provider"
+match = %q
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[github.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workdir":"/tmp/x"}']
+
+[github.subscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", "echo boom >&2; exit 3"]
+`, ghMatch)
 	if err := os.WriteFile(filepath.Join(providersDir, "github.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -293,7 +293,7 @@ func TestShippedChannels_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 				if err := os.MkdirAll(filepath.Dir(record), 0o755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(record, []byte(b.String()), 0o644); err != nil {
+				if err := os.WriteFile(record, []byte(strings.TrimRight(b.String(), "\n")+"\n"), 0o644); err != nil {
 					t.Fatal(err)
 				}
 				t.Logf("rewrote %s", record)
@@ -303,8 +303,8 @@ func TestShippedChannels_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 			if err != nil {
 				t.Fatalf("a plugin shipping channels records the invocations they must produce: %v", err)
 			}
-			if string(want) != b.String() {
-				t.Errorf("invocations changed.\n--- recorded\n%s\n--- produced\n%s", want, b.String())
+			if produced := strings.TrimRight(b.String(), "\n") + "\n"; string(want) != produced {
+				t.Errorf("invocations changed.\n--- recorded\n%s\n--- produced\n%s", want, produced)
 			}
 		})
 	}
