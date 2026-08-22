@@ -158,6 +158,16 @@ An expression leaf that cannot be evaluated — because nothing has been
 recorded yet — reads as pending, not as unsatisfied: "no verdict yet" is a
 reason to wait, and only "they differ" is a reason to reopen.
 
+The example declares `resource_observer = "pull"`, so an instance of it is
+bound to a pull request. A reviewer session spawned by a chain is bound to the
+*declaring* session's resource, which for issue-keyed work is the issue — so
+until a chain can name the resource its spawned session binds to, instantiate
+such a review against the pull request explicitly:
+
+```bash
+plect task setup review --resource "$pr_url" --session "$PLECT_SESSION_NAME"
+```
+
 ### `resource_observer` is declared, and checked
 
 A document states which observer it is written for. Two things follow, both
@@ -202,12 +212,16 @@ how old it is.
 
 ## What has not moved yet
 
-- **Five declarations still ship as effects with carried fields.** The
+- **Every shipped completion declaration is still an effect.** The github
+  plugin's `work`, `investigate`, `respond`, and `review`, and the okf
+  plugin's `pursue_goal` and `goal_review`, keep the shape they had: the
   loader still accepts `done_when`, `requires`, `[[outputs]]`, and
-  `[[chains]]` on an effect declaration, and an unrooted completion key
-  still resolves against the instance's own facts. Both go away with the
-  last of those declarations; until then a converted document and a carried
-  effect coexist in one config.
+  `[[chains]]` on an effect declaration, and an unrooted completion key still
+  resolves against the instance's own facts. Both accommodations go away with
+  the last of those six declarations; until then a converted document and a
+  carried effect coexist in one config. So this procedure is for
+  configuration you authored, and a plugin-shipped declaration converts when
+  its plugin does.
 - **A document's `[[chains]]` are validated but not fired.** They are
   checked at load — the target workflow exists, and the inputs satisfy its
   contract — and a tick says out loud that they were not evaluated. The PR
@@ -227,6 +241,9 @@ how old it is.
   document and an effect in the same layer cannot both be called `review`.
 - Task documents are not loaded from the workspace directory: clone content
   must not declare the work it is about.
+- Every `.md` file directly under a `tasks/` directory is read as a task
+  document. Notes, READMEs, and instruction assets that are not declarations
+  belong somewhere else — `templates/`, or a directory of your own.
 
 ## Verification
 
