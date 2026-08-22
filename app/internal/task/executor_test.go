@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -275,5 +276,63 @@ func TestExecutor_TemplateRenderedHooksPassNoStdin(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The seam's own contract: both declaration forms reach the executor by one
+// path, and each keeps exactly the invocation shape it has always had — a
+// rendered hook through `bash -c` with no standard input, a resolved action
+// as its own argv, standard input included.
+func TestExecutor_RequestForKeepsEachFormsInvocationShape(t *testing.T) {
+	tests := []struct {
+		name      string
+		execution *lang.Execution
+		workDir   string
+		env       []string
+		want      ExecRequest
+	}{
+		{
+			name:      "a template-rendered hook",
+			execution: renderedShell(`echo '{}'`),
+			workDir:   "/work/x",
+			want:      ExecRequest{Argv: []string{"bash", "-c", `echo '{}'`}, Dir: "/work/x"},
+		},
+		{
+			name:      "a rendered hook carrying an enclosing layer's env",
+			execution: renderedShell(`echo hi`),
+			workDir:   "/work/x",
+			env:       []string{"PLECT_GUARD=on"},
+			want:      ExecRequest{Argv: []string{"bash", "-c", `echo hi`}, Dir: "/work/x", Env: []string{"PLECT_GUARD=on"}},
+		},
+		{
+			name:      "a resolved action",
+			execution: &lang.Execution{Argv: []string{"/plugins/bin/okf-goal", "resource", "finalize"}, Stdin: []byte(`[]`)},
+			want:      ExecRequest{Argv: []string{"/plugins/bin/okf-goal", "resource", "finalize"}, Stdin: []byte(`[]`)},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := requestFor(tt.execution, tt.workDir, tt.env)
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("requestFor = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// runHook is the pinned-host path, so a swapped defaultExecutor must not
+// intercept it — the same boundary TestExecutor_RunShellIsNeverRouted...
+// guards for the legacy entry point, asserted on the seam itself.
+func TestExecutor_RunHookIsNeverRoutedThroughDefaultExecutor(t *testing.T) {
+	spy := withSpyExecutor(t)
+	stdout, _, err := runHook(context.Background(), &lang.Execution{Argv: []string{"echo", "real"}}, "")
+	if err != nil {
+		t.Fatalf("runHook: %v", err)
+	}
+	if string(stdout) != "real\n" {
+		t.Errorf("stdout = %q, want runHook to actually execute", stdout)
+	}
+	if len(spy.requests) != 0 {
+		t.Errorf("spy recorded %d requests, want 0", len(spy.requests))
 	}
 }

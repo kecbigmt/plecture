@@ -175,7 +175,7 @@ func runResourceAction(def config.ResourceDef, action *lang.Action, env lang.Env
 	if err != nil {
 		return nil, nil, err
 	}
-	return alwaysHostExecutor.Run(context.Background(), ExecRequest{Argv: execution.Argv, Stdin: execution.Stdin})
+	return runHook(context.Background(), execution, "")
 }
 
 // presentKeys drops the empty entries of a root's keys, and the root itself

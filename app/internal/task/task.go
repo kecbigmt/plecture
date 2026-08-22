@@ -923,7 +923,7 @@ func dependencyOutputs(deps []string, tasks map[string]*contract.TaskState) map[
 // context.Background();
 // giving those paths a cancellable context is separate follow-up work.
 func runShell(cmdStr, workDir string) (stdout, stderr []byte, err error) {
-	return alwaysHostExecutor.Run(context.Background(), ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir})
+	return runHook(context.Background(), renderedShell(cmdStr), workDir)
 }
 
 // Observer receives lifecycle events from RunSetup / RunCleanup. The runner
