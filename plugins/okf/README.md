@@ -22,10 +22,11 @@ change out of scope for this plugin's extraction.
 
 ## Contents
 
-- `workspaces/local-okf.toml` — the workspace provider: its `[resolver]`
-  pair (`match` / `name`) derives a session id offline; `setup` and
-  `cleanup` invoke the executable below to acquire and release a
-  read-context workspace directory over the owner's bundle.
+- `workspaces/local_okf.toml` — the `local_okf` workspace provider: its
+  `match` / `name` pair derives a session id offline from the resource
+  identifier's captures; `setup` and `cleanup` invoke the executable below to
+  acquire and release a read-context workspace directory over the owner's
+  bundle.
 - `resources/okf_goal.toml` — the goal resource: `observe` reports parse
   and completion state; `finalize` records a done_when-satisfied goal's
   completion, once.
@@ -64,7 +65,7 @@ or enable it through a registered catalog (see
 
 ## Outputs
 
-`workspaces/local-okf.toml`'s `setup` emits `workspace_dir`, `owner`,
+`workspaces/local_okf.toml`'s `setup` emits `workspace_dir`, `owner`,
 `concept_id`, and `concept_path`. `resources/okf_goal.toml`'s `observe`
 emits `goal_parse_status`, `goal_status`, `checklist_status`,
 `goal_revision`, `revision`, `open_items`, and `observe_error`. Read them in

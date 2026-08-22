@@ -9,19 +9,19 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// SubscribeHookVars is the template surface for a workspace provider's
+// SubscribeHookVars is the context a workspace provider's
 // `subscribe` hook. Like WorkflowHookVars it is deliberately minimal —
 // subscribe is a runtime verb that runs from an arbitrary cwd with no
 // workspace or task DAG in scope. It forwards only the current session and
 // the opaque resource being subscribed, plus the mounted plugin list so the
-// hook can invoke its own plugin's executables through `{{bin ...}}`.
+// hook can name its own plugin's executables through `bin`.
 type SubscribeHookVars struct {
 	ResourceID  string
 	SessionName string
 	Plugins     []plugins.Mounted
 	// SourcePath is the workspace provider definition's own file path
 	// (config.WorkspaceProviderConfig.SourcePath), threaded through so a
-	// `{{bin "<name>"}}` in Subscribe can resolve against the workspace
+	// `bin = "<name>"` in Subscribe can resolve against the workspace
 	// provider's containing plugin.
 	SourcePath string
 }

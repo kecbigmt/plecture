@@ -13,7 +13,8 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// WorkflowHookVars is the template surface for workflow-level setup/cleanup.
+// WorkflowHookVars is the context workflow-level setup/cleanup resolves
+// against.
 // Deliberately minimal: setup runs before the workspace (and thus the full
 // config cascade) exists, so it only gets the resource identifier, the
 // session name, the configured workspace-dirs root, and the frozen session
@@ -23,7 +24,7 @@ import (
 // mounting resolves from global config independently of any workspace, so it
 // is already available at this point in the lifecycle, and a workspace
 // provider hook needs it to invoke its own plugin's executables through
-// `{{bin ...}}`.
+// `bin`.
 type WorkflowHookVars struct {
 	ResourceID        string
 	SessionName       string
@@ -39,17 +40,17 @@ type WorkflowHookVars struct {
 	Plugins []plugins.Mounted
 	// SourcePath is the workspace provider definition's own file path
 	// (config.WorkspaceProviderConfig.SourcePath), threaded through so a
-	// `{{bin "<name>"}}` in Setup/Cleanup can resolve against the workspace
+	// `bin = "<name>"` in Setup/Cleanup can resolve against the workspace
 	// provider's containing plugin.
 	SourcePath string
-	// Force mirrors the caller's --force intent into the cleanup template so
+	// Force mirrors the caller's --force intent into cleanup's `force` root so
 	// a workspace provider's cleanup script can decide for itself whether to
 	// force-remove a dirty workspace; core has no opinion on what a
 	// workspace provider's release step does with it. Setup never sets
 	// this — force only applies to teardown.
 	Force bool
 	// CleanupInputs are opaque key/value pairs the caller passes through to
-	// the cleanup template as .CleanupInputs, unexamined by core. This is the
+	// cleanup's `cleanup.inputs.*` root, unexamined by core. This is the
 	// generic escape hatch for workspace-provider-specific teardown intents,
 	// so a new one never requires a core vocabulary addition. Setup never
 	// sets this — cleanup intents only apply to teardown.
@@ -118,7 +119,7 @@ func runProviderAction(action *lang.Action, eval lang.Eval) (stdout, stderr []by
 // RunWorkflowSetup executes the workspace provider setup hook (the
 // workflow-level lifecycle) and persists the result as the @workflow
 // pseudo-node in tasks. Semantics mirror RunSetup: idempotent (an
-// already-produced pseudo-node is skipped), .Prev carries the prior outputs
+// already-produced pseudo-node is skipped), `prev.*` carries the prior outputs
 // across retries, stdout is the JSON outputs contract.
 //
 // Additional contract: the outputs MUST contain the reserved `workspace_dir`
@@ -214,7 +215,7 @@ func RunWorkflowSetup(prov config.WorkspaceProviderConfig, vars WorkflowHookVars
 // The hook intentionally never deletes workspace_dir itself — setup/cleanup
 // symmetry is the script author's contract ("use an existing directory"
 // workflows must stay possible). Outputs survive cleanup (same invariant as
-// task cleanup) so a later setup retry can read .Prev.
+// task cleanup) so a later setup retry can read `prev.*`.
 func RunWorkflowCleanup(prov config.WorkspaceProviderConfig, vars WorkflowHookVars, tasks map[string]*contract.TaskState, observer Observer) error {
 	obs := observerOr(observer)
 	id := contract.WorkflowPseudoNodeID

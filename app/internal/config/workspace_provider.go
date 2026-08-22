@@ -16,7 +16,7 @@ import (
 // machine — knowledge that is independent of any particular workflow:
 //
 //   - how resource identifiers map to session ids (the resolver: pure
-//     regex + template, offline)
+//     regex + a computation over its captures, offline)
 //   - how the session workspace is acquired and released for such a resource
 //     (setup/cleanup — the @workflow pseudo-node scripts)
 //   - the outputs contract those scripts expose (outputs_schema, incl. which
@@ -131,6 +131,9 @@ func (c *Config) loadWorkspaceProviderDocument(path string, fromPlugin bool) ([]
 			return nil, fmt.Errorf("%s: %q declares kind %q; a definition under workspaces/ is a workspace_provider", path, def.ID, def.Kind)
 		}
 		if err := validation.ValidateDefinition(def); err != nil {
+			return nil, err
+		}
+		if err := validation.ValidateProviderContracts(def); err != nil {
 			return nil, err
 		}
 		prov, err := workspaceProviderFrom(def, path, fromPlugin)

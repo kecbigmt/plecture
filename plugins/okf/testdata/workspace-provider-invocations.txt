@@ -6,4 +6,3 @@ call[0]: "okf-bundle" "cleanup" "--workspace-dir" "/spy/workspace"
 
 == local_okf / subscribe
 declined: workspace provider "local_okf" declares no subscribe hook
-

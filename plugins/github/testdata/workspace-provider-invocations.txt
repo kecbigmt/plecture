@@ -7,4 +7,3 @@ call[1]: "github-watcher" "unsubscribe" "--session" "acme/widget-1"
 
 == github / subscribe
 call[0]: "github-watcher" "subscribe" "--session" "acme/widget-1" "--resource" "example://acme/widget/1"
-

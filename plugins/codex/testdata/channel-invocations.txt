@@ -41,4 +41,3 @@ timeout: 45s
 observed[0]: "send_text:[example.status] only a summary"
 observed[1]: "send_keys:Enter"
 observed[2]: "capture:"
-

@@ -1019,7 +1019,7 @@ Catalog-owned files:
 ```text
 catalog.toml
 okf/plugin.toml
-okf/config/workspaces/local-okf.toml
+okf/config/workspaces/local_okf.toml
 okf/config/resources/okf_goal.toml
 okf/config/tasks/pursue_goal.toml
 okf/config/tasks/goal_review.toml

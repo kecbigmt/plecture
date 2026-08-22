@@ -90,7 +90,7 @@ func resolveName(prov config.WorkspaceProviderConfig, resource string) (string, 
 }
 
 // tryResolveName attempts the resolver match, reporting (name, matched, err).
-// Pure: regex + template only, no I/O.
+// Pure: a regex match and one value resolution, no I/O.
 func tryResolveName(prov config.WorkspaceProviderConfig, resource string) (string, bool, error) {
 	re, err := regexp.Compile(prov.Match)
 	if err != nil {

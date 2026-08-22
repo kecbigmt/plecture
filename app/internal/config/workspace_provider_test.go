@@ -265,3 +265,59 @@ id = "r"
 		t.Fatalf("expected workspace_provider redeclaration error, got %v", err)
 	}
 }
+
+// A provider's own contracts are checked at load: a session name reads its
+// own captures, and a cleanup reads its own declared outputs.
+func TestLoadWorkspaceProviders_ContractPathsAreChecked(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "a name naming a capture the match does not declare",
+			body: `[p]
+kind  = "workspace_provider"
+match = '^x/(?P<owner>[^/]+)$'
+name  = { expr = "match.owner + '/' + match.repo" }
+
+[p.setup]
+type    = "exec"
+command = "true"
+`,
+			want: "match.repo",
+		},
+		{
+			name: "a cleanup naming an output the schema does not declare",
+			body: `[p]
+kind = "workspace_provider"
+
+[p.setup]
+type    = "exec"
+command = "true"
+
+[p.cleanup]
+type    = "exec"
+command = "true"
+args    = [{ from = "self.outputs.branch" }]
+
+[p.outputs_schema]
+type = "object"
+
+[p.outputs_schema.properties]
+workspace_dir = { type = "string" }
+`,
+			want: "self.outputs.branch",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			writeProviderDoc(t, baseDir, "p", tt.body)
+			_, err := (&Config{BaseDir: baseDir}).LoadWorkspaceProviders()
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected a load error naming %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
