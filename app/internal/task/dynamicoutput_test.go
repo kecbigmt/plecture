@@ -75,8 +75,14 @@ func TestFetchOutput_FromResourceStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(cfg.BaseDir+"/resources/github.toml", []byte(`
-match   = '^https://github\.com/'
-observe = "echo '{\"checks_status\":\"SUCCESS\",\"issue_status\":\"NULL\"}'"
+[github]
+kind  = "resource_observer"
+match = '^https://github\.com/'
+
+[github.observe]
+type    = "exec"
+command = "printf"
+args    = ['{"checks_status":"SUCCESS","issue_status":"NULL"}']
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -97,8 +103,14 @@ func TestFetchOutput_FromResourceStatus_PassesSessionBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(cfg.BaseDir+"/resources/echo.toml", []byte(`
-match   = '.*'
-observe = "printf '{\"branch\":\"%s\"}' '{{.Branch}}'"
+[echo]
+kind  = "resource_observer"
+match = '.*'
+
+[echo.observe]
+type    = "exec"
+command = "printf"
+args    = ['{"branch":"%s"}', { from = "workspace.branch" }]
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -119,8 +131,14 @@ func TestFetchOutput_FromResourceStatus_PassesSessionWorkdirPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(cfg.BaseDir+"/resources/echo.toml", []byte(`
-match   = '.*'
-observe = "printf '{\"workspace_dir_path\":\"%s\"}' '{{.WorkspaceDirPath}}'"
+[echo]
+kind  = "resource_observer"
+match = '.*'
+
+[echo.observe]
+type    = "exec"
+command = "printf"
+args    = ['{"workspace_dir_path":"%s"}', { from = "workspace.dir" }]
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}

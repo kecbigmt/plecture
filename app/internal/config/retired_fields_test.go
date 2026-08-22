@@ -74,19 +74,3 @@ execution = "environment"
 		t.Errorf("error does not name the retired field: %v", err)
 	}
 }
-
-func TestLoadResourceDefs_RetiredExecutionRejected(t *testing.T) {
-	base := t.TempDir()
-	writeFile(t, filepath.Join(base, "resources", "pr.toml"), `
-match     = "^https://"
-observe   = "echo '{}'"
-execution = "environment"
-`)
-	_, err := (&Config{BaseDir: base}).LoadResourceDefs()
-	if err == nil {
-		t.Fatal("expected a load error naming the retired `execution` field")
-	}
-	if !strings.Contains(err.Error(), "`execution`") {
-		t.Errorf("error does not name the retired field: %v", err)
-	}
-}

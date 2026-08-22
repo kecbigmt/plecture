@@ -10,7 +10,7 @@ import (
 // reference resolves against.
 type Validation struct {
 	From        Ownership
-	Executables *ExecutableRegistry
+	Executables BinResolver
 }
 
 // ValidateDefinition walks exactly the surfaces docs/language/values.md
@@ -122,7 +122,7 @@ func (v Validation) validateChannel(def *Definition, pos Position) error {
 					fmt.Sprintf("%s belongs to a process delivery, not to unix_socket", field))
 			}
 		}
-	case actionExec, actionShell:
+	case ActionExec, ActionShell:
 		for _, field := range append(execOnlyFields, shellOnlyFields...) {
 			if raw, ok := def.Body[field]; ok {
 				delivery[field] = raw

@@ -753,8 +753,14 @@ pr_url   = "{{.Work.outputs.pr_url}}"
 	// never searches a second repository for its pull request — it reports
 	// only what same-repo observation can see.
 	writeResourceDefFixture(t, cfg.BaseDir, "github", `
-match   = '^https://github\.com/'
-observe = "echo '{\"checks_status\":\"SUCCESS\"}'"
+[github]
+kind  = "resource_observer"
+match = '^https://github\.com/'
+
+[github.observe]
+type    = "exec"
+command = "printf"
+args    = ['{"checks_status":"SUCCESS"}']
 `)
 
 	const crossRepoPRURL = "https://github.com/owner/repo-2/pull/42"

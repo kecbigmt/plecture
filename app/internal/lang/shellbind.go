@@ -28,14 +28,17 @@ var shellName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // MaterializeShellAction prepares one shell action for execution in dir, a
 // private run directory: the author's shell source verbatim, a mode-0600
 // file assigning the resolved bindings, and a wrapper that sources the first
-// into the second. bound supplies one resolved value per bind key.
+// into the second. bound supplies one resolved value per bind key it has one
+// for; a key absent from bound is explicitly unset, which is how
+// `optional = true` propagates absence into a shell — the script tells unset
+// from empty with its own parameter expansions.
 //
 // Nothing renders a value into the shell source and nothing passes one on
 // argv, so a bound value cannot become part of the command that runs.
 // Plecture-owned generation escapes each value exactly once, which is what
 // makes a value carrying shell syntax arrive as data.
 func MaterializeShellAction(dir string, a *Action, bound map[string]string, operands []string) (*ShellExecution, error) {
-	if a.Type != actionShell {
+	if a.Type != ActionShell {
 		return nil, fmt.Errorf("the binding transport runs a shell action, not %s", a.Type)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -94,7 +97,16 @@ func bindingAssignments(a *Action, bound map[string]string) (string, error) {
 		}
 		value, ok := bound[name]
 		if !ok {
-			return "", fmt.Errorf("bind key %q has no resolved value", name)
+			// Omitting the assignment would not make the variable absent:
+			// the child inherits Plecture's environment, so an ambient
+			// variable of the same name would reach the script as if the
+			// binding had resolved — and would expose ambient data through a
+			// surface that declared none. Unsetting is what absence means
+			// here. The name is a validated shell identifier by this point.
+			b.WriteString("unset ")
+			b.WriteString(name)
+			b.WriteString("\n")
+			continue
 		}
 		b.WriteString(name)
 		b.WriteString("=")

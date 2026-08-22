@@ -143,8 +143,8 @@ func TestFinalizeTask_SatisfiedNoResourceLeavesInstanceForCleanup(t *testing.T) 
 	}
 }
 
-// Satisfied + a bound resource whose definition declares a finalize script:
-// the script runs (seeing the instance/resource/revision as evidence); the
+// Satisfied + a bound resource whose observer declares a finalize action:
+// the action runs (seeing the resource and revision as evidence); the
 // instance itself is left in place for a separate `plect task cleanup`.
 func TestFinalizeTask_RunsResourceFinalizeAndLeavesInstance(t *testing.T) {
 	cfg := checkStatusOnlyConfig(t, 0)
@@ -154,9 +154,18 @@ func TestFinalizeTask_RunsResourceFinalizeAndLeavesInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	toml := fmt.Sprintf(`
-match    = '^local-okf://'
-observe  = "echo '{}'"
-finalize = "echo '{{.ResourceID}} {{.Instance}} {{.Revision}}' > %s"
+[local_okf]
+kind  = "resource_observer"
+match = '^local-okf://'
+
+[local_okf.observe]
+type    = "exec"
+command = "true"
+
+[local_okf.finalize]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'echo "$1 $2" > %s', "finalize", { from = "resource.id" }, { from = "resource.revision" }]
 `, out)
 	if err := os.WriteFile(filepath.Join(resourcesDir, "local-okf.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
@@ -178,15 +187,15 @@ finalize = "echo '{{.ResourceID}} {{.Instance}} {{.Revision}}' > %s"
 	if err != nil {
 		t.Fatalf("FinalizeTask: %v", err)
 	}
-	if !result.Finalized || result.Definition != "local-okf" {
-		t.Fatalf("result = %+v, want Finalized=true via local-okf", result)
+	if !result.Finalized || result.Definition != "local_okf" {
+		t.Fatalf("result = %+v, want Finalized=true via local_okf", result)
 	}
 	data, rerr := os.ReadFile(out)
 	if rerr != nil {
 		t.Fatal(rerr)
 	}
-	if got := strings.TrimSpace(string(data)); got != "local-okf://kec/goals/x.md initial sha1" {
-		t.Errorf("finalize script saw %q, want the resource id, instance, and revision", got)
+	if got := strings.TrimSpace(string(data)); got != "local-okf://kec/goals/x.md sha1" {
+		t.Errorf("finalize action saw %q, want the resource id and revision", got)
 	}
 	st := store.Get("o/r-1").Tasks["initial"]
 	if st == nil {
@@ -207,9 +216,18 @@ func TestFinalizeTask_ResourceFinalizeFailureAbortsBeforeCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(resourcesDir, "local-okf.toml"), []byte(`
-match    = '^local-okf://'
-observe  = "echo '{}'"
-finalize = "echo boom >&2; exit 1"
+[local_okf]
+kind  = "resource_observer"
+match = '^local-okf://'
+
+[local_okf.observe]
+type    = "exec"
+command = "true"
+
+[local_okf.finalize]
+type    = "exec"
+command = "sh"
+args    = ["-c", "echo boom >&2; exit 1"]
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}

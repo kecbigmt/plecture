@@ -192,17 +192,28 @@ func TestMaterializeShellActionRoundTripsHostileValues(t *testing.T) {
 	}
 }
 
-func TestMaterializeShellActionRejectsAnUnboundKey(t *testing.T) {
+func TestMaterializeShellActionUnsetsAnUnboundKey(t *testing.T) {
 	a, err := ParseAction(map[string]any{
 		"type":   "shell",
 		"script": "true\n",
-		"bind":   map[string]any{"session_name": map[string]any{"from": "session.name"}},
+		"bind": map[string]any{
+			"session_name": map[string]any{"from": "session.name"},
+			"workspace":    map[string]any{"from": "workspace.dir", "optional": true},
+		},
 	}, Position{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := MaterializeShellAction(filepath.Join(t.TempDir(), "run"), a, nil, nil); err == nil {
-		t.Error("every bind key needs a resolved value before the action can run")
+	dir := filepath.Join(t.TempDir(), "run")
+	if _, err := MaterializeShellAction(dir, a, map[string]string{"session_name": "s1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "bindings.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "session_name='s1'\nunset workspace\n"; string(raw) != want {
+		t.Errorf("bindings = %q, want %q — an unresolved key is unset, so no ambient value of that name survives", raw, want)
 	}
 }
 

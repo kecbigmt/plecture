@@ -13,6 +13,15 @@ type PluginExecutables struct {
 	Names []string
 }
 
+// BinResolver resolves an action's bin reference from the layer that wrote
+// it. Resolution is the caller's because the two callers answer different
+// questions with it: the conformance corpus asks whether a declared manifest
+// names the executable, while the runtime asks which file on this machine to
+// run.
+type BinResolver interface {
+	ResolveBin(ref string, from Ownership) (string, error)
+}
+
 // ExecutableRegistry resolves a bin reference to a declared executable.
 // Executable lookup is a separate namespace from definition references and
 // keeps the slash grammar, because it must split an arbitrary-depth plugin

@@ -124,7 +124,6 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 		}
 		ran, matched, ferr := task.FinalizeResource(resDefs, task.FinalizeResourceParams{
 			ResourceID:  resourceID,
-			Instance:    params.Instance,
 			SessionName: resolvedName,
 			Revision:    currentRevision(st.Outputs),
 			Judges:      judgeEvidenceFromLeaves(eval.Leaves),
