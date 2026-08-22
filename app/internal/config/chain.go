@@ -320,25 +320,11 @@ func stampTaskChains(def *TaskDefinition) error {
 	return nil
 }
 
-func unboundReason(composed bool) string {
-	if composed {
-		return "this layer does not project into the composed public contract"
-	}
-	return "is not declared in this task's outputs_schema"
-}
-
 // validateChainReferences resolves each chain's judge ids and output
-// references against the judge namespace and public contract it was declared
-// over — this task's own for a plain task, the composed ones for a layer of a
-// nesting chain (composed).
-//
-// A layer's chain names that layer's own output keys, the same vocabulary its
-// done_when leaves use; what the composed contract decides is whether those
-// keys reach it at all. So a chain keeps naming the key its own layer
-// publishes even where an outer layer re-exports it under a different public
-// name, and declaredOutputs for a layer of a nesting chain is the set of that
-// layer's own keys that project outward.
-func validateChainReferences(def TaskDefinition, judgeIDs, declaredOutputs map[string]bool, composed bool) error {
+// references. Plain tasks validate output references against their own
+// contract. Nested tasks validate only judge ids and reject private locals;
+// output reachability is not a binding invariant.
+func validateChainReferences(def TaskDefinition, judgeIDs, declaredOutputs map[string]bool, nested bool) error {
 	for _, ch := range def.Chains {
 		for j, fact := range ch.When.All {
 			id := fact.JudgePending
@@ -353,33 +339,22 @@ func validateChainReferences(def TaskDefinition, judgeIDs, declaredOutputs map[s
 			}
 		}
 
-		// A plain task with no outputs_schema has no contract to violate; a
-		// layer of a nesting chain always has one, since the composed task
-		// declares its whole public contract explicitly.
-		if len(declaredOutputs) == 0 && !composed {
-			continue
-		}
-		wired, err := ChainWiredOutputs(ch.Inputs)
-		if err != nil {
-			return fmt.Errorf("chain %q: %w", ch.ID, err)
-		}
-		for _, key := range wired {
-			if !declaredOutputs[key] {
-				return fmt.Errorf("chain %q: input binding wires output %q, which %s", ch.ID, key, unboundReason(composed))
+		if len(declaredOutputs) > 0 {
+			wired, err := ChainWiredOutputs(ch.Inputs)
+			if err != nil {
+				return fmt.Errorf("chain %q: %w", ch.ID, err)
+			}
+			for _, key := range wired {
+				if !declaredOutputs[key] {
+					return fmt.Errorf("chain %q: input binding wires output %q, which is not declared in this task's outputs_schema", ch.ID, key)
+				}
 			}
 		}
-		if !composed {
+		if !nested {
 			continue
 		}
-		// The composed task declares its whole public contract explicitly, so
-		// a chain fact reading anything else — a key outside the contract, or
-		// a local the joint kept private — has no value to read at fire time.
-		for j, fact := range ch.When.All {
-			key := strings.TrimSpace(fact.Check)
-			if key != "" && !declaredOutputs[key] {
-				return fmt.Errorf("chain %q when.all[%d]: reads output %q, which %s", ch.ID, j, key, unboundReason(composed))
-			}
-		}
+		// Locals remain private to the joint and never enter a layer's
+		// evaluation namespace.
 		locals, err := chainLocalRefs(ch.Inputs)
 		if err != nil {
 			return fmt.Errorf("chain %q: %w", ch.ID, err)
