@@ -1,10 +1,10 @@
-// Package langconfig loads and validates the Plecture configuration
+// Package configlang loads and validates the Plecture configuration
 // language: reserved root files, plugin/catalog manifests, definition
 // discovery across trust layers, and reference resolution. It is new,
 // parallel infrastructure — the existing per-surface loaders in
 // app/internal/config and app/internal/plugins keep governing runtime
 // behavior until a later slice cuts surfaces over.
-package langconfig
+package configlang
 
 import "fmt"
 
@@ -184,7 +184,7 @@ func (d *Diagnostic) Error() string {
 // at a construction site), never a data-dependent condition.
 func newDiag(code Code, layer Layer, pos Position, reason string) *Diagnostic {
 	if !ValidLayer(code, layer) {
-		panic(fmt.Sprintf("langconfig: %s is not a documented layer for %s", layer, code))
+		panic(fmt.Sprintf("configlang: %s is not a documented layer for %s", layer, code))
 	}
 	return &Diagnostic{Code: code, Layer: layer, Reason: reason, Pos: pos}
 }

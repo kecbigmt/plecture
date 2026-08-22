@@ -1,4 +1,4 @@
-package langconfig
+package configlang
 
 import (
 	"fmt"
@@ -65,14 +65,15 @@ func asTableArray(v any) ([]map[string]any, bool) {
 }
 
 // Definition is one discovered `[<id>] kind = "<kind>"` table, whatever file
-// it came from. Body holds every field of the table except id and kind —
-// nested tables and arrays stay exactly as TOML decoded them, since
-// interpreting them (values, actions, CEL) is a later slice's substrate.
+// it came from. Body holds every field of the table except id and kind, with
+// nested tables and arrays exactly as TOML decoded them. Instruction is the
+// prose below a task document's closing `+++`, empty for every other kind.
 type Definition struct {
-	ID   string
-	Kind Kind
-	Body map[string]any
-	File string
+	ID          string
+	Kind        Kind
+	Body        map[string]any
+	Instruction string
+	File        string
 }
 
 // ParseDefinitionDocument decodes a TOML definition document (one that is
@@ -140,10 +141,8 @@ func parseDefinitionTable(path, id string, tbl map[string]any) (*Definition, err
 const frontmatterDelim = "+++"
 
 // ParseTaskDocument decodes a task document's `+++`-delimited TOML
-// frontmatter into its one definition. The body (the instruction) is not
-// returned: interpreting it is a later slice's concern (see tasks.md), and
-// this slice only needs the definition's id and kind for the namespace and
-// duplicate-id checks.
+// frontmatter into its one definition, carrying the prose below the closing
+// delimiter as that definition's instruction.
 func ParseTaskDocument(path string, src []byte) (*Definition, error) {
 	s := string(src)
 	if !strings.HasPrefix(s, frontmatterDelim+"\n") {
@@ -157,6 +156,7 @@ func ParseTaskDocument(path string, src []byte) (*Definition, error) {
 			"frontmatter is not terminated by a closing +++")
 	}
 	fm := rest[:end+1]
+	instruction := strings.TrimPrefix(rest[end+1+len(frontmatterDelim):], "\n")
 
 	var raw map[string]any
 	if _, err := toml.Decode(fm, &raw); err != nil {
@@ -172,7 +172,12 @@ func ParseTaskDocument(path string, src []byte) (*Definition, error) {
 			return nil, newDiag(CodeKindMissing, LayerStructural, Position{File: path, Path: id},
 				fmt.Sprintf("%q is not a definition table", id))
 		}
-		return parseDefinitionTable(path, id, tbl)
+		def, err := parseDefinitionTable(path, id, tbl)
+		if err != nil {
+			return nil, err
+		}
+		def.Instruction = instruction
+		return def, nil
 	}
 	panic("unreachable: len(raw) == 1")
 }

@@ -1495,7 +1495,7 @@
       "$comment": "PLECTURE-CFG-FIELD-TYPE, PLECTURE-CFG-FIELD-UNKNOWN.",
       "type": "object",
       "additionalProperties": false,
-      "description": "An effect's public output wiring. Its roots are the nesting joint's: an inner output or this layer's locals. A live root belongs to a task document's completion predicate, so re-evaluation is not a task concern.",
+      "description": "An effect's public output wiring. Its roots are fixed when the layer is instantiated: an inner output, this layer's locals, or this layer's inputs. A live root belongs to a task document's completion predicate, so re-evaluation is not a task concern.",
       "properties": {
         "bind": {
           "type": "object",
@@ -1509,7 +1509,7 @@
       }
     },
     "effectOutputValue": {
-      "$comment": "PLECTURE-CFG-FROM-ROOT: a task output projects inner.outputs.* or locals.* only.",
+      "$comment": "PLECTURE-CFG-FROM-ROOT: a task output projects inner.outputs.*, locals.*, or inputs.* only, and never a live root.",
       "type": "object",
       "oneOf": [
         {
@@ -1520,7 +1520,7 @@
             {
               "properties": {
                 "from": {
-                  "pattern": "^(inner\\.outputs|locals)\\."
+                  "pattern": "^(inner\\.outputs|locals|inputs)\\."
                 }
               }
             }

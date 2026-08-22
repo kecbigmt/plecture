@@ -67,9 +67,10 @@ An effect's outputs are facts it produced: what setup wrote to stdout, and what 
 nesting joint projected outward. They are records of what happened, not a view
 of something that keeps changing.
 
-So `[outputs.bind]` projects `inner.outputs.*` and `locals.*` — nothing else. A
-live root belongs to a task document's completion predicate, and re-evaluation
-semantics exist only there.
+So `[outputs.bind]` reads `inner.outputs.*`, `locals.*`, and this layer's own
+`inputs.*` — every one of them fixed when the layer is instantiated. What it
+cannot read is a live root: that belongs to a task document's completion
+predicate, and re-evaluation semantics exist only there.
 
 <!-- fixture: effects/live-root-output.invalid.toml -->
 ```toml
@@ -323,7 +324,8 @@ env     = { type = "object" }
 ## Validation rules
 
 - The effect grammar is closed: a completion field is not part of it.
-- `[outputs.bind]` projects `inner.outputs.*` or `locals.*`.
+- `[outputs.bind]` reads `inner.outputs.*`, `locals.*`, or `inputs.*`, and no
+  live root.
 - A nesting chain that reaches itself is a load error.
 - A direct nested projection agrees with the inner output's type and
   mutability.
