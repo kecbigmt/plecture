@@ -192,7 +192,7 @@ func (v Validation) validateProvider(def *Definition, pos Position) error {
 			return err
 		}
 	}
-	return nil
+	return v.providerContracts(def, pos)
 }
 
 func (v Validation) validateObserver(def *Definition, pos Position) error {

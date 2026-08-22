@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
@@ -133,9 +132,6 @@ func (c *Config) loadWorkspaceProviderDocument(path string, fromPlugin bool) ([]
 		if err := validation.ValidateDefinition(def); err != nil {
 			return nil, err
 		}
-		if err := validation.ValidateProviderContracts(def); err != nil {
-			return nil, err
-		}
 		prov, err := workspaceProviderFrom(def, path, fromPlugin)
 		if err != nil {
 			return nil, fmt.Errorf("workspace provider %s in %s: %w", def.ID, path, err)
@@ -163,9 +159,6 @@ func workspaceProviderFrom(def *lang.Definition, path string, fromPlugin bool) (
 			return p, fmt.Errorf("`match` is a regular expression string")
 		}
 		p.Match = match
-		if _, err := regexp.Compile(match); err != nil {
-			return p, fmt.Errorf("`match` %q does not compile: %w", match, err)
-		}
 	}
 	if raw, ok := def.Body["name"]; ok {
 		name, err := lang.ParseValue(raw, lang.ClassData, childPosition(pos, "name"))

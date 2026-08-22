@@ -82,25 +82,25 @@ func TestRunWorkflowSetup_ProducesWorkspaceDir(t *testing.T) {
 	}
 }
 
-func TestRunWorkflowSetup_TemplateVars(t *testing.T) {
+func TestRunWorkflowSetup_ReadsItsSurfaceRoots(t *testing.T) {
 	prov := config.WorkspaceProviderConfig{
 		ID: "wf",
 		Setup: providerExec(`printf '{"workspace_dir":"/tmp/x","resource":"%s","session":"%s","root":"%s","tpl":"%s"}' "$1" "$2" "$3" "$4"`,
 			fromValue("resource.id"), fromValue("session.name"),
-			fromValue("config.workspace_dirs_root"), fromValueOr("session.inputs.template", "")),
+			fromValue("config.workspace_dirs_root"), fromValueOr("session.inputs.flavour", "")),
 	}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{
 		ResourceID:        "res-1",
 		SessionName:       "sess-1",
 		WorkspaceDirsRoot: "/roots/workspace_dirs",
-		SessionInputs:     map[string]any{"template": "review"},
+		SessionInputs:     map[string]any{"flavour": "review"},
 	}, tasks, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if outputs["resource"] != "res-1" || outputs["session"] != "sess-1" || outputs["root"] != "/roots/workspace_dirs" || outputs["tpl"] != "review" {
-		t.Errorf("template vars not rendered: %v", outputs)
+		t.Errorf("setup did not observe its roots: %v", outputs)
 	}
 }
 
@@ -108,8 +108,7 @@ func TestRunWorkflowSetup_TemplateVars(t *testing.T) {
 
 // An exec action passes a value as one argv element, never as command text,
 // so a resource id carrying shell metacharacters reaches the invoked
-// executable literally and its injected command never runs. This is the
-// property the retired shellQuote helper existed to approximate.
+// executable literally and its injected command never runs.
 func TestRunWorkflowSetup_AValueIsNeverCommandText(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "pwned")
@@ -192,7 +191,7 @@ func TestRunWorkflowSetup_PrevSurvivesRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(string(data)) != "/tmp/old" {
-		t.Errorf(".Prev = %q, want /tmp/old", strings.TrimSpace(string(data)))
+		t.Errorf("prev.workspace_dir = %q, want /tmp/old", strings.TrimSpace(string(data)))
 	}
 }
 
@@ -239,14 +238,14 @@ func TestRunWorkflowCleanup_RunsAndMarksClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(string(data)) != "/tmp/wd" {
-		t.Errorf(".Self.workspace_dir = %q", strings.TrimSpace(string(data)))
+		t.Errorf("self.outputs.workspace_dir = %q", strings.TrimSpace(string(data)))
 	}
 	st := tasks[contract.WorkflowPseudoNodeID]
 	if st.Status != contract.TaskStatusCleaned {
 		t.Errorf("status = %q, want cleaned", st.Status)
 	}
 	if st.Outputs["workspace_dir"] != "/tmp/wd" {
-		t.Error("outputs must survive cleanup for .Prev on retry")
+		t.Error("outputs must survive cleanup, so a later setup retry can read prev.*")
 	}
 }
 

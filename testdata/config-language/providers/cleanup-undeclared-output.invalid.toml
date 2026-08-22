@@ -1,0 +1,22 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=definitions
+# reason: cleanup reads the provider's own production records, so a key its outputs_schema does not declare is unresolvable rather than merely empty at teardown.
+
+[worktree]
+kind = "workspace_provider"
+
+[worktree.setup]
+type = "exec"
+bin  = "github-worktree"
+args = ["setup", "--session", { from = "session.name" }]
+
+[worktree.cleanup]
+type = "exec"
+bin  = "github-worktree"
+args = ["cleanup", "--branch", { from = "self.outputs.branch" }]
+
+[worktree.outputs_schema]
+type     = "object"
+required = ["workspace_dir"]
+
+[worktree.outputs_schema.properties]
+workspace_dir = { type = "string" }

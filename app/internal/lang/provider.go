@@ -1,12 +1,15 @@
 package lang
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
 
-// ValidateProviderContracts checks the two provider rules that read one
+// providerContracts checks the two provider rules that read one part of a
 // declaration against another part of the same declaration: a session name is
 // built from captures its own regular expression declares, and a cleanup
 // action reads outputs its own contract declares. Both are
@@ -14,17 +17,14 @@ import (
 //
 // Neither can be a surface check, because a surface knows which roots a site
 // observes and nothing about what this provider's regular expression captures
-// or its schema declares.
-func (v Validation) ValidateProviderContracts(def *Definition) error {
-	if def.Kind != KindWorkspaceProvider {
-		return nil
-	}
-	pos := Position{File: def.File, Path: def.ID}
-	captures, err := matchCaptures(def, pos)
+// or its schema declares. It runs inside ValidateDefinition rather than as a
+// pass of its own so no consumer can load a provider without it.
+func (v Validation) providerContracts(def *Definition, pos Position) error {
+	captures, known, err := matchCaptures(def, pos)
 	if err != nil {
 		return err
 	}
-	if name, ok := def.Body["name"]; ok {
+	if name, ok := def.Body["name"]; ok && known {
 		value, err := ParseValue(name, ClassData, childPos(pos, "name"))
 		if err != nil {
 			return err
@@ -35,15 +35,18 @@ func (v Validation) ValidateProviderContracts(def *Definition) error {
 			}
 		}
 	}
-	if _, ok := def.Body["cleanup"]; ok {
-		action, err := ParseAction(def.Body["cleanup"], childPos(pos, "cleanup"))
+	if raw, ok := def.Body["cleanup"]; ok {
+		action, err := ParseAction(raw, childPos(pos, "cleanup"))
 		if err != nil {
 			return err
 		}
-		outputs := declaredProperties(schemaTable(def.Body["outputs_schema"]))
+		outputs, declared, err := contractProperties(def, "outputs_schema", pos)
+		if err != nil {
+			return err
+		}
 		for _, value := range action.values() {
 			for _, path := range valuePaths(value, surfaceProviderCleanup) {
-				if err := resolveOutput(path, outputs, def.Body["outputs_schema"] != nil, childPos(pos, "cleanup")); err != nil {
+				if err := resolveOutput(path, outputs, declared, childPos(pos, "cleanup")); err != nil {
 					return err
 				}
 			}
@@ -52,30 +55,76 @@ func (v Validation) ValidateProviderContracts(def *Definition) error {
 	return nil
 }
 
-// matchCaptures reads the names a provider's regular expression captures. An
-// uncompilable expression yields none rather than an error of its own: the
-// loader reports that, and this pass has nothing to add.
-func matchCaptures(def *Definition, pos Position) (map[string]bool, error) {
+// matchCaptures reads the names a provider's regular expression captures.
+// known is false for an expression that does not compile: reporting every
+// capture reference as unresolvable would bury the reason none of them can
+// be resolved.
+func matchCaptures(def *Definition, pos Position) (captures map[string]bool, known bool, err error) {
 	raw, ok := def.Body["match"]
 	if !ok {
-		return nil, nil
+		return nil, true, nil
 	}
 	pattern, ok := raw.(string)
 	if !ok {
-		return nil, newDiag(CodeFieldType, LayerStructural, childPos(pos, "match"),
+		return nil, false, newDiag(CodeFieldType, LayerStructural, childPos(pos, "match"),
 			"match is a regular expression string")
 	}
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return nil, nil
+	re, compileErr := regexp.Compile(pattern)
+	if compileErr != nil {
+		return nil, false, newDiag(CodeFieldType, LayerStructural, childPos(pos, "match"),
+			fmt.Sprintf("%q does not compile as a regular expression: %s", pattern, oneLine(compileErr)))
 	}
-	captures := map[string]bool{}
+	captures = map[string]bool{}
 	for _, name := range re.SubexpNames() {
 		if name != "" {
 			captures[name] = true
 		}
 	}
-	return captures, nil
+	return captures, true, nil
+}
+
+// contractProperties reads one contract's declared properties, from the
+// inline table or from the document the `<field>_file` names. declared is
+// false only when the definition declares no contract at all: there is then
+// nothing to check a key against, and requiring a contract is a different
+// rule than checking against one.
+func contractProperties(def *Definition, field string, pos Position) (properties map[string]bool, declared bool, err error) {
+	if raw, ok := def.Body[field]; ok {
+		table, ok := raw.(map[string]any)
+		if !ok {
+			return nil, false, newDiag(CodeFieldType, LayerStructural, childPos(pos, field),
+				field+" is a JSON Schema document")
+		}
+		return declaredProperties(table), true, nil
+	}
+	raw, ok := def.Body[field+"_file"]
+	if !ok {
+		return nil, false, nil
+	}
+	name, ok := raw.(string)
+	if !ok {
+		return nil, false, newDiag(CodeFieldType, LayerStructural, childPos(pos, field+"_file"),
+			field+"_file is a path")
+	}
+	path := name
+	if !filepath.IsAbs(path) {
+		dir := filepath.Dir(def.File)
+		// A sibling contract is looked up next to the real document, not next
+		// to a symlink to it, matching how the runtime resolves it.
+		if real, linkErr := filepath.EvalSymlinks(def.File); linkErr == nil {
+			dir = filepath.Dir(real)
+		}
+		path = filepath.Join(dir, path)
+	}
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		return nil, false, fmt.Errorf("%s: %s: %w", pos, field+"_file", readErr)
+	}
+	var table map[string]any
+	if err := json.Unmarshal(data, &table); err != nil {
+		return nil, false, fmt.Errorf("%s: %s: %w", pos, field+"_file", err)
+	}
+	return declaredProperties(table), true, nil
 }
 
 // valuePaths yields every root path one value reads, whether it projects one
@@ -126,10 +175,6 @@ func resolveCapture(path string, captures map[string]bool, pos Position) error {
 		fmt.Sprintf("%q names no capture this provider's match declares", path))
 }
 
-// resolveOutput checks one cleanup projection against the provider's outputs
-// contract. A provider declaring no contract at all is left alone: there is
-// nothing to check the key against, and demanding a schema is a different
-// rule than this one.
 func resolveOutput(path string, outputs map[string]bool, declared bool, pos Position) error {
 	segments := strings.Split(path, ".")
 	if len(segments) < 3 || segments[0] != "self" || segments[1] != "outputs" {
@@ -140,9 +185,4 @@ func resolveOutput(path string, outputs map[string]bool, declared bool, pos Posi
 	}
 	return newDiag(CodeFromPath, LayerSemantic, pos,
 		fmt.Sprintf("%q names no property this provider's outputs_schema declares", path))
-}
-
-func schemaTable(raw any) map[string]any {
-	table, _ := raw.(map[string]any)
-	return table
 }

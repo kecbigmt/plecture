@@ -1,15 +1,22 @@
 package lang
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // A provider builds its session name from its own captures and reads its own
 // declared outputs, so a key that neither declares is a load error rather
-// than an empty value at dispatch or teardown.
+// than an empty value at dispatch or teardown. These run inside
+// ValidateDefinition, so a consumer cannot load a provider without them.
 func TestProviderContracts(t *testing.T) {
 	tests := []struct {
-		name string
-		src  string
-		want Code
+		name       string
+		src        string
+		schemaFile string
+		want       Code
+		layer      Layer
 	}{
 		{
 			name: "a name projecting a declared capture",
@@ -129,6 +136,57 @@ workspace_dir = { type = "string" }
 			want: CodeFromPath,
 		},
 		{
+			name: "a cleanup reading an output a contract file does not declare",
+			src: `[p]
+kind = "workspace_provider"
+outputs_schema_file = "outputs.json"
+
+[p.setup]
+type = "exec"
+bin  = "okf-bundle"
+
+[p.cleanup]
+type = "exec"
+bin  = "okf-bundle"
+args = [{ from = "self.outputs.branch" }]
+`,
+			schemaFile: `{"type":"object","properties":{"workspace_dir":{"type":"string"}}}`,
+			want:       CodeFromPath,
+		},
+		{
+			name: "a cleanup reading an output a contract file declares",
+			src: `[p]
+kind = "workspace_provider"
+outputs_schema_file = "outputs.json"
+
+[p.setup]
+type = "exec"
+bin  = "okf-bundle"
+
+[p.cleanup]
+type = "exec"
+bin  = "okf-bundle"
+args = [{ from = "self.outputs.branch" }]
+`,
+			schemaFile: `{"type":"object","properties":{"branch":{"type":"string"}}}`,
+		},
+		{
+			// An expression that cannot compile is what has to be reported:
+			// naming every capture reference unresolvable would bury it.
+			name: "a match that does not compile reports itself",
+			src: `[p]
+kind  = "workspace_provider"
+match = '^x/(?P<owner>[^/]+$'
+name  = { from = "match.owner" }
+
+[p.setup]
+type = "exec"
+bin  = "okf-bundle"
+`,
+			want:  CodeFieldType,
+			layer: LayerStructural,
+		},
+		{
 			// A provider declaring no outputs contract has nothing to check a
 			// key against; demanding one is a different rule than this.
 			name: "a cleanup reading an output where no contract is declared",
@@ -148,7 +206,17 @@ args = [{ from = "self.outputs.branch" }]
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			defs, err := ParseDefinitionDocument("test.toml", []byte(tt.src))
+			dir := t.TempDir()
+			path := filepath.Join(dir, "provider.toml")
+			if err := os.WriteFile(path, []byte(tt.src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if tt.schemaFile != "" {
+				if err := os.WriteFile(filepath.Join(dir, "outputs.json"), []byte(tt.schemaFile), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			defs, err := ParseDefinitionDocument(path, []byte(tt.src))
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
@@ -156,14 +224,18 @@ args = [{ from = "self.outputs.branch" }]
 				From:        Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath},
 				Executables: NewExecutableRegistry(PluginExecutables{Alias: fixtureAlias, Path: fixturePath, Names: fixtureExecutables}),
 			}
-			got := v.ValidateProviderContracts(defs[0])
+			got := v.ValidateDefinition(defs[0])
 			if tt.want == "" {
 				if got != nil {
 					t.Fatalf("expected this to load, but: %v", got)
 				}
 				return
 			}
-			wantDiag(t, got, tt.want, LayerSemantic)
+			layer := tt.layer
+			if layer == "" {
+				layer = LayerSemantic
+			}
+			wantDiag(t, got, tt.want, layer)
 		})
 	}
 }

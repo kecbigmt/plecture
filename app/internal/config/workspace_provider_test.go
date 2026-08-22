@@ -160,7 +160,7 @@ func TestLoadWorkspaceProviders_RejectedDeclarations(t *testing.T) {
 		{
 			name: "match does not compile",
 			body: "[p]\nkind = \"workspace_provider\"\nmatch = '('\nname = \"n\"\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n",
-			want: "match",
+			want: "does not compile as a regular expression",
 		},
 		{
 			name: "a field outside the provider surface",
