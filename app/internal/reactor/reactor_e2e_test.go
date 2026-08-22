@@ -1,7 +1,6 @@
 package reactor
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,32 +14,47 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// newE2EConfig writes a task definition with a real done_when (not the tests
+// newE2EConfig writes a task document with a real done_when (not the tests
 // elsewhere in this package, which never load one) so evaluateSessionActions
 // has a leaf to actually evaluate — TickSession is exercised through the real
 // `internal/service` code, not a stub.
 func newE2EConfig(t *testing.T) *config.Config {
 	t.Helper()
 	base := t.TempDir()
-	tasksDir := filepath.Join(base, "tasks")
-	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	def := `
+	writeFile(t, filepath.Join(base, "resources", "fixture.toml"), e2eObserver)
+	writeFile(t, filepath.Join(base, "tasks", "work.md"), `+++
 [work]
-kind  = "effect"
-scope = "session"
+kind              = "task"
+description       = "work fixture"
+resource_observer = "fixture"
 
 [work.done_when]
 all = [
-  { check = "checks_status", eq = "SUCCESS" },
+  { check = "resource.state.checks_status", eq = "SUCCESS" },
 ]
-`
-	if err := os.WriteFile(filepath.Join(tasksDir, "work.toml"), []byte(def), 0o644); err != nil {
-		t.Fatal(err)
-	}
++++
+Carry out the work.
+`)
 	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
 }
+
+// e2eObserver has no real resource to look at, so observing one fails and the
+// last observation a test seeded stands.
+const e2eObserver = `
+[fixture]
+kind  = "resource_observer"
+match = '^fixture://'
+
+[fixture.observe]
+type   = "shell"
+script = "exit 1"
+
+[fixture.state_schema]
+type = "object"
+
+[fixture.state_schema.properties]
+checks_status = {}
+`
 
 // TestSessionReactor_ReactiveTickReachesDoneWhenConsequence is the AC1 E2E:
 // a declared-pattern event delivered to a session with a generated,
@@ -70,10 +84,10 @@ func TestSessionReactor_ReactiveTickReachesDoneWhenConsequence(t *testing.T) {
 			// instance is what carries done_when.
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 			"initial": {
-				Scope:   contract.TaskScopeSession,
-				TaskID:  "work",
-				Status:  contract.TaskStatusProduced,
-				Outputs: map[string]any{"checks_status": "SUCCESS"},
+				Scope:    contract.TaskScopeSession,
+				TaskID:   "work",
+				Status:   contract.TaskStatusProduced,
+				Observed: &contract.ResourceObservation{State: map[string]any{"checks_status": "SUCCESS"}, At: time.Now()},
 			},
 		},
 	}); err != nil {
@@ -114,17 +128,20 @@ func TestSessionReactor_ReactiveTickReachesDoneWhenConsequence(t *testing.T) {
 func newPendingJudgeConfig(t *testing.T) *config.Config {
 	t.Helper()
 	base := t.TempDir()
-	def := `
+	writeFile(t, filepath.Join(base, "resources", "fixture.toml"), e2eObserver)
+	writeFile(t, filepath.Join(base, "tasks", "work.md"), `+++
 [work]
-kind  = "effect"
-scope = "session"
+kind              = "task"
+description       = "work fixture"
+resource_observer = "fixture"
 
 [work.done_when]
 all = [
   { judge = "AC met", id = "ac-met" },
 ]
-`
-	writeFile(t, filepath.Join(base, "tasks", "work.toml"), def)
++++
+Carry out the work.
+`)
 	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
 }
 

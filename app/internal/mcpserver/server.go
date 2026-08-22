@@ -343,9 +343,6 @@ func handleStatus(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 		if _, err := service.ObserveSessionResources(cfg, store, url); err != nil {
 			return errorResult(err), nil
 		}
-		if _, err := service.RefreshSessionOutputs(cfg, store, url); err != nil {
-			return errorResult(err), nil
-		}
 	}
 
 	result, err := service.Status(cfg, store, url)

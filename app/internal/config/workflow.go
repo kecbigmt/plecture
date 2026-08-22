@@ -226,13 +226,6 @@ type EventChannel struct {
 //
 // The id is the definition table's name. Effects intentionally have no
 // `depends_on`: wiring is the workflow's job.
-//
-// DoneWhen, Requires, DynamicOutputs, and Chains are not part of the effect
-// surface. They are carried here so the surfaces can move one at a time; the
-// declaration that owns them is the task document, and the PR that
-// introduces task documents moves all four out of this struct, out of the
-// loader that decodes them, and out of the shipped declarations that still
-// carry them.
 type TaskDefinition struct {
 	ID      string
 	Scope   string
@@ -270,23 +263,8 @@ type TaskDefinition struct {
 	OutputsSchemaFile string
 	InputsSchema      map[string]any
 	InputsSchemaFile  string
-	// DoneWhen is the completion predicate, evaluated per instance. See the
-	// type comment above for why it is here.
-	DoneWhen *DoneWhen
-	// Requires names the output keys done_when reads. When declared, every
-	// done_when check must name a required output, and every required output
-	// must be an outputs schema property — so a typo in either surfaces at
-	// load.
-	Requires []string
-	// DynamicOutputs are outputs whose value is a script's stdout, fetched
-	// when done_when's check reads them (distinct from the static
-	// OutputsSchema).
-	DynamicOutputs []DynamicOutput
-	// Chains declares the workflow-chaining rules that fire off this
-	// declaration's instances.
-	Chains     []ChainDefinition
-	BaseDir    string
-	SourcePath string
+	BaseDir           string
+	SourcePath        string
 	// FromPlugin says a plugin layer wrote this declaration, which is what
 	// decides whether its bin references may name another plugin.
 	FromPlugin bool
@@ -428,110 +406,6 @@ func (d *DoneWhen) Validate() error {
 		}
 	}
 	return nil
-}
-
-// DynamicOutput sources outputs from a script's stdout: Name takes the whole
-// stdout; Produces takes a JSON object keyed by those names, so one fetch feeds
-// several outputs instead of re-running the API per field. Internal (default
-// true) keeps a value out of other tasks' inputs.
-type DynamicOutput struct {
-	Name     string   `toml:"name"`
-	Produces []string `toml:"produces"`
-	Script   string   `toml:"script"`
-	Internal *bool    `toml:"internal"`
-	// FromResourceStatus sources the produced keys from the instance's bound
-	// resource (--resource) instead of a script: it looks up the resource
-	// definition (resources/*.toml) matching .ResourceID, runs its `observe`,
-	// and copies the named keys from the result. The declarative alternative
-	// to a task writing its own `plect resource status "{{.ResourceID}}"`
-	// wrapper (ADR "goal-as-task" D1/D2 resolution face). Mutually exclusive
-	// with Script.
-	FromResourceStatus bool `toml:"from_resource_status"`
-}
-
-// IsInternal defaults to true.
-func (o DynamicOutput) IsInternal() bool {
-	return o.Internal == nil || *o.Internal
-}
-
-func (o DynamicOutput) OutputNames() []string {
-	if o.Name != "" {
-		return []string{o.Name}
-	}
-	return o.Produces
-}
-
-// ValidateDynamicOutputs: exactly one of script/from_resource_status and
-// exactly one of name/produces per entry, non-empty names, unique across the
-// task. from_resource_status requires `produces` — a resource observation is
-// always a JSON object of named fields, so there is no single-string `name`
-// form to fill from it.
-func ValidateDynamicOutputs(srcs []DynamicOutput) error {
-	seen := make(map[string]bool, len(srcs))
-	for i, o := range srcs {
-		if (strings.TrimSpace(o.Script) != "") == o.FromResourceStatus {
-			return fmt.Errorf("output[%d] must set exactly one of `script` or `from_resource_status`", i)
-		}
-		if o.FromResourceStatus && o.Name != "" {
-			return fmt.Errorf("output[%d] sets `from_resource_status` with `name`; it requires `produces`", i)
-		}
-		if (strings.TrimSpace(o.Name) != "") == (len(o.Produces) > 0) {
-			return fmt.Errorf("output[%d] must set exactly one of `name` or `produces`", i)
-		}
-		for _, n := range o.OutputNames() {
-			if strings.TrimSpace(n) == "" {
-				return fmt.Errorf("output[%d] has an empty output name", i)
-			}
-			if seen[n] {
-				return fmt.Errorf("output %q is declared more than once", n)
-			}
-			seen[n] = true
-		}
-	}
-	return nil
-}
-
-// builtinDynamicOutputs let a local DoD ride the same script→value→check path
-// as a remote one with no per-task boilerplate.
-var builtinDynamicOutputs = []DynamicOutput{{
-	Name:   "workspace_dir_dirty",
-	Script: "git -C {{.WorkspaceDirPath}} status --porcelain | wc -l | tr -d ' '",
-}}
-
-// withBuiltinOutputs injects a builtin only into tasks whose done_when names
-// it, so one that never reads it never shells out for it; a same-named
-// user-declared output wins.
-func withBuiltinOutputs(def TaskDefinition) TaskDefinition {
-	if def.DoneWhen == nil {
-		return def
-	}
-	declared := make(map[string]bool, len(def.DynamicOutputs))
-	for _, o := range def.DynamicOutputs {
-		for _, n := range o.OutputNames() {
-			declared[n] = true
-		}
-	}
-	var inject []DynamicOutput
-	for _, b := range builtinDynamicOutputs {
-		referenced := false
-		for _, leaf := range def.DoneWhen.All {
-			if strings.TrimSpace(leaf.Check) == b.Name {
-				referenced = true
-				break
-			}
-		}
-		if referenced && !declared[b.Name] {
-			inject = append(inject, b)
-		}
-	}
-	if len(inject) == 0 {
-		return def
-	}
-	merged := make([]DynamicOutput, 0, len(def.DynamicOutputs)+len(inject))
-	merged = append(merged, def.DynamicOutputs...)
-	merged = append(merged, inject...)
-	def.DynamicOutputs = merged
-	return def
 }
 
 // EffectiveScope returns the scope, defaulting to "run" when unset. A nested
@@ -751,10 +625,6 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 						pluginOfSource[def.SourcePath] = layer.pluginID
 					}
 				}
-				def = withBuiltinOutputs(def)
-				if err := validateTaskChains(&def); err != nil {
-					return nil, fmt.Errorf("effect %s in %s: %w", def.ID, path, err)
-				}
 				all = append(all, def)
 				out[def.ID] = def
 			}
@@ -765,24 +635,7 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 	}); err != nil {
 		return nil, err
 	}
-	if err := checkBinRefs(taskDynamicOutputHooks(out), c.Plugins, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot); err != nil {
-		return nil, err
-	}
 	return out, nil
-}
-
-// taskDynamicOutputHooks flattens the template strings an effect
-// declaration still carries: one dynamic output script per entry. Every
-// other hook is an action, whose `bin` the language validator already
-// resolved at load. This goes away with the carried fields themselves.
-func taskDynamicOutputHooks(defs map[string]TaskDefinition) []hookSource {
-	var hooks []hookSource
-	for _, def := range defs {
-		for _, out := range def.DynamicOutputs {
-			hooks = append(hooks, hookSource{desc: fmt.Sprintf("effect %q output %q script", def.ID, out.Name), sourcePath: def.SourcePath, script: out.Script})
-		}
-	}
-	return hooks
 }
 
 // workflowSearchDirs orders the cascade: plugins (base) → global → ancestors

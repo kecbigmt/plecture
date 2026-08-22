@@ -337,7 +337,7 @@ func evaluateDocumentInstance(cfg *config.Config, store *state.Store, doc config
 			lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
 		}
 		eval = task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(resolvedName, st, allSessions))
-		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger, nil)
+		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger)
 		if action.Action != "" {
 			computed = &computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval}
 		}
@@ -387,18 +387,18 @@ func loadDeclarations(cfg *config.Config, session *domain.Session) (taskDeclarat
 }
 
 // gate resolves one instance's completion predicate and the live roots it
-// reads. A document has one predicate and no layers; an effect composes its
-// nesting chain's.
-func (d taskDeclarations) gate(cfg *config.Config, session *domain.Session, key string, st *contract.TaskState) (*config.DoneWhen, task.CompletionState, error) {
-	taskID := taskIDForInstance(key, st)
-	if doc, ok := d.docs[taskID]; ok {
-		dw, err := effectiveDoneWhen(doc.DoneWhen, st)
-		if err != nil {
-			return nil, task.CompletionState{}, err
-		}
-		return dw, documentCompletionState(st), nil
+// reads. Only a task document declares one: an effect brings something up and
+// takes it down, and answers for nothing beyond that.
+func (d taskDeclarations) gate(key string, st *contract.TaskState) (*config.DoneWhen, task.CompletionState, error) {
+	// A declaration-less instance still answers for the leaves it was set up
+	// with: `--done-when-json` adds conditions to one instance, and nothing
+	// about them depends on a document existing.
+	doc := d.docs[taskIDForInstance(key, st)]
+	dw, err := effectiveDoneWhen(doc.DoneWhen, st)
+	if err != nil {
+		return nil, task.CompletionState{}, err
 	}
-	return instanceGate(cfg, session, d.effects[taskID], st)
+	return dw, documentCompletionState(st), nil
 }
 
 // instanceRevision is the revision a verdict is recorded against, and the one

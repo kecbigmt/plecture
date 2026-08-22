@@ -1,15 +1,19 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // taskFixture is a terse spec for one task definition. Scope defaults to
@@ -124,8 +128,25 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 	if err := os.MkdirAll(workflowsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	needObserver := false
 	for _, d := range defs {
-		if err := os.WriteFile(filepath.Join(tasksDir, d.id+".toml"), []byte(effectFixtureDoc(d)), 0o644); err != nil {
+		if !fixtureDeclaresAGate(d) {
+			if err := os.WriteFile(filepath.Join(tasksDir, d.id+".toml"), []byte(effectFixtureDoc(d)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		needObserver = true
+		if err := os.WriteFile(filepath.Join(tasksDir, d.id+".md"), []byte(taskDocumentFixtureDoc(d)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if needObserver {
+		resourcesDir := filepath.Join(baseDir, "resources")
+		if err := os.MkdirAll(resourcesDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(resourcesDir, fixtureObserverID+".toml"), []byte(fixtureObserverDoc(defs)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -238,4 +259,139 @@ func fixtureBinding(match string) (name, value string) {
 		}
 		return "bin_" + strings.ReplaceAll(groups[9], "-", "_"), fmt.Sprintf("{ bin = %q }", groups[9])
 	}
+}
+
+// A fixture that declares a completion predicate or a chain is a task
+// document: those fields are the task surface's, and an effect answers for
+// neither. The fixture spec stays one struct so a test says what it is about
+// rather than which file the helper writes.
+const fixtureObserverID = "fixture_resource"
+
+func fixtureDeclaresAGate(d taskFixture) bool {
+	return strings.Contains(d.extra, "done_when") || strings.Contains(d.extra, "chains")
+}
+
+// fixtureStateKeys collects the keys a fixture's rooted reads name, so the
+// contract that declares them can be generated rather than restated in every
+// fixture.
+func fixtureStateKeys(body, root string) []string {
+	re := regexp.MustCompile(root + `\.state\.([A-Za-z0-9_]+)`)
+	seen := map[string]bool{}
+	var keys []string
+	for _, m := range re.FindAllStringSubmatch(body, -1) {
+		if !seen[m[1]] {
+			seen[m[1]] = true
+			keys = append(keys, m[1])
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// dropEffectOnlyTables removes the fields a fixture states for the effect
+// half of what used to be one declaration. A document publishes no outputs,
+// so an outputs contract has nothing to describe and the task surface rejects
+// it; a fixture keeps stating one only because it also stands in for a node.
+func dropEffectOnlyTables(id, tables string) string {
+	var kept []string
+	dropping := false
+	for _, line := range strings.Split(tables, "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "[["+id+".outputs]"), strings.HasPrefix(trimmed, "["+id+".outputs_schema"):
+			dropping = true
+		case strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "[["):
+			dropping = false
+		}
+		if !dropping {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+func taskDocumentFixtureDoc(d taskFixture) string {
+	bare, tables := splitFixtureExtra(d.id, d.extra)
+	tables = dropEffectOnlyTables(d.id, tables)
+	bare = strings.Join(slices.DeleteFunc(strings.Split(bare, "\n"), func(line string) bool {
+		return strings.HasPrefix(strings.TrimSpace(line), "requires ")
+	}), "\n")
+	var b strings.Builder
+	b.WriteString("+++\n")
+	fmt.Fprintf(&b, "[%s]\nkind = \"task\"\ndescription = %q\nresource_observer = %q\n", d.id, d.id+" fixture", fixtureObserverID)
+	b.WriteString(bare)
+	if keys := fixtureStateKeys(d.extra, "self"); len(keys) > 0 {
+		fmt.Fprintf(&b, "\n[%s.state_schema]\ntype = \"object\"\n\n[%s.state_schema.properties]\n", d.id, d.id)
+		for _, k := range keys {
+			fmt.Fprintf(&b, "%s = {}\n", k)
+		}
+	}
+	b.WriteString(tables)
+	b.WriteString("+++\n")
+	fmt.Fprintf(&b, "Carry out %s.\n", d.id)
+	return b.String()
+}
+
+// fixtureObserverDoc declares one observer covering every resource key the
+// fixtures read, matching any resource so a seeded instance resolves.
+func fixtureObserverDoc(defs []taskFixture) string {
+	seen := map[string]bool{}
+	var keys []string
+	for _, d := range defs {
+		for _, k := range fixtureStateKeys(d.extra, "resource") {
+			if !seen[k] {
+				seen[k] = true
+				keys = append(keys, k)
+			}
+		}
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	// The match claims a scheme no fixture resource uses, so a test that
+	// declares its own observer keeps it: what an instance observes with is
+	// the observer its document declares, not whichever pattern also fits.
+	fmt.Fprintf(&b, "[%s]\nkind = \"resource_observer\"\nmatch = '^fixture://'\n\n", fixtureObserverID)
+	// A fixture has no real resource to look at, so observing one fails and
+	// the last observation a test seeded stands — which is what lets a test
+	// state the facts its predicate reads instead of standing up a source of
+	// truth for them.
+	fmt.Fprintf(&b, "[%s.observe]\ntype = \"shell\"\nscript = \"echo 'this fixture has no resource to observe' >&2; exit 1\"\n\n", fixtureObserverID)
+	fmt.Fprintf(&b, "[%s.state_schema]\ntype = \"object\"\n\n[%s.state_schema.properties]\n", fixtureObserverID, fixtureObserverID)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "%s = {}\n", k)
+	}
+	return b.String()
+}
+
+// stubObservedFacts rewrites the fixture observer so observing a resource
+// succeeds and reports the given facts — for a path that re-observes before
+// deciding (finalize) rather than reading the last observation.
+func stubObservedFacts(t *testing.T, cfg *config.Config, facts map[string]any) {
+	t.Helper()
+	encoded, err := json.Marshal(facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := make([]string, 0, len(facts))
+	for k := range facts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	fmt.Fprintf(&b, "[%s]\nkind = \"resource_observer\"\nmatch = '^fixture://'\n\n", fixtureObserverID)
+	fmt.Fprintf(&b, "[%s.observe]\ntype = \"shell\"\nscript = %q\n\n", fixtureObserverID, "cat <<'JSON'\n"+string(encoded)+"\nJSON")
+	fmt.Fprintf(&b, "[%s.state_schema]\ntype = \"object\"\n\n[%s.state_schema.properties]\n", fixtureObserverID, fixtureObserverID)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "%s = {}\n", k)
+	}
+	path := filepath.Join(cfg.BaseDir, "resources", fixtureObserverID+".toml")
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// observedFacts is one instance's last observation of its resource — where a
+// completion check and a chain projection read `resource.state.*` from.
+func observedFacts(state map[string]any) *contract.ResourceObservation {
+	return &contract.ResourceObservation{State: state, At: time.Now()}
 }

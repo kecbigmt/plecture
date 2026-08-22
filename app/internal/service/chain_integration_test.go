@@ -126,7 +126,7 @@ func TestIntegration_LegacyChainsFileIsIgnored(t *testing.T) {
 				id:    "work",
 				scope: "session",
 				setup: `echo '{"checks_status":"SUCCESS","revision":"sha1"}'`,
-				extra: "[done_when]\nall = [\n  { check = \"checks_status\", in = [\"SUCCESS\"] },\n  { judge = \"ac met\", id = \"ac-met\" },\n]\n",
+				extra: "[done_when]\nall = [\n  { check = \"resource.state.checks_status\", in = [\"SUCCESS\"] },\n  { judge = \"ac met\", id = \"ac-met\" },\n]\n",
 			},
 			{id: "tmux", scope: "run", setup: `echo '{"session_name":"t"}'`, cleanup: "true"},
 		},

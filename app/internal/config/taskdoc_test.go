@@ -523,3 +523,75 @@ work_session = { from = "task.session" }
 +++
 Pursue the goal at {{ resource.id }}.
 `
+
+// The completion predicate's leaf forms parse off a document's frontmatter,
+// and `budget` is a sibling of `done_when` rather than a member of it.
+func TestLoadTaskDocuments_ParsesEveryCompletionLeafForm(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+[review]
+kind              = "task"
+description       = "Review a resource"
+resource_observer = "issue_pr"
+
+[[review.done_when.all]]
+check = "resource.state.revision"
+in    = ["merged", "closed"]
+
+[[review.done_when.all]]
+check = "resource.state.revision"
+gte   = 80
+
+[[review.done_when.all]]
+judge = "reviewer approved"
+id    = "ac-met"
+
+[review.budget]
+max_iterations = 5
++++
+Review it.
+`)
+	docs, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments: %v", err)
+	}
+	dw := docs["review"].DoneWhen
+	if dw == nil || len(dw.All) != 3 {
+		t.Fatalf("done_when not parsed: %+v", dw)
+	}
+	if dw.All[0].Check != "resource.state.revision" || len(dw.All[0].In) != 2 {
+		t.Errorf("in leaf not parsed: %+v", dw.All[0])
+	}
+	if dw.All[1].Gte == nil || *dw.All[1].Gte != 80 {
+		t.Errorf("gte leaf not parsed: %+v", dw.All[1])
+	}
+	if dw.All[2].Judge == "" || dw.All[2].ID != "ac-met" {
+		t.Errorf("judge leaf not parsed: %+v", dw.All[2])
+	}
+	if dw.Budget["max_iterations"] == nil {
+		t.Errorf("budget not joined to the predicate it bounds: %+v", dw.Budget)
+	}
+}
+
+// A leaf that is both a check and a judge is neither.
+func TestLoadTaskDocuments_RejectsAmbiguousCompletionLeaf(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "bad.md"), `+++
+[bad]
+kind              = "task"
+description       = "A document whose leaf is two leaves"
+resource_observer = "issue_pr"
+
+[[bad.done_when.all]]
+check = "resource.state.revision"
+eq    = "merged"
+judge = "both set"
++++
+Do it.
+`)
+	if _, err := (&Config{BaseDir: base}).LoadTaskDocuments(""); err == nil {
+		t.Fatal("expected a load error for a leaf that is both a check and a judge")
+	}
+}

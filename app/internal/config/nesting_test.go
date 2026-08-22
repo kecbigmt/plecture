@@ -38,28 +38,6 @@ pid         = { type = "integer", mutable = true }
 socket_path = { type = "string" }
 `
 
-// innerGated is the inner task whose own done_when reads one of its outputs,
-// which the outer layer must keep readable by binding it directly.
-const innerGated = `
-[work]
-kind     = "effect"
-scope    = "run"
-requires = ["review_decision"]
-
-[work.setup]
-type   = "shell"
-script = "true"
-
-[work.done_when]
-all = [ { check = "review_decision", eq = "APPROVED" } ]
-
-[work.outputs_schema]
-type = "object"
-
-[work.outputs_schema.properties]
-review_decision = { type = "string" }
-`
-
 // TestLoadTaskDefinitions_NestedDefinitionParsesEveryLayerField covers the
 // whole nested-task field set in one file: the joint vocabulary plus every
 // plain-task field an outer layer declares for its own layer.
@@ -69,7 +47,6 @@ func TestLoadTaskDefinitions_NestedDefinitionParsesEveryLayerField(t *testing.T)
 		"myclaude": `
 [myclaude]
 kind     = "effect"
-requires = ["pid"]
 
 [myclaude.inner]
 uses = "claude"
@@ -112,28 +89,12 @@ type = "object"
 pid       = { type = "integer", mutable = true }
 guard_dir = { type = "string" }
 
-[myclaude.done_when]
-all = [ { check = "pid", ne = "" }, { judge = "team checklist", id = "team-gate" } ]
-
-[myclaude.done_when.budget]
-heartbeats = 20
-
 [myclaude.health.alive]
 type   = "shell"
 script = "kill -0 \"$pid\""
 
 [myclaude.health.alive.bind]
 pid = { from = "self.outputs.pid" }
-
-[[myclaude.chains]]
-id       = "review"
-workflow = "claude"
-
-[myclaude.chains.when]
-all = [ { judge_pending = "team-gate" } ]
-
-[myclaude.chains.inputs]
-revision = "{{.Work.outputs.pid}}"
 `,
 	})
 	if err != nil {
@@ -158,14 +119,8 @@ revision = "{{.Work.outputs.pid}}"
 	if _, ok := def.LocalsSchema["properties"]; !ok {
 		t.Errorf("locals_schema was not decoded: %v", def.LocalsSchema)
 	}
-	if def.DoneWhen == nil || len(def.DoneWhen.All) != 2 || def.DoneWhen.Budget == nil {
-		t.Errorf("done_when/budget not decoded: %+v", def.DoneWhen)
-	}
 	if def.Health.AliveProbe() == nil {
 		t.Error("[health].alive was not decoded")
-	}
-	if len(def.Chains) != 1 {
-		t.Errorf("chains not decoded: %d chains", len(def.Chains))
 	}
 	if len(def.InnerChain) != 1 || def.InnerChain[0].ID != "claude" {
 		t.Fatalf("InnerChain = %v, want the resolved [claude]", layerIDs(def.InnerChain))
@@ -280,58 +235,6 @@ uses = "claude"
 			wantErr: "scope",
 		},
 		{
-			name: "an outer produced key collides with another key the same layer produces",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "claude"
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-exit_code = { type = "string" }
-
-[[outer.outputs]]
-name   = "exit_code"
-script = "echo 0"
-
-[[outer.outputs]]
-name   = "exit_code"
-script = "echo 1"
-`,
-			},
-			wantErr: "more than once",
-		},
-		{
-			name: "an outer produced key is missing from the outer outputs_schema",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "claude"
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-
-[[outer.outputs]]
-name   = "exit_code"
-script = "echo 0"
-`,
-			},
-			wantErr: "outputs_schema",
-		},
-		{
 			name: "two layers of the nesting chain declare [terminal]",
 			files: map[string]string{
 				"claude": innerRuntime + `
@@ -364,101 +267,6 @@ script = "true"
 `,
 			},
 			wantErr: "[terminal]",
-		},
-		{
-			name: "an outer done_when judge id repeats a judge id of another layer",
-			files: map[string]string{
-				"claude": `
-[claude]
-kind = "effect"
-scope = "run"
-
-[claude.setup]
-type   = "shell"
-script = "true"
-
-[claude.done_when]
-all = [ { judge = "inner criterion", id = "ac-met" } ]
-
-[claude.outputs_schema]
-type = "object"
-
-[claude.outputs_schema.properties]
-pid = { type = "integer" }
-`,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "claude"
-
-[outer.done_when]
-all = [ { judge = "outer criterion", id = "ac-met" } ]
-
-[outer.outputs.bind]
-pid = { from = "inner.outputs.pid" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-pid = { type = "integer" }
-`,
-			},
-			wantErr: `judge id "ac-met"`,
-		},
-		{
-			name: "an outer done_when check names a key missing from the outer requires",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-[outer]
-kind = "effect"
-requires = ["pid"]
-
-[outer.inner]
-uses = "claude"
-
-[outer.done_when]
-all = [ { check = "exit_code", eq = "0" } ]
-
-[outer.outputs.bind]
-pid = { from = "inner.outputs.pid" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-pid       = { type = "integer", mutable = true }
-exit_code = { type = "string" }
-`,
-			},
-			wantErr: "requires",
-		},
-		{
-			name: "the outer requires names a key missing from the outer outputs_schema",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-[outer]
-kind = "effect"
-requires = ["exit_code"]
-
-[outer.inner]
-uses = "claude"
-
-[outer.outputs.bind]
-pid = { from = "inner.outputs.pid" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-`,
-			},
-			wantErr: "outputs schema",
 		},
 		{
 			name: "outputs.bind reads a root the surface does not observe",
@@ -611,247 +419,6 @@ guard_dir = { type = "string" }
 			},
 		},
 		{
-			name: "an inner done_when output kept readable by a direct binding",
-			files: map[string]string{
-				"work": innerGated,
-				"outer": `
-[outer]
-kind     = "effect"
-requires = ["review_decision"]
-
-[outer.inner]
-uses = "work"
-
-[outer.done_when]
-all = [ { check = "review_decision", eq = "APPROVED" } ]
-
-[outer.outputs.bind]
-review_decision = { from = "inner.outputs.review_decision" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-review_decision = { type = "string" }
-`,
-			},
-		},
-		{
-			name: "an inner done_when output omitted from the outer contract",
-			files: map[string]string{
-				"work": innerGated,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "work"
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-instruction = { type = "string" }
-`,
-			},
-		},
-		{
-			name: "an inner done_when output exported through a computed binding",
-			files: map[string]string{
-				"work": innerGated,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "work"
-
-[outer.outputs.bind]
-decision = { expr = "inner.outputs.review_decision + '-checked'" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-decision = { type = "string" }
-`,
-			},
-		},
-		{
-			name: "an inner layer's chain reading an output the composed contract binds directly",
-			files: map[string]string{
-				"claude": innerRuntime + `
-[[claude.chains]]
-id       = "review"
-workflow = "claude"
-
-[claude.chains.when]
-all = [ { check = "pid", ne = "" } ]
-
-[claude.chains.inputs]
-socket = "{{.Work.outputs.socket_path}}"
-`,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "claude"
-
-[outer.outputs.bind]
-pid = { from = "inner.outputs.pid" }
-socket_path = { from = "inner.outputs.socket_path" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-pid         = { type = "integer", mutable = true }
-socket_path = { type = "string" }
-`,
-			},
-		},
-		{
-			name: "an inner layer's chain naming its own key across an outer rename",
-			files: map[string]string{
-				"work": innerGated + `
-[[work.chains]]
-id       = "review"
-workflow = "claude"
-
-[work.chains.when]
-all = [ { check = "review_decision", eq = "APPROVED" } ]
-
-[work.chains.inputs]
-decision = "{{.Work.outputs.review_decision}}"
-`,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "work"
-
-[outer.outputs.bind]
-decision = { from = "inner.outputs.review_decision" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-decision = { type = "string" }
-`,
-			},
-		},
-		{
-			name: "an outer chain output outside the composed public contract",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "claude"
-
-[outer.outputs.bind]
-pid = { from = "inner.outputs.pid" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-
-[[outer.chains]]
-id       = "review"
-workflow = "claude"
-
-[outer.chains.when]
-all = [ { check = "socket_path", eq = "x" } ]
-`,
-			},
-		},
-		{
-			name: "an inner chain input omitted from the composed public contract",
-			files: map[string]string{
-				"claude": innerRuntime + `
-[[claude.chains]]
-id       = "review"
-workflow = "claude"
-
-[claude.chains.when]
-all = [ { check = "pid", ne = "" } ]
-
-[claude.chains.inputs]
-socket = "{{.Work.outputs.socket_path}}"
-`,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "claude"
-
-[outer.outputs.bind]
-pid = { from = "inner.outputs.pid" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-`,
-			},
-		},
-		{
-			name: "a middle layer chain output omitted from the composed public contract",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"middle": `
-[middle]
-kind = "effect"
-
-[middle.inner]
-uses = "claude"
-
-[middle.outputs.bind]
-pid = { from = "inner.outputs.pid" }
-socket_path = { from = "inner.outputs.socket_path" }
-
-[middle.outputs_schema]
-type = "object"
-
-[middle.outputs_schema.properties]
-pid         = { type = "integer", mutable = true }
-socket_path = { type = "string" }
-
-[[middle.chains]]
-id       = "review"
-workflow = "claude"
-
-[middle.chains.when]
-all = [ { check = "socket_path", ne = "" } ]
-`,
-				"outer": `
-[outer]
-kind = "effect"
-
-[outer.inner]
-uses = "middle"
-
-[outer.outputs.bind]
-pid = { from = "inner.outputs.pid" }
-
-[outer.outputs_schema]
-type = "object"
-
-[outer.outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-`,
-			},
-		},
-		{
 			name: "an outer layer composing a terminal over a headless inner",
 			files: map[string]string{
 				"claude": innerRuntime,
@@ -894,7 +461,7 @@ interactive_endpoint = { type = "string" }
 			},
 		},
 		{
-			name: "three layers with disjoint bind.env keys and a per-layer budget",
+			name: "three layers with disjoint bind.env keys",
 			files: map[string]string{
 				"claude": innerRuntime,
 				"middle": `
@@ -934,12 +501,6 @@ type = "object"
 
 [outer.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
-
-[outer.done_when]
-all = [ { check = "pid", ne = "" } ]
-
-[outer.done_when.budget]
-heartbeats = 10
 `,
 			},
 		},

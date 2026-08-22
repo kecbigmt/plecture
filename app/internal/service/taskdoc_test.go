@@ -802,7 +802,7 @@ func TestTickSession_DocumentSelfStateIsRecordedStateAlone(t *testing.T) {
 			TaskID:   "review",
 			Status:   contract.TaskStatusProduced,
 			Resource: "https://example.test/pull/1",
-			Outputs:  map[string]any{"verdict_revision": "sha2"},
+			Observed: observedFacts(map[string]any{"verdict_revision": "sha2"}),
 			SetupAt:  time.Now(),
 		},
 	})

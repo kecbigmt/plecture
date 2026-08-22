@@ -91,7 +91,7 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 	if err != nil {
 		return nil, err
 	}
-	dw, _, err := declarations.gate(cfg, session, params.Instance, st)
+	dw, _, err := declarations.gate(params.Instance, st)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

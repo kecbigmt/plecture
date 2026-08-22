@@ -22,7 +22,7 @@ func seedPendingJudgeWork(t *testing.T, store *state.Store, name string) {
 			Status:   contract.TaskStatusProduced,
 			Dynamic:  true,
 			Resource: "https://github.com/owner/repo/pull/1",
-			Outputs:  map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 }
@@ -39,7 +39,7 @@ func tickEventCount(t *testing.T, store *state.Store, session, eventType string)
 func setCheckStatus(t *testing.T, store *state.Store, session, status string) {
 	t.Helper()
 	if err := store.Update(session, func(s *domain.Session) error {
-		s.Tasks["initial"].Outputs["checks_status"] = status
+		s.Tasks["initial"].Observed.State["checks_status"] = status
 		return nil
 	}); err != nil {
 		t.Fatalf("update checks_status: %v", err)

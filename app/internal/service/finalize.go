@@ -58,16 +58,9 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 		return nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: run inside a plect session pane (PLECT_SESSION_NAME) or pass --session"}
 	}
 
-	// A failed individual output fetch is not a top-level error (tick/check
-	// tolerate it, leaving the prior value in place — wiki task-model.md:
-	// "if a re-fetch fails, the previous value is left as-is"). finalize cannot make
-	// the same trade: it must reconfirm at the CURRENT revision, so a fetch
-	// that just failed leaves that reconfirmation unproven, not merely stale.
-	// Fail closed rather than silently evaluate against the untouched old
-	// value as if it were freshly confirmed.
-	// Same trade for the observation this instance's predicate reads: an
-	// observation that just failed leaves the reconfirmation unproven, so
-	// finalize refuses rather than recording completion against whatever the
+	// finalize must reconfirm at the CURRENT revision, so an observation that
+	// just failed leaves that reconfirmation unproven rather than merely
+	// stale. Fail closed rather than record completion against whatever the
 	// resource last said.
 	observation, err := ObserveInstanceResource(cfg, store, sessionName, params.Instance)
 	if err != nil {
@@ -76,14 +69,6 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 	if observation != nil && observation.Error != "" {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("instance %q: observing its resource failed (%s); finalize refuses to reconfirm against a stale observation", params.Instance, observation.Error)}
 	}
-	refreshed, err := RefreshInstanceOutputs(cfg, store, sessionName, params.Instance)
-	if err != nil {
-		return nil, err
-	}
-	if failed := failedOutputNames(refreshed); len(failed) > 0 {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("instance %q: dynamic output(s) %v failed to refresh; finalize refuses to reconfirm against stale values", params.Instance, failed)}
-	}
-
 	resolvedName, session, err := resolveSession(cfg, store, sessionName)
 	if err != nil {
 		return nil, err
@@ -97,15 +82,7 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 	if err != nil {
 		return nil, err
 	}
-	def := declarations.effects[taskIDForInstance(params.Instance, st)]
-	// Reading a drifted chain degrades to the outermost layer's own
-	// declarations, which is right for a status line and wrong here:
-	// recording completion against a gate whose inner conditions silently
-	// dropped out is the one thing that must not fail open.
-	if chainDrifted(def, st) {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q was set up with %d nesting layers but task %q now declares %d; finalize refuses to record completion against a gate it cannot compose", params.Instance, len(st.Layers), def.ID, len(def.InnerChain)+1)}
-	}
-	dw, gateOutputs, derr := declarations.gate(cfg, session, params.Instance, st)
+	dw, gateOutputs, derr := declarations.gate(params.Instance, st)
 	if derr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: derr.Error()}
 	}
@@ -158,18 +135,6 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 	}
 
 	return result, nil
-}
-
-// failedOutputNames returns the names of any dynamic outputs whose refresh
-// fetch failed, in the order RefreshInstanceOutputs reported them.
-func failedOutputNames(results []OutputRefreshResult) []string {
-	var out []string
-	for _, r := range results {
-		if r.Error != "" {
-			out = append(out, r.Name)
-		}
-	}
-	return out
 }
 
 // judgeEvidenceFromLeaves collects the satisfied judge leaves' evidence from a

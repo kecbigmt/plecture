@@ -14,6 +14,23 @@ carried while the two coexisted:
 - a chain's `workflow` is a static reference and its inputs are values over
   the chain-input roots, so the `.Work.*` template vocabulary is gone.
 
+Three consequences follow from an effect answering for no completion:
+
+- **Dynamic outputs are gone.** `[[outputs]]` — the `script` and
+  `from_resource_status` forms — existed to feed a completion check a live
+  value. A document reads a live value from the observer that publishes it, so
+  there is nothing left for the mechanism to feed. `plect status --refresh`
+  now observes each resource and nothing else, and `plect tick` does the same.
+  A value your own config produced with a `script` output becomes either an
+  observer's `state_schema` key or a fact recorded with `plect state set`.
+- **A nesting layer adds no completion.** An outer effect no longer composes a
+  `done_when` over its inner layers, and per-layer budgets go with it: a
+  document has one predicate and one budget.
+- **A session owes progress when a task document says so.** The watchdog's
+  stall accusation used to read a run-scoped effect's `done_when`; it reads
+  the session's live task-document instances instead. An activity probe can
+  still pardon the silence, exactly as before.
+
 Read `docs/migrations/task-document-surface-migration.md` first: it is the
 procedure for converting one declaration. This document is what *else* has to
 change, because the shipped side converted.

@@ -93,31 +93,27 @@ type computedAction struct {
 }
 
 // evaluateSessionActions runs the read-only half shared by CheckSession (plect
-// status / plect_check) and TickSession (plect tick): optionally refresh outputs,
-// observe each instance's resource, resolve the session, and evaluate
-// done_when — and, against those same facts, [[chains]] — for every produced
-// task instance. It never writes state, spawns a session, or publishes events:
+// status / plect_check) and TickSession (plect tick): optionally observe each
+// instance's resource, resolve the session, and evaluate done_when — and,
+// against those same facts, [[chains]] — for every live task-document
+// instance. It never writes state, spawns a session, or publishes events:
 // CheckSession returns its result verbatim (a dry-run chain plan), while
 // TickSession additionally publishes/persists per action and spawns each
-// fired, not-already-active chain. refresh is false for every CheckSession
+// fired, not-already-active chain. observe is false for every CheckSession
 // call: check reads persisted state only, so that repeated calls cannot
-// themselves change what a session reports. Only tick refreshes dynamic
-// outputs.
-func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName string, refresh bool, trigger TickTrigger) (string, []computedAction, []ChainSpawn, []string, error) {
+// themselves change what a session reports.
+func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName string, observe bool, trigger TickTrigger) (string, []computedAction, []ChainSpawn, []string, error) {
 	if sessionName == "" {
 		sessionName = os.Getenv("PLECT_SESSION_NAME")
 	}
 	if sessionName == "" {
 		return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass a session or run inside a plect session pane"}
 	}
-	if refresh {
+	if observe {
 		// Observation comes first and lands in state before anything reads
 		// it, so every leaf of this pass — a completion predicate and the
 		// chain conditions beside it — decides against one snapshot.
 		if _, err := ObserveSessionResources(cfg, store, sessionName); err != nil {
-			return "", nil, nil, nil, err
-		}
-		if _, err := RefreshSessionOutputs(cfg, store, sessionName); err != nil {
 			return "", nil, nil, nil, err
 		}
 	}
@@ -129,7 +125,11 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 	if err != nil {
 		return "", nil, nil, nil, err
 	}
-	docs, defs, err := loadTaskDeclarations(cfg, session)
+	// An id that resolves to no task document declares no completion
+	// predicate: an effect brings something up and takes it down and answers
+	// for nothing beyond that. Loading both kinds is still what resolves the
+	// id, so a collision is reported rather than silently choosing a side.
+	docs, _, err := loadTaskDeclarations(cfg, session)
 	if err != nil {
 		return "", nil, nil, nil, err
 	}
@@ -137,8 +137,6 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 	if err != nil {
 		return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("legacy chains dir: %v", err)}
 	}
-	chains := config.TaskChains(defs)
-
 	var computed []computedAction
 	var chainPlan []ChainSpawn
 	for _, key := range sortedTaskKeys(session.Tasks) {
@@ -146,105 +144,22 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		if st == nil || st.Status != contract.TaskStatusProduced || key == contract.WorkflowPseudoNodeID {
 			continue
 		}
-		taskID := taskIDForInstance(key, st)
-		if doc, ok := docs[taskID]; ok {
-			action, spawns, derr := evaluateDocumentInstance(cfg, store, doc, resolvedName, session, key, st, allSessions, trigger)
-			if derr != nil {
-				return "", nil, nil, nil, derr
-			}
-			if action != nil {
-				computed = append(computed, *action)
-			}
-			chainPlan = append(chainPlan, spawns...)
+		// A declaration-less instance is evaluated only when it was set up
+		// with leaves of its own: an effect answers for no completion, but
+		// `--done-when-json` conditions belong to the instance, not to a
+		// declaration.
+		doc := docs[taskIDForInstance(key, st)]
+		if doc.DoneWhen == nil && len(doc.Chains) == 0 && len(st.ExtraDoneWhen) == 0 {
 			continue
 		}
-		def := defs[taskID]
-		if chainDrifted(def, st) {
-			// The gate degrades to the outermost layer's own conditions,
-			// which is a quieter answer than the instance actually owes —
-			// so it is said out loud rather than left to be inferred from a
-			// suddenly shorter done_when.
-			legacyWarnings = append(legacyWarnings, fmt.Sprintf("instance %q was set up with %d nesting layers but task %q now declares %d; its inner layers' conditions are not being evaluated", key, len(st.Layers), taskID, len(def.InnerChain)+1))
+		action, spawns, derr := evaluateDocumentInstance(cfg, store, doc, resolvedName, session, key, st, allSessions, trigger)
+		if derr != nil {
+			return "", nil, nil, nil, derr
 		}
-		comp, compErr := composeInstance(def, st, sessionVars(cfg, session, nil))
-		if compErr != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: compErr.Error()}
+		if action != nil {
+			computed = append(computed, *action)
 		}
-		layerDoneWhen, leafOwner := instanceDoneWhen(def, comp)
-		live := instanceCompletionState(st, comp)
-		dw, err := effectiveDoneWhen(layerDoneWhen, st)
-		if err != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
-		}
-		if dw == nil {
-			continue
-		}
-		// Captured before a tick's persist overwrites them, so the actuator can
-		// tell a state it has already acted on from a fresh one: `done` fires
-		// exactly once per instance (the goal loop's actuator layer owns `done`
-		// emission) and an unchanged unmet state does not re-announce itself on
-		// every poll.
-		lastAction, lastFingerprint := "", ""
-		if st.DoneWhen != nil {
-			lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
-		}
-		eval := task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(resolvedName, st, allSessions))
-		budgets := newLayerBudgets(comp, st, leafOwner, len(eval.Leaves))
-		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger, budgets)
-		if budgets != nil {
-			action.LayerTicks = budgets.NextTicks
-		}
-		if action.Action != "" {
-			computed = append(computed, computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval})
-		}
-		if len(chains) == 0 && comp == nil {
-			continue
-		}
-		resource := sessionResourceForCheck(session, st)
-		// The upstream output contract: the published output keys a chain's
-		// `{{.Work.outputs.X}}` bindings may reference. Empty when the task
-		// declares no outputs schema (then wiring is unconstrained).
-		upstreamOutputs, schemaErr := task.SchemaPropertyNames(def.OutputsSchema, def.ResolvedOutputsSchemaPath())
-		if schemaErr != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, schemaErr)}
-		}
-		if comp == nil {
-			facts := buildChainFacts(live, eval)
-			for _, ch := range chains {
-				if ch.TaskID != "" && ch.TaskID != taskID {
-					continue
-				}
-				sp := evalChain(cfg, store, ch, resolvedName, session, key, resource, facts, upstreamOutputs)
-				sp.Task = taskID
-				chainPlan = append(chainPlan, sp)
-			}
-			continue
-		}
-		// A chain declared by any layer fires against the composed instance,
-		// and names the outputs by its own layer's names for them — so each
-		// layer sees the composed contract re-keyed into its own namespace,
-		// carrying exactly the values that reached it.
-		exposure := task.LayerExposure(comp.Layers)
-		for i, layer := range comp.Layers {
-			if len(layer.Chains) == 0 {
-				continue
-			}
-			facts := buildChainFacts(layerCompletionState(live, exposure, i), eval)
-			// The declared contract is what the layer's keys can reach, not
-			// what they happen to carry right now: a reachable key with no
-			// value yet is a chain waiting on an output, not a chain wired to
-			// something that was never published.
-			published := make([]string, 0, len(exposure[i]))
-			for name := range exposure[i] {
-				published = append(published, name)
-			}
-			slices.Sort(published)
-			for _, ch := range layer.Chains {
-				sp := evalChain(cfg, store, ch, resolvedName, session, key, resource, facts, published)
-				sp.Task = taskID
-				chainPlan = append(chainPlan, sp)
-			}
-		}
+		chainPlan = append(chainPlan, spawns...)
 	}
 	return resolvedName, computed, chainPlan, legacyWarnings, nil
 }

@@ -149,9 +149,6 @@ func validateNesting(layers []TaskDefinition) error {
 	if err := validateChainTerminalCount(layers); err != nil {
 		return err
 	}
-	if err := validateChainJudgeIDs(layers); err != nil {
-		return err
-	}
 	if err := validateChainEnv(layers); err != nil {
 		return err
 	}
@@ -170,7 +167,7 @@ func validateNesting(layers []TaskDefinition) error {
 	if err := validateChainTerminalEndpoint(layers, bindings, exposure); err != nil {
 		return err
 	}
-	return validateComposedChains(layers)
+	return nil
 }
 
 func validateChainScope(layers []TaskDefinition) error {
@@ -193,25 +190,6 @@ func validateChainTerminalCount(layers []TaskDefinition) error {
 	}
 	if len(declaring) > 1 {
 		return fmt.Errorf("layers %v both declare [terminal]; a nesting chain admits at most one", declaring)
-	}
-	return nil
-}
-
-func validateChainJudgeIDs(layers []TaskDefinition) error {
-	owner := map[string]string{}
-	for _, layer := range layers {
-		if layer.DoneWhen == nil {
-			continue
-		}
-		for _, leaf := range layer.DoneWhen.All {
-			if leaf.ID == "" {
-				continue
-			}
-			if prev, dup := owner[leaf.ID]; dup {
-				return fmt.Errorf("judge id %q is declared by both layer %q and layer %q; a verdict targets an id, so the id must be unique across the nesting chain", leaf.ID, prev, layer.ID)
-			}
-			owner[leaf.ID] = layer.ID
-		}
 	}
 	return nil
 }
@@ -248,26 +226,6 @@ func validateLayer(outer, inner TaskDefinition) ([]OutputBinding, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inner task %q outputs schema: %w", inner.ID, err)
 	}
-	if err := ValidateDynamicOutputs(outer.DynamicOutputs); err != nil {
-		return nil, err
-	}
-	// A produced output and an `[outputs.bind]` key cannot collide: TOML
-	// rejects a table and an array of tables under one name, so one public
-	// name has one definition source by construction.
-	for _, o := range outer.DynamicOutputs {
-		for _, name := range o.OutputNames() {
-			if isBuiltinDynamicOutput(name) {
-				continue
-			}
-			if _, declared := outerProps[name]; !declared {
-				return nil, fmt.Errorf("produced output %q is missing from this layer's outputs_schema", name)
-			}
-		}
-	}
-	if err := ValidateTaskRequires(outer); err != nil {
-		return nil, err
-	}
-
 	bindings := outer.ClassifiedOutputBindings()
 	for _, b := range bindings {
 		key := b.Key
@@ -388,40 +346,4 @@ func validateChainTerminalEndpoint(layers []TaskDefinition, bindings [][]OutputB
 		return nil
 	}
 	return fmt.Errorf("layer %q declares [terminal] but the composed public contract does not bind %q from that layer", layers[declaring].ID, OutputKeyInteractiveEndpoint)
-}
-
-// validateComposedChains resolves judge ids across the nesting chain and keeps
-// locals private. Output reachability is deliberately absent: gate fields are
-// leaving nested definitions, so binding rules must not constrain their
-// eventual flat-task vocabulary.
-func validateComposedChains(layers []TaskDefinition) error {
-	judgeIDs := map[string]bool{}
-	for _, layer := range layers {
-		if layer.DoneWhen == nil {
-			continue
-		}
-		for _, leaf := range layer.DoneWhen.All {
-			if leaf.ID != "" {
-				judgeIDs[leaf.ID] = true
-			}
-		}
-	}
-	for _, layer := range layers {
-		if len(layer.Chains) == 0 {
-			continue
-		}
-		if err := validateChainReferences(layer, judgeIDs, nil, true); err != nil {
-			return fmt.Errorf("layer %q: %w", layer.ID, err)
-		}
-	}
-	return nil
-}
-
-func isBuiltinDynamicOutput(name string) bool {
-	for _, b := range builtinDynamicOutputs {
-		if b.Name == name {
-			return true
-		}
-	}
-	return false
 }
