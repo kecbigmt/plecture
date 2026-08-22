@@ -103,28 +103,6 @@ func standInInputs(def config.ChannelDefinition, value string) map[string]any {
 	return def.ApplyInputDefaults(inputs)
 }
 
-func declaredValues(def config.ChannelDefinition) map[string]*lang.Value {
-	values := map[string]*lang.Value{}
-	if def.Path != nil {
-		values["path"] = def.Path
-	}
-	if def.Body != nil {
-		values["body"] = def.Body
-	}
-	if def.Action != nil {
-		for i, arg := range def.Action.Args {
-			values[fmt.Sprintf("args[%d]", i)] = arg
-		}
-		if def.Action.Stdin != nil {
-			values["stdin"] = def.Action.Stdin
-		}
-		for name, bound := range def.Action.Bind {
-			values["bind."+name] = bound
-		}
-	}
-	return values
-}
-
 // sampleEvents are the two shapes every shipped channel is written for: one
 // carrying a body, and one carrying only a summary. They are fixed so a
 // plugin's recorded invocation is reproducible, and generic so recording one
@@ -146,7 +124,7 @@ func sampleEvents() []struct {
 				Source:      event.SourcePlect,
 				Direction:   event.Inbound,
 				Summary:     "a summary",
-				Body:        `a <tag> & an "amp"`,
+				Body:        "a <tag> & an \"amp\"\nover two lines",
 				Time:        time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC),
 				Metadata:    map[string]string{"url": "https://example.test/x"},
 			},
@@ -191,17 +169,17 @@ func recordInvocation(t *testing.T, def config.ChannelDefinition, eval lang.Eval
 		if err != nil {
 			return "", fmt.Errorf("body: %w", err)
 		}
-		fmt.Fprintf(&b, "path: %s\nbody: %s\n", path, body)
+		fmt.Fprintf(&b, "path: %q\nbody: %q\n", path, body)
 	case config.ChannelTypeExec:
 		execution, err := eval.Exec(def.Action)
 		if err != nil {
 			return "", err
 		}
 		for i, arg := range execution.Argv {
-			fmt.Fprintf(&b, "argv[%d]: %s\n", i, relative(arg))
+			fmt.Fprintf(&b, "argv[%d]: %q\n", i, relative(arg))
 		}
 		if len(execution.Stdin) > 0 {
-			fmt.Fprintf(&b, "stdin: %s\n", execution.Stdin)
+			fmt.Fprintf(&b, "stdin: %q\n", execution.Stdin)
 		}
 	case config.ChannelTypeShell:
 		names := make([]string, 0, len(def.Action.Bind))
@@ -218,7 +196,7 @@ func recordInvocation(t *testing.T, def config.ChannelDefinition, eval lang.Eval
 				fmt.Fprintf(&b, "bind.%s: <unset>\n", name)
 				continue
 			}
-			fmt.Fprintf(&b, "bind.%s: %s\n", name, relative(value))
+			fmt.Fprintf(&b, "bind.%s: %q\n", name, relative(value))
 		}
 	}
 	timeout, err := ResolveTimeout(def, inputs)
@@ -232,7 +210,7 @@ func recordInvocation(t *testing.T, def config.ChannelDefinition, eval lang.Eval
 			return "", err
 		}
 		for i, line := range observed {
-			fmt.Fprintf(&b, "observed[%d]: %s\n", i, line)
+			fmt.Fprintf(&b, "observed[%d]: %q\n", i, line)
 		}
 	}
 	return b.String(), nil
@@ -246,14 +224,18 @@ func recordInvocation(t *testing.T, def config.ChannelDefinition, eval lang.Eval
 func observeShellDelivery(t *testing.T, def config.ChannelDefinition, inputs map[string]any, ev event.Event) ([]string, error) {
 	log := filepath.Join(t.TempDir(), "observed.log")
 	terminal := func(verb string) (string, error) {
-		switch verb {
-		case "capture":
-			// A capture reports an already-submitted input box, which is what
-			// lets a readiness loop finish instead of exhausting its backoff.
-			return `printf '\n'`, nil
-		default:
-			return `printf '` + verb + `:%s\n' "$1" >> ` + log, nil
+		// Every verb records itself, the readiness capture included: dropping
+		// that step from a script is a change to what the receiver observes,
+		// so it has to be visible here. A capture additionally answers on
+		// stdout with an already-submitted input box, which is what lets a
+		// readiness loop finish instead of exhausting its backoff.
+		// One call is one record, delimited rather than newline-separated:
+		// an operand may itself span lines, and a step has to stay countable.
+		stub := `printf '` + verb + `:%s\036' "${1-}" >> ` + log
+		if verb == "capture" {
+			stub += `; printf '\n'`
 		}
+		return stub, nil
 	}
 	opts := DeliverOptions{Terminal: terminal}
 	if err := DeliverWithOptions(context.Background(), def, inputs, ev, opts); err != nil {
@@ -263,7 +245,7 @@ func observeShellDelivery(t *testing.T, def config.ChannelDefinition, inputs map
 	if err != nil {
 		return nil, fmt.Errorf("read observed log: %w", err)
 	}
-	return strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n"), nil
+	return strings.Split(strings.TrimSuffix(string(raw), "\x1e"), "\x1e"), nil
 }
 
 // TestShippedChannels_InvocationsMatchTheirPluginsRecord is the link between a
@@ -328,8 +310,6 @@ func TestShippedChannels_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 	}
 }
 
-// pluginRootOf walks up from a definition's file to the plugin directory that
-// mounted it, which is where that plugin's own testdata lives.
 func pluginRootOf(t *testing.T, sourcePath string) string {
 	t.Helper()
 	dir := filepath.Dir(sourcePath)

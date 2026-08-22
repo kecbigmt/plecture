@@ -1,12 +1,12 @@
 == claude / with-body
 type: unix_socket
-path: stand-in-path
-body: {"body":"a <tag> & an \"amp\"","direction":"inbound","id":"01ABC","metadata":{"url":"https://example.test/x"},"session_name":"acme/widget-1","source":"plect","summary":"a summary","time":"2026-08-22T09:00:00Z","type":"user.emit"}
+path: "stand-in-path"
+body: "{\"body\":\"a <tag> & an \\\"amp\\\"\\nover two lines\",\"direction\":\"inbound\",\"id\":\"01ABC\",\"metadata\":{\"url\":\"https://example.test/x\"},\"session_name\":\"acme/widget-1\",\"source\":\"plect\",\"summary\":\"a summary\",\"time\":\"2026-08-22T09:00:00Z\",\"type\":\"user.emit\"}"
 timeout: 0s
 
 == claude / summary-only
 type: unix_socket
-path: stand-in-path
-body: {"body":"","direction":"internal","id":"01DEF","metadata":{},"session_name":"acme/widget-1","source":"plect","summary":"only a summary","time":"2026-08-22T09:00:00Z","type":"example.status"}
+path: "stand-in-path"
+body: "{\"body\":\"\",\"direction\":\"internal\",\"id\":\"01DEF\",\"metadata\":{},\"session_name\":\"acme/widget-1\",\"source\":\"plect\",\"summary\":\"only a summary\",\"time\":\"2026-08-22T09:00:00Z\",\"type\":\"example.status\"}"
 timeout: 0s
 
