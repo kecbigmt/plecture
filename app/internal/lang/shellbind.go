@@ -35,7 +35,7 @@ var shellName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // Plecture-owned generation escapes each value exactly once, which is what
 // makes a value carrying shell syntax arrive as data.
 func MaterializeShellAction(dir string, a *Action, bound map[string]string, operands []string) (*ShellExecution, error) {
-	if a.Type != actionShell {
+	if a.Type != ActionShell {
 		return nil, fmt.Errorf("the binding transport runs a shell action, not %s", a.Type)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {

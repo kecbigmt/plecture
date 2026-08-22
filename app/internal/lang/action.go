@@ -19,9 +19,12 @@ type Action struct {
 	Bind   map[string]*Value
 }
 
+// The two action variants. A runtime consumer reads Type to decide whether
+// it has to prepare the binding transport's private run directory, which an
+// exec action needs no part of.
 const (
-	actionExec  = "exec"
-	actionShell = "shell"
+	ActionExec  = "exec"
+	ActionShell = "shell"
 )
 
 var (
@@ -44,9 +47,9 @@ func ParseAction(raw any, pos Position) (*Action, error) {
 	}
 	kind, _ := typeVal.(string)
 	switch kind {
-	case actionExec:
+	case ActionExec:
 		return parseExecAction(tbl, pos)
-	case actionShell:
+	case ActionShell:
 		return parseShellAction(tbl, pos)
 	default:
 		return nil, newDiag(CodeActionTypeUnknown, LayerStructural, childPos(pos, "type"),
@@ -55,13 +58,13 @@ func ParseAction(raw any, pos Position) (*Action, error) {
 }
 
 func parseExecAction(tbl map[string]any, pos Position) (*Action, error) {
-	if err := rejectVariantFields(tbl, pos, actionExec, shellOnlyFields); err != nil {
+	if err := rejectVariantFields(tbl, pos, ActionExec, shellOnlyFields); err != nil {
 		return nil, err
 	}
 	if err := rejectUnknownFields(tbl, pos, "type", "bin", "command", "args", "stdin"); err != nil {
 		return nil, err
 	}
-	a := &Action{Type: actionExec}
+	a := &Action{Type: ActionExec}
 	_, hasBin := tbl["bin"]
 	command, hasCommand := tbl["command"]
 	if hasBin == hasCommand {
@@ -106,13 +109,13 @@ func parseExecAction(tbl map[string]any, pos Position) (*Action, error) {
 }
 
 func parseShellAction(tbl map[string]any, pos Position) (*Action, error) {
-	if err := rejectVariantFields(tbl, pos, actionShell, execOnlyFields); err != nil {
+	if err := rejectVariantFields(tbl, pos, ActionShell, execOnlyFields); err != nil {
 		return nil, err
 	}
 	if err := rejectUnknownFields(tbl, pos, "type", "script", "bind"); err != nil {
 		return nil, err
 	}
-	a := &Action{Type: actionShell}
+	a := &Action{Type: ActionShell}
 	if _, ok := tbl["script"]; !ok {
 		return nil, newDiag(CodeFieldRequired, LayerStructural, childPos(pos, "script"),
 			"a shell action declares its script")
