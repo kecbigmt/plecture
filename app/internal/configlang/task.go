@@ -154,8 +154,8 @@ func (c taskContracts) checkPredicate(body map[string]any, field string, pos Pos
 				}
 			}
 		}
-		for _, field := range []string{"judge_pending", "judge_action"} {
-			id, ok := leaf[field].(string)
+		for _, fact := range []string{"judge_pending", "judge_action"} {
+			id, ok := leaf[fact].(string)
 			if !ok {
 				continue
 			}
