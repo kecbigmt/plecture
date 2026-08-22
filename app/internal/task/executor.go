@@ -120,7 +120,6 @@ func runHook(ctx context.Context, execution *lang.Execution, workDir string) (st
 	return alwaysHostExecutor.Run(ctx, requestFor(execution, workDir, nil))
 }
 
-// execHostScript is the template-rendered hook's entry to execHook.
 func execHostScript(ctx context.Context, cmdStr, workDir string, env ...string) (stdout, stderr []byte, err error) {
 	return execHook(ctx, renderedShell(cmdStr), workDir, env...)
 }

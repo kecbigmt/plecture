@@ -279,10 +279,6 @@ func TestExecutor_TemplateRenderedHooksPassNoStdin(t *testing.T) {
 	}
 }
 
-// The seam's own contract: both declaration forms reach the executor by one
-// path, and each keeps exactly the invocation shape it has always had — a
-// rendered hook through `bash -c` with no standard input, a resolved action
-// as its own argv, standard input included.
 func TestExecutor_RequestForKeepsEachFormsInvocationShape(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -320,9 +316,6 @@ func TestExecutor_RequestForKeepsEachFormsInvocationShape(t *testing.T) {
 	}
 }
 
-// runHook is the pinned-host path, so a swapped defaultExecutor must not
-// intercept it — the same boundary TestExecutor_RunShellIsNeverRouted...
-// guards for the legacy entry point, asserted on the seam itself.
 func TestExecutor_RunHookIsNeverRoutedThroughDefaultExecutor(t *testing.T) {
 	spy := withSpyExecutor(t)
 	stdout, _, err := runHook(context.Background(), &lang.Execution{Argv: []string{"echo", "real"}}, "")
