@@ -349,3 +349,59 @@ func evaluateDocumentInstance(doc config.TaskDocument, resolvedName string, sess
 	}
 	return &computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval}, warning, nil
 }
+
+// taskDeclarations pairs the two kinds an id can resolve to, so a caller
+// asking what an instance's declaration says does not have to know which kind
+// said it. Ids share one namespace, so at most one of the two answers.
+type taskDeclarations struct {
+	docs    map[string]config.TaskDocument
+	effects map[string]config.TaskDefinition
+}
+
+func loadDeclarations(cfg *config.Config, session *domain.Session) (taskDeclarations, error) {
+	docs, effects, err := loadTaskDeclarations(cfg, session)
+	if err != nil {
+		return taskDeclarations{}, err
+	}
+	return taskDeclarations{docs: docs, effects: effects}, nil
+}
+
+// gate resolves one instance's completion predicate and the live roots it
+// reads. A document has one predicate and no layers; an effect composes its
+// nesting chain's.
+func (d taskDeclarations) gate(cfg *config.Config, session *domain.Session, key string, st *contract.TaskState) (*config.DoneWhen, task.CompletionState, error) {
+	taskID := taskIDForInstance(key, st)
+	if doc, ok := d.docs[taskID]; ok {
+		dw, err := effectiveDoneWhen(doc.DoneWhen, st)
+		if err != nil {
+			return nil, task.CompletionState{}, err
+		}
+		return dw, instanceCompletionState(st, nil), nil
+	}
+	return instanceGate(cfg, session, d.effects[taskID], st)
+}
+
+// instanceRevision is the revision a verdict is recorded against, and the one
+// a completion record cites. A document reads it from the last observation of
+// its resource, which is the only thing that reports it; an effect still reads
+// the `revision` output a carried `[[outputs]]` entry copied it into.
+func instanceRevision(st *contract.TaskState) string {
+	if st == nil {
+		return ""
+	}
+	if st.Observed != nil {
+		if rev := currentRevision(st.Observed.State); rev != "" {
+			return rev
+		}
+	}
+	return currentRevision(st.Outputs)
+}
+
+// declares reports whether either kind claims this id.
+func (d taskDeclarations) declares(taskID string) bool {
+	if _, ok := d.docs[taskID]; ok {
+		return true
+	}
+	_, ok := d.effects[taskID]
+	return ok
+}

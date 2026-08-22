@@ -282,12 +282,12 @@ func runtimeTaskViews(session *domain.Session) []StatusRuntimeTask {
 // already-evaluated done_when result per produced instance (from
 // evaluateSessionActions, the same evaluation `plect check`/`plect tick` act on),
 // so sessionTaskItems reuses it instead of evaluating done_when a second time.
-func statusTaskViews(cfg *config.Config, defs map[string]config.TaskDefinition, session *domain.Session, sessions map[string]*domain.Session, actions map[string]computedAction, chains map[string][]StatusChain) []StatusTask {
+func statusTaskViews(cfg *config.Config, declarations taskDeclarations, session *domain.Session, sessions map[string]*domain.Session, actions map[string]computedAction, chains map[string][]StatusChain) []StatusTask {
 	cached := make(map[string]task.DoneWhenResult, len(actions))
 	for key, a := range actions {
 		cached[key] = a.result
 	}
-	items := sessionTaskItems(cfg, defs, session, sessions, cached)
+	items := sessionTaskItems(cfg, declarations, session, sessions, cached)
 	if items == nil {
 		return nil
 	}

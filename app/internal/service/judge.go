@@ -66,10 +66,10 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 	}
 	revision := params.Revision
 	if revision == "" {
-		revision = currentRevision(st.Outputs)
+		revision = instanceRevision(st)
 	}
 	if revision == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("revision is required because instance %q has no %q output", params.Instance, outputKeyRevision)}
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("revision is required because nothing has reported a %q for instance %q", outputKeyRevision, params.Instance)}
 	}
 	reviewer := params.ReviewerSession
 	if reviewer == "" {
@@ -87,12 +87,11 @@ func RecordJudge(cfg *config.Config, store *state.Store, params JudgeParams) (*J
 		reviewerWorkflow = rs.Workflow
 	}
 	relation := string(domain.RelationFromTarget(allSessions, resolvedName, reviewer))
-	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
+	declarations, err := loadDeclarations(cfg, session)
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
+		return nil, err
 	}
-	def := defs[taskIDForInstance(params.Instance, st)]
-	dw, _, err := instanceGate(cfg, session, def, st)
+	dw, _, err := declarations.gate(cfg, session, params.Instance, st)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
@@ -213,7 +212,7 @@ func doneWhenJudges(st *contract.DoneWhenState) map[string]*contract.DoneWhenJud
 func doneWhenEvalContext(sessionName string, st *contract.TaskState, sessions map[string]*domain.Session) task.DoneWhenEvalContext {
 	return task.DoneWhenEvalContext{
 		WorkSession:     sessionName,
-		CurrentRevision: currentRevision(st.Outputs),
+		CurrentRevision: instanceRevision(st),
 		Judges:          judgeInputs(doneWhenJudges(st.DoneWhen), sessionName, sessions),
 	}
 }

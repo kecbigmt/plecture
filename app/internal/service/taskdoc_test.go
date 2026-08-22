@@ -11,6 +11,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -483,3 +484,146 @@ script = "true"
 		t.Errorf("an instance was created anyway: %+v", got)
 	}
 }
+
+// A judge leaf on a document is recorded against the revision the observer
+// reported: a document has no `revision` output for one to be read from, and
+// the observation is the only thing that knows it.
+func TestRecordJudge_TaskDocumentInstance(t *testing.T) {
+	store := testStore(t)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, judgedDocument)
+	seedSession(t, store, "org/repo-0", "org/repo", 0, "wf", nil)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+	seedSession(t, store, "org/repo-2", "org/repo", 2, "wf", nil)
+	setParent(t, store, "org/repo-1", "org/repo-0")
+	setParent(t, store, "org/repo-2", "org/repo-0")
+
+	setup, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "work", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	result, err := RecordJudge(cfg, store, JudgeParams{
+		SessionName:     "org/repo-1",
+		Instance:        setup.Instance,
+		LeafID:          "ac-met",
+		Action:          task.JudgeActionApprove,
+		Reason:          "looks right",
+		ReviewerSession: "org/repo-2",
+	})
+	if err != nil {
+		t.Fatalf("RecordJudge: %v", err)
+	}
+	if result.Revision != "sha2" {
+		t.Errorf("recorded revision = %q, want the revision the observer reported", result.Revision)
+	}
+	// The gate is the document's, so an approved judge plus the observed
+	// check satisfies it.
+	if action := tickActionFor(t, cfg, store, setup.Instance); action.Action != "satisfied" {
+		t.Errorf("action = %+v, want satisfied once the document's judge is approved", action)
+	}
+}
+
+// A judge id the document does not declare is rejected: the gate consulted is
+// the document's own.
+func TestRecordJudge_TaskDocumentRejectsAnUndeclaredLeaf(t *testing.T) {
+	store := testStore(t)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, judgedDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+	seedSession(t, store, "org/repo-2", "org/repo", 2, "wf", nil)
+	setup, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "work", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	_, err = RecordJudge(cfg, store, JudgeParams{
+		SessionName: "org/repo-1", Instance: setup.Instance, LeafID: "no-such-leaf",
+		Action: task.JudgeActionApprove, Reason: "r", ReviewerSession: "org/repo-2",
+	})
+	if err == nil {
+		t.Fatal("expected a judge id the document does not declare to be rejected")
+	}
+	if !strings.Contains(err.Error(), "no-such-leaf") {
+		t.Errorf("error = %v, want it to name the leaf", err)
+	}
+}
+
+// Finalize reconfirms against the document's gate and cites the observed
+// revision in the completion record.
+func TestFinalizeTask_TaskDocumentInstance(t *testing.T) {
+	store := testStore(t)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+	setup, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+
+	if _, err := FinalizeTask(cfg, store, FinalizeTaskParams{SessionName: "org/repo-1", Instance: setup.Instance}); err == nil {
+		t.Fatal("expected finalize to refuse an unsatisfied document gate")
+	}
+
+	if _, err := SetTaskState(cfg, store, SetTaskStateParams{
+		Identifier: "org/repo-1", Instance: setup.Instance, State: map[string]any{"verdict_revision": "sha2"},
+	}); err != nil {
+		t.Fatalf("SetTaskState: %v", err)
+	}
+	result, err := FinalizeTask(cfg, store, FinalizeTaskParams{SessionName: "org/repo-1", Instance: setup.Instance})
+	if err != nil {
+		t.Fatalf("FinalizeTask: %v", err)
+	}
+	if result.Instance != setup.Instance {
+		t.Errorf("result = %+v", result)
+	}
+	if st := store.Get("org/repo-1").Tasks[setup.Instance]; st == nil || st.FinalizedAt.IsZero() {
+		t.Errorf("instance not recorded as finalized: %+v", st)
+	}
+}
+
+// A payload whose value does not match the declared type is rejected, and
+// nothing is written: the schema is the contract, not a hint.
+func TestSetTaskState_PayloadViolatingTheSchemaRejected(t *testing.T) {
+	store := testStore(t)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
+		"review#1": {
+			Scope:   contract.TaskScopeSession,
+			TaskID:  "review",
+			Status:  contract.TaskStatusProduced,
+			State:   map[string]any{"verdict_revision": "sha1"},
+			SetupAt: time.Now(),
+		},
+	})
+	_, err := SetTaskState(cfg, store, SetTaskStateParams{
+		Identifier: "org/repo-1", Instance: "review#1", State: map[string]any{"verdict_revision": 42},
+	})
+	if err == nil {
+		t.Fatal("expected a payload violating the declared type to be rejected")
+	}
+	if !strings.Contains(err.Error(), "verdict_revision") {
+		t.Errorf("error = %v, want it to name the key", err)
+	}
+	if got := store.Get("org/repo-1").Tasks["review#1"].State["verdict_revision"]; got != "sha1" {
+		t.Errorf("state = %v, want the prior value untouched", got)
+	}
+}
+
+// judgedDocument is a document whose gate waits on an independent verdict,
+// which is the shape every converted work task has.
+const judgedDocument = `+++
+[work]
+kind              = "task"
+description       = "Do the work and wait for an independent verdict"
+resource_observer = "issue_pr"
+
+[work.done_when]
+all = [
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { judge = "acceptance criteria are satisfied", id = "ac-met" },
+]
++++
+Do the work at {{ resource.id }}.
+`
