@@ -128,23 +128,43 @@ const OutputKeyWorkspaceDir = "workspace_dir"
 //     a second `setup --name <name>` collides. Empty for the numbered
 //     `<task>#<n>` form. Shown by `plect status` / `ls`.
 type TaskState struct {
-	Scope         string           `json:"scope"`              // "session" | "run"
-	TaskID        string           `json:"task_id,omitempty"`  // workflow node's `uses` target; omitted when node id == task id (legacy)
-	Status        string           `json:"status"`             // "produced" | "failed" | "cleaned"
-	Inputs        map[string]any   `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
-	Outputs       map[string]any   `json:"outputs,omitempty"`  // parsed JSON from setup stdout
-	Seq           int              `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
-	Dynamic       bool             `json:"dynamic,omitempty"`  // true for runtime `plect task setup` instances
-	Resource      string           `json:"resource,omitempty"` // bound --resource at instantiation
-	Name          string           `json:"name,omitempty"`     // --name instance identity (key == name when set)
-	Layers        []TaskLayerState `json:"layers,omitempty"`   // per-layer record for a nested task; empty for a plain one
-	DoneWhen      *DoneWhenState   `json:"done_when,omitempty"`
-	ExtraDoneWhen json.RawMessage  `json:"extra_done_when,omitempty"`
-	SetupAt       time.Time        `json:"setup_at,omitzero"`
-	FailedAt      time.Time        `json:"failed_at,omitzero"`
-	CleanedAt     time.Time        `json:"cleaned_at,omitzero"`
-	FinalizedAt   time.Time        `json:"finalized_at,omitzero"` // set by `plect task finalize`; instance still awaits `plect task cleanup`
-	Error         string           `json:"error,omitempty"`
+	Scope    string           `json:"scope"`              // "session" | "run"
+	TaskID   string           `json:"task_id,omitempty"`  // workflow node's `uses` target; omitted when node id == task id (legacy)
+	Status   string           `json:"status"`             // "produced" | "failed" | "cleaned"
+	Inputs   map[string]any   `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
+	Outputs  map[string]any   `json:"outputs,omitempty"`  // parsed JSON from setup stdout
+	Seq      int              `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
+	Dynamic  bool             `json:"dynamic,omitempty"`  // true for runtime `plect task setup` instances
+	Resource string           `json:"resource,omitempty"` // bound --resource at instantiation
+	Name     string           `json:"name,omitempty"`     // --name instance identity (key == name when set)
+	Layers   []TaskLayerState `json:"layers,omitempty"`   // per-layer record for a nested task; empty for a plain one
+	// State is what a task instance holds about itself: the keys a reviewer
+	// or another session records into it, read by a completion predicate as
+	// `self.state.*`. Distinct from Outputs, which is what an effect's setup
+	// produced — a production record, written once and never re-read from the
+	// world.
+	State map[string]any `json:"state,omitempty"`
+	// Observed is the last observation of this instance's resource, and when
+	// it was taken. A completion predicate reads it as `resource.state.*`; a
+	// pass that acts refreshes it first, and a display renders it with its
+	// age so a stale fact is legible rather than silent.
+	Observed      *ResourceObservation `json:"observed,omitempty"`
+	DoneWhen      *DoneWhenState       `json:"done_when,omitempty"`
+	ExtraDoneWhen json.RawMessage      `json:"extra_done_when,omitempty"`
+	SetupAt       time.Time            `json:"setup_at,omitzero"`
+	FailedAt      time.Time            `json:"failed_at,omitzero"`
+	CleanedAt     time.Time            `json:"cleaned_at,omitzero"`
+	FinalizedAt   time.Time            `json:"finalized_at,omitzero"` // set by `plect task finalize`; instance still awaits `plect task cleanup`
+	Error         string               `json:"error,omitempty"`
+}
+
+// ResourceObservation is one reading of a task instance's resource: what the
+// declared observer published, and when. The timestamp is part of the record
+// rather than derived, because what a display owes its reader is the age of
+// the fact it is showing, not the age of the file it read.
+type ResourceObservation struct {
+	State map[string]any `json:"state,omitempty"`
+	At    time.Time      `json:"at,omitzero"`
 }
 
 // TaskLayerState is one layer of a nested task's lifecycle, recorded

@@ -154,7 +154,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: compErr.Error()}
 		}
 		layerDoneWhen, leafOwner := instanceDoneWhen(def, comp)
-		outputs := instanceOutputs(st, comp)
+		live := instanceCompletionState(st, comp)
 		dw, err := effectiveDoneWhen(layerDoneWhen, st)
 		if err != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
@@ -171,7 +171,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		if st.DoneWhen != nil {
 			lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
 		}
-		eval := task.EvaluateTaskDoneWhenWithContext(dw, outputs, doneWhenEvalContext(resolvedName, st, allSessions))
+		eval := task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(resolvedName, st, allSessions))
 		budgets := newLayerBudgets(comp, st, leafOwner, len(eval.Leaves))
 		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger, budgets)
 		if budgets != nil {
@@ -192,7 +192,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, schemaErr)}
 		}
 		if comp == nil {
-			facts := buildChainFacts(st.Outputs, eval)
+			facts := buildChainFacts(live, eval)
 			for _, ch := range chains {
 				if ch.TaskID != "" && ch.TaskID != taskID {
 					continue
@@ -212,7 +212,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 			if len(layer.Chains) == 0 {
 				continue
 			}
-			facts := buildChainFacts(layerFacts(exposure, i, outputs), eval)
+			facts := buildChainFacts(layerCompletionState(live, exposure, i), eval)
 			// The declared contract is what the layer's keys can reach, not
 			// what they happen to carry right now: a reachable key with no
 			// value yet is a chain waiting on an output, not a chain wired to

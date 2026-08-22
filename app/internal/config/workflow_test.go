@@ -1200,6 +1200,11 @@ func TestDoneWhenValidate(t *testing.T) {
 		{name: "judge with operator", dw: &DoneWhen{All: []DoneWhenLeaf{{Judge: "j", Eq: cfgStrp("a")}}}, wantErr: true},
 		{name: "operator without check", dw: &DoneWhen{All: []DoneWhenLeaf{{Eq: cfgStrp("a")}}}, wantErr: true},
 		{name: "empty leaf", dw: &DoneWhen{All: []DoneWhenLeaf{{}}}, wantErr: true},
+		{name: "single expr", dw: &DoneWhen{All: []DoneWhenLeaf{{Expr: "self.state.verdict_revision == resource.state.revision"}}}},
+		{name: "expr with operator", dw: &DoneWhen{All: []DoneWhenLeaf{{Expr: "self.state.x == 1", Eq: cfgStrp("a")}}}, wantErr: true},
+		{name: "expr with check", dw: &DoneWhen{All: []DoneWhenLeaf{{Expr: "self.state.x == 1", Check: "x", Eq: cfgStrp("a")}}}, wantErr: true},
+		{name: "expr with judge", dw: &DoneWhen{All: []DoneWhenLeaf{{Expr: "self.state.x == 1", Judge: "j"}}}, wantErr: true},
+		{name: "expr with judge relation", dw: &DoneWhen{All: []DoneWhenLeaf{{Expr: "self.state.x == 1", Relation: []string{"sibling"}}}}, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

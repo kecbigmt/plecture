@@ -95,7 +95,7 @@ func TestComposeDoneWhen_LeavesAnUnreachableCheckUnresolved(t *testing.T) {
 	if got := dw.All[0].Check; got != "review_decision" {
 		t.Errorf("unreachable check resolved to %q, want it left as declared", got)
 	}
-	result := EvaluateTaskDoneWhen(dw, map[string]any{"decision": "APPROVED"})
+	result := EvaluateTaskDoneWhen(dw, CompletionState{Self: map[string]any{"decision": "APPROVED"}})
 	if result.Overall != DonePending {
 		t.Errorf("overall = %q, want %q for a condition the contract does not carry", result.Overall, DonePending)
 	}

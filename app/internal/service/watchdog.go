@@ -216,7 +216,7 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		// the instance still owes progress.
 		instanceDue := false
 		if dw, _ := instanceDoneWhen(def, comp); dw != nil {
-			if task.EvaluateTaskDoneWhen(dw, instanceOutputs(st, comp)).Overall != task.DoneSatisfied {
+			if task.EvaluateTaskDoneWhen(dw, instanceCompletionState(st, comp)).Overall != task.DoneSatisfied {
 				instanceDue = true
 			}
 		}

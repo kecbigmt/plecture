@@ -98,12 +98,16 @@ type ChainWhen struct {
 //   - judge_action: names a judge leaf id and the action (`is`) its current
 //     verdict must carry.
 type ChainWhenFact struct {
+	// Check names one key by its root path, exactly as a done_when check
+	// leaf does.
 	Check string   `toml:"check"`
 	Eq    *string  `toml:"eq"`
 	Ne    *string  `toml:"ne"`
 	In    []any    `toml:"in"`
 	Gte   *float64 `toml:"gte"`
 	Lte   *float64 `toml:"lte"`
+	// Expr states a computed predicate over those same roots.
+	Expr string `toml:"expr"`
 
 	JudgePending string `toml:"judge_pending"`
 	JudgeAction  string `toml:"judge_action"`

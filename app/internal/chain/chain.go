@@ -29,8 +29,10 @@ type JudgeFact struct {
 // instance's outputs plus its judge leaves, both read directly from
 // (outputs, judge records, revision).
 type Facts struct {
-	Outputs map[string]any
-	Judges  map[string]JudgeFact
+	// State is the pair of live roots a trigger reads: what the declared
+	// observer publishes about the resource, and what the instance holds.
+	State  task.CompletionState
+	Judges map[string]JudgeFact
 }
 
 // WhenSatisfied reports whether every fact in `when` holds. An empty `when`
@@ -62,8 +64,9 @@ func factHolds(fact config.ChainWhenFact, facts Facts) bool {
 			In:    fact.In,
 			Gte:   fact.Gte,
 			Lte:   fact.Lte,
+			Expr:  fact.Expr,
 		}
-		return task.CheckLeafStatus(leaf, facts.Outputs) == task.DoneSatisfied
+		return task.CheckLeafStatus(leaf, facts.State) == task.DoneSatisfied
 	}
 }
 

@@ -63,7 +63,7 @@ func evalChain(cfg *config.Config, store *state.Store, def config.ChainDefinitio
 		Session:         workName,
 		Workflow:        session.Workflow,
 		Instance:        instance,
-		Outputs:         facts.Outputs,
+		Outputs:         facts.State.Self,
 		PendingJudgeIDs: pendingJudgeIDs(facts),
 	})
 	sp := ChainSpawn{
@@ -82,7 +82,7 @@ func evalChain(cfg *config.Config, store *state.Store, def config.ChainDefinitio
 	}
 	sp.Workflow = workflow
 
-	missing, err := chain.MissingOutputs(def.Inputs, facts.Outputs)
+	missing, err := chain.MissingOutputs(def.Inputs, facts.State.Self)
 	if err != nil {
 		sp.BlockedReason = chainBlockedInvalidBindings
 		sp.Warnings = append(sp.Warnings, fmt.Sprintf("input bindings could not be parsed: %v", err))
@@ -116,7 +116,7 @@ func evalChain(cfg *config.Config, store *state.Store, def config.ChainDefinitio
 			Session:         workName,
 			Workflow:        session.Workflow,
 			Instance:        instance,
-			Outputs:         facts.Outputs,
+			Outputs:         facts.State.Self,
 			PendingJudgeIDs: pendingJudgeIDs(facts),
 		})
 		if rErr != nil {
@@ -176,9 +176,9 @@ func pendingJudgeIDs(facts chain.Facts) []string {
 }
 
 // buildChainFacts projects the done_when evaluation into the raw-fact view a
-// chain's `when` reads: outputs verbatim, judge leaves reduced to
+// chain's `when` reads: the same live state, and judge leaves reduced to
 // pending/current-action.
-func buildChainFacts(outputs map[string]any, result task.DoneWhenResult) chain.Facts {
+func buildChainFacts(state task.CompletionState, result task.DoneWhenResult) chain.Facts {
 	judges := make(map[string]chain.JudgeFact)
 	for _, leaf := range result.Leaves {
 		if leaf.Kind != "judge" {
@@ -193,7 +193,7 @@ func buildChainFacts(outputs map[string]any, result task.DoneWhenResult) chain.F
 		}
 		judges[leaf.ID] = jf
 	}
-	return chain.Facts{Outputs: outputs, Judges: judges}
+	return chain.Facts{State: state, Judges: judges}
 }
 
 // placementParent maps a placement to the spawned session's parent: a child
