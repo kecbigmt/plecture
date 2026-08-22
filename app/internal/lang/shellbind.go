@@ -28,8 +28,8 @@ var shellName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // MaterializeShellAction prepares one shell action for execution in dir, a
 // private run directory: the author's shell source verbatim, a mode-0600
 // file assigning the resolved bindings, and a wrapper that sources the first
-// into the second. bound supplies one resolved value per bind key it has
-// one for; a key absent from bound is left unassigned, which is how
+// into the second. bound supplies one resolved value per bind key it has one
+// for; a key absent from bound is explicitly unset, which is how
 // `optional = true` propagates absence into a shell — the script tells unset
 // from empty with its own parameter expansions.
 //
@@ -97,6 +97,15 @@ func bindingAssignments(a *Action, bound map[string]string) (string, error) {
 		}
 		value, ok := bound[name]
 		if !ok {
+			// Omitting the assignment would not make the variable absent:
+			// the child inherits Plecture's environment, so an ambient
+			// variable of the same name would reach the script as if the
+			// binding had resolved — and would expose ambient data through a
+			// surface that declared none. Unsetting is what absence means
+			// here. The name is a validated shell identifier by this point.
+			b.WriteString("unset ")
+			b.WriteString(name)
+			b.WriteString("\n")
 			continue
 		}
 		b.WriteString(name)

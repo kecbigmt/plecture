@@ -192,7 +192,7 @@ func TestMaterializeShellActionRoundTripsHostileValues(t *testing.T) {
 	}
 }
 
-func TestMaterializeShellActionLeavesAnUnboundKeyUnassigned(t *testing.T) {
+func TestMaterializeShellActionUnsetsAnUnboundKey(t *testing.T) {
 	a, err := ParseAction(map[string]any{
 		"type":   "shell",
 		"script": "true\n",
@@ -212,8 +212,8 @@ func TestMaterializeShellActionLeavesAnUnboundKeyUnassigned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "session_name='s1'\n"; string(raw) != want {
-		t.Errorf("bindings = %q, want %q — an unresolved key assigns nothing", raw, want)
+	if want := "session_name='s1'\nunset workspace\n"; string(raw) != want {
+		t.Errorf("bindings = %q, want %q — an unresolved key is unset, so no ambient value of that name survives", raw, want)
 	}
 }
 

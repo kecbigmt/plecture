@@ -201,13 +201,14 @@ watcher     = { bin = "github-watcher" }
 	}
 }
 
-// `optional = true` propagates absence, so the variable is left unassigned
-// rather than assigned an empty sentinel — a script tells unset from empty
-// with its own parameter expansions.
-func TestEvalShellLeavesAnOptionalAbsentBindingUnset(t *testing.T) {
+// `optional = true` propagates absence rather than substituting a sentinel,
+// and absence has to beat the ambient environment: the child inherits
+// Plecture's, so a same-named ambient variable would otherwise reach the
+// script as if the binding had resolved.
+func TestEvalShellUnsetsAnOptionalAbsentBindingOverTheAmbientEnvironment(t *testing.T) {
 	action := parseActionSource(t, `
 type   = "shell"
-script = "if [ -n \"${dir+set}\" ]; then echo set; else echo unset; fi\n"
+script = "if [ -n \"${dir+set}\" ]; then echo \"set:$dir\"; else echo unset; fi\n"
 
 [bind]
 dir     = { from = "workspace.dir", optional = true }
@@ -224,16 +225,18 @@ present = { from = "resource.id" }
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "present='r1'\n"; string(bindings) != want {
-		t.Errorf("bindings = %q, want %q — an absent optional binding assigns nothing", bindings, want)
+	if want := "unset dir\npresent='r1'\n"; string(bindings) != want {
+		t.Errorf("bindings = %q, want %q — an absent optional binding is unset, not merely unassigned", bindings, want)
 	}
 
-	out, err := exec.Command(got.Argv[0]).Output()
+	cmd := exec.Command(got.Argv[0])
+	cmd.Env = append(os.Environ(), "dir=/ambient/leak")
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.TrimSpace(string(out)) != "unset" {
-		t.Errorf("the script saw %q, want the variable unset", out)
+		t.Errorf("the script saw %q, want the variable unset despite the ambient value", out)
 	}
 }
 
