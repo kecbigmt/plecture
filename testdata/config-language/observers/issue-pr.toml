@@ -1,0 +1,20 @@
+# plect-fixture: result=valid entry=definitions
+# reason: one observer publishes two subtypes of the same resource, which is the case a completion leaf narrowing on resource_kind reads, and is the observer every task fixture in this corpus declares.
+
+[issue_pr]
+kind  = "resource_observer"
+match = '^https://github\.com/[^/]+/[^/]+/(issues|pull)/[0-9]+$'
+
+[issue_pr.observe]
+type = "exec"
+bin  = "github-issue-pr"
+args = ["observe", "--resource", { from = "resource.id" }]
+
+[issue_pr.state_schema]
+type     = "object"
+required = ["resource_kind", "checks_status", "revision"]
+
+[issue_pr.state_schema.properties]
+resource_kind = { type = "string", enum = ["pull", "issue"] }
+checks_status = { type = "string", enum = ["SUCCESS", "PENDING", "FAILURE", "NULL"] }
+revision      = { type = "string" }

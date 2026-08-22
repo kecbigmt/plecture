@@ -36,6 +36,17 @@ var fixtureExecutables = []string{
 	"slack-post",
 }
 
+// fixtureContext names the corpus files declaring the definitions the task
+// fixtures reference but do not themselves carry — the observer each one is
+// written for, and the workflow a chain names. They are ordinary fixtures;
+// this list is only what stands in for the layer a real load would have
+// discovered around them.
+var fixtureContext = []string{
+	"observers/issue-pr.toml",
+	"observers/observe-finalize.toml",
+	"workflows/nodes.toml",
+}
+
 // nativeDeferred names every fixture whose documented diagnostic a later
 // implementation slice produces, with the check that is still missing. A
 // fixture leaves this map when that check lands; nothing else may be
@@ -45,7 +56,6 @@ var nativeDeferred = map[string]string{
 	"nesting/cycle.invalid.toml":                   "nesting chain resolution",
 	"nesting/projection-mismatch.invalid.toml":     "the nesting joint's type agreement",
 	"workflows/node-cycle.invalid.toml":            "the workflow dependency graph",
-	"tasks/unpublished-key.invalid.md":             "contract-key resolution against the declared observer",
 	"tasks/first-observe-failed.invalid.md":        "instantiation",
 	"tasks/resource-mismatch.invalid.md":           "instantiation",
 	"references/alias-required.invalid.toml":       "reference resolution across enabled plugin layers",
@@ -79,6 +89,19 @@ func TestNativeConformanceFixtures(t *testing.T) {
 	}
 	sort.Strings(paths)
 
+	var context []*Definition
+	for _, rel := range fixtureContext {
+		raw, err := os.ReadFile(filepath.Join(fixtureRoot, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defs, err := ParseDefinitionDocument(rel, []byte(fixtureBody(string(raw))))
+		if err != nil {
+			t.Fatalf("fixtureContext %s: %v", rel, err)
+		}
+		context = append(context, defs...)
+	}
+
 	seenDeferred := map[string]bool{}
 	for _, path := range paths {
 		rel := filepath.ToSlash(mustRel(t, fixtureRoot, path))
@@ -99,7 +122,7 @@ func TestNativeConformanceFixtures(t *testing.T) {
 				t.Skipf("deferred: %s", reason)
 			}
 
-			got := nativeLoad(rel, exp.Entry, fixtureBody(string(raw)))
+			got := nativeLoad(rel, exp.Entry, fixtureBody(string(raw)), context)
 			switch exp.Result {
 			case "valid", "accepted-invalid":
 				if got != nil {
@@ -129,7 +152,7 @@ func TestNativeConformanceFixtures(t *testing.T) {
 // nativeLoad runs one fixture through the load pipeline this package
 // implements: parse, then value, expression, action, and executable
 // validation, then the plan-level capability check.
-func nativeLoad(path, entry, body string) error {
+func nativeLoad(path, entry, body string, context []*Definition) error {
 	var defs []*Definition
 	if entry == "task" {
 		def, err := ParseTaskDocument(path, []byte(body))
@@ -149,7 +172,7 @@ func nativeLoad(path, entry, body string) error {
 		From:        Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath},
 		Executables: NewExecutableRegistry(PluginExecutables{Alias: fixtureAlias, Path: fixturePath, Names: fixtureExecutables}),
 	}
-	registry := NewRegistry([]PluginLayer{{Alias: fixtureAlias, Path: fixturePath, Defs: defs}}, nil)
+	registry := NewRegistry([]PluginLayer{{Alias: fixtureAlias, Path: fixturePath, Defs: append(append([]*Definition(nil), context...), defs...)}}, nil)
 
 	sorted := append([]*Definition(nil), defs...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
@@ -159,11 +182,15 @@ func nativeLoad(path, entry, body string) error {
 		}
 	}
 	for _, def := range sorted {
-		if def.Kind != KindWorkflow {
-			continue
-		}
-		if err := v.ValidatePlan(def, registry); err != nil {
-			return err
+		switch def.Kind {
+		case KindWorkflow:
+			if err := v.ValidatePlan(def, registry); err != nil {
+				return err
+			}
+		case KindTask:
+			if err := v.ValidateTaskContracts(def, registry); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
