@@ -23,6 +23,13 @@ revision      = { type = "string" }
 
 [goal_reviewer]
 kind = "workflow"
+
+[goal_reviewer.inputs_schema]
+type     = "object"
+required = ["task"]
+
+[goal_reviewer.inputs_schema.properties]
+task = { type = "string" }
 `
 
 // resolveTaskDocument loads one task document against taskContext and runs
@@ -122,6 +129,9 @@ placement = "sibling"
 
 [work.chains.when]
 all = [{ check = "resource.state.head_sha", ne = "" }]
+
+[work.chains.inputs]
+task = "review"
 +++
 Resolve {{ resource.id }}.
 `,
@@ -142,6 +152,7 @@ placement = "sibling"
 all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 
 [work.chains.inputs]
+task = "review"
 head = { from = "resource.state.head_sha" }
 +++
 Resolve {{ resource.id }}.
@@ -164,6 +175,9 @@ placement = "sibling"
 
 [work.chains.when]
 all = [{ judge_pending = "solves" }]
+
+[work.chains.inputs]
+task = "review"
 +++
 Resolve {{ resource.id }}.
 `,
@@ -207,6 +221,7 @@ all = [
 ]
 
 [work.chains.inputs]
+task         = "review"
 work_session = { from = "task.session" }
 revision     = { from = "resource.state.revision" }
 +++
@@ -241,10 +256,10 @@ Resolve {{ resource.id }}.
 	wantDiag(t, resolveTaskDocument(t, src), CodeKindMismatch, LayerSemantic)
 }
 
-// An observer keeping its contract in a separate file leaves nothing to
-// resolve against here, and a document is not rejected for a schema this
-// pass cannot read.
-func TestValidateTaskContractsSkipsAnUnreadableContract(t *testing.T) {
+// An observer keeping its contract out of the document declares no key this
+// pass can resolve, and the key check exists for exactly that case: the
+// document is rejected rather than exempted.
+func TestValidateTaskContractsFailsClosedOnAnUnresolvableContract(t *testing.T) {
 	context, err := ParseDefinitionDocument("context.toml", []byte(`[filed]
 kind              = "resource_observer"
 state_schema_file = "state.schema.json"
@@ -272,7 +287,55 @@ Resolve {{ resource.id }}.
 	}
 	v := Validation{From: Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath}}
 	registry := NewRegistry([]PluginLayer{{Alias: fixtureAlias, Path: fixturePath, Defs: append(context, def)}}, nil)
-	if err := v.ValidateTaskContracts(def, registry); err != nil {
-		t.Fatalf("an out-of-file contract is unresolvable here, not a rejection: %v", err)
+	wantDiag(t, v.ValidateTaskContracts(def, registry), CodeFromPath, LayerSemantic)
+}
+
+// The other half of the target's contract — whether an input it does not
+// declare may still be handed over — is the open dispatch-time passthrough
+// question, so only what the target requires is checked here.
+func TestValidateTaskContractsRequiresTheInputsTheTargetWorkflowDeclares(t *testing.T) {
+	src := `+++
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+
+[[work.chains]]
+id        = "review"
+workflow  = "goal_reviewer"
+placement = "sibling"
+
+[work.chains.when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
+
+[work.chains.inputs]
+work_session = { from = "task.session" }
++++
+Resolve {{ resource.id }}.
+`
+	wantDiag(t, resolveTaskDocument(t, src), CodeFieldRequired, LayerStructural)
+}
+
+func TestValidateTaskContractsAcceptsAnInputTheTargetDoesNotDeclare(t *testing.T) {
+	src := `+++
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+
+[[work.chains]]
+id        = "review"
+workflow  = "goal_reviewer"
+placement = "sibling"
+
+[work.chains.when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
+
+[work.chains.inputs]
+task         = "review"
+work_session = { from = "task.session" }
++++
+Resolve {{ resource.id }}.
+`
+	if err := resolveTaskDocument(t, src); err != nil {
+		t.Fatalf("a passthrough input is not rejected while that question is open: %v", err)
 	}
 }

@@ -86,10 +86,9 @@ type = "object"
 	}
 }
 
-// TestKindSurfaceMatchesSchema pins the per-kind field sets to
-// plecture.schema.json, which is authoritative for structural shape: a field
-// added to one and not the other would otherwise be accepted by the schema
-// and rejected by this package, or the reverse.
+// A field added to the schema and not to kindFields is accepted by one layer
+// and rejected by the other, in silence and in the accepting direction, which
+// no fixture would catch.
 func TestKindSurfaceMatchesSchema(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "plecture.schema.json"))
 	if err != nil {

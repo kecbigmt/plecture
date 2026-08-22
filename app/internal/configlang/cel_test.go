@@ -69,3 +69,26 @@ func TestCheckExpressionIgnoresComprehensionVariables(t *testing.T) {
 		t.Errorf("a comprehension variable is bound by the macro, not by the surface: %v", err)
 	}
 }
+
+// A constant-key index and a field selection name the same key, so the two
+// spellings reach the same root and the same contract.
+func TestCheckExpressionReadsAConstantKeyIndexAsAPath(t *testing.T) {
+	if err := checkExpression(`resource.state["revision"] == self.state["verdict_revision"]`, surfaceTaskCompletion, Position{}); err != nil {
+		t.Errorf("an indexed state read names the same root a dotted one does: %v", err)
+	}
+	got := expressionPaths(`resource.state["revision"] == self.state.verdict_revision`, surfaceTaskCompletion)
+	want := map[string]bool{"resource.state.revision": true, "self.state.verdict_revision": true}
+	for _, path := range got {
+		delete(want, path)
+	}
+	if len(want) != 0 {
+		t.Errorf("got %v, still want %v", got, want)
+	}
+}
+
+// A computed key resolves against no contract, so what the surface sees is
+// the root that carries it, and that root is not one it offers.
+func TestCheckExpressionRejectsAComputedStateKey(t *testing.T) {
+	err := checkExpression(`resource.state[self.state.key_name] == ""`, surfaceTaskCompletion, Position{})
+	wantDiag(t, err, CodeFromRoot, LayerStructural)
+}

@@ -7,6 +7,8 @@ import (
 
 	"cel.dev/cel-go/cel"
 	"cel.dev/cel-go/common/ast"
+	"cel.dev/cel-go/common/operators"
+	"cel.dev/cel-go/common/types"
 	"cel.dev/cel-go/ext"
 )
 
@@ -95,12 +97,15 @@ func walkExpr(e ast.Expr, bound map[string]bool, env *cel.Env, ref referenceFunc
 	case ast.IdentKind:
 		return ref(e.AsIdent(), bound)
 	case ast.SelectKind:
-		path, base, ok := flattenSelect(e)
+		path, base, ok := flattenPath(e)
 		if !ok {
 			return walkExpr(base, bound, env, ref, pos)
 		}
 		return ref(path, bound)
 	case ast.CallKind:
+		if path, _, ok := flattenPath(e); ok {
+			return ref(path, bound)
+		}
 		call := e.AsCall()
 		if name := call.FunctionName(); !env.HasFunction(name) {
 			return newDiag(CodeCELCustomFunction, LayerCEL, pos,
@@ -192,22 +197,58 @@ func checkReference(path string, declared, bound map[string]bool, s *Surface, po
 	return nil
 }
 
-// flattenSelect renders a select chain rooted at an identifier as a dotted
-// path. A chain rooted at anything else — an indexed element, a function
-// result — is not statically identifiable, so it reports the base for the
-// walk to descend into instead.
-func flattenSelect(e ast.Expr) (path string, base ast.Expr, ok bool) {
+// flattenPath folds a constant-key index into the dotted path because
+// `state["revision"]` and `state.revision` name the same key, and both
+// spellings have to reach the same root and the same contract. A chain rooted
+// at a function result, or indexed by a computed key, names no path a
+// contract could be checked against, so it reports the base for the walk to
+// descend into and the enclosing root is what gets rejected.
+func flattenPath(e ast.Expr) (path string, base ast.Expr, ok bool) {
 	var segments []string
 	cur := e
-	for cur.Kind() == ast.SelectKind {
-		sel := cur.AsSelect()
-		segments = append([]string{sel.FieldName()}, segments...)
-		cur = sel.Operand()
+	for {
+		switch cur.Kind() {
+		case ast.IdentKind:
+			return strings.Join(append([]string{cur.AsIdent()}, segments...), "."), nil, true
+		case ast.SelectKind:
+			sel := cur.AsSelect()
+			segments = append([]string{sel.FieldName()}, segments...)
+			cur = sel.Operand()
+		case ast.CallKind:
+			call := cur.AsCall()
+			key, ok := constantIndexKey(call)
+			if !ok {
+				return "", cur, false
+			}
+			segments = append([]string{key}, segments...)
+			cur = call.Args()[0]
+		default:
+			return "", cur, false
+		}
 	}
-	if cur.Kind() != ast.IdentKind {
-		return "", cur, false
+}
+
+// constantIndexKey reads the key of an index whose key is a string literal
+// naming one path segment. A key carrying a dot would flatten into a path
+// that reads as two segments, which is a different key, so it is not one this
+// resolves.
+func constantIndexKey(call ast.CallExpr) (string, bool) {
+	if call.FunctionName() != operators.Index || len(call.Args()) != 2 {
+		return "", false
 	}
-	return strings.Join(append([]string{cur.AsIdent()}, segments...), "."), nil, true
+	arg := call.Args()[1]
+	if arg.Kind() != ast.LiteralKind {
+		return "", false
+	}
+	val := arg.AsLiteral()
+	if val.Type() != types.StringType {
+		return "", false
+	}
+	key, ok := val.Value().(string)
+	if !ok || key == "" || strings.Contains(key, ".") {
+		return "", false
+	}
+	return key, true
 }
 
 func oneLine(err error) string {

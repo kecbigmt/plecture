@@ -2,19 +2,15 @@ package configlang
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
-// ValidateTaskContracts is the half of a task document's validation that
-// needs the rest of the layer: it resolves the observer the document
-// declares, then checks every name the document reads against the contract
-// that declares it — a state key against the observer's or this document's
-// state_schema, and a chain's judge id against this document's done_when.
-//
-// It is separate from ValidateDefinition so that root availability, which
-// needs nothing but the document, is always decided first: a value reaching
-// a root its surface does not offer is that error, never a missing key in a
-// contract the root never had.
+// ValidateTaskContracts is separate from ValidateDefinition because it needs
+// the rest of the layer, and because the resulting order is load-bearing:
+// root availability, which needs nothing but the document, is always decided
+// first, so a value reaching a root its surface does not offer is reported as
+// that and never as a missing key in a contract the root never had.
 func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 	if def.Kind != KindTask {
 		return nil
@@ -55,6 +51,9 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 		if err := c.checkChainInputs(chain, chainAt); err != nil {
 			return err
 		}
+		if err := v.checkChainWorkflowInputs(chain, chainAt, r); err != nil {
+			return err
+		}
 	}
 	for _, match := range bodyProjection.FindAllStringSubmatch(def.Instruction, -1) {
 		if err := c.resolve(match[1], childPos(pos, "instruction")); err != nil {
@@ -64,43 +63,30 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 	return nil
 }
 
-// contract is one JSON Schema document's property set, or the fact that this
-// pass cannot see it: a schema kept in a separate file resolves nothing
-// here, and a document is not rejected against a contract nobody read.
-type contract struct {
-	readable bool
-	props    map[string]bool
-}
-
-// taskContracts are the three things a task document's names resolve
-// against: what its observer publishes, what it keeps itself, and which
-// judges its completion predicate declares.
 type taskContracts struct {
-	resource contract
-	self     contract
+	resource map[string]bool
+	self     map[string]bool
 	judges   map[string]bool
 }
 
-// declaredState reads a definition's inline state_schema. An absent schema
-// is an empty contract rather than an unreadable one — a document that keeps
-// no state of its own publishes no key to read.
-func declaredState(body map[string]any) contract {
-	if _, filed := body["state_schema_file"]; filed {
-		return contract{}
-	}
-	c := contract{readable: true, props: map[string]bool{}}
+// declaredState treats a contract the definition does not carry — absent, or
+// deferred to a state_schema_file the language defines no resolution rule for
+// — as declaring no key, so a document reading one is rejected rather than
+// exempted: an unresolvable contract is the case a key check exists for.
+func declaredState(body map[string]any) map[string]bool {
+	props := map[string]bool{}
 	schema, ok := body["state_schema"].(map[string]any)
 	if !ok {
-		return c
+		return props
 	}
-	props, ok := schema["properties"].(map[string]any)
+	declared, ok := schema["properties"].(map[string]any)
 	if !ok {
-		return c
+		return props
 	}
-	for key := range props {
-		c.props[key] = true
+	for key := range declared {
+		props[key] = true
 	}
-	return c
+	return props
 }
 
 func declaredJudges(body map[string]any) map[string]bool {
@@ -124,9 +110,6 @@ func declaredJudges(body map[string]any) map[string]bool {
 	return ids
 }
 
-// checkPredicate resolves the names one done_when or chain when reads: a
-// check leaf's key path, the paths a computed leaf reads, and the judge id a
-// chain fact waits on.
 func (c taskContracts) checkPredicate(body map[string]any, field string, pos Position) error {
 	raw, ok := body[field]
 	if !ok {
@@ -195,33 +178,87 @@ func (c taskContracts) checkChainInputs(chain map[string]any, pos Position) erro
 	return nil
 }
 
-// resolve checks one dotted path against the contract its root names.
-// Anything else — resource.id, a work fact a chain passes on — names no
-// contract this pass reads.
+// checkChainWorkflowInputs checks a chain against the contract of the workflow
+// it spawns. Only the required half of that contract is checked here: whether
+// a key the target does not declare may still be handed over is the
+// dispatch-time passthrough question, and this corpus's own valid chain
+// fixture hands over three such keys, so enforcing the closed half would
+// reject the specification's worked example.
+//
+// A key the target requires and the chain omits is PLECTURE-CFG-FIELD-REQUIRED
+// because that is the rule broken — a required field is absent — even though
+// resolving the target is a semantic step; the diagnostics table documents no
+// other code for it.
+func (v Validation) checkChainWorkflowInputs(chain map[string]any, pos Position, r *Registry) error {
+	raw, ok := chain["workflow"]
+	if !ok {
+		return nil
+	}
+	site := childPos(pos, "workflow")
+	ref, err := staticRef(raw, site.Path)
+	if err != nil {
+		return err
+	}
+	workflow, err := r.ExpectKind(ref, v.From, KindWorkflow, site.Path)
+	if err != nil {
+		return err
+	}
+	inputs, _ := chain["inputs"].(map[string]any)
+	for _, key := range requiredProperties(workflow.Body["inputs_schema"]) {
+		if _, ok := inputs[key]; !ok {
+			return newDiag(CodeFieldRequired, LayerStructural, childPos(pos, "inputs"),
+				fmt.Sprintf("workflow %q requires the input %q, which this chain does not hand it", ref, key))
+		}
+	}
+	return nil
+}
+
+func requiredProperties(raw any) []string {
+	schema, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	list, ok := schema["required"].([]any)
+	if !ok {
+		return nil
+	}
+	var keys []string
+	for _, entry := range list {
+		if key, ok := entry.(string); ok {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// resolve returns early for anything but a state read, because the rest —
+// resource.id, a work fact a chain passes on — names no contract this pass
+// reads.
 func (c taskContracts) resolve(path string, pos Position) error {
 	segments := strings.Split(path, ".")
 	if len(segments) < 3 || segments[1] != "state" {
 		return nil
 	}
-	var target contract
+	var declared map[string]bool
 	switch segments[0] {
 	case "resource":
-		target = c.resource
+		declared = c.resource
 	case "self":
-		target = c.self
+		declared = c.self
 	default:
 		return nil
 	}
-	if !target.readable || target.props[segments[2]] {
+	if declared[segments[2]] {
 		return nil
 	}
 	return newDiag(CodeFromPath, LayerSemantic, pos,
 		fmt.Sprintf("%q names no property the %s.state contract declares", path, segments[0]))
 }
 
-// expressionPaths returns the dotted paths one expression reads. An
-// expression that does not parse yields none: checkExpression has already
-// reported that, and this pass has nothing to add.
+// expressionPaths yields nothing for an expression that does not parse:
+// checkExpression has already reported that, and this pass has nothing to
+// add.
 func expressionPaths(src string, s *Surface) []string {
 	env, err := s.env()
 	if err != nil {

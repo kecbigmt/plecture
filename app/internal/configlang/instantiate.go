@@ -5,10 +5,9 @@ import (
 	"regexp"
 )
 
-// ObserveFunc runs one resource observer's observe action against a resource
-// and returns the state it published. A non-zero exit is an error here: the
-// observer's exit code signals health, and what that health costs depends on
-// which observation it was.
+// ObserveFunc reports a non-zero observe exit as an error: the exit code
+// signals health, and what that health costs is what Instantiate and Observe
+// disagree about.
 type ObserveFunc func(observer *Definition, resourceID string) (map[string]any, error)
 
 // Instance is a task document bound to one resource. The document is
@@ -23,10 +22,8 @@ type Instance struct {
 	degraded error
 }
 
-// Instantiate binds a task document to a resource. It checks the resource
-// against the observer the document declares, then observes it once —
-// failing closed on that first observation, so a task instance never exists
-// in a state its own resource cannot support.
+// Instantiate fails closed on the observation it performs, so a task
+// instance never exists in a state its own resource cannot support.
 func (v Validation) Instantiate(def *Definition, r *Registry, resourceID string, observe ObserveFunc) (*Instance, error) {
 	pos := Position{File: def.File, Path: def.ID}
 	at := childPos(pos, "resource_observer")

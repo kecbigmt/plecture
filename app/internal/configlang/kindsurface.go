@@ -2,11 +2,11 @@ package configlang
 
 import "fmt"
 
-// kindFields is each kind's closed field surface, mirroring the per-kind
-// definitions in plecture.schema.json (`kind` itself is absent because
-// parseDefinitionTable lifts it out of Body). Nothing derives one from the
-// other at run time — the schema is a repository file, not a package
-// resource — so TestKindSurfaceMatchesSchema is what keeps them together.
+// kindFields mirrors plecture.schema.json's per-kind property lists; `kind`
+// is absent because parseDefinitionTable lifts it out of Body. Nothing
+// derives one from the other at run time — the schema is a repository file,
+// not a package resource — so TestKindSurfaceMatchesSchema is what keeps the
+// two together.
 var kindFields = map[Kind]map[string]bool{
 	KindEffect: fieldSet(
 		"cleanup", "health", "inner", "inputs_schema", "inputs_schema_file",
@@ -37,10 +37,9 @@ func fieldSet(names ...string) map[string]bool {
 	return set
 }
 
-// checkKindSurface rejects a field outside the containing kind's surface.
-// Every kind's surface is closed, so a lifecycle field on a task document
-// and a completion contract on an effect are the same rule read from two
-// directions.
+// checkKindSurface is one rule rather than a rule per misplaced field: a
+// lifecycle field on a task document and a completion contract on an effect
+// are the same rule read from two directions.
 func checkKindSurface(def *Definition, pos Position) error {
 	fields := kindFields[def.Kind]
 	for _, field := range sortedKeys(def.Body) {
