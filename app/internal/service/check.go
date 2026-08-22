@@ -148,16 +148,14 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		}
 		taskID := taskIDForInstance(key, st)
 		if doc, ok := docs[taskID]; ok {
-			action, warning, derr := evaluateDocumentInstance(doc, resolvedName, session, key, st, allSessions, trigger)
+			action, spawns, derr := evaluateDocumentInstance(cfg, store, doc, resolvedName, session, key, st, allSessions, trigger)
 			if derr != nil {
 				return "", nil, nil, nil, derr
-			}
-			if warning != "" {
-				legacyWarnings = append(legacyWarnings, warning)
 			}
 			if action != nil {
 				computed = append(computed, *action)
 			}
+			chainPlan = append(chainPlan, spawns...)
 			continue
 		}
 		def := defs[taskID]

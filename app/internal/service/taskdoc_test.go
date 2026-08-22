@@ -357,6 +357,8 @@ type = "object"
 [issue_pr.state_schema.properties]
 resource_kind = { type = "string" }
 revision      = { type = "string" }
+# Declared but never reported, so a value reading it exercises the absent case.
+pr_url        = { type = "string" }
 `, revisionFile))
 	write(filepath.Join("workflows", "wf.toml"), "[[nodes]]\nid = \"noop\"\n")
 	for i, doc := range documents {

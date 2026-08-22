@@ -421,3 +421,105 @@ Review it.
 		t.Errorf("error = %v, want it to say the reference needs its alias", err)
 	}
 }
+
+// A chain's inputs are values over the chain-input roots, not templates: the
+// parsed forms are what the runtime evaluates, and a literal stays a literal.
+func TestLoadTaskDocuments_ChainInputsParseAsValues(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "pursue.md"), chainingTaskDoc)
+	cfg := &Config{BaseDir: base}
+	docs, err := cfg.LoadTaskDocuments("")
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments: %v", err)
+	}
+	chains := docs["pursue"].Chains
+	if len(chains) != 1 {
+		t.Fatalf("chains = %+v, want one", chains)
+	}
+	ch := chains[0]
+	if ch.ID != "goal_review" || ch.Workflow != "goal_reviewer" || ch.EffectivePlacement() != "sibling" {
+		t.Errorf("chain = %+v", ch)
+	}
+	if ch.TaskID != "pursue" {
+		t.Errorf("chain names its declaring document: got %q", ch.TaskID)
+	}
+	if len(ch.When.All) != 1 || ch.When.All[0].JudgePending != "goal-met" {
+		t.Errorf("when = %+v", ch.When)
+	}
+	if got := ch.Inputs["task"]; got == nil || got.Literal != "goal_review" {
+		t.Errorf("a literal input stays a literal: %+v", got)
+	}
+	if got := ch.Inputs["work_session"]; got == nil || got.From != "task.session" {
+		t.Errorf("a projection keeps its path: %+v", got)
+	}
+	if got := ch.InputKeys(); len(got) != 2 || got[0] != "task" || got[1] != "work_session" {
+		t.Errorf("InputKeys = %v, want them sorted", got)
+	}
+}
+
+// One chain id names one chain within its document.
+func TestLoadTaskDocuments_RejectsDuplicateChainID(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "pursue.md"), strings.Replace(chainingTaskDoc,
+		"+++\nPursue", `
+[[pursue.chains]]
+id       = "goal_review"
+workflow = "goal_reviewer"
+
+[pursue.chains.when]
+all = [{ judge_pending = "goal-met" }]
++++
+Pursue`, 1))
+	cfg := &Config{BaseDir: base}
+	if _, err := cfg.LoadTaskDocuments(""); err == nil || !strings.Contains(err.Error(), "declared more than once") {
+		t.Fatalf("err = %v, want a duplicate chain id rejection", err)
+	}
+}
+
+// A chain with no trigger would fire unconditionally.
+func TestLoadTaskDocuments_RejectsChainWithNoTrigger(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "pursue.md"), `+++
+[pursue]
+kind              = "task"
+description       = "A document whose chain declares no trigger"
+resource_observer = "issue_pr"
+
+[[pursue.chains]]
+id       = "goal_review"
+workflow = "goal_reviewer"
++++
+Pursue the goal.
+`)
+	cfg := &Config{BaseDir: base}
+	if _, err := cfg.LoadTaskDocuments(""); err == nil || !strings.Contains(err.Error(), "declares no facts") {
+		t.Fatalf("err = %v, want a triggerless chain rejection", err)
+	}
+}
+
+const chainingTaskDoc = `+++
+[pursue]
+kind              = "task"
+description       = "Pursue one goal until an independent reviewer confirms it"
+resource_observer = "issue_pr"
+
+[pursue.done_when]
+all = [{ judge = "the goal is achieved", id = "goal-met" }]
+
+[[pursue.chains]]
+id        = "goal_review"
+workflow  = "goal_reviewer"
+placement = "sibling"
+
+[pursue.chains.when]
+all = [{ judge_pending = "goal-met" }]
+
+[pursue.chains.inputs]
+task         = "goal_review"
+work_session = { from = "task.session" }
++++
+Pursue the goal at {{ resource.id }}.
+`

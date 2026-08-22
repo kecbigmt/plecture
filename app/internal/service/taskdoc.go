@@ -323,31 +323,37 @@ func renderInstruction(cfg *config.Config, session *domain.Session, doc config.T
 // predicate against the pair of live roots it reads. A document owns no
 // lifecycle, so there are no layers to compose and no per-layer patience to
 // account for: one document, one predicate, one budget.
-func evaluateDocumentInstance(doc config.TaskDocument, resolvedName string, session *domain.Session, key string, st *contract.TaskState, allSessions map[string]*domain.Session, trigger TickTrigger) (*computedAction, string, *Error) {
+func evaluateDocumentInstance(cfg *config.Config, store *state.Store, doc config.TaskDocument, resolvedName string, session *domain.Session, key string, st *contract.TaskState, allSessions map[string]*domain.Session, trigger TickTrigger) (*computedAction, []ChainSpawn, *Error) {
 	dw, err := effectiveDoneWhen(doc.DoneWhen, st)
 	if err != nil {
-		return nil, "", &Error{Code: ErrExecutionFailed, Message: err.Error()}
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	// A document's chains are validated at load but not fired yet; saying so
-	// is the alternative to a chain that silently never runs. Retirement: the
-	// PR that moves the chain surface onto the ratified language fires them.
-	warning := ""
-	if len(doc.Chains) > 0 {
-		warning = fmt.Sprintf("task %q declares %d chain(s), which are not evaluated for a task-document instance yet", doc.ID, len(doc.Chains))
+	live := instanceCompletionState(st, nil)
+	var computed *computedAction
+	var eval task.DoneWhenResult
+	if dw != nil {
+		lastAction, lastFingerprint := "", ""
+		if st.DoneWhen != nil {
+			lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
+		}
+		eval = task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(resolvedName, st, allSessions))
+		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger, nil)
+		if action.Action != "" {
+			computed = &computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval}
+		}
 	}
-	if dw == nil {
-		return nil, warning, nil
+	if len(doc.Chains) == 0 {
+		return computed, nil, nil
 	}
-	lastAction, lastFingerprint := "", ""
-	if st.DoneWhen != nil {
-		lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
+	facts := buildChainFacts(live, eval)
+	resource := sessionResourceForCheck(session, st)
+	plan := make([]ChainSpawn, 0, len(doc.Chains))
+	for _, ch := range doc.Chains {
+		sp := evalDocumentChain(cfg, store, ch, resolvedName, session, key, resource, facts)
+		sp.Task = doc.ID
+		plan = append(plan, sp)
 	}
-	eval := task.EvaluateTaskDoneWhenWithContext(dw, instanceCompletionState(st, nil), doneWhenEvalContext(resolvedName, st, allSessions))
-	action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger, nil)
-	if action.Action == "" {
-		return nil, warning, nil
-	}
-	return &computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval}, warning, nil
+	return computed, plan, nil
 }
 
 // taskDeclarations pairs the two kinds an id can resolve to, so a caller
