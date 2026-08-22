@@ -85,21 +85,40 @@ func TestMaterializeShellActionTakesItsSourceFromNoVariable(t *testing.T) {
 	}
 }
 
-// TestMaterializeShellActionRejectsAReservedBindKey guards the namespace a
-// wrapper reading its paths from the environment would have exposed.
-func TestMaterializeShellActionRejectsAReservedBindKey(t *testing.T) {
+// TestMaterializeShellActionIgnoresABindKeyNamedLikeAControlVariable is the
+// regression test for the transport's one escape: a binding once shadowed the
+// variable the wrapper read its script path from, so a bound value chose the
+// source that ran. No bind key is refused for its name — nothing reads one.
+func TestMaterializeShellActionIgnoresABindKeyNamedLikeAControlVariable(t *testing.T) {
+	tmp := t.TempDir()
+	elsewhere := filepath.Join(tmp, "elsewhere.sh")
+	if err := os.WriteFile(elsewhere, []byte("printf ELSEWHERE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	a, err := ParseAction(map[string]any{
 		"type":   "shell",
-		"script": "true\n",
-		"bind":   map[string]any{"PLECT_SHELL_SCRIPT": map[string]any{"from": "event.body"}},
+		"script": "printf AUTHORS-SCRIPT\n",
+		"bind": map[string]any{
+			"PLECT_SHELL_SCRIPT":   map[string]any{"from": "event.body"},
+			"PLECT_SHELL_BINDINGS": map[string]any{"from": "event.body"},
+		},
 	}, Position{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = MaterializeShellAction(filepath.Join(t.TempDir(), "run"),
-		a, map[string]string{"PLECT_SHELL_SCRIPT": "/tmp/elsewhere"}, nil)
-	if err == nil {
-		t.Error("a binding may not claim a name in Plecture's own namespace")
+	exe, err := MaterializeShellAction(filepath.Join(tmp, "run"), a, map[string]string{
+		"PLECT_SHELL_SCRIPT":   elsewhere,
+		"PLECT_SHELL_BINDINGS": elsewhere,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command(exe.Path, exe.Operands...).Output()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if string(out) != "AUTHORS-SCRIPT" {
+		t.Errorf("a bound value chose the shell source that ran: got %q", out)
 	}
 }
 

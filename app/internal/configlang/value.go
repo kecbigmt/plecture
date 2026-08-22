@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// ValueForm names which of the language's value forms a value takes: a bare
-// TOML literal, or one entry of the tagged-value vocabulary.
+// ValueForm names one of the language's value forms.
 type ValueForm string
 
 const (
@@ -19,24 +18,20 @@ const (
 	FormJSON     ValueForm = "json"
 )
 
-// ValueClass says which forms one location accepts, mirroring the schema's
-// three value surfaces: literal data, data, and an action binding.
+// ValueClass says which forms one location accepts. The three classes are
+// the schema's three value surfaces: a workflow's workspace-provider
+// parameters take literal data, most surfaces consume data, and only an
+// action binding and an action's argv can consume a Plecture capability.
 type ValueClass int
 
 const (
-	// ClassLiteral accepts literal data only, as a workspace provider's
-	// parameters on a workflow do.
 	ClassLiteral ValueClass = iota
-	// ClassData accepts a literal, a projection, a computation, or a JSON
-	// serialization — everything but a Plecture capability.
 	ClassData
-	// ClassBinding additionally accepts a capability tag, which only an
-	// action binding and an action's argv can consume.
 	ClassBinding
 )
 
-// Value is one dynamic value: a literal, or one tagged form. Exactly one
-// form's fields are populated, named by Form.
+// Value is one dynamic value. Exactly one form's fields are populated, named
+// by Form.
 type Value struct {
 	Form ValueForm
 
@@ -57,22 +52,21 @@ type Value struct {
 	Pos Position
 }
 
-// JSONOperand is one node of a `{ json = ... }` operand: a value tree whose
-// leaves are literals, projections, or computations.
+// JSONOperand is one node of a `{ json = ... }` operand.
 type JSONOperand struct {
 	Leaf   *Value
 	Object map[string]*JSONOperand
 	Array  []*JSONOperand
 }
 
-// tagKeys discriminate a tagged value from a literal table. The vocabulary
-// is closed and every entry in it carries exactly one of these, so a table
-// carrying none is not a malformed tagged value but ordinary literal data.
+// tagKeys are the vocabulary's discriminators. `default` and `optional`
+// belong to a tagged value but name no form on their own, so they are absent
+// here: one of these keys alone is what identifies a table as a tagged value,
+// both at a value surface and inside a contract document.
 var tagKeys = []string{"from", "expr", "terminal", "bin", "json"}
 
-// terminalVerbOrder is the four verbs an interactive endpoint offers, in a
-// stable order so a walk over a terminal table reports the same diagnostic
-// on every run.
+// terminalVerbOrder is ordered so a walk over a terminal table reports the
+// same diagnostic on every run.
 var terminalVerbOrder = []string{"attach", "capture", "send_text", "send_keys"}
 
 var terminalVerbs = func() map[string]bool {
@@ -84,7 +78,9 @@ var terminalVerbs = func() map[string]bool {
 }()
 
 // ParseValue reads one value at a location accepting class, applying
-// values.md's validation rules for each form and their composition.
+// values.md's validation rules for each form and their composition. A
+// non-table is a literal without further checks: only a table can carry a
+// tag, so only a table can carry a tag on the wrong surface.
 func ParseValue(raw any, class ValueClass, pos Position) (*Value, error) {
 	tbl, isTable := raw.(map[string]any)
 	if !isTable {
@@ -196,10 +192,9 @@ func parseFrom(tbl map[string]any, pos Position) (*Value, error) {
 	return v, nil
 }
 
-// parseJSONOperand reads a `{ json = ... }` operand. Its leaves are
-// literals, projections, or computations: the serializer is a boundary, so
-// a capability tag has no meaning inside it and a nested json tag would
-// serialize twice.
+// parseJSONOperand reads a `{ json = ... }` operand. The serializer is a
+// boundary, so a capability tag has no meaning inside it and a nested json
+// tag would serialize twice.
 func parseJSONOperand(raw any, pos Position) (*JSONOperand, error) {
 	switch v := raw.(type) {
 	case map[string]any:

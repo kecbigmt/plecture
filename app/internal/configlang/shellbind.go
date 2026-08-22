@@ -21,13 +21,6 @@ const (
 	bindingFileName = "bindings.sh"
 	scriptFileName  = "script.sh"
 	wrapperFileName = "run.sh"
-
-	// reservedBindPrefix is Plecture's own variable namespace. A binding may
-	// not claim a name in it: the wrapper below no longer reads any variable,
-	// but a wrapper that ever did would let a bound value choose the source
-	// that runs, and reserving the namespace keeps that regression from being
-	// silent.
-	reservedBindPrefix = "PLECT_"
 )
 
 var shellName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -81,11 +74,12 @@ func MaterializeShellAction(dir string, a *Action, bound map[string]string, oper
 // also preserves the wrapper's positional parameters, which is how a
 // terminal verb receives its operand.
 //
-// Both paths are quoted literals rather than variable expansions: a wrapper
-// that read them from the environment would hand a binding that shadowed one
-// of those variables — or an ambient variable of the same name — the choice
-// of which source gets executed. The wrapper sets no shell option of its
-// own, because whatever it set would apply to the author's script too.
+// Both paths are quoted literals rather than variable expansions, which is
+// what makes a bind key unable to reach them: a wrapper that read them from
+// the environment would hand a binding that shadowed one of those variables —
+// or an ambient variable of the same name — the choice of which source gets
+// executed. The wrapper sets no shell option of its own, because whatever it
+// set would apply to the author's script too.
 func wrapperSource(bindingPath, scriptPath string) string {
 	return "#!/usr/bin/env sh\n" +
 		". " + singleQuote(bindingPath) + "\n" +
@@ -97,9 +91,6 @@ func bindingAssignments(a *Action, bound map[string]string) (string, error) {
 	for _, name := range sortedBindKeys(a.Bind) {
 		if !shellName.MatchString(name) {
 			return "", fmt.Errorf("bind key %q is not a shell variable name", name)
-		}
-		if strings.HasPrefix(name, reservedBindPrefix) {
-			return "", fmt.Errorf("bind key %q claims a name in Plecture's own %s* namespace", name, reservedBindPrefix)
 		}
 		value, ok := bound[name]
 		if !ok {
