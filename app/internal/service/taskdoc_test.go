@@ -362,3 +362,40 @@ revision      = { type = "string" }
 	}
 	return &config.Config{WorkspaceDirsRoot: t.TempDir(), BaseDir: baseDir}
 }
+
+func TestTaskShow_TaskDocument(t *testing.T) {
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"revision": "sha2"}, reviewDocument)
+	detail, err := TaskShow(cfg, "", "review")
+	if err != nil {
+		t.Fatalf("TaskShow: %v", err)
+	}
+	if detail.Kind != "task" {
+		t.Errorf("Kind = %q, want task", detail.Kind)
+	}
+	if detail.ResourceObserver != "issue_pr" {
+		t.Errorf("ResourceObserver = %q, want the observer the document is written for", detail.ResourceObserver)
+	}
+	if detail.Scope != "" {
+		t.Errorf("Scope = %q, want none: a task document owns no lifecycle", detail.Scope)
+	}
+}
+
+// A document instance has nothing to tear down, so cleanup reclaims it
+// rather than failing for want of a cleanup action.
+func TestTaskCleanup_TaskDocumentInstance(t *testing.T) {
+	store := testStore(t)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"revision": "sha2"}, reviewDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
+		"review#1": {Scope: contract.TaskScopeSession, TaskID: "review", Status: contract.TaskStatusProduced, SetupAt: time.Now()},
+	})
+	result, err := TaskCleanup(cfg, store, TaskCleanupParams{SessionName: "org/repo-1", Instance: "review#1"})
+	if err != nil {
+		t.Fatalf("TaskCleanup: %v", err)
+	}
+	if !result.Found {
+		t.Fatal("instance not found")
+	}
+	if got, exists := store.Get("org/repo-1").Tasks["review#1"]; exists {
+		t.Errorf("instance still recorded after cleanup: %+v", got)
+	}
+}
