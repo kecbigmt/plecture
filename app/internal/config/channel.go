@@ -134,12 +134,12 @@ func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
 	if c.BaseDir != "" {
 		globalDir = filepath.Join(c.BaseDir, "channels")
 	}
-	return loadTrustedLayer(pluginDirs, globalDir, func(path string) (ChannelDefinition, error) {
+	return loadTrustedLayer(pluginDirs, globalDir, func(path string, _ bool) ([]ChannelDefinition, error) {
 		d, err := loadChannelFile(path)
 		if err != nil {
-			return ChannelDefinition{}, fmt.Errorf("channel %s: %w", path, err)
+			return nil, fmt.Errorf("channel %s: %w", path, err)
 		}
-		return d, nil
+		return []ChannelDefinition{d}, nil
 	}, func(d ChannelDefinition) string { return d.ID })
 }
 

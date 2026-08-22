@@ -104,12 +104,12 @@ func (c *Config) LoadWorkspaceProviders() (map[string]WorkspaceProviderConfig, e
 	if c.BaseDir != "" {
 		globalDir = filepath.Join(c.BaseDir, "workspaces")
 	}
-	out, err := loadTrustedLayer(pluginDirs, globalDir, func(path string) (WorkspaceProviderConfig, error) {
+	out, err := loadTrustedLayer(pluginDirs, globalDir, func(path string, _ bool) ([]WorkspaceProviderConfig, error) {
 		p, err := loadWorkspaceProviderFile(path)
 		if err != nil {
-			return WorkspaceProviderConfig{}, fmt.Errorf("workspace provider %s: %w", path, err)
+			return nil, fmt.Errorf("workspace provider %s: %w", path, err)
 		}
-		return p, nil
+		return []WorkspaceProviderConfig{p}, nil
 	}, func(p WorkspaceProviderConfig) string { return p.ID })
 	if err != nil {
 		return nil, err

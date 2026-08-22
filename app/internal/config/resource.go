@@ -69,12 +69,12 @@ func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
 	if c.BaseDir != "" {
 		globalDir = filepath.Join(c.BaseDir, "resources")
 	}
-	out, err := loadTrustedLayer(pluginDirs, globalDir, func(path string) (ResourceDef, error) {
+	out, err := loadTrustedLayer(pluginDirs, globalDir, func(path string, _ bool) ([]ResourceDef, error) {
 		def, err := loadResourceDefFile(path)
 		if err != nil {
-			return ResourceDef{}, fmt.Errorf("resource %s: %w", path, err)
+			return nil, fmt.Errorf("resource %s: %w", path, err)
 		}
-		return def, nil
+		return []ResourceDef{def}, nil
 	}, func(def ResourceDef) string { return def.ID })
 	if err != nil {
 		return nil, err
