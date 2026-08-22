@@ -1038,10 +1038,7 @@ section's `src`/`bin`/`scripts` split).
 
 `okf/exemplars/workflows/goal_review.toml` is catalog-shipped but not
 catalog-loaded: it is a copy-me example, not a `config/workflows/*.toml`
-file, so `LoadWorkflows` never mounts it. This is the plugin-local fallback
-for the exemplar package format `docs/design/exemplar-workflows.md`
-describes; that catalog-root `exemplars/workflows/<id>/` package format
-(with its own `exemplar.toml` metadata) is not implemented yet.
+file, so `LoadWorkflows` never mounts it.
 
 Plugin-owned behavior:
 
