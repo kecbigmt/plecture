@@ -43,9 +43,9 @@ Reporting reads what was last observed, and says when that was. Pass
 the ones current at the moment of the call.
 
 No provider-specific field exists here — a PR's review decision or checks
-status appears under "work" only when the workflow's task publishes it as an
-output (most workflows do, for done_when). "plect ls" still carries the
-workflow's own display status line.`,
+status appears under "work" only when the observer the task document declares
+publishes it. "plect ls" still carries the workflow's own display status
+line.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if statusFull && !statusJSON {
@@ -61,9 +61,6 @@ workflow's own display status line.`,
 		if statusRefresh {
 			if _, err := service.ObserveSessionResources(cfg, store, args[0]); err != nil {
 				return fmt.Errorf("observing resources failed: %w", err)
-			}
-			if _, err := service.RefreshSessionOutputs(cfg, store, args[0]); err != nil {
-				return fmt.Errorf("refresh failed: %w", err)
 			}
 		}
 
@@ -383,7 +380,7 @@ func statusChainSpawnStatus(c service.StatusChain) string {
 
 func init() {
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON")
-	statusCmd.Flags().BoolVar(&statusRefresh, "refresh", false, "Re-fetch dynamic outputs from the source of truth before reporting")
+	statusCmd.Flags().BoolVar(&statusRefresh, "refresh", false, "Observe each instance's resource before reporting, so the facts shown are current")
 	statusCmd.Flags().BoolVar(&statusFull, "full", false, "With --json, output the full report (all task instances, unfiltered outputs, runtime/flow detail) instead of the default done_when-focused summary")
 	rootCmd.AddCommand(statusCmd)
 }

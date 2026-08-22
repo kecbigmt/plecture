@@ -25,7 +25,7 @@ workflow = "codex"
 [chains.when]
 all = [
   { judge_pending = "ac-met" },
-  { check = "checks_status", in = ["SUCCESS"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
 ]
 [chains.inputs]
 revision = "{{.Work.outputs.revision}}"
@@ -63,8 +63,8 @@ revision = "{{.Work.outputs.revision}}"
 	if !w.Chains[0].Fired {
 		t.Errorf("expected chain \"review\" to be fired, got %+v", w.Chains[0])
 	}
-	if w.Outputs["checks_status"] != "SUCCESS" {
-		t.Errorf("Outputs[checks_status] = %v, want SUCCESS", w.Outputs["checks_status"])
+	if w.Observed == nil || w.Observed.State["checks_status"] != "SUCCESS" {
+		t.Errorf("observed checks_status = %+v, want SUCCESS", w.Observed)
 	}
 }
 
@@ -139,7 +139,7 @@ workflow = "codex"
 [chains.when]
 all = [
   { judge_pending = "ac-met" },
-  { check = "checks_status", in = ["SUCCESS"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
 ]
 `),
 			{id: "envfile", scope: "run", setup: "echo '{}'"},

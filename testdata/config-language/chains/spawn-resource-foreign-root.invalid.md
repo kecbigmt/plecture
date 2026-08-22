@@ -1,0 +1,23 @@
+<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=task -->
+<!-- reason: a chain's resource is projected from the same roots its inputs read; an effect layer's private locals are not among them. -->
++++
+[work]
+kind              = "task"
+description       = "A task document naming its spawned session's resource from a private local"
+resource_observer = "issue_pr"
+
+[work.done_when]
+all = [{ judge = "acceptance criteria are satisfied", id = "ac-met" }]
+
+[[work.chains]]
+id       = "review"
+workflow = "goal_reviewer"
+resource = { from = "locals.guard_dir" }
+
+[work.chains.when]
+all = [{ judge_pending = "ac-met" }]
+
+[work.chains.inputs]
+task = "goal_review"
++++
+Resolve the issue at {{ resource.id }}.

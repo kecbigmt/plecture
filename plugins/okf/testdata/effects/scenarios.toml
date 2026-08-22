@@ -1,12 +1,9 @@
 # What each of this plugin's effects is exercised with when its invocation
 # record is regenerated. stdout/okf-goal is what this plugin's own executable
-# reports back to the effects that call it; bin/plect stands in for plect's
-# instruction rendering.
+# reports back to the effect that calls it.
+#
+# The goal task pack is task documents, which own no lifecycle and so invoke
+# nothing; what they say is recorded by the gate-key record beside this one.
 
 [goal_bootstrap]
 inputs = { owner = "acme", assignees = '["user:acme"]' }
-
-[goal_review]
-inputs = { instruction = "extra review context" }
-
-[pursue_goal]

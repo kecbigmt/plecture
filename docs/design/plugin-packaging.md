@@ -1021,10 +1021,9 @@ catalog.toml
 okf/plugin.toml
 okf/config/workspaces/local_okf.toml
 okf/config/resources/okf_goal.toml
-okf/config/tasks/pursue_goal.toml
-okf/config/tasks/goal_review.toml
+okf/config/tasks/pursue_goal.md
+okf/config/tasks/goal_review.md
 okf/config/tasks/goal_bootstrap.toml
-okf/config/templates/goal_review.md
 okf/src/go.mod
 okf/src/cmd/okf-goal/main.go
 okf/src/cmd/okf-bundle/main.go

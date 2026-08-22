@@ -39,16 +39,11 @@ type ResolvedLayer struct {
 	InputsSchema  *jsonschema.Schema
 	LocalsSchema  *jsonschema.Schema
 	OutputsSchema *jsonschema.Schema
-	// Health, DoneWhen, DynamicOutputs, and Terminal are what this layer
-	// declares for itself. They compose across the chain rather than
-	// override: alive by AND, activity by OR, done_when by conjunction,
-	// produced outputs into this layer's own contract, and at most one
-	// [terminal] per chain.
-	Health         *config.HealthConfig
-	DoneWhen       *config.DoneWhen
-	DynamicOutputs []config.DynamicOutput
-	Terminal       *config.TerminalConfig
-	Chains         []config.ChainDefinition
+	// Health and Terminal are what this layer declares for itself. They
+	// compose across the chain rather than override: alive by AND, activity
+	// by OR, and at most one [terminal] per chain.
+	Health   *config.HealthConfig
+	Terminal *config.TerminalConfig
 }
 
 // ResolveLayers compiles the schemas and output bindings of every layer of
@@ -61,17 +56,14 @@ func ResolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
 	out := make([]ResolvedLayer, 0, len(defs))
 	for i, d := range defs {
 		layer := ResolvedLayer{
-			TaskID:         d.ID,
-			Setup:          d.Setup,
-			Cleanup:        d.Cleanup,
-			SourcePath:     d.SourcePath,
-			From:           d.Ownership(),
-			InnerInputs:    d.InnerInputs,
-			InnerEnv:       d.InnerEnv,
-			Health:         d.Health,
-			DoneWhen:       d.DoneWhen,
-			DynamicOutputs: d.DynamicOutputs,
-			Chains:         d.Chains,
+			TaskID:      d.ID,
+			Setup:       d.Setup,
+			Cleanup:     d.Cleanup,
+			SourcePath:  d.SourcePath,
+			From:        d.Ownership(),
+			InnerInputs: d.InnerInputs,
+			InnerEnv:    d.InnerEnv,
+			Health:      d.Health,
 		}
 		if d.Terminal.IsDeclared() {
 			layer.Terminal = d.Terminal

@@ -151,28 +151,6 @@ func TestExecutor_RunCaptureIssuesExpectedExecRequest(t *testing.T) {
 	assertShellRequest(t, spy, `tmux capture-pane`, "/work/x")
 }
 
-func TestExecutor_FetchOutputIssuesExpectedExecRequest(t *testing.T) {
-	spy := withSpyExecutor(t)
-	spy.stdout = []byte("42")
-	cfg := &config.Config{}
-	src := config.DynamicOutput{Name: "count", Script: `echo 42`}
-	ctx := RenderContext{Session: SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}}
-	values, err := FetchOutput(context.Background(), cfg, src, ctx)
-	if err != nil {
-		t.Fatalf("fetch: %v", err)
-	}
-	if values["count"] != "42" {
-		t.Errorf("count = %q", values["count"])
-	}
-	if len(spy.requests) != 1 {
-		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
-	}
-	want := ExecRequest{Argv: []string{"bash", "-c", `echo 42`}, Dir: "/work/x"}
-	if !reflect.DeepEqual(spy.requests[0], want) {
-		t.Errorf("request = %+v, want %+v", spy.requests[0], want)
-	}
-}
-
 func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte(`{"ready":"yes"}`)
@@ -271,12 +249,6 @@ func TestExecutor_ShellActionsPassNoStdin(t *testing.T) {
 		"capture": func(t *testing.T) {
 			binding := &TerminalBinding{Ops: &config.TerminalConfig{Capture: shellStub(`capture`)}}
 			if _, err := RunCapture(context.Background(), binding, session); err != nil {
-				t.Fatal(err)
-			}
-		},
-		"dynamic output": func(t *testing.T) {
-			src := config.DynamicOutput{Name: "count", Script: `echo 1`}
-			if _, err := FetchOutput(context.Background(), &config.Config{}, src, RenderContext{Session: session}); err != nil {
 				t.Fatal(err)
 			}
 		},

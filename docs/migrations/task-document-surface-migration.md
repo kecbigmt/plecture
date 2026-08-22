@@ -160,12 +160,11 @@ reason to wait, and only "they differ" is a reason to reopen.
 
 The example declares `resource_observer = "pull"`, so an instance of it is
 bound to a pull request. A reviewer session spawned by a chain is bound to the
-*declaring* session's resource, which for issue-keyed work is the issue — so
-until a chain can name the resource its spawned session binds to, instantiate
-such a review against the pull request explicitly:
+declaring session's resource unless the chain names one, so a chain spawning
+a review off issue-keyed work names the pull request:
 
-```bash
-plect task setup review --resource "$pr_url" --session "$PLECT_SESSION_NAME"
+```toml
+resource = { from = "resource.state.pr_url" }
 ```
 
 ### `resource_observer` is declared, and checked
@@ -205,27 +204,24 @@ also what says which keys exist — there is no `mutable = true` annotation to
 add, because state is mutable by definition. Update every instruction,
 runbook, and hook that recorded a fact through `set-output --task`.
 
-An agent that used to read a value out of `plect status --json`'s `outputs`
-now finds an observed fact under `observed.state` and a recorded one under
-`state`. The observation carries the time it was taken, so a reader can see
-how old it is.
+An agent that used to read a value out of `plect status --json --full`'s
+`outputs` now finds an observed fact under `observed.state` and a recorded one
+under `state`. The observation carries the time it was taken, so a reader can
+see how old it is.
 
-## What has not moved yet
+## What the shipped side did
 
-- **Every shipped completion declaration is still an effect.** The github
-  plugin's `work`, `investigate`, `respond`, and `review`, and the okf
-  plugin's `pursue_goal` and `goal_review`, keep the shape they had: the
-  loader still accepts `done_when`, `requires`, `[[outputs]]`, and
-  `[[chains]]` on an effect declaration, and an unrooted completion key still
-  resolves against the instance's own facts. Both accommodations go away with
-  the last of those six declarations; until then a converted document and a
-  carried effect coexist in one config. So this procedure is for
-  configuration you authored, and a plugin-shipped declaration converts when
-  its plugin does.
-- **A document's `[[chains]]` are validated but not fired.** They are
-  checked at load — the target workflow exists, and the inputs satisfy its
-  contract — and a tick says out loud that they were not evaluated. The PR
-  that moves the chain surface fires them.
+Every shipped completion declaration converted with the same procedure —
+github's `work`, `investigate`, `respond`, and `review`, and okf's
+`pursue_goal` and `goal_review`. With them went the two accommodations that
+let a converted document and a carried effect coexist: an effect declaration
+no longer accepts `done_when`, `requires`, `[[outputs]]`, or `[[chains]]`, and
+an unrooted completion key no longer resolves against the instance's own
+facts.
+
+`docs/migrations/shipped-completion-conversion.md` is that conversion's own
+procedure: what changes in *your* config because the shipped side moved, and
+the one persisted-state key that moves by hand.
 
 ## Rules that tightened
 

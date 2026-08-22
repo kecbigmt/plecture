@@ -47,6 +47,7 @@ type Vars struct {
 	WorkspaceDirPath string
 	Workflow         map[string]any // workspace provider setup outputs, exposed as .Workflow.outputs.<key>
 	SessionInputs    map[string]any // session inputs + explicit --var, exposed as .SessionInputs.<key>
+	Inputs           map[string]any // the declaring definition's own bound inputs, exposed as .Inputs.<key>
 }
 
 // Metadata holds frontmatter fields parsed from a template.
@@ -231,7 +232,11 @@ func RenderBody(mode, body string, vars Vars) (string, error) {
 	if outputs == nil {
 		outputs = map[string]any{}
 	}
-	inputs := vars.SessionInputs
+	sessionInputs := vars.SessionInputs
+	if sessionInputs == nil {
+		sessionInputs = map[string]any{}
+	}
+	inputs := vars.Inputs
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
@@ -243,6 +248,7 @@ func RenderBody(mode, body string, vars Vars) (string, error) {
 		WorkspaceDirPath string
 		Workflow         map[string]any
 		SessionInputs    map[string]any
+		Inputs           map[string]any
 	}{
 		Mode:             vars.Mode,
 		Instruction:      vars.Instruction,
@@ -250,7 +256,8 @@ func RenderBody(mode, body string, vars Vars) (string, error) {
 		ResourceID:       vars.ResourceID,
 		WorkspaceDirPath: vars.WorkspaceDirPath,
 		Workflow:         map[string]any{"outputs": outputs},
-		SessionInputs:    inputs,
+		SessionInputs:    sessionInputs,
+		Inputs:           inputs,
 	}
 
 	var buf bytes.Buffer

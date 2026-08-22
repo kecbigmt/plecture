@@ -1,14 +1,12 @@
 package service
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/chain"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
-	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
@@ -18,6 +16,7 @@ const (
 	chainBlockedOutputsMissing     = "outputs_missing"
 	chainBlockedInvalidBindings    = "invalid_bindings"
 	chainBlockedWorkflowUnresolved = "workflow_unresolved"
+	chainBlockedResourceUnresolved = "resource_unresolved"
 )
 
 // ChainSpawn is one (chain, instance) evaluation: whether the chain fired and,
@@ -26,17 +25,19 @@ const (
 // TickSession (plect tick) spawns each fired, not-already-active entry and
 // fills Spawned/TargetSession in with the result.
 type ChainSpawn struct {
-	ChainID        string         `json:"chain_id"`
-	Task           string         `json:"task,omitempty"`
-	Instance       string         `json:"instance"`
-	Workflow       string         `json:"workflow"`
-	Placement      string         `json:"placement"`
-	Resource       string         `json:"resource,omitempty"`
-	Tag            string         `json:"tag,omitempty"`
-	ParentSession  string         `json:"parent_session,omitempty"`
-	TargetSession  string         `json:"target_session,omitempty"`
-	Fired          bool           `json:"fired"`
-	BlockedReason  string         `json:"blocked_reason,omitempty"`
+	ChainID       string `json:"chain_id"`
+	Task          string `json:"task,omitempty"`
+	Instance      string `json:"instance"`
+	Workflow      string `json:"workflow"`
+	Placement     string `json:"placement"`
+	Resource      string `json:"resource,omitempty"`
+	Tag           string `json:"tag,omitempty"`
+	ParentSession string `json:"parent_session,omitempty"`
+	TargetSession string `json:"target_session,omitempty"`
+	Fired         bool   `json:"fired"`
+	BlockedReason string `json:"blocked_reason,omitempty"`
+	// MissingOutputs names the input projections that had nothing to read
+	// this evaluation — the facts the chain is waiting on before it fires.
 	MissingOutputs []string       `json:"missing_outputs,omitempty"`
 	Inputs         map[string]any `json:"inputs,omitempty"`
 	Spawned        bool           `json:"spawned,omitempty"`
@@ -46,123 +47,8 @@ type ChainSpawn struct {
 	Warnings       []string       `json:"warnings,omitempty"`
 }
 
-// evalChain decides one (chain, instance) pair: whether it fires, the resolved
-// placement/identity of the session a fire would spawn, and — on a fire — the
-// downstream inputs its `[chains.inputs]` bindings resolve to. The bindings are
-// validated twice: each wired output must be published by the upstream output
-// contract (upstreamOutputs), and the rendered inputs must satisfy the spawned
-// workflow's inputs contract. A binding that fails either check blocks the fire
-// (chainBlockedInvalidBindings) rather than spawning a reviewer with unwired or
-// contract-violating inputs.
-func evalChain(cfg *config.Config, store *state.Store, def config.ChainDefinition, workName string, session *domain.Session, instance, resource string, facts chain.Facts, upstreamOutputs []string) ChainSpawn {
-	placement := def.EffectivePlacement()
-	parent := placementParent(placement, session, workName)
-	tag := chainSpawnTag(def.ID, instance)
-	workflow, workflowErr := chain.RenderWorkflow(def.Workflow, chain.WorkFacts{
-		Resource:        resource,
-		Session:         workName,
-		Workflow:        session.Workflow,
-		Instance:        instance,
-		Outputs:         facts.State.Self,
-		PendingJudgeIDs: pendingJudgeIDs(facts),
-	})
-	sp := ChainSpawn{
-		ChainID:       def.ID,
-		Instance:      instance,
-		Workflow:      def.Workflow,
-		Placement:     placement,
-		Resource:      resource,
-		Tag:           tag,
-		ParentSession: parent,
-	}
-	if workflowErr != nil {
-		sp.BlockedReason = chainBlockedWorkflowUnresolved
-		sp.Warnings = append(sp.Warnings, fmt.Sprintf("workflow template could not be rendered: %v", workflowErr))
-		return sp
-	}
-	sp.Workflow = workflow
-
-	missing, err := chain.MissingOutputs(def.Inputs, facts.State.Self)
-	if err != nil {
-		sp.BlockedReason = chainBlockedInvalidBindings
-		sp.Warnings = append(sp.Warnings, fmt.Sprintf("input bindings could not be parsed: %v", err))
-		return sp
-	}
-	undeclared, err := chain.UndeclaredWiredOutputs(def.Inputs, upstreamOutputs)
-	if err != nil {
-		sp.BlockedReason = chainBlockedInvalidBindings
-		sp.Warnings = append(sp.Warnings, fmt.Sprintf("input bindings could not be parsed: %v", err))
-		return sp
-	}
-	if len(undeclared) > 0 {
-		sp.BlockedReason = chainBlockedInvalidBindings
-		sp.Warnings = append(sp.Warnings, fmt.Sprintf("wired outputs %v are not published by the upstream output contract %v", undeclared, upstreamOutputs))
-		return sp
-	}
-
-	switch {
-	case !chain.WhenSatisfied(def.When, facts):
-		sp.BlockedReason = chainBlockedWhenUnmet
-		return sp
-	case len(missing) > 0:
-		sp.BlockedReason = chainBlockedOutputsMissing
-		sp.MissingOutputs = missing
-		return sp
-	}
-
-	if len(def.Inputs) > 0 {
-		rendered, rErr := chain.RenderInputs(def.Inputs, chain.WorkFacts{
-			Resource:        resource,
-			Session:         workName,
-			Workflow:        session.Workflow,
-			Instance:        instance,
-			Outputs:         facts.State.Self,
-			PendingJudgeIDs: pendingJudgeIDs(facts),
-		})
-		if rErr != nil {
-			sp.BlockedReason = chainBlockedInvalidBindings
-			sp.Warnings = append(sp.Warnings, fmt.Sprintf("input bindings could not be rendered: %v", rErr))
-			return sp
-		}
-		resolved, vErr := resolveSessionInputs(cfg, session.WorkspaceDirPath, workflow, rendered)
-		if vErr != nil {
-			sp.BlockedReason = chainBlockedInvalidBindings
-			sp.Warnings = append(sp.Warnings, fmt.Sprintf("resolved inputs violate workflow %q inputs contract: %s", workflow, vErr.Message))
-			return sp
-		}
-		sp.Inputs = resolved
-	}
-
-	// The resolved workflow must actually be defined before this reports
-	// fired: otherwise a typoed or stale template result reports fired=true
-	// every tick, and each spawn attempt fails identically at Up() — a
-	// repeating, silent-in-effect failure rather than the explicit error AC1
-	// requires. Checked here (not at render time) so it only blocks a chain
-	// that would otherwise really fire.
-	workflows, wfErr := cfg.LoadWorkflows(session.WorkspaceDirPath)
-	if wfErr != nil {
-		sp.BlockedReason = chainBlockedWorkflowUnresolved
-		sp.Warnings = append(sp.Warnings, fmt.Sprintf("load workflows: %v", wfErr))
-		return sp
-	}
-	if _, ok := workflows[workflow]; !ok {
-		sp.BlockedReason = chainBlockedWorkflowUnresolved
-		sp.Warnings = append(sp.Warnings, fmt.Sprintf("chain %q resolves to workflow %q, which is not defined (add .plect/workflows/%s.toml)", def.ID, workflow, workflow))
-		return sp
-	}
-
-	sp.Fired = true
-	if name, err := resolveSpawnSessionName(cfg, resource, workflow, tag); err == nil && name != "" {
-		sp.TargetSession = name
-		if store.Get(name) != nil {
-			sp.AlreadyActive = true
-		}
-	}
-	return sp
-}
-
 // pendingJudgeIDs lists, sorted, the judge leaf ids with no usable verdict at
-// the current revision — the `.Work.done_when.pending_judge_ids` a chain binding
+// the current revision — the `task.done_when.pending_judge_ids` a chain input
 // hands the spawned reviewer so it knows which leaves to judge.
 func pendingJudgeIDs(facts chain.Facts) []string {
 	var ids []string

@@ -1,10 +1,44 @@
----
-description: Review a local-okf goal file and record whether it is achieved
----
++++
+# goal_review: a session that reviews one local-okf goal, spawned by
+# pursue_goal's chain once the goal's checklist is satisfied. Its subject is
+# the goal file being reviewed, not the target session's resource.
+#
+# There is no third party to judge a reviewer, so completion is this
+# reviewer's self-report of "I recorded the goal-met verdict on the target
+# session", captured as the revision it was recorded against so a later goal
+# file edit invalidates it automatically.
+[goal_review]
+kind              = "task"
+description       = "Review a local-okf goal file and record whether it is achieved"
+resource_observer = "okf_goal"
+
+[goal_review.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[goal_review.inputs_schema.properties]
+instruction = { type = "string" }
+
+[goal_review.state_schema]
+type = "object"
+
+[goal_review.state_schema.properties]
+verdict_revision = { type = "string" }
+
+[goal_review.done_when]
+all = [
+  { check = "resource.state.goal_parse_status", in = ["SUCCESS"] },
+  { expr = "self.state.verdict_revision == resource.state.revision" },
+]
+
+[goal_review.budget]
+heartbeat_budget = 3
+on_exhaust       = "escalate"
++++
 {{- $work := get .SessionInputs "work_session" "" -}}
 {{- $instance := get .SessionInputs "instance" "" -}}
 {{- $judges := get .SessionInputs "judge_ids" "" -}}
-Review the goal at {{.ResourceID}}.
+Review the goal at {{ resource.id }}.
 
 Steps:
 
@@ -35,10 +69,10 @@ Steps:
 5. Record that you finished reviewing (this is what lets plect close out this
    review session — there is no third party to judge a reviewer, so
    completion is your own self-report): find this review's own current
-   `revision` with `plect status --json` (the `revision` output on this
-   session's own task instance, not the target session's — `$PLECT_SESSION_NAME`
-   is this session), then run
-   `plect state set-output "$PLECT_SESSION_NAME" --task goal_review#1 '{"verdict_revision":"<that revision>"}'`
+   `revision` with `plect status --json` (the `revision` under `observed.state`
+   on this session's own task instance, not the target session's —
+   `$PLECT_SESSION_NAME` is this session), then run
+   `plect state set "$PLECT_SESSION_NAME" --instance goal_review#1 '{"verdict_revision":"<that revision>"}'`
    (adjust the instance id if `plect status --json` shows a different one).
    Do this whichever action you took above. If the goal file changes again
    later, this review's done_when reopens automatically and you'll be asked
@@ -57,7 +91,7 @@ agent: `> 🤖 This review was written by an AI agent under human supervision.`
 question. When a judgment call is needed, write the open question in the
 judge's reason and use request-changes — do not silently assume an answer
 and proceed.
-{{- if .Instruction}}
+{{- if get .Inputs "instruction" ""}}
 
-Additional instructions: {{.Instruction}}
+Additional instructions: {{get .Inputs "instruction" ""}}
 {{- end}}

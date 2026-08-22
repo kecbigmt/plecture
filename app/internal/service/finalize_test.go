@@ -18,11 +18,11 @@ func TestFinalizeTask_RefusesWhenNotSatisfied(t *testing.T) {
 	store := testStore(t)
 	seedSession(t, store, "o/r-1", "o/r", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "PENDING"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "PENDING"}),
 		},
 	})
 
@@ -34,85 +34,21 @@ func TestFinalizeTask_RefusesWhenNotSatisfied(t *testing.T) {
 	}
 }
 
-// A revision approved (or an output persisted as satisfied) before the most
-// recent change must not let finalize act on stale data: finalize must refresh
-// dynamic outputs first, exactly as tick does, so a resource that has since
-// moved on (a new commit, a check going red) is caught before cleanup reclaims
-// the instance.
-func TestFinalizeTask_RefreshesDynamicOutputsBeforeReconfirming(t *testing.T) {
-	marker := filepath.Join(t.TempDir(), "status")
-	if err := os.WriteFile(marker, []byte("FAILURE"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{reviewFixtureWithOutput("cat " + marker)},
-		[]nodeFixture{{id: "review"}})
-	store := testStore(t)
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "wf", map[string]*contract.TaskState{
-		"initial": {
-			TaskID:  "review",
-			Dynamic: true,
-			Status:  contract.TaskStatusProduced,
-			// Stale persisted value: satisfies done_when if read as-is, but the
-			// dynamic output script (the "live" source of truth) now says FAILURE.
-			Outputs: map[string]any{"checks_status": "SUCCESS"},
-		},
-	})
-
-	if _, err := FinalizeTask(cfg, store, FinalizeTaskParams{Instance: "initial", SessionName: "owner/repo-1"}); err == nil {
-		t.Fatal("expected finalize to refuse once the refreshed output shows FAILURE, not the stale persisted SUCCESS")
-	}
-	if store.Get("owner/repo-1").Tasks["initial"] == nil {
-		t.Error("instance must not be reclaimed")
-	}
-	if got := store.Get("owner/repo-1").Tasks["initial"].Outputs["checks_status"]; got != "FAILURE" {
-		t.Errorf("checks_status = %v, want the refresh to have persisted the live FAILURE value", got)
-	}
-}
-
-// A dynamic output whose refresh fetch fails outright (script error, network
-// blip) is NOT a top-level RefreshInstanceOutputs error — tick/check tolerate
-// it and leave the prior persisted value untouched. finalize cannot make that
-// trade: a fetch failure means the current-revision reconfirmation the fetch
-// was supposed to provide never happened, so finalize must fail closed rather
-// than silently evaluate the untouched (possibly stale-satisfied) old value.
-func TestFinalizeTask_FailedOutputRefreshFailsClosed(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{reviewFixtureWithOutput("echo boom >&2; exit 1")},
-		[]nodeFixture{{id: "review"}})
-	store := testStore(t)
-	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "wf", map[string]*contract.TaskState{
-		"initial": {
-			TaskID:  "review",
-			Dynamic: true,
-			Status:  contract.TaskStatusProduced,
-			// Stale persisted value: satisfies done_when if trusted as-is, but the
-			// live refresh attempt below fails outright rather than returning a
-			// fresh value.
-			Outputs: map[string]any{"checks_status": "SUCCESS"},
-		},
-	})
-
-	if _, err := FinalizeTask(cfg, store, FinalizeTaskParams{Instance: "initial", SessionName: "owner/repo-1"}); err == nil {
-		t.Fatal("expected finalize to fail closed when the refresh fetch itself fails")
-	}
-	if store.Get("owner/repo-1").Tasks["initial"] == nil {
-		t.Error("instance must not be reclaimed when the refresh fetch fails")
-	}
-}
-
 // Satisfied + no bound resource: finalize records completion and leaves the
 // instance in place — cleanup is a separate, explicit step.
 func TestFinalizeTask_SatisfiedNoResourceLeavesInstanceForCleanup(t *testing.T) {
 	cfg := checkStatusOnlyConfig(t, 0)
+	// finalize re-observes before it reconfirms, so the observation has to
+	// report the facts the predicate reads rather than the seeded snapshot.
+	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS"})
 	store := testStore(t)
 	seedSession(t, store, "o/r-1", "o/r", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS"}),
 		},
 	})
 
@@ -171,6 +107,10 @@ args    = ["-c", 'echo "$1 $2" > %s', "finalize", { from = "resource.id" }, { fr
 		t.Fatal(err)
 	}
 
+	// Narrow enough to leave the local-okf resource to the observer this test
+	// declares for it, which is the one finalize has to run.
+	stubObservedFacts(t, cfg, "^https://", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
+
 	store := testStore(t)
 	seedSession(t, store, "o/r-1", "o/r", 1, "default", map[string]*contract.TaskState{
 		"initial": {
@@ -179,7 +119,6 @@ args    = ["-c", 'echo "$1 $2" > %s', "finalize", { from = "resource.id" }, { fr
 			Status:   contract.TaskStatusProduced,
 			Dynamic:  true,
 			Resource: "local-okf://kec/goals/x.md",
-			Outputs:  map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
 		},
 	})
 
@@ -240,7 +179,7 @@ args    = ["-c", "echo boom >&2; exit 1"]
 			Status:   contract.TaskStatusProduced,
 			Dynamic:  true,
 			Resource: "local-okf://kec/goals/x.md",
-			Outputs:  map[string]any{"checks_status": "SUCCESS"},
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS"}),
 		},
 	})
 

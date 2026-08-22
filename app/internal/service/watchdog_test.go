@@ -222,21 +222,36 @@ func TestEvaluateHealth_MessageDoesNotAffectHealthOutcome(t *testing.T) {
 	}
 }
 
-// activityFixtureConfig declares one run-scoped task "runner" whose
-// `[health].alive` probe is fixed at "true" and whose `[health].activity`
-// probe is the given shell snippet, plus a bare "initial" node so
-// LoadTaskDefinitions has a workflow to resolve against. The task's done_when
-// has a single check leaf against the "done" output, so seeding it as
-// anything but "yes" leaves unmet work.
+// activityFixtureConfig declares the two halves health reads. The run-scoped
+// effect "runner" owns the probes: `[health].alive` fixed at "true", and
+// `[health].activity` the given shell snippet. The task document "gate" owns
+// the work: one check leaf against the observed "done" fact, so an instance
+// observed as anything but "yes" leaves the session owing progress.
 func activityFixtureConfig(t *testing.T, activity string) *config.Config {
 	t.Helper()
-	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{
-		id:       "runner",
-		scope:    contract.TaskScopeRun,
-		alive:    "true",
-		activity: activity,
-		extra:    "[[done_when.all]]\ncheck = \"done\"\neq = \"yes\"\n",
-	}}, []nodeFixture{{id: "initial", uses: "runner"}})
+	return writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+		{
+			id:       "runner",
+			scope:    contract.TaskScopeRun,
+			alive:    "true",
+			activity: activity,
+		},
+		{
+			id:    "gate",
+			extra: "[[done_when.all]]\ncheck = \"resource.state.done\"\neq = \"yes\"\n",
+		},
+	}, []nodeFixture{{id: "initial", uses: "runner"}})
+}
+
+// gateInstance is one live instance of the "gate" document, observed to
+// report the given "done" fact.
+func gateInstance(done string) *contract.TaskState {
+	return &contract.TaskState{
+		Scope:    contract.TaskScopeSession,
+		TaskID:   "gate",
+		Status:   contract.TaskStatusProduced,
+		Observed: observedFacts(map[string]any{"done": done}),
+	}
 }
 
 // activityProbeCmd renders a fixed JSON activity envelope as the probe's
@@ -269,11 +284,12 @@ func TestEvaluateHealth_WedgedButAliveProbePassingReadsStalled(t *testing.T) {
 	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
 		// LastTickAt far in the past and a stale "waiting" message stand in
@@ -312,11 +328,12 @@ func TestEvaluateHealth_SilenceExpectedNarrowsExpectationToHealthy(t *testing.T)
 	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", true, longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -340,11 +357,12 @@ func TestEvaluateHealth_NoActivitySignalDeclaredStaysUndeclaredNotStalled(t *tes
 	cfg := activityFixtureConfig(t, "") // no activity probe declared at all
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -365,11 +383,12 @@ func TestEvaluateHealth_EmptyProbeOutputStaysUndeclared(t *testing.T) {
 	cfg := activityFixtureConfig(t, noBasisProbeCmd)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -395,11 +414,12 @@ func TestEvaluateHealth_ProbeExitFailureContributesNothingAndReportsFault(t *tes
 	cfg := activityFixtureConfig(t, "echo 'pane is gone' >&2; exit 3")
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -440,11 +460,12 @@ func TestEvaluateHealth_InvalidEnvelopeContributesNothingAndWarns(t *testing.T) 
 	cfg := activityFixtureConfig(t, `echo '{"status":"active"}'`)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -477,11 +498,12 @@ func TestEvaluateHealth_LapsedProbeWithPriorActivityReadsStalledNotUndeclared(t 
 	cfg := activityFixtureConfig(t, noBasisProbeCmd)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
 		s.Health = &contract.HealthState{LastFingerprint: "initial:fp-1", LastActivityAt: longAgo}
@@ -507,11 +529,12 @@ func TestEvaluateHealth_FreshActivityEvidenceReadsHealthy(t *testing.T) {
 	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, time.Now()))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -540,6 +563,7 @@ func TestEvaluateHealth_NoUnmetWorkStaysHealthyRegardlessOfSignal(t *testing.T) 
 			Status:  contract.TaskStatusProduced,
 			Outputs: map[string]any{"done": "yes"}, // done_when already satisfied
 		},
+		"gate": gateInstance("yes"),
 	})
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -560,14 +584,15 @@ func TestEvaluateHealth_EscalatedWorkStillExpectsActivity(t *testing.T) {
 	cfg := activityFixtureConfig(t, activityProbeCmd(t, "fp-1", false, longAgo))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 			DoneWhen: &contract.DoneWhenState{
 				LastAction: "escalate",
 			},
 		},
+		"gate": gateInstance("no"),
 	})
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
 		s.Health = &contract.HealthState{LastFingerprint: "initial:fp-1", LastActivityAt: longAgo}
@@ -618,11 +643,12 @@ func TestEvaluateHealth_ActivityFingerprintUnchangedPastWindowReadsStalled(t *te
 	cfg := activityFixtureConfig(t, activityFingerprintCmd(t, "fp-1"))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 	setActivityState(t, store, "owner/repo-1", "initial:fp-1", longAgo)
 
@@ -645,11 +671,12 @@ func TestEvaluateHealth_ActivityFingerprintAdvancedReadsHealthy(t *testing.T) {
 	cfg := activityFixtureConfig(t, activityFingerprintCmd(t, "fp-2"))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 	setActivityState(t, store, "owner/repo-1", "initial:fp-1", longAgo)
 
@@ -678,11 +705,12 @@ func TestEvaluateHealth_ActivityFingerprintUnchangedWithinWindowReadsHealthy(t *
 	cfg := activityFixtureConfig(t, activityFingerprintCmd(t, "fp-1"))
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 	setActivityState(t, store, "owner/repo-1", "initial:fp-1", time.Now())
 
@@ -704,11 +732,12 @@ func TestEvaluateHealth_NoActivityProbeDeclaredFallsBackToUndeclared(t *testing.
 	cfg := activityFixtureConfig(t, "") // no activity probe anywhere
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 
 	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
@@ -789,11 +818,12 @@ func TestHealthcheckSession_PushesStalledEscalationWithActivityTimestamp(t *test
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "runner",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "runner",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate": gateInstance("no"),
 	})
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
 	setActivityState(t, store, "owner/repo-1", "initial:fp-1", longAgo)
@@ -920,7 +950,7 @@ func twoInstanceHealthConfig(t *testing.T, workerAlive, workerActivity, sidecarA
 			scope:    contract.TaskScopeRun,
 			alive:    workerAlive,
 			activity: workerActivity,
-			extra:    "[[done_when.all]]\ncheck = \"done\"\neq = \"yes\"\n",
+			extra:    "[[done_when.all]]\ncheck = \"resource.state.done\"\neq = \"yes\"\n",
 		},
 		{
 			id:       "sidecar",
@@ -935,11 +965,12 @@ func seedTwoInstances(t *testing.T, store *state.Store) {
 	t.Helper()
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"worker": {
-			Scope:   contract.TaskScopeRun,
-			TaskID:  "worker",
-			Status:  contract.TaskStatusProduced,
-			Outputs: map[string]any{"done": "no"},
+			Scope:    contract.TaskScopeRun,
+			TaskID:   "worker",
+			Status:   contract.TaskStatusProduced,
+			Observed: observedFacts(map[string]any{"done": "no"}),
 		},
+		"gate":    gateInstance("no"),
 		"sidecar": {Scope: contract.TaskScopeRun, TaskID: "sidecar", Status: contract.TaskStatusProduced},
 	})
 }

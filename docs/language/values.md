@@ -125,7 +125,7 @@ receiving everything and relying on a later check to reject the rest.
 | Effect `outputs.bind` | `inner.outputs.<key>`, `locals.<key>`, `inputs.<key>` |
 | Task `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
 | Task instruction body | `resource.id`, `resource.state.<key>`, `self.state.<key>`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
-| Chain `inputs` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
+| Chain `inputs`, chain `resource` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
 
 A projection in a task document's instruction body is spelled `{{ <path> }}`
 rather than as a tagged value, because prose has no room for a table; it is the

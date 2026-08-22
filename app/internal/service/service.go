@@ -187,7 +187,7 @@ func sessionTaskItems(cfg *config.Config, declarations taskDeclarations, session
 			rc := r
 			dwResult = &rc
 		} else if declarations.declares(taskID) {
-			dw, live, err := declarations.gate(cfg, session, key, st)
+			dw, live, err := declarations.gate(key, st)
 			if err == nil && dw != nil {
 				res := task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(session.Name, st, sessions))
 				dwResult = &res

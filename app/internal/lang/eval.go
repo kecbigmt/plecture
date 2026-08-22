@@ -244,10 +244,15 @@ func (e Eval) expr(src string) (any, error) {
 	return out.Value(), nil
 }
 
-// stringify is the one place a native value becomes the single string an
-// argv element or a shell binding can carry. A composite has no such form,
-// so it is refused rather than silently serialized in a shape no receiver
-// agreed to.
+// Stringify is the one place a native value becomes the single string an argv
+// element, a shell binding, or a resource identifier can carry. A composite
+// has no such form, so it is refused rather than silently serialized in a
+// shape no receiver agreed to. It is exported for a caller that resolves a
+// value in two steps — deciding whether the projection found anything before
+// deciding whether what it found can be carried — which a single Argument
+// call collapses into one indistinguishable failure.
+func Stringify(v any) (string, error) { return stringify(v) }
+
 func stringify(v any) (string, error) {
 	switch value := v.(type) {
 	case string:

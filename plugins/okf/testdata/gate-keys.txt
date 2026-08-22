@@ -1,9 +1,10 @@
-== goal_review
-goal_parse_status  observed  done_when   okf_goal
-verdict_current    derived   done_when
+== goal_review (okf_goal)
+resource.state.goal_parse_status           observed  done_when   okf_goal
+resource.state.revision                    observed  done_when   okf_goal
+self.state.verdict_revision                recorded  done_when   goal_review
 
-== pursue_goal
-checklist_status   observed  chain.goal_review+done_when   okf_goal
-goal-met           judged    chain.goal_review+done_when
-goal_parse_status  observed  chain.goal_review+done_when   okf_goal
-goal_status        observed  chain.goal_review+done_when   okf_goal
+== pursue_goal (okf_goal)
+goal-met                                   judged    done_when   pursue_goal
+resource.state.checklist_status            observed  done_when   okf_goal
+resource.state.goal_parse_status           observed  done_when   okf_goal
+resource.state.goal_status                 observed  done_when   okf_goal

@@ -392,37 +392,6 @@ func TestTaskSetup_RejectsUndeclaredInput(t *testing.T) {
 	}
 }
 
-func TestRefreshInstanceOutputs_UsesInstanceResource(t *testing.T) {
-	cfg := writeWorkflowFixture(t, t.TempDir(), "claude",
-		[]taskFixture{{id: "review", scope: "session", setup: `echo '{}'`, extra: `
-[[outputs]]
-name = "seen_resource"
-script = "printf '%s' '{{.ResourceID}}'"
-`}},
-		[]nodeFixture{{id: "review"}},
-	)
-	store := testStore(t)
-	seedSession(t, store, "o/r-1", "o/r", 1, "claude", map[string]*contract.TaskState{
-		"review#1": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Dynamic: true, TaskID: "review", Resource: "pr-1", Outputs: map[string]any{}},
-		"review#2": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Dynamic: true, TaskID: "review", Resource: "pr-2", Outputs: map[string]any{}},
-	})
-
-	results, err := RefreshInstanceOutputs(cfg, store, "o/r-1", "review#2")
-	if err != nil {
-		t.Fatalf("RefreshInstanceOutputs: %v", err)
-	}
-	if len(results) != 1 || !results[0].Fetched || results[0].Value != "pr-2" {
-		t.Fatalf("refresh results = %+v, want pr-2 fetched", results)
-	}
-	s := store.Get("o/r-1")
-	if got := s.Tasks["review#2"].Outputs["seen_resource"]; got != "pr-2" {
-		t.Errorf("review#2 seen_resource = %v, want pr-2", got)
-	}
-	if _, ok := s.Tasks["review#1"].Outputs["seen_resource"]; ok {
-		t.Errorf("review#1 should not be updated when refreshing review#2: %+v", s.Tasks["review#1"].Outputs)
-	}
-}
-
 // Down reclaims a run-scoped dynamic instance ahead of the static run node it
 // was instantiated after; a session-scoped dynamic instance survives.
 func TestDown_ReclaimsDynamicRunInstance(t *testing.T) {
@@ -465,36 +434,6 @@ func TestDown_ReclaimsDynamicRunInstance(t *testing.T) {
 	// Reverse-instantiation: storybook (dynamic, newer) before tmux (static).
 	if idx(obs.cleaned, storyRes.Instance) > idx(obs.cleaned, "tmux") {
 		t.Errorf("expected storybook cleaned before tmux, got order %v", obs.cleaned)
-	}
-}
-
-// Teardown must stay resilient when a dynamic instance's task def has drifted
-// to invalid config (here: a `requires` naming an output the schema lacks).
-// ResolveDefinition would reject it, but teardown only needs the cleanup script,
-// so destroy must still run the cleanup and reclaim the session.
-func TestDestroy_ResilientToInvalidDefConfig(t *testing.T) {
-	marker := t.TempDir() + "/cleaned"
-	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
-		[]taskFixture{
-			{id: "review", scope: "session", setup: `echo '{}'`, cleanup: "touch " + marker,
-				extra: "requires = [\"nonexistent_output\"]\n"},
-		},
-		[]nodeFixture{{id: "review"}},
-	)
-	store := testStore(t)
-	// A produced dynamic instance of the (now-invalid) task.
-	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{
-		"review#1": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "review", Dynamic: true, Seq: 2, Outputs: map[string]any{}},
-	})
-
-	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "o/r-1"}); err != nil {
-		t.Fatalf("Destroy must not be fatal on invalid def config: %v", err)
-	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Errorf("cleanup script should have run despite invalid requires: %v", err)
-	}
-	if store.Get("o/r-1") != nil {
-		t.Error("session should be deleted after destroy")
 	}
 }
 

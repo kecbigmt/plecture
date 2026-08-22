@@ -25,11 +25,11 @@ func TestRecordJudge_PersistsReviewerInput(t *testing.T) {
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"revision": "sha1"}),
 			// The instance carries the judge leaf its verdict is recorded
 			// against: a verdict on a leaf nothing declares is refused.
 			ExtraDoneWhen: judgeLeafDoneWhen,
@@ -75,11 +75,11 @@ func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 	reviewer := "owner/repo-1+review"
 	seedSession(t, store, work, "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"revision": "sha1"}),
 			// The instance carries the judge leaf its verdict is recorded
 			// against: a verdict on a leaf nothing declares is refused.
 			ExtraDoneWhen: judgeLeafDoneWhen,
@@ -124,11 +124,11 @@ func TestRecordJudge_StampsRelationAndWorkflow(t *testing.T) {
 	reviewer := "owner/repo-1+review"
 	seedSession(t, store, work, "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"revision": "sha1"}),
 			// The instance carries the judge leaf its verdict is recorded
 			// against: a verdict on a leaf nothing declares is refused.
 			ExtraDoneWhen: judgeLeafDoneWhen,
@@ -242,10 +242,10 @@ func TestRecordJudge_RequiresReviewerSession(t *testing.T) {
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"revision": "sha1"}),
 			// The instance carries the judge leaf its verdict is recorded
 			// against: a verdict on a leaf nothing declares is refused.
 			ExtraDoneWhen: judgeLeafDoneWhen,
@@ -272,11 +272,11 @@ func TestRecordJudge_RejectsSelfReview(t *testing.T) {
 	work := "owner/repo-1"
 	seedSession(t, store, work, "owner/repo", 1, "", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"revision": "sha1"}),
 			// The instance carries the judge leaf its verdict is recorded
 			// against: a verdict on a leaf nothing declares is refused.
 			ExtraDoneWhen: judgeLeafDoneWhen,
@@ -360,7 +360,7 @@ func seedJudgeWork(t *testing.T, store *state.Store, work, judgeLeaf string) {
 			TaskID:        "work",
 			Status:        contract.TaskStatusProduced,
 			Dynamic:       true,
-			Outputs:       map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Observed:      observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 			ExtraDoneWhen: []byte(judgeLeaf),
 		},
 	})
@@ -394,11 +394,11 @@ func TestTickSession_HeartbeatKickPersistsHeartbeatTick(t *testing.T) {
 	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1"}),
 		},
 	})
 
@@ -409,7 +409,7 @@ func TestTickSession_HeartbeatKickPersistsHeartbeatTick(t *testing.T) {
 	if len(result.Actions) != 1 || result.Actions[0].Action != "kick" || result.Actions[0].HeartbeatTicks != 1 {
 		t.Fatalf("actions = %+v", result.Actions)
 	}
-	if len(result.Actions[0].UnmetItems) != 1 || result.Actions[0].UnmetItems[0].Output != "checks_status" || result.Actions[0].UnmetItems[0].Value != "FAILURE" {
+	if len(result.Actions[0].UnmetItems) != 1 || result.Actions[0].UnmetItems[0].Output != "resource.state.checks_status" || result.Actions[0].UnmetItems[0].Value != "FAILURE" {
 		t.Fatalf("unmet_items = %+v, want checks_status failure", result.Actions[0].UnmetItems)
 	}
 	check := store.Get("owner/repo-1").Tasks["initial"].DoneWhen
@@ -434,11 +434,11 @@ func TestTickSession_KickBodyAdvisesRebaseWhenMergeableStateDirty(t *testing.T) 
 	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "PENDING", "revision": "sha1", "mergeable_state": "dirty"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "PENDING", "revision": "sha1", "mergeable_state": "dirty"}),
 		},
 	})
 
@@ -462,11 +462,11 @@ func TestTickSession_KickBodyOmitsRebaseHintWhenMergeableStateClean(t *testing.T
 	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1", "mergeable_state": "clean"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1", "mergeable_state": "clean"}),
 		},
 	})
 
@@ -491,11 +491,11 @@ func TestTickSession_KickCarriesStructuredUnmetItemsInEventMetadata(t *testing.T
 	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1"}),
 		},
 	})
 
@@ -518,7 +518,7 @@ func TestTickSession_KickCarriesStructuredUnmetItemsInEventMetadata(t *testing.T
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		t.Fatalf("unmet_items metadata is not valid JSON: %v (%s)", err, raw)
 	}
-	if len(items) != 1 || items[0].Output != "checks_status" || items[0].Value != "FAILURE" {
+	if len(items) != 1 || items[0].Output != "resource.state.checks_status" || items[0].Value != "FAILURE" {
 		t.Fatalf("unmet_items metadata = %+v, want checks_status failure", items)
 	}
 }
@@ -549,11 +549,11 @@ func TestTickSession_EventPollDoesNotConsumeHeartbeatBudget(t *testing.T) {
 	cfg := checkScenarioConfig(t, 1)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 
@@ -582,18 +582,18 @@ func TestTickSession_EventTickDoesNotEscalateAfterChangedDoneWhenState(t *testin
 	cfg := checkScenarioConfig(t, 1)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
 		t.Fatalf("first TickSession: %v", err)
 	}
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
-		s.Tasks["initial"].Outputs["revision"] = "sha2"
+		s.Tasks["initial"].Observed.State["revision"] = "sha2"
 		return nil
 	}); err != nil {
 		t.Fatalf("update revision: %v", err)
@@ -613,11 +613,11 @@ func TestCheckSession_HeartbeatBudgetZeroIsUnbounded(t *testing.T) {
 	cfg := checkScenarioConfig(t, 0)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1"}),
 			DoneWhen: &contract.DoneWhenState{
 				HeartbeatTicks: 100,
 			},
@@ -641,11 +641,11 @@ func TestTickSession_EscalatesOnNthHeartbeatTick(t *testing.T) {
 	cfg := checkFixtureConfig(t)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1"}),
 			DoneWhen: &contract.DoneWhenState{
 				HeartbeatTicks: 0,
 			},
@@ -678,7 +678,7 @@ func TestTickSession_EscalatesWhenJudgeKeepsRequestingChanges(t *testing.T) {
 			Status:   contract.TaskStatusProduced,
 			Dynamic:  true,
 			Resource: "https://github.com/owner/repo/pull/1",
-			Outputs:  map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 	if _, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"}); err != nil {
@@ -713,25 +713,25 @@ func TestCheckSession_StableOrderSkipsFailedAndReportsMissingReviewerCommand(t *
 	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"zeta": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 		"alpha": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 		"failed": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusFailed,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusFailed,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
@@ -771,7 +771,7 @@ func TestTickScenario_RequestChangesStaleThenApproved(t *testing.T) {
 			Status:   contract.TaskStatusProduced,
 			Dynamic:  true,
 			Resource: "https://github.com/owner/repo/pull/1",
-			Outputs:  map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 	// Both reviewers are siblings of the work session under a shared parent, so
@@ -823,7 +823,7 @@ func TestTickScenario_RequestChangesStaleThenApproved(t *testing.T) {
 	}
 
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
-		s.Tasks["initial"].Outputs["revision"] = "sha2"
+		s.Tasks["initial"].Observed.State["revision"] = "sha2"
 		return nil
 	}); err != nil {
 		t.Fatalf("update revision: %v", err)
@@ -873,7 +873,7 @@ requires = ["checks_status"]
 
 [done_when]
 all = [
-  { check = "checks_status", eq = "SUCCESS" },
+  { check = "resource.state.checks_status", eq = "SUCCESS" },
   { judge = "AC met", id = "ac-met" },
 ]
 
@@ -898,11 +898,11 @@ func TestTickSession_PushesDoneToParentOnceOnSatisfied(t *testing.T) {
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -941,11 +941,11 @@ func TestTickSession_SatisfiedWithNoParentDoesNotError(t *testing.T) {
 	cfg := checkStatusOnlyConfig(t, 1)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 
@@ -967,11 +967,11 @@ func TestTickSession_EscalatesAfterHeartbeatBudget_PushesToParent(t *testing.T) 
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1"}),
 			DoneWhen: &contract.DoneWhenState{
 				HeartbeatTicks: 0,
 			},
@@ -1020,7 +1020,7 @@ requires = ["checks_status"]
 
 [done_when]
 all = [
-  { check = "checks_status", eq = "SUCCESS" },
+  { check = "resource.state.checks_status", eq = "SUCCESS" },
 ]
 
 [done_when.budget]
@@ -1061,11 +1061,11 @@ func TestTickSession_PublishFailureLeavesMarkerUnadvancedForRetry(t *testing.T) 
 	cfg := checkScenarioConfig(t, 3)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1"}),
 		},
 	})
 	blockEventsDir(t, store)
@@ -1103,11 +1103,11 @@ func TestTickSession_SatisfiedPublishFailureAllowsRetry(t *testing.T) {
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -1149,11 +1149,11 @@ func TestTickSession_SatisfiedWakeFailureIsWarnedNotFatal(t *testing.T) {
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "SUCCESS", "revision": "sha1"}),
 		},
 	})
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -1188,11 +1188,11 @@ func TestCheckSession_ObservationOnly(t *testing.T) {
 	seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Dynamic: true,
-			Outputs: map[string]any{"checks_status": "FAILURE", "revision": "sha1"},
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Dynamic:  true,
+			Observed: observedFacts(map[string]any{"checks_status": "FAILURE", "revision": "sha1"}),
 		},
 	})
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -1223,7 +1223,7 @@ func TestCheckSession_ObservationOnly(t *testing.T) {
 
 	// Flip to a satisfied state and confirm check still never pushes `done`.
 	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
-		s.Tasks["initial"].Outputs["checks_status"] = "SUCCESS"
+		s.Tasks["initial"].Observed.State["checks_status"] = "SUCCESS"
 		return nil
 	}); err != nil {
 		t.Fatalf("update outputs: %v", err)

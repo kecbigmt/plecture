@@ -41,7 +41,7 @@ type TaskDocument struct {
 	// which is what a standing goal needs: continuing to exist is not
 	// exhaustion.
 	Budget map[string]any
-	Chains []ChainDefinition
+	Chains []DocumentChain
 	// Instruction is the body below the closing `+++`. Its `{{ <path> }}`
 	// projections are part of the language, validated at load against the
 	// roots this surface declares.
@@ -193,12 +193,11 @@ func taskDocumentFrom(def *lang.Definition, path string, fromPlugin bool) (TaskD
 			*field.target = table
 		}
 	}
-	decoded, err := decodeTaskPredicates(def)
+	doneWhen, err := decodeDoneWhen(def)
 	if err != nil {
 		return d, err
 	}
-	d.DoneWhen = decoded.DoneWhen
-	d.Chains = decoded.Chains
+	d.DoneWhen = doneWhen
 	// A document declares its budget beside its completion predicate, because
 	// what it bounds is convergence, not one predicate's shape; the runtime
 	// accounts for patience per predicate, so the two are joined here.
@@ -208,47 +207,31 @@ func taskDocumentFrom(def *lang.Definition, path string, fromPlugin bool) (TaskD
 	if err := d.DoneWhen.Validate(); err != nil {
 		return d, err
 	}
-	seen := make(map[string]bool, len(d.Chains))
-	for i := range d.Chains {
-		ch := &d.Chains[i]
-		ch.TaskID = def.ID
-		ch.SourcePath = path
-		if err := ch.Validate(); err != nil {
-			return d, err
-		}
-		if seen[ch.ID] {
-			return d, fmt.Errorf("chain id %q is declared more than once", ch.ID)
-		}
-		seen[ch.ID] = true
+	if d.Chains, err = documentChainsFrom(def, path); err != nil {
+		return d, err
 	}
 	return d, nil
 }
 
-// taskPredicates are the two fields whose shape the typed decoders own.
-type taskPredicates struct {
-	DoneWhen *DoneWhen         `toml:"done_when"`
-	Chains   []ChainDefinition `toml:"chains"`
-}
-
-func decodeTaskPredicates(def *lang.Definition) (taskPredicates, error) {
-	subtree := map[string]any{}
-	for _, name := range []string{"done_when", "chains"} {
-		if raw, ok := def.Body[name]; ok {
-			subtree[name] = raw
-		}
-	}
-	var decoded taskPredicates
-	if len(subtree) == 0 {
-		return decoded, nil
+// decodeDoneWhen re-encodes the completion subtree and decodes it with the
+// typed decoder that already owns that field's shape, rather than duplicating
+// it against the parsed tree.
+func decodeDoneWhen(def *lang.Definition) (*DoneWhen, error) {
+	raw, ok := def.Body["done_when"]
+	if !ok {
+		return nil, nil
 	}
 	var encoded bytes.Buffer
-	if err := toml.NewEncoder(&encoded).Encode(subtree); err != nil {
-		return decoded, err
+	if err := toml.NewEncoder(&encoded).Encode(map[string]any{"done_when": raw}); err != nil {
+		return nil, err
+	}
+	var decoded struct {
+		DoneWhen *DoneWhen `toml:"done_when"`
 	}
 	if _, err := toml.Decode(encoded.String(), &decoded); err != nil {
-		return decoded, err
+		return nil, err
 	}
-	return decoded, nil
+	return decoded.DoneWhen, nil
 }
 
 // listMarkdownFiles returns sorted *.md entries in dir. A missing dir returns

@@ -488,13 +488,15 @@ func TestApplyDisplay_EmptyRenderKeepsFallback(t *testing.T) {
 	}
 }
 
-func TestTaskViews_EvaluatesDoneWhenPerRuntimeTaskOutputs(t *testing.T) {
+// Each instance of one document is evaluated against its own recorded state,
+// so two instances of the same task can differ.
+func TestTaskViews_EvaluatesDoneWhenPerInstanceState(t *testing.T) {
 	success := "SUCCESS"
-	defs := map[string]config.TaskDefinition{
+	docs := map[string]config.TaskDocument{
 		"review": {
 			ID: "review",
 			DoneWhen: &config.DoneWhen{All: []config.DoneWhenLeaf{
-				{Check: "checks_status", Eq: &success},
+				{Check: "self.state.checks_status", Eq: &success},
 			}},
 		},
 	}
@@ -507,7 +509,7 @@ func TestTaskViews_EvaluatesDoneWhenPerRuntimeTaskOutputs(t *testing.T) {
 				TaskID:  "review",
 				Dynamic: true,
 				Seq:     1,
-				Outputs: map[string]any{"checks_status": "SUCCESS", "pr_state": "open"},
+				State:   map[string]any{"checks_status": "SUCCESS"},
 			},
 			"review#2": {
 				Scope:   contract.TaskScopeSession,
@@ -515,12 +517,12 @@ func TestTaskViews_EvaluatesDoneWhenPerRuntimeTaskOutputs(t *testing.T) {
 				TaskID:  "review",
 				Dynamic: true,
 				Seq:     2,
-				Outputs: map[string]any{"checks_status": "FAILURE", "pr_state": "open"},
+				State:   map[string]any{"checks_status": "FAILURE"},
 			},
 		},
 	}
 
-	views := taskViews(&config.Config{}, taskDeclarations{effects: defs}, s, map[string]*domain.Session{s.Name: s})
+	views := taskViews(&config.Config{}, taskDeclarations{docs: docs}, s, map[string]*domain.Session{s.Name: s})
 	if len(views) != 2 {
 		t.Fatalf("len(taskViews) = %d, want 2", len(views))
 	}
@@ -539,15 +541,15 @@ func TestShowAndListExposePerRuntimeTaskDoneWhen(t *testing.T) {
 	store := testStore(t)
 	extra := `
 [[done_when.all]]
-check = "checks_status"
+check = "resource.state.checks_status"
 eq = "SUCCESS"
 `
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{id: "review", scope: "session", extra: extra}},
 		[]nodeFixture{{id: "review"}})
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
-		"review#1": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "review", Dynamic: true, Seq: 1, Outputs: map[string]any{"checks_status": "SUCCESS"}},
-		"review#2": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "review", Dynamic: true, Seq: 2, Outputs: map[string]any{"checks_status": "FAILURE"}},
+		"review#1": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "review", Dynamic: true, Seq: 1, Observed: observedFacts(map[string]any{"checks_status": "SUCCESS"})},
+		"review#2": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, TaskID: "review", Dynamic: true, Seq: 2, Observed: observedFacts(map[string]any{"checks_status": "FAILURE"})},
 	})
 
 	status, err := Status(cfg, store, "org/repo-1")

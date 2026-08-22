@@ -24,69 +24,69 @@ func TestEvaluateTaskDoneWhen(t *testing.T) {
 		},
 		{
 			name:    "eq satisfied",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "checks_status", Eq: strp("SUCCESS")}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.checks_status", Eq: strp("SUCCESS")}}},
 			outputs: map[string]any{"checks_status": "SUCCESS"},
 			want:    DoneSatisfied,
 		},
 		{
 			name:    "eq present but false is unsatisfied",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "checks_status", Eq: strp("SUCCESS")}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.checks_status", Eq: strp("SUCCESS")}}},
 			outputs: map[string]any{"checks_status": "FAILURE"},
 			want:    DoneUnsatisfied,
 		},
 		{
 			name:    "missing output is pending, not unsatisfied",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "checks_status", Eq: strp("SUCCESS")}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.checks_status", Eq: strp("SUCCESS")}}},
 			outputs: map[string]any{},
 			want:    DonePending,
 		},
 		{
 			name:    "ne satisfied",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "pr_state", Ne: strp("open")}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.pr_state", Ne: strp("open")}}},
 			outputs: map[string]any{"pr_state": "merged"},
 			want:    DoneSatisfied,
 		},
 		{
 			name:    "in satisfied",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "pr_state", In: []any{"merged", "closed"}}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.pr_state", In: []any{"merged", "closed"}}}},
 			outputs: map[string]any{"pr_state": "closed"},
 			want:    DoneSatisfied,
 		},
 		{
 			name:    "in not a member is unsatisfied",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "pr_state", In: []any{"merged", "closed"}}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.pr_state", In: []any{"merged", "closed"}}}},
 			outputs: map[string]any{"pr_state": "open"},
 			want:    DoneUnsatisfied,
 		},
 		{
 			name:    "gte satisfied (numeric, normalized int)",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "coverage", Gte: fp(80)}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.coverage", Gte: fp(80)}}},
 			outputs: map[string]any{"coverage": float64(85)},
 			want:    DoneSatisfied,
 		},
 		{
 			name:    "gte below bound is unsatisfied",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "coverage", Gte: fp(80)}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.coverage", Gte: fp(80)}}},
 			outputs: map[string]any{"coverage": float64(70)},
 			want:    DoneUnsatisfied,
 		},
 		{
 			name:    "lte satisfied",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "failures", Lte: fp(0)}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.failures", Lte: fp(0)}}},
 			outputs: map[string]any{"failures": float64(0)},
 			want:    DoneSatisfied,
 		},
 		{
 			name:    "gte against non-numeric value is unsatisfied",
-			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "coverage", Gte: fp(80)}}},
+			dw:      &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.coverage", Gte: fp(80)}}},
 			outputs: map[string]any{"coverage": "lots"},
 			want:    DoneUnsatisfied,
 		},
 		{
 			name: "conjunction: all satisfied",
 			dw: &config.DoneWhen{All: []config.DoneWhenLeaf{
-				{Check: "pr_state", Eq: strp("merged")},
-				{Check: "checks_status", Eq: strp("SUCCESS")},
+				{Check: "self.state.pr_state", Eq: strp("merged")},
+				{Check: "self.state.checks_status", Eq: strp("SUCCESS")},
 			}},
 			outputs: map[string]any{"pr_state": "merged", "checks_status": "SUCCESS"},
 			want:    DoneSatisfied,
@@ -94,8 +94,8 @@ func TestEvaluateTaskDoneWhen(t *testing.T) {
 		{
 			name: "conjunction: one unsatisfied wins over pending",
 			dw: &config.DoneWhen{All: []config.DoneWhenLeaf{
-				{Check: "pr_state", Eq: strp("merged")},       // unsatisfied
-				{Check: "checks_status", Eq: strp("SUCCESS")}, // pending (missing)
+				{Check: "self.state.pr_state", Eq: strp("merged")},       // unsatisfied
+				{Check: "self.state.checks_status", Eq: strp("SUCCESS")}, // pending (missing)
 			}},
 			outputs: map[string]any{"pr_state": "open"},
 			want:    DoneUnsatisfied,
@@ -103,8 +103,8 @@ func TestEvaluateTaskDoneWhen(t *testing.T) {
 		{
 			name: "conjunction: satisfied + pending is pending",
 			dw: &config.DoneWhen{All: []config.DoneWhenLeaf{
-				{Check: "pr_state", Eq: strp("merged")},       // satisfied
-				{Check: "checks_status", Eq: strp("SUCCESS")}, // pending (missing)
+				{Check: "self.state.pr_state", Eq: strp("merged")},       // satisfied
+				{Check: "self.state.checks_status", Eq: strp("SUCCESS")}, // pending (missing)
 			}},
 			outputs: map[string]any{"pr_state": "merged"},
 			want:    DonePending,
@@ -118,7 +118,7 @@ func TestEvaluateTaskDoneWhen(t *testing.T) {
 		{
 			name: "judge leaf keeps a satisfied check pending",
 			dw: &config.DoneWhen{All: []config.DoneWhenLeaf{
-				{Check: "pr_state", Eq: strp("merged")},
+				{Check: "self.state.pr_state", Eq: strp("merged")},
 				{Judge: "reviewer approved"},
 			}},
 			outputs: map[string]any{"pr_state": "merged"},
@@ -269,8 +269,8 @@ func TestEvaluateTaskDoneWhen_Judges(t *testing.T) {
 // soon as its own judges are satisfied.
 func TestEvaluateTaskDoneWhen_TaskResourceStatus(t *testing.T) {
 	dw := &config.DoneWhen{All: []config.DoneWhenLeaf{
-		{Check: "resource_kind", In: []any{"pull", "issue"}},
-		{Check: "checks_status", In: []any{"SUCCESS", "NULL"}},
+		{Check: "self.state.resource_kind", In: []any{"pull", "issue"}},
+		{Check: "self.state.checks_status", In: []any{"SUCCESS", "NULL"}},
 	}}
 	out := func(kind, checks string) map[string]any {
 		return map[string]any{"resource_kind": kind, "checks_status": checks}
@@ -300,7 +300,7 @@ func TestEvaluateTaskDoneWhen_TaskResourceStatus(t *testing.T) {
 func TestEvaluateTaskDoneWhen_NormalizesIntegers(t *testing.T) {
 	// JSON unmarshal leaves integers as float64; eq compares via the normalized
 	// int string form, so an integral coverage value still matches "3".
-	dw := &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "count", Eq: strp("3")}}}
+	dw := &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "self.state.count", Eq: strp("3")}}}
 	if got := EvaluateTaskDoneWhen(dw, CompletionState{Self: map[string]any{"count": float64(3)}}); got.Overall != DoneSatisfied {
 		t.Errorf("overall = %q, want satisfied", got.Overall)
 	}
@@ -308,15 +308,15 @@ func TestEvaluateTaskDoneWhen_NormalizesIntegers(t *testing.T) {
 
 func TestEvaluateTaskDoneWhen_LeafCarriesObservedValue(t *testing.T) {
 	dw := &config.DoneWhen{All: []config.DoneWhenLeaf{
-		{Check: "workdir_dirty", Eq: strp("0")},
-		{Check: "checks_status", Eq: strp("SUCCESS")},
+		{Check: "self.state.workdir_dirty", Eq: strp("0")},
+		{Check: "self.state.checks_status", Eq: strp("SUCCESS")},
 		{Judge: "reviewer approved"},
 	}}
 	got := EvaluateTaskDoneWhen(dw, CompletionState{Self: map[string]any{"workdir_dirty": "2"}})
 
 	dirty := got.Leaves[0]
-	if !dirty.Observed || dirty.Value != "2" || dirty.Output != "workdir_dirty" {
-		t.Errorf("observed leaf = %+v, want output=workdir_dirty value=2 observed", dirty)
+	if !dirty.Observed || dirty.Value != "2" || dirty.Output != "self.state.workdir_dirty" {
+		t.Errorf("observed leaf = %+v, want output=self.state.workdir_dirty value=2 observed", dirty)
 	}
 	if dirty.Status != DoneUnsatisfied {
 		t.Errorf("workdir_dirty=2 eq 0 → %q, want unsatisfied", dirty.Status)
@@ -330,50 +330,6 @@ func TestEvaluateTaskDoneWhen_LeafCarriesObservedValue(t *testing.T) {
 	if judge := got.Leaves[2]; judge.Output != "" || judge.Observed {
 		t.Errorf("judge leaf = %+v, want no output/value", judge)
 	}
-}
-
-func TestResolveDefinition_Requires(t *testing.T) {
-	schema := map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"checks_status": map[string]any{"type": "string", "mutable": true},
-		},
-	}
-	base := config.TaskDefinition{ID: "review", Scope: "session", Setup: shellStub("echo '{}'"), OutputsSchema: schema}
-
-	t.Run("valid: check in requires in schema", func(t *testing.T) {
-		def := base
-		def.Requires = []string{"checks_status"}
-		def.DoneWhen = &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "checks_status", Eq: strp("SUCCESS")}}}
-		if _, err := ResolveDefinition(def, "review"); err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-	})
-
-	t.Run("done_when check not in requires", func(t *testing.T) {
-		def := base
-		def.Requires = []string{"checks_status"}
-		def.DoneWhen = &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "pr_state", Eq: strp("merged")}}}
-		if _, err := ResolveDefinition(def, "review"); err == nil {
-			t.Error("expected error: check not declared in requires")
-		}
-	})
-
-	t.Run("requires not in outputs schema", func(t *testing.T) {
-		def := base
-		def.Requires = []string{"nope"}
-		if _, err := ResolveDefinition(def, "review"); err == nil {
-			t.Error("expected error: requires names an undeclared output")
-		}
-	})
-
-	t.Run("empty requires is unconstrained", func(t *testing.T) {
-		def := base
-		def.DoneWhen = &config.DoneWhen{All: []config.DoneWhenLeaf{{Check: "anything", Eq: strp("x")}}}
-		if _, err := ResolveDefinition(def, "review"); err != nil {
-			t.Errorf("no requires should be unconstrained, got %v", err)
-		}
-	})
 }
 
 func TestEvaluateTaskDoneWhen_RootedKeys(t *testing.T) {

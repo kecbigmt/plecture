@@ -421,3 +421,177 @@ Review it.
 		t.Errorf("error = %v, want it to say the reference needs its alias", err)
 	}
 }
+
+// A chain's inputs are values over the chain-input roots, not templates: the
+// parsed forms are what the runtime evaluates, and a literal stays a literal.
+func TestLoadTaskDocuments_ChainInputsParseAsValues(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "pursue.md"), chainingTaskDoc)
+	cfg := &Config{BaseDir: base}
+	docs, err := cfg.LoadTaskDocuments("")
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments: %v", err)
+	}
+	chains := docs["pursue"].Chains
+	if len(chains) != 1 {
+		t.Fatalf("chains = %+v, want one", chains)
+	}
+	ch := chains[0]
+	if ch.ID != "goal_review" || ch.Workflow != "goal_reviewer" || ch.EffectivePlacement() != "sibling" {
+		t.Errorf("chain = %+v", ch)
+	}
+	if ch.TaskID != "pursue" {
+		t.Errorf("chain names its declaring document: got %q", ch.TaskID)
+	}
+	if len(ch.When.All) != 1 || ch.When.All[0].JudgePending != "goal-met" {
+		t.Errorf("when = %+v", ch.When)
+	}
+	if got := ch.Inputs["task"]; got == nil || got.Literal != "goal_review" {
+		t.Errorf("a literal input stays a literal: %+v", got)
+	}
+	if got := ch.Inputs["work_session"]; got == nil || got.From != "task.session" {
+		t.Errorf("a projection keeps its path: %+v", got)
+	}
+	if got := ch.InputKeys(); len(got) != 2 || got[0] != "task" || got[1] != "work_session" {
+		t.Errorf("InputKeys = %v, want them sorted", got)
+	}
+}
+
+// One chain id names one chain within its document.
+func TestLoadTaskDocuments_RejectsDuplicateChainID(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "pursue.md"), strings.Replace(chainingTaskDoc,
+		"+++\nPursue", `
+[[pursue.chains]]
+id       = "goal_review"
+workflow = "goal_reviewer"
+
+[pursue.chains.when]
+all = [{ judge_pending = "goal-met" }]
++++
+Pursue`, 1))
+	cfg := &Config{BaseDir: base}
+	if _, err := cfg.LoadTaskDocuments(""); err == nil || !strings.Contains(err.Error(), "declared more than once") {
+		t.Fatalf("err = %v, want a duplicate chain id rejection", err)
+	}
+}
+
+// A chain with no trigger would fire unconditionally.
+func TestLoadTaskDocuments_RejectsChainWithNoTrigger(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "pursue.md"), `+++
+[pursue]
+kind              = "task"
+description       = "A document whose chain declares no trigger"
+resource_observer = "issue_pr"
+
+[[pursue.chains]]
+id       = "goal_review"
+workflow = "goal_reviewer"
++++
+Pursue the goal.
+`)
+	cfg := &Config{BaseDir: base}
+	if _, err := cfg.LoadTaskDocuments(""); err == nil || !strings.Contains(err.Error(), "declares no facts") {
+		t.Fatalf("err = %v, want a triggerless chain rejection", err)
+	}
+}
+
+const chainingTaskDoc = `+++
+[pursue]
+kind              = "task"
+description       = "Pursue one goal until an independent reviewer confirms it"
+resource_observer = "issue_pr"
+
+[pursue.done_when]
+all = [{ judge = "the goal is achieved", id = "goal-met" }]
+
+[[pursue.chains]]
+id        = "goal_review"
+workflow  = "goal_reviewer"
+placement = "sibling"
+
+[pursue.chains.when]
+all = [{ judge_pending = "goal-met" }]
+
+[pursue.chains.inputs]
+task         = "goal_review"
+work_session = { from = "task.session" }
++++
+Pursue the goal at {{ resource.id }}.
+`
+
+// The completion predicate's leaf forms parse off a document's frontmatter,
+// and `budget` is a sibling of `done_when` rather than a member of it.
+func TestLoadTaskDocuments_ParsesEveryCompletionLeafForm(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+[review]
+kind              = "task"
+description       = "Review a resource"
+resource_observer = "issue_pr"
+
+[[review.done_when.all]]
+check = "resource.state.revision"
+in    = ["merged", "closed"]
+
+[[review.done_when.all]]
+check = "resource.state.revision"
+gte   = 80
+
+[[review.done_when.all]]
+judge = "reviewer approved"
+id    = "ac-met"
+
+[review.budget]
+max_iterations = 5
++++
+Review it.
+`)
+	docs, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments: %v", err)
+	}
+	dw := docs["review"].DoneWhen
+	if dw == nil || len(dw.All) != 3 {
+		t.Fatalf("done_when not parsed: %+v", dw)
+	}
+	if dw.All[0].Check != "resource.state.revision" || len(dw.All[0].In) != 2 {
+		t.Errorf("in leaf not parsed: %+v", dw.All[0])
+	}
+	if dw.All[1].Gte == nil || *dw.All[1].Gte != 80 {
+		t.Errorf("gte leaf not parsed: %+v", dw.All[1])
+	}
+	if dw.All[2].Judge == "" || dw.All[2].ID != "ac-met" {
+		t.Errorf("judge leaf not parsed: %+v", dw.All[2])
+	}
+	if dw.Budget["max_iterations"] == nil {
+		t.Errorf("budget not joined to the predicate it bounds: %+v", dw.Budget)
+	}
+}
+
+// A leaf that is both a check and a judge is neither.
+func TestLoadTaskDocuments_RejectsAmbiguousCompletionLeaf(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "bad.md"), `+++
+[bad]
+kind              = "task"
+description       = "A document whose leaf is two leaves"
+resource_observer = "issue_pr"
+
+[[bad.done_when.all]]
+check = "resource.state.revision"
+eq    = "merged"
+judge = "both set"
++++
+Do it.
+`)
+	if _, err := (&Config{BaseDir: base}).LoadTaskDocuments(""); err == nil {
+		t.Fatal("expected a load error for a leaf that is both a check and a judge")
+	}
+}

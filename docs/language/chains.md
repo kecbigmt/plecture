@@ -17,6 +17,7 @@ document that declared it.
 | `id` | Identifies the chain within the declaring document. |
 | `workflow` | The workflow to run. A static reference. |
 | `placement` | Where the spawned session sits relative to this one. |
+| `resource` | The resource the spawned session is about. |
 | `when` | The facts that must hold for the chain to fire. |
 | `inputs` | The session inputs handed to the spawned workflow. |
 
@@ -72,6 +73,63 @@ reads, `resource.state.*` and `self.state.*`.
 They read public facts only. An effect layer's private locals do not cross into a
 spawned session.
 
+## The spawned session's resource
+
+`resource` names what the spawned session is about. It is a value over the
+same roots `inputs` reads, because it is one of the facts the firing instance
+projects — what separates it is that the spawned session is *bound* to it
+rather than handed it. The workflow's provider then resolves it exactly as it
+resolves a resource dispatched directly.
+
+Omitting it binds the spawned session to the declaring session's own resource.
+That default is what a chain spawning more work on the same subject wants; a
+chain whose spawned session is about something else says so.
+
+<!-- fixture: chains/spawn-resource.md -->
+```markdown
++++
+[work]
+kind              = "task"
+description       = "Implement a fix and hand the pull request to a reviewer"
+resource_observer = "issue_pr"
+
+[work.done_when]
+all = [
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
+  { judge = "acceptance criteria are satisfied", id = "ac-met" },
+]
+
+[[work.chains]]
+id        = "review"
+workflow  = "goal_reviewer"
+placement = "sibling"
+resource  = { from = "resource.state.pr_url" }
+
+[work.chains.when]
+all = [
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
+  { judge_pending = "ac-met" },
+]
+
+[work.chains.inputs]
+task         = "goal_review"
+work_session = { from = "task.session" }
+judge_ids    = { from = "task.done_when.pending_judge_ids" }
++++
+Resolve the issue at {{ resource.id }} and open a pull request.
+```
+
+A reviewer's subject is the pull request, and the work session's subject is
+the issue that asked for it. Naming the resource is what lets one chain say
+both — the fact the reviewer is spawned against is a fact the work instance
+observed.
+
+Resolution is fail-closed at fire time. A `resource` that reads a key nothing
+has reported yet, or that resolves to an empty string, blocks the fire rather
+than spawning a session bound to nothing: the pull request does not exist yet,
+so neither does the review. The chain fires on the tick after the fact
+arrives.
+
 ## Static workflow references
 
 `workflow` is a static reference. Templated or otherwise computed workflow
@@ -83,6 +141,9 @@ consumer.
 
 - `workflow` resolves to a definition of kind `workflow`.
 - `workflow` is never a computed value.
+- `resource` projects the same roots `inputs` does.
+- A `resource` that resolves to nothing, or to an empty string, blocks the
+  fire.
 - A `when` judge id names a judge leaf this document's `done_when` declares.
 - A check fact names a key the declared observer publishes, or one this
   document's `state_schema` declares.
