@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 // ExecRequest is a single host-process invocation: Argv[0] is the command,
@@ -81,11 +83,43 @@ var alwaysHostExecutor Executor = hostExecutor{}
 // issues without changing any exported function signature.
 var defaultExecutor Executor = hostExecutor{}
 
-// execHostScript renders down to the same host semantics as runShell, but
-// through the swappable defaultExecutor rather than the pinned
-// alwaysHostExecutor — see the two vars' docs for why the distinction matters.
-// env carries the KEY=VALUE additions the enclosing layers of a nesting chain
-// inject into this execution; it is empty for every plain task.
+// requestFor is the one place a resolved lifecycle execution becomes a host
+// invocation, whichever declaration form produced it. A ratified action
+// arrives already resolved into its argv and standard input; a
+// template-rendered hook arrives as shell source and is run through
+// `bash -c`, with no standard input, because that is what it has always
+// meant.
+func requestFor(execution *lang.Execution, workDir string, env []string) ExecRequest {
+	return ExecRequest{Argv: execution.Argv, Stdin: execution.Stdin, Dir: workDir, Env: env}
+}
+
+// renderedShell wraps one template-rendered hook as the process that runs
+// it, so a converted surface and a legacy one reach the executor by the same
+// path and differ only in how they produced their Execution.
+//
+// Retirement: the surface reshape replaces its callers one at a time with
+// lang.Eval; the PR that converts the last template-rendered surface deletes
+// this function, execHostScript, and runShell along with it.
+func renderedShell(script string) *lang.Execution {
+	return &lang.Execution{Argv: []string{"bash", "-c", script}}
+}
+
+// execHook runs one resolved execution through the swappable
+// defaultExecutor rather than the pinned alwaysHostExecutor — see the two
+// vars' docs for why the distinction matters. env carries the KEY=VALUE
+// additions the enclosing layers of a nesting chain inject into this
+// execution; it is empty for every plain task.
+func execHook(ctx context.Context, execution *lang.Execution, workDir string, env ...string) (stdout, stderr []byte, err error) {
+	return defaultExecutor.Run(ctx, requestFor(execution, workDir, env))
+}
+
+// runHook runs one resolved execution on the host, unconditionally: the path
+// workspace provider setup/cleanup, provider subscribe, and resource
+// observe/finalize take.
+func runHook(ctx context.Context, execution *lang.Execution, workDir string) (stdout, stderr []byte, err error) {
+	return alwaysHostExecutor.Run(ctx, requestFor(execution, workDir, nil))
+}
+
 func execHostScript(ctx context.Context, cmdStr, workDir string, env ...string) (stdout, stderr []byte, err error) {
-	return defaultExecutor.Run(ctx, ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir, Env: env})
+	return execHook(ctx, renderedShell(cmdStr), workDir, env...)
 }
