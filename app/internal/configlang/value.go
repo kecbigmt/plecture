@@ -6,7 +6,6 @@ import (
 	"strings"
 )
 
-// ValueForm names one of the language's value forms.
 type ValueForm string
 
 const (
@@ -30,8 +29,7 @@ const (
 	ClassBinding
 )
 
-// Value is one dynamic value. Exactly one form's fields are populated, named
-// by Form.
+// Value carries exactly one form's fields populated, named by Form.
 type Value struct {
 	Form ValueForm
 
@@ -52,7 +50,6 @@ type Value struct {
 	Pos Position
 }
 
-// JSONOperand is one node of a `{ json = ... }` operand.
 type JSONOperand struct {
 	Leaf   *Value
 	Object map[string]*JSONOperand
