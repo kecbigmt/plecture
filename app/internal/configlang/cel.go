@@ -70,7 +70,10 @@ func checkExpression(src string, s *Surface, pos Position) error {
 	for _, id := range s.identifiers() {
 		declared[id] = true
 	}
-	if err := walkExpr(root, declared, map[string]bool{}, env, s, pos); err != nil {
+	ref := func(path string, bound map[string]bool) error {
+		return checkReference(path, declared, bound, s, pos)
+	}
+	if err := walkExpr(root, map[string]bool{}, env, ref, pos); err != nil {
 		return err
 	}
 	if _, issues := env.Check(parsed); issues != nil && issues.Err() != nil {
@@ -79,10 +82,10 @@ func checkExpression(src string, s *Surface, pos Position) error {
 	return nil
 }
 
-// walkExpr descends one expression, carrying the names a comprehension macro
-// has bound so that an iteration variable is never mistaken for a surface
-// root.
-func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surface, pos Position) error {
+// walkExpr descends one expression, calling ref for every dotted path it
+// reads and carrying the names a comprehension macro has bound so that an
+// iteration variable is never mistaken for a surface root.
+func walkExpr(e ast.Expr, bound map[string]bool, env *cel.Env, ref referenceFunc, pos Position) error {
 	if e == nil {
 		return nil
 	}
@@ -90,13 +93,13 @@ func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surf
 	case ast.LiteralKind, ast.UnspecifiedExprKind:
 		return nil
 	case ast.IdentKind:
-		return checkReference(e.AsIdent(), declared, bound, s, pos)
+		return ref(e.AsIdent(), bound)
 	case ast.SelectKind:
 		path, base, ok := flattenSelect(e)
 		if !ok {
-			return walkExpr(base, declared, bound, env, s, pos)
+			return walkExpr(base, bound, env, ref, pos)
 		}
-		return checkReference(path, declared, bound, s, pos)
+		return ref(path, bound)
 	case ast.CallKind:
 		call := e.AsCall()
 		if name := call.FunctionName(); !env.HasFunction(name) {
@@ -104,19 +107,19 @@ func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surf
 				fmt.Sprintf("%q is not a function the Plecture CEL profile defines", name))
 		}
 		if call.IsMemberFunction() {
-			if err := walkExpr(call.Target(), declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(call.Target(), bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
 		for _, arg := range call.Args() {
-			if err := walkExpr(arg, declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(arg, bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
 		return nil
 	case ast.ListKind:
 		for _, el := range e.AsList().Elements() {
-			if err := walkExpr(el, declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(el, bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
@@ -124,24 +127,24 @@ func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surf
 	case ast.MapKind:
 		for _, entry := range e.AsMap().Entries() {
 			kv := entry.AsMapEntry()
-			if err := walkExpr(kv.Key(), declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(kv.Key(), bound, env, ref, pos); err != nil {
 				return err
 			}
-			if err := walkExpr(kv.Value(), declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(kv.Value(), bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
 		return nil
 	case ast.StructKind:
 		for _, field := range e.AsStruct().Fields() {
-			if err := walkExpr(field.AsStructField().Value(), declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(field.AsStructField().Value(), bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
 		return nil
 	case ast.ComprehensionKind:
 		c := e.AsComprehension()
-		if err := walkExpr(c.IterRange(), declared, bound, env, s, pos); err != nil {
+		if err := walkExpr(c.IterRange(), bound, env, ref, pos); err != nil {
 			return err
 		}
 		inner := make(map[string]bool, len(bound)+3)
@@ -154,7 +157,7 @@ func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surf
 		}
 		inner[c.AccuVar()] = true
 		for _, sub := range []ast.Expr{c.AccuInit(), c.LoopCondition(), c.LoopStep(), c.Result()} {
-			if err := walkExpr(sub, declared, inner, env, s, pos); err != nil {
+			if err := walkExpr(sub, inner, env, ref, pos); err != nil {
 				return err
 			}
 		}
@@ -162,6 +165,10 @@ func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surf
 	}
 	return nil
 }
+
+// referenceFunc receives one dotted path an expression reads, along with the
+// names bound by the comprehension macros enclosing it.
+type referenceFunc func(path string, bound map[string]bool) error
 
 // checkReference splits the two questions a dotted reference raises: CEL
 // declares identifiers, so the leading segment is CEL's to reject, and the
