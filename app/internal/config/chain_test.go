@@ -37,16 +37,21 @@ func TestChains_LegacyDirIsIgnored(t *testing.T) {
 [[chains]]
 id       = "review"
 workflow = "codex"
-[chains.when]
+[work.chains.when]
 all = [ { judge_pending = "ac-met" } ]
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeTaskFile(t, base, "work", `
+[work]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[done_when]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[work.done_when]
 all = [ { judge = "ac met", id = "ac-met" } ]
 `)
 
@@ -67,7 +72,7 @@ func TestLegacyChainsDirNotice_WarnsPerFile(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "review.toml"), []byte("[[chains]]\nid=\"review\"\nworkflow=\"codex\"\n[chains.when]\nall=[{judge_pending=\"x\"}]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "review.toml"), []byte("[[work.chains]]\nid=\"review\"\nworkflow=\"codex\"\n[work.chains.when]\nall=[{judge_pending=\"x\"}]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -91,6 +96,19 @@ func TestLegacyChainsDirNotice_NoDirIsSilent(t *testing.T) {
 	}
 }
 
+// effectPreamble is the definition table every chain row declares its
+// `[[work.chains]]` under.
+const effectPreamble = `
+[work]
+kind  = "effect"
+scope = "run"
+
+[work.setup]
+type   = "shell"
+script = "true"
+
+`
+
 func TestChainDefinition_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -99,54 +117,54 @@ func TestChainDefinition_Validate(t *testing.T) {
 	}{
 		{
 			name:    "missing workflow",
-			body:    "[[chains]]\nid=\"r\"\n[chains.when]\nall=[{judge_pending=\"x\"}]\n",
+			body:    "[[work.chains]]\nid=\"r\"\n[work.chains.when]\nall=[{judge_pending=\"x\"}]\n",
 			wantErr: "`workflow` is required",
 		},
 		{
 			name:    "empty when",
-			body:    "[[chains]]\nid=\"r\"\nworkflow=\"codex\"\n[chains.when]\nall=[]\n",
+			body:    "[[work.chains]]\nid=\"r\"\nworkflow=\"codex\"\n[work.chains.when]\nall=[]\n",
 			wantErr: "declares no facts",
 		},
 		{
 			name:    "bad placement",
-			body:    "[[chains]]\nid=\"r\"\nworkflow=\"codex\"\nplacement=\"cousin\"\n[chains.when]\nall=[{judge_pending=\"x\"}]\n",
+			body:    "[[work.chains]]\nid=\"r\"\nworkflow=\"codex\"\nplacement=\"cousin\"\n[work.chains.when]\nall=[{judge_pending=\"x\"}]\n",
 			wantErr: "is not",
 		},
 		{
 			name:    "check with two operators",
-			body:    "[[chains]]\nid=\"r\"\nworkflow=\"codex\"\n[chains.when]\nall=[{check=\"s\", eq=\"A\", ne=\"B\"}]\n",
+			body:    "[[work.chains]]\nid=\"r\"\nworkflow=\"codex\"\n[work.chains.when]\nall=[{check=\"s\", eq=\"A\", ne=\"B\"}]\n",
 			wantErr: "exactly one operator",
 		},
 		{
 			name:    "two fact kinds",
-			body:    "[[chains]]\nid=\"r\"\nworkflow=\"codex\"\n[chains.when]\nall=[{check=\"s\", in=[\"A\"], judge_pending=\"x\"}]\n",
+			body:    "[[work.chains]]\nid=\"r\"\nworkflow=\"codex\"\n[work.chains.when]\nall=[{check=\"s\", in=[\"A\"], judge_pending=\"x\"}]\n",
 			wantErr: "more than one",
 		},
 		{
 			name:    "judge_action without is",
-			body:    "[[chains]]\nid=\"r\"\nworkflow=\"codex\"\n[chains.when]\nall=[{judge_action=\"x\"}]\n",
+			body:    "[[work.chains]]\nid=\"r\"\nworkflow=\"codex\"\n[work.chains.when]\nall=[{judge_action=\"x\"}]\n",
 			wantErr: "`is` to be",
 		},
 		{
 			name:    "judge_action bad is",
-			body:    "[[chains]]\nid=\"r\"\nworkflow=\"codex\"\n[chains.when]\nall=[{judge_action=\"x\", is=\"changes_requested\"}]\n",
+			body:    "[[work.chains]]\nid=\"r\"\nworkflow=\"codex\"\n[work.chains.when]\nall=[{judge_action=\"x\", is=\"changes_requested\"}]\n",
 			wantErr: "`is` to be",
 		},
 		{
 			name:    "bad id",
-			body:    "[[chains]]\nid=\"a/b\"\nworkflow=\"codex\"\n[chains.when]\nall=[{judge_pending=\"x\"}]\n",
+			body:    "[[work.chains]]\nid=\"a/b\"\nworkflow=\"codex\"\n[work.chains.when]\nall=[{judge_pending=\"x\"}]\n",
 			wantErr: "characters outside",
 		},
 		{
 			name:    "malformed input template",
-			body:    "[[chains]]\nid=\"r\"\nworkflow=\"codex\"\n[chains.when]\nall=[{judge_pending=\"x\"}]\n[chains.inputs]\nrevision=\"{{.Work.outputs.revision\"\n",
+			body:    "[[work.chains]]\nid=\"r\"\nworkflow=\"codex\"\n[work.chains.when]\nall=[{judge_pending=\"x\"}]\n[work.chains.inputs]\nrevision=\"{{.Work.outputs.revision\"\n",
 			wantErr: "input \"revision\"",
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			base := t.TempDir()
-			writeTaskFile(t, base, "work", "scope = \"run\"\nsetup = \"true\"\n\n"+tc.body)
+			writeTaskFile(t, base, "work", effectPreamble+tc.body)
 			_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("err = %v, want contains %q", err, tc.wantErr)
@@ -159,18 +177,23 @@ func TestChainDefinition_Validate(t *testing.T) {
 func TestLoadTaskDefinitions_ParsesEmbeddedChains(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "work", `
+[work]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[done_when]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[work.done_when]
 all = [ { judge = "ac met", id = "ac-met" } ]
 
-[[chains]]
+[[work.chains]]
 id        = "review"
 workflow  = "claude"
 placement = "sibling"
 
-[chains.when]
+[work.chains.when]
 all = [ { judge_pending = "ac-met" } ]
 `)
 	defs, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
@@ -201,16 +224,22 @@ all = [ { judge_pending = "ac-met" } ]
 func TestLoadTaskDefinitions_ChainUnknownJudgeID(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "work", `
+[work]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[done_when]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[work.done_when]
 all = [ { judge = "ac met", id = "ac-met" } ]
 
-[[chains]]
+[[work.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[work.chains.when]
 all = [ { judge_pending = "nope" } ]
 `)
 	_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
@@ -224,16 +253,22 @@ all = [ { judge_pending = "nope" } ]
 func TestLoadTaskDefinitions_ChainUnknownJudgeActionID(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "work", `
+[work]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[done_when]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[work.done_when]
 all = [ { judge = "ac met", id = "ac-met" } ]
 
-[[chains]]
+[[work.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[work.chains.when]
 all = [ { judge_action = "nope", is = "approve" } ]
 `)
 	_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
@@ -247,13 +282,19 @@ all = [ { judge_action = "nope", is = "approve" } ]
 func TestLoadTaskDefinitions_ChainJudgeReferenceWithoutDoneWhen(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "work", `
+[work]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[[chains]]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[[work.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[work.chains.when]
 all = [ { judge_pending = "ac-met" } ]
 `)
 	_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
@@ -262,28 +303,36 @@ all = [ { judge_pending = "ac-met" } ]
 	}
 }
 
-// AC3: a [chains.inputs] binding wiring an output key absent from this task's
+// AC3: a [work.chains.inputs] binding wiring an output key absent from this task's
 // outputs_schema is a load error.
 func TestLoadTaskDefinitions_ChainWiresUndeclaredOutput(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "work", `
+[work]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[outputs_schema]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[work.outputs_schema]
 type = "object"
-[outputs_schema.properties.checks_status]
+
+[work.outputs_schema.properties.checks_status]
 type = "string"
 
-[done_when]
+[work.done_when]
 all = [ { judge = "ac met", id = "ac-met" } ]
 
-[[chains]]
+[[work.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[work.chains.when]
 all = [ { judge_pending = "ac-met" } ]
-[chains.inputs]
+
+[work.chains.inputs]
 revision = "{{.Work.outputs.revision}}"
 `)
 	_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
@@ -297,18 +346,25 @@ revision = "{{.Work.outputs.revision}}"
 func TestLoadTaskDefinitions_ChainWiringSkipsWithoutSchema(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "work", `
+[work]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[done_when]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[work.done_when]
 all = [ { judge = "ac met", id = "ac-met" } ]
 
-[[chains]]
+[[work.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[work.chains.when]
 all = [ { judge_pending = "ac-met" } ]
-[chains.inputs]
+
+[work.chains.inputs]
 revision = "{{.Work.outputs.revision}}"
 `)
 	defs, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
@@ -325,22 +381,29 @@ revision = "{{.Work.outputs.revision}}"
 func TestLoadTaskDefinitions_ChainDuplicateIDWithinTask(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "work", `
+[work]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[done_when]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[work.done_when]
 all = [ { judge = "ac met", id = "ac-met" } ]
 
-[[chains]]
+[[work.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[work.chains.when]
 all = [ { judge_pending = "ac-met" } ]
 
-[[chains]]
+[[work.chains]]
 id       = "review"
 workflow = "codex"
-[chains.when]
+
+[work.chains.when]
 all = [ { judge_pending = "ac-met" } ]
 `)
 	_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
@@ -354,15 +417,21 @@ all = [ { judge_pending = "ac-met" } ]
 func TestLoadTaskDefinitions_ChainValidateFailure(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "work", `
+[work]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[done_when]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[work.done_when]
 all = [ { judge = "ac met", id = "ac-met" } ]
 
-[[chains]]
+[[work.chains]]
 id = "review"
-[chains.when]
+
+[work.chains.when]
 all = [ { judge_pending = "ac-met" } ]
 `)
 	_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")

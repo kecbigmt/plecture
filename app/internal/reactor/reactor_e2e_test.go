@@ -27,9 +27,11 @@ func newE2EConfig(t *testing.T) *config.Config {
 		t.Fatal(err)
 	}
 	def := `
+[work]
+kind  = "effect"
 scope = "session"
 
-[done_when]
+[work.done_when]
 all = [
   { check = "checks_status", eq = "SUCCESS" },
 ]
@@ -113,9 +115,11 @@ func newPendingJudgeConfig(t *testing.T) *config.Config {
 	t.Helper()
 	base := t.TempDir()
 	def := `
+[work]
+kind  = "effect"
 scope = "session"
 
-[done_when]
+[work.done_when]
 all = [
   { judge = "AC met", id = "ac-met" },
 ]

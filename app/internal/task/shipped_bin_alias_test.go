@@ -36,12 +36,13 @@ func repoRootForTest(t *testing.T) string {
 }
 
 // TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias is the
-// acceptance test for plugin-local {{bin}} resolution (docs/design/
-// plugin-packaging.md, "Plugin-local {{bin}} resolution"): every shipped
-// github and okf resource/workspace-provider/task hook must resolve its own plugin's
-// executables regardless of which alias the operator registered the catalog
-// under. "official" is deliberately avoided — a regression that silently
-// re-depends on that one specific alias would otherwise pass unnoticed.
+// acceptance test for plugin-local `bin` resolution (docs/design/
+// plugin-packaging.md, "Plugin-local bin resolution"): every shipped github
+// and okf observer / workspace-provider / effect action must resolve its own
+// plugin's executables regardless of which alias the operator registered the
+// catalog under. "official" is deliberately avoided — a regression that
+// silently re-depends on that one specific alias would otherwise pass
+// unnoticed.
 func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) {
 	const alias = "acme-mirror"
 	repoRoot := repoRootForTest(t)
@@ -135,7 +136,7 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 	}
 
 	session := SessionVars{Name: "test-session", ResourceID: "owner:test", WorkspaceDirPath: "/tmp/wd", Plugins: mounted}
-	inputs := map[string]any{"owner": "acme", "assignees": ""}
+	inputs := map[string]any{"owner": "acme", "assignees": "", "instruction": ""}
 	for id, def := range taskDefs {
 		ctx := RenderContext{
 			Self:       map[string]any{},
@@ -144,15 +145,27 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 			Session:    session,
 			SourcePath: def.SourcePath,
 		}
-		if def.Setup != "" {
-			if _, err := render(def.Setup, ctx); err != nil {
-				t.Errorf("task %q setup: %v", id, err)
+		for field, action := range map[string]*lang.Action{
+			"setup":           def.Setup,
+			"cleanup":         def.Cleanup,
+			"health.alive":    def.Health.AliveProbe(),
+			"health.activity": def.Health.ActivityProbe(),
+		} {
+			if action == nil {
+				continue
 			}
-		}
-		if def.Cleanup != "" {
-			if _, err := renderCleanup(def.Cleanup, ctx); err != nil {
-				t.Errorf("task %q cleanup: %v", id, err)
+			env := setupEnvironment(ctx)
+			if strings.HasPrefix(field, "health") {
+				env = healthEnvironment(ctx)
+			} else if field == "cleanup" {
+				env = cleanupEnvironment(ctx)
 			}
+			resolved, err := resolveEffect(action, env, ctx, def.Ownership(), nil)
+			if err != nil {
+				t.Errorf("effect %q %s: %v", id, field, err)
+				continue
+			}
+			resolved.close()
 		}
 	}
 }

@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# The pane's child is the scenario's live process.
+plect-effect-record pgrep "$@"
+printf '%s\n' "$PLECT_EFFECT_PID"

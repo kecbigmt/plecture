@@ -1,9 +1,13 @@
-scope = "session"
+[investigate]
+kind     = "effect"
+scope    = "session"
+requires = ["resource_kind", "checks_status", "issue_status"]
 
-setup = '''
-set -euo pipefail
-EXTRA='{{get .Inputs "instruction" ""}}'
-INSTRUCTION=$(plect template render investigate --session '{{.SessionName}}' --instruction "$EXTRA")
+[investigate.setup]
+type   = "shell"
+script = '''
+set -eu
+INSTRUCTION=$(plect template render investigate --session "$session" --instruction "$extra")
 if [ -z "$INSTRUCTION" ]; then
   echo "plect template render investigate produced empty instruction" >&2
   exit 1
@@ -11,16 +15,18 @@ fi
 jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
 '''
 
-requires = ["resource_kind", "checks_status", "issue_status"]
+[investigate.setup.bind]
+session = { from = "session.name" }
+extra   = { from = "inputs.instruction", default = "" }
 
 # See tasks/work.toml for why resource status stays three first-class
 # outputs, and why the "NULL" sentinel exists, instead of one rolled-up
 # completion flag.
-[[outputs]]
+[[investigate.outputs]]
 produces = ["resource_kind", "checks_status", "issue_status", "revision"]
 from_resource_status = true
 
-[done_when]
+[investigate.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "checks_status", in = ["SUCCESS", "NULL"] },
@@ -28,22 +34,22 @@ all = [
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
 
-[done_when.budget]
+[investigate.done_when.budget]
 heartbeat_budget = 3
 on_exhaust = "escalate"
 
-[inputs_schema]
+[investigate.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[inputs_schema.properties]
+[investigate.inputs_schema.properties]
 instruction = { type = "string" }
 
-[outputs_schema]
+[investigate.outputs_schema]
 type     = "object"
 required = ["instruction"]
 
-[outputs_schema.properties]
+[investigate.outputs_schema.properties]
 instruction   = { type = "string" }
 resource_kind = { type = "string", mutable = true }
 checks_status = { type = "string", mutable = true }

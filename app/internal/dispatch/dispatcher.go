@@ -39,19 +39,14 @@ type sessionDispatcher struct {
 	state    *state.Store
 	hub      *sessionhub.Registry
 	policy   channel.RetryPolicy
-	// plugins feeds {{bin ...}} inside a {{terminal "..."}} verb template,
-	// mirroring task.SessionVars.Plugins.
+	// plugins feeds a `bin` reference inside a terminal verb, mirroring
+	// task.SessionVars.Plugins.
 	plugins []plugins.Mounted
-	// terminalNodeID/terminalOps are the workflow's [terminal]-declaring
-	// task, resolved once at dispatcher build (see resolveTerminalOwner).
-	// terminalOps nil means the workflow declares no such task; a channel
-	// that never references {{terminal "..."}} is unaffected either way.
-	terminalNodeID string
-	terminalOps    *config.TerminalConfig
-	// terminalLayers is the declaring task's nesting chain, so a verb
-	// renders against the layer that declared it rather than against the
-	// composed contract, which may carry that layer's keys under other names.
-	terminalLayers []task.ResolvedLayer
+	// terminal is the workflow's terminal-declaring effect, resolved once at
+	// dispatcher build (see resolveTerminalOwner). Nil means the workflow
+	// declares none; a channel that consumes no terminal verb is unaffected
+	// either way.
+	terminal *terminalOwner
 }
 
 func (d *sessionDispatcher) run(ctx context.Context) {
@@ -202,7 +197,7 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 			bins := config.MountedBins{Mounted: d.plugins, SourcePath: def.SourcePath}
 			opts := channel.DeliverOptions{
 				Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
-				Terminal: terminalResolver(s, d.terminalNodeID, d.terminalOps, d.terminalLayers, task.SessionVars{
+				Terminal: terminalResolver(s, d.terminal, task.SessionVars{
 					Name:             s.Name,
 					ResourceID:       s.ResourceID,
 					WorkspaceDirPath: s.WorkspaceDirPath,

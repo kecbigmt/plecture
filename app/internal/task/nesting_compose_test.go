@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 func doneWhen(leaves ...config.DoneWhenLeaf) *config.DoneWhen {
@@ -38,8 +39,8 @@ func composeLayers(t *testing.T, defs ...config.TaskDefinition) []ResolvedLayer 
 func TestComposeDoneWhen_ConjoinsEveryLayerInnermostFirst(t *testing.T) {
 	layers := composeLayers(t,
 		config.TaskDefinition{ID: "outer", Scope: "run",
-			DoneWhen: doneWhen(config.DoneWhenLeaf{Judge: "release checklist", ID: "release-gate"}),
-			Bind:     &config.BindConfig{Outputs: map[string]string{"decision": "{{.Inner.outputs.review_decision}}"}},
+			DoneWhen:    doneWhen(config.DoneWhenLeaf{Judge: "release checklist", ID: "release-gate"}),
+			OutputsBind: map[string]*lang.Value{"decision": fromValue("inner.outputs.review_decision")},
 		},
 		config.TaskDefinition{ID: "work", Scope: "run",
 			DoneWhen: doneWhen(checkLeaf("review_decision", "APPROVED")),
@@ -67,7 +68,7 @@ func TestComposeDoneWhen_ConjoinsEveryLayerInnermostFirst(t *testing.T) {
 func TestComposeDoneWhen_ResolvesAnInnerCheckToItsPublicName(t *testing.T) {
 	layers := composeLayers(t,
 		config.TaskDefinition{ID: "outer", Scope: "run",
-			Bind: &config.BindConfig{Outputs: map[string]string{"decision": "{{.Inner.outputs.review_decision}}"}},
+			OutputsBind: map[string]*lang.Value{"decision": fromValue("inner.outputs.review_decision")},
 		},
 		config.TaskDefinition{ID: "work", Scope: "run",
 			DoneWhen: doneWhen(checkLeaf("review_decision", "APPROVED")),
@@ -106,18 +107,18 @@ func TestComposeDoneWhen_LeavesAnUnreachableCheckUnresolved(t *testing.T) {
 // nesting-aware tie-break.
 func TestResolveDefinition_NestedTerminalComesFromTheDeclaringLayer(t *testing.T) {
 	inner := config.TaskDefinition{ID: "tmux", Scope: "run",
-		Terminal: &config.TerminalConfig{Attach: "attach-it", Capture: "capture-it", SendText: "t", SendKeys: "k"},
+		Terminal: &config.TerminalConfig{Attach: shellStub("attach-it"), Capture: shellStub("capture-it"), SendText: shellStub("t"), SendKeys: shellStub("k")},
 	}
 	outer := config.TaskDefinition{ID: "runtime", Scope: "run", Inner: "tmux", InnerChain: []config.TaskDefinition{inner},
-		Bind: &config.BindConfig{Outputs: map[string]string{
-			"interactive_endpoint": "{{.Inner.outputs.interactive_endpoint}}",
-		}},
+		OutputsBind: map[string]*lang.Value{
+			"interactive_endpoint": fromValue("inner.outputs.interactive_endpoint"),
+		},
 	}
 	r, err := ResolveDefinition(outer, "runtime")
 	if err != nil {
 		t.Fatalf("ResolveDefinition: %v", err)
 	}
-	if r.Terminal == nil || r.Terminal.Attach != "attach-it" {
+	if r.Terminal == nil || r.Terminal.Attach.Source() != "attach-it" {
 		t.Fatalf("Terminal = %+v, want the declaring layer's table", r.Terminal)
 	}
 	if got := TerminalLayer(r.Layers); got != 1 {
@@ -131,16 +132,16 @@ func TestResolveDefinition_NestedTerminalComesFromTheDeclaringLayer(t *testing.T
 func TestLayerExposure_TracksRenamesAndStopsAtComputedBindings(t *testing.T) {
 	layers := composeLayers(t,
 		config.TaskDefinition{ID: "outer", Scope: "run",
-			Bind: &config.BindConfig{Outputs: map[string]string{
-				"agent_pid": "{{.Inner.outputs.runtime_pid}}",
-				"label":     "pid-{{.Inner.outputs.runtime_pid}}",
-			}},
+			OutputsBind: map[string]*lang.Value{
+				"agent_pid": fromValue("inner.outputs.runtime_pid"),
+				"label":     exprValue(`'pid-' + string(inner.outputs.runtime_pid)`),
+			},
 		},
 		config.TaskDefinition{ID: "middle", Scope: "run",
-			Bind: &config.BindConfig{Outputs: map[string]string{
-				"runtime_pid": "{{.Inner.outputs.pid}}",
-				"socket":      "sock:{{.Inner.outputs.socket_path}}",
-			}},
+			OutputsBind: map[string]*lang.Value{
+				"runtime_pid": fromValue("inner.outputs.pid"),
+				"socket":      exprValue(`'sock:' + string(inner.outputs.socket_path)`),
+			},
 		},
 		config.TaskDefinition{ID: "inner", Scope: "run"},
 	)

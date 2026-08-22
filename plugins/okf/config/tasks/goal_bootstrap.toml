@@ -9,22 +9,32 @@
 # recorded judge history, and recreating it on every up would re-pend an
 # already-satisfied judge for no reason. Only a genuinely missing instance
 # is created.
+[goal_bootstrap]
+kind  = "effect"
 scope = "run"
 
-setup = '''
-{{bin "okf-goal"}} task bootstrap \
-  --workspace-dir {{.WorkspaceDirPath | shellQuote}} \
-  --owner {{.Inputs.owner | shellQuote}} \
-  --session {{.SessionName | shellQuote}} \
-  --assignees {{get .Inputs "assignees" "" | shellQuote}}
-'''
+[goal_bootstrap.setup]
+type = "exec"
+bin  = "okf-goal"
+args = [
+  "task",
+  "bootstrap",
+  "--workspace-dir",
+  { from = "workspace.dir" },
+  "--owner",
+  { from = "inputs.owner" },
+  "--session",
+  { from = "session.name" },
+  "--assignees",
+  { from = "inputs.assignees", default = "" },
+]
 
-[inputs_schema]
+[goal_bootstrap.inputs_schema]
 type                 = "object"
 required             = ["owner"]
 additionalProperties = false
 
-[inputs_schema.properties]
+[goal_bootstrap.inputs_schema.properties]
 owner = { type = "string" }
 # assignees is a JSON array string of this orchestrator's own identity
 # strings (`user:<login>` / `team:<slug>`, the same vocabulary a goal
@@ -33,9 +43,9 @@ owner = { type = "string" }
 # regardless of assignee.
 assignees = { type = "string" }
 
-[outputs_schema]
+[goal_bootstrap.outputs_schema]
 type     = "object"
 required = ["created"]
 
-[outputs_schema.properties.created]
+[goal_bootstrap.outputs_schema.properties.created]
 type = "string"

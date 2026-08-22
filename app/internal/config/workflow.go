@@ -13,6 +13,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 // WorkflowFile is loaded from `.plect/workflows/<id>.toml` (per-repo) or from
@@ -218,78 +219,83 @@ type EventChannel struct {
 	Include []string          `toml:"include"`
 }
 
-// TaskDefinition is loaded from `.plect/tasks/<id>.toml` (per-repo) or
-// `~/.config/plect/tasks/<id>.toml` (global). Task definitions are reusable —
-// multiple workflows may reference the same definition via `uses`, and a single
-// workflow may instantiate the same definition under different node ids.
+// TaskDefinition is one `kind = "effect"` declaration, loaded from a
+// definition document under a `tasks/` directory in the trusted base layers.
+// Effects are reusable — several workflows may reference the same declaration
+// via `uses`, and one workflow may instantiate it under different node ids.
 //
-// ID is derived from the filename stem and is *not* read from TOML — the
-// filename is the single source of truth (renaming a task is `mv`, not
-// `mv` + TOML edit).
+// The id is the definition table's name. Effects intentionally have no
+// `depends_on`: wiring is the workflow's job.
 //
-// Definitions intentionally have no `depends_on`: wiring is the workflow's job.
+// DoneWhen, Requires, DynamicOutputs, and Chains are not part of the effect
+// surface. They are carried here so the surfaces can move one at a time; the
+// declaration that owns them is the task document, and the PR that
+// introduces task documents moves all four out of this struct, out of the
+// loader that decodes them, and out of the shipped declarations that still
+// carry them.
 type TaskDefinition struct {
-	ID      string `toml:"-"`
-	Scope   string `toml:"scope"`
-	Setup   string `toml:"setup"`
-	Cleanup string `toml:"cleanup"`
-	// Inner names the next task inward, making this definition the outer
-	// layer of a nesting chain: either a plain task id (resolved in the
-	// merged namespace, or in the declaring plugin's own namespace when the
-	// declaration is plugin-authored) or a catalog-qualified reference. See
-	// docs/design/task-nesting.md.
-	Inner string `toml:"inner"`
-	// Bind is the joint wiring the boundary to the inner task. See BindConfig.
-	Bind *BindConfig `toml:"bind"`
+	ID      string
+	Scope   string
+	Setup   *lang.Action
+	Cleanup *lang.Action
+	// Inner names the next effect inward, making this declaration the outer
+	// layer of a nesting chain: either a plain id (resolved in the merged
+	// namespace, or in the declaring plugin's own namespace when the
+	// declaration is plugin-authored) or a catalog-qualified reference.
+	Inner string
+	// InnerInputs and InnerEnv are the joint inward: the input object passed
+	// to the inner effect, and the environment added to its executions.
+	InnerInputs map[string]*lang.Value
+	InnerEnv    map[string]*lang.Value
+	// OutputsBind is the joint outward: this layer's public outputs, each
+	// projected or computed from an inner output, a local, or an input.
+	OutputsBind map[string]*lang.Value
 	// LocalsSchema / LocalsSchemaFile is the contract for the private
 	// intermediates this layer's setup emits.
-	LocalsSchema     map[string]any `toml:"locals_schema"`
-	LocalsSchemaFile string         `toml:"locals_schema_file"`
-	// InnerChain is the nesting chain inward from this task, next-inner
+	LocalsSchema     map[string]any
+	LocalsSchemaFile string
+	// InnerChain is the nesting chain inward from this effect, next-inner
 	// first and innermost last, stamped by load-time resolution. Empty for a
-	// plain task.
-	InnerChain []TaskDefinition `toml:"-"`
-	// Health declares the task's `[health]` table — the alive and activity
-	// probes that determine this task's contribution to session health. Nil
-	// for a task that declares neither. See HealthConfig.
-	Health *HealthConfig `toml:"health"`
-	// Terminal declares the task's `[terminal]` table: the task owns an
+	// plain effect.
+	InnerChain []TaskDefinition
+	// Health declares the effect's `[health]` table — the alive and activity
+	// probes that determine its contribution to session health. Nil for an
+	// effect that declares neither.
+	Health *HealthConfig
+	// Terminal declares the effect's `[terminal]` table: the effect owns an
 	// interactive endpoint and offers attach/capture/send_text/send_keys
-	// against it. `plect attach` / `plect capture` resolve through it, and
-	// the `{{terminal "..."}}` template helper (task hooks and channel
-	// argument rendering) reaches all four verbs. See TerminalConfig.
-	Terminal          *TerminalConfig `toml:"terminal"`
-	OutputsSchema     map[string]any  `toml:"outputs_schema"`
-	OutputsSchemaFile string          `toml:"outputs_schema_file"`
-	InputsSchema      map[string]any  `toml:"inputs_schema"`
-	InputsSchemaFile  string          `toml:"inputs_schema_file"`
-	// DoneWhen is the task's Definition of Done: a structured
-	// completion predicate evaluated per instance. Nil for pure lifecycle-only
-	// tasks (the runtime task, the agent launcher, chat notifications); set for
-	// work units (work / review /
-	// investigate).
-	DoneWhen *DoneWhen `toml:"done_when"`
-	// Requires names the output keys the task's done_when reads. It is the
-	// explicit contract between the done_when check leaves and the outputs
-	// populated by setup, explicit set-output, or dynamic output refresh. When
-	// declared, every done_when check must name a required output, and every
-	// required output must be an outputs schema property — so a typo in either
-	// surfaces at compile time.
-	Requires []string `toml:"requires"`
-	// DynamicOutputs are outputs whose value is a script's stdout, fetched when
-	// done_when's check reads them (distinct from the static OutputsSchema).
-	DynamicOutputs []DynamicOutput `toml:"outputs"`
-	// Chains declares the deterministic workflow-chaining rules that fire off
-	// this task's instances: "once this task reaches this state, spawn that
-	// workflow." Declared alongside DoneWhen (a separate section, not a
-	// separate file) because a chain's `when` judge ids and `inputs` output
-	// bindings are references into this same task's done_when/outputs_schema —
-	// colocation is what lets validateTaskChains check those references at
-	// load time instead of at fire time. Evaluation is scoped the same way:
-	// a chain only ever fires against instances of the task that declared it.
-	Chains     []ChainDefinition `toml:"chains"`
-	BaseDir    string            `toml:"-"`
-	SourcePath string            `toml:"-"`
+	// against it.
+	Terminal          *TerminalConfig
+	OutputsSchema     map[string]any
+	OutputsSchemaFile string
+	InputsSchema      map[string]any
+	InputsSchemaFile  string
+	// DoneWhen is the completion predicate, evaluated per instance. See the
+	// type comment above for why it is here.
+	DoneWhen *DoneWhen
+	// Requires names the output keys done_when reads. When declared, every
+	// done_when check must name a required output, and every required output
+	// must be an outputs schema property — so a typo in either surfaces at
+	// load.
+	Requires []string
+	// DynamicOutputs are outputs whose value is a script's stdout, fetched
+	// when done_when's check reads them (distinct from the static
+	// OutputsSchema).
+	DynamicOutputs []DynamicOutput
+	// Chains declares the workflow-chaining rules that fire off this
+	// declaration's instances.
+	Chains     []ChainDefinition
+	BaseDir    string
+	SourcePath string
+	// FromPlugin says a plugin layer wrote this declaration, which is what
+	// decides whether its bin references may name another plugin.
+	FromPlugin bool
+}
+
+// Ownership names the layer that wrote this declaration, for the reference
+// rules that differ between shipped and user-authored config.
+func (d TaskDefinition) Ownership() lang.Ownership {
+	return lang.Ownership{IsPlugin: d.FromPlugin}
 }
 
 // DoneWhen is the structured completion predicate a task definition may
@@ -695,23 +701,38 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 		if layer.workspaceDir && len(entries) > 0 {
 			return nil, fmt.Errorf("task definitions inside the workspace directory are not loaded (clone content must not carry shell): %s; move them to the global layer (~/.config/plect/tasks/), a plugin, or a repo overlay above the workspace dir", entries[0])
 		}
+		// One layer spreads its declarations over as many files as it likes,
+		// but an id is unique within it: resolving a same-layer collision by
+		// traversal order would let a filename decide which of two
+		// declarations is live. A deeper layer replacing a shallower same-id
+		// declaration is the cascade rule and stays allowed.
+		layerOwner := make(map[string]string)
 		for _, path := range entries {
-			def, err := loadTaskDefinitionFile(path)
+			defs, err := c.loadEffectDocument(path, layer.plugin)
 			if err != nil {
-				return nil, fmt.Errorf("task %s: %w", path, err)
+				return nil, err
 			}
-			if layer.plugin {
-				if owner, exists := pluginOwner[def.ID]; exists {
-					return nil, fmt.Errorf("task %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, path)
+			for _, def := range defs {
+				if prior, dup := layerOwner[def.ID]; dup {
+					return nil, lang.DuplicateID(def.ID, prior, path)
 				}
-				pluginOwner[def.ID] = path
-				if layer.pluginID != "" {
-					pluginOfSource[def.SourcePath] = layer.pluginID
+				layerOwner[def.ID] = path
+				if layer.plugin {
+					if owner, exists := pluginOwner[def.ID]; exists {
+						return nil, fmt.Errorf("effect %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, path)
+					}
+					pluginOwner[def.ID] = path
+					if layer.pluginID != "" {
+						pluginOfSource[def.SourcePath] = layer.pluginID
+					}
 				}
+				def = withBuiltinOutputs(def)
+				if err := validateTaskChains(&def); err != nil {
+					return nil, fmt.Errorf("effect %s in %s: %w", def.ID, path, err)
+				}
+				all = append(all, def)
+				out[def.ID] = def
 			}
-			def = withBuiltinOutputs(def)
-			all = append(all, def)
-			out[def.ID] = def
 		}
 	}
 	if err := resolveNestedDefinitions(out, all, pluginOfSource, func(ref string) string {
@@ -719,35 +740,21 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 	}); err != nil {
 		return nil, err
 	}
-	if err := checkBinRefs(taskHookSources(out), c.Plugins, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot); err != nil {
+	if err := checkBinRefs(taskDynamicOutputHooks(out), c.Plugins, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// taskHookSources flattens every {{bin ...}}-eligible template string a task
-// definition can carry — setup/cleanup/health.alive/health.activity/
-// attach/capture plus each dynamic output's script — into hookSources for
-// checkBinRefs.
-func taskHookSources(defs map[string]TaskDefinition) []hookSource {
+// taskDynamicOutputHooks flattens the template strings an effect
+// declaration still carries: one dynamic output script per entry. Every
+// other hook is an action, whose `bin` the language validator already
+// resolved at load. This goes away with the carried fields themselves.
+func taskDynamicOutputHooks(defs map[string]TaskDefinition) []hookSource {
 	var hooks []hookSource
 	for _, def := range defs {
-		hooks = append(hooks,
-			hookSource{desc: fmt.Sprintf("task %q setup", def.ID), sourcePath: def.SourcePath, script: def.Setup},
-			hookSource{desc: fmt.Sprintf("task %q cleanup", def.ID), sourcePath: def.SourcePath, script: def.Cleanup},
-			hookSource{desc: fmt.Sprintf("task %q health.alive", def.ID), sourcePath: def.SourcePath, script: def.Health.AliveProbe()},
-			hookSource{desc: fmt.Sprintf("task %q health.activity", def.ID), sourcePath: def.SourcePath, script: def.Health.ActivityProbe()},
-		)
-		if def.Terminal != nil {
-			hooks = append(hooks,
-				hookSource{desc: fmt.Sprintf("task %q terminal.attach", def.ID), sourcePath: def.SourcePath, script: def.Terminal.Attach},
-				hookSource{desc: fmt.Sprintf("task %q terminal.capture", def.ID), sourcePath: def.SourcePath, script: def.Terminal.Capture},
-				hookSource{desc: fmt.Sprintf("task %q terminal.send_text", def.ID), sourcePath: def.SourcePath, script: def.Terminal.SendText},
-				hookSource{desc: fmt.Sprintf("task %q terminal.send_keys", def.ID), sourcePath: def.SourcePath, script: def.Terminal.SendKeys},
-			)
-		}
 		for _, out := range def.DynamicOutputs {
-			hooks = append(hooks, hookSource{desc: fmt.Sprintf("task %q output %q script", def.ID, out.Name), sourcePath: def.SourcePath, script: out.Script})
+			hooks = append(hooks, hookSource{desc: fmt.Sprintf("effect %q output %q script", def.ID, out.Name), sourcePath: def.SourcePath, script: out.Script})
 		}
 	}
 	return hooks
@@ -1016,14 +1023,6 @@ func listTOMLFiles(dir string) ([]string, error) {
 // key) so they don't need to satisfy `nodeIDRE`'s Go-template constraint.
 var workflowStemRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
-// taskStemRE constrains task filenames. Task ids feed into both `uses =`
-// (plain string) and — when `uses` is omitted — the node id, which *is* parsed
-// by text/template as a dotted field access. Forcing task filenames to the
-// underscore form means `[[nodes]] id = "claude"` can omit `uses` for every
-// dogfood task, regardless of whether the workflow author remembered the
-// hyphen-vs-underscore split.
-var taskStemRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
 func loadWorkflowFile(path string) (WorkflowFile, error) {
 	stem, err := validateStem(path, workflowStemRE, "workflow")
 	if err != nil {
@@ -1071,83 +1070,6 @@ func loadWorkflowFile(path string) (WorkflowFile, error) {
 		seen[ch.Name] = true
 	}
 	return wf, nil
-}
-
-func loadTaskDefinitionFile(path string) (TaskDefinition, error) {
-	stem, err := validateStem(path, taskStemRE, "task")
-	if err != nil {
-		return TaskDefinition{}, err
-	}
-	var def TaskDefinition
-	md, err := toml.DecodeFile(path, &def)
-	if err != nil {
-		return def, err
-	}
-	// Top-level attach/capture moved under [terminal] (with send_text/
-	// send_keys added). Left as plain TaskDefinition fields, the decoder
-	// would silently drop them as unrecognized keys — a task that used to
-	// declare attach would load successfully but end up with no attach
-	// target at all, discovered only much later at `plect attach` time. Fail
-	// loudly here instead, pointing at the migration.
-	for _, key := range md.Undecoded() {
-		// Retired keys are rejected rather than dropped: the decoder would
-		// otherwise load the file clean and leave the author believing a
-		// declaration that no longer has any consumer is still in force.
-		if len(key) == 1 && (key[0] == "primary" || key[0] == "idle_after" || key[0] == "execution") {
-			return def, fmt.Errorf("`%s` is retired; see docs/migrations/", key[0])
-		}
-		if len(key) == 1 && (key[0] == "attach" || key[0] == "capture") {
-			return def, fmt.Errorf("task %s: top-level `%s` was moved under `[terminal]` (attach/capture/send_text/send_keys declared together); see docs/migrations/", path, key[0])
-		}
-		// The canonical [terminal] schema (schema/terminal.schema.json) sets
-		// additionalProperties: false; matching that here means a typo'd
-		// verb name (e.g. `sendtext`) is a load error instead of a silently
-		// dropped key that leaves {{terminal "send_text"}} looking
-		// undeclared with no hint why.
-		if len(key) == 2 && key[0] == "terminal" {
-			return def, fmt.Errorf("task %s: [terminal] has unknown field %q (want attach, capture, send_text, send_keys)", path, key[1])
-		}
-		// The liveness and activity declarations moved into one `[health]`
-		// table. Both retired keys are plain strings the decoder would drop
-		// in silence, leaving the task with no probe at all — a session
-		// whose runtime died would then read `undeclared` instead of
-		// `unhealthy`, which is the exact failure health exists to catch.
-		if len(key) == 1 && key[0] == "healthcheck" {
-			return def, fmt.Errorf("task %s: top-level `healthcheck` was replaced by `[health].alive`; see docs/migrations/", path)
-		}
-		if len(key) == 1 && key[0] == "movement_signal" {
-			return def, fmt.Errorf("task %s: top-level `movement_signal` was replaced by `[health].activity`; see docs/migrations/", path)
-		}
-		if len(key) == 2 && key[0] == "health" {
-			return def, fmt.Errorf("task %s: [health] has unknown field %q (want alive, activity)", path, key[1])
-		}
-		// A misspelled bind table (`[bind.output]`) would otherwise decode
-		// clean and leave the joint wiring nothing, discovered only when a
-		// downstream consumer reads an output the composed task never bound.
-		if len(key) >= 2 && key[0] == "bind" {
-			switch key[1] {
-			case "inputs", "env", "outputs":
-			default:
-				return def, fmt.Errorf("task %s: [bind] has unknown table %q (want inputs, env, outputs)", path, key[1])
-			}
-		}
-	}
-	if err := def.DoneWhen.Validate(); err != nil {
-		return def, err
-	}
-	if err := def.Terminal.Validate(); err != nil {
-		return def, fmt.Errorf("task %s: %w", path, err)
-	}
-	if err := def.Health.Validate(); err != nil {
-		return def, fmt.Errorf("task %s: %w", path, err)
-	}
-	def.ID = stem
-	def.SourcePath = path
-	def.BaseDir = configFileDir(path)
-	if err := validateTaskChains(&def); err != nil {
-		return def, err
-	}
-	return def, nil
 }
 
 func validateStem(path string, re *regexp.Regexp, kind string) (string, error) {

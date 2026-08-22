@@ -1,9 +1,13 @@
-scope = "session"
+[respond]
+kind     = "effect"
+scope    = "session"
+requires = ["resource_kind", "checks_status", "issue_status"]
 
-setup = '''
-set -euo pipefail
-EXTRA='{{get .Inputs "instruction" ""}}'
-INSTRUCTION=$(plect template render respond --session '{{.SessionName}}' --instruction "$EXTRA")
+[respond.setup]
+type   = "shell"
+script = '''
+set -eu
+INSTRUCTION=$(plect template render respond --session "$session" --instruction "$extra")
 if [ -z "$INSTRUCTION" ]; then
   echo "plect template render respond produced empty instruction" >&2
   exit 1
@@ -11,16 +15,18 @@ fi
 jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
 '''
 
-requires = ["resource_kind", "checks_status", "issue_status"]
+[respond.setup.bind]
+session = { from = "session.name" }
+extra   = { from = "inputs.instruction", default = "" }
 
 # See tasks/work.toml for why resource status stays three first-class
 # outputs, and why the "NULL" sentinel exists, instead of one rolled-up
 # completion flag.
-[[outputs]]
+[[respond.outputs]]
 produces = ["resource_kind", "checks_status", "issue_status", "revision"]
 from_resource_status = true
 
-[done_when]
+[respond.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "checks_status", in = ["SUCCESS", "NULL"] },
@@ -28,22 +34,22 @@ all = [
   { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
 ]
 
-[done_when.budget]
+[respond.done_when.budget]
 heartbeat_budget = 3
 on_exhaust = "escalate"
 
-[inputs_schema]
+[respond.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[inputs_schema.properties]
+[respond.inputs_schema.properties]
 instruction = { type = "string" }
 
-[outputs_schema]
+[respond.outputs_schema]
 type     = "object"
 required = ["instruction"]
 
-[outputs_schema.properties]
+[respond.outputs_schema.properties]
 instruction   = { type = "string" }
 resource_kind = { type = "string", mutable = true }
 checks_status = { type = "string", mutable = true }

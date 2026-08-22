@@ -7,6 +7,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -49,15 +50,31 @@ type probeTarget struct {
 	// Label names the failing unit in a health report — the instance for a
 	// plain task, the instance and the layer for a nested one.
 	Label    string
-	Alive    string
-	Activity string
+	Alive    *lang.Action
+	Activity *lang.Action
 	Self     map[string]any
 	Inputs   map[string]any
 	Env      []string
 	// SourcePath is the file this unit's probes were declared in — one
-	// layer's own definition for a nesting chain — so a plugin-local bare
-	// `{{bin "<name>"}}` resolves against the plugin that ships it.
+	// layer's own declaration for a nesting chain — so a plugin-local bare
+	// `bin = "<name>"` resolves against the plugin that ships it.
 	SourcePath string
+	// From names the layer that wrote that declaration, which is what
+	// decides whether its bin references may name another plugin.
+	From lang.Ownership
+}
+
+// probe pairs one of the target's declared probes with the instance context
+// it resolves against.
+func (t probeTarget) probe(action *lang.Action) task.Probe {
+	return task.Probe{
+		Action:     action,
+		Self:       t.Self,
+		Inputs:     t.Inputs,
+		SourcePath: t.SourcePath,
+		From:       t.From,
+		Env:        t.Env,
+	}
 }
 
 // probeTargets returns what to probe for one instance. A layer that declares
@@ -65,7 +82,7 @@ type probeTarget struct {
 // vote in the activity OR.
 func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskState, comp *instanceComposition) []probeTarget {
 	if comp == nil {
-		if def.Health.AliveProbe() == "" && def.Health.ActivityProbe() == "" {
+		if def.Health.AliveProbe() == nil && def.Health.ActivityProbe() == nil {
 			return nil
 		}
 		return []probeTarget{{
@@ -75,11 +92,12 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 			Self:       st.Outputs,
 			Inputs:     st.Inputs,
 			SourcePath: def.SourcePath,
+			From:       def.Ownership(),
 		}}
 	}
 	var targets []probeTarget
 	for i, layer := range comp.Layers {
-		if layer.Health.AliveProbe() == "" && layer.Health.ActivityProbe() == "" {
+		if layer.Health.AliveProbe() == nil && layer.Health.ActivityProbe() == nil {
 			continue
 		}
 		targets = append(targets, probeTarget{
@@ -90,6 +108,7 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 			Inputs:     st.Layers[i].Inputs,
 			Env:        task.EnclosingEnv(st.Layers, i),
 			SourcePath: layer.SourcePath,
+			From:       layer.From,
 		})
 	}
 	return targets

@@ -70,7 +70,7 @@ type InstanceSetup struct {
 }
 
 // ExecuteTaskSetup runs a dynamic instance's setup — input-schema validation,
-// template render, shell, output parse, and output-schema validation — and
+// value resolution, execution, output parse, and output-schema validation — and
 // returns the parsed outputs. It does NOT touch session state: the caller
 // reserves the instance key under the state lock, runs this WITHOUT the lock
 // (setup may shell out for a while), then merges the result back under the lock.
@@ -104,15 +104,15 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 		outputs, projErr := projectNestedOutputs(r, layers, session)
 		return InstanceSetup{Outputs: outputs, Layers: layers, Stderr: stderr}, projErr
 	}
-	cmdStr, err := render(r.Setup, ctx)
-	if err != nil {
-		return InstanceSetup{}, fmt.Errorf("setup template: %w", err)
-	}
-
 	outputs := map[string]any{}
 	var stderr []byte
-	if strings.TrimSpace(cmdStr) != "" {
-		stdout, capturedStderr, runErr := execHostScript(goCtx, cmdStr, session.WorkspaceDirPath)
+	if r.Setup != nil {
+		resolved, resolveErr := resolveEffect(r.Setup, setupEnvironment(ctx), ctx, r.From, nil)
+		if resolveErr != nil {
+			return InstanceSetup{}, fmt.Errorf("setup: %w", resolveErr)
+		}
+		stdout, capturedStderr, runErr := resolved.run(goCtx, session.WorkspaceDirPath)
+		resolved.close()
 		stderr = capturedStderr
 		if runErr != nil {
 			return InstanceSetup{Stderr: stderr}, fmt.Errorf("setup: %w", runErr)

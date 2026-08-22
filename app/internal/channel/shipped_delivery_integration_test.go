@@ -66,6 +66,7 @@ func shippedChannels(t *testing.T) map[string]config.ChannelDefinition {
 }
 
 func shippedEval(t *testing.T, def config.ChannelDefinition, inputs map[string]any, ev event.Event) lang.Eval {
+	runDir := t.TempDir()
 	t.Helper()
 	_, thisFile, _, _ := runtime.Caller(0)
 	manifests, _ := filepath.Glob(filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "plugins", "*", "plugin.toml"))
@@ -81,8 +82,8 @@ func shippedEval(t *testing.T, def config.ChannelDefinition, inputs map[string]a
 	bins := config.MountedBins{Mounted: mounted, SourcePath: def.SourcePath}
 	return deliveryEval(inputs, ev, DeliverOptions{
 		Bin:      func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
-		Terminal: func(verb string) (string, error) { return "terminal:" + verb, nil },
-	})
+		Terminal: func(verb, _ string) (string, error) { return "terminal:" + verb, nil },
+	}, runDir)
 }
 
 // standInInputs supplies one value per declared parameter that has no
@@ -223,7 +224,7 @@ func recordInvocation(t *testing.T, def config.ChannelDefinition, eval lang.Eval
 // merging two of them changes this and nothing else would.
 func observeShellDelivery(t *testing.T, def config.ChannelDefinition, inputs map[string]any, ev event.Event) ([]string, error) {
 	log := filepath.Join(t.TempDir(), "observed.log")
-	terminal := func(verb string) (string, error) {
+	terminal := func(verb, _ string) (string, error) {
 		// Every verb records itself, the readiness capture included: dropping
 		// that step from a script is a change to what the receiver observes,
 		// so it has to be visible here. A capture additionally answers on
@@ -431,7 +432,7 @@ send_text = { terminal = "send_text" }
 send_keys = { terminal = "send_keys" }
 message   = { expr = "'[' + event.type + '] ' + (event.body != '' ? event.body : event.summary)" }
 `)
-	terminal := func(verb string) (string, error) {
+	terminal := func(verb, _ string) (string, error) {
 		return `printf '` + verb + `:%s\n' "$1" >> ` + log, nil
 	}
 	ev := event.Event{Type: event.TypeUserEmit, Summary: "s", Body: "run the tests"}

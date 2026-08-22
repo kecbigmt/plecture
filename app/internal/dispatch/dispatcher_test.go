@@ -619,18 +619,24 @@ func TestDispatcher_TerminalHelperResolvesThroughSessionPlan(t *testing.T) {
 		},
 	}
 	d := &sessionDispatcher{
-		session:        "o/r-1",
-		channels:       []config.EventChannel{{Name: "runtime", Uses: "send_keys", Include: []string{"plect.instruction"}}},
-		defs:           map[string]config.ChannelDefinition{"send_keys": def},
-		log:            log,
-		state:          st,
-		policy:         channel.RetryPolicy{MaxAttempts: 1, BaseBackoff: time.Millisecond, MaxBackoff: time.Millisecond, Timeout: 200 * time.Millisecond},
-		terminalNodeID: "tmux",
-		terminalOps: &config.TerminalConfig{
-			Attach:   "tmux attach -t {{.Self.session_name}}",
-			Capture:  "tmux capture-pane -p -t {{.Self.session_name}}",
-			SendText: `tmux send-keys -t {{.Self.session_name}} -- "$1"`,
-			SendKeys: `tmux send-keys -t {{.Self.session_name}} "$1"`,
+		session:  "o/r-1",
+		channels: []config.EventChannel{{Name: "runtime", Uses: "send_keys", Include: []string{"plect.instruction"}}},
+		defs:     map[string]config.ChannelDefinition{"send_keys": def},
+		log:      log,
+		state:    st,
+		policy:   channel.RetryPolicy{MaxAttempts: 1, BaseBackoff: time.Millisecond, MaxBackoff: time.Millisecond, Timeout: 200 * time.Millisecond},
+		terminal: &terminalOwner{
+			NodeID: "tmux",
+			Ops: &config.TerminalConfig{SendText: &lang.Action{
+				Type:    lang.ActionExec,
+				Command: "tmux",
+				Args: []*lang.Value{
+					literalArg("send-keys"),
+					literalArg("-t"),
+					{Form: lang.FormFrom, From: "self.outputs.session_name"},
+					literalArg("--"),
+				},
+			}},
 		},
 	}
 	log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction})
@@ -640,7 +646,7 @@ func TestDispatcher_TerminalHelperResolvesThroughSessionPlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read output: %v", err)
 	}
-	want := "tmux send-keys -t mysession -- \"$1\"\n"
+	want := "'tmux' 'send-keys' '-t' 'mysession' '--' \"$@\"\n"
 	if string(got) != want {
 		t.Errorf("output = %q, want %q", string(got), want)
 	}

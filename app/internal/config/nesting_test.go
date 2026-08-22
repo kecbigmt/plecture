@@ -22,13 +22,18 @@ func loadTasksFromFiles(t *testing.T, files map[string]string) (map[string]TaskD
 // them mutable, so binding type and mutability rules have something to
 // disagree with.
 const innerRuntime = `
+[claude]
+kind  = "effect"
 scope = "run"
-setup = "true"
 
-[outputs_schema]
+[claude.setup]
+type   = "shell"
+script = "true"
+
+[claude.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[claude.outputs_schema.properties]
 pid         = { type = "integer", mutable = true }
 socket_path = { type = "string" }
 `
@@ -36,17 +41,22 @@ socket_path = { type = "string" }
 // innerGated is the inner task whose own done_when reads one of its outputs,
 // which the outer layer must keep readable by binding it directly.
 const innerGated = `
-scope = "run"
-setup = "true"
+[work]
+kind     = "effect"
+scope    = "run"
 requires = ["review_decision"]
 
-[done_when]
+[work.setup]
+type   = "shell"
+script = "true"
+
+[work.done_when]
 all = [ { check = "review_decision", eq = "APPROVED" } ]
 
-[outputs_schema]
+[work.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[work.outputs_schema.properties]
 review_decision = { type = "string" }
 `
 
@@ -57,61 +67,72 @@ func TestLoadTaskDefinitions_NestedDefinitionParsesEveryLayerField(t *testing.T)
 	defs, err := loadTasksFromFiles(t, map[string]string{
 		"claude": innerRuntime,
 		"myclaude": `
-inner   = "claude"
-setup   = "jq -nc '{guard_dir:\"/tmp/guard\"}'"
-cleanup = "true"
-requires = ["exit_code"]
+[myclaude]
+kind     = "effect"
+requires = ["pid"]
 
-[bind.inputs]
-tmux_session = "{{.Inputs.tmux_session}}"
+[myclaude.inner]
+uses = "claude"
 
-[bind.env]
-PLECT_TEAM_CONTEXT = "{{.SessionName}}"
+[myclaude.setup]
+type   = "shell"
+script = "jq -nc '{guard_dir:\"/tmp/guard\"}'"
 
-[bind.outputs]
-pid       = "{{.Inner.outputs.pid}}"
-guard_dir = "{{.Locals.guard_dir}}"
+[myclaude.cleanup]
+type   = "shell"
+script = "true"
 
-[inputs_schema]
+[myclaude.inner.inputs]
+tmux_session = { from = "inputs.tmux_session" }
+
+[myclaude.inner.env]
+PLECT_TEAM_CONTEXT = { from = "session.name" }
+
+[myclaude.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+guard_dir = { from = "locals.guard_dir" }
+
+[myclaude.inputs_schema]
 type = "object"
 
-[inputs_schema.properties]
+[myclaude.inputs_schema.properties]
 tmux_session = { type = "string" }
 
-[locals_schema]
+[myclaude.locals_schema]
 type = "object"
 required = ["guard_dir"]
 
-[locals_schema.properties]
+[myclaude.locals_schema.properties]
 guard_dir = { type = "string" }
 
-[outputs_schema]
+[myclaude.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[myclaude.outputs_schema.properties]
 pid       = { type = "integer", mutable = true }
 guard_dir = { type = "string" }
-exit_code = { type = "string" }
 
-[done_when]
-all = [ { check = "exit_code", eq = "0" }, { judge = "team checklist", id = "team-gate" } ]
+[myclaude.done_when]
+all = [ { check = "pid", ne = "" }, { judge = "team checklist", id = "team-gate" } ]
 
-[done_when.budget]
+[myclaude.done_when.budget]
 heartbeats = 20
 
-[health]
-alive = "kill -0 {{.Self.pid}}"
+[myclaude.health.alive]
+type   = "shell"
+script = "kill -0 \"$pid\""
 
-[[outputs]]
-name   = "exit_code"
-script = "echo 0"
+[myclaude.health.alive.bind]
+pid = { from = "self.outputs.pid" }
 
-[[chains]]
+[[myclaude.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[myclaude.chains.when]
 all = [ { judge_pending = "team-gate" } ]
-[chains.inputs]
+
+[myclaude.chains.inputs]
 revision = "{{.Work.outputs.pid}}"
 `,
 	})
@@ -125,14 +146,14 @@ revision = "{{.Work.outputs.pid}}"
 	if def.Inner != "claude" {
 		t.Errorf("Inner = %q, want %q", def.Inner, "claude")
 	}
-	if got := def.Bind.InputBindings()["tmux_session"]; got != "{{.Inputs.tmux_session}}" {
-		t.Errorf("bind.inputs[tmux_session] = %q", got)
+	if got := def.InnerInputs["tmux_session"].Source(); got != `{ from = "inputs.tmux_session" }` {
+		t.Errorf("inner.inputs[tmux_session] = %s", got)
 	}
-	if got := def.Bind.EnvBindings()["PLECT_TEAM_CONTEXT"]; got != "{{.SessionName}}" {
-		t.Errorf("bind.env[PLECT_TEAM_CONTEXT] = %q", got)
+	if got := def.InnerEnv["PLECT_TEAM_CONTEXT"].Source(); got != `{ from = "session.name" }` {
+		t.Errorf("inner.env[PLECT_TEAM_CONTEXT] = %s", got)
 	}
-	if got := def.Bind.OutputBindings()["guard_dir"]; got != "{{.Locals.guard_dir}}" {
-		t.Errorf("bind.outputs[guard_dir] = %q", got)
+	if got := def.OutputsBind["guard_dir"].Source(); got != `{ from = "locals.guard_dir" }` {
+		t.Errorf("outputs.bind[guard_dir] = %s", got)
 	}
 	if _, ok := def.LocalsSchema["properties"]; !ok {
 		t.Errorf("locals_schema was not decoded: %v", def.LocalsSchema)
@@ -140,11 +161,11 @@ revision = "{{.Work.outputs.pid}}"
 	if def.DoneWhen == nil || len(def.DoneWhen.All) != 2 || def.DoneWhen.Budget == nil {
 		t.Errorf("done_when/budget not decoded: %+v", def.DoneWhen)
 	}
-	if def.Health.AliveProbe() == "" {
+	if def.Health.AliveProbe() == nil {
 		t.Error("[health].alive was not decoded")
 	}
-	if len(def.DynamicOutputs) != 1 || len(def.Chains) != 1 {
-		t.Errorf("outputs/chains not decoded: %d outputs, %d chains", len(def.DynamicOutputs), len(def.Chains))
+	if len(def.Chains) != 1 {
+		t.Errorf("chains not decoded: %d chains", len(def.Chains))
 	}
 	if len(def.InnerChain) != 1 || def.InnerChain[0].ID != "claude" {
 		t.Fatalf("InnerChain = %v, want the resolved [claude]", layerIDs(def.InnerChain))
@@ -165,11 +186,20 @@ func layerIDs(chain []TaskDefinition) []string {
 func TestLoadTaskDefinitions_NestedScopeFollowsInnermost(t *testing.T) {
 	defs, err := loadTasksFromFiles(t, map[string]string{
 		"tmux": `
+[tmux]
+kind = "effect"
 scope = "session"
-setup = "true"
+
+[tmux.setup]
+type   = "shell"
+script = "true"
 `,
 		"outer": `
-inner = "tmux"
+[outer]
+kind = "effect"
+
+[outer.inner]
+uses = "tmux"
 `,
 	})
 	if err != nil {
@@ -191,22 +221,46 @@ func TestLoadTaskDefinitions_NestingValidationRules(t *testing.T) {
 		{
 			name: "inner names an unknown task",
 			files: map[string]string{
-				"outer": `inner = "nope"`,
+				"outer": `
+[outer]
+kind = "effect"
+
+[outer.inner]
+uses = "nope"
+`,
 			},
 			wantErr: `unknown task "nope"`,
 		},
 		{
 			name: "inner self-reference forms a nesting cycle",
 			files: map[string]string{
-				"outer": `inner = "outer"`,
+				"outer": `
+[outer]
+kind = "effect"
+
+[outer.inner]
+uses = "outer"
+`,
 			},
 			wantErr: "nesting cycle",
 		},
 		{
 			name: "inner forms a nesting cycle through another task",
 			files: map[string]string{
-				"outer":  `inner = "middle"`,
-				"middle": `inner = "outer"`,
+				"outer": `
+[outer]
+kind = "effect"
+
+[outer.inner]
+uses = "middle"
+`,
+				"middle": `
+[middle]
+kind = "effect"
+
+[middle.inner]
+uses = "outer"
+`,
 			},
 			wantErr: "nesting cycle",
 		},
@@ -215,53 +269,38 @@ func TestLoadTaskDefinitions_NestingValidationRules(t *testing.T) {
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
+[outer]
+kind = "effect"
 scope = "session"
-inner = "claude"
+
+[outer.inner]
+uses = "claude"
 `,
 			},
 			wantErr: "scope",
-		},
-		{
-			name: "an outer produced key collides with a bind.outputs-bound key",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-inner = "claude"
-
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-
-[[outputs]]
-name   = "pid"
-script = "echo 1"
-`,
-			},
-			wantErr: "collides",
 		},
 		{
 			name: "an outer produced key collides with another key the same layer produces",
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[outputs_schema]
+[outer.inner]
+uses = "claude"
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 exit_code = { type = "string" }
 
-[[outputs]]
+[[outer.outputs]]
 name   = "exit_code"
 script = "echo 0"
 
-[[outputs]]
+[[outer.outputs]]
 name   = "exit_code"
 script = "echo 1"
 `,
@@ -273,15 +312,19 @@ script = "echo 1"
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[outputs_schema]
+[outer.inner]
+uses = "claude"
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 
-[[outputs]]
+[[outer.outputs]]
 name   = "exit_code"
 script = "echo 0"
 `,
@@ -292,20 +335,32 @@ script = "echo 0"
 			name: "two layers of the nesting chain declare [terminal]",
 			files: map[string]string{
 				"claude": innerRuntime + `
-[terminal]
-attach    = "true"
-capture   = "true"
-send_text = "true"
-send_keys = "true"
+[claude.terminal.attach]
+type   = "shell"
+script = "true"
 `,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[terminal]
-attach    = "true"
-capture   = "true"
-send_text = "true"
-send_keys = "true"
+[outer.inner]
+uses = "claude"
+
+[outer.terminal.attach]
+type   = "shell"
+script = "true"
+
+[outer.terminal.capture]
+type   = "shell"
+script = "true"
+
+[outer.terminal.send_text]
+type   = "shell"
+script = "true"
+
+[outer.terminal.send_keys]
+type   = "shell"
+script = "true"
 `,
 			},
 			wantErr: "[terminal]",
@@ -314,31 +369,40 @@ send_keys = "true"
 			name: "an outer done_when judge id repeats a judge id of another layer",
 			files: map[string]string{
 				"claude": `
+[claude]
+kind = "effect"
 scope = "run"
-setup = "true"
 
-[done_when]
+[claude.setup]
+type   = "shell"
+script = "true"
+
+[claude.done_when]
 all = [ { judge = "inner criterion", id = "ac-met" } ]
 
-[outputs_schema]
+[claude.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[claude.outputs_schema.properties]
 pid = { type = "integer" }
 `,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[done_when]
+[outer.inner]
+uses = "claude"
+
+[outer.done_when]
 all = [ { judge = "outer criterion", id = "ac-met" } ]
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
 
-[outputs_schema]
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "integer" }
 `,
 			},
@@ -349,19 +413,23 @@ pid = { type = "integer" }
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner    = "claude"
+[outer]
+kind = "effect"
 requires = ["pid"]
 
-[done_when]
+[outer.inner]
+uses = "claude"
+
+[outer.done_when]
 all = [ { check = "exit_code", eq = "0" } ]
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
 
-[outputs_schema]
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid       = { type = "integer", mutable = true }
 exit_code = { type = "string" }
 `,
@@ -373,316 +441,116 @@ exit_code = { type = "string" }
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner    = "claude"
+[outer]
+kind = "effect"
 requires = ["exit_code"]
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[outer.inner]
+uses = "claude"
 
-[outputs_schema]
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 `,
 			},
 			wantErr: "outputs schema",
 		},
 		{
-			name: "bind.outputs references a source other than an inner public output or a local",
+			name: "outputs.bind reads a root the surface does not observe",
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-pid = "{{.Inputs.pid}}"
+[outer.inner]
+uses = "claude"
 
-[outputs_schema]
+[outer.outputs.bind]
+pid = { from = "session.name" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "string" }
 `,
 			},
-			wantErr: "neither an inner public output nor a local",
+			wantErr: "effect.outputs.bind",
 		},
 		{
-			name: "bind.outputs declares a public key missing from outputs_schema",
+			name: "outputs.bind declares a public key missing from outputs_schema",
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-socket_path = "{{.Inner.outputs.socket_path}}"
+[outer.inner]
+uses = "claude"
 
-[outputs_schema]
+[outer.outputs.bind]
+socket_path = { from = "inner.outputs.socket_path" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 `,
 			},
 			wantErr: "outputs_schema",
 		},
 		{
-			name: "bind.outputs declares a computed template output mutable",
+			name: "outputs.bind declares a computed output mutable",
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-label = "pid-{{.Inner.outputs.pid}}"
+[outer.inner]
+uses = "claude"
 
-[outputs_schema]
+[outer.outputs.bind]
+label = { expr = "'pid-' + string(inner.outputs.pid)" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 label = { type = "string", mutable = true }
 `,
 			},
 			wantErr: "mutable",
 		},
 		{
-			name: "bind.outputs declares a computed template output with a non-string type",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-inner = "claude"
-
-[bind.outputs]
-label = "pid-{{.Inner.outputs.pid}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-label = { type = "integer" }
-`,
-			},
-			wantErr: "string",
-		},
-		{
-			name: "a direct binding's outputs_schema type differs from the bound inner output's",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-inner = "claude"
-
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-pid = { type = "string" }
-`,
-			},
-			wantErr: "type",
-		},
-		{
-			name: "a direct binding is mutable while the bound inner output is not",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-inner = "claude"
-
-[bind.outputs]
-socket_path = "{{.Inner.outputs.socket_path}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-socket_path = { type = "string", mutable = true }
-`,
-			},
-			wantErr: "mutable",
-		},
-		{
-			name: "bind.inputs omits an inner required input",
-			files: map[string]string{
-				"claude": `
-scope = "run"
-setup = "true"
-
-[inputs_schema]
-type = "object"
-required = ["tmux_session"]
-additionalProperties = false
-
-[inputs_schema.properties]
-tmux_session = { type = "string" }
-model        = { type = "string" }
-`,
-				"outer": `
-inner = "claude"
-
-[bind.inputs]
-model = "opus"
-`,
-			},
-			wantErr: `"tmux_session"`,
-		},
-		{
-			name: "bind.inputs binds a key rejected by a closed inner schema",
-			files: map[string]string{
-				"claude": `
-scope = "run"
-setup = "true"
-
-[inputs_schema]
-type = "object"
-additionalProperties = false
-
-[inputs_schema.properties]
-model = { type = "string" }
-`,
-				"outer": `
-inner = "claude"
-
-[bind.inputs]
-effort = "high"
-`,
-			},
-			wantErr: `"effort"`,
-		},
-		{
-			name: "a bind.env key is not a valid process environment name",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-inner = "claude"
-
-[bind.env]
-"PLECT-TEAM" = "x"
-`,
-			},
-			wantErr: "environment",
-		},
-		{
-			name: "a bind.env key repeats a key from another layer of the chain",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"middle": `
-inner = "claude"
-
-[bind.env]
-PLECT_TEAM_CONTEXT = "middle"
-`,
-				"outer": `
-inner = "middle"
-
-[bind.env]
-PLECT_TEAM_CONTEXT = "outer"
-`,
-			},
-			wantErr: "PLECT_TEAM_CONTEXT",
-		},
-		{
-			name: "a chain references a judge id not declared by the composed done_when",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-inner = "claude"
-
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-
-[[chains]]
-id       = "review"
-workflow = "claude"
-[chains.when]
-all = [ { judge_pending = "ac-met" } ]
-`,
-			},
-			wantErr: `judge id "ac-met"`,
-		},
-		{
-			name: "a chain reads a local from inside a conditional branch",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-inner = "claude"
-setup = "jq -nc '{guard_dir:\"/tmp/guard\"}'"
-
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-
-[[chains]]
-id       = "review"
-workflow = "claude"
-[chains.when]
-all = [ { check = "pid", ne = "" } ]
-[chains.inputs]
-guard_dir = "{{if .Work.locals.guard_dir}}{{.Work.locals.guard_dir}}{{end}}"
-`,
-			},
-			wantErr: "local",
-		},
-		{
-			name: "a chain references a layer local",
-			files: map[string]string{
-				"claude": innerRuntime,
-				"outer": `
-inner = "claude"
-setup = "jq -nc '{guard_dir:\"/tmp/guard\"}'"
-
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-
-[outputs_schema]
-type = "object"
-
-[outputs_schema.properties]
-pid = { type = "integer", mutable = true }
-
-[[chains]]
-id       = "review"
-workflow = "claude"
-[chains.when]
-all = [ { check = "pid", eq = "1" } ]
-[chains.inputs]
-guard_dir = "{{.Work.locals.guard_dir}}"
-`,
-			},
-			wantErr: "local",
-		},
-		{
 			name: "a layer declares [terminal] and the outer contract does not bind interactive_endpoint",
 			files: map[string]string{
 				"claude": innerRuntime + `
-[terminal]
-attach    = "true"
-capture   = "true"
-send_text = "true"
-send_keys = "true"
+[claude.terminal.attach]
+type   = "shell"
+script = "true"
 `,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[outer.inner]
+uses = "claude"
 
-[outputs_schema]
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 `,
 			},
@@ -715,19 +583,26 @@ func TestLoadTaskDefinitions_NestingAcceptsValidChains(t *testing.T) {
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner = "claude"
-setup = "jq -nc '{guard_dir:\"/tmp/guard\"}'"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-pid       = "{{.Inner.outputs.pid}}"
-socket    = "{{.Inner.outputs.socket_path}}"
-label     = "pid-{{.Inner.outputs.pid}}"
-guard_dir = "{{.Locals.guard_dir}}"
+[outer.inner]
+uses = "claude"
 
-[outputs_schema]
+[outer.setup]
+type   = "shell"
+script = "jq -nc '{guard_dir:\"/tmp/guard\"}'"
+
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+socket = { from = "inner.outputs.socket_path" }
+label = { expr = "'pid-' + string(inner.outputs.pid)" }
+guard_dir = { from = "locals.guard_dir" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid       = { type = "integer", mutable = true }
 socket    = { type = "string" }
 label     = { type = "string" }
@@ -740,25 +615,24 @@ guard_dir = { type = "string" }
 			files: map[string]string{
 				"work": innerGated,
 				"outer": `
-inner    = "work"
-requires = ["release_ready"]
+[outer]
+kind     = "effect"
+requires = ["review_decision"]
 
-[done_when]
-all = [ { check = "release_ready", eq = "yes" } ]
+[outer.inner]
+uses = "work"
 
-[bind.outputs]
-review_decision = "{{.Inner.outputs.review_decision}}"
+[outer.done_when]
+all = [ { check = "review_decision", eq = "APPROVED" } ]
 
-[outputs_schema]
+[outer.outputs.bind]
+review_decision = { from = "inner.outputs.review_decision" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 review_decision = { type = "string" }
-release_ready   = { type = "string" }
-
-[[outputs]]
-name   = "release_ready"
-script = "echo yes"
 `,
 			},
 		},
@@ -767,12 +641,16 @@ script = "echo yes"
 			files: map[string]string{
 				"work": innerGated,
 				"outer": `
-inner = "work"
+[outer]
+kind = "effect"
 
-[outputs_schema]
+[outer.inner]
+uses = "work"
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 instruction = { type = "string" }
 `,
 			},
@@ -782,15 +660,19 @@ instruction = { type = "string" }
 			files: map[string]string{
 				"work": innerGated,
 				"outer": `
-inner = "work"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-decision = "{{.Inner.outputs.review_decision}}-checked"
+[outer.inner]
+uses = "work"
 
-[outputs_schema]
+[outer.outputs.bind]
+decision = { expr = "inner.outputs.review_decision + '-checked'" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 decision = { type = "string" }
 `,
 			},
@@ -799,25 +681,31 @@ decision = { type = "string" }
 			name: "an inner layer's chain reading an output the composed contract binds directly",
 			files: map[string]string{
 				"claude": innerRuntime + `
-[[chains]]
+[[claude.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[claude.chains.when]
 all = [ { check = "pid", ne = "" } ]
-[chains.inputs]
+
+[claude.chains.inputs]
 socket = "{{.Work.outputs.socket_path}}"
 `,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-pid         = "{{.Inner.outputs.pid}}"
-socket_path = "{{.Inner.outputs.socket_path}}"
+[outer.inner]
+uses = "claude"
 
-[outputs_schema]
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+socket_path = { from = "inner.outputs.socket_path" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid         = { type = "integer", mutable = true }
 socket_path = { type = "string" }
 `,
@@ -827,24 +715,30 @@ socket_path = { type = "string" }
 			name: "an inner layer's chain naming its own key across an outer rename",
 			files: map[string]string{
 				"work": innerGated + `
-[[chains]]
+[[work.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[work.chains.when]
 all = [ { check = "review_decision", eq = "APPROVED" } ]
-[chains.inputs]
+
+[work.chains.inputs]
 decision = "{{.Work.outputs.review_decision}}"
 `,
 				"outer": `
-inner = "work"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-decision = "{{.Inner.outputs.review_decision}}"
+[outer.inner]
+uses = "work"
 
-[outputs_schema]
+[outer.outputs.bind]
+decision = { from = "inner.outputs.review_decision" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 decision = { type = "string" }
 `,
 			},
@@ -854,21 +748,26 @@ decision = { type = "string" }
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[outer.inner]
+uses = "claude"
 
-[outputs_schema]
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 
-[[chains]]
+[[outer.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[outer.chains.when]
 all = [ { check = "socket_path", eq = "x" } ]
 `,
 			},
@@ -877,24 +776,30 @@ all = [ { check = "socket_path", eq = "x" } ]
 			name: "an inner chain input omitted from the composed public contract",
 			files: map[string]string{
 				"claude": innerRuntime + `
-[[chains]]
+[[claude.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[claude.chains.when]
 all = [ { check = "pid", ne = "" } ]
-[chains.inputs]
+
+[claude.chains.inputs]
 socket = "{{.Work.outputs.socket_path}}"
 `,
 				"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[outer.inner]
+uses = "claude"
 
-[outputs_schema]
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 `,
 			},
@@ -904,35 +809,44 @@ pid = { type = "integer", mutable = true }
 			files: map[string]string{
 				"claude": innerRuntime,
 				"middle": `
-inner = "claude"
+[middle]
+kind = "effect"
 
-[bind.outputs]
-pid         = "{{.Inner.outputs.pid}}"
-socket_path = "{{.Inner.outputs.socket_path}}"
+[middle.inner]
+uses = "claude"
 
-[outputs_schema]
+[middle.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+socket_path = { from = "inner.outputs.socket_path" }
+
+[middle.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[middle.outputs_schema.properties]
 pid         = { type = "integer", mutable = true }
 socket_path = { type = "string" }
 
-[[chains]]
+[[middle.chains]]
 id       = "review"
 workflow = "claude"
-[chains.when]
+
+[middle.chains.when]
 all = [ { check = "socket_path", ne = "" } ]
 `,
 				"outer": `
-inner = "middle"
+[outer]
+kind = "effect"
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[outer.inner]
+uses = "middle"
 
-[outputs_schema]
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 `,
 			},
@@ -942,22 +856,39 @@ pid = { type = "integer", mutable = true }
 			files: map[string]string{
 				"claude": innerRuntime,
 				"outer": `
-inner = "claude"
-setup = "jq -nc '{pane:\"%1\"}'"
+[outer]
+kind = "effect"
 
-[terminal]
-attach    = "true"
-capture   = "true"
-send_text = "true"
-send_keys = "true"
+[outer.inner]
+uses = "claude"
 
-[bind.outputs]
-interactive_endpoint = "{{.Locals.pane}}"
+[outer.setup]
+type   = "shell"
+script = "jq -nc '{pane:\"%1\"}'"
 
-[outputs_schema]
+[outer.terminal.attach]
+type   = "shell"
+script = "true"
+
+[outer.terminal.capture]
+type   = "shell"
+script = "true"
+
+[outer.terminal.send_text]
+type   = "shell"
+script = "true"
+
+[outer.terminal.send_keys]
+type   = "shell"
+script = "true"
+
+[outer.outputs.bind]
+interactive_endpoint = { from = "locals.pane" }
+
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 interactive_endpoint = { type = "string" }
 `,
 			},
@@ -967,39 +898,47 @@ interactive_endpoint = { type = "string" }
 			files: map[string]string{
 				"claude": innerRuntime,
 				"middle": `
-inner = "claude"
+[middle]
+kind = "effect"
 
-[bind.env]
+[middle.inner]
+uses = "claude"
+
+[middle.inner.env]
 PLECT_MIDDLE = "1"
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[middle.outputs.bind]
+pid = { from = "inner.outputs.pid" }
 
-[outputs_schema]
+[middle.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[middle.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 `,
 				"outer": `
-inner = "middle"
+[outer]
+kind = "effect"
 
-[bind.env]
+[outer.inner]
+uses = "middle"
+
+[outer.inner.env]
 PLECT_OUTER = "1"
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[outer.outputs.bind]
+pid = { from = "inner.outputs.pid" }
 
-[outputs_schema]
+[outer.outputs_schema]
 type = "object"
 
-[outputs_schema.properties]
+[outer.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 
-[done_when]
+[outer.done_when]
 all = [ { check = "pid", ne = "" } ]
 
-[done_when.budget]
+[outer.done_when.budget]
 heartbeats = 10
 `,
 			},
@@ -1015,23 +954,28 @@ heartbeats = 10
 	}
 }
 
-// TestLoadTaskDefinitions_UnknownBindTableRejected guards the joint's own
-// key set the way [terminal] and [health] guard theirs: a misspelled bind
-// table must fail loudly instead of decoding into nothing.
-func TestLoadTaskDefinitions_UnknownBindTableRejected(t *testing.T) {
+// TestLoadTaskDefinitions_RetiredBindTableRejected: the joint's tables are
+// `inner.inputs`, `inner.env`, and `outputs.bind`, so the retired `[bind]`
+// spelling fails as the field outside the surface that it is, rather than
+// decoding into nothing.
+func TestLoadTaskDefinitions_RetiredBindTableRejected(t *testing.T) {
 	_, err := loadTasksFromFiles(t, map[string]string{
 		"claude": innerRuntime,
 		"outer": `
-inner = "claude"
+[outer]
+kind = "effect"
 
-[bind.output]
+[outer.inner]
+uses = "claude"
+
+[outer.bind.output]
 pid = "{{.Inner.outputs.pid}}"
 `,
 	})
 	if err == nil {
 		t.Fatal("LoadTaskDefinitions: want an error for an unknown [bind] table, got nil")
 	}
-	if !strings.Contains(err.Error(), `unknown table "output"`) {
+	if !strings.Contains(err.Error(), `"bind" is not part of the effect surface`) {
 		t.Errorf("LoadTaskDefinitions error = %v, want it to name the unknown bind table", err)
 	}
 }

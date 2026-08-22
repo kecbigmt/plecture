@@ -128,8 +128,9 @@ func TestShippedClaude_McpServersRejectsMalformedRecord(t *testing.T) {
 }
 
 // The parameter is data: it may reach the agent's config file and nothing
-// else. A record value appearing anywhere in the rendered setup script beyond
-// its own assignment would mean it had entered a command line.
+// else. Under the binding transport that is structural — the value reaches
+// the script through its private binding file, so the shell source the
+// process runs cannot contain it, and neither can the argv.
 func TestShippedClaude_McpServersStaysOffEveryCommandLine(t *testing.T) {
 	tasks, mounted := loadShippedCatalogTasks(t)
 	def, ok := tasks["claude"]
@@ -150,30 +151,42 @@ func TestShippedClaude_McpServersStaysOffEveryCommandLine(t *testing.T) {
 			WorkspaceDirPath: t.TempDir(),
 			Plugins:          mounted,
 			Terminal: &TerminalBinding{
-				Ops:     &config.TerminalConfig{Attach: "a", Capture: "c", SendText: "t", SendKeys: "k"},
+				Ops:     &config.TerminalConfig{Attach: shellStub("a"), Capture: shellStub("c"), SendText: shellStub("t"), SendKeys: shellStub("k")},
 				Outputs: map[string]any{"session_name": "test-session"},
 			},
 		},
 		SourcePath: def.SourcePath,
 	}
-	rendered, err := render(def.Setup, ctx)
+	resolved, err := resolveEffect(def.Setup, setupEnvironment(ctx), ctx, def.Ownership(), nil)
 	if err != nil {
-		t.Fatalf("render setup: %v", err)
+		t.Fatalf("resolve setup: %v", err)
 	}
-	for _, line := range strings.Split(rendered, "\n") {
-		if !strings.Contains(line, marker) {
-			continue
+	defer resolved.close()
+	for _, arg := range resolved.execution.Argv {
+		if strings.Contains(arg, marker) {
+			t.Errorf("mcp_servers value reaches the process argv: %q", arg)
 		}
-		if !strings.HasPrefix(strings.TrimSpace(line), "MCP_SERVERS=") {
-			t.Errorf("mcp_servers value reaches a command line: %q", line)
-		}
+	}
+	script, err := os.ReadFile(filepath.Join(filepath.Dir(resolved.execution.Argv[0]), "script.sh"))
+	if err != nil {
+		t.Fatalf("read the resolved script: %v", err)
+	}
+	if strings.Contains(string(script), marker) {
+		t.Error("mcp_servers value reaches the shell source the process runs")
+	}
+	bindings, err := os.ReadFile(filepath.Join(filepath.Dir(resolved.execution.Argv[0]), "bindings.sh"))
+	if err != nil {
+		t.Fatalf("read the resolved bindings: %v", err)
+	}
+	if !strings.Contains(string(bindings), marker) {
+		t.Error("mcp_servers value never reached the binding file, so this test is checking nothing")
 	}
 }
 
-// Parameterization composes with nesting: an outer task must be able to bind
-// mcp_servers into the shipped claude task through [bind.inputs], which the
-// inner task's closed inputs schema only permits once the parameter is
-// declared.
+// Parameterization composes with nesting: an outer effect must be able to
+// bind mcp_servers into the shipped claude effect through `inner.inputs`,
+// which the inner effect's closed inputs schema only permits once the
+// parameter is declared.
 func TestShippedClaude_McpServersBindsThroughNesting(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	claude := mountShippedPlugin(t, repoRoot, "official", "plugins/claude")
@@ -182,17 +195,22 @@ func TestShippedClaude_McpServersBindsThroughNesting(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(outer), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := `inner = "official/claude/claude"
+	body := `
+[team_claude]
+kind = "effect"
 
-[bind.inputs]
-tmux_session = "{{.Inputs.tmux_session}}"
-mcp_servers  = "{{.Inputs.mcp_servers}}"
+[team_claude.inner]
+uses = "official/claude/claude"
 
-[inputs_schema]
-type = "object"
+[team_claude.inner.inputs]
+tmux_session = { from = "inputs.tmux_session" }
+mcp_servers  = { from = "inputs.mcp_servers" }
+
+[team_claude.inputs_schema]
+type     = "object"
 required = ["tmux_session"]
 
-[inputs_schema.properties]
+[team_claude.inputs_schema.properties]
 tmux_session = { type = "string" }
 mcp_servers  = { type = "string" }
 `

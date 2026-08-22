@@ -113,7 +113,7 @@ func terminalBinding(plan *task.Plan, s *domain.Session) *task.TerminalBinding {
 			outputs = self
 		}
 	}
-	return &task.TerminalBinding{Ops: t.Terminal, Outputs: outputs}
+	return &task.TerminalBinding{Ops: t.Terminal, Outputs: outputs, SourcePath: t.SourcePath, From: t.From}
 }
 
 func inputsOnExistingSessionMessage() string {

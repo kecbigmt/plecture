@@ -1,8 +1,10 @@
+[gh_guard]
+kind  = "effect"
 scope = "session"
 
-# Produces a directory a workflow composes into an agent-runtime task's
-# generic PATH-prepend input (e.g. `official/claude`'s `claude` task, or
-# `official/codex`'s `codex`/`codex_exec` tasks) — see
+# Produces a directory a workflow composes into an agent-runtime effect's
+# generic PATH-prepend input (e.g. `official.claude.claude`'s, or
+# `official.codex.codex`/`codex_exec`'s) — see
 # docs/design/plugin-boundary-contracts.md's GitHub CLI Guard section.
 # Agent-runtime plugins accept only this generic path input; they carry no
 # GitHub-specific guard switch of their own, so this is the one place that
@@ -11,27 +13,38 @@ scope = "session"
 # The real gh's resolved absolute path is embedded into the generated
 # wrapper below at setup time, before the shim directory reaches anyone's
 # PATH — resolving it lazily inside the guard would find the shim itself
-# (still ahead of the real gh on PATH) and recurse forever, so this task
+# (still ahead of the real gh on PATH) and recurse forever, so this effect
 # (not the consumer) is the one place that ordering has to be gotten right.
-setup = '''
+[gh_guard.setup]
+type   = "shell"
+script = '''
 REAL_GH=$(command -v gh) || { echo "gh_guard: no gh on PATH to guard" >&2; exit 1; }
 DIR=$(mktemp -d "${TMPDIR:-/tmp}/plect-gh-guard.XXXXXX")
 cat > "$DIR/gh" <<WRAPPER
 #!/usr/bin/env bash
 export GH_GUARD_REAL_GH='$REAL_GH'
-exec '{{bin "gh-guard"}}' "\$@"
+exec '$guard_bin' "\$@"
 WRAPPER
 chmod +x "$DIR/gh"
 jq -nc --arg dir "$DIR" '{dir:$dir}'
 '''
 
-cleanup = '''
-rm -rf {{.Self.dir}}
-'''
+[gh_guard.setup.bind]
+guard_bin = { bin = "gh-guard" }
 
-[outputs_schema]
+[gh_guard.cleanup]
+type   = "shell"
+script = '[ -n "${dir-}" ] && rm -rf "$dir"; true'
+
+# optional, not required: a setup that failed before reporting the directory
+# leaves nothing to remove, and a required projection of it would fail the
+# release instead.
+[gh_guard.cleanup.bind]
+dir = { from = "self.outputs.dir", optional = true }
+
+[gh_guard.outputs_schema]
 type     = "object"
 required = ["dir"]
 
-[outputs_schema.properties]
+[gh_guard.outputs_schema.properties]
 dir = { type = "string" }

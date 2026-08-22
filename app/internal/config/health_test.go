@@ -1,22 +1,24 @@
 package config
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 func TestHealthConfigValidate(t *testing.T) {
+	probe := &lang.Action{Type: lang.ActionShell, Script: "kill -0 1"}
 	tests := []struct {
 		name    string
 		health  *HealthConfig
 		wantErr bool
 	}{
 		{name: "nil is valid (no probes declared)", health: nil},
-		{name: "alive only", health: &HealthConfig{Alive: "kill -0 1"}},
-		{name: "activity only", health: &HealthConfig{Activity: "probe"}},
-		{name: "both", health: &HealthConfig{Alive: "kill -0 1", Activity: "probe"}},
+		{name: "alive only", health: &HealthConfig{Alive: probe}},
+		{name: "activity only", health: &HealthConfig{Activity: probe}},
+		{name: "both", health: &HealthConfig{Alive: probe, Activity: probe}},
 		{name: "bare table declares nothing", health: &HealthConfig{}, wantErr: true},
 	}
 	for _, tt := range tests {
@@ -32,16 +34,21 @@ func TestHealthConfigValidate(t *testing.T) {
 	}
 }
 
-func writeHealthTaskFile(t *testing.T, body string) *Config {
+// writeEffectDoc writes one definition document under the effect root of a
+// base layer, mirroring writeChannelDoc / writeProviderDoc.
+func writeEffectDoc(t *testing.T, baseDir, name, body string) *Config {
 	t.Helper()
-	baseDir := t.TempDir()
-	tasksDir := filepath.Join(baseDir, "tasks")
-	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(tasksDir, "runtime.toml"), body)
+	writeFile(t, filepath.Join(baseDir, "tasks", name+".toml"), body)
 	return &Config{BaseDir: baseDir}
 }
+
+// effectSetupHook is a setup every fixture that only cares about another
+// field can share.
+const effectSetupHook = `
+[runtime.setup]
+type   = "shell"
+script = "echo '{}'"
+`
 
 func TestLoadTaskDefinitions_HealthProbesAreIndependent(t *testing.T) {
 	tests := []struct {
@@ -52,47 +59,52 @@ func TestLoadTaskDefinitions_HealthProbesAreIndependent(t *testing.T) {
 	}{
 		{
 			name:      "alive only",
-			table:     "[health]\nalive = \"kill -0 {{.Self.pid}}\"\n",
-			wantAlive: "kill -0 {{.Self.pid}}",
+			table:     "[runtime.health.alive]\ntype = \"shell\"\nscript = \"kill -0 $pid\"\n",
+			wantAlive: "kill -0 $pid",
 		},
 		{
 			name:         "activity only",
-			table:        "[health]\nactivity = \"agent-activity probe\"\n",
+			table:        "[runtime.health.activity]\ntype = \"exec\"\ncommand = \"agent-activity\"\nargs = [\"probe\"]\n",
 			wantActivity: "agent-activity probe",
 		},
 		{
 			name:         "both",
-			table:        "[health]\nalive = \"kill -0 1\"\nactivity = \"agent-activity probe\"\n",
+			table:        "[runtime.health.alive]\ntype = \"shell\"\nscript = \"kill -0 1\"\n\n[runtime.health.activity]\ntype = \"exec\"\ncommand = \"agent-activity\"\nargs = [\"probe\"]\n",
 			wantAlive:    "kill -0 1",
 			wantActivity: "agent-activity probe",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := writeHealthTaskFile(t, "scope = \"run\"\nsetup = \"echo '{}'\"\n\n"+tt.table)
+			cfg := writeEffectDoc(t, t.TempDir(), "runtime", "[runtime]\nkind = \"effect\"\nscope = \"run\"\n"+effectSetupHook+"\n"+tt.table)
 			defs, err := cfg.LoadTaskDefinitions("")
 			if err != nil {
 				t.Fatalf("LoadTaskDefinitions: %v", err)
 			}
 			got := defs["runtime"].Health
-			if got.AliveProbe() != tt.wantAlive {
-				t.Errorf("alive = %q, want %q", got.AliveProbe(), tt.wantAlive)
+			if got.AliveProbe().Source() != tt.wantAlive {
+				t.Errorf("alive = %q, want %q", got.AliveProbe().Source(), tt.wantAlive)
 			}
-			if got.ActivityProbe() != tt.wantActivity {
-				t.Errorf("activity = %q, want %q", got.ActivityProbe(), tt.wantActivity)
+			if got.ActivityProbe().Source() != tt.wantActivity {
+				t.Errorf("activity = %q, want %q", got.ActivityProbe().Source(), tt.wantActivity)
 			}
 		})
 	}
 }
 
 func TestLoadTaskDefinitions_HealthUnknownFieldRejected(t *testing.T) {
-	cfg := writeHealthTaskFile(t, `
+	cfg := writeEffectDoc(t, t.TempDir(), "runtime", `
+[runtime]
+kind  = "effect"
 scope = "run"
-setup = "echo '{}'"
+`+effectSetupHook+`
+[runtime.health.alive]
+type   = "shell"
+script = "true"
 
-[health]
-alive     = "true"
-readiness = "true"
+[runtime.health.readiness]
+type   = "shell"
+script = "true"
 `)
 	_, err := cfg.LoadTaskDefinitions("")
 	if err == nil {
@@ -104,7 +116,7 @@ readiness = "true"
 }
 
 func TestLoadTaskDefinitions_HealthBareTableRejected(t *testing.T) {
-	cfg := writeHealthTaskFile(t, "scope = \"run\"\nsetup = \"echo '{}'\"\n\n[health]\n")
+	cfg := writeEffectDoc(t, t.TempDir(), "runtime", "[runtime]\nkind = \"effect\"\nscope = \"run\"\n"+effectSetupHook+"\n[runtime.health]\n")
 	_, err := cfg.LoadTaskDefinitions("")
 	if err == nil {
 		t.Fatal("expected an error for a [health] table declaring no probe")
@@ -114,31 +126,17 @@ func TestLoadTaskDefinitions_HealthBareTableRejected(t *testing.T) {
 	}
 }
 
-// A task file left un-migrated must fail loudly. Both retired keys are plain
-// strings the TOML decoder drops in silence, so the alternative is a task
-// that loads with no probe at all and a session that reads `undeclared` when
-// its runtime has actually died.
-func TestLoadTaskDefinitions_RetiredScalarsRejected(t *testing.T) {
-	tests := []struct {
-		key       string
-		wantHints []string
-	}{
-		{key: "healthcheck", wantHints: []string{"[health]", "alive"}},
-		{key: "movement_signal", wantHints: []string{"[health]", "activity"}},
+// A completion field on an effect is the closed-grammar rule read from one
+// direction: the effect surface certifies no completion contract, so the
+// declaration that owns it has to be a task document.
+func TestLoadTaskDefinitions_UnknownFieldRejected(t *testing.T) {
+	cfg := writeEffectDoc(t, t.TempDir(), "runtime", "[runtime]\nkind = \"effect\"\nscope = \"run\"\nhealthcheck = \"true\"\n"+effectSetupHook)
+	_, err := cfg.LoadTaskDefinitions("")
+	if err == nil {
+		t.Fatal("expected an error for a field outside the effect surface")
 	}
-	for _, tt := range tests {
-		t.Run(tt.key, func(t *testing.T) {
-			cfg := writeHealthTaskFile(t, "scope = \"run\"\nsetup = \"echo '{}'\"\n"+tt.key+" = \"true\"\n")
-			_, err := cfg.LoadTaskDefinitions("")
-			if err == nil {
-				t.Fatalf("expected an error for the retired %q key", tt.key)
-			}
-			for _, hint := range tt.wantHints {
-				if !strings.Contains(err.Error(), hint) {
-					t.Errorf("error %q should point at %q", err.Error(), hint)
-				}
-			}
-		})
+	if !strings.Contains(err.Error(), "healthcheck") {
+		t.Errorf("error %q should name the offending field", err.Error())
 	}
 }
 

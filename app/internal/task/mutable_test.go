@@ -79,7 +79,7 @@ func TestCompileWorkflow_RejectsWorkspaceDirMutableDeclaration(t *testing.T) {
 	defs := map[string]config.TaskDefinition{
 		"bad": {
 			ID:    "bad",
-			Setup: "echo '{}'",
+			Setup: shellStub("echo '{}'"),
 			OutputsSchema: map[string]any{
 				"properties": map[string]any{
 					"workspace_dir": map[string]any{"type": "string", "mutable": true},

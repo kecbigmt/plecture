@@ -5,15 +5,20 @@
 # (goal_parse_status/goal_status/checklist_status/goal_revision/open_items)
 # rather than any other resource kind's vocabulary.
 #
-# There is no third party to judge a reviewer, so this task's own
+# There is no third party to judge a reviewer, so this effect's own
 # done_when cannot use a judge leaf either. Completion is instead this
 # reviewer's self-report of "I recorded the goal-met verdict on the target
 # session", captured as a revision (not a boolean) so a later goal file
 # edit invalidates it automatically.
+[goal_review]
+kind  = "effect"
 scope = "session"
+requires = ["goal_parse_status", "verdict_current"]
 
-setup = '''
-INSTRUCTION=$(plect template render goal_review --session {{.SessionName | shellQuote}} --instruction {{get .Inputs "instruction" "" | shellQuote}})
+[goal_review.setup]
+type   = "shell"
+script = '''
+INSTRUCTION=$(plect template render goal_review --session "$session" --instruction "$extra")
 if [ -z "$INSTRUCTION" ]; then
   echo "plect template render goal_review produced empty instruction" >&2
   exit 1
@@ -21,13 +26,15 @@ fi
 jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
 '''
 
-requires = ["goal_parse_status", "verdict_current"]
+[goal_review.setup.bind]
+session = { from = "session.name" }
+extra   = { from = "inputs.instruction", default = "" }
 
-[[outputs]]
+[[goal_review.outputs]]
 produces = ["goal_parse_status", "goal_status", "checklist_status", "goal_revision", "revision", "open_items"]
 from_resource_status = true
 
-[[outputs]]
+[[goal_review.outputs]]
 name = "verdict_current"
 script = '''
 CURRENT_REVISION=$(plect resource status {{.ResourceID | shellQuote}} --json | jq -r '.state.revision // empty')
@@ -38,28 +45,28 @@ else
 fi
 '''
 
-[done_when]
+[goal_review.done_when]
 all = [
   { check = "goal_parse_status", in = ["SUCCESS"] },
   { check = "verdict_current", in = ["true"] },
 ]
 
-[done_when.budget]
+[goal_review.done_when.budget]
 heartbeat_budget = 3
 on_exhaust = "escalate"
 
-[inputs_schema]
+[goal_review.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[inputs_schema.properties]
+[goal_review.inputs_schema.properties]
 instruction = { type = "string" }
 
-[outputs_schema]
+[goal_review.outputs_schema]
 type     = "object"
 required = ["instruction"]
 
-[outputs_schema.properties]
+[goal_review.outputs_schema.properties]
 instruction       = { type = "string" }
 goal_parse_status = { type = "string", mutable = true }
 goal_status       = { type = "string", mutable = true }

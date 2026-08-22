@@ -1,0 +1,22 @@
+== tmux / setup
+call[0]: "tmux" "has-session" "-t" "acme/widget-1"
+call[1]: "tmux" "new-session" "-d" "-s" "acme/widget-1" "-c" "<workspace>"
+call[2]: "tmux" "has-session" "-t" "acme/widget-1"
+outputs: {"session_name":"acme/widget-1"}
+
+== tmux / health.alive
+call[0]: "tmux" "has-session" "-t" "acme/widget-1"
+alive
+
+== tmux / health.activity
+call[0]: "tmux" "capture-pane" "-p" "-t" "acme/widget-1"
+call[1]: "date" "-u" "+%Y-%m-%dT%H:%M:%SZ"
+activity: fingerprint="7375367613" silence_expected=false
+
+== tmux / terminal.capture
+call[0]: "tmux" "capture-pane" "-p" "-t" "acme/widget-1"
+captured: "spy pane line\n"
+
+== tmux / cleanup
+call[0]: "tmux" "kill-session" "-t" "acme/widget-1"
+cleaned

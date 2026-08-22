@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# Names each scratch file after the caller's own template instead of
+# randomizing it, so the recorded paths are stable.
+plect-effect-record mktemp "$@"
+template=""
+for arg in "$@"; do
+  case "$arg" in -*) ;; *) template="$arg" ;; esac
+done
+name=$(basename "${template:-plect.XXXXXX}" | sed 's/\.*X*$//')
+path="$PLECT_EFFECT_STATE/$name"
+: > "$path"
+printf '%s\n' "$path"

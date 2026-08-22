@@ -1,0 +1,12 @@
+# What each of this plugin's effects is exercised with when its invocation
+# record is regenerated. stdout/okf-goal is what this plugin's own executable
+# reports back to the effects that call it; bin/plect stands in for plect's
+# instruction rendering.
+
+[goal_bootstrap]
+inputs = { owner = "acme", assignees = '["user:acme"]' }
+
+[goal_review]
+inputs = { instruction = "extra review context" }
+
+[pursue_goal]

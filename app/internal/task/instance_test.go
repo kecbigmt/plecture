@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -84,7 +85,7 @@ func TestExecuteTaskSetup_ParsesOutputs(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
 	}
-	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: `echo '{"ready":"yes"}'`}
+	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: shellStub(`echo '{"ready":"yes"}'`)}
 	r := resolveDef(t, def, "review#1")
 
 	result, err := ExecuteTaskSetup(context.Background(), r, nil, SessionVars{Name: "x"}, map[string]*contract.TaskState{})
@@ -103,7 +104,7 @@ func TestExecuteTaskSetup_InputSchemaRejection(t *testing.T) {
 	def := config.TaskDefinition{
 		ID:    "work",
 		Scope: "session",
-		Setup: `echo '{}'`,
+		Setup: shellStub(`echo '{}'`),
 		InputsSchema: map[string]any{
 			"type":     "object",
 			"required": []any{"intent"},
@@ -120,16 +121,26 @@ func TestExecuteTaskSetup_InputSchemaRejection(t *testing.T) {
 	}
 }
 
-// A dynamic instance's cleanup must render {{.ResourceID}} as the instance's own
-// resource (persisted in state), not the session's.
-func TestRunCleanup_DynamicInstanceResource(t *testing.T) {
+// A dynamic instance's cleanup releases what that instance produced, so it
+// reads the outputs persisted for it rather than anything the session as a
+// whole carries. The cleanup surface observes no resource root at all: an
+// effect that has to release something resource-shaped records it as an
+// output at setup, where the resource is observable.
+func TestRunCleanup_DynamicInstanceReadsItsOwnOutputs(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
 	}
 	marker := filepath.Join(t.TempDir(), "resource")
-	r := Resolved{NodeID: "review#1", Scope: "session", Cleanup: "echo {{.ResourceID}} > " + marker}
+	r := Resolved{NodeID: "review#1", Scope: "session", Cleanup: &lang.Action{
+		Type:   lang.ActionShell,
+		Script: `echo "$resource" > "$marker"`,
+		Bind: map[string]*lang.Value{
+			"resource": {Form: lang.FormFrom, From: "self.outputs.resource"},
+			"marker":   {Form: lang.FormLiteral, Literal: marker},
+		},
+	}}
 	tasks := map[string]*contract.TaskState{
-		"review#1": {Scope: "session", Status: contract.TaskStatusProduced, Dynamic: true, Resource: "pr-99", Outputs: map[string]any{}},
+		"review#1": {Scope: "session", Status: contract.TaskStatusProduced, Dynamic: true, Resource: "pr-99", Outputs: map[string]any{"resource": "pr-99"}},
 	}
 	if err := RunCleanup(context.Background(), []Resolved{r}, SessionVars{ResourceID: "session-res"}, tasks, nil); err != nil {
 		t.Fatalf("RunCleanup: %v", err)
@@ -139,7 +150,7 @@ func TestRunCleanup_DynamicInstanceResource(t *testing.T) {
 		t.Fatalf("read marker: %v", err)
 	}
 	if got := strings.TrimSpace(string(data)); got != "pr-99" {
-		t.Errorf("cleanup .ResourceID = %q, want pr-99 (instance resource, not session)", got)
+		t.Errorf("cleanup self.outputs.resource = %q, want pr-99", got)
 	}
 }
 
@@ -147,7 +158,11 @@ func TestExecuteTaskSetup_SeesWorkflowOutputs(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
 	}
-	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: `printf '{"branch":"%s"}' '{{.Workflow.outputs.branch}}'`}
+	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: &lang.Action{
+		Type:   lang.ActionShell,
+		Script: `printf '{"branch":"%s"}' "$branch"`,
+		Bind:   map[string]*lang.Value{"branch": {Form: lang.FormFrom, From: "workflow.outputs.branch"}},
+	}}
 	r := resolveDef(t, def, "review#1")
 	wfTasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {Status: contract.TaskStatusProduced, Outputs: map[string]any{"branch": "feat/x"}},

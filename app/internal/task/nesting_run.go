@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -19,16 +19,17 @@ import (
 // config.
 type ResolvedLayer struct {
 	TaskID     string
-	Setup      string
-	Cleanup    string
+	Setup      *lang.Action
+	Cleanup    *lang.Action
 	SourcePath string
-	// BindInputs / BindEnv are this layer's joint toward the next layer
-	// inward: templates producing that layer's input object, and the process
+	From       lang.Ownership
+	// InnerInputs / InnerEnv are this layer's joint toward the next layer
+	// inward: the values producing that layer's input object, and the process
 	// environment added to every execution inside this layer.
-	BindInputs map[string]string
-	BindEnv    map[string]string
+	InnerInputs map[string]*lang.Value
+	InnerEnv    map[string]*lang.Value
 	// BindOutputs is this layer's joint outward: the classified
-	// `[bind.outputs]` entries that project the layer inside it into this
+	// `[outputs.bind]` entries that project the layer inside it into this
 	// layer's own public contract.
 	BindOutputs []config.OutputBinding
 	// InputsSchema validates the inputs this layer is set up with, and
@@ -64,8 +65,9 @@ func ResolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
 			Setup:          d.Setup,
 			Cleanup:        d.Cleanup,
 			SourcePath:     d.SourcePath,
-			BindInputs:     d.Bind.InputBindings(),
-			BindEnv:        d.Bind.EnvBindings(),
+			From:           d.Ownership(),
+			InnerInputs:    d.InnerInputs,
+			InnerEnv:       d.InnerEnv,
 			Health:         d.Health,
 			DoneWhen:       d.DoneWhen,
 			DynamicOutputs: d.DynamicOutputs,
@@ -74,11 +76,8 @@ func ResolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
 		if d.Terminal.IsDeclared() {
 			layer.Terminal = d.Terminal
 		}
-		bindings, err := d.ClassifiedOutputBindings()
-		if err != nil {
-			return nil, fmt.Errorf("layer %q: %w", d.ID, err)
-		}
-		layer.BindOutputs = bindings
+		layer.BindOutputs = d.ClassifiedOutputBindings()
+		var err error
 		if layer.InputsSchema, err = CompileSchema(d.InputsSchema, d.ResolvedInputsSchemaPath(), "plect:task:"+d.ID+":inputs"); err != nil {
 			return nil, fmt.Errorf("layer %q: input schema: %w", d.ID, err)
 		}
@@ -95,10 +94,14 @@ func ResolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
 }
 
 // CleanupLayers builds the cleanup-relevant layer chain of a definition,
-// skipping the schema compilation resolveLayers does. Teardown must stay
+// skipping the schema compilation ResolveLayers does. Teardown must stay
 // resilient to a definition whose config drifted to invalid after the
-// instance was created, and unwinding needs only each layer's script and the
-// file it came from — every value it renders against was persisted at setup.
+// instance was created, so it takes only what unwinding needs: each layer's
+// cleanup, the file it came from, and the outward joint. The joint is not
+// optional here — a layer's cleanup reads its own public contract, and that
+// contract exists only because `[outputs.bind]` projects it, so a chain
+// rebuilt without the bindings could never release what a layer produced as
+// a private local. Classifying them needs no schema.
 func CleanupLayers(def config.TaskDefinition) []ResolvedLayer {
 	if !def.IsNested() {
 		return nil
@@ -106,7 +109,13 @@ func CleanupLayers(def config.TaskDefinition) []ResolvedLayer {
 	defs := append([]config.TaskDefinition{def}, def.InnerChain...)
 	out := make([]ResolvedLayer, 0, len(defs))
 	for _, d := range defs {
-		out = append(out, ResolvedLayer{TaskID: d.ID, Cleanup: d.Cleanup, SourcePath: d.SourcePath})
+		out = append(out, ResolvedLayer{
+			TaskID:      d.ID,
+			Cleanup:     d.Cleanup,
+			SourcePath:  d.SourcePath,
+			From:        d.Ownership(),
+			BindOutputs: d.ClassifiedOutputBindings(),
+		})
 	}
 	return out
 }
@@ -139,16 +148,17 @@ func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderCo
 		ctx.Locals = map[string]any{}
 		ctx.SourcePath = layer.SourcePath
 
-		cmdStr, err := render(layer.Setup, ctx)
-		if err != nil {
-			state.Status = contract.TaskStatusFailed
-			state.FailedAt = now
-			state.Error = err.Error()
-			return append(states, state), lastStderr, fmt.Errorf("layer %q setup template: %w", layer.TaskID, err)
-		}
 		emitted := map[string]any{}
-		if strings.TrimSpace(cmdStr) != "" {
-			stdout, stderr, runErr := execHostScript(goCtx, cmdStr, base.Session.WorkspaceDirPath, env...)
+		if layer.Setup != nil {
+			resolved, resolveErr := resolveEffect(layer.Setup, setupEnvironment(ctx), ctx, layer.From, nil)
+			if resolveErr != nil {
+				state.Status = contract.TaskStatusFailed
+				state.FailedAt = now
+				state.Error = resolveErr.Error()
+				return append(states, state), lastStderr, fmt.Errorf("layer %q setup: %w", layer.TaskID, resolveErr)
+			}
+			stdout, stderr, runErr := resolved.run(goCtx, base.Session.WorkspaceDirPath, env...)
+			resolved.close()
 			lastStderr = stderr
 			if runErr != nil {
 				state.Status = contract.TaskStatusFailed
@@ -156,13 +166,14 @@ func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderCo
 				state.Error = runErr.Error()
 				return append(states, state), stderr, fmt.Errorf("layer %q setup: %w", layer.TaskID, runErr)
 			}
-			emitted, err = ParseOutputs(stdout)
-			if err != nil {
+			parsed, parseErr := ParseOutputs(stdout)
+			if parseErr != nil {
 				state.Status = contract.TaskStatusFailed
 				state.FailedAt = now
-				state.Error = err.Error()
-				return append(states, state), stderr, fmt.Errorf("layer %q setup: %w", layer.TaskID, err)
+				state.Error = parseErr.Error()
+				return append(states, state), stderr, fmt.Errorf("layer %q setup: %w", layer.TaskID, parseErr)
 			}
+			emitted = parsed
 		}
 		if innermost {
 			if layer.OutputsSchema != nil {
@@ -193,13 +204,14 @@ func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderCo
 			// A joint that fails to render leaves this layer produced, not
 			// failed: its setup ran and took effect, so the unwind still owes
 			// it a cleanup. The node-level state carries why the chain stopped.
-			injected, err := renderBindings(layer.BindEnv, jointCtx)
+			jointEnv := innerEnvironment(jointCtx)
+			injected, err := resolveValues(layer.InnerEnv, jointEnv, jointCtx, layer.From)
 			if err != nil {
-				return append(states, state), lastStderr, fmt.Errorf("layer %q bind.env: %w", layer.TaskID, err)
+				return append(states, state), lastStderr, fmt.Errorf("layer %q inner.env: %w", layer.TaskID, err)
 			}
-			bound, err := renderBindings(layer.BindInputs, jointCtx)
+			bound, err := resolveValues(layer.InnerInputs, jointEnv, jointCtx, layer.From)
 			if err != nil {
-				return append(states, state), lastStderr, fmt.Errorf("layer %q bind.inputs: %w", layer.TaskID, err)
+				return append(states, state), lastStderr, fmt.Errorf("layer %q inner.inputs: %w", layer.TaskID, err)
 			}
 			state.Env = injected
 			env = append(env, envAssignments(injected)...)
@@ -243,27 +255,32 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 			continue
 		}
 		now := time.Now()
-		if strings.TrimSpace(layers[i].Cleanup) == "" {
+		if layers[i].Cleanup == nil {
 			state.Status = contract.TaskStatusCleaned
 			state.CleanedAt = now
 			continue
 		}
 		ctx := base
-		ctx.Self = state.Outputs
+		// A layer's cleanup reads its own public contract, the same view its
+		// probes and completion conditions are written against — which is
+		// how a layer releases what its setup produced as a private local:
+		// by projecting it. The cleanup surface observes no locals root of
+		// its own.
+		ctx.Self = layerSelf(layers, states, i)
 		ctx.Inputs = state.Inputs
-		ctx.Locals = state.Locals
 		ctx.SourcePath = layers[i].SourcePath
-		cmdStr, err := renderCleanup(layers[i].Cleanup, ctx)
-		if err != nil {
+		resolved, resolveErr := resolveEffect(layers[i].Cleanup, cleanupEnvironment(ctx), ctx, layers[i].From, nil)
+		if resolveErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.FailedAt = now
-			state.Error = err.Error()
+			state.Error = resolveErr.Error()
 			if firstErr == nil {
-				firstErr = fmt.Errorf("layer %q cleanup template: %w", state.TaskID, err)
+				firstErr = fmt.Errorf("layer %q cleanup: %w", state.TaskID, resolveErr)
 			}
 			continue
 		}
-		_, stderr, runErr := execHostScript(goCtx, cmdStr, base.Session.WorkspaceDirPath, EnclosingEnv(states, i)...)
+		_, stderr, runErr := resolved.run(goCtx, base.Session.WorkspaceDirPath, EnclosingEnv(states, i)...)
+		resolved.close()
 		lastStderr = stderr
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
@@ -284,6 +301,20 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 		}
 	}
 	return lastStderr, firstErr
+}
+
+// layerSelf is one layer's own public contract as of the recorded state. A
+// chain whose records no longer line up with the declaration cannot be
+// projected, so that layer falls back to what it recorded directly.
+func layerSelf(layers []ResolvedLayer, states []contract.TaskLayerState, i int) map[string]any {
+	if len(states) != len(layers) {
+		return states[i].Outputs
+	}
+	views, err := ProjectLayerOutputs(layers, states, SessionVars{})
+	if err != nil {
+		return states[i].Outputs
+	}
+	return views[i]
 }
 
 // EnclosingEnv is the process environment the layers outside index i inject
@@ -313,29 +344,6 @@ func envAssignments(env map[string]string) []string {
 		out = append(out, k+"="+env[k])
 	}
 	return out
-}
-
-// renderBindings renders one `[bind.*]` table under the same strict
-// missing-key semantics setup bodies use: a binding reaching for a local its
-// layer never emitted is a wiring error, not an empty string.
-func renderBindings(bindings map[string]string, ctx RenderContext) (map[string]string, error) {
-	if len(bindings) == 0 {
-		return nil, nil
-	}
-	keys := make([]string, 0, len(bindings))
-	for k := range bindings {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	out := make(map[string]string, len(bindings))
-	for _, k := range keys {
-		rendered, err := render(bindings[k], ctx)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", k, err)
-		}
-		out[k] = rendered
-	}
-	return out, nil
 }
 
 // projectNestedOutputs renders the composed public contract a produced chain

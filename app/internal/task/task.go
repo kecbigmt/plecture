@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -38,8 +39,8 @@ type Resolved struct {
 	NodeID  string
 	TaskID  string
 	Scope   string // canonical scope ("session" | "run")
-	Setup   string
-	Cleanup string
+	Setup   *lang.Action
+	Cleanup *lang.Action
 	// Terminal is the task's declared `[terminal]` table, or nil for a task
 	// that owns no interactive endpoint. See config.TerminalConfig.
 	Terminal      *config.TerminalConfig
@@ -51,10 +52,13 @@ type Resolved struct {
 	// `plect state set-output`; everything else is immutable (safe by default).
 	MutableOutputs []string
 	DependsOn      []string
-	// SourcePath is the task definition file's own path (config.TaskDefinition.
-	// SourcePath), threaded through so a `{{bin "<name>"}}` in Setup/Cleanup can
-	// resolve against the definition's containing plugin.
+	// SourcePath is the effect declaration's own file path
+	// (config.TaskDefinition.SourcePath), threaded through so a bare
+	// `bin = "<name>"` in an action resolves against the declaring plugin.
 	SourcePath string
+	// From names the layer that wrote the declaration, which is what decides
+	// whether its bin references may name another plugin.
+	From lang.Ownership
 	// DoneWhen is the task's per-instance Definition of Done;
 	// nil for pure lifecycle-only tasks. Evaluated against the instance's own
 	// outputs for `plect status` / `ls` display.
@@ -91,32 +95,39 @@ func (p *Plan) TerminalTask() *Resolved {
 	return nil
 }
 
-// RenderAttach expands the attach template against the task's own outputs
-// and session vars (.Self / .SessionName / .WorkspaceDirPath / .ResourceID / ...).
-// Uses the same strict missingkey semantics as setup — an unset .Self.<key>
-// is a contract violation, surfaced as an error instead of an empty arg.
-func RenderAttach(cmd string, selfOutputs map[string]any, session SessionVars) (string, error) {
-	return render(cmd, RenderContext{Self: selfOutputs, Session: session})
+// Probe is one health probe and the instance context it resolves against:
+// the instance's own outputs, the inputs persisted at setup (needed when a
+// probe re-derives a mutable output from an input rather than from its own
+// outputs), the file the probe was declared in, and the environment the
+// enclosing layers of a nesting chain inject.
+//
+// SourcePath is one layer's own declaration for a nesting chain and not the
+// outermost one: a bare `bin = "<name>"` resolves against the plugin that
+// ships the file, so the wrong layer's path would look in the wrong plugin.
+type Probe struct {
+	Action     *lang.Action
+	Self       map[string]any
+	Inputs     map[string]any
+	SourcePath string
+	From       lang.Ownership
+	Env        []string
 }
 
-// RunAliveProbe renders cmd against the task's own outputs, its resolved
-// node inputs (persisted at TaskState.Inputs — needed when a probe
-// re-derives a mutable output from an input like tmux_session, not just
-// .Self), and session vars (mirroring RenderAttach). Runs via bash -c. A
-// non-zero exit or a render failure is returned as an error carrying stderr;
-// nil means the execution surface is present.
-//
-// sourcePath is the file the probe was declared in, which for one layer of a
-// nesting chain is that layer's own definition and not the outermost one: a
-// bare `{{bin "<name>"}}` resolves against the plugin that ships the file,
-// so passing the wrong layer's path would look for the executable in the
-// wrong plugin.
-func RunAliveProbe(goCtx context.Context, cmd string, selfOutputs map[string]any, nodeInputs map[string]any, session SessionVars, sourcePath string, env ...string) error {
-	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Inputs: nodeInputs, Session: session, SourcePath: sourcePath})
+func (p Probe) context(session SessionVars) RenderContext {
+	return RenderContext{Self: p.Self, Inputs: p.Inputs, Session: session, SourcePath: p.SourcePath}
+}
+
+// RunAliveProbe runs one liveness probe. A non-zero exit or a resolution
+// failure is returned as an error carrying stderr; nil means the execution
+// surface is present.
+func RunAliveProbe(goCtx context.Context, p Probe, session SessionVars) error {
+	ctx := p.context(session)
+	resolved, err := resolveEffect(p.Action, healthEnvironment(ctx), ctx, p.From, nil)
 	if err != nil {
 		return err
 	}
-	_, stderr, err := execHostScript(goCtx, rendered, session.WorkspaceDirPath, env...)
+	defer resolved.close()
+	_, stderr, err := resolved.run(goCtx, session.WorkspaceDirPath, p.Env...)
 	if err != nil {
 		if len(stderr) > 0 {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -126,18 +137,13 @@ func RunAliveProbe(goCtx context.Context, cmd string, selfOutputs map[string]any
 	return nil
 }
 
-// RunCapture renders the capture template against the task's own outputs and
-// session vars (mirroring RenderAttach) and runs it via bash -c, returning
-// stdout as-is — this is a read-only "raw view", not an outputs contract, so
-// stdout is never JSON-parsed. A non-zero exit or a render failure is
-// returned as an error carrying stderr (e.g. a pane that no longer exists),
-// so an orphaned channel never succeeds with empty output.
-func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, session SessionVars, env ...string) (string, error) {
-	rendered, err := render(cmd, RenderContext{Self: selfOutputs, Session: session})
-	if err != nil {
-		return "", err
-	}
-	stdout, stderr, err := execHostScript(goCtx, rendered, session.WorkspaceDirPath, env...)
+// RunCapture runs the plan's capture verb and returns its stdout as-is —
+// this is a read-only "raw view", not an outputs contract, so stdout is
+// never JSON-parsed. A non-zero exit or a resolution failure is returned as
+// an error carrying stderr (e.g. an endpoint that no longer exists), so an
+// orphaned consumer never succeeds with empty output.
+func RunCapture(goCtx context.Context, binding *TerminalBinding, session SessionVars, env ...string) (string, error) {
+	stdout, stderr, err := runTerminalVerb(goCtx, binding, "capture", session, nil, env)
 	if err != nil {
 		if len(stderr) > 0 {
 			return "", fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -147,31 +153,24 @@ func RunCapture(goCtx context.Context, cmd string, selfOutputs map[string]any, s
 	return string(stdout), nil
 }
 
-// RenderTerminalOp renders one [terminal] verb — attach/capture/send_text/
-// send_keys — against the plan's terminal-declaring task's own outputs (as
-// .Self) and session vars, backing the {{terminal "..."}} template helper. A
-// nil binding (no task in the plan declares [terminal], or the caller has no
-// full plan in scope) and an unknown verb both fail loudly rather than
-// rendering an empty command a hook or channel would otherwise invoke
-// against nothing.
-func RenderTerminalOp(binding *TerminalBinding, verb string, session SessionVars) (string, error) {
-	if binding == nil || binding.Ops == nil {
-		return "", fmt.Errorf("{{terminal %q}}: no task in this workflow's plan declares [terminal]", verb)
+// runTerminalVerb resolves one terminal verb against its declaring effect's
+// own contract and runs it, handing operands to the action as its positional
+// arguments.
+func runTerminalVerb(goCtx context.Context, binding *TerminalBinding, verb string, session SessionVars, operands, env []string) (stdout, stderr []byte, err error) {
+	if binding == nil {
+		return nil, nil, fmt.Errorf("terminal %q: no effect in this workflow's plan declares an interactive endpoint", verb)
 	}
-	var tmpl string
-	switch verb {
-	case "attach":
-		tmpl = binding.Ops.Attach
-	case "capture":
-		tmpl = binding.Ops.Capture
-	case "send_text":
-		tmpl = binding.Ops.SendText
-	case "send_keys":
-		tmpl = binding.Ops.SendKeys
-	default:
-		return "", fmt.Errorf("{{terminal %q}}: unknown terminal operation (want attach, capture, send_text, or send_keys)", verb)
+	action, err := binding.Ops.Verb(verb)
+	if err != nil {
+		return nil, nil, err
 	}
-	return render(tmpl, RenderContext{Self: binding.Outputs, Session: session})
+	ctx := RenderContext{Self: binding.Outputs, Session: session, SourcePath: binding.SourcePath}
+	resolved, err := resolveEffect(action, terminalEnvironment(binding.Outputs, session), ctx, binding.From, operands)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resolved.close()
+	return resolved.run(goCtx, session.WorkspaceDirPath, env...)
 }
 
 // CompileWorkflow turns a workflow file plus its referenced task definitions
@@ -273,9 +272,6 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 	if err := def.DoneWhen.Validate(); err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
-	if err := def.Terminal.Validate(); err != nil {
-		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
-	}
 	layers, err := ResolveLayers(def)
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
@@ -291,14 +287,6 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		}
 		doneWhen, _ = ComposeDoneWhen(layers)
 	}
-	if !terminal.IsDeclared() {
-		// A bare `[terminal]` header with every member left empty carries no
-		// obligation (Validate accepts it), but it must not read as "this
-		// node owns the plan's terminal endpoint" downstream — normalize to
-		// nil so TerminalTask/assemblePlan's uniqueness check only sees
-		// nodes that actually declared verbs.
-		terminal = nil
-	}
 	if err := config.ValidateTaskRequires(def); err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
@@ -312,6 +300,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		Setup:          def.Setup,
 		Cleanup:        def.Cleanup,
 		SourcePath:     def.SourcePath,
+		From:           def.Ownership(),
 		Terminal:       terminal,
 		InputsSchema:   inputsSchema,
 		OutputsSchema:  outputsSchema,
@@ -641,12 +630,14 @@ type SessionVars struct {
 	Terminal *TerminalBinding
 }
 
-// TerminalBinding pairs a plan's [terminal]-declaring task's verb templates
-// with that task's own current outputs — the .Self a nested render needs to
-// expand e.g. `{{.Self.session_name}}` inside the verb template itself.
+// TerminalBinding pairs the plan's terminal-declaring effect's verbs with
+// that effect's own current outputs — what a verb's own values are resolved
+// against — and with the identity a `bin` inside a verb resolves through.
 type TerminalBinding struct {
-	Ops     *config.TerminalConfig
-	Outputs map[string]any
+	Ops        *config.TerminalConfig
+	Outputs    map[string]any
+	SourcePath string
+	From       lang.Ownership
 }
 
 var templateFuncs = template.FuncMap{
@@ -729,24 +720,11 @@ func workflowOutputs(tasks map[string]*contract.TaskState) map[string]any {
 	return nil
 }
 
-// render is the setup-template renderer (missingkey=error: a missing
-// dependency is a contract violation, surface it).
+// render is the renderer of what is still a template: a dynamic output's
+// script, a workflow node's input binding, and a chain's input binding.
+// missingkey=error, because a missing dependency is a contract violation.
 func render(cmd string, ctx RenderContext) (string, error) {
 	return renderWith(cmd, ctx, "missingkey=error")
-}
-
-// renderCleanup is the cleanup-template renderer. Missing keys render as ""
-// so a partial setup can still be torn down by shell-defensive scripts
-// (`kill ... || exit 0` etc).
-//
-// Go renders nil interface{} as "<no value>", which would inject that
-// literal into the shell (e.g. `<` becomes input redirection); strip it.
-func renderCleanup(cmd string, ctx RenderContext) (string, error) {
-	out, err := renderWith(cmd, ctx, "missingkey=zero")
-	if err != nil {
-		return "", err
-	}
-	return strings.ReplaceAll(out, "<no value>", ""), nil
 }
 
 func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
@@ -756,12 +734,6 @@ func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
 	dynamicFuncs := template.FuncMap{
 		"bin": func(ref string) (string, error) {
 			return plugins.ResolveBin(ctx.Session.Plugins, ctx.SourcePath, ref)
-		},
-		// terminal is built per render call for the same reason bin is: it
-		// resolves against this render's own ctx.Session.Terminal binding,
-		// not a global.
-		"terminal": func(verb string) (string, error) {
-			return RenderTerminalOp(ctx.Session.Terminal, verb, ctx.Session)
 		},
 	}
 	tmpl, err := template.New("task").
@@ -1049,17 +1021,18 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			obs.OnSuccess(r.Scope, r.NodeID, time.Since(now), stderr)
 			continue
 		}
-		cmdStr, err := render(r.Setup, ctx)
-		if err != nil {
-			tasks[r.NodeID] = failedState(r, now, err.Error(), prev, resolvedInputs)
-			wrapped := fmt.Errorf("task %q setup template: %w", r.NodeID, err)
-			obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
-			return wrapped
-		}
 		outputs := map[string]any{}
 		var stderrCaptured []byte
-		if strings.TrimSpace(cmdStr) != "" {
-			stdout, stderr, runErr := execHostScript(goCtx, cmdStr, session.WorkspaceDirPath)
+		if r.Setup != nil {
+			resolved, resolveErr := resolveEffect(r.Setup, setupEnvironment(ctx), ctx, r.From, nil)
+			if resolveErr != nil {
+				tasks[r.NodeID] = failedState(r, now, resolveErr.Error(), prev, resolvedInputs)
+				wrapped := fmt.Errorf("effect %q setup: %w", r.NodeID, resolveErr)
+				obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
+				return wrapped
+			}
+			stdout, stderr, runErr := resolved.run(goCtx, session.WorkspaceDirPath)
+			resolved.close()
 			stderrCaptured = stderr
 			if runErr != nil {
 				tasks[r.NodeID] = failedState(r, now, runErr.Error(), prev, resolvedInputs)
@@ -1242,8 +1215,8 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			obs.OnSuccess(r.Scope, r.NodeID, time.Since(now), stderr)
 			continue
 		}
-		if strings.TrimSpace(r.Cleanup) == "" {
-			// No cleanup script means the task ends as soon as we say it
+		if r.Cleanup == nil {
+			// No cleanup action means the effect ends as soon as we say it
 			// does — the entity has been "released" with no work required.
 			// Surface this as success rather than skip so the progress UI
 			// matches the new status semantics (cleaned ≡ gone).
@@ -1268,19 +1241,20 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			Session:    sess,
 			SourcePath: r.SourcePath,
 		}
-		cmdStr, err := renderCleanup(r.Cleanup, ctx)
-		if err != nil {
+		resolved, resolveErr := resolveEffect(r.Cleanup, cleanupEnvironment(ctx), ctx, r.From, nil)
+		if resolveErr != nil {
 			state.Status = contract.TaskStatusFailed
-			state.Error = err.Error()
+			state.Error = resolveErr.Error()
 			state.FailedAt = now
-			wrapped := fmt.Errorf("task %q cleanup template: %w", r.NodeID, err)
+			wrapped := fmt.Errorf("effect %q cleanup: %w", r.NodeID, resolveErr)
 			if firstErr == nil {
 				firstErr = wrapped
 			}
 			obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
 			continue
 		}
-		_, stderr, runErr := execHostScript(goCtx, cmdStr, session.WorkspaceDirPath)
+		_, stderr, runErr := resolved.run(goCtx, session.WorkspaceDirPath)
+		resolved.close()
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = runErr.Error()

@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# Stands in for the multiplexer: records what it was asked to do and keeps
+# just enough state for has-session to answer the way a real one would
+# before and after a session exists.
+plect-effect-record tmux "$@"
+marker="$PLECT_EFFECT_STATE/tmux-session"
+case "$1" in
+  has-session)  [ -f "$marker" ] || exit 1 ;;
+  new-session)  : > "$marker" ;;
+  kill-session) rm -f "$marker" ;;
+  capture-pane) printf '%s\n' "spy pane line" ;;
+esac
+exit 0

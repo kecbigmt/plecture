@@ -48,8 +48,8 @@ func nestedConfig(t *testing.T, inner taskFixture, outerExtra string) *config.Co
 // bindPid re-exports the inner task's pid under the same public name, the
 // minimum wiring a chain needs to expose anything at all.
 const bindPid = `
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
+[outputs.bind]
+pid = { from = "inner.outputs.pid" }
 
 [outputs_schema]
 type = "object"
@@ -63,7 +63,7 @@ type = "string"
 // says which one.
 func TestEvaluateHealth_NestedAliveComposesByAndNamingTheLayer(t *testing.T) {
 	store := testStore(t)
-	cfg := nestedConfig(t, taskFixture{alive: "false"}, bindPid+"\n[health]\nalive = \"true\"\n")
+	cfg := nestedConfig(t, taskFixture{alive: "false"}, bindPid+"\n[health.alive]\ntype = \"shell\"\nscript = \"true\"\n")
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default",
 		nestedTasks(map[string]any{"pid": "1"}, map[string]any{"pid": "1"}, nil))
 
@@ -104,7 +104,7 @@ func TestEvaluateHealth_NestedActivityComposesByOr(t *testing.T) {
 	store := testStore(t)
 	cfg := nestedConfig(t,
 		taskFixture{activity: `echo '{"fingerprint":"inner-1"}'`},
-		bindPid+"\n[health]\nactivity = \"echo '{\\\"fingerprint\\\":\\\"outer-1\\\"}'\"\n")
+		bindPid+"\n[health.activity]\ntype = \"shell\"\nscript = \"echo '{\\\"fingerprint\\\":\\\"outer-1\\\"}'\"\n")
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default",
 		nestedTasks(map[string]any{"pid": "1"}, map[string]any{"pid": "1"}, nil))
 
@@ -143,9 +143,9 @@ func TestEvaluateHealth_NestedProbeRunsWithTheEnclosingBindEnv(t *testing.T) {
 // gateSchema binds the inner task's two outputs and gives the composed task
 // a contract to declare conditions against.
 const gateSchema = `
-[bind.outputs]
-pid   = "{{.Inner.outputs.pid}}"
-state = "{{.Inner.outputs.state}}"
+[outputs.bind]
+pid = { from = "inner.outputs.pid" }
+state = { from = "inner.outputs.state" }
 
 [outputs_schema]
 type = "object"
@@ -234,21 +234,14 @@ pid = "{{.Work.outputs.pid}}"
 }
 
 // TestRefreshInstanceOutputs_NestedFetchesPerLayerAndReprojects covers a
-// layer's own `[[outputs]]`: the fetched value lands in that layer's contract
-// and the composed contract is re-read from there rather than left stale
-// beside it.
+// layer's own `[[outputs]]`: the fetched value lands in that layer's own
+// contract, which the composed contract is then re-read from.
 func TestRefreshInstanceOutputs_NestedFetchesPerLayerAndReprojects(t *testing.T) {
 	store := testStore(t)
 	cfg := nestedConfig(t, taskFixture{},
 		`
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-
 [outputs_schema]
 type = "object"
-
-[outputs_schema.properties.pid]
-type = "string"
 
 [outputs_schema.properties.checks_status]
 type = "string"
@@ -274,8 +267,8 @@ script = "echo SUCCESS"
 	if got := st.Outputs["checks_status"]; got != "SUCCESS" {
 		t.Errorf("composed outputs = %v, want the projection re-read after the fetch", st.Outputs)
 	}
-	if got := st.Outputs["pid"]; got != "1" {
-		t.Errorf("composed pid = %v, want the projection to keep carrying the bound inner output", got)
+	if got := st.Layers[0].Outputs["checks_status"]; got != "SUCCESS" {
+		t.Errorf("layer contract = %v, want the fetched value on the layer that declared it", st.Layers[0].Outputs)
 	}
 }
 
@@ -316,9 +309,9 @@ func TestRefreshInstanceOutputs_NestedScriptSeesItsLayerAndEnclosingEnv(t *testi
 	cfg := nestedConfig(t,
 		taskFixture{extra: "\n[[outputs]]\nname = \"seen\"\nscript = \"echo $PLECT_GUARD-{{.Self.pid}}-{{.Inputs.who}}\"\n"},
 		`
-[bind.outputs]
-pid  = "{{.Inner.outputs.pid}}"
-seen = "{{.Inner.outputs.seen}}"
+[outputs.bind]
+pid = { from = "inner.outputs.pid" }
+seen = { from = "inner.outputs.seen" }
 
 [outputs_schema]
 type = "object"
@@ -354,14 +347,14 @@ func TestCapture_NestedTerminalRendersAgainstTheDeclaringLayer(t *testing.T) {
 	cfg := nestedConfig(t,
 		taskFixture{
 			attach:   "true",
-			capture:  "echo -n 'endpoint {{.Self.interactive_endpoint}} pid {{.Self.pid}}'",
+			capture:  `echo -n "endpoint {{.Self.interactive_endpoint}} pid {{.Self.pid}}"`,
 			sendText: "true",
 			sendKeys: "true",
 		},
 		`
-[bind.outputs]
-interactive_endpoint = "{{.Inner.outputs.interactive_endpoint}}"
-agent_pid            = "{{.Inner.outputs.pid}}"
+[outputs.bind]
+interactive_endpoint = { from = "inner.outputs.interactive_endpoint" }
+agent_pid = { from = "inner.outputs.pid" }
 
 [outputs_schema]
 type = "object"
@@ -521,7 +514,7 @@ state = "{{.Work.outputs.state}}"
 // declared in, so a chain whose inner task ships in a plugin keeps its own
 // plugin's executables reachable no matter which file names it from outside.
 func TestProbeTargets_CarryEachLayersOwnSourcePath(t *testing.T) {
-	cfg := nestedConfig(t, taskFixture{alive: "true"}, bindPid+"\n[health]\nalive = \"true\"\n")
+	cfg := nestedConfig(t, taskFixture{alive: "true"}, bindPid+"\n[health.alive]\ntype = \"shell\"\nscript = \"true\"\n")
 	defs, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
 		t.Fatalf("LoadTaskDefinitions: %v", err)

@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -215,7 +216,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	}, nil
 }
 
-// attachCommandFor renders the declared attach command for display, mirroring
+// attachCommandFor resolves the declared attach command for display, mirroring
 // Attach's lookup but degrading to "" (no attach target, or not yet produced)
 // instead of an error — `plect status` reports facts, it doesn't fail on them.
 func attachCommandFor(cfg *config.Config, session *domain.Session) string {
@@ -231,7 +232,14 @@ func attachCommandFor(cfg *config.Config, session *domain.Session) string {
 	if !ok || st == nil || st.Status != contract.TaskStatusProduced {
 		return ""
 	}
-	cmdStr, err := task.RenderAttach(target.Terminal.Attach, task.TerminalSelf(target.Layers, st), sessionVars(cfg, session, plan))
+	// This is a display string nobody runs, so the run directory a shell
+	// attach verb materializes into is removed as soon as it is read.
+	dir, err := os.MkdirTemp("", "plect-attach-display-")
+	if err != nil {
+		return ""
+	}
+	defer os.RemoveAll(dir)
+	cmdStr, err := task.TerminalCommand(terminalBinding(plan, session), "attach", sessionVars(cfg, session, plan), dir)
 	if err != nil {
 		return ""
 	}

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+	"text/template/parse"
 )
 
 // Chain placement values: where the spawned workflow session attaches in the
@@ -420,4 +421,67 @@ func TaskChains(defs map[string]TaskDefinition) []ChainDefinition {
 		}
 	}
 	return out
+}
+
+// walkTemplateNodes visits every node of a parsed template, descending into
+// the branches of if/range/with. A rule that stopped at the top level would
+// let the same reference through unexamined merely for sitting inside a
+// conditional.
+func walkTemplateNodes(n parse.Node, visit func(parse.Node)) {
+	if n == nil {
+		return
+	}
+	visit(n)
+	switch x := n.(type) {
+	case *parse.ListNode:
+		if x == nil {
+			return
+		}
+		for _, c := range x.Nodes {
+			walkTemplateNodes(c, visit)
+		}
+	case *parse.ActionNode:
+		walkTemplateNodes(x.Pipe, visit)
+	case *parse.PipeNode:
+		if x == nil {
+			return
+		}
+		for _, c := range x.Cmds {
+			walkTemplateNodes(c, visit)
+		}
+	case *parse.CommandNode:
+		for _, a := range x.Args {
+			walkTemplateNodes(a, visit)
+		}
+	case *parse.IfNode:
+		walkBranch(x.BranchNode, visit)
+	case *parse.RangeNode:
+		walkBranch(x.BranchNode, visit)
+	case *parse.WithNode:
+		walkBranch(x.BranchNode, visit)
+	}
+}
+
+func walkBranch(b parse.BranchNode, visit func(parse.Node)) {
+	walkTemplateNodes(b.Pipe, visit)
+	walkTemplateNodes(b.List, visit)
+	walkTemplateNodes(b.ElseList, visit)
+}
+
+// TemplateFieldRefs returns every field reference a template makes, as the
+// dotted identifier chain of each (`.Work.outputs.pid` yields
+// ["Work","outputs","pid"]), including references inside if/range/with
+// branches.
+func TemplateFieldRefs(tmplStr string) ([][]string, error) {
+	t, err := template.New("ref-scan").Parse(tmplStr)
+	if err != nil {
+		return nil, err
+	}
+	var out [][]string
+	walkTemplateNodes(t.Root, func(n parse.Node) {
+		if f, ok := n.(*parse.FieldNode); ok {
+			out = append(out, f.Ident)
+		}
+	})
+	return out, nil
 }

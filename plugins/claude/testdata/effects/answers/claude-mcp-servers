@@ -1,0 +1,1 @@
+printf '%s' '{"mcpServers":{"channel-server":{"command":"channel-server"}}}'

@@ -1,212 +1,128 @@
 package config
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-func TestTerminalConfigValidate(t *testing.T) {
+func terminalVerbAction(script string) *lang.Action {
+	return &lang.Action{Type: lang.ActionShell, Script: script}
+}
+
+// A verb is available on its own: an effect may offer a capture and nothing
+// else, and what a consumer asks for either resolves or fails where it is
+// consumed.
+func TestTerminalConfigVerb(t *testing.T) {
+	full := &TerminalConfig{
+		Attach:   terminalVerbAction("a"),
+		Capture:  terminalVerbAction("c"),
+		SendText: terminalVerbAction("t"),
+		SendKeys: terminalVerbAction("k"),
+	}
 	tests := []struct {
 		name    string
 		term    *TerminalConfig
-		wantErr bool
-		wantMsg string // substring, only checked when wantErr
+		verb    string
+		wantErr string
 	}{
-		{name: "nil is valid (no interactive endpoint declared)", term: nil},
-		{name: "bare empty table is valid", term: &TerminalConfig{}},
+		{name: "declared verb resolves", term: full, verb: "capture"},
+		{name: "no endpoint at all", term: nil, verb: "capture", wantErr: "capture"},
+		{name: "bare table declares no verb", term: &TerminalConfig{}, verb: "attach", wantErr: "attach"},
 		{
-			name: "all four declared",
-			term: &TerminalConfig{Attach: "a", Capture: "c", SendText: "t", SendKeys: "k"},
+			name:    "an undeclared verb of a partial table",
+			term:    &TerminalConfig{Capture: terminalVerbAction("c")},
+			verb:    "send_text",
+			wantErr: "send_text",
 		},
-		{
-			name:    "only attach declared",
-			term:    &TerminalConfig{Attach: "a"},
-			wantErr: true,
-			wantMsg: "capture, send_text, send_keys",
-		},
-		{
-			name:    "missing only send_keys",
-			term:    &TerminalConfig{Attach: "a", Capture: "c", SendText: "t"},
-			wantErr: true,
-			wantMsg: "send_keys",
-		},
+		{name: "an unknown verb name", term: full, verb: "sendtext", wantErr: "want attach"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.term.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("err = %v, wantErr = %v", err, tt.wantErr)
+			action, err := tt.term.Verb(tt.verb)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Verb(%q) = %v", tt.verb, err)
+				}
+				if action == nil {
+					t.Fatalf("Verb(%q) resolved to no action", tt.verb)
+				}
+				return
 			}
-			if tt.wantErr && !strings.Contains(err.Error(), tt.wantMsg) {
-				t.Fatalf("err = %q, want substring %q", err.Error(), tt.wantMsg)
+			if err == nil {
+				t.Fatalf("Verb(%q) resolved, want an error", tt.verb)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("err = %q, want substring %q", err.Error(), tt.wantErr)
 			}
 		})
 	}
 }
 
-// TestLoadTaskDefinitions_TerminalAllFourAccepted guards the happy path: a
-// task declaring every [terminal] member loads with Terminal populated.
-func TestLoadTaskDefinitions_TerminalAllFourAccepted(t *testing.T) {
-	baseDir := t.TempDir()
-	tasksDir := filepath.Join(baseDir, "tasks")
-	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(tasksDir, "tmux.toml"), `
+// A partial table now loads: availability is per verb, so an effect offering
+// only the verbs it can honor is a legitimate declaration.
+func TestLoadTaskDefinitions_TerminalVerbsAreIndependent(t *testing.T) {
+	cfg := writeEffectDoc(t, t.TempDir(), "pane", `
+[pane]
+kind  = "effect"
 scope = "run"
-setup = "echo '{}'"
 
-[terminal]
-attach     = "tmux attach -t {{.Self.session_name}}"
-capture    = "tmux capture-pane -p -t {{.Self.session_name}}"
-send_text  = "tmux send-keys -t {{.Self.session_name}} -- \"$1\""
-send_keys  = "tmux send-keys -t {{.Self.session_name}} \"$1\""
+[pane.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[pane.terminal.attach]
+type    = "exec"
+command = "tmux"
+args    = ["attach", "-t", { from = "self.outputs.session_name" }]
+
+[pane.terminal.capture]
+type    = "exec"
+command = "tmux"
+args    = ["capture-pane", "-p", "-t", { from = "self.outputs.session_name" }]
 `)
-	cfg := &Config{BaseDir: baseDir}
 	defs, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	def, ok := defs["tmux"]
+	def, ok := defs["pane"]
 	if !ok {
-		t.Fatal("tmux task not loaded")
+		t.Fatal("pane effect not loaded")
 	}
-	if def.Terminal == nil {
-		t.Fatal("expected Terminal to be populated")
+	if !def.Terminal.IsDeclared() {
+		t.Fatal("expected the terminal table to read as declared")
 	}
-	if def.Terminal.Attach == "" || def.Terminal.Capture == "" || def.Terminal.SendText == "" || def.Terminal.SendKeys == "" {
-		t.Fatalf("expected all four terminal verbs to be populated, got %+v", def.Terminal)
+	if _, err := def.Terminal.Verb("capture"); err != nil {
+		t.Errorf("capture: %v", err)
 	}
-}
-
-// TestTerminalConfigValidate_ConformsToCanonicalSchema is the schema-driven
-// pilot's conformance check: for a representative sweep of [terminal] table
-// shapes, TerminalConfig.Validate's accept/reject verdict must agree with
-// the independently-authored schema/terminal.schema.json's, so the
-// hand-written Go validation and the canonical schema document can't
-// silently drift apart.
-func TestTerminalConfigValidate_ConformsToCanonicalSchema(t *testing.T) {
-	tests := []map[string]any{
-		{},
-		{"attach": "a", "capture": "c", "send_text": "t", "send_keys": "k"},
-		{"attach": "a"},
-		{"capture": "c"},
-		{"send_text": "t"},
-		{"send_keys": "k"},
-		{"attach": "a", "capture": "c"},
-		{"attach": "a", "capture": "c", "send_text": "t"},
-	}
-	for _, data := range tests {
-		t.Run(fmt.Sprintf("%v", data), func(t *testing.T) {
-			schemaErr := terminalSchema.Validate(data)
-			loaderErr := decodeTerminalConfig(data).Validate()
-			if (schemaErr == nil) != (loaderErr == nil) {
-				t.Fatalf("schema valid=%v (err=%v) but loader valid=%v (err=%v) for %v",
-					schemaErr == nil, schemaErr, loaderErr == nil, loaderErr, data)
-			}
-		})
+	if _, err := def.Terminal.Verb("send_text"); err == nil {
+		t.Error("send_text resolved, but this effect declares no such verb")
 	}
 }
 
-// decodeTerminalConfig mirrors what TOML decoding a [terminal] table
-// produces: a nil pointer for an absent/empty table reads as "not declared"
-// the same way Validate already treats a bare-empty pointer, and a present
-// key becomes its matching field.
-func decodeTerminalConfig(data map[string]any) *TerminalConfig {
-	if len(data) == 0 {
-		return nil
-	}
-	get := func(k string) string {
-		v, _ := data[k].(string)
-		return v
-	}
-	return &TerminalConfig{Attach: get("attach"), Capture: get("capture"), SendText: get("send_text"), SendKeys: get("send_keys")}
-}
-
-// TestLoadTaskDefinitions_TopLevelAttachRejected guards against the old
-// top-level `attach`/`capture` keys silently vanishing (BurntSushi's decoder
-// otherwise just ignores an unrecognized key) now that they live under
-// [terminal] — a task file left un-migrated must fail loudly, not load with
-// its attach target quietly dropped.
-func TestLoadTaskDefinitions_TopLevelAttachRejected(t *testing.T) {
-	for _, key := range []string{"attach", "capture"} {
-		t.Run(key, func(t *testing.T) {
-			baseDir := t.TempDir()
-			tasksDir := filepath.Join(baseDir, "tasks")
-			if err := os.MkdirAll(tasksDir, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			writeFile(t, filepath.Join(tasksDir, "tmux.toml"),
-				"scope = \"run\"\nsetup = \"echo '{}'\"\n"+key+" = \"echo hi\"\n")
-			cfg := &Config{BaseDir: baseDir}
-			_, err := cfg.LoadTaskDefinitions("")
-			if err == nil {
-				t.Fatalf("expected an error for top-level %q", key)
-			}
-			if !strings.Contains(err.Error(), "[terminal]") {
-				t.Errorf("error %q should point at [terminal]", err.Error())
-			}
-		})
-	}
-}
-
-// TestLoadTaskDefinitions_TerminalUnknownFieldRejected guards the
-// additionalProperties: false the canonical schema declares — a typo'd verb
-// name must fail to load instead of silently vanishing as an unrecognized
-// TOML key, mirroring TestLoadTaskDefinitions_TopLevelAttachRejected.
+// A typo'd verb name must fail to load rather than vanish as an unread key,
+// which would leave a consumer of the real verb looking undeclared with no
+// hint why.
 func TestLoadTaskDefinitions_TerminalUnknownFieldRejected(t *testing.T) {
-	baseDir := t.TempDir()
-	tasksDir := filepath.Join(baseDir, "tasks")
-	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(tasksDir, "tmux.toml"), `
+	cfg := writeEffectDoc(t, t.TempDir(), "pane", `
+[pane]
+kind  = "effect"
 scope = "run"
-setup = "echo '{}'"
 
-[terminal]
-attach     = "a"
-capture    = "c"
-sendtext   = "t"
-send_keys  = "k"
+[pane.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[pane.terminal.sendtext]
+type   = "shell"
+script = "true"
 `)
-	cfg := &Config{BaseDir: baseDir}
 	_, err := cfg.LoadTaskDefinitions("")
 	if err == nil {
-		t.Fatal("expected an error for an unknown [terminal] field")
+		t.Fatal("expected an error for an unknown terminal verb")
 	}
 	if !strings.Contains(err.Error(), "sendtext") {
-		t.Errorf("error %q should name the unknown field", err.Error())
-	}
-}
-
-// TestLoadTaskDefinitions_TerminalPartialTableRejected guards the ADR's
-// load-time acceptance criterion: a [terminal] table declaring fewer than
-// all four verbs must fail to load, naming the missing member(s).
-func TestLoadTaskDefinitions_TerminalPartialTableRejected(t *testing.T) {
-	baseDir := t.TempDir()
-	tasksDir := filepath.Join(baseDir, "tasks")
-	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(tasksDir, "tmux.toml"), `
-scope = "run"
-setup = "echo '{}'"
-
-[terminal]
-attach = "tmux attach -t {{.Self.session_name}}"
-`)
-	cfg := &Config{BaseDir: baseDir}
-	_, err := cfg.LoadTaskDefinitions("")
-	if err == nil {
-		t.Fatal("expected an error for a partial [terminal] table")
-	}
-	for _, member := range []string{"capture", "send_text", "send_keys"} {
-		if !strings.Contains(err.Error(), member) {
-			t.Errorf("error %q does not name missing member %q", err.Error(), member)
-		}
+		t.Errorf("error %q should name the unknown verb", err.Error())
 	}
 }

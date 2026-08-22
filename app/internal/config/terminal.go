@@ -2,63 +2,57 @@ package config
 
 import (
 	"fmt"
-	"strings"
+
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// TerminalConfig is a task's `[terminal]` table: the four raw terminal verbs
-// a task that owns an interactive endpoint declares. Each member is a
-// Go-template-rendered shell command string (single-line or multi-line TOML
-// strings only — an array is a decode type error against these `string`
-// fields, enforcing the ADR's "no arrays" rule for free).
+// TerminalConfig is an effect's `[terminal]` table: the terminal verbs an
+// effect that owns an interactive endpoint declares, each an action.
 //
-// `attach` and `capture` receive no terminal operand; `send_text` and
-// `send_keys` receive the literal text or key token as their first shell
-// positional parameter ($1). Consumers reach these verbs through
-// `plect attach` / `plect capture` (attach/capture only) or the
-// `{{terminal "..."}}` template helper (all four) — never by naming the
-// concrete multiplexer, so a task's own terminal implementation stays
-// swappable behind the same four-verb shape.
+// `attach` and `capture` receive no operand; `send_text` and `send_keys`
+// receive the literal text or key token as the action's first positional
+// argument. Consumers reach these verbs through `plect attach` /
+// `plect capture` or through a `{ terminal = "<verb>" }` value — never by
+// naming the concrete multiplexer, so an effect's own terminal
+// implementation stays swappable behind the same verb vocabulary.
+//
+// A partial table is legal: availability is per verb, so an effect may offer
+// a capture and nothing else, and a value consuming a verb no effect in the
+// plan declares fails where it is consumed.
 type TerminalConfig struct {
-	Attach   string `toml:"attach"`
-	Capture  string `toml:"capture"`
-	SendText string `toml:"send_text"`
-	SendKeys string `toml:"send_keys"`
+	Attach   *lang.Action
+	Capture  *lang.Action
+	SendText *lang.Action
+	SendKeys *lang.Action
 }
 
-// Validate enforces the all-or-nothing rule: declaring any one member
-// requires all four, because a partial table cannot honor every verb the
-// {{terminal "..."}} helper promises to resolve. A nil receiver (no
-// `[terminal]` table declared) is valid — most tasks own no interactive
-// endpoint at all.
-func (t *TerminalConfig) Validate() error {
-	if t == nil {
-		return nil
+// Verb returns the action one verb name selects. An undeclared verb is an
+// error rather than a nil action, so a consumer never resolves to nothing.
+func (t *TerminalConfig) Verb(name string) (*lang.Action, error) {
+	var action *lang.Action
+	if t != nil {
+		switch name {
+		case "attach":
+			action = t.Attach
+		case "capture":
+			action = t.Capture
+		case "send_text":
+			action = t.SendText
+		case "send_keys":
+			action = t.SendKeys
+		default:
+			return nil, fmt.Errorf("unknown terminal verb %q (want attach, capture, send_text, or send_keys)", name)
+		}
 	}
-	var missing []string
-	if t.Attach == "" {
-		missing = append(missing, "attach")
+	if action == nil {
+		return nil, fmt.Errorf("no effect in this workflow's plan declares the terminal verb %q", name)
 	}
-	if t.Capture == "" {
-		missing = append(missing, "capture")
-	}
-	if t.SendText == "" {
-		missing = append(missing, "send_text")
-	}
-	if t.SendKeys == "" {
-		missing = append(missing, "send_keys")
-	}
-	if len(missing) == 0 || len(missing) == 4 {
-		// All set, or all empty (a bare `[terminal]` header with nothing
-		// under it) — the latter carries no obligation, same as omitting
-		// the table entirely.
-		return nil
-	}
-	return fmt.Errorf("[terminal] table is missing required member(s): %s", strings.Join(missing, ", "))
+	return action, nil
 }
 
 // IsDeclared reports whether t carries an actual declaration (as opposed to
 // a nil pointer, or a bare `[terminal]` header with every member left
-// empty — see Validate).
+// empty).
 func (t *TerminalConfig) IsDeclared() bool {
-	return t != nil && (t.Attach != "" || t.Capture != "" || t.SendText != "" || t.SendKeys != "")
+	return t != nil && (t.Attach != nil || t.Capture != nil || t.SendText != nil || t.SendKeys != nil)
 }

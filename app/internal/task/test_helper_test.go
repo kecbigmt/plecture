@@ -4,21 +4,25 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// taskStub is a terse spec for one task definition used by buildPlan.
-// Tests should keep it minimal — only the fields they care about. Scope
-// defaults to "run" so most callers can omit it.
+// taskStub is a terse spec for one effect declaration used by buildPlan.
+// Each script field becomes a shell action, the form these declarations
+// actually take; a test that cares about the exec form builds the action
+// itself through setupAction. Scope defaults to "run" so most callers can
+// omit it.
 type taskStub struct {
 	id      string
 	scope   string
 	setup   string
 	cleanup string
 	alive   string
-	// attach/capture/sendText/sendKeys build a [terminal] table when any is
-	// set. All four must be set together (see config.TerminalConfig.Validate)
-	// — a stub setting only some of them is exercising the partial-table
-	// error path, not a real terminal task.
+	// setupAction overrides setup with an action the test states itself.
+	setupAction *lang.Action
+	// attach/capture/sendText/sendKeys build a `[terminal]` table when any is
+	// set. A verb is available on its own, so a stub may declare only the
+	// ones its case consumes.
 	attach            string
 	capture           string
 	sendText          string
@@ -59,17 +63,21 @@ func tryBuildPlan(defs []taskStub, nodes []nodeStub) (*Plan, error) {
 		var terminal *config.TerminalConfig
 		if s.attach != "" || s.capture != "" || s.sendText != "" || s.sendKeys != "" {
 			terminal = &config.TerminalConfig{
-				Attach:   s.attach,
-				Capture:  s.capture,
-				SendText: s.sendText,
-				SendKeys: s.sendKeys,
+				Attach:   shellStub(s.attach),
+				Capture:  shellStub(s.capture),
+				SendText: shellStub(s.sendText),
+				SendKeys: shellStub(s.sendKeys),
 			}
+		}
+		setup := s.setupAction
+		if setup == nil {
+			setup = shellStub(s.setup)
 		}
 		defMap[s.id] = config.TaskDefinition{
 			ID:                s.id,
 			Scope:             s.scope,
-			Setup:             s.setup,
-			Cleanup:           s.cleanup,
+			Setup:             setup,
+			Cleanup:           shellStub(s.cleanup),
 			Health:            healthStub(s.alive),
 			Terminal:          terminal,
 			OutputsSchema:     s.outputsSchema,
@@ -87,11 +95,20 @@ func tryBuildPlan(defs []taskStub, nodes []nodeStub) (*Plan, error) {
 	return CompileWorkflow(wf, defMap)
 }
 
+// shellStub is one shell action carrying a literal script, or nil for a
+// stub that declares none.
+func shellStub(script string) *lang.Action {
+	if script == "" {
+		return nil
+	}
+	return &lang.Action{Type: lang.ActionShell, Script: script}
+}
+
 // healthStub builds the `[health]` table a stub's alive probe implies, or nil
 // when the stub declares none.
 func healthStub(alive string) *config.HealthConfig {
 	if alive == "" {
 		return nil
 	}
-	return &config.HealthConfig{Alive: alive}
+	return &config.HealthConfig{Alive: shellStub(alive)}
 }

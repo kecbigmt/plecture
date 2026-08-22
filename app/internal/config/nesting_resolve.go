@@ -219,17 +219,17 @@ func validateChainJudgeIDs(layers []TaskDefinition) error {
 func validateChainEnv(layers []TaskDefinition) error {
 	owner := map[string]string{}
 	for _, layer := range layers {
-		keys := make([]string, 0, len(layer.Bind.EnvBindings()))
-		for k := range layer.Bind.EnvBindings() {
+		keys := make([]string, 0, len(layer.InnerEnv))
+		for k := range layer.InnerEnv {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
 			if !envNameRE.MatchString(k) {
-				return fmt.Errorf("layer %q: bind.env key %q is not a valid process environment name (must match %s)", layer.ID, k, envNameRE.String())
+				return fmt.Errorf("layer %q: inner.env key %q is not a valid process environment name (must match %s)", layer.ID, k, envNameRE.String())
 			}
 			if prev, dup := owner[k]; dup {
-				return fmt.Errorf("bind.env key %q is declared by both layer %q and layer %q; env keys are unique across the nesting chain", k, prev, layer.ID)
+				return fmt.Errorf("inner.env key %q is declared by both layer %q and layer %q; env keys are unique across the nesting chain", k, prev, layer.ID)
 			}
 			owner[k] = layer.ID
 		}
@@ -251,12 +251,11 @@ func validateLayer(outer, inner TaskDefinition) ([]OutputBinding, error) {
 	if err := ValidateDynamicOutputs(outer.DynamicOutputs); err != nil {
 		return nil, err
 	}
-	bound := outer.Bind.OutputBindings()
+	// A produced output and an `[outputs.bind]` key cannot collide: TOML
+	// rejects a table and an array of tables under one name, so one public
+	// name has one definition source by construction.
 	for _, o := range outer.DynamicOutputs {
 		for _, name := range o.OutputNames() {
-			if _, clash := bound[name]; clash {
-				return nil, fmt.Errorf("produced output %q collides with the [bind.outputs] key of the same name; one public name has one definition source", name)
-			}
 			if isBuiltinDynamicOutput(name) {
 				continue
 			}
@@ -269,14 +268,11 @@ func validateLayer(outer, inner TaskDefinition) ([]OutputBinding, error) {
 		return nil, err
 	}
 
-	bindings, err := outer.ClassifiedOutputBindings()
-	if err != nil {
-		return nil, err
-	}
+	bindings := outer.ClassifiedOutputBindings()
 	for _, b := range bindings {
 		key := b.Key
 		if _, declared := outerProps[key]; !declared {
-			return nil, fmt.Errorf("bind.outputs declares public key %q, which is missing from this layer's outputs_schema", key)
+			return nil, fmt.Errorf("outputs.bind declares public key %q, which is missing from this layer's outputs_schema", key)
 		}
 		declaredType, hasType := schemaPropertyType(outerProps, key)
 		mutable := schemaPropertyMutable(outerProps, key)
@@ -290,18 +286,15 @@ func validateLayer(outer, inner TaskDefinition) ([]OutputBinding, error) {
 		if b.Direct {
 			innerType, innerHasType := schemaPropertyType(innerProps, b.InnerKey)
 			if hasType && innerHasType && declaredType != innerType {
-				return nil, fmt.Errorf("bind.outputs %q binds inner output %q of type %q but declares type %q; a direct binding projects the inner value natively", key, b.InnerKey, innerType, declaredType)
+				return nil, fmt.Errorf("outputs.bind %q binds inner output %q of type %q but declares type %q; a direct binding projects the inner value natively", key, b.InnerKey, innerType, declaredType)
 			}
 			if mutable && !schemaPropertyMutable(innerProps, b.InnerKey) {
-				return nil, fmt.Errorf("bind.outputs %q is declared mutable but binds the immutable inner output %q", key, b.InnerKey)
+				return nil, fmt.Errorf("outputs.bind %q is declared mutable but binds the immutable inner output %q", key, b.InnerKey)
 			}
 			continue
 		}
 		if mutable {
-			return nil, fmt.Errorf("bind.outputs %q is a computed template and cannot be declared mutable; a mutable write has no inner output to route to", key)
-		}
-		if hasType && declaredType != "string" {
-			return nil, fmt.Errorf("bind.outputs %q is a computed template, so its outputs_schema type must be \"string\", not %q", key, declaredType)
+			return nil, fmt.Errorf("outputs.bind %q is computed and cannot be declared mutable; a mutable write has no inner output to route to", key)
 		}
 	}
 	if err := validateBoundInputs(outer, inner); err != nil {
@@ -311,14 +304,14 @@ func validateLayer(outer, inner TaskDefinition) ([]OutputBinding, error) {
 }
 
 func validateBoundInputs(outer, inner TaskDefinition) error {
-	bound := outer.Bind.InputBindings()
+	bound := outer.InnerInputs
 	required, err := SchemaRequiredNames(inner.InputsSchema, inner.ResolvedInputsSchemaPath())
 	if err != nil {
 		return fmt.Errorf("inner task %q inputs schema: %w", inner.ID, err)
 	}
 	for _, r := range required {
 		if _, ok := bound[r]; !ok {
-			return fmt.Errorf("bind.inputs omits inner required input %q of task %q", r, inner.ID)
+			return fmt.Errorf("inner.inputs omits inner required input %q of effect %q", r, inner.ID)
 		}
 	}
 	closed, err := SchemaIsClosed(inner.InputsSchema, inner.ResolvedInputsSchemaPath())
@@ -339,7 +332,7 @@ func validateBoundInputs(outer, inner TaskDefinition) error {
 	sort.Strings(keys)
 	for _, k := range keys {
 		if _, ok := props[k]; !ok {
-			return fmt.Errorf("bind.inputs binds %q, which the closed inputs schema of inner task %q rejects", k, inner.ID)
+			return fmt.Errorf("inner.inputs binds %q, which the closed inputs schema of inner effect %q rejects", k, inner.ID)
 		}
 	}
 	return nil

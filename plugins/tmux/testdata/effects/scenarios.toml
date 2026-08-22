@@ -1,0 +1,6 @@
+# What each of this plugin's effects is exercised with when its invocation
+# record is regenerated. The stand-ins under bin/ answer for the multiplexer
+# itself and pin the clock, so the recorded pane fingerprint is reproducible.
+
+[tmux]
+capture = "spy pane line"

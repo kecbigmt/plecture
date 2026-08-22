@@ -194,3 +194,26 @@ func (a *Action) values() []*Value {
 	}
 	return out
 }
+
+// Source renders an action back to a short human-readable form, for a report
+// that shows what ran rather than running it. A shell action's source is its
+// script's first line, since a report line has room for no more.
+func (a *Action) Source() string {
+	if a == nil {
+		return ""
+	}
+	if a.Type == ActionShell {
+		line, _, _ := strings.Cut(strings.TrimSpace(a.Script), "\n")
+		return line
+	}
+	name := a.Command
+	if a.Bin != "" {
+		name = a.Bin
+	}
+	words := make([]string, 0, len(a.Args)+1)
+	words = append(words, name)
+	for _, arg := range a.Args {
+		words = append(words, arg.Source())
+	}
+	return strings.Join(words, " ")
+}

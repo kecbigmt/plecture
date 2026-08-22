@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"text/template"
-	"text/template/parse"
+
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 // OutputKeyInteractiveEndpoint is the public output a nesting chain's
@@ -14,40 +14,6 @@ import (
 // attach/capture/send reach that layer through the contract rather than
 // through nesting-aware lookup.
 const OutputKeyInteractiveEndpoint = "interactive_endpoint"
-
-// BindConfig is a nested task's `[bind.*]` tables — the only
-// nesting-specific vocabulary besides `inner` and `locals`. Inputs renders
-// the inner task's input object, Env adds process environment to the inner
-// task's own executions, and Outputs binds the composed task's public
-// outputs from inner outputs or this layer's locals.
-type BindConfig struct {
-	Inputs  map[string]string `toml:"inputs"`
-	Env     map[string]string `toml:"env"`
-	Outputs map[string]string `toml:"outputs"`
-}
-
-// InputBindings / EnvBindings / OutputBindings are nil-safe readers, so a
-// layer that declares no `[bind]` table at all needs no guard at each use.
-func (b *BindConfig) InputBindings() map[string]string {
-	if b == nil {
-		return nil
-	}
-	return b.Inputs
-}
-
-func (b *BindConfig) EnvBindings() map[string]string {
-	if b == nil {
-		return nil
-	}
-	return b.Env
-}
-
-func (b *BindConfig) OutputBindings() map[string]string {
-	if b == nil {
-		return nil
-	}
-	return b.Outputs
-}
 
 // IsNested reports whether this definition is the outer layer of a nesting
 // chain.
@@ -60,180 +26,70 @@ func (d TaskDefinition) ResolvedLocalsSchemaPath() string {
 	return resolveSchemaPath(d.LocalsSchemaFile, d.BaseDir)
 }
 
-// envNameRE is the POSIX-portable process environment name charset. A
-// `bind.env` key outside it could never be exported to the inner task's
+// envNameRE is the POSIX-portable process environment name charset. An
+// `inner.env` key outside it could never be exported to the inner effect's
 // executions, so it is rejected where it is written rather than swallowed by
 // the shell at run time.
 var envNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// OutputBinding is one `[bind.outputs]` entry after classification.
+// OutputBinding is one `[outputs.bind]` entry after classification.
 //
-// Direct bindings project the inner output's native value and route mutable
-// writes to it; computed bindings are rendered strings. The two carry
+// A direct binding projects the inner output's native value and routes
+// mutable writes to it; a computed one produces a new value. The two carry
 // different schema obligations and different runtime behavior, so which one
-// an entry is has to be decided statically, from the template body alone.
+// an entry is has to be decided statically, from the value alone.
 type OutputBinding struct {
 	// Key is the public output name this entry defines.
 	Key string
-	// Template is the entry's declared template body, which the projection
-	// renders for a computed binding.
-	Template string
-	// Direct is true when the whole template body is exactly one
-	// `.Inner.outputs.<key>` reference.
+	// Value is the entry as declared, which the projection resolves.
+	Value *lang.Value
+	// Direct is true when the value is exactly one projection of an inner
+	// public output.
 	Direct bool
 	// InnerKey is the bound inner output for a direct binding.
 	InnerKey string
-	// InnerRefs lists every inner output the template reads, direct or not.
+	// InnerRefs lists every inner output the value reads, direct or not.
 	InnerRefs []string
 }
 
-// walkTemplateNodes visits every node of a parsed template, descending into
-// the branches of if/range/with. Every static reference scan in this package
-// shares it: a rule that stops at the top level would let the same reference
-// through unexamined merely for sitting inside a conditional.
-func walkTemplateNodes(n parse.Node, visit func(parse.Node)) {
-	if n == nil {
-		return
-	}
-	visit(n)
-	switch x := n.(type) {
-	case *parse.ListNode:
-		if x == nil {
-			return
-		}
-		for _, c := range x.Nodes {
-			walkTemplateNodes(c, visit)
-		}
-	case *parse.ActionNode:
-		walkTemplateNodes(x.Pipe, visit)
-	case *parse.PipeNode:
-		if x == nil {
-			return
-		}
-		for _, c := range x.Cmds {
-			walkTemplateNodes(c, visit)
-		}
-	case *parse.CommandNode:
-		for _, a := range x.Args {
-			walkTemplateNodes(a, visit)
-		}
-	case *parse.IfNode:
-		walkBranch(x.BranchNode, visit)
-	case *parse.RangeNode:
-		walkBranch(x.BranchNode, visit)
-	case *parse.WithNode:
-		walkBranch(x.BranchNode, visit)
-	}
-}
+const innerOutputRoot = "inner.outputs."
 
-func walkBranch(b parse.BranchNode, visit func(parse.Node)) {
-	walkTemplateNodes(b.Pipe, visit)
-	walkTemplateNodes(b.List, visit)
-	walkTemplateNodes(b.ElseList, visit)
-}
+// innerOutputRefRE finds the inner outputs a computation reads. A
+// computation is CEL rather than a template, so the reference is the same
+// dotted path a projection writes.
+var innerOutputRefRE = regexp.MustCompile(`\binner\.outputs\.([A-Za-z_][A-Za-z0-9_]*)`)
 
-// TemplateFieldRefs returns every field reference a template makes, as the
-// dotted identifier chain of each (`.Work.outputs.pid` yields
-// ["Work","outputs","pid"]), including references inside if/range/with
-// branches.
-func TemplateFieldRefs(tmplStr string) ([][]string, error) {
-	t, err := template.New("ref-scan").Parse(tmplStr)
-	if err != nil {
-		return nil, err
-	}
-	var out [][]string
-	walkTemplateNodes(t.Root, func(n parse.Node) {
-		if f, ok := n.(*parse.FieldNode); ok {
-			out = append(out, f.Ident)
-		}
-	})
-	return out, nil
-}
-
-// ClassifyOutputBinding decides whether tmpl is a direct inner-output
-// binding and collects the sources it reads, rejecting any source that is
-// neither an inner public output nor a local.
-func ClassifyOutputBinding(key, tmpl string) (OutputBinding, error) {
-	b := OutputBinding{Key: key, Template: tmpl}
-	t, err := template.New("bind-output").Parse(tmpl)
-	if err != nil {
-		return b, fmt.Errorf("bind.outputs %q: %w", key, err)
-	}
-	var refErr error
+// ClassifyOutputBinding decides whether value is a direct projection of one
+// inner output, and collects every inner output it reads.
+func ClassifyOutputBinding(key string, value *lang.Value) OutputBinding {
+	b := OutputBinding{Key: key, Value: value}
 	seen := map[string]bool{}
-	walkTemplateNodes(t.Root, func(n parse.Node) {
-		if refErr != nil {
-			return
-		}
-		switch x := n.(type) {
-		case *parse.FieldNode:
-			switch {
-			case x.Ident[0] == "Inner":
-				if len(x.Ident) < 3 || x.Ident[1] != "outputs" {
-					refErr = fmt.Errorf("bind.outputs %q reads %q; an inner reference names one inner public output as `.Inner.outputs.<key>`", key, "."+strings.Join(x.Ident, "."))
-					return
-				}
-				if !seen[x.Ident[2]] {
-					seen[x.Ident[2]] = true
-					b.InnerRefs = append(b.InnerRefs, x.Ident[2])
-				}
-			case x.Ident[0] == "Locals":
-			default:
-				refErr = fmt.Errorf("bind.outputs %q reads %q, which is neither an inner public output nor a local (`.Inner.outputs.<key>` or `.Locals.<key>`)", key, "."+strings.Join(x.Ident, "."))
+	for _, leaf := range lang.ValueLeaves(value) {
+		switch leaf.Form {
+		case lang.FormFrom:
+			inner, ok := strings.CutPrefix(leaf.From, innerOutputRoot)
+			if !ok {
+				continue
 			}
-		case *parse.DotNode:
-			refErr = fmt.Errorf("bind.outputs %q reads the whole render context, which is neither an inner public output nor a local", key)
+			if leaf == value {
+				b.Direct = true
+				b.InnerKey = inner
+			}
+			if !seen[inner] {
+				seen[inner] = true
+				b.InnerRefs = append(b.InnerRefs, inner)
+			}
+		case lang.FormExpr:
+			for _, match := range innerOutputRefRE.FindAllStringSubmatch(leaf.Expr, -1) {
+				if !seen[match[1]] {
+					seen[match[1]] = true
+					b.InnerRefs = append(b.InnerRefs, match[1])
+				}
+			}
 		}
-	})
-	if refErr != nil {
-		return b, refErr
 	}
 	sort.Strings(b.InnerRefs)
-	if inner, ok := soleInnerOutputRef(t.Root); ok {
-		b.Direct = true
-		b.InnerKey = inner
-	}
-	return b, nil
-}
-
-// soleInnerOutputRef reports the inner output key when the template body is
-// exactly one `.Inner.outputs.<key>` action — the sole shape that projects
-// the inner value natively instead of rendering it to a string. Surrounding
-// whitespace is tolerated because it is not part of the value the author
-// wrote; any other literal text, extra action, function call, or pipeline
-// makes the binding computed.
-func soleInnerOutputRef(root *parse.ListNode) (string, bool) {
-	if root == nil {
-		return "", false
-	}
-	var action *parse.ActionNode
-	for _, n := range root.Nodes {
-		switch x := n.(type) {
-		case *parse.TextNode:
-			if strings.TrimSpace(string(x.Text)) != "" {
-				return "", false
-			}
-		case *parse.ActionNode:
-			if action != nil {
-				return "", false
-			}
-			action = x
-		default:
-			return "", false
-		}
-	}
-	if action == nil || action.Pipe == nil || len(action.Pipe.Cmds) != 1 || len(action.Pipe.Decl) != 0 {
-		return "", false
-	}
-	cmd := action.Pipe.Cmds[0]
-	if len(cmd.Args) != 1 {
-		return "", false
-	}
-	field, ok := cmd.Args[0].(*parse.FieldNode)
-	if !ok || len(field.Ident) != 3 || field.Ident[0] != "Inner" || field.Ident[1] != "outputs" {
-		return "", false
-	}
-	return field.Ident[2], true
+	return b
 }
 
 // chainLocalRefs returns the `.Work.locals.<key>` references a chain's input
@@ -281,26 +137,21 @@ func schemaPropertyMutable(props map[string]any, key string) bool {
 	return b
 }
 
-// ClassifiedOutputBindings returns this layer's `[bind.outputs]` entries in
+// ClassifiedOutputBindings returns this layer's `[outputs.bind]` entries in
 // a stable key order, each classified as direct or computed. Load-time
 // validation and the runtime projection read the same classification from
 // here rather than each deciding it again.
-func (d TaskDefinition) ClassifiedOutputBindings() ([]OutputBinding, error) {
-	bound := d.Bind.OutputBindings()
-	keys := make([]string, 0, len(bound))
-	for k := range bound {
+func (d TaskDefinition) ClassifiedOutputBindings() []OutputBinding {
+	keys := make([]string, 0, len(d.OutputsBind))
+	for k := range d.OutputsBind {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	out := make([]OutputBinding, 0, len(keys))
 	for _, k := range keys {
-		b, err := ClassifyOutputBinding(k, bound[k])
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, b)
+		out = append(out, ClassifyOutputBinding(k, d.OutputsBind[k]))
 	}
-	return out, nil
+	return out
 }
 
 // SchemaRequiredNames returns the schema document's `required` list, and

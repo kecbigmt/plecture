@@ -53,14 +53,14 @@ A task that owns an interactive terminal endpoint declares:
   [`health-declaration.md`](health-declaration.md));
 - a `[terminal]` table with `attach`, `capture`, `send_text`, and `send_keys`.
 
-The `[terminal]` table is all-or-nothing: declaring any member requires all four
-members, and a partial table is a load error. Each member is a
-Go-template-rendered shell command string. Single-line and multi-line TOML
-strings are valid; arrays are invalid.
+Availability is per verb: an effect declares the verbs it can honor, and a
+value consuming a verb no effect in the plan declares fails where it is
+consumed. Each member is an action (see
+[`../language/actions.md`](../language/actions.md)).
 
 `attach` and `capture` receive no terminal operand. `send_text` and `send_keys`
-receive the literal text or key token as their first shell positional
-parameter.
+receive the literal text or key token as the action's first positional
+argument.
 
 Terminal commands are raw verbs. `send_text` sends literal text, `send_keys`
 sends key-combo input, and `capture` returns terminal text for the consumer to

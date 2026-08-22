@@ -4,6 +4,7 @@ package service
 
 import (
 	"os"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -675,8 +676,15 @@ func TestIntegration_AttachResolvesRenderedCommand(t *testing.T) {
 	if result.TaskID != "tmux" {
 		t.Fatalf("TaskID = %q, want %q", result.TaskID, "tmux")
 	}
-	if result.Command != "tmux attach -t owner-7" {
-		t.Fatalf("Command = %q, want %q", result.Command, "tmux attach -t owner-7")
+	// The command is the resolved verb, not its source: a shell verb is
+	// materialized, so what the caller hands to its shell is a path. Running
+	// it is what says the verb was resolved against this instance.
+	out, err := exec.Command("bash", "-c", result.Command).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run the resolved attach command: %v (%s)", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "attach -t owner-7" {
+		t.Fatalf("resolved attach ran %q, want the declaring instance's own pane", got)
 	}
 }
 
@@ -766,7 +774,7 @@ func TestIntegration_CaptureResolvesRenderedOutput(t *testing.T) {
 				setup:   `echo '{"session_name":"owner-701"}'`,
 				cleanup: "true",
 				attach:  "tmux attach -t {{.Self.session_name}}",
-				capture: "echo -n 'view of {{.Self.session_name}}'",
+				capture: `echo -n "view of {{.Self.session_name}}"`,
 			},
 		},
 		[]nodeFixture{{id: "envfile"}, {id: "tmux"}},
@@ -956,16 +964,27 @@ func TestIntegration_WorkflowFile_NodeWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(repoDir+"/.plect/tasks/tmux.toml", []byte(`
-id    = "tmux"
+[tmux]
+kind  = "effect"
 scope = "run"
-setup = "echo '{\"session_name\":\"abc\"}'"
+
+[tmux.setup]
+type   = "shell"
+script = "echo '{\"session_name\":\"abc\"}'"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(repoDir+"/.plect/tasks/agent.toml", []byte(`
-id    = "agent"
+[agent]
+kind  = "effect"
 scope = "run"
-setup = "echo \"{\\\"target\\\":\\\"$(echo {{.Inputs.session_name}})\\\"}\""
+
+[agent.setup]
+type   = "shell"
+script = "jq -nc --arg target \"$session_name\" '{target:$target}'"
+
+[agent.setup.bind]
+session_name = { from = "inputs.session_name" }
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1046,9 +1065,13 @@ func TestIntegration_WorkflowFrozenOnSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(repoDir+"/.plect/tasks/noop.toml", []byte(`
-id    = "noop"
+[noop]
+kind  = "effect"
 scope = "session"
-setup = "echo '{}'"
+
+[noop.setup]
+type   = "shell"
+script = "echo '{}'"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1109,15 +1132,18 @@ func TestIntegration_AttachUnderWorkflowPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(repoDir+"/.plect/tasks/tmux.toml", []byte(`
-id    = "tmux"
+[tmux]
+kind  = "effect"
 scope = "run"
-setup = "echo '{\"session_name\":\"abc\"}'"
 
-[terminal]
-attach     = "tmux attach -t {{.Self.session_name}}"
-capture    = "true"
-send_text  = "true"
-send_keys  = "true"
+[tmux.setup]
+type   = "shell"
+script = "echo '{\"session_name\":\"abc\"}'"
+
+[tmux.terminal.attach]
+type    = "exec"
+command = "tmux"
+args    = ["attach", "-t", { from = "self.outputs.session_name" }]
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1147,7 +1173,11 @@ uses = "tmux"
 	if res.TaskID != "tmux" {
 		t.Errorf("TaskID = %q, want %q", res.TaskID, "tmux")
 	}
-	if got := "tmux attach -t abc"; res.Command != got {
-		t.Errorf("Command = %q, want %q", res.Command, got)
+	out, err := exec.Command("bash", "-c", res.Command).CombinedOutput()
+	if err != nil {
+		t.Fatalf("run the resolved attach command: %v (%s)", err, out)
+	}
+	if got := strings.TrimSpace(string(out)); got != "attach -t abc" {
+		t.Errorf("resolved attach ran %q, want the declaring instance's own pane", got)
 	}
 }

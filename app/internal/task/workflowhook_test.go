@@ -29,6 +29,8 @@ func literalValue(v string) *lang.Value { return &lang.Value{Form: lang.FormLite
 
 func fromValue(path string) *lang.Value { return &lang.Value{Form: lang.FormFrom, From: path} }
 
+func exprValue(src string) *lang.Value { return &lang.Value{Form: lang.FormExpr, Expr: src} }
+
 func fromValueOr(path, fallback string) *lang.Value {
 	return &lang.Value{Form: lang.FormFrom, From: path, Default: fallback, HasDefault: true}
 }
@@ -337,7 +339,11 @@ func TestRunSetup_ExposesWorkflowOutputs(t *testing.T) {
 	resolved := []Resolved{{
 		NodeID: "echoer",
 		Scope:  config.TaskScopeSession,
-		Setup:  `echo "{\"got\":\"{{.Workflow.outputs.branch}}\"}"`,
+		Setup: &lang.Action{
+			Type:   lang.ActionShell,
+			Script: `jq -nc --arg got "$branch" '{got:$got}'`,
+			Bind:   map[string]*lang.Value{"branch": fromValue("workflow.outputs.branch")},
+		},
 		Inputs: map[string]string{"wd": "{{.Workflow.outputs.workspace_dir}}"},
 	}}
 	tasks := map[string]*contract.TaskState{
@@ -352,7 +358,7 @@ func TestRunSetup_ExposesWorkflowOutputs(t *testing.T) {
 	}
 	st := tasks["echoer"]
 	if st.Outputs["got"] != "issue/9" {
-		t.Errorf(".Workflow.outputs.branch = %v", st.Outputs["got"])
+		t.Errorf("workflow.outputs.branch = %v", st.Outputs["got"])
 	}
 	if st.Inputs["wd"] != "/tmp/wd" {
 		t.Errorf("input binding over .Workflow.outputs.workspace_dir = %v", st.Inputs["wd"])

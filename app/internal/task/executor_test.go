@@ -2,7 +2,10 @@ package task
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -11,9 +14,14 @@ import (
 )
 
 // spyExecutor records every ExecRequest it receives and returns a canned
-// result, so tests can assert on argv/cwd without shelling out.
+// result, so tests can assert on argv/cwd without shelling out. A shell
+// action's process is a generated wrapper, so its argv says nothing about
+// what it runs: the script and the bindings are read out of the run
+// directory while it still exists.
 type spyExecutor struct {
 	requests []ExecRequest
+	scripts  []string
+	bindings []string
 	stdout   []byte
 	stderr   []byte
 	err      error
@@ -21,7 +29,62 @@ type spyExecutor struct {
 
 func (s *spyExecutor) Run(ctx context.Context, req ExecRequest) (stdout, stderr []byte, err error) {
 	s.requests = append(s.requests, req)
+	script, bindings := readShellRun(req)
+	s.scripts = append(s.scripts, script)
+	s.bindings = append(s.bindings, bindings)
 	return s.stdout, s.stderr, s.err
+}
+
+// readShellRun reads what a resolved shell action's process actually runs out
+// of the run directory, while it still exists: the argv is a generated
+// wrapper, so the script and the bindings are the only observable contract.
+// An exec action's process has neither, and reports its own last argument
+// instead — what a test naming one execution among several keys on.
+func readShellRun(req ExecRequest) (script, bindings string) {
+	if len(req.Argv) != 1 || !strings.HasSuffix(req.Argv[0], "run.sh") {
+		return req.Argv[len(req.Argv)-1], ""
+	}
+	dir := filepath.Dir(req.Argv[0])
+	if raw, err := os.ReadFile(filepath.Join(dir, "script.sh")); err == nil {
+		script = string(raw)
+	}
+	if raw, err := os.ReadFile(filepath.Join(dir, "bindings.sh")); err == nil {
+		bindings = string(raw)
+	}
+	return script, bindings
+}
+
+// assertShellRequest checks the one request a shell action issued: the
+// script its process runs, the cwd it runs in, and the environment its
+// enclosing layers injected.
+func assertShellRequest(t *testing.T, spy *spyExecutor, wantScript, wantDir string, wantEnv ...string) {
+	t.Helper()
+	if len(spy.requests) != 1 {
+		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
+	}
+	req := spy.requests[0]
+	if len(req.Argv) != 1 || !strings.HasSuffix(req.Argv[0], "run.sh") {
+		t.Errorf("argv = %v, want the generated wrapper alone", req.Argv)
+	}
+	if spy.scripts[0] != wantScript {
+		t.Errorf("script = %q, want %q", spy.scripts[0], wantScript)
+	}
+	if req.Dir != wantDir {
+		t.Errorf("dir = %q, want %q", req.Dir, wantDir)
+	}
+	if req.Stdin != nil {
+		t.Errorf("stdin = %q, want none", req.Stdin)
+	}
+	if !reflect.DeepEqual(req.Env, envOrNil(wantEnv)) {
+		t.Errorf("env = %v, want %v", req.Env, wantEnv)
+	}
+}
+
+func envOrNil(env []string) []string {
+	if len(env) == 0 {
+		return nil
+	}
+	return env
 }
 
 // withSpyExecutor swaps defaultExecutor for a spy for the duration of the
@@ -35,10 +98,6 @@ func withSpyExecutor(t *testing.T) *spyExecutor {
 	return spy
 }
 
-func wantExecRequest(cmdStr, workDir string) ExecRequest {
-	return ExecRequest{Argv: []string{"bash", "-c", cmdStr}, Dir: workDir}
-}
-
 func TestExecutor_RunSetupIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	plan := buildPlan(t,
@@ -49,13 +108,7 @@ func TestExecutor_RunSetupIssuesExpectedExecRequest(t *testing.T) {
 	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}, tasks, nil); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if len(spy.requests) != 1 {
-		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
-	}
-	want := wantExecRequest(`echo '{"value":"x"}'`, "/work/x")
-	if !reflect.DeepEqual(spy.requests[0], want) {
-		t.Errorf("request = %+v, want %+v", spy.requests[0], want)
-	}
+	assertShellRequest(t, spy, `echo '{"value":"x"}'`, "/work/x")
 }
 
 func TestExecutor_RunCleanupIssuesExpectedExecRequest(t *testing.T) {
@@ -70,49 +123,32 @@ func TestExecutor_RunCleanupIssuesExpectedExecRequest(t *testing.T) {
 	if err := RunCleanup(context.Background(), plan.Run, SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}, tasks, nil); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
-	if len(spy.requests) != 1 {
-		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
-	}
-	want := wantExecRequest(`echo cleaned`, "/work/x")
-	if !reflect.DeepEqual(spy.requests[0], want) {
-		t.Errorf("request = %+v, want %+v", spy.requests[0], want)
-	}
+	assertShellRequest(t, spy, `echo cleaned`, "/work/x")
 }
 
 func TestExecutor_RunAliveProbeIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte("ok")
 	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
-	if err := RunAliveProbe(context.Background(), `echo ok`, map[string]any{}, map[string]any{}, session, ""); err != nil {
+	if err := RunAliveProbe(context.Background(), Probe{Action: shellStub(`echo ok`)}, session); err != nil {
 		t.Fatalf("alive probe: %v", err)
 	}
-	if len(spy.requests) != 1 {
-		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
-	}
-	want := wantExecRequest(`echo ok`, "/work/x")
-	if !reflect.DeepEqual(spy.requests[0], want) {
-		t.Errorf("request = %+v, want %+v", spy.requests[0], want)
-	}
+	assertShellRequest(t, spy, `echo ok`, "/work/x")
 }
 
 func TestExecutor_RunCaptureIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte("pane contents")
 	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
-	out, err := RunCapture(context.Background(), `tmux capture-pane`, map[string]any{}, session)
+	binding := &TerminalBinding{Ops: &config.TerminalConfig{Capture: shellStub(`tmux capture-pane`)}}
+	out, err := RunCapture(context.Background(), binding, session)
 	if err != nil {
 		t.Fatalf("capture: %v", err)
 	}
 	if out != "pane contents" {
 		t.Errorf("out = %q", out)
 	}
-	if len(spy.requests) != 1 {
-		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
-	}
-	want := wantExecRequest(`tmux capture-pane`, "/work/x")
-	if !reflect.DeepEqual(spy.requests[0], want) {
-		t.Errorf("request = %+v, want %+v", spy.requests[0], want)
-	}
+	assertShellRequest(t, spy, `tmux capture-pane`, "/work/x")
 }
 
 func TestExecutor_FetchOutputIssuesExpectedExecRequest(t *testing.T) {
@@ -131,7 +167,7 @@ func TestExecutor_FetchOutputIssuesExpectedExecRequest(t *testing.T) {
 	if len(spy.requests) != 1 {
 		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
 	}
-	want := wantExecRequest(`echo 42`, "/work/x")
+	want := ExecRequest{Argv: []string{"bash", "-c", `echo 42`}, Dir: "/work/x"}
 	if !reflect.DeepEqual(spy.requests[0], want) {
 		t.Errorf("request = %+v, want %+v", spy.requests[0], want)
 	}
@@ -140,7 +176,7 @@ func TestExecutor_FetchOutputIssuesExpectedExecRequest(t *testing.T) {
 func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte(`{"ready":"yes"}`)
-	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: `echo '{"ready":"yes"}'`}
+	def := config.TaskDefinition{ID: "review", Scope: "session", Setup: shellStub(`echo '{"ready":"yes"}'`)}
 	r := resolveDef(t, def, "review#1")
 	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
 	result, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{})
@@ -150,13 +186,7 @@ func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 	if result.Outputs["ready"] != "yes" {
 		t.Errorf("outputs = %v", result.Outputs)
 	}
-	if len(spy.requests) != 1 {
-		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
-	}
-	want := wantExecRequest(`echo '{"ready":"yes"}'`, "/work/x")
-	if !reflect.DeepEqual(spy.requests[0], want) {
-		t.Errorf("request = %+v, want %+v", spy.requests[0], want)
-	}
+	assertShellRequest(t, spy, `echo '{"ready":"yes"}'`, "/work/x")
 }
 
 // TestExecutor_RunShellIsNeverRoutedThroughDefaultExecutor guards the
@@ -207,27 +237,21 @@ func TestExecutor_RunActivityProbeIssuesExpectedExecRequest(t *testing.T) {
 	spy := withSpyExecutor(t)
 	spy.stdout = []byte(`{"fingerprint":"f1"}`)
 	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
-	sig, err := RunActivityProbe(context.Background(), `probe`, map[string]any{}, map[string]any{}, session, "", "PLECT_GUARD=on")
+	sig, err := RunActivityProbe(context.Background(), Probe{Action: shellStub(`probe`), Env: []string{"PLECT_GUARD=on"}}, session)
 	if err != nil {
 		t.Fatalf("activity probe: %v", err)
 	}
 	if sig == nil || sig.Fingerprint != "f1" {
 		t.Fatalf("signal = %+v", sig)
 	}
-	if len(spy.requests) != 1 {
-		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
-	}
-	want := wantExecRequest(`probe`, "/work/x")
-	want.Env = []string{"PLECT_GUARD=on"}
-	if !reflect.DeepEqual(spy.requests[0], want) {
-		t.Errorf("request = %+v, want %+v", spy.requests[0], want)
-	}
+	assertShellRequest(t, spy, `probe`, "/work/x", "PLECT_GUARD=on")
 }
 
-// Standard input is an exec action's affordance, and no template-rendered
-// hook has one. Pinning that here is what keeps a shared request-building
-// path from quietly giving a legacy hook a stdin it never declared.
-func TestExecutor_TemplateRenderedHooksPassNoStdin(t *testing.T) {
+// Standard input is an exec action's affordance; a shell action's values
+// reach it through the binding transport instead. Pinning that here is what
+// keeps a shared request-building path from quietly giving a shell action a
+// stdin it never declared.
+func TestExecutor_ShellActionsPassNoStdin(t *testing.T) {
 	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
 	paths := map[string]func(t *testing.T){
 		"task setup": func(t *testing.T) {
@@ -240,12 +264,13 @@ func TestExecutor_TemplateRenderedHooksPassNoStdin(t *testing.T) {
 			}
 		},
 		"alive probe": func(t *testing.T) {
-			if err := RunAliveProbe(context.Background(), `echo ok`, map[string]any{}, map[string]any{}, session, ""); err != nil {
+			if err := RunAliveProbe(context.Background(), Probe{Action: shellStub(`echo ok`)}, session); err != nil {
 				t.Fatal(err)
 			}
 		},
 		"capture": func(t *testing.T) {
-			if _, err := RunCapture(context.Background(), `capture`, map[string]any{}, session); err != nil {
+			binding := &TerminalBinding{Ops: &config.TerminalConfig{Capture: shellStub(`capture`)}}
+			if _, err := RunCapture(context.Background(), binding, session); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -256,7 +281,7 @@ func TestExecutor_TemplateRenderedHooksPassNoStdin(t *testing.T) {
 			}
 		},
 		"dynamic instance setup": func(t *testing.T) {
-			def := config.TaskDefinition{ID: "review", Scope: "session", Setup: `echo '{}'`}
+			def := config.TaskDefinition{ID: "review", Scope: "session", Setup: shellStub(`echo '{}'`)}
 			r := resolveDef(t, def, "review#1")
 			if _, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{}); err != nil {
 				t.Fatal(err)

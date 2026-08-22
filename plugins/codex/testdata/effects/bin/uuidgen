@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# A fixed profile name keeps the recorded launch line and profile path stable.
+plect-effect-record uuidgen "$@"
+printf '%s\n' "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"

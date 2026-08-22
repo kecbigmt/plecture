@@ -57,10 +57,21 @@ func TestLoadTaskDefinitions_QualifiedInnerBypassesUserShadow(t *testing.T) {
 		map[string]string{"claude/config/tasks/claude.toml": innerRuntime},
 		map[string]string{
 			"claude": `
+[claude]
+kind = "effect"
 scope = "run"
-setup = "echo shadow"
+
+[claude.setup]
+type   = "shell"
+script = "echo shadow"
 `,
-			"myclaude": `inner = "local/claude/claude"`,
+			"myclaude": `
+[myclaude]
+kind = "effect"
+
+[myclaude.inner]
+uses = "local/claude/claude"
+`,
 		},
 	)
 	defs, err := cfg.LoadTaskDefinitions("")
@@ -84,13 +95,24 @@ func TestLoadTaskDefinitions_PluginInnerResolvesInItsOwnNamespace(t *testing.T) 
 	cfg := nestingCatalog(t,
 		[]string{"claude"}, []string{"claude"},
 		map[string]string{
-			"claude/config/tasks/claude.toml":  innerRuntime,
-			"claude/config/tasks/wrapper.toml": `inner = "claude"`,
+			"claude/config/tasks/claude.toml": innerRuntime,
+			"claude/config/tasks/wrapper.toml": `
+[wrapper]
+kind = "effect"
+
+[wrapper.inner]
+uses = "claude"
+`,
 		},
 		map[string]string{
 			"claude": `
+[claude]
+kind = "effect"
 scope = "run"
-setup = "echo shadow"
+
+[claude.setup]
+type   = "shell"
+script = "echo shadow"
 `,
 		},
 	)
@@ -142,7 +164,13 @@ func TestLoadTaskDefinitions_QualifiedInnerReferenceErrors(t *testing.T) {
 			cfg := nestingCatalog(t,
 				tt.published, tt.enabled,
 				map[string]string{"claude/config/tasks/claude.toml": innerRuntime},
-				map[string]string{"myclaude": `inner = "` + tt.inner + `"`},
+				map[string]string{"myclaude": `
+[myclaude]
+kind = "effect"
+
+[myclaude.inner]
+uses = "` + tt.inner + `"
+`},
 			)
 			_, err := cfg.LoadTaskDefinitions("")
 			if err == nil {

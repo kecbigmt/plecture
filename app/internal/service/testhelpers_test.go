@@ -84,6 +84,13 @@ esac
 	if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte(ghScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// A stand-in multiplexer that reports what it was asked to do, so a test
+	// can assert on a resolved terminal verb by running it — on a machine
+	// with a real tmux the verb would otherwise act on that machine.
+	tmuxScript := "#!/usr/bin/env bash\necho \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(binDir, "tmux"), []byte(tmuxScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	origPath := os.Getenv("PATH")
 	t.Setenv("PATH", binDir+":"+origPath)

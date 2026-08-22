@@ -205,7 +205,7 @@ out     = { from = "inputs.out" }
 [c.input_schema]
 out = { type = "string", required = true }
 `)
-	terminal := func(verb string) (string, error) {
+	terminal := func(verb, _ string) (string, error) {
 		if verb != "send_text" {
 			t.Fatalf("resolver called with verb %q, want send_text", verb)
 		}

@@ -1,9 +1,13 @@
-scope = "session"
+[review]
+kind     = "effect"
+scope    = "session"
+requires = ["resource_kind", "verdict_current"]
 
-setup = '''
-set -euo pipefail
-EXTRA='{{get .Inputs "instruction" ""}}'
-INSTRUCTION=$(plect template render review --session '{{.SessionName}}' --instruction "$EXTRA")
+[review.setup]
+type   = "shell"
+script = '''
+set -eu
+INSTRUCTION=$(plect template render review --session "$session" --instruction "$extra")
 if [ -z "$INSTRUCTION" ]; then
   echo "plect template render review produced empty instruction" >&2
   exit 1
@@ -11,7 +15,9 @@ fi
 jq -nc --arg instruction "$INSTRUCTION" '{instruction:$instruction}'
 '''
 
-requires = ["resource_kind", "verdict_current"]
+[review.setup.bind]
+session = { from = "session.name" }
+extra   = { from = "inputs.instruction", default = "" }
 
 # There is no third party to judge a reviewer (self-judge is structurally
 # rejected), so review's done_when cannot use a judge leaf the way
@@ -35,11 +41,11 @@ requires = ["resource_kind", "verdict_current"]
 # letting a stale verdict read as current for one tick right after a new push
 # lands. Re-observing trades one extra `gh` round trip per refresh for
 # correctness at the exact moment revision changes.
-[[outputs]]
+[[review.outputs]]
 produces = ["resource_kind", "checks_status", "issue_status", "revision"]
 from_resource_status = true
 
-[[outputs]]
+[[review.outputs]]
 name = "verdict_current"
 script = '''
 SESSION_BRANCH='{{.Workflow.outputs.branch}}'
@@ -58,28 +64,28 @@ else
 fi
 '''
 
-[done_when]
+[review.done_when]
 all = [
   { check = "resource_kind", in = ["pull", "issue"] },
   { check = "verdict_current", in = ["true"] },
 ]
 
-[done_when.budget]
+[review.done_when.budget]
 heartbeat_budget = 3
 on_exhaust = "escalate"
 
-[inputs_schema]
+[review.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[inputs_schema.properties]
+[review.inputs_schema.properties]
 instruction = { type = "string" }
 
-[outputs_schema]
+[review.outputs_schema]
 type     = "object"
 required = ["instruction"]
 
-[outputs_schema.properties]
+[review.outputs_schema.properties]
 instruction      = { type = "string" }
 resource_kind    = { type = "string", mutable = true }
 checks_status    = { type = "string", mutable = true }

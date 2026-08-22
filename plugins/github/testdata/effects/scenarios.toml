@@ -1,0 +1,23 @@
+# What each of this plugin's effects is exercised with when its invocation
+# record is regenerated. The stand-ins under bin/ answer for the GitHub CLI
+# and for plect's own instruction rendering, and pin the scratch directory
+# mktemp would otherwise randomize.
+
+[gh_guard]
+# The guard's product is the wrapper it writes into the directory it reports,
+# so the record carries that file's contents as well as the calls.
+[[gh_guard.artifacts]]
+output = "dir"
+path   = "gh"
+
+[work]
+inputs = { instruction = "extra work context" }
+
+[investigate]
+inputs = { instruction = "extra investigation context" }
+
+[respond]
+inputs = { instruction = "extra response context" }
+
+[review]
+inputs = { instruction = "extra review context" }

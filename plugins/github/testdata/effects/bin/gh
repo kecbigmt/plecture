@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Present on PATH so the guard can resolve the real CLI it wraps.
+plect-effect-record gh "$@"
