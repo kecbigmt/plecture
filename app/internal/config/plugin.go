@@ -2,7 +2,10 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
+	"strings"
 
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/version"
 )
@@ -99,4 +102,48 @@ func resolveDeclaredPlugins(cfg *Config) (*Config, error) {
 	cfg.catalogLock = lock
 	cfg.catalogCacheRoot = cacheRoot
 	return cfg, nil
+}
+
+// pluginLayerOf names the plugin layer that mounted sourcePath, and is empty
+// for a user-owned layer. A catalog-mounted plugin is named by its
+// catalog-qualified id, which is what a user-owned reference addresses it by;
+// a hand-authored `plugin_dirs` entry has no catalog identity, so it is named
+// by its own directory — enough to keep its declarations in one layer of
+// their own, and unaddressable by a qualified reference, which is exactly
+// what a plugin with no catalog identity is.
+func (c *Config) pluginLayerOf(sourcePath string) string {
+	for _, mounted := range c.Plugins {
+		if under(sourcePath, mounted.Dir) {
+			return mounted.ID
+		}
+	}
+	for _, dir := range c.PluginDirs {
+		if under(sourcePath, dir) {
+			return dir
+		}
+	}
+	return ""
+}
+
+func under(path, dir string) bool {
+	return dir != "" && strings.HasPrefix(path, dir+string(filepath.Separator))
+}
+
+// pluginOwnership turns a plugin layer's identity into the reference
+// ownership a declaration in that layer carries. A catalog id is
+// `<alias>/<plugin path>`, and the reference form of that path is dotted.
+func pluginOwnership(layer string) lang.Ownership {
+	if layer == "" {
+		return lang.Ownership{}
+	}
+	if filepath.IsAbs(layer) {
+		// A directory-named layer: no alias exists to address it by, so the
+		// path alone identifies it and no dotted reference can name it.
+		return lang.Ownership{IsPlugin: true, Path: layer}
+	}
+	alias, path, found := strings.Cut(layer, "/")
+	if !found {
+		return lang.Ownership{IsPlugin: true, Alias: layer}
+	}
+	return lang.Ownership{IsPlugin: true, Alias: alias, Path: strings.ReplaceAll(path, "/", ".")}
 }

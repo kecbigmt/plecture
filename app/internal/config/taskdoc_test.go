@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
 // The container loads end to end: frontmatter declares the task, the body is
@@ -266,4 +268,156 @@ func loadDocsAndObservers(t *testing.T, cfg *Config) (map[string]TaskDocument, m
 		t.Fatalf("LoadResourceDefs: %v", err)
 	}
 	return docs, observers
+}
+
+// A plugin-shipped document resolves its own plugin's observer by a relative
+// reference: both declarations sit in the same plugin layer, which is the
+// namespace a relative reference resolves in.
+func TestValidateTaskDocuments_PluginDocumentResolvesItsOwnObserver(t *testing.T) {
+	pluginDir := t.TempDir()
+	writeFile(t, filepath.Join(pluginDir, "plugin.toml"), `
+name        = "acme"
+version     = "0.1.0"
+description = "test plugin"
+`)
+	writeFile(t, filepath.Join(pluginDir, "config", "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "review.md"), `+++
+[review]
+kind              = "task"
+description       = "A plugin-shipped document reading its own plugin's observer"
+resource_observer = "issue_pr"
+
+[review.done_when]
+all = [{ check = "resource.state.revision", ne = "" }]
++++
+Review it.
+`)
+	cfg := &Config{
+		PluginDirs: []string{pluginDir},
+		Plugins:    []plugins.Mounted{{ID: "official/plugins/acme", Dir: pluginDir}},
+	}
+	docs, observers := loadDocsAndObservers(t, cfg)
+	if _, ok := docs["review"]; !ok {
+		t.Fatalf("review not loaded: %+v", docs)
+	}
+	if err := cfg.ValidateTaskDocuments(docs, observers, nil); err != nil {
+		t.Fatalf("ValidateTaskDocuments: %v", err)
+	}
+}
+
+// Ids share one namespace per layer across kinds, so a document and an effect
+// declaring the same id in one layer is a load error rather than a silent
+// choice of one of them.
+func TestLoadTaskDeclarations_CollidesWithAnEffect(t *testing.T) {
+	tests := []struct {
+		name string
+		// build writes the two declarations and returns the config that
+		// reads them.
+		build func(t *testing.T) *Config
+	}{
+		{
+			name: "in one layer",
+			build: func(t *testing.T) *Config {
+				base := t.TempDir()
+				writeFile(t, filepath.Join(base, "tasks", "review.md"), duplicateTaskDoc)
+				writeFile(t, filepath.Join(base, "tasks", "review.toml"), collidingEffect)
+				return &Config{BaseDir: base}
+			},
+		},
+		{
+			// The cascade lets a deeper layer replace a shallower same-id
+			// declaration, but only of the same kind: a document does not
+			// replace an effect a workflow node may still name.
+			name: "a deeper document over a plugin effect",
+			build: func(t *testing.T) *Config {
+				pluginDir := t.TempDir()
+				base := t.TempDir()
+				writeFile(t, filepath.Join(pluginDir, "config", "tasks", "review.toml"), collidingEffect)
+				writeFile(t, filepath.Join(base, "tasks", "review.md"), duplicateTaskDoc)
+				return &Config{BaseDir: base, PluginDirs: []string{pluginDir}}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := tt.build(t).LoadTaskDeclarations("")
+			if err == nil {
+				t.Fatal("expected a load error for one id declared by both a document and an effect")
+			}
+			if !strings.Contains(err.Error(), "review") {
+				t.Errorf("error = %v, want it to name the id", err)
+			}
+		})
+	}
+}
+
+const collidingEffect = `
+[review]
+kind  = "effect"
+scope = "session"
+
+[review.setup]
+type   = "shell"
+script = "true"
+`
+
+// The other half of the same rule: a user-owned document reaches catalog
+// content only through the catalog-qualified dotted form, whose middle
+// segments are the plugin's own path under its alias.
+func TestValidateTaskDocuments_UserDocumentQualifiesACatalogObserver(t *testing.T) {
+	pluginDir := t.TempDir()
+	base := t.TempDir()
+	writeFile(t, filepath.Join(pluginDir, "config", "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+[review]
+kind              = "task"
+description       = "A user-owned document reading a catalog observer"
+resource_observer = "official.acme.issue_pr"
+
+[review.done_when]
+all = [{ check = "resource.state.revision", ne = "" }]
++++
+Review it.
+`)
+	cfg := &Config{
+		BaseDir:    base,
+		PluginDirs: []string{pluginDir},
+		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
+	}
+	docs, observers := loadDocsAndObservers(t, cfg)
+	if err := cfg.ValidateTaskDocuments(docs, observers, nil); err != nil {
+		t.Fatalf("ValidateTaskDocuments: %v", err)
+	}
+}
+
+// A relative reference from user-owned config must not reach catalog content:
+// its validity would then depend on which catalogs happen to be enabled.
+func TestValidateTaskDocuments_UserDocumentCannotReachACatalogObserverRelatively(t *testing.T) {
+	pluginDir := t.TempDir()
+	base := t.TempDir()
+	writeFile(t, filepath.Join(pluginDir, "config", "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+[review]
+kind              = "task"
+description       = "A user-owned document reaching catalog content without its alias"
+resource_observer = "issue_pr"
+
+[review.done_when]
+all = [{ check = "resource.state.revision", ne = "" }]
++++
+Review it.
+`)
+	cfg := &Config{
+		BaseDir:    base,
+		PluginDirs: []string{pluginDir},
+		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
+	}
+	docs, observers := loadDocsAndObservers(t, cfg)
+	err := cfg.ValidateTaskDocuments(docs, observers, nil)
+	if err == nil {
+		t.Fatal("expected an unqualified reference to catalog content to be rejected")
+	}
+	if !strings.Contains(err.Error(), "catalog alias") {
+		t.Errorf("error = %v, want it to say the reference needs its alias", err)
+	}
 }

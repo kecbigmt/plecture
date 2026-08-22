@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -411,5 +412,74 @@ func TestTaskShow_TaskDocumentReportsABrokenContract(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "resource_kind") {
 		t.Errorf("error = %v, want it to name the key", err)
+	}
+}
+
+// A plugin-shipped document is instantiated through the same path a
+// user-authored one is, and its relative observer reference resolves in its
+// own plugin's namespace.
+func TestTaskSetup_PluginTaskDocumentResolvesItsOwnObserver(t *testing.T) {
+	store := testStore(t)
+	pluginDir := t.TempDir()
+	write := func(rel, content string) {
+		path := filepath.Join(pluginDir, rel)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("plugin.toml", "name = \"acme\"\nversion = \"0.1.0\"\ndescription = \"test plugin\"\n")
+	write(filepath.Join("config", "resources", "issue_pr.toml"), observerDocument(map[string]string{"resource_kind": "pull", "revision": "sha2"}))
+	write(filepath.Join("config", "tasks", "review.md"), reviewDocument)
+	cfg := &config.Config{
+		WorkspaceDirsRoot: t.TempDir(),
+		PluginDirs:        []string{pluginDir},
+		Plugins:           []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
+	}
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+
+	result, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	st := store.Get("org/repo-1").Tasks[result.Instance]
+	if st == nil || st.Observed == nil || st.Observed.State["revision"] != "sha2" {
+		t.Errorf("instance did not observe through its own plugin's observer: %+v", st)
+	}
+}
+
+// An id names one declaration. A document and an effect claiming the same id
+// fails at load, rather than instantiation silently picking one of them.
+func TestTaskSetup_TaskDocumentCollidingWithAnEffectFails(t *testing.T) {
+	store := testStore(t)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "review.toml"), []byte(`
+[review]
+kind  = "effect"
+scope = "session"
+
+[review.setup]
+type   = "shell"
+script = "true"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+
+	_, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+	})
+	if err == nil {
+		t.Fatal("expected instantiation to fail while one id names two declarations")
+	}
+	if !strings.Contains(err.Error(), "review") {
+		t.Errorf("error = %v, want it to name the id", err)
+	}
+	if got := store.Get("org/repo-1").Tasks["review#1"]; got != nil {
+		t.Errorf("an instance was created anyway: %+v", got)
 	}
 }

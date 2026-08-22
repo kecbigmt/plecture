@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 
@@ -50,6 +49,9 @@ type TaskDocument struct {
 	BaseDir     string
 	SourcePath  string
 	FromPlugin  bool
+	// PluginLayer identifies the plugin layer this declaration was mounted
+	// from: see Config.pluginLayerOf.
+	PluginLayer string
 	// Definition is the parsed declaration this document was read from. It is
 	// kept so contract validation and reference resolution work from the
 	// declaration itself rather than re-reading the file, which would decide
@@ -58,9 +60,14 @@ type TaskDocument struct {
 }
 
 // Ownership names the layer that wrote this declaration, for the reference
-// rules that differ between shipped and user-authored config.
+// rules that differ between shipped and user-authored config. A plugin's own
+// reference is relative and resolves in that plugin's namespace, so the
+// ownership has to name which plugin — not merely that there is one.
 func (d TaskDocument) Ownership() lang.Ownership {
-	return lang.Ownership{IsPlugin: d.FromPlugin}
+	if !d.FromPlugin {
+		return lang.Ownership{}
+	}
+	return pluginOwnership(d.PluginLayer)
 }
 
 // ResolvedInputsSchemaPath / ResolvedStateSchemaPath join a schema file with
@@ -126,16 +133,16 @@ func (c *Config) loadTaskDocument(path string, fromPlugin bool) (TaskDocument, e
 	if def.Kind != lang.KindTask {
 		return TaskDocument{}, fmt.Errorf("%s: %q declares kind %q; a Markdown definition document declares a task", path, def.ID, def.Kind)
 	}
-	validation := lang.Validation{
-		From:        lang.Ownership{IsPlugin: fromPlugin},
-		Executables: c.binResolver(path),
-	}
-	if err := validation.ValidateDefinition(def); err != nil {
-		return TaskDocument{}, err
-	}
 	doc, err := taskDocumentFrom(def, path, fromPlugin)
 	if err != nil {
 		return TaskDocument{}, fmt.Errorf("task %s in %s: %w", def.ID, path, err)
+	}
+	if fromPlugin {
+		doc.PluginLayer = c.pluginLayerOf(path)
+	}
+	validation := lang.Validation{From: doc.Ownership(), Executables: c.binResolver(path)}
+	if err := validation.ValidateDefinition(def); err != nil {
+		return TaskDocument{}, err
 	}
 	doc.Definition = def
 	return doc, nil
@@ -305,24 +312,28 @@ func (c *Config) ValidateTaskDocuments(docs map[string]TaskDocument, observers m
 // definitions instead.
 func (c *Config) taskReferenceRegistry(docs map[string]TaskDocument, observers map[string]ResourceDef, workflows map[string]WorkflowFile) *lang.Registry {
 	var user []*lang.Definition
-	byPlugin := map[string][]*lang.Definition{}
-	add := func(def *lang.Definition, fromPlugin bool, sourcePath string) {
+	byLayer := map[lang.Ownership][]*lang.Definition{}
+	add := func(def *lang.Definition, sourcePath string) {
 		if def == nil {
 			return
 		}
-		if !fromPlugin {
+		// Where a declaration is registered follows from where it was
+		// mounted, not from what kind it is: a plugin's relative reference
+		// resolves in its own layer, so its declarations have to be in that
+		// layer and nowhere else.
+		layer := c.pluginLayerOf(sourcePath)
+		if layer == "" {
 			user = append(user, def)
 			return
 		}
-		if id := c.pluginIDForSource(sourcePath); id != "" {
-			byPlugin[id] = append(byPlugin[id], def)
-		}
+		from := pluginOwnership(layer)
+		byLayer[from] = append(byLayer[from], def)
 	}
 	for _, observer := range observers {
-		add(observer.Definition, observer.FromPlugin, observer.SourcePath)
+		add(observer.Definition, observer.SourcePath)
 	}
 	for _, doc := range docs {
-		add(doc.Definition, doc.FromPlugin, doc.SourcePath)
+		add(doc.Definition, doc.SourcePath)
 	}
 	for id, wf := range workflows {
 		add(&lang.Definition{
@@ -330,27 +341,54 @@ func (c *Config) taskReferenceRegistry(docs map[string]TaskDocument, observers m
 			Kind: lang.KindWorkflow,
 			File: wf.SourcePath,
 			Body: map[string]any{"inputs_schema": wf.InputsSchema},
-		}, false, wf.SourcePath)
+		}, wf.SourcePath)
 	}
-	layers := make([]lang.PluginLayer, 0, len(byPlugin))
-	for id, defs := range byPlugin {
-		alias, path, found := strings.Cut(id, "/")
-		if !found {
-			continue
-		}
-		layers = append(layers, lang.PluginLayer{Alias: alias, Path: path, Defs: defs})
+	layers := make([]lang.PluginLayer, 0, len(byLayer))
+	for from, defs := range byLayer {
+		layers = append(layers, lang.PluginLayer{Alias: from.Alias, Path: from.Path, Defs: defs})
 	}
 	return lang.NewRegistry(layers, user)
 }
 
-// pluginIDForSource names the plugin whose directory contains sourcePath, so
-// a shipped declaration is registered in its own plugin's namespace rather
-// than the user-owned one.
-func (c *Config) pluginIDForSource(sourcePath string) string {
-	for _, mounted := range c.Plugins {
-		if strings.HasPrefix(sourcePath, mounted.Dir+string(filepath.Separator)) {
-			return mounted.ID
-		}
+// LoadTaskDeclarations loads everything the `tasks/` root declares — task
+// documents and effects alike — and enforces the rule neither loader can see
+// on its own: an id names one declaration.
+//
+// It is the entry point for any caller that reads a completion predicate,
+// because which kind an id resolves to is exactly what such a caller is
+// asking, and answering it from one of the two maps alone would make a
+// collision a silent choice.
+func (c *Config) LoadTaskDeclarations(workspaceDirPath string) (map[string]TaskDocument, map[string]TaskDefinition, error) {
+	docs, err := c.LoadTaskDocuments(workspaceDirPath)
+	if err != nil {
+		return nil, nil, err
 	}
-	return ""
+	effects, err := c.LoadTaskDefinitions(workspaceDirPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := validateTaskIDNamespace(docs, effects); err != nil {
+		return nil, nil, err
+	}
+	return docs, effects, nil
+}
+
+// validateTaskIDNamespace rejects one id declared by both kinds. A deeper
+// layer replacing a shallower same-id declaration is the cascade rule only
+// when both declare the same kind: replacing an effect with a task document
+// would silently drop a lifecycle a workflow node still names.
+func validateTaskIDNamespace(docs map[string]TaskDocument, effects map[string]TaskDefinition) error {
+	ids := make([]string, 0, len(docs))
+	for id := range docs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		effect, clash := effects[id]
+		if !clash {
+			continue
+		}
+		return fmt.Errorf("id %q is declared as a task by %s and as an effect by %s; an id names one declaration, and a task document does not replace an effect a workflow node may still name", id, docs[id].SourcePath, effect.SourcePath)
+	}
+	return nil
 }

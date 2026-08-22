@@ -53,7 +53,7 @@ func observeResources(cfg *config.Config, store *state.Store, sessionName, only 
 	if err != nil {
 		return nil, err
 	}
-	docs, err := loadTaskDocuments(cfg, session)
+	docs, _, err := loadTaskDeclarations(cfg, session)
 	if err != nil {
 		return nil, err
 	}

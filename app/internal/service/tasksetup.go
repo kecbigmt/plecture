@@ -95,17 +95,12 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
 
-	docs, err := loadTaskDocuments(cfg, session)
+	docs, defs, err := loadTaskDeclarations(cfg, session)
 	if err != nil {
 		return nil, err
 	}
 	if doc, ok := docs[params.TaskID]; ok {
 		return setupTaskDocument(cfg, store, resolvedName, session, doc, params)
-	}
-
-	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
-	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
 	}
 	def, ok := defs[params.TaskID]
 	if !ok {

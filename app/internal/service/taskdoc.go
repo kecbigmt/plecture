@@ -17,31 +17,39 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// loadTaskDocuments loads the session's task documents and runs the contract
-// checks that need the rest of the layer. Every caller that reads a
-// document's completion predicate goes through here, so a document whose
-// observer reference or completion key no longer resolves is reported once,
-// as a load error, rather than evaluating against a contract nothing checked.
-func loadTaskDocuments(cfg *config.Config, session *domain.Session) (map[string]config.TaskDocument, error) {
-	docs, err := cfg.LoadTaskDocuments(session.WorkspaceDirPath)
+// loadTaskDeclarations loads everything the `tasks/` root declares and runs
+// the contract checks that need the rest of the layer. Every caller that
+// reads a completion predicate goes through here: an id resolves to one
+// declaration of one kind, and a document whose observer reference or
+// completion key no longer resolves is reported once, as a load error, rather
+// than evaluating against a contract nothing checked.
+func loadTaskDeclarations(cfg *config.Config, session *domain.Session) (map[string]config.TaskDocument, map[string]config.TaskDefinition, error) {
+	docs, effects, err := cfg.LoadTaskDeclarations(session.WorkspaceDirPath)
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task documents: %v", err)}
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task declarations: %v", err)}
 	}
 	if len(docs) == 0 {
-		return docs, nil
+		return docs, effects, nil
 	}
+	if err := validateTaskDocuments(cfg, session, docs); err != nil {
+		return nil, nil, err
+	}
+	return docs, effects, nil
+}
+
+func validateTaskDocuments(cfg *config.Config, session *domain.Session, docs map[string]config.TaskDocument) error {
 	observers, err := cfg.LoadResourceDefs()
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resource observers: %v", err)}
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resource observers: %v", err)}
 	}
 	workflows, err := cfg.LoadWorkflows(session.WorkspaceDirPath)
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", err)}
 	}
 	if err := cfg.ValidateTaskDocuments(docs, observers, workflows); err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
+		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	return docs, nil
+	return nil
 }
 
 // SetTaskStateParams addresses one live instance's own state.
@@ -86,7 +94,7 @@ func SetTaskState(cfg *config.Config, store *state.Store, params SetTaskStatePar
 	if st == nil {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q not found in session %s", params.Instance, sessionName)}
 	}
-	docs, err := loadTaskDocuments(cfg, session)
+	docs, _, err := loadTaskDeclarations(cfg, session)
 	if err != nil {
 		return nil, err
 	}

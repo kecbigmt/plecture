@@ -34,9 +34,9 @@ type TaskLayer struct {
 // TaskShow resolves one task definition from the cascade rooted at
 // workspaceDirPath.
 func TaskShow(cfg *config.Config, workspaceDirPath, id string) (*TaskDetail, error) {
-	docs, err := cfg.LoadTaskDocuments(workspaceDirPath)
+	docs, defs, err := cfg.LoadTaskDeclarations(workspaceDirPath)
 	if err != nil {
-		return nil, fmt.Errorf("load task documents: %w", err)
+		return nil, fmt.Errorf("load task declarations: %w", err)
 	}
 	if doc, ok := docs[id]; ok {
 		// Inspecting a declaration is when a reader wants to know whether it
@@ -59,10 +59,6 @@ func TaskShow(cfg *config.Config, workspaceDirPath, id string) (*TaskDetail, err
 			ResourceObserver: doc.ResourceObserver,
 			SourcePath:       doc.SourcePath,
 		}, nil
-	}
-	defs, err := cfg.LoadTaskDefinitions(workspaceDirPath)
-	if err != nil {
-		return nil, fmt.Errorf("load task definitions: %w", err)
 	}
 	def, ok := defs[id]
 	if !ok {

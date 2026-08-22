@@ -129,11 +129,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 	if err != nil {
 		return "", nil, nil, nil, err
 	}
-	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
-	if err != nil {
-		return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
-	}
-	docs, err := loadTaskDocuments(cfg, session)
+	docs, defs, err := loadTaskDeclarations(cfg, session)
 	if err != nil {
 		return "", nil, nil, nil, err
 	}
