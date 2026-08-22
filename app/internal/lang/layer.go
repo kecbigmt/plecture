@@ -10,6 +10,16 @@ var cascadeWholeTableFields = map[string]bool{
 	"healthcheck": true,
 }
 
+// DuplicateID reports a definition id declared twice inside one layer, the
+// per-layer namespace rule declarations.md states. DiscoverRoot raises it
+// itself for a whole definition root; this is exported for a loader that
+// still walks one layer file by file and so finds the collision outside this
+// package.
+func DuplicateID(id, priorFile, file string) error {
+	return newDiag(CodeIDDuplicate, LayerSemantic, Position{File: file, Path: id},
+		"id "+id+" is already declared in "+priorFile)
+}
+
 // MergeLayer combines a shallower layer's definitions with a deeper layer's,
 // applying declarations.md's Namespaces rules: a deeper whole-definition-kind
 // definition replaces a same-id, same-kind shallower one; a deeper workflow

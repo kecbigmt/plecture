@@ -2,6 +2,7 @@ package lang
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -200,17 +201,55 @@ watcher     = { bin = "github-watcher" }
 	}
 }
 
-func TestEvalShellRejectsAnAbsentBinding(t *testing.T) {
+// `optional = true` propagates absence, so the variable is left unassigned
+// rather than assigned an empty sentinel — a script tells unset from empty
+// with its own parameter expansions.
+func TestEvalShellLeavesAnOptionalAbsentBindingUnset(t *testing.T) {
+	action := parseActionSource(t, `
+type   = "shell"
+script = "if [ -n \"${dir+set}\" ]; then echo set; else echo unset; fi\n"
+
+[bind]
+dir     = { from = "workspace.dir", optional = true }
+present = { from = "resource.id" }
+`)
+	dir := t.TempDir()
+	got, err := observerEval(Environment{
+		"resource": map[string]any{"id": "r1"},
+	}).Shell(filepath.Join(dir, "run"), action, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := os.ReadFile(filepath.Join(dir, "run", "bindings.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "present='r1'\n"; string(bindings) != want {
+		t.Errorf("bindings = %q, want %q — an absent optional binding assigns nothing", bindings, want)
+	}
+
+	out, err := exec.Command(got.Argv[0]).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(out)) != "unset" {
+		t.Errorf("the script saw %q, want the variable unset", out)
+	}
+}
+
+// A binding declaring neither default nor optional must resolve: it is the
+// author's statement that the value has to exist.
+func TestEvalShellRejectsARequiredBindingThatResolvesToNothing(t *testing.T) {
 	action := parseActionSource(t, `
 type   = "shell"
 script = "echo hi\n"
 
 [bind]
-dir = { from = "workspace.dir", optional = true }
+dir = { from = "workspace.dir" }
 `)
 	_, err := observerEval(Environment{}).Shell(t.TempDir(), action, nil)
 	if err == nil || !strings.Contains(err.Error(), "dir") {
-		t.Fatalf("expected an absent-binding error naming dir, got %v", err)
+		t.Fatalf("expected an unresolved-binding error naming dir, got %v", err)
 	}
 }
 

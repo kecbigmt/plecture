@@ -99,12 +99,12 @@ func (e Eval) Shell(dir string, a *Action, operands []string) (*Execution, error
 		if err != nil {
 			return nil, fmt.Errorf("bind.%s: %w", name, err)
 		}
-		// A shell variable is either assigned or not, and an unassigned one
-		// reads as empty inside the script — indistinguishable from a
-		// declared empty value. A binding therefore has to resolve, and an
-		// author who wants emptiness declares `default = ""`.
+		// Absence is propagated, not substituted: the key is left out of
+		// bound so the binding file assigns nothing, leaving the shell
+		// variable unset. A value that must exist says so by declaring
+		// neither default nor optional, which fails in Argument above.
 		if absent {
-			return nil, fmt.Errorf("bind.%s resolved to nothing; declare a default", name)
+			continue
 		}
 		bound[name] = value
 	}

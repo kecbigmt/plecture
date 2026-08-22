@@ -103,7 +103,10 @@ A root that has nothing to report is now **absent** rather than rendered as
 the empty string. A standalone `plect resource status` call has no session,
 so `workspace.dir` and `workspace.branch` are absent there: a projection of
 either fails unless it declares `default` (usually `default = ""`, to keep
-passing the flag) or `optional = true` (to drop the argv element entirely).
+passing the flag) or `optional = true`, which propagates the absence — in an
+`args` list by dropping that element, and in a `bind` table by leaving the
+shell variable unassigned, which a script tells from empty with
+`${var+set}`.
 
 `{{.Instance}}` is gone because the finalize surface is about the resource
 and the evidence, not about which instance happened to reach completion; an

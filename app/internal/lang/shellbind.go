@@ -28,7 +28,10 @@ var shellName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // MaterializeShellAction prepares one shell action for execution in dir, a
 // private run directory: the author's shell source verbatim, a mode-0600
 // file assigning the resolved bindings, and a wrapper that sources the first
-// into the second. bound supplies one resolved value per bind key.
+// into the second. bound supplies one resolved value per bind key it has
+// one for; a key absent from bound is left unassigned, which is how
+// `optional = true` propagates absence into a shell — the script tells unset
+// from empty with its own parameter expansions.
 //
 // Nothing renders a value into the shell source and nothing passes one on
 // argv, so a bound value cannot become part of the command that runs.
@@ -94,7 +97,7 @@ func bindingAssignments(a *Action, bound map[string]string) (string, error) {
 		}
 		value, ok := bound[name]
 		if !ok {
-			return "", fmt.Errorf("bind key %q has no resolved value", name)
+			continue
 		}
 		b.WriteString(name)
 		b.WriteString("=")

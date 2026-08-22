@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -240,5 +242,73 @@ bin  = "local/runtime/watcher"
 	_, err := (&Config{PluginDirs: []string{pluginDir}}).LoadResourceDefs()
 	if err == nil || !strings.Contains(err.Error(), "bare name") {
 		t.Fatalf("expected a cross-plugin reference error, got %v", err)
+	}
+}
+
+// An id is declared by the document, not by the filename, so two files in
+// one layer can claim the same id. That is the language's per-layer
+// duplicate, and file order must not silently pick a winner.
+func TestLoadResourceDefs_SameLayerDuplicateIDAcrossFiles(t *testing.T) {
+	const body = `
+[same]
+kind  = "resource_observer"
+match = '^x'
+
+[same.observe]
+type    = "exec"
+command = "%s"
+`
+	t.Run("global layer", func(t *testing.T) {
+		baseDir := t.TempDir()
+		writeFile(t, filepath.Join(baseDir, "resources", "a.toml"), fmt.Sprintf(body, "first"))
+		writeFile(t, filepath.Join(baseDir, "resources", "b.toml"), fmt.Sprintf(body, "second"))
+		_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+		var diag *lang.Diagnostic
+		if !errors.As(err, &diag) || diag.Code != lang.CodeIDDuplicate {
+			t.Fatalf("expected %s, got %v", lang.CodeIDDuplicate, err)
+		}
+	})
+
+	t.Run("one plugin layer", func(t *testing.T) {
+		pluginDir := t.TempDir()
+		writeFile(t, filepath.Join(pluginDir, "config", "resources", "a.toml"), fmt.Sprintf(body, "first"))
+		writeFile(t, filepath.Join(pluginDir, "config", "resources", "b.toml"), fmt.Sprintf(body, "second"))
+		_, err := (&Config{PluginDirs: []string{pluginDir}}).LoadResourceDefs()
+		var diag *lang.Diagnostic
+		if !errors.As(err, &diag) || diag.Code != lang.CodeIDDuplicate {
+			t.Fatalf("expected %s, got %v", lang.CodeIDDuplicate, err)
+		}
+	})
+}
+
+// The global layer still replaces a plugin layer's same-id definition — that
+// is the cascade, not a duplicate.
+func TestLoadResourceDefs_GlobalReplacingAPluginIDIsNotADuplicate(t *testing.T) {
+	pluginDir := t.TempDir()
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(pluginDir, "config", "resources", "a.toml"), `
+[same]
+kind  = "resource_observer"
+match = '^x'
+
+[same.observe]
+type    = "exec"
+command = "plugin"
+`)
+	writeFile(t, filepath.Join(baseDir, "resources", "b.toml"), `
+[same]
+kind  = "resource_observer"
+match = '^x'
+
+[same.observe]
+type    = "exec"
+command = "global"
+`)
+	got, err := (&Config{BaseDir: baseDir, PluginDirs: []string{pluginDir}}).LoadResourceDefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["same"].Observe.Command != "global" {
+		t.Errorf("Command = %q, want the global layer to win", got["same"].Observe.Command)
 	}
 }
