@@ -178,17 +178,15 @@ func (c taskContracts) checkChainInputs(chain map[string]any, pos Position) erro
 	return nil
 }
 
-// checkChainWorkflowInputs checks a chain against the contract of the workflow
-// it spawns. Only the required half of that contract is checked here: whether
-// a key the target does not declare may still be handed over is the
-// dispatch-time passthrough question, and this corpus's own valid chain
-// fixture hands over three such keys, so enforcing the closed half would
-// reject the specification's worked example.
+// checkChainWorkflowInputs reports what the target workflow's own contract
+// rejects, in the two codes naming those rules: a required field absent, and
+// a field outside the surface that declares it. Resolving the target is a
+// semantic step, but the diagnostics table documents no other code for either
+// rule, and the rule broken is what a code identifies.
 //
-// A key the target requires and the chain omits is PLECTURE-CFG-FIELD-REQUIRED
-// because that is the rule broken — a required field is absent — even though
-// resolving the target is a semantic step; the diagnostics table documents no
-// other code for it.
+// A key the target does not declare is only rejected where the target closes
+// its contract, because that is the schema's own answer: `additionalProperties`
+// left open is a workflow saying it accepts what it did not enumerate.
 func (v Validation) checkChainWorkflowInputs(chain map[string]any, pos Position, r *Registry) error {
 	raw, ok := chain["workflow"]
 	if !ok {
@@ -203,21 +201,29 @@ func (v Validation) checkChainWorkflowInputs(chain map[string]any, pos Position,
 	if err != nil {
 		return err
 	}
+	schema, _ := workflow.Body["inputs_schema"].(map[string]any)
 	inputs, _ := chain["inputs"].(map[string]any)
-	for _, key := range requiredProperties(workflow.Body["inputs_schema"]) {
+	at := childPos(pos, "inputs")
+	for _, key := range requiredProperties(schema) {
 		if _, ok := inputs[key]; !ok {
-			return newDiag(CodeFieldRequired, LayerStructural, childPos(pos, "inputs"),
+			return newDiag(CodeFieldRequired, LayerStructural, at,
 				fmt.Sprintf("workflow %q requires the input %q, which this chain does not hand it", ref, key))
+		}
+	}
+	if open, _ := schema["additionalProperties"].(bool); open || schema["additionalProperties"] == nil {
+		return nil
+	}
+	declared := declaredProperties(schema)
+	for _, key := range sortedKeys(inputs) {
+		if !declared[key] {
+			return newDiag(CodeFieldUnknown, LayerStructural, childPos(at, key),
+				fmt.Sprintf("workflow %q declares no input %q, and closes its inputs contract", ref, key))
 		}
 	}
 	return nil
 }
 
-func requiredProperties(raw any) []string {
-	schema, ok := raw.(map[string]any)
-	if !ok {
-		return nil
-	}
+func requiredProperties(schema map[string]any) []string {
 	list, ok := schema["required"].([]any)
 	if !ok {
 		return nil
@@ -230,6 +236,18 @@ func requiredProperties(raw any) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func declaredProperties(schema map[string]any) map[string]bool {
+	declared := map[string]bool{}
+	props, ok := schema["properties"].(map[string]any)
+	if !ok {
+		return declared
+	}
+	for key := range props {
+		declared[key] = true
+	}
+	return declared
 }
 
 // resolve returns early for anything but a state read, because the rest —
@@ -269,11 +287,8 @@ func expressionPaths(src string, s *Surface) []string {
 		return nil
 	}
 	var paths []string
-	collect := func(path string, bound map[string]bool) error {
-		head, _, _ := strings.Cut(path, ".")
-		if !bound[head] {
-			paths = append(paths, path)
-		}
+	collect := func(path string) error {
+		paths = append(paths, path)
 		return nil
 	}
 	if err := walkExpr(parsed.NativeRep().Expr(), map[string]bool{}, env, collect, Position{}); err != nil {

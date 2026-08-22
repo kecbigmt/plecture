@@ -10,9 +10,9 @@ import (
 // disagree about.
 type ObserveFunc func(observer *Definition, resourceID string) (map[string]any, error)
 
-// Instance is a task document bound to one resource. The document is
-// type-declared and instance-late-bound: which resource it learns here, what
-// kind of resource it stated up front.
+// Instance holds what a task document is type-declared and instance-late-bound
+// against: which resource it learns here, what kind of resource it stated up
+// front.
 type Instance struct {
 	Task       *Definition
 	Observer   *Definition
@@ -52,9 +52,9 @@ func (v Validation) Instantiate(def *Definition, r *Registry, resourceID string,
 	return &Instance{Task: def, Observer: observer, ResourceID: resourceID, state: state}, nil
 }
 
-// Observe records one later observation. It returns nothing because a later
-// failure is degradation rather than an error to act on: the instance
-// survives it, and State is where the caller learns the difference.
+// Observe returns nothing because a later failure is degradation rather than
+// an error to act on: the instance survives it, and State is where the caller
+// learns the difference.
 func (i *Instance) Observe(observe ObserveFunc) {
 	state, err := observe(i.Observer, i.ResourceID)
 	if err != nil {
@@ -64,10 +64,9 @@ func (i *Instance) Observe(observe ObserveFunc) {
 	i.state, i.degraded = state, nil
 }
 
-// State is the resource state this instance's completion predicate reads.
-// While the last observation is a failed one it reads as unobserved, so a
-// predicate is never satisfied by a snapshot the resource has stopped
-// supporting.
+// State reads as unobserved while the last observation is a failed one, so a
+// completion predicate is never satisfied by a snapshot the resource has
+// stopped supporting.
 func (i *Instance) State() (map[string]any, error) {
 	if i.degraded != nil {
 		return nil, i.degraded
@@ -75,10 +74,8 @@ func (i *Instance) State() (map[string]any, error) {
 	return i.state, nil
 }
 
-// recognizes reports whether the observer's match claims this resource id.
-// An observer declaring no match recognizes nothing, which is the same
-// answer as one whose match rejects the id: neither can say what this
-// resource is.
+// recognizes treats an observer declaring no match the same as one whose
+// match rejects the id: neither can say what this resource is.
 func recognizes(observer *Definition, resourceID string) bool {
 	pattern, ok := observer.Body["match"].(string)
 	if !ok {

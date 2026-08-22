@@ -36,6 +36,14 @@ type                 = "object"
 required             = ["task"]
 additionalProperties = false
 
+# A chain's inputs are session inputs, so this schema is the contract they are
+# checked against: the work facts the chain hands its reviewer are declared
+# here, not passed around it.
+[goal_reviewer.inputs_schema.properties]
+work_session = { type = "string" }
+instance     = { type = "string" }
+judge_ids    = { type = "array", items = { type = "string" } }
+
 [goal_reviewer.inputs_schema.properties.task]
 type        = "string"
 description = "Initial task to instantiate for this session."

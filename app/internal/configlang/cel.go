@@ -72,8 +72,8 @@ func checkExpression(src string, s *Surface, pos Position) error {
 	for _, id := range s.identifiers() {
 		declared[id] = true
 	}
-	ref := func(path string, bound map[string]bool) error {
-		return checkReference(path, declared, bound, s, pos)
+	ref := func(path string) error {
+		return checkReference(path, declared, s, pos)
 	}
 	if err := walkExpr(root, map[string]bool{}, env, ref, pos); err != nil {
 		return err
@@ -84,9 +84,8 @@ func checkExpression(src string, s *Surface, pos Position) error {
 	return nil
 }
 
-// walkExpr descends one expression, calling ref for every dotted path it
-// reads and carrying the names a comprehension macro has bound so that an
-// iteration variable is never mistaken for a surface root.
+// walkExpr carries the names a comprehension macro has bound down the
+// branches they cover, because that is the only place their scope is known.
 func walkExpr(e ast.Expr, bound map[string]bool, env *cel.Env, ref referenceFunc, pos Position) error {
 	if e == nil {
 		return nil
@@ -95,16 +94,16 @@ func walkExpr(e ast.Expr, bound map[string]bool, env *cel.Env, ref referenceFunc
 	case ast.LiteralKind, ast.UnspecifiedExprKind:
 		return nil
 	case ast.IdentKind:
-		return ref(e.AsIdent(), bound)
+		return visitPath(e.AsIdent(), bound, ref)
 	case ast.SelectKind:
 		path, base, ok := flattenPath(e)
 		if !ok {
 			return walkExpr(base, bound, env, ref, pos)
 		}
-		return ref(path, bound)
+		return visitPath(path, bound, ref)
 	case ast.CallKind:
 		if path, _, ok := flattenPath(e); ok {
-			return ref(path, bound)
+			return visitPath(path, bound, ref)
 		}
 		call := e.AsCall()
 		if name := call.FunctionName(); !env.HasFunction(name) {
@@ -171,21 +170,23 @@ func walkExpr(e ast.Expr, bound map[string]bool, env *cel.Env, ref referenceFunc
 	return nil
 }
 
-// referenceFunc receives one dotted path an expression reads, along with the
-// names bound by the comprehension macros enclosing it.
-type referenceFunc func(path string, bound map[string]bool) error
+type referenceFunc func(path string) error
+
+// visitPath drops a path rooted in a name a comprehension macro bound, so an
+// iteration variable is never mistaken for a surface root.
+func visitPath(path string, bound map[string]bool, ref referenceFunc) error {
+	head, _, _ := strings.Cut(path, ".")
+	if bound[head] {
+		return nil
+	}
+	return ref(path)
+}
 
 // checkReference splits the two questions a dotted reference raises: CEL
 // declares identifiers, so the leading segment is CEL's to reject, and the
 // rest of the path is the surface's.
-func checkReference(path string, declared, bound map[string]bool, s *Surface, pos Position) error {
-	head := path
-	if i := strings.Index(path, "."); i >= 0 {
-		head = path[:i]
-	}
-	if bound[head] {
-		return nil
-	}
+func checkReference(path string, declared map[string]bool, s *Surface, pos Position) error {
+	head, _, _ := strings.Cut(path, ".")
 	if !declared[head] {
 		return newDiag(CodeCELUnknownName, LayerCEL, pos,
 			fmt.Sprintf("%q is not a variable visible on the %s surface", head, s.Name))
@@ -228,10 +229,8 @@ func flattenPath(e ast.Expr) (path string, base ast.Expr, ok bool) {
 	}
 }
 
-// constantIndexKey reads the key of an index whose key is a string literal
-// naming one path segment. A key carrying a dot would flatten into a path
-// that reads as two segments, which is a different key, so it is not one this
-// resolves.
+// constantIndexKey refuses a key carrying a dot: flattened, it would read as
+// two segments, which is a different key.
 func constantIndexKey(call ast.CallExpr) (string, bool) {
 	if call.FunctionName() != operators.Index || len(call.Args()) != 2 {
 		return "", false

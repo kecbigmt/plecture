@@ -25,10 +25,24 @@ revision      = { type = "string" }
 kind = "workflow"
 
 [goal_reviewer.inputs_schema]
+type                 = "object"
+required             = ["task"]
+additionalProperties = false
+
+[goal_reviewer.inputs_schema.properties]
+task         = { type = "string" }
+work_session = { type = "string" }
+revision     = { type = "string" }
+head         = { type = "string" }
+
+[open_reviewer]
+kind = "workflow"
+
+[open_reviewer.inputs_schema]
 type     = "object"
 required = ["task"]
 
-[goal_reviewer.inputs_schema.properties]
+[open_reviewer.inputs_schema.properties]
 task = { type = "string" }
 `
 
@@ -290,9 +304,6 @@ Resolve {{ resource.id }}.
 	wantDiag(t, v.ValidateTaskContracts(def, registry), CodeFromPath, LayerSemantic)
 }
 
-// The other half of the target's contract — whether an input it does not
-// declare may still be handed over — is the open dispatch-time passthrough
-// question, so only what the target requires is checked here.
 func TestValidateTaskContractsRequiresTheInputsTheTargetWorkflowDeclares(t *testing.T) {
 	src := `+++
 [work]
@@ -315,27 +326,33 @@ Resolve {{ resource.id }}.
 	wantDiag(t, resolveTaskDocument(t, src), CodeFieldRequired, LayerStructural)
 }
 
-func TestValidateTaskContractsAcceptsAnInputTheTargetDoesNotDeclare(t *testing.T) {
-	src := `+++
+// A target that closes its inputs contract rejects what it did not enumerate;
+// one that leaves it open accepts it, which is the schema's own answer rather
+// than a rule of this pass.
+func TestValidateTaskContractsChecksAnInputAgainstAClosedTargetContract(t *testing.T) {
+	document := func(extraKey string) string {
+		return `+++
 [work]
 kind              = "task"
 resource_observer = "issue_pr"
 
 [[work.chains]]
 id        = "review"
-workflow  = "goal_reviewer"
+workflow  = "` + extraKey + `"
 placement = "sibling"
 
 [work.chains.when]
 all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 
 [work.chains.inputs]
-task         = "review"
-work_session = { from = "task.session" }
+task     = "review"
+smuggled = "x"
 +++
 Resolve {{ resource.id }}.
 `
-	if err := resolveTaskDocument(t, src); err != nil {
-		t.Fatalf("a passthrough input is not rejected while that question is open: %v", err)
+	}
+	wantDiag(t, resolveTaskDocument(t, document("goal_reviewer")), CodeFieldUnknown, LayerStructural)
+	if err := resolveTaskDocument(t, document("open_reviewer")); err != nil {
+		t.Fatalf("a target that did not close its contract accepts what it did not enumerate: %v", err)
 	}
 }
