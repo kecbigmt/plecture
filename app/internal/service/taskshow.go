@@ -39,6 +39,20 @@ func TaskShow(cfg *config.Config, workspaceDirPath, id string) (*TaskDetail, err
 		return nil, fmt.Errorf("load task documents: %w", err)
 	}
 	if doc, ok := docs[id]; ok {
+		// Inspecting a declaration is when a reader wants to know whether it
+		// holds together, so the contract checks that need the rest of the
+		// layer run here rather than waiting for an instantiation.
+		observers, oerr := cfg.LoadResourceDefs()
+		if oerr != nil {
+			return nil, fmt.Errorf("load resource observers: %w", oerr)
+		}
+		workflows, werr := cfg.LoadWorkflows(workspaceDirPath)
+		if werr != nil {
+			return nil, fmt.Errorf("load workflows: %w", werr)
+		}
+		if verr := cfg.ValidateTaskDocuments(docs, observers, workflows); verr != nil {
+			return nil, verr
+		}
 		return &TaskDetail{
 			ID:               doc.ID,
 			Kind:             string(lang.KindTask),

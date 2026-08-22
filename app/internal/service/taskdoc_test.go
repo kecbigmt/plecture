@@ -364,7 +364,7 @@ revision      = { type = "string" }
 }
 
 func TestTaskShow_TaskDocument(t *testing.T) {
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	detail, err := TaskShow(cfg, "", "review")
 	if err != nil {
 		t.Fatalf("TaskShow: %v", err)
@@ -397,5 +397,19 @@ func TestTaskCleanup_TaskDocumentInstance(t *testing.T) {
 	}
 	if got, exists := store.Get("org/repo-1").Tasks["review#1"]; exists {
 		t.Errorf("instance still recorded after cleanup: %+v", got)
+	}
+}
+
+// Inspecting a declaration is when a reader wants to know whether it holds
+// together, so `plect task show` reports a reference that will not resolve
+// rather than deferring it to an instantiation.
+func TestTaskShow_TaskDocumentReportsABrokenContract(t *testing.T) {
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"revision": "sha2"}, reviewDocument)
+	_, err := TaskShow(cfg, "", "review")
+	if err == nil {
+		t.Fatal("expected the completion key its observer does not publish to be reported")
+	}
+	if !strings.Contains(err.Error(), "resource_kind") {
+		t.Errorf("error = %v, want it to name the key", err)
 	}
 }
