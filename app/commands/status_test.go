@@ -9,6 +9,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/task"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // renderDoneWhenSections omits any task instance without a done_when — its
@@ -212,5 +213,32 @@ func TestRenderStatus_DestroyedSession(t *testing.T) {
 	}
 	if strings.Contains(out, "Health:") {
 		t.Errorf("destroyed view must not print live-session facts; got:\n%s", out)
+	}
+}
+
+// Reporting renders the last observation, so it says when that was: the age
+// of the facts shown is part of the answer, not something a reader has to
+// infer from the absence of a refresh.
+func TestRenderStatusWork_ObservationCarriesItsAge(t *testing.T) {
+	var buf bytes.Buffer
+	observed := time.Now().Add(-90 * time.Second)
+	renderStatusWork(&buf, []service.StatusTask{{
+		Instance: "review#1",
+		Status:   "produced",
+		Observed: &contract.ResourceObservation{
+			At:    observed,
+			State: map[string]any{"revision": "sha2", "resource_kind": "pull"},
+		},
+		State: map[string]any{"verdict_revision": "sha1"},
+	}}, false)
+	out := buf.String()
+	if !strings.Contains(out, "observed") {
+		t.Errorf("output does not say when the resource was observed:\n%s", out)
+	}
+	if !strings.Contains(out, "revision=sha2") {
+		t.Errorf("output does not carry the observed state:\n%s", out)
+	}
+	if !strings.Contains(out, "verdict_revision=sha1") {
+		t.Errorf("output does not carry what the instance holds about itself:\n%s", out)
 	}
 }

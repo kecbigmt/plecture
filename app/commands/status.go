@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -180,6 +181,16 @@ func renderStatusWork(out interface{ Write([]byte) (int, error) }, work []servic
 		for _, c := range t.Chains {
 			fmt.Fprintf(out, "  chain %s: %s\n", c.ChainID, statusChainSpawnStatus(c))
 		}
+		if t.Observed != nil {
+			line := "  observed " + formatObservedAge(t.Observed.At)
+			if pairs := sortedPairs(t.Observed.State); pairs != "" {
+				line += ": " + pairs
+			}
+			fmt.Fprintln(out, line)
+		}
+		if pairs := sortedPairs(t.State); pairs != "" {
+			fmt.Fprintf(out, "  state: %s\n", pairs)
+		}
 		if len(t.Outputs) > 0 {
 			keys := make([]string, 0, len(t.Outputs))
 			for k := range t.Outputs {
@@ -193,6 +204,32 @@ func renderStatusWork(out interface{ Write([]byte) (int, error) }, work []servic
 			fmt.Fprintf(out, "  outputs: %s\n", strings.Join(pairs, " "))
 		}
 	}
+}
+
+// formatObservedAge says how old an observation is, so a stale fact is
+// visible rather than silent: reporting renders the last observation, and
+// only `--refresh` takes a new one.
+func formatObservedAge(at time.Time) string {
+	if at.IsZero() {
+		return "at an unrecorded time"
+	}
+	return fmt.Sprintf("%s ago (%s)", formatLastActive(at), at.Format(time.RFC3339))
+}
+
+func sortedPairs(values map[string]any) string {
+	if len(values) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(values))
+	for k := range values {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, 0, len(keys))
+	for _, k := range keys {
+		pairs = append(pairs, fmt.Sprintf("%s=%v", k, values[k]))
+	}
+	return strings.Join(pairs, " ")
 }
 
 // renderDoneWhenSections prints one "Done when (<instance>)" block per task

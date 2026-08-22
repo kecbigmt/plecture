@@ -149,6 +149,8 @@ type sessionTaskItem struct {
 	name      string
 	resource  string
 	outputs   map[string]any
+	state     map[string]any
+	observed  *contract.ResourceObservation
 	doneWhen  *task.DoneWhenResult
 	finalized bool
 }
@@ -197,6 +199,7 @@ func sessionTaskItems(cfg *config.Config, defs map[string]config.TaskDefinition,
 		items = append(items, sessionTaskItem{
 			seq: st.Seq, instance: key, taskID: st.TaskID, scope: st.Scope, status: st.Status,
 			dynamic: st.Dynamic, name: st.Name, resource: st.Resource, outputs: st.Outputs,
+			state: st.State, observed: st.Observed,
 			doneWhen: dwResult, finalized: !st.FinalizedAt.IsZero(),
 		})
 	}
