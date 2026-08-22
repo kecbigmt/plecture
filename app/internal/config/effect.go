@@ -1,30 +1,11 @@
 package config
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
-
-// carriedFields are the task-document fields an effect declaration still
-// carries while the surfaces move one at a time. They are decoded here, by
-// the runtime loader, and withheld from the language validator: the ratified
-// effect surface must not certify them as valid, so `lang` never sees them.
-//
-// The PR that introduces task documents deletes this type, its decode, and
-// the withholding below along with the four fields themselves.
-type carriedFields struct {
-	DoneWhen       *DoneWhen         `toml:"done_when"`
-	Requires       []string          `toml:"requires"`
-	DynamicOutputs []DynamicOutput   `toml:"outputs"`
-	Chains         []ChainDefinition `toml:"chains"`
-}
-
-var carriedFieldNames = []string{"done_when", "requires", "outputs", "chains"}
 
 // loadEffectDocument reads every `kind = "effect"` declaration in one
 // definition document.
@@ -46,14 +27,10 @@ func (c *Config) loadEffectDocument(path string, fromPlugin bool) ([]TaskDefinit
 		if def.Kind != lang.KindEffect {
 			return nil, fmt.Errorf("%s: %q declares kind %q; a definition under tasks/ is an effect", path, def.ID, def.Kind)
 		}
-		carried, err := decodeCarriedFields(def)
-		if err != nil {
-			return nil, fmt.Errorf("effect %s in %s: %w", def.ID, path, err)
-		}
-		if err := validation.ValidateDefinition(withoutCarriedFields(def)); err != nil {
+		if err := validation.ValidateDefinition(def); err != nil {
 			return nil, err
 		}
-		effect, err := effectFrom(def, carried, path, fromPlugin)
+		effect, err := effectFrom(def, path, fromPlugin)
 		if err != nil {
 			return nil, fmt.Errorf("effect %s in %s: %w", def.ID, path, err)
 		}
@@ -62,74 +39,14 @@ func (c *Config) loadEffectDocument(path string, fromPlugin bool) ([]TaskDefinit
 	return out, nil
 }
 
-// withoutCarriedFields hands the validator the effect surface alone. The
-// `outputs` key is shared: a table is the nesting joint and belongs to the
-// surface, while an array of tables is the carried dynamic-output list and
-// does not.
-func withoutCarriedFields(def *lang.Definition) *lang.Definition {
-	trimmed := *def
-	trimmed.Body = make(map[string]any, len(def.Body))
-	for key, value := range def.Body {
-		trimmed.Body[key] = value
-	}
-	for _, name := range carriedFieldNames {
-		if name == "outputs" && !isDynamicOutputList(def.Body[name]) {
-			continue
-		}
-		delete(trimmed.Body, name)
-	}
-	return &trimmed
-}
-
-func isDynamicOutputList(raw any) bool {
-	switch raw.(type) {
-	case []map[string]any, []any:
-		return true
-	}
-	return false
-}
-
-// decodeCarriedFields re-encodes the carried subtree and decodes it with the
-// typed decoders that already own those fields' shape and validation, rather
-// than duplicating them against the parsed tree.
-func decodeCarriedFields(def *lang.Definition) (carriedFields, error) {
-	subtree := map[string]any{}
-	for _, name := range carriedFieldNames {
-		raw, ok := def.Body[name]
-		if !ok {
-			continue
-		}
-		if name == "outputs" && !isDynamicOutputList(raw) {
-			continue
-		}
-		subtree[name] = raw
-	}
-	var carried carriedFields
-	if len(subtree) == 0 {
-		return carried, nil
-	}
-	var encoded bytes.Buffer
-	if err := toml.NewEncoder(&encoded).Encode(subtree); err != nil {
-		return carried, err
-	}
-	if _, err := toml.Decode(encoded.String(), &carried); err != nil {
-		return carried, err
-	}
-	return carried, nil
-}
-
 // effectFrom reads the fields the runtime needs off a validated declaration.
-func effectFrom(def *lang.Definition, carried carriedFields, path string, fromPlugin bool) (TaskDefinition, error) {
+func effectFrom(def *lang.Definition, path string, fromPlugin bool) (TaskDefinition, error) {
 	pos := lang.Position{File: path, Path: def.ID}
 	d := TaskDefinition{
-		ID:             def.ID,
-		SourcePath:     path,
-		BaseDir:        configFileDir(path),
-		FromPlugin:     fromPlugin,
-		DoneWhen:       carried.DoneWhen,
-		Requires:       carried.Requires,
-		DynamicOutputs: carried.DynamicOutputs,
-		Chains:         carried.Chains,
+		ID:         def.ID,
+		SourcePath: path,
+		BaseDir:    configFileDir(path),
+		FromPlugin: fromPlugin,
 	}
 	if raw, ok := def.Body["scope"]; ok {
 		scope, ok := raw.(string)
@@ -220,7 +137,7 @@ func (d *TaskDefinition) readInner(def *lang.Definition, pos lang.Position) erro
 
 func (d *TaskDefinition) readOutputsBind(def *lang.Definition, pos lang.Position) error {
 	raw, ok := def.Body["outputs"]
-	if !ok || isDynamicOutputList(raw) {
+	if !ok {
 		return nil
 	}
 	tbl, ok := raw.(map[string]any)

@@ -296,3 +296,12 @@ func expressionPaths(src string, s *Surface) []string {
 	}
 	return paths
 }
+
+// CompletionExpressionPaths lists the rooted paths one completion expression
+// reads, using the same walk the contract check resolves them with — so a
+// reader asking what a predicate depends on cannot drift from what the
+// validator checked. An expression that does not parse yields nothing:
+// checkExpression has already reported that.
+func CompletionExpressionPaths(src string) []string {
+	return expressionPaths(src, surfaceTaskCompletion)
+}

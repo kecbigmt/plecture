@@ -198,7 +198,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	now := time.Now()
 	observation := &contract.ResourceObservation{State: observed, At: now}
 
-	instruction, ierr := renderInstruction(cfg, session, doc, inputs, resourceID, observed, params.Instruction)
+	instruction, ierr := renderInstruction(cfg, session, doc, inputs, resourceID, observed)
 	if ierr != nil {
 		return nil, ierr
 	}
@@ -285,7 +285,7 @@ func bindDocumentInputs(doc config.TaskDocument, cliInputs map[string]string, se
 // roots the instruction surface observes, then runs the carried template pass
 // for the conditional and defaulting forms the instruction assets already
 // had.
-func renderInstruction(cfg *config.Config, session *domain.Session, doc config.TaskDocument, inputs map[string]any, resourceID string, observed map[string]any, extra string) (string, *Error) {
+func renderInstruction(cfg *config.Config, session *domain.Session, doc config.TaskDocument, inputs map[string]any, resourceID string, observed map[string]any) (string, *Error) {
 	workflowOutputs := map[string]any{}
 	if w := session.Tasks[contract.WorkflowPseudoNodeID]; w != nil && w.Outputs != nil {
 		workflowOutputs = w.Outputs
@@ -306,12 +306,12 @@ func renderInstruction(cfg *config.Config, session *domain.Session, doc config.T
 	}
 	carried, err := template.RenderBody(doc.ID, rendered, template.Vars{
 		Mode:             doc.ID,
-		Instruction:      extra,
 		SessionName:      session.Name,
 		ResourceID:       resourceID,
 		WorkspaceDirPath: session.WorkspaceDirPath,
 		Workflow:         workflowOutputs,
 		SessionInputs:    session.Inputs,
+		Inputs:           inputs,
 	})
 	if err != nil {
 		return "", &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s: instruction: %v", doc.ID, err)}
@@ -323,31 +323,51 @@ func renderInstruction(cfg *config.Config, session *domain.Session, doc config.T
 // predicate against the pair of live roots it reads. A document owns no
 // lifecycle, so there are no layers to compose and no per-layer patience to
 // account for: one document, one predicate, one budget.
-func evaluateDocumentInstance(doc config.TaskDocument, resolvedName string, session *domain.Session, key string, st *contract.TaskState, allSessions map[string]*domain.Session, trigger TickTrigger) (*computedAction, string, *Error) {
+func evaluateDocumentInstance(cfg *config.Config, store *state.Store, doc config.TaskDocument, resolvedName string, session *domain.Session, key string, st *contract.TaskState, allSessions map[string]*domain.Session, trigger TickTrigger) (*computedAction, []ChainSpawn, *Error) {
 	dw, err := effectiveDoneWhen(doc.DoneWhen, st)
 	if err != nil {
-		return nil, "", &Error{Code: ErrExecutionFailed, Message: err.Error()}
+		return nil, nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	// A document's chains are validated at load but not fired yet; saying so
-	// is the alternative to a chain that silently never runs. Retirement: the
-	// PR that moves the chain surface onto the ratified language fires them.
-	warning := ""
-	if len(doc.Chains) > 0 {
-		warning = fmt.Sprintf("task %q declares %d chain(s), which are not evaluated for a task-document instance yet", doc.ID, len(doc.Chains))
+	live := documentCompletionState(st)
+	var computed *computedAction
+	var eval task.DoneWhenResult
+	if dw != nil {
+		lastAction, lastFingerprint := "", ""
+		if st.DoneWhen != nil {
+			lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
+		}
+		eval = task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(resolvedName, st, allSessions))
+		action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger)
+		if action.Action != "" {
+			computed = &computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval}
+		}
 	}
-	if dw == nil {
-		return nil, warning, nil
+	if len(doc.Chains) == 0 {
+		return computed, nil, nil
 	}
-	lastAction, lastFingerprint := "", ""
-	if st.DoneWhen != nil {
-		lastAction, lastFingerprint = st.DoneWhen.LastAction, st.DoneWhen.LastFingerprint
+	facts := buildChainFacts(live, eval)
+	resource := sessionResourceForCheck(session, st)
+	plan := make([]ChainSpawn, 0, len(doc.Chains))
+	for _, ch := range doc.Chains {
+		sp := evalDocumentChain(cfg, store, ch, resolvedName, session, key, resource, facts)
+		sp.Task = doc.ID
+		plan = append(plan, sp)
 	}
-	eval := task.EvaluateTaskDoneWhenWithContext(dw, instanceCompletionState(st, nil), doneWhenEvalContext(resolvedName, st, allSessions))
-	action := checkActionForResult(resolvedName, key, sessionResourceForCheck(session, st), dw, st, eval, trigger, nil)
-	if action.Action == "" {
-		return nil, warning, nil
+	return computed, plan, nil
+}
+
+// documentCompletionState is the pair of live roots a document instance's
+// predicate reads: the last observation of its resource, and what was
+// recorded into the instance. A document declares no outputs, so what an
+// instance produced is not part of `self.state` — a value a predecessor
+// effect instance left in outputs has to be recorded before it reads as
+// recorded.
+func documentCompletionState(st *contract.TaskState) task.CompletionState {
+	state := task.CompletionState{Self: st.State}
+	if st.Observed != nil {
+		state.Resource = st.Observed.State
 	}
-	return &computedAction{instance: key, action: action, lastAction: lastAction, lastFingerprint: lastFingerprint, result: eval}, warning, nil
+	return state
 }
 
 // taskDeclarations pairs the two kinds an id can resolve to, so a caller
@@ -367,18 +387,18 @@ func loadDeclarations(cfg *config.Config, session *domain.Session) (taskDeclarat
 }
 
 // gate resolves one instance's completion predicate and the live roots it
-// reads. A document has one predicate and no layers; an effect composes its
-// nesting chain's.
-func (d taskDeclarations) gate(cfg *config.Config, session *domain.Session, key string, st *contract.TaskState) (*config.DoneWhen, task.CompletionState, error) {
-	taskID := taskIDForInstance(key, st)
-	if doc, ok := d.docs[taskID]; ok {
-		dw, err := effectiveDoneWhen(doc.DoneWhen, st)
-		if err != nil {
-			return nil, task.CompletionState{}, err
-		}
-		return dw, instanceCompletionState(st, nil), nil
+// reads. Only a task document declares one: an effect brings something up and
+// takes it down, and answers for nothing beyond that.
+func (d taskDeclarations) gate(key string, st *contract.TaskState) (*config.DoneWhen, task.CompletionState, error) {
+	// A declaration-less instance still answers for the leaves it was set up
+	// with: `--done-when-json` adds conditions to one instance, and nothing
+	// about them depends on a document existing.
+	doc := d.docs[taskIDForInstance(key, st)]
+	dw, err := effectiveDoneWhen(doc.DoneWhen, st)
+	if err != nil {
+		return nil, task.CompletionState{}, err
 	}
-	return instanceGate(cfg, session, d.effects[taskID], st)
+	return dw, documentCompletionState(st), nil
 }
 
 // instanceRevision is the revision a verdict is recorded against, and the one

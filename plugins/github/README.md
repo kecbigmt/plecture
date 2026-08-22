@@ -24,9 +24,11 @@ session runs through.
   (`plect resource status`): resource kind, CI check rollup, issue
   completion, revision, linked PR, mergeability, and GitHub's own aggregate
   review decision.
-- `tasks/{work,review,respond,investigate}.toml` — the task pack a
-  GitHub-flavored workflow composes: each renders its own instruction
-  template and reads resource state via `from_resource_status`.
+- `tasks/{work,review,respond,investigate}.md` — the task pack a
+  GitHub-flavored workflow dispatches into a session it has already built.
+  Each is a task document: its body is the instruction, and its `done_when`
+  reads the resource observer it declares. `work` and `investigate` are
+  written for `issue`; `respond` and `review` for `pull`.
 - `tasks/gh_guard.toml` — produces a directory an agent-runtime plugin's
   task composes as a generic PATH-prepend input (see
   `docs/design/plugin-boundary-contracts.md`'s GitHub CLI Guard section),
@@ -36,10 +38,9 @@ session runs through.
   forgotten or de-prioritized "don't merge" instruction. Opt-in: wire it
   only into workflows that want it. See `scripts/gh-guard_selftest.sh` at
   the repository root for its behavior tests.
-- `templates/{work,review,respond,investigate}.md` — the default
-  instructions for each task. Team-specific process (a project-board
-  integration, a PR-description convention, a code-review house style) is
-  intentionally not shipped here — see "Residual config" below.
+Team-specific process (a project-board integration, a PR-description
+convention, a code-review house style) is intentionally not shipped here —
+see "Residual config" below.
 
 Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
@@ -127,8 +128,8 @@ What stays in your own config after enabling this plugin:
 - Whether you compose the GitHub workspace provider/tasks with a Claude,
   Codex, or other agent workflow pack.
 - Project-board integration, PR-description conventions, or house review
-  style — add these as your own overlay of `templates/work.md` /
-  `templates/review.md` in a trusted config layer, since they are
-  team-specific rather than durable GitHub behavior.
+  style — add these as your own `tasks/work.md` / `tasks/review.md` task
+  document in a trusted config layer, which replaces the shipped one by id,
+  since they are team-specific rather than durable GitHub behavior.
 - Running `github-watcher serve` as a background daemon, and its delivery
   configuration (`PLECT_BUS_SOCKET` / `PLECT_BUS_TOKEN`).

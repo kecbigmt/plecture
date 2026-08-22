@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -92,29 +91,6 @@ func ClassifyOutputBinding(key string, value *lang.Value) OutputBinding {
 	return b
 }
 
-// chainLocalRefs returns the `.Work.locals.<key>` references a chain's input
-// bindings make. Locals are private to the joint that emitted them, so a
-// chain reaching for one instead of for the public output that binds it is a
-// wiring mistake worth naming at load time.
-func chainLocalRefs(inputs map[string]string) ([]string, error) {
-	var out []string
-	seen := map[string]bool{}
-	for _, tmplStr := range inputs {
-		refs, err := TemplateFieldRefs(tmplStr)
-		if err != nil {
-			return nil, err
-		}
-		for _, ident := range refs {
-			if len(ident) >= 3 && ident[0] == "Work" && ident[1] == "locals" && !seen[ident[2]] {
-				seen[ident[2]] = true
-				out = append(out, ident[2])
-			}
-		}
-	}
-	sort.Strings(out)
-	return out, nil
-}
-
 // schemaPropertyType returns a property's declared `type` when it is a plain
 // string. A union type (array form) or an absent one leaves nothing for the
 // binding rules to disagree with, so both read as undeclared.
@@ -180,46 +156,4 @@ func SchemaIsClosed(inline map[string]any, filePath string) (bool, error) {
 	}
 	allowed, ok := raw["additionalProperties"].(bool)
 	return ok && !allowed, nil
-}
-
-// ValidateTaskRequires enforces the `requires` contract: when a task declares
-// `requires`, every done_when check leaf must read a required output, and
-// every required output must be a property of the task's outputs schema. This
-// makes the done_when ↔ observed-output wiring explicit and catches typos at
-// compile time. A nil/empty `requires` is unconstrained (opt-in). Each layer
-// of a nesting chain answers for its own additions, so this applies per layer.
-func ValidateTaskRequires(def TaskDefinition) error {
-	if len(def.Requires) == 0 {
-		return nil
-	}
-	required := make(map[string]bool, len(def.Requires))
-	for _, r := range def.Requires {
-		required[r] = true
-	}
-	if def.DoneWhen != nil {
-		for i, leaf := range def.DoneWhen.All {
-			if strings.TrimSpace(leaf.Check) == "" {
-				continue
-			}
-			if !required[leaf.Check] {
-				return fmt.Errorf("done_when.all[%d] reads output %q which is not declared in `requires` %v", i, leaf.Check, def.Requires)
-			}
-		}
-	}
-	props, err := SchemaPropertyNames(def.OutputsSchema, def.ResolvedOutputsSchemaPath())
-	if err != nil {
-		return fmt.Errorf("outputs schema: %w", err)
-	}
-	if len(props) > 0 {
-		declared := make(map[string]bool, len(props))
-		for _, p := range props {
-			declared[p] = true
-		}
-		for _, r := range def.Requires {
-			if !declared[r] {
-				return fmt.Errorf("`requires` names output %q which the outputs schema does not declare", r)
-			}
-		}
-	}
-	return nil
 }

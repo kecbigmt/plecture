@@ -123,9 +123,9 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	if s == nil {
 		return HealthReport{}, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", name)}
 	}
-	defs, err := cfg.LoadTaskDefinitions(s.WorkspaceDirPath)
+	docs, defs, err := cfg.LoadTaskDeclarations(s.WorkspaceDirPath)
 	if err != nil {
-		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task definitions: %v", err)}
+		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task declarations: %v", err)}
 	}
 	wf := sessionWorkflowConfig(cfg, s.Workflow, s.WorkspaceDirPath)
 	healthCfg := config.DefaultHealthcheckConfig()
@@ -133,7 +133,7 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 		healthCfg = config.NormalizeHealthcheckConfig(wf.Healthcheck)
 	}
 	now := time.Now()
-	report := evaluateHealthFor(name, s.Tasks, defs, sessionVars(cfg, s, nil), healthCfg.StallThreshold.Duration, s.Health, now)
+	report := evaluateHealthFor(name, s.Tasks, docs, defs, sessionVars(cfg, s, nil), healthCfg.StallThreshold.Duration, s.Health, now)
 	finalizeActivityObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
 	persistHealthState(store, name, report, now)
 	return report, nil
@@ -187,12 +187,36 @@ func reportReason(report HealthReport) string {
 	return ""
 }
 
+// sessionOwesProgress reports whether any live task-document instance's
+// completion predicate is unsatisfied — the work this session is expected to
+// act on next. It reads declared state only, never a free-text message.
+func sessionOwesProgress(tasks map[string]*contract.TaskState, docs map[string]config.TaskDocument) bool {
+	for _, key := range sortedTaskKeys(tasks) {
+		st := tasks[key]
+		if st == nil || st.Status != contract.TaskStatusProduced {
+			continue
+		}
+		doc, ok := docs[taskIDForInstance(key, st)]
+		if !ok || doc.DoneWhen == nil {
+			continue
+		}
+		if task.EvaluateTaskDoneWhen(doc.DoneWhen, documentCompletionState(st)).Overall != task.DoneSatisfied {
+			return true
+		}
+	}
+	return false
+}
+
 // evaluateHealthFor is EvaluateHealth's pure core, taking already-loaded task
 // state/defs instead of fetching them from store/cfg so callers that already
 // hold that data avoid a redundant load.
-func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs map[string]config.TaskDefinition, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
+func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, docs map[string]config.TaskDocument, defs map[string]config.TaskDefinition, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
 	declared := false
-	activityDue := false
+	// The accusation side of a stall is unmet work, and work is what a task
+	// document declares. The probes that can pardon silence are a run-scoped
+	// effect's, so due is decided across the session's documents and lowered
+	// inside the probe walk below.
+	activityDue := sessionOwesProgress(tasks, docs)
 	activityDeclared := false
 	activityFingerprintParts := []string{}
 	probeErrors := []ProbeError{}
@@ -207,18 +231,6 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 		if compErr != nil {
 			probeErrors = append(probeErrors, ProbeError{Instance: key, Reason: compErr.Error()})
 			continue
-		}
-
-		// instanceDue is this instance's own contribution to activity_due,
-		// derived only from done_when/task state and never from the
-		// free-text message. A chain's layers share it: the composed
-		// done_when is one conjunction, so any layer's unmet condition means
-		// the instance still owes progress.
-		instanceDue := false
-		if dw, _ := instanceDoneWhen(def, comp); dw != nil {
-			if task.EvaluateTaskDoneWhen(dw, instanceCompletionState(st, comp)).Overall != task.DoneSatisfied {
-				instanceDue = true
-			}
 		}
 
 		// alive composes by AND and activity by OR across the layers of a
@@ -244,14 +256,10 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, defs m
 				// envelope can manufacture an expectation done_when does not
 				// already see.
 				if sig.SilenceExpected {
-					instanceDue = false
+					activityDue = false
 				}
 				activityFingerprintParts = append(activityFingerprintParts, target.Label+":"+sig.Fingerprint)
 			}
-		}
-
-		if instanceDue {
-			activityDue = true
 		}
 	}
 

@@ -357,6 +357,8 @@ type = "object"
 [issue_pr.state_schema.properties]
 resource_kind = { type = "string" }
 revision      = { type = "string" }
+# Declared but never reported, so a value reading it exercises the absent case.
+pr_url        = { type = "string" }
 `, revisionFile))
 	write(filepath.Join("workflows", "wf.toml"), "[[nodes]]\nid = \"noop\"\n")
 	for i, doc := range documents {
@@ -733,5 +735,79 @@ func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "not found in any config layer") {
 		t.Errorf("error = %v, want the load failure rather than a missing-declaration report", err)
+	}
+}
+
+// The instruction assets' conditional and defaulting forms read the
+// document's own inputs, which is where the extra instruction a caller adds
+// arrives — `plect task setup <id> --input instruction=...`.
+func TestTaskSetup_TaskDocumentBodyReadsItsInputsThroughTheCarriedForms(t *testing.T) {
+	store := testStore(t)
+	document := `+++
+[review]
+kind              = "task"
+description       = "Review a resource"
+resource_observer = "issue_pr"
+
+[review.inputs_schema]
+type = "object"
+
+[review.inputs_schema.properties]
+instruction = { type = "string" }
++++
+Review {{ resource.id }}.
+{{- if get .Inputs "instruction" ""}}
+
+Additional instructions: {{get .Inputs "instruction" ""}}
+{{- end}}
+`
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, document)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+
+	bare, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	if strings.Contains(bare.Instruction, "Additional instructions") {
+		t.Errorf("an absent input leaves the section out: %q", bare.Instruction)
+	}
+
+	with, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+		Inputs: map[string]string{"instruction": "focus on the migration"},
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	if !strings.Contains(with.Instruction, "Additional instructions: focus on the migration") {
+		t.Errorf("instruction = %q, want the caller's extra instruction", with.Instruction)
+	}
+}
+
+// A document declares no outputs, so its `self.state.*` is what was recorded
+// into the instance and nothing else — an output a predecessor effect
+// instance left behind is not silently read as recorded state.
+func TestTickSession_DocumentSelfStateIsRecordedStateAlone(t *testing.T) {
+	store := testStore(t)
+	revision := filepath.Join(t.TempDir(), "revision")
+	if err := os.WriteFile(revision, []byte("sha2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeObservedRevisionFixture(t, revision, reviewDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
+		"review#1": {
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "review",
+			Status:   contract.TaskStatusProduced,
+			Resource: "https://example.test/pull/1",
+			Observed: observedFacts(map[string]any{"verdict_revision": "sha2"}),
+			SetupAt:  time.Now(),
+		},
+	})
+
+	if action := tickActionFor(t, cfg, store, "review#1"); action.Action == "satisfied" {
+		t.Fatalf("a verdict left in outputs is not recorded state: %+v", action)
 	}
 }

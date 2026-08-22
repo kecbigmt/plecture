@@ -92,15 +92,12 @@ type CompletionState struct {
 }
 
 // Lookup resolves one completion key path. Absence is the pending case, so it
-// is reported rather than defaulted.
+// is reported rather than defaulted. A key that names no root resolves to
+// nothing: every completion key names the contract it reads from.
 func (s CompletionState) Lookup(path string) (any, bool) {
 	root, key, ok := splitCompletionKey(path)
 	if !ok {
-		// An unrooted key is the pre-language spelling, still carried by the
-		// declarations whose completion surface has not moved yet; it reads
-		// the instance's own facts. It goes away with the last of them.
-		val, ok := s.Self[path]
-		return val, ok && val != nil
+		return nil, false
 	}
 	var from map[string]any
 	switch root {

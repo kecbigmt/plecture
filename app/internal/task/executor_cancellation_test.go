@@ -106,24 +106,3 @@ func TestCharacterization_RunCapture_CancelledContextKillsHungChild(t *testing.T
 		t.Errorf("marker file exists: the child ran to completion despite the context being cancelled")
 	}
 }
-
-func TestCharacterization_FetchOutput_CancelledContextKillsHungChild(t *testing.T) {
-	dir := t.TempDir()
-	marker := filepath.Join(dir, "marker")
-	cfg := &config.Config{}
-	src := config.DynamicOutput{Name: "count", Script: "sleep 5; touch '" + marker + "'; echo 42"}
-	renderCtx := RenderContext{Session: SessionVars{Name: "x", WorkspaceDirPath: dir}}
-	goCtx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	defer cancel()
-	start := time.Now()
-	_, err := FetchOutput(goCtx, cfg, src, renderCtx)
-	if err == nil {
-		t.Fatalf("FetchOutput: want an error surfaced from the cancelled context, got nil")
-	}
-	if elapsed := time.Since(start); elapsed >= cancellationCharSleep {
-		t.Errorf("FetchOutput took %v, want it to return promptly once the context is cancelled", elapsed)
-	}
-	if _, statErr := os.Stat(marker); statErr == nil {
-		t.Errorf("marker file exists: the child ran to completion despite the context being cancelled")
-	}
-}

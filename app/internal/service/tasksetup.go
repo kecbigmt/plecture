@@ -30,12 +30,8 @@ type TaskSetupParams struct {
 	// Resource is bound to the instance (exposed to its setup/done_when as
 	// .ResourceID) — it is no longer part of the instance key, so the same
 	// task can be instantiated repeatedly regardless of resource.
-	Resource string
-	Inputs   map[string]string // raw --input k=v bindings
-	// Instruction is extra instruction text a caller adds to the rendered
-	// body. Carried with the conditional and defaulting forms the instruction
-	// assets already had.
-	Instruction       string
+	Resource          string
+	Inputs            map[string]string // raw --input k=v bindings
 	ExtraDoneWhenJSON string
 	Observer          task.Observer
 }

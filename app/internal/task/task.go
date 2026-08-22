@@ -59,10 +59,6 @@ type Resolved struct {
 	// From names the layer that wrote the declaration, which is what decides
 	// whether its bin references may name another plugin.
 	From lang.Ownership
-	// DoneWhen is the task's per-instance Definition of Done;
-	// nil for pure lifecycle-only tasks. Evaluated against the instance's own
-	// outputs for `plect status` / `ls` display.
-	DoneWhen *config.DoneWhen
 	// Layers is the node's nesting chain, outermost first, when its task
 	// definition declares `inner`. Empty for a plain task, which is the one
 	// distinction the lifecycle runners make between the two.
@@ -269,29 +265,18 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: input schema: %w", def.ID, err)
 	}
-	if err := def.DoneWhen.Validate(); err != nil {
-		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
-	}
 	layers, err := ResolveLayers(def)
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
 	terminal := def.Terminal
-	doneWhen := def.DoneWhen
 	if len(layers) > 0 {
-		// A nested task presents one [terminal] and one done_when, whichever
-		// layers declared them: from the outside it is exactly a task, so
-		// nothing downstream asks which layer answered.
+		// A nested task presents one [terminal], whichever layer declared it:
+		// from the outside it is exactly an effect, so nothing downstream
+		// asks which layer answered.
 		if t := TerminalLayer(layers); t >= 0 {
 			terminal = layers[t].Terminal
 		}
-		doneWhen, _ = ComposeDoneWhen(layers)
-	}
-	if err := config.ValidateTaskRequires(def); err != nil {
-		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
-	}
-	if err := config.ValidateDynamicOutputs(def.DynamicOutputs); err != nil {
-		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
 	return Resolved{
 		NodeID:         nodeID,
@@ -305,7 +290,6 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		InputsSchema:   inputsSchema,
 		OutputsSchema:  outputsSchema,
 		MutableOutputs: mutableOutputs,
-		DoneWhen:       doneWhen,
 		Layers:         layers,
 	}, nil
 }

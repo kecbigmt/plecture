@@ -1,21 +1,22 @@
-== investigate
-ac-met             judged    done_when
-checks_status      observed  done_when   issue, pull
-resource_kind      observed  done_when   issue, pull
-solves             judged    done_when
+== investigate (issue)
+ac-met                                     judged    done_when   investigate
+resource.state.checks_status               observed  done_when   issue
+resource.state.resource_kind               observed  done_when   issue
+solves                                     judged    done_when   investigate
 
-== respond
-ac-met             judged    done_when
-checks_status      observed  done_when   issue, pull
-resource_kind      observed  done_when   issue, pull
-solves             judged    done_when
+== respond (pull)
+ac-met                                     judged    done_when   respond
+resource.state.checks_status               observed  done_when   pull
+resource.state.resource_kind               observed  done_when   pull
+solves                                     judged    done_when   respond
 
-== review
-resource_kind      observed  done_when   issue, pull
-verdict_current    derived   done_when
+== review (pull)
+resource.state.resource_kind               observed  done_when   pull
+resource.state.revision                    observed  done_when   pull
+self.state.verdict_revision                recorded  done_when   review
 
-== work
-ac-met             judged    done_when
-checks_status      observed  done_when   issue, pull
-resource_kind      observed  done_when   issue, pull
-solves             judged    done_when
+== work (issue)
+ac-met                                     judged    done_when   work
+resource.state.checks_status               observed  done_when   issue
+resource.state.resource_kind               observed  done_when   issue
+solves                                     judged    done_when   work

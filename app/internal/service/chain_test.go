@@ -1,11 +1,11 @@
 package service
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
@@ -14,42 +14,34 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// workTaskWithChain is a "work" task fixture: green-checks + pending-judge
-// done_when, a revision/checks_status outputs contract, and the given
-// `[[chains]]` (and any other extra TOML) appended. Every chain test now
-// declares its chain this way — a task-embedded [[chains]] is the only
-// source a chain can come from since the legacy chains/*.toml dual-read was
-// retired.
+// workTaskWithChain is a "work" task-document fixture: green-checks +
+// pending-judge done_when over the instance's own recorded state, and the
+// given `[[chains]]` (and any other extra TOML) appended. A chain is declared
+// by the document whose instances it fires against, and nowhere else.
 func workTaskWithChain(extraChain string) taskFixture {
 	return taskFixture{
-		id:    "work",
-		scope: "session",
-		setup: "echo '{}'",
+		id: "work",
 		extra: `
-[outputs_schema]
-type = "object"
-[outputs_schema.properties.revision]
-type = "string"
-[outputs_schema.properties.checks_status]
-type = "string"
-
 [done_when]
 all = [
-  { check = "checks_status", in = ["SUCCESS"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
   { judge = "ac met", id = "ac-met" },
 ]
 ` + extraChain,
 	}
 }
 
-func seedReviewWork(t *testing.T, store *state.Store, name string, outputs map[string]any) {
+// seedReviewWork seeds one live work instance whose resource was last
+// observed to report the given facts — which is where a completion check and
+// a chain projection read them from.
+func seedReviewWork(t *testing.T, store *state.Store, name string, observed map[string]any) {
 	t.Helper()
 	seedSession(t, store, name, "owner/repo", 1, "wf", map[string]*contract.TaskState{
 		"work": {
-			Scope:   contract.TaskScopeSession,
-			TaskID:  "work",
-			Status:  contract.TaskStatusProduced,
-			Outputs: outputs,
+			Scope:    contract.TaskScopeSession,
+			TaskID:   "work",
+			Status:   contract.TaskStatusProduced,
+			Observed: &contract.ResourceObservation{State: observed, At: time.Now()},
 		},
 	})
 }
@@ -96,10 +88,10 @@ workflow = "codex"
 [chains.when]
 all = [
   { judge_pending = "ac-met" },
-  { check = "checks_status", in = ["SUCCESS"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
 ]
 [chains.inputs]
-revision = "{{.Work.outputs.revision}}"
+revision = { from = "resource.state.revision" }
 `)},
 		[]nodeFixture{{id: "work"}})
 	writeWorkflowFile(t, cfg, "codex", "")
@@ -130,87 +122,6 @@ revision = "{{.Work.outputs.revision}}"
 	}
 }
 
-// A chain's `workflow` field can be a template over `.Work.workflow` (the work
-// session's own workflow) — the cross-tool review-chain shape config/plect
-// ships: whichever tool wrote the code, the reviewer is the other one.
-func TestCheckSession_ChainWorkflowTemplateCrossTool(t *testing.T) {
-	const crossToolTmpl = `{{if eq .Work.workflow "claude"}}codex{{else}}claude{{end}}`
-	tests := []struct {
-		workSessionWorkflow  string
-		wantReviewerWorkflow string
-	}{
-		{"claude", "codex"},
-		{"codex", "claude"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.workSessionWorkflow, func(t *testing.T) {
-			store := testStore(t)
-			cfg := writeWorkflowFixture(t, t.TempDir(), tc.workSessionWorkflow,
-				[]taskFixture{workTaskWithChain(fmt.Sprintf(`
-[[chains]]
-id       = "review"
-workflow = %q
-[chains.when]
-all = [
-  { judge_pending = "ac-met" },
-  { check = "checks_status", in = ["SUCCESS"] },
-]
-`, crossToolTmpl))},
-				[]nodeFixture{{id: "work"}})
-			// writeWorkflowFixture already wrote workSessionWorkflow; the
-			// reviewer's target workflow (the opposite tool) must also exist
-			// for the fire's workflow-resolution check to pass.
-			writeWorkflowFile(t, cfg, tc.wantReviewerWorkflow, "")
-			seedSession(t, store, "owner/repo-1", "owner/repo", 1, tc.workSessionWorkflow, map[string]*contract.TaskState{
-				"work": {
-					Scope:   contract.TaskScopeSession,
-					TaskID:  "work",
-					Status:  contract.TaskStatusProduced,
-					Outputs: map[string]any{"checks_status": "SUCCESS", "revision": "sha1"},
-				},
-			})
-
-			res, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
-			if err != nil {
-				t.Fatalf("CheckSession: %v", err)
-			}
-			sp, ok := findSpawn(res.Chains, "review")
-			if !ok || !sp.Fired || sp.BlockedReason != "" {
-				t.Fatalf("expected fired, got %+v (found=%v)", sp, ok)
-			}
-			if sp.Workflow != tc.wantReviewerWorkflow {
-				t.Fatalf("sp.Workflow = %q, want %q", sp.Workflow, tc.wantReviewerWorkflow)
-			}
-		})
-	}
-}
-
-// An unrendered workflow template (e.g. a stray reference to a nonexistent
-// context key) blocks the fire with an explicit reason rather than silently
-// spawning nothing or crashing.
-func TestCheckSession_ChainWorkflowTemplateRenderErrorBlocks(t *testing.T) {
-	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
-		[]taskFixture{workTaskWithChain(`
-[[chains]]
-id       = "review"
-workflow = "{{.Work.outputs.nonexistent_workflow_key}}"
-[chains.when]
-all = [ { judge_pending = "ac-met" } ]
-`)},
-		[]nodeFixture{{id: "work"}})
-	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
-
-	res, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
-	if err != nil {
-		t.Fatalf("CheckSession: %v", err)
-	}
-	sp, _ := findSpawn(res.Chains, "review")
-	if sp.Fired || sp.BlockedReason != chainBlockedWorkflowUnresolved {
-		t.Fatalf("expected workflow_unresolved block, got %+v", sp)
-	}
-}
-
 // A fired chain renders its [chains.inputs] bindings against the work facts and
 // attaches the resolved inputs to the spawn (passed to Up on a real spawn).
 func TestCheckSession_ChainRendersAndAttachesInputs(t *testing.T) {
@@ -223,13 +134,13 @@ workflow = "codex"
 [chains.when]
 all = [
   { judge_pending = "ac-met" },
-  { check = "checks_status", in = ["SUCCESS"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
 ]
 [chains.inputs]
-revision     = "{{.Work.outputs.revision}}"
-work_session = "{{.Work.session}}"
-resource     = "{{.Work.resource}}"
-judge_ids    = "{{.Work.done_when.pending_judge_ids}}"
+revision     = { from = "resource.state.revision" }
+work_session = { from = "task.session" }
+instance     = { from = "task.instance" }
+judge_ids    = { from = "task.done_when.pending_judge_ids" }
 `)},
 		[]nodeFixture{{id: "work"}})
 	writeWorkflowFile(t, cfg, "codex", "")
@@ -257,12 +168,11 @@ judge_ids    = "{{.Work.done_when.pending_judge_ids}}"
 	}
 }
 
-// Resolved inputs that violate the spawned workflow's inputs contract block the
-// fire rather than spawning a reviewer with contract-violating inputs. Unlike
-// an undeclared-upstream-output wiring (now rejected at config load time by
-// validateTaskChains), the downstream workflow's inputs_schema is a separate
-// contract plect does not cross-check until fire time.
-func TestCheckSession_ChainBlockedDownstreamInputsContract(t *testing.T) {
+// A chain's inputs are checked against the spawned workflow's own contract
+// at load, against the parsed declaration, rather than at fire time: the
+// target and its contract are both declarations, so nothing has to run for
+// the mismatch to be known.
+func TestLoadTaskDeclarations_ChainInputsMustSatisfyTheTargetContract(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{workTaskWithChain(`
@@ -270,9 +180,9 @@ func TestCheckSession_ChainBlockedDownstreamInputsContract(t *testing.T) {
 id       = "review"
 workflow = "codex"
 [chains.when]
-all = [ { judge_pending = "ac-met" }, { check = "checks_status", in = ["SUCCESS"] } ]
+all = [ { judge_pending = "ac-met" }, { check = "resource.state.checks_status", in = ["SUCCESS"] } ]
 [chains.inputs]
-revision = "{{.Work.outputs.revision}}"
+revision = { from = "resource.state.revision" }
 `)},
 		[]nodeFixture{{id: "work"}})
 	// codex declares a closed inputs contract, so the wired `revision` is not an
@@ -284,16 +194,9 @@ additionalProperties = false
 `)
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 
-	res, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
-	if err != nil {
-		t.Fatalf("CheckSession: %v", err)
-	}
-	sp, _ := findSpawn(res.Chains, "review")
-	if sp.Fired || sp.BlockedReason != chainBlockedInvalidBindings {
-		t.Fatalf("expected invalid_bindings block, got %+v", sp)
-	}
-	if !strings.Contains(strings.Join(sp.Warnings, " "), "inputs contract") {
-		t.Fatalf("expected warning about inputs contract, got %+v", sp.Warnings)
+	_, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
+	if err == nil || !strings.Contains(err.Error(), `declares no input "revision"`) {
+		t.Fatalf("err = %v, want the target workflow's contract to reject the wired input at load", err)
 	}
 }
 
@@ -305,9 +208,10 @@ func TestCheckSession_ChainBlockedWhenUnmet(t *testing.T) {
 id       = "review"
 workflow = "codex"
 [chains.when]
-all = [ { judge_pending = "ac-met" }, { check = "checks_status", in = ["SUCCESS"] } ]
+all = [ { judge_pending = "ac-met" }, { check = "resource.state.checks_status", in = ["SUCCESS"] } ]
 `)},
 		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
 	// checks_status FAILURE → when unmet even though judge is pending.
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "FAILURE", "revision": "sha1"})
 
@@ -329,11 +233,12 @@ func TestCheckSession_ChainBlockedOutputsMissing(t *testing.T) {
 id       = "review"
 workflow = "codex"
 [chains.when]
-all = [ { judge_pending = "ac-met" }, { check = "checks_status", in = ["SUCCESS"] } ]
+all = [ { judge_pending = "ac-met" }, { check = "resource.state.checks_status", in = ["SUCCESS"] } ]
 [chains.inputs]
-revision = "{{.Work.outputs.revision}}"
+revision = { from = "resource.state.revision" }
 `)},
 		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
 	// when holds, but the wired `revision` output is absent → not fired.
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS"})
 
@@ -345,8 +250,8 @@ revision = "{{.Work.outputs.revision}}"
 	if sp.Fired {
 		t.Fatalf("expected blocked, got fired: %+v", sp)
 	}
-	if sp.BlockedReason != chainBlockedOutputsMissing || len(sp.MissingOutputs) != 1 || sp.MissingOutputs[0] != "revision" {
-		t.Fatalf("expected outputs_missing[revision], got %+v", sp)
+	if sp.BlockedReason != chainBlockedOutputsMissing || len(sp.MissingOutputs) != 1 || sp.MissingOutputs[0] != "resource.state.revision" {
+		t.Fatalf("expected outputs_missing[resource.state.revision], got %+v", sp)
 	}
 }
 
@@ -390,6 +295,7 @@ workflow = "codex"
 all = [ { judge_pending = "ac-met" } ]
 `)},
 		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
 	// No parent set on the work session.
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 
@@ -415,13 +321,13 @@ workflow = "codex"
 [chains.when]
 all = [ { judge_pending = "ac-met" } ]
 [chains.inputs]
-revision = "{{.Work.outputs.revision}}"
-judge_ids = "{{.Work.done_when.pending_judge_ids}}"
-pr_url = "{{.Work.resource}}"
+revision = { from = "resource.state.revision" }
+judge_ids = { from = "task.done_when.pending_judge_ids" }
+pr_url = { from = "resource.state.pr_url" }
 `)},
 		[]nodeFixture{{id: "work"}})
 	writeWorkflowFile(t, cfg, "codex", "")
-	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
+	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1", "pr_url": "https://github.com/owner/repo/pull/9"})
 	// The reviewer session already exists → fire is idempotent (no spawn).
 	seedSession(t, store, "owner/repo-1+review-work", "owner/repo", 1, "codex", nil)
 
@@ -507,13 +413,10 @@ all = [ { judge_pending = "ac-met" } ]
 	}
 }
 
-// AC1: a chain resolving (statically or via its `workflow` template) to a
-// workflow ID with no `.plect/workflows/<id>.toml` definition must not report
-// fired — that would let plect tick attempt (and identically fail) the same
-// spawn every tick, which reads as a silent repeating failure rather than the
-// explicit error AC1 requires. It blocks instead, with a reason a caller can
-// distinguish from every other blocked reason.
-func TestTickSession_ChainWorkflowUnresolvedBlocksFire(t *testing.T) {
+// A chain naming a workflow nothing defines is rejected at load, against the
+// declaration, rather than reported as a blocked fire every tick: the target
+// is a static reference, so its resolution needs nothing to run.
+func TestLoadTaskDeclarations_ChainWorkflowMustResolve(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{workTaskWithChain(`
@@ -526,19 +429,9 @@ all = [ { judge_pending = "ac-met" } ]
 		[]nodeFixture{{id: "work"}})
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 
-	res, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true})
-	if err != nil {
-		t.Fatalf("TickSession: %v", err)
-	}
-	sp, ok := findSpawn(res.Chains, "review")
-	if !ok {
-		t.Fatalf("review chain not evaluated: %+v", res.Chains)
-	}
-	if sp.Fired || sp.Spawned || sp.BlockedReason != chainBlockedWorkflowUnresolved {
-		t.Fatalf("expected workflow_unresolved block without a spawn attempt, got %+v", sp)
-	}
-	if !strings.Contains(strings.Join(sp.Warnings, " "), "missing-workflow") {
-		t.Fatalf("expected a warning naming the unresolved workflow, got %+v", sp.Warnings)
+	_, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true})
+	if err == nil || !strings.Contains(err.Error(), "missing-workflow") {
+		t.Fatalf("err = %v, want the unresolved workflow named at load", err)
 	}
 }
 
@@ -569,6 +462,7 @@ workflow = "codex"
 all = [ { judge_pending = "ac-met" } ]
 `)},
 		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
 	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 	seedSession(t, store, "owner/repo-orch", "owner/repo", 1, "", nil)
 	seedSession(t, store, "owner/repo-1+review-work", "owner/repo", 1, "codex", nil)
@@ -701,41 +595,20 @@ all = [ { judge_pending = "ac-met" } ]
 	}
 }
 
-// A work session tracked by an issue in one repository can open its
-// pull request in a different repository. Resource observation stays
-// VCS-agnostic at the core level (it never searches a second repository on
-// the work session's behalf) — instead, an explicit `pr_url` recorded via
-// `plect state set-output` takes precedence over resource-derived
-// resolution, and a refresh that finds nothing for `pr_url` leaves that
-// explicit value untouched. This lets the chain's wired `pr_url` output
-// resolve and the reviewer chain fire without orchestrator involvement.
+// A chain can hand its reviewer a pull request in a different repository
+// than the session's own resource: the fact is recorded into the instance,
+// and the projection reads it from there.
 func TestTickSession_ChainFiresOnExplicitPRURLAcrossRepos(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{{
-			id:    "work",
-			scope: "session",
-			setup: "echo '{}'",
+			id: "work",
 			extra: `
-[outputs_schema]
-type = "object"
-[outputs_schema.properties.revision]
-type = "string"
-[outputs_schema.properties.checks_status]
-type = "string"
-[outputs_schema.properties.pr_url]
-type    = "string"
-mutable = true
-
 [done_when]
 all = [
-  { check = "checks_status", in = ["SUCCESS"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
   { judge = "ac met", id = "ac-met" },
 ]
-
-[[outputs]]
-produces           = ["pr_url"]
-from_resource_status = true
 
 [[chains]]
 id       = "review"
@@ -743,25 +616,12 @@ workflow = "codex"
 [chains.when]
 all = [ { judge_pending = "ac-met" } ]
 [chains.inputs]
-revision = "{{.Work.outputs.revision}}"
-pr_url   = "{{.Work.outputs.pr_url}}"
+revision = { from = "resource.state.revision" }
+pr_url   = { from = "self.state.pr_url" }
 `,
 		}},
 		[]nodeFixture{{id: "work"}})
 	writeWorkflowFile(t, cfg, "codex", "")
-	// The resource definition observes the tracked issue but, by design,
-	// never searches a second repository for its pull request — it reports
-	// only what same-repo observation can see.
-	writeResourceDefFixture(t, cfg.BaseDir, "github", `
-[github]
-kind  = "resource_observer"
-match = '^https://github\.com/'
-
-[github.observe]
-type    = "exec"
-command = "printf"
-args    = ['{"checks_status":"SUCCESS"}']
-`)
 
 	const crossRepoPRURL = "https://github.com/owner/repo-2/pull/42"
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "wf", map[string]*contract.TaskState{
@@ -771,34 +631,23 @@ args    = ['{"checks_status":"SUCCESS"}']
 			Status: contract.TaskStatusProduced,
 			// Tracked by an issue in a different repository than the PR.
 			Resource: "https://github.com/owner/repo/issues/1",
-			Outputs:  map[string]any{"revision": "sha1", "checks_status": "SUCCESS"},
+			Observed: &contract.ResourceObservation{
+				State: map[string]any{"revision": "sha1", "checks_status": "SUCCESS"},
+				At:    time.Now(),
+			},
+			State: map[string]any{"pr_url": crossRepoPRURL},
 		},
 	})
 
-	// The work session records the PR itself, in the other repository.
-	if _, err := SetOutput(cfg, store, SetOutputParams{
-		Identifier: "owner/repo-1",
-		Node:       "work",
-		Outputs:    map[string]any{"pr_url": crossRepoPRURL},
-	}); err != nil {
-		t.Fatalf("SetOutput: %v", err)
-	}
-
-	res, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1"})
+	res, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true})
 	if err != nil {
 		t.Fatalf("TickSession: %v", err)
 	}
-
 	sp, _ := findSpawn(res.Chains, "review")
 	if !sp.Fired {
 		t.Fatalf("expected the review chain to fire, got %+v", sp)
 	}
 	if sp.Inputs["pr_url"] != crossRepoPRURL {
 		t.Fatalf("pr_url input = %v, want %q", sp.Inputs["pr_url"], crossRepoPRURL)
-	}
-
-	s := store.Get("owner/repo-1")
-	if got := s.Tasks["work"].Outputs["pr_url"]; got != crossRepoPRURL {
-		t.Fatalf("persisted pr_url = %v, want %q (refresh must not clobber an explicit value it found nothing to replace)", got, crossRepoPRURL)
 	}
 }
