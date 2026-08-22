@@ -109,11 +109,14 @@ holds it as *state*, and a document's `self.state.*` is what was recorded into
 the instance and nothing else — an output left behind is not read as recorded
 state, deliberately, so a stale value cannot satisfy a predicate by accident.
 
-Move it for every live instance, with the session store backed up as above:
+Move it for every live instance, with the session store backed up as above.
+`--full` is required: the default `--json` is a summary that carries each
+instance's predicate but not its raw outputs, so the same loop without it
+selects nothing and reports no error.
 
 ```bash
 for session in $(plect ls --json | jq -r '.[].session_name'); do
-  plect status "$session" --json | jq -r '
+  plect status "$session" --json --full | jq -r '
     .work[]? | select(.outputs.verdict_revision != null)
     | "\(.instance)\t\(.outputs.verdict_revision)"' |
   while IFS="$(printf '\t')" read -r instance revision; do
@@ -263,9 +266,10 @@ plect state set "$PLECT_SESSION_NAME" --instance review#1 \
 ```
 
 Update every instruction, runbook, and hook of your own that used
-`set-output --task`. An agent that read a value out of `plect status --json`'s
-`outputs` now finds an observed fact under `observed.state` and a recorded one
-under `state`.
+`set-output --task`. An agent that read a value out of
+`plect status --json --full`'s `outputs` now finds an observed fact under
+`observed.state` and a recorded one under `state`. `--full` is what carries
+either: the default `--json` is a summary of each instance's predicate.
 
 ## Verification
 
@@ -283,7 +287,7 @@ Then one live session end to end — the flow this conversion exists for:
 
 ```bash
 plect status <work-session>          # observed … ago, and the pending predicate
-plect status <work-session> --json | jq '.chains'   # the reviewer chain's plan
+plect status <work-session> --json | jq '.work[].chains'   # the reviewer chain's plan
 plect tick <work-session>            # observes, decides, spawns a fired chain
 ```
 

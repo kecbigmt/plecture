@@ -205,10 +205,10 @@ also what says which keys exist — there is no `mutable = true` annotation to
 add, because state is mutable by definition. Update every instruction,
 runbook, and hook that recorded a fact through `set-output --task`.
 
-An agent that used to read a value out of `plect status --json`'s `outputs`
-now finds an observed fact under `observed.state` and a recorded one under
-`state`. The observation carries the time it was taken, so a reader can see
-how old it is.
+An agent that used to read a value out of `plect status --json --full`'s
+`outputs` now finds an observed fact under `observed.state` and a recorded one
+under `state`. The observation carries the time it was taken, so a reader can
+see how old it is.
 
 ## What the shipped side did
 
