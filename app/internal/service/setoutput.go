@@ -197,6 +197,12 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		}
 		def, ok := defs[taskID]
 		if !ok {
+			docs, docErr := cfg.LoadTaskDocuments(session.WorkspaceDirPath)
+			if docErr == nil {
+				if _, isDoc := docs[taskID]; isDoc {
+					return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q is a task document, which produces no outputs; record what it holds about itself with `plect state set --instance %s` instead", taskID, handle)}
+				}
+			}
 			return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q for handle %q not found in any config layer", taskID, handle)}
 		}
 		mutableKeys, mErr := task.MutableOutputKeys(def.OutputsSchema, def.ResolvedOutputsSchemaPath())

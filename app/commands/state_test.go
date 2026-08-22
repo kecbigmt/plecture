@@ -20,3 +20,42 @@ func TestSetOutputHelpDocumentsRuntimeTaskTarget(t *testing.T) {
 		t.Fatalf("set-output examples must show --task review#1; got:\n%s", setOutputCmd.Long)
 	}
 }
+
+// A payload that is not a JSON object is refused before anything is loaded or
+// written: the command's argument is an object of state keys, and "null" or a
+// list is a caller mistake, not an empty write.
+func TestSetStateRejectsAPayloadThatIsNotAnObject(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{name: "malformed", payload: `{"verdict_revision":`},
+		{name: "null", payload: `null`},
+		{name: "a list", payload: `["verdict_revision"]`},
+		{name: "a bare string", payload: `"sha2"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := setStateCmd.RunE(setStateCmd, []string{"session-1", tt.payload})
+			if err == nil {
+				t.Fatal("expected a rejection")
+			}
+			if !strings.Contains(err.Error(), "not a JSON object") {
+				t.Errorf("error = %v, want it to say the payload is not a JSON object", err)
+			}
+		})
+	}
+}
+
+func TestSetStateHelpDocumentsTheInstanceTarget(t *testing.T) {
+	flag := setStateCmd.Flags().Lookup("instance")
+	if flag == nil {
+		t.Fatal("state set missing --instance flag")
+	}
+	if !strings.Contains(setStateCmd.Long, "self.state.<key>") {
+		t.Errorf("state set long help must say which root reads what it writes; got:\n%s", setStateCmd.Long)
+	}
+	if !strings.Contains(setStateCmd.Long, "--instance review#1") {
+		t.Errorf("state set examples must show the instance target; got:\n%s", setStateCmd.Long)
+	}
+}
