@@ -28,7 +28,7 @@ development and testing.
 - `github-issue-pr observe --resource <id> [--workspace-dir-path <path>] [--watcher-bin <path>]`
   — fetches and classifies a GitHub resource's current state: resource kind,
   CI check rollup, issue completion, revision, linked PR (for an issue
-  resource), and mergeability. Backs `resources/github.toml`'s `observe`
+  resource), and mergeability. Backs `resources/issue.toml`'s and `resources/pull.toml`'s `observe`
   hook.
 
 ## Per-repository base branch override

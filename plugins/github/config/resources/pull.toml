@@ -1,0 +1,41 @@
+# The generic Resource contract applied to a GitHub pull request. Independent
+# of the GitHub workspace provider (workspaces/github.toml, which resolves a
+# *session's* resource identifier to a worktree) — this consolidates the same
+# observation into a standalone contract callable via `plect resource status`
+# outside any one task instance.
+#
+# Issues get their own contract (issue.toml) rather than sharing this one: a
+# pull request's facts are its own, while an issue's check and mergeability
+# facts belong to whichever pull request closes it, so one state_schema
+# covering both could only type them as a union whose halves are NULL by turns.
+#
+# .WorkspaceDirPath is the observing task instance's session workspace
+# directory when one exists, and empty for a standalone `plect resource
+# status` call. A pull request needs neither, and the flag is passed for one
+# observe command shared with issue.toml.
+
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>\d+)'
+
+observe = '{{bin "github-issue-pr"}} observe --resource {{.ResourceID | shellQuote}} --workspace-dir-path {{.WorkspaceDirPath | shellQuote}} --watcher-bin {{bin "github-watcher" | shellQuote}}'
+
+[state_schema]
+type     = "object"
+required = ["resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision"]
+
+[state_schema.properties]
+resource_kind = { type = "string", enum = ["pull"] }
+# "NULL" here means the head commit has no checks configured at all, which is
+# distinct from a rollup that is merely still running. A gh failure exits
+# non-zero so the whole observation fails and prior values stand, rather than
+# silently flipping a check to "NULL".
+checks_status = { type = "string", enum = ["SUCCESS", "PENDING", "FAILURE", "NULL"] }
+revision      = { type = "string" }
+pr_url        = { type = "string" }
+# GitHub's own vocabulary for pulls.mergeable_state. "unknown" is a real pull
+# request whose mergeability GitHub is still computing, and must never read as
+# a rebase prompt.
+mergeable_state = { type = "string", enum = ["clean", "dirty", "unstable", "blocked", "behind", "unknown", "draft", "has_hooks"] }
+# GitHub's own aggregate review verdict (GraphQL `reviewDecision`), plus
+# "NULL" for GitHub reporting no decision because the pull request requires no
+# reviewer.
+review_decision = { type = "string", enum = ["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", "NULL"] }

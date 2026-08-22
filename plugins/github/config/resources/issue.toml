@@ -1,0 +1,48 @@
+# The generic Resource contract applied to a GitHub issue. Independent of the
+# GitHub workspace provider (workspaces/github.toml, which resolves a
+# *session's* resource identifier to a worktree) — this consolidates the same
+# observation into a standalone contract callable via `plect resource status`
+# outside any one task instance.
+#
+# An issue-keyed session tracks its LINKED pull request once one exists
+# (closing reference first, session branch as fallback), so checks_status
+# becomes that pull request's rollup and revision its head SHA. Judges thus
+# re-pend on code changes rather than on issue-metadata edits, and a chain
+# gated on checks SUCCESS can never fire before the pull request is up and
+# green. Discovery failures degrade to the no-pull-request shape rather than
+# failing the observation; issue_status still gates.
+#
+# .WorkspaceDirPath is the observing task instance's session workspace
+# directory when one exists, and empty for a standalone `plect resource
+# status` call — linked-pull-request discovery then skips straight to the
+# GraphQL closing-reference lookup.
+
+match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/issues/(?P<number>\d+)'
+
+observe = '{{bin "github-issue-pr"}} observe --resource {{.ResourceID | shellQuote}} --workspace-dir-path {{.WorkspaceDirPath | shellQuote}} --watcher-bin {{bin "github-watcher" | shellQuote}}'
+
+[state_schema]
+type     = "object"
+required = ["resource_kind", "issue_status", "checks_status", "revision", "mergeable_state", "review_decision"]
+
+[state_schema.properties]
+resource_kind = { type = "string", enum = ["issue"] }
+issue_status  = { type = "string", enum = ["SUCCESS", "PENDING"] }
+# Every key below reports the LINKED pull request, so "NULL" means no pull
+# request has been discovered yet — the sentinel exists because done_when can
+# express neither a null literal nor OR, and `in [..., "NULL"]` accepts it
+# without it ever satisfying on its own.
+checks_status = { type = "string", enum = ["SUCCESS", "PENDING", "FAILURE", "NULL"] }
+# The linked pull request's head SHA once one exists, and `issue:<updated_at>`
+# before that: an issue with no pull request still needs a revision that moves
+# when the issue does, so a recorded verdict against it can go stale.
+revision = { type = "string" }
+# Absent, not empty, until a pull request exists: a chain wiring it renders
+# its inputs under missingkey=error, so absence is what keeps such a chain
+# from firing early.
+pr_url = { type = "string" }
+# GitHub's own vocabulary for pulls.mergeable_state. "unknown" is a real pull
+# request whose mergeability GitHub is still computing, and must never read as
+# a rebase prompt; "NULL" is the no-linked-pull-request sentinel.
+mergeable_state = { type = "string", enum = ["clean", "dirty", "unstable", "blocked", "behind", "unknown", "draft", "has_hooks", "NULL"] }
+review_decision = { type = "string", enum = ["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", "NULL"] }

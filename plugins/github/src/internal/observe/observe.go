@@ -1,8 +1,8 @@
-// Package observe implements the GitHub resource's observation contract:
-// turning a GitHub issue or pull request identifier into the state
-// resources/github.toml's [state_schema] declares — resource kind, check
-// rollup, issue completion, revision, the linked pull request (for an issue
-// resource), and mergeability.
+// Package observe implements the observation contract behind the GitHub
+// plugin's two resource definitions: turning an issue or pull request
+// identifier into the state resources/issue.toml or resources/pull.toml
+// declares — check rollup, revision, mergeability, review verdict, and, for
+// an issue, its completion plus the pull request that closes it.
 //
 // This is independent of the workspace provider's Setup/Cleanup (package
 // worktree): that owns *session* workspace acquisition, this owns the
@@ -24,16 +24,40 @@ import (
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/procexec"
 )
 
-// Result is the observed state, one field per resources/github.toml
-// [state_schema] property.
+// Result is one observation. Its fields are the union of what the two
+// resource kinds observe, because one fetch path produces them; ResourceKind
+// says which kind was observed, and Document is what publishes only that
+// kind's contract.
 type Result struct {
-	ResourceKind   string // "pull" | "issue" | "unknown"
+	ResourceKind   string // "pull" | "issue"
 	ChecksStatus   string // "SUCCESS" | "PENDING" | "FAILURE" | "NULL"
-	IssueStatus    string // "SUCCESS" | "PENDING" | "NULL"
+	IssueStatus    string // "SUCCESS" | "PENDING"; an issue observation only
 	Revision       string
 	PRURL          string
 	MergeableState string // GitHub's own vocabulary, or "NULL" / "unknown"
 	ReviewDecision string // "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | "NULL"
+}
+
+// Document is the state this observation publishes, holding exactly the keys
+// its resource kind's state_schema declares. `pr_url` is absent, not empty,
+// until a pull request exists: a chain wiring it renders its inputs under
+// missingkey=error, so absence is what keeps such a chain from firing before
+// there is a pull request to hand it.
+func (r Result) Document() map[string]any {
+	doc := map[string]any{
+		"resource_kind":   r.ResourceKind,
+		"checks_status":   r.ChecksStatus,
+		"revision":        r.Revision,
+		"mergeable_state": r.MergeableState,
+		"review_decision": r.ReviewDecision,
+	}
+	if r.ResourceKind == "issue" {
+		doc["issue_status"] = r.IssueStatus
+	}
+	if r.PRURL != "" {
+		doc["pr_url"] = r.PRURL
+	}
+	return doc
 }
 
 // Options are the inputs Observe needs.
@@ -60,9 +84,13 @@ func Observe(ctx context.Context, opts Options) (*Result, error) {
 		client = ghapi.Direct()
 	}
 
+	// Each resource definition's `match` already admits only its own kind, so
+	// an identifier reaching here that parses as neither has no state to
+	// report — failing is what keeps a first observation from creating an
+	// instance whose resource nothing recognizes.
 	parsed, err := github.ParseURL(opts.ResourceID)
 	if err != nil {
-		return &Result{ResourceKind: "unknown", ChecksStatus: "NULL", IssueStatus: "NULL", MergeableState: "NULL", ReviewDecision: "NULL"}, nil
+		return nil, err
 	}
 
 	if parsed.Type == github.URLTypePR {
@@ -83,7 +111,6 @@ func observePull(ctx context.Context, client github.GHClient, parsed *github.Par
 	return &Result{
 		ResourceKind:   "pull",
 		ChecksStatus:   checks,
-		IssueStatus:    "NULL",
 		Revision:       head.sha,
 		PRURL:          parsed.URL(),
 		MergeableState: head.mergeableState,
@@ -92,7 +119,7 @@ func observePull(ctx context.Context, client github.GHClient, parsed *github.Par
 }
 
 // observeIssue implements the issue-linked-PR tracking documented on
-// resources/github.toml's `observe` hook: an issue-keyed session tracks its
+// resources/issue.toml: an issue-keyed session tracks its
 // linked PR once one exists, so checks_status becomes the PR's rollup and
 // revision its head SHA — a chain gated on checks SUCCESS can never fire
 // before the linked PR is up and green.

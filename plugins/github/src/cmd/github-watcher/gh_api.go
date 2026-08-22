@@ -16,7 +16,7 @@ import (
 
 // cmdGhAPI is `github-watcher gh-api [--data-dir <dir>] <gh api args...>`:
 // the cross-process helper the github config layer (providers/github.toml,
-// resources/github.toml) invokes instead of calling `gh api` directly, so
+// the GitHub resource definitions) invokes instead of calling `gh api` directly, so
 // its setup/observe scripts share the same rate budget as the poll loop —
 // a 403/429 seen by either blocks the other until the backoff window
 // elapses, instead of each retrying independently and re-tripping the

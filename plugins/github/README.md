@@ -20,7 +20,7 @@ session runs through.
   shell shim, not a build target.
 - `workspaces/github.toml` — resolves a GitHub issue/PR URL to a session id
   and acquires/releases the git worktree it maps to.
-- `resources/github.toml` — the standalone observation contract
+- `resources/issue.toml`, `resources/pull.toml` — the standalone observation contracts, one per resource kind
   (`plect resource status`): resource kind, CI check rollup, issue
   completion, revision, linked PR, mergeability, and GitHub's own aggregate
   review decision.

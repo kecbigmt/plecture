@@ -712,7 +712,7 @@ func TestPoller_NewCommitsNotifies(t *testing.T) {
 func TestChecksRollup(t *testing.T) {
 	// Zero entries is a real PR whose checks haven't started (PENDING), not
 	// the watcher's old empty-string "no CI at all" sentinel — this is the
-	// resources/github.toml checks_rollup alignment requires.
+	// the resource observation's checks rollup alignment requires.
 	if got := checksRollup(nil); got != "PENDING" {
 		t.Errorf("empty = %q, want PENDING", got)
 	}
@@ -840,7 +840,7 @@ func TestPoller_SamePRDifferentBranchesShareOneFetch(t *testing.T) {
 }
 
 // A PR whose checks reset after a new push (the REST check-runs/status probes
-// now return nothing) resolves to PENDING per resources/github.toml's
+// now return nothing) resolves to PENDING per the resource observation's
 // checks_rollup — a real, notify-worthy transition, not the watcher's old
 // silent "no CI at all" retraction.
 func TestPoller_ChecksResetToPendingNotifies(t *testing.T) {
