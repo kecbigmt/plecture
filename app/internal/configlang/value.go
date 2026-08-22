@@ -29,7 +29,6 @@ const (
 	ClassBinding
 )
 
-// Value carries exactly one form's fields populated, named by Form.
 type Value struct {
 	Form ValueForm
 
