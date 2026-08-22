@@ -77,7 +77,7 @@ func deliveryEval(inputs map[string]any, ev event.Event, opts DeliverOptions) la
 
 // DeliverOptions carries optional per-delivery overrides beyond the channel
 // definition and event itself. The zero value is what Deliver uses: no
-// {{terminal "..."}} binding.
+// capabilities in scope.
 type DeliverOptions struct {
 	// Terminal resolves this delivery's terminal capabilities; nil means a
 	// channel that consumes one gets a clear "not available" error rather

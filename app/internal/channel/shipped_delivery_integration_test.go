@@ -5,9 +5,8 @@ package channel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,19 +15,17 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
-	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
 
-// These tests assert what each shipped channel's *receiver* observes — a
-// framed socket message, a queued file, an HTTP request body, a sequence of
-// terminal commands — rather than what its fields render to. That is the
-// contract the plugin's counterpart depends on, and it is the property that
-// has to survive a change of declaration form.
+// The corpus here is whatever the repository's plugins declare, discovered by
+// walking the plugin root. Nothing in this file names a plugin or asserts
+// anything only one of them does: core must not know which providers exist,
+// so what is checked is the property every shipped channel has to have.
 //
-// They are integration-tagged because they run real processes (bash, jq,
-// curl) and one of them waits out the Codex TUI's paste-burst window.
+// Integration-tagged: it mounts real plugin manifests and opens real sockets.
 
 func shippedChannels(t *testing.T) map[string]config.ChannelDefinition {
 	t.Helper()
@@ -36,319 +33,271 @@ func shippedChannels(t *testing.T) map[string]config.ChannelDefinition {
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+	manifests, err := filepath.Glob(filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "plugins", "*", "plugin.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifests) == 0 {
+		t.Skip("no plugins in this tree")
+	}
 	var dirs []string
 	var mounted []plugins.Mounted
-	for _, name := range []string{"claude", "codex", "slack"} {
-		dir := filepath.Join(repoRoot, "plugins", name)
+	for _, path := range manifests {
+		dir := filepath.Dir(path)
 		manifest, err := plugins.LoadManifest(dir)
 		if err != nil {
-			t.Fatalf("LoadManifest(%s): %v", name, err)
+			t.Fatalf("LoadManifest(%s): %v", dir, err)
 		}
 		dirs = append(dirs, dir)
-		// The alias is deliberately not "official": a shipped channel that
-		// silently re-depended on one specific catalog alias would otherwise
-		// pass unnoticed.
-		mounted = append(mounted, plugins.Mounted{ID: "acme-mirror/" + name, Dir: dir, Manifest: manifest})
+		// The alias is arbitrary on purpose: a shipped channel that silently
+		// re-depended on one specific catalog alias would otherwise pass.
+		mounted = append(mounted, plugins.Mounted{ID: "acme-mirror/" + filepath.Base(dir), Dir: dir, Manifest: manifest})
 	}
 	channels, err := (&config.Config{PluginDirs: dirs, Plugins: mounted}).LoadChannels()
 	if err != nil {
-		t.Fatalf("LoadChannels(shipped catalog): %v", err)
+		t.Fatalf("LoadChannels(shipped): %v", err)
+	}
+	if len(channels) == 0 {
+		t.Skip("no shipped channels in this tree")
 	}
 	return channels
 }
 
-// shippedBin resolves a shipped channel's `bin` the way the dispatcher does.
-func shippedBin(def config.ChannelDefinition) BinResolver {
+func shippedEval(t *testing.T, def config.ChannelDefinition, inputs map[string]any, ev event.Event) lang.Eval {
+	t.Helper()
 	_, thisFile, _, _ := runtime.Caller(0)
-	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+	manifests, _ := filepath.Glob(filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "plugins", "*", "plugin.toml"))
 	var mounted []plugins.Mounted
-	for _, name := range []string{"claude", "codex", "slack"} {
-		dir := filepath.Join(repoRoot, "plugins", name)
+	for _, path := range manifests {
+		dir := filepath.Dir(path)
 		manifest, err := plugins.LoadManifest(dir)
 		if err != nil {
 			continue
 		}
-		mounted = append(mounted, plugins.Mounted{ID: "acme-mirror/" + name, Dir: dir, Manifest: manifest})
+		mounted = append(mounted, plugins.Mounted{ID: "acme-mirror/" + filepath.Base(dir), Dir: dir, Manifest: manifest})
 	}
 	bins := config.MountedBins{Mounted: mounted, SourcePath: def.SourcePath}
-	return func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) }
+	return deliveryEval(inputs, ev, DeliverOptions{
+		Bin:      func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
+		Terminal: func(verb string) (string, error) { return "true", nil },
+	})
 }
 
-func shippedChannel(t *testing.T, id string) config.ChannelDefinition {
-	t.Helper()
-	def, ok := shippedChannels(t)[id]
-	if !ok {
-		t.Fatalf("shipped channel %q not found", id)
+// standInInputs supplies one value per declared parameter that has no
+// default of its own, so a channel's projections resolve without this test
+// knowing what any of them mean. A parameter that declares a default keeps
+// it: the default is the author's own statement of a usable value, and
+// overwriting it would test a wiring no workflow produces.
+func standInInputs(def config.ChannelDefinition, value string) map[string]any {
+	inputs := make(map[string]any, len(def.InputSchema))
+	for key, spec := range def.InputSchema {
+		if spec.HasDefault {
+			continue
+		}
+		inputs[key] = value
 	}
-	return def
+	return def.ApplyInputDefaults(inputs)
 }
 
-// The claude channel's receiver is channel-server, which decodes one framed
-// envelope per delivery. The assertion is JSON equivalence rather than byte
-// equality: what the server relies on is the decoded event, not one
-// serializer's escaping choices.
-func TestShippedDelivery_ClaudeWritesTheEventAsAFramedMessage(t *testing.T) {
-	def := shippedChannel(t, "claude")
-	sock := filepath.Join(t.TempDir(), "c.sock")
-	ln, err := net.Listen("unix", sock)
-	if err != nil {
-		t.Fatal(err)
+func declaredValues(def config.ChannelDefinition) map[string]*lang.Value {
+	values := map[string]*lang.Value{}
+	if def.Path != nil {
+		values["path"] = def.Path
 	}
-	defer ln.Close()
-
-	received := make(chan []byte, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
+	if def.Body != nil {
+		values["body"] = def.Body
+	}
+	if def.Action != nil {
+		for i, arg := range def.Action.Args {
+			values[fmt.Sprintf("args[%d]", i)] = arg
 		}
-		defer conn.Close()
-		data, err := readFramed(conn)
-		if err != nil {
-			return
+		if def.Action.Stdin != nil {
+			values["stdin"] = def.Action.Stdin
 		}
-		received <- data
-	}()
+		for name, bound := range def.Action.Bind {
+			values["bind."+name] = bound
+		}
+	}
+	return values
+}
 
+// Every value a shipped channel declares has to resolve against an event and
+// its own declared parameters — a broken projection, an expression naming a
+// root the surface does not offer, or an unresolvable executable would
+// otherwise only surface on the first event that channel is asked to deliver.
+func TestShippedChannels_EveryDeclaredValueResolves(t *testing.T) {
 	ev := event.Event{
 		ID:          "01ABC",
-		SessionName: "o/r-1",
+		SessionName: "acme/widget-1",
 		Type:        event.TypeUserEmit,
-		Summary:     "s",
+		Summary:     "a summary",
 		Body:        `a <tag> & an "amp"`,
 		Time:        time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC),
 		Metadata:    map[string]string{"url": "https://example.test/x"},
 	}
-	inputs := def.ApplyInputDefaults(map[string]any{"path": sock})
-	if err := Deliver(context.Background(), def, inputs, ev); err != nil {
-		t.Fatalf("Deliver: %v", err)
-	}
-
-	var data []byte
-	select {
-	case data = <-received:
-	case <-time.After(5 * time.Second):
-		t.Fatal("no framed message arrived")
-	}
-
-	var envelope struct {
-		Type    string `json:"type"`
-		Payload struct {
-			Text string `json:"text"`
-		} `json:"payload"`
-	}
-	if err := json.Unmarshal(data, &envelope); err != nil {
-		t.Fatalf("envelope is not JSON: %v (%s)", err, data)
-	}
-	if envelope.Type != string(protocol.MsgMessage) {
-		t.Errorf("envelope type = %q, want %q", envelope.Type, protocol.MsgMessage)
-	}
-	var carried map[string]any
-	if err := json.Unmarshal([]byte(envelope.Payload.Text), &carried); err != nil {
-		t.Fatalf("payload text is not the event as JSON: %v (%s)", err, envelope.Payload.Text)
-	}
-	for key, want := range map[string]any{
-		"id":           ev.ID,
-		"session_name": ev.SessionName,
-		"type":         ev.Type,
-		"summary":      ev.Summary,
-		"body":         ev.Body,
-	} {
-		if carried[key] != want {
-			t.Errorf("carried[%q] = %v, want %v", key, carried[key], want)
-		}
-	}
-	md, ok := carried["metadata"].(map[string]any)
-	if !ok || md["url"] != "https://example.test/x" {
-		t.Errorf("carried metadata = %v, want the event's url", carried["metadata"])
-	}
-}
-
-// The codex_exec channel's receiver is codex-exec-worker, which reads the
-// {type, text} files the enqueue script leaves in the queue directory. The
-// message_envelope parameter is expanded by that script, so the queued text
-// is where its effect is observable.
-func TestShippedDelivery_CodexExecQueuesAnExpandedEnvelope(t *testing.T) {
-	def := shippedChannel(t, "codex_exec")
-	queueDir := filepath.Join(t.TempDir(), "queue")
-	ev := event.Event{
-		Type:     event.TypeUserEmit,
-		Summary:  "fallback summary",
-		Body:     "do the thing",
-		Metadata: map[string]string{"url": "https://example.test/pr/1"},
-	}
-	inputs := def.ApplyInputDefaults(map[string]any{"queue_dir": queueDir})
-	if err := DeliverWithOptions(context.Background(), def, inputs, ev, DeliverOptions{Bin: shippedBin(def)}); err != nil {
-		t.Fatalf("DeliverWithOptions: %v", err)
-	}
-
-	entries, err := os.ReadDir(queueDir)
-	if err != nil {
-		t.Fatalf("read queue dir: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("queued %d files, want 1", len(entries))
-	}
-	raw, err := os.ReadFile(filepath.Join(queueDir, entries[0].Name()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var queued struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
-	}
-	if err := json.Unmarshal(raw, &queued); err != nil {
-		t.Fatalf("queued file is not JSON: %v (%s)", err, raw)
-	}
-	if queued.Type != ev.Type {
-		t.Errorf("queued type = %q, want %q", queued.Type, ev.Type)
-	}
-	// The default envelope is "[{type}] {body_or_summary}{url_suffix}".
-	want := "[" + ev.Type + "] do the thing (https://example.test/pr/1)"
-	if queued.Text != want {
-		t.Errorf("queued text = %q, want %q", queued.Text, want)
-	}
-}
-
-// An event with no body falls back to its summary, which is the branch a
-// status event takes.
-func TestShippedDelivery_CodexExecFallsBackToTheSummary(t *testing.T) {
-	def := shippedChannel(t, "codex_exec")
-	queueDir := filepath.Join(t.TempDir(), "queue")
-	ev := event.Event{Type: "github.ci_status", Summary: "CI failed"}
-	inputs := def.ApplyInputDefaults(map[string]any{"queue_dir": queueDir})
-	if err := DeliverWithOptions(context.Background(), def, inputs, ev, DeliverOptions{Bin: shippedBin(def)}); err != nil {
-		t.Fatalf("DeliverWithOptions: %v", err)
-	}
-	entries, err := os.ReadDir(queueDir)
-	if err != nil || len(entries) != 1 {
-		t.Fatalf("entries = %v, err = %v", entries, err)
-	}
-	raw, _ := os.ReadFile(filepath.Join(queueDir, entries[0].Name()))
-	var queued struct{ Text string }
-	if err := json.Unmarshal(raw, &queued); err != nil {
-		t.Fatal(err)
-	}
-	if want := "[github.ci_status] CI failed"; queued.Text != want {
-		t.Errorf("queued text = %q, want %q", queued.Text, want)
-	}
-}
-
-// The slack channel's receiver is this plugin's slack-adapter HTTP API. What
-// it depends on is the posted JSON object, so the assertion decodes the
-// request body rather than comparing the argv that produced it.
-func TestShippedDelivery_SlackPostsTheEventAsJSON(t *testing.T) {
-	def := shippedChannel(t, "slack")
-
-	type posted struct {
-		ThreadTS  string `json:"thread_ts"`
-		ChannelID string `json:"channel_id"`
-		Text      string `json:"text"`
-	}
-	got := make(chan posted, 2)
-	var gotPath string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		var p posted
-		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		got <- p
-	}))
-	defer srv.Close()
-
-	for _, tc := range []struct {
-		name string
-		ev   event.Event
-		want string
-	}{
-		{
-			name: "a body is posted verbatim",
-			ev:   event.Event{Type: event.TypeUserEmit, Summary: "s", Body: "kick \"now\"\nplease"},
-			want: "kick \"now\"\nplease",
-		},
-		{
-			name: "an empty body falls back to the summary",
-			ev:   event.Event{Type: "github.ci_status", Summary: "CI failed: test"},
-			want: "CI failed: test",
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			inputs := def.ApplyInputDefaults(map[string]any{
-				"base_url":   srv.URL,
-				"channel_id": "C0",
-				"thread_ts":  "12.34",
-			})
-			if err := DeliverWithOptions(context.Background(), def, inputs, tc.ev, DeliverOptions{Bin: shippedBin(def)}); err != nil {
-				t.Fatalf("DeliverWithOptions: %v", err)
-			}
-			select {
-			case p := <-got:
-				if p.Text != tc.want {
-					t.Errorf("text = %q, want %q", p.Text, tc.want)
+	for id, def := range shippedChannels(t) {
+		t.Run(id, func(t *testing.T) {
+			inputs := standInInputs(def, "stand-in")
+			eval := shippedEval(t, def, inputs, ev)
+			for where, value := range declaredValues(def) {
+				resolved, absent, err := eval.Bytes(value)
+				if err != nil {
+					t.Errorf("%s: %v", where, err)
+					continue
 				}
-				if p.ThreadTS != "12.34" || p.ChannelID != "C0" {
-					t.Errorf("thread_ts/channel_id = %q/%q", p.ThreadTS, p.ChannelID)
+				if absent {
+					continue
 				}
-			case <-time.After(15 * time.Second):
-				t.Fatal("no request arrived")
+				// A serializing operand has to produce a parseable document:
+				// that is the whole reason it is an operand rather than a
+				// string a value could malform.
+				if value.Form == lang.FormJSON {
+					var parsed any
+					if err := json.Unmarshal(resolved, &parsed); err != nil {
+						t.Errorf("%s: serialized operand is not JSON: %v (%s)", where, err, resolved)
+					}
+				}
 			}
-			if gotPath != "/messages" {
-				t.Errorf("path = %q, want /messages", gotPath)
+			if _, err := ResolveTimeout(def, inputs); err != nil {
+				t.Errorf("timeout: %v", err)
 			}
 		})
 	}
 }
 
-// The terminal_submit channel's receiver is a terminal: what it depends on is
-// the *sequence* of terminal commands — the text, then a separate Enter, with
-// the readiness re-check in between — because the Codex TUI treats an Enter
-// arriving inside the same burst as a newline rather than a submit.
-func TestShippedDelivery_TerminalSubmitSplitsTextFromEnter(t *testing.T) {
-	def := shippedChannel(t, "terminal_submit")
-	log := filepath.Join(t.TempDir(), "terminal.log")
+// An event with no body must resolve as readily as one with a body: a
+// fallback to the summary is the shape every shipped channel is written for,
+// and an unset optional field is empty rather than absent.
+func TestShippedChannels_ResolveWithoutABody(t *testing.T) {
+	ev := event.Event{Type: "example.status", Summary: "only a summary"}
+	for id, def := range shippedChannels(t) {
+		t.Run(id, func(t *testing.T) {
+			eval := shippedEval(t, def, standInInputs(def, "stand-in"), ev)
+			for where, value := range declaredValues(def) {
+				if _, _, err := eval.Bytes(value); err != nil {
+					t.Errorf("%s: %v", where, err)
+				}
+			}
+		})
+	}
+}
 
-	// Each verb resolves to a command the script runs as `sh -c <cmd> <argv0>
-	// <operand>`, so "$1" is the operand the script passes for that verb.
-	// capture reports an empty prompt line, which is how a submitted input box
-	// looks — the script then stops after the first Enter.
-	terminal := func(verb string) (string, error) {
-		switch verb {
-		case "send_text":
-			return `printf 'text:%s\n' "$1" >> ` + log, nil
-		case "send_keys":
-			return `printf 'keys:%s\n' "$1" >> ` + log, nil
-		case "capture":
-			return `printf '\n'`, nil
-		}
-		return "", nil
-	}
+// A unix_socket channel's receiver decodes one framed envelope per delivery,
+// so this drives a real delivery into a stand-in listener and asserts the
+// envelope carries the event.
+func TestShippedChannels_UnixSocketDeliversOneFramedEnvelope(t *testing.T) {
 	ev := event.Event{
-		Type:     event.TypeUserEmit,
-		Summary:  "s",
-		Body:     "run the tests",
-		Metadata: map[string]string{"url": "https://example.test/x"},
+		ID:          "01ABC",
+		SessionName: "acme/widget-1",
+		Type:        event.TypeUserEmit,
+		Summary:     "s",
+		Body:        `a <tag> & an "amp"`,
+		Metadata:    map[string]string{"url": "https://example.test/x"},
 	}
-	inputs := def.ApplyInputDefaults(map[string]any{})
-	if err := DeliverWithOptions(context.Background(), def, inputs, ev, DeliverOptions{Terminal: terminal}); err != nil {
+	delivered := 0
+	for id, def := range shippedChannels(t) {
+		if def.Type != config.ChannelTypeUnixSocket {
+			continue
+		}
+		delivered++
+		t.Run(id, func(t *testing.T) {
+			sock := filepath.Join(t.TempDir(), "c.sock")
+			ln, err := net.Listen("unix", sock)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ln.Close()
+			received := make(chan []byte, 1)
+			go func() {
+				conn, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				defer conn.Close()
+				if data, err := readFramed(conn); err == nil {
+					received <- data
+				}
+			}()
+
+			// Every declared parameter gets the socket path, so whichever one
+			// this channel's `path` projects resolves to the listener without
+			// this test knowing its name.
+			if err := Deliver(context.Background(), def, standInInputs(def, sock), ev); err != nil {
+				t.Fatalf("Deliver: %v", err)
+			}
+			var data []byte
+			select {
+			case data = <-received:
+			case <-time.After(5 * time.Second):
+				t.Fatal("no framed message arrived")
+			}
+			var envelope struct {
+				Payload struct{ Text string } `json:"payload"`
+			}
+			if err := json.Unmarshal(data, &envelope); err != nil {
+				t.Fatalf("envelope is not JSON: %v (%s)", err, data)
+			}
+			var carried map[string]any
+			if err := json.Unmarshal([]byte(envelope.Payload.Text), &carried); err != nil {
+				t.Fatalf("payload is not the event as JSON: %v (%s)", err, envelope.Payload.Text)
+			}
+			if carried["id"] != ev.ID || carried["body"] != ev.Body {
+				t.Errorf("carried = %v, want the delivered event", carried)
+			}
+			md, ok := carried["metadata"].(map[string]any)
+			if !ok || md["url"] != "https://example.test/x" {
+				t.Errorf("carried metadata = %v, want the event's metadata", carried["metadata"])
+			}
+		})
+	}
+	if delivered == 0 {
+		t.Skip("no shipped unix_socket channel in this tree")
+	}
+}
+
+// A shell channel splitting one delivery into a sequence of terminal
+// commands is the shape an interactive runtime needs — text, a pause, then a
+// separate key — and it only works if each bound capability reaches the
+// script as data and the script's own ordering is preserved. The channel here
+// is synthetic: what is under test is the engine, not any one runtime's
+// contract.
+func TestDeliver_ShellChannelSequencesTerminalCommands(t *testing.T) {
+	log := filepath.Join(t.TempDir(), "terminal.log")
+	def := channelDef(t, `
+[c]
+kind   = "channel"
+type   = "shell"
+script = '''
+sh -c "$send_text" channel-send-text "$message"
+sleep 0.2
+sh -c "$send_keys" channel-send-keys Enter
+'''
+
+[c.bind]
+send_text = { terminal = "send_text" }
+send_keys = { terminal = "send_keys" }
+message   = { expr = "'[' + event.type + '] ' + (event.body != '' ? event.body : event.summary)" }
+`)
+	terminal := func(verb string) (string, error) {
+		return `printf '` + verb + `:%s\n' "$1" >> ` + log, nil
+	}
+	ev := event.Event{Type: event.TypeUserEmit, Summary: "s", Body: "run the tests"}
+	err := DeliverWithOptions(context.Background(), def, nil, ev, DeliverOptions{Terminal: terminal})
+	if err != nil {
 		t.Fatalf("DeliverWithOptions: %v", err)
 	}
-
 	raw, err := os.ReadFile(log)
 	if err != nil {
 		t.Fatalf("read terminal log: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("terminal saw %d commands, want the text and one Enter: %q", len(lines), lines)
+	want := []string{"send_text:[" + ev.Type + "] run the tests", "send_keys:Enter"}
+	if len(lines) != len(want) {
+		t.Fatalf("terminal saw %d commands, want %d: %q", len(lines), len(want), lines)
 	}
-	wantText := "text:[" + ev.Type + "] run the tests (https://example.test/x)"
-	if lines[0] != wantText {
-		t.Errorf("first command = %q, want %q", lines[0], wantText)
-	}
-	if lines[1] != "keys:Enter" {
-		t.Errorf("second command = %q, want an Enter of its own", lines[1])
+	for i := range want {
+		if lines[i] != want[i] {
+			t.Errorf("command %d = %q, want %q", i, lines[i], want[i])
+		}
 	}
 }

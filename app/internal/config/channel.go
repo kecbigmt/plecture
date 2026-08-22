@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
@@ -26,8 +27,13 @@ type ChannelInputSpec struct {
 	// Default is the value delivery uses when the referencing
 	// [[event.channel]] sets no such input. Without it an optional input is
 	// unusable: a projection of an unset key fails delivery rather than
-	// resolving to empty. An empty string means no default was declared.
+	// resolving to empty.
 	Default string
+	// HasDefault distinguishes a declared `default = ""` from no default at
+	// all. Emptiness is a usable default — it is what lets a channel pass a
+	// flag whose value is legitimately empty — so the two cannot be folded
+	// into one.
+	HasDefault bool
 }
 
 // ChannelDefinition binds a workflow's [[event.channel]] to one delivery
@@ -72,7 +78,7 @@ func (d ChannelDefinition) ApplyInputDefaults(inputs map[string]any) map[string]
 		out[k] = v
 	}
 	for key, spec := range d.InputSchema {
-		if spec.Default == "" {
+		if !spec.HasDefault {
 			continue
 		}
 		if _, set := out[key]; !set {
@@ -202,27 +208,60 @@ func channelInputSchema(raw any) (map[string]ChannelInputSpec, error) {
 			return nil, fmt.Errorf("input_schema %q: expected a table", key)
 		}
 		var parsed ChannelInputSpec
-		for field, value := range spec {
+		var declaredType bool
+		for _, field := range sortedSpecKeys(spec) {
+			value := spec[field]
+			var ok bool
 			switch field {
 			case "type":
-				parsed.Type, _ = value.(string)
+				parsed.Type, ok = value.(string)
+				declaredType = true
 			case "required":
-				parsed.Required, _ = value.(bool)
+				parsed.Required, ok = value.(bool)
 			case "default":
-				parsed.Default, _ = value.(string)
+				parsed.Default, ok = value.(string)
+				parsed.HasDefault = true
 			default:
 				return nil, fmt.Errorf("input_schema %q: %q is not part of a parameter spec", key, field)
 			}
+			// A wrong type here is refused rather than dropped: a
+			// `required = "true"` string read as the boolean's zero value
+			// would silently stop gating, and a non-string default would
+			// silently leave the parameter unusable.
+			if !ok {
+				return nil, fmt.Errorf("input_schema %q: %q is %s, not %T", key, field, specFieldType(field), value)
+			}
 		}
-		if parsed.Type == "" {
+		if !declaredType {
 			return nil, fmt.Errorf("input_schema %q: `type` is required", key)
 		}
-		if parsed.Required && parsed.Default != "" {
+		if parsed.Type != "string" {
+			return nil, fmt.Errorf("input_schema %q: `type` is \"string\"; a channel parameter carries no other type", key)
+		}
+		if parsed.Required && parsed.HasDefault {
 			return nil, fmt.Errorf("input_schema %q: `required` and `default` are mutually exclusive", key)
 		}
 		out[key] = parsed
 	}
 	return out, nil
+}
+
+func specFieldType(field string) string {
+	if field == "required" {
+		return "a boolean"
+	}
+	return "a string"
+}
+
+// sortedSpecKeys walks a parameter spec in a fixed order, so a spec breaking
+// more than one rule reports the same error on every run.
+func sortedSpecKeys(spec map[string]any) []string {
+	keys := make([]string, 0, len(spec))
+	for key := range spec {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // ValidateWorkflowChannels checks each [[event.channel]] resolves and its inputs

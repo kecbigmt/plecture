@@ -162,8 +162,24 @@ done
 
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
-rm -rf "$CONFIG_HOME"
-mv "$CONFIG_HOME.migration-backup.$STAMP" "$CONFIG_HOME"
+BACKUP="$CONFIG_HOME.migration-backup.$STAMP"
+
+# CONFIG_HOME comes from the environment, so the restore refuses anything
+# that is not recognizably a plect config home rather than acting on a stray
+# or empty value.
+[ -n "$CONFIG_HOME" ] && [ "$CONFIG_HOME" != "/" ] ||
+  { echo "refusing: CONFIG_HOME is \"$CONFIG_HOME\"" >&2; exit 1; }
+[ -f "$CONFIG_HOME/config.toml" ] || [ -f "$CONFIG_HOME/catalogs.toml" ] ||
+  { echo "refusing: $CONFIG_HOME is not a plect config home" >&2; exit 1; }
+[ -d "$BACKUP" ] || { echo "refusing: no backup at $BACKUP" >&2; exit 1; }
+
+# Move the current tree aside instead of deleting it, so a mistake here is
+# still recoverable, then put the backup back.
+mv "$CONFIG_HOME" "$CONFIG_HOME.rolled-back.$STAMP"
+mv "$BACKUP" "$CONFIG_HOME"
 ```
+
+Once the restored tree is confirmed good, `$CONFIG_HOME.rolled-back.$STAMP`
+is the only thing left to remove, by hand.
 
 Then use a plect binary built before this change.

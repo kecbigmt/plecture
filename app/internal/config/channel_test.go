@@ -138,6 +138,31 @@ func TestLoadChannels_RejectedDeclarations(t *testing.T) {
 			want: "timeout",
 		},
 		{
+			name: "input_schema declaring a non-boolean required",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"string\", required = \"true\" }\n",
+			want: "\"required\" is a boolean",
+		},
+		{
+			name: "input_schema declaring a non-string default",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"string\", default = 5 }\n",
+			want: "\"default\" is a string",
+		},
+		{
+			name: "input_schema declaring a non-string type",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = true }\n",
+			want: "\"type\" is a string",
+		},
+		{
+			name: "input_schema declaring a type outside the vocabulary",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"integer\" }\n",
+			want: "carries no other type",
+		},
+		{
+			name: "input_schema declaring both required and an empty default",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"string\", required = true, default = \"\" }\n",
+			want: "mutually exclusive",
+		},
+		{
 			name: "input_schema missing type",
 			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { required = true }\n",
 			want: "`type` is required",
@@ -476,8 +501,8 @@ include = ["github.*"]
 func TestChannelDefinition_ApplyInputDefaults(t *testing.T) {
 	def := ChannelDefinition{InputSchema: map[string]ChannelInputSpec{
 		"queue_dir":        {Type: "string", Required: true},
-		"enqueue_timeout":  {Type: "string", Default: "5s"},
-		"message_envelope": {Type: "string", Default: "[{type}] {body}"},
+		"enqueue_timeout":  {Type: "string", Default: "5s", HasDefault: true},
+		"message_envelope": {Type: "string", Default: "[{type}] {body}", HasDefault: true},
 		"undeclared":       {Type: "string"},
 	}}
 	got := def.ApplyInputDefaults(map[string]any{
@@ -496,5 +521,37 @@ func TestChannelDefinition_ApplyInputDefaults(t *testing.T) {
 		if got[k] != v {
 			t.Errorf("input %q = %v, want %v", k, got[k], v)
 		}
+	}
+}
+
+// A declared `default = ""` is a usable default: it is what lets a channel
+// pass a flag whose value is legitimately empty, so it must not be folded
+// into "no default declared".
+func TestChannelDefinition_ApplyInputDefaults_DistinguishesAnEmptyDefault(t *testing.T) {
+	baseDir := t.TempDir()
+	writeChannelDoc(t, baseDir, "c", `
+[c]
+kind    = "channel"
+type    = "exec"
+command = "true"
+
+[c.input_schema]
+declared_empty = { type = "string", default = "" }
+undeclared     = { type = "string" }
+`)
+	got, err := (&Config{BaseDir: baseDir}).LoadChannels()
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := got["c"].ApplyInputDefaults(nil)
+	value, set := inputs["declared_empty"]
+	if !set {
+		t.Error("a declared empty default must be applied")
+	}
+	if value != "" {
+		t.Errorf("declared_empty = %v, want the empty string", value)
+	}
+	if _, set := inputs["undeclared"]; set {
+		t.Error("a parameter with no default must stay unset")
 	}
 }

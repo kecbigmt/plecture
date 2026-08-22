@@ -33,8 +33,8 @@ func (d *Duration) UnmarshalText(text []byte) error {
 
 // ParseDuration is Duration's own grammar, exported for the fields that carry
 // a duration as a plain string rather than as a decoded Duration (a channel's
-// `timeout`, which is a template resolved at delivery). The empty string is
-// zero, not an error, matching UnmarshalText on an absent value.
+// `timeout`, which may be a projection resolved per delivery). The empty
+// string is zero, not an error, matching UnmarshalText on an absent value.
 func ParseDuration(s string) (time.Duration, error) {
 	if s == "" {
 		return 0, nil

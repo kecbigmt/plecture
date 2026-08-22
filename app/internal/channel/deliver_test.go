@@ -257,7 +257,7 @@ args    = [{ expr = "inputs.dir + '/got-' + event.body" }]
 [c.input_schema]
 dir = { type = "string", required = true }
 `)
-	ev := event.Event{Type: "github.state", Summary: "CI failed"} // Body empty
+	ev := event.Event{Type: "example.status", Summary: "CI failed"} // Body empty
 	if err := Deliver(context.Background(), def, map[string]any{"dir": dir}, ev); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}

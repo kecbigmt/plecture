@@ -49,7 +49,7 @@ func TestChannelInputs_FillsDeclaredDefaultsTheWorkflowLeftUnset(t *testing.T) {
 	}
 	def := config.ChannelDefinition{InputSchema: map[string]config.ChannelInputSpec{
 		"queue_dir":       {Type: "string", Required: true},
-		"enqueue_timeout": {Type: "string", Default: "5s"},
+		"enqueue_timeout": {Type: "string", Default: "5s", HasDefault: true},
 	}}
 	got, err := channelInputs(s, ch, def)
 	if err != nil {

@@ -101,7 +101,7 @@ func TestDeliverWithRetry_ExhaustsOnBadSocket(t *testing.T) {
 
 func TestChannelErrorEvent(t *testing.T) {
 	orig := event.Event{ID: "01ABC", SessionName: "o/r-1", Type: event.TypeInstruction}
-	ce := ChannelErrorEvent(orig, "runtime", 3, errors.New("tmux exited 1"))
+	ce := ChannelErrorEvent(orig, "runtime", 3, errors.New("delivery exited 1"))
 	if ce.Type != event.TypeChannelError {
 		t.Errorf("Type = %q, want %q", ce.Type, event.TypeChannelError)
 	}
