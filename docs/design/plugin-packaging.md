@@ -1024,8 +1024,8 @@ okf/config/resources/okf_goal.toml
 okf/config/tasks/pursue_goal.toml
 okf/config/tasks/goal_review.toml
 okf/config/tasks/goal_bootstrap.toml
-okf/config/workflows/goal_review.toml
 okf/config/templates/goal_review.md
+okf/exemplars/workflows/goal_review.toml
 okf/src/go.mod
 okf/src/cmd/okf-goal/main.go
 okf/src/cmd/okf-bundle/main.go
@@ -1035,6 +1035,13 @@ okf/src/cmd/okf-bundle/main.go
 add`/`update` produce from `okf/src` at add/update time — build output, not
 catalog content, so they are never committed (see the Package format
 section's `src`/`bin`/`scripts` split).
+
+`okf/exemplars/workflows/goal_review.toml` is catalog-shipped but not
+catalog-loaded: it is a copy-me example, not a `config/workflows/*.toml`
+file, so `LoadWorkflows` never mounts it. This is the plugin-local fallback
+for the exemplar package format `docs/design/exemplar-workflows.md`
+describes; that catalog-root `exemplars/workflows/<id>/` package format
+(with its own `exemplar.toml` metadata) is not implemented yet.
 
 Plugin-owned behavior:
 
@@ -1048,10 +1055,8 @@ Plugin-owned behavior:
   a goal to completion and re-creates a dropped `pursue_goal` instance.
   `pursue_goal` only gates the resource kind; goal-specific completion
   conditions live in the goal file's own "## Done When" checklist.
-- A reference `goal_review` workflow and template that dispatches an agent
-  session to record the review verdict. This composes node kinds from the
-  session runtime surface that the plugin does not itself define — see "Residual
-  user config" below.
+- The `goal_review` task's instruction template, which the reviewer session
+  renders to record the review verdict.
 
 Internally separable plugin behavior:
 
@@ -1063,18 +1068,20 @@ Internally separable plugin behavior:
 Not plugin-owned:
 
 - Retrospectives or other bundle records without machine semantics.
-- Which session runtime plugin actually executes a goal review — the shipped
-  workflow only composes its node kinds by id.
+- The `goal_review` workflow itself. `okf/exemplars/workflows/goal_review.toml`
+  is a copy-me example, not runnable config; the host must define its own
+  `goal_review` workflow before `pursue_goal`'s chain can spawn one.
 
 Residual user config:
 
 - Which goal roots or owners are allowed.
 - Which orchestrator workflow is used.
-- Which session runtime handles the work — the shipped `goal_review` workflow's
-  `tmux` / `envfile` / `codex_exec` / `slack_thread` / `initial_task` nodes are
-  a reference composition; an operator whose session runtime defines different
-  task ids swaps the node `uses` values, or replaces the workflow with their
-  own team-owned overlay entirely.
+- The `goal_review` workflow and which session runtime handles the work —
+  the exemplar's `tmux` / `envfile` / `codex_exec` / `slack_thread` /
+  `initial_task` nodes are a reference composition; an operator copies it
+  into local config, swaps the node `uses` values for their own session
+  runtime's task ids, or replaces the workflow with their own team-owned
+  overlay entirely.
 - Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 

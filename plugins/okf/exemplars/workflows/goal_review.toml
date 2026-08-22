@@ -1,3 +1,18 @@
+# Copy-me example, not loaded config: plect does not read anything under
+# exemplars/. Copy this file into your own workflow config (e.g.
+# config/workflows/goal_review.toml in a local plugin overlay, or
+# ~/.config/plect/workflows/goal_review.toml) to give tasks/pursue_goal.toml's
+# chain a "goal_review" workflow to spawn, then adjust the composed node
+# `uses` values below for your own agent-runtime and channel plugins.
+#
+# Placement note: docs/design/exemplar-workflows.md (as of writing, not yet
+# merged) specifies an exemplars/workflows/<id>/ catalog-root package with
+# its own exemplar.toml metadata. That package format, and the `plect
+# workflow exemplar`/`plect workflow init --from` commands that consume it,
+# are not implemented yet, so this file uses the plugin-local
+# plugins/okf/exemplars/workflows/ fallback instead. Moving this one file is
+# the whole migration once that format lands.
+#
 # goal-review agent (local-okf): dispatches an agent session against a
 # local-okf goal resource, then delivers the goal_review task's
 # instructions.
