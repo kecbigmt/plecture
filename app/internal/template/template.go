@@ -214,7 +214,14 @@ func Render(mode, searchDir string, pluginDirs []string, vars Vars) (string, err
 	if err != nil {
 		return "", err
 	}
+	return RenderBody(mode, body, vars)
+}
 
+// RenderBody renders a body the caller already holds — a task document's
+// instruction, which carries the conditional and defaulting forms the
+// instruction assets already had. Retirement: the decision on control flow in
+// the instruction body replaces this pass with the language's own construct.
+func RenderBody(mode, body string, vars Vars) (string, error) {
 	tmpl, err := template.New(mode).Funcs(templateFuncs).Parse(body)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse template %q: %w", mode, err)

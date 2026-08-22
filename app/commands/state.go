@@ -20,6 +20,7 @@ var (
 	setOutputNode     string
 	setOutputWorkflow bool
 	setOutputTask     string
+	setStateInstance  string
 )
 
 var stateCmd = &cobra.Command{
@@ -161,6 +162,51 @@ Example:
 	},
 }
 
+var setStateCmd = &cobra.Command{
+	Use:   "set <session-or-url> <json>",
+	Short: "Record facts into a task instance's own state",
+	Long: `Merge a JSON object into a live task instance's own state — the keys its
+task document declares in ` + "`state_schema`" + ` and its completion predicate reads
+as ` + "`self.state.<key>`" + `.
+
+Merge-only: keys absent from the payload are left untouched. Every key must be
+one the document declares; state carries no mutability annotation, because
+state is mutable by definition.
+
+This is how a reviewer records a verdict: the revision it was recorded
+against is state the instance holds, and the completion predicate compares it
+with the resource's current revision, so a later push invalidates the verdict
+on its own.
+
+Example:
+  plect state set session-1 --instance review#1 '{"verdict_revision":"a1b2c3d"}'`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(args[1]), &payload); err != nil {
+			return fmt.Errorf("payload is not a JSON object: %w", err)
+		}
+		if payload == nil {
+			return fmt.Errorf("payload is not a JSON object: got null")
+		}
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		store := state.NewStore("")
+		result, err := service.SetTaskState(cfg, store, service.SetTaskStateParams{
+			Identifier: args[0],
+			Instance:   setStateInstance,
+			State:      payload,
+		})
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.ErrOrStderr(), "Recorded state of %s for %s: %s\n", result.Instance, result.SessionName, strings.Join(result.Keys, ", "))
+		return nil
+	},
+}
+
 func init() {
 	setConversationCmd.Flags().StringVar(&setConvSource, "source", "", "Conversation source (e.g., Slack, Discord)")
 	setConversationCmd.Flags().StringVar(&setConvURL, "url", "", "Permalink URL to the conversation")
@@ -174,6 +220,10 @@ func init() {
 	setOutputCmd.MarkFlagsMutuallyExclusive("node", "workflow", "task")
 	setOutputCmd.MarkFlagsOneRequired("node", "workflow", "task")
 
+	setStateCmd.Flags().StringVar(&setStateInstance, "instance", "", "Target instance, such as review#1")
+	setStateCmd.MarkFlagRequired("instance")
+
+	stateCmd.AddCommand(setStateCmd)
 	stateCmd.AddCommand(setConversationCmd)
 	stateCmd.AddCommand(setMessageCmd)
 	stateCmd.AddCommand(setOutputCmd)

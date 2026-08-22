@@ -192,6 +192,12 @@ func taskDocumentFrom(def *lang.Definition, path string, fromPlugin bool) (TaskD
 	}
 	d.DoneWhen = decoded.DoneWhen
 	d.Chains = decoded.Chains
+	// A document declares its budget beside its completion predicate, because
+	// what it bounds is convergence, not one predicate's shape; the runtime
+	// accounts for patience per predicate, so the two are joined here.
+	if d.DoneWhen != nil && len(d.Budget) > 0 {
+		d.DoneWhen.Budget = d.Budget
+	}
 	if err := d.DoneWhen.Validate(); err != nil {
 		return d, err
 	}

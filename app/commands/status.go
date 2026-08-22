@@ -37,8 +37,9 @@ provider-specific interpretation:
             facts "plect tick" acts on and "plect check" used to report
   flow      the most recent inbound/outbound events
 
-Observation-only: by default it reads whatever was last persisted. Pass
---refresh to re-fetch dynamic outputs from the source of truth first.
+Reporting reads what was last observed, and says when that was. Pass
+--refresh to observe each resource before reporting, so the facts shown are
+the ones current at the moment of the call.
 
 No provider-specific field exists here — a PR's review decision or checks
 status appears under "work" only when the workflow's task publishes it as an
@@ -57,6 +58,9 @@ workflow's own display status line.`,
 		store := state.NewStore("")
 
 		if statusRefresh {
+			if _, err := service.ObserveSessionResources(cfg, store, args[0]); err != nil {
+				return fmt.Errorf("observing resources failed: %w", err)
+			}
 			if _, err := service.RefreshSessionOutputs(cfg, store, args[0]); err != nil {
 				return fmt.Errorf("refresh failed: %w", err)
 			}

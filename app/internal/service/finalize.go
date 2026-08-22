@@ -65,6 +65,17 @@ func FinalizeTask(cfg *config.Config, store *state.Store, params FinalizeTaskPar
 	// that just failed leaves that reconfirmation unproven, not merely stale.
 	// Fail closed rather than silently evaluate against the untouched old
 	// value as if it were freshly confirmed.
+	// Same trade for the observation this instance's predicate reads: an
+	// observation that just failed leaves the reconfirmation unproven, so
+	// finalize refuses rather than recording completion against whatever the
+	// resource last said.
+	observation, err := ObserveInstanceResource(cfg, store, sessionName, params.Instance)
+	if err != nil {
+		return nil, err
+	}
+	if observation != nil && observation.Error != "" {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("instance %q: observing its resource failed (%s); finalize refuses to reconfirm against a stale observation", params.Instance, observation.Error)}
+	}
 	refreshed, err := RefreshInstanceOutputs(cfg, store, sessionName, params.Instance)
 	if err != nil {
 		return nil, err
