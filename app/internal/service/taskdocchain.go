@@ -88,13 +88,19 @@ func evalDocumentChain(cfg *config.Config, store *state.Store, def config.Docume
 }
 
 // resolveChainResource evaluates the resource a fire binds its spawned
-// session to. An absent projection resolves to the empty string rather than
-// an error, because "not yet" is the waiting case and only a malformed value
-// is a fault.
+// session to, in two steps because the two failures mean opposite things. A
+// projection that found nothing is the waiting case and resolves to the empty
+// string: the pull request does not exist yet. A value that was found but
+// cannot be carried as a resource identifier — a list, a table — is a fault,
+// and is returned as one so the fire is blocked with the reason said out
+// loud rather than waiting forever on a fact that has already arrived.
 func resolveChainResource(def config.DocumentChain, workName, workflow, instance string, facts chain.Facts) (string, error) {
 	eval := lang.Eval{Roots: documentChainRoots(workName, workflow, instance, facts)}
-	resolved, absent, err := eval.Argument(def.Resource)
+	resolved, absent, err := eval.Value(def.Resource)
 	switch {
+	// A projection's only evaluation failure is a path that resolved to
+	// nothing; anything else this value can be is a computation, whose
+	// failure is the author's.
 	case err != nil && def.Resource.Form == lang.FormFrom:
 		return "", nil
 	case err != nil:
@@ -102,7 +108,11 @@ func resolveChainResource(def config.DocumentChain, workName, workflow, instance
 	case absent:
 		return "", nil
 	}
-	return strings.TrimSpace(resolved), nil
+	text, err := lang.Stringify(resolved)
+	if err != nil {
+		return "", fmt.Errorf("%w; a resource is one identifier", err)
+	}
+	return strings.TrimSpace(text), nil
 }
 
 // resolveDocumentChainInputs evaluates each `[chains.inputs]` projection

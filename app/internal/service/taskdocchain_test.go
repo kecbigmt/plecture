@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -322,5 +323,42 @@ func TestCheckSession_ChainBlockedWhenItsResourceIsEmpty(t *testing.T) {
 	sp := chainSpawnFor(t, cfg, store, "review")
 	if sp.Fired || sp.BlockedReason != chainBlockedResourceUnresolved {
 		t.Fatalf("an empty resource blocks the fire: %+v", sp)
+	}
+}
+
+// A resource projected from a value that exists but cannot be carried as an
+// identifier is a fault, not a wait: the fact has already arrived, so waiting
+// for it is waiting forever. The fire stays blocked — fail-closed — but says
+// why.
+func TestCheckSession_ChainResourceThatCannotBeCarriedIsAFault(t *testing.T) {
+	store := testStore(t)
+	revision := filepath.Join(t.TempDir(), "revision")
+	if err := os.WriteFile(revision, []byte("sha2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeObservedRevisionFixture(t, revision, resourceChainDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+	instance := setUpDocumentInstance(t, cfg, store, "pursue")
+	if err := store.Update("org/repo-1", func(s *domain.Session) error {
+		s.Tasks[instance].Observed.State["pr_url"] = []any{
+			"https://example.test/pull/9", "https://example.test/pull/10",
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sp := chainSpawnFor(t, cfg, store, "review")
+	if sp.Fired {
+		t.Fatalf("a resource that is not one identifier does not fire: %+v", sp)
+	}
+	if sp.BlockedReason != chainBlockedResourceUnresolved {
+		t.Errorf("blocked reason: got %q, want %q", sp.BlockedReason, chainBlockedResourceUnresolved)
+	}
+	if len(sp.Warnings) == 0 {
+		t.Fatalf("a malformed resource is reported, not waited on in silence: %+v", sp)
+	}
+	if !strings.Contains(strings.Join(sp.Warnings, " "), "one identifier") {
+		t.Errorf("warning = %v, want it to name what a resource has to be", sp.Warnings)
 	}
 }
