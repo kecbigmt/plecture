@@ -1,16 +1,52 @@
----
-description: Review a PR and provide feedback as comments
----
-{{- $pr := get .SessionInputs "pr_url" "" -}}
++++
+# Written for the pull observer: a reviewer's subject is the pull request. A
+# chain-spawned reviewer inherits the declaring session's resource, which is
+# the issue for issue-keyed work, so such a review is instantiated against the
+# pull request explicitly (`plect task setup review --resource "$pr_url"`)
+# until a chain can name the resource its spawned session binds to.
+#
+# There is no third party to judge a reviewer (self-judge is structurally
+# rejected), so completion cannot use a judge leaf the way work/investigate/
+# respond do. It is the reviewer's own self-report of "I recorded a verdict",
+# captured as the revision it was recorded against and compared with the live
+# one — so a later push invalidates it automatically, and the reviewer cannot
+# flip it back by writing a boolean.
+[review]
+kind              = "task"
+description       = "Review a pull request and record a verdict"
+resource_observer = "pull"
+
+[review.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[review.inputs_schema.properties]
+instruction = { type = "string" }
+
+[review.state_schema]
+type = "object"
+
+[review.state_schema.properties]
+verdict_revision = { type = "string" }
+
+[review.done_when]
+all = [
+  { check = "resource.state.resource_kind", in = ["pull"] },
+  { expr = "self.state.verdict_revision == resource.state.revision" },
+]
+
+[review.budget]
+heartbeat_budget = 3
+on_exhaust       = "escalate"
++++
 {{- $work := get .SessionInputs "work_session" "" -}}
 {{- $judges := get .SessionInputs "judge_ids" "" -}}
-{{- $target := or $pr .ResourceID -}}
-Review the PR {{$target}}.
+Review the PR {{ resource.id }}.
 
 Steps:
 
 1. Understand the purpose and background of the PR — derive `<owner>/<repo>` and
-   `<n>` from {{$target}}'s URL and read
+   `<n>` from {{ resource.id }}'s URL and read
    `gh api repos/<owner>/<repo>/pulls/<n>` (REST; reserve `gh pr`/`gh issue`
    porcelain for writes, since porcelain reads consume GraphQL quota that
    write-side `gh` calls also share)
@@ -37,7 +73,7 @@ Steps:
    If `plect judge` rejects your verdict as self-review, the PR has no
    dispatched work session to record against (it was implemented directly) —
    record the verdict as a review comment with an explicit marker instead:
-   `gh pr review {{$target}} --comment --body "APPROVE: <reason>"` (or
+   `gh pr review {{ resource.id }} --comment --body "APPROVE: <reason>"` (or
    `"REQUEST_CHANGES: <reason>"`). A formal `--approve`/`--request-changes`
    is rejected by GitHub when your session shares the PR author's account.
    Sharing an account is a fact about GitHub transport identity, not about
@@ -45,10 +81,10 @@ Steps:
 9. Record that you finished reviewing (this is what lets plect close out this
    review session — there is no third party to judge a reviewer, so
    completion is your own self-report): find this review's own current
-   `revision` with `plect status --json` (the `revision` output on this
-   session's own task instance, not the work session's — `$PLECT_SESSION_NAME`
-   is this session), then run
-   `plect state set-output "$PLECT_SESSION_NAME" --task review#1 '{"verdict_revision":"<that revision>"}'`
+   `revision` with `plect status --json` (the `revision` under `observed.state`
+   on this session's own task instance, not the work session's —
+   `$PLECT_SESSION_NAME` is this session), then run
+   `plect state set "$PLECT_SESSION_NAME" --instance review#1 '{"verdict_revision":"<that revision>"}'`
    (adjust the instance id if `plect status --json` shows a different one).
    Do this whichever path you took above — judge action, marker comment, or
    pending review. If the reviewed resource gets a new revision later (another
@@ -77,13 +113,13 @@ the reviewer's.
 open by identifying you as an AI agent. Start each body with:
 `> 🤖 This review was written by an AI agent (Claude Code) under human supervision.`
 
-To follow this PR's progress while you work, run `plect subscribe {{$target}}` — its CI / review / merge events then arrive in this session (`plect event list`).
+To follow this PR's progress while you work, run `plect subscribe {{ resource.id }}` — its CI / review / merge events then arrive in this session (`plect event list`).
 
 **Unattended session:** this session cannot ask the user interactive
 questions. When a decision is needed, write it as a question in an issue or
 PR comment and leave it as an unmet `done_when` criterion so it surfaces as
 an escalation — don't proceed on an assumed answer.
-{{- if .Instruction}}
+{{- if get .Inputs "instruction" ""}}
 
-Additional instructions: {{.Instruction}}
+Additional instructions: {{get .Inputs "instruction" ""}}
 {{- end}}

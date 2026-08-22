@@ -198,7 +198,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	now := time.Now()
 	observation := &contract.ResourceObservation{State: observed, At: now}
 
-	instruction, ierr := renderInstruction(cfg, session, doc, inputs, resourceID, observed, params.Instruction)
+	instruction, ierr := renderInstruction(cfg, session, doc, inputs, resourceID, observed)
 	if ierr != nil {
 		return nil, ierr
 	}
@@ -285,7 +285,7 @@ func bindDocumentInputs(doc config.TaskDocument, cliInputs map[string]string, se
 // roots the instruction surface observes, then runs the carried template pass
 // for the conditional and defaulting forms the instruction assets already
 // had.
-func renderInstruction(cfg *config.Config, session *domain.Session, doc config.TaskDocument, inputs map[string]any, resourceID string, observed map[string]any, extra string) (string, *Error) {
+func renderInstruction(cfg *config.Config, session *domain.Session, doc config.TaskDocument, inputs map[string]any, resourceID string, observed map[string]any) (string, *Error) {
 	workflowOutputs := map[string]any{}
 	if w := session.Tasks[contract.WorkflowPseudoNodeID]; w != nil && w.Outputs != nil {
 		workflowOutputs = w.Outputs
@@ -306,12 +306,12 @@ func renderInstruction(cfg *config.Config, session *domain.Session, doc config.T
 	}
 	carried, err := template.RenderBody(doc.ID, rendered, template.Vars{
 		Mode:             doc.ID,
-		Instruction:      extra,
 		SessionName:      session.Name,
 		ResourceID:       resourceID,
 		WorkspaceDirPath: session.WorkspaceDirPath,
 		Workflow:         workflowOutputs,
 		SessionInputs:    session.Inputs,
+		Inputs:           inputs,
 	})
 	if err != nil {
 		return "", &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s: instruction: %v", doc.ID, err)}
@@ -328,7 +328,7 @@ func evaluateDocumentInstance(cfg *config.Config, store *state.Store, doc config
 	if err != nil {
 		return nil, nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}
-	live := instanceCompletionState(st, nil)
+	live := documentCompletionState(st)
 	var computed *computedAction
 	var eval task.DoneWhenResult
 	if dw != nil {
@@ -354,6 +354,20 @@ func evaluateDocumentInstance(cfg *config.Config, store *state.Store, doc config
 		plan = append(plan, sp)
 	}
 	return computed, plan, nil
+}
+
+// documentCompletionState is the pair of live roots a document instance's
+// predicate reads: the last observation of its resource, and what was
+// recorded into the instance. A document declares no outputs, so what an
+// instance produced is not part of `self.state` — a value a predecessor
+// effect instance left in outputs has to be recorded before it reads as
+// recorded.
+func documentCompletionState(st *contract.TaskState) task.CompletionState {
+	state := task.CompletionState{Self: st.State}
+	if st.Observed != nil {
+		state.Resource = st.Observed.State
+	}
+	return state
 }
 
 // taskDeclarations pairs the two kinds an id can resolve to, so a caller
@@ -382,7 +396,7 @@ func (d taskDeclarations) gate(cfg *config.Config, session *domain.Session, key 
 		if err != nil {
 			return nil, task.CompletionState{}, err
 		}
-		return dw, instanceCompletionState(st, nil), nil
+		return dw, documentCompletionState(st), nil
 	}
 	return instanceGate(cfg, session, d.effects[taskID], st)
 }
