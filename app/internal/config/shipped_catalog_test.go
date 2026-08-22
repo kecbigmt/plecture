@@ -112,38 +112,6 @@ func TestShippedCatalog_LoadsUnderArbitraryAlias(t *testing.T) {
 	}
 }
 
-// TestShippedCatalog_WorkflowEventChannelsResolve guards every shipped
-// workflow's [[event.channel]] against the full mounted catalog's channels.
-// LoadWorkflows never calls ValidateWorkflowChannels, so a `uses` value no
-// plugin actually ships (e.g. a channel/task naming collision) only
-// surfaced at `plect workflow show`/`up` time, not `plugin add` or
-// `workflow list`.
-func TestShippedCatalog_WorkflowEventChannelsResolve(t *testing.T) {
-	cfg := loadShippedCatalog(t, "official")
-	channels, err := cfg.LoadChannels()
-	if err != nil {
-		t.Fatalf("LoadChannels(shipped catalog): %v", err)
-	}
-	workflows, err := cfg.LoadWorkflows("")
-	if err != nil {
-		t.Fatalf("LoadWorkflows(shipped catalog): %v", err)
-	}
-
-	checked := 0
-	for id, wf := range workflows {
-		if len(wf.Event.Channel) == 0 {
-			continue
-		}
-		checked++
-		if err := ValidateWorkflowChannels(wf, channels); err != nil {
-			t.Errorf("workflow %q: %v", id, err)
-		}
-	}
-	if checked == 0 {
-		t.Fatal("no shipped workflow declares event channels; this test is checking nothing")
-	}
-}
-
 // TestShippedCatalog_SlackAdapterServiceRequiresAllStartupCredentials guards
 // the slack-adapter [[services]] declaration in the slack plugin's
 // plugin.toml against a partial required_env list: slack-adapter's

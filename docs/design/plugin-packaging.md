@@ -1024,7 +1024,6 @@ okf/config/resources/okf_goal.toml
 okf/config/tasks/pursue_goal.toml
 okf/config/tasks/goal_review.toml
 okf/config/tasks/goal_bootstrap.toml
-okf/config/workflows/goal_review.toml
 okf/config/templates/goal_review.md
 okf/src/go.mod
 okf/src/cmd/okf-goal/main.go
@@ -1048,10 +1047,8 @@ Plugin-owned behavior:
   a goal to completion and re-creates a dropped `pursue_goal` instance.
   `pursue_goal` only gates the resource kind; goal-specific completion
   conditions live in the goal file's own "## Done When" checklist.
-- A reference `goal_review` workflow and template that dispatches an agent
-  session to record the review verdict. This composes node kinds from the
-  session runtime surface that the plugin does not itself define — see "Residual
-  user config" below.
+- The `goal_review` task's instruction template, which the reviewer session
+  renders to record the review verdict.
 
 Internally separable plugin behavior:
 
@@ -1063,18 +1060,17 @@ Internally separable plugin behavior:
 Not plugin-owned:
 
 - Retrospectives or other bundle records without machine semantics.
-- Which session runtime plugin actually executes a goal review — the shipped
-  workflow only composes its node kinds by id.
+- The `goal_review` workflow itself: not runnable config this plugin ships.
+  The host must define its own `goal_review` workflow before
+  `pursue_goal`'s chain can spawn one.
 
 Residual user config:
 
 - Which goal roots or owners are allowed.
 - Which orchestrator workflow is used.
-- Which session runtime handles the work — the shipped `goal_review` workflow's
-  `tmux` / `envfile` / `codex_exec` / `slack_thread` / `initial_task` nodes are
-  a reference composition; an operator whose session runtime defines different
-  task ids swaps the node `uses` values, or replaces the workflow with their
-  own team-owned overlay entirely.
+- The `goal_review` workflow and which session runtime handles the work —
+  an operator defines this workflow's nodes against their own
+  agent-runtime and channel plugins, or against a team-owned overlay.
 - Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 

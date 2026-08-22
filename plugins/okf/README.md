@@ -36,16 +36,17 @@ change out of scope for this plugin's extraction.
   provider hooks, `okf-goal` wraps the resource and goal task hooks.
 - `tasks/pursue_goal.toml`, `tasks/goal_review.toml`,
   `tasks/goal_bootstrap.toml` — the goal task pack: `pursue_goal` tracks one
-  goal to completion and chains into `goal_review` once its checklist is
-  satisfied; `goal_bootstrap` re-creates any `pursue_goal` instance a
-  session lost across a destroy→up cycle.
-- `workflows/goal_review.toml`, `templates/goal_review.md` — a reference
-  workflow that dispatches an agent session to record a `goal_review`
-  verdict. It composes node kinds (`tmux`, `envfile`, `codex_exec`,
-  `slack_thread`, `initial_task`) this plugin does not define — which agent
-  runtime and channel plugin actually supply them is the operator's choice,
-  not okf's. Swap the node `uses` values for your own agent-runtime
-  plugin's task ids if they differ.
+  goal to completion and chains into a `goal_review` workflow once its
+  checklist is satisfied; `goal_bootstrap` re-creates any `pursue_goal`
+  instance a session lost across a destroy→up cycle. This plugin does not
+  ship that `goal_review` workflow as runnable config. A host enabling this
+  plugin must define its own `goal_review` workflow in local config before
+  the chain can spawn one; without it, the chain spawn fails with the
+  standard unknown-workflow diagnostic. A prior version of this plugin's
+  own `config/workflows/goal_review.toml` is still readable from this
+  repository's git history as a starting point.
+- `templates/goal_review.md` — the review instruction template
+  `tasks/goal_review.toml` renders; shipped, runnable config.
 
 ## Install
 
@@ -59,7 +60,7 @@ go build -o <bindir>/okf-bundle ./cmd/okf-bundle
 Then add this directory to `plugin_dirs` in `~/.config/plect/config.toml`,
 or enable it through a registered catalog (see
 `docs/design/plugin-packaging.md`), so its `workspaces/`, `resources/`,
-`tasks/`, `workflows/`, and `templates/` are loaded.
+`tasks/`, and `templates/` are loaded.
 
 ## Outputs
 
@@ -77,3 +78,5 @@ own copied outputs.
   `goal_bootstrap` shells out to `plect task setup` to create instances.
 - A knowledge bundle at `<orchestrator workspace directory>/knowledge/bundle/`,
   with goal Concept files under `goals/`.
+- A host-defined `goal_review` workflow in local config for
+  `tasks/pursue_goal.toml`'s chain to spawn.
