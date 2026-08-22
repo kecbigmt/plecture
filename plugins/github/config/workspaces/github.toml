@@ -93,7 +93,7 @@ delete_branch_default = { type = "string", enum = ["true", "false"] }
 # github-worktree's setup command). `mutable` keys may additionally be
 # merged from trusted side paths (`plect state set-output`) — GitHub status
 # for done_when is fetched by dynamic output refresh via
-# resources/github.toml, not by re-running this hook.
+# the resource definitions, not by re-running this hook.
 [outputs_schema]
 type     = "object"
 required = ["workspace_dir", "branch"]

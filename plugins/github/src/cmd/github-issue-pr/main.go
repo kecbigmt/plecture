@@ -1,6 +1,6 @@
-// Command github-issue-pr is the executable the shipped GitHub issue/pull
-// request resource config invokes. Observe prints the resource's observed
-// state for resources/github.toml.
+// Command github-issue-pr is the executable the shipped GitHub resource
+// config invokes. Observe prints the observed state of whichever kind the
+// identifier names, for resources/issue.toml or resources/pull.toml.
 package main
 
 import (
@@ -54,26 +54,8 @@ func run(args []string) error {
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(observeDocument(*result))
+		return enc.Encode(result.Document())
 	default:
 		return fmt.Errorf("unknown subcommand %q; expected observe", args[0])
 	}
-}
-
-// `pr_url` is absent, not empty, until a pull request exists: a chain wiring
-// it renders its inputs under missingkey=error, so absence is what keeps such
-// a chain from firing before there is a pull request to hand it.
-func observeDocument(result observe.Result) map[string]any {
-	doc := map[string]any{
-		"resource_kind":   result.ResourceKind,
-		"checks_status":   result.ChecksStatus,
-		"issue_status":    result.IssueStatus,
-		"revision":        result.Revision,
-		"mergeable_state": result.MergeableState,
-		"review_decision": result.ReviewDecision,
-	}
-	if result.PRURL != "" {
-		doc["pr_url"] = result.PRURL
-	}
-	return doc
 }

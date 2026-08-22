@@ -7,6 +7,8 @@ import (
 
 	"cel.dev/cel-go/cel"
 	"cel.dev/cel-go/common/ast"
+	"cel.dev/cel-go/common/operators"
+	"cel.dev/cel-go/common/types"
 	"cel.dev/cel-go/ext"
 )
 
@@ -70,7 +72,10 @@ func checkExpression(src string, s *Surface, pos Position) error {
 	for _, id := range s.identifiers() {
 		declared[id] = true
 	}
-	if err := walkExpr(root, declared, map[string]bool{}, env, s, pos); err != nil {
+	ref := func(path string) error {
+		return checkReference(path, declared, s, pos)
+	}
+	if err := walkExpr(root, map[string]bool{}, env, ref, pos); err != nil {
 		return err
 	}
 	if _, issues := env.Check(parsed); issues != nil && issues.Err() != nil {
@@ -79,10 +84,9 @@ func checkExpression(src string, s *Surface, pos Position) error {
 	return nil
 }
 
-// walkExpr descends one expression, carrying the names a comprehension macro
-// has bound so that an iteration variable is never mistaken for a surface
-// root.
-func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surface, pos Position) error {
+// walkExpr carries the names a comprehension macro has bound down the
+// branches they cover, because that is the only place their scope is known.
+func walkExpr(e ast.Expr, bound map[string]bool, env *cel.Env, ref referenceFunc, pos Position) error {
 	if e == nil {
 		return nil
 	}
@@ -90,33 +94,36 @@ func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surf
 	case ast.LiteralKind, ast.UnspecifiedExprKind:
 		return nil
 	case ast.IdentKind:
-		return checkReference(e.AsIdent(), declared, bound, s, pos)
+		return visitPath(e.AsIdent(), bound, ref)
 	case ast.SelectKind:
-		path, base, ok := flattenSelect(e)
+		path, base, ok := flattenPath(e)
 		if !ok {
-			return walkExpr(base, declared, bound, env, s, pos)
+			return walkExpr(base, bound, env, ref, pos)
 		}
-		return checkReference(path, declared, bound, s, pos)
+		return visitPath(path, bound, ref)
 	case ast.CallKind:
+		if path, _, ok := flattenPath(e); ok {
+			return visitPath(path, bound, ref)
+		}
 		call := e.AsCall()
 		if name := call.FunctionName(); !env.HasFunction(name) {
 			return newDiag(CodeCELCustomFunction, LayerCEL, pos,
 				fmt.Sprintf("%q is not a function the Plecture CEL profile defines", name))
 		}
 		if call.IsMemberFunction() {
-			if err := walkExpr(call.Target(), declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(call.Target(), bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
 		for _, arg := range call.Args() {
-			if err := walkExpr(arg, declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(arg, bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
 		return nil
 	case ast.ListKind:
 		for _, el := range e.AsList().Elements() {
-			if err := walkExpr(el, declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(el, bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
@@ -124,24 +131,24 @@ func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surf
 	case ast.MapKind:
 		for _, entry := range e.AsMap().Entries() {
 			kv := entry.AsMapEntry()
-			if err := walkExpr(kv.Key(), declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(kv.Key(), bound, env, ref, pos); err != nil {
 				return err
 			}
-			if err := walkExpr(kv.Value(), declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(kv.Value(), bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
 		return nil
 	case ast.StructKind:
 		for _, field := range e.AsStruct().Fields() {
-			if err := walkExpr(field.AsStructField().Value(), declared, bound, env, s, pos); err != nil {
+			if err := walkExpr(field.AsStructField().Value(), bound, env, ref, pos); err != nil {
 				return err
 			}
 		}
 		return nil
 	case ast.ComprehensionKind:
 		c := e.AsComprehension()
-		if err := walkExpr(c.IterRange(), declared, bound, env, s, pos); err != nil {
+		if err := walkExpr(c.IterRange(), bound, env, ref, pos); err != nil {
 			return err
 		}
 		inner := make(map[string]bool, len(bound)+3)
@@ -154,7 +161,7 @@ func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surf
 		}
 		inner[c.AccuVar()] = true
 		for _, sub := range []ast.Expr{c.AccuInit(), c.LoopCondition(), c.LoopStep(), c.Result()} {
-			if err := walkExpr(sub, declared, inner, env, s, pos); err != nil {
+			if err := walkExpr(sub, inner, env, ref, pos); err != nil {
 				return err
 			}
 		}
@@ -163,17 +170,23 @@ func walkExpr(e ast.Expr, declared, bound map[string]bool, env *cel.Env, s *Surf
 	return nil
 }
 
-// checkReference splits the two questions a dotted reference raises: CEL
-// declares identifiers, so the leading segment is CEL's to reject, and the
-// rest of the path is the surface's.
-func checkReference(path string, declared, bound map[string]bool, s *Surface, pos Position) error {
-	head := path
-	if i := strings.Index(path, "."); i >= 0 {
-		head = path[:i]
-	}
+type referenceFunc func(path string) error
+
+// visitPath drops a path rooted in a name a comprehension macro bound, so an
+// iteration variable is never mistaken for a surface root.
+func visitPath(path string, bound map[string]bool, ref referenceFunc) error {
+	head, _, _ := strings.Cut(path, ".")
 	if bound[head] {
 		return nil
 	}
+	return ref(path)
+}
+
+// checkReference splits the two questions a dotted reference raises: CEL
+// declares identifiers, so the leading segment is CEL's to reject, and the
+// rest of the path is the surface's.
+func checkReference(path string, declared map[string]bool, s *Surface, pos Position) error {
+	head, _, _ := strings.Cut(path, ".")
 	if !declared[head] {
 		return newDiag(CodeCELUnknownName, LayerCEL, pos,
 			fmt.Sprintf("%q is not a variable visible on the %s surface", head, s.Name))
@@ -185,22 +198,56 @@ func checkReference(path string, declared, bound map[string]bool, s *Surface, po
 	return nil
 }
 
-// flattenSelect renders a select chain rooted at an identifier as a dotted
-// path. A chain rooted at anything else — an indexed element, a function
-// result — is not statically identifiable, so it reports the base for the
-// walk to descend into instead.
-func flattenSelect(e ast.Expr) (path string, base ast.Expr, ok bool) {
+// flattenPath folds a constant-key index into the dotted path because
+// `state["revision"]` and `state.revision` name the same key, and both
+// spellings have to reach the same root and the same contract. A chain rooted
+// at a function result, or indexed by a computed key, names no path a
+// contract could be checked against, so it reports the base for the walk to
+// descend into and the enclosing root is what gets rejected.
+func flattenPath(e ast.Expr) (path string, base ast.Expr, ok bool) {
 	var segments []string
 	cur := e
-	for cur.Kind() == ast.SelectKind {
-		sel := cur.AsSelect()
-		segments = append([]string{sel.FieldName()}, segments...)
-		cur = sel.Operand()
+	for {
+		switch cur.Kind() {
+		case ast.IdentKind:
+			return strings.Join(append([]string{cur.AsIdent()}, segments...), "."), nil, true
+		case ast.SelectKind:
+			sel := cur.AsSelect()
+			segments = append([]string{sel.FieldName()}, segments...)
+			cur = sel.Operand()
+		case ast.CallKind:
+			call := cur.AsCall()
+			key, ok := constantIndexKey(call)
+			if !ok {
+				return "", cur, false
+			}
+			segments = append([]string{key}, segments...)
+			cur = call.Args()[0]
+		default:
+			return "", cur, false
+		}
 	}
-	if cur.Kind() != ast.IdentKind {
-		return "", cur, false
+}
+
+// constantIndexKey refuses a key carrying a dot: flattened, it would read as
+// two segments, which is a different key.
+func constantIndexKey(call ast.CallExpr) (string, bool) {
+	if call.FunctionName() != operators.Index || len(call.Args()) != 2 {
+		return "", false
 	}
-	return strings.Join(append([]string{cur.AsIdent()}, segments...), "."), nil, true
+	arg := call.Args()[1]
+	if arg.Kind() != ast.LiteralKind {
+		return "", false
+	}
+	val := arg.AsLiteral()
+	if val.Type() != types.StringType {
+		return "", false
+	}
+	key, ok := val.Value().(string)
+	if !ok || key == "" || strings.Contains(key, ".") {
+		return "", false
+	}
+	return key, true
 }
 
 func oneLine(err error) string {

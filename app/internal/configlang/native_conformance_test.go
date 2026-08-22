@@ -36,27 +36,50 @@ var fixtureExecutables = []string{
 	"slack-post",
 }
 
+// fixtureContext names the corpus files declaring the definitions the task
+// fixtures reference but do not themselves carry — the observer each one is
+// written for, and the workflow a chain names. They are ordinary fixtures;
+// this list is only what stands in for the layer a real load would have
+// discovered around them.
+var fixtureContext = []string{
+	"observers/issue-pr.toml",
+	"observers/observe-finalize.toml",
+	"workflows/nodes.toml",
+}
+
 // nativeDeferred names every fixture whose documented diagnostic a later
 // implementation slice produces, with the check that is still missing. A
 // fixture leaves this map when that check lands; nothing else may be
 // skipped.
 var nativeDeferred = map[string]string{
-	"effects/chains-field.invalid.toml":            "per-kind closed-surface validation",
-	"effects/completion-field.invalid.toml":        "per-kind closed-surface validation",
-	"tasks/lifecycle-field.invalid.md":             "per-kind closed-surface validation",
 	"nesting/computed-output-mutable.invalid.toml": "the nesting joint's mutability agreement",
 	"nesting/cycle.invalid.toml":                   "nesting chain resolution",
 	"nesting/projection-mismatch.invalid.toml":     "the nesting joint's type agreement",
 	"workflows/node-cycle.invalid.toml":            "the workflow dependency graph",
-	"tasks/unpublished-key.invalid.md":             "contract-key resolution against the declared observer",
-	"tasks/first-observe-failed.invalid.md":        "instantiation",
-	"tasks/resource-mismatch.invalid.md":           "instantiation",
 	"references/alias-required.invalid.toml":       "reference resolution across enabled plugin layers",
 	"references/cross-plugin.invalid.toml":         "reference resolution across enabled plugin layers",
 	"references/duplicate-id.invalid.toml":         "duplicate-id detection across a layer's files",
 	"references/unknown-ref.invalid.toml":          "reference resolution across enabled plugin layers",
 	"references/wrong-kind.invalid.toml":           "reference resolution across enabled plugin layers",
 	"references/task-in-node.invalid.toml":         "reference resolution across enabled plugin layers",
+}
+
+// instantiationCase is the binding one layer=instantiation fixture needs to
+// be exercised: which resource the instance is created against, and — for a
+// fixture whose expectation is a failed observation — what the observer
+// reports when asked.
+type instantiationCase struct {
+	resourceID string
+	observeErr string
+}
+
+// nativeInstantiation names every fixture whose expectation only a binding
+// can break, so TestNativeInstantiationFixtures asserts it instead of the
+// load pass. The corpus states the rule; the binding that breaks it is not
+// something a document can carry, so it is declared here.
+var nativeInstantiation = map[string]instantiationCase{
+	"tasks/resource-mismatch.invalid.md":    {resourceID: "local-okf://acme/goals/ship.md"},
+	"tasks/first-observe-failed.invalid.md": {resourceID: "local-okf://acme/goals/ship.md", observeErr: "goal file does not parse"},
 }
 
 // TestNativeConformanceFixtures is the semantic half of this package's
@@ -82,6 +105,8 @@ func TestNativeConformanceFixtures(t *testing.T) {
 	}
 	sort.Strings(paths)
 
+	context := fixtureContextDefs(t, fixtureRoot)
+
 	seenDeferred := map[string]bool{}
 	for _, path := range paths {
 		rel := filepath.ToSlash(mustRel(t, fixtureRoot, path))
@@ -101,8 +126,11 @@ func TestNativeConformanceFixtures(t *testing.T) {
 				seenDeferred[rel] = true
 				t.Skipf("deferred: %s", reason)
 			}
+			if _, bound := nativeInstantiation[rel]; bound {
+				t.Skip("asserted by TestNativeInstantiationFixtures, which supplies the binding")
+			}
 
-			got := nativeLoad(rel, exp.Entry, fixtureBody(string(raw)))
+			got := nativeLoad(rel, exp.Entry, fixtureBody(string(raw)), context)
 			switch exp.Result {
 			case "valid", "accepted-invalid":
 				if got != nil {
@@ -129,10 +157,62 @@ func TestNativeConformanceFixtures(t *testing.T) {
 	}
 }
 
+// TestNativeInstantiationFixtures asserts the corpus's layer=instantiation
+// fixtures, which a load cannot break on its own: the document is valid, and
+// what fails is binding it to a resource.
+func TestNativeInstantiationFixtures(t *testing.T) {
+	fixtureRoot := filepath.Join(repoRoot(t), "testdata", "config-language")
+	context := fixtureContextDefs(t, fixtureRoot)
+	for rel, binding := range nativeInstantiation {
+		t.Run(rel, func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join(fixtureRoot, filepath.FromSlash(rel)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			exp, err := parseFixtureHeader(string(raw))
+			if err != nil {
+				t.Fatalf("bad fixture header: %v", err)
+			}
+			def, err := ParseTaskDocument(rel, []byte(fixtureBody(string(raw))))
+			if err != nil {
+				t.Fatalf("the document itself loads: %v", err)
+			}
+			v := Validation{
+				From:        Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath},
+				Executables: NewExecutableRegistry(PluginExecutables{Alias: fixtureAlias, Path: fixturePath, Names: fixtureExecutables}),
+			}
+			registry := NewRegistry([]PluginLayer{{Alias: fixtureAlias, Path: fixturePath, Defs: append(append([]*Definition(nil), context...), def)}}, nil)
+			if err := v.ValidateDefinition(def); err != nil {
+				t.Fatalf("the document itself loads: %v", err)
+			}
+			if err := v.ValidateTaskContracts(def, registry); err != nil {
+				t.Fatalf("the document itself loads: %v", err)
+			}
+			observe := func(*Definition, string) (map[string]any, error) {
+				if binding.observeErr != "" {
+					return nil, errors.New(binding.observeErr)
+				}
+				return map[string]any{}, nil
+			}
+			_, err = v.Instantiate(def, registry, binding.resourceID, observe)
+			var d *Diagnostic
+			if !errors.As(err, &d) {
+				t.Fatalf("expected %s, got %v", exp.Diagnostic, err)
+			}
+			if string(d.Code) != exp.Diagnostic {
+				t.Errorf("expected %s, got %s: %v", exp.Diagnostic, d.Code, err)
+			}
+			if string(d.Layer) != exp.Layer {
+				t.Errorf("%s: expected layer %s, got %s", d.Code, exp.Layer, d.Layer)
+			}
+		})
+	}
+}
+
 // nativeLoad runs one fixture through the load pipeline this package
 // implements: parse, then value, expression, action, and executable
 // validation, then the plan-level capability check.
-func nativeLoad(path, entry, body string) error {
+func nativeLoad(path, entry, body string, context []*Definition) error {
 	var defs []*Definition
 	if entry == "task" {
 		def, err := ParseTaskDocument(path, []byte(body))
@@ -152,7 +232,7 @@ func nativeLoad(path, entry, body string) error {
 		From:        Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath},
 		Executables: NewExecutableRegistry(PluginExecutables{Alias: fixtureAlias, Path: fixturePath, Names: fixtureExecutables}),
 	}
-	registry := NewRegistry([]PluginLayer{{Alias: fixtureAlias, Path: fixturePath, Defs: defs}}, nil)
+	registry := NewRegistry([]PluginLayer{{Alias: fixtureAlias, Path: fixturePath, Defs: append(append([]*Definition(nil), context...), defs...)}}, nil)
 
 	sorted := append([]*Definition(nil), defs...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
@@ -162,14 +242,35 @@ func nativeLoad(path, entry, body string) error {
 		}
 	}
 	for _, def := range sorted {
-		if def.Kind != KindWorkflow {
-			continue
-		}
-		if err := v.ValidatePlan(def, registry); err != nil {
-			return err
+		switch def.Kind {
+		case KindWorkflow:
+			if err := v.ValidatePlan(def, registry); err != nil {
+				return err
+			}
+		case KindTask:
+			if err := v.ValidateTaskContracts(def, registry); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func fixtureContextDefs(t *testing.T, fixtureRoot string) []*Definition {
+	t.Helper()
+	var context []*Definition
+	for _, rel := range fixtureContext {
+		raw, err := os.ReadFile(filepath.Join(fixtureRoot, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defs, err := ParseDefinitionDocument(rel, []byte(fixtureBody(string(raw))))
+		if err != nil {
+			t.Fatalf("fixtureContext %s: %v", rel, err)
+		}
+		context = append(context, defs...)
+	}
+	return context
 }
 
 func mustRel(t *testing.T, base, path string) string {

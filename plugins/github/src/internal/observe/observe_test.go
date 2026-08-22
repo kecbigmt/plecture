@@ -27,16 +27,6 @@ func (f *fakeGHClient) JSON(ctx context.Context, args ...string) ([]byte, error)
 	return nil, errors.New("fakeGHClient: no response configured for " + key)
 }
 
-func TestObserve_UnknownResourceKind(t *testing.T) {
-	result, err := Observe(context.Background(), Options{ResourceID: "https://gitlab.com/acme/widgets/issues/1"})
-	if err != nil {
-		t.Fatalf("Observe: %v", err)
-	}
-	if result.ResourceKind != "unknown" || result.ChecksStatus != "NULL" || result.IssueStatus != "NULL" || result.MergeableState != "NULL" {
-		t.Errorf("result = %+v", result)
-	}
-}
-
 func TestObserve_Pull_ComputesChecksAndMergeable(t *testing.T) {
 	client := &fakeGHClient{responses: map[string]string{
 		"repos/acme/widgets/pulls/44":                  `{"head":{"sha":"abc123"},"mergeable_state":"clean"}`,
@@ -47,7 +37,7 @@ func TestObserve_Pull_ComputesChecksAndMergeable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Observe: %v", err)
 	}
-	if result.ResourceKind != "pull" || result.Revision != "abc123" || result.MergeableState != "clean" || result.IssueStatus != "NULL" {
+	if result.ResourceKind != "pull" || result.Revision != "abc123" || result.MergeableState != "clean" {
 		t.Errorf("result = %+v", result)
 	}
 	if result.ChecksStatus != "PENDING" {
@@ -516,5 +506,58 @@ func TestObserve_Issue_ClosingReferenceLookupFailureWithoutBranchPRDegrades(t *t
 	}
 	if result.PRURL != "" || result.Revision != "issue:2026-01-01T00:00:00Z" {
 		t.Errorf("result = %+v, want the issue-only state", result)
+	}
+}
+
+func TestDocument_PullPublishesNoIssueStatus(t *testing.T) {
+	client := &fakeGHClient{responses: map[string]string{
+		"repos/acme/widgets/pulls/44":                  `{"head":{"sha":"abc123"},"mergeable_state":"clean"}`,
+		"repos/acme/widgets/commits/abc123/check-runs": `{"check_runs":[]}`,
+		"repos/acme/widgets/commits/abc123/status":     `{"statuses":[]}`,
+		"graphql": `{"data":{"repository":{"pullRequest":{"reviewDecision":"APPROVED"}}}}`,
+	}}
+	result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/pull/44", GHClient: client})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	doc := result.Document()
+	if _, ok := doc["issue_status"]; ok {
+		t.Errorf("a pull request has no issue completion to report: %#v", doc)
+	}
+	for _, key := range []string{"resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision"} {
+		if _, ok := doc[key]; !ok {
+			t.Errorf("%s missing: %#v", key, doc)
+		}
+	}
+	if doc["resource_kind"] != "pull" {
+		t.Errorf("resource_kind = %#v", doc["resource_kind"])
+	}
+}
+
+func TestDocument_IssueOmitsPRURLUntilOneExists(t *testing.T) {
+	client := &fakeGHClient{responses: map[string]string{
+		"repos/acme/widgets/issues/7": `{"state":"open","updated_at":"2026-01-01T00:00:00Z"}`,
+		"repos/acme/widgets/pulls?":   `[]`,
+		"graphql":                     `{"data":{"repository":{"issue":{"closedByPullRequestsReferences":{"nodes":[]}}}}}`,
+	}}
+	result, err := Observe(context.Background(), Options{ResourceID: "https://github.com/acme/widgets/issues/7", GHClient: client})
+	if err != nil {
+		t.Fatalf("Observe: %v", err)
+	}
+	doc := result.Document()
+	if _, ok := doc["pr_url"]; ok {
+		t.Errorf("pr_url present with no linked pull request: %#v", doc)
+	}
+	for _, key := range []string{"resource_kind", "issue_status", "checks_status", "revision", "mergeable_state", "review_decision"} {
+		if _, ok := doc[key]; !ok {
+			t.Errorf("%s missing: %#v", key, doc)
+		}
+	}
+}
+
+func TestObserve_RejectsAnIdentifierNeitherObserverRecognizes(t *testing.T) {
+	_, err := Observe(context.Background(), Options{ResourceID: "https://gitlab.com/acme/widgets/issues/1"})
+	if err == nil {
+		t.Fatal("an identifier that is neither an issue nor a pull request has no state to report, so the observation fails")
 	}
 }

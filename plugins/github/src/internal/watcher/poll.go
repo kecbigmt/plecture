@@ -364,7 +364,7 @@ func (p *Poller) fetchIssueCore(owner, repo, number string) (state string, ok bo
 }
 
 // fetchLinkedPRNumber discovers an issue's linked PR NUMBER via the REST
-// `pulls?head=` filter — the same call resources/github.toml's observe script
+// `pulls?head=` filter — the same call the GitHub resource observation
 // uses as its branch-name fallback. REST has no equivalent of the GraphQL
 // closedByPullRequestsReferences lookup that script tries first, so branch is
 // the only signal available to the watcher. An empty jq
@@ -558,7 +558,7 @@ func parseCheckLines(out []byte) []statusCheck {
 	return checks
 }
 
-// checksRollup mirrors resources/github.toml's checks_rollup() so the watcher
+// checksRollup mirrors the resource observation's checks rollup so the watcher
 // and the dynamic-output observe agree on meaning: zero
 // entries is a real PR whose checks haven't started, i.e. PENDING — not the
 // watcher's old empty-string sentinel for "no CI at all".
@@ -586,7 +586,7 @@ func checksRollup(checks []statusCheck) string {
 }
 
 // classifyCheck buckets one entry using the same conclusion/state sets as
-// resources/github.toml's checks_rollup(). Anything not explicitly FAILURE or
+// the resource observation's checks rollup. Anything not explicitly FAILURE or
 // SUCCESS defaults to PENDING (in-progress check runs, queued statuses, and
 // unrecognized values all read as "not done yet").
 var (
