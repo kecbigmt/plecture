@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# The pane's child reports itself as the agent CLI, which is what the launch
+# is looking for.
+plect-effect-record ps "$@"
+printf '%s\n' "codex"

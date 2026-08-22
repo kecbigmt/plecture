@@ -51,11 +51,11 @@ func repoPluginDirs(t *testing.T) []string {
 }
 
 // spyPlugin copies one plugin into a temp directory and replaces every
-// executable it declares with a script that records its argv and answers with
-// a usable outputs document. The provider declarations are the shipped ones;
-// only what they invoke is substituted, so the recorded argv is the argv the
-// real executable would have received.
-func spyPlugin(t *testing.T, source string, argvLog string) plugins.Mounted {
+// executable it declares with a script that records its argv and then runs
+// the shell source answer supplies for it. The declarations are the shipped
+// ones; only what they invoke is substituted, so the recorded argv is the
+// argv the real executable would have received.
+func spyPlugin(t *testing.T, source string, argvLog string, answer func(name string) string) plugins.Mounted {
 	t.Helper()
 	manifest, err := plugins.LoadManifest(source)
 	if err != nil {
@@ -72,9 +72,7 @@ func spyPlugin(t *testing.T, source string, argvLog string) plugins.Mounted {
 		}
 		spy := "#!/usr/bin/env bash\n" +
 			"{ printf '%s' " + shellQuoteForTest(executable.Name) + "; for a in \"$@\"; do printf '\\036%s' \"$a\"; done; printf '\\035'; } >> " + shellQuoteForTest(argvLog) + "\n" +
-			// Every hook that parses stdout wants one outputs document; the
-			// keys are the union the shipped providers declare as required.
-			`printf '{"workspace_dir":"/spy/workspace","branch":"spy-branch","owner":"acme","concept_id":"c","concept_path":"/spy/c.md"}'` + "\n"
+			answer(executable.Name) + "\n"
 		if err := os.WriteFile(path, []byte(spy), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -118,7 +116,12 @@ func TestShippedProviders_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 	for _, source := range repoPluginDirs(t) {
 		t.Run(filepath.Base(source), func(t *testing.T) {
 			argvLog := filepath.Join(t.TempDir(), "argv.log")
-			mounted := spyPlugin(t, source, argvLog)
+			// Every provider hook that parses stdout wants one outputs
+			// document; the keys are the union the shipped providers declare
+			// as required.
+			mounted := spyPlugin(t, source, argvLog, func(string) string {
+				return `printf '%s' '{"workspace_dir":"/spy/workspace","branch":"spy-branch","owner":"acme","concept_id":"c","concept_path":"/spy/c.md"}'`
+			})
 			cfg := &config.Config{PluginDirs: []string{mounted.Dir}, Plugins: []plugins.Mounted{mounted}}
 			providers, err := cfg.LoadWorkspaceProviders()
 			if err != nil {

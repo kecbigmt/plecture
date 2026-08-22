@@ -1,0 +1,5 @@
+# reset reports nothing: its output would otherwise land in the setup
+# stdout the runtime parses as this effect's outputs.
+case "$1" in
+  probe) printf '%s' '{"fingerprint":"spy-turn-1","observed_at":"2026-01-01T00:00:00Z"}' ;;
+esac

@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# A fixed session id is what lets the seeded session file below name the
+# same id the launch is about to generate.
+plect-effect-record uuidgen "$@"
+printf '%s\n' "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"

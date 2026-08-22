@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Records the launch line, then stands in for the headless worker it starts:
+# the worker signals readiness by creating a file under the state directory
+# it was handed, and the launch waits for exactly that.
+plect-effect-record terminal-send_text "$@"
+state_dir=$(printf '%s' "$1" | sed -n "s/.*exec [^ ]* '[^']*' '\([^']*\)'.*/\1/p")
+[ -n "$state_dir" ] && mkdir -p "$state_dir" && : > "$state_dir/ready"
+true

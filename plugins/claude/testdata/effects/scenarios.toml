@@ -1,0 +1,21 @@
+# What each of this plugin's effects is exercised with when its invocation
+# record is regenerated. The launch line typed into the terminal is the
+# contract here, so every steering input is set. bin/ pins the session id and
+# the scratch paths, and seeds the session file the launch waits for; the
+# answers/ scripts are how this plugin's own executables reply.
+
+[claude]
+inputs = { tmux_session = "acme-widget-1", model = "opus", effort = "high", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', mcp_servers = '[{"name":"kbn","command":"kbn-mcp"}]', path_prepend = "/spy/guard" }
+
+# The launch polls for the session file the agent writes; it names the id
+# uuidgen reported and a live process, so the poll accepts it on its first
+# pass rather than timing out.
+[[claude.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
+[claude_initial_prompt]
+inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", template = "work", repeat = "" }
+# The readiness poll and the submit re-check both read the endpoint's input
+# box; an empty prompt line is what "ready, nothing pending" looks like.
+capture = "› "

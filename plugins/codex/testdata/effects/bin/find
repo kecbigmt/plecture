@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Reports the seeded session transcript as the one written since the launch
+# marker; a real find would compare timestamps this sandbox cannot pin.
+plect-effect-record find "$@"
+printf '%s\n' "$HOME/.codex/sessions/rollout.jsonl"

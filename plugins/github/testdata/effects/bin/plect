@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Stands in for plect's own instruction rendering.
+plect-effect-record plect "$@"
+printf '%s\n' "rendered instruction"

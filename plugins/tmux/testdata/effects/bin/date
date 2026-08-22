@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# The activity envelope carries an observation timestamp; pinning it is what
+# makes the record byte-stable across runs.
+plect-effect-record date "$@"
+printf '%s\n' "2026-01-01T00:00:00Z"
