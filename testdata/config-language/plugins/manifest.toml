@@ -15,6 +15,10 @@ build = "go -C src build -o ../bin/github-worktree ./cmd/github-worktree"
 name = "gh-guard"
 path = "scripts/gh-guard"
 
+[[executables]]
+name = "github-watcher"
+path = "bin/github-watcher"
+
 [[services]]
 name       = "github-watcher"
 executable = "github-watcher"
