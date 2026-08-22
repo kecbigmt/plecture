@@ -1,4 +1,4 @@
-package langconfig
+package configlang
 
 import "fmt"
 
