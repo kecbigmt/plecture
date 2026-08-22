@@ -1,0 +1,150 @@
+package configlang
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const bindingScript = `printf '%s|%s|%s' "$session_name" "$send_text" "$1"
+`
+
+func materializeForTest(t *testing.T, script string, bound map[string]string, operands ...string) (*ShellExecution, string) {
+	t.Helper()
+	a, err := ParseAction(map[string]any{
+		"type":   "shell",
+		"script": script,
+		"bind": map[string]any{
+			"session_name": map[string]any{"from": "session.name"},
+			"send_text":    map[string]any{"terminal": "send_text"},
+		},
+	}, Position{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "run")
+	exe, err := MaterializeShellAction(dir, a, bound, operands)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return exe, dir
+}
+
+func TestMaterializeShellActionKeepsBoundValuesOutOfArgvAndEnv(t *testing.T) {
+	const secret = "s3cr3t-token"
+	exe, _ := materializeForTest(t, bindingScript, map[string]string{
+		"session_name": secret,
+		"send_text":    "tmux send-keys -t " + secret,
+	}, "ready")
+
+	for _, arg := range append([]string{exe.Path}, exe.Operands...) {
+		if strings.Contains(arg, secret) {
+			t.Errorf("a bound value reached argv: %q", arg)
+		}
+	}
+	for _, entry := range exe.Env {
+		if strings.Contains(entry, secret) {
+			t.Errorf("a bound value reached the environment: %q", entry)
+		}
+	}
+	if len(exe.Operands) != 1 || exe.Operands[0] != "ready" {
+		t.Errorf("an operand is passed positionally: got %q", exe.Operands)
+	}
+}
+
+func TestMaterializeShellActionWritesAPrivateBindingFile(t *testing.T) {
+	_, dir := materializeForTest(t, bindingScript, map[string]string{"session_name": "s", "send_text": "true"})
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Errorf("run directory mode: got %o, want 700", perm)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawBindings bool
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		perm := info.Mode().Perm()
+		if perm&0o077 != 0 {
+			t.Errorf("%s is readable beyond its owner: mode %o", entry.Name(), perm)
+		}
+		if strings.Contains(entry.Name(), "bindings") {
+			sawBindings = true
+			if perm != 0o600 {
+				t.Errorf("the binding file is mode 0600, got %o", perm)
+			}
+		}
+	}
+	if !sawBindings {
+		t.Error("no binding file was written")
+	}
+}
+
+func TestMaterializeShellActionKeepsTheScriptLiteral(t *testing.T) {
+	const script = "echo \"$session_name\" | tr a-z A-Z\n"
+	_, dir := materializeForTest(t, script, map[string]string{"session_name": "s", "send_text": "true"})
+
+	got, err := os.ReadFile(filepath.Join(dir, "script.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != script {
+		t.Errorf("the author's shell source is executed byte for byte:\n got %q\nwant %q", got, script)
+	}
+}
+
+// TestMaterializeShellActionRoundTripsHostileValues is the transport's
+// central claim: a bound value is data, so a value that would be shell
+// syntax if it were interpolated into the source arrives intact instead.
+func TestMaterializeShellActionRoundTripsHostileValues(t *testing.T) {
+	hostile := map[string]string{
+		"session_name": `'; touch /tmp/pwned; echo '`,
+		"send_text":    "a\"b$c`d`\\e\nf",
+	}
+	exe, _ := materializeForTest(t, bindingScript, hostile, "ready $(id)")
+
+	cmd := exec.Command(exe.Path, exe.Operands...)
+	cmd.Env = append(os.Environ(), exe.Env...)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	want := hostile["session_name"] + "|" + hostile["send_text"] + "|ready $(id)"
+	if string(out) != want {
+		t.Errorf("got  %q\nwant %q", out, want)
+	}
+}
+
+func TestMaterializeShellActionRejectsAnUnboundKey(t *testing.T) {
+	a, err := ParseAction(map[string]any{
+		"type":   "shell",
+		"script": "true\n",
+		"bind":   map[string]any{"session_name": map[string]any{"from": "session.name"}},
+	}, Position{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MaterializeShellAction(filepath.Join(t.TempDir(), "run"), a, nil, nil); err == nil {
+		t.Error("every bind key needs a resolved value before the action can run")
+	}
+}
+
+func TestMaterializeShellActionRejectsAnExecAction(t *testing.T) {
+	a, err := ParseAction(map[string]any{"type": "exec", "bin": "okf-goal"}, Position{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MaterializeShellAction(filepath.Join(t.TempDir(), "run"), a, nil, nil); err == nil {
+		t.Error("the binding transport is a shell action's; an exec action has no shell source")
+	}
+}
