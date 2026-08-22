@@ -13,11 +13,10 @@ type Validation struct {
 	Executables *ExecutableRegistry
 }
 
-// ValidateDefinition applies the value, expression, action, and executable
-// rules to one definition, walking exactly the surfaces
-// docs/language/values.md declares for its kind. Per-kind field
-// applicability, the nesting joint's own agreement rules, and contract-key
-// resolution are separate checks and are not performed here.
+// ValidateDefinition walks exactly the surfaces docs/language/values.md
+// declares for a definition's kind. Per-kind field applicability, the
+// nesting joint's agreement rules, and contract-key resolution are other
+// checks, and a definition that breaks one of those still passes here.
 func (v Validation) ValidateDefinition(def *Definition) error {
 	pos := Position{File: def.File, Path: def.ID}
 	if err := v.checkStaticTopology(def, pos); err != nil {
@@ -245,9 +244,9 @@ func (v Validation) validateTask(def *Definition, pos Position) error {
 	return v.instructionBody(def, pos)
 }
 
-// completionPredicate checks the leaves of a done_when or a chain's when: a
-// check names a completion key path, and an expr is a computation over the
-// same roots. A judge leaf carries no value.
+// completionPredicate checks the leaves of a done_when or a chain's when. A
+// judge leaf is skipped rather than rejected: it carries prose for a
+// reviewer, not a value over this surface's roots.
 func (v Validation) completionPredicate(body map[string]any, field string, pos Position) error {
 	raw, ok := body[field]
 	if !ok {
@@ -363,7 +362,6 @@ func (v Validation) eventChannels(def *Definition) []map[string]any {
 	return channels
 }
 
-// action reads one action-valued field and checks the values it carries.
 func (v Validation) action(body map[string]any, field string, s *Surface, pos Position) error {
 	raw, ok := body[field]
 	if !ok {
@@ -391,7 +389,6 @@ func (v Validation) checkAction(a *Action, s *Surface, pos Position) error {
 	return nil
 }
 
-// valueTable reads one table-of-values field.
 func (v Validation) valueTable(body map[string]any, field string, class ValueClass, s *Surface, pos Position) error {
 	raw, ok := body[field]
 	if !ok {
@@ -418,10 +415,9 @@ func (v Validation) value(raw any, class ValueClass, s *Surface, pos Position) e
 	return v.checkValue(value, s, pos)
 }
 
-// checkValue applies the surface's evaluation environment to one value: a
-// projection names a root the surface offers, a computation is checked
-// against the surface's CEL environment, and an executable reference
-// resolves.
+// checkValue applies the surface's evaluation environment to one value. A
+// literal reaches no root and names no executable, so it needs no check
+// here.
 func (v Validation) checkValue(value *Value, s *Surface, pos Position) error {
 	switch value.Form {
 	case FormFrom:

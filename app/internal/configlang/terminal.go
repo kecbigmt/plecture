@@ -50,8 +50,6 @@ func (v Validation) ValidatePlan(workflow *Definition, r *Registry) error {
 	return nil
 }
 
-// terminalVerbsOffered reports the verbs an effect's interactive endpoint
-// declares.
 func terminalVerbsOffered(def *Definition) []string {
 	tbl, ok := def.Body["terminal"].(map[string]any)
 	if !ok {

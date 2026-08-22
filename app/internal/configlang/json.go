@@ -32,9 +32,8 @@ func RenderJSON(op *JSONOperand, leaf LeafValue) (data []byte, absent bool, err 
 	return bytes.TrimRight(buf.Bytes(), "\n"), false, nil
 }
 
-// resolveOperand walks the operand into a plain value tree. json.Marshal
-// orders a map's keys, so the tree it produces serializes identically every
-// time.
+// resolveOperand walks the operand into a plain value tree, which is what
+// makes the serialization deterministic: json.Marshal orders a map's keys.
 func resolveOperand(op *JSONOperand, leaf LeafValue) (any, bool, error) {
 	switch {
 	case op == nil:

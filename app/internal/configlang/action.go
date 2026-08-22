@@ -5,9 +5,8 @@ import (
 	"strings"
 )
 
-// Action is one lifecycle execution: an effect's setup or cleanup, a health
-// or terminal probe, a workspace provider's setup, cleanup, or subscribe, a
-// resource observer's observe or finalize, and a channel's delivery.
+// Action is one lifecycle execution, in either of the language's two
+// variants. Exactly one variant's fields are populated, named by Type.
 type Action struct {
 	Type string
 
@@ -30,9 +29,9 @@ var (
 	shellOnlyFields = []string{"script", "bind"}
 )
 
-// ParseAction reads one action, applying actions.md's validation rules: the
-// two variants, their mutually exclusive fields, one executable named
-// exactly once, and literal shell source.
+// ParseAction reads one action. It checks the variant before anything else,
+// so an action naming a type outside the vocabulary is reported as that
+// rather than as a field belonging to the variant it happens to resemble.
 func ParseAction(raw any, pos Position) (*Action, error) {
 	tbl, ok := raw.(map[string]any)
 	if !ok {

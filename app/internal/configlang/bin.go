@@ -36,8 +36,9 @@ func NewExecutableRegistry(plugins ...PluginExecutables) *ExecutableRegistry {
 	return r
 }
 
-// ResolveBin resolves ref from the layer that wrote it and returns the
-// executable's own name.
+// ResolveBin resolves ref from the layer that wrote it. The two ownerships
+// accept different grammars, because a catalog alias is user-local and a
+// plugin cannot know its own.
 func (r *ExecutableRegistry) ResolveBin(ref string, from Ownership) (string, error) {
 	pos := Position{Path: ref}
 	if from.IsPlugin {
