@@ -58,6 +58,24 @@ jobs:
       - name: Prove the gh_guard shim denies merge/close and passes through everything else
         run: ./scripts/gh-guard_selftest.sh
 
+  # The script-side half of a plugin's delivery contract. Its argv side is
+  # pinned by the channel-invocation records the integration-test job
+  # regenerates from the shipped declarations.
+  plugin-script-selftests:
+    name: plugin-script-selftests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run every plugin script selftest
+        run: |
+          found=0
+          while IFS= read -r t; do
+            found=1
+            echo "== $t"
+            bash "$t"
+          done < <(find plugins -name '*_selftest.sh' | sort)
+          [ "$found" -eq 1 ] || { echo "no plugin script selftests found" >&2; exit 1; }
+
   build-test:
     name: build-test (${{ matrix.module }})
     runs-on: ubuntu-latest

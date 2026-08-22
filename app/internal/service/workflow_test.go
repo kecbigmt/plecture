@@ -111,11 +111,13 @@ func TestWorkflowShow_PopulatesChannels(t *testing.T) {
 	}
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), "scope = \"run\"\nsetup = \"echo '{}'\"\n")
 	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
+[claude_channel]
+kind = "channel"
 type = "unix_socket"
-path = "{{.Inputs.path}}"
-body = "{{ json .Event }}"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
 
-[input_schema]
+[claude_channel.input_schema]
 path = { type = "string", required = true }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
@@ -161,7 +163,7 @@ func TestWorkflowShow_ChannelLoadErrorIsWrapped(t *testing.T) {
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), "scope = \"run\"\nsetup = \"echo '{}'\"\n")
 	// unix_socket missing `body` => LoadChannels itself fails (not a validation
 	// mismatch), so WorkflowShow returns the wrapped load error, not ErrInvalidInput.
-	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), "type = \"unix_socket\"\npath = \"{{.Inputs.path}}\"\n")
+	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), "[claude_channel]\nkind = \"channel\"\ntype = \"unix_socket\"\npath = { from = \"inputs.path\" }\n")
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
 [[nodes]]
 uses = "tmux"

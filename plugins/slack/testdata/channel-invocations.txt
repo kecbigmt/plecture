@@ -1,0 +1,30 @@
+== slack / with-body
+type: exec
+argv[0]: "curl"
+argv[1]: "-sf"
+argv[2]: "--max-time"
+argv[3]: "10"
+argv[4]: "-X"
+argv[5]: "POST"
+argv[6]: "stand-in-base_url/messages"
+argv[7]: "-H"
+argv[8]: "Content-Type: application/json"
+argv[9]: "-d"
+argv[10]: "{\"channel_id\":\"stand-in-channel_id\",\"text\":\"a <tag> & an \\\"amp\\\"\\nover two lines\",\"thread_ts\":\"stand-in-thread_ts\"}"
+timeout: 10s
+
+== slack / summary-only
+type: exec
+argv[0]: "curl"
+argv[1]: "-sf"
+argv[2]: "--max-time"
+argv[3]: "10"
+argv[4]: "-X"
+argv[5]: "POST"
+argv[6]: "stand-in-base_url/messages"
+argv[7]: "-H"
+argv[8]: "Content-Type: application/json"
+argv[9]: "-d"
+argv[10]: "{\"channel_id\":\"stand-in-channel_id\",\"text\":\"only a summary\",\"thread_ts\":\"stand-in-thread_ts\"}"
+timeout: 10s
+

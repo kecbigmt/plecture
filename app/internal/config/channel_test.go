@@ -8,166 +8,215 @@ import (
 	"testing"
 )
 
-func TestChannelDefinition_Validate(t *testing.T) {
-	cases := []struct {
-		name    string
-		def     ChannelDefinition
-		wantErr string
-	}{
-		{
-			name: "unix_socket ok",
-			def:  ChannelDefinition{Type: ChannelTypeUnixSocket, Path: "{{.Inputs.path}}", Body: "{{ json .Event }}"},
-		},
-		{
-			name: "exec ok",
-			def:  ChannelDefinition{Type: ChannelTypeExec, Command: "tmux", Args: []string{"send-keys"}},
-		},
-		{
-			name: "unix_socket with timeout ok",
-			def:  ChannelDefinition{Type: ChannelTypeUnixSocket, Path: "p", Body: "b", Timeout: "5s"},
-		},
-		{
-			name:    "unix_socket missing body",
-			def:     ChannelDefinition{Type: ChannelTypeUnixSocket, Path: "{{.Inputs.path}}"},
-			wantErr: "requires `path` and `body`",
-		},
-		{
-			name:    "unix_socket with exec fields",
-			def:     ChannelDefinition{Type: ChannelTypeUnixSocket, Path: "p", Body: "b", Command: "tmux"},
-			wantErr: "must not set exec fields",
-		},
-		{
-			name:    "exec missing args",
-			def:     ChannelDefinition{Type: ChannelTypeExec, Command: "tmux"},
-			wantErr: "requires `command` and at least one `args`",
-		},
-		{
-			name:    "exec with unix_socket fields",
-			def:     ChannelDefinition{Type: ChannelTypeExec, Command: "tmux", Args: []string{"x"}, Path: "p"},
-			wantErr: "must not set unix_socket fields",
-		},
-		{
-			name:    "empty type",
-			def:     ChannelDefinition{},
-			wantErr: "`type` is required",
-		},
-		{
-			name:    "unknown type",
-			def:     ChannelDefinition{Type: "webhook"},
-			wantErr: "unknown channel type",
-		},
-		{
-			name:    "input_schema missing type",
-			def:     ChannelDefinition{Type: ChannelTypeExec, Command: "c", Args: []string{"a"}, InputSchema: map[string]ChannelInputSpec{"session": {Required: true}}},
-			wantErr: "`type` is required",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			err := tc.def.Validate()
-			if tc.wantErr == "" {
-				if err != nil {
-					t.Fatalf("Validate() = %v, want nil", err)
-				}
-				return
-			}
-			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("Validate() = %v, want error containing %q", err, tc.wantErr)
-			}
-		})
-	}
+func writeChannelDoc(t *testing.T, baseDir, name, body string) {
+	t.Helper()
+	writeFile(t, filepath.Join(baseDir, "channels", name+".toml"), body)
 }
 
-func TestLoadChannels(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	if err := os.MkdirAll(globalDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
+func TestLoadChannels_AcceptsEveryPrimitive(t *testing.T) {
+	baseDir := t.TempDir()
+	writeChannelDoc(t, baseDir, "runtime", `
+[socket]
+kind = "channel"
 type = "unix_socket"
-path = "{{.Inputs.path}}"
-body = "{{ json .Event }}"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
 
-[input_schema]
+[socket.input_schema]
 path = { type = "string", required = true }
-`)
-	writeFile(t, filepath.Join(globalDir, "channels", "tmux_send_keys.toml"), `
-type = "exec"
+
+[process]
+kind    = "channel"
+type    = "exec"
 command = "tmux"
-args = ["send-keys", "-t", "{{.Inputs.session}}", "Enter"]
+args    = ["send-keys", "-t", { from = "inputs.session" }, "Enter"]
 timeout = "5s"
 
-[input_schema]
+[process.input_schema]
+session = { type = "string", required = true }
+
+[imperative]
+kind   = "channel"
+type   = "shell"
+script = "true"
+
+[imperative.bind]
+session = { from = "inputs.session" }
+
+[imperative.input_schema]
 session = { type = "string", required = true }
 `)
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := cfg.LoadChannels()
+	got, err := (&Config{BaseDir: baseDir}).LoadChannels()
 	if err != nil {
 		t.Fatalf("LoadChannels: %v", err)
 	}
-	cc, ok := got["claude_channel"]
-	if !ok {
-		t.Fatalf("claude_channel missing from %+v", got)
+	socket, ok := got["socket"]
+	if !ok || socket.Type != ChannelTypeUnixSocket || socket.Path == nil || socket.Body == nil {
+		t.Fatalf("socket channel decoded wrong: %+v", socket)
 	}
-	if cc.Type != ChannelTypeUnixSocket || cc.Body != "{{ json .Event }}" {
-		t.Errorf("claude_channel decoded wrong: %+v", cc)
+	if !socket.InputSchema["path"].Required {
+		t.Errorf("input_schema not decoded: %+v", socket.InputSchema)
 	}
-	if !cc.InputSchema["path"].Required {
-		t.Errorf("claude_channel input_schema not decoded: %+v", cc.InputSchema)
+	if socket.Action != nil {
+		t.Error("a unix_socket channel runs no process")
 	}
-	tk, ok := got["tmux_send_keys"]
-	if !ok {
-		t.Fatalf("tmux_send_keys missing from %+v", got)
+	process, ok := got["process"]
+	if !ok || process.Type != ChannelTypeExec || process.Action == nil || process.Timeout == nil {
+		t.Fatalf("exec channel decoded wrong: %+v", process)
 	}
-	if tk.Type != ChannelTypeExec || tk.Timeout != "5s" || len(tk.Args) != 4 {
-		t.Errorf("tmux_send_keys decoded wrong: %+v", tk)
+	if len(process.Action.Args) != 4 {
+		t.Errorf("exec args = %d, want 4", len(process.Action.Args))
+	}
+	imperative, ok := got["imperative"]
+	if !ok || imperative.Type != ChannelTypeShell || imperative.Action == nil {
+		t.Fatalf("shell channel decoded wrong: %+v", imperative)
+	}
+	if len(imperative.Action.Bind) != 1 {
+		t.Errorf("shell bind = %v, want one key", imperative.Action.Bind)
 	}
 }
 
-func TestLoadChannels_RejectsInvalid(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	if err := os.MkdirAll(globalDir, 0o755); err != nil {
-		t.Fatal(err)
+func TestLoadChannels_RejectedDeclarations(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "kind missing",
+			body: "[c]\ntype = \"unix_socket\"\n",
+			want: "kind",
+		},
+		{
+			name: "another kind under channels",
+			body: "[c]\nkind = \"effect\"\nscope = \"run\"\n",
+			want: "channel",
+		},
+		{
+			name: "unknown primitive",
+			body: "[c]\nkind = \"channel\"\ntype = \"webhook\"\n",
+			want: "webhook",
+		},
+		{
+			name: "unix_socket missing body",
+			body: "[c]\nkind = \"channel\"\ntype = \"unix_socket\"\npath = { from = \"inputs.path\" }\n",
+			want: "body",
+		},
+		{
+			name: "unix_socket carrying a process field",
+			body: "[c]\nkind = \"channel\"\ntype = \"unix_socket\"\npath = { from = \"inputs.path\" }\nbody = \"b\"\ncommand = \"tmux\"\n",
+			want: "command",
+		},
+		{
+			name: "exec naming its executable twice",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"tmux\"\nbin = \"tmux\"\n",
+			want: "exactly once",
+		},
+		{
+			name: "exec carrying a unix_socket field",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"tmux\"\npath = { from = \"inputs.path\" }\n",
+			want: "path",
+		},
+		{
+			name: "shell script carrying interpolation",
+			body: "[c]\nkind = \"channel\"\ntype = \"shell\"\nscript = \"echo {{.Event.body}}\"\n",
+			want: "bind",
+		},
+		{
+			name: "a root the delivery surface does not offer",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"session.name\" }]\n",
+			want: "session.name",
+		},
+		{
+			name: "a timeout reading event data",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\ntimeout = { from = \"event.body\" }\n",
+			want: "timeout",
+		},
+		{
+			name: "a literal timeout that is not a duration",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\ntimeout = \"soon\"\n",
+			want: "timeout",
+		},
+		{
+			name: "input_schema declaring an unreadable parameter name",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\n\"bad-key\" = { type = \"string\" }\n",
+			want: "a parameter name matches",
+		},
+		{
+			name: "input_schema declaring a non-boolean required",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"string\", required = \"true\" }\n",
+			want: "\"required\" is a boolean",
+		},
+		{
+			name: "input_schema declaring a non-string default",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"string\", default = 5 }\n",
+			want: "\"default\" is a string",
+		},
+		{
+			name: "input_schema declaring a non-string type",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = true }\n",
+			want: "\"type\" is a string",
+		},
+		{
+			name: "input_schema declaring a type outside the vocabulary",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"integer\" }\n",
+			want: "carries no other type",
+		},
+		{
+			name: "input_schema declaring both required and an empty default",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"string\", required = true, default = \"\" }\n",
+			want: "mutually exclusive",
+		},
+		{
+			name: "input_schema missing type",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { required = true }\n",
+			want: "`type` is required",
+		},
+		{
+			name: "input_schema declaring both required and default",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"string\", required = true, default = \"x\" }\n",
+			want: "mutually exclusive",
+		},
+		{
+			// The whole surface is closed, so a long-retired key like
+			// `execution` is caught by this rule too.
+			name: "a field outside the channel surface",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\nexecution = \"environment\"\n",
+			want: "execution",
+		},
+		{
+			name: "input_schema carrying an unknown field",
+			body: "[c]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n\n[c.input_schema]\nsession = { type = \"string\", enum = [\"a\"] }\n",
+			want: "enum",
+		},
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(globalDir, "channels", "broken.toml"), `
-type = "unix_socket"
-path = "{{.Inputs.path}}"
-`)
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := cfg.LoadChannels(); err == nil {
-		t.Fatal("expected error for unix_socket channel missing body")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			baseDir := t.TempDir()
+			writeChannelDoc(t, baseDir, "broken", tt.body)
+			_, err := (&Config{BaseDir: baseDir}).LoadChannels()
+			if err == nil {
+				t.Fatalf("expected a load error mentioning %q", tt.want)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error does not mention %q: %v", tt.want, err)
+			}
+		})
 	}
 }
 
 func TestLoadChannels_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
-	writeFile(t, filepath.Join(pluginA, "config", "channels", "tmux_send_keys.toml"), `
-type = "exec"
+	for _, dir := range []string{pluginA, pluginB} {
+		writeFile(t, filepath.Join(dir, "config", "channels", "tmux_send_keys.toml"), `
+[tmux_send_keys]
+kind    = "channel"
+type    = "exec"
 command = "tmux"
-args = ["send-keys", "-t", "a"]
+args    = ["send-keys"]
 `)
-	writeFile(t, filepath.Join(pluginB, "config", "channels", "tmux_send_keys.toml"), `
-type = "exec"
-command = "tmux"
-args = ["send-keys", "-t", "b"]
-`)
+	}
 	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
 
 	_, err := cfg.LoadChannels()
@@ -457,8 +506,8 @@ include = ["github.*"]
 func TestChannelDefinition_ApplyInputDefaults(t *testing.T) {
 	def := ChannelDefinition{InputSchema: map[string]ChannelInputSpec{
 		"queue_dir":        {Type: "string", Required: true},
-		"enqueue_timeout":  {Type: "string", Default: "5s"},
-		"message_envelope": {Type: "string", Default: "[{type}] {body}"},
+		"enqueue_timeout":  {Type: "string", Default: "5s", HasDefault: true},
+		"message_envelope": {Type: "string", Default: "[{type}] {body}", HasDefault: true},
 		"undeclared":       {Type: "string"},
 	}}
 	got := def.ApplyInputDefaults(map[string]any{
@@ -480,31 +529,34 @@ func TestChannelDefinition_ApplyInputDefaults(t *testing.T) {
 	}
 }
 
-func TestChannelDefinition_Validate_RejectsRequiredWithDefault(t *testing.T) {
-	def := ChannelDefinition{Type: ChannelTypeExec, Command: "c", Args: []string{"a"},
-		InputSchema: map[string]ChannelInputSpec{"x": {Type: "string", Required: true, Default: "d"}}}
-	if err := def.Validate(); err == nil {
-		t.Fatal("expected `required` + `default` to be rejected")
-	}
-}
+// A declared `default = ""` is a usable default: it is what lets a channel
+// pass a flag whose value is legitimately empty, so it must not be folded
+// into "no default declared".
+func TestChannelDefinition_ApplyInputDefaults_DistinguishesAnEmptyDefault(t *testing.T) {
+	baseDir := t.TempDir()
+	writeChannelDoc(t, baseDir, "c", `
+[c]
+kind    = "channel"
+type    = "exec"
+command = "true"
 
-func TestChannelDefinition_Validate_RejectsUnparsableLiteralTimeout(t *testing.T) {
-	def := ChannelDefinition{Type: ChannelTypeExec, Command: "c", Args: []string{"a"}, Timeout: "5 seconds"}
-	if err := def.Validate(); err == nil {
-		t.Fatal("expected an unparsable literal timeout to be rejected at load")
+[c.input_schema]
+declared_empty = { type = "string", default = "" }
+undeclared     = { type = "string" }
+`)
+	got, err := (&Config{BaseDir: baseDir}).LoadChannels()
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-// A templated timeout is resolved per delivery, so load-time parsing has
-// nothing to check.
-func TestChannelDefinition_Validate_AcceptsTemplatedTimeout(t *testing.T) {
-	def := ChannelDefinition{Type: ChannelTypeExec, Command: "c", Args: []string{"a"},
-		Timeout:     `{{.Inputs.enqueue_timeout}}`,
-		InputSchema: map[string]ChannelInputSpec{"enqueue_timeout": {Type: "string", Default: "5s"}}}
-	if err := def.Validate(); err != nil {
-		t.Fatalf("Validate: %v", err)
+	inputs := got["c"].ApplyInputDefaults(nil)
+	value, set := inputs["declared_empty"]
+	if !set {
+		t.Error("a declared empty default must be applied")
 	}
-	if !def.TimeoutIsTemplate() {
-		t.Error("TimeoutIsTemplate = false")
+	if value != "" {
+		t.Errorf("declared_empty = %v, want the empty string", value)
+	}
+	if _, set := inputs["undeclared"]; set {
+		t.Error("a parameter with no default must stay unset")
 	}
 }

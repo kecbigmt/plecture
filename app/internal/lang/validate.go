@@ -101,9 +101,27 @@ func (v Validation) validateEffect(def *Definition, pos Position) error {
 	return nil
 }
 
+// ChannelAction reads the action a process-delivering channel declares. A
+// channel's own `type` doubles as its action's type, and its parameters and
+// deadline belong to the channel rather than to the action, so the action is
+// assembled from the delivery fields alone. A unix_socket channel runs no
+// process and reports a nil action.
+func ChannelAction(def *Definition, pos Position) (*Action, error) {
+	kind, _ := def.Body["type"].(string)
+	if kind != ActionExec && kind != ActionShell {
+		return nil, nil
+	}
+	delivery := map[string]any{"type": kind}
+	for _, field := range append(execOnlyFields, shellOnlyFields...) {
+		if raw, ok := def.Body[field]; ok {
+			delivery[field] = raw
+		}
+	}
+	return ParseAction(delivery, pos)
+}
+
 func (v Validation) validateChannel(def *Definition, pos Position) error {
 	kind, _ := def.Body["type"].(string)
-	delivery := map[string]any{"type": kind}
 	switch kind {
 	case "unix_socket":
 		for _, field := range []string{"path", "body"} {
@@ -123,18 +141,13 @@ func (v Validation) validateChannel(def *Definition, pos Position) error {
 			}
 		}
 	case ActionExec, ActionShell:
-		for _, field := range append(execOnlyFields, shellOnlyFields...) {
-			if raw, ok := def.Body[field]; ok {
-				delivery[field] = raw
-			}
-		}
 		for _, field := range []string{"path", "body"} {
 			if _, ok := def.Body[field]; ok {
 				return newDiag(CodeActionVariant, LayerStructural, childPos(pos, field),
 					fmt.Sprintf("%s belongs to unix_socket delivery, not to %s", field, kind))
 			}
 		}
-		action, err := ParseAction(delivery, pos)
+		action, err := ChannelAction(def, pos)
 		if err != nil {
 			return err
 		}

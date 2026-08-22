@@ -7,57 +7,39 @@
 package channel
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
 
-// renderContext is what a channel template sees: the event as a map keyed by the
-// envelope's json field names (so {{.Event.type}}/{{.Event.body}} resolve) and
-// the resolved channel inputs.
-type renderContext struct {
-	Event  map[string]any
-	Inputs map[string]any
-	// Terminal backs {{terminal "..."}} in an args/path/body template. Nil
-	// when the caller passed no DeliverOptions.Terminal (the session's plan
-	// declares no [terminal]-owning task, or the caller has none in scope)
-	// — a channel that never references {{terminal ...}} is unaffected.
-	Terminal TerminalResolver
-}
-
 // TerminalResolver resolves one [terminal] verb (attach/capture/send_text/
-// send_keys) to its already-rendered command string, backing {{terminal
-// "..."}} in channel argument templates. Defined here as a plain function
-// type — not imported from internal/task — so this package stays free of a
-// dependency on internal/task, the same reason Executor is narrowed to
-// argv-only instead of reusing task.Executor; dispatch (which already
+// send_keys) to its already-rendered command string, backing a
+// `{ terminal = "..." }` capability in a channel's delivery. Defined here as
+// a plain function type — not imported from internal/task — so this package
+// stays free of a dependency on internal/task; dispatch (which already
 // depends on both) builds the closure.
 type TerminalResolver func(verb string) (string, error)
 
-var templateFuncs = template.FuncMap{
-	"json": func(v any) (string, error) {
-		b, err := json.Marshal(v)
-		if err != nil {
-			return "", err
-		}
-		return string(b), nil
-	},
-}
+// BinResolver resolves a channel's `bin` reference to the executable it
+// names. Supplied per delivery for the same reason TerminalResolver is: the
+// mounted plugins are the caller's knowledge, not this package's.
+type BinResolver func(ref string) (string, error)
 
-// eventMap exposes the event with every standard envelope field present (empty
-// when unset) so {{.Event.body}} on an empty-body event renders empty under
-// missingkey=error instead of failing. Building it explicitly (not via a json
-// round-trip) also keeps any future numeric field from being coerced to float64.
+// eventMap exposes the event with every standard envelope field present
+// (empty when unset) so a projection of an unset field resolves to empty
+// rather than to absence. Building it explicitly (not via a json round-trip)
+// also keeps any future numeric field from being coerced to float64.
 func eventMap(ev event.Event) map[string]any {
 	md := make(map[string]any, len(ev.Metadata))
 	for k, v := range ev.Metadata {
@@ -76,48 +58,34 @@ func eventMap(ev event.Event) map[string]any {
 	}
 }
 
-func newRenderContext(inputs map[string]any, ev event.Event, terminal TerminalResolver) renderContext {
+// deliveryEval is the evaluation this delivery's values resolve against: the
+// event and the resolved channel inputs, plus whichever capabilities the
+// caller supplied.
+func deliveryEval(inputs map[string]any, ev event.Event, opts DeliverOptions) lang.Eval {
 	if inputs == nil {
 		inputs = map[string]any{}
 	}
-	return renderContext{Event: eventMap(ev), Inputs: inputs, Terminal: terminal}
-}
-
-// renderField renders one primitive field. missingkey=error so a typo'd field or
-// an unwired .Inputs key fails delivery rather than sending an empty value;
-// standard .Event fields are always present (see eventMap), so an optional field
-// that is merely empty renders empty, not an error.
-func renderField(name, tmplStr string, rctx renderContext) (string, error) {
-	// terminal is built per render call (not part of the static
-	// templateFuncs map) because it resolves against this render's own
-	// rctx.Terminal — the session in effect for this delivery, not a global.
-	dynamicFuncs := template.FuncMap{
-		"terminal": func(verb string) (string, error) {
-			if rctx.Terminal == nil {
-				return "", fmt.Errorf("{{terminal %q}}: no task in this session's plan declares [terminal]", verb)
-			}
-			return rctx.Terminal(verb)
-		},
+	e := lang.Eval{Env: lang.Environment{"event": eventMap(ev), "inputs": inputs}}
+	if opts.Terminal != nil {
+		e.Terminal = opts.Terminal
 	}
-	t, err := template.New(name).Option("missingkey=error").Funcs(templateFuncs).Funcs(dynamicFuncs).Parse(tmplStr)
-	if err != nil {
-		return "", fmt.Errorf("channel %s template: %w", name, err)
+	if opts.Bin != nil {
+		e.Bin = opts.Bin
 	}
-	var b strings.Builder
-	if err := t.Execute(&b, rctx); err != nil {
-		return "", fmt.Errorf("channel %s template: %w", name, err)
-	}
-	return b.String(), nil
+	return e
 }
 
 // DeliverOptions carries optional per-delivery overrides beyond the channel
 // definition and event itself. The zero value is what Deliver uses: no
-// {{terminal "..."}} binding.
+// capabilities in scope.
 type DeliverOptions struct {
-	// Terminal resolves {{terminal "..."}} in this delivery's templates; nil
-	// means a channel that references it gets a clear "no binding" error
-	// rather than resolving to an empty command.
+	// Terminal resolves this delivery's terminal capabilities; nil means a
+	// channel that consumes one gets a clear "not available" error rather
+	// than resolving to an empty command.
 	Terminal TerminalResolver
+	// Bin resolves this delivery's plugin-owned executables; nil means a
+	// channel naming one cannot be delivered.
+	Bin BinResolver
 }
 
 // Deliver renders a channel definition against the event and resolved inputs,
@@ -134,25 +102,25 @@ func DeliverWithOptions(ctx context.Context, def config.ChannelDefinition, input
 }
 
 func deliver(ctx context.Context, def config.ChannelDefinition, inputs map[string]any, ev event.Event, opts DeliverOptions) error {
-	rctx := newRenderContext(inputs, ev, opts.Terminal)
+	eval := deliveryEval(inputs, ev, opts)
 	switch def.Type {
 	case config.ChannelTypeUnixSocket:
-		return deliverUnixSocket(ctx, def, rctx)
-	case config.ChannelTypeExec:
-		return deliverExec(ctx, def, rctx)
+		return deliverUnixSocket(ctx, def, eval)
+	case config.ChannelTypeExec, config.ChannelTypeShell:
+		return deliverProcess(ctx, def, eval)
 	default:
 		return fmt.Errorf("unknown channel type %q", def.Type)
 	}
 }
 
-func deliverUnixSocket(ctx context.Context, def config.ChannelDefinition, rctx renderContext) error {
-	path, err := renderField("path", def.Path, rctx)
+func deliverUnixSocket(ctx context.Context, def config.ChannelDefinition, eval lang.Eval) error {
+	path, _, err := eval.Argument(def.Path)
 	if err != nil {
-		return err
+		return fmt.Errorf("channel path: %w", err)
 	}
-	body, err := renderField("body", def.Body, rctx)
+	body, _, err := eval.Bytes(def.Body)
 	if err != nil {
-		return err
+		return fmt.Errorf("channel body: %w", err)
 	}
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "unix", path)
@@ -170,7 +138,7 @@ func deliverUnixSocket(ctx context.Context, def config.ChannelDefinition, rctx r
 	// Source stays empty: a non-empty Source lets channel-server treat a
 	// "y/n <id>" body as a human permission verdict, so a content event must not
 	// set it.
-	data, err := protocol.NewEnvelope(protocol.MsgMessage, protocol.MessagePayload{Text: body})
+	data, err := protocol.NewEnvelope(protocol.MsgMessage, protocol.MessagePayload{Text: string(body)})
 	if err != nil {
 		return err
 	}
@@ -197,25 +165,34 @@ func writeFramed(conn net.Conn, data []byte) error {
 	return err
 }
 
-func deliverExec(ctx context.Context, def config.ChannelDefinition, rctx renderContext) error {
-	args := make([]string, len(def.Args))
-	for i, a := range def.Args {
-		v, err := renderField(fmt.Sprintf("args[%d]", i), a, rctx)
+// deliverProcess runs an exec or shell channel. A shell channel gets a
+// private run directory for the binding transport, created only for that
+// variant — an exec delivery touches no filesystem of its own.
+func deliverProcess(ctx context.Context, def config.ChannelDefinition, eval lang.Eval) error {
+	runDir := ""
+	if def.Action.Type == lang.ActionShell {
+		dir, err := os.MkdirTemp("", "plect-channel-")
 		if err != nil {
 			return err
 		}
-		args[i] = v
+		defer os.RemoveAll(dir)
+		runDir = dir
 	}
-	// Command is verbatim, never templated, so event/input data can never choose
-	// the executable — only the argv values are rendered.
-	cmd := exec.CommandContext(ctx, def.Command, args...)
+	execution, err := eval.Run(runDir, def.Action, nil)
+	if err != nil {
+		return fmt.Errorf("channel %s: %w", def.Type, err)
+	}
+	cmd := exec.CommandContext(ctx, execution.Argv[0], execution.Argv[1:]...)
+	if len(execution.Stdin) > 0 {
+		cmd.Stdin = bytes.NewReader(execution.Stdin)
+	}
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return fmt.Errorf("exec %s: %w: %s", def.Command, err, msg)
+			return fmt.Errorf("exec %s: %w: %s", execution.Argv[0], err, msg)
 		}
-		return fmt.Errorf("exec %s: %w", def.Command, err)
+		return fmt.Errorf("exec %s: %w", execution.Argv[0], err)
 	}
 	return nil
 }

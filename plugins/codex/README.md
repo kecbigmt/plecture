@@ -43,11 +43,8 @@ dependency.
   launches, resolved through `{{bin ...}}` so it needs no `PATH` entry of
   its own.
 - `scripts/codex-exec-enqueue` — the enqueue script `channels/
-  codex_exec.toml` runs. **A channel's `command` is never
-  template-rendered** (only its `args` are — `{{bin ...}}` exists only for
-  task setup/cleanup hooks and channel args via `{{terminal ...}}`), so
-  this script must be reachable on `PATH` under its own name for the
-  channel to work.
+  codex_exec.toml` runs, named through that channel's `bin` so it needs no
+  `PATH` entry of its own.
 
 ## Parameters
 
@@ -84,10 +81,6 @@ include = ["plect.instruction", "resource.*"]
 plect catalog add official git+https://github.com/kecbigmt/plecture --subdir plugins --revision <tag-or-commit>
 plect plugin add official/codex
 ```
-
-If a workflow uses `config/channels/codex_exec.toml`, put this plugin's
-`scripts/` on `PATH` (or symlink `codex-exec-enqueue` onto it) — see the
-note on channel `command` above.
 
 A session using this plugin also needs a `[terminal]`-declaring task in the
 workflow (e.g. `official/tmux`'s `tmux` task) — this plugin's own tasks

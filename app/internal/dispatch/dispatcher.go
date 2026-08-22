@@ -199,7 +199,9 @@ func (d *sessionDispatcher) processEvent(ctx context.Context, s *domain.Session,
 				mu.Unlock()
 				return
 			}
+			bins := config.MountedBins{Mounted: d.plugins, SourcePath: def.SourcePath}
 			opts := channel.DeliverOptions{
+				Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
 				Terminal: terminalResolver(s, d.terminalNodeID, d.terminalOps, d.terminalLayers, task.SessionVars{
 					Name:             s.Name,
 					ResourceID:       s.ResourceID,

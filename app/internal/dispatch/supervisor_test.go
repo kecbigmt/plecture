@@ -38,11 +38,13 @@ func TestSupervisor_StartsAndStopsWithRunScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
+[claude_channel]
+kind = "channel"
 type = "unix_socket"
-path = "{{.Inputs.path}}"
-body = "{{ json .Event }}"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
 
-[input_schema]
+[claude_channel.input_schema]
 path = { type = "string", required = true }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
@@ -254,11 +256,13 @@ include     = ["plect.instruction"]
 	}
 
 	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
+[claude_channel]
+kind = "channel"
 type = "unix_socket"
-path = "{{.Inputs.path}}"
-body = "{{ json .Event }}"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
 
-[input_schema]
+[claude_channel.input_schema]
 path = { type = "string", required = true }
 `)
 	if err := stateStore.Update("o/r-1", func(s *domain.Session) error {
@@ -295,11 +299,13 @@ func TestSupervisor_ValidationSuccessDoesNotClearDeliveryFailureStreak(t *testin
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
+[claude_channel]
+kind = "channel"
 type = "unix_socket"
-path = "{{.Inputs.path}}"
-body = "{{ json .Event }}"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
 
-[input_schema]
+[claude_channel.input_schema]
 path = { type = "string", required = true }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
@@ -368,11 +374,13 @@ include     = ["plect.instruction"]
 func TestSupervisor_DeliversChannelDefinedOnlyInAPluginMountedAfterConstruction(t *testing.T) {
 	pluginDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "channels", "claude.toml"), `
+[claude]
+kind = "channel"
 type = "unix_socket"
-path = "{{.Inputs.path}}"
-body = "{{ json .Event }}"
+path = { from = "inputs.path" }
+body = { json = { from = "event" } }
 
-[input_schema]
+[claude.input_schema]
 path = { type = "string", required = true }
 `)
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "coding.toml"), `

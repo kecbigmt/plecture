@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
 
@@ -86,8 +87,8 @@ func TestRetry_PerAttemptTimeoutCutsAttempt(t *testing.T) {
 func TestDeliverWithRetry_ExhaustsOnBadSocket(t *testing.T) {
 	def := config.ChannelDefinition{
 		Type: config.ChannelTypeUnixSocket,
-		Path: filepath.Join(t.TempDir(), "absent.sock"),
-		Body: "{{ json .Event }}",
+		Path: &lang.Value{Form: lang.FormLiteral, Literal: filepath.Join(t.TempDir(), "absent.sock")},
+		Body: &lang.Value{Form: lang.FormLiteral, Literal: "{}"},
 	}
 	attempts, err := DeliverWithRetry(context.Background(), def, nil, event.Event{Type: event.TypeInstruction}, fastPolicy(3))
 	if err == nil {
@@ -100,7 +101,7 @@ func TestDeliverWithRetry_ExhaustsOnBadSocket(t *testing.T) {
 
 func TestChannelErrorEvent(t *testing.T) {
 	orig := event.Event{ID: "01ABC", SessionName: "o/r-1", Type: event.TypeInstruction}
-	ce := ChannelErrorEvent(orig, "runtime", 3, errors.New("tmux exited 1"))
+	ce := ChannelErrorEvent(orig, "runtime", 3, errors.New("delivery exited 1"))
 	if ce.Type != event.TypeChannelError {
 		t.Errorf("Type = %q, want %q", ce.Type, event.TypeChannelError)
 	}
@@ -122,7 +123,9 @@ func TestChannelErrorEvent_NilCause(t *testing.T) {
 	}
 }
 
-func TestResolveTimeout_LiteralAndTemplate(t *testing.T) {
+func TestResolveTimeout_LiteralAndProjection(t *testing.T) {
+	literal := func(v string) *lang.Value { return &lang.Value{Form: lang.FormLiteral, Literal: v} }
+	projection := func(path string) *lang.Value { return &lang.Value{Form: lang.FormFrom, From: path} }
 	tests := []struct {
 		name    string
 		def     config.ChannelDefinition
@@ -130,23 +133,23 @@ func TestResolveTimeout_LiteralAndTemplate(t *testing.T) {
 		want    time.Duration
 		wantErr bool
 	}{
-		{name: "empty is zero", def: config.ChannelDefinition{}},
-		{name: "literal", def: config.ChannelDefinition{Timeout: "5s"}, want: 5 * time.Second},
+		{name: "absent is zero", def: config.ChannelDefinition{}},
+		{name: "literal", def: config.ChannelDefinition{Timeout: literal("5s")}, want: 5 * time.Second},
 		{
-			name:   "template reads the resolved input",
-			def:    config.ChannelDefinition{Timeout: `{{.Inputs.enqueue_timeout}}`},
+			name:   "a projection reads the resolved input",
+			def:    config.ChannelDefinition{Timeout: projection("inputs.enqueue_timeout")},
 			inputs: map[string]any{"enqueue_timeout": "30s"},
 			want:   30 * time.Second,
 		},
 		{
-			name:    "template rendering to a non-duration fails delivery",
-			def:     config.ChannelDefinition{Timeout: `{{.Inputs.enqueue_timeout}}`},
+			name:    "a projection resolving to a non-duration fails delivery",
+			def:     config.ChannelDefinition{Timeout: projection("inputs.enqueue_timeout")},
 			inputs:  map[string]any{"enqueue_timeout": "soon"},
 			wantErr: true,
 		},
 		{
-			name:    "template over an unset input fails delivery",
-			def:     config.ChannelDefinition{Timeout: `{{.Inputs.enqueue_timeout}}`},
+			name:    "a projection of an unset input fails delivery",
+			def:     config.ChannelDefinition{Timeout: projection("inputs.enqueue_timeout")},
 			inputs:  map[string]any{},
 			wantErr: true,
 		},
@@ -167,5 +170,14 @@ func TestResolveTimeout_LiteralAndTemplate(t *testing.T) {
 				t.Errorf("ResolveTimeout = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// The deadline is a property of the channel wiring, so an event's payload
+// must not be able to reach it even if a definition tried.
+func TestResolveTimeout_EventDataIsOutOfScope(t *testing.T) {
+	def := config.ChannelDefinition{Timeout: &lang.Value{Form: lang.FormFrom, From: "event.body"}}
+	if _, err := ResolveTimeout(def, map[string]any{}); err == nil {
+		t.Fatal("expected a timeout reading event data to fail")
 	}
 }

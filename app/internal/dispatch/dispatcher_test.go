@@ -20,12 +20,32 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+// socketChannel and execChannel build the definitions these tests drive the
+// dispatcher with, in the ratified value forms.
+func socketChannel() config.ChannelDefinition {
+	return config.ChannelDefinition{
+		Type: config.ChannelTypeUnixSocket,
+		Path: &lang.Value{Form: lang.FormFrom, From: "inputs.path"},
+		Body: &lang.Value{Form: lang.FormJSON, JSON: &lang.JSONOperand{Leaf: &lang.Value{Form: lang.FormFrom, From: "event"}}},
+	}
+}
+
+func execChannel(command string, args ...*lang.Value) config.ChannelDefinition {
+	return config.ChannelDefinition{
+		Type:   config.ChannelTypeExec,
+		Action: &lang.Action{Type: lang.ActionExec, Command: command, Args: args},
+	}
+}
+
+func literalArg(v string) *lang.Value { return &lang.Value{Form: lang.FormLiteral, Literal: v} }
 
 // runTestDispatcher builds a wake-driven dispatcher over a fast-poll hub for an
 // up session whose runtime channel targets sock.
@@ -45,7 +65,7 @@ func runTestDispatcher(t *testing.T, log *eventlog.Store, sock string) (*session
 	d := &sessionDispatcher{
 		session:  "o/r-1",
 		channels: []config.EventChannel{{Name: "runtime", Uses: "claude_channel", Inputs: map[string]string{"path": "{{.Nodes.claude.outputs.socket_path}}"}, Include: []string{"plect.instruction"}}},
-		defs:     map[string]config.ChannelDefinition{"claude_channel": {Type: config.ChannelTypeUnixSocket, Path: "{{.Inputs.path}}", Body: "{{ json .Event }}"}},
+		defs:     map[string]config.ChannelDefinition{"claude_channel": socketChannel()},
 		log:      log,
 		state:    st,
 		hub:      hub,
@@ -201,7 +221,7 @@ func runtimeDispatcher(t *testing.T, session string, log *eventlog.Store, socket
 			Include: include,
 		}},
 		defs: map[string]config.ChannelDefinition{
-			"claude_channel": {Type: config.ChannelTypeUnixSocket, Path: "{{.Inputs.path}}", Body: "{{ json .Event }}"},
+			"claude_channel": socketChannel(),
 		},
 		log:    log,
 		state:  st,
@@ -369,7 +389,7 @@ func TestDispatcher_MultiChannelFanOut(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	sock, recv := startFakeSocket(t)
 	dead := filepath.Join(t.TempDir(), "absent.sock")
-	def := config.ChannelDefinition{Type: config.ChannelTypeUnixSocket, Path: "{{.Inputs.path}}", Body: "{{ json .Event }}"}
+	def := socketChannel()
 	s := &domain.Session{Name: "o/r-1", Tasks: map[string]*contract.TaskState{}}
 	st := state.NewStore(t.TempDir())
 	if err := st.Put(s); err != nil {
@@ -417,7 +437,7 @@ func TestDispatcher_CancelMidEventLeavesCursorForReplay(t *testing.T) {
 	d := &sessionDispatcher{
 		session:  "o/r-1",
 		channels: []config.EventChannel{{Name: "slow", Uses: "slow", Include: []string{"plect.instruction"}}},
-		defs:     map[string]config.ChannelDefinition{"slow": {Type: config.ChannelTypeExec, Command: "sleep", Args: []string{"5"}}},
+		defs:     map[string]config.ChannelDefinition{"slow": execChannel("sleep", literalArg("5"))},
 		log:      log,
 		policy:   channel.RetryPolicy{MaxAttempts: 1, Timeout: 10 * time.Second},
 	}
@@ -588,9 +608,15 @@ func TestDispatcher_TerminalHelperResolvesThroughSessionPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	def := config.ChannelDefinition{
-		Type:    config.ChannelTypeExec,
-		Command: "bash",
-		Args:    []string{"-c", `echo "$1" > "$2"`, "terminal_test", `{{terminal "send_text"}}`, outFile},
+		Type: config.ChannelTypeShell,
+		Action: &lang.Action{
+			Type:   lang.ActionShell,
+			Script: `echo "$send" > "$out"` + "\n",
+			Bind: map[string]*lang.Value{
+				"send": {Form: lang.FormTerminal, Terminal: "send_text"},
+				"out":  literalArg(outFile),
+			},
+		},
 	}
 	d := &sessionDispatcher{
 		session:        "o/r-1",

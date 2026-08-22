@@ -5,33 +5,27 @@
 # fire-and-forget on write — it must return well inside the exec channel's
 # delivery timeout regardless of how long the worker's current turn runs, so
 # the turn itself never happens inside this channel.
-#
-# A channel's `command` is never template-rendered (only its `args` and
-# `timeout` are, and only with the `json` and `{{terminal ...}}` helpers — no
-# `{{bin ...}}`, which is registered for hook rendering, not channel
-# rendering). So this plugin's `scripts/` directory must be on `PATH` for
-# codex-exec-enqueue to resolve here — see this plugin's README.
-# `command`/`args` precede [input_schema] so TOML scopes them at top level.
+[codex_exec]
+kind = "channel"
 type = "exec"
-command = "codex-exec-enqueue"
+bin  = "codex-exec-enqueue"
 args = [
-  '{{.Inputs.queue_dir}}',
-  '{{.Inputs.message_envelope}}',
-  '{{.Event.type}}',
-  '{{.Event.body}}',
-  '{{.Event.summary}}',
-  '{{with index .Event.metadata "url"}}{{.}}{{end}}',
+  { from = "inputs.queue_dir" },
+  { from = "inputs.message_envelope" },
+  { from = "event.type" },
+  { from = "event.body" },
+  { from = "event.summary" },
+  { from = "event.metadata.url", default = "" },
 ]
-timeout = '{{.Inputs.enqueue_timeout}}'
+timeout = { from = "inputs.enqueue_timeout" }
 
 # Author-declared parameters. `message_envelope` is expanded by the enqueue
-# executable rather than being a Go template of its own: this argument list is
-# rendered once, so an envelope arriving as an input value would reach the
-# renderer already rendered. Its placeholders name the same event fields the
-# arguments below carry, which keeps a user-supplied envelope data — it can
-# reorder and relabel the message, never reach a field the author did not
-# offer, and never become a second template pass over the event.
-[input_schema]
+# executable rather than being a value of its own: its placeholders name the
+# same event fields the arguments below carry, which keeps a user-supplied
+# envelope data — it can reorder and relabel the message, never reach a field
+# the author did not offer, and never become a second evaluation over the
+# event.
+[codex_exec.input_schema]
 queue_dir        = { type = "string", required = true }
 enqueue_timeout  = { type = "string", default = "5s" }
 message_envelope = { type = "string", default = "[{type}] {body_or_summary}{url_suffix}" }

@@ -77,7 +77,7 @@ func (e Eval) Exec(a *Action) (*Execution, error) {
 	}
 	exec := &Execution{Argv: argv}
 	if a.Stdin != nil {
-		stdin, absent, err := e.Stdin(a.Stdin)
+		stdin, absent, err := e.Bytes(a.Stdin)
 		if err != nil {
 			return nil, fmt.Errorf("stdin: %w", err)
 		}
@@ -119,7 +119,7 @@ func (e Eval) Shell(dir string, a *Action, operands []string) (*Execution, error
 // shell binding carries.
 func (e Eval) Argument(v *Value) (string, bool, error) {
 	if v.Form == FormJSON {
-		data, absent, err := e.Stdin(v)
+		data, absent, err := e.Bytes(v)
 		return string(data), absent, err
 	}
 	resolved, absent, err := e.Value(v)
@@ -133,10 +133,10 @@ func (e Eval) Argument(v *Value) (string, bool, error) {
 	return s, false, nil
 }
 
-// Stdin resolves the value written to a process's standard input. A json
-// operand reaches it as the bytes the serializer produced, without a further
-// round trip through a string.
-func (e Eval) Stdin(v *Value) ([]byte, bool, error) {
+// Bytes resolves one value to the bytes it carries — a process's standard
+// input, a socket's payload. A json operand reaches it as the bytes the
+// serializer produced, without a further round trip through a string.
+func (e Eval) Bytes(v *Value) ([]byte, bool, error) {
 	if v.Form == FormJSON {
 		return RenderJSON(v.JSON, func(leaf *Value) (any, bool, error) {
 			return e.Value(leaf)
@@ -180,7 +180,7 @@ func (e Eval) Value(v *Value) (any, bool, error) {
 		resolved, err := e.Terminal(v.Terminal)
 		return resolved, false, err
 	default:
-		data, absent, err := e.Stdin(v)
+		data, absent, err := e.Bytes(v)
 		return string(data), absent, err
 	}
 }
