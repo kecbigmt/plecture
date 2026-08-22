@@ -201,3 +201,79 @@ func TestExecutor_HostExecutorReproducesRunShellSemantics(t *testing.T) {
 		t.Errorf("Dir was applied despite not existing")
 	}
 }
+
+func TestExecutor_RunActivityProbeIssuesExpectedExecRequest(t *testing.T) {
+	spy := withSpyExecutor(t)
+	spy.stdout = []byte(`{"fingerprint":"f1"}`)
+	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
+	sig, err := RunActivityProbe(context.Background(), `probe`, map[string]any{}, map[string]any{}, session, "", "PLECT_GUARD=on")
+	if err != nil {
+		t.Fatalf("activity probe: %v", err)
+	}
+	if sig == nil || sig.Fingerprint != "f1" {
+		t.Fatalf("signal = %+v", sig)
+	}
+	if len(spy.requests) != 1 {
+		t.Fatalf("requests = %d, want 1: %+v", len(spy.requests), spy.requests)
+	}
+	want := wantExecRequest(`probe`, "/work/x")
+	want.Env = []string{"PLECT_GUARD=on"}
+	if !reflect.DeepEqual(spy.requests[0], want) {
+		t.Errorf("request = %+v, want %+v", spy.requests[0], want)
+	}
+}
+
+// Standard input is an exec action's affordance, and no template-rendered
+// hook has one. Pinning that here is what keeps a shared request-building
+// path from quietly giving a legacy hook a stdin it never declared.
+func TestExecutor_TemplateRenderedHooksPassNoStdin(t *testing.T) {
+	session := SessionVars{Name: "x", WorkspaceDirPath: "/work/x"}
+	paths := map[string]func(t *testing.T){
+		"task setup": func(t *testing.T) {
+			plan := buildPlan(t,
+				[]taskStub{{id: "a", scope: "run", setup: `echo '{}'`}},
+				[]nodeStub{{id: "a"}},
+			)
+			if err := RunSetup(context.Background(), plan.Run, session, map[string]*contract.TaskState{}, nil); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"alive probe": func(t *testing.T) {
+			if err := RunAliveProbe(context.Background(), `echo ok`, map[string]any{}, map[string]any{}, session, ""); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"capture": func(t *testing.T) {
+			if _, err := RunCapture(context.Background(), `capture`, map[string]any{}, session); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"dynamic output": func(t *testing.T) {
+			src := config.DynamicOutput{Name: "count", Script: `echo 1`}
+			if _, err := FetchOutput(context.Background(), &config.Config{}, src, RenderContext{Session: session}); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"dynamic instance setup": func(t *testing.T) {
+			def := config.TaskDefinition{ID: "review", Scope: "session", Setup: `echo '{}'`}
+			r := resolveDef(t, def, "review#1")
+			if _, err := ExecuteTaskSetup(context.Background(), r, nil, session, map[string]*contract.TaskState{}); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}
+	for name, run := range paths {
+		t.Run(name, func(t *testing.T) {
+			spy := withSpyExecutor(t)
+			run(t)
+			if len(spy.requests) == 0 {
+				t.Fatal("no request issued")
+			}
+			for i, req := range spy.requests {
+				if req.Stdin != nil {
+					t.Errorf("request[%d].Stdin = %q, want none", i, req.Stdin)
+				}
+			}
+		})
+	}
+}
