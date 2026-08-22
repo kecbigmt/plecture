@@ -24,20 +24,11 @@ func TestIntegration_TickSpawnsReviewer(t *testing.T) {
 	cfg := writeIntegrationFixture(t, workdirsRoot, "default",
 		[]taskFixture{
 			{
-				id:    "work",
-				scope: "session",
-				setup: `echo '{"checks_status":"SUCCESS","revision":"sha1"}'`,
+				id: "work",
 				extra: `
-[outputs_schema]
-type = "object"
-[outputs_schema.properties.revision]
-type = "string"
-[outputs_schema.properties.checks_status]
-type = "string"
-
 [done_when]
 all = [
-  { check = "checks_status", in = ["SUCCESS"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
   { judge = "ac met", id = "ac-met" },
 ]
 
@@ -47,16 +38,17 @@ workflow = "default"
 [chains.when]
 all = [
   { judge_pending = "ac-met" },
-  { check = "checks_status", in = ["SUCCESS"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
 ]
 [chains.inputs]
-revision = "{{.Work.outputs.revision}}"
+revision = { from = "resource.state.revision" }
 `,
 			},
 			{id: "tmux", scope: "run", setup: `echo '{"session_name":"t"}'`, cleanup: "true"},
 		},
-		[]nodeFixture{{id: "work"}, {id: "tmux"}},
+		[]nodeFixture{{id: "tmux"}},
 	)
+	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 
 	url := "https://github.com/testowner/testrepo/issues/55"
 	work := "testowner/testrepo-55+default"
@@ -64,6 +56,12 @@ revision = "{{.Work.outputs.revision}}"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
 		t.Fatalf("Up(work): %v", err)
+	}
+	// A workflow builds the session; the work a chain fires off is a task
+	// document dispatched into it. --name keeps the instance key stable, so
+	// the spawn tag a fire derives from it is too.
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: work, Name: "work", Resource: url}); err != nil {
+		t.Fatalf("TaskSetup(work): %v", err)
 	}
 	// Parent the work session so the sibling reviewer is tree-attached.
 	seedSession(t, store, "testowner/testrepo-orch", "testowner/testrepo", 0, "", nil)
@@ -90,8 +88,10 @@ revision = "{{.Work.outputs.revision}}"
 	if spawned.Workflow != "default" {
 		t.Fatalf("reviewer workflow = %q, want default", spawned.Workflow)
 	}
-	if e := spawned.Tasks["work"]; e == nil || e.Status != contract.TaskStatusProduced {
-		t.Fatalf("reviewer work task = %v, want produced", e)
+	// The reviewer session is a real session the workflow built, not a
+	// record: its nodes ran.
+	if e := spawned.Tasks["tmux"]; e == nil || e.Status != contract.TaskStatusProduced {
+		t.Fatalf("reviewer tmux node = %v, want produced", e)
 	}
 	// The wired `revision` binding is rendered from the work outputs and fed to
 	// the spawned reviewer as a session input.
@@ -124,14 +124,13 @@ func TestIntegration_LegacyChainsFileIsIgnored(t *testing.T) {
 		[]taskFixture{
 			{
 				id:    "work",
-				scope: "session",
-				setup: `echo '{"checks_status":"SUCCESS","revision":"sha1"}'`,
 				extra: "[done_when]\nall = [\n  { check = \"resource.state.checks_status\", in = [\"SUCCESS\"] },\n  { judge = \"ac met\", id = \"ac-met\" },\n]\n",
 			},
 			{id: "tmux", scope: "run", setup: `echo '{"session_name":"t"}'`, cleanup: "true"},
 		},
-		[]nodeFixture{{id: "work"}, {id: "tmux"}},
+		[]nodeFixture{{id: "tmux"}},
 	)
+	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
 	dir := filepath.Join(cfg.BaseDir, "chains")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -157,6 +156,12 @@ revision = "{{.Work.outputs.revision}}"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
 		t.Fatalf("Up(work): %v", err)
+	}
+	// A workflow builds the session; the work a chain fires off is a task
+	// document dispatched into it. --name keeps the instance key stable, so
+	// the spawn tag a fire derives from it is too.
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: work, Name: "work", Resource: url}); err != nil {
+		t.Fatalf("TaskSetup(work): %v", err)
 	}
 	seedSession(t, store, "testowner/testrepo-orch", "testowner/testrepo", 0, "", nil)
 	setParent(t, store, work, "testowner/testrepo-orch")

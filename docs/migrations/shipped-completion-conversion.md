@@ -114,7 +114,7 @@ Move it for every live instance, with the session store backed up as above:
 ```bash
 for session in $(plect ls --json | jq -r '.[].session_name'); do
   plect status "$session" --json | jq -r '
-    .runtime.tasks[]? | select(.outputs.verdict_revision != null)
+    .work[]? | select(.outputs.verdict_revision != null)
     | "\(.instance)\t\(.outputs.verdict_revision)"' |
   while IFS="$(printf '\t')" read -r instance revision; do
     plect state set "$session" --instance "$instance" \
@@ -144,10 +144,15 @@ to nest. Replace it with your own `tasks/work.md` task document: a document in
 a deeper layer replaces the shipped one by id, so copy the shipped document
 and edit it, rather than layering over it.
 
+**Delete the wrapper first.** An id names one declaration, so a layer holding
+both `tasks/work.toml` and `tasks/work.md` fails to load — and while the
+wrapper is still there, `plect task show work` reports the wrapper's own path
+rather than the shipped document's:
+
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
-cp "$(plect task show work --json | jq -r .source_path)" "$CONFIG_HOME/tasks/work.md"
 rm "$CONFIG_HOME/tasks/work.toml"
+cp "$(plect task show work --json | jq -r .source_path)" "$CONFIG_HOME/tasks/work.md"
 ```
 
 **Qualify every reference the copy carries.** A plugin's own reference is

@@ -8,19 +8,3 @@ exec '<plugin>/scripts/gh-guard' "$@"
 
 == gh_guard / cleanup
 cleaned
-
-== investigate / setup
-call[0]: "plect" "template" "render" "investigate" "--session" "acme/widget-1" "--instruction" "extra investigation context"
-outputs: {"instruction":"rendered instruction"}
-
-== respond / setup
-call[0]: "plect" "template" "render" "respond" "--session" "acme/widget-1" "--instruction" "extra response context"
-outputs: {"instruction":"rendered instruction"}
-
-== review / setup
-call[0]: "plect" "template" "render" "review" "--session" "acme/widget-1" "--instruction" "extra review context"
-outputs: {"instruction":"rendered instruction"}
-
-== work / setup
-call[0]: "plect" "template" "render" "work" "--session" "acme/widget-1" "--instruction" "extra work context"
-outputs: {"instruction":"rendered instruction"}

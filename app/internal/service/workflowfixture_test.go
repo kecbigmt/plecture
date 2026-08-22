@@ -365,8 +365,10 @@ func fixtureObserverDoc(defs []taskFixture) string {
 
 // stubObservedFacts rewrites the fixture observer so observing a resource
 // succeeds and reports the given facts — for a path that re-observes before
-// deciding (finalize) rather than reading the last observation.
-func stubObservedFacts(t *testing.T, cfg *config.Config, facts map[string]any) {
+// deciding (finalize, instantiation) rather than reading the last
+// observation. match is the caller's, because which resources this observer
+// claims decides what a test's own observer is left to claim.
+func stubObservedFacts(t *testing.T, cfg *config.Config, match string, facts map[string]any) {
 	t.Helper()
 	encoded, err := json.Marshal(facts)
 	if err != nil {
@@ -378,7 +380,7 @@ func stubObservedFacts(t *testing.T, cfg *config.Config, facts map[string]any) {
 	}
 	sort.Strings(keys)
 	var b strings.Builder
-	fmt.Fprintf(&b, "[%s]\nkind = \"resource_observer\"\nmatch = '^fixture://'\n\n", fixtureObserverID)
+	fmt.Fprintf(&b, "[%s]\nkind = \"resource_observer\"\nmatch = '%s'\n\n", fixtureObserverID, match)
 	fmt.Fprintf(&b, "[%s.observe]\ntype = \"shell\"\nscript = %q\n\n", fixtureObserverID, "cat <<'JSON'\n"+string(encoded)+"\nJSON")
 	fmt.Fprintf(&b, "[%s.state_schema]\ntype = \"object\"\n\n[%s.state_schema.properties]\n", fixtureObserverID, fixtureObserverID)
 	for _, k := range keys {

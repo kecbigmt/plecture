@@ -1,11 +1,3 @@
 == goal_bootstrap / setup
 call[0]: "okf-goal" "task" "bootstrap" "--workspace-dir" "<workspace>" "--owner" "acme" "--session" "acme/widget-1" "--assignees" "[\"user:acme\"]"
 outputs: {"created":"0"}
-
-== goal_review / setup
-call[0]: "plect" "template" "render" "goal_review" "--session" "acme/widget-1" "--instruction" "extra review context"
-outputs: {"instruction":"rendered instruction"}
-
-== pursue_goal / setup
-call[0]: "okf-goal" "task" "validate-goal-resource" "--resource" "example://acme/widget/1"
-outputs: {"created":"0"}
