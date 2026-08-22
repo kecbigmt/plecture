@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -33,7 +34,7 @@ func setUpConfigHome(t *testing.T) {
 	}
 	workspaceDirPath := filepath.Join(home, "wd")
 	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "plain.toml"),
-		[]byte("setup = \"mkdir -p "+workspaceDirPath+" && echo '{\\\"workspace_dir\\\":\\\""+workspaceDirPath+"\\\"}'\"\n"), 0o644); err != nil {
+		[]byte(providerDocument("plain", workspaceDirPath)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "plain.toml"),
@@ -134,4 +135,23 @@ func TestHandleUp_TaskConflictsWithInputs(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("expected error result for conflicting task")
 	}
+}
+
+// providerDocument is a workspace provider whose setup creates the workspace
+// directory it reports, which is all these lifecycle tests need from one.
+func providerDocument(id, workspaceDir string) string {
+	return fmt.Sprintf(`
+[%[1]s]
+kind = "workspace_provider"
+
+[%[1]s.setup]
+type    = "exec"
+command = "sh"
+args = [
+  "-c",
+  """mkdir -p "$1" && printf '{\"workspace_dir\":\"%%s\"}' "$1\"""",
+  "provider",
+  "%[2]s",
+]
+`, id, workspaceDir)
 }

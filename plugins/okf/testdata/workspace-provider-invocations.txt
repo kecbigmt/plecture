@@ -1,9 +1,9 @@
-== local-okf / setup
+== local_okf / setup
 call[0]: "okf-bundle" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1"
 
-== local-okf / cleanup
+== local_okf / cleanup
 call[0]: "okf-bundle" "cleanup" "--workspace-dir" "/spy/workspace"
 
-== local-okf / subscribe
-declined: workspace provider "local-okf" declares no subscribe hook
+== local_okf / subscribe
+declined: workspace provider "local_okf" declares no subscribe hook
 

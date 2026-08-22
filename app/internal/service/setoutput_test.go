@@ -240,19 +240,17 @@ func TestSetOutput_WorkflowPseudoNode(t *testing.T) {
 		[]nodeFixture{{id: "noop"}})
 
 	// The @workflow outputs contract lives on the workflow's provider.
-	writeSetupWorkflow(t, cfg, "wf", `
-setup = "echo '{\"workspace_dir\":\"/tmp/wd\"}'"
-
-[outputs_schema]
+	writeSetupWorkflow(t, cfg, "wf", providerEchoingOutputs("wf", `{"workdir":"/tmp/x"}`)+`
+[wf.outputs_schema]
 type = "object"
 
-[outputs_schema.properties.pr_state]
+[wf.outputs_schema.properties.pr_state]
 type = "string"
 mutable = true
 
-[outputs_schema.properties.workdir]
+[wf.outputs_schema.properties.workdir]
 type = "string"
-`+githubResolver)
+`)
 
 	// Simulate a Phase 3 session: workflow pseudo-node already produced.
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{

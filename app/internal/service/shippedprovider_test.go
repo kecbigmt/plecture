@@ -113,11 +113,9 @@ func TestShippedWorkspaceProvider_SetupHookDoesNotShellInjectResourceID(t *testi
 	}
 }
 
-// TestShippedWorkspaceProvider_CleanupHookDoesNotShellInjectWorkspaceDirOrBranch
-// mirrors the setup case for cleanup, whose template interpolates the
-// persisted workspace directory and branch (sourced from setup's own
-// outputs, which in turn derive from the session's tag — not fully outside
-// user control).
+// The cleanup case mirrors the setup one. Cleanup binds the persisted
+// workspace directory and branch — sourced from setup's own outputs, which in
+// turn derive from the session's tag, so not fully outside user control.
 func TestShippedWorkspaceProvider_CleanupHookDoesNotShellInjectWorkspaceDirOrBranch(t *testing.T) {
 	prov := loadShippedWorkspaceProvider(t, "github", "github")
 	marker := filepath.Join(t.TempDir(), "pwned")
@@ -143,10 +141,10 @@ func TestShippedWorkspaceProvider_CleanupHookDoesNotShellInjectWorkspaceDirOrBra
 // directory it creates.
 func TestShippedWorkspaceProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
 	prov := loadShippedWorkspaceProvider(t, "github", "github")
-	if prov.Setup == "" {
+	if prov.Setup == nil {
 		t.Error("the shipped workspace provider must declare setup")
 	}
-	if prov.Cleanup == "" {
+	if prov.Cleanup == nil {
 		t.Error("the shipped workspace provider must declare cleanup")
 	}
 }

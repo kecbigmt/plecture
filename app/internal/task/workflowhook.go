@@ -1,13 +1,14 @@
 package task
 
 import (
-	"bytes"
+	"context"
 	"fmt"
+	"os"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -58,6 +59,62 @@ type WorkflowHookVars struct {
 // workflowHookScope is the Observer scope label for pseudo-node events.
 const workflowHookScope = "workflow"
 
+// providerEnvironment builds the roots one provider hook observes. self and
+// cleanup-only roots are absent for setup, which is what keeps a setup
+// action from projecting an output it is itself producing.
+func providerEnvironment(vars WorkflowHookVars, prev, self map[string]any, cleanup bool) lang.Environment {
+	env := lang.Environment{
+		"resource": map[string]any{"id": vars.ResourceID},
+		"session": map[string]any{
+			"name":   vars.SessionName,
+			"inputs": normalizeOutputs(vars.SessionInputs),
+		},
+		"inputs": normalizeOutputs(vars.Inputs),
+		"config": map[string]any{"workspace_dirs_root": vars.WorkspaceDirsRoot},
+	}
+	if cleanup {
+		env["self"] = map[string]any{"outputs": normalizeOutputs(self)}
+		env["cleanup"] = map[string]any{"inputs": stringMapAsAny(vars.CleanupInputs)}
+		env["force"] = vars.Force
+		return env
+	}
+	env["prev"] = normalizeOutputs(prev)
+	return env
+}
+
+// providerEval resolves a provider hook's values, with `bin` resolving
+// against the plugin that declared it.
+func providerEval(env lang.Environment, mounted []plugins.Mounted, sourcePath string, from lang.Ownership) lang.Eval {
+	bins := config.MountedBins{Mounted: mounted, SourcePath: sourcePath}
+	return lang.Eval{
+		Env: env,
+		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
+	}
+}
+
+// runProviderAction resolves one provider hook and runs it on the host. A
+// shell action gets a private run directory for the binding transport,
+// created only for that variant.
+func runProviderAction(action *lang.Action, eval lang.Eval) (stdout, stderr []byte, err error) {
+	runDir := ""
+	if action.Type == lang.ActionShell {
+		dir, mkErr := os.MkdirTemp("", "plect-provider-")
+		if mkErr != nil {
+			return nil, nil, mkErr
+		}
+		defer os.RemoveAll(dir)
+		runDir = dir
+	}
+	execution, err := eval.Run(runDir, action, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	// No workspace exists yet by definition for setup, and cleanup may be
+	// releasing the one it had, so a provider hook runs from the caller's cwd
+	// and must use absolute paths.
+	return runHook(context.Background(), execution, "")
+}
+
 // RunWorkflowSetup executes the workspace provider setup hook (the
 // workflow-level lifecycle) and persists the result as the @workflow
 // pseudo-node in tasks. Semantics mirror RunSetup: idempotent (an
@@ -78,7 +135,7 @@ func RunWorkflowSetup(prov config.WorkspaceProviderConfig, vars WorkflowHookVars
 		obs.OnSkip(workflowHookScope, id, "already produced")
 		return existing.Outputs, nil
 	}
-	if strings.TrimSpace(prov.Setup) == "" {
+	if prov.Setup == nil {
 		return nil, fmt.Errorf("workspace provider %q declares no setup", prov.ID)
 	}
 
@@ -99,17 +156,8 @@ func RunWorkflowSetup(prov config.WorkspaceProviderConfig, vars WorkflowHookVars
 		}
 	}
 
-	cmdStr, err := renderWorkflowHook(prov.Setup, vars, prev, nil, "missingkey=error")
-	if err != nil {
-		fail(err.Error())
-		wrapped := fmt.Errorf("workspace provider %q setup template: %w", prov.ID, err)
-		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, nil)
-		return nil, wrapped
-	}
-
-	// No workspace exists yet by definition — the script runs from the
-	// caller's cwd and must use absolute paths.
-	stdout, stderr, runErr := runShell(cmdStr, "")
+	eval := providerEval(providerEnvironment(vars, prev, nil, false), vars.Plugins, vars.SourcePath, prov.Ownership())
+	stdout, stderr, runErr := runProviderAction(prov.Setup, eval)
 	if runErr != nil {
 		fail(runErr.Error())
 		wrapped := fmt.Errorf("workspace provider %q setup: %w", prov.ID, runErr)
@@ -181,7 +229,7 @@ func RunWorkflowCleanup(prov config.WorkspaceProviderConfig, vars WorkflowHookVa
 		return nil
 	}
 	now := time.Now()
-	if strings.TrimSpace(prov.Cleanup) == "" {
+	if prov.Cleanup == nil {
 		state.Status = contract.TaskStatusCleaned
 		state.CleanedAt = now
 		obs.OnSuccess(workflowHookScope, id, time.Since(now), nil)
@@ -189,16 +237,8 @@ func RunWorkflowCleanup(prov config.WorkspaceProviderConfig, vars WorkflowHookVa
 	}
 
 	obs.OnStart(workflowHookScope, id)
-	cmdStr, err := renderWorkflowHook(prov.Cleanup, vars, nil, state.Outputs, "missingkey=zero")
-	if err != nil {
-		state.Status = contract.TaskStatusFailed
-		state.Error = err.Error()
-		state.FailedAt = now
-		wrapped := fmt.Errorf("workspace provider %q cleanup template: %w", prov.ID, err)
-		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, nil)
-		return wrapped
-	}
-	_, stderr, runErr := runShell(cmdStr, "")
+	eval := providerEval(providerEnvironment(vars, nil, state.Outputs, true), vars.Plugins, vars.SourcePath, prov.Ownership())
+	_, stderr, runErr := runProviderAction(prov.Cleanup, eval)
 	if runErr != nil {
 		state.Status = contract.TaskStatusFailed
 		state.Error = runErr.Error()
@@ -214,77 +254,9 @@ func RunWorkflowCleanup(prov config.WorkspaceProviderConfig, vars WorkflowHookVa
 	return nil
 }
 
-// renderWorkflowHook renders a workflow hook template. Cleanup additionally
-// sees .Self (the persisted setup outputs); setup sees .Prev (prior outputs,
-// for idempotent retry). Like renderCleanup, "<no value>" is stripped under
-// missingkey=zero so nil never leaks shell metacharacters.
-func renderWorkflowHook(cmd string, vars WorkflowHookVars, prev, self map[string]any, opt string) (string, error) {
-	// bin is built per render call, not part of the static templateFuncs map,
-	// because it resolves against this render's own vars.Plugins — mirrors
-	// renderWith's dynamicFuncs for the same reason.
-	dynamicFuncs := template.FuncMap{
-		"bin": func(ref string) (string, error) {
-			return plugins.ResolveBin(vars.Plugins, vars.SourcePath, ref)
-		},
-	}
-	tmpl, err := template.New("workflow_hook").
-		Option(opt).
-		Funcs(templateFuncs).
-		Funcs(dynamicFuncs).
-		Parse(cmd)
-	if err != nil {
-		return "", fmt.Errorf("template parse: %w", err)
-	}
-	data := struct {
-		ResourceID        string
-		SessionName       string
-		WorkspaceDirsRoot string
-		SessionInputs     map[string]any
-		Inputs            map[string]any
-		Prev              map[string]any
-		Self              map[string]any
-		Force             bool
-		CleanupInputs     map[string]any
-	}{
-		ResourceID:        vars.ResourceID,
-		SessionName:       vars.SessionName,
-		WorkspaceDirsRoot: vars.WorkspaceDirsRoot,
-		SessionInputs:     normalizeOutputs(vars.SessionInputs),
-		Inputs:            normalizeOutputs(vars.Inputs),
-		Prev:              normalizeOutputs(prev),
-		Self:              normalizeOutputs(self),
-		Force:             vars.Force,
-		CleanupInputs:     stringMapAsAny(vars.CleanupInputs),
-	}
-	if data.SessionInputs == nil {
-		data.SessionInputs = map[string]any{}
-	}
-	if data.Inputs == nil {
-		data.Inputs = map[string]any{}
-	}
-	if data.Prev == nil {
-		data.Prev = map[string]any{}
-	}
-	if data.Self == nil {
-		data.Self = map[string]any{}
-	}
-	if data.CleanupInputs == nil {
-		data.CleanupInputs = map[string]any{}
-	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("template execute: %w", err)
-	}
-	out := buf.String()
-	if opt == "missingkey=zero" {
-		out = strings.ReplaceAll(out, "<no value>", "")
-	}
-	return out, nil
-}
-
-// stringMapAsAny widens CleanupInputs for the render data so the `get` helper
-// — which reads map[string]any — reaches a cleanup intent the caller may not
-// have expressed at all.
+// stringMapAsAny widens CleanupInputs so a projection of a cleanup intent the
+// caller never expressed resolves through the value's own default rather than
+// failing on the map's type.
 func stringMapAsAny(in map[string]string) map[string]any {
 	if in == nil {
 		return nil

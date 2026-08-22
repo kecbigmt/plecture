@@ -22,7 +22,7 @@ func addSetupWorkflow(t *testing.T, baseDir, wfID, workdir string) {
 	if err := os.WriteFile(filepath.Join(baseDir, "workflows", wfID+".toml"), []byte(wf), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	prov := "setup = '''\nmkdir -p " + workdir + "\necho '{\"workspace_dir\":\"" + workdir + "\"}'\n'''\n" + githubResolver
+	prov := providerCreatingWorkspace(wfID, workdir)
 	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", wfID+".toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}

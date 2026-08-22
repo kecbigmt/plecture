@@ -1,12 +1,11 @@
 package task
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
-	"text/template"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
@@ -34,14 +33,14 @@ type SubscribeHookVars struct {
 // watcher's subscription registry, say). stderr is folded into the error on
 // failure for diagnosis.
 func RunWorkspaceProviderSubscribe(prov config.WorkspaceProviderConfig, vars SubscribeHookVars) error {
-	if strings.TrimSpace(prov.Subscribe) == "" {
+	if prov.Subscribe == nil {
 		return fmt.Errorf("workspace provider %q declares no subscribe hook", prov.ID)
 	}
-	cmdStr, err := renderSubscribeHook(prov.Subscribe, vars)
-	if err != nil {
-		return fmt.Errorf("workspace provider %q subscribe template: %w", prov.ID, err)
+	env := lang.Environment{
+		"session":  map[string]any{"name": vars.SessionName},
+		"resource": map[string]any{"id": vars.ResourceID},
 	}
-	_, stderr, runErr := runShell(cmdStr, "")
+	_, stderr, runErr := runProviderAction(prov.Subscribe, providerEval(env, vars.Plugins, vars.SourcePath, prov.Ownership()))
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {
 			return fmt.Errorf("workspace provider %q subscribe: %w: %s", prov.ID, runErr, msg)
@@ -49,31 +48,4 @@ func RunWorkspaceProviderSubscribe(prov config.WorkspaceProviderConfig, vars Sub
 		return fmt.Errorf("workspace provider %q subscribe: %w", prov.ID, runErr)
 	}
 	return nil
-}
-
-// renderSubscribeHook renders a subscribe hook template. Strict
-// (missingkey=error) like setup: the surface is a fixed struct so a missing
-// key is an author typo, not a runtime-empty value.
-func renderSubscribeHook(cmd string, vars SubscribeHookVars) (string, error) {
-	// bin is built per render call, not part of the static templateFuncs map,
-	// because it resolves against this render's own vars.Plugins — mirrors
-	// renderWith's and renderWorkflowHook's dynamicFuncs for the same reason.
-	dynamicFuncs := template.FuncMap{
-		"bin": func(ref string) (string, error) {
-			return plugins.ResolveBin(vars.Plugins, vars.SourcePath, ref)
-		},
-	}
-	tmpl, err := template.New("subscribe_hook").
-		Option("missingkey=error").
-		Funcs(templateFuncs).
-		Funcs(dynamicFuncs).
-		Parse(cmd)
-	if err != nil {
-		return "", fmt.Errorf("template parse: %w", err)
-	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, vars); err != nil {
-		return "", fmt.Errorf("template execute: %w", err)
-	}
-	return buf.String(), nil
 }

@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
-	"github.com/BurntSushi/toml"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 // WorkspaceProviderConfig is loaded from `workspaces/<id>.toml` in the
@@ -32,45 +33,49 @@ import (
 // mirroring task definitions — a setup/cleanup pair is atomic, so
 // "append" has no sensible meaning.
 type WorkspaceProviderConfig struct {
-	ID string `toml:"-"`
-	// Match / Name form the optional resolver: a regex with named captures
-	// plus a template over those captures producing the session id. Both or
-	// neither must be set. Workspace providers without a resolver serve
-	// identity workflows (the input string IS the session id) and do not
-	// participate in auto-dispatch.
-	Match string `toml:"match"`
-	Name  string `toml:"name"`
+	ID string
+	// Match is a regular expression over the resource identifier; Name is
+	// resolved from its named captures, which are the only root Name observes
+	// because it runs before a session exists. Both or neither. A provider
+	// without them serves identity workflows (the input string IS the session
+	// name) and does not participate in auto-dispatch.
+	Match string
+	Name  *lang.Value
 	// Setup acquires the session workspace: it MUST emit a JSON object with
 	// the reserved `workspace_dir` key on stdout. Required — acquisition is
 	// the workspace provider's reason to exist.
-	Setup string `toml:"setup"`
+	Setup *lang.Action
 	// Cleanup releases whatever setup acquired. It intentionally does NOT
-	// delete workspace_dir unless the script says so (setup/cleanup symmetry
+	// delete workspace_dir unless the action says so (setup/cleanup symmetry
 	// is the author's contract).
-	Cleanup string `toml:"cleanup"`
+	Cleanup *lang.Action
 	// Subscribe binds a session to a resource of this kind at runtime (the
 	// `plect subscribe` verb), the counterpart to the dispatch-time
-	// auto-subscribe task. Optional: a workspace provider without it cannot
-	// be subscribed to after dispatch. The hook's template surface is the
-	// current session (.SessionName) and the opaque resource (.ResourceID) —
-	// everything resource-specific (a watcher registry, say) stays here.
-	Subscribe string `toml:"subscribe"`
+	// auto-subscribe. Optional: a provider without it cannot be subscribed to
+	// after dispatch.
+	Subscribe *lang.Action
 	// InputsSchema declares the author's parameters: the data-shaped values a
 	// workflow may set to steer this provider's hooks without replacing the
 	// file. Values arrive as literal strings from the workflow's
-	// `[workspace_provider_inputs]` table and reach the hooks as `.Inputs`.
-	// They are deliberately not templates: a hook runs before any workspace
-	// exists, so there is nothing session-specific left for a parameter to
-	// interpolate that the hook surface does not already carry.
-	InputsSchema     map[string]any `toml:"inputs_schema"`
-	InputsSchemaFile string         `toml:"inputs_schema_file"`
+	// `[workspace_provider_inputs]` table.
+	InputsSchema     map[string]any
+	InputsSchemaFile string
 	// OutputsSchema is the @workflow pseudo-node contract: what setup emits and
 	// which keys trusted side paths may explicitly update (`mutable = true`).
 	// `workspace_dir` is reserved always-immutable.
-	OutputsSchema     map[string]any `toml:"outputs_schema"`
-	OutputsSchemaFile string         `toml:"outputs_schema_file"`
-	BaseDir           string         `toml:"-"`
-	SourcePath        string         `toml:"-"`
+	OutputsSchema     map[string]any
+	OutputsSchemaFile string
+	BaseDir           string
+	SourcePath        string
+	// FromPlugin says a plugin layer wrote this definition, which is what
+	// decides whether its bin references may name another plugin.
+	FromPlugin bool
+}
+
+// Ownership names the layer that wrote this definition, for the reference
+// rules that differ between shipped and user-authored config.
+func (p WorkspaceProviderConfig) Ownership() lang.Ownership {
+	return lang.Ownership{IsPlugin: p.FromPlugin}
 }
 
 // ResolvedOutputsSchemaPath joins OutputsSchemaFile with BaseDir.
@@ -104,47 +109,106 @@ func (c *Config) LoadWorkspaceProviders() (map[string]WorkspaceProviderConfig, e
 	if c.BaseDir != "" {
 		globalDir = filepath.Join(c.BaseDir, "workspaces")
 	}
-	out, err := loadTrustedLayer(pluginDirs, globalDir, func(path string, _ bool) ([]WorkspaceProviderConfig, error) {
-		p, err := loadWorkspaceProviderFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("workspace provider %s: %w", path, err)
-		}
-		return []WorkspaceProviderConfig{p}, nil
-	}, func(p WorkspaceProviderConfig) string { return p.ID })
+	return loadTrustedLayer(pluginDirs, globalDir, c.loadWorkspaceProviderDocument, func(p WorkspaceProviderConfig) string { return p.ID })
+}
+
+func (c *Config) loadWorkspaceProviderDocument(path string, fromPlugin bool) ([]WorkspaceProviderConfig, error) {
+	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var hooks []hookSource
-	for _, p := range out {
-		hooks = append(hooks,
-			hookSource{desc: fmt.Sprintf("workspace provider %q setup", p.ID), sourcePath: p.SourcePath, script: p.Setup},
-			hookSource{desc: fmt.Sprintf("workspace provider %q cleanup", p.ID), sourcePath: p.SourcePath, script: p.Cleanup},
-			hookSource{desc: fmt.Sprintf("workspace provider %q subscribe", p.ID), sourcePath: p.SourcePath, script: p.Subscribe},
-		)
-	}
-	if err := checkBinRefs(hooks, c.Plugins, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot); err != nil {
+	parsed, err := lang.ParseDefinitionDocument(path, src)
+	if err != nil {
 		return nil, err
+	}
+	validation := lang.Validation{
+		From:        lang.Ownership{IsPlugin: fromPlugin},
+		Executables: c.binResolver(path),
+	}
+	out := make([]WorkspaceProviderConfig, 0, len(parsed))
+	for _, def := range parsed {
+		if def.Kind != lang.KindWorkspaceProvider {
+			return nil, fmt.Errorf("%s: %q declares kind %q; a definition under workspaces/ is a workspace_provider", path, def.ID, def.Kind)
+		}
+		if err := validation.ValidateDefinition(def); err != nil {
+			return nil, err
+		}
+		prov, err := workspaceProviderFrom(def, path, fromPlugin)
+		if err != nil {
+			return nil, fmt.Errorf("workspace provider %s in %s: %w", def.ID, path, err)
+		}
+		out = append(out, prov)
 	}
 	return out, nil
 }
 
-func loadWorkspaceProviderFile(path string) (WorkspaceProviderConfig, error) {
-	stem, err := validateStem(path, workflowStemRE, "workspace provider")
-	if err != nil {
-		return WorkspaceProviderConfig{}, err
+// workspaceProviderFrom reads the fields the runtime needs off a validated
+// declaration. The resolver pair's togetherness, setup's requiredness, and
+// the reserved-key rule stay here rather than in the language validator, for
+// the reason resourceDefFrom states.
+func workspaceProviderFrom(def *lang.Definition, path string, fromPlugin bool) (WorkspaceProviderConfig, error) {
+	pos := lang.Position{File: path, Path: def.ID}
+	p := WorkspaceProviderConfig{
+		ID:         def.ID,
+		SourcePath: path,
+		BaseDir:    configFileDir(path),
+		FromPlugin: fromPlugin,
 	}
-	var p WorkspaceProviderConfig
-	if _, err := toml.DecodeFile(path, &p); err != nil {
+	if raw, ok := def.Body["match"]; ok {
+		match, ok := raw.(string)
+		if !ok {
+			return p, fmt.Errorf("`match` is a regular expression string")
+		}
+		p.Match = match
+		if _, err := regexp.Compile(match); err != nil {
+			return p, fmt.Errorf("`match` %q does not compile: %w", match, err)
+		}
+	}
+	if raw, ok := def.Body["name"]; ok {
+		name, err := lang.ParseValue(raw, lang.ClassData, childPosition(pos, "name"))
+		if err != nil {
+			return p, err
+		}
+		p.Name = name
+	}
+	if (p.Match == "") != (p.Name == nil) {
+		return p, fmt.Errorf("`match` and `name` must be declared together (the resolver pair) or not at all")
+	}
+	var err error
+	if p.Setup, err = actionField(def, path, "setup"); err != nil {
 		return p, err
 	}
-	p.ID = stem
-	p.SourcePath = path
-	p.BaseDir = configFileDir(path)
-	if p.Setup == "" {
+	if p.Setup == nil {
 		return p, fmt.Errorf("`setup` is required: a workspace provider's purpose is acquiring the workspace")
 	}
-	if (p.Match == "") != (p.Name == "") {
-		return p, fmt.Errorf("`match` and `name` must be declared together (the resolver pair) or not at all")
+	if p.Cleanup, err = actionField(def, path, "cleanup"); err != nil {
+		return p, err
+	}
+	if p.Subscribe, err = actionField(def, path, "subscribe"); err != nil {
+		return p, err
+	}
+	for _, field := range []struct {
+		key    string
+		schema *map[string]any
+		file   *string
+	}{
+		{"inputs_schema", &p.InputsSchema, &p.InputsSchemaFile},
+		{"outputs_schema", &p.OutputsSchema, &p.OutputsSchemaFile},
+	} {
+		if raw, ok := def.Body[field.key]; ok {
+			schema, ok := raw.(map[string]any)
+			if !ok {
+				return p, fmt.Errorf("`%s` is a JSON Schema document", field.key)
+			}
+			*field.schema = schema
+		}
+		if raw, ok := def.Body[field.key+"_file"]; ok {
+			file, ok := raw.(string)
+			if !ok {
+				return p, fmt.Errorf("`%s_file` is a path", field.key)
+			}
+			*field.file = file
+		}
 	}
 	if err := rejectMutableWorkspaceDir(p.OutputsSchema, p.ResolvedOutputsSchemaPath()); err != nil {
 		return p, err

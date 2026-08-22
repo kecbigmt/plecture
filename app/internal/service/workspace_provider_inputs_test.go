@@ -89,13 +89,19 @@ func TestWorkspaceProviderInputs_FromTOMLReachTheHook(t *testing.T) {
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "workspaces", "demo.toml"), `
-setup = 'printf "{\"workspace_dir\":\"%s\"}" {{get .Inputs "layout_root" "" | shellQuote}}'
+[demo]
+kind = "workspace_provider"
 
-[inputs_schema]
+[demo.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workspace_dir":"%s"}', { from = "inputs.layout_root", default = "" }]
+
+[demo.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[inputs_schema.properties]
+[demo.inputs_schema.properties]
 layout_root = { type = "string" }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "demo.toml"), `
@@ -162,13 +168,18 @@ func TestWorkspaceProviderInputs_FromTOMLRejectsAnUndeclaredParameter(t *testing
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "workspaces", "demo.toml"), `
-setup = 'acquire'
+[demo]
+kind = "workspace_provider"
 
-[inputs_schema]
+[demo.setup]
+type    = "exec"
+command = "acquire"
+
+[demo.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[inputs_schema.properties]
+[demo.inputs_schema.properties]
 layout_root = { type = "string" }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "demo.toml"), `

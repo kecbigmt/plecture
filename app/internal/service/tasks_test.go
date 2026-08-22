@@ -531,9 +531,10 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch","prev":"%%s"}' '{{get .Prev "workspace_dir" ""}}'`, newWorkdirPath, newWorkdirPath)
-	providerCleanup := fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog)
-	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\n", providerSetup, providerCleanup)), 0o644); err != nil {
+	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch","prev":"%%s"}' "$1"`, newWorkdirPath, newWorkdirPath)
+	providerSetupArgs := `, { from = "prev.workspace_dir", default = "" }`
+	providerCleanup := fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog)
+	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(providerScriptPair("default", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
@@ -699,8 +700,9 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 		t.Fatal(err)
 	}
 	providerSetup := `echo '{"workspace_dir":"/unused","branch":"unused"}'`
-	providerCleanup := fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog)
-	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\n", providerSetup, providerCleanup)), 0o644); err != nil {
+	providerSetupArgs := ""
+	providerCleanup := fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog)
+	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(providerScriptPair("default", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
@@ -845,8 +847,9 @@ func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing
 		t.Fatal(err)
 	}
 	providerSetup := `printf 'provider setup failed\n' >&2; exit 42`
-	providerCleanup := fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog)
-	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\n", providerSetup, providerCleanup)), 0o644); err != nil {
+	providerSetupArgs := ""
+	providerCleanup := fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog)
+	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(providerScriptPair("default", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
@@ -1028,7 +1031,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
 				writeForceRecreateProvider(t, cfg,
 					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
-					fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; exit 25", cleanupLog),
+					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; exit 25`, cleanupLog),
 				)
 				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
 			},
@@ -1052,7 +1055,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 				wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
 				writeForceRecreateProvider(t, cfg,
 					fmt.Sprintf(`mkdir -p %s && rm -f %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, wfPath, newWorkdirPath),
-					fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog),
+					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog),
 				)
 				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
 			},
@@ -1076,7 +1079,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 				taskPath := filepath.Join(cfg.BaseDir, "tasks", "runtime.toml")
 				writeForceRecreateProvider(t, cfg,
 					fmt.Sprintf(`mkdir -p %s && rm -f %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, taskPath, newWorkdirPath),
-					fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog),
+					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog),
 				)
 				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
 			},
@@ -1099,7 +1102,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 			configure: func(t *testing.T, cfg *config.Config, oldWorkdirPath, newWorkdirPath, cleanupLog string) {
 				writeForceRecreateProvider(t, cfg,
 					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
-					fmt.Sprintf("printf 'workflow=%%s\n' '{{.Self.workspace_dir}}' >> %s; rm -rf '{{.Self.workspace_dir}}'", cleanupLog),
+					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog),
 				)
 				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
 				writeTaskFixture(t, cfg, taskFixture{
@@ -1251,7 +1254,8 @@ func writeForceRecreateProvider(t *testing.T, cfg *config.Config, setup, cleanup
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(fmt.Sprintf("setup = %q\ncleanup = %q\n", setup, cleanup)), 0o644); err != nil {
+	doc := providerScriptPair("default", setup, "", cleanup, `, { from = "self.outputs.workspace_dir" }`)
+	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1517,7 +1521,7 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 	}
 	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q}'`, newWorkdirPath, newWorkdirPath)
 	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"),
-		[]byte(fmt.Sprintf("setup = %q\ncleanup = \"true\"\n", providerSetup)), 0o644); err != nil {
+		[]byte(providerScriptPair("default", providerSetup, "", "true", "")), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
@@ -1564,4 +1568,24 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 	if prompt == nil || prompt.Outputs["delivered"] != "sent=agent-recreated" {
 		t.Fatalf("prompt task = %+v, want the terminal verb rendered against this pass's session_name", prompt)
 	}
+}
+
+// providerScriptPair is a resolver-less provider whose setup and cleanup each
+// run one literal script, for a fixture whose subject is the lifecycle around
+// them.
+func providerScriptPair(id, setup, setupArgs, cleanup, cleanupArgs string) string {
+	return fmt.Sprintf(`
+[%[1]s]
+kind = "workspace_provider"
+
+[%[1]s.setup]
+type    = "exec"
+command = "sh"
+args    = ["-c", %[2]q, "provider"%[3]s]
+
+[%[1]s.cleanup]
+type    = "exec"
+command = "sh"
+args    = ["-c", %[4]q, "provider"%[5]s]
+`, id, setup, setupArgs, cleanup, cleanupArgs)
 }

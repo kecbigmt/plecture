@@ -27,22 +27,30 @@ func mountResolverOnlyWorkspaceProvider(t *testing.T, cfg *config.Config) {
 	t.Helper()
 	base := t.TempDir()
 	cfg.BaseDir = base
+	// Clearing the mounted plugins is what the independence above actually
+	// requires: overriding BaseDir alone leaves whatever catalog this machine
+	// has mounted in the load, so the test would fail or pass on the strength
+	// of config it does not own.
+	cfg.PluginDirs = nil
+	cfg.Plugins = nil
 	if err := os.MkdirAll(filepath.Join(base, "workflows"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(base, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	workflowTOML := "workspace_provider = \"test-gh\"\n"
+	workflowTOML := "workspace_provider = \"test_gh\"\n"
 	if err := os.WriteFile(filepath.Join(base, "workflows", "test.toml"), []byte(workflowTOML), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	workspaceProviderTOML := "match = '^https://github\\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\\d+)'\n" +
-		"name  = \"{{.owner}}/{{.repo}}-{{.number}}\"\n" +
+	workspaceProviderTOML := "[test_gh]\n" +
+		"kind  = \"workspace_provider\"\n" +
+		"match = '^https://github\\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\\d+)'\n" +
+		"name  = { expr = \"match.owner + '/' + match.repo + '-' + match.number\" }\n" +
 		// Never invoked (the allowlist check rejects the request first) —
-		// only present because LoadWorkspaceProviders requires a non-empty setup.
-		"setup = \"exit 1\"\n"
-	if err := os.WriteFile(filepath.Join(base, "workspaces", "test-gh.toml"), []byte(workspaceProviderTOML), 0o644); err != nil {
+		// only present because a provider must declare how it acquires.
+		"\n[test_gh.setup]\ntype = \"exec\"\ncommand = \"false\"\n"
+	if err := os.WriteFile(filepath.Join(base, "workspaces", "test_gh.toml"), []byte(workspaceProviderTOML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

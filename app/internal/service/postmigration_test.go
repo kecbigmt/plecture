@@ -172,7 +172,7 @@ func TestPostMigrationState_ResolverDispatchOverPostMigrationState(t *testing.T)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "gh",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", "setup = \"echo '{\\\"workspace_dir\\\":\\\"/tmp/x\\\"}'\"\n"+githubResolver)
+	writeSetupWorkflow(t, cfg, "gh", providerEchoingOutputs("gh", `{"workspace_dir":"/tmp/x"}`))
 
 	disp, matched, err := dispatchResource(cfg, "", "https://github.com/acme/widgets/issues/42")
 	if err != nil || !matched {

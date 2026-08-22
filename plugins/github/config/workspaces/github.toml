@@ -5,28 +5,39 @@
 # subscription registry. Workflows compose on top via
 # `workspace_provider = "github"`.
 #
-# `setup`/`cleanup`/`subscribe` resolve github-worktree and github-watcher
-# (this plugin's bin/) through `{{bin ...}}`'s plugin-local bare-name
-# reading, so both are reachable purely from this plugin being enabled — no
-# PATH setup required, and no dependency on which alias the operator
-# registered this catalog under.
-
+# `setup`/`cleanup`/`subscribe` name github-worktree and github-watcher
+# (this plugin's bin/) through `bin`'s plugin-local bare-name reading, so
+# both are reachable purely from this plugin being enabled — no PATH setup
+# required, and no dependency on which alias the operator registered this
+# catalog under.
+[github]
+kind  = "workspace_provider"
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
-name  = '{{.owner}}/{{.repo}}-{{.number}}'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
 # Title/state fetches route through github-watcher's gh-api subcommand, so a
 # setup call and the daemon's own polling share one rate budget instead of
 # each independently re-tripping GitHub's secondary rate limit.
-setup = '''
-{{bin "github-worktree"}} setup \
-  --resource {{.ResourceID | shellQuote}} \
-  --session {{.SessionName | shellQuote}} \
-  --workspace-dirs-root {{.WorkspaceDirsRoot | shellQuote}} \
-  --workspace-layout-root {{get .Inputs "workspace_layout_root" "" | shellQuote}} \
-  --issue-branch-template {{get .Inputs "issue_branch_template" "" | shellQuote}} \
-  --tagged-branch-suffix {{get .Inputs "tagged_branch_suffix" "" | shellQuote}} \
-  --watcher-bin {{bin "github-watcher" | shellQuote}}
-'''
+[github.setup]
+type = "exec"
+bin  = "github-worktree"
+args = [
+  "setup",
+  "--resource",
+  { from = "resource.id" },
+  "--session",
+  { from = "session.name" },
+  "--workspace-dirs-root",
+  { from = "config.workspace_dirs_root" },
+  "--workspace-layout-root",
+  { from = "inputs.workspace_layout_root", default = "" },
+  "--issue-branch-template",
+  { from = "inputs.issue_branch_template", default = "" },
+  "--tagged-branch-suffix",
+  { from = "inputs.tagged_branch_suffix", default = "" },
+  "--watcher-bin",
+  { bin = "github-watcher" },
+]
 
 # --delete-branch reads the delete_branch cleanup input (`plect destroy
 # --input delete_branch=true`, or the plect_destroy MCP tool's cleanup_inputs
@@ -36,50 +47,67 @@ setup = '''
 # workflow says otherwise: a branch left behind after worktree removal is
 # safer than one silently reclaimed.
 #
-# The watcher unsubscribe runs unconditionally after worktree cleanup and
-# never gates its exit status: dropping this session's watcher
-# subscriptions is orthogonal to whether the worktree came out clean, and a
-# dirty-worktree failure must still fail `plect destroy` the same as before
-# this line existed. Without it a destroyed session's subscriptions poll
-# forever — the watcher has no other way to learn a session is gone between
-# its own startup sweeps.
-cleanup = '''
-{{bin "github-worktree"}} cleanup \
-  --workspace-dir {{.Self.workspace_dir | shellQuote}} \
-  --branch {{.Self.branch | shellQuote}} \
-  --workspace-dirs-root {{.WorkspaceDirsRoot | shellQuote}} \
-  --workspace-layout-root {{get .Inputs "workspace_layout_root" "" | shellQuote}} \
-  --force={{.Force}} \
-  --delete-branch={{get .CleanupInputs "delete_branch" "" | shellQuote}} \
-  --delete-branch-default={{get .Inputs "delete_branch_default" "" | shellQuote}}
+# This is a shell action because releasing the worktree and dropping the
+# session's watcher subscriptions are two steps with a deliberate ordering
+# rule between them: the unsubscribe runs unconditionally after worktree
+# cleanup and never gates the exit status, since dropping subscriptions is
+# orthogonal to whether the worktree came out clean, and a dirty-worktree
+# failure must still fail `plect destroy`. Without it a destroyed session's
+# subscriptions poll forever — the watcher has no other way to learn a
+# session is gone between its own startup sweeps.
+[github.cleanup]
+type = "shell"
+script = '''
+"$worktree_bin" cleanup \
+  --workspace-dir "$workspace_dir" \
+  --branch "$branch" \
+  --workspace-dirs-root "$workspace_dirs_root" \
+  --workspace-layout-root "$workspace_layout_root" \
+  --force="$force" \
+  --delete-branch="$delete_branch" \
+  --delete-branch-default="$delete_branch_default"
 status=$?
-{{bin "github-watcher"}} unsubscribe --session {{.SessionName | shellQuote}}
+"$watcher_bin" unsubscribe --session "$session_name"
 exit $status
 '''
+
+[github.cleanup.bind]
+worktree_bin          = { bin = "github-worktree" }
+watcher_bin           = { bin = "github-watcher" }
+session_name          = { from = "session.name" }
+workspace_dir         = { from = "self.outputs.workspace_dir" }
+branch                = { from = "self.outputs.branch" }
+workspace_dirs_root   = { from = "config.workspace_dirs_root" }
+workspace_layout_root = { from = "inputs.workspace_layout_root", default = "" }
+force                 = { from = "force" }
+delete_branch         = { from = "cleanup.inputs.delete_branch", default = "" }
+delete_branch_default = { from = "inputs.delete_branch_default", default = "" }
 
 # subscribe binds a session to a resource at runtime (the `plect subscribe`
 # verb) — the same watcher subscription registry `cleanup` unsubscribes from
 # on destroy, additive, never replacing.
-subscribe = '{{bin "github-watcher"}} subscribe --session {{.SessionName | shellQuote}} --resource {{.ResourceID | shellQuote}}'
+[github.subscribe]
+type = "exec"
+bin  = "github-watcher"
+args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
 
 # Author-declared parameters, set by a workflow's
 # `[workspace_provider_inputs]`. Every one is data — a path, a naming
 # template, a boolean — so wiring one can change where and under what name a
 # worktree lands but never what the hooks run. The naming templates use
-# single-brace placeholders (`{number}`, `{tag}`) rather than Go template
-# actions because these values are themselves rendered by plect before
-# github-worktree ever sees them.
+# single-brace placeholders (`{number}`, `{tag}`) rather than value
+# projections because these strings are expanded by github-worktree itself.
 #
 # `subscribe` deliberately reads none of them: it resolves this provider from
 # the resource alone, with no workflow in scope to have set one.
-[inputs_schema]
+[github.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[inputs_schema.properties]
-# A plain path charset, no shell metacharacters: this value is spliced into
-# the hook script above, and shellQuote alone leaves the rendered command's
-# shape to a crafted value.
+[github.inputs_schema.properties]
+# The charset restrictions survive the move to values, where nothing is
+# spliced into a command line any more, because they also bound what reaches
+# github-worktree's own path and template handling.
 workspace_layout_root = { type = "string", pattern = "^[A-Za-z0-9_./~:-]*$" }
 issue_branch_template = { type = "string", pattern = "^[A-Za-z0-9_./{}-]*$" }
 tagged_branch_suffix  = { type = "string", pattern = "^[A-Za-z0-9_./+{}-]*$" }
@@ -92,41 +120,41 @@ delete_branch_default = { type = "string", enum = ["true", "false"] }
 # degrade to absent when their gh-api fetch is tolerated as best-effort (see
 # github-worktree's setup command). `mutable` keys may additionally be
 # merged from trusted side paths (`plect state set-output`) — GitHub status
-# for done_when is fetched by dynamic output refresh via
-# the resource definitions, not by re-running this hook.
-[outputs_schema]
+# for done_when is fetched by dynamic output refresh via the resource
+# observers, not by re-running this hook.
+[github.outputs_schema]
 type     = "object"
 required = ["workspace_dir", "branch"]
 
-[outputs_schema.properties.workspace_dir]
+[github.outputs_schema.properties.workspace_dir]
 type = "string"
 
-[outputs_schema.properties.branch]
+[github.outputs_schema.properties.branch]
 type = "string"
 
-[outputs_schema.properties.url]
+[github.outputs_schema.properties.url]
 type = "string"
 
-[outputs_schema.properties.owner_repo]
+[github.outputs_schema.properties.owner_repo]
 type = "string"
 
-[outputs_schema.properties.owner]
+[github.outputs_schema.properties.owner]
 type = "string"
 
-[outputs_schema.properties.repo]
+[github.outputs_schema.properties.repo]
 type = "string"
 
-[outputs_schema.properties.number]
+[github.outputs_schema.properties.number]
 type = "integer"
 
-[outputs_schema.properties.title]
+[github.outputs_schema.properties.title]
 type    = "string"
 mutable = true
 
-[outputs_schema.properties.pr_state]
+[github.outputs_schema.properties.pr_state]
 type    = "string"
 mutable = true
 
-[outputs_schema.properties.issue_state]
+[github.outputs_schema.properties.issue_state]
 type    = "string"
 mutable = true

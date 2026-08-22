@@ -8,9 +8,30 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+// providerExec builds a provider hook whose subject is the hook's lifecycle
+// rather than its value forms: one literal script, with the values it needs
+// as positional arguments.
+func providerExec(script string, args ...*lang.Value) *lang.Action {
+	argv := []*lang.Value{
+		{Form: lang.FormLiteral, Literal: "-c"},
+		{Form: lang.FormLiteral, Literal: script},
+		{Form: lang.FormLiteral, Literal: "provider"},
+	}
+	return &lang.Action{Type: lang.ActionExec, Command: "sh", Args: append(argv, args...)}
+}
+
+func literalValue(v string) *lang.Value { return &lang.Value{Form: lang.FormLiteral, Literal: v} }
+
+func fromValue(path string) *lang.Value { return &lang.Value{Form: lang.FormFrom, From: path} }
+
+func fromValueOr(path, fallback string) *lang.Value {
+	return &lang.Value{Form: lang.FormFrom, From: path, Default: fallback, HasDefault: true}
+}
 
 // TestRunWorkflowSetup_ResolvesBinReference pins that a workspace provider's
 // setup/cleanup hooks can invoke a plugin-shipped executable through
@@ -23,8 +44,9 @@ func TestRunWorkflowSetup_ResolvesBinReference(t *testing.T) {
 	mounted := []plugins.Mounted{mustMount("official/github", "/mnt/github",
 		plugins.Executable{Name: "github-worktree", Path: "bin/github-worktree"})}
 	prov := config.WorkspaceProviderConfig{
-		ID:    "wf",
-		Setup: `echo "{\"workspace_dir\":\"/tmp/x\",\"bin\":\"{{bin "official/github/github-worktree"}}\"}"`,
+		ID: "wf",
+		Setup: providerExec(`printf '{"workspace_dir":"/tmp/x","bin":"%s"}' "$1"`,
+			&lang.Value{Form: lang.FormBin, Bin: "official/github/github-worktree"}),
 	}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted}, tasks, nil)
@@ -41,7 +63,7 @@ func TestRunWorkflowSetup_ProducesWorkspaceDir(t *testing.T) {
 	dir := t.TempDir()
 	prov := config.WorkspaceProviderConfig{
 		ID:    "wf",
-		Setup: `echo "{\"workspace_dir\":\"` + dir + `\",\"branch\":\"issue/1\"}"`,
+		Setup: providerExec(`printf '{"workspace_dir":"%s","branch":"issue/1"}' "$1"`, literalValue(dir)),
 	}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{ResourceID: "https://example.com/1", SessionName: "s"}, tasks, nil)
@@ -62,8 +84,10 @@ func TestRunWorkflowSetup_ProducesWorkspaceDir(t *testing.T) {
 
 func TestRunWorkflowSetup_TemplateVars(t *testing.T) {
 	prov := config.WorkspaceProviderConfig{
-		ID:    "wf",
-		Setup: `echo "{\"workspace_dir\":\"/tmp/x\",\"resource\":\"{{.ResourceID}}\",\"session\":\"{{.SessionName}}\",\"root\":\"{{.WorkspaceDirsRoot}}\",\"tpl\":\"{{get .SessionInputs "template" ""}}\"}"`,
+		ID: "wf",
+		Setup: providerExec(`printf '{"workspace_dir":"/tmp/x","resource":"%s","session":"%s","root":"%s","tpl":"%s"}' "$1" "$2" "$3" "$4"`,
+			fromValue("resource.id"), fromValue("session.name"),
+			fromValue("config.workspace_dirs_root"), fromValueOr("session.inputs.template", "")),
 	}
 	tasks := map[string]*contract.TaskState{}
 	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{
@@ -81,19 +105,19 @@ func TestRunWorkflowSetup_TemplateVars(t *testing.T) {
 }
 
 // TestRunWorkflowSetup_ShellQuoteNeutralizesMetacharacters pins the
-// shellQuote template func as the fix for hook authors interpolating
-// attacker-influenced values (resource ids, session names) into a command
-// string that runs under bash -c: a value carrying shell metacharacters must
-// reach the invoked command as one literal argument, not be re-parsed as
-// shell syntax.
-func TestRunWorkflowSetup_ShellQuoteNeutralizesMetacharacters(t *testing.T) {
+
+// An exec action passes a value as one argv element, never as command text,
+// so a resource id carrying shell metacharacters reaches the invoked
+// executable literally and its injected command never runs. This is the
+// property the retired shellQuote helper existed to approximate.
+func TestRunWorkflowSetup_AValueIsNeverCommandText(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "pwned")
 	out := filepath.Join(dir, "out")
 	prov := config.WorkspaceProviderConfig{
 		ID: "wf",
-		Setup: `printf '%s' {{.ResourceID | shellQuote}} > ` + out + ` && ` +
-			`echo "{\"workspace_dir\":\"` + dir + `\",\"branch\":\"issue/1\"}"`,
+		Setup: providerExec(`printf '%s' "$1" > "$2"; printf '{"workspace_dir":"%s","branch":"issue/1"}' "$3"`,
+			fromValue("resource.id"), literalValue(out), literalValue(dir)),
 	}
 	malicious := `x"; touch ` + marker + `; echo "`
 	tasks := map[string]*contract.TaskState{}
@@ -101,19 +125,19 @@ func TestRunWorkflowSetup_ShellQuoteNeutralizesMetacharacters(t *testing.T) {
 		t.Fatalf("RunWorkflowSetup: %v", err)
 	}
 	if _, err := os.Stat(marker); err == nil {
-		t.Fatal("shellQuote did not prevent shell interpretation: injected command executed")
+		t.Fatal("the injected command executed: a value reached the shell as syntax")
 	}
 	got, err := os.ReadFile(out)
 	if err != nil {
 		t.Fatalf("read out: %v", err)
 	}
 	if string(got) != malicious {
-		t.Errorf("downstream command received %q, want the literal resource id %q", got, malicious)
+		t.Errorf("the executable received %q, want the literal resource id %q", got, malicious)
 	}
 }
 
 func TestRunWorkflowSetup_MissingWorkspaceDirFails(t *testing.T) {
-	prov := config.WorkspaceProviderConfig{ID: "wf", Setup: `echo '{"branch":"b"}'`}
+	prov := config.WorkspaceProviderConfig{ID: "wf", Setup: providerExec(`echo '{"branch":"b"}'`)}
 	tasks := map[string]*contract.TaskState{}
 	_, err := RunWorkflowSetup(prov, WorkflowHookVars{}, tasks, nil)
 	if err == nil {
@@ -129,7 +153,7 @@ func TestRunWorkflowSetup_MissingWorkspaceDirFails(t *testing.T) {
 }
 
 func TestRunWorkflowSetup_IdempotentSkip(t *testing.T) {
-	prov := config.WorkspaceProviderConfig{ID: "wf", Setup: `echo should-not-run >&2; exit 1`}
+	prov := config.WorkspaceProviderConfig{ID: "wf", Setup: providerExec(`echo should-not-run >&2; exit 1`)}
 	tasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {
 			Scope:   contract.TaskScopeSession,
@@ -149,8 +173,9 @@ func TestRunWorkflowSetup_IdempotentSkip(t *testing.T) {
 func TestRunWorkflowSetup_PrevSurvivesRetry(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "prev.txt")
 	prov := config.WorkspaceProviderConfig{
-		ID:    "wf",
-		Setup: `echo "{{get .Prev "workspace_dir" ""}}" > ` + marker + `; echo '{"workspace_dir":"/tmp/new"}'`,
+		ID: "wf",
+		Setup: providerExec(`printf '%s' "$1" > "$2"; echo '{"workspace_dir":"/tmp/new"}'`,
+			fromValueOr("prev.workspace_dir", ""), literalValue(marker)),
 	}
 	tasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {
@@ -174,7 +199,7 @@ func TestRunWorkflowSetup_PrevSurvivesRetry(t *testing.T) {
 func TestRunWorkflowSetup_OutputsSchemaEnforced(t *testing.T) {
 	prov := config.WorkspaceProviderConfig{
 		ID:    "wf",
-		Setup: `echo '{"workspace_dir":"/tmp/x","branch":42}'`,
+		Setup: providerExec(`echo '{"workspace_dir":"/tmp/x","branch":42}'`),
 		OutputsSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -196,8 +221,8 @@ func TestRunWorkflowCleanup_RunsAndMarksClean(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "cleaned.txt")
 	prov := config.WorkspaceProviderConfig{
 		ID:      "wf",
-		Setup:   "echo '{}'",
-		Cleanup: `echo "{{.Self.workspace_dir}}" > ` + marker,
+		Setup:   providerExec(`echo '{}'`),
+		Cleanup: providerExec(`printf '%s' "$1" > "$2"`, fromValue("self.outputs.workspace_dir"), literalValue(marker)),
 	}
 	tasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {
@@ -233,9 +258,10 @@ func TestRunWorkflowCleanup_RunsAndMarksClean(t *testing.T) {
 func TestRunWorkflowCleanup_CleanupInputsReachTemplate(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "delete_branch.txt")
 	prov := config.WorkspaceProviderConfig{
-		ID:      "wf",
-		Setup:   "echo '{}'",
-		Cleanup: `echo {{eq .CleanupInputs.delete_branch "true"}} > ` + marker,
+		ID:    "wf",
+		Setup: providerExec(`echo '{}'`),
+		Cleanup: providerExec(`printf '%s' "$1" > "$2"`,
+			fromValueOr("cleanup.inputs.delete_branch", ""), literalValue(marker)),
 	}
 	tasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {
@@ -253,20 +279,20 @@ func TestRunWorkflowCleanup_CleanupInputsReachTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := strings.TrimSpace(string(data)); got != "true" {
-		t.Errorf(".CleanupInputs.delete_branch rendered %q, want true", got)
+		t.Errorf("cleanup.inputs.delete_branch resolved to %q, want true", got)
 	}
 }
 
-// TestRunWorkflowCleanup_CleanupInputsDefaultUnset pins that an intent no
-// caller set renders as the map's zero value rather than a template error —
-// a cleanup script reading one key must never have to special-case "no
-// intents given".
+// An intent no caller set resolves through the value's own default rather
+// than failing the hook, so a cleanup action reading one key never has to
+// special-case "no intents given".
 func TestRunWorkflowCleanup_CleanupInputsDefaultUnset(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "delete_branch.txt")
 	prov := config.WorkspaceProviderConfig{
-		ID:      "wf",
-		Setup:   "echo '{}'",
-		Cleanup: `echo {{eq .CleanupInputs.delete_branch "true"}} > ` + marker,
+		ID:    "wf",
+		Setup: providerExec(`echo '{}'`),
+		Cleanup: providerExec(`printf '%s' "$1" > "$2"`,
+			fromValueOr("cleanup.inputs.delete_branch", ""), literalValue(marker)),
 	}
 	tasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {
@@ -282,20 +308,20 @@ func TestRunWorkflowCleanup_CleanupInputsDefaultUnset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(string(data)); got != "false" {
-		t.Errorf(".CleanupInputs.delete_branch rendered %q, want false when unset", got)
+	if got := strings.TrimSpace(string(data)); got != "" {
+		t.Errorf("cleanup.inputs.delete_branch resolved to %q, want the declared default when unset", got)
 	}
 }
 
 func TestRunWorkflowCleanup_NoStateSkips(t *testing.T) {
-	prov := config.WorkspaceProviderConfig{ID: "wf", Cleanup: "exit 1"}
+	prov := config.WorkspaceProviderConfig{ID: "wf", Cleanup: providerExec("exit 1")}
 	if err := RunWorkflowCleanup(prov, WorkflowHookVars{}, map[string]*contract.TaskState{}, nil); err != nil {
 		t.Fatalf("no setup state must skip cleanly: %v", err)
 	}
 }
 
 func TestRunWorkflowCleanup_FailureMarksFailed(t *testing.T) {
-	prov := config.WorkspaceProviderConfig{ID: "wf", Cleanup: "exit 7"}
+	prov := config.WorkspaceProviderConfig{ID: "wf", Cleanup: providerExec("exit 7")}
 	tasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {
 			Scope:   contract.TaskScopeSession,

@@ -73,6 +73,32 @@ var terminalVerbs = func() map[string]bool {
 	return verbs
 }()
 
+// Source renders a value back to the form an author wrote it in, for a
+// listing that shows a configuration to a person rather than evaluating it.
+func (v *Value) Source() string {
+	switch v.Form {
+	case FormFrom:
+		switch {
+		case v.HasDefault:
+			return fmt.Sprintf("{ from = %q, default = %v }", v.From, v.Default)
+		case v.Optional:
+			return fmt.Sprintf("{ from = %q, optional = true }", v.From)
+		default:
+			return fmt.Sprintf("{ from = %q }", v.From)
+		}
+	case FormExpr:
+		return fmt.Sprintf("{ expr = %q }", v.Expr)
+	case FormTerminal:
+		return fmt.Sprintf("{ terminal = %q }", v.Terminal)
+	case FormBin:
+		return fmt.Sprintf("{ bin = %q }", v.Bin)
+	case FormJSON:
+		return "{ json = ... }"
+	default:
+		return fmt.Sprintf("%v", v.Literal)
+	}
+}
+
 // ParseValue reads one value at a location accepting class, applying
 // values.md's validation rules for each form and their composition. A
 // non-table is a literal without further checks: only a table can carry a

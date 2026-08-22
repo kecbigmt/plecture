@@ -112,7 +112,7 @@ func workspaceProviderForResource(cfg *config.Config, resource string) (config.W
 		return config.WorkspaceProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("no workspace provider matches resource %q", resource)}
 	case 1:
 		prov := matched[0]
-		if strings.TrimSpace(prov.Subscribe) == "" {
+		if prov.Subscribe == nil {
 			return config.WorkspaceProviderConfig{}, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workspace provider %q does not support subscribe", prov.ID)}
 		}
 		return prov, nil

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -122,7 +123,10 @@ func attachGithubWorkspaceProvider(t *testing.T, cfg *config.Config, wfID string
 	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := shippedGithubWorkspaceProviderTOML(t)
+	// The shipped declaration's id is its table name, so a fixture that wants
+	// the provider under the workflow's own id renames the table rather than
+	// the file.
+	body := strings.ReplaceAll(shippedGithubWorkspaceProviderTOML(t), "[github", "["+wfID)
 	if err := os.WriteFile(filepath.Join(workspacesDir, wfID+".toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

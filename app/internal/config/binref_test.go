@@ -175,8 +175,16 @@ schema_version = 1
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(catalogDir, "github", "config", "workspaces", "github.toml"), `
-setup = "echo '{\"workspace_dir\":\"/tmp/x\"}'"
-subscribe = '{{bin "local/runtime/watcher"}} subscribe'
+[github]
+kind = "workspace_provider"
+
+[github.setup]
+type    = "exec"
+command = "true"
+
+[github.subscribe]
+type = "exec"
+bin  = "local/runtime/watcher"
 `)
 
 	writeCatalogsToml(t, tmpHome, `
