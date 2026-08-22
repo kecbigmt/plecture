@@ -150,6 +150,14 @@ cp "$(plect task show work --json | jq -r .source_path)" "$CONFIG_HOME/tasks/wor
 rm "$CONFIG_HOME/tasks/work.toml"
 ```
 
+**Qualify every reference the copy carries.** A plugin's own reference is
+relative and resolves in that plugin's namespace; the same text in user-owned
+config is a load error, because a user-owned reference to catalog content
+carries its catalog alias. So `resource_observer = "issue"` becomes
+`resource_observer = "official.github.issue"`, and likewise for a chain's
+`workflow` when it names catalog content. `plect task show <id>` reports
+`PLECTURE-CFG-REF-ALIAS-REQUIRED` naming the reference that still needs it.
+
 An `[bind.outputs]` block that re-exposed the inner layer's outputs has no
 successor and no need for one: the facts it forwarded are published by the
 observer, and a predicate reads them there.
@@ -198,9 +206,12 @@ A host that wants the reviewer spawned automatically declares its own
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
 cp "$(plect task show pursue_goal --json | jq -r .source_path)" "$CONFIG_HOME/tasks/pursue_goal.md"
+sed -i 's/^resource_observer = "okf_goal"$/resource_observer = "official.okf.okf_goal"/' \
+  "$CONFIG_HOME/tasks/pursue_goal.md"
 ```
 
-Then add, inside the frontmatter, before the closing `+++`:
+The observer reference is qualified because the copy is user-owned now; see
+the note above. Then add, inside the frontmatter, before the closing `+++`:
 
 ```toml
 [[pursue_goal.chains]]
