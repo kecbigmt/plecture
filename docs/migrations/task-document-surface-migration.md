@@ -160,12 +160,11 @@ reason to wait, and only "they differ" is a reason to reopen.
 
 The example declares `resource_observer = "pull"`, so an instance of it is
 bound to a pull request. A reviewer session spawned by a chain is bound to the
-*declaring* session's resource, which for issue-keyed work is the issue — so
-until a chain can name the resource its spawned session binds to, instantiate
-such a review against the pull request explicitly:
+declaring session's resource unless the chain names one, so a chain spawning
+a review off issue-keyed work names the pull request:
 
-```bash
-plect task setup review --resource "$pr_url" --session "$PLECT_SESSION_NAME"
+```toml
+resource = { from = "resource.state.pr_url" }
 ```
 
 ### `resource_observer` is declared, and checked

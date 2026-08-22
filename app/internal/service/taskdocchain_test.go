@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 )
@@ -208,5 +209,118 @@ func TestCheckSession_TaskDocumentChainsAreNoLongerAnnouncedAsUnevaluated(t *tes
 	}
 	for _, w := range result.Warnings {
 		t.Errorf("unexpected warning: %s", w)
+	}
+}
+
+// resourceChainDocument names the resource its spawned session binds to,
+// rather than letting it inherit the declaring session's.
+const resourceChainDocument = `+++
+[pursue]
+kind              = "task"
+description       = "Hand a pull request to a reviewer bound to it"
+resource_observer = "issue_pr"
+
+[pursue.done_when]
+all = [{ judge = "the work is done", id = "goal-met" }]
+
+[[pursue.chains]]
+id       = "review"
+workflow = "wf"
+resource = { from = "resource.state.pr_url" }
+
+[pursue.chains.when]
+all = [{ judge_pending = "goal-met" }]
++++
+Pursue the work at {{ resource.id }}.
+`
+
+func TestCheckSession_ChainBindsItsSpawnToTheResourceItNames(t *testing.T) {
+	store := testStore(t)
+	revision := filepath.Join(t.TempDir(), "revision")
+	if err := os.WriteFile(revision, []byte("sha2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const pr = "https://example.test/pull/9"
+	cfg := writeObservedRevisionFixture(t, revision, resourceChainDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+	instance := setUpDocumentInstance(t, cfg, store, "pursue")
+	// The pull request is a fact the instance holds, not the resource it was
+	// instantiated against.
+	if err := store.Update("org/repo-1", func(s *domain.Session) error {
+		s.Tasks[instance].Observed.State["pr_url"] = pr
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sp := chainSpawnFor(t, cfg, store, "review")
+	if !sp.Fired {
+		t.Fatalf("a chain whose resource resolves fires: %+v", sp)
+	}
+	if sp.Resource != pr {
+		t.Errorf("spawn resource = %q, want the pull request the chain named", sp.Resource)
+	}
+}
+
+// Absent, the spawned session inherits the declaring session's resource —
+// which is what every chain did before one could name it.
+func TestCheckSession_ChainWithoutAResourceInheritsTheDeclaringOne(t *testing.T) {
+	store := testStore(t)
+	revision := filepath.Join(t.TempDir(), "revision")
+	if err := os.WriteFile(revision, []byte("sha2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeObservedRevisionFixture(t, revision, pursueDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+	setUpDocumentInstance(t, cfg, store, "pursue")
+
+	sp := chainSpawnFor(t, cfg, store, "review")
+	if !sp.Fired || sp.Resource != "https://example.test/pull/1" {
+		t.Fatalf("spawn resource = %q, want the declaring instance's own: %+v", sp.Resource, sp)
+	}
+}
+
+// A named resource that has nothing to read yet fails the fire closed: a
+// session bound to nothing is worse than one not yet spawned.
+func TestCheckSession_ChainBlockedWhileItsResourceIsUnresolved(t *testing.T) {
+	store := testStore(t)
+	revision := filepath.Join(t.TempDir(), "revision")
+	if err := os.WriteFile(revision, []byte("sha2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeObservedRevisionFixture(t, revision, resourceChainDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+	setUpDocumentInstance(t, cfg, store, "pursue")
+
+	sp := chainSpawnFor(t, cfg, store, "review")
+	if sp.Fired {
+		t.Fatalf("a chain whose resource has nothing to read does not fire: %+v", sp)
+	}
+	if sp.BlockedReason != chainBlockedResourceUnresolved {
+		t.Errorf("blocked reason: got %q, want %q", sp.BlockedReason, chainBlockedResourceUnresolved)
+	}
+}
+
+// A resource that resolves to an empty string is the same failure as one that
+// resolves to nothing: a provider has no resource to match.
+func TestCheckSession_ChainBlockedWhenItsResourceIsEmpty(t *testing.T) {
+	store := testStore(t)
+	revision := filepath.Join(t.TempDir(), "revision")
+	if err := os.WriteFile(revision, []byte("sha2"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeObservedRevisionFixture(t, revision, resourceChainDocument)
+	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
+	instance := setUpDocumentInstance(t, cfg, store, "pursue")
+	if err := store.Update("org/repo-1", func(s *domain.Session) error {
+		s.Tasks[instance].Observed.State["pr_url"] = ""
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sp := chainSpawnFor(t, cfg, store, "review")
+	if sp.Fired || sp.BlockedReason != chainBlockedResourceUnresolved {
+		t.Fatalf("an empty resource blocks the fire: %+v", sp)
 	}
 }

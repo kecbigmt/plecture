@@ -35,6 +35,7 @@ all = [
 [[chains]]
 id       = "review"
 workflow = "default"
+resource = { from = "resource.state.pr_url" }
 [chains.when]
 all = [
   { judge_pending = "ac-met" },
@@ -48,11 +49,14 @@ revision = { from = "resource.state.revision" }
 		},
 		[]nodeFixture{{id: "tmux"}},
 	)
-	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
+	// The work session is keyed to an issue; the pull request it opened is a
+	// fact its resource observation reports, and the chain names it.
+	const prURL = "https://github.com/testowner/testrepo/pull/56"
+	stubObservedFacts(t, cfg, ".", map[string]any{"checks_status": "SUCCESS", "revision": "sha1", "pr_url": prURL})
 
 	url := "https://github.com/testowner/testrepo/issues/55"
 	work := "testowner/testrepo-55+default"
-	reviewer := "testowner/testrepo-55+review-work"
+	reviewer := "testowner/testrepo-56+review-work"
 
 	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
 		t.Fatalf("Up(work): %v", err)
@@ -87,6 +91,11 @@ revision = { from = "resource.state.revision" }
 	}
 	if spawned.Workflow != "default" {
 		t.Fatalf("reviewer workflow = %q, want default", spawned.Workflow)
+	}
+	// The reviewer is about the pull request the chain named, not the issue
+	// the work session is keyed to.
+	if spawned.ResourceID != prURL {
+		t.Fatalf("reviewer resource = %q, want the pull request the chain named (%q)", spawned.ResourceID, prURL)
 	}
 	// The reviewer session is a real session the workflow built, not a
 	// record: its nodes ran.

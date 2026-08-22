@@ -47,6 +47,9 @@ func setupE2ERepo(t *testing.T) string {
 	run(mainDir, "git", "commit", "--allow-empty", "-m", "init")
 	run(mainDir, "git", "remote", "add", "origin", bareDir)
 	run(mainDir, "git", "push", "-u", "origin", "main")
+	// The head branch the fake `gh pr view` reports, so a session dispatched
+	// against a pull request has a ref to acquire.
+	run(mainDir, "git", "push", "origin", "main:feature-branch")
 
 	return workdirsRoot
 }
@@ -75,6 +78,15 @@ case "$1 $2" in
     ;;
   "pr list")
     echo '[]'
+    ;;
+  "api repos"*|"api "*)
+    # A pull request acquisition reads its head ref through the gh api
+    # subcommand and, unlike an issue, propagates a failure -- so the stub
+    # answers with the branch setupE2ERepo pushed.
+    case "$2" in
+      *"/pulls/"*) echo '{"head":{"ref":"feature-branch"},"state":"open","merged":false}' ;;
+      *) echo '{}' ;;
+    esac
     ;;
   *)
     exit 0

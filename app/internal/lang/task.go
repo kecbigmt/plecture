@@ -48,6 +48,9 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 		if err := c.checkPredicate(chain, "when", chainAt); err != nil {
 			return err
 		}
+		if err := c.checkChainResource(chain, chainAt); err != nil {
+			return err
+		}
 		if err := c.checkChainInputs(chain, chainAt); err != nil {
 			return err
 		}
@@ -145,6 +148,32 @@ func (c taskContracts) checkPredicate(body map[string]any, field string, pos Pos
 			if !c.judges[id] {
 				return newDiag(CodeFromPath, LayerSemantic, at,
 					fmt.Sprintf("%q names no judge leaf this document's done_when declares", id))
+			}
+		}
+	}
+	return nil
+}
+
+// checkChainResource resolves the keys the spawned session's resource is
+// projected from, against the same two contracts a chain's inputs resolve
+// against.
+func (c taskContracts) checkChainResource(chain map[string]any, pos Position) error {
+	raw, declared := chain["resource"]
+	if !declared {
+		return nil
+	}
+	at := childPos(pos, "resource")
+	value, err := ParseValue(raw, ClassData, at)
+	if err != nil {
+		return nil // a shape ValidateDefinition already rejected
+	}
+	switch value.Form {
+	case FormFrom:
+		return c.resolve(value.From, at)
+	case FormExpr:
+		for _, path := range expressionPaths(value.Expr, surfaceChainInputs) {
+			if err := c.resolve(path, at); err != nil {
+				return err
 			}
 		}
 	}

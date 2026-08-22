@@ -24,6 +24,11 @@ type DocumentChain struct {
 	Workflow  string
 	Placement string
 	When      ChainWhen
+	// Resource is the resource the spawned session binds to, as a value over
+	// the same roots the inputs read. Absent, the spawned session inherits
+	// the declaring session's resource — which is what every chain did before
+	// one could name its own.
+	Resource *lang.Value
 	// Inputs are the session inputs a fire hands the spawned workflow, as
 	// values over the chain-input roots. A chain's target is topology, so
 	// `workflow` beside them is a static reference and never a value.
@@ -111,6 +116,13 @@ func documentChainsFrom(def *lang.Definition, path string) ([]DocumentChain, err
 				return nil, fmt.Errorf("chains[%d]: `%s` is a string", i, field.key)
 			}
 			*field.target = text
+		}
+		if raw, declared := entry["resource"]; declared {
+			resource, err := lang.ParseValue(raw, lang.ClassData, lang.Position{File: path, Path: fmt.Sprintf("%s.chains[%d].resource", def.ID, i)})
+			if err != nil {
+				return nil, err
+			}
+			ch.Resource = resource
 		}
 		when, err := decodeChainWhen(entry)
 		if err != nil {

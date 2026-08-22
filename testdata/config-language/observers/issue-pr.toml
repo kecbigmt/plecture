@@ -18,3 +18,6 @@ required = ["resource_kind", "checks_status", "revision"]
 resource_kind = { type = "string", enum = ["pull", "issue"] }
 checks_status = { type = "string", enum = ["SUCCESS", "PENDING", "FAILURE", "NULL"] }
 revision      = { type = "string" }
+# Absent, not empty, until a pull request exists — which is what a chain
+# naming it as its spawned session's resource waits on.
+pr_url        = { type = "string" }

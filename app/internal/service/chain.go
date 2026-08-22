@@ -16,6 +16,7 @@ const (
 	chainBlockedOutputsMissing     = "outputs_missing"
 	chainBlockedInvalidBindings    = "invalid_bindings"
 	chainBlockedWorkflowUnresolved = "workflow_unresolved"
+	chainBlockedResourceUnresolved = "resource_unresolved"
 )
 
 // ChainSpawn is one (chain, instance) evaluation: whether the chain fired and,

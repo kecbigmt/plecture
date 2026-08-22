@@ -1,9 +1,8 @@
 +++
 # Written for the pull observer: a reviewer's subject is the pull request. A
-# chain-spawned reviewer inherits the declaring session's resource, which is
-# the issue for issue-keyed work, so such a review is instantiated against the
-# pull request explicitly (`plect task setup review --resource "$pr_url"`)
-# until a chain can name the resource its spawned session binds to.
+# chain spawning a reviewer names it — `resource = { from =
+# "resource.state.pr_url" }` — so an issue-keyed work session hands its review
+# the pull request rather than its own issue.
 #
 # There is no third party to judge a reviewer (self-judge is structurally
 # rejected), so completion cannot use a judge leaf the way work/investigate/

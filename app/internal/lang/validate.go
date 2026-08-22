@@ -273,6 +273,15 @@ func (v Validation) validateTask(def *Definition, pos Position) error {
 		if err := v.completionPredicate(chain, "when", at); err != nil {
 			return err
 		}
+		// The resource a fire binds its spawned session to is projected from
+		// the same facts the inputs beside it are, because it is one of them:
+		// what differs is that the session is bound to it rather than handed
+		// it.
+		if raw, declared := chain["resource"]; declared {
+			if err := v.value(raw, ClassData, surfaceChainInputs, childPos(at, "resource")); err != nil {
+				return err
+			}
+		}
 		if err := v.valueTable(chain, "inputs", ClassData, surfaceChainInputs, at); err != nil {
 			return err
 		}

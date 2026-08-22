@@ -31,13 +31,31 @@ func evalDocumentChain(cfg *config.Config, store *state.Store, def config.Docume
 		Tag:           chainSpawnTag(def.ID, instance),
 		ParentSession: placementParent(placement, session, workName),
 	}
-	// The trigger is decided before the inputs are resolved, so an
+	// The trigger is decided before anything else is resolved, so an
 	// unresolvable projection is reported only for a chain that would
 	// otherwise really fire — the same discipline evalChain applies to the
 	// workflow-existence check.
 	if !chain.WhenSatisfied(def.When, facts) {
 		sp.BlockedReason = chainBlockedWhenUnmet
 		return sp
+	}
+	// A named resource decides what the spawn binds to, so it is resolved
+	// before the tag and the target session are derived from it. Nothing to
+	// read means the fire waits: a session bound to nothing would resolve to
+	// no provider and could never be the session the chain meant to spawn.
+	if def.Resource != nil {
+		named, err := resolveChainResource(def, workName, session.Workflow, instance, facts)
+		if err != nil {
+			sp.BlockedReason = chainBlockedResourceUnresolved
+			sp.Warnings = append(sp.Warnings, fmt.Sprintf("the resource this chain spawns against could not be resolved: %v", err))
+			return sp
+		}
+		if named == "" {
+			sp.BlockedReason = chainBlockedResourceUnresolved
+			return sp
+		}
+		sp.Resource = named
+		resource = named
 	}
 	inputs, missing, err := resolveDocumentChainInputs(def, workName, session.Workflow, instance, facts)
 	switch {
@@ -67,6 +85,24 @@ func evalDocumentChain(cfg *config.Config, store *state.Store, def config.Docume
 		}
 	}
 	return sp
+}
+
+// resolveChainResource evaluates the resource a fire binds its spawned
+// session to. An absent projection resolves to the empty string rather than
+// an error, because "not yet" is the waiting case and only a malformed value
+// is a fault.
+func resolveChainResource(def config.DocumentChain, workName, workflow, instance string, facts chain.Facts) (string, error) {
+	eval := lang.Eval{Roots: documentChainRoots(workName, workflow, instance, facts)}
+	resolved, absent, err := eval.Argument(def.Resource)
+	switch {
+	case err != nil && def.Resource.Form == lang.FormFrom:
+		return "", nil
+	case err != nil:
+		return "", err
+	case absent:
+		return "", nil
+	}
+	return strings.TrimSpace(resolved), nil
 }
 
 // resolveDocumentChainInputs evaluates each `[chains.inputs]` projection

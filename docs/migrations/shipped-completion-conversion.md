@@ -79,27 +79,28 @@ Consequences to check in your own config:
   and `plugins/okf/testdata/gate-keys.txt` are the full mapping, one line per
   fact, regenerated from the shipped declarations.
 
-## A chain-spawned reviewer needs the pull request named
+## A chain names the pull request its reviewer is about
 
-A chain spawns its reviewer against the *declaring* session's resource, which
-for issue-keyed work is the issue. `review` is written for the pull request,
-so the reviewer's own `review` instance has to be created against the pull
-request explicitly. The chain already wires it as `pr_url`, so a host
-dispatcher reads it from the session inputs:
+A chain spawns its reviewer against the declaring session's resource unless it
+says otherwise, and for issue-keyed work that resource is the issue. `review`
+is written for the pull request, so the chain that spawns it names one:
 
-```bash
-# tasks/initial_task.toml, in the branch that instantiates the review task
-PR_URL='{{get .SessionInputs "pr_url" ""}}'
-RESOURCE='{{.ResourceID}}'
-case "$TASK" in
-  review) [ -n "$PR_URL" ] && RESOURCE="$PR_URL" ;;
-esac
-plect task setup "$TASK" --name initial --resource "$RESOURCE" --session '{{.SessionName}}'
+```toml
+[[work.chains]]
+id        = "review"
+workflow  = "codex"
+placement = "sibling"
+resource  = { from = "resource.state.pr_url" }
 ```
 
-Which resource a chain-spawned session binds to is core behavior with no
-declaration today; that language addition is tracked on the chain-design
-issue, and this explicit instantiation is what stands in until it exists.
+The `issue` observer publishes `pr_url` once a linked pull request exists, and
+until then the fire is blocked with `resource_unresolved` rather than spawning
+a reviewer bound to the issue. That is the same waiting the `pr_url` input
+binding used to do, moved to the thing it was really about.
+
+Nothing has to pass `--resource` for this. A manual
+`plect task setup review --resource <pull-url>` still works, as an override
+rather than a convention.
 
 ## `verdict_revision` moves from outputs to state
 
@@ -194,7 +195,7 @@ Each binding becomes a value:
 | `instance = "{{.Work.instance}}"` | `instance = { from = "task.instance" }` |
 | `judge_ids = "{{.Work.done_when.pending_judge_ids}}"` | `judge_ids = { from = "task.done_when.pending_judge_ids" }` |
 | `revision = "{{.Work.outputs.revision}}"` | `revision = { from = "resource.state.revision" }` |
-| `pr_url = "{{.Work.outputs.pr_url}}"` | `pr_url = { from = "resource.state.pr_url" }` |
+| `pr_url = "{{.Work.outputs.pr_url}}"` | `resource = { from = "resource.state.pr_url" }`, beside the inputs — see above |
 | `task = "review"` | `task = "review"` (a literal stays a literal) |
 
 A projection reaching a key the observer has not reported yet keeps the chain
