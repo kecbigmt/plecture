@@ -2,7 +2,6 @@ package langconfig
 
 import (
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -11,24 +10,28 @@ import (
 // config never carries.
 func readFixtureBody(t *testing.T, rel string) []byte {
 	t.Helper()
+	return readConfigLanguageFixture(t, "references/"+rel)
+}
+
+// readConfigLanguageFixture reads a fixture from testdata/config-language/
+// by its path relative to that directory, stripping the leading
+// `# plect-fixture:` / `# reason:` header.
+func readConfigLanguageFixture(t *testing.T, rel string) []byte {
+	t.Helper()
 	root := repoRoot(t)
-	raw, err := os.ReadFile(root + "/testdata/config-language/references/" + rel)
+	raw, err := os.ReadFile(root + "/testdata/config-language/" + rel)
 	if err != nil {
 		t.Fatalf("read fixture %s: %v", rel, err)
 	}
 	return stripFixtureHeader(raw)
 }
 
+// stripFixtureHeader strips a fixture's `plect-fixture:`/`reason:` header —
+// TOML comment lines for a definition document, HTML comment lines for a
+// task document — the same way fixtureBody does for the schema-conformance
+// pass, so a real config file never has to carry it.
 func stripFixtureHeader(src []byte) []byte {
-	s := string(src)
-	for strings.HasPrefix(s, "#") {
-		nl := strings.IndexByte(s, '\n')
-		if nl < 0 {
-			return []byte("")
-		}
-		s = s[nl+1:]
-	}
-	return []byte(strings.TrimLeft(s, "\n"))
+	return []byte(fixtureBody(string(src)))
 }
 
 func TestReferencesRelativeFixtureIsValid(t *testing.T) {
@@ -182,6 +185,54 @@ func TestReferencesTaskInNodeFixtureIsRejected(t *testing.T) {
 	}
 	err = ResolveWorkflowRefs(workflow, Ownership{}, reg)
 	assertDiagnostic(t, err, CodeKindMismatch, LayerSemantic)
+}
+
+func TestWorkflowsDynamicWorkspaceProviderFixtureIsRejected(t *testing.T) {
+	defs, err := ParseDefinitionDocument("dynamic-workspace-provider.toml",
+		readConfigLanguageFixture(t, "workflows/dynamic-workspace-provider.invalid.toml"))
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	reg := NewRegistry(nil, defs)
+	err = ResolveWorkflowRefs(defs[0], Ownership{}, reg)
+	assertDiagnostic(t, err, CodeRefDynamic, LayerStructural)
+}
+
+func TestWorkflowsProviderInputsDynamicFixtureIsRejected(t *testing.T) {
+	defs, err := ParseDefinitionDocument("provider-inputs-dynamic.toml",
+		readConfigLanguageFixture(t, "workflows/provider-inputs-dynamic.invalid.toml"))
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	// "worktree" only needs to exist and be the right kind: this fixture's
+	// violation is workspace_provider_inputs carrying a computed value, not
+	// the workspace_provider reference itself.
+	reg := NewRegistry(nil, append(defs, defOf("worktree", KindWorkspaceProvider, nil)))
+	err = ResolveWorkflowRefs(defs[0], Ownership{}, reg)
+	assertDiagnostic(t, err, CodeValueTagSurface, LayerStructural)
+}
+
+func TestWorkflowsNodesFixtureIsValid(t *testing.T) {
+	defs, err := ParseDefinitionDocument("nodes.toml", readConfigLanguageFixture(t, "workflows/nodes.toml"))
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	// The fixture's own nodes reference "pane" and "official.codex.exec_runtime";
+	// its event.channel references "official.codex.exec_delivery" — companion
+	// definitions stand in for the plugins a real catalog would enable.
+	reg := NewRegistry([]PluginLayer{
+		{Alias: "official", Path: "codex", Defs: []*Definition{
+			defOf("exec_runtime", KindEffect, nil),
+			defOf("exec_delivery", KindChannel, nil),
+		}},
+	}, append(defs,
+		defOf("pane", KindEffect, nil),
+		defOf("initial_task", KindEffect, nil),
+		defOf("okf_bundle", KindWorkspaceProvider, nil),
+	))
+	if err := ResolveWorkflowRefs(defs[0], Ownership{}, reg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestResolveConfigChannelsValid(t *testing.T) {

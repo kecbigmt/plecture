@@ -80,6 +80,40 @@ homepage          = "https://example.invalid"
 	assertDiagnostic(t, err, CodeFieldUnknown, LayerStructural)
 }
 
+func TestValidatePluginManifestDuplicateExecutableName(t *testing.T) {
+	path := writeTemp(t, "plugin.toml", `
+schema_version    = 1
+version           = "0.1.0"
+plect_min_version = "0.0.0"
+description       = "A plugin declaring the same executable name twice."
+
+[[executables]]
+name = "github-worktree"
+path = "bin/github-worktree"
+
+[[executables]]
+name = "github-worktree"
+path = "scripts/github-worktree"
+`)
+	_, err := ValidatePluginManifest(path)
+	if err == nil {
+		t.Fatal("expected an error for a duplicate executable name")
+	}
+}
+
+func TestValidatePluginManifestPlectMinVersionExceedsRunning(t *testing.T) {
+	path := writeTemp(t, "plugin.toml", `
+schema_version    = 1
+version           = "0.1.0"
+plect_min_version = "999.0.0"
+description       = "A plugin that requires a plect version far newer than any that exists."
+`)
+	_, err := ValidatePluginManifest(path)
+	if err == nil {
+		t.Fatal("expected an error: plect_min_version exceeds the running plect")
+	}
+}
+
 func TestValidatePluginManifestServiceUnknownExecutable(t *testing.T) {
 	path := writeTemp(t, "plugin.toml", `
 schema_version    = 1

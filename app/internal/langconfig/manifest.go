@@ -4,6 +4,9 @@ import (
 	"fmt"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/kecbigmt/plecture/app/internal/plugins"
+	"github.com/kecbigmt/plecture/app/internal/version"
 )
 
 // PluginManifest is a plugin.toml: the package's identity, the executables
@@ -54,12 +57,12 @@ type CatalogManifestFile struct {
 
 // ValidatePluginManifest reads and validates plugin.toml against the #plugin
 // schema entry's structural rules (schema_version, version,
-// plect_min_version, and description required; no other field) and the one
-// semantic rule in scope for this slice: a service's executable must name a
-// declared executable. Executable-name uniqueness and the
-// plect_min_version-vs-running-binary check are not part of the 40-code
-// diagnostic vocabulary and stay with the existing operational loader in
-// app/internal/plugins.
+// plect_min_version, and description required; no other field), the
+// semantic rule in the 40-code diagnostic vocabulary (a service's executable
+// must name a declared executable), and the two plugins.md rules that carry
+// no PLECTURE-CFG code of their own (executable-name uniqueness and
+// plect_min_version against the running plect) — those surface as plain
+// errors, the same way this package already reports a decode failure.
 func ValidatePluginManifest(path string) (*PluginManifest, error) {
 	var m PluginManifest
 	meta, err := toml.DecodeFile(path, &m)
@@ -77,8 +80,16 @@ func ValidatePluginManifest(path string) (*PluginManifest, error) {
 		return nil, newDiag(CodeFieldUnknown, LayerStructural, Position{File: path, Path: key},
 			fmt.Sprintf("field %q is not part of a plugin manifest's surface", key))
 	}
+	if ok, err := plugins.AtLeast(version.Current, m.PlectMinVersion); err != nil {
+		return nil, fmt.Errorf("%s: plect_min_version: %w", path, err)
+	} else if !ok {
+		return nil, fmt.Errorf("%s: plect_min_version %s exceeds the running plect (%s)", path, m.PlectMinVersion, version.Current)
+	}
 	declared := make(map[string]bool, len(m.Executables))
-	for _, ex := range m.Executables {
+	for i, ex := range m.Executables {
+		if declared[ex.Name] {
+			return nil, fmt.Errorf("%s: executables[%d]: duplicate executable name %q", path, i, ex.Name)
+		}
 		declared[ex.Name] = true
 	}
 	for _, svc := range m.Services {

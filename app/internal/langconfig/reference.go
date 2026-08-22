@@ -148,6 +148,19 @@ func ResolveWorkflowRefs(def *Definition, from Ownership, r *Registry) error {
 			return err
 		}
 	}
+	if inputsVal, ok := def.Body["workspace_provider_inputs"]; ok {
+		inputs, ok := inputsVal.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s.workspace_provider_inputs: expected a table", def.ID)
+		}
+		for key, v := range inputs {
+			if _, isTagged := v.(map[string]any); isTagged {
+				return newDiag(CodeValueTagSurface, LayerStructural,
+					Position{Path: fmt.Sprintf("%s.workspace_provider_inputs.%s", def.ID, key)},
+					"a workspace provider's hooks run before any node output exists, so its parameters are literal data")
+			}
+		}
+	}
 	if nodesVal, ok := def.Body["nodes"]; ok {
 		nodes, ok := asTableArray(nodesVal)
 		if !ok {
