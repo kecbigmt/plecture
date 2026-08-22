@@ -1,19 +1,19 @@
 package task
 
 import (
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
-	"text/template"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// MatchResourceDef finds the resource definition whose `match` recognizes
-// resourceID. Ok=false with a nil error means no definition claims this id —
+// MatchResourceDef finds the resource observer whose `match` recognizes
+// resourceID. Ok=false with a nil error means no observer claims this id —
 // a legitimate, common case: most instance-local resources have no declared
 // kind, and stay the opaque passthrough dynamic instantiation already
 // provides. More than
@@ -45,25 +45,29 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (co
 	}
 }
 
-// ResourceStatus observes a resource id: it finds the resource definition
-// whose `match` accepts the id, runs its `observe` script, and validates the
-// result against the definition's state schema. Ok=false with a nil error
-// means no resource definition recognizes this id — the Resource contract is
+// ResourceStatus observes a resource id: it finds the resource observer whose
+// `match` accepts the id, runs its `observe` action, and validates the
+// result against the observer's state schema. Ok=false with a nil error
+// means no observer recognizes this id — the Resource contract is
 // optional, most instance-local resources have no declared kind. branch and
 // workspaceDirPath describe the owning session (both empty for a standalone
 // `plect resource status` call, which has no owning session) — an observe
-// script may derive the current branch from workspaceDirPath as its primary
-// identity signal for the resource.
+// action may derive the current branch from the workspace directory as its
+// primary identity signal for the resource.
 func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branch string, workspaceDirPath string, mountedPlugins []plugins.Mounted) (map[string]any, config.ResourceDef, bool, error) {
 	def, ok, err := MatchResourceDef(defs, resourceID)
 	if err != nil || !ok {
 		return nil, def, ok, err
 	}
-	cmdStr, rerr := render(def.Observe, RenderContext{Session: SessionVars{ResourceID: resourceID, Branch: branch, WorkspaceDirPath: workspaceDirPath, Plugins: mountedPlugins}, SourcePath: def.SourcePath})
-	if rerr != nil {
-		return nil, def, true, fmt.Errorf("resource %s: observe script template: %w", def.ID, rerr)
+	env := lang.Environment{"resource": map[string]any{"id": resourceID}}
+	// An absent workspace is absent from the environment rather than present
+	// and empty: that is what lets a standalone observation's `default` fire
+	// instead of handing the executable an empty flag value it cannot tell
+	// from a real one.
+	if workspace := presentKeys(map[string]string{"dir": workspaceDirPath, "branch": branch}); workspace != nil {
+		env["workspace"] = workspace
 	}
-	stdout, stderr, runErr := runShell(cmdStr, "")
+	stdout, stderr, runErr := runResourceAction(def, def.Observe, env, mountedPlugins)
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {
 			return nil, def, true, fmt.Errorf("resource %s: %w: %s", def.ID, runErr, msg)
@@ -87,7 +91,7 @@ func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branc
 }
 
 // FinalizeJudgeEvidence is one judge leaf's satisfied verdict, carried into a
-// resource's finalize script as evidence of who approved what (ADR
+// resource's finalize action as evidence of who approved what (ADR
 // "goal-as-task" D4: the completion record cites judge id, reason, and the
 // revision it was recorded against).
 type FinalizeJudgeEvidence struct {
@@ -100,38 +104,21 @@ type FinalizeJudgeEvidence struct {
 }
 
 // FinalizeResourceParams is the evidence and identity supplied to a resource
-// definition's `finalize` script.
+// observer's `finalize` action.
 type FinalizeResourceParams struct {
 	ResourceID  string
-	Instance    string
 	SessionName string
 	Revision    string
 	Judges      []FinalizeJudgeEvidence
-	// Plugins are the mounted plugins `{{bin ...}}` resolves against inside
-	// finalize (config.Config.Plugins) — mirrors Observe's mountedPlugins
-	// parameter above.
+	// Plugins are the mounted plugins a `bin` reference resolves against
+	// inside finalize (config.Config.Plugins) — mirrors Observe's
+	// mountedPlugins parameter above.
 	Plugins []plugins.Mounted
 }
 
-// finalizeTemplateData is the template surface a `finalize` script renders
-// against — a small, dedicated struct rather than RenderContext/SessionVars:
-// the judge evidence it carries belongs to the task instance being
-// finalized, not to the resource's own session, so reusing the task
-// setup/cleanup template surface would conflate the two.
-type finalizeTemplateData struct {
-	ResourceID  string
-	Instance    string
-	SessionName string
-	Revision    string
-	Judges      []FinalizeJudgeEvidence
-	JudgesJSON  string
-	Plugins     []plugins.Mounted
-	SourcePath  string
-}
-
-// FinalizeResource runs the matched resource definition's `finalize` script,
-// if it declares one. Ran=false with a nil error covers both "no definition
-// recognizes this resource id" and "the definition declares no finalize" —
+// FinalizeResource runs the matched observer's `finalize` action, if it
+// declares one. Ran=false with a nil error covers both "no observer
+// recognizes this resource id" and "the observer declares no finalize" —
 // every resource kind until a later ADR slice adds one (e.g. local-okf). Core
 // commits to nothing beyond "there was no completion record to write";
 // `plect task finalize` treats that as expected, not an error.
@@ -140,27 +127,21 @@ func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourc
 	if merr != nil {
 		return false, def, merr
 	}
-	if !ok || strings.TrimSpace(def.Finalize) == "" {
+	if !ok || def.Finalize == nil {
 		return false, def, nil
 	}
-	judgesJSON, jerr := marshalJudges(params.Judges)
-	if jerr != nil {
-		return false, def, fmt.Errorf("resource %s: finalize: %w", def.ID, jerr)
+	judges := make([]any, 0, len(params.Judges))
+	for _, judge := range params.Judges {
+		judges = append(judges, judge)
 	}
-	cmdStr, rerr := renderFinalize(def.Finalize, finalizeTemplateData{
-		ResourceID:  params.ResourceID,
-		Instance:    params.Instance,
-		SessionName: params.SessionName,
-		Revision:    params.Revision,
-		Judges:      params.Judges,
-		JudgesJSON:  judgesJSON,
-		Plugins:     params.Plugins,
-		SourcePath:  def.SourcePath,
-	})
-	if rerr != nil {
-		return false, def, fmt.Errorf("resource %s: finalize script template: %w", def.ID, rerr)
+	env := lang.Environment{
+		"resource": map[string]any{"id": params.ResourceID, "revision": params.Revision},
+		"judges":   judges,
 	}
-	_, stderr, runErr := runShell(cmdStr, "")
+	if session := presentKeys(map[string]string{"name": params.SessionName}); session != nil {
+		env["session"] = session
+	}
+	_, stderr, runErr := runResourceAction(def, def.Finalize, env, params.Plugins)
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {
 			return false, def, fmt.Errorf("resource %s: finalize: %w: %s", def.ID, runErr, msg)
@@ -170,37 +151,45 @@ func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourc
 	return true, def, nil
 }
 
-func marshalJudges(judges []FinalizeJudgeEvidence) (string, error) {
-	if len(judges) == 0 {
-		return "[]", nil
+// runResourceAction resolves one of an observer's actions against env and
+// runs it. A shell action gets a private run directory for the binding
+// transport, created only when there is a shell action to transport
+// bindings for — an observation runs on every tick, and an exec action
+// touches no filesystem of its own.
+func runResourceAction(def config.ResourceDef, action *lang.Action, env lang.Environment, mountedPlugins []plugins.Mounted) (stdout, stderr []byte, err error) {
+	bins := config.MountedBins{Mounted: mountedPlugins, SourcePath: def.SourcePath}
+	eval := lang.Eval{
+		Env: env,
+		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, def.Ownership()) },
 	}
-	b, err := json.Marshal(judges)
+	runDir := ""
+	if action.Type == lang.ActionShell {
+		dir, mkErr := os.MkdirTemp("", "plect-resource-")
+		if mkErr != nil {
+			return nil, nil, mkErr
+		}
+		defer os.RemoveAll(dir)
+		runDir = dir
+	}
+	execution, err := eval.Run(runDir, action, nil)
 	if err != nil {
-		return "", fmt.Errorf("marshal judge evidence: %w", err)
+		return nil, nil, err
 	}
-	return string(b), nil
+	return alwaysHostExecutor.Run(context.Background(), ExecRequest{Argv: execution.Argv, Stdin: execution.Stdin})
 }
 
-func renderFinalize(tmplStr string, data finalizeTemplateData) (string, error) {
-	// bin is built per render call, not part of the static templateFuncs map,
-	// because it resolves against this render's own data.Plugins — mirrors
-	// renderWith's dynamicFuncs for the same reason.
-	dynamicFuncs := template.FuncMap{
-		"bin": func(ref string) (string, error) {
-			return plugins.ResolveBin(data.Plugins, data.SourcePath, ref)
-		},
+// presentKeys drops the empty entries of a root's keys, and the root itself
+// when nothing is left, so absence stays distinguishable from emptiness.
+func presentKeys(keys map[string]string) map[string]any {
+	var out map[string]any
+	for key, value := range keys {
+		if value == "" {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]any, len(keys))
+		}
+		out[key] = value
 	}
-	tmpl, err := template.New("resource-finalize").
-		Option("missingkey=error").
-		Funcs(templateFuncs).
-		Funcs(dynamicFuncs).
-		Parse(tmplStr)
-	if err != nil {
-		return "", fmt.Errorf("template parse: %w", err)
-	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("template execute: %w", err)
-	}
-	return buf.String(), nil
+	return out
 }

@@ -203,7 +203,9 @@ plugins = ["github"]
 }
 
 // TestLoad_UnresolvedResourceBinRefFailsLoud proves the same load-time check
-// covers resources/*.toml (observe/finalize).
+// covers a resource observer's actions. The reference is user-owned here
+// because shipped plugin config may not name another plugin's executable at
+// all — see TestLoadResourceDefs_PluginOwnedBinRefStaysInsideItsPlugin.
 func TestLoad_UnresolvedResourceBinRefFailsLoud(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -225,9 +227,15 @@ path = "bin/watcher"
 schema_version = 1
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(catalogDir, "github", "config", "resources", "github.toml"), `
-match   = "^gh:"
-observe = '{{bin "local/runtime/watcher"}} observe'
+	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "")
+	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "resources", "github.toml"), `
+[github]
+kind  = "resource_observer"
+match = "^gh:"
+
+[github.observe]
+type = "exec"
+bin  = "local/runtime/watcher"
 `)
 
 	writeCatalogsToml(t, tmpHome, `

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
@@ -70,26 +71,30 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 		t.Fatalf("expected github+okf to declare resources, workspace providers, and tasks; got %d/%d/%d", len(resDefs), len(provDefs), len(taskDefs))
 	}
 
+	pluginsRoot := filepath.Join(repoRoot, "plugins")
 	for id, def := range resDefs {
-		if def.Observe != "" {
-			ctx := RenderContext{
-				Session:    SessionVars{ResourceID: "owner:test", Plugins: mounted},
-				SourcePath: def.SourcePath,
-			}
-			if _, err := render(def.Observe, ctx); err != nil {
-				t.Errorf("resource %q observe: %v", id, err)
-			}
+		observer := def
+		bins := config.MountedBins{Mounted: mounted, SourcePath: observer.SourcePath}
+		eval := lang.Eval{
+			Env: lang.Environment{
+				"resource":  map[string]any{"id": "owner:test", "revision": "abc123"},
+				"workspace": map[string]any{"dir": "/tmp/wd", "branch": "b"},
+				"session":   map[string]any{"name": "test-session"},
+				"judges":    []any{},
+			},
+			Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, observer.Ownership()) },
 		}
-		if def.Finalize != "" {
-			data := finalizeTemplateData{
-				ResourceID: "owner:test",
-				Revision:   "abc123",
-				JudgesJSON: "[]",
-				Plugins:    mounted,
-				SourcePath: def.SourcePath,
+		for field, action := range map[string]*lang.Action{"observe": observer.Observe, "finalize": observer.Finalize} {
+			if action == nil {
+				continue
 			}
-			if _, err := renderFinalize(def.Finalize, data); err != nil {
-				t.Errorf("resource %q finalize: %v", id, err)
+			execution, err := eval.Run(t.TempDir(), action, nil)
+			if err != nil {
+				t.Errorf("resource %q %s: %v", id, field, err)
+				continue
+			}
+			if !strings.HasPrefix(execution.Argv[0], pluginsRoot) {
+				t.Errorf("resource %q %s: argv[0] = %q, want an executable inside %s", id, field, execution.Argv[0], pluginsRoot)
 			}
 		}
 	}

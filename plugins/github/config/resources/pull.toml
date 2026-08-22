@@ -9,20 +9,33 @@
 # facts belong to whichever pull request closes it, so one state_schema
 # covering both could only type them as a union whose halves are NULL by turns.
 #
-# .WorkspaceDirPath is the observing task instance's session workspace
-# directory when one exists, and empty for a standalone `plect resource
-# status` call. A pull request needs neither, and the flag is passed for one
-# observe command shared with issue.toml.
+# workspace.dir is the observing task instance's session workspace directory
+# when one exists, and absent for a standalone `plect resource status` call.
+# A pull request needs neither, and the flag is passed for one observe
+# invocation shared with issue.toml.
 
+[pull]
+kind  = "resource_observer"
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>\d+)'
 
-observe = '{{bin "github-issue-pr"}} observe --resource {{.ResourceID | shellQuote}} --workspace-dir-path {{.WorkspaceDirPath | shellQuote}} --watcher-bin {{bin "github-watcher" | shellQuote}}'
+[pull.observe]
+type = "exec"
+bin  = "github-issue-pr"
+args = [
+  "observe",
+  "--resource",
+  { from = "resource.id" },
+  "--workspace-dir-path",
+  { from = "workspace.dir", default = "" },
+  "--watcher-bin",
+  { bin = "github-watcher" },
+]
 
-[state_schema]
+[pull.state_schema]
 type     = "object"
 required = ["resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision"]
 
-[state_schema.properties]
+[pull.state_schema.properties]
 resource_kind = { type = "string", enum = ["pull"] }
 # "NULL" here means the head commit has no checks configured at all, which is
 # distinct from a rollup that is merely still running. A gh failure exits

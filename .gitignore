@@ -4,6 +4,8 @@
 
 # plect plugin add/update builds catalog-plugin executables in place for a
 # path-scheme catalog (this repository, used as its own local dev catalog).
+/plugins/claude/bin/
 /plugins/github/bin/
 /plugins/okf/bin/
 /plugins/session/runtime/bin/
+/plugins/slack/bin/

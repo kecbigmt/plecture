@@ -22,8 +22,14 @@ func writeResourceDefFixture(t *testing.T, baseDir, id, toml string) {
 func TestResourceStatus_ObservesMatchingDefinition(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
 	writeResourceDefFixture(t, cfg.BaseDir, "github", `
-match   = '^https://github\.com/'
-observe = "echo '{\"resource_kind\":\"pull\",\"checks_status\":\"SUCCESS\"}'"
+[github]
+kind  = "resource_observer"
+match = '^https://github\.com/'
+
+[github.observe]
+type    = "exec"
+command = "printf"
+args    = ['{"resource_kind":"pull","checks_status":"SUCCESS"}']
 `)
 
 	result, err := ResourceStatus(cfg, ResourceStatusParams{ResourceID: "https://github.com/o/r/pull/5"})

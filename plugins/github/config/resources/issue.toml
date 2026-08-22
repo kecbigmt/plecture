@@ -12,20 +12,34 @@
 # green. Discovery failures degrade to the no-pull-request shape rather than
 # failing the observation; issue_status still gates.
 #
-# .WorkspaceDirPath is the observing task instance's session workspace
-# directory when one exists, and empty for a standalone `plect resource
-# status` call — linked-pull-request discovery then skips straight to the
-# GraphQL closing-reference lookup.
+# workspace.dir is the observing task instance's session workspace directory
+# when one exists, and absent for a standalone `plect resource status` call —
+# linked-pull-request discovery then skips straight to the GraphQL
+# closing-reference lookup, which is why the projection defaults to empty
+# rather than requiring the root.
 
+[issue]
+kind  = "resource_observer"
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/issues/(?P<number>\d+)'
 
-observe = '{{bin "github-issue-pr"}} observe --resource {{.ResourceID | shellQuote}} --workspace-dir-path {{.WorkspaceDirPath | shellQuote}} --watcher-bin {{bin "github-watcher" | shellQuote}}'
+[issue.observe]
+type = "exec"
+bin  = "github-issue-pr"
+args = [
+  "observe",
+  "--resource",
+  { from = "resource.id" },
+  "--workspace-dir-path",
+  { from = "workspace.dir", default = "" },
+  "--watcher-bin",
+  { bin = "github-watcher" },
+]
 
-[state_schema]
+[issue.state_schema]
 type     = "object"
 required = ["resource_kind", "issue_status", "checks_status", "revision", "mergeable_state", "review_decision"]
 
-[state_schema.properties]
+[issue.state_schema.properties]
 resource_kind = { type = "string", enum = ["issue"] }
 issue_status  = { type = "string", enum = ["SUCCESS", "PENDING"] }
 # Every key below reports the LINKED pull request, so "NULL" means no pull
