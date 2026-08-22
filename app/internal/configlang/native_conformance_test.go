@@ -57,7 +57,6 @@ var nativeDeferred = map[string]string{
 	"references/unknown-ref.invalid.toml":          "reference resolution across enabled plugin layers",
 	"references/wrong-kind.invalid.toml":           "reference resolution across enabled plugin layers",
 	"references/task-in-node.invalid.toml":         "reference resolution across enabled plugin layers",
-	"expressions/comprehension.toml":               "an unresolved specification conflict: its computed output reads inputs, which values.md's outputs.bind row does not list, through join, which the documented CEL profile does not define",
 }
 
 // TestNativeConformanceFixtures is the semantic half of this package's

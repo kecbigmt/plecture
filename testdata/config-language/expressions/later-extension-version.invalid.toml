@@ -1,0 +1,8 @@
+# plect-fixture: result=invalid layer=cel diagnostic=PLECTURE-CFG-CEL-CUSTOM-FUNCTION entry=definitions
+# reason: the strings extension is admitted at one pinned version, so a function a later version of it introduces is still outside the profile.
+
+[notify]
+kind    = "channel"
+type    = "exec"
+command = "curl"
+args    = [{ expr = "event.summary.format(['x'])" }]

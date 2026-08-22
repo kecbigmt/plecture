@@ -12,7 +12,17 @@ The target is the CEL language as specified by
 - Standard primitive, list, map, object, string, numeric, boolean, and null
   values.
 - The standard macros: `has`, `all`, `exists`, `exists_one`, `map`, `filter`.
+- One extension library, the official CEL strings extension at version 0,
+  which contributes exactly ten functions: `charAt`, `indexOf`,
+  `lastIndexOf`, `lowerAscii`, `upperAscii`, `replace`, `split`, `substring`,
+  `trim`, and `join`.
 - No Plecture custom functions.
+
+The extension is admitted by name and version, and the enumeration above is
+the whole of it. A function a later version of that extension introduces, and
+a function from any other extension library, is outside the profile. Pinning
+the version is what makes the vocabulary a configuration may call the same
+one this chapter lists.
 
 Each expression site defines the variables visible at it, the expected result
 type, and any Plecture-specific restriction on references. An expression is
@@ -74,8 +84,9 @@ executable ownership, terminal capabilities, effect nesting, layer boundaries,
 custom functions is not a reason to move any of them there.
 
 An expression calling a function the profile does not define is
-`PLECTURE-CFG-CEL-CUSTOM-FUNCTION` — including one that looks like a Plecture
-capability:
+`PLECTURE-CFG-CEL-CUSTOM-FUNCTION`. That covers a function from an extension
+library the profile does not admit, a function a later version of the admitted
+strings extension introduces, and one that looks like a Plecture capability:
 
 <!-- fixture: expressions/custom-function.invalid.toml -->
 ```toml

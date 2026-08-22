@@ -31,9 +31,9 @@ type Surface struct {
 	envErr   error
 }
 
-// rootPath is one documented root. A `<...>` segment matches exactly one
-// path segment, `*` matches the root itself and anything under it, and any
-// other segment matches itself.
+// rootPath is one documented root, where `<...>` stands for one segment and
+// `*` for the root itself and anything under it — a channel body serializes
+// the whole event, so `event.*` has to cover `event` as well.
 type rootPath struct{ segments []string }
 
 func newSurface(name string, layer Layer, roots ...string) *Surface {
@@ -75,8 +75,7 @@ func (r rootPath) matches(segments []string) bool {
 	return len(segments) >= len(r.segments)
 }
 
-// identifiers returns the distinct leading segments of this surface's roots,
-// sorted: the variables a CEL expression at this site may name.
+// identifiers returns the variables a CEL expression at this site may name.
 func (s *Surface) identifiers() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -141,7 +140,7 @@ var (
 		"inputs.<key>", "locals.<key>", "nodes.<id>.outputs.<key>", "workflow.outputs.<key>",
 		"session.*", "workspace.*")
 	surfaceEffectOutputsBind = newSurface("effect.outputs.bind", LayerStructural,
-		"inner.outputs.<key>", "locals.<key>")
+		"inner.outputs.<key>", "locals.<key>", "inputs.<key>")
 
 	surfaceTaskCompletion = newSurface("task.done_when", LayerStructural,
 		"resource.state.<key>", "self.state.<key>")

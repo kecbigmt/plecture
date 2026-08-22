@@ -26,7 +26,7 @@ func TestSurfaceRootsMatchValuesTable(t *testing.T) {
 		{surfaceEffectHealth, []string{"self.outputs.session_name", "inputs.x", "session.name", "workspace.dir"}, []string{"nodes.pane.outputs.x", "resource.id"}},
 		{surfaceEffectTerminal, []string{"self.outputs.session_name", "session.name"}, []string{"inputs.x", "workspace.dir"}},
 		{surfaceEffectInner, []string{"inputs.tmux_session", "locals.guard_dir", "nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name", "workspace.dir"}, []string{"inner.outputs.pid", "resource.id"}},
-		{surfaceEffectOutputsBind, []string{"inner.outputs.pid", "locals.guard_dir"}, []string{"session.inputs.owner", "resource.state.checks_status", "inputs.x"}},
+		{surfaceEffectOutputsBind, []string{"inner.outputs.pid", "locals.guard_dir", "inputs.mcp_servers"}, []string{"session.inputs.owner", "resource.state.checks_status", "inner.inputs.x"}},
 		{surfaceTaskCompletion, []string{"resource.state.resource_kind", "self.state.verdict_revision"}, []string{"resource.id", "nodes.pane.outputs.session_name", "inputs.x"}},
 		{surfaceTaskInstruction, []string{"resource.id", "resource.state.revision", "self.state.verdict_revision", "inputs.instruction", "session.name", "workflow.outputs.x"}, []string{"nodes.pane.outputs.session_name", "locals.x"}},
 		{surfaceChainInputs, []string{"task.session", "task.instance", "task.workflow", "task.done_when.pending_judge_ids", "resource.state.checklist_status", "self.state.x"}, []string{"locals.guard_dir", "inputs.x"}},

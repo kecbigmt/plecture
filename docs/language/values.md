@@ -122,7 +122,7 @@ receiving everything and relying on a later check to reject the rest.
 | Effect `health` probes | `self.outputs.<key>`, `inputs.<key>`, `session.*`, `workspace.*` |
 | Effect `terminal` verbs | `self.outputs.<key>`, `session.*` |
 | Effect `inner.inputs`, `inner.env` | `inputs.<key>`, `locals.<key>`, `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `workspace.*` |
-| Effect `outputs.bind` | `inner.outputs.<key>`, `locals.<key>` |
+| Effect `outputs.bind` | `inner.outputs.<key>`, `locals.<key>`, `inputs.<key>` |
 | Task `done_when`, chain `when` | `resource.state.<key>`, `self.state.<key>` |
 | Task instruction body | `resource.id`, `resource.state.<key>`, `self.state.<key>`, `inputs.<key>`, `session.*`, `workflow.outputs.<key>` |
 | Chain `inputs` | `task.session`, `task.instance`, `task.workflow`, `task.done_when.pending_judge_ids`, `resource.state.<key>`, `self.state.<key>` |
@@ -144,7 +144,9 @@ declaration form — re-evaluation rides on root liveness.
 
 The live roots appear only in a task document, where a completion predicate and
 a chain read them. An effect's outputs are production records, so its
-`outputs.bind` reads the nesting joint's roots only.
+`outputs.bind` observes no live root: what it reads is fixed when the layer is
+instantiated, whether it comes from the nesting joint or from this layer's own
+inputs.
 
 <!-- fixture: values/live-root.md -->
 ```markdown
