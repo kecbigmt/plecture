@@ -111,7 +111,7 @@ receiving everything and relying on a later check to reject the rest.
 | Workspace provider `cleanup` | `self.outputs.<key>`, `inputs.<key>`, `cleanup.inputs.<key>`, `session.name`, `config.workspace_dirs_root`, `force` |
 | Workspace provider `subscribe` | `session.name`, `resource.id` |
 | Resource observer `observe` | `resource.id`, `workspace.dir`, `workspace.branch` |
-| Resource observer `finalize` | `resource.id`, `session.name`, `effect.instance`, `resource.revision`, `judges` |
+| Resource observer `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges` |
 | Workflow `display` | `workflow.outputs.<key>`, `session.inputs.<key>` |
 | Workflow node `inputs` | `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>`, `workspace.*` |
 | Workflow event-channel `inputs` | same as workflow node inputs |
