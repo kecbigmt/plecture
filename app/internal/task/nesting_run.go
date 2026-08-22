@@ -94,10 +94,14 @@ func ResolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
 }
 
 // CleanupLayers builds the cleanup-relevant layer chain of a definition,
-// skipping the schema compilation resolveLayers does. Teardown must stay
+// skipping the schema compilation ResolveLayers does. Teardown must stay
 // resilient to a definition whose config drifted to invalid after the
-// instance was created, and unwinding needs only each layer's script and the
-// file it came from — every value it renders against was persisted at setup.
+// instance was created, so it takes only what unwinding needs: each layer's
+// cleanup, the file it came from, and the outward joint. The joint is not
+// optional here — a layer's cleanup reads its own public contract, and that
+// contract exists only because `[outputs.bind]` projects it, so a chain
+// rebuilt without the bindings could never release what a layer produced as
+// a private local. Classifying them needs no schema.
 func CleanupLayers(def config.TaskDefinition) []ResolvedLayer {
 	if !def.IsNested() {
 		return nil
@@ -105,7 +109,13 @@ func CleanupLayers(def config.TaskDefinition) []ResolvedLayer {
 	defs := append([]config.TaskDefinition{def}, def.InnerChain...)
 	out := make([]ResolvedLayer, 0, len(defs))
 	for _, d := range defs {
-		out = append(out, ResolvedLayer{TaskID: d.ID, Cleanup: d.Cleanup, SourcePath: d.SourcePath, From: d.Ownership()})
+		out = append(out, ResolvedLayer{
+			TaskID:      d.ID,
+			Cleanup:     d.Cleanup,
+			SourcePath:  d.SourcePath,
+			From:        d.Ownership(),
+			BindOutputs: d.ClassifiedOutputBindings(),
+		})
 	}
 	return out
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -238,5 +239,65 @@ func TestTaskCleanup_NestedPartialUnwindSurvivesForTheRetry(t *testing.T) {
 	}
 	if store.Get("o/r-1").Tasks["initial"] != nil {
 		t.Error("a successful retry must reclaim the instance")
+	}
+}
+
+// TestTaskCleanup_NestedOuterReleasesItsProjectedLocal drives the teardown
+// path the way a session's own destroy does: the layer chain is rebuilt from
+// the declaration alone, with no compiled plan in scope. An outer layer
+// releases what its setup produced as a private local by projecting it into
+// its own public contract, so that projection has to survive the rebuild —
+// otherwise the release resolves against nothing and the resource leaks.
+func TestTaskCleanup_NestedOuterReleasesItsProjectedLocal(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	dir := t.TempDir()
+	guard := filepath.Join(dir, "guard")
+	released := filepath.Join(dir, "released")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{
+			{id: "runtime", scope: "session", setup: `echo '{"pid":"42"}'`},
+			{
+				id:      "team_runtime",
+				scope:   "session",
+				setup:   "mkdir -p " + guard + ` && echo '{"guard_dir":"` + guard + `"}'`,
+				cleanup: "echo {{.Self.guard_dir}} > " + released,
+				extra: "inner = \"runtime\"\n" + `
+[outputs.bind]
+guard_dir = { from = "locals.guard_dir" }
+
+[locals_schema]
+type     = "object"
+required = ["guard_dir"]
+
+[locals_schema.properties.guard_dir]
+type = "string"
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties.guard_dir]
+type = "string"
+`,
+			},
+		},
+		[]nodeFixture{{id: "team_runtime"}},
+	)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "team_runtime", SessionName: "o/r-1", Name: "initial"}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "initial", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("TaskCleanup: %v", err)
+	}
+	data, err := os.ReadFile(released)
+	if err != nil {
+		t.Fatalf("the outer layer's cleanup never ran: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != guard {
+		t.Errorf("released %q, want the local the outer setup produced (%q)", got, guard)
 	}
 }

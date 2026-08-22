@@ -572,3 +572,40 @@ func TestCompileWorkflow_NestedNodeCarriesItsLayers(t *testing.T) {
 		t.Errorf("node layers = %v, want the whole chain outermost first", got)
 	}
 }
+
+// TestCleanupLayers_CarryTheOutwardJoint is the teardown path's own
+// requirement: a layer's cleanup reads its own public contract, which exists
+// only because `[outputs.bind]` projects it. Teardown rebuilds the chain
+// without compiling schemas, so the bindings have to survive that rebuild or
+// an outer layer can never release what its setup produced.
+func TestCleanupLayers_CarryTheOutwardJoint(t *testing.T) {
+	exec := withScriptedExecutor(t, &scriptedExecutor{})
+	outer := config.TaskDefinition{
+		ID: "outer", Scope: "run", Cleanup: &lang.Action{
+			Type:   lang.ActionShell,
+			Script: "rm -rf $guard_dir",
+			Bind:   map[string]*lang.Value{"guard_dir": fromValue("self.outputs.guard_dir")},
+		},
+		OutputsBind: map[string]*lang.Value{"guard_dir": fromValue("locals.guard_dir")},
+		InnerChain:  []config.TaskDefinition{{ID: "inner", Scope: "run", Cleanup: shellStub("inner-cleanup")}},
+	}
+	outer.Inner = "inner"
+	r := Resolved{NodeID: "outer", Scope: config.TaskScopeRun, Cleanup: outer.Cleanup, Layers: CleanupLayers(outer)}
+	tasks := map[string]*contract.TaskState{"outer": {
+		Scope:  config.TaskScopeRun,
+		Status: contract.TaskStatusProduced,
+		Layers: []contract.TaskLayerState{
+			{TaskID: "outer", Status: contract.TaskStatusProduced, Locals: map[string]any{"guard_dir": "/tmp/guard"}},
+			{TaskID: "inner", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "42"}},
+		},
+	}}
+	if err := RunCleanup(context.Background(), []Resolved{r}, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunCleanup: %v", err)
+	}
+	if len(exec.bindings) != 2 {
+		t.Fatalf("executions = %d, want both layers released", len(exec.bindings))
+	}
+	if !strings.Contains(exec.bindings[1], "/tmp/guard") {
+		t.Errorf("outer cleanup bindings = %q, want the projected local", exec.bindings[1])
+	}
+}

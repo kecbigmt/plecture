@@ -701,12 +701,22 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 		if layer.workspaceDir && len(entries) > 0 {
 			return nil, fmt.Errorf("task definitions inside the workspace directory are not loaded (clone content must not carry shell): %s; move them to the global layer (~/.config/plect/tasks/), a plugin, or a repo overlay above the workspace dir", entries[0])
 		}
+		// One layer spreads its declarations over as many files as it likes,
+		// but an id is unique within it: resolving a same-layer collision by
+		// traversal order would let a filename decide which of two
+		// declarations is live. A deeper layer replacing a shallower same-id
+		// declaration is the cascade rule and stays allowed.
+		layerOwner := make(map[string]string)
 		for _, path := range entries {
 			defs, err := c.loadEffectDocument(path, layer.plugin)
 			if err != nil {
 				return nil, err
 			}
 			for _, def := range defs {
+				if prior, dup := layerOwner[def.ID]; dup {
+					return nil, lang.DuplicateID(def.ID, prior, path)
+				}
+				layerOwner[def.ID] = path
 				if layer.plugin {
 					if owner, exists := pluginOwner[def.ID]; exists {
 						return nil, fmt.Errorf("effect %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, path)

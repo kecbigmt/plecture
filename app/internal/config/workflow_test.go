@@ -1287,3 +1287,66 @@ judge = "both set"
 		t.Fatal("expected load error for leaf with both check and judge")
 	}
 }
+
+// A definition id is unique within one layer, whichever files the layer
+// spreads its declarations across: resolving a same-layer collision by
+// traversal order would let a file name decide which of two declarations is
+// live. A deeper layer replacing a shallower same-id declaration is the
+// cascade rule and stays allowed.
+func TestLoadTaskDefinitions_SameLayerDuplicateIDRejected(t *testing.T) {
+	const runtime = `
+[runtime]
+kind = "effect"
+
+[runtime.setup]
+type   = "shell"
+script = "true"
+`
+	t.Run("two files in the global layer", func(t *testing.T) {
+		base := t.TempDir()
+		writeFile(t, filepath.Join(base, "tasks", "a.toml"), runtime)
+		writeFile(t, filepath.Join(base, "tasks", "b.toml"), runtime)
+		_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
+		if err == nil {
+			t.Fatal("expected a duplicate-id error, got nil")
+		}
+		if !strings.Contains(err.Error(), "PLECTURE-CFG-ID-DUPLICATE") {
+			t.Errorf("error = %v, want it to report the duplicate id", err)
+		}
+	})
+	t.Run("two files in one plugin layer", func(t *testing.T) {
+		plugin := t.TempDir()
+		writeFile(t, filepath.Join(plugin, "config", "tasks", "a.toml"), runtime)
+		writeFile(t, filepath.Join(plugin, "config", "tasks", "b.toml"), runtime)
+		_, err := (&Config{PluginDirs: []string{plugin}}).LoadTaskDefinitions("")
+		if err == nil {
+			t.Fatal("expected a duplicate-id error, got nil")
+		}
+		if !strings.Contains(err.Error(), "PLECTURE-CFG-ID-DUPLICATE") {
+			t.Errorf("error = %v, want it to report the duplicate id", err)
+		}
+	})
+	t.Run("a deeper layer still replaces a shallower declaration", func(t *testing.T) {
+		repoDir := t.TempDir()
+		writeFile(t, filepath.Join(repoDir, ".plect", "tasks", "runtime.toml"), runtime)
+		writeFile(t, filepath.Join(repoDir, "overlay", ".plect", "tasks", "runtime.toml"), `
+[runtime]
+kind = "effect"
+
+[runtime.setup]
+type   = "shell"
+script = "echo deeper"
+`)
+		workspaceDirPath := filepath.Join(repoDir, "overlay", "session")
+		if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		defs, err := (&Config{}).LoadTaskDefinitions(workspaceDirPath)
+		if err != nil {
+			t.Fatalf("LoadTaskDefinitions: %v", err)
+		}
+		if got := defs["runtime"].Setup.Source(); got != "echo deeper" {
+			t.Errorf("Setup = %q, want the deeper layer's declaration", got)
+		}
+	})
+}
