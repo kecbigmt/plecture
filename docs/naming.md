@@ -57,3 +57,5 @@ that fits you, working together with AI.
 `plect` is not a nickname, an abbreviation notice, or a placeholder — it is
 the CLI's formal name, exactly as `hg` is Mercurial's and `rg` is
 ripgrep's.
+
+<!-- ci-269 throwaway verification: docs-only diff, no Go code touched -->
