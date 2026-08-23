@@ -11,10 +11,11 @@
 # plugin config back to the app build-test entry that a plain Go import
 # graph would not surface.
 #
-# docs/language/**/*.md and testdata/config-language/** are the same kind
-# of reverse edge, not prose: app/internal/lang's conformance tests
-# (docs_conformance_test.go, diag_test.go, native_conformance_test.go)
-# read these files directly off disk as the executable specification.
+# The docs/language/**/*.md and testdata/config-language/** paths are the
+# same kind of reverse edge, not prose: app/internal/lang's conformance
+# tests (docs_conformance_test.go, diag_test.go,
+# native_conformance_test.go) read these files directly off disk as the
+# executable specification.
 #
 # The "docs-only, no job needed" list below is a whitelist of locations
 # individually confirmed (by grep, not by extension) to hold prose no Go

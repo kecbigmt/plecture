@@ -17,7 +17,7 @@ jobs:
   # sides depend only on contracts/* (scripts/check-provider-boundary.sh
   # enforces this) — that boundary, not convention, is what makes
   # scripts/ci-changed-modules.sh's trigger map safe to narrow.
-  # push events (post-merge to main) always run everything: that build is
+  # Push events (post-merge to main) always run everything: that build is
   # the authoritative one, and there is no PR base to diff against.
   changes:
     name: changes
@@ -62,9 +62,10 @@ jobs:
           echo "readme_verify=$readme_verify" >> "$GITHUB_OUTPUT"
           echo "affected_plugins=$affected_plugins" >> "$GITHUB_OUTPUT"
 
-  # Whole-repo invariant checks, not per-module builds: unconditional so a
-  # docs-only diff still gets exactly this lint set (nothing from
-  # build-test/integration-test/readme-verify, which the changes job gates).
+  # These four jobs are whole-repo invariant checks, not per-module builds,
+  # so they stay unconditional: a docs-only diff still gets exactly this
+  # lint set, and nothing from build-test/integration-test/readme-verify
+  # below, which the changes job gates instead.
   gofmt:
     name: gofmt
     runs-on: ubuntu-latest
@@ -110,11 +111,11 @@ jobs:
       - name: Prove the gh_guard shim denies merge/close and passes through everything else
         run: ./scripts/gh-guard_selftest.sh
 
-  # The script-side half of a plugin's delivery contract. Its argv side is
-  # pinned by the channel-invocation records the integration-test job
-  # regenerates from the shipped declarations. Scoped to the plugins the
-  # changes job flagged: one plugin's change must not run another plugin's
-  # selftests.
+  # This job covers the script-side half of a plugin's delivery contract;
+  # its argv side is pinned by the channel-invocation records the
+  # integration-test job regenerates from the shipped declarations. It is
+  # scoped to the plugins the changes job flagged, since one plugin's
+  # change must not run another plugin's selftests.
   plugin-script-selftests:
     name: plugin-script-selftests
     needs: changes
