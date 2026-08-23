@@ -138,6 +138,7 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-TASK-FRONTMATTER-MISSING` | structural | A task document does not open with `+++` frontmatter. |
 | `PLECTURE-CFG-TASK-BLOCK-COUNT` | structural | A task document's frontmatter holds other than exactly one declaration. |
 | `PLECTURE-CFG-TASK-IN-TOML-DOCUMENT` | structural | A TOML definition document declares a kind whose declaration needs a body. |
+| `PLECTURE-CFG-BODILESS-IN-TASK-DOCUMENT` | structural | A task document's frontmatter declares a kind that has no body to carry. |
 | `PLECTURE-CFG-UNKNOWN-REF` | semantic | A reference resolves to no definition. |
 | `PLECTURE-CFG-KIND-MISMATCH` | semantic | A reference site's expected kind differs from the target's declared kind. |
 | `PLECTURE-CFG-ID-DUPLICATE` | semantic | One layer declares the same definition id twice. |

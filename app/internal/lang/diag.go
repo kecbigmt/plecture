@@ -46,6 +46,7 @@ const (
 	CodeTaskFrontmatterMissing    Code = "PLECTURE-CFG-TASK-FRONTMATTER-MISSING"
 	CodeTaskBlockCount            Code = "PLECTURE-CFG-TASK-BLOCK-COUNT"
 	CodeTaskInTOMLDocument        Code = "PLECTURE-CFG-TASK-IN-TOML-DOCUMENT"
+	CodeBodilessInTaskDocument    Code = "PLECTURE-CFG-BODILESS-IN-TASK-DOCUMENT"
 	CodeUnknownRef                Code = "PLECTURE-CFG-UNKNOWN-REF"
 	CodeKindMismatch              Code = "PLECTURE-CFG-KIND-MISMATCH"
 	CodeIDDuplicate               Code = "PLECTURE-CFG-ID-DUPLICATE"
@@ -95,6 +96,7 @@ var codeLayers = map[Code][]Layer{
 	CodeTaskFrontmatterMissing:    {LayerStructural},
 	CodeTaskBlockCount:            {LayerStructural},
 	CodeTaskInTOMLDocument:        {LayerStructural},
+	CodeBodilessInTaskDocument:    {LayerStructural},
 	CodeUnknownRef:                {LayerSemantic},
 	CodeKindMismatch:              {LayerSemantic},
 	CodeIDDuplicate:               {LayerSemantic},
@@ -127,7 +129,8 @@ func Codes() []Code {
 		CodeValueFromAndExpr, CodeValueDefaultAndOptional, CodeValueTagUnknown, CodeValueTagSurface,
 		CodeActionTypeUnknown, CodeActionVariant, CodeActionBinAndCommand, CodeShellInterpolation,
 		CodeRefDynamic, CodeChannelTimeoutRoot, CodeTaskFrontmatterMissing, CodeTaskBlockCount,
-		CodeTaskInTOMLDocument, CodeUnknownRef, CodeKindMismatch, CodeIDDuplicate,
+		CodeTaskInTOMLDocument, CodeBodilessInTaskDocument, CodeUnknownRef,
+		CodeKindMismatch, CodeIDDuplicate,
 		CodeRefAliasRequired, CodeRefCrossPlugin, CodeFromRoot, CodeFromPath,
 		CodeResourceObserverMismatch, CodeFirstObserveFailed, CodeBinUnknown, CodeTerminalUnavailable,
 		CodeNestingCycle, CodeNestingOutputMutable, CodeNestingProjectionMismatch, CodeWorkflowCycle,
