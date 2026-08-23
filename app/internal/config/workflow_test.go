@@ -1346,3 +1346,63 @@ uses = "tmux"
 		}
 	}
 }
+
+// A layer stack has one id namespace across every kind, so a deeper
+// declaration reusing an id under a different kind is a load error. Every
+// loader has to see it: filtering by kind before comparing ids would let each
+// hold a winner with neither knowing about the other.
+func TestLoadDeclarations_CrossLayerCrossKindCollisionRejected(t *testing.T) {
+	pluginDir := t.TempDir()
+	base := t.TempDir()
+	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "shared.toml"),
+		"[shared]\nkind = \"effect\"\n\n[shared.setup]\ntype = \"shell\"\nscript = \"true\"\n")
+	writeFile(t, filepath.Join(base, "channels", "shared.toml"),
+		"[shared]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n")
+	cfg := &Config{BaseDir: base, PluginDirs: []string{pluginDir}}
+
+	for _, load := range []struct {
+		name string
+		run  func() error
+	}{
+		{"LoadChannels", func() error { _, err := cfg.LoadChannels(); return err }},
+		{"LoadTaskDefinitions", func() error { _, err := cfg.LoadTaskDefinitions(""); return err }},
+		{"LoadTaskDocuments", func() error { _, err := cfg.LoadTaskDocuments(""); return err }},
+		{"LoadWorkflows", func() error { _, err := cfg.LoadWorkflows(""); return err }},
+		{"LoadResourceDefs", func() error { _, err := cfg.LoadResourceDefs(); return err }},
+		{"LoadWorkspaceProviders", func() error { _, err := cfg.LoadWorkspaceProviders(); return err }},
+	} {
+		t.Run(load.name, func(t *testing.T) {
+			err := load.run()
+			if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-ID-DUPLICATE") {
+				t.Fatalf("%s = %v, want a duplicate-id diagnostic naming both kinds", load.name, err)
+			}
+		})
+	}
+}
+
+// A filename carries no meaning inside a definition root, so a nested file
+// whose basename happens to match a reserved root file is still a definition.
+// Reserving by basename at any depth would drop it silently.
+func TestLoadTaskDefinitions_NestedReservedBasenameStillLoads(t *testing.T) {
+	for _, name := range []string{"config.toml", "catalogs.toml", "plect.lock.toml"} {
+		base := t.TempDir()
+		writeFile(t, filepath.Join(base, "effects", name),
+			"[nested]\nkind = \"effect\"\n\n[nested.setup]\ntype = \"shell\"\nscript = \"true\"\n")
+		effects, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
+		if err != nil {
+			t.Fatalf("%s: LoadTaskDefinitions: %v", name, err)
+		}
+		if _, ok := effects["nested"]; !ok {
+			t.Errorf("%s: nested declaration was skipped for its basename", name)
+		}
+	}
+}
+
+// A reserved name is still reserved at the root it belongs to.
+func TestLoadTaskDefinitions_RootReservedFileStillSkipped(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "config.toml"), "workspace_dirs_root = \"/tmp/x\"\n")
+	if _, err := (&Config{BaseDir: base}).LoadTaskDefinitions(""); err != nil {
+		t.Fatalf("LoadTaskDefinitions: %v", err)
+	}
+}

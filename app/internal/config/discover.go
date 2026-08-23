@@ -28,11 +28,12 @@ type discoveredLayer struct {
 //
 // A workspace provider, a resource observer and a channel are trusted-base
 // content: they decide how a session's identity is resolved and how a process
-// is reached, so an ancestor overlay declaring one does not participate rather
-// than being refused. Effects and task documents reach an ancestor overlay,
-// since a project may add its own lifecycle and its own work — but never the
-// workspace directory, which is cloned content: shell there, or a declaration
-// of the work the clone is about, is refused outright.
+// is reached, so one in an ancestor overlay is skipped — it does not
+// participate, and does not stop the layer loading either. Effects and task
+// documents do reach an ancestor overlay, since a project may add its own
+// lifecycle and its own work; they never reach the workspace directory, which
+// is cloned content, so shell there or a declaration of the work the clone is
+// about is refused outright.
 var (
 	loadedKinds = map[layerScope]map[lang.Kind]bool{
 		layerScopeTrusted: {
@@ -173,4 +174,86 @@ func checkRetiredChainsDir(root string) error {
 		return fmt.Errorf("%s is not a definition: declare [[chains]] inside the task document whose instances it fires against, and delete the retired chains/ directory", filepath.Join(root, "chains", entry.Name()))
 	}
 	return nil
+}
+
+// resolvedDefinition is one declaration after the cascade has chosen it,
+// carrying the layer facts a loader needs beyond the declaration itself.
+type resolvedDefinition struct {
+	def        *lang.Definition
+	fromPlugin bool
+	pluginID   string
+	// source is the shallowest layer that declared the id, which is the file
+	// a relative schema path resolves against and the layer a reference
+	// written in the declaration resolves in.
+	source string
+}
+
+// resolveNamespace folds every cascade layer into the one id namespace the
+// stack has: plugin layers are its base, and a deeper user-owned layer
+// replaces, merges with, or collides with what they declare. Doing the fold
+// across kinds at once is the point — a deeper declaration that reuses an id
+// under a different kind is a load error, and a per-kind fold could not see
+// it, because each kind's map would hold a winner and neither would know
+// about the other.
+//
+// A same-id, same-kind deeper declaration replaces a shallower one, except a
+// workflow, which merges by the cascade rules. Two plugin layers claiming one
+// id is a load error, since declaration order must never decide between two
+// plugins.
+func (c *Config) resolveNamespace(layers []discoveredLayer) (map[string]resolvedDefinition, error) {
+	var merged []*lang.Definition
+	facts := make(map[string]resolvedDefinition)
+	pluginOwner := make(map[string]string)
+	for _, discovered := range layers {
+		for _, def := range discovered.defs {
+			if discovered.layer.plugin {
+				if owner, exists := pluginOwner[def.ID]; exists {
+					return nil, fmt.Errorf("id %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, def.File)
+				}
+				pluginOwner[def.ID] = def.File
+			}
+			prior, seen := facts[def.ID]
+			entry := resolvedDefinition{
+				fromPlugin: discovered.layer.plugin,
+				pluginID:   discovered.layer.pluginID,
+				source:     def.File,
+			}
+			if seen {
+				// The shallowest declarer keeps the id, so a deeper layer
+				// extending a workflow does not move what its relative paths
+				// resolve against.
+				entry.source = prior.source
+			}
+			facts[def.ID] = entry
+		}
+		combined, err := lang.MergeLayer(merged, discovered.defs)
+		if err != nil {
+			return nil, err
+		}
+		merged = combined
+	}
+	out := make(map[string]resolvedDefinition, len(merged))
+	for _, def := range merged {
+		entry := facts[def.ID]
+		entry.def = def
+		out[def.ID] = entry
+	}
+	return out, nil
+}
+
+// ofKind selects one kind from a resolved namespace, in id order so a
+// diagnostic naming the first offender is reproducible.
+func ofKind(namespace map[string]resolvedDefinition, kind lang.Kind) []resolvedDefinition {
+	ids := make([]string, 0, len(namespace))
+	for id, entry := range namespace {
+		if entry.def.Kind == kind {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	out := make([]resolvedDefinition, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, namespace[id])
+	}
+	return out
 }

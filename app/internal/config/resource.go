@@ -69,11 +69,11 @@ func (r ResourceDef) Ownership() lang.Ownership {
 // LoadWorkspaceProviders, including its exclusion of the per-workspace-dir
 // ancestor cascade.
 func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
-	layers, err := c.trustedLayers()
+	namespace, err := c.trustedNamespace()
 	if err != nil {
 		return nil, err
 	}
-	return loadTrustedKind(layers, lang.KindResourceObserver, c.resourceDefFromDefinition,
+	return loadTrustedKind(namespace, lang.KindResourceObserver, c.resourceDefFromDefinition,
 		func(def ResourceDef) string { return def.ID })
 }
 

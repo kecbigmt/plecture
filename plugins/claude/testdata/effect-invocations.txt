@@ -1,4 +1,12 @@
-== claude / setup
+== claude_initial_prompt / setup
+call[0]: "terminal-capture"
+call[1]: "plect" "template" "render" "work" "--session" "acme/widget-1"
+call[2]: "terminal-send_text" "rendered instruction"
+call[3]: "terminal-send_keys" "Enter"
+call[4]: "terminal-capture"
+outputs: {"sent":"true"}
+
+== runtime / setup
 call[0]: "uuidgen"
 call[1]: "mktemp" "<state>/plect-mcp.XXXXXX"
 call[2]: "claude-mcp-servers"
@@ -8,21 +16,13 @@ call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export P
 call[6]: "terminal-send_keys" "Enter"
 outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","socket_path":"<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock"}
 
-== claude / health.alive
+== runtime / health.alive
 alive
 
-== claude / health.activity
+== runtime / health.activity
 call[0]: "claude-agent-activity" "probe" "acme/widget-1"
 activity: fingerprint="spy-turn-1" silence_expected=false
 
-== claude / cleanup
+== runtime / cleanup
 call[0]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
-
-== claude_initial_prompt / setup
-call[0]: "terminal-capture"
-call[1]: "plect" "template" "render" "work" "--session" "acme/widget-1"
-call[2]: "terminal-send_text" "rendered instruction"
-call[3]: "terminal-send_keys" "Enter"
-call[4]: "terminal-capture"
-outputs: {"sent":"true"}

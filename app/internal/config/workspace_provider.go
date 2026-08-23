@@ -97,11 +97,11 @@ func (p WorkspaceProviderConfig) HasResolver() bool {
 // layer's same-id declaration replaces a plugin layer's, but two plugin
 // layers declaring one id is a load error (see loadTrustedKind).
 func (c *Config) LoadWorkspaceProviders() (map[string]WorkspaceProviderConfig, error) {
-	layers, err := c.trustedLayers()
+	namespace, err := c.trustedNamespace()
 	if err != nil {
 		return nil, err
 	}
-	return loadTrustedKind(layers, lang.KindWorkspaceProvider, c.workspaceProviderFromDefinition,
+	return loadTrustedKind(namespace, lang.KindWorkspaceProvider, c.workspaceProviderFromDefinition,
 		func(p WorkspaceProviderConfig) string { return p.ID })
 }
 

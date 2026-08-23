@@ -24,32 +24,40 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 cp -r "$CONFIG_HOME" "$CONFIG_HOME.migration-backup.$STAMP"
 ```
 
-## Two shipped channels are renamed
+## Four shipped declarations are renamed
 
-The unified namespace found a collision the directory-scoped loaders never
-compared: the claude and codex plugins each declared one id twice, as an
-effect and as the channel that reaches it. The channels are renamed, since a
-workflow node and an `inner` reference name the effects:
+The unified namespace found collisions the directory-scoped loaders never
+compared, and both are the same shape: an agent runtime effect sharing a name
+with something else. Each is renamed to the name the ratified conformance
+corpus already spells, so this is the language's own naming rather than a new
+choice:
 
-| Plugin | Was | Is |
-|---|---|---|
-| `official/claude` | channel `claude` | channel `delivery` |
-| `official/codex` | channel `codex_exec` | channel `exec_delivery` |
+| Plugin | Kind | Was | Is |
+|---|---|---|---|
+| `official/claude` | effect | `claude` | `runtime` |
+| `official/claude` | channel | `claude` | `delivery` |
+| `official/codex` | effect | `codex_exec` | `exec_runtime` |
+| `official/codex` | channel | `codex_exec` | `exec_delivery` |
 
-The effects keep their ids, and every invocation the channels produce is
-unchanged — only the name is. Rewrite each `[[<id>.event.channel]]` that
-selects one:
+The **effects** are renamed rather than your workflows, deliberately: a
+workflow id is a segment of every session name it produces, so renaming
+`workflows/claude.toml` would change the identity of every live session
+frozen to it. Renaming the effect changes only the `uses` lines that select
+it.
+
+Every invocation these four produce is unchanged — the golden records move
+their labels and nothing else.
+
+Rewrite each `uses` that selects one. A node selects the effect; an
+`[[…event.channel]]` entry selects the channel:
 
 ```toml
-# before
-[[claude.event.channel]]
-name = "runtime"
-uses = "claude"
+[[claude.nodes]]
+uses = "runtime"          # was "claude"
 
-# after
 [[claude.event.channel]]
 name = "runtime"
-uses = "delivery"
+uses = "delivery"         # was "claude"
 ```
 
 ```bash
@@ -57,10 +65,15 @@ CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
 grep -rn 'uses *= *"claude"\|uses *= *"codex_exec"' "$CONFIG_HOME"/workflows/
 ```
 
-Each hit is a channel binding if it sits under an `[[…event.channel]]` header
-and a node if it sits under a `[[…nodes]]` one. Only the channel bindings
-change; a node selecting the `claude` or `codex_exec` **effect** stays as it
-is.
+Every hit changes; which name it takes depends on the header above it. A hit
+under `[[…nodes]]` becomes `runtime` or `exec_runtime`; a hit under
+`[[…event.channel]]` becomes `delivery` or `exec_delivery`.
+
+The other shipped ids the corpus spells differently — `tmux`'s effect as
+`pane`, `github`'s provider as `worktree` — are **not** renamed here. No
+collision forces them, and every rename is migration churn; reconciling the
+corpus and the shipped catalog wholesale is a decision for the schema-authority
+slice.
 
 ## Delete anything under a root that is not a definition
 
@@ -103,16 +116,47 @@ id github is already declared in ~/.config/plect/workflows/github.toml
 Rename one of the two and update every reference to it — a workflow's
 `workspace_provider`, a node's `uses`, a chain's `workflow`, a document's
 `resource_observer`, an `[[event.channel]]`'s `uses`. The id is the table
-name, so a rename is a TOML edit rather than a `mv`:
+name, so a rename is a TOML edit rather than a `mv`.
+
+**The loader is the detector.** Every collision it reports names both files
+and both kinds, and it reports one per load, so the procedure is to run a
+command that loads config, fix what it names, and repeat:
+
+```bash
+plect workflow list
+# id "codex" is declared as kind "effect" in <plugin>/config/tasks/codex.toml
+# and kind "workflow" in ~/.config/plect/workflows/codex.toml
+```
+
+Use that rather than a hand-rolled scan, for a reason worth stating: a
+pre-check over your own config home cannot see the mounted plugin roots, and a
+collision between your config and a plugin's is exactly the kind this change
+surfaces. There is no CLI surface that enumerates plugin directories, so a
+scan that looks complete would not be.
+
+What a local scan *is* good for is the collisions inside your own layer, which
+you can fix before mounting anything. A `kind = "task"` declaration lives only
+in `+++` frontmatter, so it has to read both serializations:
 
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
-grep -rhoP '^\[\K[A-Za-z_][A-Za-z0-9_]*(?=\])' "$CONFIG_HOME" --include='*.toml' \
-  | sort | uniq -d
+{
+  grep -rhoP '^\[\K[A-Za-z_][A-Za-z0-9_]*(?=\])' "$CONFIG_HOME" --include='*.toml'
+  find "$CONFIG_HOME" -name '*.md' -type f -exec awk '
+    FNR == 1 && $0 != "+++" { nextfile }
+    FNR > 1 && $0 == "+++" { nextfile }
+    /^\[[A-Za-z_][A-Za-z0-9_]*\]$/ { gsub(/[][]/, ""); print; nextfile }
+  ' {} +
+} | sort | uniq -d
 ```
 
-Anything that prints is declared more than once in the global layer. (Run it
-per plugin directory too if you author your own plugin.)
+Anything that prints is declared twice in your own layer — a workspace provider
+and a workflow both called `orchestrator`, say. The `.md` half reads only a
+file that *opens* with `+++`, and only lines inside that frontmatter, so a
+template asset is never mistaken for a declaration: a bracketed word in
+ordinary prose, and a `[…]` line in a template's own body, are both skipped.
+`nextfile` needs GNU awk, which is what `awk` is on most Linux distributions;
+without it, check `*.md` frontmatter by eye.
 
 ## What did not change
 

@@ -16,6 +16,11 @@ import (
 // not a definition, and is skipped. reserved is typically nil for a plugin
 // root (which never contains config.toml/catalogs.toml/plect.lock) and
 // ReservedFileNames for the user config home.
+//
+// A reserved name is reserved at the root and nowhere below it: a filename
+// carries no meaning inside a root, so skipping a nested file for its
+// basename alone would drop a declaration an author had every right to file
+// there.
 func DiscoverRoot(root string, reserved map[string]bool) ([]*Definition, error) {
 	var defs []*Definition
 	seen := map[string]*Definition{}
@@ -30,7 +35,7 @@ func DiscoverRoot(root string, reserved map[string]bool) ([]*Definition, error) 
 		name := d.Name()
 		switch {
 		case strings.HasSuffix(name, ".toml"):
-			if reserved[name] {
+			if reserved[name] && filepath.Dir(path) == root {
 				return nil
 			}
 			src, err := os.ReadFile(path)

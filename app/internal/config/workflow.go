@@ -484,39 +484,27 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 	if err != nil {
 		return nil, err
 	}
-	var merged []*lang.Definition
-	pluginOwner := make(map[string]string)
-	// The shallowest layer that declared an id owns it: that is the file a
-	// relative schema path resolves against, and the layer a reference
-	// written in the declaration resolves in.
-	source := make(map[string]string)
+	// Validation runs per layer rather than once over the merged definition so
+	// a diagnostic names the layer that wrote the offending value; the merged
+	// definition's own topology is checked when it is decoded.
 	for _, discovered := range layers {
-		defs := discovered.ofKind(lang.KindWorkflow)
-		for _, def := range defs {
+		for _, def := range discovered.ofKind(lang.KindWorkflow) {
 			if err := c.checkWorkflowDefinition(def, discovered.layer); err != nil {
 				return nil, err
 			}
-			if discovered.layer.plugin {
-				if owner, exists := pluginOwner[def.ID]; exists {
-					return nil, fmt.Errorf("workflow %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, def.File)
-				}
-				pluginOwner[def.ID] = def.File
-			}
-			if _, seen := source[def.ID]; !seen {
-				source[def.ID] = def.File
-			}
-		}
-		if merged, err = lang.MergeLayer(merged, defs); err != nil {
-			return nil, err
 		}
 	}
-	out := make(map[string]WorkflowFile, len(merged))
-	for _, def := range merged {
-		wf, err := workflowFrom(def, source[def.ID])
+	namespace, err := c.resolveNamespace(layers)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]WorkflowFile)
+	for _, entry := range ofKind(namespace, lang.KindWorkflow) {
+		wf, err := workflowFrom(entry.def, entry.source)
 		if err != nil {
-			return nil, fmt.Errorf("workflow %s in %s: %w", def.ID, source[def.ID], err)
+			return nil, fmt.Errorf("workflow %s in %s: %w", entry.def.ID, entry.source, err)
 		}
-		out[def.ID] = wf
+		out[wf.ID] = wf
 	}
 	return out, nil
 }
@@ -538,11 +526,9 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]TaskDefinition)
-	pluginOwner := make(map[string]string)
-	// all keeps every definition that was read, including a plugin definition
-	// a same-id user effect shadows in out: a catalog-qualified `inner`
-	// reference exists precisely to reach one.
+	// all keeps every effect that was read, including one a same-id deeper
+	// declaration shadows: a catalog-qualified `inner` reference exists
+	// precisely to reach a shadowed plugin effect.
 	var all []TaskDefinition
 	pluginOfSource := make(map[string]string)
 	for _, discovered := range layers {
@@ -551,18 +537,23 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 			if err != nil {
 				return nil, err
 			}
-			if discovered.layer.plugin {
-				if owner, exists := pluginOwner[def.ID]; exists {
-					return nil, fmt.Errorf("effect %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, def.SourcePath)
-				}
-				pluginOwner[def.ID] = def.SourcePath
-				if discovered.layer.pluginID != "" {
-					pluginOfSource[def.SourcePath] = discovered.layer.pluginID
-				}
+			if discovered.layer.plugin && discovered.layer.pluginID != "" {
+				pluginOfSource[def.SourcePath] = discovered.layer.pluginID
 			}
 			all = append(all, def)
-			out[def.ID] = def
 		}
+	}
+	namespace, err := c.resolveNamespace(layers)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]TaskDefinition)
+	for _, entry := range ofKind(namespace, lang.KindEffect) {
+		def, err := c.effectFromDefinition(entry.def, entry.fromPlugin)
+		if err != nil {
+			return nil, err
+		}
+		out[def.ID] = def
 	}
 	if err := resolveNestedDefinitions(out, all, pluginOfSource, func(ref string) string {
 		return describeMissingPlugin(ref, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot)

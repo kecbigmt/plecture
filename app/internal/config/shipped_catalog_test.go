@@ -77,7 +77,7 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
 
-	for _, id := range []string{"tmux", "claude_initial_prompt", "claude", "codex", "codex_initial_prompt", "codex_exec", "gh_guard"} {
+	for _, id := range []string{"tmux", "claude_initial_prompt", "runtime", "codex", "codex_initial_prompt", "exec_runtime", "gh_guard"} {
 		if _, ok := tasks[id]; !ok {
 			t.Errorf("shipped catalog task %q not found", id)
 		}

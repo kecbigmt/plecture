@@ -89,22 +89,17 @@ func (c *Config) LoadTaskDocuments(workspaceDirPath string) (map[string]TaskDocu
 	if err != nil {
 		return nil, err
 	}
+	namespace, err := c.resolveNamespace(layers)
+	if err != nil {
+		return nil, err
+	}
 	out := make(map[string]TaskDocument)
-	pluginOwner := make(map[string]string)
-	for _, discovered := range layers {
-		for _, def := range discovered.ofKind(lang.KindTask) {
-			doc, err := c.taskDocumentFromDefinition(def, discovered.layer.plugin)
-			if err != nil {
-				return nil, err
-			}
-			if discovered.layer.plugin {
-				if owner, exists := pluginOwner[doc.ID]; exists {
-					return nil, fmt.Errorf("task %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", doc.ID, owner, doc.SourcePath)
-				}
-				pluginOwner[doc.ID] = doc.SourcePath
-			}
-			out[doc.ID] = doc
+	for _, entry := range ofKind(namespace, lang.KindTask) {
+		doc, err := c.taskDocumentFromDefinition(entry.def, entry.fromPlugin)
+		if err != nil {
+			return nil, err
 		}
+		out[doc.ID] = doc
 	}
 	return out, nil
 }
