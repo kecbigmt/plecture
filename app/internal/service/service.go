@@ -33,8 +33,9 @@ func validateTagFormat(tag string) *Error {
 
 // effectiveTag resolves the session-identity tag that becomes part of a
 // session name. An explicit --tag wins; otherwise the workflow id is the
-// default, so two tools acting on one resource (claude work, codex review)
-// materialize distinct sessions instead of racing for one branch/workspace.
+// default, so two workflows acting on one resource (a work workflow, a
+// review workflow) materialize distinct sessions instead of racing for one
+// branch/workspace.
 // The tag is never empty on the workspace-provider-dispatch paths — session
 // identity always carries a label.
 func effectiveTag(tag, workflowID string) (string, *Error) {

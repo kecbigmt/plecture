@@ -67,7 +67,7 @@ from --input first, then the workflow/provider outputs, then the session inputs.
 Examples:
   plect task setup work --input instruction="fix the flaky test"
   plect task setup review --name initial --resource <resource-id>
-  plect task setup work --done-when-json '{"all":[{"judge":"Codex review approved","id":"codex-review","relation":["sibling"]}]}'`,
+  plect task setup work --done-when-json '{"all":[{"judge":"review approved","id":"review","relation":["sibling"]}]}'`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		inputs, err := parseKeyValues(taskSetupInputs)

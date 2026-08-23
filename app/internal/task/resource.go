@@ -134,7 +134,7 @@ type FinalizeResourceParams struct {
 // FinalizeResource runs the matched observer's `finalize` action, if it
 // declares one. Ran=false with a nil error covers both "no observer
 // recognizes this resource id" and "the observer declares no finalize" —
-// every resource kind until a later ADR slice adds one (e.g. local-okf). Core
+// every resource kind until a later ADR slice adds one. Core
 // commits to nothing beyond "there was no completion record to write";
 // `plect task finalize` treats that as expected, not an error.
 func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourceParams) (ran bool, def config.ResourceDef, err error) {

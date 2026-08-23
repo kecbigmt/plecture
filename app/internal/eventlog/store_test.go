@@ -71,9 +71,9 @@ func TestAppendAndList(t *testing.T) {
 	const session = "octocat/hello-world-42"
 
 	want := []struct{ typ, src string }{
-		{"github.ci_status", "github"},
-		{"slack.message", event.SourceSlack},
-		{"claude.reply", event.SourceClaude},
+		{"acme.ci_status", "acme"},
+		{"widget.message", "widget"},
+		{"gadget.reply", "gadget"},
 	}
 	var offsets []int64
 	for _, w := range want {
@@ -110,9 +110,9 @@ func TestAppendAndList(t *testing.T) {
 	}
 
 	// type glob filter
-	gh, _, _, err := s.List(session, 0, event.Filter{Types: []string{"github.*"}})
-	if err != nil || len(gh) != 1 || gh[0].Type != "github.ci_status" {
-		t.Fatalf("github.* filter: %v len=%d", err, len(gh))
+	gh, _, _, err := s.List(session, 0, event.Filter{Types: []string{"acme.*"}})
+	if err != nil || len(gh) != 1 || gh[0].Type != "acme.ci_status" {
+		t.Fatalf("acme.* filter: %v len=%d", err, len(gh))
 	}
 
 	// since-offset resumes after the first record

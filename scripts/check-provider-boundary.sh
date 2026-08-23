@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
-# Fails if app/ (excluding tests) or contracts/ reference a specific external
-# provider by name or assume its identifier shape. Core owns the durable
-# structure of work; a provider commitment belongs in plugins/ instead.
+# Fails if app/ (excluding most tests — see the scope decision below) or
+# contracts/ reference a specific external provider by name or assume its
+# identifier shape. Core owns the durable structure of work; a provider
+# commitment belongs in plugins/ instead.
+#
+# The provider-name half of the vocabulary is derived from every shipped
+# plugin's plugin.toml (its directory id, plus its `[[executables]]` names)
+# via app/cmd/check-provider-boundary, rather than hand-kept here — a
+# provider's name is decoded from structured config once, not re-typed into
+# this script's own list every time a plugin ships a new one.
 #
 # Scope decision: an "owner/repo"-shaped identifier is treated as leakage,
 # not as plect's own vocabulary. Session/resource names are opaque strings
@@ -9,15 +16,42 @@
 # example is always borrowing a specific hosting provider's naming
 # convention, so it is caught alongside literal provider names.
 #
+# Scope decision: *_test.go under app/ is NOT scanned in general, except for
+# app/internal/channel — the package the original PR #223 review caught
+# hardcoding plugin names in a test — which is scanned like any other core
+# file. Widening the file set to *all* of app/'s tests surfaces on the order
+# of a thousand pre-existing lines across most of the module's test suite —
+# not the isolated leak PR #223's review caught, but two much larger,
+# pre-existing conventions: (1) shipped plugin ids/names used throughout
+# generic catalog/resolver/service tests as arbitrary placeholder data, and
+# (2) an "owner/repo-N"-shaped session name used almost everywhere as the
+# default example session. Fixing that is a repo-wide test-fixture
+# migration, not a boundary-checker change, and is tracked separately
+# rather than folded into this script's default scope. contracts/*_test.go
+# stays in scope too: that module is small enough that its few violations
+# were fixed outright instead of deferred.
+#
 # A line that genuinely needs to keep a provider token can allowlist itself
 # with a trailing "// boundary-allow: <reason>" comment.
 set -euo pipefail
+
+# The vocabulary source is this script's own repo (the shipped plugins that
+# define what "a provider" means here), independent of $root below — which
+# is the tree of Go files being scanned and, under the selftest, a throwaway
+# fixture with no plugins/ directory of its own. Resolved before the `cd`
+# below, and from ${BASH_SOURCE[0]} rather than $0, so it is correct
+# regardless of the caller's cwd or whether the script was invoked by a
+# relative or absolute path.
+app_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../app" && pwd)"
+plugins_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../plugins" && pwd)"
 
 root="${BOUNDARY_CHECK_ROOT:-$(pwd)}"
 cd "$root"
 
 # Each alternative targets a distinct leak:
-#   - a provider name (github/gh/pvti);
+#   - a shipped plugin's id or executable name (derived above);
+#   - "gh" and "pvti", GitHub-CLI/API vocabulary that names no plugin
+#     executable but is still a GitHub-specific token;
 #   - a session/resource-id EXAMPLE shaped like a GitHub-style "owner/repo"
 #     slug — plect's own session names are opaque strings core never
 #     interprets (see contracts/event doc comment), so a literal "owner/repo"
@@ -27,7 +61,24 @@ cd "$root"
 # string (e.g. Go import paths, generic path components) — only the
 # owner/repo placeholder shape itself and identifiers that look like a
 # resolved instance of it (an alnum segment, "/", an alnum segment, "-N").
-pattern='(^|[^A-Za-z0-9_.])[Gg]it[Hh]ub([^A-Za-z0-9_.]|$)|(^|[^A-Za-z0-9_])gh([^A-Za-z0-9_]|$)|pvti|<?[Oo]wner>?/<?[Rr]epo>?|[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*-[0-9]+'
+if ! vocab_words="$(cd "$app_dir" && go run ./cmd/check-provider-boundary "$plugins_dir")"; then
+  echo "failed to derive the provider-name vocabulary from $plugins_dir" >&2
+  exit 1
+fi
+
+vocab_pattern=""
+while IFS= read -r word; do
+  [ -z "$word" ] && continue
+  escaped=$(printf '%s' "$word" | sed -E 's/[.[\*^$()+?{|\\]/\\&/g')
+  alt="(^|[^A-Za-z0-9_.])${escaped}([^A-Za-z0-9_.]|\$)"
+  if [ -z "$vocab_pattern" ]; then
+    vocab_pattern="$alt"
+  else
+    vocab_pattern="$vocab_pattern|$alt"
+  fi
+done <<< "$vocab_words"
+
+pattern="$vocab_pattern|(^|[^A-Za-z0-9_])gh([^A-Za-z0-9_]|\$)|pvti|<?[Oo]wner>?/<?[Rr]epo>?|[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*-[0-9]+"
 
 fail=0
 count=0
@@ -42,8 +93,8 @@ while IFS= read -r f; do
     esac
     echo "$f:$lineno: $content"
     fail=1
-  done < <(grep -nE "$pattern" "$f" || true)
-done < <({ find app -name '*.go' -not -name '*_test.go'; find contracts -name '*.go'; } | sort)
+  done < <(grep -niE "$pattern" "$f" || true)
+done < <({ find app -name '*.go' -not -name '*_test.go'; find app/internal/channel -name '*_test.go'; find contracts -name '*.go'; } | sort)
 
 if [ "$fail" -ne 0 ]; then
   echo

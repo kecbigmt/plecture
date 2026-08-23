@@ -8,6 +8,13 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 checker="$root/scripts/check-provider-boundary.sh"
 
+# The vocabulary is derived from the real repo's plugins/ (see the checker's
+# own comment on why $root/plugins, not the fixture, is the source), so a
+# name shipped by any real plugin works as a seed here. "okf" is not GitHub
+# vocabulary and was invisible to the checker before vocabulary derivation
+# replaced the hand-kept github-only list — seeding it proves the derivation
+# actually works, not just that the pre-existing hand-kept patterns still do.
+
 run_against() {
   local fixture="$1"
   (
@@ -61,6 +68,31 @@ if ! grep -q "app/commands/seeded_ownerrepo.go" /tmp/boundary-selftest-dirty2.lo
   exit 1
 fi
 echo "ok: checker fails and names the file on a bare owner/repo placeholder"
+
+# Dirty fixture #3: a shipped plugin name outside the old github-only
+# vocabulary must also be caught — this is the gap issue #224 found: the
+# hand-kept pattern covered only github/gh/pvti/owner-repo, so claude,
+# codex, slack, tmux, and okf leakage was invisible.
+dirty3=$(mktemp -d)
+trap 'rm -rf "$dirty" "$clean" "$dirty2" "$dirty3"' EXIT
+mkdir -p "$dirty3/app/commands" "$dirty3/contracts"
+cat > "$dirty3/app/commands/seeded_vocab.go" <<'EOF'
+package commands
+
+const seededPluginName = "okf"
+EOF
+
+if run_against "$dirty3" >/tmp/boundary-selftest-dirty3.log 2>&1; then
+  echo "FAIL: checker passed against a fixture with a seeded non-github plugin name" >&2
+  cat /tmp/boundary-selftest-dirty3.log >&2
+  exit 1
+fi
+if ! grep -q "app/commands/seeded_vocab.go" /tmp/boundary-selftest-dirty3.log; then
+  echo "FAIL: checker did not name the offending file for the non-github plugin name" >&2
+  cat /tmp/boundary-selftest-dirty3.log >&2
+  exit 1
+fi
+echo "ok: checker fails and names the file on a derived (non-github) plugin name"
 
 # Clean fixture: no provider tokens, nothing to report.
 clean=$(mktemp -d)

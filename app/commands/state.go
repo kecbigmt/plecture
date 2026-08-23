@@ -31,12 +31,12 @@ var stateCmd = &cobra.Command{
 var setConversationCmd = &cobra.Command{
 	Use:   "set-conversation <session-or-url>",
 	Short: "Set the conversation associated with a session",
-	Long: `Set or update the conversation (e.g., Slack thread) linked to a session.
+	Long: `Set or update the conversation (e.g., a chat thread) linked to a session.
 
 Example:
   plect state set-conversation session-1 \
-    --source Slack \
-    --url "https://exampleorg.slack.com/archives/C.../p..." \
+    --source chat-platform \
+    --url "https://example.test/archives/C.../p..." \
     --meta thread_ts=1234567890.123456 \
     --meta channel_id=C01ABCDEF`,
 	Args: cobra.ExactArgs(1),
@@ -208,7 +208,7 @@ Example:
 }
 
 func init() {
-	setConversationCmd.Flags().StringVar(&setConvSource, "source", "", "Conversation source (e.g., Slack, Discord)")
+	setConversationCmd.Flags().StringVar(&setConvSource, "source", "", "Conversation source (e.g., a chat platform's name)")
 	setConversationCmd.Flags().StringVar(&setConvURL, "url", "", "Permalink URL to the conversation")
 	setConversationCmd.Flags().StringArrayVar(&setConvMeta, "meta", nil, "Metadata key=value pairs (repeatable)")
 	setConversationCmd.MarkFlagRequired("source")

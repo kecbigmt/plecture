@@ -4,10 +4,10 @@
 // The bus core (eventlog, bus server) treats SessionName and Type as opaque
 // strings — it does not interpret provider-specific structure (a resource
 // provider's identifier shape, a chat provider's thread ids, etc.).
-// Producers own their Type namespace (slack.message, claude.reply, a
-// resource provider's own change-type prefix, ...); the core only routes
-// and filters. Provider-specific Source/Type constants belong in that
-// provider's own package, not here.
+// Producers own their Type namespace (a chat provider's message type, an
+// agent's reply type, a resource provider's own change-type prefix, ...);
+// the core only routes and filters. Provider-specific Source/Type constants
+// belong in that provider's own package, not here.
 //
 // This module is zero-dependency (stdlib only) so app and plugins
 // can all import it, mirroring contracts/{state,hook,channel-protocol}.
@@ -23,20 +23,20 @@ import (
 type Direction string
 
 const (
-	Inbound  Direction = "inbound"  // toward the agent (e.g. a Slack user message)
-	Outbound Direction = "outbound" // away from the agent (e.g. a Claude reply, a Slack post)
+	Inbound  Direction = "inbound"  // toward the agent (e.g. a chat user's message)
+	Outbound Direction = "outbound" // away from the agent (e.g. an agent reply, a chat post)
 	Internal Direction = "internal" // neither in nor out (e.g. a resource-provider sync change, lifecycle)
 )
 
 // Source identifies who produced the event. These are conventions for
-// producers; the core does not interpret them.
+// producers; the core does not interpret them. A provider-specific source
+// (a chat platform, an agent) is that provider's own constant, not one
+// listed here.
 const (
-	SourcePlect  = "plect"
-	SourceSlack  = "slack"
-	SourceClaude = "claude"
-	SourceWeb    = "web"
-	SourceCLI    = "cli"
-	SourceMCP    = "mcp"
+	SourcePlect = "plect"
+	SourceWeb   = "web"
+	SourceCLI   = "cli"
+	SourceMCP   = "mcp"
 	// SourceTick marks every same-session event plect tick itself publishes
 	// (review_required, kick's user.emit, escalated). The tick reactor
 	// excludes anything carrying this source from its trigger set by
@@ -48,12 +48,10 @@ const (
 
 // Type prefixes / well-known types. Type is a free-form dotted topic; these are
 // the namespaces plect itself produces. Subscribers filter with globs (e.g.
-// a resource provider's own change-type prefix, "slack.message").
+// a resource provider's own change-type prefix, or a chat provider's own
+// message-type prefix).
 const (
 	TypeLifecyclePrefix = "lifecycle." // lifecycle.created|up|down|destroyed
-	TypeSlackMessage    = "slack.message"
-	TypeClaudeReply     = "claude.reply"
-	TypeClaudePermReq   = "claude.permission_request"
 	TypePermissionReply = "permission.reply"
 	TypeUserNote        = "user.note"
 	TypeUserEmit        = "user.emit"
@@ -131,9 +129,9 @@ type Event struct {
 	SessionName string            `json:"session_name"` // opaque session id; the log partition + routing key
 	Time        time.Time         `json:"time"`         // RFC3339Nano
 	Type        string            `json:"type"`         // free-form dotted topic
-	Source      string            `json:"source"`       // plect|slack|claude|web|cli|mcp|<provider>
+	Source      string            `json:"source"`       // plect|web|cli|mcp|<provider>
 	Direction   Direction         `json:"direction"`
-	Summary     string            `json:"summary"`        // one-line render for timelines / Slack
+	Summary     string            `json:"summary"`        // one-line render for timelines
 	Body        string            `json:"body,omitempty"` // full text payload
 	Metadata    map[string]string `json:"metadata,omitempty"`
 	// DeliveryMode marks a terminal event pushed one hop to a parent/ancestor
@@ -179,8 +177,8 @@ func (f Filter) Match(ev Event) bool {
 }
 
 // MatchType reports whether typ matches pattern. Pattern is either "*" (any),
-// an exact type, or a trailing ".*" prefix glob ("slack.*" matches
-// "slack.message" and "slack." but not "slack").
+// an exact type, or a trailing ".*" prefix glob ("foo.*" matches "foo.bar"
+// and "foo." but not "foo").
 func MatchType(pattern, typ string) bool {
 	if pattern == "*" || pattern == typ {
 		return true
