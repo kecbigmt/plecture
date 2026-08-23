@@ -1531,14 +1531,30 @@
       ]
     },
     "taskDefinition": {
-      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING.",
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING, PLECTURE-CFG-EXTENDS-INHERITED-FIELD when both extends and resource_observer are set.",
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "kind",
-        "resource_observer"
+        "kind"
       ],
-      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is. Its instruction is the resolved texts of its `instructions` array, joined by a blank line in declaration order. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
+      "if": {
+        "required": [
+          "extends"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "resource_observer"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "resource_observer"
+        ]
+      },
+      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is. Its instruction is the resolved texts of its `instructions` array, joined by a blank line in declaration order. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name. A declaration carrying `extends` is an extension: it specializes the base it names, inheriting the base's resource_observer rather than restating it.",
       "properties": {
         "kind": {
           "const": "task"
@@ -1546,9 +1562,13 @@
         "description": {
           "type": "string"
         },
+        "extends": {
+          "$ref": "#/$defs/staticReference",
+          "description": "The base task this declaration specializes: an ordinary task reference, restrained to a closed set of additive operations (appended instructions, appended chains, appended done_when leaves, and new or default-completing schema keys). The base is untouched and remains independently referable."
+        },
         "resource_observer": {
           "$ref": "#/$defs/staticReference",
-          "description": "The resource observer this task is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front."
+          "description": "The resource observer this task is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front. An extension does not declare this: it inherits the base's."
         },
         "instructions": {
           "type": "array",

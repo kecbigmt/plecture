@@ -1,0 +1,23 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-EXTENDS-SCHEMA-TYPE entry=definitions
+# reason: an extension may add a default to an existing key, and nothing else; redefining the key's type is a load error, not a narrower default.
+
+[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[base_task.state_schema]
+type = "object"
+
+[base_task.state_schema.properties]
+priority = { type = "string" }
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.state_schema]
+type = "object"
+
+[ext_task.state_schema.properties]
+priority = { type = "integer" }

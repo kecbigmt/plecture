@@ -195,11 +195,16 @@ Example:
 
 var taskShowCmd = &cobra.Command{
 	Use:   "show <task-id>",
-	Short: "Show a task definition, including its nesting chain",
+	Short: "Show a task definition, including its nesting or extends chain",
 	Long: `Print one task definition as the cascade resolves it: its id, the scope its
 instances take, the file it was loaded from, and — when the task is nested —
 every layer of the chain from the outermost task inward to the innermost one,
 with each layer's 'inner' reference and the file it resolved to.
+
+For a task document that declares 'extends', prints the composed extends
+chain instead, outermost (this declaration) first, naming for every layer the
+instruction segment, chains, and judges that layer itself contributes to the
+composed declaration.
 
 Use --json for the same picture as a structured document.`,
 	Args: cobra.ExactArgs(1),
@@ -241,19 +246,45 @@ func writeTaskDetail(out io.Writer, d *service.TaskDetail) error {
 	if err := w.Flush(); err != nil {
 		return err
 	}
-	if len(d.Nesting) == 0 {
-		return nil
-	}
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Nesting chain (outermost first):")
-	for i, layer := range d.Nesting {
-		line := strings.Repeat("  ", i+1) + layer.ID
-		if layer.Inner != "" {
-			line += fmt.Sprintf(" (inner = %q)", layer.Inner)
+	if len(d.Nesting) > 0 {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "Nesting chain (outermost first):")
+		for i, layer := range d.Nesting {
+			line := strings.Repeat("  ", i+1) + layer.ID
+			if layer.Inner != "" {
+				line += fmt.Sprintf(" (inner = %q)", layer.Inner)
+			}
+			fmt.Fprintln(out, line)
 		}
-		fmt.Fprintln(out, line)
+	}
+	if len(d.ExtendsChain) > 0 {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "Extends chain (outermost first):")
+		for i, layer := range d.ExtendsChain {
+			fmt.Fprintln(out, strings.Repeat("  ", i+1)+layer.ID)
+			detail := strings.Repeat("  ", i+2)
+			if layer.Instruction != "" {
+				fmt.Fprintf(out, "%sinstructions: %s\n", detail, firstLine(layer.Instruction))
+			}
+			if len(layer.Chains) > 0 {
+				fmt.Fprintf(out, "%schains: %s\n", detail, strings.Join(layer.Chains, ", "))
+			}
+			if len(layer.Judges) > 0 {
+				fmt.Fprintf(out, "%sjudges: %s\n", detail, strings.Join(layer.Judges, ", "))
+			}
+		}
 	}
 	return nil
+}
+
+// firstLine renders an instruction's provenance as one line, however many
+// paragraphs it declares.
+func firstLine(s string) string {
+	line, _, found := strings.Cut(s, "\n")
+	if found {
+		return line + " …"
+	}
+	return line
 }
 
 // parseKeyValues turns repeated "key=value" flags into a map. An entry without

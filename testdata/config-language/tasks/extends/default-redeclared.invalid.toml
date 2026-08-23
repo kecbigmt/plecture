@@ -1,0 +1,23 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-EXTENDS-DEFAULT-REDECLARED entry=definitions
+# reason: the base already fixes a default for `priority`; an extension may add a default only where none is set anywhere in the inner chain.
+
+[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[base_task.state_schema]
+type = "object"
+
+[base_task.state_schema.properties]
+priority = { type = "string", default = "normal" }
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.state_schema]
+type = "object"
+
+[ext_task.state_schema.properties]
+priority = { type = "string", default = "high" }

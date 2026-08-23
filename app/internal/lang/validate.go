@@ -313,6 +313,12 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 }
 
 func (v Validation) validateTask(def *Definition, pos Position) error {
+	if _, extends := def.Body["extends"]; extends {
+		if _, ok := def.Body["resource_observer"]; ok {
+			return newDiag(CodeExtendsInheritedField, LayerStructural, childPos(pos, "resource_observer"),
+				"resource_observer is inherited through extends and is not part of the extension surface")
+		}
+	}
 	if err := v.completionPredicate(def.Body, "done_when", pos); err != nil {
 		return err
 	}
@@ -405,6 +411,11 @@ func (v Validation) instructionBody(def *Definition, pos Position) error {
 func (v Validation) checkStaticTopology(def *Definition, pos Position) error {
 	if wp, ok := def.Body["workspace_provider"]; ok {
 		if _, err := staticRef(wp, childPos(pos, "workspace_provider").Path); err != nil {
+			return err
+		}
+	}
+	if extends, ok := def.Body["extends"]; ok {
+		if _, err := staticRef(extends, childPos(pos, "extends").Path); err != nil {
 			return err
 		}
 	}

@@ -100,3 +100,73 @@ func TestTaskShow_UnknownTask(t *testing.T) {
 		t.Fatal("TaskShow: want an error for an unknown task id, got nil")
 	}
 }
+
+// TestTaskShow_ReportsExtendsChainWithPerLayerProvenance is the acceptance
+// criterion made concrete: every composed element — the instruction segment,
+// the chain, the judge — names the declaration in the extends chain that
+// supplied it.
+func TestTaskShow_ReportsExtendsChainWithPerLayerProvenance(t *testing.T) {
+	base := t.TempDir()
+	writeTaskFile(t, base, "resources", `
+[issue_pr]
+kind  = "resource_observer"
+match = '^https://github\.com/'
+
+[issue_pr.observe]
+type    = "exec"
+command = "true"
+`)
+	writeTaskFile(t, base, "work", `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+
+[work.done_when]
+all = [{ judge = "acceptance criteria are satisfied", id = "ac-met" }]
+
+[work_claude]
+kind         = "task"
+extends      = "work"
+instructions = [{ text = "Use the claude runtime." }]
+
+[[work_claude.chains]]
+id        = "review"
+workflow  = "claude_reviewer"
+placement = "sibling"
+
+[work_claude.chains.when]
+all = [{ judge_pending = "ac-met" }]
+`)
+	writeTaskFile(t, base, "claude_reviewer", `
+[claude_reviewer]
+kind = "workflow"
+`)
+
+	detail, err := TaskShow(&config.Config{BaseDir: base}, "", "work_claude")
+	if err != nil {
+		t.Fatalf("TaskShow: %v", err)
+	}
+	if len(detail.ExtendsChain) != 2 {
+		t.Fatalf("ExtendsChain = %+v, want two layers", detail.ExtendsChain)
+	}
+	outer, inner := detail.ExtendsChain[0], detail.ExtendsChain[1]
+	if outer.ID != "work_claude" || inner.ID != "work" {
+		t.Fatalf("ExtendsChain order = [%s, %s], want outermost (work_claude) first", outer.ID, inner.ID)
+	}
+	if outer.Instruction != "Use the claude runtime." {
+		t.Errorf("outer.Instruction = %q, want only work_claude's own segment", outer.Instruction)
+	}
+	if len(outer.Chains) != 1 || outer.Chains[0] != "review" {
+		t.Errorf("outer.Chains = %v, want [review], attributed to work_claude", outer.Chains)
+	}
+	if len(outer.Judges) != 0 {
+		t.Errorf("outer.Judges = %v, want none: work_claude declares no judge of its own", outer.Judges)
+	}
+	if inner.Instruction != "Resolve the issue." {
+		t.Errorf("inner.Instruction = %q, want only work's own segment", inner.Instruction)
+	}
+	if len(inner.Judges) != 1 || inner.Judges[0] != "ac-met" {
+		t.Errorf("inner.Judges = %v, want [ac-met], attributed to work", inner.Judges)
+	}
+}

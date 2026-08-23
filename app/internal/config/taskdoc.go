@@ -27,6 +27,11 @@ type TaskDocument struct {
 	// keys exist, so a `resource.state.*` a gate reads is resolved against a
 	// declaration rather than discovered at run time.
 	ResourceObserver string
+	// Extends names the base task this declaration specializes, the ordinary
+	// task reference `extends` carries. Empty for a document that is not an
+	// extension. An extension inherits ResourceObserver from its base rather
+	// than declaring its own.
+	Extends          string
 	InputsSchema     map[string]any
 	InputsSchemaFile string
 	// StateSchema declares this document's own state: the keys a reviewer or
@@ -56,6 +61,13 @@ type TaskDocument struct {
 	// declaration itself rather than re-reading the file, which would decide
 	// twice what the document already said once.
 	Definition *lang.Definition
+	// ExtendsLayers is the resolved extends chain this document composes,
+	// root first and this document itself last, each element still holding
+	// only its own declared contribution (pre-composition). It is empty for a
+	// document that does not declare extends, and it exists so a consumer
+	// such as `plect task show` can name, for every composed element, which
+	// declaration in the chain supplied it.
+	ExtendsLayers []TaskDocument
 }
 
 // Ownership names the layer that wrote this declaration, for the reference
@@ -103,6 +115,18 @@ func (c *Config) LoadTaskDocuments(workspaceDirPath string) (map[string]TaskDocu
 		}
 		out[entry.address] = doc
 	}
+	// Composition runs here, unconditionally, rather than only inside
+	// ValidateTaskDocuments: a display or health-check caller that skips the
+	// full contract pass for speed must still see a composed instruction,
+	// chains, and done_when for an extension, or its own done_when
+	// evaluation would silently miss every leaf the base contributed.
+	// Resolving `extends` needs only the task namespace, not observers or
+	// workflows, so this registry is built from docs alone — cheap, and
+	// exactly what ExtendsChain reads.
+	registry := c.taskReferenceRegistry(out, nil, nil)
+	if err := composeExtendedTaskDocuments(out, registry); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -145,6 +169,7 @@ func taskDocumentFrom(def *lang.Definition, path string, fromPlugin bool) (TaskD
 	}{
 		{"description", &d.Description},
 		{"resource_observer", &d.ResourceObserver},
+		{"extends", &d.Extends},
 		{"inputs_schema_file", &d.InputsSchemaFile},
 		{"state_schema_file", &d.StateSchemaFile},
 	} {
@@ -233,6 +258,10 @@ func (c *Config) ValidateTaskDocuments(docs map[string]TaskDocument, observers m
 	for _, id := range ids {
 		doc := docs[id]
 		validation := lang.Validation{From: doc.Ownership(), Executables: c.binResolver(doc.SourcePath)}
+		// ValidateTaskContracts reads doc.Definition, not the composed
+		// TaskDocument fields, so it re-derives and checks the whole extends
+		// chain regardless of composition — already done in LoadTaskDocuments
+		// — having run.
 		if err := validation.ValidateTaskContracts(doc.Definition, registry); err != nil {
 			return err
 		}
