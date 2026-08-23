@@ -25,10 +25,12 @@ type Capabilities struct {
 	Terminal func(dir, verb string) (string, error)
 }
 
-// eval builds the lang.Eval one resolution runs against, wiring dir into the
+// Eval builds the lang.Eval one resolution runs against, wiring dir into the
 // Terminal capability so a materialized verb's script lives in the same
-// directory as the resolution consuming it.
-func (c Capabilities) eval(roots lang.Roots, dir string) lang.Eval {
+// directory as the resolution consuming it. Exported so a caller that needs
+// a bare lang.Eval (rather than a full Resolve) does not have to re-derive
+// this wiring itself.
+func (c Capabilities) Eval(roots lang.Roots, dir string) lang.Eval {
 	e := lang.Eval{Roots: roots, Bin: c.Bin}
 	if c.Terminal != nil {
 		e.Terminal = func(verb string) (string, error) { return c.Terminal(dir, verb) }
@@ -54,7 +56,7 @@ func Resolve(action *lang.Action, roots lang.Roots, caps Capabilities, operands 
 	if err != nil {
 		return nil, err
 	}
-	execution, err := caps.eval(roots, dir).Run(filepath.Join(dir, "action"), action, operands)
+	execution, err := caps.Eval(roots, dir).Run(filepath.Join(dir, "action"), action, operands)
 	if err != nil {
 		os.RemoveAll(dir)
 		return nil, err
@@ -91,7 +93,7 @@ func ResolveValues(values map[string]*lang.Value, roots lang.Roots, caps Capabil
 	}
 	// A joint value reaches no terminal verb, so the run directory Resolve
 	// otherwise materializes one into is never created here.
-	eval := caps.eval(roots, "")
+	eval := caps.Eval(roots, "")
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)

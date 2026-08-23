@@ -134,12 +134,7 @@ func capabilitiesFor(ctx RenderContext, from lang.Ownership) effect.Capabilities
 // into, so a resolved verb lives exactly as long as the execution consuming
 // it.
 func effectEval(env lang.Roots, ctx RenderContext, from lang.Ownership, dir string) lang.Eval {
-	caps := capabilitiesFor(ctx, from)
-	e := lang.Eval{Roots: env, Bin: caps.Bin}
-	if caps.Terminal != nil {
-		e.Terminal = func(verb string) (string, error) { return caps.Terminal(dir, verb) }
-	}
-	return e
+	return capabilitiesFor(ctx, from).Eval(env, dir)
 }
 
 // TerminalCommand resolves one terminal verb into the command string a
