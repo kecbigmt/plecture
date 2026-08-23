@@ -18,9 +18,10 @@ const CatalogSchemaVersion = 1
 // bounds a catalog's trust space and whose `plugins` list is the exact,
 // reviewable set of plugins it publishes.
 type CatalogManifest struct {
-	SchemaVersion int      `toml:"schema_version"`
-	Plugins       []string `toml:"plugins"`
-	Description   string   `toml:"description"`
+	SchemaVersion     int      `toml:"schema_version"`
+	Plugins           []string `toml:"plugins"`
+	WorkflowExemplars []string `toml:"workflow_exemplars"`
+	Description       string   `toml:"description"`
 }
 
 // LoadCatalogManifest reads and validates catalog.toml from catalogRoot:
@@ -41,6 +42,9 @@ func LoadCatalogManifest(catalogRoot string) (CatalogManifest, error) {
 		return CatalogManifest{}, fmt.Errorf("%s: `plugins` declares no plugin paths", path)
 	}
 	if err := validateCatalogPaths(catalogRoot, m); err != nil {
+		return CatalogManifest{}, err
+	}
+	if err := validateWorkflowExemplarPaths(catalogRoot, m.WorkflowExemplars); err != nil {
 		return CatalogManifest{}, err
 	}
 	return m, nil
@@ -135,6 +139,74 @@ func validateCatalogPaths(catalogRoot string, m CatalogManifest) error {
 	}
 	if len(unlisted) > 0 {
 		return fmt.Errorf("catalog.toml: plugin.toml found at %v but not listed in `plugins`", unlisted)
+	}
+	return nil
+}
+
+func validateWorkflowExemplarPaths(catalogRoot string, exemplars []string) error {
+	realRoot, err := filepath.EvalSymlinks(catalogRoot)
+	if err != nil {
+		return fmt.Errorf("resolve catalog root %s: %w", catalogRoot, err)
+	}
+	declared := make(map[string]bool, len(exemplars))
+	for _, id := range exemplars {
+		clean := filepath.Clean(id)
+		if clean == "." || clean == ".." || clean != id || strings.ContainsAny(clean, `/\`) || filepath.IsAbs(clean) {
+			return fmt.Errorf("catalog.toml: workflow exemplar %q must be a direct child of exemplars/workflows", id)
+		}
+		full := filepath.Join(catalogRoot, "exemplars", "workflows", clean)
+		realFull, err := filepath.EvalSymlinks(full)
+		if err != nil {
+			return fmt.Errorf("catalog.toml: workflow exemplar %q: %w", id, err)
+		}
+		rel, err := filepath.Rel(realRoot, realFull)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("catalog.toml: workflow exemplar %q escapes the catalog root", id)
+		}
+		info, err := os.Stat(realFull)
+		if err != nil {
+			return fmt.Errorf("catalog.toml: workflow exemplar %q: %w", id, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("catalog.toml: workflow exemplar %q is not a directory", id)
+		}
+		if _, err := os.Stat(filepath.Join(realFull, "exemplar.toml")); err != nil {
+			return fmt.Errorf("catalog.toml: workflow exemplar %q has no exemplar.toml", id)
+		}
+		declared[clean] = true
+	}
+
+	exemplarRoot := filepath.Join(realRoot, "exemplars", "workflows")
+	if info, err := os.Stat(exemplarRoot); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("catalog.toml: workflow exemplars root: %w", err)
+	} else if !info.IsDir() {
+		return fmt.Errorf("catalog.toml: exemplars/workflows is not a directory")
+	}
+
+	entries, err := os.ReadDir(exemplarRoot)
+	if err != nil {
+		return fmt.Errorf("catalog.toml: read exemplars/workflows: %w", err)
+	}
+	var unlisted []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(exemplarRoot, entry.Name(), "exemplar.toml")); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("catalog.toml: workflow exemplar %q: %w", entry.Name(), err)
+		}
+		if !declared[entry.Name()] {
+			unlisted = append(unlisted, entry.Name())
+		}
+	}
+	if len(unlisted) > 0 {
+		return fmt.Errorf("catalog.toml: exemplar.toml found at %v but not listed in `workflow_exemplars`", unlisted)
 	}
 	return nil
 }

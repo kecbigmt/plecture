@@ -1491,6 +1491,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "workflow_exemplars": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
