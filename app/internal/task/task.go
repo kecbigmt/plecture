@@ -1,13 +1,17 @@
-// Package task implements the declarative setup/cleanup orchestrator.
-// Each task is a setup/cleanup pair declared in
-// config.toml, scoped to either the session lifecycle ("session") or the
-// run lifecycle ("run"). Tasks can depend on each other, and outputs from
-// a setup command (parsed as JSON from stdout) are exposed to dependents
-// and the task's own cleanup as values over the surface's declared roots.
+// Package task is the completion engine for task documents: compiling a
+// workflow's nodes into a Plan, instantiating them, evaluating done_when,
+// and tracking each node's persisted contracts/state.TaskState. It compiles
+// each setup/cleanup pair declared in config.toml, scoped to either the
+// session lifecycle ("session") or the run lifecycle ("run"); tasks can
+// depend on each other, and outputs from a setup command (parsed as JSON
+// from stdout) are exposed to dependents and the task's own cleanup as
+// values over the surface's declared roots.
 //
-// The runner is intentionally minimal: sequential execution, no reactivity,
-// no dynamic DAG. Scope-aware topological sort, one resolution pass per
-// execution, and persisted state via contracts/state.TaskState.
+// It is intentionally minimal: sequential execution, no reactivity, no
+// dynamic DAG. Scope-aware topological sort, one resolution pass per
+// execution. Actually running a resolved action is app/internal/effect's
+// job, not this package's — task builds the roots and calls into effect
+// only for "run this resolved action".
 package task
 
 import (
