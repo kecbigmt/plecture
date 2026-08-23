@@ -55,12 +55,16 @@ is the only alternative a path-join primitive offers and not what "relative
 to the declaring file" means — and it must resolve within the same trusted
 definition-root layer as the declaring file, after resolving symlinks to
 their real target so a symlink planted inside the layer cannot smuggle a read
-from outside it; a path escaping it, by traversal, by symlink, or by being
-absolute in the first place, (`PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER`)
-or naming no readable file (`PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING`) is
-a load error. Both are semantic, not structural: neither is checkable from
-the TOML shape alone, only from resolving the reference against the
-filesystem and the layer boundary — the same reasoning that makes
+from outside it. The boundary is the layer, not the declaring file's own
+directory: a task nested below a subdirectory of `tasks/` may reach a
+sidecar beside its parent directory with `file = "../shared.md"`, same as a
+plain relative path resolving anywhere else still inside the layer. A path
+escaping the layer itself — by traversal, by symlink, or by being absolute
+in the first place — (`PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER`) or
+naming no readable file (`PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING`) is a
+load error. Both are semantic, not structural: neither is checkable from the
+TOML shape alone, only from resolving the reference against the filesystem
+and the layer boundary — the same reasoning that makes
 `PLECTURE-CFG-REF-CROSS-PLUGIN` semantic rather than structural.
 
 The four retired frontmatter-era codes are removed from the language
@@ -82,7 +86,12 @@ arrays and flags a `.md` under `plugins/*/config` or
 rather than scanning source text, because "is this file referenced" is a
 question about decoded values — a commented-out reference and an unusually
 (but validly) quoted key are exactly the two cases a text scan answers
-wrong, in opposite directions.
+wrong, in opposite directions. It normalizes both shapes BurntSushi/toml
+produces for an array of tables decoded into a generic map — `[]map[string]any`
+for the canonical `[[<id>.instructions]]` form, `[]any` for the inline
+`instructions = [{ ... }]` form — the same distinction
+`app/internal/lang/discover.go`'s `asTableArray` already makes for the real
+loader, so a reference written either way is recognized.
 
 ## Consequences
 
@@ -128,8 +137,20 @@ The conformance corpus's task fixtures — and the `chains/`, `expressions/`,
 task-only construct — convert from `.md` to `.toml`. Three retired-rule
 fixtures (`tasks/bodiless-kind.invalid.md`, `tasks/no-frontmatter.invalid.md`,
 `tasks/two-blocks.invalid.md`) have no replacement: the rules they pinned
-down no longer exist to test. Three new fixtures exercise the new
-diagnostics.
+down no longer exist to test. Six new fixtures cover the new surface: one
+invalid element declaring both `text` and `file`
+(`PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT`; the mirror case, an element
+declaring neither, is exercised as a native Go unit test rather than a
+corpus fixture, since the schema cannot distinguish an intentionally-empty
+element from one this rule should reject any more precisely than the "both"
+case already proves the rule fires), a `file` naming no readable sidecar,
+and two shapes of a `file` resolving outside the layer — one absolute, one
+via `..` traversal to a target that exists but sits outside the corpus
+root, proving the layer check runs before any existence check. Two more are
+valid: a multi-element composition demonstrating the blank-line join, and a
+fixture nested one directory below `tasks/` demonstrating the accepted
+counterpart to the traversal case — a `..` reference that stays inside the
+layer.
 
 Byte-identity with the pre-migration shape is a golden test, not only a claim:
 `app/internal/lang`'s conformance suite loads `tasks/document.toml`'s
@@ -180,6 +201,20 @@ outside content — the containment boundary has to be a claim about the real
 file being read, not about the path string naming it. Resolution follows
 symlinks (falling back to the parent directory's real path when the leaf
 itself does not exist yet) before the containment check runs.
+
+### `filepath.IsLocal` rejects any `..` in `file`
+
+A first cut used `filepath.IsLocal` to reject an absolute or escaping `file`
+value in one call. Rejected: `IsLocal` treats "leaves the declaring
+directory" as disqualifying, which is stricter than the ratified rule
+("must stay within the same layer") — a task nested below a subdirectory of
+`tasks/` legitimately reaches a sidecar beside its parent directory with
+`file = "../shared.md"`, and `IsLocal` rejected that valid declaration before
+the real containment check ever ran. The fix rejects only what a relative
+path can never be — empty, or absolute — up front, and leaves `..` handling
+entirely to the existing root-relative, symlink-aware containment check,
+which already tells a same-layer parent reference apart from a real escape
+correctly.
 
 ### The orphan check scans TOML source text
 
