@@ -260,13 +260,16 @@ func observeShellDelivery(t *testing.T, def config.ChannelDefinition, inputs map
 // Set PLECT_UPDATE_CHANNEL_RECORDS=1 to rewrite the records after an
 // intended contract change.
 func TestShippedChannels_InvocationsMatchTheirPluginsRecord(t *testing.T) {
+	// Keyed by the declaration's own id rather than its catalog address: the
+	// address carries the alias this test mounts under, and a record that
+	// pinned an alias would be asserting the test's own setup.
 	byPlugin := map[string]map[string]config.ChannelDefinition{}
-	for id, def := range shippedChannels(t) {
+	for _, def := range shippedChannels(t) {
 		root := pluginRootOf(t, def.SourcePath)
 		if byPlugin[root] == nil {
 			byPlugin[root] = map[string]config.ChannelDefinition{}
 		}
-		byPlugin[root][id] = def
+		byPlugin[root][def.ID] = def
 	}
 	for root, channels := range byPlugin {
 		t.Run(filepath.Base(root), func(t *testing.T) {
