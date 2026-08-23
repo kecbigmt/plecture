@@ -240,17 +240,21 @@ func TestLoadWorkflows_WorkspaceProviderRedeclarationRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
+[shared]
+kind = "workflow"
 workspace_provider = "github"
 
-[[nodes]]
-id = "g"
+[[shared.nodes]]
+uses = "g"
 `)
 	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
+[shared]
+kind = "workflow"
 workspace_provider = "gitlab"
 
-[[nodes]]
-id = "r"
+[[shared.nodes]]
+uses = "r"
 `)
 	workspaceDirPath := filepath.Join(repoDir, "session")
 	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {

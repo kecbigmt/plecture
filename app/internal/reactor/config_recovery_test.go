@@ -16,10 +16,14 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-const heartbeatWorkflow = `
-[tick]
+const workflowHeader = "\n[wf]\nkind = \"workflow\"\n"
+
+const heartbeatWorkflow = workflowHeader + `
+[wf.tick]
 heartbeat = "1ms"
 `
+
+const declaresOnOnly = workflowHeader + "\n[wf.tick]\non = [\"resource.*\"]\n"
 
 // TestSessionReactor_ReArmsHeartbeatAfterWorkflowLoadRecovers reproduces the
 // production wedge: while the config home was inconsistent, every workflow
@@ -183,7 +187,6 @@ func newRefreshFixture(t *testing.T, body string) (*sessionReactor, string) {
 // A re-read that still schedules something is adopted, torn or not, since it
 // cannot strand the session.
 func TestRefreshTickConfig_KeepsAndAdopts(t *testing.T) {
-	const declaresOnOnly = "\n[tick]\non = [\"resource.*\"]\n"
 	for _, tc := range []struct {
 		name      string
 		start     string
@@ -192,10 +195,10 @@ func TestRefreshTickConfig_KeepsAndAdopts(t *testing.T) {
 		want      time.Duration
 	}{
 		{name: "zero-length mid-truncate", start: heartbeatWorkflow, rewritten: "", want: time.Millisecond},
-		{name: "table written, keys not yet", start: heartbeatWorkflow, rewritten: "\n[tick]\n", want: time.Millisecond},
+		{name: "table written, keys not yet", start: heartbeatWorkflow, rewritten: workflowHeader + "\n[wf.tick]\n", want: time.Millisecond},
 		{name: "unparseable", start: heartbeatWorkflow, rewritten: "this is not valid toml", want: time.Millisecond},
 		{name: "workflow file gone", start: heartbeatWorkflow, remove: true, want: time.Millisecond},
-		{name: "declaration changed", start: heartbeatWorkflow, rewritten: "\n[tick]\nheartbeat = \"7ms\"\n", want: 7 * time.Millisecond},
+		{name: "declaration changed", start: heartbeatWorkflow, rewritten: workflowHeader + "\n[wf.tick]\nheartbeat = \"7ms\"\n", want: 7 * time.Millisecond},
 		{name: "narrowed but still scheduling", start: heartbeatWorkflow, rewritten: declaresOnOnly, want: 0},
 		{name: "nothing to keep, so adopted", start: declaresOnOnly, rewritten: "", want: 0},
 	} {
@@ -220,7 +223,7 @@ func TestRefreshTickConfig_KeepsAndAdopts(t *testing.T) {
 // re-read failed, so a session left with a pattern but no clock keeps that
 // pattern.
 func TestRefreshTickConfig_KeepsPatternOnlyDeclaration(t *testing.T) {
-	r, path := newRefreshFixture(t, "\n[tick]\non = [\"resource.*\"]\n")
+	r, path := newRefreshFixture(t, declaresOnOnly)
 	writeFile(t, path, "")
 	r.refreshTickConfig()
 	if len(r.tick.On) != 1 || r.tick.On[0] != "resource.*" {

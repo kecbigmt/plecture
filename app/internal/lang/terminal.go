@@ -26,7 +26,11 @@ func (v Validation) ValidatePlan(workflow *Definition, r *Registry) error {
 			offered[verb] = true
 		}
 	}
-	for _, channel := range v.eventChannels(workflow) {
+	channels, err := v.eventChannels(workflow, Position{File: workflow.File, Path: workflow.ID})
+	if err != nil {
+		return err
+	}
+	for _, channel := range channels {
 		ref, ok := channel["uses"].(string)
 		if !ok {
 			continue

@@ -103,7 +103,7 @@ func TestDispatchResource_AmbiguousIsError(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(baseDir, "workspaces", id+".toml"), []byte(prov), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		content := "workspace_provider = \"" + id + "\"\n\n[[nodes]]\nid = \"noop\"\n"
+		content := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + id + "\"\n\n[[" + id + ".nodes]]\nuses = \"noop\"\n"
 		if err := os.WriteFile(filepath.Join(baseDir, "workflows", id+".toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -139,10 +139,10 @@ func TestDispatchResource_AutoSelectFalseSkippedUnlessExplicit(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"), []byte("[noop]\nkind = \"effect\"\n\n[noop.setup]\ntype = \"shell\"\nscript = \"echo '{}'\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "claude.toml"), []byte("workspace_provider = \"github\"\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "claude.toml"), []byte("[claude]\nkind = \"workflow\"\nworkspace_provider = \"github\"\n\n[[claude.nodes]]\nuses = \"noop\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "codex.toml"), []byte("workspace_provider = \"github\"\nauto_select = false\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "codex.toml"), []byte("[codex]\nkind = \"workflow\"\nworkspace_provider = \"github\"\nauto_select = false\n\n[[codex.nodes]]\nuses = \"noop\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := &config.Config{BaseDir: baseDir}
@@ -399,7 +399,7 @@ func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(providersDir, id+".toml"), []byte(prov), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		content := "workspace_provider = \"" + id + "\"\n\n[[nodes]]\nid = \"noop\"\n"
+		content := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + id + "\"\n\n[[" + id + ".nodes]]\nuses = \"noop\"\n"
 		if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}

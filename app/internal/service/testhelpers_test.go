@@ -149,14 +149,7 @@ func attachGithubWorkspaceProvider(t *testing.T, cfg *config.Config, wfID string
 	if err := os.WriteFile(filepath.Join(workspacesDir, wfID+".toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wfPath := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
-	existing, err := os.ReadFile(wfPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \""+wfID+"\"\n"), existing...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	addWorkflowFields(t, cfg, wfID, "workspace_provider = \""+wfID+"\"\n")
 }
 
 // shippedGithubWorkspaceProviderTOML reads the workspace provider config the

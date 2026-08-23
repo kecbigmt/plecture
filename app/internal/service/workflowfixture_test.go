@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -52,12 +53,13 @@ func stubTerminalVerb(v string) string {
 	return v
 }
 
-// nodeFixture mirrors WorkflowNode for fixture authoring. ID defaults to Uses;
-// Uses defaults to ID when only one is given.
+// nodeFixture mirrors one `[[nodes]]` entry for fixture authoring. A fixture
+// naming only `id` selects the effect of the same name, which is how most
+// cases read.
 type nodeFixture struct {
 	id     string
 	uses   string
-	inputs map[string]string
+	inputs map[string]*lang.Value
 }
 
 // effectFixtureDoc renders one effect declaration: the definition table, its
@@ -151,18 +153,21 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 		}
 	}
 	var w strings.Builder
+	fmt.Fprintf(&w, "[%s]\nkind = \"workflow\"\n\n", wfID)
 	for _, n := range nodes {
-		w.WriteString("[[nodes]]\n")
-		if n.id != "" {
+		uses := n.uses
+		if uses == "" {
+			uses = n.id
+		}
+		fmt.Fprintf(&w, "[[%s.nodes]]\n", wfID)
+		if n.id != "" && n.id != uses {
 			fmt.Fprintf(&w, "id = %q\n", n.id)
 		}
-		if n.uses != "" {
-			fmt.Fprintf(&w, "uses = %q\n", n.uses)
-		}
+		fmt.Fprintf(&w, "uses = %q\n", uses)
 		if len(n.inputs) > 0 {
-			w.WriteString("[nodes.inputs]\n")
-			for k, v := range n.inputs {
-				fmt.Fprintf(&w, "%s = %q\n", k, v)
+			fmt.Fprintf(&w, "[%s.nodes.inputs]\n", wfID)
+			for _, k := range sortedInputKeys(n.inputs) {
+				fmt.Fprintf(&w, "%s = %s\n", k, n.inputs[k].Source())
 			}
 		}
 		w.WriteString("\n")
@@ -396,4 +401,37 @@ func stubObservedFacts(t *testing.T, cfg *config.Config, match string, facts map
 // completion check and a chain projection read `resource.state.*` from.
 func observedFacts(state map[string]any) *contract.ResourceObservation {
 	return &contract.ResourceObservation{State: state, At: time.Now()}
+}
+
+// sortedInputKeys keeps a generated fixture byte-stable across runs, so a
+// failure names the same line every time.
+func sortedInputKeys(inputs map[string]*lang.Value) []string {
+	keys := make([]string, 0, len(inputs))
+	for key := range inputs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// addWorkflowFields inserts fields into an existing fixture workflow document,
+// directly after the header its id and kind occupy: a key written past the
+// first `[[<id>.nodes]]` table would be parsed into that table instead.
+func addWorkflowFields(t *testing.T, cfg *config.Config, wfID, fields string) {
+	t.Helper()
+	path := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := fmt.Sprintf("[%s]\nkind = \"workflow\"\n", wfID)
+	at := strings.Index(string(existing), header)
+	if at < 0 {
+		t.Fatalf("workflow %s does not carry its definition header:\n%s", wfID, existing)
+	}
+	at += len(header)
+	merged := string(existing[:at]) + fields + string(existing[at:])
+	if err := os.WriteFile(path, []byte(merged), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -20,13 +20,15 @@ func writeFile(t *testing.T, path, content string) {
 
 func TestLoadWorkflows_RepoDir(t *testing.T) {
 	repoDir := t.TempDir()
-	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "coding-claude.toml"), `
-[[nodes]]
+	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "coding_claude.toml"), `
+[coding_claude]
+kind = "workflow"
+[[coding_claude.nodes]]
 id = "tmux"
 uses = "tmux"
 
-[nodes.inputs]
-session_name = "{{.SessionName}}"
+[coding_claude.nodes.inputs]
+session_name = { from = "session.name" }
 `)
 
 	cfg := &Config{}
@@ -34,29 +36,31 @@ session_name = "{{.SessionName}}"
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
-	wf, ok := got["coding-claude"]
+	wf, ok := got["coding_claude"]
 	if !ok {
-		t.Fatalf("expected coding-claude in %+v", got)
+		t.Fatalf("expected coding_claude in %+v", got)
 	}
-	if wf.ID != "coding-claude" {
-		t.Errorf("wf.ID = %q, want coding-claude", wf.ID)
+	if wf.ID != "coding_claude" {
+		t.Errorf("wf.ID = %q, want coding_claude", wf.ID)
 	}
 	if len(wf.Nodes) != 1 || wf.Nodes[0].ID != "tmux" {
 		t.Errorf("nodes = %+v, want one tmux node", wf.Nodes)
 	}
-	if wf.Nodes[0].Inputs["session_name"] != "{{.SessionName}}" {
+	if wf.Nodes[0].Inputs["session_name"].From != "session.name" {
 		t.Errorf("input mapping not preserved: %+v", wf.Nodes[0].Inputs)
 	}
 }
 
 func TestLoadWorkflows_BlocksField(t *testing.T) {
 	repoDir := t.TempDir()
-	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "coding-claude.toml"), `
-[[nodes]]
+	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "coding_claude.toml"), `
+[coding_claude]
+kind = "workflow"
+[[coding_claude.nodes]]
 uses   = "teardown"
 blocks = ["tmux", "claude"]
 
-[[nodes]]
+[[coding_claude.nodes]]
 uses = "tmux"
 `)
 
@@ -65,7 +69,7 @@ uses = "tmux"
 	if err != nil {
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
-	wf := got["coding-claude"]
+	wf := got["coding_claude"]
 	if len(wf.Nodes) != 2 {
 		t.Fatalf("expected 2 nodes, got %d", len(wf.Nodes))
 	}
@@ -89,13 +93,17 @@ func TestLoadWorkflows_CascadeAppendsNodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[nodes]]
-id = "global"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "global"
 `)
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
-[[nodes]]
-id = "session_extra"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "session_extra"
 `)
 	cfg, err := Load()
 	if err != nil {
@@ -125,23 +133,31 @@ func TestLoadWorkflows_CascadeMultipleLayers(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[nodes]]
-id = "g"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "g"
 `)
 	orgDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org")
 	repoDir := filepath.Join(orgDir, "repo")
 	sessionDir := filepath.Join(repoDir, "session")
 	writeFile(t, filepath.Join(orgDir, ".plect", "workflows", "shared.toml"), `
-[[nodes]]
-id = "o"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "o"
 `)
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
-[[nodes]]
-id = "r"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "r"
 `)
 	writeFile(t, filepath.Join(sessionDir, ".plect", "workflows", "shared.toml"), `
-[[nodes]]
-id = "s"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "s"
 `)
 	cfg, err := Load()
 	if err != nil {
@@ -174,13 +190,17 @@ func TestLoadWorkflows_CascadeRejectsDuplicateNodeID(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[nodes]]
-id = "tmux"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "tmux"
 `)
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
-[[nodes]]
-id = "tmux"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "tmux"
 `)
 	cfg, err := Load()
 	if err != nil {
@@ -196,8 +216,10 @@ func TestLoadWorkflows_CascadeStopsAtHome(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	writeFile(t, filepath.Join(tmpHome, ".plect", "workflows", "leak.toml"), `
-[[nodes]]
-id = "should_not_load"
+[leak]
+kind = "workflow"
+[[leak.nodes]]
+uses = "should_not_load"
 `)
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
 	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
@@ -218,12 +240,16 @@ func TestLoadWorkflows_DifferentFilenamesStayIndependent(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "a.toml"), `
-[[nodes]]
-id = "a_node"
+[a]
+kind = "workflow"
+[[a.nodes]]
+uses = "a_node"
 `)
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "b.toml"), `
-[[nodes]]
-id = "b_node"
+[b]
+kind = "workflow"
+[[b.nodes]]
+uses = "b_node"
 `)
 	cfg := &Config{}
 	got, err := cfg.LoadWorkflows(workspaceDirPath)
@@ -235,7 +261,11 @@ id = "b_node"
 	}
 }
 
-func TestLoadWorkflows_CascadeMergesInputsSchemaAllOf(t *testing.T) {
+// A deeper layer may set a field the shallower layer left unset, but an
+// inputs contract it redeclares is rejected rather than combined: two
+// contracts silently intersected is a workflow whose accepted inputs no
+// single layer states.
+func TestLoadWorkflows_CascadeRejectsARedeclaredInputsSchema(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
@@ -246,18 +276,22 @@ func TestLoadWorkflows_CascadeMergesInputsSchemaAllOf(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[nodes]]
-id = "g"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "g"
 
-[inputs_schema]
+[shared.inputs_schema]
 type = "object"
 `)
 	repoDir := filepath.Join(tmpHome, "workspace_dirs", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
-[[nodes]]
-id = "s"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "s"
 
-[inputs_schema]
+[shared.inputs_schema]
 type = "object"
 required = ["x"]
 `)
@@ -269,43 +303,39 @@ required = ["x"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(workspaceDirPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wf := got["shared"]
-	parts, ok := wf.InputsSchema["allOf"].([]any)
-	if !ok {
-		t.Fatalf("expected allOf array in merged InputsSchema, got %+v", wf.InputsSchema)
-	}
-	if len(parts) != 2 {
-		t.Errorf("expected 2 allOf entries, got %d", len(parts))
-	}
-	if wf.InputsSchemaFile != "" {
-		t.Errorf("merged schema should be inlined; InputsSchemaFile = %q", wf.InputsSchemaFile)
+	_, err = cfg.LoadWorkflows(workspaceDirPath)
+	if err == nil || !strings.Contains(err.Error(), `field "inputs_schema" is set by a shallower layer`) {
+		t.Fatalf("LoadWorkflows = %v, want a redeclaration error naming inputs_schema", err)
 	}
 }
 
-func TestLoadWorkflows_InvalidStemRejected(t *testing.T) {
+// Identity is the definition table's name, so a filename is free-form and an
+// id outside the grammar is what fails — a hyphen in an id would otherwise
+// reach a node id, where a dotted path segment has to stay addressable.
+func TestLoadWorkflows_InvalidIDRejected(t *testing.T) {
 	repoDir := t.TempDir()
-	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "-bad.toml"), `
-[[nodes]]
-id = "tmux"
+	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "-free-form-name.toml"), `
+["coding-claude"]
+kind = "workflow"
+[["coding-claude".nodes]]
+uses = "tmux"
 `)
 	cfg := &Config{}
 	_, err := cfg.LoadWorkflows(repoDir)
-	if err == nil {
-		t.Fatal("expected error when workflow filename stem starts with hyphen")
+	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-ID-INVALID") {
+		t.Fatalf("LoadWorkflows = %v, want an invalid-id diagnostic", err)
 	}
 }
 
 func TestLoadWorkflows_NameAndDescription(t *testing.T) {
 	repoDir := t.TempDir()
-	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "coding-claude.toml"), `
+	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "coding_claude.toml"), `
+[coding_claude]
+kind = "workflow"
 name        = "Coding agent (Claude)"
 description = "Spawn tmux + Claude Code."
 
-[[nodes]]
+[[coding_claude.nodes]]
 id = "tmux"
 uses = "tmux"
 `)
@@ -319,7 +349,7 @@ uses = "tmux"
 	if err != nil {
 		t.Fatal(err)
 	}
-	wf := got["coding-claude"]
+	wf := got["coding_claude"]
 	if wf.Name != "Coding agent (Claude)" {
 		t.Errorf("Name = %q, want %q", wf.Name, "Coding agent (Claude)")
 	}
@@ -339,16 +369,20 @@ func TestLoadWorkflows_NameInDeeperLayerWinsWhenAbsentAtTop(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[nodes]]
-id = "g"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "g"
 `)
 	repoDir := filepath.Join(tmpHome, "workspace_dirs", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
+[shared]
+kind = "workflow"
 name        = "From deeper"
 description = "deeper desc"
 
-[[nodes]]
-id = "s"
+[[shared.nodes]]
+uses = "s"
 `)
 	workspaceDirPath := filepath.Join(repoDir, "session")
 	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
@@ -382,17 +416,21 @@ func TestLoadWorkflows_NameRedeclarationAcrossLayersRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
+[shared]
+kind = "workflow"
 name = "Global"
 
-[[nodes]]
-id = "g"
+[[shared.nodes]]
+uses = "g"
 `)
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
+[shared]
+kind = "workflow"
 name = "Local"
 
-[[nodes]]
-id = "s"
+[[shared.nodes]]
+uses = "s"
 `)
 	cfg, err := Load()
 	if err != nil {
@@ -553,18 +591,22 @@ func TestLoadWorkflows_WorkspaceDirLayerNodesOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[nodes]]
-id = "g"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "g"
 `)
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
 	// Clone content tries to reroute the workflow to another workspace provider →
 	// load error. (Shell-bearing fields don't even exist on workflows
 	// anymore; workspace provider selection is the remaining identity-shaped knob.)
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
+[shared]
+kind = "workflow"
 workspace_provider = "github"
 
-[[nodes]]
-id = "s"
+[[shared.nodes]]
+uses = "s"
 `)
 	cfg, err := Load()
 	if err != nil {
@@ -590,18 +632,22 @@ func TestLoadWorkflows_DoneWhenRetiredInAnyLayer(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[nodes]]
-id = "g"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "g"
 `)
 	// Even a machine-owned ancestor overlay (trusted layer) may no longer
 	// declare workflow-level done_when — it's retired everywhere, not just
 	// rejected in the untrusted workspace-dir layer.
 	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
-done_when = '{{eq .Workflow.outputs.x "y"}}'
+[shared]
+kind = "workflow"
+done_when = "retired"
 
-[[nodes]]
-id = "r"
+[[shared.nodes]]
+uses = "r"
 `)
 	workspaceDirPath := filepath.Join(repoDir, "session")
 	if err := os.MkdirAll(workspaceDirPath, 0o755); err != nil {
@@ -633,19 +679,23 @@ func TestLoadWorkflows_TickStaleWhenKeyRejected(t *testing.T) {
 		{
 			name: "stale_when",
 			toml: `
-[tick]
+[shared]
+kind = "workflow"
+[shared.tick]
 stale_when = "15m"
 `,
-			want: "tick.stale_when",
+			want: "stale_when",
 		},
 		{
 			name: "max_stale_when",
 			toml: `
-[tick]
+[shared]
+kind = "workflow"
+[shared.tick]
 heartbeat      = "15m"
 max_stale_when = "1h"
 `,
-			want: "tick.max_stale_when",
+			want: "max_stale_when",
 		},
 	}
 	for _, tt := range tests {
@@ -695,13 +745,17 @@ func TestLoadWorkflows_TickCascadeDeeperWinsWholeTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[tick]
+[shared]
+kind = "workflow"
+[shared.tick]
 on        = ["resource.*"]
 heartbeat = "15m"
 `)
 	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
-[tick]
+[shared]
+kind = "workflow"
+[shared.tick]
 heartbeat = "5m"
 `)
 	workspaceDirPath := filepath.Join(repoDir, "session")
@@ -744,12 +798,16 @@ func TestLoadWorkflows_TickGlobalDefaultAfterDeeperDeclarationIsNotAnError(t *te
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[tick]
+[shared]
+kind = "workflow"
+[shared.tick]
 on = ["resource.*"]
 `)
 	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
-[tick]
+[shared]
+kind = "workflow"
+[shared.tick]
 heartbeat = "30m"
 `)
 	workspaceDirPath := filepath.Join(repoDir, "session")
@@ -781,14 +839,18 @@ func TestLoadWorkflows_HealthcheckCascadeDeeperWinsWholeTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[healthcheck]
+[shared]
+kind = "workflow"
+[shared.healthcheck]
 period = "10m"
 stall_threshold = "30m"
 renotify_every = 4
 `)
 	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "shared.toml"), `
-[healthcheck]
+[shared]
+kind = "workflow"
+[shared.healthcheck]
 period = "2m"
 `)
 	workspaceDirPath := filepath.Join(repoDir, "session")
@@ -828,11 +890,13 @@ func TestLoadWorkflows_WorkspaceDirLayerRejectsTick(t *testing.T) {
 	}
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
-[tick]
+[shared]
+kind = "workflow"
+[shared.tick]
 on = ["resource.*"]
 
-[[nodes]]
-id = "s"
+[[shared.nodes]]
+uses = "s"
 `)
 	cfg, err := Load()
 	if err != nil {
@@ -859,11 +923,13 @@ func TestLoadWorkflows_WorkspaceDirLayerRejectsHealthcheck(t *testing.T) {
 	}
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "workflows", "shared.toml"), `
-[healthcheck]
+[shared]
+kind = "workflow"
+[shared.healthcheck]
 period = "1s"
 
-[[nodes]]
-id = "s"
+[[shared.nodes]]
+uses = "s"
 `)
 	cfg, err := Load()
 	if err != nil {
@@ -955,18 +1021,22 @@ func TestLoadWorkflows_PluginLayerIsBase(t *testing.T) {
 	}
 	pluginDir := filepath.Join(tmpHome, "plugin-github")
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "shared.toml"), `
+[shared]
+kind = "workflow"
 name     = "From plugin"
 workspace_provider = "github"
 
-[[nodes]]
-id = "p"
+[[shared.nodes]]
+uses = "p"
 `)
 	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("plugin_dirs = [\""+pluginDir+"\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[nodes]]
-id = "g"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "g"
 `)
 	cfg, err := Load()
 	if err != nil {
@@ -989,12 +1059,16 @@ func TestLoadWorkflows_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
 	writeFile(t, filepath.Join(pluginA, "config", "workflows", "shared.toml"), `
-[[nodes]]
-id = "a"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "a"
 `)
 	writeFile(t, filepath.Join(pluginB, "config", "workflows", "shared.toml"), `
-[[nodes]]
-id = "b"
+[shared]
+kind = "workflow"
+[[shared.nodes]]
+uses = "b"
 `)
 	cfg := &Config{PluginDirs: []string{pluginA, pluginB}}
 
@@ -1099,4 +1173,176 @@ script = "echo deeper"
 			t.Errorf("Setup = %q, want the deeper layer's declaration", got)
 		}
 	})
+}
+
+// Identity is the definition table's name, so one document declares as many
+// workflows as its author wants — the shape a filename-keyed loader could not
+// express.
+func TestLoadWorkflows_OneDocumentDeclaresSeveral(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "agents.toml"), `
+[coding]
+kind = "workflow"
+name = "Coding agent"
+
+[[coding.nodes]]
+uses = "tmux"
+
+[reviewing]
+kind = "workflow"
+name = "Reviewing agent"
+
+[[reviewing.nodes]]
+uses = "tmux"
+`)
+	got, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("loaded %d workflows, want 2: %+v", len(got), got)
+	}
+	for id, name := range map[string]string{"coding": "Coding agent", "reviewing": "Reviewing agent"} {
+		wf, ok := got[id]
+		if !ok {
+			t.Fatalf("expected %s in %+v", id, got)
+		}
+		if wf.Name != name {
+			t.Errorf("%s name = %q, want %q", id, wf.Name, name)
+		}
+		if wf.SourcePath == "" || wf.Definition == nil || wf.Definition.ID != id {
+			t.Errorf("%s carries no parsed declaration: %+v", id, wf)
+		}
+	}
+}
+
+// A display value reads persisted outputs and the session's inputs only, so
+// its freshness costs no network: a projection of a live root is refused at
+// load rather than resolving to a blank in a listing.
+func TestLoadWorkflows_DisplayRejectsAForeignRoot(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[coding.display]
+title = { from = "nodes.tmux.outputs.session_name" }
+
+[[coding.nodes]]
+uses = "tmux"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-FROM-ROOT") {
+		t.Fatalf("LoadWorkflows = %v, want a foreign-root diagnostic", err)
+	}
+}
+
+// A workspace provider's hooks run before any workspace or node output
+// exists, so its parameters are literal data and there is nothing for a
+// projection to read.
+func TestLoadWorkflows_ProviderInputsRejectATaggedValue(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[coding.workspace_provider_inputs]
+layout_root = { from = "session.inputs.layout_root" }
+
+[[coding.nodes]]
+uses = "tmux"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-VALUE-TAG-SURFACE") {
+		t.Fatalf("LoadWorkflows = %v, want a literal-only diagnostic", err)
+	}
+}
+
+// A provider parameter's type is the provider's own contract to state, so a
+// literal reaches it as the scalar its author wrote.
+func TestLoadWorkflows_ProviderInputsKeepTheirLiteralType(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[coding.workspace_provider_inputs]
+layout_root    = "~/worktrees"
+delete_branch  = true
+retain_days    = 7
+
+[[coding.nodes]]
+uses = "tmux"
+`)
+	got, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	inputs := got["coding"].WorkspaceProviderInputs
+	if inputs["layout_root"] != "~/worktrees" || inputs["delete_branch"] != true || inputs["retain_days"] != int64(7) {
+		t.Errorf("workspace_provider_inputs = %#v", inputs)
+	}
+}
+
+// A contract declared twice is a load-time question: leaving it to the
+// compile at `plect create` time would let the ambiguity ship.
+func TestLoadWorkflows_InlineAndFileInputsSchemaMutuallyExclusive(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "coding.toml"), `
+[coding]
+kind               = "workflow"
+inputs_schema_file = "coding.schema.json"
+
+[coding.inputs_schema]
+type = "object"
+
+[[coding.nodes]]
+uses = "tmux"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("LoadWorkflows = %v, want a mutually-exclusive error", err)
+	}
+}
+
+// A channel binding that is not an array of tables used to load as no
+// channels at all, which leaves the session unreachable with nothing said.
+func TestLoadWorkflows_NonArrayEventChannelRejected(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[coding.event]
+channel = "runtime"
+
+[[coding.nodes]]
+uses = "tmux"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-FIELD-TYPE") {
+		t.Fatalf("LoadWorkflows = %v, want a field-type diagnostic", err)
+	}
+}
+
+// A binding with no name cannot be addressed and one with no target delivers
+// nowhere, so the load refuses both rather than leaving them to whichever
+// consumer notices the gap first.
+func TestLoadWorkflows_EventChannelRequiresNameAndUses(t *testing.T) {
+	for _, entry := range []string{"uses = \"delivery\"\n", "name = \"runtime\"\n"} {
+		baseDir := t.TempDir()
+		writeFile(t, filepath.Join(baseDir, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[[coding.nodes]]
+uses = "tmux"
+
+[[coding.event.channel]]
+`+entry)
+		_, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+		if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-FIELD-REQUIRED") {
+			t.Fatalf("LoadWorkflows with %q = %v, want a required-field diagnostic", entry, err)
+		}
+	}
 }

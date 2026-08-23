@@ -162,7 +162,7 @@ func TestRunSetup_NestedBindInputsRenderInnerInputObject(t *testing.T) {
 		}, "tmux_session", "path_prepend"),
 	}
 	ordered := nestedPlan(t, outer, inner)
-	ordered[0].Inputs = map[string]string{"tmux_session": "sess-1"}
+	ordered[0].Inputs = map[string]*lang.Value{"tmux_session": literalValue("sess-1")}
 	tasks := map[string]*contract.TaskState{}
 	if err := RunSetup(context.Background(), ordered, SessionVars{Name: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunSetup: %v", err)

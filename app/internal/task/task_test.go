@@ -30,14 +30,14 @@ func (r *recordingObserver) OnFailure(_, id string, _ time.Duration, _ error, _ 
 }
 func (r *recordingObserver) OnSkip(_, id, _ string) { r.skips = append(r.skips, id) }
 
-// depInput wires a node to its upstream by referencing the upstream's outputs
-// in an input binding. CompileWorkflow derives the DAG from these references,
-// so test scenarios that used to thread `DependsOn` now thread a synthetic
-// input — the regex-based deriveDependsOn doesn't care that the upstream key
-// is fictitious.
-func depInput(upstream string) map[string]string {
-	return map[string]string{
-		"link": "{{.Nodes." + upstream + ".outputs.k}}",
+// depInput wires a node to its upstream by projecting the upstream's outputs
+// in an input binding. CompileWorkflow derives the DAG from these
+// projections, so a scenario that used to thread `DependsOn` threads a
+// synthetic input instead; the edge follows from the path, so the upstream key
+// need not exist.
+func depInput(upstream string) map[string]*lang.Value {
+	return map[string]*lang.Value{
+		"link": fromValue("nodes." + upstream + ".outputs.k"),
 	}
 }
 
@@ -98,9 +98,9 @@ func TestPlan_TopoSort_Diamond(t *testing.T) {
 		},
 		[]nodeStub{
 			{id: "a"},
-			{id: "d", inputs: map[string]string{
-				"b": "{{.Nodes.b.outputs.k}}",
-				"c": "{{.Nodes.c.outputs.k}}",
+			{id: "d", inputs: map[string]*lang.Value{
+				"b": fromValue("nodes.b.outputs.k"),
+				"c": fromValue("nodes.c.outputs.k"),
 			}},
 			{id: "b", inputs: depInput("a")},
 			{id: "c", inputs: depInput("a")},
@@ -159,9 +159,9 @@ func TestPlan_TopoSort_CrossScope(t *testing.T) {
 		},
 		[]nodeStub{
 			{id: "envfile"},
-			{id: "claude", inputs: map[string]string{
-				"tmux":    "{{.Nodes.tmux.outputs.k}}",
-				"envfile": "{{.Nodes.envfile.outputs.k}}",
+			{id: "claude", inputs: map[string]*lang.Value{
+				"tmux":    fromValue("nodes.tmux.outputs.k"),
+				"envfile": fromValue("nodes.envfile.outputs.k"),
 			}},
 			{id: "tmux"},
 		},
@@ -228,113 +228,6 @@ func TestParseOutputs(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestRender_SelfAndTasks(t *testing.T) {
-	out, err := render(`{{.Self.path}}-{{.Tasks.tmux.session_name}}-{{.SessionName}}`, RenderContext{
-		Self:    map[string]any{"path": "/tmp/.env"},
-		Tasks:   map[string]map[string]any{"tmux": {"session_name": "foo"}},
-		Session: SessionVars{Name: "sess"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if out != "/tmp/.env-foo-sess" {
-		t.Fatalf("unexpected output: %q", out)
-	}
-}
-
-func TestRender_MissingKeyIsError(t *testing.T) {
-	_, err := render(`{{.Tasks.unknown.x}}`, RenderContext{})
-	if err == nil {
-		t.Fatal("expected error for missing key")
-	}
-}
-
-// `get` provides a missingkey-safe lookup for callers that need to read
-// previous-run outputs (via .Prev) under the strict setup template option.
-// The third argument is the value an absent key yields.
-func TestRender_Get(t *testing.T) {
-	tests := []struct {
-		name string
-		tmpl string
-		prev map[string]any
-		want string
-	}{
-		{
-			name: "present key yields its value, not the default",
-			tmpl: `{{get .Prev "session_id" "fallback"}}`,
-			prev: map[string]any{"session_id": "abc-123"},
-			want: "abc-123",
-		},
-		{
-			name: "absent key yields the default",
-			tmpl: `X={{get .Prev "session_id" "fallback"}}Y`,
-			prev: map[string]any{},
-			want: "X=fallbackY",
-		},
-		{
-			name: "nil map yields the default",
-			tmpl: `{{get .Prev "anything" "fallback"}}`,
-			prev: nil,
-			want: "fallback",
-		},
-		{
-			name: "empty default keeps the absent case empty",
-			tmpl: `X={{get .Prev "session_id" ""}}Y`,
-			prev: map[string]any{},
-			want: "X=Y",
-		},
-		{
-			name: "present-but-empty is a value, not an absence",
-			tmpl: `X={{get .Prev "session_id" "fallback"}}Y`,
-			prev: map[string]any{"session_id": ""},
-			want: "X=Y",
-		},
-		{
-			name: "present-but-nil yields the default",
-			tmpl: `{{get .Prev "session_id" "fallback"}}`,
-			prev: map[string]any{"session_id": nil},
-			want: "fallback",
-		},
-		{
-			name: "non-string value renders as itself",
-			tmpl: `{{get .Prev "pid" "fallback"}}`,
-			prev: map[string]any{"pid": 12345},
-			want: "12345",
-		},
-		{
-			name: "non-string default renders as itself",
-			tmpl: `{{get .Prev "pid" 0}}`,
-			prev: map[string]any{},
-			want: "0",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			out, err := render(tt.tmpl, RenderContext{Prev: tt.prev})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if out != tt.want {
-				t.Fatalf("got %q, want %q", out, tt.want)
-			}
-		})
-	}
-}
-
-// The default is mandatory: a two-argument call is the hidden-default form
-// this helper no longer has, and must fail loud rather than render.
-func TestRender_GetWithoutDefaultFails(t *testing.T) {
-	_, err := render(`SID='{{get .Prev "session_id"}}'`, RenderContext{
-		Prev: map[string]any{"session_id": "abc-123"},
-	})
-	if err == nil {
-		t.Fatal("expected an error for a two-argument get")
-	}
-	if !strings.Contains(err.Error(), "get") {
-		t.Fatalf("error %q does not name the failing call site", err)
 	}
 }
 
@@ -407,7 +300,7 @@ func TestRunSetup_CapturesOutputsAndRespectsDeps(t *testing.T) {
 		},
 		[]nodeStub{
 			{id: "a"},
-			{id: "b", inputs: map[string]string{"a_dep": "{{.Nodes.a.outputs.value}}"}},
+			{id: "b", inputs: map[string]*lang.Value{"a_dep": fromValue("nodes.a.outputs.value")}},
 		},
 	)
 	tasks := map[string]*contract.TaskState{}
@@ -592,57 +485,61 @@ func TestRunSetup_FailurePreservesPrevOutputs(t *testing.T) {
 }
 
 // Regression: JSON numbers unmarshal into float64, and Go's
-// default formatter renders large floats as scientific notation (e.g.
-// 3.052179e+06). Scripts compare the rendered value as a string, so the
-// renderer must emit integer-valued numbers without exponent.
-func TestRender_IntegerFloatNotScientific(t *testing.T) {
-	out, err := render(`pid={{get .Prev "pid" ""}};self={{.Self.pid}}`, RenderContext{
-		Self: map[string]any{"pid": float64(3052179)},
-		Prev: map[string]any{"pid": float64(3052179)},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	want := "pid=3052179;self=3052179"
-	if out != want {
-		t.Fatalf("got %q, want %q", out, want)
+// A persisted output is JSON, so every number arrives as a float64, and the
+// default formatter renders a large one in scientific notation (e.g.
+// 3.052179e+06). A script compares the resolved value as a string, so an
+// integer-valued number must reach it without an exponent.
+func TestResolve_IntegerFloatNotScientific(t *testing.T) {
+	env := cleanupRoots(RenderContext{Self: map[string]any{"pid": float64(3052179)}})
+	if got := resolveFrom(t, env, "self.outputs.pid"); got != "3052179" {
+		t.Fatalf("got %q, want %q", got, "3052179")
 	}
 }
 
-// Normalization must reach nested maps/slices reachable through .Tasks too,
-// otherwise an upstream task's deep `pid` could still leak as scientific.
-func TestRender_IntegerFloatNormalizedInNestedTasks(t *testing.T) {
-	out, err := render(
-		`{{.Tasks.dep.meta.pid}}-{{index .Tasks.dep.pids 0}}`,
-		RenderContext{
-			Tasks: map[string]map[string]any{
-				"dep": {
-					"meta": map[string]any{"pid": float64(3052179)},
-					"pids": []any{float64(3052179)},
-				},
-			},
+// Normalization must reach nested maps and slices under a node's outputs too,
+// otherwise an upstream node's deep `pid` still leaks as scientific.
+func TestResolve_IntegerFloatNormalizedUnderNodeOutputs(t *testing.T) {
+	env := nodeInputsRoots(RenderContext{Tasks: map[string]map[string]any{
+		"dep": {
+			"meta": map[string]any{"pid": float64(3052179)},
+			"pids": []any{float64(3052179)},
 		},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	}})
+	if got := resolveFrom(t, env, "nodes.dep.outputs.meta.pid"); got != "3052179" {
+		t.Fatalf("nested map: got %q", got)
 	}
-	if out != "3052179-3052179" {
-		t.Fatalf("got %q, want %q", out, "3052179-3052179")
+	out, absent, err := (lang.Eval{Roots: env}).Value(fromValue("nodes.dep.outputs.pids"))
+	if err != nil || absent {
+		t.Fatalf("Value: %v (absent=%v)", err, absent)
+	}
+	list, ok := out.([]any)
+	if !ok || len(list) != 1 || list[0] != int64(3052179) {
+		t.Fatalf("nested slice: got %#v", out)
 	}
 }
 
-// Non-integer floats keep their decimal form — only integer-valued floats
-// are normalized.
-func TestRender_NonIntegerFloatPreserved(t *testing.T) {
-	out, err := render(`x={{.Self.ratio}}`, RenderContext{
-		Self: map[string]any{"ratio": 0.5},
-	})
+// Only integer-valued floats are normalized; a non-integer keeps its decimal
+// form.
+func TestResolve_NonIntegerFloatPreserved(t *testing.T) {
+	env := cleanupRoots(RenderContext{Self: map[string]any{"ratio": 0.5}})
+	if got := resolveFrom(t, env, "self.outputs.ratio"); got != "0.5" {
+		t.Fatalf("got %q, want %q", got, "0.5")
+	}
+}
+
+// resolveFrom resolves one projection the way an action's own binding does,
+// for the cases that are about how a persisted value reaches a script rather
+// than about which surface offers it.
+func resolveFrom(t *testing.T, env lang.Roots, path string) string {
+	t.Helper()
+	out, absent, err := (lang.Eval{Roots: env}).Argument(fromValue(path))
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("resolve %s: %v", path, err)
 	}
-	if out != "x=0.5" {
-		t.Fatalf("got %q, want %q", out, "x=0.5")
+	if absent {
+		t.Fatalf("resolve %s: reported absent", path)
 	}
+	return out
 }
 
 func TestRunSetup_FailureMarksFailed(t *testing.T) {
@@ -1152,35 +1049,5 @@ func TestRunCapture_SurfacesStderrOnFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "can't find pane") {
 		t.Fatalf("error %q should carry stderr", err.Error())
-	}
-}
-
-// The default-value idiom this repository's shipped and user workflows carry
-// — an if/else over a presence test — collapses to a single three-argument
-// `get`. This pins the migration: for the model/effort defaulting cases the
-// two forms render byte-identically.
-func TestRender_ThreeArgGetMatchesIfElseDefaultIdiom(t *testing.T) {
-	const idiom = `{{if get .SessionInputs "model" ""}}{{get .SessionInputs "model" ""}}{{else}}fable{{end}}`
-	const collapsed = `{{get .SessionInputs "model" "fable"}}`
-
-	for _, inputs := range []map[string]any{
-		nil,
-		{},
-		{"effort": "high"},
-		{"model": "opus"},
-		{"model": "opus", "effort": "high"},
-	} {
-		ctx := RenderContext{Session: SessionVars{Inputs: inputs}}
-		before, err := render(idiom, ctx)
-		if err != nil {
-			t.Fatalf("render(idiom) with %v: %v", inputs, err)
-		}
-		after, err := render(collapsed, ctx)
-		if err != nil {
-			t.Fatalf("render(collapsed) with %v: %v", inputs, err)
-		}
-		if before != after {
-			t.Errorf("inputs %v: idiom rendered %q, three-argument get rendered %q", inputs, before, after)
-		}
 	}
 }

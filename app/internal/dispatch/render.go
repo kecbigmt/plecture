@@ -13,12 +13,12 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// channelInputs renders an [[event.channel]]'s input templates against the
-// session's persisted node outputs — the same pass task node inputs use, so
-// {{.Nodes.claude.outputs.socket_path}} resolves to the live value. Rendered
-// fresh per batch because a down/up re-creates run-scoped outputs. The
-// definition's own [input_schema] defaults fill whatever this wiring left
-// unset, so an author-declared optional parameter needs no per-workflow line.
+// channelInputs resolves an [[event.channel]]'s input wiring against the
+// session's persisted node outputs — the same surface a node's inputs read,
+// so a projection of a node output resolves to the live value. Resolved fresh
+// per batch because a down/up re-creates run-scoped outputs. The definition's
+// own [input_schema] defaults fill whatever this wiring left unset, so an
+// author-declared optional parameter needs no per-workflow line.
 func channelInputs(s *domain.Session, ch config.EventChannel, def config.ChannelDefinition) (map[string]any, error) {
 	deps := make(map[string]map[string]any, len(s.Tasks))
 	for id, st := range s.Tasks {
@@ -35,7 +35,7 @@ func channelInputs(s *domain.Session, ch config.EventChannel, def config.Channel
 	if st := s.Tasks[contract.WorkflowPseudoNodeID]; st != nil {
 		wfOutputs = st.Outputs
 	}
-	rendered, err := task.RenderInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
+	resolved, err := task.ResolveNodeInputs(ch.Inputs, deps, wfOutputs, task.SessionVars{
 		Name:             s.Name,
 		ResourceID:       s.ResourceID,
 		WorkspaceDirPath: s.WorkspaceDirPath,
@@ -45,5 +45,5 @@ func channelInputs(s *domain.Session, ch config.EventChannel, def config.Channel
 	if err != nil {
 		return nil, err
 	}
-	return def.ApplyInputDefaults(rendered), nil
+	return def.ApplyInputDefaults(resolved), nil
 }

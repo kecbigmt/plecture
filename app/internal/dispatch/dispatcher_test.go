@@ -64,7 +64,7 @@ func runTestDispatcher(t *testing.T, log *eventlog.Store, sock string) (*session
 	}
 	d := &sessionDispatcher{
 		session:  "o/r-1",
-		channels: []config.EventChannel{{Name: "runtime", Uses: "claude_channel", Inputs: map[string]string{"path": "{{.Nodes.claude.outputs.socket_path}}"}, Include: []string{"plect.instruction"}}},
+		channels: []config.EventChannel{{Name: "runtime", Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": fromValue("nodes.claude.outputs.socket_path")}, Include: []string{"plect.instruction"}}},
 		defs:     map[string]config.ChannelDefinition{"claude_channel": socketChannel()},
 		log:      log,
 		state:    st,
@@ -217,7 +217,7 @@ func runtimeDispatcher(t *testing.T, session string, log *eventlog.Store, socket
 		channels: []config.EventChannel{{
 			Name:    "runtime",
 			Uses:    "claude_channel",
-			Inputs:  map[string]string{"path": "{{.Nodes.claude.outputs.socket_path}}"},
+			Inputs:  map[string]*lang.Value{"path": fromValue("nodes.claude.outputs.socket_path")},
 			Include: include,
 		}},
 		defs: map[string]config.ChannelDefinition{
@@ -398,8 +398,8 @@ func TestDispatcher_MultiChannelFanOut(t *testing.T) {
 	d := &sessionDispatcher{
 		session: "o/r-1",
 		channels: []config.EventChannel{
-			{Name: "live", Uses: "sock", Inputs: map[string]string{"path": sock}, Include: []string{"plect.instruction"}},
-			{Name: "dead", Uses: "sock", Inputs: map[string]string{"path": dead}, Include: []string{"plect.instruction"}},
+			{Name: "live", Uses: "sock", Inputs: map[string]*lang.Value{"path": literalValue(sock)}, Include: []string{"plect.instruction"}},
+			{Name: "dead", Uses: "sock", Inputs: map[string]*lang.Value{"path": literalValue(dead)}, Include: []string{"plect.instruction"}},
 		},
 		defs:   map[string]config.ChannelDefinition{"sock": def},
 		log:    log,

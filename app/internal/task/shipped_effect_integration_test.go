@@ -320,10 +320,10 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	if err != nil {
 		t.Fatalf("ResolveDefinition(%s): %v", id, err)
 	}
-	// A node input is a literal here rather than a reference into another
+	// A node input is a literal here rather than a projection of another
 	// node's outputs: this record is one effect's own contract, so the
 	// scenario states the values it is set up with directly.
-	resolved.Inputs = scenario.Inputs
+	resolved.Inputs = literalValues(scenario.Inputs)
 	session := h.sessionVars()
 	tasks := map[string]*contract.TaskState{}
 	if len(scenario.Prev) > 0 {
@@ -340,7 +340,7 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 			t.Fatal(err)
 		}
 		fmt.Fprintf(b, "== %s / %s\n", id, hook)
-		outcome := h.runHook(t, hook, def, resolved, session, tasks, self)
+		outcome := h.runHook(t, hook, def, resolved, session, tasks, self, scenario.Inputs)
 		for i, call := range recordedCalls(t, h.argvLog, h.mounted.Dir) {
 			fmt.Fprintf(b, "call[%d]: %s\n", i, h.scrubbed(call))
 		}
@@ -430,10 +430,10 @@ func (h *effectHarness) terminalBinding() *TerminalBinding {
 	}
 }
 
-func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefinition, r Resolved, session SessionVars, tasks map[string]*contract.TaskState, self map[string]any) string {
+func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefinition, r Resolved, session SessionVars, tasks map[string]*contract.TaskState, self map[string]any, scenarioInputs map[string]string) string {
 	t.Helper()
 	ctx := context.Background()
-	inputs := asAnyMap(r.Inputs)
+	inputs := asAnyMap(scenarioInputs)
 	switch hook {
 	case "setup":
 		if err := RunSetup(ctx, []Resolved{r}, session, tasks, nil); err != nil {
@@ -492,6 +492,20 @@ func jsonLine(t *testing.T, v any) string {
 		t.Fatal(err)
 	}
 	return string(raw)
+}
+
+// literalValues states a scenario's inputs as the node wiring they stand for:
+// one literal per key, which is what a record of a single effect's own
+// contract needs.
+func literalValues(in map[string]string) map[string]*lang.Value {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]*lang.Value, len(in))
+	for key, value := range in {
+		out[key] = &lang.Value{Form: lang.FormLiteral, Literal: value}
+	}
+	return out
 }
 
 func asAnyMap(in map[string]string) map[string]any {

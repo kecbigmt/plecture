@@ -89,9 +89,12 @@ Pursue the goal.
 // the rest of the layer, so they are ValidateTaskDocuments' rules.
 func TestValidateTaskDocuments_ChainReferences(t *testing.T) {
 	tests := []struct {
-		name    string
-		chain   string
-		wantErr string
+		name string
+		// workflow overrides the chain's target, defaulting to the one the
+		// fixture layer declares.
+		workflow string
+		chain    string
+		wantErr  string
 	}{
 		{
 			name:    "unknown judge id",
@@ -103,12 +106,25 @@ func TestValidateTaskDocuments_ChainReferences(t *testing.T) {
 			chain:   "[pursue.chains.when]\nall=[{judge_pending=\"goal-met\"}]\n[pursue.chains.inputs]\nrev = { from = \"resource.state.nope\" }\n",
 			wantErr: "names no property",
 		},
+		{
+			// The target is resolved against the parsed workflow
+			// declarations, so a chain naming one nothing declares is a load
+			// error rather than a fire-time surprise.
+			name:     "unknown target workflow",
+			workflow: "nope",
+			chain:    "[pursue.chains.when]\nall=[{judge_pending=\"goal-met\"}]\n",
+			wantErr:  "PLECTURE-CFG-UNKNOWN-REF",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			base := t.TempDir()
 			writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-			writeFile(t, filepath.Join(base, "workflows", "wf.toml"), "[[nodes]]\nid = \"noop\"\n")
+			writeFile(t, filepath.Join(base, "workflows", "wf.toml"), "[wf]\nkind = \"workflow\"\n\n[[wf.nodes]]\nuses = \"noop\"\n")
+			target := tc.workflow
+			if target == "" {
+				target = "wf"
+			}
 			writeFile(t, filepath.Join(base, "tasks", "pursue.md"), `+++
 [pursue]
 kind              = "task"
@@ -120,7 +136,7 @@ all = [{ judge = "the goal is achieved", id = "goal-met" }]
 
 [[pursue.chains]]
 id       = "review"
-workflow = "wf"
+workflow = "`+target+`"
 
 `+tc.chain+`+++
 Pursue the goal.

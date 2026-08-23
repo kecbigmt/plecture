@@ -5,6 +5,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -19,7 +20,7 @@ func TestChannelInputs_ResolvesNodeOutputs(t *testing.T) {
 	ch := config.EventChannel{
 		Name:   "runtime",
 		Uses:   "claude_channel",
-		Inputs: map[string]string{"path": "{{.Nodes.claude.outputs.socket_path}}"},
+		Inputs: map[string]*lang.Value{"path": fromValue("nodes.claude.outputs.socket_path")},
 	}
 	got, err := channelInputs(s, ch, config.ChannelDefinition{})
 	if err != nil {
@@ -32,7 +33,7 @@ func TestChannelInputs_ResolvesNodeOutputs(t *testing.T) {
 
 func TestChannelInputs_MissingNodeErrors(t *testing.T) {
 	s := &domain.Session{Name: "o/r-1", Tasks: map[string]*contract.TaskState{}}
-	ch := config.EventChannel{Name: "runtime", Inputs: map[string]string{"path": "{{.Nodes.claude.outputs.socket_path}}"}}
+	ch := config.EventChannel{Name: "runtime", Inputs: map[string]*lang.Value{"path": fromValue("nodes.claude.outputs.socket_path")}}
 	if _, err := channelInputs(s, ch, config.ChannelDefinition{}); err == nil {
 		t.Fatal("expected error for a reference to a missing node")
 	}
@@ -45,7 +46,7 @@ func TestChannelInputs_FillsDeclaredDefaultsTheWorkflowLeftUnset(t *testing.T) {
 	ch := config.EventChannel{
 		Name:   "runtime",
 		Uses:   "codex_exec",
-		Inputs: map[string]string{"queue_dir": "{{.Nodes.codex_exec.outputs.queue_dir}}"},
+		Inputs: map[string]*lang.Value{"queue_dir": fromValue("nodes.codex_exec.outputs.queue_dir")},
 	}
 	def := config.ChannelDefinition{InputSchema: map[string]config.ChannelInputSpec{
 		"queue_dir":       {Type: "string", Required: true},

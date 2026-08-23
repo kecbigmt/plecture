@@ -506,7 +506,9 @@ func TestSupervisor_StartsAndStopsWithRunScope(t *testing.T) {
 func TestSupervisor_ResolvesTickConfigFromPluginMountedAfterConstruction(t *testing.T) {
 	pluginDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "coding.toml"), `
-[tick]
+[coding]
+kind = "workflow"
+[coding.tick]
 on = ["github.*"]
 `)
 

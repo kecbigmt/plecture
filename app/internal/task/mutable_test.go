@@ -74,7 +74,7 @@ func TestMutableOutputKeys_FromFile(t *testing.T) {
 func TestCompileWorkflow_RejectsWorkspaceDirMutableDeclaration(t *testing.T) {
 	wf := config.WorkflowFile{
 		ID:    "wf",
-		Nodes: []config.WorkflowNode{{ID: "bad"}},
+		Nodes: []config.WorkflowNode{{ID: "bad", Uses: "bad"}},
 	}
 	defs := map[string]config.TaskDefinition{
 		"bad": {

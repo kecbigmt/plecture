@@ -10,6 +10,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/confighome"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -449,9 +450,9 @@ func TestApplyDisplay_OverridesFromOutputs(t *testing.T) {
 	workflows := map[string]config.WorkflowFile{
 		"wf": {
 			ID: "wf",
-			Display: map[string]string{
-				"title":  "{{.Workflow.outputs.title}}",
-				"status": "{{.Workflow.outputs.pr_state}}",
+			Display: map[string]*lang.Value{
+				"title":  fromValue("workflow.outputs.title"),
+				"status": fromValue("workflow.outputs.pr_state"),
 			},
 		},
 	}
@@ -477,9 +478,10 @@ func TestApplyDisplay_OverridesFromOutputs(t *testing.T) {
 
 func TestApplyDisplay_EmptyRenderKeepsFallback(t *testing.T) {
 	workflows := map[string]config.WorkflowFile{
-		"wf": {ID: "wf", Display: map[string]string{"title": "{{.Workflow.outputs.title}}"}},
+		"wf": {ID: "wf", Display: map[string]*lang.Value{"title": fromValue("workflow.outputs.title")}},
 	}
-	// No outputs at all → template renders empty → prior title survives.
+	// No outputs at all: the projection resolves to nothing, so the prior
+	// title survives rather than being replaced with a blank.
 	s := &domain.Session{Name: "org/repo-2", Workflow: "wf"}
 	cached := cachedInfo{Title: "from-cache"}
 	applyDisplay(workflows, s, &cached)

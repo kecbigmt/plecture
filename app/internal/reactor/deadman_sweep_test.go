@@ -23,11 +23,15 @@ import (
 func TestSupervisor_CheckDeadmanSweepsOnlyHeartbeatScheduledUpSessions(t *testing.T) {
 	pluginDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "goal.toml"), `
-[tick]
+[goal]
+kind = "workflow"
+[goal.tick]
 heartbeat = "1h"
 `)
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
-[tick]
+[reactive]
+kind = "workflow"
+[reactive.tick]
 on = ["resource.*"]
 `)
 	cfg := &config.Config{PluginDirs: []string{pluginDir}}
@@ -88,7 +92,9 @@ on = ["resource.*"]
 func TestSupervisor_DeadmanSweepRunsWithoutWaitingOnPerSessionReactor(t *testing.T) {
 	pluginDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "goal.toml"), `
-[tick]
+[goal]
+kind = "workflow"
+[goal.tick]
 heartbeat = "1h"
 `)
 	cfg := &config.Config{PluginDirs: []string{pluginDir}}

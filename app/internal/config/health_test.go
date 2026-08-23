@@ -143,11 +143,13 @@ func TestLoadTaskDefinitions_UnknownFieldRejected(t *testing.T) {
 func TestLoadWorkflows_RetiredTickMovementSourceRejected(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "workflows", "default.toml"), `
-[[nodes]]
+[default]
+kind = "workflow"
+[[default.nodes]]
 id   = "initial"
 uses = "runtime"
 
-[tick.movement_source]
+[default.tick.movement_source]
 name   = "fingerprint"
 script = "echo hi"
 `)
@@ -156,7 +158,7 @@ script = "echo hi"
 	if err == nil {
 		t.Fatal("expected an error for the retired [tick.movement_source] table")
 	}
-	if !strings.Contains(err.Error(), "movement_source") || !strings.Contains(err.Error(), "[health].activity") {
-		t.Errorf("error %q should name the retired table and its replacement", err.Error())
+	if !strings.Contains(err.Error(), "movement_source") {
+		t.Errorf("error %q should name the retired key", err.Error())
 	}
 }

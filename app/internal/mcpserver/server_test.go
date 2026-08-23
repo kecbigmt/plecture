@@ -38,7 +38,7 @@ func setUpConfigHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "workflows", "plain.toml"),
-		[]byte("workspace_provider = \"plain\"\n\n[[nodes]]\nid = \"noop\"\n"), 0o644); err != nil {
+		[]byte("[plain]\nkind = \"workflow\"\nworkspace_provider = \"plain\"\n\n[[plain.nodes]]\nuses = \"noop\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "tasks", "noop.toml"),

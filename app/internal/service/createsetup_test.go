@@ -16,10 +16,8 @@ import (
 )
 
 // writeSetupWorkflow gives the fixture workflow a workspace provider: the
-// extra TOML (setup/cleanup/match/name/outputs_schema — flat workspace
-// provider keys) lands in workspaces/<wfID>.toml and the workflow gains
-// `workspace_provider = "<wfID>"`. Prepend, not append — top-level keys
-// after a [[nodes]] table would be parsed as part of that table.
+// extra TOML lands in workspaces/<wfID>.toml and the workflow gains
+// `workspace_provider = "<wfID>"`.
 func writeSetupWorkflow(t *testing.T, cfg *config.Config, wfID, extra string) {
 	t.Helper()
 	workspacesDir := filepath.Join(cfg.BaseDir, "workspaces")
@@ -29,15 +27,7 @@ func writeSetupWorkflow(t *testing.T, cfg *config.Config, wfID, extra string) {
 	if err := os.WriteFile(filepath.Join(workspacesDir, wfID+".toml"), []byte(extra), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wfPath := filepath.Join(cfg.BaseDir, "workflows", wfID+".toml")
-	existing, err := os.ReadFile(wfPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	header := "workspace_provider = \"" + wfID + "\"\n"
-	if err := os.WriteFile(wfPath, append([]byte(header), existing...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	addWorkflowFields(t, cfg, wfID, "workspace_provider = \""+wfID+"\"\n")
 }
 
 func TestCreate_WorkflowSetupPath(t *testing.T) {

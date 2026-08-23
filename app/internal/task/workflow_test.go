@@ -1,10 +1,13 @@
 package task
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 func TestCompileWorkflow_DerivesDAGFromInputs(t *testing.T) {
@@ -14,8 +17,8 @@ func TestCompileWorkflow_DerivesDAGFromInputs(t *testing.T) {
 			{
 				ID:   "claude",
 				Uses: "claude",
-				Inputs: map[string]string{
-					"session_name": "{{.Nodes.tmux.outputs.session_name}}",
+				Inputs: map[string]*lang.Value{
+					"session_name": fromValue("nodes.tmux.outputs.session_name"),
 				},
 			},
 			{ID: "tmux", Uses: "tmux"},
@@ -73,8 +76,8 @@ func TestCompileWorkflow_UnknownUses(t *testing.T) {
 		},
 	}
 	_, err := CompileWorkflow(wf, map[string]config.TaskDefinition{})
-	if err == nil || !strings.Contains(err.Error(), "unknown task") {
-		t.Fatalf("expected unknown-task error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "unknown effect") {
+		t.Fatalf("expected unknown-effect error, got %v", err)
 	}
 }
 
@@ -82,8 +85,8 @@ func TestCompileWorkflow_UnknownNodeRef(t *testing.T) {
 	wf := config.WorkflowFile{
 		ID: "broken",
 		Nodes: []config.WorkflowNode{
-			{ID: "a", Uses: "a", Inputs: map[string]string{
-				"x": "{{.Nodes.ghost.outputs.y}}",
+			{ID: "a", Uses: "a", Inputs: map[string]*lang.Value{
+				"x": fromValue("nodes.ghost.outputs.y"),
 			}},
 		},
 	}
@@ -100,8 +103,8 @@ func TestCompileWorkflow_Cycle(t *testing.T) {
 	wf := config.WorkflowFile{
 		ID: "cycle",
 		Nodes: []config.WorkflowNode{
-			{ID: "a", Uses: "x", Inputs: map[string]string{"in": "{{.Nodes.b.outputs.k}}"}},
-			{ID: "b", Uses: "x", Inputs: map[string]string{"in": "{{.Nodes.a.outputs.k}}"}},
+			{ID: "a", Uses: "x", Inputs: map[string]*lang.Value{"in": fromValue("nodes.b.outputs.k")}},
+			{ID: "b", Uses: "x", Inputs: map[string]*lang.Value{"in": fromValue("nodes.a.outputs.k")}},
 		},
 	}
 	defs := map[string]config.TaskDefinition{
@@ -117,8 +120,8 @@ func TestCompileWorkflow_ScopeViolation(t *testing.T) {
 	wf := config.WorkflowFile{
 		ID: "bad-scope",
 		Nodes: []config.WorkflowNode{
-			{ID: "session_node", Uses: "s", Inputs: map[string]string{
-				"x": "{{.Nodes.run_node.outputs.y}}",
+			{ID: "session_node", Uses: "s", Inputs: map[string]*lang.Value{
+				"x": fromValue("nodes.run_node.outputs.y"),
 			}},
 			{ID: "run_node", Uses: "r"},
 		},
@@ -140,64 +143,12 @@ func TestCompileWorkflow_EmptyNodesRejected(t *testing.T) {
 	}
 }
 
-func TestCompileWorkflow_NodeIDDefaultsToUses(t *testing.T) {
-	wf := config.WorkflowFile{
-		ID: "minimal",
-		Nodes: []config.WorkflowNode{
-			{Uses: "tmux"},
-			{Uses: "claude", Inputs: map[string]string{
-				"session_name": "{{.Nodes.tmux.outputs.session_name}}",
-			}},
-		},
-	}
-	defs := map[string]config.TaskDefinition{
-		"tmux":   {ID: "tmux", Scope: "run", Setup: shellStub("true")},
-		"claude": {ID: "claude", Scope: "run", Setup: shellStub("true")},
-	}
-	plan, err := CompileWorkflow(wf, defs)
-	if err != nil {
-		t.Fatalf("CompileWorkflow: %v", err)
-	}
-	if len(plan.Run) != 2 || plan.Run[0].NodeID != "tmux" || plan.Run[1].NodeID != "claude" {
-		t.Fatalf("expected node ids defaulted from uses, got %+v", plan.Run)
-	}
-}
-
-func TestCompileWorkflow_NodeWithoutIDOrUsesRejected(t *testing.T) {
-	wf := config.WorkflowFile{
-		ID: "bad",
-		Nodes: []config.WorkflowNode{
-			{Inputs: map[string]string{"k": "v"}},
-		},
-	}
-	_, err := CompileWorkflow(wf, map[string]config.TaskDefinition{})
-	if err == nil || !strings.Contains(err.Error(), "must declare at least one of") {
-		t.Fatalf("expected missing-id/uses error, got %v", err)
-	}
-}
-
-func TestCompileWorkflow_HyphenInNodeIDRejected(t *testing.T) {
-	wf := config.WorkflowFile{
-		ID: "bad-id",
-		Nodes: []config.WorkflowNode{
-			{ID: "slack-thread", Uses: "x"},
-		},
-	}
-	defs := map[string]config.TaskDefinition{
-		"x": {ID: "x", Scope: "run", Setup: shellStub("true")},
-	}
-	_, err := CompileWorkflow(wf, defs)
-	if err == nil || !strings.Contains(err.Error(), "Go template identifier") {
-		t.Fatalf("expected node-id validation error, got %v", err)
-	}
-}
-
 func TestCompileWorkflow_InputRefSelfRejected(t *testing.T) {
 	wf := config.WorkflowFile{
 		ID: "self-ref",
 		Nodes: []config.WorkflowNode{
-			{ID: "a", Uses: "x", Inputs: map[string]string{
-				"in": "{{.Nodes.a.outputs.k}}",
+			{ID: "a", Uses: "x", Inputs: map[string]*lang.Value{
+				"in": fromValue("nodes.a.outputs.k"),
 			}},
 		},
 	}
@@ -205,7 +156,7 @@ func TestCompileWorkflow_InputRefSelfRejected(t *testing.T) {
 		"x": {ID: "x", Scope: "run", Setup: shellStub("true")},
 	}
 	_, err := CompileWorkflow(wf, defs)
-	if err == nil || !strings.Contains(err.Error(), "itself") {
+	if err == nil || !strings.Contains(err.Error(), "its own outputs") {
 		t.Fatalf("expected self-reference error, got %v", err)
 	}
 }
@@ -357,8 +308,8 @@ func TestCompileWorkflow_BlocksMixedCycle(t *testing.T) {
 			{
 				ID:   "a",
 				Uses: "a",
-				Inputs: map[string]string{
-					"x": "{{.Nodes.b.outputs.k}}",
+				Inputs: map[string]*lang.Value{
+					"x": fromValue("nodes.b.outputs.k"),
 				},
 				Blocks: []string{"b"},
 			},
@@ -385,8 +336,8 @@ func TestCompileWorkflow_BlocksIdempotentWithExistingDep(t *testing.T) {
 			{
 				ID:   "claude",
 				Uses: "claude",
-				Inputs: map[string]string{
-					"session_name": "{{.Nodes.tmux.outputs.session_name}}",
+				Inputs: map[string]*lang.Value{
+					"session_name": fromValue("nodes.tmux.outputs.session_name"),
 				},
 			},
 		},
@@ -405,25 +356,120 @@ func TestCompileWorkflow_BlocksIdempotentWithExistingDep(t *testing.T) {
 	}
 }
 
-func TestRenderInputs_RendersAgainstDeps(t *testing.T) {
+func TestResolveNodeInputs_ResolvesAgainstDepsWorkflowAndSession(t *testing.T) {
 	deps := map[string]map[string]any{
 		"tmux": {"session_name": "abc"},
 	}
-	out, err := RenderInputs(map[string]string{
-		"session_name":  "{{.Nodes.tmux.outputs.session_name}}",
-		"branch":        "{{.Branch}}",
-		"workspace_dir": "{{.Workflow.outputs.workspace_dir}}",
+	out, err := ResolveNodeInputs(map[string]*lang.Value{
+		"session_name":  fromValue("nodes.tmux.outputs.session_name"),
+		"branch":        fromValue("workspace.branch"),
+		"workspace_dir": fromValue("workflow.outputs.workspace_dir"),
+		"fixed":         literalValue("held"),
 	}, deps, map[string]any{"workspace_dir": "/tmp/wd"}, SessionVars{Branch: "main"})
 	if err != nil {
-		t.Fatalf("RenderInputs: %v", err)
+		t.Fatalf("ResolveNodeInputs: %v", err)
 	}
-	if got := out["session_name"]; got != "abc" {
-		t.Errorf("session_name = %v, want abc", got)
+	for _, want := range []struct{ key, value string }{
+		{"session_name", "abc"},
+		{"branch", "main"},
+		{"workspace_dir", "/tmp/wd"},
+		{"fixed", "held"},
+	} {
+		if got := out[want.key]; got != want.value {
+			t.Errorf("%s = %v, want %v", want.key, got, want.value)
+		}
 	}
-	if got := out["branch"]; got != "main" {
-		t.Errorf("branch = %v, want main", got)
+}
+
+// An input reading an output no upstream node produced is a wiring error, not
+// an empty string: the node would otherwise start with a silently blank
+// parameter.
+func TestResolveNodeInputs_UnresolvedProjectionFails(t *testing.T) {
+	_, err := ResolveNodeInputs(map[string]*lang.Value{
+		"session_name": fromValue("nodes.tmux.outputs.session_name"),
+	}, nil, nil, SessionVars{})
+	if err == nil {
+		t.Fatal("expected an error for an unresolved projection")
 	}
-	if got := out["workspace_dir"]; got != "/tmp/wd" {
-		t.Errorf("workdir = %v, want /tmp/wd", got)
+}
+
+// A default holds the position an absent projection would otherwise leave
+// unfilled, and `optional` omits the key entirely — the successor to the
+// retired renderer's three-argument `get`.
+func TestResolveNodeInputs_DefaultAndOptionalCoverAbsence(t *testing.T) {
+	out, err := ResolveNodeInputs(map[string]*lang.Value{
+		"model":  fromValueOr("session.inputs.model", "sonnet"),
+		"effort": {Form: lang.FormFrom, From: "session.inputs.effort", Optional: true},
+	}, nil, nil, SessionVars{})
+	if err != nil {
+		t.Fatalf("ResolveNodeInputs: %v", err)
+	}
+	if out["model"] != "sonnet" {
+		t.Errorf("model = %v, want sonnet", out["model"])
+	}
+	if _, present := out["effort"]; present {
+		t.Errorf("effort should be omitted, got %v", out["effort"])
+	}
+}
+
+// The edge a projection nested inside a JSON operand declares has to reach
+// execution order too: the consumer resolving that operand needs the
+// producer's outputs in its dependency view, which only a DependsOn edge puts
+// there.
+func TestCompileWorkflow_DerivesDAGThroughAJSONOperand(t *testing.T) {
+	payload := &lang.Value{Form: lang.FormJSON, JSON: &lang.JSONOperand{
+		Object: map[string]*lang.JSONOperand{
+			"value": {Leaf: fromValue("nodes.producer.outputs.value")},
+		},
+	}}
+	wf := config.WorkflowFile{
+		ID: "wiring",
+		Nodes: []config.WorkflowNode{
+			{ID: "consumer", Uses: "consumer", Inputs: map[string]*lang.Value{"payload": payload}},
+			{ID: "producer", Uses: "producer"},
+		},
+	}
+	defs := map[string]config.TaskDefinition{
+		"producer": {ID: "producer", Scope: "run", Setup: shellStub(`echo '{"value":"v"}'`)},
+		"consumer": {ID: "consumer", Scope: "run", Setup: shellStub("true")},
+	}
+	plan, err := CompileWorkflow(wf, defs)
+	if err != nil {
+		t.Fatalf("CompileWorkflow: %v", err)
+	}
+	if len(plan.Run) != 2 || plan.Run[0].NodeID != "producer" || plan.Run[1].NodeID != "consumer" {
+		t.Fatalf("run order = %+v, want producer before consumer", ids(plan.Run))
+	}
+	consumer := plan.Run[1]
+	if len(consumer.DependsOn) != 1 || consumer.DependsOn[0] != "producer" {
+		t.Fatalf("consumer.DependsOn = %v, want [producer]", consumer.DependsOn)
+	}
+}
+
+// The same edge end to end: without it the consumer runs first and its
+// operand resolves against a dependency view the producer is absent from.
+func TestRunSetup_JSONOperandResolvesAgainstItsDerivedDependency(t *testing.T) {
+	payload := &lang.Value{Form: lang.FormJSON, JSON: &lang.JSONOperand{
+		Object: map[string]*lang.JSONOperand{
+			"seen": {Leaf: fromValue("nodes.producer.outputs.value")},
+		},
+	}}
+	plan := buildPlan(t,
+		[]taskStub{
+			{id: "producer", scope: "run", setup: `echo '{"value":"from-producer"}'`},
+			{id: "consumer", scope: "run", setup: "true"},
+		},
+		[]nodeStub{
+			{id: "consumer", inputs: map[string]*lang.Value{"payload": payload}},
+			{id: "producer"},
+		},
+	)
+	tasks := map[string]*contract.TaskState{}
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	got, _ := tasks["consumer"].Inputs["payload"].(string)
+	if got != `{"seen":"from-producer"}` {
+		t.Fatalf("consumer payload = %q, want the producer's output serialized into the operand", got)
 	}
 }

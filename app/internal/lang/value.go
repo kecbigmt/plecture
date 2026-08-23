@@ -80,7 +80,7 @@ func (v *Value) Source() string {
 	case FormFrom:
 		switch {
 		case v.HasDefault:
-			return fmt.Sprintf("{ from = %q, default = %v }", v.From, v.Default)
+			return fmt.Sprintf("{ from = %q, default = %s }", v.From, literalSource(v.Default))
 		case v.Optional:
 			return fmt.Sprintf("{ from = %q, optional = true }", v.From)
 		default:
@@ -95,8 +95,17 @@ func (v *Value) Source() string {
 	case FormJSON:
 		return "{ json = ... }"
 	default:
-		return fmt.Sprintf("%v", v.Literal)
+		return literalSource(v.Literal)
 	}
+}
+
+// literalSource renders a literal the way an author writes it in TOML, so a
+// string keeps the quotes that tell an empty default from a missing one.
+func literalSource(v any) string {
+	if s, ok := v.(string); ok {
+		return fmt.Sprintf("%q", s)
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // ParseValue reads one value at a location accepting class, applying

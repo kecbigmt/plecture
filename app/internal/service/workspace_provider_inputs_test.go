@@ -25,7 +25,7 @@ func githubLikeProvider() config.WorkspaceProviderConfig {
 }
 
 func TestResolveWorkspaceProviderInputs_AcceptsDeclaredKeys(t *testing.T) {
-	wf := config.WorkflowFile{ID: "issue", WorkspaceProviderInputs: map[string]string{
+	wf := config.WorkflowFile{ID: "issue", WorkspaceProviderInputs: map[string]any{
 		"workspace_layout_root": "~/worktrees",
 		"delete_branch_default": "true",
 	}}
@@ -39,7 +39,7 @@ func TestResolveWorkspaceProviderInputs_AcceptsDeclaredKeys(t *testing.T) {
 }
 
 func TestResolveWorkspaceProviderInputs_RejectsUndeclaredKey(t *testing.T) {
-	wf := config.WorkflowFile{ID: "issue", WorkspaceProviderInputs: map[string]string{"layout_root": "~/worktrees"}}
+	wf := config.WorkflowFile{ID: "issue", WorkspaceProviderInputs: map[string]any{"layout_root": "~/worktrees"}}
 	_, err := resolveWorkspaceProviderInputs(githubLikeProvider(), wf)
 	if err == nil {
 		t.Fatal("expected an undeclared parameter to be rejected")
@@ -47,7 +47,7 @@ func TestResolveWorkspaceProviderInputs_RejectsUndeclaredKey(t *testing.T) {
 }
 
 func TestResolveWorkspaceProviderInputs_RejectsValueOutsideDeclaredRange(t *testing.T) {
-	wf := config.WorkflowFile{ID: "issue", WorkspaceProviderInputs: map[string]string{"delete_branch_default": "yes"}}
+	wf := config.WorkflowFile{ID: "issue", WorkspaceProviderInputs: map[string]any{"delete_branch_default": "yes"}}
 	_, err := resolveWorkspaceProviderInputs(githubLikeProvider(), wf)
 	if err == nil {
 		t.Fatal("expected a value outside the declared enum to be rejected")
@@ -58,7 +58,7 @@ func TestResolveWorkspaceProviderInputs_RejectsValueOutsideDeclaredRange(t *test
 // is an author error rather than a value silently dropped on the floor.
 func TestResolveWorkspaceProviderInputs_RejectsInputsWithoutSchema(t *testing.T) {
 	prov := config.WorkspaceProviderConfig{ID: "plain"}
-	wf := config.WorkflowFile{ID: "issue", WorkspaceProviderInputs: map[string]string{"anything": "x"}}
+	wf := config.WorkflowFile{ID: "issue", WorkspaceProviderInputs: map[string]any{"anything": "x"}}
 	_, err := resolveWorkspaceProviderInputs(prov, wf)
 	if err == nil {
 		t.Fatal("expected inputs against a schema-less provider to be rejected")
@@ -105,12 +105,14 @@ additionalProperties = false
 layout_root = { type = "string" }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "demo.toml"), `
+[demo]
+kind = "workflow"
 workspace_provider = "demo"
 
-[workspace_provider_inputs]
+[demo.workspace_provider_inputs]
 layout_root = "~/worktrees"
 
-[[nodes]]
+[[demo.nodes]]
 uses = "noop"
 `)
 	cfg, err := config.Load()
@@ -183,12 +185,14 @@ additionalProperties = false
 layout_root = { type = "string" }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "demo.toml"), `
+[demo]
+kind = "workflow"
 workspace_provider = "demo"
 
-[workspace_provider_inputs]
+[demo.workspace_provider_inputs]
 laoyut_root = "~/worktrees"
 
-[[nodes]]
+[[demo.nodes]]
 uses = "noop"
 `)
 	cfg, err := config.Load()

@@ -36,13 +36,13 @@ func TestLoadWorkflows_RetiredEnvironmentFieldsRejected(t *testing.T) {
 		body string
 		want string
 	}{
-		{name: "environment", body: "workspace_provider = \"github\"\nenvironment = \"docker\"\n", want: "`environment`"},
-		{name: "environment_inputs", body: "workspace_provider = \"github\"\n[environment_inputs]\nimage = \"x\"\n", want: "`environment_inputs`"},
+		{name: "environment", body: "workspace_provider = \"github\"\nenvironment = \"docker\"\n", want: "environment"},
+		{name: "environment_inputs", body: "[dev.environment_inputs]\nimage = \"x\"\n", want: "environment_inputs"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			base := t.TempDir()
-			writeFile(t, filepath.Join(base, "workflows", "dev.toml"), tt.body)
+			writeFile(t, filepath.Join(base, "workflows", "dev.toml"), "[dev]\nkind = \"workflow\"\n"+tt.body)
 			_, err := (&Config{BaseDir: base}).LoadWorkflows("")
 			if err == nil {
 				t.Fatalf("expected a load error naming the retired %s field", tt.name)

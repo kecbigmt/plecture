@@ -344,7 +344,7 @@ func TestRunSetup_ExposesWorkflowOutputs(t *testing.T) {
 			Script: `jq -nc --arg got "$branch" '{got:$got}'`,
 			Bind:   map[string]*lang.Value{"branch": fromValue("workflow.outputs.branch")},
 		},
-		Inputs: map[string]string{"wd": "{{.Workflow.outputs.workspace_dir}}"},
+		Inputs: map[string]*lang.Value{"wd": fromValue("workflow.outputs.workspace_dir")},
 	}}
 	tasks := map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {

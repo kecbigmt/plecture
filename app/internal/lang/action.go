@@ -213,6 +213,12 @@ func (a *Action) Source() string {
 	words := make([]string, 0, len(a.Args)+1)
 	words = append(words, name)
 	for _, arg := range a.Args {
+		// A literal argv word reads as the word, not as the TOML string it
+		// was written as: this line stands for a command being run.
+		if arg.Form == FormLiteral {
+			words = append(words, fmt.Sprintf("%v", arg.Literal))
+			continue
+		}
 		words = append(words, arg.Source())
 	}
 	return strings.Join(words, " ")
