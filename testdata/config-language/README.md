@@ -68,31 +68,36 @@ reject.
 A fixture's filename carries `.invalid` or `.accepted-invalid` before `.toml`
 so a reader sees the outcome without opening it.
 
-## Running the checker
+## Running the harness
 
 ```bash
-cd scripts/config-language-check && GOWORK=off go run .
+go test ./app/internal/lang/
 ```
 
-The checker asserts that:
+Two harnesses read the corpus, and they ask different questions:
 
-- every fixture declares a well-formed expectation, and decodes — as TOML for
-  a definition document, or as TOML frontmatter for a task document;
-- a `valid` fixture passes [`../../plecture.schema.json`](../../plecture.schema.json);
-- an `invalid` fixture with `layer=structural` is rejected by that schema, and
-  rejected by a rule the schema annotates with the declared diagnostic;
-- an `invalid` fixture with `layer=semantic`, `layer=cel`, or
-  `layer=instantiation`, and an `accepted-invalid` fixture, all pass the
-  structural schema — which is what makes "something later rejects this" a
-  claim about a later layer rather than an accident of shape;
+- `TestConformanceFixtures` asks what
+  [`../../plecture.schema.json`](../../plecture.schema.json) accepts. Every
+  fixture must declare a well-formed expectation and decode — as TOML for a
+  definition document, or as TOML frontmatter for a task document. A `valid`
+  fixture, and one whose declared failure belongs to a later layer, must pass
+  the schema; an `invalid` fixture with `layer=structural` must be rejected by
+  a rule the schema annotates with its declared diagnostic, which is what makes
+  "something later rejects this" a claim about a later layer rather than an
+  accident of shape.
+- `TestNativeConformanceFixtures` asks what the implementation does: it loads
+  each definition and task document with this repository's own parsers and
+  validators, and the diagnostic must be exactly the code and layer the
+  expectation header documents. A rule it cannot yet reach is named in its
+  `nativeDeferred` map rather than passing silently, and `layer=instantiation`
+  fixtures belong to `TestNativeInstantiationFixtures`, which supplies the
+  binding a load has no way to make.
 
-`layer=instantiation` marks a rule that only a binding can break: a task
-document declares the observer it is written for, so the keys it reads are
-checked at load, but whether the resource an instance is actually bound to
-resolves to that observer is known only when the instance is created.
-- every diagnostic code is both documented and exercised;
-- every worked example in `docs/language/` is byte-identical to the fixture it
-  names.
+Alongside them, `TestCodesMatchDocumentedTable` holds the diagnostic registry
+and [`../../docs/language/README.md`](../../docs/language/README.md)'s table to
+the same set of codes and layers, and
+`TestChapterExamplesQuoteTheirFixtureVerbatim` holds every worked example in
+`docs/language/` to the fixture it names.
 
 A fixture that does not decode at all is rejected before any schema rule can be
 blamed, so a decode failure satisfies a structural expectation and its

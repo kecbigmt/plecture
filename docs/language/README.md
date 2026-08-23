@@ -48,7 +48,7 @@ Four layers carry the language, with deliberately different responsibilities.
 | Layer | Authoritative for | Source of truth |
 |---|---|---|
 | Semantic specification | Meaning, invariants, composition rules, security properties | This directory |
-| Structural schema | Accepted TOML shapes, field types, required fields, discriminated variants | [`../../plecture.schema.json`](../../plecture.schema.json) |
+| Structural shape | Accepted TOML shapes, field types, required fields, discriminated variants | The implementation's own validation, projected for editors by [`../../plecture.schema.json`](../../plecture.schema.json) |
 | Executable specification | Exact behavior at valid, invalid, and boundary cases | [`../../testdata/config-language/`](../../testdata/config-language/) |
 | Rationale | Why a language decision was made | [`../adr/`](../adr/) |
 
@@ -56,10 +56,18 @@ The chapters here stay thin. A construct subtle enough to need a long
 paragraph also has conformance fixtures that make its cases executable, and
 every chapter's worked example is one of those fixtures quoted verbatim.
 
-`plecture.schema.json` is hand-written and authoritative for structural shape
-until the implementation lands a schema generator whose output is
-conformance-tested against it. From that point generation is authoritative and
-the hand-written copy is retired.
+What a definition may structurally be is answered by the implementation, and
+the conformance corpus holds it to naming the exact diagnostic and layer each
+case declares. `plecture.schema.json` projects that same shape for editors and
+other TOML tooling. It is hand-written, so the corpus also holds the projection
+to tracking what it describes: a fixture the language accepts must pass the
+schema, and one the language rejects structurally must be rejected by a schema
+rule annotated with the same diagnostic. Manifest and config files declare no
+definition, so the schema is what judges their shape.
+
+The projection is hand-written until a generator derives it from the same model
+the decoder uses, at which point the surface-versus-schema agreement stops
+being something a test has to guard.
 
 ## Three validation layers
 

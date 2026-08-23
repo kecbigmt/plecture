@@ -20,12 +20,14 @@ import (
 // testdata/config-language/ against plecture.schema.json's seven entry
 // anchors. Where TestNativeConformanceFixtures asserts what this package's
 // own validators do, this asserts what the published schema accepts, so the
-// two answer different questions. A schema or fixture edit that
-// silently drifts from the documented diagnostic is exactly the invariant a
-// future change could break without it. The two assertions the retired
-// one-time tool made that no fixture-and-registry walk can — that the registry
-// and the diagnostics chapter name the same codes, and that a chapter quotes
-// its fixture verbatim — live in docs_conformance_test.go.
+// two answer different questions. A schema or fixture edit that silently
+// drifts from the documented diagnostic is exactly the invariant a future
+// change could break without it.
+//
+// Two neighbours complete the corpus's contract: TestCodesMatchDocumentedTable
+// holds the diagnostic registry and the chapter documenting it to the same set
+// of codes and layers, and TestChapterExamplesQuoteTheirFixtureVerbatim holds
+// a chapter's worked example to the fixture it names.
 type fixtureExpectation struct {
 	Result     string
 	Layer      string
