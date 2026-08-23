@@ -1,11 +1,11 @@
 # Channel: deliver a session event to a codex-headless runtime by appending
 # it to the worker's queue directory (codex-exec-worker, launched by
-# tasks/codex_exec.toml, drains it serially into `codex exec`/`codex exec
+# tasks/exec_runtime.toml, drains it serially into `codex exec`/`codex exec
 # resume`). Unlike this plugin's terminal_submit channel, this enqueue is
 # fire-and-forget on write — it must return well inside the exec channel's
 # delivery timeout regardless of how long the worker's current turn runs, so
 # the turn itself never happens inside this channel.
-# The id is `exec_delivery` rather than the runtime's own `codex_exec`: one
+# The id is `exec_delivery` rather than the runtime's own `exec_runtime`: one
 # plugin has one definition id namespace across every kind, so an effect and
 # the channel that reaches it cannot share a name.
 [exec_delivery]

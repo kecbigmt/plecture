@@ -169,8 +169,10 @@ without it, check `*.md` frontmatter by eye.
   the workspace directory's own `.plect/` is still a load error, and still
   says so by name: cloned content must not carry shell, or declare the work it
   is about.
-- **Every shipped invocation.** The golden invocation records regenerate
-  byte-identical apart from the two renamed channel labels.
+- **Every shipped invocation.** The renames move labels and nothing else: the
+  golden records regenerate with eight changed record headings — four per
+  plugin, the effect's and the channel's — and every invocation line
+  byte-identical.
 
 ## `plect tick` and `plect check` no longer report warnings
 

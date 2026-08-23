@@ -889,9 +889,9 @@ catalog.toml
 tmux/plugin.toml
 tmux/config/tasks/tmux.toml
 claude/plugin.toml
-claude/config/tasks/claude.toml
+claude/config/tasks/runtime.toml
 claude/config/tasks/initial_prompt.toml
-claude/config/channels/claude.toml
+claude/config/channels/delivery.toml
 claude/scripts/claude-agent-activity
 claude/src/channel-server/go.mod
 claude/src/channel-server/cmd/channel-server/main.go
@@ -899,8 +899,8 @@ codex/plugin.toml
 codex/config/tasks/codex.toml
 codex/config/tasks/initial_prompt.toml
 codex/config/channels/terminal_submit.toml
-codex/config/tasks/codex_exec.toml
-codex/config/channels/codex_exec.toml
+codex/config/tasks/exec_runtime.toml
+codex/config/channels/exec_delivery.toml
 codex/scripts/codex-agent-activity
 codex/src/codex-helpers/go.mod
 codex/src/codex-helpers/cmd/codex-exec-worker/main.go

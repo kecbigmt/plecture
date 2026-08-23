@@ -2,10 +2,10 @@
 # channel-server Unix socket. The unix_socket primitive dials `path` and
 # writes the serialized `body` as a framed channel-server message. Trusted
 # config fixes the primitive and the message shape; the workflow supplies
-# only the socket path (typically a projection of the claude effect's own
+# only the socket path (typically a projection of the `runtime` effect's own
 # `socket_path` output).
 #
-# The id is `delivery` rather than the runtime's own `claude`: one plugin has
+# The id is `delivery` rather than the runtime's own `runtime`: one plugin has
 # one definition id namespace across every kind, so an effect and the channel
 # that reaches it cannot share a name.
 [delivery]

@@ -70,7 +70,7 @@ the joint tables that wire it:
 kind = "effect"
 
 [team_claude.inner]
-uses = "official.claude.claude"
+uses = "official.claude.runtime"
 
 [team_claude.setup]
 type   = "shell"
@@ -250,12 +250,12 @@ Probe semantics and the activity envelope are specified by
 
 ```toml
 [team_claude.inner]
-uses = "claude"
+uses = "runtime"
 ```
 
 ```toml
 [team_claude.inner]
-uses = "official.claude.claude"
+uses = "official.claude.runtime"
 ```
 
 The relative form uses the merged namespace and therefore follows the usual
@@ -269,7 +269,7 @@ Workflow node `uses` accepts the same two forms:
 ```toml
 [[my_review.nodes]]
 id   = "runtime"
-uses = "official.claude.claude"
+uses = "official.claude.runtime"
 ```
 
 A qualified workflow `uses` lets a user-owned workflow opt out of a same-id
@@ -363,11 +363,11 @@ adoption in their owning config kinds.
 
 | Shadow | Durable intent | Rung | Zero-copy path |
 |---|---|---:|---|
-| `tasks/claude.toml` | Different runtime inputs, extra agent-process env, path injection. | 1 + 2 | Rung 2 binds `tmux_session`/model/effort/path inputs. Rung 1 in the `claude` plugin provides an author-declared `launch_env` input whose exports are included in the terminal launch line. Workflow-owned defaults stay in the workflow node. |
+| `tasks/runtime.toml` | Different runtime inputs, extra agent-process env, path injection. | 1 + 2 | Rung 2 binds `tmux_session`/model/effort/path inputs. Rung 1 in the `claude` plugin provides an author-declared `launch_env` input whose exports are included in the terminal launch line. Workflow-owned defaults stay in the workflow node. |
 | `tasks/codex.toml` | Different runtime inputs, extra agent-process env, path injection. | 1 + 2 | Rung 2 binds the plugin effect's inputs. Rung 1 in the `codex` plugin provides an author-declared `launch_env` input whose exports are included in the Codex TUI launch line. |
-| `tasks/codex_exec.toml` | Different runtime inputs, extra worker-process env, path injection, worker state location. | 1 + 2 | Rung 2 binds runtime/path inputs. Rung 1 in the `codex` plugin provides author-declared `launch_env` and `state_root` inputs for the worker's exported environment and state directory. |
+| `tasks/exec_runtime.toml` | Different runtime inputs, extra worker-process env, path injection, worker state location. | 1 + 2 | Rung 2 binds runtime/path inputs. Rung 1 in the `codex` plugin provides author-declared `launch_env` and `state_root` inputs for the worker's exported environment and state directory. |
 | `tasks/work.md` | Different instruction, team-specific completion gates, and local chain attachment. | 3 | A task document has no nesting joint, so a team-specific `work` is a document of its own that replaces the shipped one by id. |
-| `channels/codex_exec.toml` | Queue timeout and message formatting around the shipped enqueue executable. | 1 | The channel adopts the plugin's shipped enqueue executable. Rung 1 in the `codex` plugin declares `enqueue_timeout` and `message_envelope`; `message_envelope` is a formatting template over the existing event fields, not executable substitution. |
+| `channels/exec_delivery.toml` | Queue timeout and message formatting around the shipped enqueue executable. | 1 | The channel adopts the plugin's shipped enqueue executable. Rung 1 in the `codex` plugin declares `enqueue_timeout` and `message_envelope`; `message_envelope` is a formatting template over the existing event fields, not executable substitution. |
 | `workspaces/github.toml` | Workspace layout root, branch naming, cleanup policy, and local-only status outputs. | 1 | Rung 1 in the `github` plugin declares `workspace_layout_root`, `issue_branch_template`, `tagged_branch_suffix`, and `delete_branch_default`. The plugin already owns `title`; the local-only `checks_status` output is dropped from workspace setup because resource observation owns CI status. |
 | `resources/github.toml` | Script-internal observation drift with the same public state keys, plus review-state observation needed outside workspace setup. | As-is + 1 | Adopt the plugin resource implementation as-is for the existing state keys. Rung 1 in the `github` plugin adds the concrete `review_decision` observed state key; no open-ended resource output hook is needed. |
 
@@ -385,7 +385,7 @@ A team-local Claude runtime customization can stay small:
 kind = "effect"
 
 [team_claude.inner]
-uses = "official.claude.claude"
+uses = "official.claude.runtime"
 
 [team_claude.setup]
 type   = "shell"

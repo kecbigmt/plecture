@@ -16,7 +16,7 @@ func TestWriteTaskDetail_PrintsNestingChainAsAnOutline(t *testing.T) {
 		SourcePath: "/cfg/tasks/team_claude.toml",
 		Nesting: []service.TaskLayer{
 			{ID: "team_claude", Inner: "guarded_claude"},
-			{ID: "guarded_claude", Inner: "official/claude/claude"},
+			{ID: "guarded_claude", Inner: "official/claude/runtime"},
 			{ID: "claude"},
 		},
 	})
@@ -26,7 +26,7 @@ func TestWriteTaskDetail_PrintsNestingChainAsAnOutline(t *testing.T) {
 	got := buf.String()
 	want := "Nesting chain (outermost first):\n" +
 		"  team_claude (inner = \"guarded_claude\")\n" +
-		"    guarded_claude (inner = \"official/claude/claude\")\n" +
+		"    guarded_claude (inner = \"official/claude/runtime\")\n" +
 		"      claude\n"
 	if !strings.Contains(got, want) {
 		t.Errorf("got:\n%s\nwant it to contain:\n%s", got, want)

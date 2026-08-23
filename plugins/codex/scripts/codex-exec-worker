@@ -19,7 +19,7 @@ profile_name="${3:?profile_name required}"
 
 mkdir -p "$queue_dir" "$state_dir/log"
 
-# CODEX_MODEL / CODEX_MODEL_REASONING_EFFORT (set by tasks/codex_exec.toml's
+# CODEX_MODEL / CODEX_MODEL_REASONING_EFFORT (set by tasks/exec_runtime.toml's
 # setup from the model/effort inputs) map onto codex's own `-m` / `-c
 # model_reasoning_effort=` flags — empty means codex's config default, not a
 # flag override.
@@ -43,7 +43,7 @@ write_health() {
 agent_activity() {
     local event="$1" activity="$2"
     [ -n "${PLECT_SESSION_NAME:-}" ] || return 0
-    # PLECT_AGENT_ACTIVITY_BIN (set by tasks/codex_exec.toml's setup via
+    # PLECT_AGENT_ACTIVITY_BIN (set by tasks/exec_runtime.toml's setup via
     # {{bin ...}}) is the resolved absolute path; this script runs as a
     # standalone process outside plect's template rendering, so it can't
     # resolve {{bin ...}} itself. Fall back to PATH for a caller that

@@ -5,31 +5,28 @@ readiness composition, and the headless exec worker/enqueue pair. Split
 out of the former `session/runtime` plugin per
 `docs/design/plugin-boundary-contracts.md`; `gh-guard` moved to the
 `github` plugin, and `tmux` is a separate, independently selectable plugin
-this one composes through `{{terminal "..."}}` — never a direct
+this one composes through `{ terminal = "..." }` — never a direct
 dependency.
 
 ## Contents
 
 - `config/tasks/codex.toml` — the interactive Codex TUI task. Launch
-  keystrokes go through `{{terminal "send_text"}}`/`{{terminal
-  "send_keys"}}`; process-tree pid discovery and TUI-readiness polling
-  (`tmux display-message`/`tmux capture-pane`, via `{{terminal
-  "capture"}}` where possible) remain direct, documented tmux dependencies
+  keystrokes go through `{ terminal = "send_text" }`/`{ terminal = "send_keys" }`; process-tree pid discovery and TUI-readiness polling
+  (`tmux display-message`/`tmux capture-pane`, via `{ terminal = "capture" }` where possible) remain direct, documented tmux dependencies
   — no `[terminal]` verb covers "what pid does this endpoint run as" or
   raw pane introspection beyond a capture.
 - `config/tasks/codex_initial_prompt.toml` — sends a session's initial prompt via
-  `{{terminal "..."}}` once the CLI's input box is visible, or on every
+  `{ terminal = "..." }` once the CLI's input box is visible, or on every
   `plect up` when `repeat = "true"`.
 - `config/channels/terminal_submit.toml` — an event channel that types a
-  later event into the session's terminal via `{{terminal "..."}}`, for a
+  later event into the session's terminal via `{ terminal = "..." }`, for a
   runtime with no structured delivery transport. This plugin owns the
   burst-split/retry/readiness composition (see
   `docs/adr/2026-08-17-plugin-boundary-contracts.md`'s Codex Terminal
   Submit) because it describes the Codex TUI contract, not the
   multiplexer's.
-- `config/tasks/codex_exec.toml` + `config/channels/codex_exec.toml` — the
-  headless exec shape: starts `codex-exec-worker` via `{{terminal
-  "..."}}` instead of the interactive TUI, which drains a per-session queue
+- `config/tasks/exec_runtime.toml` + `config/channels/exec_delivery.toml` — the
+  headless exec shape: starts `codex-exec-worker` via `{ terminal = "..." }` instead of the interactive TUI, which drains a per-session queue
   directory serially into `codex exec`/`codex exec resume`. A later event
   is delivered by appending to that queue (`codex-exec-enqueue`) rather
   than by typing into a pane, so the submit-race and boot-race classes the
@@ -37,13 +34,13 @@ dependency.
   box to wedge.
 - `scripts/codex-agent-activity` — both halves of the turn-boundary activity
   fingerprint (setting `silence_expected` once a turn ends, and withholding it
-  inside a turn): the hook the `codex`/`codex_exec` tasks register, and the
+  inside a turn): the hook the `codex`/`exec_runtime` effects register, and the
   `probe` verb those tasks declare as their `[health].activity`.
-- `scripts/codex-exec-worker` — the worker script `codex_exec.toml`
-  launches, resolved through `{{bin ...}}` so it needs no `PATH` entry of
+- `scripts/codex-exec-worker` — the worker script `exec_runtime.toml`
+  launches, resolved through `bin = "<name>"` so it needs no `PATH` entry of
   its own.
 - `scripts/codex-exec-enqueue` — the enqueue script `channels/
-  codex_exec.toml` runs, named through that channel's `bin` so it needs no
+  exec_runtime.toml` runs, named through that channel's `bin` so it needs no
   `PATH` entry of its own.
 
 ## Parameters
@@ -54,25 +51,29 @@ replacing them (the parameterization rung of
 
 | Config | Parameter | Meaning |
 |---|---|---|
-| `tasks/codex.toml`, `tasks/codex_exec.toml` | `launch_env` | JSON object of environment variables exported on the launch line. Keys must be valid environment variable names; values are shell-quoted. |
-| `tasks/codex_exec.toml` | `state_root` | Directory the worker's per-session queue and state live under. Empty = a temporary directory. |
-| `channels/codex_exec.toml` | `enqueue_timeout` | Per-attempt delivery deadline. Default `5s`. |
-| `channels/codex_exec.toml` | `message_envelope` | Format of the queued message. Placeholders: `{type}`, `{body}`, `{summary}`, `{body_or_summary}`, `{url}`, `{url_suffix}`. Default `[{type}] {body_or_summary}{url_suffix}`. |
+| `tasks/codex.toml`, `tasks/exec_runtime.toml` | `launch_env` | JSON object of environment variables exported on the launch line. Keys must be valid environment variable names; values are shell-quoted. |
+| `tasks/exec_runtime.toml` | `state_root` | Directory the worker's per-session queue and state live under. Empty = a temporary directory. |
+| `channels/exec_delivery.toml` | `enqueue_timeout` | Per-attempt delivery deadline. Default `5s`. |
+| `channels/exec_delivery.toml` | `message_envelope` | Format of the queued message. Placeholders: `{type}`, `{body}`, `{summary}`, `{body_or_summary}`, `{url}`, `{url_suffix}`. Default `[{type}] {body_or_summary}{url_suffix}`. |
 
 ```toml
-[[nodes]]
-id   = "codex_exec"
-uses = "codex_exec"
-inputs.launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}'
-inputs.state_root = "/var/lib/plect/codex-exec"
+[[my_workflow.nodes]]
+id   = "agent"
+uses = "official.codex.exec_runtime"
 
-[[event.channel]]
-name = "runtime"
-uses = "codex_exec"
-inputs.queue_dir        = "{{.Nodes.codex_exec.outputs.queue_dir}}"
-inputs.enqueue_timeout  = "30s"
-inputs.message_envelope = "{type}: {body_or_summary}"
+[my_workflow.nodes.inputs]
+launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}'
+state_root = "/var/lib/plect/codex-exec"
+
+[[my_workflow.event.channel]]
+name    = "runtime"
+uses    = "official.codex.exec_delivery"
 include = ["plect.instruction", "resource.*"]
+
+[my_workflow.event.channel.inputs]
+queue_dir        = { from = "nodes.agent.outputs.queue_dir" }
+enqueue_timeout  = "30s"
+message_envelope = "{type}: {body_or_summary}"
 ```
 
 ## Install
