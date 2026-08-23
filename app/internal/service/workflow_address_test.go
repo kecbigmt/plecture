@@ -7,6 +7,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // writePluginWorkflow stands up one catalog plugin that declares a whole
@@ -115,5 +116,129 @@ func TestCreate_TwoPluginsSharingAWorkflowIDRunSideBySide(t *testing.T) {
 		if s == nil || s.Workflow != tc.address {
 			t.Fatalf("session %q froze %q, want %q", result.SessionName, s.Workflow, tc.address)
 		}
+	}
+}
+
+// A dynamic instance's stored address is authoritative even when it equals the
+// instance key. A `--name` chosen to match a workflow node's id must not make
+// the node's declaration answer for the instance.
+func TestTaskCleanup_NamedDynamicInstanceKeepsItsOwnDeclaration(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "user-ran")
+	pluginDir, base := t.TempDir(), t.TempDir()
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A plugin effect and a user effect share the id "runner"; the workflow's
+	// node runs the plugin's.
+	write(filepath.Join(pluginDir, "config", "tasks", "runner.toml"), `
+[runner]
+kind  = "effect"
+scope = "session"
+
+[runner.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[runner.cleanup]
+type   = "shell"
+script = "exit 3"
+`)
+	write(filepath.Join(base, "tasks", "runner.toml"), `
+[runner]
+kind  = "effect"
+scope = "session"
+
+[runner.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[runner.cleanup]
+type   = "shell"
+script = "touch `+marker+`"
+`)
+	write(filepath.Join(base, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[[coding.nodes]]
+id   = "runner"
+uses = "official.acme.runner"
+`)
+	cfg := &config.Config{
+		BaseDir:    base,
+		PluginDirs: []string{pluginDir},
+		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
+	}
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	// A dynamic instance of the USER's effect, named to collide with the node.
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "runner", SessionName: "o/r-1", Name: "runner"}); err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "runner", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("TaskCleanup: %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("the user-owned effect's cleanup did not run, so the node's declaration answered for a dynamic instance: %v", err)
+	}
+}
+
+// Down runs the teardown path, which resolves each instance's cleanup the same
+// way — including a workflow node whose effect a plugin declares.
+func TestDown_NodeInstanceRunsAPluginOwnedEffectsCleanup(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "torn-down")
+	pluginDir, base := t.TempDir(), t.TempDir()
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(pluginDir, "config", "tasks", "runner.toml"), `
+[runner]
+kind  = "effect"
+scope = "run"
+
+[runner.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[runner.cleanup]
+type   = "shell"
+script = "touch `+marker+`"
+`)
+	write(filepath.Join(base, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[[coding.nodes]]
+id   = "runner"
+uses = "official.acme.runner"
+`)
+	cfg := &config.Config{
+		BaseDir:    base,
+		PluginDirs: []string{pluginDir},
+		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
+	}
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{
+		"runner": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+	})
+
+	if _, err := Down(cfg, store, DownParams{Identifier: "o/r-1"}); err != nil {
+		t.Fatalf("Down: %v", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("teardown did not run the plugin effect's cleanup: %v", err)
 	}
 }

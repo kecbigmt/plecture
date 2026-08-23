@@ -225,9 +225,11 @@ func dispatchResource(cfg *config.Config, flag, resource string) (dispatchResult
 	case 1:
 		return dispatchResult{Workflow: matches[0].wf, WorkspaceProvider: matches[0].prov, Name: matches[0].name}, true, nil
 	default:
+		// Addresses, not ids: two plugins may declare one id, and a list that
+		// printed it twice would name nothing the reader could pass back.
 		names := make([]string, len(matches))
 		for i, m := range matches {
-			names[i] = m.wf.ID
+			names[i] = m.wf.Address
 		}
 		return dispatchResult{}, false, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource matches multiple workflow resolvers (%s); pass --workflow to choose", strings.Join(names, ", "))}
 	}

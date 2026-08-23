@@ -31,15 +31,20 @@ func nodeAddresses(cfg *config.Config, session *domain.Session) map[string]strin
 	return out
 }
 
-// instanceDefinitionAddress answers which declaration an instance runs. A
-// stored task id is already the address the reference resolved to; without one
-// the instance is a workflow node, and nodes resolve through the workflow.
+// instanceDefinitionAddress answers which declaration an instance runs.
+//
+// A dynamic instance recorded the address its own reference selected, and that
+// is authoritative however it compares to the instance key — a `--name` equal
+// to the id it instantiated must not be mistaken for a workflow node of that
+// name. A workflow node is the other way round: what it stores is the
+// definition's bare id, which is not an address, so the workflow that named
+// the effect answers for it whether or not the instance stored anything.
 func instanceDefinitionAddress(key string, st *contract.TaskState, nodes map[string]string) string {
-	if id := taskIDForInstance(key, st); id != key {
-		return id
+	if st != nil && st.Dynamic && st.TaskID != "" {
+		return st.TaskID
 	}
 	if address, ok := nodes[key]; ok {
 		return address
 	}
-	return key
+	return taskIDForInstance(key, st)
 }
