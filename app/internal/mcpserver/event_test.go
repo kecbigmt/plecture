@@ -87,13 +87,13 @@ func TestHandleEventList_FiltersTypesAndSourceWithCommaAndWhitespace(t *testing.
 		}
 	}
 	publish(event.TypeUserNote, event.SourceCLI)
-	publish(event.TypeUserEmit, event.SourceSlack)
-	publish(event.TypeClaudeReply, event.SourceClaude)
+	publish(event.TypeUserEmit, "chat")
+	publish("widget.reply", "gadget")
 
 	result, err := handleEventList(context.Background(), reqWith(map[string]any{
 		"session": "owner/repo-1",
-		"types":   event.TypeUserNote + " , " + event.TypeClaudeReply,
-		"source":  " " + event.SourceCLI + ",  " + event.SourceClaude + " ",
+		"types":   event.TypeUserNote + " , widget.reply",
+		"source":  " " + event.SourceCLI + ",  gadget ",
 	}))
 	if err != nil {
 		t.Fatalf("handleEventList: %v", err)
@@ -109,7 +109,7 @@ func TestHandleEventList_FiltersTypesAndSourceWithCommaAndWhitespace(t *testing.
 	for _, e := range events {
 		ev := e.(map[string]any)
 		typ := ev["type"].(string)
-		if typ != event.TypeUserNote && typ != event.TypeClaudeReply {
+		if typ != event.TypeUserNote && typ != "widget.reply" {
 			t.Errorf("unexpected event type in filtered result: %q", typ)
 		}
 	}

@@ -1,7 +1,7 @@
 // Package state defines the shared contract types for plect state.json.
 //
-// These types represent the boundary data that other components
-// (slack-adapter) may read from state.json.
+// These types represent the boundary data that other components (a chat
+// adapter, say) may read from state.json.
 // plect owns and writes these; consumers read only.
 package state
 
@@ -14,9 +14,9 @@ import (
 const SchemaVersion = 7
 
 // Conversation holds information about an external communication channel
-// associated with a session (e.g., a Slack thread, Discord channel).
+// associated with a session (e.g., a chat thread).
 type Conversation struct {
-	Source   string            `json:"source"`             // Display label: "Slack", "Discord", etc.
+	Source   string            `json:"source"`             // Display label for the chat platform
 	URL      string            `json:"url"`                // Permalink to the conversation
 	Metadata map[string]string `json:"metadata,omitempty"` // Plugin-specific data (thread_ts, channel_id, etc.)
 }
@@ -207,7 +207,7 @@ type LayerState struct {
 // Session is the shared representation of a plect session in state.json.
 // This contains all fields that external consumers may read.
 //
-// Workflow is the chosen workflow name (e.g. "coding-claude"). Frozen at create
+// Workflow is the chosen workflow name (e.g. "coding-agent"). Frozen at create
 // time so subsequent up/down/destroy use a stable plan regardless of config
 // changes. Empty means the legacy inline-`[[tasks]]` path was used.
 //

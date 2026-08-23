@@ -305,8 +305,8 @@ func TestClientSubscribeErrorStatusTriggersRetry(t *testing.T) {
 
 func TestFilterQueryAndListQueryEncoding(t *testing.T) {
 	f := Filter{
-		Types:        []string{"acme.*", "claude.*"},
-		Sources:      []string{"example", SourceSlack},
+		Types:        []string{"acme.*", "widget.*"},
+		Sources:      []string{"example", "other"},
 		Direction:    Inbound,
 		DeliveryMode: DeliveryModePush,
 		Limit:        5,

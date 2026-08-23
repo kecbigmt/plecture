@@ -162,8 +162,8 @@ func (sup *Supervisor) runOne(ctx context.Context, decl Declaration) {
 	})
 
 	if missing := missingRequiredEnv(decl.RequiredEnv); len(missing) > 0 {
-		// Naturally inert, not a failure: e.g. the Slack service without
-		// SLACK_BOT_TOKEN configured. Checked once per (re)start attempt —
+		// Naturally inert, not a failure: e.g. a chat adapter service without
+		// its bot token configured. Checked once per (re)start attempt —
 		// required env is expected to come from the resident process's own
 		// environment, which does not change during the process's lifetime, so
 		// there is nothing to gain by rechecking every poll tick.

@@ -188,10 +188,10 @@ func writeEventFrame(w io.Writer, id, html string) error {
 }
 
 // handleSessionEventEmit publishes a user.* event from the detail page's emit
-// form. The web credential may only publish user.* types (a privileged type
-// like claude.permission_request must not be forgeable from a browser); the
-// appended event reaches the open timeline via the bus tailer, so a successful
-// emit just clears the form's error slot.
+// form. The web credential may only publish user.* types (a privileged,
+// provider-owned type must not be forgeable from a browser); the appended
+// event reaches the open timeline via the bus tailer, so a successful emit
+// just clears the form's error slot.
 func (s *Server) handleSessionEventEmit(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimSpace(r.FormValue("session"))
 	if name == "" {

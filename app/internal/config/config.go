@@ -96,7 +96,7 @@ type Config struct {
 	// SessionGuard is a per-session dispatch boundary sourced from the
 	// PLECT_SESSION_GUARD environment variable (not config.toml). When set, a
 	// `plect up` may only produce a *resolved session name* that
-	// matches this regex. The orchestrator's claude pane exports it from the
+	// matches this regex. The orchestrator's agent pane exports it from the
 	// workspace provider's `session_guard` output (e.g. "^acme/"), so a
 	// prompt-injected board body cannot make the orchestrator dispatch work
 	// outside its own session-name space. Empty = disabled.

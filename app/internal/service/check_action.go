@@ -127,8 +127,9 @@ func reviewerDispatchCommand(resource, instance string) string {
 		return ""
 	}
 	// Which reviewer workflow runs is a chaining concern, not a judge-leaf field;
-	// this advisory suggestion defaults to claude until chaining (slice 6) owns it.
-	return fmt.Sprintf("plect up %q --workflow claude --task review --tag %s", resource, reviewerTag(instance))
+	// this advisory suggestion has a fixed interim default until chaining
+	// (slice 6) owns it.
+	return fmt.Sprintf("plect up %q --workflow claude --task review --tag %s", resource, reviewerTag(instance)) // boundary-allow: This hardcodes a fixed interim default for an advisory suggestion, and chaining (slice 6) will remove it once it picks the reviewer workflow instead.
 }
 
 func judgeCommands(sessionName, instance string, items []CheckUnmetItem) []string {

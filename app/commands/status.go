@@ -70,10 +70,10 @@ line.`,
 		}
 
 		if statusJSON {
-			// Warnings stay out of stderr in --json mode: scripts that capture
-			// this command's output with `2>&1` (e.g. config/plect/providers/
-			// local-okf.toml) feed it straight to jq, and a warning line ahead
-			// of the JSON breaks that parse.
+			// Warnings stay out of stderr in --json mode: a downstream script
+			// that captures this command's output with `2>&1` feeds it
+			// straight to jq, and a warning line ahead of the JSON breaks
+			// that parse.
 			var payload any = result
 			if !statusFull {
 				payload = service.Summarize(result)

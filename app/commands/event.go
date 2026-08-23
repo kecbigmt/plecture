@@ -260,7 +260,7 @@ func init() {
 	eventListCmd.Flags().BoolVar(&eventJSON, "json", false, "Output as JSON")
 	eventListCmd.Flags().StringVar(&eventOrder, "order", "asc", "List order: asc (oldest first, paginates) or desc (newest N, no jq needed)")
 	eventListCmd.Flags().StringVar(&eventCursor, "cursor", "", "Opaque pagination token from a prior page's next_cursor (asc only)")
-	eventListCmd.Flags().StringArrayVar(&eventTypes, "type", nil, "Filter by type glob (repeatable and/or comma-separated, e.g. claude.*)")
+	eventListCmd.Flags().StringArrayVar(&eventTypes, "type", nil, "Filter by type glob (repeatable and/or comma-separated, e.g. widget.*)")
 	eventListCmd.Flags().StringVar(&eventSource, "source", "", "Filter by source (comma-separated)")
 	eventListCmd.Flags().StringVar(&eventDirection, "direction", "", "Filter by direction (inbound|outbound|internal)")
 	eventListCmd.Flags().StringVar(&eventDelivery, "delivery-mode", "", "Filter by delivery mode (push|pull)")
