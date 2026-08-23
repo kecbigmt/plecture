@@ -3,8 +3,8 @@ kind  = "effect"
 scope = "session"
 
 # Produces a directory a workflow composes into an agent-runtime effect's
-# generic PATH-prepend input (e.g. `official.claude.claude`'s, or
-# `official.codex.codex`/`codex_exec`'s) — see
+# generic PATH-prepend input (e.g. `official.claude.runtime`'s, or
+# `official.codex.codex`/`exec_runtime`'s) — see
 # docs/design/plugin-boundary-contracts.md's GitHub CLI Guard section.
 # Agent-runtime plugins accept only this generic path input; they carry no
 # GitHub-specific guard switch of their own, so this is the one place that

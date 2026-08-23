@@ -5,6 +5,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/state"
@@ -119,12 +120,11 @@ revision = { from = "resource.state.revision" }
 	}
 }
 
-// TestIntegration_LegacyChainsFileIsIgnored is the dual-read retirement
+// TestIntegration_LegacyChainsFileIsRefused is the dual-read retirement
 // counterpart to TestIntegration_TickSpawnsReviewer: a chains/*.toml
-// declaration (not embedded in the task) is no longer read at all, so no
-// reviewer is spawned even though the same rule would have fired before the
-// legacy path was retired.
-func TestIntegration_LegacyChainsFileIsIgnored(t *testing.T) {
+// declaration is not a definition, and a definition root admits none, so the
+// whole layer refuses to load rather than quietly not firing the rule.
+func TestIntegration_LegacyChainsFileIsRefused(t *testing.T) {
 	workdirsRoot := setupE2ERepo(t)
 	setupFakeScripts(t)
 	store := state.NewStore(t.TempDir())
@@ -159,30 +159,9 @@ revision = "{{.Work.outputs.revision}}"
 		t.Fatal(err)
 	}
 
-	url := "https://github.com/testowner/testrepo/issues/55"
-	work := "testowner/testrepo-55+default"
-	reviewer := "testowner/testrepo-55+review-work"
-
-	if _, err := Up(cfg, store, UpParams{Identifier: url}); err != nil {
-		t.Fatalf("Up(work): %v", err)
-	}
-	// A workflow builds the session; the work a chain fires off is a task
-	// document dispatched into it. --name keeps the instance key stable, so
-	// the spawn tag a fire derives from it is too.
-	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: work, Name: "work", Resource: url}); err != nil {
-		t.Fatalf("TaskSetup(work): %v", err)
-	}
-	seedSession(t, store, "testowner/testrepo-orch", "testowner/testrepo", 0, "", nil)
-	setParent(t, store, work, "testowner/testrepo-orch")
-
-	res, err := TickSession(cfg, store, TickParams{SessionName: work, SkipRefresh: true})
-	if err != nil {
-		t.Fatalf("TickSession: %v", err)
-	}
-	if len(res.Chains) != 0 {
-		t.Fatalf("expected the legacy chains/*.toml declaration to be ignored, got %+v", res.Chains)
-	}
-	if store.Get(reviewer) != nil {
-		t.Fatalf("reviewer session %q should not have been spawned from a legacy chains/*.toml declaration", reviewer)
+	if _, err := Up(cfg, store, UpParams{Identifier: "https://github.com/testowner/testrepo/issues/55"}); err == nil {
+		t.Fatal("expected the load to refuse the leftover chains/*.toml")
+	} else if !strings.Contains(err.Error(), "review.toml") {
+		t.Fatalf("err = %v, want the error to name the leftover file", err)
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
@@ -93,52 +92,32 @@ func (p WorkspaceProviderConfig) HasResolver() bool {
 	return p.Match != ""
 }
 
-// LoadWorkspaceProviders loads `workspaces/*.toml` from the trusted base
-// layers only: plugin dirs first, then the global config dir; the global
-// layer's same-id file replaces a plugin layer's, but two plugin layers
-// declaring the same id is a load error (see loadTrustedLayer). The
-// per-workspace-dir ancestor cascade is deliberately excluded (see
-// WorkspaceProviderConfig).
+// LoadWorkspaceProviders loads every workspace provider the trusted base
+// layers declare: plugin roots first, then the global config dir. The global
+// layer's same-id declaration replaces a plugin layer's, but two plugin
+// layers declaring one id is a load error (see loadTrustedKind).
 func (c *Config) LoadWorkspaceProviders() (map[string]WorkspaceProviderConfig, error) {
-	var pluginDirs []string
-	for _, plugin := range c.PluginDirs {
-		pluginDirs = append(pluginDirs, filepath.Join(plugin, "config", "workspaces"))
+	resolved, err := c.trustedKind(lang.KindWorkspaceProvider)
+	if err != nil {
+		return nil, err
 	}
-	globalDir := ""
-	if c.BaseDir != "" {
-		globalDir = filepath.Join(c.BaseDir, "workspaces")
-	}
-	return loadTrustedLayer(pluginDirs, globalDir, c.loadWorkspaceProviderDocument, func(p WorkspaceProviderConfig) string { return p.ID })
+	return loadTrustedKind(resolved, c.workspaceProviderFromDefinition,
+		func(p WorkspaceProviderConfig) string { return p.ID })
 }
 
-func (c *Config) loadWorkspaceProviderDocument(path string, fromPlugin bool) ([]WorkspaceProviderConfig, error) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := lang.ParseDefinitionDocument(path, src)
-	if err != nil {
-		return nil, err
-	}
+func (c *Config) workspaceProviderFromDefinition(def *lang.Definition, fromPlugin bool) (WorkspaceProviderConfig, error) {
 	validation := lang.Validation{
 		From:        lang.Ownership{IsPlugin: fromPlugin},
-		Executables: c.binResolver(path),
+		Executables: c.binResolver(def.File),
 	}
-	out := make([]WorkspaceProviderConfig, 0, len(parsed))
-	for _, def := range parsed {
-		if def.Kind != lang.KindWorkspaceProvider {
-			return nil, fmt.Errorf("%s: %q declares kind %q; a definition under workspaces/ is a workspace_provider", path, def.ID, def.Kind)
-		}
-		if err := validation.ValidateDefinition(def); err != nil {
-			return nil, err
-		}
-		prov, err := workspaceProviderFrom(def, path, fromPlugin)
-		if err != nil {
-			return nil, fmt.Errorf("workspace provider %s in %s: %w", def.ID, path, err)
-		}
-		out = append(out, prov)
+	if err := validation.ValidateDefinition(def); err != nil {
+		return WorkspaceProviderConfig{}, err
 	}
-	return out, nil
+	prov, err := workspaceProviderFrom(def, def.File, fromPlugin)
+	if err != nil {
+		return WorkspaceProviderConfig{}, fmt.Errorf("workspace provider %s in %s: %w", def.ID, def.File, err)
+	}
+	return prov, nil
 }
 
 // workspaceProviderFrom reads the fields the runtime needs off a validated

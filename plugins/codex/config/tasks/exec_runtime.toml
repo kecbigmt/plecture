@@ -1,4 +1,4 @@
-[codex_exec]
+[exec_runtime]
 kind  = "effect"
 scope = "run"
 
@@ -45,7 +45,7 @@ scope = "run"
 # submit-race and boot-race classes that motivate this plugin's
 # terminal_submit channel and initial_prompt effect do not exist for a
 # runtime with no input box.
-[codex_exec.setup]
+[exec_runtime.setup]
 type   = "shell"
 script = '''
 # The reset drops any record a previous run left behind, so this run's
@@ -142,7 +142,7 @@ jq -nc \
   '{pid:$pid, queue_dir:$queue_dir, state_dir:$state_dir, profile_path:$profile}'
 '''
 
-[codex_exec.setup.bind]
+[exec_runtime.setup.bind]
 session_name   = { from = "session.name" }
 tmux_session   = { from = "inputs.tmux_session" }
 model          = { from = "inputs.model", optional = true }
@@ -156,7 +156,7 @@ worker_bin     = { bin = "codex-exec-worker" }
 send_text      = { terminal = "send_text" }
 send_keys      = { terminal = "send_keys" }
 
-[codex_exec.cleanup]
+[exec_runtime.cleanup]
 type   = "shell"
 script = '''
 kill -TERM "$pid" 2>/dev/null || exit 0
@@ -170,7 +170,7 @@ kill -KILL "$pid" 2>/dev/null || true
 true
 '''
 
-[codex_exec.cleanup.bind]
+[exec_runtime.cleanup.bind]
 pid          = { from = "self.outputs.pid", optional = true }
 profile_path = { from = "self.outputs.profile_path", optional = true }
 session_name = { from = "session.name" }
@@ -179,7 +179,7 @@ activity_bin = { bin = "codex-agent-activity" }
 # A live PID alone would hide a worker stuck on a permanently-failing turn.
 # health.json is absent until the first turn finishes, which is healthy —
 # nothing has failed yet.
-[codex_exec.health.alive]
+[exec_runtime.health.alive]
 type   = "shell"
 script = '''
 kill -0 "$pid" || exit 1
@@ -188,7 +188,7 @@ HEALTH="$state_dir/health.json"
 jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null
 '''
 
-[codex_exec.health.alive.bind]
+[exec_runtime.health.alive.bind]
 pid       = { from = "self.outputs.pid" }
 state_dir = { from = "self.outputs.state_dir" }
 
@@ -196,12 +196,12 @@ state_dir = { from = "self.outputs.state_dir" }
 # registers write, so hook and probe are two halves of one fingerprint
 # format. Unlike the interactive shape there is no pane to fingerprint here,
 # so the turn boundary is this effect's only activity evidence.
-[codex_exec.health.activity]
+[exec_runtime.health.activity]
 type = "exec"
 bin  = "codex-agent-activity"
 args = ["probe", { from = "session.name" }]
 
-[codex_exec.inputs_schema]
+[exec_runtime.inputs_schema]
 type                 = "object"
 required             = ["tmux_session"]
 additionalProperties = false
@@ -209,7 +209,7 @@ additionalProperties = false
 # model/effort: restricted to a plain-token charset (no quotes, whitespace,
 # or newlines) because they reach the pane's shell as keystrokes — see the
 # setup script's comment above.
-[codex_exec.inputs_schema.properties]
+[exec_runtime.inputs_schema.properties]
 tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
@@ -225,11 +225,11 @@ state_root   = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 # metacharacters), same reasoning as model/effort above.
 path_prepend = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 
-[codex_exec.outputs_schema]
+[exec_runtime.outputs_schema]
 type     = "object"
 required = ["pid", "queue_dir", "state_dir"]
 
-[codex_exec.outputs_schema.properties]
+[exec_runtime.outputs_schema.properties]
 pid          = { type = "integer" }
 queue_dir    = { type = "string" }
 state_dir    = { type = "string" }

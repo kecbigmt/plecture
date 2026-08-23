@@ -77,7 +77,7 @@ func resolveParentSession(store *state.Store, sessionName, explicit string) (str
 
 // sessionVars builds the template variable bundle for a session's task
 // hooks. plan is optional (nil when the caller has no full compiled plan in
-// scope, e.g. a dynamic instance's own cleanup) — it feeds the {{terminal
+// scope, e.g. a dynamic instance's own cleanup) — it feeds the terminal
 // "..."}} helper binding; every other field is plan-independent.
 func sessionVars(cfg *config.Config, s *domain.Session, plan *task.Plan) task.SessionVars {
 	return task.SessionVars{
@@ -93,9 +93,9 @@ func sessionVars(cfg *config.Config, s *domain.Session, plan *task.Plan) task.Se
 }
 
 // terminalBinding resolves the plan's [terminal]-declaring task (if any)
-// into the {{terminal "..."}} helper's binding: its verb templates plus its
+// into the terminal capability's binding: its verbs plus its
 // own current outputs (the .Self a nested render needs). Nil plan or no
-// declaring task means {{terminal "..."}} is unavailable for this render —
+// declaring task means the terminal capability is unavailable for this resolution —
 // the same way a caller with no full plan in scope already lacks
 // `.Nodes.<id>.outputs` access to sibling tasks outside its own dependency
 // set.

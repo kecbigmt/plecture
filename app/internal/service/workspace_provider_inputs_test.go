@@ -89,25 +89,25 @@ func TestWorkspaceProviderInputs_FromTOMLReachTheHook(t *testing.T) {
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "workspaces", "demo.toml"), `
-[demo]
+[demo_provider]
 kind = "workspace_provider"
 
-[demo.setup]
+[demo_provider.setup]
 type    = "exec"
 command = "printf"
 args    = ['{"workspace_dir":"%s"}', { from = "inputs.layout_root", default = "" }]
 
-[demo.inputs_schema]
+[demo_provider.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[demo.inputs_schema.properties]
+[demo_provider.inputs_schema.properties]
 layout_root = { type = "string" }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "demo.toml"), `
 [demo]
 kind = "workflow"
-workspace_provider = "demo"
+workspace_provider = "demo_provider"
 
 [demo.workspace_provider_inputs]
 layout_root = "~/worktrees"
@@ -131,9 +131,9 @@ uses = "noop"
 	if err != nil {
 		t.Fatalf("LoadWorkspaceProviders: %v", err)
 	}
-	prov, ok := providers["demo"]
+	prov, ok := providers["demo_provider"]
 	if !ok {
-		t.Fatal("workspace provider demo not loaded")
+		t.Fatal("workspace provider demo_provider not loaded")
 	}
 
 	inputs, err := resolveWorkspaceProviderInputs(prov, wf)
@@ -170,24 +170,24 @@ func TestWorkspaceProviderInputs_FromTOMLRejectsAnUndeclaredParameter(t *testing
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "workspaces", "demo.toml"), `
-[demo]
+[demo_provider]
 kind = "workspace_provider"
 
-[demo.setup]
+[demo_provider.setup]
 type    = "exec"
 command = "acquire"
 
-[demo.inputs_schema]
+[demo_provider.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[demo.inputs_schema.properties]
+[demo_provider.inputs_schema.properties]
 layout_root = { type = "string" }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "demo.toml"), `
 [demo]
 kind = "workflow"
-workspace_provider = "demo"
+workspace_provider = "demo_provider"
 
 [demo.workspace_provider_inputs]
 laoyut_root = "~/worktrees"
@@ -207,7 +207,7 @@ uses = "noop"
 	if err != nil {
 		t.Fatalf("LoadWorkspaceProviders: %v", err)
 	}
-	if _, err := resolveWorkspaceProviderInputs(providers["demo"], workflows["demo"]); err == nil {
+	if _, err := resolveWorkspaceProviderInputs(providers["demo_provider"], workflows["demo"]); err == nil {
 		t.Fatal("expected a misspelled parameter to be rejected")
 	}
 }

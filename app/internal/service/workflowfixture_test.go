@@ -435,3 +435,12 @@ func addWorkflowFields(t *testing.T, cfg *config.Config, wfID, fields string) {
 		t.Fatal(err)
 	}
 }
+
+// providerAside gives a fixture's workspace provider an id of its own. One
+// layer has one definition id namespace across every kind, so a provider
+// cannot be named after the workflow that selects it; the body's table name is
+// rewritten with it so a caller states the id once.
+func providerAside(wfID, body string) (string, string) {
+	provID := wfID + "_provider"
+	return provID, strings.ReplaceAll(body, "["+wfID, "["+provID)
+}

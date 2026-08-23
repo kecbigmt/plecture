@@ -498,10 +498,10 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch","prev":"%%s"}' "$1"`, newWorkdirPath, newWorkdirPath)
 	providerSetupArgs := `, { from = "prev.workspace_dir", default = "" }`
 	providerCleanup := fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog)
-	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(providerScriptPair("default", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"), []byte(providerScriptPair("default_provider", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default\"\n")
+	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default_provider\"\n")
 	sessionName := "org/repo-12"
 	seedSession(t, store, "org/repo-parent", "org/repo", 11, "default", nil)
 	seedSession(t, store, sessionName, "org/repo", 12, "default", map[string]*contract.TaskState{
@@ -659,10 +659,10 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 	providerSetup := `echo '{"workspace_dir":"/unused","branch":"unused"}'`
 	providerSetupArgs := ""
 	providerCleanup := fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog)
-	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(providerScriptPair("default", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"), []byte(providerScriptPair("default_provider", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default\"\n")
+	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default_provider\"\n")
 	sessionName := "org/repo-15"
 	seedSession(t, store, "org/repo-parent", "org/repo", 14, "default", nil)
 	seedSession(t, store, sessionName, "org/repo", 15, "default", map[string]*contract.TaskState{
@@ -799,10 +799,10 @@ func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing
 	providerSetup := `printf 'provider setup failed\n' >&2; exit 42`
 	providerSetupArgs := ""
 	providerCleanup := fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog)
-	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(providerScriptPair("default", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"), []byte(providerScriptPair("default_provider", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default\"\n")
+	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default_provider\"\n")
 	sessionName := "org/repo-13"
 	seedSession(t, store, "org/repo-parent", "org/repo", 12, "default", nil)
 	seedSession(t, store, sessionName, "org/repo", 13, "default", map[string]*contract.TaskState{
@@ -976,7 +976,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
 					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; exit 25`, cleanupLog),
 				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
+				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default_provider\"\n")
 			},
 			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
 				return expectations{
@@ -1000,7 +1000,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					fmt.Sprintf(`mkdir -p %s && rm -f %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, wfPath, newWorkdirPath),
 					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog),
 				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
+				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default_provider\"\n")
 			},
 			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
 				return expectations{
@@ -1024,7 +1024,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					fmt.Sprintf(`mkdir -p %s && rm -f %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, taskPath, newWorkdirPath),
 					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog),
 				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
+				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default_provider\"\n")
 			},
 			want: func(oldWorkdirPath, newWorkdirPath string) expectations {
 				return expectations{
@@ -1047,7 +1047,7 @@ func TestUp_ForceRecreateFailureStagesPersistInspectableState(t *testing.T) {
 					fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q,"branch":"new-branch"}'`, newWorkdirPath, newWorkdirPath),
 					fmt.Sprintf(`printf 'workflow=%%s\n' "$1" >> %s; rm -rf "$1"`, cleanupLog),
 				)
-				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default\"\n")
+				prependForceRecreateWorkflow(t, cfg, "workspace_provider = \"default_provider\"\n")
 				writeTaskFixture(t, cfg, taskFixture{
 					id:      "channel",
 					scope:   "session",
@@ -1197,8 +1197,8 @@ func writeForceRecreateProvider(t *testing.T, cfg *config.Config, setup, cleanup
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	doc := providerScriptPair("default", setup, "", cleanup, `, { from = "self.outputs.workspace_dir" }`)
-	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(doc), 0o644); err != nil {
+	doc := providerScriptPair("default_provider", setup, "", cleanup, `, { from = "self.outputs.workspace_dir" }`)
+	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"), []byte(doc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -1499,11 +1499,11 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 		t.Fatal(err)
 	}
 	providerSetup := fmt.Sprintf(`mkdir -p %s && printf '{"workspace_dir":%q}'`, newWorkdirPath, newWorkdirPath)
-	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"),
-		[]byte(providerScriptPair("default", providerSetup, "", "true", "")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(providersDir, "default_provider.toml"),
+		[]byte(providerScriptPair("default_provider", providerSetup, "", "true", "")), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default\"\n")
+	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default_provider\"\n")
 	sessionName := "org/repo-14"
 	seedSession(t, store, sessionName, "org/repo", 14, "default", map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {

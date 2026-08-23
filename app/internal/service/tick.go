@@ -35,7 +35,7 @@ const (
 // publish same-session events that drive the reviewer or work session. Against
 // that same refreshed fact set, it also fires [[chains]].
 func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*CheckResult, error) {
-	resolvedName, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, !params.SkipRefresh, params.Trigger)
+	resolvedName, computed, chainPlan, err := evaluateSessionActions(cfg, store, params.SessionName, !params.SkipRefresh, params.Trigger)
 	if err != nil {
 		return nil, err
 	}
@@ -98,5 +98,5 @@ func TickSession(cfg *config.Config, store *state.Store, params TickParams) (*Ch
 		chains = append(chains, sp)
 	}
 
-	return &CheckResult{Actions: actions, Chains: chains, Warnings: warnings}, nil
+	return &CheckResult{Actions: actions, Chains: chains}, nil
 }

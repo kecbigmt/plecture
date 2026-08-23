@@ -99,11 +99,11 @@ func TestDispatchResource_AmbiguousIsError(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		prov := providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`)
-		if err := os.WriteFile(filepath.Join(baseDir, "workspaces", id+".toml"), []byte(prov), 0o644); err != nil {
+		provID, prov := providerAside(id, providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`))
+		if err := os.WriteFile(filepath.Join(baseDir, "workspaces", provID+".toml"), []byte(prov), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		content := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + id + "\"\n\n[[" + id + ".nodes]]\nuses = \"noop\"\n"
+		content := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + provID + "\"\n\n[[" + id + ".nodes]]\nuses = \"noop\"\n"
 		if err := os.WriteFile(filepath.Join(baseDir, "workflows", id+".toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -395,11 +395,11 @@ func TestUp_AmbiguousResolverDispatchIsError(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"a", "b"} {
-		prov := providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`)
-		if err := os.WriteFile(filepath.Join(providersDir, id+".toml"), []byte(prov), 0o644); err != nil {
+		provID, prov := providerAside(id, providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`))
+		if err := os.WriteFile(filepath.Join(providersDir, provID+".toml"), []byte(prov), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		content := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + id + "\"\n\n[[" + id + ".nodes]]\nuses = \"noop\"\n"
+		content := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + provID + "\"\n\n[[" + id + ".nodes]]\nuses = \"noop\"\n"
 		if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}

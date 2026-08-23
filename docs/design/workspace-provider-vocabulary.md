@@ -23,8 +23,8 @@ the acquired location through a required setup output key named
 `workspace_dir`. Other outputs are provider-specific contract fields.
 
 Parameters are declared as `inputs_schema` on the workspace provider and set
-as `workspace_provider_inputs` on the workflow. Values are literal data, not
-templates, and reach `setup` and `cleanup` as `Inputs`. `subscribe` receives
+as `workspace_provider_inputs` on the workflow. The values are literal data,
+and `setup` and `cleanup` read them as `inputs.<key>`. `subscribe` receives
 none: it resolves a workspace provider from the resource alone, with no
 workflow in scope to have set one.
 
@@ -68,11 +68,11 @@ The code-facing vocabulary is:
 | Workflow parameter table | `workspace_provider_inputs` |
 | State path field | `workspace_dir_path` |
 | Root path field | `workspace_dirs_root` |
-| Setup output namespace in template prose | workflow outputs |
+| Setup output namespace in prose | workflow outputs |
 
-The workflow output namespace is `Workflow.outputs`. It names the workflow-level
-pseudo-node outputs visible to templates, not the configuration kind that
-produced them.
+The workflow output namespace is `workflow.outputs`. It names the
+workflow-level pseudo-node outputs a value may project from, not the
+configuration kind that produced them.
 
 Config directories use short plural nouns. Resource definitions live in
 `resources/`; workspace provider declarations live in `workspaces/`. The full
@@ -110,4 +110,4 @@ Directory paths remain concrete in names:
 - setup emits `workspace_dir`;
 - state exposes `workspace_dir_path`;
 - configuration names the root collection `workspace_dirs_root`;
-- templates use matching names when they refer to filesystem paths.
+- a value projecting one of them uses the matching name.

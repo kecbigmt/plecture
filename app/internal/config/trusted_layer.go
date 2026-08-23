@@ -1,74 +1,39 @@
 package config
 
 import (
-	"fmt"
-
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// loadTrustedLayer loads TOML files across pluginDirs then globalDir into an
-// id-keyed map: loadOne parses one file into the definitions it declares
-// (fromPlugin says whether a plugin layer wrote it), idOf extracts each
-// definition's id.
+// loadTrustedKind selects one kind from the trusted base layers' resolved
+// namespace — every plugin's config root, then the machine's global config —
+// and reads each declaration with one, which turns it into the runtime's own
+// shape.
 //
-// Two different collisions are two different rules. Inside one layer — one
-// plugin, or the global config — a repeated id is the language's
-// PLECTURE-CFG-ID-DUPLICATE: a document declares its own ids, so two files
-// claiming one id is ambiguous and file order must not silently pick a
-// winner. Between two different pluginDirs entries it is the
-// plugin-packaging rule instead: only a deeper, user-owned layer (globalDir)
-// may replace what a plugin layer defines, and declaration order between two
-// plugin layers must never decide a conflict. globalDir == "" means there is
-// no global layer to apply.
-func loadTrustedLayer[T any](pluginDirs []string, globalDir string, loadOne func(path string, fromPlugin bool) ([]T, error), idOf func(T) string) (map[string]T, error) {
+// The per-workspace-dir ancestor cascade is deliberately excluded: a
+// workspace provider, a resource observer and a channel decide how a session's
+// identity is resolved and how a process is reached, and those belong to the
+// machine rather than to any directory a project owns. Such a declaration in
+// an ancestor overlay is skipped rather than refused, because a project's own
+// directory holding one is not a mistake — it simply does not participate.
+func loadTrustedKind[T any](resolved []resolvedDefinition, one func(*lang.Definition, bool) (T, error), idOf func(T) string) (map[string]T, error) {
 	out := make(map[string]T)
-	pluginOwner := make(map[string]string)
-	for _, dir := range pluginDirs {
-		layerOwner := make(map[string]string)
-		entries, err := listTOMLFiles(dir)
+	for _, entry := range resolved {
+		loaded, err := one(entry.def, entry.fromPlugin)
 		if err != nil {
 			return nil, err
 		}
-		for _, path := range entries {
-			loaded, err := loadOne(path, true)
-			if err != nil {
-				return nil, err
-			}
-			for _, v := range loaded {
-				id := idOf(v)
-				if prior, dup := layerOwner[id]; dup {
-					return nil, lang.DuplicateID(id, prior, path)
-				}
-				if owner, exists := pluginOwner[id]; exists {
-					return nil, fmt.Errorf("id %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", id, owner, path)
-				}
-				layerOwner[id] = path
-				pluginOwner[id] = path
-				out[id] = v
-			}
-		}
+		out[idOf(loaded)] = loaded
 	}
-	if globalDir == "" {
-		return out, nil
-	}
-	globalOwner := make(map[string]string)
-	entries, err := listTOMLFiles(globalDir)
+	return out, nil
+}
+
+// trustedKind resolves one kind over the base layers alone. A caller loading a
+// kind the cascade does not reach has no workspace directory to pass, and
+// reading the overlays anyway would only discover declarations it must skip.
+func (c *Config) trustedKind(kind lang.Kind) ([]resolvedDefinition, error) {
+	layers, err := c.discoverLayers("")
 	if err != nil {
 		return nil, err
 	}
-	for _, path := range entries {
-		loaded, err := loadOne(path, false)
-		if err != nil {
-			return nil, err
-		}
-		for _, v := range loaded {
-			id := idOf(v)
-			if prior, dup := globalOwner[id]; dup {
-				return nil, lang.DuplicateID(id, prior, path)
-			}
-			globalOwner[id] = path
-			out[id] = v
-		}
-	}
-	return out, nil
+	return c.resolveNamespace(layers, kind)
 }

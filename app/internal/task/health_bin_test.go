@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
@@ -16,7 +17,7 @@ func TestRunHealthProbes_ResolvePluginLocalBin(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	claude := mountShippedPlugin(t, repoRoot, "acme-mirror", "plugins/claude")
 	session := SessionVars{Name: "s", WorkspaceDirPath: t.TempDir(), Plugins: []plugins.Mounted{claude}}
-	sourcePath := claude.Dir + "/config/tasks/claude.toml"
+	sourcePath := claude.Dir + "/config/tasks/runtime.toml"
 
 	activityBin := &lang.Value{Form: lang.FormBin, Bin: "claude-agent-activity"}
 
@@ -54,4 +55,30 @@ func TestRunHealthProbes_ResolvePluginLocalBin(t *testing.T) {
 			t.Fatal("want an error for a bare bin reference with no owning plugin file")
 		}
 	})
+}
+
+// A probe whose value does not resolve never starts a process, and the health
+// report has to hear about it the same way it hears about a failing execution:
+// a probe that cannot be resolved is a probe that cannot answer. This pins the
+// semantics docs/design/health-declaration.md states, which is where it drifted
+// once already.
+func TestRunProbes_UnresolvedValueSurfacesAsAProbeFailure(t *testing.T) {
+	probe := Probe{Action: &lang.Action{
+		Type:   lang.ActionShell,
+		Script: `test -n "$missing"`,
+		Bind:   map[string]*lang.Value{"missing": {Form: lang.FormFrom, From: "self.outputs.nope"}},
+	}}
+	session := SessionVars{Name: "s"}
+
+	aliveErr := RunAliveProbe(context.Background(), probe, session)
+	if aliveErr == nil || !strings.Contains(aliveErr.Error(), "resolved to nothing") {
+		t.Fatalf("RunAliveProbe = %v, want an error naming the unresolved value", aliveErr)
+	}
+	signal, activityErr := RunActivityProbe(context.Background(), probe, session)
+	if activityErr == nil || !strings.Contains(activityErr.Error(), "resolved to nothing") {
+		t.Fatalf("RunActivityProbe err = %v, want an error naming the unresolved value", activityErr)
+	}
+	if signal != nil {
+		t.Errorf("RunActivityProbe signal = %+v, want none", signal)
+	}
 }

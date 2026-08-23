@@ -85,62 +85,39 @@ func (d TaskDocument) ResolvedStateSchemaPath() string {
 // what separates the two is the serialization the language assigns each kind:
 // a kind with a body is a Markdown file, a kind without one is TOML.
 func (c *Config) LoadTaskDocuments(workspaceDirPath string) (map[string]TaskDocument, error) {
+	layers, err := c.discoverLayers(workspaceDirPath)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := c.resolveNamespace(layers, lang.KindTask)
+	if err != nil {
+		return nil, err
+	}
 	out := make(map[string]TaskDocument)
-	pluginOwner := make(map[string]string)
-	for _, layer := range c.tasksSearchDirs(workspaceDirPath) {
-		entries, err := listMarkdownFiles(layer.dir)
+	for _, entry := range resolved {
+		doc, err := c.taskDocumentFromDefinition(entry.def, entry.fromPlugin)
 		if err != nil {
 			return nil, err
 		}
-		if layer.workspaceDir && len(entries) > 0 {
-			return nil, fmt.Errorf("task documents inside the workspace directory are not loaded (clone content must not declare the work it is about): %s; move them to the global layer, a plugin, or a repo overlay above the workspace dir", entries[0])
-		}
-		layerOwner := make(map[string]string)
-		for _, path := range entries {
-			doc, err := c.loadTaskDocument(path, layer.plugin)
-			if err != nil {
-				return nil, err
-			}
-			if prior, dup := layerOwner[doc.ID]; dup {
-				return nil, lang.DuplicateID(doc.ID, prior, path)
-			}
-			layerOwner[doc.ID] = path
-			if layer.plugin {
-				if owner, exists := pluginOwner[doc.ID]; exists {
-					return nil, fmt.Errorf("task %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", doc.ID, owner, path)
-				}
-				pluginOwner[doc.ID] = path
-			}
-			out[doc.ID] = doc
-		}
+		out[doc.ID] = doc
 	}
 	return out, nil
 }
 
-// loadTaskDocument reads one Markdown definition document. Contract
+// taskDocumentFromDefinition checks one discovered task document against the
+// task surface and reads the fields the runtime needs off it. Contract
 // validation — the observer reference, and every completion key against the
-// two schemas that declare them — needs the rest of the layer, so it runs
-// once the whole set is loaded (see ValidateTaskDocuments).
-func (c *Config) loadTaskDocument(path string, fromPlugin bool) (TaskDocument, error) {
-	src, err := os.ReadFile(path)
+// two schemas that declare them — needs the rest of the layer, so it runs once
+// the whole set is loaded (see ValidateTaskDocuments).
+func (c *Config) taskDocumentFromDefinition(def *lang.Definition, fromPlugin bool) (TaskDocument, error) {
+	doc, err := taskDocumentFrom(def, def.File, fromPlugin)
 	if err != nil {
-		return TaskDocument{}, err
-	}
-	def, err := lang.ParseTaskDocument(path, src)
-	if err != nil {
-		return TaskDocument{}, err
-	}
-	if def.Kind != lang.KindTask {
-		return TaskDocument{}, fmt.Errorf("%s: %q declares kind %q; a Markdown definition document declares a task", path, def.ID, def.Kind)
-	}
-	doc, err := taskDocumentFrom(def, path, fromPlugin)
-	if err != nil {
-		return TaskDocument{}, fmt.Errorf("task %s in %s: %w", def.ID, path, err)
+		return TaskDocument{}, fmt.Errorf("task %s in %s: %w", def.ID, def.File, err)
 	}
 	if fromPlugin {
-		doc.PluginLayer = c.pluginLayerOf(path)
+		doc.PluginLayer = c.pluginLayerOf(def.File)
 	}
-	validation := lang.Validation{From: doc.Ownership(), Executables: c.binResolver(path)}
+	validation := lang.Validation{From: doc.Ownership(), Executables: c.binResolver(def.File)}
 	if err := validation.ValidateDefinition(def); err != nil {
 		return TaskDocument{}, err
 	}
@@ -338,28 +315,5 @@ func (c *Config) LoadTaskDeclarations(workspaceDirPath string) (map[string]TaskD
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := validateTaskIDNamespace(docs, effects); err != nil {
-		return nil, nil, err
-	}
 	return docs, effects, nil
-}
-
-// validateTaskIDNamespace rejects one id declared by both kinds. A deeper
-// layer replacing a shallower same-id declaration is the cascade rule only
-// when both declare the same kind: replacing an effect with a task document
-// would silently drop a lifecycle a workflow node still names.
-func validateTaskIDNamespace(docs map[string]TaskDocument, effects map[string]TaskDefinition) error {
-	ids := make([]string, 0, len(docs))
-	for id := range docs {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		effect, clash := effects[id]
-		if !clash {
-			continue
-		}
-		return fmt.Errorf("id %q is declared as a task by %s and as an effect by %s; an id names one declaration, and a task document does not replace an effect a workflow node may still name", id, docs[id].SourcePath, effect.SourcePath)
-	}
-	return nil
 }

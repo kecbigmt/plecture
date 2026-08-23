@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
@@ -66,58 +64,32 @@ func (r ResourceDef) Ownership() lang.Ownership {
 	return lang.Ownership{IsPlugin: r.FromPlugin}
 }
 
-// LoadResourceDefs loads the resource observers declared under `resources/`
-// in the trusted base layers only: plugin dirs first, then the global config
-// dir; the global layer's same-id definition replaces a plugin layer's, but
-// two plugin layers declaring the same id is a load error (see
-// loadTrustedLayer). Mirrors LoadWorkspaceProviders — the per-workspace-dir
-// ancestor cascade is deliberately excluded, for the same reason.
-//
-// Discovery is still directory-scoped rather than the language's own
-// recursive sweep of a definition root, because the other kinds under a
-// plugin's config/ are not on the ratified surface yet and a whole-root
-// sweep would have to parse them too. It is retired when the last surface
-// moves over.
+// LoadResourceDefs loads every resource observer the trusted base layers
+// declare: plugin roots first, then the global config dir. Mirrors
+// LoadWorkspaceProviders, including its exclusion of the per-workspace-dir
+// ancestor cascade.
 func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
-	var pluginDirs []string
-	for _, plugin := range c.PluginDirs {
-		pluginDirs = append(pluginDirs, filepath.Join(plugin, "config", "resources"))
+	resolved, err := c.trustedKind(lang.KindResourceObserver)
+	if err != nil {
+		return nil, err
 	}
-	globalDir := ""
-	if c.BaseDir != "" {
-		globalDir = filepath.Join(c.BaseDir, "resources")
-	}
-	return loadTrustedLayer(pluginDirs, globalDir, c.loadResourceObservers, func(def ResourceDef) string { return def.ID })
+	return loadTrustedKind(resolved, c.resourceDefFromDefinition,
+		func(def ResourceDef) string { return def.ID })
 }
 
-func (c *Config) loadResourceObservers(path string, fromPlugin bool) ([]ResourceDef, error) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := lang.ParseDefinitionDocument(path, src)
-	if err != nil {
-		return nil, err
-	}
+func (c *Config) resourceDefFromDefinition(def *lang.Definition, fromPlugin bool) (ResourceDef, error) {
 	validation := lang.Validation{
 		From:        lang.Ownership{IsPlugin: fromPlugin},
-		Executables: c.binResolver(path),
+		Executables: c.binResolver(def.File),
 	}
-	out := make([]ResourceDef, 0, len(parsed))
-	for _, def := range parsed {
-		if def.Kind != lang.KindResourceObserver {
-			return nil, fmt.Errorf("%s: %q declares kind %q; a definition under resources/ is a resource_observer", path, def.ID, def.Kind)
-		}
-		if err := validation.ValidateDefinition(def); err != nil {
-			return nil, err
-		}
-		observer, err := resourceDefFrom(def, path, fromPlugin)
-		if err != nil {
-			return nil, fmt.Errorf("resource observer %s in %s: %w", def.ID, path, err)
-		}
-		out = append(out, observer)
+	if err := validation.ValidateDefinition(def); err != nil {
+		return ResourceDef{}, err
 	}
-	return out, nil
+	observer, err := resourceDefFrom(def, def.File, fromPlugin)
+	if err != nil {
+		return ResourceDef{}, fmt.Errorf("resource observer %s in %s: %w", def.ID, def.File, err)
+	}
+	return observer, nil
 }
 
 // resourceDefFrom reads the fields the runtime needs off a validated

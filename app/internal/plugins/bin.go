@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"text/template"
-	"text/template/parse"
 )
 
 // binCandidate is one way ref could be decomposed into a mounted plugin plus
@@ -15,12 +13,12 @@ type binCandidate struct {
 	exec  Executable
 }
 
-// ResolveBin resolves a `{{bin ref}}` reference against mounted (the
+// ResolveBin resolves a `bin = "<ref>"` reference against mounted (the
 // catalog-qualified plugins folded into the current config, in declaration
 // order) to an absolute executable path. sourcePath is the file the
-// referencing template came from — the catalog-load worktree's absolute
+// referencing declaration came from — the catalog-load worktree's absolute
 // path — used only to find ref's containing plugin for the bare-name
-// reading below; pass "" when the template has no file origin (e.g. it was
+// reading below; pass "" when the reference has no file origin (e.g. it was
 // built in-process by a test).
 //
 // ref has two readings:
@@ -71,7 +69,7 @@ func ResolveBin(mounted []Mounted, sourcePath, ref string) (string, error) {
 
 	switch len(candidates) {
 	case 0:
-		return "", fmt.Errorf(`{{bin %q}}: no mounted plugin resolves this reference (want "<catalog-alias>/<plugin-path>" or "<catalog-alias>/<plugin-path>/<executable-name>")`, ref)
+		return "", fmt.Errorf(`bin %q: no mounted plugin resolves this reference (want "<catalog-alias>/<plugin-path>" or "<catalog-alias>/<plugin-path>/<executable-name>")`, ref)
 	case 1:
 		return filepath.Join(candidates[0].mount.Dir, candidates[0].exec.Path), nil
 	default:
@@ -79,7 +77,7 @@ func ResolveBin(mounted []Mounted, sourcePath, ref string) (string, error) {
 		for i, c := range candidates {
 			ids[i] = c.mount.ID + " (" + c.exec.Name + ")"
 		}
-		return "", fmt.Errorf("{{bin %q}}: ambiguous; matches more than one plugin/executable reading: %v", ref, ids)
+		return "", fmt.Errorf("bin %q: ambiguous; matches more than one plugin/executable reading: %v", ref, ids)
 	}
 }
 
@@ -90,14 +88,14 @@ func ResolveBin(mounted []Mounted, sourcePath, ref string) (string, error) {
 func resolvePluginLocalBin(mounted []Mounted, sourcePath, ref string) (string, error) {
 	owner, ok := containingPlugin(mounted, sourcePath)
 	if !ok {
-		return "", fmt.Errorf(`{{bin %q}}: a bare executable name only resolves inside plugin-mounted config; this file was not mounted from any catalog plugin (use "<catalog-alias>/<plugin-path>/<executable-name>" instead)`, ref)
+		return "", fmt.Errorf(`bin %q: a bare executable name only resolves inside plugin-mounted config; this file was not mounted from any catalog plugin (use "<catalog-alias>/<plugin-path>/<executable-name>" instead)`, ref)
 	}
 	for _, ex := range owner.Manifest.Executables {
 		if ex.Name == ref {
 			return filepath.Join(owner.Dir, ex.Path), nil
 		}
 	}
-	return "", fmt.Errorf("{{bin %q}}: plugin %q declares no executable named %q", ref, owner.ID, ref)
+	return "", fmt.Errorf("bin %q: plugin %q declares no executable named %q", ref, owner.ID, ref)
 }
 
 // containingPlugin finds the mounted plugin whose directory contains
@@ -120,78 +118,4 @@ func containingPlugin(mounted []Mounted, sourcePath string) (Mounted, bool) {
 		}
 	}
 	return best, found
-}
-
-// binScanFuncs stubs every template function a hook string calling `{{bin
-// ...}}` might also use, so BinRefs's parse-only pass succeeds regardless of
-// what those other functions actually do — it never executes the template,
-// only walks its parse tree. Kept in sync with the real function set task
-// hook rendering registers (app/internal/task's templateFuncs plus each
-// render call's own dynamicFuncs); a hook string calling a function outside
-// this set fails to parse here and BinRefs reports zero references for it
-// rather than erroring, so a template function added later without a
-// matching entry here degrades this scan silently instead of breaking config
-// load for every hook that happens to use it.
-var binScanFuncs = template.FuncMap{
-	"bin":        func(args ...any) (any, error) { return nil, nil },
-	"get":        func(args ...any) any { return nil },
-	"shellQuote": func(args ...any) any { return nil },
-	"json":       func(args ...any) (any, error) { return nil, nil },
-}
-
-// BinRefs statically scans tmplStr's parse tree for `{{bin "<ref>"}}` calls
-// (bare or piped, e.g. `{{bin "x" | shellQuote}}`) and returns each ref
-// string literal found, in source order. It never renders the template, so
-// a reference is reported even when the value it would resolve to depends on
-// data this scan has no access to. Parse failure (unknown function, syntax
-// error) is reported as (nil, nil), not an error: this scan is a best-effort
-// load-time diagnostic layered on top of the render-time renderer, which
-// remains the authority on whether a template is actually valid — see
-// binScanFuncs.
-func BinRefs(tmplStr string) []string {
-	t, err := template.New("bin-scan").Funcs(binScanFuncs).Parse(tmplStr)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	var walk func(n parse.Node)
-	walk = func(n parse.Node) {
-		switch x := n.(type) {
-		case *parse.ListNode:
-			if x == nil {
-				return
-			}
-			for _, c := range x.Nodes {
-				walk(c)
-			}
-		case *parse.IfNode:
-			walk(x.List)
-			walk(x.ElseList)
-		case *parse.RangeNode:
-			walk(x.List)
-			walk(x.ElseList)
-		case *parse.WithNode:
-			walk(x.List)
-			walk(x.ElseList)
-		case *parse.ActionNode:
-			walk(x.Pipe)
-		case *parse.PipeNode:
-			if x == nil {
-				return
-			}
-			for _, c := range x.Cmds {
-				walk(c)
-			}
-		case *parse.CommandNode:
-			if len(x.Args) >= 2 {
-				if id, ok := x.Args[0].(*parse.IdentifierNode); ok && id.Ident == "bin" {
-					if s, ok := x.Args[1].(*parse.StringNode); ok {
-						out = append(out, s.Text)
-					}
-				}
-			}
-		}
-	}
-	walk(t.Root)
-	return out
 }

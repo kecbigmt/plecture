@@ -24,25 +24,6 @@ activity: fingerprint="spy-turn-1" silence_expected=false
 call[0]: "codex-agent-activity" "reset" "acme/widget-1"
 cleaned
 
-== codex_exec / setup
-call[0]: "codex-agent-activity" "reset" "acme/widget-1"
-call[1]: "uuidgen"
-call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEAM_CONTEXT='acme'; export PATH=/spy/guard:$PATH; export CODEX_MODEL='gpt-5.6-sol'; export CODEX_MODEL_REASONING_EFFORT='high'; exec <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1/queue' '<state>/plect-codex-exec/acme/widget-1' 'plect-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'"
-call[3]: "terminal-send_keys" "Enter"
-call[4]: "tmux" "display-message" "-p" "-t" "acme-widget-1" "#{pane_pid}"
-outputs: {"pid":<pid>,"profile_path":"<home>/.codex/plect-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.config.toml","queue_dir":"<state>/plect-codex-exec/acme/widget-1/queue","state_dir":"<state>/plect-codex-exec/acme/widget-1"}
-
-== codex_exec / health.alive
-alive
-
-== codex_exec / health.activity
-call[0]: "codex-agent-activity" "probe" "acme/widget-1"
-activity: fingerprint="spy-turn-1" silence_expected=false
-
-== codex_exec / cleanup
-call[0]: "codex-agent-activity" "reset" "acme/widget-1"
-cleaned
-
 == codex_initial_prompt / setup
 call[0]: "terminal-capture"
 call[1]: "plect" "template" "render" "work" "--session" "acme/widget-1"
@@ -50,3 +31,22 @@ call[2]: "terminal-send_text" "rendered instruction"
 call[3]: "terminal-send_keys" "Enter"
 call[4]: "terminal-capture"
 outputs: {"sent":"true"}
+
+== exec_runtime / setup
+call[0]: "codex-agent-activity" "reset" "acme/widget-1"
+call[1]: "uuidgen"
+call[2]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_AGENT_ACTIVITY_BIN='<plugin>/scripts/codex-agent-activity'; export PLECT_TEAM_CONTEXT='acme'; export PATH=/spy/guard:$PATH; export CODEX_MODEL='gpt-5.6-sol'; export CODEX_MODEL_REASONING_EFFORT='high'; exec <plugin>/scripts/codex-exec-worker '<state>/plect-codex-exec/acme/widget-1/queue' '<state>/plect-codex-exec/acme/widget-1' 'plect-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'"
+call[3]: "terminal-send_keys" "Enter"
+call[4]: "tmux" "display-message" "-p" "-t" "acme-widget-1" "#{pane_pid}"
+outputs: {"pid":<pid>,"profile_path":"<home>/.codex/plect-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.config.toml","queue_dir":"<state>/plect-codex-exec/acme/widget-1/queue","state_dir":"<state>/plect-codex-exec/acme/widget-1"}
+
+== exec_runtime / health.alive
+alive
+
+== exec_runtime / health.activity
+call[0]: "codex-agent-activity" "probe" "acme/widget-1"
+activity: fingerprint="spy-turn-1" silence_expected=false
+
+== exec_runtime / cleanup
+call[0]: "codex-agent-activity" "reset" "acme/widget-1"
+cleaned

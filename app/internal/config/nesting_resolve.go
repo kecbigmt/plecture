@@ -18,7 +18,7 @@ type nestingIndex struct {
 	// namespace instead of the merged one.
 	owner map[string]string
 	// missingPlugin names a plugin to enable for an otherwise unresolvable
-	// qualified reference, mirroring the {{bin}} remediation hint.
+	// qualified reference, mirroring the executable reference's remediation hint.
 	missingPlugin func(ref string) string
 }
 
@@ -41,7 +41,7 @@ func (ix nestingIndex) resolve(from TaskDefinition, ref string) (TaskDefinition,
 }
 
 // resolveQualified reads ref as "<catalog-alias>/<plugin-path>/<task-id>"
-// with the accept-exactly-one semantics qualified {{bin}} references already
+// with the accept-exactly-one semantics a qualified executable reference already
 // use, so a plugin path of arbitrary depth never rests on a longest-prefix
 // guess.
 func (ix nestingIndex) resolveQualified(ref string) (TaskDefinition, error) {

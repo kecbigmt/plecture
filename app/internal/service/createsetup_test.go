@@ -24,10 +24,11 @@ func writeSetupWorkflow(t *testing.T, cfg *config.Config, wfID, extra string) {
 	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspacesDir, wfID+".toml"), []byte(extra), 0o644); err != nil {
+	provID, body := providerAside(wfID, extra)
+	if err := os.WriteFile(filepath.Join(workspacesDir, provID+".toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	addWorkflowFields(t, cfg, wfID, "workspace_provider = \""+wfID+"\"\n")
+	addWorkflowFields(t, cfg, wfID, "workspace_provider = \""+provID+"\"\n")
 }
 
 func TestCreate_WorkflowSetupPath(t *testing.T) {

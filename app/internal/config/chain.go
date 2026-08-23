@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -128,30 +127,4 @@ func (f ChainWhenFact) validate() error {
 		}
 	}
 	return nil
-}
-
-// LegacyChainsDirNotice reports one warning per surviving `chains/*.toml`
-// file under the trusted base layers (plugin dirs, then BaseDir). A chain is
-// declared by the task document whose instances it fires against and nowhere
-// else, so a file left behind here is silently inert; without this notice a
-// migration straggler has zero signal that its rule stopped firing.
-func (c *Config) LegacyChainsDirNotice() ([]string, error) {
-	var dirs []string
-	for _, plugin := range c.PluginDirs {
-		dirs = append(dirs, filepath.Join(plugin, "chains"))
-	}
-	if c.BaseDir != "" {
-		dirs = append(dirs, filepath.Join(c.BaseDir, "chains"))
-	}
-	var warnings []string
-	for _, dir := range dirs {
-		entries, err := listTOMLFiles(dir)
-		if err != nil {
-			return nil, err
-		}
-		for _, path := range entries {
-			warnings = append(warnings, fmt.Sprintf("%s is ignored: declare [[chains]] inside the task definition instead (the legacy chains/*.toml dual-read has been retired)", path))
-		}
-	}
-	return warnings, nil
 }

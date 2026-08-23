@@ -126,3 +126,10 @@ func healthStub(alive string) *config.HealthConfig {
 	}
 	return &config.HealthConfig{Alive: shellStub(alive)}
 }
+
+// shellExecution is the invocation a `bash -c` script resolves to, stated
+// here because the tests that assert on the host path's own shape are the
+// only remaining callers that need to build one by hand.
+func shellExecution(script string) *lang.Execution {
+	return &lang.Execution{Argv: []string{"bash", "-c", script}}
+}

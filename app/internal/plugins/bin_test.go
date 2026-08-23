@@ -132,33 +132,3 @@ func TestResolveBin_NestedPluginCollisionFailsLoud(t *testing.T) {
 		t.Fatal("ResolveBin: want error for a reference readable as two different plugin/executable pairs, got nil")
 	}
 }
-
-func TestBinRefs_FindsBareAndPipedReferences(t *testing.T) {
-	got := BinRefs(`{{bin "official/agent/runtime/plect-agent-activity"}} claude working` + "\n" +
-		`{{bin "github-watcher" | shellQuote}}` + "\n" +
-		`{{get .Inputs "model" ""}}`)
-	want := []string{"official/agent/runtime/plect-agent-activity", "github-watcher"}
-	if len(got) != len(want) {
-		t.Fatalf("BinRefs = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("BinRefs[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-}
-
-func TestBinRefs_NoReferencesReturnsNil(t *testing.T) {
-	if got := BinRefs(`plain shell, no templating here`); got != nil {
-		t.Errorf("BinRefs = %v, want nil", got)
-	}
-}
-
-// TestBinRefs_UnparsableTemplateReturnsNilNotError proves an unrecognized
-// function name degrades this scan silently rather than failing it — see
-// binScanFuncs's doc comment for why.
-func TestBinRefs_UnparsableTemplateReturnsNilNotError(t *testing.T) {
-	if got := BinRefs(`{{someFutureFunc "x"}}`); got != nil {
-		t.Errorf("BinRefs = %v, want nil", got)
-	}
-}

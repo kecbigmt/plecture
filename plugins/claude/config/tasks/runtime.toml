@@ -1,4 +1,4 @@
-[claude]
+[runtime]
 kind  = "effect"
 scope = "run"
 
@@ -45,7 +45,7 @@ scope = "run"
 # a command: model/effort/launch_env/mcp_servers/path_prepend all cross one
 # further boundary of the script's own — the keystrokes typed into the
 # pane — and the script owns the quoting at that boundary.
-[claude.setup]
+[runtime.setup]
 type   = "shell"
 script = '''
 PREV_SID="${prev_session_id-}"
@@ -213,7 +213,7 @@ jq -nc \
   '{pid:$pid, session_id:$sid, socket_path:$sock, mcp_config:$mcp, hooks_settings:$hooks}'
 '''
 
-[claude.setup.bind]
+[runtime.setup.bind]
 session_name     = { from = "session.name" }
 prev_session_id  = { from = "prev.session_id", optional = true }
 prev_pid         = { from = "prev.pid", optional = true }
@@ -227,7 +227,7 @@ mcp_servers_bin  = { bin = "claude-mcp-servers" }
 send_text        = { terminal = "send_text" }
 send_keys        = { terminal = "send_keys" }
 
-[claude.cleanup]
+[runtime.cleanup]
 type   = "shell"
 script = '''
 kill -TERM "$pid" 2>/dev/null || exit 0
@@ -244,7 +244,7 @@ rm -f "$mcp_config" "$socket_path"
 true
 '''
 
-[claude.cleanup.bind]
+[runtime.cleanup.bind]
 pid             = { from = "self.outputs.pid", optional = true }
 mcp_config      = { from = "self.outputs.mcp_config", optional = true }
 socket_path     = { from = "self.outputs.socket_path", optional = true }
@@ -260,7 +260,7 @@ activity_bin    = { bin = "claude-agent-activity" }
 # same discovery setup performs), then write it back via the mutable outputs
 # below — the next dispatch batch re-resolves channel inputs from persisted
 # outputs, so delivery self-heals without a session down/up.
-[claude.health.alive]
+[runtime.health.alive]
 type   = "shell"
 script = '''
 kill -0 "$pid" 2>/dev/null && exit 0
@@ -295,7 +295,7 @@ plect state set-output "$session_name" --node claude "$(jq -nc \
   '{pid:$pid, session_id:$sid, socket_path:$sock}')"
 '''
 
-[claude.health.alive.bind]
+[runtime.health.alive.bind]
 pid          = { from = "self.outputs.pid", optional = true }
 tmux_session = { from = "inputs.tmux_session" }
 session_name = { from = "session.name" }
@@ -306,12 +306,12 @@ session_name = { from = "session.name" }
 # silence_expected while a turn is running and sets it once the turn ends,
 # which is the only way a probe may narrow what core expects of this
 # instance.
-[claude.health.activity]
+[runtime.health.activity]
 type = "exec"
 bin  = "claude-agent-activity"
 args = ["probe", { from = "session.name" }]
 
-[claude.inputs_schema]
+[runtime.inputs_schema]
 type                 = "object"
 required             = ["tmux_session"]
 additionalProperties = false
@@ -319,7 +319,7 @@ additionalProperties = false
 # model/effort: restricted to a plain-token charset (no quotes, whitespace,
 # or newlines) because they reach the pane's shell as keystrokes — see the
 # setup script's comment above.
-[claude.inputs_schema.properties]
+[runtime.inputs_schema.properties]
 tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
@@ -337,11 +337,11 @@ mcp_servers  = { type = "string", pattern = "^[^']*$" }
 # the same keystroke boundary.
 path_prepend = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 
-[claude.outputs_schema]
+[runtime.outputs_schema]
 type     = "object"
 required = ["pid", "session_id", "socket_path", "mcp_config"]
 
-[claude.outputs_schema.properties]
+[runtime.outputs_schema.properties]
 pid            = { type = "integer", mutable = true }
 session_id     = { type = "string", mutable = true }
 socket_path    = { type = "string", mutable = true }

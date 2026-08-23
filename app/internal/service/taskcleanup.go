@@ -86,7 +86,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	// instance a concurrent TaskSetup reserved during this (unlocked) cleanup.
 	// No full compiled Plan in scope here (this teardown targets a single
 	// dynamic instance by its state entry, not a workflow node) — plect
-	// attach/capture and {{terminal "..."}} are unavailable in this
+	// attach/capture and a `{ terminal = "..." }` binding are unavailable in this
 	// instance's own cleanup, the same as any sibling-task output it hasn't
 	// explicitly depended on.
 	cleanupErr := task.RunCleanup(context.Background(), []task.Resolved{r}, sessionVars(cfg, session, nil), session.Tasks, params.Observer)

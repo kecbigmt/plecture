@@ -99,7 +99,7 @@ plect plugin add official/github
 space) to this repository's `plugins/` subtree, where `plugins/catalog.toml`
 lives — not the whole repository. This plugin's own config
 (workspaces/resources) never encodes the alias you register under: it
-resolves its executables through `{{bin "github-worktree"}}`'s plugin-local
+resolves its executables through `{ bin = "github-worktree" }`'s plugin-local
 bare-name reading, which resolves against the containing plugin regardless of
 which alias you chose.
 

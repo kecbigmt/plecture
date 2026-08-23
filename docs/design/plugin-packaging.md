@@ -245,31 +245,36 @@ the lockfile.
 Executable adapters are invoked from TOML hooks through normal command lines.
 Core does not gain a plugin-specific process protocol in this design. A plugin
 may ship a workspace-provider/resource/task config that calls a binary in `bin/`; the
-loader resolves those executable paths and injects a small hook-template helper
-that expands to stable absolute paths.
+loader resolves those executable paths so a reference becomes a stable
+absolute path.
 
-Hook syntax before plugin executable references relies on the command being on
-`PATH`:
-
-```toml
-scope = "run"
-setup = 'agent-runtime launch --workspace-dir {{.Session.WorkspaceDirPath | shellQuote}}'
-cleanup = 'agent-runtime stop --id {{.Self.runtime_id | shellQuote}}'
-```
-
-The same hook against a plugin-shipped executable names the catalog-qualified
-plugin reference at the command position:
+An action naming a command on `PATH` names it directly:
 
 ```toml
+[agent_runtime]
+kind  = "effect"
 scope = "run"
-setup = '{{bin "official/session/runtime/agent-runtime"}} launch --workspace-dir {{.Session.WorkspaceDirPath | shellQuote}}'
-cleanup = '{{bin "official/session/runtime/agent-runtime"}} stop --id {{.Self.runtime_id | shellQuote}}'
+
+[agent_runtime.setup]
+type    = "exec"
+command = "agent-runtime"
+args    = ["launch", "--workspace-dir", { from = "workspace.dir" }]
 ```
 
-`{{bin "<catalog-alias>/<plugin-path>/<executable>"}}` is the full form. To
+The same action against a plugin-shipped executable names the
+catalog-qualified plugin reference instead of a command:
+
+```toml
+[agent_runtime.setup]
+type = "exec"
+bin  = "official/session/runtime/agent-runtime"
+args = ["launch", "--workspace-dir", { from = "workspace.dir" }]
+```
+
+`bin = "<catalog-alias>/<plugin-path>/<executable>"` is the full form. To
 parse it, plect compares the reference against enabled plugin identities in the
 same catalog and selects the longest matching plugin path; the remaining
-segment is the executable name. `{{bin "<catalog-alias>/<plugin-path>"}}` is
+segment is the executable name. `bin = "<catalog-alias>/<plugin-path>"` is
 shorthand only when the whole reference exactly matches one enabled plugin and
 that plugin declares exactly one executable. A reference is a load error if the
 same string can also be read as a shorter plugin plus executable, because no
@@ -277,18 +282,18 @@ slash-based syntax can disambiguate that collision under arbitrary-depth plugin
 paths. A shorter reference that omits the catalog alias is a load error because
 plugin paths are unique only inside a catalog. An executable segment that is
 ambiguous inside the selected plugin is also a load error. For locked plugins,
-the helper returns an absolute path inside the read-only mounted plugin cache.
+resolution returns an absolute path inside the read-only mounted plugin cache.
 For editable path catalogs, it returns an absolute path inside the directly
-mounted development tree. It never writes generated paths back into user
+mounted development tree. It never writes resolved paths back into user
 config.
 
-The same template-variable reference and read-only-mount rules apply to scripts
-and built binaries for locked plugins; editable path catalogs keep the same
-executable lookup but use the development-mode mount exception described in the
-resolution flow. Scripts are executed through their shebangs; hooks still
-reference them through `{{bin ...}}`.
+The same reference and read-only-mount rules apply to scripts and built
+binaries for locked plugins; editable path catalogs keep the same executable
+lookup but use the development-mode mount exception described in the
+resolution flow. Scripts are executed through their shebangs; an action still
+names them through `bin`.
 
-### Plugin-local `{{bin}}` resolution
+### Plugin-local `bin` resolution
 
 The fully-qualified form above names a catalog alias — but a plugin's own
 shipped config cannot know that alias in advance: `catalogs.toml` assigns it
@@ -297,7 +302,7 @@ plugin's workspace-provider/resource/task files that reference their own plugin'
 executables by the fully-qualified form are wrong the moment a user
 registers the catalog under any other alias.
 
-`{{bin "<name>"}}` with a bare executable name — no alias, no path segment —
+`bin = "<name>"` with a bare executable name — no alias, no path segment —
 resolves differently: against the *containing* plugin's own
 `[[executables]]`, found from the file the reference was read from (the
 loader already knows which mounted plugin any given config file came from).
@@ -307,8 +312,15 @@ alias simultaneously:
 ```toml
 # plugins/session/runtime/config/tasks/agent_runtime.toml, shipped inside
 # the session/runtime plugin itself
-setup   = '{{bin "agent-runtime"}} launch --workspace-dir {{.Session.WorkspaceDirPath | shellQuote}}'
-cleanup = '{{bin "agent-runtime"}} stop --id {{.Self.runtime_id | shellQuote}}'
+[agent_runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch", "--workspace-dir", { from = "workspace.dir" }]
+
+[agent_runtime.cleanup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["stop", "--id", { from = "self.outputs.runtime_id" }]
 ```
 
 This bare-name reading is available only inside plugin-mounted config: a
@@ -889,9 +901,9 @@ catalog.toml
 tmux/plugin.toml
 tmux/config/tasks/tmux.toml
 claude/plugin.toml
-claude/config/tasks/claude.toml
+claude/config/tasks/runtime.toml
 claude/config/tasks/initial_prompt.toml
-claude/config/channels/claude.toml
+claude/config/channels/delivery.toml
 claude/scripts/claude-agent-activity
 claude/src/channel-server/go.mod
 claude/src/channel-server/cmd/channel-server/main.go
@@ -899,8 +911,8 @@ codex/plugin.toml
 codex/config/tasks/codex.toml
 codex/config/tasks/initial_prompt.toml
 codex/config/channels/terminal_submit.toml
-codex/config/tasks/codex_exec.toml
-codex/config/channels/codex_exec.toml
+codex/config/tasks/exec_runtime.toml
+codex/config/channels/exec_delivery.toml
 codex/scripts/codex-agent-activity
 codex/src/codex-helpers/go.mod
 codex/src/codex-helpers/cmd/codex-exec-worker/main.go

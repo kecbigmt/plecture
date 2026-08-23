@@ -157,11 +157,6 @@ func TestLoadResourceDefs_RejectedDeclarations(t *testing.T) {
 			want: "kind",
 		},
 		{
-			name: "another kind under resources",
-			body: "[broken]\nkind = \"effect\"\nscope = \"run\"\n",
-			want: "resource_observer",
-		},
-		{
 			name: "a field outside the observer surface",
 			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\nexecution = \"environment\"\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
 			want: "execution",

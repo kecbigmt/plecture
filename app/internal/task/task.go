@@ -76,8 +76,8 @@ type Plan struct {
 // or nil if none does. assemblePlan has already enforced at most one such
 // declaration per plan, so — unlike the pre-[terminal] Attach/Capture split,
 // where only attach carried that compile-time guarantee — this lookup can
-// never be ambiguous. `plect attach` / `plect capture` and the {{terminal
-// "..."}} template helper all resolve through this one node.
+// never be ambiguous. `plect attach` / `plect capture` and a
+// `{ terminal = "..." }` binding all resolve through this one node.
 func (p *Plan) TerminalTask() *Resolved {
 	for i, r := range p.Session {
 		if r.Terminal != nil {
@@ -354,7 +354,7 @@ func assemblePlan(resolved []Resolved) (*Plan, error) {
 	}
 
 	// At most one [terminal] declaration per plan — the plan has at most one
-	// interactive endpoint for plect attach/capture and {{terminal "..."}}
+	// interactive endpoint for plect attach/capture and a terminal binding
 	// to resolve against.
 	var terminalID string
 	for _, r := range resolved {
@@ -533,11 +533,11 @@ type RenderContext struct {
 	// but a projection render.
 	Inner map[string]any
 	// SourcePath is the absolute path of the file the rendered template
-	// (Setup/Cleanup/...) came from. It feeds the `{{bin "<name>"}}` bare-name
+	// (Setup/Cleanup/...) came from. It feeds the bare-name `bin = "<name>"`
 	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a
 	// caller with no file origin (a test-built template, an attach/probe
 	// template not tied to one definition) may safely leave it empty; only
-	// bare-name `{{bin}}` references stop resolving without it.
+	// bare-name `bin` references stop resolving without it.
 	SourcePath string
 }
 
@@ -549,17 +549,17 @@ type SessionVars struct {
 	Branch           string
 	Inputs           map[string]any
 	// Plugins are the resolved, catalog-qualified plugins
-	// (config.Config.Plugins) in declaration order, feeding the `{{bin
-	// ...}}` hook helper. Threaded through SessionVars rather than added as
+	// (config.Config.Plugins) in declaration order, against which a `bin`
+	// reference resolves. Threaded through SessionVars rather than added as
 	// a separate parameter to every render-driving function, since a
 	// SessionVars is already built and passed at every one of those call
 	// sites.
 	Plugins []plugins.Mounted
 	// Terminal is the session plan's [terminal]-declaring task, if any,
-	// feeding the `{{terminal "..."}}` hook helper the same way Plugins
-	// feeds `{{bin ...}}`. Nil when the plan declares no such task, or the
+	// supplying the terminal capability the same way Plugins supplies the
+	// executable one. Nil when the plan declares no such task, or the
 	// caller has no full plan in scope (e.g. a dynamic instance's own
-	// cleanup) — {{terminal "..."}} then fails with a clear error instead
+	// cleanup) — a terminal binding then fails with a clear error instead
 	// of silently resolving to an empty command.
 	Terminal *TerminalBinding
 }
@@ -663,20 +663,6 @@ func dependencyOutputs(deps []string, tasks map[string]*contract.TaskState) map[
 		}
 	}
 	return out
-}
-
-// runShell executes the given (already-rendered) command via "bash -c" on the
-// host through the pinned alwaysHostExecutor. stdout is captured (parsed as
-// JSON outputs); stderr is captured separately so the caller can decide when
-// to surface it — streaming it during the run would interleave with the
-// progress spinner. If workDir is non-empty and exists, it is used as the
-// command's cwd. runShell's callers (workspace provider
-// setup/cleanup/subscribe, workflow hooks, resource observe/finalize) have no
-// caller-supplied context to thread through yet, so it always runs with
-// context.Background();
-// giving those paths a cancellable context is separate follow-up work.
-func runShell(cmdStr, workDir string) (stdout, stderr []byte, err error) {
-	return runHook(context.Background(), renderedShell(cmdStr), workDir)
 }
 
 // Observer receives lifecycle events from RunSetup / RunCleanup. The runner
@@ -864,7 +850,7 @@ func terminalOwnerIn(ordered []Resolved) *Resolved {
 	return nil
 }
 
-// withFreshTerminalOutputs re-resolves the {{terminal "..."}} binding's
+// withFreshTerminalOutputs re-resolves the terminal binding's
 // .Self from the live state map. The caller builds the binding once, before
 // the pass starts, so a downstream node would otherwise render the verb
 // templates against whatever the declaring node's state held back then —

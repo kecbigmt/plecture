@@ -133,7 +133,7 @@ func TestShippedClaude_McpServersRejectsMalformedRecord(t *testing.T) {
 // process runs cannot contain it, and neither can the argv.
 func TestShippedClaude_McpServersStaysOffEveryCommandLine(t *testing.T) {
 	tasks, mounted := loadShippedCatalogTasks(t)
-	def, ok := tasks["claude"]
+	def, ok := tasks["runtime"]
 	if !ok {
 		t.Fatal("shipped catalog has no claude task")
 	}
@@ -200,7 +200,7 @@ func TestShippedClaude_McpServersBindsThroughNesting(t *testing.T) {
 kind = "effect"
 
 [team_claude.inner]
-uses = "official/claude/claude"
+uses = "official/claude/runtime"
 
 [team_claude.inner.inputs]
 tmux_session = { from = "inputs.tmux_session" }

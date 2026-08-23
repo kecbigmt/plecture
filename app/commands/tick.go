@@ -49,9 +49,6 @@ check/judge state.`,
 		if err != nil {
 			return err
 		}
-		for _, w := range result.Warnings {
-			fmt.Fprintf(cmd.ErrOrStderr(), "warning: %s\n", w)
-		}
 		if tickJSON {
 			b, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {

@@ -7,18 +7,18 @@ and, for the activity envelope's shape,
 
 ## Design Core
 
-A task declares how its health is determined in one `[health]` table holding
-two probes:
+An effect declares how its health is determined in one `[health]` table
+holding two probes:
 
 - **`alive`** — the liveness probe. Exit-code semantics: zero means the
-  execution surface this task owns is present.
+  execution surface this effect owns is present.
 - **`activity`** — the activity probe. Fingerprint semantics: it writes a JSON
   activity envelope whose opaque fingerprint core compares across evaluations,
   and its exit code reports whether the probe itself is well.
 
-`setup`, `cleanup`, and `[health]` are the universal task lifecycle trio: what
-brings the surface up, what takes it down, and what says whether it is still
-there and moving.
+`setup`, `cleanup`, and `[health]` are the universal effect lifecycle trio:
+what brings the surface up, what takes it down, and what says whether it is
+still there and moving.
 
 Probes are plugin-shipped capability. A plugin that owns a surface ships the
 probes for it, so default health coverage requires no user configuration.
@@ -26,24 +26,42 @@ probes for it, so default health coverage requires no user configuration.
 ## Worked example
 
 ```toml
-# The tmux plugin's pane task: liveness is a session lookup, and activity is
+# The tmux plugin's pane effect: liveness is a session lookup, and activity is
 # a fingerprint of the pane's visible contents.
-[health]
-alive = 'tmux has-session -t {{.Self.session_name}}'
-activity = '''
-PANE=$(tmux capture-pane -p -t {{.Self.session_name}}) || exit 1
+[pane.health.alive]
+type   = "shell"
+script = 'tmux has-session -t "$session_name"'
+
+[pane.health.alive.bind]
+session_name = { from = "self.outputs.session_name" }
+
+[pane.health.activity]
+type   = "shell"
+script = '''
+PANE=$(tmux capture-pane -p -t "$session_name") || exit 1
 FP=$(printf '%s' "$PANE" | cksum | tr -d ' \t')
 jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{fingerprint: $fp, observed_at: $at}'
 '''
+
+[pane.health.activity.bind]
+session_name = { from = "self.outputs.session_name" }
 ```
 
 ```toml
-# An agent-runtime task: liveness is a process check, and activity is the
+# An agent-runtime effect: liveness is a process check, and activity is the
 # turn-boundary record the same plugin's hook writes.
-[health]
-alive    = 'kill -0 {{.Self.pid}}'
-activity = '{{bin "codex-agent-activity"}} probe {{.SessionName}}'
+[exec_runtime.health.alive]
+type   = "shell"
+script = 'kill -0 "$pid"'
+
+[exec_runtime.health.alive.bind]
+pid = { from = "self.outputs.pid" }
+
+[exec_runtime.health.activity]
+type = "exec"
+bin  = "codex-agent-activity"
+args = ["probe", { from = "session.name" }]
 ```
 
 A hook and a pane fingerprint are two implementations of one probe. Both reach
@@ -52,7 +70,7 @@ one per implementation technique.
 
 ## Validation rules
 
-- `[health]` is optional. A task declaring no table contributes nothing to
+- `[health]` is optional. An effect declaring no table contributes nothing to
   health.
 - `alive` and `activity` are each optional and independent: neither implies
   the other. A `[health]` table declaring neither is a load error — the only
@@ -60,27 +78,40 @@ one per implementation technique.
 - Unknown keys under `[health]` are a load error naming the offending key. A
   readiness-style third probe is a non-goal: health answers "is this surface
   present and moving", not "may traffic be sent".
-- Each member is a Go-template-rendered shell command string. Single-line and
-  multi-line TOML strings are valid; arrays are invalid.
-- Both members render against the same context as `setup`/`cleanup`: the
-  task's own outputs (`.Self`), its resolved node inputs (`.Inputs`), and
-  session vars (`.SessionName`, `.WorkspaceDirPath`, ...). `{{bin "..."}}`
-  resolves against the declaring plugin.
-- A task definition is replaced wholesale by a deeper cascade layer, so a
-  user-owned overlay of a plugin task carries its own complete `[health]`.
+- Each member is an action: either variant, with its values declared in
+  `bind` or in `args` rather than interpolated into the script.
+- Both members observe the same roots `cleanup` does, minus the ones a probe
+  has no business reading: the effect's own outputs (`self.outputs.<key>`),
+  its resolved inputs (`inputs.<key>`), and the session and workspace. A
+  `bin = "<name>"` reference resolves against the declaring plugin.
+- An effect declaration is replaced wholesale by a deeper cascade layer, so a
+  user-owned overlay of a plugin effect carries its own complete `[health]`.
 
 ## Probe semantics
 
+Either probe is an action, so what runs follows the variant it declares: an
+`exec` probe runs its declared executable with its resolved argv, and a
+`shell` probe writes its literal script and a binding file into a private run
+directory and invokes the generated wrapper. Neither substitutes anything into
+the script.
+
+A value the probe reads may fail to resolve, which happens before any process
+starts. That failure reaches the health report the same way a failing
+execution does — `alive` makes the session unhealthy, `activity` records a
+probe error — because a probe that cannot be resolved is a probe that cannot
+answer, and a declared probe answering nothing is the case health exists to
+report.
+
 ### alive
 
-Run via `bash -c`. Exit zero means the surface is present. A non-zero exit or
-a render failure makes the session unhealthy, and the failing task instance is
-named in the reported reason. The first failing probe ends the evaluation.
+Exit zero means the surface is present. A non-zero exit, or a value that does
+not resolve, makes the session unhealthy, and the failing instance is named in
+the reported reason. The first failing probe ends the evaluation.
 
 ### activity
 
-Run via `bash -c`. Stdout decides what the instance contributes, and the exit
-code decides the health of the probe itself. The two are orthogonal: a probe
+Stdout decides what the instance contributes, and the exit code decides the
+health of the probe itself. The two are orthogonal: a probe
 that contributes nothing may be perfectly well, and a broken probe is a fault
 whatever it managed to print.
 
@@ -110,7 +141,7 @@ surface fingerprint withholds `silence_expected` — a pane's contents cannot
 establish that quiet is intended — while a turn-boundary probe sets it once
 the turn it watches has ended.
 
-Three outcomes contribute no activity evidence for an evaluation, and they
+Four outcomes contribute no activity evidence for an evaluation, and they
 differ only in what the health report says about the probe:
 
 | Outcome | Shape | Health report |
@@ -118,6 +149,7 @@ differ only in what the health report says about the probe:
 | No basis | Exit 0, empty stdout. | Silent — the instance evaluates as if it declared no probe at all. |
 | Probe error | Non-zero exit. | A `probe_error` entry naming the instance, the probe command, the exit code, and a digest of stderr. |
 | Invalid output | Exit 0, stdout that is not an envelope carrying a `fingerprint`. | A `probe_error` entry naming the instance, the command, and the reason. |
+| Unresolved value | No process ran: a value the probe reads resolved to nothing and declared neither a default nor `optional`. | A `probe_error` entry naming the instance, the command, and the value that did not resolve. |
 
 "No basis" is structural absence rather than a declared value, so a probe with
 nothing to report cannot be confused with one whose output was rejected. A
@@ -132,7 +164,7 @@ is expected.
 
 ## Composition across instances
 
-A session's health is composed from every produced run-scoped task instance:
+A session's health is composed from every produced run-scoped effect instance:
 
 - **`alive` composes by AND.** Liveness is a chain of necessary resources, so
   any failing probe makes the session unhealthy, reported with the failing
@@ -159,4 +191,4 @@ so the author-declared-surface principle applies to probe placement too.
 A workflow's `[healthcheck]` table declares the sampling cycle — how often the
 probes run, the stall threshold they are judged against, and the parent
 re-notification interval. It names when health is observed; `[health]` names
-what health means for one task.
+what health means for one effect.

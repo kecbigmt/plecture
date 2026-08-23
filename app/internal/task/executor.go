@@ -13,8 +13,8 @@ import (
 
 // ExecRequest is a single host-process invocation: Argv[0] is the command,
 // Dir is the working directory (applied only if it exists, see hostExecutor),
-// and Stdin/Env are optional (nil means "none" / "inherit the process env",
-// matching what runShell has always done implicitly).
+// and Stdin/Env are optional: nil means "none" and "inherit the process
+// env".
 type ExecRequest struct {
 	Argv  []string
 	Dir   string
@@ -31,9 +31,7 @@ type Executor interface {
 	Run(ctx context.Context, req ExecRequest) (stdout, stderr []byte, err error)
 }
 
-// hostExecutor runs argv directly as a host process — the extraction of what
-// runShell has always done (bash -c under the hood, for the two callers
-// below; argv directly for everyone else).
+// hostExecutor runs argv directly as a host process.
 type hostExecutor struct{}
 
 func (hostExecutor) Run(ctx context.Context, req ExecRequest) (stdout, stderr []byte, err error) {
@@ -70,38 +68,25 @@ func (hostExecutor) Run(ctx context.Context, req ExecRequest) (stdout, stderr []
 	return outBuf.Bytes(), errBuf.Bytes(), err
 }
 
-// alwaysHostExecutor backs runShell, the path used by workspace provider
+// alwaysHostExecutor backs runHook, the path used by workspace provider
 // setup/cleanup, workspace provider subscribe, and resource observe/finalize.
 // Unlike defaultExecutor, this is never swapped, not even by tests.
 var alwaysHostExecutor Executor = hostExecutor{}
 
-// defaultExecutor backs execHostScript, the path used by task
-// setup/cleanup/health probes/capture, dynamic output fetch, and dynamic
-// instance setup (`plect task setup --resource`) — every exec point that runs
-// inside a session's task DAG, static or dynamically instantiated. Tests swap
+// defaultExecutor backs execHook, the path used by task
+// setup/cleanup/health probes/capture and dynamic instance setup
+// (`plect task setup --resource`) — every exec point that runs inside a
+// session's task DAG, static or dynamically instantiated. Tests swap
 // it for a spy (see executor_test.go) to observe the ExecRequest each path
 // issues without changing any exported function signature.
 var defaultExecutor Executor = hostExecutor{}
 
 // requestFor is the one place a resolved lifecycle execution becomes a host
-// invocation, whichever declaration form produced it. A ratified action
-// arrives already resolved into its argv and standard input; a
-// template-rendered hook arrives as shell source and is run through
-// `bash -c`, with no standard input, because that is what it has always
-// meant.
+// invocation: an action arrives already resolved into its argv and standard
+// input, and this adds only the working directory and the environment the
+// enclosing layers inject.
 func requestFor(execution *lang.Execution, workDir string, env []string) ExecRequest {
 	return ExecRequest{Argv: execution.Argv, Stdin: execution.Stdin, Dir: workDir, Env: env}
-}
-
-// renderedShell wraps one template-rendered hook as the process that runs
-// it, so a converted surface and a legacy one reach the executor by the same
-// path and differ only in how they produced their Execution.
-//
-// Retirement: the surface reshape replaces its callers one at a time with
-// lang.Eval; the PR that converts the last template-rendered surface deletes
-// this function, execHostScript, and runShell along with it.
-func renderedShell(script string) *lang.Execution {
-	return &lang.Execution{Argv: []string{"bash", "-c", script}}
 }
 
 // execHook runs one resolved execution through the swappable
@@ -118,8 +103,4 @@ func execHook(ctx context.Context, execution *lang.Execution, workDir string, en
 // observe/finalize take.
 func runHook(ctx context.Context, execution *lang.Execution, workDir string) (stdout, stderr []byte, err error) {
 	return alwaysHostExecutor.Run(ctx, requestFor(execution, workDir, nil))
-}
-
-func execHostScript(ctx context.Context, cmdStr, workDir string, env ...string) (stdout, stderr []byte, err error) {
-	return execHook(ctx, renderedShell(cmdStr), workDir, env...)
 }

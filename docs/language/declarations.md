@@ -127,9 +127,9 @@ alias and plugin path.
 
 | Deeper definition | Rule |
 |---|---|
-| Same id, same kind, whole-definition kinds | Replaces the shallower user-owned definition. |
-| Same id, same kind, workflow | Merges with the shallower user-owned workflow by the workflow cascade rules. |
-| Same id, different kind | Load error. |
+| Same id, same kind, whole-definition kinds | Replaces the shallower definition. |
+| Same id, same kind, workflow | Merges with the shallower workflow by the workflow cascade rules. |
+| Same id, different kind | Coexist. Each layer has its own namespace, so the deeper declaration shadows nothing, and a reference resolves by the kind its site expects. |
 
 The whole-definition kinds are workspace provider, resource observer, channel,
 effect, and task.
