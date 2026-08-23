@@ -48,30 +48,13 @@ replacing them (the parameterization rung of
 | `tasks/runtime.toml` | `launch_env` | JSON object of environment variables exported on the launch line. Keys must be valid environment variable names; values are shell-quoted. |
 | `tasks/runtime.toml` | `mcp_servers` | JSON array of MCP server registration records — `{name, command, args?, env?}` — merged into the `--mcp-config` JSON alongside this task's own registrations. A record only ever reaches the agent's config file, never a command line; a name that collides with a registration the task already made, or a record missing `name`/`command`, fails the launch. |
 
-```toml
-[[my_workflow.nodes]]
-id   = "agent"
-uses = "runtime"
-
-[my_workflow.nodes.inputs]
-tmux_session = { from = "nodes.pane.outputs.session_name" }
-launch_env   = '{"PLECT_TEAM_CONTEXT":"acme"}'
-mcp_servers  = '[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]'
-
-[[my_workflow.event.channel]]
-name    = "runtime"
-uses    = "delivery"
-include = ["plect.instruction", "user.emit"]
-
-[my_workflow.event.channel.inputs]
-path = { from = "nodes.agent.outputs.socket_path" }
-```
-
-The references above are relative — the form a workflow can run today. The
-catalog-qualified spelling (`official.claude.runtime`) is the ratified one for
-user-owned config, and its resolution reaches the language's own validation but
-not yet the runtime's node, channel, provider and `inner.uses` lookups, which
-still key on the bare id. Use the relative form until that is wired.
+These are set on the node or channel binding that selects the declaration, as
+values over the workflow surface's own roots — `docs/language/workflows.md`
+specifies that surface, and `docs/language/declarations.md` the reference form
+a user-owned layer writes. This README does not repeat either: a snippet here
+would be a second place for the wiring grammar to drift from, and the
+reference-resolution gap tracked separately means an example could not
+currently show a form that is both conforming and runnable.
 
 ## Install
 

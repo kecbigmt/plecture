@@ -56,31 +56,13 @@ replacing them (the parameterization rung of
 | `channels/exec_delivery.toml` | `enqueue_timeout` | Per-attempt delivery deadline. Default `5s`. |
 | `channels/exec_delivery.toml` | `message_envelope` | Format of the queued message. Placeholders: `{type}`, `{body}`, `{summary}`, `{body_or_summary}`, `{url}`, `{url_suffix}`. Default `[{type}] {body_or_summary}{url_suffix}`. |
 
-```toml
-[[my_workflow.nodes]]
-id   = "agent"
-uses = "exec_runtime"
-
-[my_workflow.nodes.inputs]
-launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}'
-state_root = "/var/lib/plect/codex-exec"
-
-[[my_workflow.event.channel]]
-name    = "runtime"
-uses    = "exec_delivery"
-include = ["plect.instruction", "resource.*"]
-
-[my_workflow.event.channel.inputs]
-queue_dir        = { from = "nodes.agent.outputs.queue_dir" }
-enqueue_timeout  = "30s"
-message_envelope = "{type}: {body_or_summary}"
-```
-
-The references above are relative — the form a workflow can run today. The
-catalog-qualified spelling (`official.codex.exec_runtime`) is the ratified one for
-user-owned config, and its resolution reaches the language's own validation but
-not yet the runtime's node, channel, provider and `inner.uses` lookups, which
-still key on the bare id. Use the relative form until that is wired.
+These are set on the node or channel binding that selects the declaration, as
+values over the workflow surface's own roots — `docs/language/workflows.md`
+specifies that surface, and `docs/language/declarations.md` the reference form
+a user-owned layer writes. This README does not repeat either: a snippet here
+would be a second place for the wiring grammar to drift from, and the
+reference-resolution gap tracked separately means an example could not
+currently show a form that is both conforming and runnable.
 
 ## Install
 
