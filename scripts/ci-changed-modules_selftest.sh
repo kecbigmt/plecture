@@ -81,9 +81,25 @@ check "an unmapped path (e.g. go.work) is not silently skipped -> full run" \
   'go.work' \
   "$full_run_expected"
 
-check "root-level testdata/config-language is unmapped -> full run, not silently skipped" \
+# Regression for a real false-green bug: testdata/config-language/**/*.md
+# and docs/language/**/*.md are executable fixtures that app/internal/lang's
+# conformance tests read directly off disk, not prose — the generic *.md
+# docs-only pattern must not swallow them into "no job needed".
+check "an app-conformance-test fixture under testdata/config-language/ reaches app build-test, not just lint" \
+  'testdata/config-language/tasks/document.md' \
+  $'FULL_RUN=false\nBUILD_TEST_MATRIX=["app"]\nINTEGRATION_TEST=false\nREADME_VERIFY=false\nAFFECTED_PLUGINS=[]'
+
+check "a non-.md fixture under testdata/config-language/ also reaches app build-test, not a full run" \
   'testdata/config-language/foo/case.toml' \
-  "$full_run_expected"
+  $'FULL_RUN=false\nBUILD_TEST_MATRIX=["app"]\nINTEGRATION_TEST=false\nREADME_VERIFY=false\nAFFECTED_PLUGINS=[]'
+
+check "a docs/language/ chapter is a conformance-test fixture, not prose -> app build-test" \
+  'docs/language/README.md' \
+  $'FULL_RUN=false\nBUILD_TEST_MATRIX=["app"]\nINTEGRATION_TEST=false\nREADME_VERIFY=false\nAFFECTED_PLUGINS=[]'
+
+check "a genuinely prose doc (docs/adr) stays lint-set-only" \
+  'docs/adr/2026-01-01-example.md' \
+  $'FULL_RUN=false\nBUILD_TEST_MATRIX=[]\nINTEGRATION_TEST=false\nREADME_VERIFY=false\nAFFECTED_PLUGINS=[]'
 
 check "a plugin's own plugin.toml is unmapped -> full run, not silently skipped" \
   'plugins/github/plugin.toml' \

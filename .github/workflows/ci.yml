@@ -13,7 +13,7 @@ env:
   GO_VERSION: "1.25.6"
 
 jobs:
-  # core never imports plugins and plugins never import core, and both
+  # Core never imports plugins and plugins never import core, and both
   # sides depend only on contracts/* (scripts/check-provider-boundary.sh
   # enforces this) — that boundary, not convention, is what makes
   # scripts/ci-changed-modules.sh's trigger map safe to narrow.

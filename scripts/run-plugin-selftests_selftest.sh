@@ -49,9 +49,9 @@ fi
 
 # pluginC has no selftest script at all; requesting it alone (as an
 # incidentally-affected plugin, not a full-repo scan) must not fail.
-if ! PLUGIN_SELFTEST_ROOT="$fixture" "$runner" pluginC >/tmp/run-plugin-selftests-c.log 2>&1; then
+if ! PLUGIN_SELFTEST_ROOT="$fixture" "$runner" pluginC >"$fixture/c.log" 2>&1; then
   echo "FAIL: a selftest-less plugin, requested on its own, must not fail" >&2
-  cat /tmp/run-plugin-selftests-c.log >&2
+  cat "$fixture/c.log" >&2
   fail=1
 else
   echo "ok: a selftest-less plugin, requested on its own, does not fail"
@@ -60,9 +60,9 @@ fi
 # REQUIRE_FOUND=true is the full-repo-scan canary: if nothing was found
 # anywhere in the requested set, that's the naming convention breaking, not
 # a legitimately empty plugin.
-if REQUIRE_FOUND=true PLUGIN_SELFTEST_ROOT="$fixture" "$runner" pluginC >/tmp/run-plugin-selftests-canary.log 2>&1; then
+if REQUIRE_FOUND=true PLUGIN_SELFTEST_ROOT="$fixture" "$runner" pluginC >"$fixture/canary.log" 2>&1; then
   echo "FAIL: REQUIRE_FOUND=true with nothing found anywhere did not fail" >&2
-  cat /tmp/run-plugin-selftests-canary.log >&2
+  cat "$fixture/canary.log" >&2
   fail=1
 else
   echo "ok: REQUIRE_FOUND=true fails when nothing was found anywhere"
@@ -70,18 +70,18 @@ fi
 
 # REQUIRE_FOUND=true across the whole fixture (all three plugins) must
 # pass, since pluginA/pluginB each have at least one selftest.
-if ! REQUIRE_FOUND=true PLUGIN_SELFTEST_ROOT="$fixture" "$runner" pluginA pluginB pluginC >/dev/null 2>/tmp/run-plugin-selftests-fullscan.log; then
+if ! REQUIRE_FOUND=true PLUGIN_SELFTEST_ROOT="$fixture" "$runner" pluginA pluginB pluginC >/dev/null 2>"$fixture/fullscan.log"; then
   echo "FAIL: REQUIRE_FOUND=true across the full fixture unexpectedly failed" >&2
-  cat /tmp/run-plugin-selftests-fullscan.log >&2
+  cat "$fixture/fullscan.log" >&2
   fail=1
 else
   echo "ok: REQUIRE_FOUND=true across the full fixture passes"
 fi
 
 # A failing selftest script must fail the runner, not be swallowed.
-if PLUGIN_SELFTEST_ROOT="$fixture" "$runner" pluginD >/tmp/run-plugin-selftests-failprop.log 2>&1; then
+if PLUGIN_SELFTEST_ROOT="$fixture" "$runner" pluginD >"$fixture/failprop.log" 2>&1; then
   echo "FAIL: a failing selftest script did not fail the runner" >&2
-  cat /tmp/run-plugin-selftests-failprop.log >&2
+  cat "$fixture/failprop.log" >&2
   fail=1
 else
   echo "ok: a failing selftest script fails the runner"

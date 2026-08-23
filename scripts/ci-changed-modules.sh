@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# core never imports plugins and plugins never import core
-# (check-provider-boundary.sh), and both sides depend only on contracts/*,
-# so contracts/** changes are treated as "run everything" rather than
-# scoped to individual contracts/* submodules — the map does not attempt a
-# finer edge than the enforced boundary actually gives it.
+# Core never imports plugins and plugins never import core
+# (check-provider-boundary.sh enforces this), and both sides depend only on
+# contracts/*, so contracts/** changes are treated as "run everything"
+# rather than scoped to individual contracts/* submodules — the map does
+# not attempt a finer edge than the enforced boundary actually gives it.
 #
 # A plugin's shipped config/testdata is read directly off disk by app-side
 # golden tests (app/internal/config, app/internal/task) that walk
 # plugins/catalog.toml and each plugin's manifest — a reverse edge from
 # plugin config back to the app build-test entry that a plain Go import
 # graph would not surface.
+#
+# docs/language/**/*.md and testdata/config-language/** are the same kind
+# of reverse edge, not prose: app/internal/lang's conformance tests
+# (docs_conformance_test.go, diag_test.go, native_conformance_test.go)
+# read these files directly off disk as the executable specification, so
+# they must not fall under the "docs-only, no job needed" treatment that
+# the generic *.md pattern below gives everything else.
 #
 # An unrecognized changed path falls back to a full run: skipping a job is
 # only safe when its rationale traces to an enforced boundary or an
@@ -55,11 +62,13 @@ OKF_CFG_RE='^plugins/okf/(config|testdata)/'
 SLACK_CFG_RE='^plugins/slack/(config|testdata)/'
 CODEX_CFG_RE='^plugins/codex/(config|testdata)/'
 TMUX_CFG_RE='^plugins/tmux/(config|testdata)/'
+LANG_DOCS_RE='^docs/language/'
+LANG_TESTDATA_RE='^testdata/config-language/'
 README_RE='^README\.md$'
 FULL_RUN_TRIGGER_RE='^\.github/workflows/|^scripts/[^/]+\.sh$'
 DOCS_OR_MD_RE='^docs/|\.md$'
 
-KNOWN_RE="$CONTRACTS_RE|$APP_RE|$CLAUDE_SRC_RE|$GITHUB_SRC_RE|$LEGACY_MIGRATION_RE|$OKF_SRC_RE|$SLACK_SRC_RE|$CLAUDE_CFG_RE|$GITHUB_CFG_RE|$OKF_CFG_RE|$SLACK_CFG_RE|$CODEX_CFG_RE|$TMUX_CFG_RE|$FULL_RUN_TRIGGER_RE|$DOCS_OR_MD_RE"
+KNOWN_RE="$CONTRACTS_RE|$APP_RE|$CLAUDE_SRC_RE|$GITHUB_SRC_RE|$LEGACY_MIGRATION_RE|$OKF_SRC_RE|$SLACK_SRC_RE|$CLAUDE_CFG_RE|$GITHUB_CFG_RE|$OKF_CFG_RE|$SLACK_CFG_RE|$CODEX_CFG_RE|$TMUX_CFG_RE|$LANG_DOCS_RE|$LANG_TESTDATA_RE|$FULL_RUN_TRIGGER_RE|$DOCS_OR_MD_RE"
 
 unknown=false
 if [ -n "$files" ] && grep -Eqv "$KNOWN_RE" <<< "$files"; then
@@ -83,6 +92,8 @@ else
   any_match "$SLACK_CFG_RE" && mods+=("app")
   any_match "$CODEX_CFG_RE" && mods+=("app")
   any_match "$TMUX_CFG_RE" && mods+=("app")
+  any_match "$LANG_DOCS_RE" && mods+=("app")
+  any_match "$LANG_TESTDATA_RE" && mods+=("app")
   any_match "$CLAUDE_SRC_RE" && mods+=("plugins/claude/src/channel-server")
   any_match "$GITHUB_SRC_RE" && mods+=("plugins/github/src")
   any_match "$LEGACY_MIGRATION_RE" && mods+=("plugins/legacy-migration")
