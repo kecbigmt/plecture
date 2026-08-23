@@ -70,7 +70,7 @@ func splitLines(s string) []string {
 }
 
 // This file drives the one real, shipped provider plugin capable of proving
-// issue-234-shaped delivery wiring end to end (a resident watcher daemon
+// task-instance delivery wiring end to end (a resident watcher daemon
 // publishing over a real event bus) — there is no generic-provider way to
 // pin that a real poll cycle's event reaches the bound session's log and
 // drives a reactive tick, so its identifiers below are a genuine, necessary
