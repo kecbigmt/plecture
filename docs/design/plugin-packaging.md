@@ -231,7 +231,7 @@ The standard `config/` subdirectories with plugin-layer loader behavior are:
 | `config/resources/` | Mounted as `resources/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
 | `config/channels/` | Mounted as `channels/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
 | `config/tasks/` | Mounted as `tasks/`. Trusted layer plus trusted ancestor overlay. Same-id conflicts between plugin layers are load errors; user-owned layers replace whole definitions. |
-| `config/workflows/` | Mounted as `workflows/`. Trusted layer plus ancestor overlay. Same-id plugin-layer conflicts are load errors; user-owned layers can add nodes and channels, with singleton fields guarded against accidental redeclaration. |
+| `config/workflows/` | Mounted as `workflows/`. Trusted layer plus ancestor overlay. Same-id plugin-layer conflicts are load errors; a user-owned layer adds nodes, and every other field a shallower layer set is guarded against redeclaration. |
 | `config/templates/` | Mounted as `templates/`. Read-only plugin base layer plus user-owned template layers. Same-id conflicts between plugin layers are load errors. |
 
 The template loader includes one generic read-only plugin layer. Lookup searches
