@@ -1,6 +1,6 @@
 # The tmux plugin's effect is `pane`
 
-`official/tmux` declared its interactive-endpoint effect as `tmux`, repeating the plugin's own name. It is now `pane`, which is what the effect actually creates.
+The tmux plugin declared its interactive-endpoint effect as `tmux`, repeating the plugin's own name. It is now `pane`, which is what the effect actually creates. The examples below assume the catalog is registered under the alias `official`, the alias this repository's own catalog uses by convention; substitute your own alias wherever you registered it under something other than `official`.
 
 ## The node-id hazard
 
@@ -38,10 +38,10 @@ CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
 grep -rn "uses *= *['\"]" "$CONFIG_HOME"
 ```
 
-TOML accepts either quote, so the pattern matches both. A hit naming your own declaration stays as it is; only one selecting the tmux plugin's effect changes. For each node that names `official.tmux.tmux` (or the bare `tmux` id, if the plugin is mounted under a different alias):
+TOML accepts either quote, so the pattern matches both. A hit naming your own declaration stays as it is; only one selecting the tmux plugin's effect changes — that is, one whose value is the tmux plugin's address under whatever alias you registered it (`official.tmux.tmux` for the `official` alias). For each such node:
 
 1. Add `id = "<the id the node currently defaults to>"` if the node has no `id` already.
-2. Change `uses` to `official.tmux.pane`.
+2. Change `uses` from `<alias>.tmux.tmux` to `<alias>.tmux.pane`.
 
 A reference that still names the old id resolves to nothing and says which address it meant, so `plect workflow list` will name any you miss.
 
