@@ -125,15 +125,6 @@ load error even when their kinds differ.
 Different plugins may reuse an id; their full addresses differ by catalog
 alias and plugin path.
 
-Two parts of this section are specified but not yet implemented. A loader
-rejects two plugin layers declaring one id rather than keeping both addressable,
-and a catalog-qualified reference is resolved by the language's own validation
-but not by the runtime's node, event-channel, workspace-provider and
-`inner.uses` lookups, which key on the bare id. Until both land, a reference
-that has to resolve at run time is written in the relative form even from
-user-owned config, and two plugins cannot be enabled together if they share an
-id. See `plecture#238`.
-
 | Deeper definition | Rule |
 |---|---|
 | Same id, same kind, whole-definition kinds | Replaces the shallower definition. |

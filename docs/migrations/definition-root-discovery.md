@@ -70,6 +70,16 @@ Every hit changes; which name it takes depends on the header above it. A hit
 under `[[…nodes]]` becomes `runtime` or `exec_runtime`; a hit under
 `[[…event.channel]]` becomes `delivery` or `exec_delivery`.
 
+Those rewrites keep the bare-id form, without a catalog alias, even though the
+definitions they select come from a plugin. `docs/language/declarations.md`
+specifies the alias-qualified form for a user-owned reference to catalog
+content, and the language's own validation implements it; the node,
+event-channel, workspace-provider and `inner.uses` lookups a session resolves
+at run time still key on the bare id, so the bare form is what runs. The same
+lag means two plugins that share a definition id cannot be enabled together
+yet. `plecture#238` closes both, and reconciling these references is part of
+it.
+
 **Keep the node's id.** A node whose `id` is omitted takes the referenced
 definition's id, so changing `uses` alone silently renames the node — and a
 node id is both the key its task state is stored under and the name every
