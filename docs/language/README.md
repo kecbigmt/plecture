@@ -145,6 +145,7 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
 | `PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING` | semantic | An `instructions` element's `file` names a file that cannot be read. |
 | `PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER` | semantic | An `instructions` element's `file` resolves outside the declaring layer. |
+| `PLECTURE-CFG-TASK-INSTRUCTION-CONTROL-FLOW` | semantic | An instruction body carries a `{{ ... }}` construct other than a dotted-path projection. |
 | `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A value reads a root the containing surface does not offer. It is structural where a surface's roots are a fixed prefix set, as on an effect's `outputs.bind` and a task document's completion leaves, and semantic otherwise. |
 | `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
 | `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | instantiation | An instance's resource does not resolve to the observer its task document declares. |

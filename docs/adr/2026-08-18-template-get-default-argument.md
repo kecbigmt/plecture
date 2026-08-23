@@ -1,3 +1,7 @@
+---
+superseded_by: 2026-08-23-template-retirement
+---
+
 # Mandatory default argument on the `get` template helper
 
 ## Context

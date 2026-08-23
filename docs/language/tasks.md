@@ -105,11 +105,16 @@ in [`values.md`](values.md) alongside the roots `done_when` reads. A projection
 preserves its native type everywhere else in the language; in prose position it
 is stringified, because prose has nowhere to put a list.
 
-Control flow in the instruction is an open decision. CEL is expression-only,
-so a conditional block needs a construct of its own, and none is introduced
-here. The instruction assets carried into this shape keep the conditional and
-defaulting forms they already had, transitionally, until that decision is
-made.
+There is no control flow in the instruction. CEL is expression-only, and no
+conditional or defaulting construct is introduced for prose position: a
+`{{ ... }}` that is not a bare `dotted.path` is
+`PLECTURE-CFG-TASK-INSTRUCTION-CONTROL-FLOW`, not a form the instruction
+carries through unexecuted. An author who needs a value to render even when
+the input behind it is absent gives that input's schema property a `default`,
+so the projection always resolves; an author who needs different prose for
+different cases writes separate instruction segments (or separate task
+documents) and lets `extends`/chain wiring choose between them, rather than
+branching inside one body.
 
 ## Declaration
 

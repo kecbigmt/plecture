@@ -39,10 +39,8 @@ Steps:
 4. Once every item is checked, an independent reviewer judges whether the goal
    itself is achieved — answer its questions rather than recording a verdict
    of your own, which is structurally rejected
-{{- if get .Inputs "instruction" ""}}
 
-Additional instructions: {{get .Inputs "instruction" ""}}
-{{- end}}
+Additional instructions from the dispatcher (may be empty): {{ inputs.instruction }}
 """ }]
 
 [pursue_goal.inputs_schema]
@@ -50,7 +48,7 @@ type                 = "object"
 additionalProperties = false
 
 [pursue_goal.inputs_schema.properties]
-instruction = { type = "string" }
+instruction = { type = "string", default = "" }
 
 # goal_parse_status must be SUCCESS: FAILURE (malformed file) and UNRESOLVED
 # (goal not locatable — e.g. orchestrator destroy in progress) both keep the

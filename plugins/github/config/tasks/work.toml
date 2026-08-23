@@ -41,10 +41,8 @@ delivery channel, and may never reach it.
 questions. When a decision is needed, write it as a question in an issue or
 PR comment and leave it as an unmet `done_when` criterion so it surfaces as
 an escalation — don't proceed on an assumed answer.
-{{- if get .Inputs "instruction" ""}}
 
-Additional instructions: {{get .Inputs "instruction" ""}}
-{{- end}}
+Additional instructions from the dispatcher (may be empty): {{ inputs.instruction }}
 """ }]
 
 [work.inputs_schema]
@@ -52,7 +50,7 @@ type                 = "object"
 additionalProperties = false
 
 [work.inputs_schema.properties]
-instruction = { type = "string" }
+instruction = { type = "string", default = "" }
 
 # checks_status accepts the "NULL" sentinel alongside SUCCESS because a
 # completion leaf can express neither a null literal nor OR: a head commit

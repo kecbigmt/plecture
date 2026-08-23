@@ -1,6 +1,0 @@
-#!/usr/bin/env sh
-# Stands in for plect's own instruction rendering.
-plect-effect-record plect "$@"
-case "$1" in
-  template) printf '%s\n' "rendered instruction" ;;
-esac

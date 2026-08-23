@@ -26,10 +26,9 @@ cleaned
 
 == codex_initial_prompt / setup
 call[0]: "terminal-capture"
-call[1]: "plect" "template" "render" "work" "--session" "acme/widget-1"
-call[2]: "terminal-send_text" "rendered instruction"
-call[3]: "terminal-send_keys" "Enter"
-call[4]: "terminal-capture"
+call[1]: "terminal-send_text" "rendered instruction"
+call[2]: "terminal-send_keys" "Enter"
+call[3]: "terminal-capture"
 outputs: {"sent":"true"}
 
 == exec_runtime / setup

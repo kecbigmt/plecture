@@ -1,0 +1,23 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-TASK-INSTRUCTION-CONTROL-FLOW entry=definitions
+# reason: an instruction body permits only a {{ dotted.path }} projection; a Go-template control-flow construct is rejected rather than silently carried through unexecuted.
+
+[review]
+kind              = "task"
+description       = "A task document whose body still carries a transitional Go-template conditional"
+resource_observer = "issue_pr"
+instructions      = [{ text = """
+Review {{ resource.id }}.
+{{- if get .Inputs "instruction" ""}}
+
+Additional instructions: {{get .Inputs "instruction" ""}}
+{{- end}}
+""" }]
+
+[review.inputs_schema]
+type = "object"
+
+[review.inputs_schema.properties]
+instruction = { type = "string" }
+
+[review.done_when]
+all = [{ check = "resource.state.resource_kind", in = ["pull", "issue"] }]

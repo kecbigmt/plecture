@@ -3,6 +3,7 @@ package lang
 import (
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 // Validation carries what one definition's value surfaces are checked
@@ -392,12 +393,16 @@ func (v Validation) completionPredicate(body map[string]any, field string, pos P
 }
 
 // bodyProjection matches a projection in prose position. Control flow in an
-// instruction body is an open decision, so a `{{ ... }}` holding anything
-// but a dotted path is left to the transitional template forms the
-// instruction assets carried in.
+// instruction body is a closed decision: a `{{ ... }}` holding anything but
+// a dotted path is not a transitional template form to carry along, it is
+// PLECTURE-CFG-TASK-INSTRUCTION-CONTROL-FLOW.
 var bodyProjection = regexp.MustCompile(`\{\{\s*([a-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*)\s*\}\}`)
 
 func (v Validation) instructionBody(def *Definition, pos Position) error {
+	if remainder := bodyProjection.ReplaceAllString(def.Instruction, ""); strings.Contains(remainder, "{{") {
+		return newDiag(CodeTaskInstructionControlFlow, LayerSemantic, childPos(pos, "instruction"),
+			"an instruction body permits only a {{ dotted.path }} projection, not a Go-template control-flow construct")
+	}
 	for _, match := range bodyProjection.FindAllStringSubmatch(def.Instruction, -1) {
 		path := match[1]
 		if !surfaceTaskInstruction.offers(path) {

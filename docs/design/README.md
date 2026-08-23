@@ -14,11 +14,11 @@ agreement alone does not fix a config shape.
 
 Plecture configuration is a declarative wiring language. Its constructs
 express structure, binding, and wiring: schemas, references, binding tables,
-output contracts, and nesting. Computation belongs in explicit hooks and core;
-the existing template conditionals are the baseline. New control-flow
-constructs, loops, user-defined functions, or other config-language constructs
-require an ADR with precedent, observed need, a worked example, and validation
-rules.
+output contracts, and nesting. Computation belongs in explicit hooks and
+core; no control flow in instruction bodies is the baseline. New
+control-flow constructs, loops, user-defined functions, or other
+config-language constructs require an ADR with precedent, observed need, a
+worked example, and validation rules.
 
 Prefer concrete examples over prose restatement. A design document conveys the
 design core, not an exhaustive specification; long prose bases rot.

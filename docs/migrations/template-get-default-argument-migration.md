@@ -7,7 +7,9 @@ workspace-provider files, and Markdown instruction templates — under
 `~/.config/plect/`, a repository's `.plect/` overlay, or a user-owned plugin.
 
 Decided in [`docs/adr/2026-08-18-template-get-default-argument.md`](../adr/2026-08-18-template-get-default-argument.md)
-and specified by [`docs/design/template-vocabulary.md`](../design/template-vocabulary.md).
+(superseded by [`docs/adr/2026-08-23-template-retirement.md`](../adr/2026-08-23-template-retirement.md),
+which retires the `get` helper along with the rest of the template engine —
+see [`template-retirement-migration.md`](template-retirement-migration.md)).
 This repository's own shipped catalog is already migrated as part of the same
 change.
 

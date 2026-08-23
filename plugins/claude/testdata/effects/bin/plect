@@ -1,6 +1,3 @@
 #!/usr/bin/env sh
-# Stands in for plect's own instruction rendering and state writes.
+# Stands in for plect's own state writes.
 plect-effect-record plect "$@"
-case "$1" in
-  template) printf '%s\n' "rendered instruction" ;;
-esac

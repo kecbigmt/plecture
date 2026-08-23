@@ -17,7 +17,7 @@ type                 = "object"
 additionalProperties = false
 
 [goal_review.inputs_schema.properties]
-instruction = { type = "string" }
+instruction = { type = "string", default = "" }
 
 [goal_review.state_schema]
 type = "object"

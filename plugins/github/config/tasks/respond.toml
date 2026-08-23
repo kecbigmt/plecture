@@ -35,10 +35,8 @@ To follow this PR's progress while you work, run `plect subscribe {{ resource.id
 questions. When a decision is needed, write it as a question in an issue or
 PR comment and leave it as an unmet `done_when` criterion so it surfaces as
 an escalation — don't proceed on an assumed answer.
-{{- if get .Inputs "instruction" ""}}
 
-Additional instructions: {{get .Inputs "instruction" ""}}
-{{- end}}
+Additional instructions from the dispatcher (may be empty): {{ inputs.instruction }}
 """ }]
 
 [respond.inputs_schema]
@@ -46,7 +44,7 @@ type                 = "object"
 additionalProperties = false
 
 [respond.inputs_schema.properties]
-instruction = { type = "string" }
+instruction = { type = "string", default = "" }
 
 [respond.done_when]
 all = [

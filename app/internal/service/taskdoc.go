@@ -13,7 +13,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
-	"github.com/kecbigmt/plecture/app/internal/template"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -264,8 +263,13 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 }
 
 // bindDocumentInputs resolves the document's declared inputs from the
-// explicit bindings, then the session's own inputs. An input the document
-// does not declare is a caller error, not a value quietly carried along.
+// explicit bindings, then the session's own inputs, then the schema's own
+// declared default. An input the document does not declare is a caller
+// error, not a value quietly carried along. The schema default is what lets
+// an instruction body project an optional input unconditionally: a
+// {{ inputs.<key> }} projection has no syntax of its own for "absent renders
+// as this", so a property that wants that behavior states it once, in its
+// own schema, rather than in prose.
 func bindDocumentInputs(doc config.TaskDocument, cliInputs map[string]string, session *domain.Session) (map[string]any, *Error) {
 	names, err := task.SchemaPropertyNames(doc.InputsSchema, doc.ResolvedInputsSchemaPath())
 	if err != nil {
@@ -280,6 +284,10 @@ func bindDocumentInputs(doc config.TaskDocument, cliInputs map[string]string, se
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s does not declare input %q (declared: %s)", doc.ID, k, strings.Join(names, ", "))}
 		}
 	}
+	props, err := config.SchemaProperties(doc.InputsSchema, doc.ResolvedInputsSchemaPath())
+	if err != nil {
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s: inputs schema: %v", doc.ID, err)}
+	}
 	out := make(map[string]any, len(names))
 	for _, name := range names {
 		switch {
@@ -287,15 +295,19 @@ func bindDocumentInputs(doc config.TaskDocument, cliInputs map[string]string, se
 			out[name] = cliInputs[name]
 		case session.Inputs[name] != nil:
 			out[name] = session.Inputs[name]
+		default:
+			if prop, ok := props[name].(map[string]any); ok {
+				if def, hasDefault := prop["default"]; hasDefault {
+					out[name] = def
+				}
+			}
 		}
 	}
 	return out, nil
 }
 
 // renderInstruction resolves the document body's projections against the
-// roots the instruction surface observes, then runs the carried template pass
-// for the conditional and defaulting forms the instruction assets already
-// had.
+// roots the instruction surface observes.
 func renderInstruction(cfg *config.Config, session *domain.Session, doc config.TaskDocument, inputs map[string]any, resourceID string, observed map[string]any) (string, *Error) {
 	workflowOutputs := map[string]any{}
 	if w := session.Tasks[contract.WorkflowPseudoNodeID]; w != nil && w.Outputs != nil {
@@ -315,19 +327,7 @@ func renderInstruction(cfg *config.Config, session *domain.Session, doc config.T
 	if err != nil {
 		return "", &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s: %v", doc.ID, err)}
 	}
-	carried, err := template.RenderBody(doc.ID, rendered, template.Vars{
-		Mode:             doc.ID,
-		SessionName:      session.Name,
-		ResourceID:       resourceID,
-		WorkspaceDirPath: session.WorkspaceDirPath,
-		Workflow:         workflowOutputs,
-		SessionInputs:    session.Inputs,
-		Inputs:           inputs,
-	})
-	if err != nil {
-		return "", &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s: instruction: %v", doc.ID, err)}
-	}
-	return strings.TrimSpace(carried), nil
+	return strings.TrimSpace(rendered), nil
 }
 
 // evaluateDocumentInstance evaluates one task-document instance's completion

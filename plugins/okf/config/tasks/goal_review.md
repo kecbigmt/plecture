@@ -41,7 +41,5 @@ agent: `> 🤖 This review was written by an AI agent under human supervision.`
 question. When a judgment call is needed, write the open question in the
 judge's reason and use request-changes — do not silently assume an answer
 and proceed.
-{{- if get .Inputs "instruction" ""}}
 
-Additional instructions: {{get .Inputs "instruction" ""}}
-{{- end}}
+Additional instructions from the dispatcher (may be empty): {{ inputs.instruction }}
