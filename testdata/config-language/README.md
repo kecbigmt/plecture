@@ -68,13 +68,13 @@ reject.
 A fixture's filename carries `.invalid` or `.accepted-invalid` before `.toml`
 so a reader sees the outcome without opening it.
 
-## Running the checker
+## Running the conformance harness
 
 ```bash
-cd scripts/config-language-check && GOWORK=off go run .
+go test ./app/internal/lang/
 ```
 
-The checker asserts that:
+The harness asserts that:
 
 - every fixture declares a well-formed expectation, and decodes — as TOML for
   a definition document, or as TOML frontmatter for a task document;
@@ -90,7 +90,9 @@ The checker asserts that:
 document declares the observer it is written for, so the keys it reads are
 checked at load, but whether the resource an instance is actually bound to
 resolves to that observer is known only when the instance is created.
-- every diagnostic code is both documented and exercised;
+- every diagnostic code is registered, documented in
+  [`../../docs/language/README.md`](../../docs/language/README.md), and
+  exercised by a fixture;
 - every worked example in `docs/language/` is byte-identical to the fixture it
   names.
 
