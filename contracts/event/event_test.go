@@ -16,8 +16,8 @@ func TestMatchType(t *testing.T) {
 		{"acme.*", "acme.ci_status", true},
 		{"acme.*", "acme.", true},
 		{"acme.*", "acme", false}, // prefix is "acme." — bare "acme" excluded
-		{"acme.*", "slack.message", false},
-		{"claude.*", "claude.reply", true},
+		{"acme.*", "widget.message", false},
+		{"widget.*", "widget.reply", true},
 	}
 	for _, c := range cases {
 		if got := MatchType(c.pattern, c.typ); got != c.want {
@@ -36,10 +36,10 @@ func TestFilterMatch(t *testing.T) {
 	}{
 		{"zero filter matches all", Filter{}, true},
 		{"type glob hit", Filter{Types: []string{"acme.*"}}, true},
-		{"type glob miss", Filter{Types: []string{"claude.*"}}, false},
-		{"type multi any-hit", Filter{Types: []string{"claude.*", "acme.*"}}, true},
+		{"type glob miss", Filter{Types: []string{"widget.*"}}, false},
+		{"type multi any-hit", Filter{Types: []string{"widget.*", "acme.*"}}, true},
 		{"source hit", Filter{Sources: []string{"example"}}, true},
-		{"source miss", Filter{Sources: []string{SourceSlack}}, false},
+		{"source miss", Filter{Sources: []string{"other"}}, false},
 		{"direction hit", Filter{Direction: Internal}, true},
 		{"direction miss", Filter{Direction: Inbound}, false},
 		{"combined hit", Filter{Types: []string{"acme.*"}, Sources: []string{"example"}, Direction: Internal}, true},
@@ -128,10 +128,10 @@ func TestSplitCSV(t *testing.T) {
 		{"empty", "", nil},
 		{"blank", "   ", nil},
 		{"single", "acme", []string{"acme"}},
-		{"comma no space", "acme,slack", []string{"acme", "slack"}},
-		{"comma with space", "acme, slack", []string{"acme", "slack"}},
-		{"leading/trailing space", "  acme , slack  ", []string{"acme", "slack"}},
-		{"empty element dropped", "acme,,slack", []string{"acme", "slack"}},
+		{"comma no space", "acme,widget", []string{"acme", "widget"}},
+		{"comma with space", "acme, widget", []string{"acme", "widget"}},
+		{"leading/trailing space", "  acme , widget  ", []string{"acme", "widget"}},
+		{"empty element dropped", "acme,,widget", []string{"acme", "widget"}},
 		{"all-blank elements", " , , ", nil},
 	}
 	for _, c := range cases {

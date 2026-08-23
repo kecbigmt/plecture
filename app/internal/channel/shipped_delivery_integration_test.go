@@ -120,7 +120,7 @@ func sampleEvents() []struct {
 			Name: "with-body",
 			Event: event.Event{
 				ID:          "01ABC",
-				SessionName: "acme/widget-1",
+				SessionName: "acme-widget-1",
 				Type:        event.TypeUserEmit,
 				Source:      event.SourcePlect,
 				Direction:   event.Inbound,
@@ -134,7 +134,7 @@ func sampleEvents() []struct {
 			Name: "summary-only",
 			Event: event.Event{
 				ID:          "01DEF",
-				SessionName: "acme/widget-1",
+				SessionName: "acme-widget-1",
 				Type:        "example.status",
 				Source:      event.SourcePlect,
 				Direction:   event.Internal,
@@ -337,7 +337,7 @@ func pluginRootOf(t *testing.T, sourcePath string) string {
 func TestShippedChannels_UnixSocketDeliversOneFramedEnvelope(t *testing.T) {
 	ev := event.Event{
 		ID:          "01ABC",
-		SessionName: "acme/widget-1",
+		SessionName: "acme-widget-1",
 		Type:        event.TypeUserEmit,
 		Summary:     "s",
 		Body:        `a <tag> & an "amp"`,

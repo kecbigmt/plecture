@@ -102,7 +102,7 @@ func (w *serviceLogWriter) logLine(line string) {
 // buildEnv merges decl.Env on top of the supervisor's own environment,
 // de-duplicated and sorted so a key declared in both places has one
 // unambiguous value regardless of libc environ merge behavior. Secrets
-// (e.g. a Slack bot token) are expected to already be present in the
+// (e.g. a chat platform's bot token) are expected to already be present in the
 // supervisor's own environment — plugin.toml's `env` field carries only
 // non-secret literals, per the plugin service lifecycle ADR.
 func buildEnv(overrides map[string]string) []string {

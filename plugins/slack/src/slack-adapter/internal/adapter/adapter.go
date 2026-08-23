@@ -14,7 +14,6 @@ import (
 	"github.com/slack-go/slack/socketmode"
 
 	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
-	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 // Adapter connects Slack (via Socket Mode) to channel server instances (via Unix socket).
@@ -181,7 +180,7 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 		UserID:   ev.User,
 		Text:     ev.Text,
 		ThreadTS: threadTS,
-		Source:   event.SourceSlack,
+		Source:   "slack",
 	}
 
 	sub, ok := a.broker.Find(threadTS)

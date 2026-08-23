@@ -151,7 +151,7 @@ func deliverUnixSocket(ctx context.Context, def config.ChannelDefinition, eval l
 		deadline = time.Now().Add(fallbackWriteDeadline)
 	}
 	_ = conn.SetWriteDeadline(deadline)
-	// Source stays empty: a non-empty Source lets channel-server treat a
+	// Source stays empty: a non-empty Source lets the delivery daemon treat a
 	// "y/n <id>" body as a human permission verdict, so a content event must not
 	// set it.
 	data, err := protocol.NewEnvelope(protocol.MsgMessage, protocol.MessagePayload{Text: string(body)})
@@ -161,7 +161,7 @@ func deliverUnixSocket(ctx context.Context, def config.ChannelDefinition, eval l
 	return writeFramed(conn, data)
 }
 
-// maxFrame matches channel-server's readMessage cap. Rejecting here turns an
+// maxFrame matches the delivery daemon's readMessage cap. Rejecting here turns an
 // oversized payload into a clean error instead of a write that succeeds locally
 // but is dropped (and the connection closed) by the server.
 const maxFrame = 1 << 20

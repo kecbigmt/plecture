@@ -12,7 +12,7 @@ func TestNewEnvelopeUnmarshalPayloadRoundTrip(t *testing.T) {
 		payload any
 	}{
 		{"register", MsgRegister, RegisterPayload{ThreadTS: "1.1", ChannelID: "C1"}},
-		{"message", MsgMessage, MessagePayload{User: "alice", UserID: "U1", Text: "hi", ThreadTS: "1.1", Source: "slack"}},
+		{"message", MsgMessage, MessagePayload{User: "alice", UserID: "U1", Text: "hi", ThreadTS: "1.1", Source: "chat"}},
 		{"message with empty source", MsgMessage, MessagePayload{User: "bot", UserID: "U2", Text: "hi", ThreadTS: "1.1"}},
 		{"reply", MsgReply, ReplyPayload{Text: "reply text", ThreadTS: "1.1"}},
 		{"reply_ack success", MsgReplyAck, ReplyAckPayload{Timestamp: "1.2"}},

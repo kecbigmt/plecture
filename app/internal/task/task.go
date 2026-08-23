@@ -630,7 +630,8 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		// outputs survive into the next setup as .Prev. The same invariant must
 		// hold across setup retries: a failed run preserves the prior outputs
 		// so the next attempt can read .Prev — otherwise scripts that resume
-		// from a previous run (claude --resume etc.) lose their handle on retry.
+		// from a previous run (an agent's own --resume flag, say) lose their
+		// handle on retry.
 		var prev map[string]any
 		if existing, ok := tasks[r.NodeID]; ok && existing != nil {
 			prev = existing.Outputs

@@ -14,9 +14,9 @@ import (
 
 // SubscribeParams are the inputs to Subscribe. ResourceID is the opaque
 // resource the caller wants this session to receive events from. SessionName
-// defaults to the ambient pane env ($PLECT_SESSION_NAME, exported by the claude
-// task) when left empty, so a running agent can `plect subscribe <url>` without
-// naming itself.
+// defaults to the ambient pane env ($PLECT_SESSION_NAME, exported by the
+// interactive-agent task) when left empty, so a running agent can `plect
+// subscribe <url>` without naming itself.
 type SubscribeParams struct {
 	ResourceID  string
 	SessionName string

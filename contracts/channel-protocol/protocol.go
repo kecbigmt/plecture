@@ -1,8 +1,8 @@
-// Package protocol defines the message types exchanged between
-// channel-server and adapters (slack-adapter, etc.) over Unix socket.
+// Package protocol defines the message types exchanged between a resident
+// delivery daemon and its adapters over Unix socket.
 //
-// This package is source-independent: it contains no Slack, Discord,
-// or other platform-specific logic.
+// This package is source-independent: it contains no chat-platform-specific
+// logic.
 package protocol
 
 import "encoding/json"
@@ -46,14 +46,15 @@ type RegisterPayload struct {
 	ChannelID string `json:"channel_id"`
 }
 
-// MessagePayload carries a message from an external source to channel-server.
+// MessagePayload carries a message from an external source to the delivery
+// daemon.
 //
 // Source names the adapter-side provenance of the message. An adapter sets it
-// (e.g. "slack") only on messages that came from an authenticated interactive
-// user; system/content deliveries (notifications, relayed events) leave it
-// empty. channel-server requires a non-empty Source before it will treat a
-// "y <id>" / "n <id>" message as a permission verdict, so a forged content
-// event cannot impersonate a human approval.
+// only on messages that came from an authenticated interactive user;
+// system/content deliveries (notifications, relayed events) leave it empty.
+// The daemon requires a non-empty Source before it will treat a "y <id>" /
+// "n <id>" message as a permission verdict, so a forged content event cannot
+// impersonate a human approval.
 type MessagePayload struct {
 	User     string `json:"user"`
 	UserID   string `json:"user_id"`
@@ -62,7 +63,7 @@ type MessagePayload struct {
 	Source   string `json:"source,omitempty"`
 }
 
-// ReplyPayload carries a reply from channel-server back to the adapter.
+// ReplyPayload carries a reply from the delivery daemon back to the adapter.
 type ReplyPayload struct {
 	Text     string `json:"text"`
 	ThreadTS string `json:"thread_ts"`
@@ -74,7 +75,7 @@ type ReplyAckPayload struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// PermissionPayload carries a permission prompt from channel-server to adapter.
+// PermissionPayload carries a permission prompt from the delivery daemon to the adapter.
 type PermissionPayload struct {
 	ThreadTS string `json:"thread_ts"`
 	Text     string `json:"text"`
