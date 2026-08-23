@@ -93,7 +93,7 @@ func ObserveResource(def config.ResourceDef, resourceID string, branch string, w
 	if perr != nil {
 		return nil, fmt.Errorf("resource %s: %w", def.ID, perr)
 	}
-	schema, serr := CompileSchema(def.StateSchema, def.ResolvedStateSchemaPath(), "resource:"+def.ID)
+	schema, serr := lang.CompileSchema(def.StateSchema, def.ResolvedStateSchemaPath(), "resource:"+def.ID)
 	if serr != nil {
 		return nil, fmt.Errorf("resource %s: state_schema: %w", def.ID, serr)
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/effect"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -77,7 +78,7 @@ func RunWorkflowSetup(prov config.WorkspaceProviderConfig, vars effect.WorkflowH
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, stderr)
 		return nil, wrapped
 	}
-	schema, err := CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
+	schema, err := lang.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
 	if err != nil {
 		fail(err.Error())
 		wrapped := fmt.Errorf("workspace provider %q outputs schema: %w", prov.ID, err)

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -19,9 +20,13 @@ const enumInputsSchema = `{
 
 func mustCompile(t *testing.T, schemaJSON string) *jsonschema.Schema {
 	t.Helper()
-	sch, err := compileSchemaBytes("mem://test", []byte(schemaJSON))
+	var inline map[string]any
+	if err := json.Unmarshal([]byte(schemaJSON), &inline); err != nil {
+		t.Fatalf("unmarshal schema fixture: %v", err)
+	}
+	sch, err := lang.CompileSchema(inline, "", "mem://test")
 	if err != nil {
-		t.Fatalf("compileSchemaBytes: %v", err)
+		t.Fatalf("CompileSchema: %v", err)
 	}
 	return sch
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -174,7 +175,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		if mErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, mErr)}
 		}
-		compiled, cErr := task.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
+		compiled, cErr := lang.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
 		if cErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, cErr)}
 		}
@@ -210,7 +211,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		if mErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, mErr)}
 		}
-		compiled, cErr := task.CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plect:task:"+taskID+":outputs")
+		compiled, cErr := lang.CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plect:task:"+taskID+":outputs")
 		if cErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, cErr)}
 		}

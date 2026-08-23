@@ -102,7 +102,7 @@ func SetTaskState(cfg *config.Config, store *state.Store, params SetTaskStatePar
 	if !ok {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("instance %q is not declared by a task document, so it holds no state of its own", params.Instance)}
 	}
-	schema, serr := task.CompileSchema(doc.StateSchema, doc.ResolvedStateSchemaPath(), "task:"+doc.ID)
+	schema, serr := lang.CompileSchema(doc.StateSchema, doc.ResolvedStateSchemaPath(), "task:"+doc.ID)
 	if serr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s: state_schema: %v", doc.ID, serr)}
 	}

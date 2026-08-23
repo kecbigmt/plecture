@@ -70,14 +70,14 @@ func ResolveLayers(def config.TaskDefinition) ([]ResolvedLayer, error) {
 		}
 		layer.BindOutputs = d.ClassifiedOutputBindings()
 		var err error
-		if layer.InputsSchema, err = CompileSchema(d.InputsSchema, d.ResolvedInputsSchemaPath(), "plect:task:"+d.ID+":inputs"); err != nil {
+		if layer.InputsSchema, err = lang.CompileSchema(d.InputsSchema, d.ResolvedInputsSchemaPath(), "plect:task:"+d.ID+":inputs"); err != nil {
 			return nil, fmt.Errorf("layer %q: input schema: %w", d.ID, err)
 		}
 		if i == len(defs)-1 {
-			if layer.OutputsSchema, err = CompileSchema(d.OutputsSchema, d.ResolvedOutputsSchemaPath(), "plect:task:"+d.ID+":outputs"); err != nil {
+			if layer.OutputsSchema, err = lang.CompileSchema(d.OutputsSchema, d.ResolvedOutputsSchemaPath(), "plect:task:"+d.ID+":outputs"); err != nil {
 				return nil, fmt.Errorf("layer %q: outputs schema: %w", d.ID, err)
 			}
-		} else if layer.LocalsSchema, err = CompileSchema(d.LocalsSchema, d.ResolvedLocalsSchemaPath(), "plect:task:"+d.ID+":locals"); err != nil {
+		} else if layer.LocalsSchema, err = lang.CompileSchema(d.LocalsSchema, d.ResolvedLocalsSchemaPath(), "plect:task:"+d.ID+":locals"); err != nil {
 			return nil, fmt.Errorf("layer %q: locals schema: %w", d.ID, err)
 		}
 		out = append(out, layer)
