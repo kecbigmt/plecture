@@ -15,6 +15,7 @@ func TestSurfaceRootsMatchValuesTable(t *testing.T) {
 		{surfaceProviderSetup, []string{"resource.id", "session.name", "session.inputs.owner", "inputs.owner", "prev.dir", "config.workspace_dirs_root"}, []string{"event.type", "self.outputs.dir", "force"}},
 		{surfaceProviderCleanup, []string{"self.outputs.workspace_dir", "inputs.x", "cleanup.inputs.delete_branch", "session.name", "config.workspace_dirs_root", "force"}, []string{"resource.id", "prev.dir"}},
 		{surfaceProviderSubscribe, []string{"session.name", "resource.id"}, []string{"inputs.x", "workspace.dir"}},
+		{surfaceProviderUnsubscribe, []string{"session.name", "resource.id"}, []string{"inputs.x", "workspace.dir"}},
 		{surfaceObserverObserve, []string{"resource.id", "workspace.dir", "workspace.branch"}, []string{"resource.revision", "judges", "session.name"}},
 		{surfaceObserverFinalize, []string{"resource.id", "session.name", "resource.revision", "judges"}, []string{"workspace.dir", "effect.instance", "inputs.x"}},
 		{surfaceWorkflowDisplay, []string{"workflow.outputs.concept_id", "session.inputs.task"}, []string{"nodes.pane.outputs.session_name", "resource.id"}},

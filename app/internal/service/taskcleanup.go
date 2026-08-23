@@ -32,6 +32,17 @@ type TaskCleanupResult struct {
 	SessionName string `json:"session_name"`
 	Instance    string `json:"instance"`
 	Found       bool   `json:"found"`
+	// Unsubscribed reports whether reclaiming this instance also dropped its
+	// bound resource's event-delivery registration (the counterpart of
+	// TaskSetupResult.Subscribed). False when the instance had no bound
+	// resource, the resource is still needed (the session's own primary
+	// resource, or another live instance is still bound to it), or no
+	// workspace provider is wired to unregister it.
+	Unsubscribed bool `json:"unsubscribed,omitempty"`
+	// Resource is the instance's own bound resource (empty when it had
+	// none), reported alongside Unsubscribed so a caller can say what was
+	// dropped.
+	Resource string `json:"resource,omitempty"`
 }
 
 // TaskCleanup tears down a single dynamic instance: it runs that instance's
@@ -108,15 +119,44 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 		return nil, &Error{Code: ErrExecutionFailed, Message: errors.Join(cleanupErr, persistErr).Error()}
 	}
 
+	var stillNeeded bool
 	if err := store.Update(resolvedName, func(s *domain.Session) error {
 		delete(s.Tasks, params.Instance)
 		s.UpdatedAt = time.Now()
+		stillNeeded = taskCleanupResourceStillNeeded(s, st.Resource)
 		return nil
 	}); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	recordLifecycle(store, resolvedName, "task_cleanup", fmt.Sprintf("reclaimed %s", params.Instance))
-	return &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true}, nil
+
+	unsubscribed := false
+	if !stillNeeded {
+		if unsubErr := unsubscribeIfWired(cfg, resolvedName, st.Resource); unsubErr != nil {
+			return nil, unsubErr
+		}
+		unsubscribed = st.Resource != ""
+	}
+	return &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true, Unsubscribed: unsubscribed, Resource: st.Resource}, nil
+}
+
+// taskCleanupResourceStillNeeded reports whether resource (the instance
+// TaskCleanup just removed from s.Tasks was bound to) is still needed by the
+// rest of the session: as the session's own primary resource, or as another
+// live instance's binding. An empty resource needs nothing.
+func taskCleanupResourceStillNeeded(s *domain.Session, resource string) bool {
+	if resource == "" {
+		return false
+	}
+	if s.ResourceID == resource {
+		return true
+	}
+	for _, other := range s.Tasks {
+		if other != nil && other.Resource == resource {
+			return true
+		}
+	}
+	return false
 }
 
 // mergeLayerLifecycle carries a partial unwind's per-layer outcome from the

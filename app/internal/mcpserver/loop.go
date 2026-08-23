@@ -175,6 +175,7 @@ func handleTaskSetup(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 		"scope":        result.Scope,
 		"name":         result.Name,
 		"resource":     result.Resource,
+		"subscribed":   result.Subscribed,
 		"outputs":      result.Outputs,
 	})
 }
@@ -202,6 +203,7 @@ func handleTaskCleanup(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 		"session_name": result.SessionName,
 		"instance":     result.Instance,
 		"found":        result.Found,
+		"unsubscribed": result.Unsubscribed,
 	})
 }
 

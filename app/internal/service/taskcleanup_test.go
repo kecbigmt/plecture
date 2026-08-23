@@ -304,6 +304,143 @@ type = "string"
 	}
 }
 
+// TaskCleanup drops the delivery registration a matching TaskSetup wired,
+// once nothing else in the session still needs it — the counterpart of
+// TestTaskSetup_ResourceSubscribesToMatchingProvider.
+func TestTaskCleanup_UnsubscribesResourceWhenNoLongerNeeded(t *testing.T) {
+	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", unsubRec)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	got, err := os.ReadFile(unsubRec)
+	if err != nil {
+		t.Fatalf("unsubscribe hook did not run: %v", err)
+	}
+	if want := "o/r-1\n" + prURL + "\n"; string(got) != want {
+		t.Errorf("unsubscribe hook recorded %q, want %q", got, want)
+	}
+}
+
+// A dynamic instance bound to the session's own primary resource must not
+// have delivery unregistered on cleanup: the primary subscription outlives
+// any one instance and is not this instance's to drop.
+func TestTaskCleanup_DoesNotUnsubscribeSessionPrimaryResource(t *testing.T) {
+	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", unsubRec)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	// seedSession's ResourceID is derived from (ownerRepo, number): this is
+	// the session's own primary resource.
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+	primary := "https://github.com/o/r/issues/1"
+
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "again", Resource: primary}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "again", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if _, err := os.Stat(unsubRec); err == nil {
+		t.Error("cleanup must not unsubscribe the session's own primary resource")
+	}
+}
+
+// Two instances bound to the same non-primary resource share one delivery
+// registration; cleaning up one must leave it wired for the other.
+func TestTaskCleanup_DoesNotUnsubscribeResourceStillBoundByAnotherInstance(t *testing.T) {
+	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", unsubRec)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "a", Resource: prURL}); err != nil {
+		t.Fatalf("setup a: %v", err)
+	}
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "b", Resource: prURL}); err != nil {
+		t.Fatalf("setup b: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "a", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup a: %v", err)
+	}
+	if _, err := os.Stat(unsubRec); err == nil {
+		t.Fatal("cleanup must not unsubscribe while a sibling instance still binds the resource")
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "b", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup b: %v", err)
+	}
+	if _, err := os.Stat(unsubRec); err != nil {
+		t.Error("cleanup of the last instance bound to the resource must unsubscribe it")
+	}
+}
+
+// An instance created without --resource has nothing to unregister; cleanup
+// must not fail just because no workspace provider is even configured.
+func TestTaskCleanup_NoResourceBoundIsANoOpForDelivery(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "x"}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "x", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+}
+
+// mergeWorkspacesDir copies a fixture's workspaces/ directory (built by
+// writeSubscribeUnsubscribeProvider, which allocates its own BaseDir) into
+// the target cfg's BaseDir, so a test can compose a workflow fixture with a
+// resource-delivery provider fixture without one helper needing to know
+// about the other.
+func mergeWorkspacesDir(t *testing.T, from, to *config.Config) {
+	t.Helper()
+	srcDir := filepath.Join(from.BaseDir, "workspaces")
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dstDir := filepath.Join(to.BaseDir, "workspaces")
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(srcDir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dstDir, e.Name()), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // A workflow node's instance stores no task id, so cleanup has only the node
 // id to find the effect by — and a node id is not the address a plugin's
 // effect answers to. Getting this wrong is silent: the definition simply looks

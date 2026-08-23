@@ -53,6 +53,11 @@ type = "exec"
 bin  = "github-watcher"
 args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
 
+[worktree.unsubscribe]
+type = "exec"
+bin  = "github-watcher"
+args = ["unsubscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
+
 [worktree.inputs_schema]
 type                 = "object"
 additionalProperties = false
@@ -77,13 +82,14 @@ title         = { type = "string", mutable = true }
 | `setup` | Acquiring the workspace, on session create or up. |
 | `cleanup` | Releasing it, on destroy. |
 | `subscribe` | Binding a session to a resource at runtime. |
+| `unsubscribe` | Dropping a session's binding to a resource. |
 
 `setup` reads the resource, the session, the configured workspace root, and the
 provider's own parameters. `cleanup` additionally reads the provider's recorded
 outputs through `self.outputs.*`, the caller's cleanup inputs, and `force`.
-`subscribe` resolves the provider from the resource alone — no workflow is in
-scope to have set a parameter — so it reads only the session name and the
-resource id.
+`subscribe` and `unsubscribe` resolve the provider from the resource alone — no
+workflow is in scope to have set a parameter — so each reads only the session
+name and the resource id.
 
 ## Contracts
 

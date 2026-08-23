@@ -83,3 +83,39 @@ func TestRunProviderSubscribe_ResolvesBinReference(t *testing.T) {
 		t.Errorf("resolved executable = %q, want %q", got, want)
 	}
 }
+
+func TestRunProviderUnsubscribe_ReadsItsSurfaceRoots(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "unsubscribe.out")
+	prov := config.WorkspaceProviderConfig{
+		ID: "wf",
+		Unsubscribe: &lang.Action{
+			Type:    lang.ActionExec,
+			Command: "sh",
+			Args: []*lang.Value{
+				{Form: lang.FormLiteral, Literal: "-c"},
+				{Form: lang.FormLiteral, Literal: `printf '%s %s' "$1" "$2" > "$3"`},
+				{Form: lang.FormLiteral, Literal: "unsubscribe"},
+				{Form: lang.FormFrom, From: "resource.id"},
+				{Form: lang.FormFrom, From: "session.name"},
+				{Form: lang.FormLiteral, Literal: marker},
+			},
+		},
+	}
+	if err := RunWorkspaceProviderUnsubscribe(prov, SubscribeHookVars{ResourceID: "res-1", SessionName: "sess-1"}); err != nil {
+		t.Fatalf("RunWorkspaceProviderUnsubscribe: %v", err)
+	}
+	raw, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(raw); got != "res-1 sess-1" {
+		t.Errorf("unsubscribe saw %q, want the resource and session", got)
+	}
+}
+
+func TestRunProviderUnsubscribe_NoUnsubscribeHookIsAnError(t *testing.T) {
+	err := RunWorkspaceProviderUnsubscribe(config.WorkspaceProviderConfig{ID: "wf"}, SubscribeHookVars{ResourceID: "r", SessionName: "s"})
+	if err == nil {
+		t.Fatal("expected an error when the provider declares no unsubscribe hook")
+	}
+}

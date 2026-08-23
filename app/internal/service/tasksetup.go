@@ -38,13 +38,19 @@ type TaskSetupParams struct {
 
 // TaskSetupResult reports the instantiated task instance.
 type TaskSetupResult struct {
-	SessionName string         `json:"session_name"`
-	Instance    string         `json:"instance"` // instance key: <name> when named, else <task>#<number>
-	TaskID      string         `json:"task_id"`
-	Scope       string         `json:"scope"`
-	Name        string         `json:"name,omitempty"`
-	Resource    string         `json:"resource,omitempty"`
-	Outputs     map[string]any `json:"outputs,omitempty"`
+	SessionName string `json:"session_name"`
+	Instance    string `json:"instance"` // instance key: <name> when named, else <task>#<number>
+	TaskID      string `json:"task_id"`
+	Scope       string `json:"scope"`
+	Name        string `json:"name,omitempty"`
+	Resource    string `json:"resource,omitempty"`
+	// Subscribed reports whether binding this instance to Resource also
+	// registered it for event delivery to the session (binding implies
+	// delivery — see subscribeIfWired). False when Resource is empty, no
+	// workspace provider recognizes it, or the matched provider declares no
+	// subscribe hook: none of those are errors, just nothing to wire.
+	Subscribed bool           `json:"subscribed,omitempty"`
+	Outputs    map[string]any `json:"outputs,omitempty"`
 	// Instruction is the rendered body of a task document instance. Empty for
 	// an effect instance, whose instruction is an output of its setup.
 	Instruction string `json:"instruction,omitempty"`
@@ -254,6 +260,11 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	// [[event.channel]] delivers.
 	appendInstruction(store, resolvedName, key, params.Resource, instructionOutput(resultOutputs))
 
+	subscribed, subErr := subscribeIfWired(cfg, resolvedName, params.Resource)
+	if subErr != nil {
+		return nil, subErr
+	}
+
 	return &TaskSetupResult{
 		SessionName: resolvedName,
 		Instance:    key,
@@ -261,6 +272,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 		Scope:       resolved.Scope,
 		Name:        params.Name,
 		Resource:    params.Resource,
+		Subscribed:  subscribed,
 		Outputs:     resultOutputs,
 	}, nil
 }

@@ -39,6 +39,11 @@ type = "exec"
 bin  = "github-watcher"
 args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
 
+[worktree.unsubscribe]
+type = "exec"
+bin  = "github-watcher"
+args = ["unsubscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
+
 [worktree.inputs_schema]
 type                 = "object"
 additionalProperties = false

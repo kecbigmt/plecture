@@ -245,6 +245,12 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	}
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
 	appendInstruction(store, resolvedName, key, params.Resource, instruction)
+
+	subscribed, subErr := subscribeIfWired(cfg, resolvedName, params.Resource)
+	if subErr != nil {
+		return nil, subErr
+	}
+
 	return &TaskSetupResult{
 		SessionName: resolvedName,
 		Instance:    key,
@@ -254,6 +260,7 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 		Scope:       contract.TaskScopeSession,
 		Name:        params.Name,
 		Resource:    params.Resource,
+		Subscribed:  subscribed,
 		Instruction: instruction,
 	}, nil
 }

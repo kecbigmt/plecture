@@ -52,6 +52,12 @@ type WorkspaceProviderConfig struct {
 	// auto-subscribe. Optional: a provider without it cannot be subscribed to
 	// after dispatch.
 	Subscribe *lang.Action
+	// Unsubscribe drops a session's binding to a resource of this kind,
+	// registered by Subscribe or by a dynamic task instance's `--resource`
+	// binding. Optional: a provider without it never has a binding
+	// unregistered on its behalf (dropping one is then whatever else already
+	// releases it, e.g. Cleanup's own unconditional unsubscribe-all).
+	Unsubscribe *lang.Action
 	// InputsSchema declares the author's parameters: the data-shaped values a
 	// workflow may set to steer this provider's hooks without replacing the
 	// file. Values arrive as literal strings from the workflow's
@@ -160,6 +166,9 @@ func workspaceProviderFrom(def *lang.Definition, path string, fromPlugin bool) (
 		return p, err
 	}
 	if p.Subscribe, err = actionField(def, path, "subscribe"); err != nil {
+		return p, err
+	}
+	if p.Unsubscribe, err = actionField(def, path, "unsubscribe"); err != nil {
 		return p, err
 	}
 	for _, field := range []struct {
