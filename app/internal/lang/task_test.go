@@ -59,7 +59,7 @@ func resolveTaskDocument(t *testing.T, src string) error {
 		return err
 	}
 	def := defs[0]
-	if err := resolveTaskInstruction(def, "."); err != nil {
+	if err := resolveTaskInstructions(def, "."); err != nil {
 		return err
 	}
 	v := Validation{
@@ -83,7 +83,7 @@ func TestValidateTaskContractsRejectsAnUndeclaredKey(t *testing.T) {
 			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ check = "resource.state.mergeability", in = ["clean"] }]
@@ -94,7 +94,7 @@ all = [{ check = "resource.state.mergeability", in = ["clean"] }]
 			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ check = "self.state.verdict_revision", ne = "" }]
@@ -105,7 +105,7 @@ all = [{ check = "self.state.verdict_revision", ne = "" }]
 			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.state_schema]
 type = "object"
@@ -122,7 +122,7 @@ all = [{ expr = "self.state.verdict_revision == resource.state.head_sha" }]
 			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve {{ resource.id }} at {{ resource.state.head_sha }}."
+instructions      = [{ text = "Resolve {{ resource.id }} at {{ resource.state.head_sha }}." }]
 `,
 		},
 		{
@@ -130,7 +130,7 @@ instruction       = "Resolve {{ resource.id }} at {{ resource.state.head_sha }}.
 			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
 id        = "review"
@@ -149,7 +149,7 @@ task = "review"
 			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
 id        = "review"
@@ -169,7 +169,7 @@ head = { from = "resource.state.head_sha" }
 			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ judge = "the work is done", id = "ac-met" }]
@@ -198,7 +198,7 @@ func TestValidateTaskContractsResolvesEveryDeclaredKey(t *testing.T) {
 	src := `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Review {{ resource.id }} at {{ resource.state.revision }}, last judged at {{ self.state.verdict_revision }}."
+instructions      = [{ text = "Review {{ resource.id }} at {{ resource.state.revision }}, last judged at {{ self.state.verdict_revision }}." }]
 
 [work.state_schema]
 type = "object"
@@ -237,7 +237,7 @@ revision     = { from = "resource.state.revision" }
 func TestValidateTaskContractsRequiresAnObserver(t *testing.T) {
 	src := `[work]
 kind        = "task"
-instruction = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ check = "resource.state.revision", ne = "" }]
@@ -249,7 +249,7 @@ func TestValidateTaskContractsRejectsAnObserverOfAnotherKind(t *testing.T) {
 	src := `[work]
 kind              = "task"
 resource_observer = "goal_reviewer"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 `
 	wantDiag(t, resolveTaskDocument(t, src), CodeKindMismatch, LayerSemantic)
 }
@@ -273,7 +273,7 @@ args = ["observe"]
 	defs, err := ParseDefinitionDocument("task.toml", []byte(`[work]
 kind              = "task"
 resource_observer = "filed"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ check = "resource.state.anything", ne = "" }]
@@ -282,7 +282,7 @@ all = [{ check = "resource.state.anything", ne = "" }]
 		t.Fatal(err)
 	}
 	def := defs[0]
-	if err := resolveTaskInstruction(def, "."); err != nil {
+	if err := resolveTaskInstructions(def, "."); err != nil {
 		t.Fatal(err)
 	}
 	v := Validation{From: Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath}}
@@ -294,7 +294,7 @@ func TestValidateTaskContractsRequiresTheInputsTheTargetWorkflowDeclares(t *test
 	src := `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
 id        = "review"
@@ -318,7 +318,7 @@ func TestValidateTaskContractsChecksAnInputAgainstAClosedTargetContract(t *testi
 		return `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve {{ resource.id }}."
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
 id        = "review"

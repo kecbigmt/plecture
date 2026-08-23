@@ -1,0 +1,11 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT entry=definitions
+# reason: text and file are the same segment in two spellings, so an element declaring both leaves no way to say which one is authoritative.
+
+[work]
+kind              = "task"
+description       = "A task whose instructions element declares its text both ways"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue at {{ resource.id }}.", file = "document.md" }]
+
+[work.done_when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]

@@ -77,7 +77,7 @@ func TestParseDefinitionDocumentTaskIsAnOrdinaryDeclaration(t *testing.T) {
 kind              = "task"
 description       = "A task declared like any other kind"
 resource_observer = "issue_pr"
-instruction       = "Resolve the issue."
+instructions      = [{ text = "Resolve the issue." }]
 `))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -94,18 +94,18 @@ func TestParseDefinitionDocumentEmptyIsLoadError(t *testing.T) {
 	}
 }
 
-func TestResolveTaskInstructionInline(t *testing.T) {
+func TestResolveTaskInstructionsInline(t *testing.T) {
 	defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
 [work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve the issue at {{ resource.id }}."
+instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
 `))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	def := defs[0]
-	if err := resolveTaskInstruction(def, "tasks"); err != nil {
+	if err := resolveTaskInstructions(def, "tasks"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if def.Instruction != "Resolve the issue at {{ resource.id }}." {
@@ -113,52 +113,120 @@ instruction       = "Resolve the issue at {{ resource.id }}."
 	}
 }
 
-func TestResolveTaskInstructionBothInlineAndFile(t *testing.T) {
+func TestResolveTaskInstructionsJoinsElementsWithABlankLine(t *testing.T) {
 	defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
 [work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve the issue."
-instruction_file  = "work.md"
+instructions      = [{ text = "First." }, { text = "Second." }]
 `))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	err = resolveTaskInstruction(defs[0], "tasks")
-	assertDiagnostic(t, err, CodeTaskInstructionAndFile, LayerStructural)
+	if err := resolveTaskInstructions(defs[0], "tasks"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := "First.\n\nSecond."; defs[0].Instruction != want {
+		t.Errorf("Instruction = %q, want %q", defs[0].Instruction, want)
+	}
 }
 
-func TestResolveTaskInstructionFileCrossLayer(t *testing.T) {
+func TestResolveTaskInstructionsElementShapeViolations(t *testing.T) {
+	cases := []struct {
+		name    string
+		element string
+	}{
+		{"both text and file", `{ text = "Resolve the issue.", file = "work.md" }`},
+		{"neither text nor file", `{}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [`+tc.element+`]
+`))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			err = resolveTaskInstructions(defs[0], "tasks")
+			assertDiagnostic(t, err, CodeTaskInstructionElement, LayerStructural)
+		})
+	}
+}
+
+func TestResolveTaskInstructionsElementUnknownField(t *testing.T) {
+	defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue.", bogus = "x" }]
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	err = resolveTaskInstructions(defs[0], "tasks")
+	assertDiagnostic(t, err, CodeFieldUnknown, LayerStructural)
+}
+
+func TestResolveTaskInstructionsFileCrossLayer(t *testing.T) {
 	defs, err := ParseDefinitionDocument(filepath.Join("layer", "tasks", "work.toml"), []byte(`
 [work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction_file  = "../../outside.md"
+instructions      = [{ file = "../../outside.md" }]
 `))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	err = resolveTaskInstruction(defs[0], filepath.Join("layer"))
+	err = resolveTaskInstructions(defs[0], filepath.Join("layer"))
 	assertDiagnostic(t, err, CodeTaskInstructionFileCrossLayer, LayerSemantic)
 }
 
-func TestResolveTaskInstructionFileMissing(t *testing.T) {
+func TestResolveTaskInstructionsFileEscapesViaSymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "secret.md"), []byte("outside content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "tasks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "tasks", "link")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	path := filepath.Join(root, "tasks", "work.toml")
+	defs, err := ParseDefinitionDocument(path, []byte(`
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ file = "link/secret.md" }]
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	err = resolveTaskInstructions(defs[0], root)
+	assertDiagnostic(t, err, CodeTaskInstructionFileCrossLayer, LayerSemantic)
+}
+
+func TestResolveTaskInstructionsFileMissing(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "work.toml")
 	defs, err := ParseDefinitionDocument(path, []byte(`
 [work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction_file  = "work.md"
+instructions      = [{ file = "work.md" }]
 `))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	err = resolveTaskInstruction(defs[0], dir)
+	err = resolveTaskInstructions(defs[0], dir)
 	assertDiagnostic(t, err, CodeTaskInstructionFileMissing, LayerSemantic)
 }
 
-func TestResolveTaskInstructionFileRead(t *testing.T) {
+func TestResolveTaskInstructionsFileRead(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "work.md"), []byte("Resolve the issue at {{ resource.id }}.\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -168,12 +236,12 @@ func TestResolveTaskInstructionFileRead(t *testing.T) {
 [work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction_file  = "work.md"
+instructions      = [{ file = "work.md" }]
 `))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := resolveTaskInstruction(defs[0], dir); err != nil {
+	if err := resolveTaskInstructions(defs[0], dir); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if defs[0].Instruction != "Resolve the issue at {{ resource.id }}.\n" {
@@ -214,11 +282,45 @@ func TestParseTaskDocumentAgainstTasksFixtures(t *testing.T) {
 	if len(defs) != 1 || defs[0].ID != "work" || defs[0].Kind != KindTask {
 		t.Fatalf("tasks/document.toml: unexpected definitions: %+v", defs)
 	}
-	if err := resolveTaskInstruction(defs[0], fixtureRoot); err != nil {
+	if err := resolveTaskInstructions(defs[0], fixtureRoot); err != nil {
 		t.Fatalf("tasks/document.toml: unexpected error resolving instruction: %v", err)
 	}
 	if defs[0].Instruction == "" {
 		t.Fatal("tasks/document.toml: instruction did not resolve from its sidecar")
+	}
+}
+
+// preMigrationDocumentInstruction is the instruction body
+// tasks/document.md carried below its `+++` frontmatter before the task
+// frontmatter document class was retired, byte for byte.
+const preMigrationDocumentInstruction = `Resolve the issue at {{ resource.id }}.
+
+Steps:
+
+1. Understand the issue
+2. Investigate the relevant code
+3. Implement the changes
+4. Write and run tests
+5. Commit and push, then open a pull request
+`
+
+// TestDocumentFixtureConversionIsByteIdentical is the golden comparison the
+// migration promises: a single-element instructions array naming a sidecar
+// file resolves to exactly the instruction text the retired +++ frontmatter
+// document carried, with nothing added, dropped, or reordered.
+func TestDocumentFixtureConversionIsByteIdentical(t *testing.T) {
+	fixtureRoot := filepath.Join(repoRoot(t), "testdata", "config-language")
+	path := filepath.Join(fixtureRoot, "tasks", "document.toml")
+	defs, err := ParseDefinitionDocument(path, readConfigLanguageFixture(t, "tasks/document.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resolveTaskInstructions(defs[0], fixtureRoot); err != nil {
+		t.Fatal(err)
+	}
+	if defs[0].Instruction != preMigrationDocumentInstruction {
+		t.Errorf("instruction is not byte-identical to the pre-migration document:\n got: %q\nwant: %q",
+			defs[0].Instruction, preMigrationDocumentInstruction)
 	}
 }
 

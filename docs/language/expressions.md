@@ -115,7 +115,7 @@ implementation accepts it:
 kind              = "task"
 description       = "A task document whose computed leaf does not type-check"
 resource_observer = "issue_pr"
-instruction       = "Review {{ resource.id }} and record a verdict."
+instructions      = [{ text = "Review {{ resource.id }} and record a verdict." }]
 
 [review.state_schema]
 type = "object"

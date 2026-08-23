@@ -9,7 +9,7 @@ import (
 const goalTaskDocument = `[pursue_goal]
 kind              = "task"
 resource_observer = "goal"
-instruction       = "Pursue the goal at {{ resource.id }}."
+instructions      = [{ text = "Pursue the goal at {{ resource.id }}." }]
 
 [pursue_goal.done_when]
 all = [{ check = "resource.state.goal_status", in = ["open"] }]
@@ -44,7 +44,7 @@ func instantiateGoalTask(t *testing.T, resourceID string, observe ObserveFunc) (
 		t.Fatal(err)
 	}
 	def := defs[0]
-	if err := resolveTaskInstruction(def, "."); err != nil {
+	if err := resolveTaskInstructions(def, "."); err != nil {
 		t.Fatal(err)
 	}
 	v := Validation{From: Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath}}

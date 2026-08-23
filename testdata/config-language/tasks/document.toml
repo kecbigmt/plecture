@@ -1,11 +1,11 @@
 # plect-fixture: result=valid entry=definitions
-# reason: a task declaration is its completion contract and, through instruction_file, the sidecar Markdown asset carrying its instruction.
+# reason: a task declaration is its completion contract and, through its instructions array, the sidecar Markdown asset carrying its instruction.
 
 [work]
 kind              = "task"
 description       = "Implement a fix or feature for an issue and create a PR"
 resource_observer = "issue_pr"
-instruction_file  = "document.md"
+instructions      = [{ file = "document.md" }]
 
 [work.inputs_schema]
 type = "object"

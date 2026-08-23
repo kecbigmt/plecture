@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/kecbigmt/plecture/plecture.schema.json",
   "title": "Plecture configuration language",
-  "description": "Structural schema for Plecture configuration. The root schema describes a definition document: a TOML file whose top-level tables are definition blocks, task included — a task declaration's instruction is either the inline `instruction` string or the content of the sidecar Markdown file `instruction_file` names. The reserved root files and the plugin/catalog manifests have their own entry points too, so the full set of anchors is #definitions, #config, #catalogs, #lock, #plugin, and #catalog. This schema is authoritative for accepted structural shapes until the implementation lands a schema generator whose output is conformance-tested against it. It deliberately does not encode cross-definition or evaluation-context rules, which are Plecture semantic validation, nor expression correctness, which is CEL validation.",
+  "description": "Structural schema for Plecture configuration. The root schema describes a definition document: a TOML file whose top-level tables are definition blocks, task included — a task declaration's instruction is its `instructions` array, each element either inline text or the content of a sidecar Markdown file. The reserved root files and the plugin/catalog manifests have their own entry points too, so the full set of anchors is #definitions, #config, #catalogs, #lock, #plugin, and #catalog. This schema is authoritative for accepted structural shapes until the implementation lands a schema generator whose output is conformance-tested against it. It deliberately does not encode cross-definition or evaluation-context rules, which are Plecture semantic validation, nor expression correctness, which is CEL validation.",
   "$ref": "#/$defs/definitionDocument",
   "$defs": {
     "definitionDocument": {
@@ -1192,7 +1192,7 @@
       "properties": {
         "schema_version": {
           "type": "integer",
-          "description": "The dialect this user config tree is written in. It governs the whole tree \u2014 split definition documents and task documents inherit it \u2014 and is orthogonal to plect_min_version, which is binary compatibility rather than language dialect.",
+          "description": "The dialect this user config tree is written in. It governs the whole tree \u2014 every definition document, split across any number of files, inherits it \u2014 and is orthogonal to plect_min_version, which is binary compatibility rather than language dialect.",
           "$comment": "PLECTURE-CFG-SCHEMA-VERSION-OLDER, PLECTURE-CFG-SCHEMA-VERSION-NEWER: which dialects are accepted is the loader's three-way comparison, not a structural bound, so no range is asserted here."
         },
         "workspace_dirs_root": {
@@ -1528,14 +1528,14 @@
       ]
     },
     "taskDefinition": {
-      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING, PLECTURE-CFG-TASK-INSTRUCTION-AND-FILE when both instruction and instruction_file are declared.",
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING.",
       "type": "object",
       "additionalProperties": false,
       "required": [
         "kind",
         "resource_observer"
       ],
-      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is. Its instruction is either the inline `instruction` string or, when it names an `instruction_file` instead, that sidecar Markdown file's content \u2014 the two are mutually exclusive. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
+      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is. Its instruction is the resolved texts of its `instructions` array, joined by a blank line in declaration order. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
       "properties": {
         "kind": {
           "const": "task"
@@ -1547,13 +1547,12 @@
           "$ref": "#/$defs/staticReference",
           "description": "The resource observer this task is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front."
         },
-        "instruction": {
-          "type": "string",
-          "description": "The instruction, inline. Mutually exclusive with instruction_file."
-        },
-        "instruction_file": {
-          "type": "string",
-          "description": "A sidecar Markdown file carrying the instruction, relative to this declaration's own file and resolved within the same trusted layer. Mutually exclusive with instruction."
+        "instructions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/instructionElement"
+          },
+          "description": "The instruction, as an ordered sequence of segments joined by a blank line. Each segment is inline text or a sidecar file, so a task built by composing segments (a base instruction plus an extension) can append rather than concatenate strings."
         },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument",
@@ -1594,13 +1593,43 @@
             "$ref": "#/$defs/chainDefinition"
           }
         }
-      },
-      "not": {
-        "required": [
-          "instruction",
-          "instruction_file"
-        ]
       }
+    },
+    "instructionElement": {
+      "$comment": "PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT when other than exactly one of text and file is present; PLECTURE-CFG-FIELD-UNKNOWN for any other key.",
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One segment of a task's instructions array: inline text, or a sidecar Markdown file carrying the text, relative to the declaring file and resolved within the same trusted layer.",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "text"
+          ],
+          "not": {
+            "required": [
+              "file"
+            ]
+          }
+        },
+        {
+          "required": [
+            "file"
+          ],
+          "not": {
+            "required": [
+              "text"
+            ]
+          }
+        }
+      ]
     },
     "completionKeyPath": {
       "$comment": "PLECTURE-CFG-FROM-ROOT: a completion key reads resource.state.* or self.state.*.",

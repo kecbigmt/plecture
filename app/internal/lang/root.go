@@ -46,7 +46,7 @@ func DiscoverRoot(root string, reserved map[string]bool) ([]*Definition, error) 
 		}
 		for _, def := range fileDefs {
 			if def.Kind == KindTask {
-				if err := resolveTaskInstruction(def, root); err != nil {
+				if err := resolveTaskInstructions(def, root); err != nil {
 					return err
 				}
 			}

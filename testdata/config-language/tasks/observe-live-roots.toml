@@ -5,7 +5,7 @@
 kind              = "task"
 description       = "Review a pull request and record a verdict"
 resource_observer = "issue_pr"
-instruction       = "Review the pull request at {{ resource.id }} and record your verdict."
+instructions      = [{ text = "Review the pull request at {{ resource.id }} and record your verdict." }]
 
 [review.inputs_schema]
 type = "object"

@@ -5,7 +5,7 @@
 kind              = "task"
 description       = "Track one goal whose file cannot be parsed"
 resource_observer = "goal"
-instruction       = "Pursue the goal at {{ resource.id }} until its checklist is satisfied."
+instructions      = [{ text = "Pursue the goal at {{ resource.id }} until its checklist is satisfied." }]
 
 [pursue_goal.done_when]
 all = [

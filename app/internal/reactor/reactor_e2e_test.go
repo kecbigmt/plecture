@@ -26,7 +26,7 @@ func newE2EConfig(t *testing.T) *config.Config {
 kind              = "task"
 description       = "work fixture"
 resource_observer = "fixture"
-instruction       = "Carry out the work."
+instructions      = [{ text = "Carry out the work." }]
 
 [work.done_when]
 all = [
@@ -131,7 +131,7 @@ func newPendingJudgeConfig(t *testing.T) *config.Config {
 kind              = "task"
 description       = "work fixture"
 resource_observer = "fixture"
-instruction       = "Carry out the work."
+instructions      = [{ text = "Carry out the work." }]
 
 [work.done_when]
 all = [

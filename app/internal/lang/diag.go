@@ -43,7 +43,7 @@ const (
 	CodeShellInterpolation            Code = "PLECTURE-CFG-SHELL-INTERPOLATION"
 	CodeRefDynamic                    Code = "PLECTURE-CFG-REF-DYNAMIC"
 	CodeChannelTimeoutRoot            Code = "PLECTURE-CFG-CHANNEL-TIMEOUT-ROOT"
-	CodeTaskInstructionAndFile        Code = "PLECTURE-CFG-TASK-INSTRUCTION-AND-FILE"
+	CodeTaskInstructionElement        Code = "PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT"
 	CodeUnknownRef                    Code = "PLECTURE-CFG-UNKNOWN-REF"
 	CodeKindMismatch                  Code = "PLECTURE-CFG-KIND-MISMATCH"
 	CodeIDDuplicate                   Code = "PLECTURE-CFG-ID-DUPLICATE"
@@ -92,7 +92,7 @@ var codeLayers = map[Code][]Layer{
 	CodeShellInterpolation:            {LayerStructural},
 	CodeRefDynamic:                    {LayerStructural},
 	CodeChannelTimeoutRoot:            {LayerStructural},
-	CodeTaskInstructionAndFile:        {LayerStructural},
+	CodeTaskInstructionElement:        {LayerStructural},
 	CodeUnknownRef:                    {LayerSemantic},
 	CodeKindMismatch:                  {LayerSemantic},
 	CodeIDDuplicate:                   {LayerSemantic},
@@ -126,7 +126,7 @@ func Codes() []Code {
 		CodeFieldRequired, CodeFieldType, CodeSchemaVersionOlder, CodeSchemaVersionNewer,
 		CodeValueFromAndExpr, CodeValueDefaultAndOptional, CodeValueTagUnknown, CodeValueTagSurface,
 		CodeActionTypeUnknown, CodeActionVariant, CodeActionBinAndCommand, CodeShellInterpolation,
-		CodeRefDynamic, CodeChannelTimeoutRoot, CodeTaskInstructionAndFile, CodeUnknownRef,
+		CodeRefDynamic, CodeChannelTimeoutRoot, CodeTaskInstructionElement, CodeUnknownRef,
 		CodeKindMismatch, CodeIDDuplicate,
 		CodeRefAliasRequired, CodeRefCrossPlugin,
 		CodeTaskInstructionFileMissing, CodeTaskInstructionFileCrossLayer, CodeFromRoot, CodeFromPath,

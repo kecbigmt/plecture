@@ -19,7 +19,7 @@ func TestKindSurfaceRejectsAForeignField(t *testing.T) {
 			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-instruction       = "Resolve the issue."
+instructions      = [{ text = "Resolve the issue." }]
 
 [work.setup]
 type = "exec"

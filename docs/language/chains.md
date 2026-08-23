@@ -27,7 +27,7 @@ document that declared it.
 kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
 resource_observer = "goal"
-instruction       = "Pursue the goal at {{ resource.id }} until its checklist is satisfied."
+instructions      = [{ text = "Pursue the goal at {{ resource.id }} until its checklist is satisfied." }]
 
 [pursue_goal.done_when]
 all = [
@@ -89,7 +89,7 @@ chain whose spawned session is about something else says so.
 kind              = "task"
 description       = "Implement a fix and hand the pull request to a reviewer"
 resource_observer = "issue_pr"
-instruction       = "Resolve the issue at {{ resource.id }} and open a pull request."
+instructions      = [{ text = "Resolve the issue at {{ resource.id }} and open a pull request." }]
 
 [work.done_when]
 all = [

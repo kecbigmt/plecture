@@ -5,7 +5,7 @@
 kind              = "task"
 description       = "A task document whose body reaches for workflow wiring"
 resource_observer = "issue_pr"
-instruction       = "Review {{ resource.id }} in the pane {{ nodes.pane.outputs.session_name }}."
+instructions      = [{ text = "Review {{ resource.id }} in the pane {{ nodes.pane.outputs.session_name }}." }]
 
 [review.done_when]
 all = [{ check = "resource.state.resource_kind", in = ["pull", "issue"] }]

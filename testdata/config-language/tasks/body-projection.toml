@@ -5,14 +5,14 @@
 kind              = "task"
 description       = "Review a pull request, addressing it by what the observer reports"
 resource_observer = "issue_pr"
-instruction       = """
+instructions      = [{ text = """
 Review {{ resource.id }} at revision {{ resource.state.revision }}.
 
 You are working as session {{ session.name }}. The last verdict recorded here
 was against {{ self.state.verdict_revision }}.
 
 Additional instructions: {{ inputs.instruction }}
-"""
+""" }]
 
 [review.inputs_schema]
 type = "object"

@@ -27,11 +27,11 @@ The kind vocabulary is `effect`, `task`, `channel`, `workflow`,
 
 Every kind is declared the same way, `task` included: a `[<id>]` table
 carrying `kind`, in a TOML definition document. A task's instruction — the one
-field with a natural home outside TOML — is either an inline `instruction`
-string or the content of a sidecar Markdown file named by `instruction_file`,
-resolved relative to the declaring file. Nothing else changes for it: the id
-is the table name, the id grammar holds, the namespace is shared, and
-references resolve the same way. See [`tasks.md`](tasks.md).
+value with a natural home outside TOML — is its `instructions` array: each
+element is either inline `text` or the content of a sidecar Markdown file
+named by `file`, resolved relative to the declaring file. Nothing else
+changes for it: the id is the table name, the id grammar holds, the namespace
+is shared, and references resolve the same way. See [`tasks.md`](tasks.md).
 
 A kind uses its bare concept name when the declaration's runtime counterpart
 is its own instance: effects instantiate into task instances, channels into
@@ -90,9 +90,9 @@ ancestor overlay's `.plect/` directory.
 
 Within a definition root, every `.toml` file that is not a reserved root file
 is read recursively in lexicographic order by slash-separated relative path. A
-`.md` file is never itself a definition: one named by some declaration's
-`instruction_file` is that declaration's instruction sidecar, and any other is
-a template asset the language does not read.
+`.md` file is never itself a definition: one an instructions element's `file`
+names is that declaration's instruction sidecar, and any other is a template
+asset the language does not read.
 Subdirectories are author organization only: one definition per file and
 kind-named directories such as `config/effects/` are equally valid and mean the
 same thing.

@@ -22,7 +22,7 @@ const reviewDocument = `[review]
 kind              = "task"
 description       = "Review a resource and record a verdict"
 resource_observer = "issue_pr"
-instruction       = "Review {{ resource.id }} and record a verdict against its current revision."
+instructions      = [{ text = "Review {{ resource.id }} and record a verdict against its current revision." }]
 
 [review.inputs_schema]
 type = "object"
@@ -625,7 +625,7 @@ const judgedDocument = `[work]
 kind              = "task"
 description       = "Do the work and wait for an independent verdict"
 resource_observer = "issue_pr"
-instruction       = "Do the work at {{ resource.id }}."
+instructions      = [{ text = "Do the work at {{ resource.id }}." }]
 
 [work.done_when]
 all = [
@@ -714,7 +714,7 @@ const gatelessDocument = `[note]
 kind              = "task"
 description       = "Work with nothing to reconfirm"
 resource_observer = "issue_pr"
-instruction       = "Note something about {{ resource.id }}."
+instructions      = [{ text = "Note something about {{ resource.id }}." }]
 `
 
 // The outputs write path reads both kinds through the shared loader, so a
@@ -724,8 +724,8 @@ func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
 	store := testStore(t)
 	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	// A declaration that parses but carries a field outside the task surface:
-	// a `.md` that no instruction_file names is a template asset rather than
-	// a broken document, so it would not fail the load.
+	// a `.md` that no instructions element's file names is a template asset
+	// rather than a broken document, so it would not fail the load.
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "broken.toml"), []byte("[broken]\nkind = \"task\"\nbogus = 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -752,13 +752,13 @@ func TestTaskSetup_TaskDocumentBodyReadsItsInputsThroughTheCarriedForms(t *testi
 kind              = "task"
 description       = "Review a resource"
 resource_observer = "issue_pr"
-instruction       = """
+instructions      = [{ text = """
 Review {{ resource.id }}.
 {{- if get .Inputs "instruction" ""}}
 
 Additional instructions: {{get .Inputs "instruction" ""}}
 {{- end}}
-"""
+""" }]
 
 [review.inputs_schema]
 type = "object"

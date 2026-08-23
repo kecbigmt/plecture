@@ -65,8 +65,9 @@ func asTableArray(v any) ([]map[string]any, bool) {
 
 // Definition is one discovered `[<id>] kind = "<kind>"` table, whatever file
 // it came from. Body holds every field of the table except id and kind, with
-// nested tables and arrays exactly as TOML decoded them. Instruction is the
-// prose below a task document's closing `+++`, empty for every other kind.
+// nested tables and arrays exactly as TOML decoded them. Instruction is a
+// task's `instructions` array elements resolved and joined, empty for every
+// other kind and for a task that declares none.
 type Definition struct {
 	ID          string
 	Kind        Kind

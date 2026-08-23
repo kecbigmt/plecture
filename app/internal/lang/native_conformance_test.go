@@ -178,7 +178,7 @@ func TestNativeInstantiationFixtures(t *testing.T) {
 				t.Fatalf("the document itself loads: %v", err)
 			}
 			def := defs[0]
-			if err := resolveTaskInstruction(def, fixtureRoot); err != nil {
+			if err := resolveTaskInstructions(def, fixtureRoot); err != nil {
 				t.Fatalf("the document itself loads: %v", err)
 			}
 			v := Validation{
@@ -223,7 +223,7 @@ func nativeLoad(path, body string, context []*Definition, root string) error {
 	}
 	for _, def := range defs {
 		if def.Kind == KindTask {
-			if err := resolveTaskInstruction(def, root); err != nil {
+			if err := resolveTaskInstructions(def, root); err != nil {
 				return err
 			}
 		}

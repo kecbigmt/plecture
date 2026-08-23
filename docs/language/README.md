@@ -137,14 +137,14 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-SHELL-INTERPOLATION` | structural | Shell source is literal; it carries no Plecture or CEL interpolation. |
 | `PLECTURE-CFG-REF-DYNAMIC` | structural | A statically discoverable field carries a computed value. |
 | `PLECTURE-CFG-CHANNEL-TIMEOUT-ROOT` | structural | A channel `timeout` reads author-declared parameters only. |
-| `PLECTURE-CFG-TASK-INSTRUCTION-AND-FILE` | structural | A task declares both `instruction` and `instruction_file`. |
+| `PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT` | structural | An `instructions` element declares other than exactly one of `text` and `file`. |
 | `PLECTURE-CFG-UNKNOWN-REF` | semantic | A reference resolves to no definition. |
 | `PLECTURE-CFG-KIND-MISMATCH` | semantic | A reference site's expected kind differs from the target's declared kind. |
 | `PLECTURE-CFG-ID-DUPLICATE` | semantic | One layer declares the same definition id twice. |
 | `PLECTURE-CFG-REF-ALIAS-REQUIRED` | semantic | A user-owned reference to catalog content omits its catalog alias. |
 | `PLECTURE-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
-| `PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING` | semantic | A task's `instruction_file` names a file that cannot be read. |
-| `PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER` | semantic | A task's `instruction_file` resolves outside the declaring layer. |
+| `PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING` | semantic | An `instructions` element's `file` names a file that cannot be read. |
+| `PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER` | semantic | An `instructions` element's `file` resolves outside the declaring layer. |
 | `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A value reads a root the containing surface does not offer. It is structural where a surface's roots are a fixed prefix set, as on an effect's `outputs.bind` and a task document's completion leaves, and semantic otherwise. |
 | `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
 | `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | instantiation | An instance's resource does not resolve to the observer its task document declares. |
@@ -172,11 +172,12 @@ conditional and defaulting forms until that decision is made.
 
 This language governs configuration definitions in one file form: TOML
 documents, whose top-level tables are definition blocks. A task declaration's
-instruction is either an inline `instruction` string or the content of the
-sidecar Markdown file its `instruction_file` names; either way, it is a
-Plecture value the declaration carries, not a second document class.
+instruction is its `instructions` array: each element is either inline `text`
+or the content of a sidecar Markdown file its `file` names, joined with a
+blank line in declaration order. Either way, it is a Plecture value the
+declaration carries, not a second document class.
 
-A Markdown file under a definition root that no `instruction_file` names is a
-template asset rather than a definition. Template assets keep their own
-interpolation model, and a task's instruction is the one place where that
-model and this language meet — see [`tasks.md`](tasks.md).
+A Markdown file under a definition root that no instructions element's `file`
+names is a template asset rather than a definition. Template assets keep
+their own interpolation model, and a task's instruction is the one place
+where that model and this language meet — see [`tasks.md`](tasks.md).

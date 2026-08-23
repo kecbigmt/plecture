@@ -5,7 +5,7 @@
 kind              = "task"
 description       = "A task document naming its spawned session's resource from a private local"
 resource_observer = "issue_pr"
-instruction       = "Resolve the issue at {{ resource.id }}."
+instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ judge = "acceptance criteria are satisfied", id = "ac-met" }]

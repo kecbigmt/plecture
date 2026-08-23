@@ -40,10 +40,10 @@ type TaskDocument struct {
 	// exhaustion.
 	Budget map[string]any
 	Chains []DocumentChain
-	// Instruction is the declaration's inline instruction or, when it names an
-	// instruction_file instead, that sidecar's content. Its `{{ <path> }}`
-	// projections are part of the language, validated at load against the
-	// roots this surface declares.
+	// Instruction is the declaration's `instructions` array elements, resolved
+	// (inline text, or a named sidecar's content) and joined by a blank line.
+	// Its `{{ <path> }}` projections are part of the language, validated at
+	// load against the roots this surface declares.
 	Instruction string
 	BaseDir     string
 	SourcePath  string

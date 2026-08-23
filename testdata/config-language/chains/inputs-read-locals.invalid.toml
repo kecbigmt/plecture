@@ -5,7 +5,7 @@
 kind              = "task"
 description       = "A task document leaking a private local into its chain"
 resource_observer = "goal"
-instruction       = "Pursue the goal at {{ resource.id }}."
+instructions      = [{ text = "Pursue the goal at {{ resource.id }}." }]
 
 [[pursue_goal.chains]]
 id        = "review"

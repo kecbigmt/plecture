@@ -27,41 +27,53 @@ and four diagnostic codes existed only to police that one file's shape
 A task is an ordinary TOML declaration: `[<id>] kind = "task"` in any
 `tasks/*.toml` file, discovered and parsed exactly like every other kind. The
 instruction moves to a value the declaration carries rather than a document's
-body, in one of two mutually exclusive spellings:
+body: `[[<id>.instructions]]`, an ordered array. Each element carries exactly
+one of:
 
-- `instruction = "..."` — inline, for a body short enough to read as a
-  string (a TOML triple-quoted string for a multi-line one).
-- `instruction_file = "<relative path>"` — a sidecar Markdown file, resolved
-  relative to the declaring TOML file. The sidecar carries no frontmatter of
-  its own; it is plain prose, and it renders correctly wherever Markdown does.
-  Its `{{ <path> }}` projections are validated at load exactly as the old
-  body's were.
+- `text = "..."` — inline, for a segment short enough to read as a string
+  (a TOML triple-quoted string for a multi-line one).
+- `file = "<relative path>"` — a sidecar Markdown file, resolved relative to
+  the declaring TOML file. The sidecar carries no frontmatter of its own; it
+  is plain prose, and it renders correctly wherever Markdown does. Its
+  `{{ <path> }}` projections are validated at load exactly as the old body's
+  were.
 
-Declaring both is a load error (`PLECTURE-CFG-TASK-INSTRUCTION-AND-FILE`,
-structural — the schema can see both keys present). `instruction_file` must
-resolve within the same trusted definition-root layer as the declaring file;
-a path escaping it (`PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER`) or
-naming no readable file (`PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING`) is a
-load error. Both are semantic, not structural: neither is checkable from the
-TOML shape alone, only from resolving the reference against the filesystem
-and the layer boundary — the same reasoning that makes
-`PLECTURE-CFG-REF-CROSS-PLUGIN` semantic rather than structural.
+The elements' resolved texts join with a blank line, in declaration order, to
+form the instruction. One element is the common case; the array shape exists
+because a forthcoming task-extension design appends instruction segments to a
+base document, and an array makes that append structural — a new element —
+rather than string concatenation. This is a mid-flight amendment to the
+initially ratified design, which specified a scalar `instruction` /
+`instruction_file` pair; the array is a strict generalization; a
+single-element array is the scalar design's exact behavior, restated.
 
-The four retired codes are removed from the language entirely — not
-deprecated, not kept as an accepted-invalid fixture — because the rule they
-enforced (a `+++`-delimited document is the one shape a task declaration may
-take) no longer exists to violate. `docs/language/README.md`'s diagnostics
-table and `app/internal/lang`'s `Codes()`/`codeLayers` registry drop them
-together, held to the same set by `TestCodesMatchDocumentedTable`.
+An element declaring other than exactly one of `text` and `file` is a load
+error (`PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT`, structural — the schema can
+see the key shape). A `file` must resolve within the same trusted
+definition-root layer as the declaring file, after resolving symlinks to
+their real target so a symlink planted inside the layer cannot smuggle a read
+from outside it; a path escaping it
+(`PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER`) or naming no readable file
+(`PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING`) is a load error. Both are
+semantic, not structural: neither is checkable from the TOML shape alone,
+only from resolving the reference against the filesystem and the layer
+boundary — the same reasoning that makes `PLECTURE-CFG-REF-CROSS-PLUGIN`
+semantic rather than structural.
 
-An `instruction_file` pointing at a missing file is a load diagnostic — fail
-loud, the same posture the language takes everywhere else. The reverse — a
-`.md` file under a definition root that no `instruction_file` names — has no
-load-time moment to surface at, since nothing references it to begin with;
-it is instead the repository's own concern:
-`scripts/check-instruction-orphans.sh`, at the same CI tier as
-`check-comment-references.sh`, flags one over `plugins/*/config` and the
-`testdata/config-language` corpus.
+The four retired frontmatter-era codes are removed from the language
+entirely — not deprecated, not kept as an accepted-invalid fixture — because
+the rule they enforced (a `+++`-delimited document is the one shape a task
+declaration may take) no longer exists to violate. `docs/language/README.md`'s
+diagnostics table and `app/internal/lang`'s `Codes()`/`codeLayers` registry
+drop them together, held to the same set by `TestCodesMatchDocumentedTable`.
+
+A `file` pointing at a missing file is a load diagnostic — fail loud, the
+same posture the language takes everywhere else. The reverse — a `.md` file
+under a definition root that no element's `file` names — has no load-time
+moment to surface at, since nothing references it to begin with; it is
+instead the repository's own concern: `scripts/check-instruction-orphans.sh`,
+at the same CI tier as `check-comment-references.sh`, flags one over
+`plugins/*/config` and the `testdata/config-language` corpus.
 
 ## Consequences
 
@@ -73,8 +85,9 @@ breaking change and ships with a one-time migration
 (`docs/migrations/task-frontmatter-migration.md`), including a mechanical
 shell conversion and a backup step, per the pre-1.0 compatibility policy. The
 migration was run against a copy of a real host configuration's seven task
-documents before this decision shipped; all seven loaded, with instructions
-resolved unchanged from their sidecar files.
+documents, plus a synthetic document nested below a subdirectory to exercise
+the recursive case, before this decision shipped; all eight loaded, with
+instructions resolved unchanged from their sidecar files.
 
 The shipped catalog carries no task documents as of this decision (an earlier
 slice moved shipped process documents to host ownership), so the shipped side
@@ -83,21 +96,28 @@ changes.
 
 `app/internal/lang`'s `DiscoverRoot` drops its `.md`-frontmatter branch
 entirely: every discovered definition now comes from a `.toml` file, and a
-`.md` under a definition root is resolved, if at all, only when a task's
-`instruction_file` names it — during discovery, not as a second discovery
-pass. `ParseTaskDocument` and the frontmatter delimiter constant are deleted.
-`plecture.schema.json` drops its `#task` anchor (the frontmatter's own
-single-declaration schema entry) along with the `not` clause that banned
+`.md` under a definition root is resolved, if at all, only when an
+`instructions` element's `file` names it — during discovery, not as a second
+discovery pass. `ParseTaskDocument` and the frontmatter delimiter constant are
+deleted. `plecture.schema.json` drops its `#task` anchor (the frontmatter's
+own single-declaration schema entry) along with the `not` clause that banned
 `kind = "task"` from the ordinary `definition` entry; `taskDefinition` joins
-`definition`'s `oneOf` like every other kind's schema does.
+`definition`'s `oneOf` like every other kind's schema does, and a new
+`instructionElement` `$def` states the per-element XOR the same way
+`execAction`'s `bin` / `command` pair already does.
 
 The conformance corpus's task fixtures — and the `chains/`, `expressions/`,
 `observers/`, and `values/` fixtures written as task documents to exercise a
-task-only construct — convert from `.md` to `.toml`. Two retired-rule
-fixtures (`tasks/bodiless-kind.invalid.md`,
-`tasks/no-frontmatter.invalid.md`, `tasks/two-blocks.invalid.md`) have no
-replacement: the rules they pinned down no longer exist to test. Three new
-fixtures exercise the new diagnostics.
+task-only construct — convert from `.md` to `.toml`. Three retired-rule
+fixtures (`tasks/bodiless-kind.invalid.md`, `tasks/no-frontmatter.invalid.md`,
+`tasks/two-blocks.invalid.md`) have no replacement: the rules they pinned
+down no longer exist to test. Three new fixtures exercise the new
+diagnostics.
+
+Byte-identity with the pre-migration shape is a golden test, not only a claim:
+`app/internal/lang`'s conformance suite loads `tasks/document.toml`'s
+single-element `instructions` array through the sidecar path and asserts the
+result equals the retired frontmatter document's body, literal byte for byte.
 
 ## Alternatives considered
 
@@ -109,19 +129,37 @@ changes what a reader sees on the hosting platform config is reviewed and
 linked from. The illegibility is a property of the file class itself, not of
 how this repository authored any particular document.
 
+### A scalar `instruction` / `instruction_file` pair, no array
+
+The design this ADR originally ratified. Superseded mid-flight: a forthcoming
+task-extension design needs to append an instruction segment to a base
+document without string concatenation, which a scalar pair cannot express
+without inventing a second mechanism later. Making the body an array now —
+while the surface is already being cut over — is the one gap this decision
+had a natural chance to close.
+
 ### A single `instruction` field, inline only
 
 Considered and rejected: the reason a task document existed as a separate
 Markdown file in the first place was that a real instruction — with fenced
 code blocks, multi-paragraph steps, and quoted TOML/shell examples — breaks
 TOML triple-quote escaping and reads badly as a string literal even when it
-technically parses. `instruction_file` keeps that document-shaped body
+technically parses. A `file` segment keeps that document-shaped body
 available without resurrecting a second file class: the sidecar is inert
 prose, not a declaration.
 
-### A single `instruction_file` field, no inline form
+### A single `file`-only segment shape, no inline `text`
 
 Rejected as needless ceremony for the common case of a one-line instruction,
 which every effect-kind field with a `_file` counterpart (`inputs_schema` /
 `inputs_schema_file`, `state_schema` / `state_schema_file`) already avoids by
 offering both spellings.
+
+### Lexical path containment only, no symlink resolution
+
+Rejected: a symlink planted inside the trusted layer, pointing outside it,
+would pass a purely lexical `..`-free check while still handing the reader
+outside content — the containment boundary has to be a claim about the real
+file being read, not about the path string naming it. Resolution follows
+symlinks (falling back to the parent directory's real path when the leaf
+itself does not exist yet) before the containment check runs.

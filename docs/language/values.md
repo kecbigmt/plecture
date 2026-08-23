@@ -161,7 +161,7 @@ inputs.
 kind              = "task"
 description       = "Review a resource and record a verdict against its revision"
 resource_observer = "issue_pr"
-instruction       = "Review {{ resource.id }} and record a verdict against its current revision."
+instructions      = [{ text = "Review {{ resource.id }} and record a verdict against its current revision." }]
 
 [review.state_schema]
 type = "object"

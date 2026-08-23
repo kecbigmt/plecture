@@ -171,7 +171,7 @@ func TestReferencesTaskInNodeFixtureIsRejected(t *testing.T) {
 	}
 	// "review" is a task defined elsewhere in the same user layer — the
 	// fixture is an excerpt that assumes it, per its own reason line.
-	review, err := ParseDefinitionDocument("review.toml", []byte("[review]\nkind = \"task\"\ninstruction = \"body\"\n"))
+	review, err := ParseDefinitionDocument("review.toml", []byte("[review]\nkind = \"task\"\ninstructions = [{ text = \"body\" }]\n"))
 	if err != nil {
 		t.Fatalf("unexpected error building the companion task: %v", err)
 	}

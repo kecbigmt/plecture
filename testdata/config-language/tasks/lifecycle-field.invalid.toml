@@ -5,7 +5,7 @@
 kind              = "task"
 description       = "A task document that tries to own a lifecycle"
 resource_observer = "issue_pr"
-instruction       = "Resolve the issue at {{ resource.id }}."
+instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
 
 [broken_task.setup]
 type = "exec"

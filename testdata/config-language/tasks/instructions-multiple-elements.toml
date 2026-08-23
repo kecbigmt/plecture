@@ -1,0 +1,11 @@
+# plect-fixture: result=valid entry=definitions
+# reason: instructions is an ordered array; a document composed of more than one segment — mixing an inline element with a sidecar file — joins them with a blank line, in declaration order.
+
+[work]
+kind              = "task"
+description       = "A task whose instruction is composed of more than one segment"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }, { file = "document.md" }]
+
+[work.done_when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]

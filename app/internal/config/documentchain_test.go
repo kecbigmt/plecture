@@ -69,7 +69,7 @@ func TestDocumentChain_Validate(t *testing.T) {
 kind              = "task"
 description       = "Pursue one goal"
 resource_observer = "issue_pr"
-instruction       = "Pursue the goal."
+instructions      = [{ text = "Pursue the goal." }]
 
 [pursue.done_when]
 all = [{ judge = "the goal is achieved", id = "goal-met" }]
@@ -129,7 +129,7 @@ func TestValidateTaskDocuments_ChainReferences(t *testing.T) {
 kind              = "task"
 description       = "Pursue one goal"
 resource_observer = "issue_pr"
-instruction       = "Pursue the goal."
+instructions      = [{ text = "Pursue the goal." }]
 
 [pursue.done_when]
 all = [{ judge = "the goal is achieved", id = "goal-met" }]

@@ -5,7 +5,7 @@
 kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
 resource_observer = "goal"
-instruction       = "Pursue the goal at {{ resource.id }} until its checklist is satisfied."
+instructions      = [{ text = "Pursue the goal at {{ resource.id }} until its checklist is satisfied." }]
 
 [pursue_goal.done_when]
 all = [

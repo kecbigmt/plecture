@@ -5,7 +5,7 @@
 kind              = "task"
 description       = "Implement a fix and hand the pull request to a reviewer"
 resource_observer = "issue_pr"
-instruction       = "Resolve the issue at {{ resource.id }} and open a pull request."
+instructions      = [{ text = "Resolve the issue at {{ resource.id }} and open a pull request." }]
 
 [work.done_when]
 all = [

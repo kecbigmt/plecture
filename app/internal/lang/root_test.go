@@ -31,7 +31,7 @@ kind = "workflow"
 [[review_session.nodes]]
 uses = "runtime"
 `)
-	mustWrite(t, dir, "tasks/work.toml", "[work]\nkind = \"task\"\ninstruction_file = \"work.md\"\n")
+	mustWrite(t, dir, "tasks/work.toml", "[work]\nkind = \"task\"\ninstructions = [{ file = \"work.md\" }]\n")
 	mustWrite(t, dir, "tasks/work.md", "Do it.\n")
 	mustWrite(t, dir, "readme.md", "Just prose, not a definition.\n")
 

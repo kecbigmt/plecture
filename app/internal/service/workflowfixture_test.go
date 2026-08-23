@@ -322,7 +322,7 @@ func taskDocumentFixtureDoc(d taskFixture) string {
 		return strings.HasPrefix(strings.TrimSpace(line), "requires ")
 	}), "\n")
 	var b strings.Builder
-	fmt.Fprintf(&b, "[%s]\nkind = \"task\"\ndescription = %q\nresource_observer = %q\ninstruction = %q\n",
+	fmt.Fprintf(&b, "[%s]\nkind = \"task\"\ndescription = %q\nresource_observer = %q\ninstructions = [{ text = %q }]\n",
 		d.id, d.id+" fixture", fixtureObserverID, "Carry out "+d.id+".")
 	b.WriteString(bare)
 	if keys := fixtureStateKeys(d.extra, "self"); len(keys) > 0 {
