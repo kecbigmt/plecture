@@ -1,14 +1,12 @@
 # github
 
-The GitHub catalog plugin: a workspace provider, a resource observation
-contract, watcher subscription wiring, and the work/review/respond/investigate
-task pack, reconciled from the production GitHub configuration this repository
-was originally bootstrapped with.
+The GitHub catalog plugin: a workspace provider and a resource observation
+contract, plus watcher subscription wiring, reconciled from the production
+GitHub configuration this repository was originally bootstrapped with.
 
 plect core knows nothing about GitHub. Everything GitHub-shaped lives here:
-URL parsing, branch resolution, worktree acquisition, check-run/status rollup,
-linked-PR discovery, and the four task instructions a GitHub-flavored coding
-session runs through.
+URL parsing, branch resolution, worktree acquisition, check-run/status
+rollup, and linked-PR discovery.
 
 ## Contents
 
@@ -24,11 +22,6 @@ session runs through.
   (`plect resource status`): resource kind, CI check rollup, issue
   completion, revision, linked PR, mergeability, and GitHub's own aggregate
   review decision.
-- `tasks/{work,review,respond,investigate}.md` — the task pack a
-  GitHub-flavored workflow dispatches into a session it has already built.
-  Each is a task document: its body is the instruction, and its `done_when`
-  reads the resource observer it declares. `work` and `investigate` are
-  written for `issue`; `respond` and `review` for `pull`.
 - `tasks/gh_guard.toml` — produces a directory an agent-runtime plugin's
   task composes as a generic PATH-prepend input (see
   `docs/design/plugin-boundary-contracts.md`'s GitHub CLI Guard section),
@@ -38,8 +31,9 @@ session runs through.
   forgotten or de-prioritized "don't merge" instruction. Opt-in: wire it
   only into workflows that want it. See `scripts/gh-guard_selftest.sh` at
   the repository root for its behavior tests.
-Team-specific process (a project-board integration, a PR-description
-convention, a code-review house style) is intentionally not shipped here —
+Task instructions (`work`, `review`, `respond`, `investigate`) and
+team-specific process (a project-board integration, a PR-description
+convention, a code-review house style) are intentionally not shipped here —
 see "Residual config" below.
 
 Out of scope for this plugin: which agent CLI runs the session (a Claude or
@@ -127,9 +121,11 @@ What stays in your own config after enabling this plugin:
   branching from `develop`, say).
 - Whether you compose the GitHub workspace provider/tasks with a Claude,
   Codex, or other agent workflow pack.
-- Project-board integration, PR-description conventions, or house review
-  style — add these as your own `tasks/work.md` / `tasks/review.md` task
-  document in a trusted config layer, which replaces the shipped one by id,
-  since they are team-specific rather than durable GitHub behavior.
+- The `work` / `review` / `respond` / `investigate` task instructions
+  themselves, project-board integration, PR-description conventions, and
+  house review style — these are yours now: declare your own
+  `tasks/work.md`, `tasks/review.md`, and so on, in a trusted config layer.
+  See `docs/language/tasks.md` for what a task document needs (`done_when`,
+  `resource_observer`, `[[chains]]`).
 - Running `github-watcher serve` as a background daemon, and its delivery
   configuration (`PLECT_BUS_SOCKET` / `PLECT_BUS_TOKEN`).

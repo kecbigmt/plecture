@@ -55,6 +55,12 @@ Each hit is one of two cases, and the id alone does not say which:
 | `work`, `review`, `investigate`, `respond` | task document | `official.github.work`, and so on |
 | `pursue_goal`, `goal_review` | task document | `official.okf.pursue_goal`, `official.okf.goal_review` |
 
+These six task documents are no longer shipped by the `github` and `okf`
+plugins: process instructions moved to host ownership, so there is no
+plugin address left to qualify a reference to. Declare them as your own
+task documents instead — see the `github` and `okf` plugin READMEs and
+`docs/language/tasks.md` for what a task document needs.
+
 Substitute your own alias wherever you registered the catalog under something other than `official`.
 
 **You do not have to find them all by reading.** A reference that resolves to nothing names the address it was reaching for:
