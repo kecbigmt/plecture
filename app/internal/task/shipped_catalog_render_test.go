@@ -3,11 +3,13 @@ package task
 import (
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	"github.com/kecbigmt/plecture/app/internal/template"
 )
 
 // loadShippedCatalogTasks returns every shipped effect declaration plus the
@@ -276,5 +278,57 @@ func TestShippedCatalog_McpServersRejectsQuoteBreakout(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no shipped task declares an mcp_servers input; this test is checking nothing")
+	}
+}
+
+// TestShippedCatalog_TaskDocumentInstructionsRender guards the six task
+// documents this repository ships (official.github's work/review/
+// investigate/respond, official.okf's pursue_goal/goal_review) against a
+// body that fails to render: an unresolvable `{{ resource.id }}` projection,
+// or an instruction-body Go-template syntax error a plugin author would
+// otherwise only discover the first time a session dispatched against it.
+func TestShippedCatalog_TaskDocumentInstructionsRender(t *testing.T) {
+	cfg := shippedCatalogConfig(t)
+	docs, err := cfg.LoadTaskDocuments("")
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments(shipped catalog): %v", err)
+	}
+
+	for _, address := range []string{
+		"official.github.work",
+		"official.github.review",
+		"official.github.investigate",
+		"official.github.respond",
+		"official.okf.pursue_goal",
+		"official.okf.goal_review",
+	} {
+		doc, ok := docs[address]
+		if !ok {
+			t.Errorf("shipped catalog task document %q not found", address)
+			continue
+		}
+
+		env := lang.Roots{
+			"resource": map[string]any{"id": "https://github.com/acme/widgets/issues/1", "state": map[string]any{}},
+			"self":     map[string]any{"state": map[string]any{}},
+		}
+		rendered, err := lang.RenderInstruction(doc.Instruction, env)
+		if err != nil {
+			t.Errorf("task document %q: RenderInstruction: %v", address, err)
+			continue
+		}
+		body, err := template.RenderBody(doc.ID, rendered, template.Vars{
+			Mode:          doc.ID,
+			ResourceID:    "https://github.com/acme/widgets/issues/1",
+			SessionInputs: map[string]any{},
+			Inputs:        map[string]any{"instruction": ""},
+		})
+		if err != nil {
+			t.Errorf("task document %q: RenderBody: %v", address, err)
+			continue
+		}
+		if strings.TrimSpace(body) == "" {
+			t.Errorf("task document %q rendered to an empty body", address)
+		}
 	}
 }

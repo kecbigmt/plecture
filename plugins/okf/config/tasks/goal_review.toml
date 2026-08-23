@@ -1,0 +1,36 @@
+# goal_review: a session that reviews one local-okf goal, spawned by a
+# pursue_goal chain once the goal's checklist is satisfied. Its subject is
+# the goal file being reviewed, not the target session's resource.
+#
+# There is no third party to judge a reviewer, so completion is this
+# reviewer's self-report of "I recorded the goal-met verdict on the target
+# session", captured as the revision it was recorded against so a later goal
+# file edit invalidates it automatically.
+[goal_review]
+kind              = "task"
+description       = "Review a local-okf goal file and record whether it is achieved"
+resource_observer = "okf_goal"
+instructions      = [{ file = "goal_review.md" }]
+
+[goal_review.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[goal_review.inputs_schema.properties]
+instruction = { type = "string" }
+
+[goal_review.state_schema]
+type = "object"
+
+[goal_review.state_schema.properties]
+verdict_revision = { type = "string" }
+
+[goal_review.done_when]
+all = [
+  { check = "resource.state.goal_parse_status", in = ["SUCCESS"] },
+  { expr = "self.state.verdict_revision == resource.state.revision" },
+]
+
+[goal_review.budget]
+heartbeat_budget = 3
+on_exhaust       = "escalate"

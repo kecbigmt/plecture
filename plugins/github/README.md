@@ -31,10 +31,16 @@ rollup, and linked-PR discovery.
   forgotten or de-prioritized "don't merge" instruction. Opt-in: wire it
   only into workflows that want it. See `scripts/gh-guard_selftest.sh` at
   the repository root for its behavior tests.
-Task instructions (`work`, `review`, `respond`, `investigate`) and
-team-specific process (a project-board integration, a PR-description
-convention, a code-review house style) are intentionally not shipped here —
-see "Residual config" below.
+- `tasks/work.toml`, `tasks/review.toml` (+ `review.md`), `tasks/investigate.toml`,
+  `tasks/respond.toml` — generic task documents: the mechanism-level
+  instruction, `done_when`, and completion contract for working an issue,
+  reviewing a pull request, investigating an issue, and addressing review
+  comments. They ship no `[[chains]]` and no team-specific process (a
+  project-board integration, a PR-description convention, a code-review
+  house style, which reviewer workflow gates a work session) — a host
+  composes those by declaring its own document that sets
+  `extends = "official.github.work"` (etc.) and adds chains/instructions
+  there. See `docs/language/tasks.md`'s Extension section.
 
 Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
@@ -121,11 +127,13 @@ What stays in your own config after enabling this plugin:
   branching from `develop`, say).
 - Whether you compose the GitHub workspace provider/tasks with a Claude,
   Codex, or other agent workflow pack.
-- The `work` / `review` / `respond` / `investigate` task instructions
-  themselves, project-board integration, PR-description conventions, and
-  house review style — these are yours now: declare your own
-  `tasks/work.md`, `tasks/review.md`, and so on, in a trusted config layer.
-  See `docs/language/tasks.md` for what a task document needs (`done_when`,
-  `resource_observer`, `[[chains]]`).
+- Team-specific process on top of `work` / `review` / `respond` /
+  `investigate` — project-board integration, PR-description conventions,
+  house review style, and which reviewer workflow (if any) gates a work
+  session — these are yours: declare your own document extending the
+  plugin's (`extends = "official.github.work"`, and so on) in a trusted
+  config layer. See `docs/language/tasks.md`'s Extension section for what
+  an extension may add (`[[instructions]]`, `[[chains]]`, `done_when`
+  leaves).
 - Running `github-watcher serve` as a background daemon, and its delivery
   configuration (`PLECT_BUS_SOCKET` / `PLECT_BUS_TOKEN`).

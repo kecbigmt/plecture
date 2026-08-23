@@ -1,0 +1,39 @@
+# Written for the pull observer: a reviewer's subject is the pull request. A
+# chain spawning a reviewer names it — `resource = { from =
+# "resource.state.pr_url" }` — so an issue-keyed work session hands its review
+# the pull request rather than its own issue.
+#
+# There is no third party to judge a reviewer (self-judge is structurally
+# rejected), so completion cannot use a judge leaf the way work/investigate/
+# respond do. It is the reviewer's own self-report of "I recorded a verdict",
+# captured as the revision it was recorded against and compared with the live
+# one — so a later push invalidates it automatically, and the reviewer cannot
+# flip it back by writing a boolean.
+[review]
+kind              = "task"
+description       = "Review a pull request and record a verdict"
+resource_observer = "pull"
+instructions      = [{ file = "review.md" }]
+
+[review.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[review.inputs_schema.properties]
+instruction = { type = "string" }
+
+[review.state_schema]
+type = "object"
+
+[review.state_schema.properties]
+verdict_revision = { type = "string" }
+
+[review.done_when]
+all = [
+  { check = "resource.state.resource_kind", in = ["pull"] },
+  { expr = "self.state.verdict_revision == resource.state.revision" },
+]
+
+[review.budget]
+heartbeat_budget = 3
+on_exhaust       = "escalate"
