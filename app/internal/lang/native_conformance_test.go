@@ -77,8 +77,8 @@ type instantiationCase struct {
 // load pass. The corpus states the rule; the binding that breaks it is not
 // something a document can carry, so it is declared here.
 var nativeInstantiation = map[string]instantiationCase{
-	"tasks/resource-mismatch.invalid.md":    {resourceID: "local-okf://acme/goals/ship.md"},
-	"tasks/first-observe-failed.invalid.md": {resourceID: "local-okf://acme/goals/ship.md", observeErr: "goal file does not parse"},
+	"tasks/resource-mismatch.invalid.toml":    {resourceID: "local-okf://acme/goals/ship.md"},
+	"tasks/first-observe-failed.invalid.toml": {resourceID: "local-okf://acme/goals/ship.md", observeErr: "goal file does not parse"},
 }
 
 // TestNativeConformanceFixtures is the semantic half of this package's
@@ -91,10 +91,10 @@ func TestNativeConformanceFixtures(t *testing.T) {
 	fixtureRoot := filepath.Join(repoRoot(t), "testdata", "config-language")
 	var paths []string
 	err := filepath.Walk(fixtureRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || filepath.Base(path) == "README.md" {
+		if err != nil || info.IsDir() {
 			return err
 		}
-		if strings.HasSuffix(path, ".toml") || strings.HasSuffix(path, ".md") {
+		if strings.HasSuffix(path, ".toml") {
 			paths = append(paths, path)
 		}
 		return nil
@@ -118,7 +118,7 @@ func TestNativeConformanceFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("bad fixture header: %v", err)
 			}
-			if exp.Entry != "definitions" && exp.Entry != "task" {
+			if exp.Entry != "definitions" {
 				return // a reserved root file or a manifest, not a definition
 			}
 			if reason, deferred := nativeDeferred[rel]; deferred {
@@ -129,7 +129,7 @@ func TestNativeConformanceFixtures(t *testing.T) {
 				t.Skip("asserted by TestNativeInstantiationFixtures, which supplies the binding")
 			}
 
-			got := nativeLoad(rel, exp.Entry, fixtureBody(string(raw)), context)
+			got := nativeLoad(path, fixtureBody(string(raw)), context, fixtureRoot)
 			switch exp.Result {
 			case "valid", "accepted-invalid":
 				if got != nil {
@@ -164,7 +164,8 @@ func TestNativeInstantiationFixtures(t *testing.T) {
 	context := fixtureContextDefs(t, fixtureRoot)
 	for rel, binding := range nativeInstantiation {
 		t.Run(rel, func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join(fixtureRoot, filepath.FromSlash(rel)))
+			path := filepath.Join(fixtureRoot, filepath.FromSlash(rel))
+			raw, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -172,8 +173,12 @@ func TestNativeInstantiationFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("bad fixture header: %v", err)
 			}
-			def, err := ParseTaskDocument(rel, []byte(fixtureBody(string(raw))))
+			defs, err := ParseDefinitionDocument(path, []byte(fixtureBody(string(raw))))
 			if err != nil {
+				t.Fatalf("the document itself loads: %v", err)
+			}
+			def := defs[0]
+			if err := resolveTaskInstruction(def, fixtureRoot); err != nil {
 				t.Fatalf("the document itself loads: %v", err)
 			}
 			v := Validation{
@@ -209,22 +214,19 @@ func TestNativeInstantiationFixtures(t *testing.T) {
 }
 
 // nativeLoad runs one fixture through the load pipeline this package
-// implements: parse, then value, expression, action, and executable
-// validation, then the plan-level capability check.
-func nativeLoad(path, entry, body string, context []*Definition) error {
-	var defs []*Definition
-	if entry == "task" {
-		def, err := ParseTaskDocument(path, []byte(body))
-		if err != nil {
-			return err
+// implements: parse, resolve a task's instruction, then value, expression,
+// action, and executable validation, then the plan-level capability check.
+func nativeLoad(path, body string, context []*Definition, root string) error {
+	defs, err := ParseDefinitionDocument(path, []byte(body))
+	if err != nil {
+		return err
+	}
+	for _, def := range defs {
+		if def.Kind == KindTask {
+			if err := resolveTaskInstruction(def, root); err != nil {
+				return err
+			}
 		}
-		defs = []*Definition{def}
-	} else {
-		parsed, err := ParseDefinitionDocument(path, []byte(body))
-		if err != nil {
-			return err
-		}
-		defs = parsed
 	}
 
 	v := Validation{

@@ -3,23 +3,24 @@
 Plecture gives autonomous work a place to go. A task document is the work — one
 piece of it, made explicit enough to hand over.
 
-A task document is a Markdown file. Its body says what is to be done. Its
-frontmatter says the rest: `done_when` when it is done, `resource_observer` what
-it is about, `[[chains]]` what follows from it. One file carries all of it,
-because an instruction and the conditions for calling it finished are one
-statement about one task.
+A task declaration is an ordinary `[<id>]` table carrying `kind = "task"`, in
+any `tasks/*.toml` file. `done_when` says when it is done, `resource_observer`
+what it is about, `[[chains]]` what follows from it — and `instruction` (or,
+for a longer body, `instruction_file`) says what is to be done. One
+declaration carries all of it, because an instruction and the conditions for
+calling it finished are one statement about one task.
 
 The place that work goes is a session — assembled from effects by a workflow,
-and described in the chapters after this one. Work is divided into tasks; a task
-document declares one, and an instance carries it out.
+and described in the chapters after this one. Work is divided into tasks; a
+task document declares one, and an instance carries it out.
 
-<!-- fixture: tasks/document.md -->
-```markdown
-+++
+<!-- fixture: tasks/document.toml -->
+```toml
 [work]
 kind              = "task"
 description       = "Implement a fix or feature for an issue and create a PR"
 resource_observer = "issue_pr"
+instruction_file  = "document.md"
 
 [work.inputs_schema]
 type = "object"
@@ -38,7 +39,10 @@ all = [
 [work.budget]
 heartbeat_budget = 3
 on_exhaust       = "escalate"
-+++
+```
+
+<!-- fixture: tasks/document.md -->
+```markdown
 Resolve the issue at {{ resource.id }}.
 
 Steps:
@@ -52,30 +56,37 @@ Steps:
 
 ## Serialization
 
-The rule across the language is: a kind with a body is a Markdown file carrying
-a TOML-frontmatter declaration block; a kind without a body is a TOML file.
-Grammar consistency comes from the frontmatter being the uniform declaration
-form, not from every kind living in the same file format.
+Every kind is declared the same way: a `[<id>]` table in a TOML definition
+document, `task` included. One serialization means one grammar, one
+structural schema, one validator, and one fixture set. Discovery does not
+special-case task by file class — see [`declarations.md`](declarations.md).
 
-Frontmatter is TOML, delimited by `+++`. One serialization means one grammar,
-one structural schema, one validator, and one fixture set. The frontmatter
-carries the language's value model — projections, computations, tagged values,
-completion entries — so a second serialization would specify every construct
-twice, and would reintroduce implicit typing into completion contracts, where
-`NULL` and `true` are load-bearing values.
+The instruction body is a value the declaration carries, not a TOML string
+field, for four reasons. Triple-quote escaping breaks structurally on an
+instruction that quotes TOML examples containing multi-line strings, which
+shipped instructions do — `instruction_file` sidesteps that entirely, and
+`instruction` remains available for a body short enough to embed. Authoring,
+reviewing, and exchanging a long instruction reads and diffs better as its own
+Markdown file than as a quoted string, and a Markdown sidecar renders on
+GitHub the way TOML never will. And the goal file a task converges with is
+already a document.
 
-The instruction is not a TOML string field, for four reasons. Triple-quote
-escaping breaks structurally on an instruction that quotes TOML examples
-containing multi-line strings, which shipped instructions do. The container
-should match the majority medium: prose dominates a task document, making it a
-document with declaration metadata rather than config with an embedded document
-— the reverse of an effect, which is why an effect is a TOML file. Authoring,
-reviewing, and exchanging task reads and diffs as prose. And the goal file it
-converges with is already a document.
+## The instruction
 
-## The instruction body
+`instruction` and `instruction_file` are two spellings of the same value,
+mutually exclusive: declaring both is a load error
+(`PLECTURE-CFG-TASK-INSTRUCTION-AND-FILE`). `instruction` is the body inline;
+`instruction_file` names a Markdown file, resolved relative to the declaring
+TOML file and read as plain prose — no frontmatter of its own, so it renders
+correctly wherever Markdown does. It must resolve within the same trusted
+layer: a path escaping it is a load error
+(`PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER`), and a path naming no file
+is too (`PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING`). Declaring neither
+leaves the instruction empty.
 
-The body below the closing `+++` is the instruction.
+The Markdown sidecar carries no declaration of its own — it is a template
+asset in the sense [`declarations.md`](declarations.md) describes, except that
+this one is named by an `instruction_file` rather than sitting unreferenced.
 
 Its interpolation is part of the language, not asset templating. `{{ <path> }}`
 in prose is exactly the `from` projection in prose position: the same root
@@ -90,34 +101,30 @@ in [`values.md`](values.md) alongside the roots `done_when` reads. A projection
 preserves its native type everywhere else in the language; in prose position it
 is stringified, because prose has nowhere to put a list.
 
-Control flow in the body is an open decision. CEL is expression-only, so a
-conditional block needs a construct of its own, and none is introduced here. The
-instruction assets carried into this shape keep the conditional and defaulting
-forms they already had, transitionally, until that decision is made.
+Control flow in the instruction is an open decision. CEL is expression-only,
+so a conditional block needs a construct of its own, and none is introduced
+here. The instruction assets carried into this shape keep the conditional and
+defaulting forms they already had, transitionally, until that decision is
+made.
 
-## Frontmatter
+## Declaration
 
-The frontmatter is an ordinary definition document. A task declaration is a
-`[<id>]` table carrying `kind = "task"`, with every field under that table —
-exactly how every other kind is declared. Task gets no identity spelling of its
-own.
+A task declaration is a `[<id>]` table carrying `kind = "task"`, with every
+field under that table — exactly how every other kind is declared. Task gets
+no identity spelling of its own.
 
 | Field | Meaning |
 |---|---|
 | `kind` | `task`. |
 | `description` | What this task is for. |
 | `resource_observer` | The resource observer this task is written for. |
+| `instruction` | The instruction, inline. Mutually exclusive with `instruction_file`. |
+| `instruction_file` | The instruction, as a sidecar Markdown file. Mutually exclusive with `instruction`. |
 | `[<id>.inputs_schema]` | The instruction's author-declared parameters. |
 | `[<id>.state_schema]` | This task's own state: the keys something else writes. |
 | `[<id>.done_when]` | The completion predicate. |
 | `[<id>.budget]` | The convergence bound, if any. |
 | `[[<id>.chains]]` | What this task spawns, and when. See [`chains.md`](chains.md). |
-
-Two rules turn that document into a task document: its frontmatter holds
-exactly one declaration, and that declaration's kind is `task`. The body is
-that declaration's instruction. Neither rule forks the grammar — the parser,
-the schema, and the validator are the ones a TOML config file already uses, so
-the task declaration form is independent of the document sugar around it.
 
 Identity follows [`declarations.md`](declarations.md) unchanged: the id is the
 table name, filename and directory stay non-semantic, task ids share the one
@@ -150,13 +157,13 @@ what it keeps.
 Core special-cases nothing about it: it is an ordinary declared state key whose
 meaning lives entirely in the configuration that reads it.
 
-<!-- fixture: tasks/observe-live-roots.md -->
-```markdown
-+++
+<!-- fixture: tasks/observe-live-roots.toml -->
+```toml
 [review]
 kind              = "task"
 description       = "Review a pull request and record a verdict"
 resource_observer = "issue_pr"
+instruction       = "Review the pull request at {{ resource.id }} and record your verdict."
 
 [review.inputs_schema]
 type = "object"
@@ -182,8 +189,6 @@ all = [
 [review.budget]
 heartbeat_budget = 3
 on_exhaust       = "escalate"
-+++
-Review the pull request at {{ resource.id }} and record your verdict.
 ```
 
 ## Completion
@@ -209,13 +214,13 @@ probe, no interactive endpoint, and no nesting joint. It brings nothing up and
 takes nothing down — those are an effect's concerns, and a task document is
 dispatched into a session a workflow has already built.
 
-<!-- fixture: tasks/lifecycle-field.invalid.md -->
-```markdown
-+++
+<!-- fixture: tasks/lifecycle-field.invalid.toml -->
+```toml
 [broken_task]
 kind              = "task"
 description       = "A task document that tries to own a lifecycle"
 resource_observer = "issue_pr"
+instruction       = "Resolve the issue at {{ resource.id }}."
 
 [broken_task.setup]
 type = "exec"
@@ -224,13 +229,11 @@ args = ["render-instruction"]
 
 [broken_task.done_when]
 all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
-+++
-Resolve the issue at {{ resource.id }}.
 ```
 
 ## Documents and instances
 
-A task document is authored. Its identity is the id its frontmatter declares,
+A task document is authored. Its identity is the id its declaration carries,
 in the one per-layer namespace every kind shares, and references resolve to it
 by that id.
 
@@ -295,10 +298,11 @@ against the session that graph produced.
 
 ## Validation rules
 
-- A task document opens with `+++` frontmatter declaring `kind = "task"`.
-- A task document's frontmatter holds exactly one declaration, whose kind is
-  `task`, and declares a `resource_observer`.
+- A task declaration carries a `resource_observer`.
 - `resource_observer` resolves to a definition of that kind.
+- A task declares at most one of `instruction` and `instruction_file`.
+- `instruction_file` resolves, relative to the declaring file, to a readable
+  file within the declaring layer.
 - A completion key reads `resource.state.*` or `self.state.*`.
 - A `resource.state.*` key names a property the declared observer's
   `state_schema` declares, and a `self.state.*` key one this document's declares —

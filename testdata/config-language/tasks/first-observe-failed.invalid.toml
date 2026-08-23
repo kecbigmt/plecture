@@ -1,0 +1,14 @@
+# plect-fixture: result=invalid layer=instantiation diagnostic=PLECTURE-CFG-FIRST-OBSERVE-FAILED entry=definitions
+# reason: the document loads and its keys resolve, but instantiation observes the resource once and this observation fails, so no instance is created and the observer's own error is what the caller sees.
+
+[pursue_goal]
+kind              = "task"
+description       = "Track one goal whose file cannot be parsed"
+resource_observer = "goal"
+instruction       = "Pursue the goal at {{ resource.id }} until its checklist is satisfied."
+
+[pursue_goal.done_when]
+all = [
+  { check = "resource.state.goal_status", in = ["open"] },
+  { check = "resource.state.checklist_status", in = ["SUCCESS"] },
+]

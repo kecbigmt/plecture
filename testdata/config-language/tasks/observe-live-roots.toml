@@ -1,10 +1,11 @@
-<!-- plect-fixture: result=valid entry=task -->
-<!-- reason: a completion leaf may compare two live roots, which is how a recorded verdict is invalidated by a later change without any key restating it. -->
-+++
+# plect-fixture: result=valid entry=definitions
+# reason: a completion leaf may compare two live roots, which is how a recorded verdict is invalidated by a later change without any key restating it.
+
 [review]
 kind              = "task"
 description       = "Review a pull request and record a verdict"
 resource_observer = "issue_pr"
+instruction       = "Review the pull request at {{ resource.id }} and record your verdict."
 
 [review.inputs_schema]
 type = "object"
@@ -30,5 +31,3 @@ all = [
 [review.budget]
 heartbeat_budget = 3
 on_exhaust       = "escalate"
-+++
-Review the pull request at {{ resource.id }} and record your verdict.

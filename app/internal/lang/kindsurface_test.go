@@ -16,17 +16,15 @@ func TestKindSurfaceRejectsAForeignField(t *testing.T) {
 	}{
 		{
 			name: "a lifecycle field on a task document",
-			src: `+++
-[work]
+			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instruction       = "Resolve the issue."
 
 [work.setup]
 type = "exec"
 bin  = "github-issue-pr"
 args = ["render-instruction"]
-+++
-Resolve the issue.
 `,
 		},
 		{

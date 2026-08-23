@@ -10,7 +10,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// DocumentChain is one `[[chains]]` entry in a task document's frontmatter: a
+// DocumentChain is one `[[chains]]` entry in a task document's declaration: a
 // deterministic rule for spawning task off that document's instances — once
 // this instance reaches this state, run that workflow.
 //

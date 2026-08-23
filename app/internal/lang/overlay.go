@@ -31,7 +31,7 @@ func DiscoverWorkspaceOverlay(root string) ([]*Definition, error) {
 			fragments = append(fragments, def)
 		case KindEffect:
 			return nil, fmt.Errorf("%s: a workspace overlay may not declare an effect definition (%q); cloned content must not carry shell", def.File, def.ID)
-		case KindWorkspaceProvider, KindResourceObserver, KindChannel:
+		case KindWorkspaceProvider, KindResourceObserver, KindChannel, KindTask:
 			// Not loaded at all: declarations.md's trust boundary for
 			// this overlay.
 		}

@@ -50,6 +50,16 @@ jobs:
       - name: Check comments for issue/PR/ADR number references
         run: ./scripts/check-comment-references.sh
 
+  instruction-orphans:
+    name: instruction-orphans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove the checker catches a seeded orphaned sidecar
+        run: ./scripts/check-instruction-orphans_selftest.sh
+      - name: Check every task instruction sidecar is referenced
+        run: ./scripts/check-instruction-orphans.sh
+
   gh-guard:
     name: gh-guard
     runs-on: ubuntu-latest

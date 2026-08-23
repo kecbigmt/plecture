@@ -14,11 +14,11 @@ import (
 
 // pursueDocument is a task document whose chain spawns the reviewer that will
 // supply its one pending judge, wiring the work facts and both live roots.
-const pursueDocument = `+++
-[pursue]
+const pursueDocument = `[pursue]
 kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
 resource_observer = "issue_pr"
+instruction       = "Pursue the work at {{ resource.id }}."
 
 [pursue.state_schema]
 type = "object"
@@ -50,8 +50,6 @@ instance     = { from = "task.instance" }
 judge_ids    = { from = "task.done_when.pending_judge_ids" }
 revision     = { from = "resource.state.revision" }
 recorded     = { from = "self.state.verdict_revision", default = "" }
-+++
-Pursue the work at {{ resource.id }}.
 `
 
 func setUpDocumentInstance(t *testing.T, cfg *config.Config, store *state.Store, taskID string) string {
@@ -156,11 +154,11 @@ func TestCheckSession_TaskDocumentChainBlockedOnAnUnreportedInput(t *testing.T) 
 	if err := os.WriteFile(revision, []byte("sha2"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	document := `+++
-[pursue]
+	document := `[pursue]
 kind              = "task"
 description       = "A document whose chain waits on a key nothing reports yet"
 resource_observer = "issue_pr"
+instruction       = "Pursue the work at {{ resource.id }}."
 
 [pursue.done_when]
 all = [{ judge = "the work is done", id = "goal-met" }]
@@ -174,8 +172,6 @@ all = [{ judge_pending = "goal-met" }]
 
 [pursue.chains.inputs]
 pull = { from = "resource.state.pr_url" }
-+++
-Pursue the work at {{ resource.id }}.
 `
 	cfg := writeObservedRevisionFixture(t, revision, document)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
@@ -211,11 +207,11 @@ func TestCheckSession_TaskDocumentChainsAreNoLongerAnnouncedAsUnevaluated(t *tes
 
 // resourceChainDocument names the resource its spawned session binds to,
 // rather than letting it inherit the declaring session's.
-const resourceChainDocument = `+++
-[pursue]
+const resourceChainDocument = `[pursue]
 kind              = "task"
 description       = "Hand a pull request to a reviewer bound to it"
 resource_observer = "issue_pr"
+instruction       = "Pursue the work at {{ resource.id }}."
 
 [pursue.done_when]
 all = [{ judge = "the work is done", id = "goal-met" }]
@@ -227,8 +223,6 @@ resource = { from = "resource.state.pr_url" }
 
 [pursue.chains.when]
 all = [{ judge_pending = "goal-met" }]
-+++
-Pursue the work at {{ resource.id }}.
 `
 
 func TestCheckSession_ChainBindsItsSpawnToTheResourceItNames(t *testing.T) {

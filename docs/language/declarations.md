@@ -25,17 +25,13 @@ kind = "<kind>"
 The kind vocabulary is `effect`, `task`, `channel`, `workflow`,
 `workspace_provider`, and `resource_observer`.
 
-Every kind is declared the same way, `task` included: a `[<id>]` table carrying
-`kind`. What differs is the file a declaration lives in. A kind with a body is a
-Markdown file whose `+++` TOML frontmatter holds that one declaration and whose
-body belongs to it; a kind without a body is a TOML file. `task` is the one kind
-with a body today, so a task declaration appears only in frontmatter, and a TOML
-definition document carrying `kind = "task"` is a load error — the declaration
-would have no instruction.
-
-Nothing else changes for it: the id is the table name, the id grammar holds, the
-namespace is shared, and references resolve the same way. See
-[`tasks.md`](tasks.md).
+Every kind is declared the same way, `task` included: a `[<id>]` table
+carrying `kind`, in a TOML definition document. A task's instruction — the one
+field with a natural home outside TOML — is either an inline `instruction`
+string or the content of a sidecar Markdown file named by `instruction_file`,
+resolved relative to the declaring file. Nothing else changes for it: the id
+is the table name, the id grammar holds, the namespace is shared, and
+references resolve the same way. See [`tasks.md`](tasks.md).
 
 A kind uses its bare concept name when the declaration's runtime counterpart
 is its own instance: effects instantiate into task instances, channels into
@@ -92,10 +88,11 @@ Each trusted config layer has a definition root: a plugin's `config/`
 directory, the user config home excluding reserved root files, and a trusted
 ancestor overlay's `.plect/` directory.
 
-Within a definition root, every `.toml` file that is not a reserved root file,
-and every `.md` file opening with `+++` frontmatter, is read recursively in
-lexicographic order by slash-separated relative path. A `.md` file without that
-frontmatter is a template asset, not a definition.
+Within a definition root, every `.toml` file that is not a reserved root file
+is read recursively in lexicographic order by slash-separated relative path. A
+`.md` file is never itself a definition: one named by some declaration's
+`instruction_file` is that declaration's instruction sidecar, and any other is
+a template asset the language does not read.
 Subdirectories are author organization only: one definition per file and
 kind-named directories such as `config/effects/` are equally valid and mean the
 same thing.
@@ -241,10 +238,6 @@ executable name. See [`actions.md`](actions.md).
   definition table is a load error unless it is a reserved root file.
 - A definition table missing `kind`, or carrying an unknown `kind`, is a load
   error.
-- A task document opens with `+++` frontmatter holding exactly one declaration,
-  whose kind is `task`.
-- A TOML definition document declaring `kind = "task"` is a load error: a kind
-  with a body is declared in frontmatter.
 - A definition id must match `^[A-Za-z_][A-Za-z0-9_]*$`.
 - Two definitions with the same id in one layer are a load error, whatever
   their kinds.

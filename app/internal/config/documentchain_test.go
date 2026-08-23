@@ -64,18 +64,17 @@ func TestDocumentChain_Validate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			base := t.TempDir()
 			writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-			writeFile(t, filepath.Join(base, "tasks", "pursue.md"), `+++
+			writeFile(t, filepath.Join(base, "tasks", "pursue.toml"), `
 [pursue]
 kind              = "task"
 description       = "Pursue one goal"
 resource_observer = "issue_pr"
+instruction       = "Pursue the goal."
 
 [pursue.done_when]
 all = [{ judge = "the goal is achieved", id = "goal-met" }]
 
-`+tc.chain+`+++
-Pursue the goal.
-`)
+`+tc.chain)
 			_, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("err = %v, want contains %q", err, tc.wantErr)
@@ -125,11 +124,12 @@ func TestValidateTaskDocuments_ChainReferences(t *testing.T) {
 			if target == "" {
 				target = "wf"
 			}
-			writeFile(t, filepath.Join(base, "tasks", "pursue.md"), `+++
+			writeFile(t, filepath.Join(base, "tasks", "pursue.toml"), `
 [pursue]
 kind              = "task"
 description       = "Pursue one goal"
 resource_observer = "issue_pr"
+instruction       = "Pursue the goal."
 
 [pursue.done_when]
 all = [{ judge = "the goal is achieved", id = "goal-met" }]
@@ -138,9 +138,7 @@ all = [{ judge = "the goal is achieved", id = "goal-met" }]
 id       = "review"
 workflow = "`+target+`"
 
-`+tc.chain+`+++
-Pursue the goal.
-`)
+`+tc.chain)
 			cfg := &Config{BaseDir: base}
 			docs, observers := loadDocsAndObservers(t, cfg)
 			workflows, err := cfg.LoadWorkflows("")

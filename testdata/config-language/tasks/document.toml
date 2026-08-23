@@ -1,0 +1,26 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a task declaration is its completion contract and, through instruction_file, the sidecar Markdown asset carrying its instruction.
+
+[work]
+kind              = "task"
+description       = "Implement a fix or feature for an issue and create a PR"
+resource_observer = "issue_pr"
+instruction_file  = "document.md"
+
+[work.inputs_schema]
+type = "object"
+
+[work.inputs_schema.properties]
+instruction = { type = "string" }
+
+[work.done_when]
+all = [
+  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
+  { check = "resource.state.checks_status", in = ["SUCCESS", "NULL"] },
+  { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
+  { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
+]
+
+[work.budget]
+heartbeat_budget = 3
+on_exhaust       = "escalate"

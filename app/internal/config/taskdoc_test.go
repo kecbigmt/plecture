@@ -8,9 +8,9 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// The container loads end to end: frontmatter declares the task, the body is
-// its instruction, and the contract pass resolves every completion key
-// against the two schemas that declare them.
+// The container loads end to end: the declaration carries the completion
+// contract, instruction is its own field, and the contract pass resolves
+// every completion key against the two schemas that declare them.
 func TestLoadTaskDocuments_LoadsAndValidates(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), `
@@ -29,11 +29,12 @@ type = "object"
 resource_kind = { type = "string" }
 revision      = { type = "string" }
 `)
-	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
 [review]
 kind              = "task"
 description       = "Review a resource and record a verdict"
 resource_observer = "issue_pr"
+instruction       = "Review {{ resource.id }} and record a verdict against its current revision."
 
 [review.state_schema]
 type = "object"
@@ -46,8 +47,6 @@ all = [
   { check = "resource.state.resource_kind", in = ["pull", "issue"] },
   { expr = "self.state.verdict_revision == resource.state.revision" },
 ]
-+++
-Review {{ resource.id }} and record a verdict against its current revision.
 `)
 	cfg := &Config{BaseDir: base}
 	docs, err := cfg.LoadTaskDocuments("")
@@ -62,7 +61,7 @@ Review {{ resource.id }} and record a verdict against its current revision.
 		t.Errorf("ResourceObserver = %q", doc.ResourceObserver)
 	}
 	if !strings.HasPrefix(doc.Instruction, "Review {{ resource.id }}") {
-		t.Errorf("Instruction = %q, want the body below the frontmatter", doc.Instruction)
+		t.Errorf("Instruction = %q, want the declared instruction", doc.Instruction)
 	}
 	if doc.DoneWhen == nil || len(doc.DoneWhen.All) != 2 {
 		t.Fatalf("done_when = %+v, want two leaves", doc.DoneWhen)
@@ -98,16 +97,15 @@ type = "object"
 [issue_pr.state_schema.properties]
 resource_kind = { type = "string" }
 `)
-	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
 [review]
 kind              = "task"
 description       = "Reads a key its observer never publishes"
 resource_observer = "issue_pr"
+instruction       = "Review it."
 
 [review.done_when]
 all = [{ check = "resource.state.nope", eq = "yes" }]
-+++
-Review it.
 `)
 	cfg := &Config{BaseDir: base}
 	docs, err := cfg.LoadTaskDocuments("")
@@ -132,16 +130,15 @@ Review it.
 func TestValidateTaskDocuments_UndeclaredSelfStateKeyRejected(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
 [review]
 kind              = "task"
 description       = "Reads state it never declared"
 resource_observer = "issue_pr"
+instruction       = "Review it."
 
 [review.done_when]
 all = [{ expr = "self.state.verdict_revision == resource.state.revision" }]
-+++
-Review it.
 `)
 	cfg := &Config{BaseDir: base}
 	docs, observers := loadDocsAndObservers(t, cfg)
@@ -157,16 +154,15 @@ Review it.
 func TestValidateTaskDocuments_UnknownObserverRejected(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
 [review]
 kind              = "task"
 description       = "Written for an observer nothing declares"
 resource_observer = "no_such_observer"
+instruction       = "Review it."
 
 [review.done_when]
 all = [{ check = "resource.state.revision", ne = "" }]
-+++
-Review it.
 `)
 	cfg := &Config{BaseDir: base}
 	docs, observers := loadDocsAndObservers(t, cfg)
@@ -179,33 +175,10 @@ Review it.
 	}
 }
 
-func TestLoadTaskDocuments_RejectsNonTaskKind(t *testing.T) {
-	base := t.TempDir()
-	writeFile(t, filepath.Join(base, "tasks", "not-a-task.md"), `+++
-[not_a_task]
-kind        = "effect"
-description = "A Markdown document declaring a bodiless kind"
-
-[not_a_task.setup]
-type    = "shell"
-script  = "true"
-+++
-A body a kind without one cannot carry.
-`)
-	cfg := &Config{BaseDir: base}
-	_, err := cfg.LoadTaskDocuments("")
-	if err == nil {
-		t.Fatal("expected a load error for a Markdown document declaring a bodiless kind")
-	}
-	if !strings.Contains(err.Error(), "effect") {
-		t.Errorf("error = %v, want it to name the declared kind", err)
-	}
-}
-
 func TestLoadTaskDocuments_RejectsDuplicateIDInOneLayer(t *testing.T) {
 	base := t.TempDir()
-	writeFile(t, filepath.Join(base, "tasks", "a.md"), duplicateTaskDoc)
-	writeFile(t, filepath.Join(base, "tasks", "b.md"), duplicateTaskDoc)
+	writeFile(t, filepath.Join(base, "tasks", "a.toml"), duplicateTaskDoc)
+	writeFile(t, filepath.Join(base, "tasks", "b.toml"), duplicateTaskDoc)
 	cfg := &Config{BaseDir: base}
 	_, err := cfg.LoadTaskDocuments("")
 	if err == nil {
@@ -221,7 +194,7 @@ func TestLoadTaskDocuments_RejectsDuplicateIDInOneLayer(t *testing.T) {
 func TestLoadTaskDocuments_RejectsWorkspaceDirLayer(t *testing.T) {
 	base := t.TempDir()
 	workspace := t.TempDir()
-	writeFile(t, filepath.Join(workspace, ".plect", "tasks", "review.md"), duplicateTaskDoc)
+	writeFile(t, filepath.Join(workspace, ".plect", "tasks", "review.toml"), duplicateTaskDoc)
 	cfg := &Config{BaseDir: base}
 	_, err := cfg.LoadTaskDocuments(workspace)
 	if err == nil {
@@ -248,13 +221,12 @@ type = "object"
 revision = { type = "string" }
 `
 
-const duplicateTaskDoc = `+++
+const duplicateTaskDoc = `
 [review]
 kind              = "task"
 description       = "Review a resource"
 resource_observer = "issue_pr"
-+++
-Review it.
+instruction       = "Review it."
 `
 
 func loadDocsAndObservers(t *testing.T, cfg *Config) (map[string]TaskDocument, map[string]ResourceDef) {
@@ -281,16 +253,15 @@ version     = "0.1.0"
 description = "test plugin"
 `)
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "review.md"), `+++
+	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "review.toml"), `
 [review]
 kind              = "task"
 description       = "A plugin-shipped document reading its own plugin's observer"
 resource_observer = "issue_pr"
+instruction       = "Review it."
 
 [review.done_when]
 all = [{ check = "resource.state.revision", ne = "" }]
-+++
-Review it.
 `)
 	cfg := &Config{
 		PluginDirs: []string{pluginDir},
@@ -309,8 +280,8 @@ Review it.
 // traversal order must not pick a winner.
 func TestLoadTaskDeclarations_SameLayerCollisionRejected(t *testing.T) {
 	base := t.TempDir()
-	writeFile(t, filepath.Join(base, "tasks", "review.md"), duplicateTaskDoc)
-	writeFile(t, filepath.Join(base, "tasks", "review.toml"), collidingEffect)
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), duplicateTaskDoc)
+	writeFile(t, filepath.Join(base, "tasks", "review-effect.toml"), collidingEffect)
 
 	_, _, err := (&Config{BaseDir: base}).LoadTaskDeclarations("")
 	if err == nil {
@@ -330,7 +301,7 @@ func TestLoadTaskDeclarations_CrossLayerDifferentKindsCoexist(t *testing.T) {
 	pluginDir := t.TempDir()
 	base := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "review.toml"), collidingEffect)
-	writeFile(t, filepath.Join(base, "tasks", "review.md"), duplicateTaskDoc)
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), duplicateTaskDoc)
 	cfg := &Config{BaseDir: base, PluginDirs: []string{pluginDir}}
 
 	docs, effects, err := cfg.LoadTaskDeclarations("")
@@ -352,13 +323,12 @@ func TestLoadDeclarations_PluginDocumentAndUserWorkflowShareAnID(t *testing.T) {
 	pluginDir := t.TempDir()
 	base := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "goal_review.md"), `+++
+	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "goal_review.toml"), `
 [goal_review]
 kind              = "task"
 description       = "Review a goal"
 resource_observer = "issue_pr"
-+++
-Review it.
+instruction       = "Review it."
 `)
 	writeFile(t, filepath.Join(base, "workflows", "goal_review.toml"), `
 [goal_review]
@@ -402,16 +372,15 @@ func TestValidateTaskDocuments_UserDocumentQualifiesACatalogObserver(t *testing.
 	pluginDir := t.TempDir()
 	base := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
 [review]
 kind              = "task"
 description       = "A user-owned document reading a catalog observer"
 resource_observer = "official.acme.issue_pr"
+instruction       = "Review it."
 
 [review.done_when]
 all = [{ check = "resource.state.revision", ne = "" }]
-+++
-Review it.
 `)
 	cfg := &Config{
 		BaseDir:    base,
@@ -430,16 +399,15 @@ func TestValidateTaskDocuments_UserDocumentCannotReachACatalogObserverRelatively
 	pluginDir := t.TempDir()
 	base := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
 [review]
 kind              = "task"
 description       = "A user-owned document reaching catalog content without its alias"
 resource_observer = "issue_pr"
+instruction       = "Review it."
 
 [review.done_when]
 all = [{ check = "resource.state.revision", ne = "" }]
-+++
-Review it.
 `)
 	cfg := &Config{
 		BaseDir:    base,
@@ -461,7 +429,7 @@ Review it.
 func TestLoadTaskDocuments_ChainInputsParseAsValues(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(base, "tasks", "pursue.md"), chainingTaskDoc)
+	writeFile(t, filepath.Join(base, "tasks", "pursue.toml"), chainingTaskDoc)
 	cfg := &Config{BaseDir: base}
 	docs, err := cfg.LoadTaskDocuments("")
 	if err != nil {
@@ -496,16 +464,14 @@ func TestLoadTaskDocuments_ChainInputsParseAsValues(t *testing.T) {
 func TestLoadTaskDocuments_RejectsDuplicateChainID(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(base, "tasks", "pursue.md"), strings.Replace(chainingTaskDoc,
-		"+++\nPursue", `
+	writeFile(t, filepath.Join(base, "tasks", "pursue.toml"), chainingTaskDoc+`
 [[pursue.chains]]
 id       = "goal_review"
 workflow = "goal_reviewer"
 
 [pursue.chains.when]
 all = [{ judge_pending = "goal-met" }]
-+++
-Pursue`, 1))
+`)
 	cfg := &Config{BaseDir: base}
 	if _, err := cfg.LoadTaskDocuments(""); err == nil || !strings.Contains(err.Error(), "declared more than once") {
 		t.Fatalf("err = %v, want a duplicate chain id rejection", err)
@@ -516,17 +482,16 @@ Pursue`, 1))
 func TestLoadTaskDocuments_RejectsChainWithNoTrigger(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(base, "tasks", "pursue.md"), `+++
+	writeFile(t, filepath.Join(base, "tasks", "pursue.toml"), `
 [pursue]
 kind              = "task"
 description       = "A document whose chain declares no trigger"
 resource_observer = "issue_pr"
+instruction       = "Pursue the goal."
 
 [[pursue.chains]]
 id       = "goal_review"
 workflow = "goal_reviewer"
-+++
-Pursue the goal.
 `)
 	cfg := &Config{BaseDir: base}
 	if _, err := cfg.LoadTaskDocuments(""); err == nil || !strings.Contains(err.Error(), "declares no facts") {
@@ -534,11 +499,12 @@ Pursue the goal.
 	}
 }
 
-const chainingTaskDoc = `+++
+const chainingTaskDoc = `
 [pursue]
 kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
 resource_observer = "issue_pr"
+instruction       = "Pursue the goal at {{ resource.id }}."
 
 [pursue.done_when]
 all = [{ judge = "the goal is achieved", id = "goal-met" }]
@@ -554,20 +520,19 @@ all = [{ judge_pending = "goal-met" }]
 [pursue.chains.inputs]
 task         = "goal_review"
 work_session = { from = "task.session" }
-+++
-Pursue the goal at {{ resource.id }}.
 `
 
-// The completion predicate's leaf forms parse off a document's frontmatter,
+// The completion predicate's leaf forms parse off a document's declaration,
 // and `budget` is a sibling of `done_when` rather than a member of it.
 func TestLoadTaskDocuments_ParsesEveryCompletionLeafForm(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(base, "tasks", "review.md"), `+++
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), `
 [review]
 kind              = "task"
 description       = "Review a resource"
 resource_observer = "issue_pr"
+instruction       = "Review it."
 
 [[review.done_when.all]]
 check = "resource.state.revision"
@@ -583,8 +548,6 @@ id    = "ac-met"
 
 [review.budget]
 max_iterations = 5
-+++
-Review it.
 `)
 	docs, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
 	if err != nil {
@@ -612,18 +575,17 @@ Review it.
 func TestLoadTaskDocuments_RejectsAmbiguousCompletionLeaf(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
-	writeFile(t, filepath.Join(base, "tasks", "bad.md"), `+++
+	writeFile(t, filepath.Join(base, "tasks", "bad.toml"), `
 [bad]
 kind              = "task"
 description       = "A document whose leaf is two leaves"
 resource_observer = "issue_pr"
+instruction       = "Do it."
 
 [[bad.done_when.all]]
 check = "resource.state.revision"
 eq    = "merged"
 judge = "both set"
-+++
-Do it.
 `)
 	if _, err := (&Config{BaseDir: base}).LoadTaskDocuments(""); err == nil {
 		t.Fatal("expected a load error for a leaf that is both a check and a judge")

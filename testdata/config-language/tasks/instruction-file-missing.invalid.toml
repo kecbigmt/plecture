@@ -1,0 +1,11 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING entry=definitions
+# reason: an instruction_file naming no file on disk is a load error rather than a document with an empty instruction.
+
+[work]
+kind              = "task"
+description       = "A task whose instruction_file names a sidecar that does not exist"
+resource_observer = "issue_pr"
+instruction_file  = "no-such-instruction.md"
+
+[work.done_when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]

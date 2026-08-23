@@ -1,6 +1,10 @@
 package lang
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestParseDefinitionDocumentValid(t *testing.T) {
 	defs, err := ParseDefinitionDocument("relative.toml", []byte(`
@@ -67,14 +71,20 @@ kind = "workspace_provider"
 	assertDiagnostic(t, err, CodeIDInvalid, LayerStructural)
 }
 
-func TestParseDefinitionDocumentTaskInTOMLDocument(t *testing.T) {
-	_, err := ParseDefinitionDocument("f.toml", []byte(`
+func TestParseDefinitionDocumentTaskIsAnOrdinaryDeclaration(t *testing.T) {
+	defs, err := ParseDefinitionDocument("f.toml", []byte(`
 [review]
 kind              = "task"
-description       = "A task declaration with nowhere to keep its instruction"
+description       = "A task declared like any other kind"
 resource_observer = "issue_pr"
+instruction       = "Resolve the issue."
 `))
-	assertDiagnostic(t, err, CodeTaskInTOMLDocument, LayerStructural)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(defs) != 1 || defs[0].Kind != KindTask {
+		t.Fatalf("unexpected definitions: %+v", defs)
+	}
 }
 
 func TestParseDefinitionDocumentEmptyIsLoadError(t *testing.T) {
@@ -84,39 +94,91 @@ func TestParseDefinitionDocumentEmptyIsLoadError(t *testing.T) {
 	}
 }
 
-func TestParseTaskDocumentValid(t *testing.T) {
-	def, err := ParseTaskDocument("document.md", []byte(`+++
+func TestResolveTaskInstructionInline(t *testing.T) {
+	defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
 [work]
 kind              = "task"
-description       = "Implement a fix or feature for an issue and create a PR"
 resource_observer = "issue_pr"
-+++
-Resolve the issue at {{ resource.id }}.
+instruction       = "Resolve the issue at {{ resource.id }}."
 `))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if def.ID != "work" || def.Kind != KindTask {
-		t.Fatalf("unexpected definition: %+v", def)
+	def := defs[0]
+	if err := resolveTaskInstruction(def, "tasks"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Instruction != "Resolve the issue at {{ resource.id }}." {
+		t.Errorf("Instruction = %q", def.Instruction)
 	}
 }
 
-func TestParseTaskDocumentFrontmatterMissing(t *testing.T) {
-	_, err := ParseTaskDocument("no-frontmatter.md", []byte("Resolve the issue at {{ resource.id }}.\n"))
-	assertDiagnostic(t, err, CodeTaskFrontmatterMissing, LayerStructural)
+func TestResolveTaskInstructionBothInlineAndFile(t *testing.T) {
+	defs, err := ParseDefinitionDocument("tasks/work.toml", []byte(`
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instruction       = "Resolve the issue."
+instruction_file  = "work.md"
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	err = resolveTaskInstruction(defs[0], "tasks")
+	assertDiagnostic(t, err, CodeTaskInstructionAndFile, LayerStructural)
 }
 
-func TestParseTaskDocumentBlockCount(t *testing.T) {
-	_, err := ParseTaskDocument("two-blocks.md", []byte(`+++
+func TestResolveTaskInstructionFileCrossLayer(t *testing.T) {
+	defs, err := ParseDefinitionDocument(filepath.Join("layer", "tasks", "work.toml"), []byte(`
 [work]
-kind = "task"
-
-[review]
-kind = "task"
-+++
-body
+kind              = "task"
+resource_observer = "issue_pr"
+instruction_file  = "../../outside.md"
 `))
-	assertDiagnostic(t, err, CodeTaskBlockCount, LayerStructural)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	err = resolveTaskInstruction(defs[0], filepath.Join("layer"))
+	assertDiagnostic(t, err, CodeTaskInstructionFileCrossLayer, LayerSemantic)
+}
+
+func TestResolveTaskInstructionFileMissing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "work.toml")
+	defs, err := ParseDefinitionDocument(path, []byte(`
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instruction_file  = "work.md"
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	err = resolveTaskInstruction(defs[0], dir)
+	assertDiagnostic(t, err, CodeTaskInstructionFileMissing, LayerSemantic)
+}
+
+func TestResolveTaskInstructionFileRead(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "work.md"), []byte("Resolve the issue at {{ resource.id }}.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "work.toml")
+	defs, err := ParseDefinitionDocument(path, []byte(`
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instruction_file  = "work.md"
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := resolveTaskInstruction(defs[0], dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if defs[0].Instruction != "Resolve the issue at {{ resource.id }}.\n" {
+		t.Errorf("Instruction = %q", defs[0].Instruction)
+	}
 }
 
 // TestParseDefinitionDocumentAgainstReferencesFixtures runs the structural
@@ -131,7 +193,6 @@ func TestParseDefinitionDocumentAgainstReferencesFixtures(t *testing.T) {
 		{"kind-missing.invalid.toml", CodeKindMissing},
 		{"kind-unknown.invalid.toml", CodeKindUnknown},
 		{"id-invalid.invalid.toml", CodeIDInvalid},
-		{"task-in-toml.invalid.toml", CodeTaskInTOMLDocument},
 	}
 	for _, tc := range cases {
 		t.Run(tc.fixture, func(t *testing.T) {
@@ -141,23 +202,24 @@ func TestParseDefinitionDocumentAgainstReferencesFixtures(t *testing.T) {
 	}
 }
 
-// TestParseTaskDocumentAgainstTasksFixtures runs tasks/ fixtures whose
-// violation is frontmatter shape (rather than task-contract content, out of
-// scope for this slice) through ParseTaskDocument directly.
+// TestParseTaskDocumentAgainstTasksFixtures runs the tasks/document.toml
+// fixture and its sidecar through the same discovery step DiscoverRoot uses.
 func TestParseTaskDocumentAgainstTasksFixtures(t *testing.T) {
-	def, err := ParseTaskDocument("document.md", readConfigLanguageFixture(t, "tasks/document.md"))
+	fixtureRoot := filepath.Join(repoRoot(t), "testdata", "config-language")
+	path := filepath.Join(fixtureRoot, "tasks", "document.toml")
+	defs, err := ParseDefinitionDocument(path, readConfigLanguageFixture(t, "tasks/document.toml"))
 	if err != nil {
-		t.Fatalf("tasks/document.md: unexpected error: %v", err)
+		t.Fatalf("tasks/document.toml: unexpected error: %v", err)
 	}
-	if def.ID != "work" || def.Kind != KindTask {
-		t.Fatalf("tasks/document.md: unexpected definition: %+v", def)
+	if len(defs) != 1 || defs[0].ID != "work" || defs[0].Kind != KindTask {
+		t.Fatalf("tasks/document.toml: unexpected definitions: %+v", defs)
 	}
-
-	_, err = ParseTaskDocument("no-frontmatter.md", readConfigLanguageFixture(t, "tasks/no-frontmatter.invalid.md"))
-	assertDiagnostic(t, err, CodeTaskFrontmatterMissing, LayerStructural)
-
-	_, err = ParseTaskDocument("two-blocks.md", readConfigLanguageFixture(t, "tasks/two-blocks.invalid.md"))
-	assertDiagnostic(t, err, CodeTaskBlockCount, LayerStructural)
+	if err := resolveTaskInstruction(defs[0], fixtureRoot); err != nil {
+		t.Fatalf("tasks/document.toml: unexpected error resolving instruction: %v", err)
+	}
+	if defs[0].Instruction == "" {
+		t.Fatal("tasks/document.toml: instruction did not resolve from its sidecar")
+	}
 }
 
 func TestIsValidID(t *testing.T) {

@@ -22,18 +22,16 @@ func newE2EConfig(t *testing.T) *config.Config {
 	t.Helper()
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "fixture.toml"), e2eObserver)
-	writeFile(t, filepath.Join(base, "tasks", "work.md"), `+++
-[work]
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
 description       = "work fixture"
 resource_observer = "fixture"
+instruction       = "Carry out the work."
 
 [work.done_when]
 all = [
   { check = "resource.state.checks_status", eq = "SUCCESS" },
 ]
-+++
-Carry out the work.
 `)
 	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
 }
@@ -129,18 +127,16 @@ func newPendingJudgeConfig(t *testing.T) *config.Config {
 	t.Helper()
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "fixture.toml"), e2eObserver)
-	writeFile(t, filepath.Join(base, "tasks", "work.md"), `+++
-[work]
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
 description       = "work fixture"
 resource_observer = "fixture"
+instruction       = "Carry out the work."
 
 [work.done_when]
 all = [
   { judge = "AC met", id = "ac-met" },
 ]
-+++
-Carry out the work.
 `)
 	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
 }

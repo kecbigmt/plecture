@@ -3,11 +3,11 @@
 A chain is a deterministic rule for spawning task off a task document's
 instances: once this instance reaches this state, run that workflow.
 
-Chains live in the declaring task document's frontmatter because a chain's
-`when` judge ids and `inputs` projections are references into that same
-document's completion contract and observed keys — colocation is what lets
-those references be checked at load time rather than at fire time. Evaluation
-is scoped the same way: a chain fires only against instances of the task
+Chains live in the declaring task's own declaration because a chain's `when`
+judge ids and `inputs` projections are references into that same document's
+completion contract and observed keys — colocation is what lets those
+references be checked at load time rather than at fire time. Evaluation is
+scoped the same way: a chain fires only against instances of the task
 document that declared it.
 
 ## Surface
@@ -21,13 +21,13 @@ document that declared it.
 | `when` | The facts that must hold for the chain to fire. |
 | `inputs` | The session inputs handed to the spawned workflow. |
 
-<!-- fixture: chains/static-workflow.md -->
-```markdown
-+++
+<!-- fixture: chains/static-workflow.toml -->
+```toml
 [pursue_goal]
 kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
 resource_observer = "goal"
+instruction       = "Pursue the goal at {{ resource.id }} until its checklist is satisfied."
 
 [pursue_goal.done_when]
 all = [
@@ -51,8 +51,6 @@ task         = "goal_review"
 work_session = { from = "task.session" }
 instance     = { from = "task.instance" }
 judge_ids    = { from = "task.done_when.pending_judge_ids" }
-+++
-Pursue the goal at {{ resource.id }} until its checklist is satisfied.
 ```
 
 ## Triggers
@@ -85,13 +83,13 @@ Omitting it binds the spawned session to the declaring session's own resource.
 That default is what a chain spawning more work on the same subject wants; a
 chain whose spawned session is about something else says so.
 
-<!-- fixture: chains/spawn-resource.md -->
-```markdown
-+++
+<!-- fixture: chains/spawn-resource.toml -->
+```toml
 [work]
 kind              = "task"
 description       = "Implement a fix and hand the pull request to a reviewer"
 resource_observer = "issue_pr"
+instruction       = "Resolve the issue at {{ resource.id }} and open a pull request."
 
 [work.done_when]
 all = [
@@ -115,8 +113,6 @@ all = [
 task         = "goal_review"
 work_session = { from = "task.session" }
 judge_ids    = { from = "task.done_when.pending_judge_ids" }
-+++
-Resolve the issue at {{ resource.id }} and open a pull request.
 ```
 
 A reviewer's subject is the pull request, and the work session's subject is

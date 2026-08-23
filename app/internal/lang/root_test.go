@@ -31,15 +31,25 @@ kind = "workflow"
 [[review_session.nodes]]
 uses = "runtime"
 `)
-	mustWrite(t, dir, "task.md", "+++\n[work]\nkind = \"task\"\n+++\nDo it.\n")
-	mustWrite(t, dir, "readme.md", "Just prose, no frontmatter.\n")
+	mustWrite(t, dir, "tasks/work.toml", "[work]\nkind = \"task\"\ninstruction_file = \"work.md\"\n")
+	mustWrite(t, dir, "tasks/work.md", "Do it.\n")
+	mustWrite(t, dir, "readme.md", "Just prose, not a definition.\n")
 
 	defs, err := DiscoverRoot(dir, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(defs) != 3 {
-		t.Fatalf("got %d definitions, want 3 (readme.md is a template asset): %v", len(defs), defNames(defs))
+		t.Fatalf("got %d definitions, want 3 (readme.md and the .md sidecar are not definitions): %v", len(defs), defNames(defs))
+	}
+	var work *Definition
+	for _, d := range defs {
+		if d.ID == "work" {
+			work = d
+		}
+	}
+	if work == nil || work.Instruction != "Do it.\n" {
+		t.Fatalf("work: unexpected definition: %+v", work)
 	}
 }
 

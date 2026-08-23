@@ -43,8 +43,8 @@ var (
 )
 
 // fixtureBody strips the expectation header (and the blank line after it),
-// so a task document's frontmatter delimiter is the first thing seen — a
-// real task document never carries this header at all.
+// so the TOML that follows is the first thing seen — a real definition
+// document never carries this header at all.
 func fixtureBody(src string) string {
 	lines := strings.Split(src, "\n")
 	i := 0
@@ -93,23 +93,6 @@ func parseFixtureHeader(src string) (fixtureExpectation, error) {
 	return exp, nil
 }
 
-// fixtureFrontmatter splits a task document into its frontmatter, mirroring
-// ParseTaskDocument's own delimiter handling but tolerant of a body that is
-// not itself a load error (the conformance harness cares about the
-// structural schema, not this package's own loader, for this pass).
-func fixtureFrontmatter(src string) (string, error) {
-	const delim = "+++\n"
-	if !strings.HasPrefix(src, delim) {
-		return "", fmt.Errorf("no frontmatter")
-	}
-	rest := src[len(delim):]
-	end := strings.Index(rest, "\n"+delim)
-	if end < 0 {
-		return "", fmt.Errorf("unterminated frontmatter")
-	}
-	return rest[:end+1], nil
-}
-
 func normalizeForSchema(v any) (any, error) {
 	raw, err := json.Marshal(v)
 	if err != nil {
@@ -137,7 +120,7 @@ func TestConformanceFixtures(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries := map[string]*jsonschema.Schema{}
-	for _, anchor := range []string{"definitions", "task", "config", "catalogs", "lock", "plugin", "catalog"} {
+	for _, anchor := range []string{"definitions", "config", "catalogs", "lock", "plugin", "catalog"} {
 		s, err := compiler.Compile(schemaPath + "#" + anchor)
 		if err != nil {
 			t.Fatalf("compile entry %q: %v", anchor, err)
@@ -160,10 +143,7 @@ func TestConformanceFixtures(t *testing.T) {
 		if info.IsDir() {
 			return nil
 		}
-		if filepath.Base(path) == "README.md" {
-			return nil
-		}
-		if strings.HasSuffix(path, ".toml") || strings.HasSuffix(path, ".md") {
+		if strings.HasSuffix(path, ".toml") {
 			paths = append(paths, path)
 		}
 		return nil
@@ -200,14 +180,7 @@ func TestConformanceFixtures(t *testing.T) {
 
 			var decoded map[string]any
 			var decodeErr error
-			if strings.HasSuffix(path, ".md") {
-				fm, err := fixtureFrontmatter(fixtureBody(string(raw)))
-				if err != nil {
-					decodeErr = err
-				} else if _, err := toml.Decode(fm, &decoded); err != nil {
-					decodeErr = fmt.Errorf("frontmatter does not parse as TOML: %w", err)
-				}
-			} else if _, err := toml.Decode(string(raw), &decoded); err != nil {
+			if _, err := toml.Decode(string(raw), &decoded); err != nil {
 				decodeErr = fmt.Errorf("TOML does not parse: %w", err)
 			}
 			if decodeErr != nil {

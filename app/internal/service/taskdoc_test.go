@@ -18,11 +18,11 @@ import (
 // reviewDocument is the acceptance case the completion surface exists for: a
 // verdict recorded into the instance, compared against the resource's live
 // revision, with no key of its own to hang on.
-const reviewDocument = `+++
-[review]
+const reviewDocument = `[review]
 kind              = "task"
 description       = "Review a resource and record a verdict"
 resource_observer = "issue_pr"
+instruction       = "Review {{ resource.id }} and record a verdict against its current revision."
 
 [review.inputs_schema]
 type = "object"
@@ -41,8 +41,6 @@ all = [
   { check = "resource.state.resource_kind", in = ["pull", "issue"] },
   { expr = "self.state.verdict_revision == resource.state.revision" },
 ]
-+++
-Review {{ resource.id }} and record a verdict against its current revision.
 `
 
 // observeScript is the observer's `observe` action: it reports a fixed
@@ -92,7 +90,7 @@ func writeTaskDocumentFixture(t *testing.T, workdirsRoot, wfID string, observerS
 	write(filepath.Join("resources", "issue_pr.toml"), observerDocument(observerState))
 	write(filepath.Join("workflows", wfID+".toml"), "["+wfID+"]\nkind = \"workflow\"\n\n[["+wfID+".nodes]]\nuses = \"noop\"\n")
 	for i, doc := range documents {
-		write(filepath.Join("tasks", fmt.Sprintf("doc%d.md", i)), doc)
+		write(filepath.Join("tasks", fmt.Sprintf("doc%d.toml", i)), doc)
 	}
 	return &config.Config{WorkspaceDirsRoot: workdirsRoot, BaseDir: baseDir}
 }
@@ -362,7 +360,7 @@ pr_url        = { type = "string" }
 `, revisionFile))
 	write(filepath.Join("workflows", "wf.toml"), "[wf]\nkind = \"workflow\"\n\n[[wf.nodes]]\nuses = \"noop\"\n")
 	for i, doc := range documents {
-		write(filepath.Join("tasks", fmt.Sprintf("doc%d.md", i)), doc)
+		write(filepath.Join("tasks", fmt.Sprintf("doc%d.toml", i)), doc)
 	}
 	return &config.Config{WorkspaceDirsRoot: t.TempDir(), BaseDir: baseDir}
 }
@@ -435,7 +433,7 @@ func TestTaskSetup_PluginTaskDocumentResolvesItsOwnObserver(t *testing.T) {
 	}
 	write("plugin.toml", "name = \"acme\"\nversion = \"0.1.0\"\ndescription = \"test plugin\"\n")
 	write(filepath.Join("config", "resources", "issue_pr.toml"), observerDocument(map[string]string{"resource_kind": "pull", "revision": "sha2"}))
-	write(filepath.Join("config", "tasks", "review.md"), reviewDocument)
+	write(filepath.Join("config", "tasks", "review.toml"), reviewDocument)
 	cfg := &config.Config{
 		WorkspaceDirsRoot: t.TempDir(),
 		PluginDirs:        []string{pluginDir},
@@ -623,19 +621,17 @@ func TestSetTaskState_PayloadViolatingTheSchemaRejected(t *testing.T) {
 
 // judgedDocument is a document whose gate waits on an independent verdict,
 // which is the shape every converted work task has.
-const judgedDocument = `+++
-[work]
+const judgedDocument = `[work]
 kind              = "task"
 description       = "Do the work and wait for an independent verdict"
 resource_observer = "issue_pr"
+instruction       = "Do the work at {{ resource.id }}."
 
 [work.done_when]
 all = [
   { check = "resource.state.resource_kind", in = ["pull", "issue"] },
   { judge = "acceptance criteria are satisfied", id = "ac-met" },
 ]
-+++
-Do the work at {{ resource.id }}.
 `
 
 // A document produces no outputs, so the outputs write path names the state
@@ -714,13 +710,11 @@ func TestRecordJudge_InstanceWithNoGateRejectsEveryLeaf(t *testing.T) {
 
 // gatelessDocument declares no completion predicate: it is work with nothing
 // to reconfirm, which the language allows.
-const gatelessDocument = `+++
-[note]
+const gatelessDocument = `[note]
 kind              = "task"
 description       = "Work with nothing to reconfirm"
 resource_observer = "issue_pr"
-+++
-Note something about {{ resource.id }}.
+instruction       = "Note something about {{ resource.id }}."
 `
 
 // The outputs write path reads both kinds through the shared loader, so a
@@ -729,10 +723,10 @@ Note something about {{ resource.id }}.
 func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
 	store := testStore(t)
 	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
-	// Frontmatter that parses but declares a field outside the task surface: a
-	// `.md` without frontmatter at all is a template asset rather than a
-	// broken document, so it would not fail the load.
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "broken.md"), []byte("+++\n[broken]\nkind = \"task\"\nbogus = 1\n+++\nA body.\n"), 0o644); err != nil {
+	// A declaration that parses but carries a field outside the task surface:
+	// a `.md` that no instruction_file names is a template asset rather than
+	// a broken document, so it would not fail the load.
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "broken.toml"), []byte("[broken]\nkind = \"task\"\nbogus = 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
@@ -754,23 +748,23 @@ func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
 // arrives — `plect task setup <id> --input instruction=...`.
 func TestTaskSetup_TaskDocumentBodyReadsItsInputsThroughTheCarriedForms(t *testing.T) {
 	store := testStore(t)
-	document := `+++
-[review]
+	document := `[review]
 kind              = "task"
 description       = "Review a resource"
 resource_observer = "issue_pr"
+instruction       = """
+Review {{ resource.id }}.
+{{- if get .Inputs "instruction" ""}}
+
+Additional instructions: {{get .Inputs "instruction" ""}}
+{{- end}}
+"""
 
 [review.inputs_schema]
 type = "object"
 
 [review.inputs_schema.properties]
 instruction = { type = "string" }
-+++
-Review {{ resource.id }}.
-{{- if get .Inputs "instruction" ""}}
-
-Additional instructions: {{get .Inputs "instruction" ""}}
-{{- end}}
 `
 	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, document)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)

@@ -3,8 +3,6 @@ package config
 import (
 	"bytes"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
 
 	"github.com/BurntSushi/toml"
@@ -12,10 +10,10 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// TaskDocument is one `kind = "task"` declaration and the instruction body
-// below its frontmatter. It is the work — one piece of it, made explicit
-// enough to hand over: what to do, what would make it done, what it is about,
-// and what follows from it.
+// TaskDocument is one `kind = "task"` declaration and its instruction, either
+// inline or read from the sidecar file it names. It is the work — one piece
+// of it, made explicit enough to hand over: what to do, what would make it
+// done, what it is about, and what follows from it.
 //
 // A task document owns no lifecycle. It has no setup, no cleanup, no health
 // probe, no interactive endpoint and no nesting joint — those are an effect's
@@ -42,7 +40,8 @@ type TaskDocument struct {
 	// exhaustion.
 	Budget map[string]any
 	Chains []DocumentChain
-	// Instruction is the body below the closing `+++`. Its `{{ <path> }}`
+	// Instruction is the declaration's inline instruction or, when it names an
+	// instruction_file instead, that sidecar's content. Its `{{ <path> }}`
 	// projections are part of the language, validated at load against the
 	// roots this surface declares.
 	Instruction string
@@ -81,9 +80,9 @@ func (d TaskDocument) ResolvedStateSchemaPath() string {
 }
 
 // LoadTaskDocuments loads every task document in the trusted base layers.
-// Task documents share the effect root — a directory name is not semantic, so
-// what separates the two is the serialization the language assigns each kind:
-// a kind with a body is a Markdown file, a kind without one is TOML.
+// Task documents share the effect root — a directory name is not semantic —
+// and the same TOML serialization every other kind uses; what makes a
+// declaration a task document is its `kind`, not the file it is found in.
 func (c *Config) LoadTaskDocuments(workspaceDirPath string) (map[string]TaskDocument, error) {
 	layers, err := c.discoverLayers(workspaceDirPath)
 	if err != nil {
@@ -212,27 +211,6 @@ func decodeDoneWhen(def *lang.Definition) (*DoneWhen, error) {
 		return nil, err
 	}
 	return decoded.DoneWhen, nil
-}
-
-// listMarkdownFiles returns sorted *.md entries in dir. A missing dir returns
-// an empty list, so a layer that declares no task document is normal.
-func listMarkdownFiles(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var files []string
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".md" {
-			continue
-		}
-		files = append(files, filepath.Join(dir, e.Name()))
-	}
-	sort.Strings(files)
-	return files, nil
 }
 
 // ValidateTaskDocuments runs the contract checks that need the rest of the

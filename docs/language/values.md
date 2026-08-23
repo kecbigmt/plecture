@@ -155,13 +155,13 @@ a chain read them. An effect's outputs are production records, so its
 instantiated, whether it comes from the nesting joint or from this layer's own
 inputs.
 
-<!-- fixture: values/live-root.md -->
-```markdown
-+++
+<!-- fixture: values/live-root.toml -->
+```toml
 [review]
 kind              = "task"
 description       = "Review a resource and record a verdict against its revision"
 resource_observer = "issue_pr"
+instruction       = "Review {{ resource.id }} and record a verdict against its current revision."
 
 [review.state_schema]
 type = "object"
@@ -174,8 +174,6 @@ all = [
   { check = "resource.state.resource_kind", in = ["pull", "issue"] },
   { expr = "self.state.verdict_revision == resource.state.revision" },
 ]
-+++
-Review {{ resource.id }} and record a verdict against its current revision.
 ```
 
 A direct projection of an inner output, `{ from = "inner.outputs.<key>" }`,
