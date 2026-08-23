@@ -32,17 +32,36 @@ Adjust the path if the process runs with an explicit `--data-dir`.
 ## State changes
 
 For every task instance's layer record in `state.json`, rename `task_id` to
-`effect_id`:
+`effect_id`. The rename is conditional on `has("task_id")` so the command is
+safe to run against state that is already migrated, or a `state.json` where
+one session migrated and another has not yet — reapplying it, or applying it
+to a mixed file, must never overwrite an already-renamed layer's `effect_id`
+with `null`:
 
 ```bash
 jq '(.sessions[]? | .tasks[]? | select(.layers != null) | .layers[]) |=
-      (. + {effect_id: .task_id} | del(.task_id))' \
-  "$DATA_DIR/state.json" > "$DATA_DIR/state.json.new" \
-  && mv "$DATA_DIR/state.json.new" "$DATA_DIR/state.json"
+      (if has("task_id") then (. + {effect_id: .task_id} | del(.task_id)) else . end)' \
+  "$DATA_DIR/state.json" > "$DATA_DIR/state.json.new"
 ```
 
 A session with no nested task instances has no `layers` array on any of its
 tasks, so the `select` leaves it untouched.
+
+Before replacing the live file, verify that every layer's identity survived
+the transform exactly — the same set of ids, just under the new key, with
+none dropped or turned to `null`:
+
+```bash
+OLD_IDS=$(jq -S '[.sessions[]? | .tasks[]? | .layers[]? | (.effect_id // .task_id)]' "$DATA_DIR/state.json")
+NEW_IDS=$(jq -S '[.sessions[]? | .tasks[]? | .layers[]? | .effect_id]' "$DATA_DIR/state.json.new")
+if [ "$OLD_IDS" != "$NEW_IDS" ]; then
+  echo "migration verification failed: layer identities changed — not replacing state.json" >&2
+  echo "before: $OLD_IDS" >&2
+  echo "after:  $NEW_IDS" >&2
+  exit 1
+fi
+mv "$DATA_DIR/state.json.new" "$DATA_DIR/state.json"
+```
 
 ## Consumer changes
 
