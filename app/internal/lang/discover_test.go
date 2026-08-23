@@ -184,6 +184,37 @@ instructions      = [{ file = "../../outside.md" }]
 	assertDiagnostic(t, err, CodeTaskInstructionFileCrossLayer, LayerSemantic)
 }
 
+// A `..` segment does not by itself leave the layer: a task declared below a
+// subdirectory of the layer may reach a sidecar that sits beside its parent
+// directory rather than beside itself, as long as the result stays inside
+// the layer root. Only escaping the root, not escaping the declaring file's
+// own directory, is a load error.
+func TestResolveTaskInstructionsFileAcceptsAValidSameLayerParentReference(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "tasks", "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "tasks", "shared.md"), []byte("Shared instruction text.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "tasks", "nested", "work.toml")
+	defs, err := ParseDefinitionDocument(path, []byte(`
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ file = "../shared.md" }]
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := resolveTaskInstructions(defs[0], root); err != nil {
+		t.Fatalf("a same-layer parent reference must not be rejected: %v", err)
+	}
+	if defs[0].Instruction != "Shared instruction text.\n" {
+		t.Errorf("Instruction = %q", defs[0].Instruction)
+	}
+}
+
 func TestResolveTaskInstructionsFileRejectsAbsolutePath(t *testing.T) {
 	dir := t.TempDir()
 	nested := filepath.Join(dir, "etc")

@@ -98,16 +98,33 @@ func taskInstructionFiles(path string) ([]string, error) {
 		if kind, _ := tbl["kind"].(string); kind != "task" {
 			continue
 		}
-		instructions, _ := tbl["instructions"].([]any)
-		for _, el := range instructions {
-			m, ok := el.(map[string]any)
-			if !ok {
-				continue
-			}
+		for _, m := range instructionElements(tbl["instructions"]) {
 			if f, ok := m["file"].(string); ok {
 				files = append(files, f)
 			}
 		}
 	}
 	return files, nil
+}
+
+// instructionElements normalizes an `instructions` field to a slice of
+// element tables, accepting either shape BurntSushi/toml produces for an
+// array of tables decoded into a generic map: `[]map[string]any` for the
+// canonical `[[<id>.instructions]]` array-of-tables form, and `[]any` for
+// the inline `instructions = [{ ... }]` form. See
+// app/internal/lang/discover.go's asTableArray for the same distinction.
+func instructionElements(v any) []map[string]any {
+	switch arr := v.(type) {
+	case []map[string]any:
+		return arr
+	case []any:
+		out := make([]map[string]any, 0, len(arr))
+		for _, item := range arr {
+			if m, ok := item.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
+	return nil
 }

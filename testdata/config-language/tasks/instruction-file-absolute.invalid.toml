@@ -1,0 +1,11 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER entry=definitions
+# reason: an instructions element's file is relative to the declaring file; an absolute spelling is rejected outright rather than silently nested beneath the declaring directory.
+
+[work]
+kind              = "task"
+description       = "A task whose instructions element names an absolute path"
+resource_observer = "issue_pr"
+instructions      = [{ file = "/etc/passwd" }]
+
+[work.done_when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]

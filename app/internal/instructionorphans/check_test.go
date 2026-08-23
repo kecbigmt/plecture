@@ -36,6 +36,34 @@ instructions = [{ file = "work.md" }]
 	}
 }
 
+// The canonical `[[<id>.instructions]]` array-of-tables spelling decodes to
+// a different Go shape ([]map[string]any) than the inline
+// `instructions = [{ ... }]` form ([]any) that the other tests in this file
+// use — BurntSushi/toml picks the shape based on the TOML syntax, not on
+// content. Both must count as a reference.
+func TestCheckRecognizesTheArrayOfTablesForm(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "tasks", "work.toml"), `
+[work]
+kind = "task"
+
+[[work.instructions]]
+file = "work.md"
+
+[[work.instructions]]
+text = "An inline segment beside the sidecar."
+`)
+	write(t, filepath.Join(root, "tasks", "work.md"), "Resolve the issue.\n")
+
+	orphans, err := Check([]string{root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(orphans) != 0 {
+		t.Fatalf("orphans = %v, want none: the array-of-tables form must be recognized", orphans)
+	}
+}
+
 // A commented-out `file = "..."` line is not TOML at all — it is not a
 // reference, and this test would fail if the checker still scanned text
 // rather than decoding.
