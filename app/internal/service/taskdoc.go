@@ -248,7 +248,9 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	return &TaskSetupResult{
 		SessionName: resolvedName,
 		Instance:    key,
-		TaskID:      doc.ID,
+		// The address the reference selected, so a caller echoing this back at
+		// another command names the same declaration.
+		TaskID:      params.TaskID,
 		Scope:       contract.TaskScopeSession,
 		Name:        params.Name,
 		Resource:    params.Resource,

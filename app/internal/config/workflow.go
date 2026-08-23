@@ -25,6 +25,11 @@ import (
 // `plect workflow list/show` and the MCP discovery tools present.
 type WorkflowFile struct {
 	ID string
+	// Address is the name this workflow answers to across the cascade — its id
+	// alone when the user owns it, its catalog address when a plugin declares
+	// it. A session freezes this rather than the id, because the id is what
+	// names the session and cannot say which declaration produced it.
+	Address string
 	// Definition is the declaration this file was decoded from, kept so a
 	// reference naming this workflow resolves against what was parsed rather
 	// than against a reconstruction of it.
@@ -446,10 +451,9 @@ func resolveSchemaPath(file, baseDir string) string {
 // trusted.
 //
 // plugin marks a layer sourced from c.PluginDirs specifically (as opposed to
-// the global config dir or an ancestor overlay): per the plugin-packaging
-// design, a same-id conflict between two plugin layers is a load error,
-// while a user-owned layer (global or overlay) may always replace what a
-// plugin layer defines.
+// the global config dir or an ancestor overlay), which is what decides the
+// address its declarations answer to: a mounted plugin's carry its catalog
+// address, and everything else is addressed by id alone.
 type layerDir struct {
 	dir          string
 	workspaceDir bool
@@ -472,10 +476,10 @@ type layerDir struct {
 // shallower table wholesale — so a project extends a shared workflow instead
 // of forking it.
 //
-// Same-id across two different plugin layers is rejected outright, before any
-// merge is attempted: composing two arbitrary plugins under one workflow id
-// was never a sanctioned use case — only a user-owned overlay may extend a
-// plugin's workflow.
+// Two plugins declaring one id land on separate addresses and both load; a
+// user-owned workflow sharing an id with a plugin's does not extend it either,
+// for the same reason. Only a deeper user-owned layer merges into a shallower
+// one, which is what lets a project extend a workflow it owns.
 //
 // Trust restriction: a workflow document in the workspace-dir layer is clone
 // content and may only add nodes.
@@ -504,6 +508,7 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 		if err != nil {
 			return nil, fmt.Errorf("workflow %s in %s: %w", entry.def.ID, entry.source, err)
 		}
+		wf.Address = entry.address
 		if err := canonicalizeWorkflowRefs(&wf, entry.prefix); err != nil {
 			return nil, err
 		}
@@ -515,9 +520,10 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 // LoadTaskDefinitions merges plugin + global + ancestor `.plect/tasks/`
 // layers. Same-id deeper (user-owned) layer wins because setup/cleanup is
 // atomic — appending two shell scripts doesn't have a sensible meaning the
-// way appending nodes does. Same-id across two different plugin layers is a
-// load error instead of a silent pick, since declaration order must never
-// decide between two plugins' shell.
+// way appending nodes does. Two plugins declaring one id land on separate
+// addresses and both load; only a layer with no catalog identity to name it by
+// still collides, since there declaration order would be deciding between two
+// plugins' shell.
 //
 // Trust restriction: task definitions are arbitrary shell, so the
 // workspace-dir layer (clone content) must not contribute any. A

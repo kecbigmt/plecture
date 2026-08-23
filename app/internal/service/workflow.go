@@ -72,7 +72,7 @@ func WorkflowList(cfg *config.Config, workspaceDirPath string) ([]WorkflowSummar
 	out := make([]WorkflowSummary, 0, len(workflows))
 	for _, wf := range workflows {
 		out = append(out, WorkflowSummary{
-			ID:          wf.ID,
+			ID:          wf.Address,
 			Name:        wf.Name,
 			Description: wf.Description,
 			AutoSelect:  workflowAutoSelect(wf),
@@ -118,7 +118,7 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 		nodes = append(nodes, resolvedToNode(r, references[r.NodeID]))
 	}
 	detail := &WorkflowDetail{
-		ID:                wf.ID,
+		ID:                wf.Address,
 		Name:              wf.Name,
 		Description:       wf.Description,
 		WorkspaceProvider: wf.WorkspaceProvider,
