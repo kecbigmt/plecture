@@ -48,15 +48,18 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 
 	// inputs_schema carries no contract this pass resolves against, but its
 	// extends composition rules are load-time rules regardless.
-	if _, err := schemaKeyRules("inputs_schema", layers); err != nil {
+	if _, err := SchemaKeyRules("inputs_schema", layers); err != nil {
 		return err
 	}
-	selfKeys, err := schemaKeyRules("state_schema", layers)
+	selfKeys, err := SchemaKeyRules("state_schema", layers)
 	if err != nil {
 		return err
 	}
-	judges, err := composedJudges(layers)
+	judges, err := ComposedJudges(layers)
 	if err != nil {
+		return err
+	}
+	if _, err := ComposedChainIDs(layers); err != nil {
 		return err
 	}
 

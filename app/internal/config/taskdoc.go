@@ -260,8 +260,8 @@ func (c *Config) ValidateTaskDocuments(docs map[string]TaskDocument, observers m
 		validation := lang.Validation{From: doc.Ownership(), Executables: c.binResolver(doc.SourcePath)}
 		// ValidateTaskContracts reads doc.Definition, not the composed
 		// TaskDocument fields, so it re-derives and checks the whole extends
-		// chain regardless of composition — already done in LoadTaskDocuments
-		// — having run.
+		// chain on its own — unaffected by composition having already run
+		// inside LoadTaskDocuments.
 		if err := validation.ValidateTaskContracts(doc.Definition, registry); err != nil {
 			return err
 		}

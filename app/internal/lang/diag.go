@@ -63,6 +63,7 @@ const (
 	CodeExtendsInheritedField         Code = "PLECTURE-CFG-EXTENDS-INHERITED-FIELD"
 	CodeExtendsCycle                  Code = "PLECTURE-CFG-EXTENDS-CYCLE"
 	CodeExtendsJudgeIDDuplicate       Code = "PLECTURE-CFG-EXTENDS-JUDGE-ID-DUPLICATE"
+	CodeExtendsChainIDDuplicate       Code = "PLECTURE-CFG-EXTENDS-CHAIN-ID-DUPLICATE"
 	CodeExtendsDefaultRedeclared      Code = "PLECTURE-CFG-EXTENDS-DEFAULT-REDECLARED"
 	CodeExtendsSchemaType             Code = "PLECTURE-CFG-EXTENDS-SCHEMA-TYPE"
 	CodeWorkflowCycle                 Code = "PLECTURE-CFG-WORKFLOW-CYCLE"
@@ -117,6 +118,7 @@ var codeLayers = map[Code][]Layer{
 	CodeExtendsInheritedField:         {LayerStructural},
 	CodeExtendsCycle:                  {LayerSemantic},
 	CodeExtendsJudgeIDDuplicate:       {LayerSemantic},
+	CodeExtendsChainIDDuplicate:       {LayerSemantic},
 	CodeExtendsDefaultRedeclared:      {LayerSemantic},
 	CodeExtendsSchemaType:             {LayerSemantic},
 	CodeWorkflowCycle:                 {LayerSemantic},
@@ -143,7 +145,7 @@ func Codes() []Code {
 		CodeResourceObserverMismatch, CodeFirstObserveFailed, CodeBinUnknown, CodeTerminalUnavailable,
 		CodeNestingCycle, CodeNestingOutputMutable, CodeNestingProjectionMismatch,
 		CodeExtendsInheritedField, CodeExtendsCycle, CodeExtendsJudgeIDDuplicate,
-		CodeExtendsDefaultRedeclared, CodeExtendsSchemaType, CodeWorkflowCycle,
+		CodeExtendsChainIDDuplicate, CodeExtendsDefaultRedeclared, CodeExtendsSchemaType, CodeWorkflowCycle,
 		CodeCELSyntax, CodeCELUnknownName, CodeCELType, CodeCELCustomFunction,
 	}
 }

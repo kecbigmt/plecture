@@ -192,6 +192,43 @@ extends = "root_task"
 	wantDiag(t, resolveTaskDocuments(t, src), CodeFieldRequired, LayerStructural)
 }
 
+// TestExtendsRejectsADuplicateChainID mirrors judge-id uniqueness for chain
+// ids: two layers naming the same chain id would collide in spawn routing.
+func TestExtendsRejectsADuplicateChainID(t *testing.T) {
+	src := `[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[[base_task.chains]]
+id        = "review"
+workflow  = "goal_reviewer"
+placement = "sibling"
+
+[base_task.chains.when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
+
+[base_task.chains.inputs]
+task = "review"
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[[ext_task.chains]]
+id        = "review"
+workflow  = "goal_reviewer"
+placement = "sibling"
+
+[ext_task.chains.when]
+all = [{ check = "resource.state.checks_status", in = ["FAILURE"] }]
+
+[ext_task.chains.inputs]
+task = "review"
+`
+	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsChainIDDuplicate, LayerSemantic)
+}
+
 // TestExtendsRejectsAnIndirectCycle proves cycle detection walks the whole
 // chain, not just an immediate self-reference: three declarations extending
 // each other in a loop reach themselves just as surely as one.

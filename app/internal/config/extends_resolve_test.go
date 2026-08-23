@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -165,6 +166,196 @@ extends = "work"
 	}
 	if ext.Instruction != "Resolve the issue." {
 		t.Errorf("Instruction = %q, want the base's inherited", ext.Instruction)
+	}
+}
+
+// TestLoadTaskDocuments_RejectsInvalidExtendsWithoutValidateTaskDocuments is
+// the other half of the fast-path guard: LoadTaskDocuments must not silently
+// merge an extends chain that breaks a composition rule just because the
+// caller skips the heavier ValidateTaskDocuments pass. Composition runs its
+// own copy of lang's checkers rather than assuming they already ran.
+func TestLoadTaskDocuments_RejectsInvalidExtendsWithoutValidateTaskDocuments(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "duplicate judge id",
+			body: `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+
+[work.done_when]
+all = [{ judge = "acceptance criteria are satisfied", id = "ac-met" }]
+
+[work_ext]
+kind    = "task"
+extends = "work"
+
+[work_ext.done_when]
+all = [{ judge = "a different question", id = "ac-met" }]
+`,
+			want: "PLECTURE-CFG-EXTENDS-JUDGE-ID-DUPLICATE",
+		},
+		{
+			name: "duplicate chain id",
+			body: `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+
+[[work.chains]]
+id        = "review"
+workflow  = "claude_reviewer"
+placement = "sibling"
+
+[work.chains.when]
+all = [{ check = "resource.state.revision", ne = "" }]
+
+[work_ext]
+kind    = "task"
+extends = "work"
+
+[[work_ext.chains]]
+id        = "review"
+workflow  = "claude_reviewer"
+placement = "sibling"
+
+[work_ext.chains.when]
+all = [{ check = "resource.state.revision", eq = "" }]
+`,
+			want: "PLECTURE-CFG-EXTENDS-CHAIN-ID-DUPLICATE",
+		},
+		{
+			name: "schema default redeclared",
+			body: `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+
+[work.state_schema]
+type = "object"
+
+[work.state_schema.properties]
+priority = { type = "string", default = "normal" }
+
+[work_ext]
+kind    = "task"
+extends = "work"
+
+[work_ext.state_schema]
+type = "object"
+
+[work_ext.state_schema.properties]
+priority = { type = "string", default = "high" }
+`,
+			want: "PLECTURE-CFG-EXTENDS-DEFAULT-REDECLARED",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			base := t.TempDir()
+			writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+			writeFile(t, filepath.Join(base, "workflows", "claude_reviewer.toml"), `
+[claude_reviewer]
+kind = "workflow"
+`)
+			writeFile(t, filepath.Join(base, "tasks", "work.toml"), tc.body)
+			_, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+			if err == nil {
+				t.Fatalf("LoadTaskDocuments: expected %s, got no error", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("LoadTaskDocuments error = %v, want it to name %s", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestValidateTaskDocuments_ComposedSchemaKeepsBaseConstraintsClosed proves an
+// extension cannot accidentally weaken a base's closed contract: the base's
+// additionalProperties=false survives composition even though the extension's
+// own state_schema table, being newer/nearer, would otherwise have replaced
+// it wholesale; and required accumulates rather than being replaced.
+func TestValidateTaskDocuments_ComposedSchemaKeepsBaseConstraintsClosed(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+
+[work.state_schema]
+type                 = "object"
+required             = ["priority"]
+additionalProperties = false
+
+[work.state_schema.properties]
+priority = { type = "string" }
+
+[work_ext]
+kind    = "task"
+extends = "work"
+
+[work_ext.state_schema]
+type = "object"
+
+[work_ext.state_schema.properties]
+reviewed_by = { type = "string" }
+`)
+	cfg := &Config{BaseDir: base}
+	docs, observers := loadDocsAndObservers(t, cfg)
+	if err := cfg.ValidateTaskDocuments(docs, observers, nil); err != nil {
+		t.Fatalf("ValidateTaskDocuments: %v", err)
+	}
+	ext := docs["work_ext"]
+	if closed, ok := ext.StateSchema["additionalProperties"].(bool); !ok || closed {
+		t.Errorf("additionalProperties = %v, want the base's closed contract preserved", ext.StateSchema["additionalProperties"])
+	}
+	required, _ := ext.StateSchema["required"].([]any)
+	if len(required) != 1 || required[0] != "priority" {
+		t.Errorf("required = %v, want the base's requirement carried through", required)
+	}
+	props, _ := ext.StateSchema["properties"].(map[string]any)
+	if _, ok := props["priority"]; !ok {
+		t.Errorf("properties = %v, want the base's key still present", props)
+	}
+	if _, ok := props["reviewed_by"]; !ok {
+		t.Errorf("properties = %v, want the extension's new key added", props)
+	}
+}
+
+// TestLoadTaskDocuments_RejectsSchemaFileInExtendsChain guards against silent
+// data loss: composition reads only inline schema tables, so a schema_file
+// contract anywhere in the chain must fail loud rather than compose into
+// nothing.
+func TestLoadTaskDocuments_RejectsSchemaFileInExtendsChain(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "state.schema.json"), `{"type":"object","properties":{"priority":{"type":"string"}}}`)
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+state_schema_file = "state.schema.json"
+
+[work_ext]
+kind    = "task"
+extends = "work"
+`)
+	_, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+	if err == nil {
+		t.Fatal("LoadTaskDocuments: expected a rejection for state_schema_file in an extends chain")
+	}
+	if !strings.Contains(err.Error(), "state_schema_file") {
+		t.Errorf("error = %v, want it to name state_schema_file", err)
 	}
 }
 

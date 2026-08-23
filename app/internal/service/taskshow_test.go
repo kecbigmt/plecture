@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -102,9 +103,10 @@ func TestTaskShow_UnknownTask(t *testing.T) {
 }
 
 // TestTaskShow_ReportsExtendsChainWithPerLayerProvenance is the acceptance
-// criterion made concrete: every composed element — the instruction segment,
-// the chain, the judge — names the declaration in the extends chain that
-// supplied it.
+// criterion made concrete: every composed element — each instruction
+// element, every done_when leaf kind (not only judges), each chain, and
+// every schema key (including which layer set a default) — names the
+// declaration in the extends chain that supplied it.
 func TestTaskShow_ReportsExtendsChainWithPerLayerProvenance(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "resources", `
@@ -115,6 +117,12 @@ match = '^https://github\.com/'
 [issue_pr.observe]
 type    = "exec"
 command = "true"
+
+[issue_pr.state_schema]
+type = "object"
+
+[issue_pr.state_schema.properties]
+checks_status = { type = "string" }
 `)
 	writeTaskFile(t, base, "work", `
 [work]
@@ -123,12 +131,18 @@ resource_observer = "issue_pr"
 instructions      = [{ text = "Resolve the issue." }]
 
 [work.done_when]
-all = [{ judge = "acceptance criteria are satisfied", id = "ac-met" }]
+all = [
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
+  { judge = "acceptance criteria are satisfied", id = "ac-met" },
+]
 
 [work_claude]
 kind         = "task"
 extends      = "work"
-instructions = [{ text = "Use the claude runtime." }]
+instructions = [
+  { text = "Use the claude runtime." },
+  { text = "Prefer opus for review." },
+]
 
 [[work_claude.chains]]
 id        = "review"
@@ -137,6 +151,12 @@ placement = "sibling"
 
 [work_claude.chains.when]
 all = [{ judge_pending = "ac-met" }]
+
+[work_claude.state_schema]
+type = "object"
+
+[work_claude.state_schema.properties]
+model = { type = "string", default = "opus" }
 `)
 	writeTaskFile(t, base, "claude_reviewer", `
 [claude_reviewer]
@@ -154,19 +174,24 @@ kind = "workflow"
 	if outer.ID != "work_claude" || inner.ID != "work" {
 		t.Fatalf("ExtendsChain order = [%s, %s], want outermost (work_claude) first", outer.ID, inner.ID)
 	}
-	if outer.Instruction != "Use the claude runtime." {
-		t.Errorf("outer.Instruction = %q, want only work_claude's own segment", outer.Instruction)
+	wantOuterInstructions := []string{"Use the claude runtime.", "Prefer opus for review."}
+	if !slices.Equal(outer.Instructions, wantOuterInstructions) {
+		t.Errorf("outer.Instructions = %v, want %v (each element attributed separately)", outer.Instructions, wantOuterInstructions)
 	}
 	if len(outer.Chains) != 1 || outer.Chains[0] != "review" {
 		t.Errorf("outer.Chains = %v, want [review], attributed to work_claude", outer.Chains)
 	}
-	if len(outer.Judges) != 0 {
-		t.Errorf("outer.Judges = %v, want none: work_claude declares no judge of its own", outer.Judges)
+	if len(outer.DoneWhen) != 0 {
+		t.Errorf("outer.DoneWhen = %v, want none: work_claude declares no done_when of its own", outer.DoneWhen)
 	}
-	if inner.Instruction != "Resolve the issue." {
-		t.Errorf("inner.Instruction = %q, want only work's own segment", inner.Instruction)
+	if want := []string{"model (default)"}; !slices.Equal(outer.StateSchemaKeys, want) {
+		t.Errorf("outer.StateSchemaKeys = %v, want %v", outer.StateSchemaKeys, want)
 	}
-	if len(inner.Judges) != 1 || inner.Judges[0] != "ac-met" {
-		t.Errorf("inner.Judges = %v, want [ac-met], attributed to work", inner.Judges)
+	if inner.Instructions[0] != "Resolve the issue." {
+		t.Errorf("inner.Instructions = %v, want only work's own segment", inner.Instructions)
+	}
+	wantInnerDoneWhen := []string{"check resource.state.checks_status", "judge ac-met"}
+	if !slices.Equal(inner.DoneWhen, wantInnerDoneWhen) {
+		t.Errorf("inner.DoneWhen = %v, want %v (every leaf kind, not only judges)", inner.DoneWhen, wantInnerDoneWhen)
 	}
 }

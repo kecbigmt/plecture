@@ -44,15 +44,25 @@ func TestWriteTaskDetail_PlainTaskPrintsNoChainSection(t *testing.T) {
 }
 
 // TestWriteTaskDetail_PrintsExtendsChainWithProvenance is the CLI half of the
-// per-element provenance acceptance criterion: every layer names the
-// instruction, chains, and judges it itself contributes.
+// per-element provenance acceptance criterion: every layer names each
+// instruction element, its chains, every done_when leaf (not only judges),
+// and its schema keys, including which key it gave a default.
 func TestWriteTaskDetail_PrintsExtendsChainWithProvenance(t *testing.T) {
 	var buf bytes.Buffer
 	err := writeTaskDetail(&buf, &service.TaskDetail{
 		ID: "work_claude",
 		ExtendsChain: []service.TaskExtendsLayer{
-			{ID: "work_claude", Instruction: "Use the claude runtime.", Chains: []string{"review"}},
-			{ID: "work", Instruction: "Resolve the issue.", Judges: []string{"ac-met"}},
+			{
+				ID:              "work_claude",
+				Instructions:    []string{"Use the claude runtime.", "Prefer opus for review."},
+				Chains:          []string{"review"},
+				StateSchemaKeys: []string{"model (default)"},
+			},
+			{
+				ID:           "work",
+				Instructions: []string{"Resolve the issue."},
+				DoneWhen:     []string{"check resource.state.checks_status", "judge ac-met"},
+			},
 		},
 	})
 	if err != nil {
@@ -61,11 +71,13 @@ func TestWriteTaskDetail_PrintsExtendsChainWithProvenance(t *testing.T) {
 	got := buf.String()
 	want := "Extends chain (outermost first):\n" +
 		"  work_claude\n" +
-		"    instructions: Use the claude runtime.\n" +
+		"    instructions[0]: Use the claude runtime.\n" +
+		"    instructions[1]: Prefer opus for review.\n" +
 		"    chains: review\n" +
+		"    state_schema: model (default)\n" +
 		"    work\n" +
-		"      instructions: Resolve the issue.\n" +
-		"      judges: ac-met\n"
+		"      instructions[0]: Resolve the issue.\n" +
+		"      done_when: check resource.state.checks_status, judge ac-met\n"
 	if !strings.Contains(got, want) {
 		t.Errorf("got:\n%s\nwant it to contain:\n%s", got, want)
 	}

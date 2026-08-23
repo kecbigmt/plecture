@@ -319,7 +319,9 @@ Composition is a closed, entirely additive whitelist:
 - `[[instructions]]` — the extension's elements append after the base's
   (concatenated array, blank-line join at render — the array shape
   [`instructions`](#the-instruction) already carries).
-- `[[chains]]` — the extension's own chains add to the base's.
+- `[[chains]]` — the extension's own chains add to the base's. A chain id is
+  unique across the whole extends chain, the same rule a judge id follows; a
+  collision is a load error (`PLECTURE-CFG-EXTENDS-CHAIN-ID-DUPLICATE`).
 - `done_when.all` — leaf append only, monotone strengthening. Judge ids are
   unique across the whole extends chain; a collision is a load error
   (`PLECTURE-CFG-EXTENDS-JUDGE-ID-DUPLICATE`).
@@ -345,8 +347,10 @@ with "when dispatched as X, additionally …" — rather than the if/else
 interleaving a Go template made possible.
 
 `plect task show` on an extension prints the composed extends chain, outermost
-(the extension) first, naming for every layer the instruction segment, chains,
-and judges that layer itself contributes to the composed declaration.
+(the extension) first, naming for every layer each instruction element,
+chain, `done_when` leaf (of every kind — check, expr, and judge — not only
+judges), and schema key that layer itself contributes to the composed
+declaration, including which layer's own declaration set a key's default.
 
 Two extensions of one base each choosing a different reviewer with a static
 chain — the shape that dissolves a templated `{{if eq .Work.workflow
@@ -472,6 +476,7 @@ instructions = [{ text = "Additionally leave inline comments for anything worth 
 - A document declaring `extends` does not also declare `resource_observer`.
 - An extends chain that reaches itself is a load error.
 - A judge id is declared by at most one definition in an extends chain.
+- A chain id is declared by at most one definition in an extends chain.
 - An existing `inputs_schema` / `state_schema` key may gain a default only
   where the inner chain sets none; redeclaring one already set, or redefining
   the key's type or any other constraint, is a load error.

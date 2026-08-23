@@ -40,6 +40,7 @@ func resolveTaskInstructions(def *Definition, root string) error {
 		}
 		texts = append(texts, text)
 	}
+	def.InstructionElements = texts
 	def.Instruction = strings.Join(texts, "\n\n")
 	return nil
 }

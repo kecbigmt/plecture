@@ -49,11 +49,14 @@ func (v Validation) ExtendsChain(def *Definition, r *Registry) ([]*Definition, e
 	return chain, nil
 }
 
-// composedJudges accumulates judge ids across an extends chain, root layer
+// ComposedJudges accumulates judge ids across an extends chain, root layer
 // first, catching the one collision the whole chain must never allow: two
 // declarations answering the same judge id would let a later layer silently
-// widen or narrow what an earlier layer already committed to.
-func composedJudges(layers []*Definition) (map[string]bool, error) {
+// widen or narrow what an earlier layer already committed to. It is exported
+// so a composition step that runs independently of ValidateTaskContracts —
+// app/internal/config's fast, validation-free load path — still rejects a
+// colliding chain instead of merging it as if it were valid.
+func ComposedJudges(layers []*Definition) (map[string]bool, error) {
 	owner := map[string]string{}
 	for _, layer := range layers {
 		done, ok := layer.Body["done_when"].(map[string]any)
@@ -87,13 +90,16 @@ func composedJudges(layers []*Definition) (map[string]bool, error) {
 	return judges, nil
 }
 
-// schemaKeyRules enforces the extends composition rules for inputs_schema
+// SchemaKeyRules enforces the extends composition rules for inputs_schema
 // and state_schema, walking layers root first: a new key is free to add: an
 // existing key may only gain a default where none is set anywhere in the
 // chain so far, and any other change to an existing key's definition is a
 // load error. It returns the union of declared property keys, which is the
 // composed contract a completion predicate resolves `self.state.*` against.
-func schemaKeyRules(field string, layers []*Definition) (map[string]bool, error) {
+// Exported for the same reason ComposedJudges is: app/internal/config's fast
+// load path composes independently of ValidateTaskContracts and needs the
+// identical rule, not a second implementation that could drift from it.
+func SchemaKeyRules(field string, layers []*Definition) (map[string]bool, error) {
 	known := map[string]map[string]any{}
 	hasDefault := map[string]bool{}
 	for _, layer := range layers {
@@ -138,6 +144,38 @@ func schemaKeyRules(field string, layers []*Definition) (map[string]bool, error)
 		keys[key] = true
 	}
 	return keys, nil
+}
+
+// ComposedChainIDs accumulates chain ids across an extends chain, root layer
+// first, the same shape ComposedJudges holds `done_when` to: a chain id
+// repeated by a different layer would collide in spawn routing exactly the
+// way a repeated judge id would collide in verdict recording, so it gets the
+// same uniqueness rule.
+func ComposedChainIDs(layers []*Definition) (map[string]bool, error) {
+	owner := map[string]string{}
+	for _, layer := range layers {
+		chains, ok := asTableArray(layer.Body["chains"])
+		if !ok {
+			continue
+		}
+		for i, chain := range chains {
+			id, ok := chain["id"].(string)
+			if !ok || id == "" {
+				continue
+			}
+			if prev, dup := owner[id]; dup {
+				at := childPos(childPos(Position{File: layer.File, Path: layer.ID}, "chains"), fmt.Sprintf("[%d]", i))
+				return nil, newDiag(CodeExtendsChainIDDuplicate, LayerSemantic, at,
+					fmt.Sprintf("chain id %q is already declared by %q earlier in this extends chain", id, prev))
+			}
+			owner[id] = layer.ID
+		}
+	}
+	ids := make(map[string]bool, len(owner))
+	for id := range owner {
+		ids[id] = true
+	}
+	return ids, nil
 }
 
 func withoutDefault(prop map[string]any) map[string]any {

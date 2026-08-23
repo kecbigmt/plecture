@@ -263,14 +263,20 @@ func writeTaskDetail(out io.Writer, d *service.TaskDetail) error {
 		for i, layer := range d.ExtendsChain {
 			fmt.Fprintln(out, strings.Repeat("  ", i+1)+layer.ID)
 			detail := strings.Repeat("  ", i+2)
-			if layer.Instruction != "" {
-				fmt.Fprintf(out, "%sinstructions: %s\n", detail, firstLine(layer.Instruction))
+			for j, el := range layer.Instructions {
+				fmt.Fprintf(out, "%sinstructions[%d]: %s\n", detail, j, firstLine(el))
 			}
 			if len(layer.Chains) > 0 {
 				fmt.Fprintf(out, "%schains: %s\n", detail, strings.Join(layer.Chains, ", "))
 			}
-			if len(layer.Judges) > 0 {
-				fmt.Fprintf(out, "%sjudges: %s\n", detail, strings.Join(layer.Judges, ", "))
+			if len(layer.DoneWhen) > 0 {
+				fmt.Fprintf(out, "%sdone_when: %s\n", detail, strings.Join(layer.DoneWhen, ", "))
+			}
+			if len(layer.InputsSchemaKeys) > 0 {
+				fmt.Fprintf(out, "%sinputs_schema: %s\n", detail, strings.Join(layer.InputsSchemaKeys, ", "))
+			}
+			if len(layer.StateSchemaKeys) > 0 {
+				fmt.Fprintf(out, "%sstate_schema: %s\n", detail, strings.Join(layer.StateSchemaKeys, ", "))
 			}
 		}
 	}

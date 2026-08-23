@@ -44,7 +44,10 @@ untouched and independently referable.
 Composition is a closed, entirely additive whitelist:
 
 - `[[instructions]]` elements append after the base's, in declaration order.
-- `[[chains]]` — the extension's own chains add to the base's.
+- `[[chains]]` — the extension's own chains add to the base's. A chain id is
+  unique across the whole extends chain, the same rule a judge id follows,
+  since two layers naming one id would collide in spawn routing
+  (`PLECTURE-CFG-EXTENDS-CHAIN-ID-DUPLICATE`).
 - `done_when.all` — leaf append only. Judge ids are unique across the whole
   extends chain; a collision is a load error
   (`PLECTURE-CFG-EXTENDS-JUDGE-ID-DUPLICATE`).
@@ -104,32 +107,52 @@ feature shipped.
 `LoadTaskDocuments` itself, unconditionally — not only inside the heavier
 `ValidateTaskDocuments` contract pass: instructions join with a blank line,
 chains and `done_when` leaves concatenate, and schema properties merge by
-key, reusing the same `Validation.ExtendsChain` resolution `lang` exposes
-rather than re-deriving the rules a second time. Composing unconditionally
-matters because two existing callers — `service.loadDisplayTasks` (list and
-status display) and `watchdog.EvaluateHealth` (the L2 stall signal) —
-deliberately read task documents straight off `LoadTaskDeclarations` and skip
-the full contract pass for speed; had composition stayed behind
-`ValidateTaskDocuments` only, both would silently evaluate an extension's
-`done_when` missing every leaf its base contributed. Resolving `extends`
-needs only the task namespace, so the registry `LoadTaskDocuments` builds for
-it carries no observers or workflows, keeping this path as cheap as it was.
+key. Composing unconditionally matters because two existing callers —
+`service.loadDisplayTasks` (list and status display) and
+`watchdog.EvaluateHealth` (the L2 stall signal) — deliberately read task
+documents straight off `LoadTaskDeclarations` and skip the full contract pass
+for speed; had composition stayed behind `ValidateTaskDocuments` only, both
+would silently evaluate an extension's `done_when` missing every leaf its
+base contributed. Because this path runs ahead of (and independently of)
+`ValidateTaskContracts`, it cannot assume that pass already rejected an
+invalid chain: it calls `lang`'s exported `SchemaKeyRules`, `ComposedJudges`,
+and `ComposedChainIDs` itself, against the identical chain, before merging —
+one authority for the rules, called from both the fast and the full path,
+rather than a validating implementation and a separately-trusting one that
+could drift apart. Resolving `extends` needs only the task namespace, so the
+registry `LoadTaskDocuments` builds for it carries no observers or
+workflows, keeping this path as cheap as it was.
+
+Merging `inputs_schema` / `state_schema` never lets an extension widen what
+the base closed: `required` accumulates as a union and `additionalProperties`
+stays `false` if any layer set it, so a later layer's own table — which,
+being nearer the extension, would otherwise replace the base's wholesale —
+cannot silently reopen a contract the base fixed closed. A layer using
+`inputs_schema_file` / `state_schema_file` anywhere in the chain fails the
+load outright rather than composing into nothing: the file path resolves
+relative to that layer's own directory, which a single composed document has
+no per-field way to remember, so merging it silently would drop the contract
+rather than compose it.
+
 The composed chain's own per-layer contributions are kept on the result
 (`TaskDocument.ExtendsLayers`) so `plect task show` can attribute every
-composed element to the declaration that supplied it.
+composed instruction element, chain, `done_when` leaf of any kind, and
+schema key — including which layer set a default — to the declaration that
+supplied it.
 
 `plecture.schema.json`'s `taskDefinition` gains `extends` and an
 `if`/`then`/`else` making `resource_observer` required exactly when `extends`
-is absent. `docs/language/README.md` gains five diagnostic codes:
+is absent. `docs/language/README.md` gains six diagnostic codes:
 `PLECTURE-CFG-EXTENDS-INHERITED-FIELD` (structural), and `-CYCLE`,
-`-JUDGE-ID-DUPLICATE`, `-DEFAULT-REDECLARED`, `-SCHEMA-TYPE` (semantic).
+`-JUDGE-ID-DUPLICATE`, `-CHAIN-ID-DUPLICATE`, `-DEFAULT-REDECLARED`,
+`-SCHEMA-TYPE` (semantic).
 
 The conformance corpus gains `testdata/config-language/tasks/extends/`: the
 three worked examples quoted verbatim in `docs/language/tasks.md` (a
 cross-tool reviewer choosing between two static chains, a gate-variant
 judge-recording extension, and a three-layer official/team/personal chain),
-plus the four required error fixtures and the inherited-field structural
-fixture.
+plus the four required error fixtures, the inherited-field structural
+fixture, and the chain-id-duplicate fixture.
 
 No migration is needed: `extends` is new, additive vocabulary on an existing
 kind, and no previously valid task declaration changes meaning.
