@@ -88,7 +88,7 @@ not catalog-addressable — nor is a listed plugin's own build source.
 
 `workflow_exemplars` explicitly publishes exemplar workflow packages directly
 under `exemplars/workflows/`. Directory presence alone does not publish an
-exemplar.
+exemplar. A published exemplar package contains `exemplar.toml`.
 
 ## Config resources
 
@@ -105,7 +105,9 @@ reference written inside a plugin is relative.
   required in a plugin manifest.
 - `schema_version` and `plugins` are required in a catalog manifest.
 - Every `workflow_exemplars` entry names a package directory directly under
-  `exemplars/workflows/`.
+  `exemplars/workflows/`, and that directory contains `exemplar.toml`.
+- Every `exemplar.toml` directly under `exemplars/workflows/<id>/` is listed in
+  `workflow_exemplars`.
 - An executable `name` is unique within a manifest.
 - A service's `executable` names a declared executable.
 - A plugin's `plect_min_version` must not exceed the running `plect`.

@@ -72,8 +72,11 @@ one manifest, and catalogs that need fixture manifests can avoid the reserved
 filename.
 
 Every id listed in `workflow_exemplars` names a directory directly under
-`exemplars/workflows/`. Directory presence alone does not publish an exemplar.
-The `exemplars/` catalog-root directory is reserved for catalog-owned starter
+`exemplars/workflows/`, and that directory contains `exemplar.toml`. An
+`exemplar.toml` directly under `exemplars/workflows/<id>/` that is not listed is
+a validation error, so reviewers can audit the exact published exemplar set
+from one manifest. Directory presence alone does not publish an exemplar. The
+`exemplars/` catalog-root directory is reserved for catalog-owned starter
 packages that are not mounted as plugin config.
 
 A plugin is a project root with a small fixed set of roles. Config declarations

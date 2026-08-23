@@ -21,6 +21,16 @@ func writeMinimalPlugin(t *testing.T, dir string) {
 	writeManifest(t, dir, "schema_version = 1\nplect_min_version = \"0.1.0\"\n")
 }
 
+func writeMinimalWorkflowExemplar(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "exemplar.toml"), []byte("schema_version = 1\nkind = \"workflow\"\nworkflow = \"workflow.toml\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLoadCatalogManifest_Valid(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogManifest(t, root, `
@@ -31,9 +41,7 @@ workflow_exemplars = ["review-starter"]
 `)
 	writeMinimalPlugin(t, filepath.Join(root, "github"))
 	writeMinimalPlugin(t, filepath.Join(root, "agent", "runtime"))
-	if err := os.MkdirAll(filepath.Join(root, "exemplars", "workflows", "review-starter"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeMinimalWorkflowExemplar(t, filepath.Join(root, "exemplars", "workflows", "review-starter"))
 
 	m, err := LoadCatalogManifest(root)
 	if err != nil {
@@ -55,6 +63,76 @@ workflow_exemplars = ["missing"]
 
 	if _, err := LoadCatalogManifest(root); err == nil {
 		t.Fatal("want error for a listed workflow exemplar with no package directory, got nil")
+	}
+}
+
+func TestLoadCatalogManifest_WorkflowExemplarNestedPathRejected(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogManifest(t, root, `
+schema_version = 1
+plugins = ["github"]
+workflow_exemplars = ["nested/review-starter"]
+`)
+	writeMinimalPlugin(t, filepath.Join(root, "github"))
+	writeMinimalWorkflowExemplar(t, filepath.Join(root, "exemplars", "workflows", "nested", "review-starter"))
+
+	if _, err := LoadCatalogManifest(root); err == nil {
+		t.Fatal("want error for a workflow exemplar path that is not a direct child, got nil")
+	}
+}
+
+func TestLoadCatalogManifest_WorkflowExemplarMissingManifest(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogManifest(t, root, `
+schema_version = 1
+plugins = ["github"]
+workflow_exemplars = ["review-starter"]
+`)
+	writeMinimalPlugin(t, filepath.Join(root, "github"))
+	if err := os.MkdirAll(filepath.Join(root, "exemplars", "workflows", "review-starter"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := LoadCatalogManifest(root); err == nil {
+		t.Fatal("want error for a listed workflow exemplar with no exemplar.toml, got nil")
+	}
+}
+
+func TestLoadCatalogManifest_WorkflowExemplarSymlinkEscapeRejected(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	writeMinimalWorkflowExemplar(t, outside)
+	if err := os.MkdirAll(filepath.Join(root, "exemplars", "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "exemplars", "workflows", "linked")); err != nil {
+		t.Skipf("symlink not supported in this environment: %v", err)
+	}
+	writeCatalogManifest(t, root, `
+schema_version = 1
+plugins = ["github"]
+workflow_exemplars = ["linked"]
+`)
+	writeMinimalPlugin(t, filepath.Join(root, "github"))
+
+	if _, err := LoadCatalogManifest(root); err == nil {
+		t.Fatal("want error for a workflow exemplar package that symlinks outside the catalog root, got nil")
+	}
+}
+
+func TestLoadCatalogManifest_UnlistedWorkflowExemplarFailsLoud(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogManifest(t, root, `
+schema_version = 1
+plugins = ["github"]
+workflow_exemplars = ["review-starter"]
+`)
+	writeMinimalPlugin(t, filepath.Join(root, "github"))
+	writeMinimalWorkflowExemplar(t, filepath.Join(root, "exemplars", "workflows", "review-starter"))
+	writeMinimalWorkflowExemplar(t, filepath.Join(root, "exemplars", "workflows", "extra"))
+
+	if _, err := LoadCatalogManifest(root); err == nil {
+		t.Fatal("want error for an unlisted exemplar.toml under exemplars/workflows, got nil")
 	}
 }
 
