@@ -124,9 +124,18 @@ convert_task_document() {
   local f="$1"                        # e.g. tasks/agents/review.md
   local base="${f%.md}"
   local toml="$base.toml"
-  awk '/^\+\+\+$/{c++; next} c==1{print}' "$f" > "$toml"
-  awk '/^\+\+\+$/{c++; next} c>=2{print}' "$f" > "$f.new" && mv "$f.new" "$f"
-  sed -i '/^kind *= *"task"/a instructions      = [{ file = "'"$(basename "$f")"'" }]' "$toml"
+  # Only the first two `+++` lines are the frontmatter delimiter; c<2 stops
+  # treating the marker specially once both are consumed, so a later line
+  # that happens to read `+++` — an instruction quoting another document's
+  # frontmatter, which shipped instructions do — survives as body content
+  # instead of being silently dropped.
+  awk 'BEGIN{c=0} /^\+\+\+$/ && c<2 {c++; next} c==1{print}' "$f" > "$toml"
+  awk 'BEGIN{c=0} /^\+\+\+$/ && c<2 {c++; next} c>=2{print}' "$f" > "$f.new" && mv "$f.new" "$f"
+  # TOML allows both quote styles for a string; `.` either side of `task`
+  # matches `"task"` and `'task'` alike, so a document spelled either way
+  # still gets its `instructions` field inserted rather than being silently
+  # skipped.
+  sed -i -E "/^kind[[:space:]]*=[[:space:]]*.task./a instructions      = [{ file = \"$(basename "$f")\" }]" "$toml"
 }
 
 while IFS= read -r f; do
@@ -180,7 +189,7 @@ find "$CONFIG_HOME/tasks" -name '*.md' | while IFS= read -r f; do
   head -c4 "$f" | grep -q '^+++$' && echo "unconverted: $f"
 done
 find "$CONFIG_HOME/tasks" -name '*.toml' | while IFS= read -r f; do
-  grep -q 'kind *= *"task"' "$f" || continue
+  grep -qE 'kind[[:space:]]*=[[:space:]]*.task.' "$f" || continue
   grep -q 'instructions *=' "$f" || echo "no instructions: $f"
 done
 ```
@@ -195,7 +204,7 @@ basename:
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
 find "$CONFIG_HOME/tasks" -name '*.toml' | while IFS= read -r f; do
-  grep -q 'kind *= *"task"' "$f" || continue
+  grep -qE 'kind[[:space:]]*=[[:space:]]*.task.' "$f" || continue
   id=$(grep -oE '^\[[A-Za-z_][A-Za-z0-9_]*\]$' "$f" | head -1 | tr -d '[]')
   plect task show "$id" >/dev/null || echo "failed: $id ($f)"
 done
@@ -203,10 +212,12 @@ done
 
 This procedure was run against a copy of a real host configuration's seven
 task documents, plus a synthetic task document nested one directory below
-`tasks/` and declared under an id different from its filename, to exercise
-both the recursive and the non-basename case; before this migration shipped,
-all eight loaded, with their instructions resolved unchanged from their
-sidecar files.
+`tasks/`, declared under an id different from its filename, spelling
+`kind = 'task'` with single quotes, and quoting another document's `+++`
+frontmatter inside its own body — to exercise the recursive, non-basename,
+alternate-quoting, and embedded-delimiter cases together; before this
+migration shipped, all eight loaded, with their instructions resolved
+unchanged from their sidecar files.
 
 ## Rollback
 

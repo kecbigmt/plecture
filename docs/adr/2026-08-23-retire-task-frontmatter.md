@@ -49,16 +49,19 @@ single-element array is the scalar design's exact behavior, restated.
 
 An element declaring other than exactly one of `text` and `file` is a load
 error (`PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT`, structural — the schema can
-see the key shape). A `file` must resolve within the same trusted
+see the key shape). A `file` must be a relative path — an absolute spelling
+is rejected outright rather than joined onto the declaring directory, which
+is the only alternative a path-join primitive offers and not what "relative
+to the declaring file" means — and it must resolve within the same trusted
 definition-root layer as the declaring file, after resolving symlinks to
 their real target so a symlink planted inside the layer cannot smuggle a read
-from outside it; a path escaping it
-(`PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER`) or naming no readable file
-(`PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING`) is a load error. Both are
-semantic, not structural: neither is checkable from the TOML shape alone,
-only from resolving the reference against the filesystem and the layer
-boundary — the same reasoning that makes `PLECTURE-CFG-REF-CROSS-PLUGIN`
-semantic rather than structural.
+from outside it; a path escaping it, by traversal, by symlink, or by being
+absolute in the first place, (`PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER`)
+or naming no readable file (`PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING`) is
+a load error. Both are semantic, not structural: neither is checkable from
+the TOML shape alone, only from resolving the reference against the
+filesystem and the layer boundary — the same reasoning that makes
+`PLECTURE-CFG-REF-CROSS-PLUGIN` semantic rather than structural.
 
 The four retired frontmatter-era codes are removed from the language
 entirely — not deprecated, not kept as an accepted-invalid fixture — because
@@ -71,9 +74,15 @@ A `file` pointing at a missing file is a load diagnostic — fail loud, the
 same posture the language takes everywhere else. The reverse — a `.md` file
 under a definition root that no element's `file` names — has no load-time
 moment to surface at, since nothing references it to begin with; it is
-instead the repository's own concern: `scripts/check-instruction-orphans.sh`,
-at the same CI tier as `check-comment-references.sh`, flags one over
-`plugins/*/config` and the `testdata/config-language` corpus.
+instead the repository's own concern: `app/internal/instructionorphans`
+(invoked through `scripts/check-instruction-orphans.sh`, at the same CI tier
+as `check-comment-references.sh`) decodes every `.toml` file's `instructions`
+arrays and flags a `.md` under `plugins/*/config` or
+`testdata/config-language` that none of them name. It decodes real TOML
+rather than scanning source text, because "is this file referenced" is a
+question about decoded values — a commented-out reference and an unusually
+(but validly) quoted key are exactly the two cases a text scan answers
+wrong, in opposite directions.
 
 ## Consequences
 
@@ -85,9 +94,17 @@ breaking change and ships with a one-time migration
 (`docs/migrations/task-frontmatter-migration.md`), including a mechanical
 shell conversion and a backup step, per the pre-1.0 compatibility policy. The
 migration was run against a copy of a real host configuration's seven task
-documents, plus a synthetic document nested below a subdirectory to exercise
-the recursive case, before this decision shipped; all eight loaded, with
-instructions resolved unchanged from their sidecar files.
+documents, plus a synthetic document nested below a subdirectory, declared
+under an id different from its filename, spelling `kind = 'task'` with
+single quotes, and quoting another document's `+++` frontmatter inside its
+own body — exercising the recursive, non-basename, alternate-quoting, and
+embedded-delimiter cases together — before this decision shipped; all eight
+loaded, with instructions resolved unchanged from their sidecar files. The
+conversion script's line-oriented delimiter scan only treats the first two
+`+++` lines as syntax; a later line that happens to read `+++` — an
+instruction quoting another document's frontmatter, which the language
+chapter itself notes shipped instructions do — is body content, not a third
+delimiter, and is preserved rather than silently dropped.
 
 The shipped catalog carries no task documents as of this decision (an earlier
 slice moved shipped process documents to host ownership), so the shipped side
@@ -163,3 +180,16 @@ outside content — the containment boundary has to be a claim about the real
 file being read, not about the path string naming it. Resolution follows
 symlinks (falling back to the parent directory's real path when the leaf
 itself does not exist yet) before the containment check runs.
+
+### The orphan check scans TOML source text
+
+The first cut wrote `check-instruction-orphans.sh` as a self-contained shell
+script scanning source lines for `file = "..."`. Rejected once it was clear
+what that gets wrong on both sides: a commented-out reference
+(`# file = "orphan.md"`) reads as a real one, and a validly-quoted key TOML
+itself treats as equivalent (`'file'`, `"file"`, a single-quoted value) reads
+as no reference at all — a text scan cannot distinguish either case from its
+genuine counterpart without reimplementing a TOML parser badly. The check is
+`app/internal/instructionorphans`, a small Go package decoding real TOML
+(the module already depends on `BurntSushi/toml`), invoked by the same
+wrapper script so the CI job and its selftest are unchanged in shape.

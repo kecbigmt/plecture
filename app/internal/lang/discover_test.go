@@ -184,6 +184,32 @@ instructions      = [{ file = "../../outside.md" }]
 	assertDiagnostic(t, err, CodeTaskInstructionFileCrossLayer, LayerSemantic)
 }
 
+func TestResolveTaskInstructionsFileRejectsAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	nested := filepath.Join(dir, "etc")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// If an absolute file value were joined onto the declaring directory
+	// instead of rejected outright, this file would make the bug invisible:
+	// filepath.Join(dir, "/etc/passwd") lands right here and would load.
+	if err := os.WriteFile(filepath.Join(nested, "passwd"), []byte("nested, not the real /etc/passwd"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "work.toml")
+	defs, err := ParseDefinitionDocument(path, []byte(`
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ file = "/etc/passwd" }]
+`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	err = resolveTaskInstructions(defs[0], dir)
+	assertDiagnostic(t, err, CodeTaskInstructionFileCrossLayer, LayerSemantic)
+}
+
 func TestResolveTaskInstructionsFileEscapesViaSymlink(t *testing.T) {
 	root := t.TempDir()
 	outside := t.TempDir()

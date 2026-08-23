@@ -55,6 +55,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
       - name: Prove the checker catches a seeded orphaned sidecar
         run: ./scripts/check-instruction-orphans_selftest.sh
       - name: Check every task instruction sidecar is referenced

@@ -75,6 +75,15 @@ func resolveInstructionElement(el map[string]any, pos Position, declaringFile, r
 }
 
 func readInstructionFile(pos Position, declaringFile, root, relFile string) (string, error) {
+	// IsLocal rejects an absolute spelling and a `..` escape before either
+	// ever reaches filepath.Join, which would otherwise silently nest an
+	// absolute path — "/etc/passwd" — beneath the declaring directory instead
+	// of the reference it looks like: the ratified design says `file` is
+	// relative, not "join-compatible with the declaring directory."
+	if !filepath.IsLocal(relFile) {
+		return "", newDiag(CodeTaskInstructionFileCrossLayer, LayerSemantic, pos,
+			fmt.Sprintf("file %q is not a relative path within the declaring file's own directory", relFile))
+	}
 	lexical := filepath.Join(filepath.Dir(declaringFile), relFile)
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
