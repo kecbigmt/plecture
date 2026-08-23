@@ -13,6 +13,48 @@ env:
   GO_VERSION: "1.25.6"
 
 jobs:
+  # Computes which build-test/integration-test/readme-verify jobs the
+  # changed files actually require, per the dependency-derived trigger map
+  # in scripts/ci-changed-modules.sh (core never imports plugins and
+  # plugins never import core, both depend only on contracts/*, so that
+  # boundary — not convention — is what makes the map safe to narrow).
+  # push events (post-merge to main) always run everything: that build is
+  # the authoritative one, and there is no PR base to diff against.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      build_test_matrix: ${{ steps.decide.outputs.build_test_matrix }}
+      integration_test: ${{ steps.decide.outputs.integration_test }}
+      readme_verify: ${{ steps.decide.outputs.readme_verify }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prove the mapper reproduces the documented trigger map
+        run: ./scripts/ci-changed-modules_selftest.sh
+      - id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            out="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" | ./scripts/ci-changed-modules.sh)"
+          else
+            # No base to diff against on a direct push to main: that build is
+            # the authoritative one, so run everything unconditionally.
+            out="$(FORCE_FULL_RUN=true ./scripts/ci-changed-modules.sh < /dev/null)"
+          fi
+          echo "$out"
+          matrix="$(echo "$out" | sed -n 's/^BUILD_TEST_MATRIX=//p')"
+          integration_test="$(echo "$out" | sed -n 's/^INTEGRATION_TEST=//p')"
+          readme_verify="$(echo "$out" | sed -n 's/^README_VERIFY=//p')"
+          echo "build_test_matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "integration_test=$integration_test" >> "$GITHUB_OUTPUT"
+          echo "readme_verify=$readme_verify" >> "$GITHUB_OUTPUT"
+
+  # gofmt, provider-boundary, comment-references, gh-guard, and
+  # plugin-script-selftests are whole-repo invariant checks, not per-module
+  # builds — they stay unconditional so a docs-only diff still gets exactly
+  # this lint set (and nothing from build-test/integration-test/readme-verify
+  # below, which the changes job gates).
   gofmt:
     name: gofmt
     runs-on: ubuntu-latest
@@ -78,21 +120,15 @@ jobs:
 
   build-test:
     name: build-test (${{ matrix.module }})
+    needs: changes
+    # An empty matrix produces zero job instances (shown as skipped, not
+    # failed, in gh pr checks) rather than an error.
+    if: needs.changes.outputs.build_test_matrix != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        module:
-          - app
-          - contracts/atomicfile
-          - contracts/channel-protocol
-          - contracts/event
-          - contracts/state
-          - plugins/claude/src/channel-server
-          - plugins/github/src
-          - plugins/legacy-migration
-          - plugins/okf/src
-          - plugins/slack/src/slack-adapter
+        module: ${{ fromJson(needs.changes.outputs.build_test_matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -110,6 +146,8 @@ jobs:
 
   integration-test:
     name: integration-test
+    needs: changes
+    if: needs.changes.outputs.integration_test == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -133,6 +171,8 @@ jobs:
 
   readme-verify:
     name: readme-verify
+    needs: changes
+    if: needs.changes.outputs.readme_verify == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
