@@ -22,6 +22,11 @@ func TestGuard_ClearByDefault(t *testing.T) {
 // the mechanism requires: no immediate retry within the window.
 func TestGuard_ThrottleBlocksSubsequentCalls(t *testing.T) {
 	g := NewGuard(t.TempDir())
+	// A frozen, second-aligned clock makes the expected wait exact: real time
+	// never elapses between RecordThrottle and Wait, so there is no tolerance
+	// window for a loaded CI runner to blow through.
+	now := time.Now().Truncate(time.Second)
+	g.now = func() time.Time { return now }
 	if err := g.RecordThrottle(0, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
@@ -29,8 +34,8 @@ func TestGuard_ThrottleBlocksSubsequentCalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wait < minBackoff-time.Second || wait > minBackoff {
-		t.Errorf("wait = %v, want ~%v (exponential fallback, first throttle)", wait, minBackoff)
+	if wait != minBackoff {
+		t.Errorf("wait = %v, want exactly %v (exponential fallback, first throttle)", wait, minBackoff)
 	}
 }
 
@@ -47,6 +52,8 @@ func TestGuard_HeaderlessFallbackFloorIsAtLeastOneMinute(t *testing.T) {
 // A Retry-After header takes precedence over the exponential fallback.
 func TestGuard_RetryAfterHonored(t *testing.T) {
 	g := NewGuard(t.TempDir())
+	now := time.Now().Truncate(time.Second)
+	g.now = func() time.Time { return now }
 	if err := g.RecordThrottle(5*time.Minute, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
@@ -54,15 +61,17 @@ func TestGuard_RetryAfterHonored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wait < 4*time.Minute+55*time.Second || wait > 5*time.Minute {
-		t.Errorf("wait = %v, want ~5m (Retry-After honored)", wait)
+	if wait != 5*time.Minute {
+		t.Errorf("wait = %v, want exactly 5m (Retry-After honored)", wait)
 	}
 }
 
 // A future X-RateLimit-Reset is honored when no Retry-After is given.
 func TestGuard_RateLimitResetHonored(t *testing.T) {
 	g := NewGuard(t.TempDir())
-	reset := time.Now().Add(10 * time.Minute)
+	now := time.Now().Truncate(time.Second)
+	g.now = func() time.Time { return now }
+	reset := now.Add(10 * time.Minute)
 	if err := g.RecordThrottle(0, reset); err != nil {
 		t.Fatal(err)
 	}
@@ -70,14 +79,16 @@ func TestGuard_RateLimitResetHonored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wait < 9*time.Minute+55*time.Second || wait > 10*time.Minute {
-		t.Errorf("wait = %v, want ~10m (rate-limit reset honored)", wait)
+	if wait != 10*time.Minute {
+		t.Errorf("wait = %v, want exactly 10m (rate-limit reset honored)", wait)
 	}
 }
 
 // Repeated throttles with no header guidance back off exponentially, capped.
 func TestGuard_ExponentialFallbackCapped(t *testing.T) {
 	g := NewGuard(t.TempDir())
+	now := time.Now().Truncate(time.Second)
+	g.now = func() time.Time { return now }
 	for range 20 {
 		if err := g.RecordThrottle(0, time.Time{}); err != nil {
 			t.Fatal(err)
@@ -87,8 +98,8 @@ func TestGuard_ExponentialFallbackCapped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wait > maxBackoff || wait < maxBackoff-5*time.Second {
-		t.Errorf("wait = %v, want capped at ~%v after many throttles", wait, maxBackoff)
+	if wait != maxBackoff {
+		t.Errorf("wait = %v, want capped at exactly %v after many throttles", wait, maxBackoff)
 	}
 }
 
@@ -116,17 +127,20 @@ func TestGuard_ThrottleNeverShortensPendingBackoff(t *testing.T) {
 // GitHub recovers) starts from the minimum window again, not the capped one.
 func TestGuard_SuccessResetsConsecutiveCount(t *testing.T) {
 	g := NewGuard(t.TempDir())
-	// A short Retry-After so the window elapses for real within the test —
-	// RecordSuccess must not itself clear a still-pending backoff (a success
-	// observed by one caller doesn't prove every other caller sharing the
-	// budget is clear too), so the counter reset can only be observed once
-	// time has actually passed.
+	now := time.Now().Truncate(time.Second)
+	g.now = func() time.Time { return now }
+	// A short Retry-After so the window elapses within the test — RecordSuccess
+	// must not itself clear a still-pending backoff (a success observed by one
+	// caller doesn't prove every other caller sharing the budget is clear
+	// too), so the counter reset can only be observed once time has actually
+	// passed. The clock is advanced explicitly rather than slept through, so
+	// the elapsed time is exact instead of "at least".
 	for range 5 {
-		if err := g.RecordThrottle(50*time.Millisecond, time.Time{}); err != nil {
+		if err := g.RecordThrottle(time.Second, time.Time{}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	time.Sleep(100 * time.Millisecond)
+	now = now.Add(2 * time.Second)
 	if err := g.RecordSuccess(); err != nil {
 		t.Fatal(err)
 	}
@@ -137,8 +151,8 @@ func TestGuard_SuccessResetsConsecutiveCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wait > minBackoff || wait < minBackoff-time.Second {
-		t.Errorf("wait = %v, want ~%v (counter reset by success)", wait, minBackoff)
+	if wait != minBackoff {
+		t.Errorf("wait = %v, want exactly %v (counter reset by success)", wait, minBackoff)
 	}
 }
 

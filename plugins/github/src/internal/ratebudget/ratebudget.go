@@ -36,6 +36,9 @@ const (
 // same dir never race.
 type Guard struct {
 	path string
+	// now is overridden by tests to freeze the clock; production always uses
+	// time.Now.
+	now func() time.Time
 }
 
 // state is the on-disk shape.
@@ -53,7 +56,7 @@ type state struct {
 // implicit default location, since this package has no opinion on which
 // caller or API owns that budget.
 func NewGuard(dir string) *Guard {
-	return &Guard{path: filepath.Join(dir, "rate-budget.json")}
+	return &Guard{path: filepath.Join(dir, "rate-budget.json"), now: time.Now}
 }
 
 // Wait reports how long the caller must wait before it may call the
@@ -73,7 +76,7 @@ func (g *Guard) remaining(s *state) time.Duration {
 	if s.BackoffUntil == 0 {
 		return 0
 	}
-	remaining := time.Until(time.Unix(s.BackoffUntil, 0))
+	remaining := time.Unix(s.BackoffUntil, 0).Sub(g.now())
 	if remaining <= 0 {
 		return 0
 	}
@@ -88,7 +91,7 @@ func (g *Guard) remaining(s *state) time.Duration {
 // header.
 func (g *Guard) RecordThrottle(retryAfter time.Duration, rateLimitReset time.Time) error {
 	return g.update(func(s *state) error {
-		now := time.Now()
+		now := g.now()
 		var until time.Time
 		switch {
 		case retryAfter > 0:
