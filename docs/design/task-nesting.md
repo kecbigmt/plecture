@@ -14,9 +14,10 @@ and nothing that consumes effects needs to know whether nesting is inside it.
 Workflows, downstream nodes, status, and the orchestrator address a nested
 effect the way they address any other.
 
-The joint is the only nesting-specific vocabulary: `inner` names the next task
-inward, `locals` holds the joint's private intermediates, and the `[bind.*]`
-tables wire the boundary. No other nesting-only concept exists.
+The joint is the only nesting-specific vocabulary: `[inner]` names the next
+effect inward and carries its inputs and environment, `locals` holds the
+joint's private intermediates, and `[outputs.bind]` wires the boundary
+outward. No other nesting-only concept exists.
 
 Task nesting therefore lets an outer task add a layer of its own to an inner
 task without copying the inner task's file. Any layer that owns task
@@ -33,8 +34,8 @@ them, which is what makes the no-override rule hold by construction.
 
 No task field is unconditionally inner-owned, so closure is realized in full.
 What remains are conflict rules rather than ownership rules: `[terminal]`
-admits at most one declaration per nesting chain, judge ids and `bind.env` keys
-are unique across the chain, and a public output name has one definition source
+admits at most one declaration per nesting chain, judge ids and `[inner.env]`
+keys are unique across the chain, and a public output name has one definition source
 within its layer.
 
 A nested task has a chain of task definitions. The outermost task is the id
@@ -53,64 +54,74 @@ binds or produces. Inner public outputs are not passed through automatically.
 The outer task may re-export inner outputs, rename inner outputs, or bind values
 computed by its own setup, but downstream consumers read only the outer task's
 declared public contract. Outer setup emits locals: always-private intermediate
-values available to outer cleanup, input and environment binding templates, and
-public output binding. Public output binding is a live projection, not a
-setup-time copy: reads render against the current inner output and local values.
-Direct inner-output bindings route mutable writes to that inner output;
-computed bindings are rendered strings and are read-only.
+values available to outer cleanup, to the inner input and environment values,
+and to public output binding. Public output binding is a live projection, not a
+setup-time copy: it resolves against the current inner output and local values.
+A direct projection of an inner output routes mutable writes to that inner
+output; a computed binding produces a value of its own and is read-only.
 
 ## Configuration Shape
 
-An outer task is a normal `tasks/<id>.toml` file with an `inner` reference and
-optional binding tables:
+An outer effect is a definition under a `tasks/` root declaring `inner`, plus
+the joint tables that wire it:
 
 ```toml
-inner = "official/claude/claude"
+[team_claude]
+kind = "effect"
 
-setup = '''
-jq -nc --arg guard_dir "{{.Nodes.gh_guard.outputs.dir}}" '{guard_dir:$guard_dir}'
-'''
-cleanup = "true"
+[team_claude.inner]
+uses = "official.claude.claude"
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-socket_path = "{{.Inner.outputs.socket_path}}"
-mcp_config = "{{.Inner.outputs.mcp_config}}"
-agent_session = "{{.Inner.outputs.session_id}}"
-guard_dir = "{{.Locals.guard_dir}}"
+[team_claude.setup]
+type   = "shell"
+script = "jq -nc --arg guard_dir \"$guard_dir\" '{guard_dir:$guard_dir}'"
 
-[bind.inputs]
-tmux_session = "{{.Inputs.tmux_session}}"
-model = "{{get .Inputs \"model\"}}"
-effort = "{{get .Inputs \"effort\"}}"
-path_prepend = "{{.Locals.guard_dir}}"
+[team_claude.setup.bind]
+guard_dir = { from = "nodes.gh_guard.outputs.dir" }
 
-[bind.env]
-PLECT_TEAM_CONTEXT = "{{.SessionName}}"
+[team_claude.cleanup]
+type   = "shell"
+script = "true"
 
-[inputs_schema]
+[team_claude.outputs.bind]
+pid           = { from = "inner.outputs.pid" }
+socket_path   = { from = "inner.outputs.socket_path" }
+mcp_config    = { from = "inner.outputs.mcp_config" }
+agent_session = { from = "inner.outputs.session_id" }
+guard_dir     = { from = "locals.guard_dir" }
+
+[team_claude.inner.inputs]
+tmux_session = { from = "inputs.tmux_session" }
+model        = { from = "inputs.model", optional = true }
+effort       = { from = "inputs.effort", optional = true }
+path_prepend = { from = "locals.guard_dir" }
+
+[team_claude.inner.env]
+PLECT_TEAM_CONTEXT = { from = "session.name" }
+
+[team_claude.inputs_schema]
 type = "object"
 required = ["tmux_session"]
 additionalProperties = false
 
-[inputs_schema.properties]
+[team_claude.inputs_schema.properties]
 tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 
-[locals_schema]
+[team_claude.locals_schema]
 type = "object"
 required = ["guard_dir"]
 additionalProperties = false
 
-[locals_schema.properties]
+[team_claude.locals_schema.properties]
 guard_dir = { type = "string" }
 
-[outputs_schema]
+[team_claude.outputs_schema]
 type = "object"
 required = ["pid", "socket_path", "mcp_config", "agent_session", "guard_dir"]
 
-[outputs_schema.properties]
+[team_claude.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 socket_path = { type = "string", mutable = true }
 mcp_config = { type = "string" }
@@ -120,10 +131,10 @@ guard_dir = { type = "string" }
 
 The outer task's `inputs_schema` is its own schema. It is not an edit to the
 inner task's schema. Workflow node inputs validate against the outer schema,
-then `bind.inputs` renders the inner input object and validates it against
-the inner task's schema.
+then `[inner.inputs]` resolves the inner input object and validates it against
+the inner effect's schema.
 
-The `bind.env` table injects environment variables into process executions
+The `[inner.env]` table injects environment variables into process executions
 owned by the inner task: setup, cleanup, `[health]` probes, and terminal
 operation commands. It does not affect the outer task's
 hooks, any sibling task, or commands the inner task sends into an interactive
@@ -132,7 +143,7 @@ therefore need an author-declared input for launch-line environment exports.
 
 Among the terminal operations, the injection reaches the ones plect runs
 itself: `capture`. `send_text` and `send_keys` resolve into another execution
-through the `{{terminal "..."}}` helper and carry whatever environment that
+through a `{ terminal = "..." }` binding and carry whatever environment that
 execution runs with. `attach` resolves to a command string the caller's own
 shell executes, and carries the caller's environment: placing bound values
 there would mean synthesizing quoted assignments into a rendered command, and
@@ -144,12 +155,12 @@ Task nesting fields:
 
 | Field | Required | Type | Meaning |
 |---|---:|---|---|
-| `inner` | yes | string | Task reference for the nested inner task. |
-| `setup` | no | string | Outer setup hook. Empty means `{}` locals. |
-| `cleanup` | no | string | Outer cleanup hook. Empty marks the outer layer cleaned. |
-| `[bind.inputs]` | no | string table | Templates that produce the inner task's inputs. |
-| `[bind.env]` | no | string table | Templates that produce the inner task's process environment additions. |
-| `[bind.outputs]` | no | string table | Templates that bind the nested task's public outputs from inner outputs or locals. Re-exports and renames are explicit here. |
+| `[inner]` | yes | table | `uses` is the reference to the nested inner effect. |
+| `[setup]` | no | action | Outer setup hook. Absent means `{}` locals. |
+| `[cleanup]` | no | action | Outer cleanup hook. Absent marks the outer layer cleaned. |
+| `[inner.inputs]` | no | value table | The values that produce the inner effect's inputs. |
+| `[inner.env]` | no | value table | The values that produce the inner effect's process environment additions. |
+| `[outputs.bind]` | no | value table | The values that bind the nested effect's public outputs from inner outputs or locals. Re-exports and renames are explicit here. |
 | `[inputs_schema]` / `inputs_schema_file` | no | JSON Schema | The outer task's workflow-facing inputs contract. |
 | `[locals_schema]` / `locals_schema_file` | no | JSON Schema | The private locals contract for outer setup emissions. |
 | `[outputs_schema]` / `outputs_schema_file` | no | JSON Schema | The nested task's explicit public output contract. Every public output is declared here. |
@@ -159,22 +170,21 @@ Task nesting fields:
 The nested task's effective scope is the innermost task's scope. If an outer
 task declares `scope`, it must match the scope of its next inner task, and the
 rule repeats down the nesting chain.
-The inner task's `.Self` sees only the inner task's own outputs. Outer cleanup,
-binding templates, and `[bind.outputs]` wiring read outer setup values from
-`.Locals`; `[bind.outputs]` wiring also reads inner setup values from
-`.Inner.outputs`.
-A `[bind.outputs]` entry is a direct inner-output binding only when the whole
-template body is exactly one `.Inner.outputs.<key>` reference, apart from
-template delimiters and whitespace. Any literal text, function call, pipeline,
-multiple template action, or local reference makes the binding computed.
-Direct inner-output bindings project the inner output's native value without
-string rendering, so integer, boolean, object, and array outputs keep their
-schema type. Computed bindings render templates to strings, so their public
-schema type is `string`.
-Every public key named by `[bind.outputs]` must appear in the effective
+The inner effect's `self.outputs` sees only its own outputs. `[inner.inputs]`,
+`[inner.env]` and `[outputs.bind]` read outer setup values from `locals`;
+`[outputs.bind]` also reads inner setup values from `inner.outputs`.
+An `[outputs.bind]` entry is a direct inner-output binding only when it is a
+projection — `{ from = "inner.outputs.<key>" }` — and nothing else. An
+expression, or a projection of anything but an inner output, makes the binding
+computed.
+A direct projection carries the inner output's native value, so integer,
+boolean, object, and array outputs keep their schema type. A computed binding
+produces a value of its own, so its public schema type is whatever the
+expression yields.
+Every public key named by `[outputs.bind]` must appear in the effective
 `outputs_schema`, and every public field is declared explicitly by the outer
-schema. A same-name re-export such as `pid = "{{.Inner.outputs.pid}}"` still
-needs a local schema property.
+schema. A same-name re-export such as `pid = { from = "inner.outputs.pid" }`
+still needs a local schema property.
 
 Inspection output such as `plect task show` prints the nesting chain from the
 outermost task to the innermost plugin task.
@@ -198,12 +208,13 @@ declare more than one `[terminal]`, counting nodes; a nesting chain sits inside
 one node, so without a per-chain rule two layers could place two declarations
 behind a single node and pass that count. With it, a nested task contributes one
 terminal declaration or none, and terminal-task resolution for attach, capture,
-and the `{{terminal "..."}}` helper needs no nesting-aware tie-break.
+and a `{ terminal = "..." }` binding needs no nesting-aware tie-break.
 
 Whichever layer declares `[terminal]`, the composed public contract carries
 `interactive_endpoint` bound from that layer. When the inner chain declares it,
-`[bind.outputs]` binds `interactive_endpoint` from
-`{{.Inner.outputs.interactive_endpoint}}`. When the outer task declares it, the
+`[outputs.bind]` binds `interactive_endpoint` from
+`{ from = "inner.outputs.interactive_endpoint" }`. When the outer effect
+declares it, the
 outer binds `interactive_endpoint` from its own setup-emitted local. A chain
 with a `[terminal]` declaration whose composed public contract does not bind
 `interactive_endpoint` is a load error either way.
@@ -246,7 +257,7 @@ inner = "official/claude/claude"
 The normal task id uses the merged task namespace and therefore follows the
 usual layer rules. The catalog-qualified form selects a task inside an enabled
 plugin without consulting same-id user shadows. It parses the same way as
-qualified `{{bin}}` references: plect tries every mounted plugin reading and
+a qualified executable reference: plect tries every mounted plugin reading and
 accepts exactly one candidate. Zero candidates or multiple candidates are load
 errors, so arbitrary-depth plugin paths never rely on a longest-prefix guess.
 
@@ -279,21 +290,18 @@ Loading nested effect definitions fails when:
 - `inner` forms a nesting cycle, including self-reference.
 - the outer task declares a `scope` that differs from the inner task's scope.
 - two layers of the nesting chain declare `[terminal]`.
-- `[bind.outputs]` references a source other than an inner public output or a
-  local.
-- `[bind.outputs]` declares a public key missing from `outputs_schema`.
-- `[bind.outputs]` declares a computed template output mutable in
-  `outputs_schema`.
-- `[bind.outputs]` declares a computed template output with a non-string
-  `outputs_schema` type.
-- `[bind.outputs]` declares a direct inner-output binding whose
+- `[outputs.bind]` reads a root other than `inner.outputs`, `locals`, or
+  `inputs`.
+- `[outputs.bind]` declares a public key missing from `outputs_schema`.
+- `[outputs.bind]` declares a computed output mutable in `outputs_schema`.
+- `[outputs.bind]` declares a direct inner-output binding whose
   `outputs_schema` type differs from the bound inner output's type.
-- `[bind.outputs]` declares a direct inner-output binding mutable in
+- `[outputs.bind]` declares a direct inner-output binding mutable in
   `outputs_schema` when the bound inner output is not mutable.
-- `bind.inputs` omits an inner required input or binds a key rejected by a
+- `[inner.inputs]` omits an inner required input or binds a key rejected by a
   closed inner schema.
-- a `bind.env` key is not a valid process environment name.
-- a `bind.env` key repeats a key from any other layer in the nesting chain.
+- an `[inner.env]` key is not a valid process environment name.
+- an `[inner.env]` key repeats a key from any other layer in the nesting chain.
 - a layer of the nesting chain declares `[terminal]` and the outer public
   contract does not bind `interactive_endpoint` from that layer.
 
@@ -369,48 +377,62 @@ and are outside the shadow count.
 A team-local Claude runtime customization can stay small:
 
 ```toml
-inner = "official/claude/claude"
-setup = "jq -nc --arg guard_dir '{{.Nodes.gh_guard.outputs.dir}}' '{guard_dir:$guard_dir}'"
+[team_claude]
+kind = "effect"
 
-[bind.outputs]
-pid = "{{.Inner.outputs.pid}}"
-socket_path = "{{.Inner.outputs.socket_path}}"
-mcp_config = "{{.Inner.outputs.mcp_config}}"
-agent_session = "{{.Inner.outputs.session_id}}"
-guard_dir = "{{.Locals.guard_dir}}"
+[team_claude.inner]
+uses = "official.claude.claude"
 
-[bind.inputs]
-tmux_session = "{{.Inputs.tmux_session}}"
-model = "{{get .Inputs \"model\"}}"
-effort = "{{get .Inputs \"effort\"}}"
-path_prepend = "{{.Locals.guard_dir}}"
+[team_claude.setup]
+type   = "shell"
+script = "jq -nc --arg guard_dir \"$guard_dir\" '{guard_dir:$guard_dir}'"
 
-[bind.env]
-PLECT_TEAM_CONTEXT = "{{.SessionName}}"
+[team_claude.setup.bind]
+guard_dir = { from = "nodes.gh_guard.outputs.dir" }
 
-[inputs_schema]
+[team_claude.cleanup]
+type   = "shell"
+script = "true"
+
+[team_claude.outputs.bind]
+pid           = { from = "inner.outputs.pid" }
+socket_path   = { from = "inner.outputs.socket_path" }
+mcp_config    = { from = "inner.outputs.mcp_config" }
+agent_session = { from = "inner.outputs.session_id" }
+guard_dir     = { from = "locals.guard_dir" }
+
+[team_claude.inner.inputs]
+tmux_session = { from = "inputs.tmux_session" }
+model        = { from = "inputs.model", optional = true }
+effort       = { from = "inputs.effort", optional = true }
+path_prepend = { from = "locals.guard_dir" }
+
+[team_claude.inner.env]
+PLECT_TEAM_CONTEXT = { from = "session.name" }
+
+[team_claude.inputs_schema]
 type = "object"
 required = ["tmux_session"]
 additionalProperties = false
 
-[inputs_schema.properties]
+[team_claude.inputs_schema.properties]
 tmux_session = { type = "string" }
 model = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 
-[locals_schema]
+[team_claude.locals_schema]
 type = "object"
 required = ["guard_dir"]
 additionalProperties = false
 
-[locals_schema.properties]
+[team_claude.locals_schema.properties]
 guard_dir = { type = "string" }
 
-[outputs_schema]
+[team_claude.outputs_schema]
 type = "object"
 required = ["pid", "socket_path", "mcp_config", "agent_session", "guard_dir"]
 
-[outputs_schema.properties]
+[team_claude.outputs_schema.properties]
 pid = { type = "integer", mutable = true }
 socket_path = { type = "string", mutable = true }
 mcp_config = { type = "string" }
