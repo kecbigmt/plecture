@@ -42,7 +42,7 @@ func shippedGithubWorkspaceProvider(t *testing.T) (config.WorkspaceProviderConfi
 	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	shipped, err := os.ReadFile(filepath.Join(root, "plugins", "github", "config", "workspaces", "github.toml"))
+	shipped, err := os.ReadFile(filepath.Join(root, "plugins", "github", "config", "workspaces", "worktree.toml"))
 	if err != nil {
 		t.Fatalf("read shipped github workspace provider: %v", err)
 	}
@@ -54,9 +54,9 @@ func shippedGithubWorkspaceProvider(t *testing.T) (config.WorkspaceProviderConfi
 	if err != nil {
 		t.Fatalf("load mounted github workspace provider: %v", err)
 	}
-	prov, ok := provs["official.github.github"]
+	prov, ok := provs["official.github.worktree"]
 	if !ok {
-		t.Fatal(`mounted github workspace provider: "official.github.github" not found`)
+		t.Fatal(`mounted github workspace provider: "official.github.worktree" not found`)
 	}
 	return prov, mounted
 }

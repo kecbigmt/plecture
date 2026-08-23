@@ -10,7 +10,7 @@
 # both are reachable purely from this plugin being enabled — no PATH setup
 # required, and no dependency on which alias the operator registered this
 # catalog under.
-[github]
+[worktree]
 kind  = "workspace_provider"
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:issues|pull)/(?P<number>\d+)'
 name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
@@ -18,7 +18,7 @@ name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 # Title/state fetches route through github-watcher's gh-api subcommand, so a
 # setup call and the daemon's own polling share one rate budget instead of
 # each independently re-tripping GitHub's secondary rate limit.
-[github.setup]
+[worktree.setup]
 type = "exec"
 bin  = "github-worktree"
 args = [
@@ -55,7 +55,7 @@ args = [
 # failure must still fail `plect destroy`. Without it a destroyed session's
 # subscriptions poll forever — the watcher has no other way to learn a
 # session is gone between its own startup sweeps.
-[github.cleanup]
+[worktree.cleanup]
 type = "shell"
 script = '''
 "$worktree_bin" cleanup \
@@ -71,7 +71,7 @@ status=$?
 exit $status
 '''
 
-[github.cleanup.bind]
+[worktree.cleanup.bind]
 worktree_bin          = { bin = "github-worktree" }
 watcher_bin           = { bin = "github-watcher" }
 session_name          = { from = "session.name" }
@@ -86,7 +86,7 @@ delete_branch_default = { from = "inputs.delete_branch_default", default = "" }
 # subscribe binds a session to a resource at runtime (the `plect subscribe`
 # verb) — the same watcher subscription registry `cleanup` unsubscribes from
 # on destroy, additive, never replacing.
-[github.subscribe]
+[worktree.subscribe]
 type = "exec"
 bin  = "github-watcher"
 args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
@@ -100,11 +100,11 @@ args = ["subscribe", "--session", { from = "session.name" }, "--resource", { fro
 #
 # `subscribe` deliberately reads none of them: it resolves this provider from
 # the resource alone, with no workflow in scope to have set one.
-[github.inputs_schema]
+[worktree.inputs_schema]
 type                 = "object"
 additionalProperties = false
 
-[github.inputs_schema.properties]
+[worktree.inputs_schema.properties]
 # The charset restrictions survive the move to values, where nothing is
 # spliced into a command line any more, because they also bound what reaches
 # github-worktree's own path and template handling.
@@ -122,39 +122,39 @@ delete_branch_default = { type = "string", enum = ["true", "false"] }
 # merged from trusted side paths (`plect state set-output`) — GitHub status
 # for done_when is fetched by dynamic output refresh via the resource
 # observers, not by re-running this hook.
-[github.outputs_schema]
+[worktree.outputs_schema]
 type     = "object"
 required = ["workspace_dir", "branch"]
 
-[github.outputs_schema.properties.workspace_dir]
+[worktree.outputs_schema.properties.workspace_dir]
 type = "string"
 
-[github.outputs_schema.properties.branch]
+[worktree.outputs_schema.properties.branch]
 type = "string"
 
-[github.outputs_schema.properties.url]
+[worktree.outputs_schema.properties.url]
 type = "string"
 
-[github.outputs_schema.properties.owner_repo]
+[worktree.outputs_schema.properties.owner_repo]
 type = "string"
 
-[github.outputs_schema.properties.owner]
+[worktree.outputs_schema.properties.owner]
 type = "string"
 
-[github.outputs_schema.properties.repo]
+[worktree.outputs_schema.properties.repo]
 type = "string"
 
-[github.outputs_schema.properties.number]
+[worktree.outputs_schema.properties.number]
 type = "integer"
 
-[github.outputs_schema.properties.title]
+[worktree.outputs_schema.properties.title]
 type    = "string"
 mutable = true
 
-[github.outputs_schema.properties.pr_state]
+[worktree.outputs_schema.properties.pr_state]
 type    = "string"
 mutable = true
 
-[github.outputs_schema.properties.issue_state]
+[worktree.outputs_schema.properties.issue_state]
 type    = "string"
 mutable = true

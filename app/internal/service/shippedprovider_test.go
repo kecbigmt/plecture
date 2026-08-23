@@ -58,7 +58,7 @@ func loadShippedWorkspaceProvider(t *testing.T, pluginDir, id string) config.Wor
 // identifier with a regular expression and a computation over its captures
 // alone — core never asks a network for a name.
 func TestShippedWorkspaceProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
-	prov := loadShippedWorkspaceProvider(t, "github", "github")
+	prov := loadShippedWorkspaceProvider(t, "github", "worktree")
 	if !prov.HasResolver() {
 		t.Fatal("the shipped workspace provider must declare a resolver")
 	}
@@ -99,7 +99,7 @@ func TestShippedWorkspaceProvider_ResolvesResourceIdentifiersOffline(t *testing.
 // semicolon-separated command in "cmd1; cmd2" independent of cmd1's exit
 // status — so this test needs no built binaries.
 func TestShippedWorkspaceProvider_SetupHookDoesNotShellInjectResourceID(t *testing.T) {
-	prov := loadShippedWorkspaceProvider(t, "github", "github")
+	prov := loadShippedWorkspaceProvider(t, "github", "worktree")
 	marker := filepath.Join(t.TempDir(), "pwned")
 	malicious := `https://github.com/acme/widgets/issues/1"; touch ` + marker + `; echo "`
 
@@ -119,7 +119,7 @@ func TestShippedWorkspaceProvider_SetupHookDoesNotShellInjectResourceID(t *testi
 // workspace directory and branch — sourced from setup's own outputs, which in
 // turn derive from the session's tag, so not fully outside user control.
 func TestShippedWorkspaceProvider_CleanupHookDoesNotShellInjectWorkspaceDirOrBranch(t *testing.T) {
-	prov := loadShippedWorkspaceProvider(t, "github", "github")
+	prov := loadShippedWorkspaceProvider(t, "github", "worktree")
 	marker := filepath.Join(t.TempDir(), "pwned")
 	maliciousBranch := `issue/1"; touch ` + marker + `; echo "`
 
@@ -142,7 +142,7 @@ func TestShippedWorkspaceProvider_CleanupHookDoesNotShellInjectWorkspaceDirOrBra
 // since a setup with no matching cleanup would strand every workspace
 // directory it creates.
 func TestShippedWorkspaceProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
-	prov := loadShippedWorkspaceProvider(t, "github", "github")
+	prov := loadShippedWorkspaceProvider(t, "github", "worktree")
 	if prov.Setup == nil {
 		t.Error("the shipped workspace provider must declare setup")
 	}

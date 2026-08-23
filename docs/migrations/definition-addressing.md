@@ -49,7 +49,7 @@ Each hit is one of two cases, and the id alone does not say which:
 | `exec_delivery` | channel | `official.codex.exec_delivery` |
 | `terminal_submit` | channel | `official.codex.terminal_submit` |
 | `slack` | channel | `official.slack.slack` |
-| `github` | workspace provider | `official.github.github` |
+| `worktree` | workspace provider | `official.github.worktree` |
 | `issue`, `pull` | resource observer | `official.github.issue`, `official.github.pull` |
 | `okf_goal` | resource observer | `official.okf.okf_goal` |
 | `work`, `review`, `investigate`, `respond` | task document | `official.github.work`, and so on |

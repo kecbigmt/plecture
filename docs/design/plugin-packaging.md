@@ -989,7 +989,7 @@ Catalog-owned files:
 ```text
 catalog.toml
 github/plugin.toml
-github/config/workspaces/github.toml
+github/config/workspaces/worktree.toml
 github/config/resources/github.toml
 github/config/tasks/github_work.toml
 github/config/tasks/github_review.toml

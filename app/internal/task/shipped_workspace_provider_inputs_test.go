@@ -89,9 +89,9 @@ func githubProviderEnv(inputs, cleanupInputs map[string]any) lang.Roots {
 
 func TestShippedGithubProvider_ParametersReachTheHooks(t *testing.T) {
 	provs, mounted := loadShippedWorkspaceProviders(t)
-	prov, ok := provs["official.github.github"]
+	prov, ok := provs["official.github.worktree"]
 	if !ok {
-		t.Fatal("shipped catalog has no official.github.github workspace provider")
+		t.Fatal("shipped catalog has no official.github.worktree workspace provider")
 	}
 	inputs := map[string]any{
 		"workspace_layout_root": "~/worktrees",
@@ -117,7 +117,7 @@ func TestShippedGithubProvider_ParametersReachTheHooks(t *testing.T) {
 // declares a default, so the executable keeps owning what an unset one means.
 func TestShippedGithubProvider_HooksResolveWithNoParametersDeclared(t *testing.T) {
 	provs, mounted := loadShippedWorkspaceProviders(t)
-	prov := provs["official.github.github"]
+	prov := provs["official.github.worktree"]
 	env := githubProviderEnv(map[string]any{}, map[string]any{})
 	setup := providerResolution(t, prov, mounted, prov.Setup, env)
 	// The flag is still passed, with an empty value the executable reads as
@@ -133,7 +133,7 @@ func TestShippedGithubProvider_HooksResolveWithNoParametersDeclared(t *testing.T
 // github-worktree's own path and template handling.
 func TestShippedGithubProvider_ParametersRejectShellMetacharacters(t *testing.T) {
 	provs, _ := loadShippedWorkspaceProviders(t)
-	prov := provs["official.github.github"]
+	prov := provs["official.github.worktree"]
 	schema, err := CompileSchema(prov.InputsSchema, prov.ResolvedInputsSchemaPath(), "test:github:inputs")
 	if err != nil {
 		t.Fatalf("CompileSchema: %v", err)
