@@ -169,14 +169,6 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-CEL-TYPE` | cel | An operation, or a result type, does not satisfy the site's expected type. |
 | `PLECTURE-CFG-CEL-CUSTOM-FUNCTION` | cel | An expression calls a function the profile does not define. |
 
-## Open decisions
-
-Control flow inside a task document's instruction body is not specified. A
-projection there is the language's own (see [`tasks.md`](tasks.md)), but CEL is
-expression-only, so conditional blocks need a construct that does not exist yet.
-Instruction bodies carried over from the template assets keep their existing
-conditional and defaulting forms until that decision is made.
-
 ## Scope
 
 This language governs configuration definitions in one file form: TOML
