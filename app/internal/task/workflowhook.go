@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -113,7 +114,7 @@ func runProviderAction(action *lang.Action, eval lang.Eval) (stdout, stderr []by
 	// No workspace exists yet by definition for setup, and cleanup may be
 	// releasing the one it had, so a provider hook runs from the caller's cwd
 	// and must use absolute paths.
-	return runHook(context.Background(), execution, "")
+	return effect.RunHook(context.Background(), execution, "")
 }
 
 // RunWorkflowSetup executes the workspace provider setup hook (the

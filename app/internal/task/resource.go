@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
@@ -189,7 +190,7 @@ func runResourceAction(def config.ResourceDef, action *lang.Action, env lang.Roo
 	if err != nil {
 		return nil, nil, err
 	}
-	return runHook(context.Background(), execution, "")
+	return effect.RunHook(context.Background(), execution, "")
 }
 
 // presentKeys drops the empty entries of a root's keys, and the root itself

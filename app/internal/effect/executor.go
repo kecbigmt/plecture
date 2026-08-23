@@ -1,4 +1,8 @@
-package task
+// Package effect runs one resolved host invocation and reports what it
+// produced. It knows nothing about sessions, task DAGs, or nesting — those
+// stay in app/internal/task, which builds the roots an action resolves
+// against and calls into this package only for "run this resolved action".
+package effect
 
 import (
 	"bytes"
@@ -68,16 +72,16 @@ func (hostExecutor) Run(ctx context.Context, req ExecRequest) (stdout, stderr []
 	return outBuf.Bytes(), errBuf.Bytes(), err
 }
 
-// alwaysHostExecutor backs runHook, the path used by workspace provider
+// alwaysHostExecutor backs RunHook, the path used by workspace provider
 // setup/cleanup, workspace provider subscribe, and resource observe/finalize.
 // Unlike defaultExecutor, this is never swapped, not even by tests.
 var alwaysHostExecutor Executor = hostExecutor{}
 
-// defaultExecutor backs execHook, the path used by task
+// defaultExecutor backs ExecHook, the path used by task
 // setup/cleanup/health probes/capture and dynamic instance setup
 // (`plect task setup --resource`) — every exec point that runs inside a
 // session's task DAG, static or dynamically instantiated. Tests swap
-// it for a spy (see executor_test.go) to observe the ExecRequest each path
+// it for a spy (see UseExecutor) to observe the ExecRequest each path
 // issues without changing any exported function signature.
 var defaultExecutor Executor = hostExecutor{}
 
@@ -89,18 +93,18 @@ func requestFor(execution *lang.Execution, workDir string, env []string) ExecReq
 	return ExecRequest{Argv: execution.Argv, Stdin: execution.Stdin, Dir: workDir, Env: env}
 }
 
-// execHook runs one resolved execution through the swappable
+// ExecHook runs one resolved execution through the swappable
 // defaultExecutor rather than the pinned alwaysHostExecutor — see the two
 // vars' docs for why the distinction matters. env carries the KEY=VALUE
 // additions the enclosing layers of a nesting chain inject into this
 // execution; it is empty for every plain task.
-func execHook(ctx context.Context, execution *lang.Execution, workDir string, env ...string) (stdout, stderr []byte, err error) {
+func ExecHook(ctx context.Context, execution *lang.Execution, workDir string, env ...string) (stdout, stderr []byte, err error) {
 	return defaultExecutor.Run(ctx, requestFor(execution, workDir, env))
 }
 
-// runHook runs one resolved execution on the host, unconditionally: the path
+// RunHook runs one resolved execution on the host, unconditionally: the path
 // workspace provider setup/cleanup, provider subscribe, and resource
 // observe/finalize take.
-func runHook(ctx context.Context, execution *lang.Execution, workDir string) (stdout, stderr []byte, err error) {
+func RunHook(ctx context.Context, execution *lang.Execution, workDir string) (stdout, stderr []byte, err error) {
 	return alwaysHostExecutor.Run(ctx, requestFor(execution, workDir, nil))
 }

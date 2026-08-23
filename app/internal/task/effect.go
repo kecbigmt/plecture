@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
@@ -200,7 +201,7 @@ func resolveEffect(action *lang.Action, env lang.Roots, ctx RenderContext, from 
 // run executes the resolved process through the swappable executor every
 // in-session execution takes.
 func (e *effectExecution) run(goCtx context.Context, workDir string, processEnv ...string) (stdout, stderr []byte, err error) {
-	return execHook(goCtx, e.execution, workDir, processEnv...)
+	return effect.ExecHook(goCtx, e.execution, workDir, processEnv...)
 }
 
 func (e *effectExecution) close() {
