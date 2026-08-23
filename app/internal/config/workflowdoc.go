@@ -106,6 +106,12 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 		}
 		w.InputsSchema = schema
 	}
+	// Rejected here rather than where the schema is compiled, because that is
+	// `plect create` time: a contract declared twice is a load-time question,
+	// and answering it at dispatch would let the ambiguity ship.
+	if len(w.InputsSchema) > 0 && w.InputsSchemaFile != "" {
+		return w, fmt.Errorf("inline `inputs_schema` and `inputs_schema_file` are mutually exclusive")
+	}
 	var err error
 	if w.Display, err = valueTableFrom(def.Body, "display", lang.ClassData, pos); err != nil {
 		return w, err

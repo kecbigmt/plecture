@@ -1283,3 +1283,24 @@ uses = "tmux"
 		t.Errorf("workspace_provider_inputs = %#v", inputs)
 	}
 }
+
+// A contract declared twice is a load-time question: leaving it to the
+// compile at `plect create` time would let the ambiguity ship.
+func TestLoadWorkflows_InlineAndFileInputsSchemaMutuallyExclusive(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "coding.toml"), `
+[coding]
+kind               = "workflow"
+inputs_schema_file = "coding.schema.json"
+
+[coding.inputs_schema]
+type = "object"
+
+[[coding.nodes]]
+uses = "tmux"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("LoadWorkflows = %v, want a mutually-exclusive error", err)
+	}
+}
