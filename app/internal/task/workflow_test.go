@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -443,6 +444,32 @@ func TestCompileWorkflow_DerivesDAGThroughAJSONOperand(t *testing.T) {
 	consumer := plan.Run[1]
 	if len(consumer.DependsOn) != 1 || consumer.DependsOn[0] != "producer" {
 		t.Fatalf("consumer.DependsOn = %v, want [producer]", consumer.DependsOn)
+	}
+}
+
+// TestCompileWorkflow_NestedNodeCarriesItsLayers covers the workflow-facing
+// half of "from the outside a nested task is exactly a task": a node names
+// one and the compiled plan carries the whole chain, so `plect up` runs every
+// layer rather than the outermost script alone.
+func TestCompileWorkflow_NestedNodeCarriesItsLayers(t *testing.T) {
+	inner := config.TaskDefinition{ID: "claude", Scope: "run", Setup: shellStub("inner-setup")}
+	outer := config.TaskDefinition{ID: "team_claude", Scope: "run", Setup: shellStub("outer-setup"), Inner: "claude", InnerChain: []config.TaskDefinition{inner}}
+	plan, err := CompileWorkflow(
+		config.WorkflowFile{ID: "test", Nodes: []config.WorkflowNode{{ID: "runtime", Uses: "team_claude"}}},
+		map[string]config.TaskDefinition{"team_claude": outer, "claude": inner},
+	)
+	if err != nil {
+		t.Fatalf("CompileWorkflow: %v", err)
+	}
+	if len(plan.Run) != 1 {
+		t.Fatalf("plan.Run = %+v, want one node", plan.Run)
+	}
+	got := make([]string, 0, len(plan.Run[0].Layers))
+	for _, l := range plan.Run[0].Layers {
+		got = append(got, l.EffectID)
+	}
+	if !reflect.DeepEqual(got, []string{"team_claude", "claude"}) {
+		t.Errorf("node layers = %v, want the whole chain outermost first", got)
 	}
 }
 

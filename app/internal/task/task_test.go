@@ -1012,3 +1012,63 @@ func TestRunCapture_SurfacesStderrOnFailure(t *testing.T) {
 		t.Fatalf("error %q should carry stderr", err.Error())
 	}
 }
+
+// TestRunSetup_NestedPublicOutputsValidatedAgainstOuterSchema covers the
+// runtime failure rule for the projection: the composed contract answers to
+// the outer schema the way a plain task's setup answers to its own.
+func TestRunSetup_NestedPublicOutputsValidatedAgainstOuterSchema(t *testing.T) {
+	withScriptedExecutor(t, &scriptedExecutor{stdout: map[string]string{
+		"inner-setup": `{"pid":42}`,
+	}})
+	outer := config.TaskDefinition{
+		ID: "outer", Scope: "run",
+		OutputsBind:   map[string]*lang.Value{"pid": fromValue("inner.outputs.pid")},
+		OutputsSchema: objectSchema(map[string]any{"pid": map[string]any{"type": "string"}}, "pid"),
+	}
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
+	tasks := map[string]*contract.TaskState{}
+	err := RunSetup(context.Background(), nestedPlan(t, outer, inner), SessionVars{Name: "s"}, tasks, nil)
+	if err == nil {
+		t.Fatal("RunSetup: want an error for a projection the outer schema rejects, got nil")
+	}
+	if !strings.Contains(err.Error(), "outputs schema") {
+		t.Errorf("error = %v, want it to name the public outputs contract", err)
+	}
+}
+
+// TestRunSetup_DownstreamNodeReadsTheComposedContract covers what makes the
+// projection worth having: from the outside a nested task is exactly a task,
+// so a downstream node wires to its public key with no nesting-aware
+// vocabulary, and reaches nothing the joint did not bind.
+func TestRunSetup_DownstreamNodeReadsTheComposedContract(t *testing.T) {
+	withScriptedExecutor(t, &scriptedExecutor{stdout: map[string]string{
+		"inner-setup": `{"pid":"11","socket_path":"/tmp/sock"}`,
+	}})
+	inner := config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")}
+	outer := config.TaskDefinition{
+		ID: "runtime", Scope: "run", Inner: "inner", InnerChain: []config.TaskDefinition{inner},
+		OutputsBind:   map[string]*lang.Value{"agent_pid": fromValue("inner.outputs.pid")},
+		OutputsSchema: objectSchema(map[string]any{"agent_pid": map[string]any{"type": "string"}}),
+	}
+	consumer := config.TaskDefinition{ID: "consumer", Scope: "run", Setup: shellStub("consumer-setup")}
+	plan, err := CompileWorkflow(
+		config.WorkflowFile{ID: "test", Nodes: []config.WorkflowNode{
+			{ID: "runtime", Uses: "runtime"},
+			{ID: "consumer", Uses: "consumer", Inputs: map[string]*lang.Value{"pid": fromValue("nodes.runtime.outputs.agent_pid")}},
+		}},
+		map[string]config.TaskDefinition{"runtime": outer, "inner": inner, "consumer": consumer},
+	)
+	if err != nil {
+		t.Fatalf("CompileWorkflow: %v", err)
+	}
+	tasks := map[string]*contract.TaskState{}
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	if got := tasks["consumer"].Inputs["pid"]; got != "11" {
+		t.Errorf("downstream input = %#v, want the composed task's public value", got)
+	}
+	if _, leaked := tasks["runtime"].Outputs["socket_path"]; leaked {
+		t.Error("an inner output the joint never bound must not be reachable downstream")
+	}
+}
