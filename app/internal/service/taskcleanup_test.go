@@ -425,9 +425,11 @@ func TestTaskCleanup_DoesNotFalselyReportUnsubscribedWhenNoHookDeclared(t *testi
 }
 
 // A failing unsubscribe hook must not fail TaskCleanup: the instance and its
-// own cleanup script already succeeded, and the instance record is already
-// gone by the time this runs, so there is no retry handle to preserve by
-// failing. The failure is reported via UnsubscribeError instead.
+// own cleanup script already succeeded by the time this runs, so failing the
+// call now couldn't undo that. The failure is durably queued for retry (the
+// instance record itself is already gone, so the queue is the only
+// surviving retry handle) and reported to this call's own caller via
+// UnsubscribeError.
 func TestTaskCleanup_UnsubscribeHookFailureDoesNotFailCleanup(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
 		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},

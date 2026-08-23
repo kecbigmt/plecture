@@ -466,10 +466,10 @@ all = [
 	// work's [[chains]] entry — a live judge/check condition on a document
 	// can be satisfied without ever exercising the chain-fire path, so this
 	// is a distinct assertion from the done_when one above, not a restating
-	// of it. The fired chain's target resource is a literal no provider
-	// resolves, so identifying the spawn by its Workflow (rather than
-	// computing the exact tagged name a resolver would derive) is the
-	// robust check here.
+	// of it. Identifying the spawn by its Workflow, rather than recomputing
+	// the exact tagged name the followup resolver and the chain's own
+	// tagging would together produce, avoids duplicating that naming logic
+	// in the test while still being enough to prove the chain fired.
 	waitUntilOrFatal(t, 5*time.Second, "the chain never spawned a session for its target workflow", func() bool {
 		for name, s := range st.All() {
 			if _, existed := sessionsBeforeFire[name]; existed {
