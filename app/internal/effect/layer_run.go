@@ -53,7 +53,7 @@ func RunLayers(goCtx context.Context, layers []Layer, host ChainHost, workDir st
 		// against the composed task's inputs schema by the caller; every
 		// layer inward answers to its own schema for what the joint bound.
 		if i > 0 && layer.InputsSchema != nil {
-			if err := layer.InputsSchema.Validate(toJSONShape(inputs)); err != nil {
+			if err := layer.InputsSchema.Validate(orEmpty(inputs)); err != nil {
 				return states, lastStderr, fmt.Errorf("layer %q: bound inputs: %w", layer.EffectID, err)
 			}
 		}
@@ -256,18 +256,6 @@ func envAssignments(env map[string]string) []string {
 // orEmpty normalizes a nil map to an empty one so a rendered root is
 // absent-but-present rather than a nil that a template would panic on.
 func orEmpty(m map[string]any) map[string]any {
-	if m == nil {
-		return map[string]any{}
-	}
-	return m
-}
-
-// toJSONShape normalizes a map[string]any (with string-typed leaves from
-// RenderInputs) so JSON Schema validation sees the same shape it would after
-// a JSON round-trip. Current implementation only stores strings, so this is a
-// no-op pass-through; kept as a single seam in case node inputs grow non-string
-// support.
-func toJSONShape(m map[string]any) map[string]any {
 	if m == nil {
 		return map[string]any{}
 	}

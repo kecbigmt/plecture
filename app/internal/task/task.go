@@ -489,10 +489,6 @@ type RenderContext struct {
 	// emitted from its own setup, visible to that layer's cleanup and to its
 	// own binding templates and nowhere else. Empty for a plain task.
 	Locals map[string]any
-	// Inner is the public contract of the layer one step inward, read by a
-	// `[bind.outputs]` template as `.Inner.outputs.<key>`. Empty everywhere
-	// but a projection render.
-	Inner map[string]any
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the bare-name `bin = "<name>"`
 	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a

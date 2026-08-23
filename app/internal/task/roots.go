@@ -61,16 +61,6 @@ func innerRoots(ctx RenderContext) lang.Roots {
 	return env
 }
 
-// outputsBindRoots observes no live root and no session: an effect's
-// outputs are production records, fixed when the layer is instantiated.
-func outputsBindRoots(ctx RenderContext) lang.Roots {
-	return lang.Roots{
-		"inner":  map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Inner))},
-		"locals": normalizeOutputs(ctx.Locals),
-		"inputs": normalizeOutputs(ctx.Inputs),
-	}
-}
-
 func sessionRoots(ctx RenderContext) lang.Roots {
 	session := map[string]any{"name": ctx.Session.Name}
 	if ctx.Session.ParentSession != "" {
@@ -173,12 +163,6 @@ func shellWord(value string) string {
 // the configuration error it is rather than as a failed execution.
 func resolveEffect(action *lang.Action, env lang.Roots, ctx RenderContext, from lang.Ownership, operands []string) (*effect.Execution, error) {
 	return effect.Resolve(action, env, capabilitiesFor(ctx, from), operands)
-}
-
-// resolveValues resolves one value table — a nesting joint's inputs or
-// environment — into the strings the next layer inward receives.
-func resolveValues(values map[string]*lang.Value, env lang.Roots, ctx RenderContext, from lang.Ownership) (map[string]string, error) {
-	return effect.ResolveValues(values, env, capabilitiesFor(ctx, from))
 }
 
 // ProjectLayerOutputs adapts session into the capabilities a nesting chain's
