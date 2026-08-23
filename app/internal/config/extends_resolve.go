@@ -45,6 +45,9 @@ func composeExtendedTaskDocuments(docs map[string]TaskDocument, registry *lang.R
 			return fmt.Errorf("task %s: %w", address, err)
 		}
 		defLayers := append(append([]*lang.Definition{}, chainDefs...), doc.Definition)
+		if err := lang.RejectSchemaFileInChain(defLayers); err != nil {
+			return fmt.Errorf("task %s: %w", address, err)
+		}
 		if _, err := lang.SchemaKeyRules("inputs_schema", defLayers); err != nil {
 			return fmt.Errorf("task %s: %w", address, err)
 		}
@@ -67,28 +70,7 @@ func composeExtendedTaskDocuments(docs map[string]TaskDocument, registry *lang.R
 			layers = append(layers, original[layerAddress])
 		}
 		layers = append(layers, doc)
-		if err := rejectSchemaFileInChain(layers); err != nil {
-			return fmt.Errorf("task %s: %w", address, err)
-		}
 		docs[address] = composeTaskDocument(layers)
-	}
-	return nil
-}
-
-// rejectSchemaFileInChain fails loud rather than silently dropping a
-// contract: mergeSchemaField reads a layer's inline inputs_schema/
-// state_schema table only, so a layer that instead points at
-// inputs_schema_file/state_schema_file — resolved relative to that layer's
-// own directory, which a composed document has no per-field way to
-// remember — composes into nothing rather than the contract it names.
-func rejectSchemaFileInChain(layers []TaskDocument) error {
-	for _, layer := range layers {
-		if layer.InputsSchemaFile != "" {
-			return fmt.Errorf("task %q declares inputs_schema_file, which extends composition does not support; declare inputs_schema inline", layer.ID)
-		}
-		if layer.StateSchemaFile != "" {
-			return fmt.Errorf("task %q declares state_schema_file, which extends composition does not support; declare state_schema inline", layer.ID)
-		}
 	}
 	return nil
 }
@@ -129,78 +111,29 @@ func composeTaskDocument(layers []TaskDocument) TaskDocument {
 }
 
 // mergeSchemaField merges one schema field (inputs_schema or state_schema)
-// across an extends chain. `properties` is the union across every layer.
-// `required` is the union too — an extension may only ever add a requirement,
-// consistent with the chain's own append-only rule, never drop one a base
-// declared. `additionalProperties` stays closed if any layer closed it: a
-// composed key any layer added is already present in the merged `properties`
-// either way, so closing loses nothing, while treating a later layer's silent
-// omission as reopening would weaken a constraint the base fixed without any
-// layer saying so. Every other top-level key (`type`, and the like) comes
-// from the first layer, root first, that declares this field at all — the
-// base's own shape, which an extension augments rather than restates.
+// across an extends chain. lang's structural check on `extends` already
+// guarantees that no layer but the root declares anything besides
+// `properties` on this field, so the composed object's own shape — `type`,
+// `required`, `additionalProperties`, and anything else — is exactly the
+// root's, verbatim, with no per-key merge decision to make for any of them;
+// only `properties` itself is ever the union of more than one layer.
 func mergeSchemaField(layers []TaskDocument, field func(TaskDocument) map[string]any) map[string]any {
-	merged := map[string]any{}
-	present := false
-	requiredSeen := map[string]bool{}
-	var required []string
-	closed := false
+	var base map[string]any
 	for _, layer := range layers {
-		schema := field(layer)
-		if schema == nil {
-			continue
-		}
-		present = true
-		for k, v := range schema {
-			switch k {
-			case "properties", "required", "additionalProperties":
-				continue
-			default:
-				if _, already := merged[k]; !already {
-					merged[k] = v
-				}
-			}
-		}
-		for _, name := range schemaRequiredNames(schema) {
-			if !requiredSeen[name] {
-				requiredSeen[name] = true
-				required = append(required, name)
-			}
-		}
-		if additionalProperties, ok := schema["additionalProperties"].(bool); ok && !additionalProperties {
-			closed = true
+		if schema := field(layer); schema != nil {
+			base = schema
+			break
 		}
 	}
-	if !present {
+	if base == nil {
 		return nil
+	}
+	merged := make(map[string]any, len(base))
+	for k, v := range base {
+		merged[k] = v
 	}
 	merged["properties"] = mergeSchemaProperties(layers, field)
-	if len(required) > 0 {
-		sort.Strings(required)
-		reqs := make([]any, len(required))
-		for i, name := range required {
-			reqs[i] = name
-		}
-		merged["required"] = reqs
-	}
-	if closed {
-		merged["additionalProperties"] = false
-	}
 	return merged
-}
-
-func schemaRequiredNames(schema map[string]any) []string {
-	list, ok := schema["required"].([]any)
-	if !ok {
-		return nil
-	}
-	names := make([]string, 0, len(list))
-	for _, entry := range list {
-		if name, ok := entry.(string); ok {
-			names = append(names, name)
-		}
-	}
-	return names
 }
 
 // mergeSchemaProperties merges one schema field's `properties` table across

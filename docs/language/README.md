@@ -160,6 +160,8 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-EXTENDS-CHAIN-ID-DUPLICATE` | semantic | A chain id is declared by more than one declaration in an extends chain. |
 | `PLECTURE-CFG-EXTENDS-DEFAULT-REDECLARED` | semantic | An extends chain sets a schema key's default more than once. |
 | `PLECTURE-CFG-EXTENDS-SCHEMA-TYPE` | semantic | An extends chain redefines a schema key's type or other constraint instead of only adding a default. |
+| `PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE` | structural | A document declaring `extends` declares an `inputs_schema`/`state_schema` key other than `type` or `properties`. |
+| `PLECTURE-CFG-EXTENDS-SCHEMA-FILE-UNSUPPORTED` | semantic | An extends chain of more than one layer includes a layer using `inputs_schema_file`/`state_schema_file`. |
 | `PLECTURE-CFG-WORKFLOW-CYCLE` | semantic | The dependencies derived from node projections form a cycle. |
 | `PLECTURE-CFG-CEL-SYNTAX` | cel | An expression does not parse as CEL. |
 | `PLECTURE-CFG-CEL-UNKNOWN-NAME` | cel | An expression names a variable not visible at its site. |

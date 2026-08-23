@@ -318,6 +318,9 @@ func (v Validation) validateTask(def *Definition, pos Position) error {
 			return newDiag(CodeExtendsInheritedField, LayerStructural, childPos(pos, "resource_observer"),
 				"resource_observer is inherited through extends and is not part of the extension surface")
 		}
+		if err := checkExtendsSchemaShape(def, pos); err != nil {
+			return err
+		}
 	}
 	if err := v.completionPredicate(def.Body, "done_when", pos); err != nil {
 		return err

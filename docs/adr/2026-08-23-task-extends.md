@@ -123,16 +123,22 @@ could drift apart. Resolving `extends` needs only the task namespace, so the
 registry `LoadTaskDocuments` builds for it carries no observers or
 workflows, keeping this path as cheap as it was.
 
-Merging `inputs_schema` / `state_schema` never lets an extension widen what
-the base closed: `required` accumulates as a union and `additionalProperties`
-stays `false` if any layer set it, so a later layer's own table — which,
-being nearer the extension, would otherwise replace the base's wholesale —
-cannot silently reopen a contract the base fixed closed. A layer using
-`inputs_schema_file` / `state_schema_file` anywhere in the chain fails the
-load outright rather than composing into nothing: the file path resolves
-relative to that layer's own directory, which a single composed document has
-no per-field way to remember, so merging it silently would drop the contract
-rather than compose it.
+An extension's own `inputs_schema` / `state_schema` table may declare only
+`type` and `properties` — nothing else. `required`, `additionalProperties`,
+and every other schema-object-level keyword answer for the composed
+contract's overall shape, and only the root, which has no extends of its
+own, gets to answer it (`PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE` structural,
+checkable from the document's own declaration alone). Composing the
+object's own shape is therefore not a merge at all: it is exactly the
+root's table, verbatim, since only the root may declare one; `properties`
+remains the one field ever combined across more than one layer. A layer using
+`inputs_schema_file` / `state_schema_file` anywhere in a real extends chain
+(more than one layer) fails the load outright rather than composing into
+nothing: the file path resolves relative to that layer's own directory,
+which a single composed document has no per-field way to remember, so
+merging it silently would drop the contract rather than compose it; a lone
+document with no extends relationship at all keeps using either form fully
+supported, exactly as today.
 
 The composed chain's own per-layer contributions are kept on the result
 (`TaskDocument.ExtendsLayers`) so `plect task show` can attribute every
@@ -142,17 +148,20 @@ supplied it.
 
 `plecture.schema.json`'s `taskDefinition` gains `extends` and an
 `if`/`then`/`else` making `resource_observer` required exactly when `extends`
-is absent. `docs/language/README.md` gains six diagnostic codes:
-`PLECTURE-CFG-EXTENDS-INHERITED-FIELD` (structural), and `-CYCLE`,
-`-JUDGE-ID-DUPLICATE`, `-CHAIN-ID-DUPLICATE`, `-DEFAULT-REDECLARED`,
-`-SCHEMA-TYPE` (semantic).
+is absent, and restricting `inputs_schema` / `state_schema` to `type` and
+`properties` in the same branch, via a shared `extendsOwnSchemaShape` $def.
+`docs/language/README.md` gains eight diagnostic codes:
+`PLECTURE-CFG-EXTENDS-INHERITED-FIELD` and `-SCHEMA-SHAPE` (structural), and
+`-CYCLE`, `-JUDGE-ID-DUPLICATE`, `-CHAIN-ID-DUPLICATE`,
+`-DEFAULT-REDECLARED`, `-SCHEMA-TYPE`, `-SCHEMA-FILE-UNSUPPORTED` (semantic).
 
 The conformance corpus gains `testdata/config-language/tasks/extends/`: the
 three worked examples quoted verbatim in `docs/language/tasks.md` (a
 cross-tool reviewer choosing between two static chains, a gate-variant
 judge-recording extension, and a three-layer official/team/personal chain),
-plus the four required error fixtures, the inherited-field structural
-fixture, and the chain-id-duplicate fixture.
+plus the four required error fixtures and one fixture apiece for
+inherited-field, chain-id-duplicate, schema-shape, and
+schema-file-unsupported.
 
 No migration is needed: `extends` is new, additive vocabulary on an existing
 kind, and no previously valid task declaration changes meaning.
@@ -191,6 +200,23 @@ retype a key a base's own logic depends on. Restricting composition to
 "add a key" and "add a default where none exists" keeps every extension's
 delta small enough to read as a diff against the base's contract rather than
 a replacement of it.
+
+### Compose `required` as a union and keep `additionalProperties` closed if any layer closed it
+
+A first cut let an extension's schema table declare `required` and
+`additionalProperties` too, composing `required` by unioning every layer's
+list and keeping `additionalProperties` closed if any layer closed it —
+reasoning that both compose monotonically the way `done_when` does. Rejected:
+it still let an extension's own table replace the base's wholesale for every
+*other* schema-object keyword (`minProperties`, `patternProperties`, and the
+like), silently, since only `required` and `additionalProperties` had a
+composition rule at all — and a schema-valued `additionalProperties` (JSON
+Schema allows a schema there, not only `true`/`false`) fell through a
+`.(bool)` type assertion and vanished from the composed result entirely.
+Closing the whitelist to `type`/`properties` outright removes the whole
+category: there is no schema-object keyword left that a merge rule could
+handle correctly for some values and silently wrong for others, because none
+of them are composed at all.
 
 ### A separate `docs/design/task-extends.md`
 

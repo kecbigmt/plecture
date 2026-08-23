@@ -178,6 +178,65 @@ func ComposedChainIDs(layers []*Definition) (map[string]bool, error) {
 	return ids, nil
 }
 
+// RejectSchemaFileInChain fails a real (more than one layer) extends chain
+// where any layer points inputs_schema_file/state_schema_file at a sidecar
+// file, rather than composing that field into an empty contract: a file path
+// resolves relative to its declaring layer's own directory, which a single
+// composed document has no per-field way to remember, so silently merging it
+// would drop the contract rather than compose it. A lone document — one with
+// no extends of its own and extended by nothing here — passes: this rule
+// exists for composition, not for `_schema_file` itself, which stays fully
+// supported outside an extends chain.
+func RejectSchemaFileInChain(layers []*Definition) error {
+	if len(layers) < 2 {
+		return nil
+	}
+	for _, layer := range layers {
+		for _, field := range []string{"inputs_schema_file", "state_schema_file"} {
+			if name, ok := layer.Body[field].(string); ok && name != "" {
+				at := childPos(Position{File: layer.File, Path: layer.ID}, field)
+				return newDiag(CodeExtendsSchemaFileUnsupported, LayerSemantic, at,
+					fmt.Sprintf("%s composes into an empty contract in an extends chain; declare it inline instead", field))
+			}
+		}
+	}
+	return nil
+}
+
+// extendsSchemaOwnKeys is the closed set an extension's own inputs_schema/
+// state_schema table may declare. `type` is included only because every
+// realistic object schema states it whether or not the value ever
+// disagrees with an ancestor's — checking that agreement is not part of
+// this rule, unlike everything excluded from this set. `properties` is the
+// whitelist's whole point: new keys, restrained by SchemaKeyRules elsewhere.
+var extendsSchemaOwnKeys = fieldSet("type", "properties")
+
+// checkExtendsSchemaShape is the structural half of the closed schema
+// whitelist: a document declaring `extends` may declare only `properties`
+// (and the incidental `type`) on its own inputs_schema/state_schema.
+// required, additionalProperties, and every other schema-object-level
+// keyword answer a question about the composed contract's overall shape,
+// which only the root — the layer with no extends of its own — gets to
+// answer; letting an extension set any of them, even seemingly additively,
+// is exactly the unbounded merge algebra the ratified design rejected in
+// favor of a closed whitelist.
+func checkExtendsSchemaShape(def *Definition, pos Position) error {
+	for _, field := range []string{"inputs_schema", "state_schema"} {
+		schema, ok := def.Body[field].(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, key := range sortedKeys(schema) {
+			if extendsSchemaOwnKeys[key] {
+				continue
+			}
+			return newDiag(CodeExtendsSchemaShape, LayerStructural, childPos(pos, field),
+				fmt.Sprintf("an extension's own %s declares only type and properties; %q is the base's shape to answer, not an extension's", field, key))
+		}
+	}
+	return nil
+}
+
 func withoutDefault(prop map[string]any) map[string]any {
 	out := make(map[string]any, len(prop))
 	for k, v := range prop {

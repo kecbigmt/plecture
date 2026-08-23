@@ -283,8 +283,6 @@ func writeTaskDetail(out io.Writer, d *service.TaskDetail) error {
 	return nil
 }
 
-// firstLine renders an instruction's provenance as one line, however many
-// paragraphs it declares.
 func firstLine(s string) string {
 	line, _, found := strings.Cut(s, "\n")
 	if found {

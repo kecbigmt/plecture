@@ -332,7 +332,20 @@ Composition is a closed, entirely additive whitelist:
   other constraint is always a load error (`PLECTURE-CFG-EXTENDS-SCHEMA-TYPE`).
   From outside, an extended task is simply a task with those defaults — its
   interior is hidden, the same inner-first encapsulation
-  [`effects.md`](effects.md) states for nesting.
+  [`effects.md`](effects.md) states for nesting. An extension's own
+  `inputs_schema` / `state_schema` table declares only `type` and `properties`
+  — `required`, `additionalProperties`, and every other schema-object-level
+  keyword answer for the composed contract's overall shape, which only the
+  root gets to set; declaring one on an extension is a load error
+  (`PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE`), not something composed as a union or
+  otherwise, because there is no additive reading of "this layer may also
+  narrow what counts as valid." `inputs_schema_file` / `state_schema_file` are
+  not supported inside a real extends chain (more than one layer): the path
+  resolves relative to its declaring layer's own directory, which a single
+  composed document has no per-field way to remember, so a layer using either
+  form anywhere in the chain is a load error
+  (`PLECTURE-CFG-EXTENDS-SCHEMA-FILE-UNSUPPORTED`) rather than a contract
+  silently dropped. Both forms stay fully supported outside an extends chain.
 
 There is no way to remove, replace, or weaken a base leaf, element, or key. A
 task essentially different from its base is a full declaration of its own — a
@@ -480,3 +493,7 @@ instructions = [{ text = "Additionally leave inline comments for anything worth 
 - An existing `inputs_schema` / `state_schema` key may gain a default only
   where the inner chain sets none; redeclaring one already set, or redefining
   the key's type or any other constraint, is a load error.
+- A document declaring `extends` declares only `type` and `properties` on its
+  own `inputs_schema` / `state_schema`.
+- An extends chain of more than one layer includes no layer declaring
+  `inputs_schema_file` / `state_schema_file`.

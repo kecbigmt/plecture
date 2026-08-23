@@ -1530,6 +1530,15 @@
         }
       ]
     },
+    "extendsOwnSchemaShape": {
+      "$comment": "PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE when a key other than type or properties is present.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {},
+        "properties": {}
+      }
+    },
     "taskDefinition": {
       "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-KIND-MISSING, PLECTURE-CFG-EXTENDS-INHERITED-FIELD when both extends and resource_observer are set.",
       "type": "object",
@@ -1547,6 +1556,14 @@
           "required": [
             "resource_observer"
           ]
+        },
+        "properties": {
+          "inputs_schema": {
+            "$ref": "#/$defs/extendsOwnSchemaShape"
+          },
+          "state_schema": {
+            "$ref": "#/$defs/extendsOwnSchemaShape"
+          }
         }
       },
       "else": {

@@ -359,6 +359,117 @@ extends = "work"
 	}
 }
 
+// TestValidateTaskDocuments_ComposedSchemaPreservesSchemaValuedAdditionalProperties
+// guards a JSON Schema shape a simple `.(bool)` type assertion would silently
+// drop: additionalProperties may itself be a schema, not only true/false.
+// Composition must carry the root's value through verbatim, whatever its
+// type, since only the root may set it at all.
+func TestValidateTaskDocuments_ComposedSchemaPreservesSchemaValuedAdditionalProperties(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+
+[work.state_schema]
+type = "object"
+
+[work.state_schema.properties]
+priority = { type = "string" }
+
+[work.state_schema.additionalProperties]
+type = "string"
+
+[work_ext]
+kind    = "task"
+extends = "work"
+
+[work_ext.state_schema]
+type = "object"
+
+[work_ext.state_schema.properties]
+reviewed_by = { type = "string" }
+`)
+	cfg := &Config{BaseDir: base}
+	docs, observers := loadDocsAndObservers(t, cfg)
+	if err := cfg.ValidateTaskDocuments(docs, observers, nil); err != nil {
+		t.Fatalf("ValidateTaskDocuments: %v", err)
+	}
+	ext := docs["work_ext"]
+	additional, ok := ext.StateSchema["additionalProperties"].(map[string]any)
+	if !ok || additional["type"] != "string" {
+		t.Errorf("additionalProperties = %#v, want the root's schema-valued constraint preserved verbatim", ext.StateSchema["additionalProperties"])
+	}
+}
+
+// TestLoadTaskDocuments_RejectsSchemaShapeViolationsWithoutValidateTaskDocuments
+// is the fast-path half of the closed schema whitelist: LoadTaskDocuments
+// alone must reject an extension trying to set required or
+// additionalProperties, not only the full ValidateTaskDocuments pass.
+func TestLoadTaskDocuments_RejectsSchemaShapeViolationsWithoutValidateTaskDocuments(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "required on an extension schema",
+			body: `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+
+[work.state_schema]
+type = "object"
+
+[work.state_schema.properties]
+priority = { type = "string" }
+
+[work_ext]
+kind    = "task"
+extends = "work"
+
+[work_ext.state_schema]
+type     = "object"
+required = ["priority"]
+`,
+			want: "PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE",
+		},
+		{
+			name: "schema_file in a real extends chain",
+			body: `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+state_schema_file = "state.schema.json"
+
+[work_ext]
+kind    = "task"
+extends = "work"
+`,
+			want: "PLECTURE-CFG-EXTENDS-SCHEMA-FILE-UNSUPPORTED",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			base := t.TempDir()
+			writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+			writeFile(t, filepath.Join(base, "tasks", "work.toml"), tc.body)
+			_, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+			if err == nil {
+				t.Fatalf("LoadTaskDocuments: expected %s, got no error", tc.want)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("LoadTaskDocuments error = %v, want it to name %s", err, tc.want)
+			}
+		})
+	}
+}
+
 // inputs_schema and state_schema properties merge by key: a new key an
 // extension adds joins the base's, and a default the extension adds to an
 // existing key survives composition.

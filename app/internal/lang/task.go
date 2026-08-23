@@ -46,6 +46,9 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 		return err
 	}
 
+	if err := RejectSchemaFileInChain(layers); err != nil {
+		return err
+	}
 	// inputs_schema carries no contract this pass resolves against, but its
 	// extends composition rules are load-time rules regardless.
 	if _, err := SchemaKeyRules("inputs_schema", layers); err != nil {

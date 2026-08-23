@@ -192,6 +192,111 @@ extends = "root_task"
 	wantDiag(t, resolveTaskDocuments(t, src), CodeFieldRequired, LayerStructural)
 }
 
+// TestExtendsRejectsRequiredOnAnExtensionSchema proves the schema whitelist
+// is actually closed: an extension cannot use `required` to newly constrain
+// an inherited key, which composing `required` as a union would have let
+// through as if it were an additive change.
+func TestExtendsRejectsRequiredOnAnExtensionSchema(t *testing.T) {
+	src := `[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[base_task.state_schema]
+type = "object"
+
+[base_task.state_schema.properties]
+priority = { type = "string" }
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.state_schema]
+type     = "object"
+required = ["priority"]
+`
+	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsSchemaShape, LayerStructural)
+}
+
+// TestExtendsRejectsAdditionalPropertiesOnAnExtensionSchema closes the other
+// half: additionalProperties answers for the composed contract's overall
+// shape, which only the root gets to set.
+func TestExtendsRejectsAdditionalPropertiesOnAnExtensionSchema(t *testing.T) {
+	src := `[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.state_schema]
+type                 = "object"
+additionalProperties = false
+
+[ext_task.state_schema.properties]
+reviewed_by = { type = "string" }
+`
+	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsSchemaShape, LayerStructural)
+}
+
+// TestExtendsAllowsTypeAndPropertiesOnAnExtensionSchema is the positive case:
+// the two keys every realistic object schema needs stay allowed.
+func TestExtendsAllowsTypeAndPropertiesOnAnExtensionSchema(t *testing.T) {
+	src := `[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.state_schema]
+type = "object"
+
+[ext_task.state_schema.properties]
+reviewed_by = { type = "string" }
+`
+	if err := resolveTaskDocuments(t, src); err != nil {
+		t.Fatalf("type and properties alone are the closed whitelist's whole point: %v", err)
+	}
+}
+
+// TestExtendsRejectsSchemaFileAcrossMoreThanOneLayer proves the guard fires
+// once a real extends chain exists, even when the file-backed layer is the
+// root rather than the extension itself.
+func TestExtendsRejectsSchemaFileAcrossMoreThanOneLayer(t *testing.T) {
+	src := `[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+state_schema_file = "state.schema.json"
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+`
+	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsSchemaFileUnsupported, LayerSemantic)
+}
+
+// TestExtendsAllowsSchemaFileOnAStandaloneDocument is the guard's other half:
+// a lone document with no extends of its own, and nothing here extending it,
+// keeps state_schema_file fully supported.
+func TestExtendsAllowsSchemaFileOnAStandaloneDocument(t *testing.T) {
+	src := `[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+state_schema_file = "state.schema.json"
+`
+	if err := resolveTaskDocuments(t, src); err != nil {
+		t.Fatalf("state_schema_file outside an extends chain stays supported: %v", err)
+	}
+}
+
 // TestExtendsRejectsADuplicateChainID mirrors judge-id uniqueness for chain
 // ids: two layers naming the same chain id would collide in spawn routing.
 func TestExtendsRejectsADuplicateChainID(t *testing.T) {
