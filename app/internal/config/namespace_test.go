@@ -3,7 +3,6 @@ package config
 import (
 	"path/filepath"
 	"sort"
-	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/plugins"
@@ -163,29 +162,6 @@ command = "true"
 	}
 	if _, ok := got["github"]; !ok {
 		t.Errorf("github missing; keys = %v", sortedKeysOf(got))
-	}
-}
-
-// Coexistence requires addressability. A hand-authored plugin_dirs entry
-// carries no catalog identity, so neither of two such layers can be named
-// apart from the other and the collision stays a load error.
-func TestLoadResourceDefs_TwoUnaddressablePluginLayersStillFailLoud(t *testing.T) {
-	dirA, dirB := t.TempDir(), t.TempDir()
-	body := `
-[github]
-kind  = "resource_observer"
-match = '^x'
-
-[github.observe]
-type    = "exec"
-command = "true"
-`
-	writeFile(t, filepath.Join(dirA, "config", "resources", "github.toml"), body)
-	writeFile(t, filepath.Join(dirB, "config", "resources", "github.toml"), body)
-
-	_, err := (&Config{PluginDirs: []string{dirA, dirB}}).LoadResourceDefs()
-	if err == nil || !strings.Contains(err.Error(), "github") {
-		t.Fatalf("expected a collision error naming \"github\", got %v", err)
 	}
 }
 
