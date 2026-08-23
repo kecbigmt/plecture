@@ -30,11 +30,9 @@ type WorkflowDetail struct {
 	// `workflow show` can present the whole picture without a second lookup.
 	WorkspaceProvider     string                          `json:"workspace_provider,omitempty"`
 	WorkspaceProviderInfo *config.WorkspaceProviderConfig `json:"workspace_provider_info,omitempty"`
-	// WorkspaceProviderError carries the load failure when the referenced
-	// workspace provider is declared but fails to load — set instead of
-	// WorkspaceProviderInfo, never both, so `workflow show` still renders
-	// everything else it resolved rather than reporting a broken workflow as
-	// clean.
+	// WorkspaceProviderError is set instead of WorkspaceProviderInfo, never
+	// both, so a load failure cannot make `workflow show` abort rendering
+	// the rest of an otherwise-loadable workflow.
 	WorkspaceProviderError string            `json:"workspace_provider_error,omitempty"`
 	Display                map[string]string `json:"display,omitempty"`
 	AutoSelect             bool              `json:"auto_select"`
