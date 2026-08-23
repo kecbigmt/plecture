@@ -99,6 +99,8 @@ Examples:
 		fmt.Fprintf(os.Stderr, "Instantiated %s [%s] for %s\n", taskDisplayName(result.Name, result.Instance), result.Scope, result.SessionName)
 		if result.Subscribed {
 			fmt.Fprintf(os.Stderr, "Registered %s for event delivery to %s\n", result.Resource, result.SessionName)
+		} else if result.SubscribeError != "" {
+			fmt.Fprintf(os.Stderr, "Warning: could not register %s for event delivery: %s\n", result.Resource, result.SubscribeError)
 		}
 		return nil
 	},
@@ -141,6 +143,8 @@ Examples:
 			fmt.Fprintf(os.Stderr, "Reclaimed %s from %s\n", result.Instance, result.SessionName)
 			if result.Unsubscribed {
 				fmt.Fprintf(os.Stderr, "Dropped event delivery for %s from %s\n", result.Resource, result.SessionName)
+			} else if result.UnsubscribeError != "" {
+				fmt.Fprintf(os.Stderr, "Warning: could not drop event delivery for %s: %s\n", result.Resource, result.UnsubscribeError)
 			}
 		} else {
 			fmt.Fprintf(os.Stderr, "No instance %s in %s (nothing to clean)\n", result.Instance, result.SessionName)

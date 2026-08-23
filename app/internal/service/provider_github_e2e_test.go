@@ -254,8 +254,12 @@ func TestE2E_GithubWorkspaceProviderWiresAndDropsEventDelivery(t *testing.T) {
 		t.Fatalf("subscriptions after subscribeIfWired = %v, want exactly one", subs)
 	}
 
-	if err := unsubscribeIfWired(cfg, session, resource); err != nil {
+	unsubscribed, err := unsubscribeIfWired(cfg, session, resource)
+	if err != nil {
 		t.Fatalf("unsubscribeIfWired: %v", err)
+	}
+	if !unsubscribed {
+		t.Fatal("the shipped github workspace provider must unwire delivery for an issue/PR URL")
 	}
 	subs = watcherSubscriptions(t, home)
 	if len(subs) != 0 {

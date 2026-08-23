@@ -44,13 +44,18 @@ type TaskSetupResult struct {
 	Scope       string `json:"scope"`
 	Name        string `json:"name,omitempty"`
 	Resource    string `json:"resource,omitempty"`
-	// Subscribed reports whether binding this instance to Resource also
-	// registered it for event delivery to the session (binding implies
-	// delivery — see subscribeIfWired). False when Resource is empty, no
-	// workspace provider recognizes it, or the matched provider declares no
-	// subscribe hook: none of those are errors, just nothing to wire.
-	Subscribed bool           `json:"subscribed,omitempty"`
-	Outputs    map[string]any `json:"outputs,omitempty"`
+	// Subscribed is true only when binding this instance to Resource also ran
+	// a subscribe hook that registered it for event delivery — not merely
+	// when nothing needed wiring.
+	Subscribed bool `json:"subscribed,omitempty"`
+	// SubscribeError carries a failed subscribe attempt's message (an
+	// ambiguous provider match, or the hook itself failing). Never fails
+	// TaskSetup: the instance above is already fully instantiated by the
+	// time this runs, so returning an error here would tell the caller
+	// nothing happened when something did — this field is the only honest
+	// way to report the failure.
+	SubscribeError string         `json:"subscribe_error,omitempty"`
+	Outputs        map[string]any `json:"outputs,omitempty"`
 	// Instruction is the rendered body of a task document instance. Empty for
 	// an effect instance, whose instruction is an output of its setup.
 	Instruction string `json:"instruction,omitempty"`
@@ -261,19 +266,21 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	appendInstruction(store, resolvedName, key, params.Resource, instructionOutput(resultOutputs))
 
 	subscribed, subErr := subscribeIfWired(cfg, resolvedName, params.Resource)
+	subscribeErrMsg := ""
 	if subErr != nil {
-		return nil, subErr
+		subscribeErrMsg = subErr.Error()
 	}
 
 	return &TaskSetupResult{
-		SessionName: resolvedName,
-		Instance:    key,
-		TaskID:      params.TaskID,
-		Scope:       resolved.Scope,
-		Name:        params.Name,
-		Resource:    params.Resource,
-		Subscribed:  subscribed,
-		Outputs:     resultOutputs,
+		SessionName:    resolvedName,
+		Instance:       key,
+		TaskID:         params.TaskID,
+		Scope:          resolved.Scope,
+		Name:           params.Name,
+		Resource:       params.Resource,
+		Subscribed:     subscribed,
+		SubscribeError: subscribeErrMsg,
+		Outputs:        resultOutputs,
 	}, nil
 }
 

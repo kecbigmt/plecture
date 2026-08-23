@@ -110,15 +110,17 @@ args    = ["-c", "echo boom >&2; exit 3"]
 
 func TestUnsubscribeIfWired_EmptyResourceIsANoOp(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
-	if err := unsubscribeIfWired(cfg, "s", ""); err != nil {
-		t.Fatalf("unsubscribeIfWired: %v", err)
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "")
+	if err != nil || unsubscribed {
+		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
 }
 
 func TestUnsubscribeIfWired_NoProviderMatchIsSilentlySkipped(t *testing.T) {
 	cfg := &config.Config{BaseDir: t.TempDir()}
-	if err := unsubscribeIfWired(cfg, "s", "opaque-resource-no-provider-recognizes"); err != nil {
-		t.Fatalf("unsubscribeIfWired: %v", err)
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "opaque-resource-no-provider-recognizes")
+	if err != nil || unsubscribed {
+		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
 }
 
@@ -127,8 +129,9 @@ func TestUnsubscribeIfWired_ProviderWithoutUnsubscribeHookIsSilentlySkipped(t *t
 	writeProviderDoc(t, baseDir, "github", ghMatch, "")
 	cfg := &config.Config{BaseDir: baseDir}
 
-	if err := unsubscribeIfWired(cfg, "s", "https://github.com/org/repo/pull/1"); err != nil {
-		t.Fatalf("unsubscribeIfWired: %v", err)
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "https://github.com/org/repo/pull/1")
+	if err != nil || unsubscribed {
+		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
 }
 
@@ -136,8 +139,12 @@ func TestUnsubscribeIfWired_RunsUnsubscribeHook(t *testing.T) {
 	rec := filepath.Join(t.TempDir(), "rec")
 	cfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", rec)
 
-	if err := unsubscribeIfWired(cfg, "org/repo-7", "https://github.com/org/repo/pull/7"); err != nil {
+	unsubscribed, err := unsubscribeIfWired(cfg, "org/repo-7", "https://github.com/org/repo/pull/7")
+	if err != nil {
 		t.Fatalf("unsubscribeIfWired: %v", err)
+	}
+	if !unsubscribed {
+		t.Error("a matched provider with an unsubscribe hook must be reported as unsubscribed")
 	}
 	got, readErr := os.ReadFile(rec)
 	if readErr != nil {
@@ -150,17 +157,43 @@ func TestUnsubscribeIfWired_RunsUnsubscribeHook(t *testing.T) {
 }
 
 func TestUnsubscribeIfWired_AmbiguousMatchIsSilentlySkipped(t *testing.T) {
-	// Cleanup stays resilient: an ambiguous config is a setup-time problem
-	// (TaskSetup would already have refused to wire delivery for it), so
-	// cleanup does not fail an otherwise-successful teardown over it.
 	baseDir := t.TempDir()
 	writeProviderDoc(t, baseDir, "a", ghMatch, "")
 	writeProviderDoc(t, baseDir, "b", ghMatch, "")
 	cfg := &config.Config{BaseDir: baseDir}
 
-	if err := unsubscribeIfWired(cfg, "s", "https://github.com/org/repo/pull/1"); err != nil {
-		t.Fatalf("unsubscribeIfWired: %v", err)
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "https://github.com/org/repo/pull/1")
+	if err != nil || unsubscribed {
+		t.Fatalf("unsubscribed=%v err=%v, want false, nil", unsubscribed, err)
 	}
+}
+
+func TestUnsubscribeIfWired_HookFailureSurfacesStderr(t *testing.T) {
+	baseDir := t.TempDir()
+	body := `
+[github]
+kind  = "workspace_provider"
+match = '` + ghMatch + `'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[github.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workdir":"/tmp/x"}']
+
+[github.unsubscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", "echo boom >&2; exit 3"]
+`
+	writeFileService(t, filepath.Join(baseDir, "workspaces", "github.toml"), body)
+	cfg := &config.Config{BaseDir: baseDir}
+
+	unsubscribed, err := unsubscribeIfWired(cfg, "s", "https://github.com/org/repo/pull/1")
+	if unsubscribed {
+		t.Error("a failed hook must not be reported as unsubscribed")
+	}
+	assertErrCode(t, err, ErrExecutionFailed)
 }
 
 // writeProviderDoc writes a minimal workspace provider with a resolver and a

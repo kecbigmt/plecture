@@ -396,6 +396,90 @@ func TestTaskCleanup_DoesNotUnsubscribeResourceStillBoundByAnotherInstance(t *te
 	}
 }
 
+// A provider that supports subscribe but not unsubscribe leaves nothing to
+// run at cleanup time; Unsubscribed must report that honestly rather than
+// inferring "unsubscribed" from "no longer needed" alone.
+func TestTaskCleanup_DoesNotFalselyReportUnsubscribedWhenNoHookDeclared(t *testing.T) {
+	subRec := filepath.Join(t.TempDir(), "sub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, subRec, "")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	result, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "o/r-1"})
+	if err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if result.Unsubscribed {
+		t.Error("Unsubscribed = true, want false: the provider declares no unsubscribe hook to run")
+	}
+}
+
+// A failing unsubscribe hook must not fail TaskCleanup: the instance and its
+// own cleanup script already succeeded, and the instance record is already
+// gone by the time this runs, so there is no retry handle to preserve by
+// failing. The failure is reported via UnsubscribeError instead.
+func TestTaskCleanup_UnsubscribeHookFailureDoesNotFailCleanup(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	body := `
+[github]
+kind  = "workspace_provider"
+match = '` + ghMatch + `'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[github.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workdir":"/tmp/x"}']
+
+[github.subscribe]
+type    = "exec"
+command = "true"
+
+[github.unsubscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", "echo boom >&2; exit 3"]
+`
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	result, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "o/r-1"})
+	if err != nil {
+		t.Fatalf("TaskCleanup must not fail on a failed unsubscribe hook, got: %v", err)
+	}
+	if !result.Found {
+		t.Error("Found = false, want true: the instance itself was reclaimed")
+	}
+	if result.Unsubscribed {
+		t.Error("Unsubscribed = true, want false: the hook failed")
+	}
+	if result.UnsubscribeError == "" {
+		t.Error("UnsubscribeError is empty, want the hook failure reported")
+	}
+}
+
 // An instance created without --resource has nothing to unregister; cleanup
 // must not fail just because no workspace provider is even configured.
 func TestTaskCleanup_NoResourceBoundIsANoOpForDelivery(t *testing.T) {

@@ -247,8 +247,9 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	appendInstruction(store, resolvedName, key, params.Resource, instruction)
 
 	subscribed, subErr := subscribeIfWired(cfg, resolvedName, params.Resource)
+	subscribeErrMsg := ""
 	if subErr != nil {
-		return nil, subErr
+		subscribeErrMsg = subErr.Error()
 	}
 
 	return &TaskSetupResult{
@@ -256,12 +257,13 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 		Instance:    key,
 		// The address the reference selected, so a caller echoing this back at
 		// another command names the same declaration.
-		TaskID:      params.TaskID,
-		Scope:       contract.TaskScopeSession,
-		Name:        params.Name,
-		Resource:    params.Resource,
-		Subscribed:  subscribed,
-		Instruction: instruction,
+		TaskID:         params.TaskID,
+		Scope:          contract.TaskScopeSession,
+		Name:           params.Name,
+		Resource:       params.Resource,
+		Subscribed:     subscribed,
+		SubscribeError: subscribeErrMsg,
+		Instruction:    instruction,
 	}, nil
 }
 

@@ -32,17 +32,21 @@ type TaskCleanupResult struct {
 	SessionName string `json:"session_name"`
 	Instance    string `json:"instance"`
 	Found       bool   `json:"found"`
-	// Unsubscribed reports whether reclaiming this instance also dropped its
-	// bound resource's event-delivery registration (the counterpart of
-	// TaskSetupResult.Subscribed). False when the instance had no bound
-	// resource, the resource is still needed (the session's own primary
-	// resource, or another live instance is still bound to it), or no
-	// workspace provider is wired to unregister it.
+	// Unsubscribed is true only when reclaiming this instance also ran an
+	// unsubscribe hook that dropped its bound resource's event-delivery
+	// registration — not merely when nothing needed unregistering.
 	Unsubscribed bool `json:"unsubscribed,omitempty"`
-	// Resource is the instance's own bound resource (empty when it had
-	// none), reported alongside Unsubscribed so a caller can say what was
+	// Resource is the instance's own bound resource, reported alongside
+	// Unsubscribed/UnsubscribeError so a caller can say what was (or wasn't)
 	// dropped.
 	Resource string `json:"resource,omitempty"`
+	// UnsubscribeError carries a failed unsubscribe attempt's message. Never
+	// fails TaskCleanup itself: the instance and its own cleanup script
+	// already succeeded by the time this runs, and the reclaimed instance
+	// record is gone, so there is nothing left to retry against — leaving
+	// this in the result is the only way the caller learns delivery may now
+	// be orphaned.
+	UnsubscribeError string `json:"unsubscribe_error,omitempty"`
 }
 
 // TaskCleanup tears down a single dynamic instance: it runs that instance's
@@ -119,31 +123,42 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 		return nil, &Error{Code: ErrExecutionFailed, Message: errors.Join(cleanupErr, persistErr).Error()}
 	}
 
-	var stillNeeded bool
 	if err := store.Update(resolvedName, func(s *domain.Session) error {
 		delete(s.Tasks, params.Instance)
 		s.UpdatedAt = time.Now()
-		stillNeeded = taskCleanupResourceStillNeeded(s, st.Resource)
 		return nil
 	}); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
 	}
 	recordLifecycle(store, resolvedName, "task_cleanup", fmt.Sprintf("reclaimed %s", params.Instance))
 
-	unsubscribed := false
-	if !stillNeeded {
-		if unsubErr := unsubscribeIfWired(cfg, resolvedName, st.Resource); unsubErr != nil {
-			return nil, unsubErr
+	result := &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true, Resource: st.Resource}
+	if st.Resource != "" {
+		// Read fresh right here rather than reusing a decision made inside
+		// the delete's own store.Update: a concurrent TaskSetup can bind a
+		// new instance to this same resource in the gap between that commit
+		// and this (necessarily unlocked, since it shells out) hook call,
+		// and that binding must win over an unsubscribe that no longer
+		// applies. This narrows the race but cannot close it — the watcher's
+		// registry has no "delete only if unreferenced" primitive, so a
+		// subscribe landing there after this last look is still possible.
+		fresh, freshErr := store.GetE(resolvedName)
+		if freshErr == nil && fresh != nil && !taskCleanupResourceStillNeeded(fresh, st.Resource) {
+			unsubscribed, unsubErr := unsubscribeIfWired(cfg, resolvedName, st.Resource)
+			result.Unsubscribed = unsubscribed
+			if unsubErr != nil {
+				// The instance is already gone, so there is no retry handle
+				// left for this failure — surfacing it here is the only way
+				// the caller learns delivery may now be orphaned. Failing
+				// TaskCleanup itself over it would be worse: the instance
+				// and its own cleanup already succeeded.
+				result.UnsubscribeError = unsubErr.Error()
+			}
 		}
-		unsubscribed = st.Resource != ""
 	}
-	return &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true, Unsubscribed: unsubscribed, Resource: st.Resource}, nil
+	return result, nil
 }
 
-// taskCleanupResourceStillNeeded reports whether resource (the instance
-// TaskCleanup just removed from s.Tasks was bound to) is still needed by the
-// rest of the session: as the session's own primary resource, or as another
-// live instance's binding. An empty resource needs nothing.
 func taskCleanupResourceStillNeeded(s *domain.Session, resource string) bool {
 	if resource == "" {
 		return false

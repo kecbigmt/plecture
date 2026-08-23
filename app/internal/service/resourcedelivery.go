@@ -8,17 +8,19 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/effect"
 )
 
-// subscribeIfWired registers resourceID for event delivery to sessionName —
-// binding implies delivery, the runtime counterpart of `plect subscribe` that
-// a dynamic task instance's explicit `--resource` triggers automatically.
+// subscribeIfWired registers resourceID for event delivery to sessionName,
+// the runtime counterpart of `plect subscribe` a dynamic task instance's
+// explicit `--resource` triggers automatically (binding implies delivery).
 //
-// Unlike Subscribe (an explicit verb the caller means literally), a bound
-// resource is not guaranteed to be one any workspace provider governs: an
-// opaque --resource with no matching provider, or a matched provider that
-// never declared a subscribe hook, is left unwired rather than failing the
-// instantiation — the same as before this wiring existed. An ambiguous match
-// (the resource fits more than one provider) is a real configuration defect
-// and is still surfaced, since silently guessing which one would be worse.
+// Unlike an explicit `plect subscribe` call, a bound resource is not
+// guaranteed to be one any workspace provider governs: no matching provider,
+// or a matched provider with no subscribe hook, returns (false, nil) rather
+// than an error, since neither means the caller did anything wrong. An
+// ambiguous match (the resource fits more than one provider) is a real
+// configuration defect and is still reported as an error — TaskSetup treats
+// it, like a hook execution failure, as non-fatal (see its own comment),
+// since the instance it would otherwise leave orphaned has already been
+// fully instantiated by the time this runs.
 func subscribeIfWired(cfg *config.Config, sessionName, resourceID string) (bool, error) {
 	if strings.TrimSpace(resourceID) == "" {
 		return false, nil
@@ -54,26 +56,26 @@ func subscribeIfWired(cfg *config.Config, sessionName, resourceID string) (bool,
 }
 
 // unsubscribeIfWired drops resourceID's event-delivery registration for
-// sessionName, the counterpart subscribeIfWired's caller runs once the
-// resource is no longer needed (see taskCleanupResourceStillNeeded).
-// Resilient by design, matching TaskCleanup's own idempotent-teardown
-// posture: no match, an unhooked provider, or an ambiguous match (which
-// subscribeIfWired would have refused to wire in the first place) all leave
-// cleanup unaffected rather than failing an otherwise-successful teardown.
-func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID string) error {
+// sessionName — subscribeIfWired's counterpart, which TaskCleanup runs once
+// the resource is no longer needed. The bool return distinguishes "ran the
+// unsubscribe hook" from "nothing to do" (no match, an unhooked provider, or
+// an ambiguous match, which subscribeIfWired would itself have refused to
+// wire): both report (false, nil), so a caller cannot mistake silence for
+// having actually dropped a registration.
+func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID string) (bool, error) {
 	if strings.TrimSpace(resourceID) == "" {
-		return nil
+		return false, nil
 	}
 	matched, err := matchWorkspaceProviders(cfg, resourceID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(matched) != 1 {
-		return nil
+		return false, nil
 	}
 	prov := matched[0]
 	if prov.Unsubscribe == nil {
-		return nil
+		return false, nil
 	}
 	if hookErr := effect.RunWorkspaceProviderUnsubscribe(prov, effect.SubscribeHookVars{
 		ResourceID:  resourceID,
@@ -81,7 +83,7 @@ func unsubscribeIfWired(cfg *config.Config, sessionName, resourceID string) erro
 		Plugins:     cfg.Plugins,
 		SourcePath:  prov.SourcePath,
 	}); hookErr != nil {
-		return &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
+		return false, &Error{Code: ErrExecutionFailed, Message: hookErr.Error()}
 	}
-	return nil
+	return true, nil
 }
