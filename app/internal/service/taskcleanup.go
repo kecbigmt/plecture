@@ -75,6 +75,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	if err != nil {
 		return nil, err
 	}
+	flushPendingUnsubscribes(cfg, store, resolvedName)
 
 	st := session.Tasks[params.Instance]
 	if st == nil {
@@ -142,17 +143,22 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 		// applies. This narrows the race but cannot close it — the watcher's
 		// registry has no "delete only if unreferenced" primitive, so a
 		// subscribe landing there after this last look is still possible.
+		// Either way, a failure from here on is queued in
+		// pendingUnsubscribeFile rather than dropped: the instance record
+		// that would otherwise be the retry handle is already gone, so the
+		// queue is what makes the next TaskSetup/TaskCleanup on this session
+		// retry it instead of leaking the registration forever.
 		fresh, freshErr := store.GetE(resolvedName)
-		if freshErr == nil && fresh != nil && !taskCleanupResourceStillNeeded(fresh, st.Resource) {
+		switch {
+		case freshErr != nil:
+			result.UnsubscribeError = fmt.Sprintf("could not verify whether %s is still needed: %v", st.Resource, freshErr)
+			queuePendingUnsubscribe(store, resolvedName, st.Resource)
+		case fresh != nil && !taskCleanupResourceStillNeeded(fresh, st.Resource):
 			unsubscribed, unsubErr := unsubscribeIfWired(cfg, resolvedName, st.Resource)
 			result.Unsubscribed = unsubscribed
 			if unsubErr != nil {
-				// The instance is already gone, so there is no retry handle
-				// left for this failure — surfacing it here is the only way
-				// the caller learns delivery may now be orphaned. Failing
-				// TaskCleanup itself over it would be worse: the instance
-				// and its own cleanup already succeeded.
 				result.UnsubscribeError = unsubErr.Error()
+				queuePendingUnsubscribe(store, resolvedName, st.Resource)
 			}
 		}
 	}

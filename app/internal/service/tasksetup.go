@@ -98,6 +98,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if err != nil {
 		return nil, err
 	}
+	flushPendingUnsubscribes(cfg, store, resolvedName)
 	if session.Tasks == nil {
 		session.Tasks = make(map[string]*contract.TaskState)
 	}

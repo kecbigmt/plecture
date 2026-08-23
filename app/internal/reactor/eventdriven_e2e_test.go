@@ -259,6 +259,45 @@ func TestE2E_TaskSetupResourceDeliversRealWatcherEventToReactiveTick(t *testing.
 
 	base := t.TempDir()
 	writeEventDrivenObserverDoc(t, base, map[string]any{"checks_status": "PENDING"})
+	// The chain's target is a second, independent workflow/task pair (not
+	// this test's own "work" document) — a bare no-op is enough, since what
+	// this test is pinning is that the fire happens at all, not what the
+	// spawned session goes on to do.
+	writeFile(t, filepath.Join(base, "tasks", "noop.toml"), `[noop]
+kind  = "effect"
+scope = "session"
+
+[noop.setup]
+type   = "shell"
+script = "echo '{}'"
+`)
+	writeFile(t, filepath.Join(base, "workflows", "notify.toml"), `[notify]
+kind               = "workflow"
+workspace_provider = "followup"
+
+[[notify.nodes]]
+uses = "noop"
+`)
+	// A chain's spawn always tags the resolved name with (chain id, firing
+	// instance) — Up refuses that combination for an identity dispatch (a
+	// resource no resolver matches, whose "resolved name" is already the
+	// bare resource itself, with nowhere for a tag to attach) — so the
+	// target resource needs its own resolver, distinct from the real shipped
+	// GitHub provider mounted below (whose match is anchored to
+	// https://github.com/..., so it never claims this one) and cheap to
+	// "acquire" since nothing here cares what the spawned session's
+	// workspace looks like.
+	writeFile(t, filepath.Join(base, "workspaces", "followup.toml"), `[followup]
+kind  = "workspace_provider"
+match = '^followup://(?P<id>.+)$'
+name  = { expr = "'followup-' + match.id" }
+
+[followup.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workdir":"/tmp/followup"}']
+`)
+	const chainResource = "followup://9"
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
 description       = "work fixture"
@@ -266,6 +305,16 @@ resource_observer = "fixture"
 instructions      = [{ text = "Carry out the work." }]
 
 [work.done_when]
+all = [
+  { check = "resource.state.checks_status", eq = "SUCCESS" },
+]
+
+[[work.chains]]
+id       = "notify"
+workflow = "notify"
+resource = "`+chainResource+`"
+
+[work.chains.when]
 all = [
   { check = "resource.state.checks_status", eq = "SUCCESS" },
 ]
@@ -355,10 +404,60 @@ all = [
 	}
 	writeEventDrivenObserverDoc(t, base, map[string]any{"checks_status": "SUCCESS"})
 
+	sessionsBeforeFire := st.All()
+
 	runWatcherServeOnce(t)
 
-	waitUntilOrFatal(t, 15*time.Second, "the watcher's published event never drove a reactive tick to done_when-satisfied", func() bool {
-		evs, _, _, err := log.List(parent, 0, event.Filter{Types: []string{event.TypeTerminalDone}})
+	// The watcher's publish is the delivery this issue's wiring exists to
+	// make possible: assert it landed in the BOUND session's own log,
+	// independent of whatever the reactor goes on to do with it — a broken
+	// SessionName/resource carried through subscribeIfWired would still let
+	// the reactor's done_when assertion below pass by coincidence (the
+	// observer facts flipped regardless of delivery), but would fail here.
+	waitUntilOrFatal(t, 10*time.Second, "the watcher's published event never reached the bound session's own log", func() bool {
+		evs, _, _, err := log.List(session, 0, event.Filter{Types: []string{"github.mergeable"}})
 		return err == nil && len(evs) == 1
+	})
+	evs, _, _, err := log.List(session, 0, event.Filter{Types: []string{"github.mergeable"}})
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("List(%q, github.mergeable) = %d events, err=%v, want exactly one", session, len(evs), err)
+	}
+	ev := evs[0]
+	if ev.SessionName != session {
+		t.Errorf("event SessionName = %q, want %q", ev.SessionName, session)
+	}
+	if ev.Source != "github" {
+		t.Errorf("event Source = %q, want %q", ev.Source, "github")
+	}
+	if ev.Direction != event.Inbound {
+		t.Errorf("event Direction = %q, want %q", ev.Direction, event.Inbound)
+	}
+	if ev.Metadata["url"] != prURL || ev.Metadata["resource"] != prURL {
+		t.Errorf("event Metadata = %+v, want url/resource = %q", ev.Metadata, prURL)
+	}
+
+	waitUntilOrFatal(t, 15*time.Second, "the watcher's published event never drove a reactive tick to done_when-satisfied", func() bool {
+		terminalEvs, _, _, err := log.List(parent, 0, event.Filter{Types: []string{event.TypeTerminalDone}})
+		return err == nil && len(terminalEvs) == 1
+	})
+
+	// The same reactive tick that satisfied done_when must also have fired
+	// work's [[chains]] entry — a live judge/check condition on a document
+	// can be satisfied without ever exercising the chain-fire path, so this
+	// is a distinct assertion from the done_when one above, not a restating
+	// of it. The fired chain's target resource is a literal no provider
+	// resolves, so identifying the spawn by its Workflow (rather than
+	// computing the exact tagged name a resolver would derive) is the
+	// robust check here.
+	waitUntilOrFatal(t, 5*time.Second, "the chain never spawned a session for its target workflow", func() bool {
+		for name, s := range st.All() {
+			if _, existed := sessionsBeforeFire[name]; existed {
+				continue
+			}
+			if s.Workflow == "notify" {
+				return true
+			}
+		}
+		return false
 	})
 }
