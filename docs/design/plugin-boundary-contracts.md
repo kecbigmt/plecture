@@ -70,17 +70,18 @@ behavior.
 ### tmux Provider
 
 ```toml
-# The task also declares setup, cleanup, [health], and an
+# The effect also declares setup, cleanup, [health], and an
 # interactive_endpoint output.
 
-[terminal]
-attach = "..."
-capture = "..."
-send_text = "tmux send-keys -t {{.Self.interactive_endpoint}} -- \"$1\""
-send_keys = "..."
+[pane.terminal.send_text]
+type   = "shell"
+script = 'tmux send-keys -t "$endpoint" -- "$1"'
+
+[pane.terminal.send_text.bind]
+endpoint = { from = "self.outputs.interactive_endpoint" }
 ```
 
-The `interactive_endpoint` value is an opaque string. The tmux task uses a
+The `interactive_endpoint` value is an opaque string. The tmux effect uses a
 session name; a different multiplexer may use a pane id, socket path token, or
 other implementation-owned binding.
 
@@ -108,16 +109,16 @@ sh -c "$send_keys_cmd" terminal-send-keys Enter
 sh -c "$capture_cmd" terminal-capture
 ''',
   "terminal_submit",
-  "{{terminal \"send_text\"}}",
-  "{{terminal \"send_keys\"}}",
-  "{{terminal \"capture\"}}",
-  '[{{.Event.type}}] {{if .Event.body}}{{.Event.body}}{{else}}{{.Event.summary}}{{end}}{{with index .Event.metadata "url"}} ({{.}}){{end}}',
+  { terminal = "send_text" },
+  { terminal = "send_keys" },
+  { terminal = "capture" },
+  { expr = "'[' + event.type + '] ' + (event.body != '' ? event.body : event.summary)" },
 ]
 timeout = "45s"
 ```
 
-The channel command is static. Rendered `{{terminal "..."}}` values and event
-data ride in `args`, so event data can choose operands but not the executable.
+The channel command is static. Resolved terminal capabilities and event data
+ride in `args`, so event data can choose operands but not the executable.
 The readiness predicate and retry details live in the shipped `codex`
 config.
 
@@ -129,13 +130,14 @@ structured transport.
 ### Herdr Provider
 
 ```toml
-# The task returns an opaque Herdr pane id as interactive_endpoint.
+# The effect returns an opaque Herdr pane id as interactive_endpoint.
 
-[terminal]
-attach = "..."
-capture = "..."
-send_text = "herdr pane.send_text {{.Self.interactive_endpoint}} \"$1\""
-send_keys = "..."
+[pane.terminal.send_text]
+type   = "shell"
+script = 'herdr pane.send_text "$endpoint" "$1"'
+
+[pane.terminal.send_text.bind]
+endpoint = { from = "self.outputs.interactive_endpoint" }
 ```
 
 Herdr pane ids such as `w1:p1` fit the same opaque binding. Herdr's

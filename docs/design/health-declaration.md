@@ -26,24 +26,42 @@ probes for it, so default health coverage requires no user configuration.
 ## Worked example
 
 ```toml
-# The tmux plugin's pane task: liveness is a session lookup, and activity is
+# The tmux plugin's pane effect: liveness is a session lookup, and activity is
 # a fingerprint of the pane's visible contents.
-[health]
-alive = 'tmux has-session -t {{.Self.session_name}}'
-activity = '''
-PANE=$(tmux capture-pane -p -t {{.Self.session_name}}) || exit 1
+[pane.health.alive]
+type   = "shell"
+script = 'tmux has-session -t "$session_name"'
+
+[pane.health.alive.bind]
+session_name = { from = "self.outputs.session_name" }
+
+[pane.health.activity]
+type   = "shell"
+script = '''
+PANE=$(tmux capture-pane -p -t "$session_name") || exit 1
 FP=$(printf '%s' "$PANE" | cksum | tr -d ' \t')
 jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{fingerprint: $fp, observed_at: $at}'
 '''
+
+[pane.health.activity.bind]
+session_name = { from = "self.outputs.session_name" }
 ```
 
 ```toml
-# An agent-runtime task: liveness is a process check, and activity is the
+# An agent-runtime effect: liveness is a process check, and activity is the
 # turn-boundary record the same plugin's hook writes.
-[health]
-alive    = 'kill -0 {{.Self.pid}}'
-activity = '{{bin "codex-agent-activity"}} probe {{.SessionName}}'
+[exec_runtime.health.alive]
+type   = "shell"
+script = 'kill -0 "$pid"'
+
+[exec_runtime.health.alive.bind]
+pid = { from = "self.outputs.pid" }
+
+[exec_runtime.health.activity]
+type = "exec"
+bin  = "codex-agent-activity"
+args = ["probe", { from = "session.name" }]
 ```
 
 A hook and a pane fingerprint are two implementations of one probe. Both reach
@@ -52,7 +70,7 @@ one per implementation technique.
 
 ## Validation rules
 
-- `[health]` is optional. A task declaring no table contributes nothing to
+- `[health]` is optional. An effect declaring no table contributes nothing to
   health.
 - `alive` and `activity` are each optional and independent: neither implies
   the other. A `[health]` table declaring neither is a load error — the only
@@ -60,14 +78,14 @@ one per implementation technique.
 - Unknown keys under `[health]` are a load error naming the offending key. A
   readiness-style third probe is a non-goal: health answers "is this surface
   present and moving", not "may traffic be sent".
-- Each member is a Go-template-rendered shell command string. Single-line and
-  multi-line TOML strings are valid; arrays are invalid.
-- Both members render against the same context as `setup`/`cleanup`: the
-  task's own outputs (`.Self`), its resolved node inputs (`.Inputs`), and
-  session vars (`.SessionName`, `.WorkspaceDirPath`, ...). `{{bin "..."}}`
-  resolves against the declaring plugin.
-- A task definition is replaced wholesale by a deeper cascade layer, so a
-  user-owned overlay of a plugin task carries its own complete `[health]`.
+- Each member is an action: either variant, with its values declared in
+  `bind` or in `args` rather than interpolated into the script.
+- Both members observe the same roots `cleanup` does, minus the ones a probe
+  has no business reading: the effect's own outputs (`self.outputs.<key>`),
+  its resolved inputs (`inputs.<key>`), and the session and workspace. A
+  `bin = "<name>"` reference resolves against the declaring plugin.
+- An effect declaration is replaced wholesale by a deeper cascade layer, so a
+  user-owned overlay of a plugin effect carries its own complete `[health]`.
 
 ## Probe semantics
 

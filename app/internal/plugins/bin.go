@@ -13,12 +13,12 @@ type binCandidate struct {
 	exec  Executable
 }
 
-// ResolveBin resolves a `{{bin ref}}` reference against mounted (the
+// ResolveBin resolves a `bin = "<ref>"` reference against mounted (the
 // catalog-qualified plugins folded into the current config, in declaration
 // order) to an absolute executable path. sourcePath is the file the
-// referencing template came from — the catalog-load worktree's absolute
+// referencing declaration came from — the catalog-load worktree's absolute
 // path — used only to find ref's containing plugin for the bare-name
-// reading below; pass "" when the template has no file origin (e.g. it was
+// reading below; pass "" when the reference has no file origin (e.g. it was
 // built in-process by a test).
 //
 // ref has two readings:
@@ -69,7 +69,7 @@ func ResolveBin(mounted []Mounted, sourcePath, ref string) (string, error) {
 
 	switch len(candidates) {
 	case 0:
-		return "", fmt.Errorf(`{{bin %q}}: no mounted plugin resolves this reference (want "<catalog-alias>/<plugin-path>" or "<catalog-alias>/<plugin-path>/<executable-name>")`, ref)
+		return "", fmt.Errorf(`bin %q: no mounted plugin resolves this reference (want "<catalog-alias>/<plugin-path>" or "<catalog-alias>/<plugin-path>/<executable-name>")`, ref)
 	case 1:
 		return filepath.Join(candidates[0].mount.Dir, candidates[0].exec.Path), nil
 	default:
@@ -77,7 +77,7 @@ func ResolveBin(mounted []Mounted, sourcePath, ref string) (string, error) {
 		for i, c := range candidates {
 			ids[i] = c.mount.ID + " (" + c.exec.Name + ")"
 		}
-		return "", fmt.Errorf("{{bin %q}}: ambiguous; matches more than one plugin/executable reading: %v", ref, ids)
+		return "", fmt.Errorf("bin %q: ambiguous; matches more than one plugin/executable reading: %v", ref, ids)
 	}
 }
 
@@ -88,14 +88,14 @@ func ResolveBin(mounted []Mounted, sourcePath, ref string) (string, error) {
 func resolvePluginLocalBin(mounted []Mounted, sourcePath, ref string) (string, error) {
 	owner, ok := containingPlugin(mounted, sourcePath)
 	if !ok {
-		return "", fmt.Errorf(`{{bin %q}}: a bare executable name only resolves inside plugin-mounted config; this file was not mounted from any catalog plugin (use "<catalog-alias>/<plugin-path>/<executable-name>" instead)`, ref)
+		return "", fmt.Errorf(`bin %q: a bare executable name only resolves inside plugin-mounted config; this file was not mounted from any catalog plugin (use "<catalog-alias>/<plugin-path>/<executable-name>" instead)`, ref)
 	}
 	for _, ex := range owner.Manifest.Executables {
 		if ex.Name == ref {
 			return filepath.Join(owner.Dir, ex.Path), nil
 		}
 	}
-	return "", fmt.Errorf("{{bin %q}}: plugin %q declares no executable named %q", ref, owner.ID, ref)
+	return "", fmt.Errorf("bin %q: plugin %q declares no executable named %q", ref, owner.ID, ref)
 }
 
 // containingPlugin finds the mounted plugin whose directory contains

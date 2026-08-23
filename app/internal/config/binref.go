@@ -67,7 +67,7 @@ func singlePublishedPluginMatch(rest string, published []string) (string, bool) 
 
 // MountedBins resolves an action's `bin` reference against the plugins
 // mounted on this machine, returning the executable's path — the same
-// resolution a rendered `{{bin ...}}` performed, raised to the language's
+// resolution a rendered hook helper once performed, raised to the language's
 // own reference contract. SourcePath is the file the reference was written
 // in, which is what identifies the containing plugin a bare name resolves
 // against.

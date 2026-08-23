@@ -74,7 +74,7 @@ type Config struct {
 	// Plugins is the resolved catalog-qualified identity + manifest for
 	// every plugin folded into PluginDirs by resolveDeclaredPlugins (empty
 	// for hand-authored plugin_dirs entries, which carry no catalog
-	// identity). The `{{bin ...}}` hook helper reads this in-memory list
+	// identity). A `bin` reference resolves against this in-memory list
 	// instead of re-parsing plugin.toml on every render.
 	Plugins []plugins.Mounted `toml:"-"`
 	// catalogRegistrations/catalogLock/catalogCacheRoot are the same local

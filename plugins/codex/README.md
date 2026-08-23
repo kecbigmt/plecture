@@ -40,7 +40,7 @@ dependency.
   launches, resolved through `bin = "<name>"` so it needs no `PATH` entry of
   its own.
 - `scripts/codex-exec-enqueue` — the enqueue script `channels/
-  exec_runtime.toml` runs, named through that channel's `bin` so it needs no
+  exec_delivery.toml` runs, named through that channel's `bin` so it needs no
   `PATH` entry of its own.
 
 ## Parameters
