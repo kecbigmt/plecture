@@ -11,6 +11,7 @@ concurrency:
 
 env:
   GO_VERSION: "1.25.6"
+  PYTHON_VERSION: "3.12"
 
 jobs:
   # Core never imports plugins and plugins never import core, and both
@@ -88,9 +89,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-python@v5
         with:
-          go-version: ${{ env.GO_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
       - name: Prove the checker catches a seeded violation
         run: ./scripts/check-provider-boundary_selftest.sh
       - name: Check core provider-neutrality

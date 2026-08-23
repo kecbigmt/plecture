@@ -4,11 +4,14 @@
 # identifier shape. Core owns the durable structure of work; a provider
 # commitment belongs in plugins/ instead.
 #
-# The provider-name half of the vocabulary is derived from every shipped
+# The provider-name half of the vocabulary is derived from every published
 # plugin's plugin.toml (its directory id, plus its `[[executables]]` names)
-# via app/cmd/check-provider-boundary, rather than hand-kept here — a
-# provider's name is decoded from structured config once, not re-typed into
-# this script's own list every time a plugin ships a new one.
+# via scripts/provider-vocab.py, rather than hand-kept here — a provider's
+# name is decoded from structured config once, not re-typed into this
+# script's own list every time a plugin ships a new one. That derivation is
+# a stdlib-only Python repo script rather than a new Go package under
+# app/ or contracts/: this checker is itself repo tooling, not core, and
+# should not grow a core-Go footprint of its own.
 #
 # Scope decision: an "owner/repo"-shaped identifier is treated as leakage,
 # not as plect's own vocabulary. Session/resource names are opaque strings
@@ -42,7 +45,7 @@ set -euo pipefail
 # below, and from ${BASH_SOURCE[0]} rather than $0, so it is correct
 # regardless of the caller's cwd or whether the script was invoked by a
 # relative or absolute path.
-app_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../app" && pwd)"
+vocab_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/provider-vocab.py"
 plugins_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../plugins" && pwd)"
 
 root="${BOUNDARY_CHECK_ROOT:-$(pwd)}"
@@ -67,7 +70,7 @@ cd "$root"
 # string (e.g. Go import paths, generic path components) — only the
 # owner/repo placeholder shape itself and identifiers that look like a
 # resolved instance of it (an alnum segment, "/", an alnum segment, "-N").
-if ! vocab_words="$(cd "$app_dir" && go run ./cmd/check-provider-boundary "$plugins_dir")"; then
+if ! vocab_words="$(python3 "$vocab_script" "$plugins_dir")"; then
   echo "failed to derive the provider-name vocabulary from $plugins_dir" >&2
   exit 1
 fi

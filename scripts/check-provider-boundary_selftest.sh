@@ -94,6 +94,32 @@ if ! grep -q "app/commands/seeded_vocab.go" /tmp/boundary-selftest-dirty3.log; t
 fi
 echo "ok: checker fails and names the file on a derived (non-github) plugin name"
 
+# Dirty fixture #4: a dotted event-type-style token (a plugin name
+# immediately followed by "." and more text, e.g. an event Type prefix)
+# must also be caught. An earlier boundary excluded "." on both sides of a
+# vocabulary word to avoid matching inside a Go import path, which also
+# made it blind to exactly this shape.
+dirty4=$(mktemp -d)
+trap 'rm -rf "$dirty" "$clean" "$dirty2" "$dirty3" "$dirty4"' EXIT
+mkdir -p "$dirty4/app/commands" "$dirty4/contracts"
+cat > "$dirty4/app/commands/seeded_dotted.go" <<'EOF'
+package commands
+
+const seededDottedType = "slack.message"
+EOF
+
+if run_against "$dirty4" >/tmp/boundary-selftest-dirty4.log 2>&1; then
+  echo "FAIL: checker passed against a fixture with a seeded dotted provider token" >&2
+  cat /tmp/boundary-selftest-dirty4.log >&2
+  exit 1
+fi
+if ! grep -q "app/commands/seeded_dotted.go" /tmp/boundary-selftest-dirty4.log; then
+  echo "FAIL: checker did not name the offending file for the dotted provider token" >&2
+  cat /tmp/boundary-selftest-dirty4.log >&2
+  exit 1
+fi
+echo "ok: checker fails and names the file on a dotted provider token"
+
 # Clean fixture: no provider tokens, nothing to report.
 clean=$(mktemp -d)
 mkdir -p "$clean/app/commands" "$clean/contracts"
