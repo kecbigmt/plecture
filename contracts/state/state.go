@@ -129,9 +129,11 @@ const OutputKeyWorkspaceDir = "workspace_dir"
 //     `<task>#<n>` form. Shown by `plect status` / `ls`.
 type TaskState struct {
 	Scope string `json:"scope"` // "session" | "run"
-	// TaskID is the address the instance's declaration answers to. It is
-	// omitted for a workflow node, whose id is its key and whose declaration
-	// the workflow itself names.
+	// TaskID records which declaration the instance runs. A dynamic instance
+	// holds the address its reference selected. A workflow node holds the
+	// referenced definition's own id, and omits it when that equals the node
+	// id; either way the workflow is what names the node's declaration, so a
+	// node's value is not an address and is not resolved as one.
 	TaskID   string           `json:"task_id,omitempty"`
 	Status   string           `json:"status"`             // "produced" | "failed" | "cleaned"
 	Inputs   map[string]any   `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup

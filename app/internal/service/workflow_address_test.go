@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -190,10 +191,13 @@ uses = "official.acme.runner"
 	}
 }
 
-// Down runs the teardown path, which resolves each instance's cleanup the same
-// way — including a workflow node whose effect a plugin declares.
-func TestDown_NodeInstanceRunsAPluginOwnedEffectsCleanup(t *testing.T) {
-	marker := filepath.Join(t.TempDir(), "torn-down")
+// A named dynamic instance may share its key with a workflow node that was
+// never instantiated: `--name` collides only against existing state, and an
+// uninstantiated node has none. Teardown must tear down what the state entry
+// says it is — the user's dynamic instance — rather than deciding by name that
+// the plan's node owns the key and running that effect's cleanup.
+func TestDestroy_NamedDynamicInstanceCollidingWithAnUninstantiatedNode(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "user-ran")
 	pluginDir, base := t.TempDir(), t.TempDir()
 	write := func(path, body string) {
 		t.Helper()
@@ -207,7 +211,20 @@ func TestDown_NodeInstanceRunsAPluginOwnedEffectsCleanup(t *testing.T) {
 	write(filepath.Join(pluginDir, "config", "tasks", "runner.toml"), `
 [runner]
 kind  = "effect"
-scope = "run"
+scope = "session"
+
+[runner.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[runner.cleanup]
+type   = "shell"
+script = "exit 3"
+`)
+	write(filepath.Join(base, "tasks", "runner.toml"), `
+[runner]
+kind  = "effect"
+scope = "session"
 
 [runner.setup]
 type   = "shell"
@@ -231,14 +248,41 @@ uses = "official.acme.runner"
 		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
 	}
 	store := testStore(t)
-	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{
-		"runner": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
-	})
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
 
-	if _, err := Down(cfg, store, DownParams{Identifier: "o/r-1"}); err != nil {
-		t.Fatalf("Down: %v", err)
+	// The node is never set up; the name is therefore free.
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "runner", SessionName: "o/r-1", Name: "runner"}); err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "o/r-1"}); err != nil {
+		t.Fatalf("Destroy: %v", err)
 	}
 	if _, err := os.Stat(marker); err != nil {
-		t.Errorf("teardown did not run the plugin effect's cleanup: %v", err)
+		t.Errorf("the dynamic instance's own cleanup did not run: %v", err)
+	}
+}
+
+// Ambiguity has to name something the reader can pass to --workflow. Two
+// plugins declaring one id would otherwise print that id twice.
+func TestDispatch_AmbiguityNamesAddressesNotIds(t *testing.T) {
+	dirA := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "a"))
+	dirB := writePluginWorkflow(t, "shared", filepath.Join(t.TempDir(), "b"))
+	cfg := &config.Config{
+		BaseDir:    t.TempDir(),
+		PluginDirs: []string{dirA, dirB},
+		Plugins: []plugins.Mounted{
+			{ID: "official/a", Dir: dirA},
+			{ID: "official/b", Dir: dirB},
+		},
+	}
+
+	_, _, err := dispatchResource(cfg, "", "https://github.com/org/repo/issues/42")
+	if err == nil {
+		t.Fatal("expected two auto-selecting workflows to be ambiguous")
+	}
+	for _, want := range []string{"official.a.shared", "official.b.shared"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %v, want it to name %q", err, want)
+		}
 	}
 }
