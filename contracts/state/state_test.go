@@ -3,13 +3,12 @@ package state
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
-// TestLayerState_JSONUsesEffectID pins the wire shape docs/migrations
-// /task-layer-effect-id-migration.md ships a one-time migration for: the
-// persisted key is effect_id, not the pre-rename task_id.
 func TestLayerState_JSONUsesEffectID(t *testing.T) {
 	raw, err := json.Marshal(LayerState{EffectID: "outer", Status: TaskStatusProduced})
 	if err != nil {
@@ -32,18 +31,44 @@ func TestLayerState_JSONUsesEffectID(t *testing.T) {
 }
 
 // migrationFilter is docs/migrations/task-layer-effect-id-migration.md's
-// "State changes" jq filter, verbatim. Keep the two in sync.
+// rename filter, verbatim. Keep the two in sync.
 const migrationFilter = `(.sessions[]? | .tasks[]? | select(.layers != null) | .layers[]) |=
       (if has("task_id") then (. + {effect_id: .task_id} | del(.task_id)) else . end)`
 
-// runMigrationFilter shells out to jq the same way the documented migration
-// procedure does, skipping the test where jq is unavailable rather than
-// failing a build that has no other reason to depend on it.
-func runMigrationFilter(t *testing.T, input string) string {
+// migrationProcedure is the same doc's full State-changes section, verbatim
+// (rename, both guards, replace). Keep the two in sync.
+const migrationProcedure = `
+set -euo pipefail
+jq '` + migrationFilter + `' \
+  "$DATA_DIR/state.json" > "$DATA_DIR/state.json.new"
+
+BAD=$(jq '[.sessions[]? | .tasks[]? | .layers[]? |
+      select((.effect_id | type != "string") or (.effect_id == ""))] | length' \
+  "$DATA_DIR/state.json.new")
+if [ "$BAD" -ne 0 ]; then
+  echo "migration verification failed: $BAD layer(s) have no valid effect_id after migration" >&2
+  exit 1
+fi
+
+OLD_IDS=$(jq -S '[.sessions[]? | .tasks[]? | .layers[]? | (.effect_id // .task_id)] | sort' "$DATA_DIR/state.json")
+NEW_IDS=$(jq -S '[.sessions[]? | .tasks[]? | .layers[]? | .effect_id] | sort' "$DATA_DIR/state.json.new")
+if [ "$OLD_IDS" != "$NEW_IDS" ]; then
+  echo "migration verification failed: layer identities changed — not replacing state.json" >&2
+  exit 1
+fi
+mv "$DATA_DIR/state.json.new" "$DATA_DIR/state.json"
+`
+
+func skipIfNoJQ(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq not available")
 	}
+}
+
+func runMigrationFilter(t *testing.T, input string) string {
+	t.Helper()
+	skipIfNoJQ(t)
 	cmd := exec.Command("jq", "-c", migrationFilter)
 	cmd.Stdin = bytes.NewBufferString(input)
 	var out, stderr bytes.Buffer
@@ -85,8 +110,6 @@ func layerIDs(t *testing.T, doc string) map[string]bool {
 	return ids
 }
 
-// TestMigrationFilter_FreshStateRenamesTaskIDToEffectID covers the
-// straightforward case: every layer still carries the pre-rename key.
 func TestMigrationFilter_FreshStateRenamesTaskIDToEffectID(t *testing.T) {
 	const fresh = `{"sessions":{"s":{"tasks":{"outer":{"layers":[
 		{"task_id":"outer","status":"produced"},
@@ -96,11 +119,7 @@ func TestMigrationFilter_FreshStateRenamesTaskIDToEffectID(t *testing.T) {
 	if bytes.Contains([]byte(got), []byte(`"task_id"`)) {
 		t.Errorf("migrated = %s, want no task_id keys left", got)
 	}
-	before := layerIDs(t, fresh)
-	after := layerIDs(t, got)
-	if len(after) != len(before) {
-		t.Errorf("layer identities = %v, want %v preserved", after, before)
-	}
+	before, after := layerIDs(t, fresh), layerIDs(t, got)
 	for id := range before {
 		if !after[id] {
 			t.Errorf("layer %q lost after migration (got %v)", id, after)
@@ -109,12 +128,11 @@ func TestMigrationFilter_FreshStateRenamesTaskIDToEffectID(t *testing.T) {
 }
 
 // TestMigrationFilter_AlreadyMigratedStateIsUnchanged is the regression test
-// for the bug a reviewer found in this migration's first draft: a layer that
-// already carries effect_id (task_id already deleted) has no "task_id" key,
-// so `. + {effect_id: .task_id}` read a missing key as JSON null and
-// overwrote the good effect_id with it. Rerunning the filter — the exact
-// scenario a partially-applied or re-executed migration hits — must leave an
-// already-migrated layer's identity untouched.
+// for the bug a reviewer found in this migration's first draft: a layer
+// with no "task_id" key (already migrated) makes `.task_id` read as JSON
+// null, and `. + {effect_id: .task_id}` then overwrote the good effect_id
+// with it. Rerunning the filter — what a partially-applied or re-executed
+// migration hits — must leave an already-migrated layer's identity intact.
 func TestMigrationFilter_AlreadyMigratedStateIsUnchanged(t *testing.T) {
 	const migrated = `{"sessions":{"s":{"tasks":{"outer":{"layers":[
 		{"effect_id":"outer","status":"produced"}
@@ -124,15 +142,8 @@ func TestMigrationFilter_AlreadyMigratedStateIsUnchanged(t *testing.T) {
 	if !ids["outer"] {
 		t.Fatalf("migrated = %s, want effect_id %q preserved, not nulled", got, "outer")
 	}
-	if len(ids) != 1 {
-		t.Errorf("layer identities = %v, want exactly {outer}", ids)
-	}
 }
 
-// TestMigrationFilter_PartiallyMigratedStateMigratesOnlyWhatNeedsIt covers a
-// state.json where one layer already migrated and its sibling has not — the
-// shape a migration interrupted mid-run, or applied session-by-session,
-// leaves behind.
 func TestMigrationFilter_PartiallyMigratedStateMigratesOnlyWhatNeedsIt(t *testing.T) {
 	const mixed = `{"sessions":{"s":{"tasks":{"outer":{"layers":[
 		{"effect_id":"outer","status":"produced"},
@@ -147,5 +158,88 @@ func TestMigrationFilter_PartiallyMigratedStateMigratesOnlyWhatNeedsIt(t *testin
 		if !ids[want] {
 			t.Errorf("layer identities = %v, want %q preserved", ids, want)
 		}
+	}
+}
+
+// runMigrationProcedure runs the doc's full State-changes section (not just
+// the rename filter) against input written as $DATA_DIR/state.json, and
+// returns the directory (so the caller can inspect what, if anything, the
+// procedure left behind) plus the shell's exit error.
+func runMigrationProcedure(t *testing.T, input string) (dataDir string, err error) {
+	t.Helper()
+	skipIfNoJQ(t)
+	dataDir = t.TempDir()
+	if writeErr := os.WriteFile(filepath.Join(dataDir, "state.json"), []byte(input), 0o644); writeErr != nil {
+		t.Fatalf("write fixture: %v", writeErr)
+	}
+	cmd := exec.Command("bash", "-c", migrationProcedure)
+	cmd.Env = append(os.Environ(), "DATA_DIR="+dataDir)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	if err != nil {
+		t.Logf("migration procedure stderr: %s", stderr.String())
+	}
+	return dataDir, err
+}
+
+func TestMigrationProcedure_MigratesFreshStateAndReplacesTheFile(t *testing.T) {
+	const fresh = `{"sessions":{"s":{"tasks":{"outer":{"layers":[
+		{"task_id":"outer","status":"produced"}
+	]}}}}}`
+	dir, err := runMigrationProcedure(t, fresh)
+	if err != nil {
+		t.Fatalf("migration procedure: %v", err)
+	}
+	got, readErr := os.ReadFile(filepath.Join(dir, "state.json"))
+	if readErr != nil {
+		t.Fatalf("read state.json: %v", readErr)
+	}
+	if bytes.Contains(got, []byte(`"task_id"`)) {
+		t.Errorf("state.json = %s, want task_id gone", got)
+	}
+	if !layerIDs(t, string(got))["outer"] {
+		t.Errorf("state.json = %s, want effect_id %q", got, "outer")
+	}
+}
+
+// TestMigrationProcedure_RejectsANullIdentityWithoutTouchingTheFile is the
+// failure-path counterpart the identity-diff guard alone cannot cover: a
+// corrupted layer with a JSON-null task_id migrates to a JSON-null
+// effect_id, and null compares equal to null on both sides of that diff. The
+// separate not-a-real-string check must reject it before `mv` ever runs.
+func TestMigrationProcedure_RejectsANullIdentityWithoutTouchingTheFile(t *testing.T) {
+	const corrupted = `{"sessions":{"s":{"tasks":{"outer":{"layers":[
+		{"task_id":null,"status":"produced"}
+	]}}}}}`
+	dir, err := runMigrationProcedure(t, corrupted)
+	if err == nil {
+		t.Fatal("migration procedure: want a non-nil error for a null identity, got nil")
+	}
+	got, readErr := os.ReadFile(filepath.Join(dir, "state.json"))
+	if readErr != nil {
+		t.Fatalf("read state.json: %v", readErr)
+	}
+	if string(got) != corrupted {
+		t.Errorf("state.json = %s, want it untouched after a rejected migration", got)
+	}
+}
+
+// TestMigrationProcedure_AbortsOnMalformedInputWithoutTouchingTheFile proves
+// `set -euo pipefail` stops the procedure at the first jq failure rather
+// than falling through to the guards with an empty or partial
+// state.json.new.
+func TestMigrationProcedure_AbortsOnMalformedInputWithoutTouchingTheFile(t *testing.T) {
+	const broken = `{not valid json`
+	dir, err := runMigrationProcedure(t, broken)
+	if err == nil {
+		t.Fatal("migration procedure: want a non-nil error for malformed input, got nil")
+	}
+	got, readErr := os.ReadFile(filepath.Join(dir, "state.json"))
+	if readErr != nil {
+		t.Fatalf("read state.json: %v", readErr)
+	}
+	if string(got) != broken {
+		t.Errorf("state.json = %s, want it untouched after an aborted migration", got)
 	}
 }

@@ -31,6 +31,11 @@ Adjust the path if the process runs with an explicit `--data-dir`.
 
 ## State changes
 
+Run every step under `set -euo pipefail` (or check each command's exit
+status explicitly) — a `jq` failure must abort the procedure, not silently
+leave `state.json.new` empty or partial and fall through to a guard that
+compares two empty results as "equal."
+
 For every task instance's layer record in `state.json`, rename `task_id` to
 `effect_id`. The rename is conditional on `has("task_id")` so the command is
 safe to run against state that is already migrated, or a `state.json` where
@@ -39,6 +44,7 @@ to a mixed file, must never overwrite an already-renamed layer's `effect_id`
 with `null`:
 
 ```bash
+set -euo pipefail
 jq '(.sessions[]? | .tasks[]? | select(.layers != null) | .layers[]) |=
       (if has("task_id") then (. + {effect_id: .task_id} | del(.task_id)) else . end)' \
   "$DATA_DIR/state.json" > "$DATA_DIR/state.json.new"
@@ -47,13 +53,28 @@ jq '(.sessions[]? | .tasks[]? | select(.layers != null) | .layers[]) |=
 A session with no nested task instances has no `layers` array on any of its
 tasks, so the `select` leaves it untouched.
 
-Before replacing the live file, verify that every layer's identity survived
-the transform exactly — the same set of ids, just under the new key, with
-none dropped or turned to `null`:
+Before replacing the live file, two independent guards must both pass. The
+first rejects a migrated layer whose identity is not a real value — `null`,
+a non-string, or an empty string — outright, rather than let it flow into an
+identity comparison where a `null` old side and a `null` new side would
+compare as spuriously "equal":
 
 ```bash
-OLD_IDS=$(jq -S '[.sessions[]? | .tasks[]? | .layers[]? | (.effect_id // .task_id)]' "$DATA_DIR/state.json")
-NEW_IDS=$(jq -S '[.sessions[]? | .tasks[]? | .layers[]? | .effect_id]' "$DATA_DIR/state.json.new")
+BAD=$(jq '[.sessions[]? | .tasks[]? | .layers[]? |
+      select((.effect_id | type != "string") or (.effect_id == ""))] | length' \
+  "$DATA_DIR/state.json.new")
+if [ "$BAD" -ne 0 ]; then
+  echo "migration verification failed: $BAD layer(s) have no valid effect_id after migration" >&2
+  exit 1
+fi
+```
+
+The second verifies that every layer's identity survived the transform
+exactly — the same multiset of ids, just under the new key:
+
+```bash
+OLD_IDS=$(jq -S '[.sessions[]? | .tasks[]? | .layers[]? | (.effect_id // .task_id)] | sort' "$DATA_DIR/state.json")
+NEW_IDS=$(jq -S '[.sessions[]? | .tasks[]? | .layers[]? | .effect_id] | sort' "$DATA_DIR/state.json.new")
 if [ "$OLD_IDS" != "$NEW_IDS" ]; then
   echo "migration verification failed: layer identities changed — not replacing state.json" >&2
   echo "before: $OLD_IDS" >&2
@@ -96,7 +117,11 @@ Restart plect only after the restore is complete.
 
 ## Rollout note
 
-This PR ships the migration procedure verified against a backup copy of real
-state, not executed live — live execution against a running deployment rides
-the next scheduled maintenance window alongside the already-pending binary
-bump, per the owner's own rollout ruling on issue #270.
+This PR ships the migration procedure run against a throwaway copy of this
+deployment's own real `state.json` (never the live file) — a session with a
+nested task instance was present, so both guards and the rename ran against
+real, not fabricated, layer records; the resulting diff touched only the
+targeted `task_id`→`effect_id` renames, nothing else. Live execution against
+the running deployment's actual file rides the next scheduled maintenance
+window alongside the already-pending binary bump, per the owner's own
+rollout ruling on issue #270.
