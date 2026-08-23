@@ -62,9 +62,9 @@ func loadShippedCatalog(t *testing.T, alias string) *Config {
 // plugin add`.
 func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
-	tasks, err := cfg.LoadTaskDefinitions("")
+	docs, tasks, err := cfg.LoadTaskDeclarations("")
 	if err != nil {
-		t.Fatalf("LoadTaskDefinitions(shipped catalog): %v", err)
+		t.Fatalf("LoadTaskDeclarations(shipped catalog): %v", err)
 	}
 	channels, err := cfg.LoadChannels()
 	if err != nil {
@@ -73,8 +73,16 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 	if _, err := cfg.LoadWorkspaceProviders(); err != nil {
 		t.Fatalf("LoadWorkspaceProviders(shipped catalog): %v", err)
 	}
-	if _, err := cfg.LoadResourceDefs(); err != nil {
+	observers, err := cfg.LoadResourceDefs()
+	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
+	}
+	workflows, err := cfg.LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows(shipped catalog): %v", err)
+	}
+	if err := cfg.ValidateTaskDocuments(docs, observers, workflows); err != nil {
+		t.Fatalf("ValidateTaskDocuments(shipped catalog): %v", err)
 	}
 
 	// The addresses are spelled out because the address is the thing under
@@ -91,6 +99,18 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 	} {
 		if _, ok := tasks[address]; !ok {
 			t.Errorf("shipped catalog effect %q not found", address)
+		}
+	}
+	for _, address := range []string{
+		"official.github.work",
+		"official.github.review",
+		"official.github.investigate",
+		"official.github.respond",
+		"official.okf.pursue_goal",
+		"official.okf.goal_review",
+	} {
+		if _, ok := docs[address]; !ok {
+			t.Errorf("shipped catalog task document %q not found", address)
 		}
 	}
 	for _, address := range []string{
@@ -114,8 +134,8 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 // wrong.
 func TestShippedCatalog_LoadsUnderArbitraryAlias(t *testing.T) {
 	cfg := loadShippedCatalog(t, "acme")
-	if _, err := cfg.LoadTaskDefinitions(""); err != nil {
-		t.Fatalf("LoadTaskDefinitions(shipped catalog, alias %q): %v", "acme", err)
+	if _, _, err := cfg.LoadTaskDeclarations(""); err != nil {
+		t.Fatalf("LoadTaskDeclarations(shipped catalog, alias %q): %v", "acme", err)
 	}
 	if _, err := cfg.LoadChannels(); err != nil {
 		t.Fatalf("LoadChannels(shipped catalog, alias %q): %v", "acme", err)
