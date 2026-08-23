@@ -54,9 +54,9 @@ func shippedGithubWorkspaceProvider(t *testing.T) (config.WorkspaceProviderConfi
 	if err != nil {
 		t.Fatalf("load mounted github workspace provider: %v", err)
 	}
-	prov, ok := provs["github"]
+	prov, ok := provs["official.github.github"]
 	if !ok {
-		t.Fatal(`mounted github workspace provider: "github" not found`)
+		t.Fatal(`mounted github workspace provider: "official.github.github" not found`)
 	}
 	return prov, mounted
 }

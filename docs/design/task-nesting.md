@@ -258,11 +258,11 @@ uses = "runtime"
 uses = "official.claude.runtime"
 ```
 
-The relative form uses the merged namespace and therefore follows the usual
-layer rules. The catalog-qualified form selects an effect inside an enabled
-plugin without consulting same-id user shadows: its final segment is the
-definition id and the segments before it are the alias and the plugin path,
-which must name an enabled plugin.
+The relative form resolves in the namespace it is written in: a plugin's own
+effect when a plugin wrote it, and the user-owned layer stack otherwise. The
+catalog-qualified form selects an effect inside an enabled plugin: its final
+segment is the definition id and the segments before it are the alias and the
+plugin path, which must name an enabled plugin.
 
 Workflow node `uses` accepts the same two forms:
 
@@ -272,8 +272,9 @@ id   = "runtime"
 uses = "official.claude.runtime"
 ```
 
-A qualified workflow `uses` lets a user-owned workflow opt out of a same-id
-shadow deliberately. Shipped plugin workflows use relative ids because catalog
+A user-owned workflow names a plugin's effect by that address; naming the id
+alone selects a user-owned effect of that id, if one exists, and otherwise
+resolves to nothing. Shipped plugin workflows use relative ids because catalog
 aliases are user-local.
 
 A plugin's own outer effect names its inner effect with the relative form,

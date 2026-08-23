@@ -82,6 +82,14 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 			}
 			seq := 0
 			if st := session.Tasks[r.NodeID]; st != nil {
+				// A `--name` collides only against existing state, so an
+				// uninstantiated node leaves its id free for a dynamic
+				// instance to take. What the key holds is then that instance,
+				// not this node, and tearing it down as the node would run a
+				// cleanup belonging to another declaration entirely.
+				if st.Dynamic {
+					continue
+				}
 				seq = st.Seq
 			}
 			items = append(items, seqResolved{seq: seq, r: r})
@@ -108,9 +116,10 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 		dynKeys = append(dynKeys, key)
 	}
 	sort.Strings(dynKeys)
+	nodes := nodeAddresses(cfg, session)
 	for _, key := range dynKeys {
 		st := session.Tasks[key]
-		taskID := taskIDForInstance(key, st)
+		taskID := instanceDefinitionAddress(key, st, nodes)
 		// Build only the cleanup-relevant fields straight from the definition —
 		// no schema / requires / done_when validation (that runs at create / up /
 		// task run). Teardown must stay resilient to a def whose config drifted

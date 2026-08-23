@@ -15,14 +15,14 @@ import (
 // machine rather than to any directory a project owns. Such a declaration in
 // an ancestor overlay is skipped rather than refused, because a project's own
 // directory holding one is not a mistake — it simply does not participate.
-func loadTrustedKind[T any](resolved []resolvedDefinition, one func(*lang.Definition, bool) (T, error), idOf func(T) string) (map[string]T, error) {
+func loadTrustedKind[T any](resolved []resolvedDefinition, one func(*lang.Definition, bool) (T, error)) (map[string]T, error) {
 	out := make(map[string]T)
 	for _, entry := range resolved {
 		loaded, err := one(entry.def, entry.fromPlugin)
 		if err != nil {
 			return nil, err
 		}
-		out[idOf(loaded)] = loaded
+		out[entry.address] = loaded
 	}
 	return out, nil
 }

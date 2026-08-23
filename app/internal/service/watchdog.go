@@ -133,7 +133,7 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 		healthCfg = config.NormalizeHealthcheckConfig(wf.Healthcheck)
 	}
 	now := time.Now()
-	report := evaluateHealthFor(name, s.Tasks, docs, defs, sessionVars(cfg, s, nil), healthCfg.StallThreshold.Duration, s.Health, now)
+	report := evaluateHealthFor(name, s.Tasks, docs, defs, nodeAddresses(cfg, s), sessionVars(cfg, s, nil), healthCfg.StallThreshold.Duration, s.Health, now)
 	finalizeActivityObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
 	persistHealthState(store, name, report, now)
 	return report, nil
@@ -210,7 +210,7 @@ func sessionOwesProgress(tasks map[string]*contract.TaskState, docs map[string]c
 // evaluateHealthFor is EvaluateHealth's pure core, taking already-loaded task
 // state/defs instead of fetching them from store/cfg so callers that already
 // hold that data avoid a redundant load.
-func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, docs map[string]config.TaskDocument, defs map[string]config.TaskDefinition, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
+func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, docs map[string]config.TaskDocument, defs map[string]config.TaskDefinition, nodes map[string]string, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
 	declared := false
 	// The accusation side of a stall is unmet work, and work is what a task
 	// document declares. The probes that can pardon silence are a run-scoped
@@ -226,7 +226,7 @@ func evaluateHealthFor(name string, tasks map[string]*contract.TaskState, docs m
 		if st == nil || st.Scope != contract.TaskScopeRun || st.Status != contract.TaskStatusProduced {
 			continue
 		}
-		def := defs[taskIDForInstance(key, st)]
+		def := defs[instanceDefinitionAddress(key, st, nodes)]
 		comp, compErr := composeInstance(def, st, vars)
 		if compErr != nil {
 			probeErrors = append(probeErrors, ProbeError{Instance: key, Reason: compErr.Error()})

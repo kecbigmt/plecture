@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -20,28 +21,31 @@ import (
 // one match is a config error surfaced here rather than resolved by picking
 // one, since a silent pick would let two definitions silently race for the
 // same id space.
-func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (config.ResourceDef, bool, error) {
+//
+// The matched observer's address is returned beside it, because an id alone
+// cannot be compared against a reference: two plugins may declare one id, so
+// only the address says which declaration matched.
+func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (string, config.ResourceDef, bool, error) {
 	var matched []config.ResourceDef
-	for _, def := range defs {
+	var addresses []string
+	for address, def := range defs {
 		re, err := regexp.Compile(def.Match)
 		if err != nil {
-			return config.ResourceDef{}, false, fmt.Errorf("resource %s: `match` %q: %w", def.ID, def.Match, err)
+			return "", config.ResourceDef{}, false, fmt.Errorf("resource %s: `match` %q: %w", def.ID, def.Match, err)
 		}
 		if re.MatchString(resourceID) {
 			matched = append(matched, def)
+			addresses = append(addresses, address)
 		}
 	}
 	switch len(matched) {
 	case 0:
-		return config.ResourceDef{}, false, nil
+		return "", config.ResourceDef{}, false, nil
 	case 1:
-		return matched[0], true, nil
+		return addresses[0], matched[0], true, nil
 	default:
-		ids := make([]string, len(matched))
-		for i, d := range matched {
-			ids[i] = d.ID
-		}
-		return config.ResourceDef{}, false, fmt.Errorf("resource id %q matches more than one resource definition: %v", resourceID, ids)
+		sort.Strings(addresses)
+		return "", config.ResourceDef{}, false, fmt.Errorf("resource id %q matches more than one resource definition: %v", resourceID, addresses)
 	}
 }
 
@@ -55,7 +59,7 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (co
 // action may derive the current branch from the workspace directory as its
 // primary identity signal for the resource.
 func ResourceStatus(defs map[string]config.ResourceDef, resourceID string, branch string, workspaceDirPath string, mountedPlugins []plugins.Mounted) (map[string]any, config.ResourceDef, bool, error) {
-	def, ok, err := MatchResourceDef(defs, resourceID)
+	_, def, ok, err := MatchResourceDef(defs, resourceID)
 	if err != nil || !ok {
 		return nil, def, ok, err
 	}
@@ -133,7 +137,7 @@ type FinalizeResourceParams struct {
 // commits to nothing beyond "there was no completion record to write";
 // `plect task finalize` treats that as expected, not an error.
 func FinalizeResource(defs map[string]config.ResourceDef, params FinalizeResourceParams) (ran bool, def config.ResourceDef, err error) {
-	def, ok, merr := MatchResourceDef(defs, params.ResourceID)
+	_, def, ok, merr := MatchResourceDef(defs, params.ResourceID)
 	if merr != nil {
 		return false, def, merr
 	}

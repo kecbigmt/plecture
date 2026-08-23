@@ -526,7 +526,11 @@ script = "echo session"
 	}
 }
 
-func TestLoadTaskDefinitions_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+// Coexistence follows from addressability. A hand-authored plugin_dirs entry
+// carries no catalog identity, so no address can name one of these two layers
+// apart from the other, and choosing between them would fall to declaration
+// order.
+func TestLoadTaskDefinitions_TwoUnaddressablePluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
 	writeFile(t, filepath.Join(pluginA, "config", "tasks", "tmux.toml"), `
@@ -551,7 +555,7 @@ script = "echo b"
 
 	_, err := cfg.LoadTaskDefinitions("")
 	if err == nil || !strings.Contains(err.Error(), "tmux") {
-		t.Fatalf("expected a same-id-across-plugin-layers error naming \"tmux\", got %v", err)
+		t.Fatalf("expected a collision error naming \"tmux\", got %v", err)
 	}
 }
 
@@ -1055,7 +1059,11 @@ uses = "g"
 	}
 }
 
-func TestLoadWorkflows_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+// Coexistence follows from addressability. A hand-authored plugin_dirs entry
+// carries no catalog identity, so no address can name one of these two layers
+// apart from the other, and choosing between them would fall to declaration
+// order.
+func TestLoadWorkflows_TwoUnaddressablePluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
 	writeFile(t, filepath.Join(pluginA, "config", "workflows", "shared.toml"), `
@@ -1074,7 +1082,7 @@ uses = "b"
 
 	_, err := cfg.LoadWorkflows("")
 	if err == nil || !strings.Contains(err.Error(), "shared") {
-		t.Fatalf("expected a same-id-across-plugin-layers error naming \"shared\", got %v", err)
+		t.Fatalf("expected a collision error naming \"shared\", got %v", err)
 	}
 }
 

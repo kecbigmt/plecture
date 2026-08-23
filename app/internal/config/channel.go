@@ -96,8 +96,7 @@ func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
 	if err != nil {
 		return nil, err
 	}
-	return loadTrustedKind(resolved, c.channelFromDefinition,
-		func(d ChannelDefinition) string { return d.ID })
+	return loadTrustedKind(resolved, c.channelFromDefinition)
 }
 
 func (c *Config) channelFromDefinition(def *lang.Definition, fromPlugin bool) (ChannelDefinition, error) {
@@ -270,7 +269,7 @@ func ValidateWorkflowChannels(wf WorkflowFile, defs map[string]ChannelDefinition
 		}
 		def, ok := defs[ch.Uses]
 		if !ok {
-			return fmt.Errorf("event.channel %q: uses unknown channel definition %q", ch.Name, ch.Uses)
+			return fmt.Errorf("event.channel %q: uses unknown channel definition %q%s", ch.Name, ch.Uses, AddressHint(Addresses(defs), ch.Uses))
 		}
 		for key := range ch.Inputs {
 			if _, declared := def.InputSchema[key]; !declared {

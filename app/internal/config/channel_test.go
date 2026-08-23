@@ -202,7 +202,11 @@ func TestLoadChannels_RejectedDeclarations(t *testing.T) {
 	}
 }
 
-func TestLoadChannels_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+// Coexistence follows from addressability. A hand-authored plugin_dirs entry
+// carries no catalog identity, so no address can name one of these two layers
+// apart from the other, and choosing between them would fall to declaration
+// order.
+func TestLoadChannels_TwoUnaddressablePluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
 	for _, dir := range []string{pluginA, pluginB} {
@@ -218,7 +222,7 @@ args    = ["send-keys"]
 
 	_, err := cfg.LoadChannels()
 	if err == nil || !strings.Contains(err.Error(), "tmux_send_keys") {
-		t.Fatalf("expected a same-id-across-plugin-layers error naming \"tmux_send_keys\", got %v", err)
+		t.Fatalf("expected a collision error naming \"tmux_send_keys\", got %v", err)
 	}
 }
 

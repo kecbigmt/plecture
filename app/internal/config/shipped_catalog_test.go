@@ -77,14 +77,30 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
 
-	for _, id := range []string{"tmux", "claude_initial_prompt", "runtime", "codex", "codex_initial_prompt", "exec_runtime", "gh_guard"} {
-		if _, ok := tasks[id]; !ok {
-			t.Errorf("shipped catalog task %q not found", id)
+	// The addresses are spelled out because the address is the thing under
+	// test: a shipped declaration answers to its catalog path, so a plugin
+	// moving between catalog directories changes how config selects it.
+	for _, address := range []string{
+		"official.tmux.tmux",
+		"official.claude.claude_initial_prompt",
+		"official.claude.runtime",
+		"official.codex.codex",
+		"official.codex.codex_initial_prompt",
+		"official.codex.exec_runtime",
+		"official.github.gh_guard",
+	} {
+		if _, ok := tasks[address]; !ok {
+			t.Errorf("shipped catalog effect %q not found", address)
 		}
 	}
-	for _, id := range []string{"terminal_submit", "delivery", "exec_delivery", "slack"} {
-		if _, ok := channels[id]; !ok {
-			t.Errorf("shipped catalog channel %q not found", id)
+	for _, address := range []string{
+		"official.codex.terminal_submit",
+		"official.claude.delivery",
+		"official.codex.exec_delivery",
+		"official.slack.slack",
+	} {
+		if _, ok := channels[address]; !ok {
+			t.Errorf("shipped catalog channel %q not found", address)
 		}
 	}
 }

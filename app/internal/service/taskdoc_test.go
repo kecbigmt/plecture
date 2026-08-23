@@ -444,7 +444,7 @@ func TestTaskSetup_PluginTaskDocumentResolvesItsOwnObserver(t *testing.T) {
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 
 	result, err := TaskSetup(cfg, store, TaskSetupParams{
-		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+		TaskID: "official.acme.review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
 	})
 	if err != nil {
 		t.Fatalf("TaskSetup: %v", err)
@@ -452,6 +452,14 @@ func TestTaskSetup_PluginTaskDocumentResolvesItsOwnObserver(t *testing.T) {
 	st := store.Get("org/repo-1").Tasks[result.Instance]
 	if st == nil || st.Observed == nil || st.Observed.State["revision"] != "sha2" {
 		t.Errorf("instance did not observe through its own plugin's observer: %+v", st)
+	}
+	// The result is what a caller echoes back at the next command, so it names
+	// the address rather than an id that would resolve to nothing.
+	if result.TaskID != "official.acme.review" {
+		t.Errorf("result.TaskID = %q, want the address the reference selected", result.TaskID)
+	}
+	if st.TaskID != "official.acme.review" {
+		t.Errorf("stored task id = %q, want the address the reference selected", st.TaskID)
 	}
 }
 

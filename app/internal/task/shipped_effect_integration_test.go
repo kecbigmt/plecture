@@ -151,9 +151,16 @@ func recordShippedEffects(t *testing.T, source string, scenarios map[string]effe
 	if err != nil {
 		t.Fatalf("LoadTaskDefinitions: %v", err)
 	}
+	// A scenario names a declaration by the id its own plugin gave it, not by
+	// the catalog address that depends on the alias this harness mounts under,
+	// so the record stays the same under any alias.
+	byID := make(map[string]config.TaskDefinition, len(defs))
+	for _, def := range defs {
+		byID[def.ID] = def
+	}
 	ids := make([]string, 0, len(scenarios))
 	for id := range scenarios {
-		if _, ok := defs[id]; !ok {
+		if _, ok := byID[id]; !ok {
 			t.Fatalf("scenario names %q, which this plugin does not declare", id)
 		}
 		ids = append(ids, id)
@@ -162,7 +169,7 @@ func recordShippedEffects(t *testing.T, source string, scenarios map[string]effe
 
 	var b strings.Builder
 	for _, id := range ids {
-		h.runScenario(t, &b, defs[id], id, scenarios[id])
+		h.runScenario(t, &b, byID[id], id, scenarios[id])
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n"
 }

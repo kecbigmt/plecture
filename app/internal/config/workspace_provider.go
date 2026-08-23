@@ -27,9 +27,9 @@ import (
 // Workspace providers deliberately do NOT participate in the per-workspace-dir
 // cascade: setup must be resolvable before any workspace exists, and the
 // scripts are arbitrary shell, so only user/machine-owned layers may supply
-// them. Same-id files in deeper layers win (global overrides plugin),
-// mirroring task definitions — a setup/cleanup pair is atomic, so
-// "append" has no sensible meaning.
+// them. Within one namespace a deeper layer's same-id declaration replaces the
+// shallower one, mirroring task definitions — a setup/cleanup pair is atomic,
+// so "append" has no sensible meaning.
 type WorkspaceProviderConfig struct {
 	ID string
 	// Match is a regular expression over the resource identifier; Name is
@@ -93,16 +93,16 @@ func (p WorkspaceProviderConfig) HasResolver() bool {
 }
 
 // LoadWorkspaceProviders loads every workspace provider the trusted base
-// layers declare: plugin roots first, then the global config dir. The global
-// layer's same-id declaration replaces a plugin layer's, but two plugin
-// layers declaring one id is a load error (see loadTrustedKind).
+// layers declare: plugin roots first, then the global config dir. A mounted
+// plugin's declaration answers to its catalog address, so a same-id global
+// declaration is a second address rather than a replacement, and two plugins
+// may each declare the id (see loadTrustedKind).
 func (c *Config) LoadWorkspaceProviders() (map[string]WorkspaceProviderConfig, error) {
 	resolved, err := c.trustedKind(lang.KindWorkspaceProvider)
 	if err != nil {
 		return nil, err
 	}
-	return loadTrustedKind(resolved, c.workspaceProviderFromDefinition,
-		func(p WorkspaceProviderConfig) string { return p.ID })
+	return loadTrustedKind(resolved, c.workspaceProviderFromDefinition)
 }
 
 func (c *Config) workspaceProviderFromDefinition(def *lang.Definition, fromPlugin bool) (WorkspaceProviderConfig, error) {

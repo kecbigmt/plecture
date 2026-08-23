@@ -150,7 +150,9 @@ func attachGithubWorkspaceProvider(t *testing.T, cfg *config.Config, wfID string
 	if err := os.WriteFile(filepath.Join(workspacesDir, provID+".toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	addWorkflowFields(t, cfg, wfID, "workspace_provider = \""+provID+"\"\n")
+	// The provider is declared inside a mounted plugin, so the workflow — which
+	// the user owns — names it by that plugin's catalog address.
+	addWorkflowFields(t, cfg, wfID, "workspace_provider = \"official.github."+provID+"\"\n")
 }
 
 // shippedGithubWorkspaceProviderTOML reads the workspace provider config the

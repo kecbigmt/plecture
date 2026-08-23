@@ -130,15 +130,20 @@ func TestShippedProviders_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 			if len(providers) == 0 {
 				t.Skip("this plugin ships no workspace provider")
 			}
+			// Keyed by the declaration's own id, not by the catalog address that
+			// depends on the alias this harness mounts under, so the record
+			// stays the same under any alias.
+			byID := make(map[string]config.WorkspaceProviderConfig, len(providers))
 			ids := make([]string, 0, len(providers))
-			for id := range providers {
-				ids = append(ids, id)
+			for _, prov := range providers {
+				byID[prov.ID] = prov
+				ids = append(ids, prov.ID)
 			}
 			sort.Strings(ids)
 
 			var b strings.Builder
 			for _, id := range ids {
-				prov := providers[id]
+				prov := byID[id]
 				for _, hook := range []string{"setup", "cleanup", "subscribe"} {
 					if err := os.Remove(argvLog); err != nil && !os.IsNotExist(err) {
 						t.Fatal(err)

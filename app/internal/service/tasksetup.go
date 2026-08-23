@@ -100,7 +100,11 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	}
 	def, ok := defs[params.TaskID]
 	if !ok {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q not found; add a task document or an effect declaration for it to a trusted config layer", params.TaskID)}
+		hint := config.AddressHint(append(config.Addresses(docs), config.Addresses(defs)...), params.TaskID)
+		if hint == "" {
+			hint = "; add a task document or an effect declaration for it to a trusted config layer"
+		}
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %q not found%s", params.TaskID, hint)}
 	}
 
 	// The instance key (NodeID) is allocated under the lock below; ResolveDefinition
@@ -151,8 +155,8 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 				return nil
 			}
 		} else {
-			n := task.NextInstanceNumber(params.TaskID, s.Tasks)
-			key = task.InstanceKey(params.TaskID, strconv.Itoa(n))
+			n := task.NextInstanceNumber(def.ID, s.Tasks)
+			key = task.InstanceKey(def.ID, strconv.Itoa(n))
 		}
 		s.Tasks[key] = &contract.TaskState{
 			Scope:  resolved.Scope,

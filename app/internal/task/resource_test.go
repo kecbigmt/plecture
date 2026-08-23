@@ -39,7 +39,7 @@ match = '^https://github\.com/'
 type    = "exec"
 command = "true"
 `)
-	_, ok, err := MatchResourceDef(defs, "local-okf://kec/goals/x.md")
+	_, _, ok, err := MatchResourceDef(defs, "local-okf://kec/goals/x.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ match = 'github\.com'
 type    = "exec"
 command = "true"
 `)
-	_, _, err := MatchResourceDef(defs, "https://github.com/o/r/pull/1")
+	_, _, _, err := MatchResourceDef(defs, "https://github.com/o/r/pull/1")
 	if err == nil || !strings.Contains(err.Error(), "more than one") {
 		t.Fatalf("expected ambiguous-match error, got %v", err)
 	}

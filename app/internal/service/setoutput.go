@@ -190,7 +190,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		if !st.Dynamic {
 			return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("%q is a static workflow node, not a runtime task; use --node", handle)}
 		}
-		taskID := taskIDForInstance(handle, st)
+		taskID := instanceDefinitionAddress(handle, st, nodeAddresses(cfg, session))
 		// Both kinds are loaded together, so which one this id names is the
 		// loader's answer rather than this branch's guess — and a document
 		// that will not load is reported as that rather than as a missing

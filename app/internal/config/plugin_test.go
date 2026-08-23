@@ -61,7 +61,7 @@ plugins = ["okf"]
 	if err != nil {
 		t.Fatalf("LoadWorkspaceProviders: unexpected error: %v", err)
 	}
-	if _, ok := workspaceProviders["okf"]; !ok {
+	if _, ok := workspaceProviders["local.okf.okf"]; !ok {
 		t.Fatalf("expected okf workspace provider from the enabled plugin, got %+v", workspaceProviders)
 	}
 }

@@ -49,12 +49,32 @@ replacing them (the parameterization rung of
 | `tasks/runtime.toml` | `mcp_servers` | JSON array of MCP server registration records — `{name, command, args?, env?}` — merged into the `--mcp-config` JSON alongside this task's own registrations. A record only ever reaches the agent's config file, never a command line; a name that collides with a registration the task already made, or a record missing `name`/`command`, fails the launch. |
 
 These are set on the node or channel binding that selects the declaration, as
-values over the workflow surface's own roots — `docs/language/workflows.md`
-specifies that surface, and `docs/language/declarations.md` the reference form
-a user-owned layer writes. This README does not repeat either: a snippet here
-would be a second place for the wiring grammar to drift from, and the
-reference-resolution gap tracked separately means an example could not
-currently show a form that is both conforming and runnable.
+values over the workflow surface's own roots. A user-owned workflow names a
+plugin's declaration by its catalog address — the alias you enabled this plugin
+under, then its plugin path, then the declaration's id:
+
+```toml
+[[my_workflow.nodes]]
+id   = "agent"
+uses = "official.claude.runtime"
+
+[my_workflow.nodes.inputs]
+tmux_session = { from = "nodes.pane.outputs.session_name" }
+launch_env   = '{"PLECT_TEAM_CONTEXT":"acme"}'
+mcp_servers  = '[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]'
+
+[[my_workflow.event.channel]]
+name    = "runtime"
+uses    = "official.claude.delivery"
+include = ["plect.instruction", "user.emit"]
+
+[my_workflow.event.channel.inputs]
+path = { from = "nodes.agent.outputs.socket_path" }
+```
+
+`docs/language/workflows.md` specifies that surface and
+`docs/language/declarations.md` the reference grammar; substitute your own alias
+for `official`.
 
 ## Install
 

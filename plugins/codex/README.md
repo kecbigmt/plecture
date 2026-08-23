@@ -57,12 +57,33 @@ replacing them (the parameterization rung of
 | `channels/exec_delivery.toml` | `message_envelope` | Format of the queued message. Placeholders: `{type}`, `{body}`, `{summary}`, `{body_or_summary}`, `{url}`, `{url_suffix}`. Default `[{type}] {body_or_summary}{url_suffix}`. |
 
 These are set on the node or channel binding that selects the declaration, as
-values over the workflow surface's own roots — `docs/language/workflows.md`
-specifies that surface, and `docs/language/declarations.md` the reference form
-a user-owned layer writes. This README does not repeat either: a snippet here
-would be a second place for the wiring grammar to drift from, and the
-reference-resolution gap tracked separately means an example could not
-currently show a form that is both conforming and runnable.
+values over the workflow surface's own roots. A user-owned workflow names a
+plugin's declaration by its catalog address — the alias you enabled this plugin
+under, then its plugin path, then the declaration's id:
+
+```toml
+[[my_workflow.nodes]]
+id   = "agent"
+uses = "official.codex.exec_runtime"
+
+[my_workflow.nodes.inputs]
+launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}'
+state_root = "/var/lib/plect/codex-exec"
+
+[[my_workflow.event.channel]]
+name    = "runtime"
+uses    = "official.codex.exec_delivery"
+include = ["plect.instruction", "resource.*"]
+
+[my_workflow.event.channel.inputs]
+queue_dir        = { from = "nodes.agent.outputs.queue_dir" }
+enqueue_timeout  = "30s"
+message_envelope = "{type}: {body_or_summary}"
+```
+
+`docs/language/workflows.md` specifies that surface and
+`docs/language/declarations.md` the reference grammar; substitute your own alias
+for `official`.
 
 ## Install
 

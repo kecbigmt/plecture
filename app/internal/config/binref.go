@@ -43,6 +43,26 @@ func describeMissingPlugin(ref string, registrations *plugins.CatalogRegistratio
 	return ""
 }
 
+// describeMissingDefinitionPlugin is describeMissingPlugin for a definition
+// reference, whose dotted grammar pins the segments exactly: the last is the
+// definition id and everything before it addresses the plugin. Naming a plugin
+// that is already mounted means the reference reached the right plugin and
+// missed inside it, so no "enable it" hint is offered there — a hint pointing
+// at an enabled plugin would send the reader after the wrong problem.
+func (c *Config) describeMissingDefinitionPlugin(ref string) string {
+	segments := strings.Split(ref, ".")
+	if len(segments) < 2 {
+		return ""
+	}
+	pluginID := strings.Join(segments[:len(segments)-1], "/")
+	for _, mounted := range c.Plugins {
+		if mounted.ID == pluginID {
+			return ""
+		}
+	}
+	return describeMissingPlugin(pluginID, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot)
+}
+
 // singlePublishedPluginMatch finds the one published path that is either
 // equal to rest or a "/"-bounded prefix of it (the same two readings
 // plugins.ResolveBin tries against mounted plugin ids). Multiple matches are

@@ -297,8 +297,8 @@ Review it.
 		Plugins:    []plugins.Mounted{{ID: "official/plugins/acme", Dir: pluginDir}},
 	}
 	docs, observers := loadDocsAndObservers(t, cfg)
-	if _, ok := docs["review"]; !ok {
-		t.Fatalf("review not loaded: %+v", docs)
+	if _, ok := docs["official.plugins.acme.review"]; !ok {
+		t.Fatalf("official.plugins.acme.review not loaded: %+v", docs)
 	}
 	if err := cfg.ValidateTaskDocuments(docs, observers, nil); err != nil {
 		t.Fatalf("ValidateTaskDocuments: %v", err)

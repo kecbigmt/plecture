@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -299,5 +301,66 @@ type = "string"
 	}
 	if got := strings.TrimSpace(string(data)); got != guard {
 		t.Errorf("released %q, want the local the outer setup produced (%q)", got, guard)
+	}
+}
+
+// A workflow node's instance stores no task id, so cleanup has only the node
+// id to find the effect by — and a node id is not the address a plugin's
+// effect answers to. Getting this wrong is silent: the definition simply looks
+// absent, and cleanup is deliberately tolerant of an absent definition, so the
+// script would be skipped rather than reported.
+func TestTaskCleanup_NodeInstanceRunsAPluginOwnedEffectsCleanup(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "cleaned")
+	pluginDir, base := t.TempDir(), t.TempDir()
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(pluginDir, "config", "tasks", "runner.toml"), `
+[runner]
+kind  = "effect"
+scope = "session"
+
+[runner.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[runner.cleanup]
+type   = "shell"
+script = "touch `+marker+`"
+`)
+	write(filepath.Join(base, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[[coding.nodes]]
+id   = "runner"
+uses = "official.acme.runner"
+`)
+	cfg := &config.Config{
+		BaseDir:    base,
+		PluginDirs: []string{pluginDir},
+		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
+	}
+	store := testStore(t)
+	// TaskID omitted, as it is for a node whose id equals the definition's.
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{
+		"runner": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced},
+	})
+
+	res, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "runner", SessionName: "o/r-1"})
+	if err != nil {
+		t.Fatalf("TaskCleanup: %v", err)
+	}
+	if !res.Found {
+		t.Fatal("Found = false, want true")
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Errorf("the plugin effect's cleanup script did not run: %v", err)
 	}
 }

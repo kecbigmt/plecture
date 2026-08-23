@@ -108,7 +108,11 @@ command = "global"
 	}
 }
 
-func TestLoadResourceDefs_TwoPluginLayersSameIDFailsLoud(t *testing.T) {
+// Coexistence follows from addressability. A hand-authored plugin_dirs entry
+// carries no catalog identity, so no address can name one of these two layers
+// apart from the other, and choosing between them would fall to declaration
+// order.
+func TestLoadResourceDefs_TwoUnaddressablePluginLayersSameIDFailsLoud(t *testing.T) {
 	pluginA := t.TempDir()
 	pluginB := t.TempDir()
 	for _, dir := range []string{pluginA, pluginB} {
@@ -126,7 +130,7 @@ command = "true"
 
 	_, err := cfg.LoadResourceDefs()
 	if err == nil || !strings.Contains(err.Error(), "github") {
-		t.Fatalf("expected a same-id-across-plugin-layers error naming \"github\", got %v", err)
+		t.Fatalf("expected a collision error naming \"github\", got %v", err)
 	}
 }
 

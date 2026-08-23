@@ -42,8 +42,8 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if params.Workflow != "" && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q; destroy and recreate to switch", params.Workflow, existing.Workflow)}
 		}
-		if existing.Workflow != "" && existing.Workflow != wf.ID {
-			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource dispatches to workflow %q but session %q is frozen to %q; destroy and recreate to switch", wf.ID, sessionName, existing.Workflow)}
+		if existing.Workflow != "" && existing.Workflow != wf.Address {
+			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource dispatches to workflow %q but session %q is frozen to %q; destroy and recreate to switch", wf.Address, sessionName, existing.Workflow)}
 		}
 		session = existing
 		if session.Tasks == nil {
@@ -58,14 +58,17 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		// workspace-dir overlays can add nodes but not tighten the input
 		// contract retroactively (the workspace doesn't exist at validation
 		// time).
-		input, validateErr := resolveSessionInputs(cfg, "", wf.ID, params.Inputs)
+		input, validateErr := resolveSessionInputs(cfg, "", wf.Address, params.Inputs)
 		if validateErr != nil {
 			return nil, validateErr
 		}
 		session = &domain.Session{
-			Name:          sessionName,
+			Name: sessionName,
+			// The address, not the id: the id names the session and cannot say
+			// which declaration produced it, so a plan reloaded later would
+			// look for a workflow that answers to something else.
 			ParentSession: parentSession,
-			Workflow:      wf.ID,
+			Workflow:      wf.Address,
 			Inputs:        input,
 			Tasks:         make(map[string]*contract.TaskState),
 			CreatedAt:     now,
