@@ -500,10 +500,9 @@ func TestTaskCleanup_NoResourceBoundIsANoOpForDelivery(t *testing.T) {
 }
 
 // A session destroyed between resolveSession and TaskCleanup's fresh
-// delivery-lock read must not silently skip the unsubscribe decision: since
-// resourceStillNeededBySession takes a non-nil *domain.Session, the switch
-// this backs used to have no case matching (nil, no error) at all, doing
-// nothing. shouldUnsubscribe is what closed that gap.
+// delivery-lock read must not silently skip the unsubscribe decision: a nil
+// session means nothing can need the resource any more than an explicit
+// "not needed" answer already covers.
 func TestShouldUnsubscribe(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -72,22 +72,17 @@ func splitLines(s string) []string {
 // This file drives the one real, shipped provider plugin capable of proving
 // task-instance delivery wiring end to end (a resident watcher daemon
 // publishing over a real event bus) — there is no generic-provider way to
-// pin that a real poll cycle's event reaches the bound session's log and
-// drives a reactive tick, so its identifiers below are a genuine, necessary
-// exception to core's own provider-neutrality: see
-// scripts/check-provider-boundary.sh's own header on the allowlisted
-// convention this predates, and app/internal/service/provider_github_e2e_test.go
-// for the pre-existing sibling this pattern already establishes.
+// pin that. Its identifiers below are a genuine, necessary exception to
+// core's own provider-neutrality, using check-provider-boundary.sh's own
+// "boundary-allow" escape hatch, the same way the pre-existing
+// app/internal/service/provider_github_e2e_test.go already does.
 const (
-	pluginDirName = "github"          // boundary-allow: the real shipped plugin's own directory name
-	worktreeBin   = "github-worktree" // boundary-allow: the real shipped plugin's own binary name
-	watcherBin    = "github-watcher"  // boundary-allow: the real shipped plugin's own binary name
-	mountedID     = "official/github" // boundary-allow: the real catalog address this plugin mounts under
-	eventSource   = "github"          // boundary-allow: the real event.Source the shipped watcher publishes
-	// mergeableEventType is the real event type the shipped watcher's poller
-	// publishes on a mergeable_state transition (poll.go's
-	// typeGitHubPrefix+"mergeable") — not a naming choice this test makes.
-	mergeableEventType = "github.mergeable" // boundary-allow: the real published event type
+	pluginDirName      = "github"           // boundary-allow: real plugin directory name
+	worktreeBin        = "github-worktree"  // boundary-allow: real plugin binary name
+	watcherBin         = "github-watcher"   // boundary-allow: real plugin binary name
+	mountedID          = "official/github"  // boundary-allow: real catalog mount address
+	eventSource        = "github"           // boundary-allow: real event.Source the watcher publishes
+	mergeableEventType = "github.mergeable" // boundary-allow: real event type the watcher publishes
 )
 
 // buildGithubPluginBinaries compiles plect and the shipped plugin's two
