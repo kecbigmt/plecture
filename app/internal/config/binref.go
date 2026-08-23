@@ -8,45 +8,12 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// hookSource is one {{bin ...}}-eligible template string paired with the
-// file it came from (for the bare-name plugin-local reading) and a
-// human-readable label for error messages.
-type hookSource struct {
-	desc       string
-	sourcePath string
-	script     string
-}
-
-// checkBinRefs raises {{bin ...}} resolution from render time to load time:
-// it statically scans every hook in hooks for `{{bin "ref"}}` calls and
-// resolves each one against mounted, exactly as a real render would, but
-// before any session ever runs the hook. registrations/lock/cacheRoot are
-// consulted only to name a specific plugin to enable when a reference is
-// otherwise unresolvable — see describeMissingPlugin.
-//
-// This only strengthens an already-load-failing config: a template this
-// scan cannot parse (see plugins.BinRefs) is silently skipped here and
-// still checked, as always, by the real renderer at render time.
-func checkBinRefs(hooks []hookSource, mounted []plugins.Mounted, registrations *plugins.CatalogRegistrations, lock *plugins.Lockfile, cacheRoot string) error {
-	for _, h := range hooks {
-		if h.script == "" {
-			continue
-		}
-		for _, ref := range plugins.BinRefs(h.script) {
-			if _, err := plugins.ResolveBin(mounted, h.sourcePath, ref); err != nil {
-				return fmt.Errorf("%s: %w%s", h.desc, err, describeMissingPlugin(ref, registrations, lock, cacheRoot))
-			}
-		}
-	}
-	return nil
-}
-
 // describeMissingPlugin returns a remediation suffix naming the plugin to
 // enable when ref is the fully-qualified form and its catalog alias is
 // registered: it re-resolves that catalog (local-only, the same call
 // VerifyAndMountAll already makes, safe to repeat) and checks ref against
 // every plugin path the catalog *publishes* — enabled or not, unlike
-// mounted, which checkBinRefs already tried and failed against. Exactly one
+// mounted, which the caller already tried and failed against. Exactly one
 // matching published path names the plugin unambiguously; zero or more than
 // one leaves the caller's original error to stand on its own rather than
 // guess.

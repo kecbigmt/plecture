@@ -1,3 +1,8 @@
+// Package template renders Markdown instruction assets. This is the last
+// `text/template` pass in the tree: every configuration surface states its
+// values in the configuration language instead, and this one survives only
+// because docs/language/tasks.md defers what control flow an instruction body
+// may express.
 package template
 
 import (

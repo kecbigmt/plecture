@@ -79,7 +79,8 @@ type Config struct {
 	Plugins []plugins.Mounted `toml:"-"`
 	// catalogRegistrations/catalogLock/catalogCacheRoot are the same local
 	// state resolveDeclaredPlugins already resolved Plugins from, kept
-	// around (unexported: no toml tag needed) so checkBinRefs can re-derive
+	// around (unexported: no toml tag needed) so a bin reference's remediation
+	// hint can re-derive
 	// a catalog's full *published* plugin list on demand — see
 	// describeMissingPlugin. nil/"" for a Config built without going through
 	// Load() (e.g. tests), in which case describeMissingPlugin degrades to

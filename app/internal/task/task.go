@@ -665,20 +665,6 @@ func dependencyOutputs(deps []string, tasks map[string]*contract.TaskState) map[
 	return out
 }
 
-// runShell executes the given (already-rendered) command via "bash -c" on the
-// host through the pinned alwaysHostExecutor. stdout is captured (parsed as
-// JSON outputs); stderr is captured separately so the caller can decide when
-// to surface it — streaming it during the run would interleave with the
-// progress spinner. If workDir is non-empty and exists, it is used as the
-// command's cwd. runShell's callers (workspace provider
-// setup/cleanup/subscribe, workflow hooks, resource observe/finalize) have no
-// caller-supplied context to thread through yet, so it always runs with
-// context.Background();
-// giving those paths a cancellable context is separate follow-up work.
-func runShell(cmdStr, workDir string) (stdout, stderr []byte, err error) {
-	return runHook(context.Background(), renderedShell(cmdStr), workDir)
-}
-
 // Observer receives lifecycle events from RunSetup / RunCleanup. The runner
 // only emits "what happened"; observers decide what to do with the events —
 // render a progress UI, ship to telemetry, write a structured log, etc.

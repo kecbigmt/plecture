@@ -2,19 +2,20 @@ package task
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 )
 
-func TestRunShell_CapturesStdoutAndStderrSeparately(t *testing.T) {
+func TestRunHook_CapturesStdoutAndStderrSeparately(t *testing.T) {
 	// stdout flows into the JSON outputs parser; stderr is captured so the
 	// reporter can dump it after the spinner stops. They must not bleed into
 	// each other.
-	stdout, stderr, err := runShell(`echo out; echo err >&2`, "")
+	stdout, stderr, err := runHook(context.Background(), shellExecution(`echo out; echo err >&2`), "")
 	if err != nil {
-		t.Fatalf("runShell: %v", err)
+		t.Fatalf("runHook: %v", err)
 	}
 	if string(stdout) != "out\n" {
 		t.Errorf("stdout = %q, want \"out\\n\"", stdout)
@@ -24,8 +25,8 @@ func TestRunShell_CapturesStdoutAndStderrSeparately(t *testing.T) {
 	}
 }
 
-func TestRunShell_CapturesStderrOnFailure(t *testing.T) {
-	stdout, stderr, err := runShell(`echo before-fail; echo diagnostic >&2; exit 7`, "")
+func TestRunHook_CapturesStderrOnFailure(t *testing.T) {
+	stdout, stderr, err := runHook(context.Background(), shellExecution(`echo before-fail; echo diagnostic >&2; exit 7`), "")
 	if err == nil {
 		t.Fatalf("expected non-nil err for non-zero exit, got nil")
 	}

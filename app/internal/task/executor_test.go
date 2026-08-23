@@ -167,30 +167,10 @@ func TestExecutor_ExecuteTaskSetupIssuesExpectedExecRequest(t *testing.T) {
 	assertShellRequest(t, spy, `echo '{"ready":"yes"}'`, "/work/x")
 }
 
-// TestExecutor_RunShellIsNeverRoutedThroughDefaultExecutor guards the
-// distinction between alwaysHostExecutor (runShell — provider setup/cleanup,
-// provider subscribe, resource observe/finalize) and defaultExecutor
-// (execHostScript — the 5 task exec paths). Swapping defaultExecutor for a
-// spy must never intercept runShell: those callers must always run for real
-// on the host.
-func TestExecutor_RunShellIsNeverRoutedThroughDefaultExecutor(t *testing.T) {
-	spy := withSpyExecutor(t)
-	stdout, _, err := runShell(`echo real`, "")
-	if err != nil {
-		t.Fatalf("runShell: %v", err)
-	}
-	if string(stdout) != "real\n" {
-		t.Errorf("stdout = %q, want runShell to actually execute (not the spy's canned output)", stdout)
-	}
-	if len(spy.requests) != 0 {
-		t.Errorf("spy recorded %d requests, want 0: runShell must not consult defaultExecutor", len(spy.requests))
-	}
-}
-
-// TestExecutor_HostExecutorReproducesRunShellSemantics locks in byte-for-byte
-// parity with the pre-Executor runShell: hostExecutor.Run must behave
-// exactly like it (bash -c, cwd only if it exists).
-func TestExecutor_HostExecutorReproducesRunShellSemantics(t *testing.T) {
+// A host invocation's two long-standing shape rules: stdout and stderr are
+// captured separately, and a working directory that does not exist is
+// ignored rather than surfaced as an error.
+func TestExecutor_HostExecutorCapturesSeparatelyAndIgnoresAMissingDir(t *testing.T) {
 	var exec Executor = hostExecutor{}
 	stdout, stderr, err := exec.Run(context.Background(), ExecRequest{Argv: []string{"bash", "-c", `echo out; echo err >&2`}})
 	if err != nil {
@@ -201,7 +181,7 @@ func TestExecutor_HostExecutorReproducesRunShellSemantics(t *testing.T) {
 	}
 
 	// A Dir that doesn't exist must be silently ignored, not surfaced as an
-	// error — the exact behavior runShell has always had.
+	// error: a hook that runs before its workspace exists still has to run.
 	stdout, _, err = exec.Run(context.Background(), ExecRequest{Argv: []string{"bash", "-c", "pwd"}, Dir: "/nonexistent/does-not-exist"})
 	if err != nil {
 		t.Fatalf("Run with missing Dir: %v", err)
@@ -285,14 +265,14 @@ func TestExecutor_RequestForKeepsEachFormsInvocationShape(t *testing.T) {
 		want      ExecRequest
 	}{
 		{
-			name:      "a template-rendered hook",
-			execution: renderedShell(`echo '{}'`),
+			name:      "a shell execution",
+			execution: shellExecution(`echo '{}'`),
 			workDir:   "/work/x",
 			want:      ExecRequest{Argv: []string{"bash", "-c", `echo '{}'`}, Dir: "/work/x"},
 		},
 		{
-			name:      "a rendered hook carrying an enclosing layer's env",
-			execution: renderedShell(`echo hi`),
+			name:      "a shell execution carrying an enclosing layer's env",
+			execution: shellExecution(`echo hi`),
 			workDir:   "/work/x",
 			env:       []string{"PLECT_GUARD=on"},
 			want:      ExecRequest{Argv: []string{"bash", "-c", `echo hi`}, Dir: "/work/x", Env: []string{"PLECT_GUARD=on"}},

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
-	"text/template"
-	"text/template/parse"
 )
 
 // binCandidate is one way ref could be decomposed into a mounted plugin plus
@@ -120,78 +118,4 @@ func containingPlugin(mounted []Mounted, sourcePath string) (Mounted, bool) {
 		}
 	}
 	return best, found
-}
-
-// binScanFuncs stubs every template function a hook string calling `{{bin
-// ...}}` might also use, so BinRefs's parse-only pass succeeds regardless of
-// what those other functions actually do — it never executes the template,
-// only walks its parse tree. Kept in sync with the real function set task
-// hook rendering registers (app/internal/task's templateFuncs plus each
-// render call's own dynamicFuncs); a hook string calling a function outside
-// this set fails to parse here and BinRefs reports zero references for it
-// rather than erroring, so a template function added later without a
-// matching entry here degrades this scan silently instead of breaking config
-// load for every hook that happens to use it.
-var binScanFuncs = template.FuncMap{
-	"bin":        func(args ...any) (any, error) { return nil, nil },
-	"get":        func(args ...any) any { return nil },
-	"shellQuote": func(args ...any) any { return nil },
-	"json":       func(args ...any) (any, error) { return nil, nil },
-}
-
-// BinRefs statically scans tmplStr's parse tree for `{{bin "<ref>"}}` calls
-// (bare or piped, e.g. `{{bin "x" | shellQuote}}`) and returns each ref
-// string literal found, in source order. It never renders the template, so
-// a reference is reported even when the value it would resolve to depends on
-// data this scan has no access to. Parse failure (unknown function, syntax
-// error) is reported as (nil, nil), not an error: this scan is a best-effort
-// load-time diagnostic layered on top of the render-time renderer, which
-// remains the authority on whether a template is actually valid — see
-// binScanFuncs.
-func BinRefs(tmplStr string) []string {
-	t, err := template.New("bin-scan").Funcs(binScanFuncs).Parse(tmplStr)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	var walk func(n parse.Node)
-	walk = func(n parse.Node) {
-		switch x := n.(type) {
-		case *parse.ListNode:
-			if x == nil {
-				return
-			}
-			for _, c := range x.Nodes {
-				walk(c)
-			}
-		case *parse.IfNode:
-			walk(x.List)
-			walk(x.ElseList)
-		case *parse.RangeNode:
-			walk(x.List)
-			walk(x.ElseList)
-		case *parse.WithNode:
-			walk(x.List)
-			walk(x.ElseList)
-		case *parse.ActionNode:
-			walk(x.Pipe)
-		case *parse.PipeNode:
-			if x == nil {
-				return
-			}
-			for _, c := range x.Cmds {
-				walk(c)
-			}
-		case *parse.CommandNode:
-			if len(x.Args) >= 2 {
-				if id, ok := x.Args[0].(*parse.IdentifierNode); ok && id.Ident == "bin" {
-					if s, ok := x.Args[1].(*parse.StringNode); ok {
-						out = append(out, s.Text)
-					}
-				}
-			}
-		}
-	}
-	walk(t.Root)
-	return out
 }
