@@ -93,14 +93,20 @@ Either probe is an action, so what runs follows the variant it declares: an
 `exec` probe runs its declared executable with its resolved argv, and a
 `shell` probe writes its literal script and a binding file into a private run
 directory and invokes the generated wrapper. Neither substitutes anything into
-the script, so a value that cannot be resolved fails before a process starts —
-reported as the configuration error it is rather than as a failed probe.
+the script.
+
+A value the probe reads may fail to resolve, which happens before any process
+starts. That failure reaches the health report the same way a failing
+execution does — `alive` makes the session unhealthy, `activity` records a
+probe error — because a probe that cannot be resolved is a probe that cannot
+answer, and a declared probe answering nothing is the case health exists to
+report.
 
 ### alive
 
-Exit zero means the surface is present. A non-zero exit makes the session
-unhealthy, and the failing instance is named in the reported reason. The first
-failing probe ends the evaluation.
+Exit zero means the surface is present. A non-zero exit, or a value that does
+not resolve, makes the session unhealthy, and the failing instance is named in
+the reported reason. The first failing probe ends the evaluation.
 
 ### activity
 
@@ -135,7 +141,7 @@ surface fingerprint withholds `silence_expected` — a pane's contents cannot
 establish that quiet is intended — while a turn-boundary probe sets it once
 the turn it watches has ended.
 
-Three outcomes contribute no activity evidence for an evaluation, and they
+Four outcomes contribute no activity evidence for an evaluation, and they
 differ only in what the health report says about the probe:
 
 | Outcome | Shape | Health report |
@@ -143,6 +149,7 @@ differ only in what the health report says about the probe:
 | No basis | Exit 0, empty stdout. | Silent — the instance evaluates as if it declared no probe at all. |
 | Probe error | Non-zero exit. | A `probe_error` entry naming the instance, the probe command, the exit code, and a digest of stderr. |
 | Invalid output | Exit 0, stdout that is not an envelope carrying a `fingerprint`. | A `probe_error` entry naming the instance, the command, and the reason. |
+| Unresolved value | No process ran: a value the probe reads resolved to nothing and declared neither a default nor `optional`. | A `probe_error` entry naming the instance, the command, and the value that did not resolve. |
 
 "No basis" is structural absence rather than a declared value, so a probe with
 nothing to report cannot be confused with one whose output was rejected. A
