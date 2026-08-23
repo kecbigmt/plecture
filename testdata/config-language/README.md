@@ -78,23 +78,27 @@ The harness asserts that:
 
 - every fixture declares a well-formed expectation, and decodes — as TOML for
   a definition document, or as TOML frontmatter for a task document;
-- a `valid` fixture passes [`../../plecture.schema.json`](../../plecture.schema.json);
-- an `invalid` fixture with `layer=structural` is rejected by that schema, and
-  rejected by a rule the schema annotates with the declared diagnostic;
-- an `invalid` fixture with `layer=semantic`, `layer=cel`, or
-  `layer=instantiation`, and an `accepted-invalid` fixture, all pass the
-  structural schema — which is what makes "something later rejects this" a
-  claim about a later layer rather than an accident of shape;
-
-`layer=instantiation` marks a rule that only a binding can break: a task
-document declares the observer it is written for, so the keys it reads are
-checked at load, but whether the resource an instance is actually bound to
-resolves to that observer is known only when the instance is created.
+- a fixture declaring a diagnostic the loader can reach draws **exactly** that
+  code out of the language's own validation, and no fixture ever draws a
+  different one than it declares;
+- a `valid` or `accepted-invalid` fixture is accepted by that validation;
+- [`../../plecture.schema.json`](../../plecture.schema.json) never rejects what
+  the language accepts — the schema describes the shape for editors and is not
+  asked to name a diagnostic, so a false rejection is the failure that matters;
+- a fixture whose entry is a manifest or config file, which declares no
+  definition, is judged by the schema instead;
 - every diagnostic code is registered, documented in
   [`../../docs/language/README.md`](../../docs/language/README.md), and
   exercised by a fixture;
 - every worked example in `docs/language/` is byte-identical to the fixture it
   names.
+
+A rule about more than one definition, or about what a plugin layer declares,
+cannot fire on a fixture read on its own — a nesting cycle needs both effects
+loaded, and an alias-required reference needs a catalog to be required against.
+Those fixtures are still checked against the schema, and the harness logs which
+ones its exact-code assertion could not reach, so the residue is a number a
+reader can see rather than a silent gap.
 
 A fixture that does not decode at all is rejected before any schema rule can be
 blamed, so a decode failure satisfies a structural expectation and its

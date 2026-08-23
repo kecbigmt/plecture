@@ -16,13 +16,28 @@ import (
 )
 
 // TestConformanceFixtures is the structural half of this package's
-// conformance harness: it exercises every fixture under
-// testdata/config-language/ against plecture.schema.json's seven entry
-// anchors. A schema or fixture edit that silently drifts from the documented
-// diagnostic is exactly the invariant this preserves. The two assertions it
-// cannot make from a registry and a fixture set alone — that the registry and
-// the diagnostics chapter name the same codes, and that a chapter quotes its
-// fixture verbatim — live in docs_conformance_test.go.
+// conformance harness, and it asks one question of each artifact rather than
+// the same question of both.
+//
+// For the definition language, this package's own validation is the authority:
+// a fixture that declares a structural diagnostic must draw exactly that code
+// out of ValidateDefinition. That is stronger than asking the schema, whose
+// answer was only ever "some rule annotated with this code fired" — under a
+// failing oneOf the validator blames every branch it tried, so the annotation
+// was a proxy for the diagnostic rather than the diagnostic itself.
+//
+// plecture.schema.json is a derived artifact for editors, so what matters is
+// that it does not reject configuration the language accepts. It is checked
+// for exactly that and is not asked to name a diagnostic.
+//
+// The manifest and config-file entries have no definition to validate, so the
+// schema remains their structural authority — consistent with those four
+// schemas being hand-written rather than derived.
+//
+// The two assertions this cannot make from a registry and a fixture set alone
+// — that the registry and the diagnostics chapter name the same codes, and
+// that a chapter quotes its fixture verbatim — live in
+// docs_conformance_test.go.
 type fixtureExpectation struct {
 	Result     string
 	Layer      string
@@ -146,6 +161,10 @@ func TestConformanceFixtures(t *testing.T) {
 	}
 	used := map[string]bool{}
 	checked := 0
+	// unreached names every fixture whose declared rule needs more than one
+	// definition, or a plugin layer, to fire. Reported so the residue is a
+	// number a reader can see rather than a silent gap.
+	var unreached []string
 
 	var paths []string
 	if err := filepath.Walk(fixtureRoot, func(path string, info os.FileInfo, err error) error {
@@ -216,24 +235,50 @@ func TestConformanceFixtures(t *testing.T) {
 				t.Fatalf("normalize: %v", err)
 			}
 			verr := schema.Validate(instance)
-
 			structuralMustFail := exp.Result == "invalid" && exp.Layer == "structural"
-			switch {
-			case structuralMustFail && verr == nil:
-				t.Errorf("expected the structural schema to reject this (%s), but it passed", exp.Diagnostic)
-			case structuralMustFail:
-				var ve *jsonschema.ValidationError
-				if !errors.As(verr, &ve) {
-					t.Errorf("rejected, but not with a validation error")
-					break
+
+			if exp.Entry != "definitions" && exp.Entry != "task" {
+				// A manifest or config file declares no definition, so the
+				// schema is what judges its shape.
+				switch {
+				case structuralMustFail && verr == nil:
+					t.Errorf("expected the schema to reject this (%s), but it passed", exp.Diagnostic)
+				case !structuralMustFail && verr != nil:
+					t.Errorf("expected the schema to accept this (%s/%s), but it failed:\n    %s",
+						exp.Result, exp.Layer, strings.ReplaceAll(verr.Error(), "\n", "\n    "))
 				}
-				if !schemaBlamesDiagnostic(doc, ve, exp.Diagnostic) {
-					t.Errorf("rejected, but no rule annotated %s fired; rules that did:\n    %s",
-						exp.Diagnostic, strings.Join(schemaBlamedRules(doc, ve), "\n    "))
+				return
+			}
+
+			got, gotErr := loaderDiagnosticOf(path, fixtureBody(string(raw)))
+			if gotErr != nil {
+				t.Fatalf("%v", gotErr)
+			}
+			if reachesLoader(exp) {
+				switch got {
+				case exp.Diagnostic:
+					return
+				case "":
+					// A rule about more than one definition, or about what a
+					// plugin layer declares, cannot fire on a fixture read on
+					// its own. The claim stays unverified here rather than
+					// being asserted against an environment the harness would
+					// have to invent — but the fixture must still pass the
+					// schema, which is what the check below does.
+					unreached = append(unreached, filepath.ToSlash(rel))
+				default:
+					t.Errorf("the loader gave %s, want %s — a fixture must never draw a different diagnostic than it declares", got, exp.Diagnostic)
+					return
 				}
-			case verr != nil:
-				t.Errorf("expected the structural schema to accept this (%s/%s), but it failed:\n    %s",
-					exp.Result, exp.Layer, strings.ReplaceAll(verr.Error(), "\n", "\n    "))
+			} else if got != "" {
+				t.Errorf("expected the language to accept this (%s/%s), but the loader gave %s",
+					exp.Result, exp.Layer, got)
+			}
+			// The published schema must not contradict the language it
+			// describes: a false rejection is what breaks an editor.
+			if verr != nil && !structuralMustFail {
+				t.Errorf("the language accepts this but plecture.schema.json rejects it:\n    %s",
+					strings.ReplaceAll(verr.Error(), "\n", "\n    "))
 			}
 		})
 	}
@@ -243,6 +288,9 @@ func TestConformanceFixtures(t *testing.T) {
 			t.Errorf("diagnostic %s is documented but no fixture exercises it", code)
 		}
 	}
+	sort.Strings(unreached)
+	t.Logf("%d fixtures checked; %d declare a rule a single-definition load cannot reach:\n  %s",
+		checked, len(unreached), strings.Join(unreached, "\n  "))
 }
 
 func schemaPointers(ve *jsonschema.ValidationError, out *[]string) {
@@ -321,4 +369,66 @@ func schemaBlamesDiagnostic(doc any, ve *jsonschema.ValidationError, code string
 		}
 	}
 	return false
+}
+
+// reachesLoader reports whether a fixture's declared failure is one loading a
+// definition can reach. Loading covers the structural, semantic and CEL
+// layers; `instantiation` is by definition a rule only a binding can break,
+// and `accepted-invalid` records something the language admits on purpose.
+func reachesLoader(exp fixtureExpectation) bool {
+	if exp.Result != "invalid" {
+		return false
+	}
+	switch exp.Layer {
+	case "structural", "semantic", "cel":
+		return true
+	}
+	return false
+}
+
+// loaderDiagnosticOf parses a fixture the way the loader does and returns the
+// code of the first diagnostic its definitions draw, or "" when the language
+// accepts them. A non-diagnostic error is the harness's own problem — a
+// fixture it cannot read — and is reported as such.
+func loaderDiagnosticOf(path, src string) (string, error) {
+	var defs []*Definition
+	var err error
+	if strings.HasSuffix(path, ".md") {
+		var one *Definition
+		one, err = ParseTaskDocument(path, []byte(src))
+		if one != nil {
+			defs = []*Definition{one}
+		}
+	} else {
+		defs, err = ParseDefinitionDocument(path, []byte(src))
+	}
+	if err != nil {
+		var diag *Diagnostic
+		if errors.As(err, &diag) {
+			return string(diag.Code), nil
+		}
+		return "", fmt.Errorf("parse: %w", err)
+	}
+	validation := Validation{Executables: conformanceBins{}}
+	for _, def := range defs {
+		verr := validation.ValidateDefinition(def)
+		if verr == nil {
+			continue
+		}
+		var diag *Diagnostic
+		if errors.As(verr, &diag) {
+			return string(diag.Code), nil
+		}
+		return "", fmt.Errorf("validate %s: %w", def.ID, verr)
+	}
+	return "", nil
+}
+
+// conformanceBins accepts any executable name: whether a plugin declares one
+// is a packaging question, and a fixture exercising the definition language
+// should not have to stand up a catalog to ask a structural one.
+type conformanceBins struct{}
+
+func (conformanceBins) ResolveBin(ref string, from Ownership) (string, error) {
+	return "/bin/" + ref, nil
 }

@@ -2,11 +2,12 @@ package lang
 
 import "fmt"
 
-// kindFields mirrors plecture.schema.json's per-kind property lists; `kind`
-// is absent because parseDefinitionTable lifts it out of Body. Nothing
-// derives one from the other at run time — the schema is a repository file,
-// not a package resource — so TestKindSurfaceMatchesSchema is what keeps the
-// two together.
+// kindFields is the per-kind surface the language enforces, and the authority
+// for it: the conformance corpus asserts the diagnostics this produces, while
+// plecture.schema.json describes the same shape for editors. `kind` is absent
+// because parseDefinitionTable lifts it out of Body. Nothing derives one from
+// the other at run time — the schema is a repository file, not a package
+// resource — so TestKindSurfaceMatchesSchema is what keeps the two together.
 var kindFields = map[Kind]map[string]bool{
 	KindEffect: fieldSet(
 		"cleanup", "health", "inner", "inputs_schema", "inputs_schema_file",
