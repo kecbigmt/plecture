@@ -52,14 +52,16 @@ Each hit is one of two cases, and the id alone does not say which:
 | `worktree` | workspace provider | `official.github.worktree` |
 | `issue`, `pull` | resource observer | `official.github.issue`, `official.github.pull` |
 | `okf_goal` | resource observer | `official.okf.okf_goal` |
-| `work`, `review`, `investigate`, `respond` | task document | `official.github.work`, and so on |
-| `pursue_goal`, `goal_review` | task document | `official.okf.pursue_goal`, `official.okf.goal_review` |
+| `work`, `review`, `investigate`, `respond` | task document | *(none — no longer shipped, see below)* |
+| `pursue_goal`, `goal_review` | task document | *(none — no longer shipped, see below)* |
 
 These six task documents are no longer shipped by the `github` and `okf`
 plugins: process instructions moved to host ownership, so there is no
-plugin address left to qualify a reference to. Declare them as your own
-task documents instead — see the `github` and `okf` plugin READMEs and
-`docs/language/tasks.md` for what a task document needs.
+plugin address to qualify a reference to, and no `official.github.work` /
+`official.okf.pursue_goal` (and so on) for a post-removal migrator to reach
+for. Declare them as your own task documents instead — see the `github` and
+`okf` plugin READMEs and `docs/language/tasks.md` for what a task document
+needs.
 
 Substitute your own alias wherever you registered the catalog under something other than `official`.
 
