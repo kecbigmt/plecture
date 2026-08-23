@@ -44,9 +44,12 @@ func loadShippedWorkspaceProvider(t *testing.T, pluginDir, id string) config.Wor
 	if err != nil {
 		t.Fatalf("load shipped workspace providers: %v", err)
 	}
-	prov, ok := provs[id]
+	// A mounted plugin's declaration answers to its catalog address, which is
+	// what the mount above decides.
+	address := "official." + pluginDir + "." + id
+	prov, ok := provs[address]
 	if !ok {
-		t.Fatalf("shipped workspace provider %q not found", id)
+		t.Fatalf("shipped workspace provider %q not found", address)
 	}
 	return prov
 }

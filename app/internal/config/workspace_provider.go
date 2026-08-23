@@ -101,8 +101,7 @@ func (c *Config) LoadWorkspaceProviders() (map[string]WorkspaceProviderConfig, e
 	if err != nil {
 		return nil, err
 	}
-	return loadTrustedKind(resolved, c.workspaceProviderFromDefinition,
-		func(p WorkspaceProviderConfig) string { return p.ID })
+	return loadTrustedKind(resolved, c.workspaceProviderFromDefinition)
 }
 
 func (c *Config) workspaceProviderFromDefinition(def *lang.Definition, fromPlugin bool) (WorkspaceProviderConfig, error) {

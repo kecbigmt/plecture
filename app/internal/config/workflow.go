@@ -504,7 +504,10 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 		if err != nil {
 			return nil, fmt.Errorf("workflow %s in %s: %w", entry.def.ID, entry.source, err)
 		}
-		out[wf.ID] = wf
+		if err := canonicalizeWorkflowRefs(&wf, entry.prefix); err != nil {
+			return nil, err
+		}
+		out[entry.address] = wf
 	}
 	return out, nil
 }
@@ -526,23 +529,6 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 	if err != nil {
 		return nil, err
 	}
-	// all keeps every effect that was read, including one a same-id deeper
-	// declaration shadows: a catalog-qualified `inner` reference exists
-	// precisely to reach a shadowed plugin effect.
-	var all []TaskDefinition
-	pluginOfSource := make(map[string]string)
-	for _, discovered := range layers {
-		for _, parsed := range discovered.ofKind(lang.KindEffect) {
-			def, err := c.effectFromDefinition(parsed, discovered.layer.plugin)
-			if err != nil {
-				return nil, err
-			}
-			if discovered.layer.plugin && discovered.layer.pluginID != "" {
-				pluginOfSource[def.SourcePath] = discovered.layer.pluginID
-			}
-			all = append(all, def)
-		}
-	}
 	resolved, err := c.resolveNamespace(layers, lang.KindEffect)
 	if err != nil {
 		return nil, err
@@ -553,11 +539,14 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 		if err != nil {
 			return nil, err
 		}
-		out[def.ID] = def
+		inner, err := referenceAddress(entry.prefix, def.Inner)
+		if err != nil {
+			return nil, fmt.Errorf("effect %q inner: %w", def.ID, err)
+		}
+		def.Inner = inner
+		out[entry.address] = def
 	}
-	if err := resolveNestedDefinitions(out, all, pluginOfSource, func(ref string) string {
-		return describeMissingPlugin(ref, c.catalogRegistrations, c.catalogLock, c.catalogCacheRoot)
-	}); err != nil {
+	if err := resolveNestedDefinitions(out, c.describeMissingDefinitionPlugin); err != nil {
 		return nil, err
 	}
 	return out, nil

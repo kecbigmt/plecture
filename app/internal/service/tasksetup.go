@@ -151,8 +151,8 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 				return nil
 			}
 		} else {
-			n := task.NextInstanceNumber(params.TaskID, s.Tasks)
-			key = task.InstanceKey(params.TaskID, strconv.Itoa(n))
+			n := task.NextInstanceNumber(def.ID, s.Tasks)
+			key = task.InstanceKey(def.ID, strconv.Itoa(n))
 		}
 		s.Tasks[key] = &contract.TaskState{
 			Scope:  resolved.Scope,

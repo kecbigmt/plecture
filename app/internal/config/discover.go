@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
@@ -182,17 +183,75 @@ type resolvedDefinition struct {
 	def        *lang.Definition
 	fromPlugin bool
 	pluginID   string
+	// address is the name this declaration is stored and looked up under —
+	// its id alone when the user owns it, and its catalog address when a
+	// mounted plugin declared it.
+	address string
+	// prefix is what a relative reference written inside this declaration
+	// resolves against, empty for a declaration the user owns.
+	prefix string
 	// source is the shallowest layer that declared the id, which is the file
 	// a relative schema path resolves against and the layer a reference
 	// written in the declaration resolves in.
 	source string
 }
 
-// resolveNamespace folds one kind's declarations across the cascade: plugin
-// layers are the base, and a deeper user-owned layer replaces what they
-// declared, except a workflow, which merges by the cascade rules. Two plugin
-// layers claiming one id is a load error, since declaration order must never
-// decide between two plugins.
+// definitionAddress is the name a declaration is stored and referenced under.
+// A mounted plugin's declaration takes its catalog address, which is what lets
+// two plugins declare one id and stay tellable apart. Everything else keeps
+// its bare id: the user-owned layer stack is a single namespace with no alias
+// to qualify by, and a hand-authored `plugin_dirs` entry carries no catalog
+// identity, so no address exists that could name it.
+func definitionAddress(layer layerDir, id string) string {
+	prefix := addressPrefix(layer)
+	if prefix == "" {
+		return id
+	}
+	return prefix + "." + id
+}
+
+// addressPrefix is the dotted prefix a declaration in this layer is addressed
+// under, and equally the prefix a relative reference written there resolves
+// against. It is empty for every layer that has no catalog identity to name it
+// by, which is what makes such a layer's declarations bare-addressed.
+func addressPrefix(layer layerDir) string {
+	if !layer.plugin || layer.pluginID == "" {
+		return ""
+	}
+	own := pluginOwnership(layer.pluginID)
+	if own.Path == "" {
+		return own.Alias
+	}
+	return own.Alias + "." + own.Path
+}
+
+// referenceAddress reads a reference as written where it was written and
+// returns the address it selects. A relative reference inside a mounted plugin
+// names that plugin's own declaration, which is why the prefix is prepended
+// rather than searched for; everywhere else the reference is already the
+// address, bare or catalog-qualified.
+func referenceAddress(prefix, ref string) (string, error) {
+	if ref == "" || prefix == "" {
+		return ref, nil
+	}
+	if strings.Contains(ref, ".") {
+		return "", fmt.Errorf("%s: a plugin-owned reference must be relative; %q names a catalog alias or another plugin's ownership segment", prefix, ref)
+	}
+	return prefix + "." + ref, nil
+}
+
+// resolveNamespace folds one kind's declarations across the cascade, grouped
+// by the address each declaration answers to. Within one address a deeper
+// user-owned layer replaces what a shallower one declared, except a workflow,
+// which merges by the cascade rules.
+//
+// Two mounted plugins declaring one id land on different addresses and both
+// stay reachable, and a user-owned declaration sharing an id with a plugin's
+// no longer hides it: the two are separate addresses, so which one a reference
+// selects is decided by how the reference is written rather than by layer
+// depth. Two plugin layers with no catalog identity are the one collision left
+// — nothing can name them apart, so choosing between them would fall to
+// declaration order.
 //
 // The fold is per kind because id uniqueness across kinds is a rule *within* a
 // layer, which discovery enforces for a whole root, and not across them: each
@@ -201,50 +260,113 @@ type resolvedDefinition struct {
 // `goal_review` workflow coexist — a chain naming that id wants the workflow,
 // and an instantiation wants the document.
 func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]resolvedDefinition, error) {
-	var merged []*lang.Definition
-	facts := make(map[string]resolvedDefinition)
-	pluginOwner := make(map[string]string)
+	type group struct {
+		defs       []*lang.Definition
+		fromPlugin bool
+		pluginID   string
+		prefix     string
+		source     string
+		// unaliased names the file of the identity-less plugin layer that
+		// already claimed this address, which is what the second one collides
+		// with.
+		unaliased string
+	}
+	groups := make(map[string]*group)
+	var order []string
 	for _, discovered := range layers {
-		defs := discovered.ofKind(kind)
-		for _, def := range defs {
-			if discovered.layer.plugin {
-				if owner, exists := pluginOwner[def.ID]; exists {
-					return nil, fmt.Errorf("id %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, def.File)
-				}
-				pluginOwner[def.ID] = def.File
-			}
-			prior, seen := facts[def.ID]
-			entry := resolvedDefinition{
-				fromPlugin: discovered.layer.plugin,
-				pluginID:   discovered.layer.pluginID,
-				source:     def.File,
-			}
-			if seen {
-				// The shallowest declarer keeps the id, so a deeper layer
+		for _, def := range discovered.ofKind(kind) {
+			address := definitionAddress(discovered.layer, def.ID)
+			g, seen := groups[address]
+			if !seen {
+				// The shallowest declarer keeps source, so a deeper layer
 				// extending a workflow does not move what its relative paths
 				// resolve against.
-				entry.source = prior.source
+				g = &group{source: def.File, prefix: addressPrefix(discovered.layer)}
+				groups[address] = g
+				order = append(order, address)
 			}
-			facts[def.ID] = entry
+			if discovered.layer.plugin && discovered.layer.pluginID == "" {
+				if g.unaliased != "" {
+					return nil, fmt.Errorf("id %q is declared by two plugin layers that carry no catalog identity (%s and %s); a hand-authored plugin_dirs entry has no address to tell it apart from another, so enable them through a catalog or replace one definition in global config", def.ID, g.unaliased, def.File)
+				}
+				g.unaliased = def.File
+			}
+			g.defs = append(g.defs, def)
+			g.fromPlugin = discovered.layer.plugin
+			g.pluginID = discovered.layer.pluginID
 		}
-		combined, err := lang.MergeLayer(merged, defs)
-		if err != nil {
-			return nil, err
+	}
+	sort.Strings(order)
+	out := make([]resolvedDefinition, 0, len(order))
+	for _, address := range order {
+		g := groups[address]
+		var merged []*lang.Definition
+		for _, def := range g.defs {
+			combined, err := lang.MergeLayer(merged, []*lang.Definition{def})
+			if err != nil {
+				return nil, err
+			}
+			merged = combined
 		}
-		merged = combined
-	}
-	out := make([]resolvedDefinition, 0, len(merged))
-	ids := make([]string, 0, len(merged))
-	byID := make(map[string]*lang.Definition, len(merged))
-	for _, def := range merged {
-		ids = append(ids, def.ID)
-		byID[def.ID] = def
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		entry := facts[id]
-		entry.def = byID[id]
-		out = append(out, entry)
+		out = append(out, resolvedDefinition{
+			def:        merged[0],
+			fromPlugin: g.fromPlugin,
+			pluginID:   g.pluginID,
+			address:    address,
+			prefix:     g.prefix,
+			source:     g.source,
+		})
 	}
 	return out, nil
+}
+
+// canonicalizeWorkflowRefs rewrites a workflow's static references — its
+// workspace provider, each node's `uses`, and each event channel's `uses` — to
+// the addresses they select, so the runtime resolves topology by map lookup
+// instead of re-reading the reference grammar at every site.
+func canonicalizeWorkflowRefs(wf *WorkflowFile, prefix string) error {
+	if prefix == "" {
+		return nil
+	}
+	provider, err := referenceAddress(prefix, wf.WorkspaceProvider)
+	if err != nil {
+		return fmt.Errorf("workflow %q workspace_provider: %w", wf.ID, err)
+	}
+	wf.WorkspaceProvider = provider
+	for i := range wf.Nodes {
+		uses, err := referenceAddress(prefix, wf.Nodes[i].Uses)
+		if err != nil {
+			return fmt.Errorf("workflow %q node %q: %w", wf.ID, wf.Nodes[i].ID, err)
+		}
+		wf.Nodes[i].Uses = uses
+	}
+	for i := range wf.Event.Channel {
+		uses, err := referenceAddress(prefix, wf.Event.Channel[i].Uses)
+		if err != nil {
+			return fmt.Errorf("workflow %q event channel %q: %w", wf.ID, wf.Event.Channel[i].Name, err)
+		}
+		wf.Event.Channel[i].Uses = uses
+	}
+	return nil
+}
+
+// canonicalizeDocumentRefs rewrites a task document's observer reference and
+// each chain's workflow reference to the addresses they select.
+func canonicalizeDocumentRefs(doc *TaskDocument, prefix string) error {
+	if prefix == "" {
+		return nil
+	}
+	observer, err := referenceAddress(prefix, doc.ResourceObserver)
+	if err != nil {
+		return fmt.Errorf("task %q resource_observer: %w", doc.ID, err)
+	}
+	doc.ResourceObserver = observer
+	for i := range doc.Chains {
+		workflow, err := referenceAddress(prefix, doc.Chains[i].Workflow)
+		if err != nil {
+			return fmt.Errorf("task %q chain %q: %w", doc.ID, doc.Chains[i].ID, err)
+		}
+		doc.Chains[i].Workflow = workflow
+	}
+	return nil
 }

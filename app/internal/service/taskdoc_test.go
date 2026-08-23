@@ -444,7 +444,7 @@ func TestTaskSetup_PluginTaskDocumentResolvesItsOwnObserver(t *testing.T) {
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 
 	result, err := TaskSetup(cfg, store, TaskSetupParams{
-		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
+		TaskID: "official.acme.review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
 	})
 	if err != nil {
 		t.Fatalf("TaskSetup: %v", err)

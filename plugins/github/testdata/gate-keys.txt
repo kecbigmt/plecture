@@ -1,22 +1,22 @@
-== investigate (issue)
+== official.github.investigate (official.github.issue)
 ac-met                                     judged    done_when   investigate
-resource.state.checks_status               observed  done_when   issue
-resource.state.resource_kind               observed  done_when   issue
+resource.state.checks_status               observed  done_when   official.github.issue
+resource.state.resource_kind               observed  done_when   official.github.issue
 solves                                     judged    done_when   investigate
 
-== respond (pull)
+== official.github.respond (official.github.pull)
 ac-met                                     judged    done_when   respond
-resource.state.checks_status               observed  done_when   pull
-resource.state.resource_kind               observed  done_when   pull
+resource.state.checks_status               observed  done_when   official.github.pull
+resource.state.resource_kind               observed  done_when   official.github.pull
 solves                                     judged    done_when   respond
 
-== review (pull)
-resource.state.resource_kind               observed  done_when   pull
-resource.state.revision                    observed  done_when   pull
+== official.github.review (official.github.pull)
+resource.state.resource_kind               observed  done_when   official.github.pull
+resource.state.revision                    observed  done_when   official.github.pull
 self.state.verdict_revision                recorded  done_when   review
 
-== work (issue)
+== official.github.work (official.github.issue)
 ac-met                                     judged    done_when   work
-resource.state.checks_status               observed  done_when   issue
-resource.state.resource_kind               observed  done_when   issue
+resource.state.checks_status               observed  done_when   official.github.issue
+resource.state.resource_kind               observed  done_when   official.github.issue
 solves                                     judged    done_when   work

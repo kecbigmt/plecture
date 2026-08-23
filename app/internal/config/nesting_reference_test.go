@@ -47,11 +47,10 @@ plugins = ["`+strings.Join(enabled, "\", \"")+`"]
 	return cfg
 }
 
-// TestLoadTaskDefinitions_QualifiedInnerBypassesUserShadow covers the
-// catalog-qualified `inner` form: it selects the task inside the enabled
-// plugin, which is the whole point of writing the qualified form when a
-// same-id user task exists.
-func TestLoadTaskDefinitions_QualifiedInnerBypassesUserShadow(t *testing.T) {
+// A catalog-qualified `inner` selects the effect inside the enabled plugin,
+// which is what a user-owned effect writes to compose a plugin's effect rather
+// than the same-id one it declares itself.
+func TestLoadTaskDefinitions_QualifiedInnerSelectsThePluginEffect(t *testing.T) {
 	cfg := nestingCatalog(t,
 		[]string{"claude"}, []string{"claude"},
 		map[string]string{"claude/config/tasks/claude.toml": innerRuntime},
@@ -70,7 +69,7 @@ script = "echo shadow"
 kind = "effect"
 
 [myclaude.inner]
-uses = "local/claude/claude"
+uses = "local.claude.claude"
 `,
 		},
 	)
@@ -87,10 +86,9 @@ uses = "local/claude/claude"
 	}
 }
 
-// TestLoadTaskDefinitions_PluginInnerResolvesInItsOwnNamespace covers the
-// relative form inside plugin-authored config: it must reach the plugin's own
-// task even when a user task of the same id shadows it in the merged
-// namespace, so a user shadow can never hijack a plugin's own composition.
+// The relative form inside plugin-authored config reaches the plugin's own
+// effect, so a same-id user-owned effect can never hijack a plugin's
+// composition.
 func TestLoadTaskDefinitions_PluginInnerResolvesInItsOwnNamespace(t *testing.T) {
 	cfg := nestingCatalog(t,
 		[]string{"claude"}, []string{"claude"},
@@ -120,7 +118,7 @@ script = "echo shadow"
 	if err != nil {
 		t.Fatalf("LoadTaskDefinitions: %v", err)
 	}
-	chain := defs["wrapper"].InnerChain
+	chain := defs["local.claude.wrapper"].InnerChain
 	if len(chain) != 1 {
 		t.Fatalf("InnerChain = %v, want one layer", layerIDs(chain))
 	}
@@ -136,27 +134,32 @@ func TestLoadTaskDefinitions_QualifiedInnerReferenceErrors(t *testing.T) {
 		enabled   []string
 		inner     string
 		wantErr   string
+		// noEnableHint marks a reference that reached an enabled plugin and
+		// missed inside it, where suggesting `plect plugin add` would send the
+		// reader after the wrong problem.
+		noEnableHint bool
 	}{
 		{
 			name:      "an unknown catalog alias",
 			published: []string{"claude"},
 			enabled:   []string{"claude"},
-			inner:     "elsewhere/claude/claude",
-			wantErr:   "elsewhere/claude/claude",
+			inner:     "elsewhere.claude.claude",
+			wantErr:   "elsewhere.claude.claude",
 		},
 		{
 			name:      "a plugin the user has not enabled",
 			published: []string{"claude", "codex"},
 			enabled:   []string{"claude"},
-			inner:     "local/codex/codex",
+			inner:     "local.codex.codex",
 			wantErr:   "plect plugin add local/codex",
 		},
 		{
-			name:      "a task missing from the selected plugin",
-			published: []string{"claude"},
-			enabled:   []string{"claude"},
-			inner:     "local/claude/codex",
-			wantErr:   "local/claude/codex",
+			name:         "a task missing from the selected plugin",
+			published:    []string{"claude"},
+			enabled:      []string{"claude"},
+			inner:        "local.claude.codex",
+			wantErr:      "local.claude.codex",
+			noEnableHint: true,
 		},
 	}
 	for _, tt := range tests {
@@ -178,6 +181,9 @@ uses = "` + tt.inner + `"
 			}
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("LoadTaskDefinitions error = %v, want it to contain %q", err, tt.wantErr)
+			}
+			if tt.noEnableHint && strings.Contains(err.Error(), "plect plugin add") {
+				t.Errorf("LoadTaskDefinitions error = %v, want no enable-the-plugin hint for a plugin that is enabled", err)
 			}
 		})
 	}

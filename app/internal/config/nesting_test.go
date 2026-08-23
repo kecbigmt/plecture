@@ -174,7 +174,7 @@ func TestLoadTaskDefinitions_NestingValidationRules(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "inner names an unknown task",
+			name: "inner names an unknown effect",
 			files: map[string]string{
 				"outer": `
 [outer]
@@ -184,7 +184,7 @@ kind = "effect"
 uses = "nope"
 `,
 			},
-			wantErr: `unknown task "nope"`,
+			wantErr: `unknown effect "nope"`,
 		},
 		{
 			name: "inner self-reference forms a nesting cycle",

@@ -96,8 +96,7 @@ func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
 	if err != nil {
 		return nil, err
 	}
-	return loadTrustedKind(resolved, c.channelFromDefinition,
-		func(d ChannelDefinition) string { return d.ID })
+	return loadTrustedKind(resolved, c.channelFromDefinition)
 }
 
 func (c *Config) channelFromDefinition(def *lang.Definition, fromPlugin bool) (ChannelDefinition, error) {

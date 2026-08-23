@@ -177,11 +177,11 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	// The document states a type, so compatibility is checked up front: an
 	// instance bound to a resource the declared observer does not claim can
 	// never satisfy, and is refused instead of created.
-	matched, ok, merr := task.MatchResourceDef(observers, resourceID)
+	matchedAddress, _, ok, merr := task.MatchResourceDef(observers, resourceID)
 	if merr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: merr.Error()}
 	}
-	if !ok || matched.ID != doc.ResourceObserver {
+	if !ok || matchedAddress != doc.ResourceObserver {
 		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource observer %q, which does not claim resource %q", doc.ID, doc.ResourceObserver, resourceID)}
 	}
 
@@ -219,8 +219,12 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 			key = task.InstanceKey(doc.ID, strconv.Itoa(task.NextInstanceNumber(doc.ID, s.Tasks)))
 		}
 		s.Tasks[key] = &contract.TaskState{
-			Scope:    contract.TaskScopeSession,
-			TaskID:   doc.ID,
+			Scope: contract.TaskScopeSession,
+			// The stored task id is the address the reference selected, which
+			// is what lets a later lookup find this document again when two
+			// plugins declare the id. The instance key stays the bare id, the
+			// same way a workflow node's defaulted id does.
+			TaskID:   params.TaskID,
 			Status:   contract.TaskStatusProduced,
 			Inputs:   inputs,
 			Dynamic:  true,

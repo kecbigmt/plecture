@@ -3,76 +3,28 @@ package config
 import (
 	"fmt"
 	"sort"
-	"strings"
 )
 
-// nestingIndex is the reference namespace `inner` resolves against: the
-// merged task namespace for a plain id, and the per-plugin namespaces a
-// catalog-qualified reference selects from without consulting same-id user
-// shadows.
+// nestingIndex is the namespace `inner` resolves against: every loaded effect,
+// keyed by the address it answers to. A reference has already been read where
+// it was written by the time it arrives here, so resolution is a lookup —
+// nesting shares the one reference grammar rather than carrying a second.
 type nestingIndex struct {
-	merged   map[string]TaskDefinition
-	byPlugin map[string]map[string]TaskDefinition
-	// owner maps a definition's own file path to the plugin that mounted it,
-	// which is what makes a plugin's relative `inner` resolve in its own
-	// namespace instead of the merged one.
-	owner map[string]string
+	byAddress map[string]TaskDefinition
 	// missingPlugin names a plugin to enable for an otherwise unresolvable
 	// qualified reference, mirroring the executable reference's remediation hint.
 	missingPlugin func(ref string) string
 }
 
-func (ix nestingIndex) resolve(from TaskDefinition, ref string) (TaskDefinition, error) {
-	if strings.Contains(ref, "/") {
-		return ix.resolveQualified(ref)
-	}
-	if pluginID, ok := ix.owner[from.SourcePath]; ok {
-		def, found := ix.byPlugin[pluginID][ref]
-		if !found {
-			return TaskDefinition{}, fmt.Errorf("inner %q: plugin %q declares no such task (a plugin's relative inner reference resolves in its own namespace)", ref, pluginID)
-		}
+func (ix nestingIndex) resolve(ref string) (TaskDefinition, error) {
+	if def, ok := ix.byAddress[ref]; ok {
 		return def, nil
 	}
-	def, found := ix.merged[ref]
-	if !found {
-		return TaskDefinition{}, fmt.Errorf("inner names unknown task %q", ref)
+	hint := ""
+	if ix.missingPlugin != nil {
+		hint = ix.missingPlugin(ref)
 	}
-	return def, nil
-}
-
-// resolveQualified reads ref as "<catalog-alias>/<plugin-path>/<task-id>"
-// with the accept-exactly-one semantics a qualified executable reference already
-// use, so a plugin path of arbitrary depth never rests on a longest-prefix
-// guess.
-func (ix nestingIndex) resolveQualified(ref string) (TaskDefinition, error) {
-	var candidates []TaskDefinition
-	var from []string
-	pluginIDs := make([]string, 0, len(ix.byPlugin))
-	for id := range ix.byPlugin {
-		pluginIDs = append(pluginIDs, id)
-	}
-	sort.Strings(pluginIDs)
-	for _, id := range pluginIDs {
-		if !strings.HasPrefix(ref, id+"/") {
-			continue
-		}
-		if def, ok := ix.byPlugin[id][strings.TrimPrefix(ref, id+"/")]; ok {
-			candidates = append(candidates, def)
-			from = append(from, id)
-		}
-	}
-	switch len(candidates) {
-	case 1:
-		return candidates[0], nil
-	case 0:
-		hint := ""
-		if ix.missingPlugin != nil {
-			hint = ix.missingPlugin(ref)
-		}
-		return TaskDefinition{}, fmt.Errorf("inner %q: no enabled plugin resolves this task reference (want \"<catalog-alias>/<plugin-path>/<task-id>\")%s", ref, hint)
-	default:
-		return TaskDefinition{}, fmt.Errorf("inner %q: ambiguous; matches more than one plugin reading: %v", ref, from)
-	}
+	return TaskDefinition{}, fmt.Errorf("inner names unknown effect %q%s", ref, hint)
 }
 
 // nestingChain walks inward from def, returning the chain next-inner first.
@@ -81,7 +33,7 @@ func (ix nestingIndex) nestingChain(def TaskDefinition) ([]TaskDefinition, error
 	seen := map[string]bool{def.SourcePath: true}
 	cur := def
 	for cur.IsNested() {
-		next, err := ix.resolve(cur, cur.Inner)
+		next, err := ix.resolve(cur.Inner)
 		if err != nil {
 			return nil, err
 		}
@@ -95,28 +47,17 @@ func (ix nestingIndex) nestingChain(def TaskDefinition) ([]TaskDefinition, error
 	return chain, nil
 }
 
-// resolveNestedDefinitions resolves and validates every nesting chain among
-// the loaded definitions, stamping the resolved chain onto each outer task in
-// merged. all carries every definition file that was read, including plugin
-// definitions a same-id user task shadows, so a qualified `inner` can still
-// reach one.
-func resolveNestedDefinitions(merged map[string]TaskDefinition, all []TaskDefinition, owner map[string]string, missingPlugin func(string) string) error {
-	byPlugin := make(map[string]map[string]TaskDefinition)
-	for _, def := range all {
-		pluginID, ok := owner[def.SourcePath]
-		if !ok {
-			continue
-		}
-		if byPlugin[pluginID] == nil {
-			byPlugin[pluginID] = make(map[string]TaskDefinition)
-		}
-		byPlugin[pluginID][def.ID] = def
+// resolveNestedDefinitions resolves and validates every nesting chain among the
+// loaded definitions, stamping the resolved chain onto each outer effect.
+func resolveNestedDefinitions(defs map[string]TaskDefinition, missingPlugin func(string) string) error {
+	ix := nestingIndex{byAddress: defs, missingPlugin: missingPlugin}
+	addresses := make([]string, 0, len(defs))
+	for address := range defs {
+		addresses = append(addresses, address)
 	}
-	ix := nestingIndex{merged: merged, byPlugin: byPlugin, owner: owner, missingPlugin: missingPlugin}
-
-	sorted := append([]TaskDefinition(nil), all...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].SourcePath < sorted[j].SourcePath })
-	for _, def := range sorted {
+	sort.Strings(addresses)
+	for _, address := range addresses {
+		def := defs[address]
 		if !def.IsNested() {
 			continue
 		}
@@ -124,17 +65,14 @@ func resolveNestedDefinitions(merged map[string]TaskDefinition, all []TaskDefini
 		if err != nil {
 			return fmt.Errorf("task %s: %w", def.SourcePath, err)
 		}
-		layers := append([]TaskDefinition{def}, chain...)
-		if err := validateNesting(layers); err != nil {
+		if err := validateNesting(append([]TaskDefinition{def}, chain...)); err != nil {
 			return fmt.Errorf("task %s: %w", def.SourcePath, err)
 		}
 		// Only the outermost definition carries the chain: it is already
 		// flattened, so re-stamping each inner layer would store the same
 		// suffix N times.
-		if cur, ok := merged[def.ID]; ok && cur.SourcePath == def.SourcePath {
-			cur.InnerChain = chain
-			merged[def.ID] = cur
-		}
+		def.InnerChain = chain
+		defs[address] = def
 	}
 	return nil
 }

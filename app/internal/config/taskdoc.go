@@ -99,7 +99,10 @@ func (c *Config) LoadTaskDocuments(workspaceDirPath string) (map[string]TaskDocu
 		if err != nil {
 			return nil, err
 		}
-		out[doc.ID] = doc
+		if err := canonicalizeDocumentRefs(&doc, entry.prefix); err != nil {
+			return nil, err
+		}
+		out[entry.address] = doc
 	}
 	return out, nil
 }

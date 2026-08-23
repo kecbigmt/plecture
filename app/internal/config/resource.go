@@ -73,8 +73,7 @@ func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
 	if err != nil {
 		return nil, err
 	}
-	return loadTrustedKind(resolved, c.resourceDefFromDefinition,
-		func(def ResourceDef) string { return def.ID })
+	return loadTrustedKind(resolved, c.resourceDefFromDefinition)
 }
 
 func (c *Config) resourceDefFromDefinition(def *lang.Definition, fromPlugin bool) (ResourceDef, error) {
