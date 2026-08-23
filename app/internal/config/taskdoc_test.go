@@ -305,12 +305,8 @@ Review it.
 	}
 }
 
-// Ids share one namespace per layer across kinds, so a document and an effect
-// declaring the same id in one layer is a load error rather than a silent
-// choice of one of them.
-// Id uniqueness across kinds is a rule within a layer: one layer declaring an
-// id as both a document and an effect is ambiguous, and traversal order must
-// not pick a winner.
+// One layer declaring an id as both a document and an effect is ambiguous, and
+// traversal order must not pick a winner.
 func TestLoadTaskDeclarations_SameLayerCollisionRejected(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "tasks", "review.md"), duplicateTaskDoc)
@@ -329,7 +325,7 @@ func TestLoadTaskDeclarations_SameLayerCollisionRejected(t *testing.T) {
 // a deeper declaration of another kind shadows nothing and both load. A
 // reference resolves by the kind its site expects — which is what lets a
 // plugin ship a `goal_review` task document while the host declares the
-// `goal_review` workflow a chain fires into. Owner ruling 2026-08-23.
+// `goal_review` workflow a chain fires into.
 func TestLoadTaskDeclarations_CrossLayerDifferentKindsCoexist(t *testing.T) {
 	pluginDir := t.TempDir()
 	base := t.TempDir()

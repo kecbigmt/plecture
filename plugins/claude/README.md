@@ -51,7 +51,7 @@ replacing them (the parameterization rung of
 ```toml
 [[my_workflow.nodes]]
 id   = "agent"
-uses = "official.claude.runtime"
+uses = "runtime"
 
 [my_workflow.nodes.inputs]
 tmux_session = { from = "nodes.pane.outputs.session_name" }
@@ -60,12 +60,18 @@ mcp_servers  = '[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]'
 
 [[my_workflow.event.channel]]
 name    = "runtime"
-uses    = "official.claude.delivery"
+uses    = "delivery"
 include = ["plect.instruction", "user.emit"]
 
 [my_workflow.event.channel.inputs]
 path = { from = "nodes.agent.outputs.socket_path" }
 ```
+
+The references above are relative — the form a workflow can run today. The
+catalog-qualified spelling (`official.claude.runtime`) is the ratified one for
+user-owned config, and its resolution reaches the language's own validation but
+not yet the runtime's node, channel, provider and `inner.uses` lookups, which
+still key on the bare id. Use the relative form until that is wired.
 
 ## Install
 

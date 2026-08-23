@@ -59,7 +59,7 @@ replacing them (the parameterization rung of
 ```toml
 [[my_workflow.nodes]]
 id   = "agent"
-uses = "official.codex.exec_runtime"
+uses = "exec_runtime"
 
 [my_workflow.nodes.inputs]
 launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}'
@@ -67,7 +67,7 @@ state_root = "/var/lib/plect/codex-exec"
 
 [[my_workflow.event.channel]]
 name    = "runtime"
-uses    = "official.codex.exec_delivery"
+uses    = "exec_delivery"
 include = ["plect.instruction", "resource.*"]
 
 [my_workflow.event.channel.inputs]
@@ -75,6 +75,12 @@ queue_dir        = { from = "nodes.agent.outputs.queue_dir" }
 enqueue_timeout  = "30s"
 message_envelope = "{type}: {body_or_summary}"
 ```
+
+The references above are relative — the form a workflow can run today. The
+catalog-qualified spelling (`official.codex.exec_runtime`) is the ratified one for
+user-owned config, and its resolution reaches the language's own validation but
+not yet the runtime's node, channel, provider and `inner.uses` lookups, which
+still key on the bare id. Use the relative form until that is wired.
 
 ## Install
 

@@ -1380,7 +1380,6 @@ func TestLoadDeclarations_SameLayerCrossKindCollisionRejected(t *testing.T) {
 
 // Across layers the same pair coexists: each layer has its own namespace, so
 // neither declaration shadows the other and each loader sees its own kind.
-// Owner ruling 2026-08-23.
 func TestLoadDeclarations_CrossLayerCrossKindCoexists(t *testing.T) {
 	pluginDir := t.TempDir()
 	base := t.TempDir()
