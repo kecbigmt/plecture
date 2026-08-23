@@ -148,13 +148,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 			switch {
 			case freshErr != nil:
 				result.UnsubscribeError = fmt.Sprintf("could not verify whether %s is still needed: %v", st.Resource, freshErr)
-			case fresh == nil:
-				// The session itself is gone (destroyed between
-				// resolveSession above and this read): nothing can need the
-				// resource any more than resourceStillNeededBySession's "no"
-				// case already covers, so it is handled identically.
-				fallthrough
-			case !resourceStillNeededBySession(fresh, st.Resource):
+			case shouldUnsubscribe(fresh, st.Resource):
 				unsubscribed, unsubErr := unsubscribeIfWired(cfg, resolvedName, st.Resource)
 				result.Unsubscribed = unsubscribed
 				if unsubErr != nil {
@@ -175,6 +169,15 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 		}
 	}
 	return result, nil
+}
+
+// shouldUnsubscribe reports whether resource's delivery registration should
+// be dropped, given a fresh read of the session (nil when the session
+// itself no longer exists — destroyed between resolveSession and this read
+// — which is handled the same as "not needed": nothing can need a resource
+// once its owning session is gone).
+func shouldUnsubscribe(fresh *domain.Session, resource string) bool {
+	return fresh == nil || !resourceStillNeededBySession(fresh, resource)
 }
 
 func resourceStillNeededBySession(s *domain.Session, resource string) bool {

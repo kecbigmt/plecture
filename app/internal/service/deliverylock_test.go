@@ -30,22 +30,22 @@ func TestDeliveryLock_ConcurrentSetupWaitsOutACleanupsUnsubscribe(t *testing.T) 
 		[]nodeFixture{{id: "work"}},
 	)
 	body := `
-[github]
+[fixture]
 kind  = "workspace_provider"
-match = '` + ghMatch + `'
+match = '` + fixtureResourceMatch + `'
 name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[fixture.setup]
 type    = "exec"
 command = "printf"
 args    = ['{"workdir":"/tmp/x"}']
 
-[github.subscribe]
+[fixture.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'printf subscribed > "$1"', "provider", "` + state + `"]
 
-[github.unsubscribe]
+[fixture.unsubscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'touch "$1"; sleep 0.3; printf unsubscribed > "$2"', "provider", "` + started + `", "` + state + `"]
@@ -53,20 +53,20 @@ args    = ["-c", 'touch "$1"; sleep 0.3; printf unsubscribed > "$2"', "provider"
 	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
-	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
 
-	const prURL = "https://github.com/o/r/pull/9"
-	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "a", Resource: prURL}); err != nil {
+	const prURL = "resource://sess/proj/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "a", Resource: prURL}); err != nil {
 		t.Fatalf("setup a: %v", err)
 	}
 
 	cleanupDone := make(chan error, 1)
 	go func() {
-		_, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "a", SessionName: "o/r-1"})
+		_, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "a", SessionName: "sess-1"})
 		cleanupDone <- err
 	}()
 
@@ -77,7 +77,7 @@ args    = ["-c", 'touch "$1"; sleep 0.3; printf unsubscribed > "$2"', "provider"
 	waitUntil(t, func() bool { _, err := os.Stat(started); return err == nil })
 
 	setupStart := time.Now()
-	setupResult, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "b", Resource: prURL})
+	setupResult, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "b", Resource: prURL})
 	setupElapsed := time.Since(setupStart)
 	if err != nil {
 		t.Fatalf("setup b: %v", err)
@@ -102,5 +102,144 @@ args    = ["-c", 'touch "$1"; sleep 0.3; printf unsubscribed > "$2"', "provider"
 	}
 	if string(got) != "subscribed" {
 		t.Errorf("final registry state = %q, want %q — b's subscribe must always run after a's unsubscribe completes, never race it", got, "subscribed")
+	}
+}
+
+// A failure to acquire the delivery lock itself — not just a failure inside
+// it — must still be queued for a durable retry: subscribeIfWired never
+// even runs, so the only trace of the failure without a queue entry would
+// be the transient SubscribeError.
+func TestTaskSetup_DeliveryLockAcquisitionFailureQueuesSubscribeRetry(t *testing.T) {
+	rec := filepath.Join(t.TempDir(), "rec")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "work"}},
+	)
+	body := `
+[fixture]
+kind  = "workspace_provider"
+match = '` + fixtureResourceMatch + `'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[fixture.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workdir":"/tmp/x"}']
+
+[fixture.subscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'printf done > "$1"', "provider", "` + rec + `"]
+`
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := testStore(t)
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
+
+	// A regular file where withDeliveryLock needs to create a directory
+	// makes its os.MkdirAll fail before subscribeIfWired ever runs.
+	if err := os.WriteFile(filepath.Join(store.Dir(), "delivery-locks"), []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	const prURL = "resource://sess/proj/pull/9"
+	result, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "pr", Resource: prURL})
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if result.Subscribed {
+		t.Error("Subscribed = true, want false: the delivery lock could not be acquired")
+	}
+	if result.SubscribeError == "" {
+		t.Error("SubscribeError is empty, want the lock-acquisition failure reported")
+	}
+	if _, statErr := os.Stat(rec); statErr == nil {
+		t.Error("the subscribe hook must not have run: the lock was never acquired")
+	}
+
+	f, loadErr := loadPendingDelivery(pendingDeliveryPath(store))
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if got := f.Subscribe["sess-1"]; len(got) != 1 || got[0] != prURL {
+		t.Fatalf("pending subscribe queue = %v, want [%s] for sess-1", got, prURL)
+	}
+}
+
+// The unsubscribe-side counterpart: a failure to acquire the delivery lock
+// during TaskCleanup's own decision must also be queued, not just reported
+// transiently — the reclaimed instance record is already gone, so the
+// queue is the only surviving trace.
+func TestTaskCleanup_DeliveryLockAcquisitionFailureQueuesUnsubscribeRetry(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	body := `
+[fixture]
+kind  = "workspace_provider"
+match = '` + fixtureResourceMatch + `'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[fixture.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workdir":"/tmp/x"}']
+
+[fixture.subscribe]
+type    = "exec"
+command = "true"
+
+[fixture.unsubscribe]
+type    = "exec"
+command = "true"
+`
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := testStore(t)
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "resource://sess/proj/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "a", Resource: prURL}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	// Sabotage the lock directory after setup succeeds (setup's own
+	// subscribe already created it as a real directory, so it must be
+	// cleared first), so TaskCleanup's own unsubscribe decision is what
+	// fails to acquire it.
+	lockDir := filepath.Join(store.Dir(), "delivery-locks")
+	if err := os.RemoveAll(lockDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lockDir, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "a", SessionName: "sess-1"})
+	if err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if result.Unsubscribed {
+		t.Error("Unsubscribed = true, want false: the delivery lock could not be acquired")
+	}
+	if result.UnsubscribeError == "" {
+		t.Error("UnsubscribeError is empty, want the lock-acquisition failure reported")
+	}
+
+	f, loadErr := loadPendingDelivery(pendingDeliveryPath(store))
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if got := f.Unsubscribe["sess-1"]; len(got) != 1 || got[0] != prURL {
+		t.Fatalf("pending unsubscribe queue = %v, want [%s] for sess-1", got, prURL)
 	}
 }

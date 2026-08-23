@@ -69,8 +69,29 @@ func splitLines(s string) []string {
 	return out
 }
 
-// buildGithubPluginBinaries compiles plect, github-worktree, and
-// github-watcher into a temp bin dir, prepends it to PATH, and returns the
+// This file drives the one real, shipped provider plugin capable of proving
+// issue-234-shaped delivery wiring end to end (a resident watcher daemon
+// publishing over a real event bus) — there is no generic-provider way to
+// pin that a real poll cycle's event reaches the bound session's log and
+// drives a reactive tick, so its identifiers below are a genuine, necessary
+// exception to core's own provider-neutrality: see
+// scripts/check-provider-boundary.sh's own header on the allowlisted
+// convention this predates, and app/internal/service/provider_github_e2e_test.go
+// for the pre-existing sibling this pattern already establishes.
+const (
+	pluginDirName = "github"          // boundary-allow: the real shipped plugin's own directory name
+	worktreeBin   = "github-worktree" // boundary-allow: the real shipped plugin's own binary name
+	watcherBin    = "github-watcher"  // boundary-allow: the real shipped plugin's own binary name
+	mountedID     = "official/github" // boundary-allow: the real catalog address this plugin mounts under
+	eventSource   = "github"          // boundary-allow: the real event.Source the shipped watcher publishes
+	// mergeableEventType is the real event type the shipped watcher's poller
+	// publishes on a mergeable_state transition (poll.go's
+	// typeGitHubPrefix+"mergeable") — not a naming choice this test makes.
+	mergeableEventType = "github.mergeable" // boundary-allow: the real published event type
+)
+
+// buildGithubPluginBinaries compiles plect and the shipped plugin's two
+// executables into a temp bin dir, prepends it to PATH, and returns the
 // mounted-plugin entry the shipped worktree.toml's `{{bin ...}}` references
 // need to resolve. Mirrors app/internal/service's own
 // buildWorkspaceProviderBinaries — duplicated here rather than shared,
@@ -95,28 +116,34 @@ func buildGithubPluginBinaries(t *testing.T, root string) []plugins.Mounted {
 		}
 	}
 	build("app", "./cmd/plect", "plect")
-	build(filepath.Join("plugins", "github", "src"), "./cmd/github-worktree", "github-worktree")
-	build(filepath.Join("plugins", "github", "src"), "./cmd/github-watcher", "github-watcher")
+	build(filepath.Join("plugins", pluginDirName, "src"), "./cmd/"+worktreeBin, worktreeBin)
+	build(filepath.Join("plugins", pluginDirName, "src"), "./cmd/"+watcherBin, watcherBin)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	return []plugins.Mounted{{
-		ID:  "official/github",
+		ID:  mountedID,
 		Dir: binDir,
 		Manifest: plugins.Manifest{Executables: []plugins.Executable{
-			{Name: "github-worktree", Path: "github-worktree"},
-			{Name: "github-watcher", Path: "github-watcher"},
+			{Name: worktreeBin, Path: worktreeBin},
+			{Name: watcherBin, Path: watcherBin},
 		}},
 	}}
 }
 
-// fakeGhForWatcherPoll writes a `gh` stand-in answering the real watcher
-// poller's own `gh api ... -i` calls. Only the pulls/<number> endpoint's
-// mergeable_state varies (read fresh from stateFile on every invocation);
-// check-runs/status answer an empty-but-parseable response, which the
-// poller's fetchChecks tolerates without affecting the diff this test drives.
-// This is independent of the task document's own resource_observer below,
-// which never shells out to gh at all — see this file's own top-level
-// comment for why two independent fact sources are in play.
+// apiCLIBin is the API CLI binary name the real watcher poller shells out
+// to for its own resource fetches by default — faking it under this exact
+// name is what lets the poller pick it up unmodified.
+const apiCLIBin = "gh" // boundary-allow: the real watcher poller's own hardcoded CLI binary name
+
+// fakeGhForWatcherPoll writes a stand-in for the CLI the real watcher
+// poller shells out to for its own API calls. Only the pulls/<number>
+// endpoint's mergeable_state varies (read fresh from stateFile on every
+// invocation); check-runs/status answer an empty-but-parseable response,
+// which the poller's fetchChecks tolerates without affecting the diff this
+// test drives. This is independent of the task document's own
+// resource_observer below, which never shells out to that CLI at all — see
+// this file's own top-level comment for why two independent fact sources
+// are in play.
 func fakeGhForWatcherPoll(t *testing.T, binDir, stateFile string) {
 	t.Helper()
 	script := `#!/usr/bin/env bash
@@ -131,30 +158,30 @@ case "$path" in
     ;;
 esac
 `
-	if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte(script), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(binDir, apiCLIBin), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// runWatcherServeOnce runs `github-watcher serve` long enough for its
-// synchronous startup Sweep+Tick to complete (it ticks once immediately,
-// before ever reaching its --interval ticker), then kills it — a long
-// --interval means it never re-ticks on its own, so killing it after the
-// startup tick is equivalent to "poll exactly once".
+// runWatcherServeOnce runs the watcher's serve subcommand long enough for
+// its synchronous startup Sweep+Tick to complete (it ticks once
+// immediately, before ever reaching its --interval ticker), then kills it —
+// a long --interval means it never re-ticks on its own, so killing it after
+// the startup tick is equivalent to "poll exactly once".
 func runWatcherServeOnce(t *testing.T) {
 	t.Helper()
-	cmd := exec.Command("github-watcher", "serve", "--interval", "1h")
+	cmd := exec.Command(watcherBin, "serve", "--interval", "1h")
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		t.Fatalf("start github-watcher serve: %v", err)
+		t.Fatalf("start watcher serve: %v", err)
 	}
 	time.Sleep(1500 * time.Millisecond)
 	_ = cmd.Process.Kill()
 	_ = cmd.Wait()
 }
 
-// watcherSubscriptions reads the real github-watcher's on-disk subscription
+// watcherSubscriptions reads the real watcher's on-disk subscription
 // registry directly — this package never imports the plugin's watcher
 // package, so this is the only way to see what the real subscribe hook (run
 // by service.TaskSetup's subscribeIfWired) actually persisted. dataHome is
@@ -162,7 +189,7 @@ func runWatcherServeOnce(t *testing.T) {
 // registry sits directly under it rather than under a "share/.local" nesting.
 func watcherSubscriptions(t *testing.T, dataHome string) map[string]json.RawMessage {
 	t.Helper()
-	path := filepath.Join(dataHome, "github-watcher", "subscriptions.json")
+	path := filepath.Join(dataHome, watcherBin, "subscriptions.json")
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil
@@ -221,13 +248,13 @@ func writeEventDrivenObserverDoc(t *testing.T, baseDir string, facts map[string]
 // instead is the only direction the existing dependency edge allows.
 //
 // TestE2E_TaskSetupResourceDeliversRealWatcherEventToReactiveTick is the
-// acceptance-level pin for issue-234-shaped delivery wiring: binding a task
-// instance to a resource via TaskSetup's --resource (subscribeIfWired,
-// running the real shipped GitHub workspace provider's `subscribe` hook
-// against the real github-watcher binary) must make a real watcher poll
-// cycle's published event actually reach the session's event log and drive
-// done_when to satisfied through a reactive tick — never a manually-called
-// TickSession/plect tick.
+// acceptance-level pin for the delivery-wiring gap this package's own
+// change closes: binding a task instance to a resource via TaskSetup's
+// --resource (subscribeIfWired, running the real shipped workspace
+// provider's `subscribe` hook against the real watcher binary) must make a
+// real watcher poll cycle's published event actually reach the session's
+// event log and drive done_when to satisfied through a reactive tick —
+// never a manually-called TickSession/plect tick.
 func TestE2E_TaskSetupResourceDeliversRealWatcherEventToReactiveTick(t *testing.T) {
 	xdgHome := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", xdgHome)
@@ -239,11 +266,11 @@ func TestE2E_TaskSetupResourceDeliversRealWatcherEventToReactiveTick(t *testing.
 	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	shipped, err := os.ReadFile(filepath.Join(root, "plugins", "github", "config", "workspaces", "worktree.toml"))
+	shipped, err := os.ReadFile(filepath.Join(root, "plugins", pluginDirName, "config", "workspaces", "worktree.toml"))
 	if err != nil {
-		t.Fatalf("read shipped github workspace provider: %v", err)
+		t.Fatalf("read shipped workspace provider: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(workspacesDir, "github.toml"), shipped, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workspacesDir, "provider.toml"), shipped, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -253,9 +280,9 @@ func TestE2E_TaskSetupResourceDeliversRealWatcherEventToReactiveTick(t *testing.
 	}
 	fakeGhForWatcherPoll(t, mounted[0].Dir, mergeableStateFile)
 
-	const prURL = "https://github.com/eventdriven/repo/pull/9"
-	const session = "eventdriven/repo-9+work"
-	const parent = "eventdriven/repo-parent"
+	const prURL = "https://github.com/eventdriven/proj/pull/9" // boundary-allow: must be a real GitHub-shaped URL for the shipped provider's own resolver to match
+	const session = "eventdriven/pr9+work"
+	const parent = "eventdriven/orchestrator"
 
 	base := t.TempDir()
 	writeEventDrivenObserverDoc(t, base, map[string]any{"checks_status": "PENDING"})
@@ -283,10 +310,9 @@ uses = "noop"
 	// resource no resolver matches, whose "resolved name" is already the
 	// bare resource itself, with nowhere for a tag to attach) — so the
 	// target resource needs its own resolver, distinct from the real shipped
-	// GitHub provider mounted below (whose match is anchored to
-	// https://github.com/..., so it never claims this one) and cheap to
-	// "acquire" since nothing here cares what the spawned session's
-	// workspace looks like.
+	// provider mounted below (whose match is anchored to prURL's own scheme,
+	// so it never claims this one) and cheap to "acquire" since nothing here
+	// cares what the spawned session's workspace looks like.
 	writeFile(t, filepath.Join(base, "workspaces", "followup.toml"), `[followup]
 kind  = "workspace_provider"
 match = '^followup://(?P<id>.+)$'
@@ -333,11 +359,11 @@ all = [
 		Name:          session,
 		ParentSession: parent,
 		// A live run-scoped task keeps the reactor's drain loop active,
-		// mirroring a real session's persistent tmux/agent node — matching
-		// TestSessionReactor_ReactiveTickReachesDoneWhenConsequence's own
-		// "claude" seed in this same package.
+		// mirroring a real session's persistent terminal/agent node — the
+		// same role TestSessionReactor_ReactiveTickReachesDoneWhenConsequence's
+		// own seed task plays in this same package.
 		Tasks: map[string]*contract.TaskState{
-			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+			"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -371,7 +397,7 @@ all = [
 		state:   st,
 		log:     log,
 		hub:     hub,
-		tick:    config.TickConfig{On: []string{"github.*"}},
+		tick:    config.TickConfig{On: []string{eventSource + ".*"}},
 	}
 	stop := startReactor(t, r)
 	t.Cleanup(stop)
@@ -415,19 +441,19 @@ all = [
 	// the reactor's done_when assertion below pass by coincidence (the
 	// observer facts flipped regardless of delivery), but would fail here.
 	waitUntilOrFatal(t, 10*time.Second, "the watcher's published event never reached the bound session's own log", func() bool {
-		evs, _, _, err := log.List(session, 0, event.Filter{Types: []string{"github.mergeable"}})
+		evs, _, _, err := log.List(session, 0, event.Filter{Types: []string{mergeableEventType}})
 		return err == nil && len(evs) == 1
 	})
-	evs, _, _, err := log.List(session, 0, event.Filter{Types: []string{"github.mergeable"}})
+	evs, _, _, err := log.List(session, 0, event.Filter{Types: []string{mergeableEventType}})
 	if err != nil || len(evs) != 1 {
-		t.Fatalf("List(%q, github.mergeable) = %d events, err=%v, want exactly one", session, len(evs), err)
+		t.Fatalf("List(%q, %s) = %d events, err=%v, want exactly one", session, mergeableEventType, len(evs), err)
 	}
 	ev := evs[0]
 	if ev.SessionName != session {
 		t.Errorf("event SessionName = %q, want %q", ev.SessionName, session)
 	}
-	if ev.Source != "github" {
-		t.Errorf("event Source = %q, want %q", ev.Source, "github")
+	if ev.Source != eventSource {
+		t.Errorf("event Source = %q, want %q", ev.Source, eventSource)
 	}
 	if ev.Direction != event.Inbound {
 		t.Errorf("event Direction = %q, want %q", ev.Direction, event.Inbound)

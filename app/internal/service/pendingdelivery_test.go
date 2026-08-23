@@ -1,10 +1,13 @@
 package service
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/kecbigmt/plecture/app/internal/config"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -19,13 +22,13 @@ func TestTaskCleanup_UnsubscribeFailureIsDurablyQueued(t *testing.T) {
 	)
 	writeAlwaysFailingUnsubscribeProvider(t, cfg.BaseDir)
 	store := testStore(t)
-	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
 
-	const prURL = "https://github.com/o/r/pull/9"
-	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL}); err != nil {
+	const prURL = "resource://sess/proj/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "pr", Resource: prURL}); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	result, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "o/r-1"})
+	result, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "sess-1"})
 	if err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
@@ -37,8 +40,8 @@ func TestTaskCleanup_UnsubscribeFailureIsDurablyQueued(t *testing.T) {
 	if loadErr != nil {
 		t.Fatal(loadErr)
 	}
-	if got := f.Unsubscribe["o/r-1"]; len(got) != 1 || got[0] != prURL {
-		t.Fatalf("pending unsubscribe queue = %v, want [%s] for o/r-1", got, prURL)
+	if got := f.Unsubscribe["sess-1"]; len(got) != 1 || got[0] != prURL {
+		t.Fatalf("pending unsubscribe queue = %v, want [%s] for sess-1", got, prURL)
 	}
 }
 
@@ -50,17 +53,17 @@ func TestTaskSetup_SubscribeFailureIsDurablyQueued(t *testing.T) {
 		[]nodeFixture{{id: "work"}},
 	)
 	body := `
-[github]
+[fixture]
 kind  = "workspace_provider"
-match = '` + ghMatch + `'
+match = '` + fixtureResourceMatch + `'
 name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[fixture.setup]
 type    = "exec"
 command = "printf"
 args    = ['{"workdir":"/tmp/x"}']
 
-[github.subscribe]
+[fixture.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", "exit 3"]
@@ -68,14 +71,14 @@ args    = ["-c", "exit 3"]
 	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
-	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
 
-	const prURL = "https://github.com/o/r/pull/9"
-	result, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL})
+	const prURL = "resource://sess/proj/pull/9"
+	result, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "pr", Resource: prURL})
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -87,8 +90,8 @@ args    = ["-c", "exit 3"]
 	if loadErr != nil {
 		t.Fatal(loadErr)
 	}
-	if got := f.Subscribe["o/r-1"]; len(got) != 1 || got[0] != prURL {
-		t.Fatalf("pending subscribe queue = %v, want [%s] for o/r-1", got, prURL)
+	if got := f.Subscribe["sess-1"]; len(got) != 1 || got[0] != prURL {
+		t.Fatalf("pending subscribe queue = %v, want [%s] for sess-1", got, prURL)
 	}
 }
 
@@ -97,21 +100,21 @@ args    = ["-c", "exit 3"]
 func writeAlwaysFailingUnsubscribeProvider(t *testing.T, baseDir string) {
 	t.Helper()
 	body := `
-[github]
+[fixture]
 kind  = "workspace_provider"
-match = '` + ghMatch + `'
+match = '` + fixtureResourceMatch + `'
 name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[fixture.setup]
 type    = "exec"
 command = "printf"
 args    = ['{"workdir":"/tmp/x"}']
 
-[github.subscribe]
+[fixture.subscribe]
 type    = "exec"
 command = "true"
 
-[github.unsubscribe]
+[fixture.unsubscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", "exit 3"]
@@ -119,7 +122,7 @@ args    = ["-c", "exit 3"]
 	if err := os.MkdirAll(filepath.Join(baseDir, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -131,21 +134,21 @@ args    = ["-c", "exit 3"]
 func toggledUnsubscribeProvider(t *testing.T, baseDir, toggle, rec string) {
 	t.Helper()
 	body := `
-[github]
+[fixture]
 kind  = "workspace_provider"
-match = '` + ghMatch + `'
+match = '` + fixtureResourceMatch + `'
 name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[fixture.setup]
 type    = "exec"
 command = "printf"
 args    = ['{"workdir":"/tmp/x"}']
 
-[github.subscribe]
+[fixture.subscribe]
 type    = "exec"
 command = "true"
 
-[github.unsubscribe]
+[fixture.unsubscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + toggle + `", "` + rec + `"]
@@ -153,7 +156,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 	if err := os.MkdirAll(filepath.Join(baseDir, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -171,24 +174,24 @@ func TestFlushPendingDelivery_RetriesUnsubscribeAndDrainsOnSuccess(t *testing.T)
 	)
 	toggledUnsubscribeProvider(t, cfg.BaseDir, toggle, rec)
 	store := testStore(t)
-	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
 
-	const prURL = "https://github.com/o/r/pull/9"
-	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL}); err != nil {
+	const prURL = "resource://sess/proj/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "pr", Resource: prURL}); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "o/r-1"}); err != nil {
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "sess-1"}); err != nil {
 		t.Fatalf("cleanup: %v", err)
 	}
 	f, loadErr := loadPendingDelivery(pendingDeliveryPath(store))
-	if loadErr != nil || len(f.Unsubscribe["o/r-1"]) != 1 {
+	if loadErr != nil || len(f.Unsubscribe["sess-1"]) != 1 {
 		t.Fatalf("precondition: expected %s queued, got %v (err=%v)", prURL, f.Unsubscribe, loadErr)
 	}
 
 	if err := os.WriteFile(toggle, []byte("go"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if errs := flushPendingDelivery(cfg, store, "o/r-1"); len(errs) != 0 {
+	if errs := flushPendingDelivery(cfg, store, "sess-1"); len(errs) != 0 {
 		t.Fatalf("flushPendingDelivery: %v", errs)
 	}
 
@@ -196,7 +199,7 @@ func TestFlushPendingDelivery_RetriesUnsubscribeAndDrainsOnSuccess(t *testing.T)
 		t.Errorf("the retried unsubscribe hook did not run: %v", err)
 	}
 	f, loadErr = loadPendingDelivery(pendingDeliveryPath(store))
-	if loadErr != nil || len(f.Unsubscribe["o/r-1"]) != 0 {
+	if loadErr != nil || len(f.Unsubscribe["sess-1"]) != 0 {
 		t.Errorf("pending unsubscribe queue = %v (err=%v), want empty after a successful retry", f.Unsubscribe, loadErr)
 	}
 }
@@ -213,21 +216,21 @@ func TestFlushPendingDelivery_DropsUnsubscribeEntryOnceResourceIsNeededAgain(t *
 	// A toggle that never appears: if the hook ran at all, the test fails.
 	toggledUnsubscribeProvider(t, cfg.BaseDir, filepath.Join(t.TempDir(), "never"), rec)
 	store := testStore(t)
-	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
 
-	const prURL = "https://github.com/o/r/pull/9"
+	const prURL = "resource://sess/proj/pull/9"
 	// Bind the resource to a live instance BEFORE queuing: TaskSetup flushes
 	// the queue itself at its own start, so queuing first would let that
 	// internal flush (running before "again" exists) drop the entry for the
 	// wrong reason.
-	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "again", Resource: prURL}); err != nil {
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "again", Resource: prURL}); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if err := queuePendingUnsubscribe(store, "o/r-1", prURL); err != nil {
+	if err := queuePendingUnsubscribe(store, "sess-1", prURL); err != nil {
 		t.Fatal(err)
 	}
 
-	if errs := flushPendingDelivery(cfg, store, "o/r-1"); len(errs) != 0 {
+	if errs := flushPendingDelivery(cfg, store, "sess-1"); len(errs) != 0 {
 		t.Fatalf("flushPendingDelivery: %v", errs)
 	}
 
@@ -235,7 +238,7 @@ func TestFlushPendingDelivery_DropsUnsubscribeEntryOnceResourceIsNeededAgain(t *
 		t.Error("a resource needed again must not have its unsubscribe hook run")
 	}
 	f, loadErr := loadPendingDelivery(pendingDeliveryPath(store))
-	if loadErr != nil || len(f.Unsubscribe["o/r-1"]) != 0 {
+	if loadErr != nil || len(f.Unsubscribe["sess-1"]) != 0 {
 		t.Errorf("pending unsubscribe queue = %v (err=%v), want the now-needed entry dropped", f.Unsubscribe, loadErr)
 	}
 }
@@ -250,17 +253,17 @@ func TestFlushPendingDelivery_RetriesSubscribeAndDrainsOnSuccess(t *testing.T) {
 		[]nodeFixture{{id: "work"}},
 	)
 	body := `
-[github]
+[fixture]
 kind  = "workspace_provider"
-match = '` + ghMatch + `'
+match = '` + fixtureResourceMatch + `'
 name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[fixture.setup]
 type    = "exec"
 command = "printf"
 args    = ['{"workdir":"/tmp/x"}']
 
-[github.subscribe]
+[fixture.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + toggle + `", "` + rec + `"]
@@ -268,14 +271,14 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
-	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
 
-	const prURL = "https://github.com/o/r/pull/9"
-	setupResult, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL})
+	const prURL = "resource://sess/proj/pull/9"
+	setupResult, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "sess-1", Name: "pr", Resource: prURL})
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -286,7 +289,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 	if err := os.WriteFile(toggle, []byte("go"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if errs := flushPendingDelivery(cfg, store, "o/r-1"); len(errs) != 0 {
+	if errs := flushPendingDelivery(cfg, store, "sess-1"); len(errs) != 0 {
 		t.Fatalf("flushPendingDelivery: %v", errs)
 	}
 
@@ -294,7 +297,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 		t.Errorf("the retried subscribe hook did not run: %v", err)
 	}
 	f, loadErr := loadPendingDelivery(pendingDeliveryPath(store))
-	if loadErr != nil || len(f.Subscribe["o/r-1"]) != 0 {
+	if loadErr != nil || len(f.Subscribe["sess-1"]) != 0 {
 		t.Errorf("pending subscribe queue = %v (err=%v), want empty after a successful retry", f.Subscribe, loadErr)
 	}
 }
@@ -309,17 +312,17 @@ func TestFlushPendingDelivery_DropsSubscribeEntryOnceResourceIsNoLongerNeeded(t 
 	)
 	// A toggle that never appears: if the hook ran at all, the test fails.
 	body := `
-[github]
+[fixture]
 kind  = "workspace_provider"
-match = '` + ghMatch + `'
+match = '` + fixtureResourceMatch + `'
 name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
-[github.setup]
+[fixture.setup]
 type    = "exec"
 command = "printf"
 args    = ['{"workdir":"/tmp/x"}']
 
-[github.subscribe]
+[fixture.subscribe]
 type    = "exec"
 command = "sh"
 args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + filepath.Join(t.TempDir(), "never") + `", "` + rec + `"]
@@ -327,18 +330,18 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + fi
 	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "fixture.toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store := testStore(t)
-	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
 
-	const prURL = "https://github.com/o/r/pull/9"
-	if err := queuePendingSubscribe(store, "o/r-1", prURL); err != nil {
+	const prURL = "resource://sess/proj/pull/9"
+	if err := queuePendingSubscribe(store, "sess-1", prURL); err != nil {
 		t.Fatal(err)
 	}
 
-	if errs := flushPendingDelivery(cfg, store, "o/r-1"); len(errs) != 0 {
+	if errs := flushPendingDelivery(cfg, store, "sess-1"); len(errs) != 0 {
 		t.Fatalf("flushPendingDelivery: %v", errs)
 	}
 
@@ -346,7 +349,33 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + fi
 		t.Error("a resource nothing needs must not have its subscribe hook run")
 	}
 	f, loadErr := loadPendingDelivery(pendingDeliveryPath(store))
-	if loadErr != nil || len(f.Subscribe["o/r-1"]) != 0 {
+	if loadErr != nil || len(f.Subscribe["sess-1"]) != 0 {
 		t.Errorf("pending subscribe queue = %v (err=%v), want the now-moot entry dropped", f.Subscribe, loadErr)
+	}
+}
+
+// flushPendingDeliveryLogged must not silently discard flushPendingDelivery's
+// own errors: TaskSetup/TaskCleanup have no result field for "an unrelated
+// queued resource's retry also failed just now," so the log is the only
+// place this becomes visible.
+func TestFlushPendingDeliveryLogged_LogsFlushErrors(t *testing.T) {
+	cfg := &config.Config{BaseDir: t.TempDir()}
+	store := testStore(t)
+	seedSession(t, store, "sess-1", "sess", 1, "coding", map[string]*contract.TaskState{})
+
+	// A corrupt queue file makes loadPendingDelivery fail inside the flush.
+	if err := os.WriteFile(pendingDeliveryPath(store), []byte("{not valid json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+
+	flushPendingDeliveryLogged(cfg, store, "sess-1")
+
+	if !bytes.Contains(logs.Bytes(), []byte("pending delivery flush failed")) {
+		t.Errorf("expected a warning about the failed flush, got log output: %q", logs.String())
 	}
 }

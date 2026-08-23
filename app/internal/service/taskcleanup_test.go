@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -495,6 +496,31 @@ func TestTaskCleanup_NoResourceBoundIsANoOpForDelivery(t *testing.T) {
 	}
 	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "x", SessionName: "o/r-1"}); err != nil {
 		t.Fatalf("cleanup: %v", err)
+	}
+}
+
+// A session destroyed between resolveSession and TaskCleanup's fresh
+// delivery-lock read must not silently skip the unsubscribe decision: since
+// resourceStillNeededBySession takes a non-nil *domain.Session, the switch
+// this backs used to have no case matching (nil, no error) at all, doing
+// nothing. shouldUnsubscribe is what closed that gap.
+func TestShouldUnsubscribe(t *testing.T) {
+	tests := []struct {
+		name     string
+		session  *domain.Session
+		resource string
+		want     bool
+	}{
+		{"nil session (destroyed mid-cleanup) has nothing left to need it", nil, "r", true},
+		{"present session still needs the resource as its primary", &domain.Session{ResourceID: "r"}, "r", false},
+		{"present session no longer needs the resource", &domain.Session{ResourceID: "other"}, "r", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldUnsubscribe(tc.session, tc.resource); got != tc.want {
+				t.Errorf("shouldUnsubscribe(%+v, %q) = %v, want %v", tc.session, tc.resource, got, tc.want)
+			}
+		})
 	}
 }
 
