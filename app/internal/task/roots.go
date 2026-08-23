@@ -128,15 +128,6 @@ func capabilitiesFor(ctx RenderContext, from lang.Ownership) effect.Capabilities
 	return caps
 }
 
-// effectEval pairs one surface's environment with this machine's two
-// capabilities: an executable's path and the plan's interactive endpoint.
-// dir is the private run directory a materialized terminal verb is written
-// into, so a resolved verb lives exactly as long as the execution consuming
-// it.
-func effectEval(env lang.Roots, ctx RenderContext, from lang.Ownership, dir string) lang.Eval {
-	return capabilitiesFor(ctx, from).Eval(env, dir)
-}
-
 // TerminalCommand resolves one terminal verb into the command string a
 // consuming script runs as `sh -c "$verb" <name> <operand>`: the verb's own
 // operand arrives as the shell's first positional parameter, whichever
