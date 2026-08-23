@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -15,7 +16,7 @@ import (
 // command, so a multi-layer run can hand every layer its own stdout while the
 // recorded requests still show the order the layers ran in.
 type scriptedExecutor struct {
-	requests []ExecRequest
+	requests []effect.ExecRequest
 	scripts  []string
 	bindings []string
 	// stdout maps a resolved script to the stdout it produces. A script with
@@ -25,9 +26,9 @@ type scriptedExecutor struct {
 	failOn string
 }
 
-func (s *scriptedExecutor) Run(_ context.Context, req ExecRequest) ([]byte, []byte, error) {
+func (s *scriptedExecutor) Run(_ context.Context, req effect.ExecRequest) ([]byte, []byte, error) {
 	s.requests = append(s.requests, req)
-	cmd, bindings := readShellRun(req)
+	cmd, bindings := effect.ReadShellRun(req)
 	s.scripts = append(s.scripts, cmd)
 	s.bindings = append(s.bindings, bindings)
 	if s.failOn != "" && cmd == s.failOn {
@@ -47,9 +48,8 @@ var errNestedTestFailure = nestedTestFailure{}
 
 func withScriptedExecutor(t *testing.T, e *scriptedExecutor) *scriptedExecutor {
 	t.Helper()
-	orig := defaultExecutor
-	defaultExecutor = e
-	t.Cleanup(func() { defaultExecutor = orig })
+	restore := effect.UseExecutor(e)
+	t.Cleanup(restore)
 	return e
 }
 

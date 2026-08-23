@@ -165,7 +165,7 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 				t.Errorf("effect %q %s: %v", id, field, err)
 				continue
 			}
-			resolved.close()
+			resolved.Close()
 		}
 	}
 }

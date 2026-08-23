@@ -149,8 +149,8 @@ func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderCo
 				state.Error = resolveErr.Error()
 				return append(states, state), lastStderr, fmt.Errorf("layer %q setup: %w", layer.TaskID, resolveErr)
 			}
-			stdout, stderr, runErr := resolved.run(goCtx, base.Session.WorkspaceDirPath, env...)
-			resolved.close()
+			stdout, stderr, runErr := resolved.Run(goCtx, base.Session.WorkspaceDirPath, env...)
+			resolved.Close()
 			lastStderr = stderr
 			if runErr != nil {
 				state.Status = contract.TaskStatusFailed
@@ -271,8 +271,8 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 			}
 			continue
 		}
-		_, stderr, runErr := resolved.run(goCtx, base.Session.WorkspaceDirPath, EnclosingEnv(states, i)...)
-		resolved.close()
+		_, stderr, runErr := resolved.Run(goCtx, base.Session.WorkspaceDirPath, EnclosingEnv(states, i)...)
+		resolved.Close()
 		lastStderr = stderr
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed

@@ -161,20 +161,20 @@ func TestShippedClaude_McpServersStaysOffEveryCommandLine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve setup: %v", err)
 	}
-	defer resolved.close()
-	for _, arg := range resolved.execution.Argv {
+	defer resolved.Close()
+	for _, arg := range resolved.Argv() {
 		if strings.Contains(arg, marker) {
 			t.Errorf("mcp_servers value reaches the process argv: %q", arg)
 		}
 	}
-	script, err := os.ReadFile(filepath.Join(filepath.Dir(resolved.execution.Argv[0]), "script.sh"))
+	script, err := os.ReadFile(filepath.Join(filepath.Dir(resolved.Argv()[0]), "script.sh"))
 	if err != nil {
 		t.Fatalf("read the resolved script: %v", err)
 	}
 	if strings.Contains(string(script), marker) {
 		t.Error("mcp_servers value reaches the shell source the process runs")
 	}
-	bindings, err := os.ReadFile(filepath.Join(filepath.Dir(resolved.execution.Argv[0]), "bindings.sh"))
+	bindings, err := os.ReadFile(filepath.Join(filepath.Dir(resolved.Argv()[0]), "bindings.sh"))
 	if err != nil {
 		t.Fatalf("read the resolved bindings: %v", err)
 	}

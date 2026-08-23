@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -82,7 +83,7 @@ func resolveGoToolCaches() []string {
 // executables the GitHub catalog plugin ships (github-worktree,
 // github-watcher) into a temp directory, prepends it to PATH (`plect`
 // itself is still resolved that way), and returns the mounted-plugin entry
-// a WorkflowHookVars/SubscribeHookVars.Plugins needs so the shipped hooks'
+// an effect.WorkflowHookVars/effect.SubscribeHookVars.Plugins needs so the shipped hooks'
 // `{{bin ...}}` references resolve to the code in this working tree.
 func buildWorkspaceProviderBinaries(t *testing.T, root string) []plugins.Mounted {
 	t.Helper()
@@ -196,7 +197,7 @@ func TestE2E_GithubWorkspaceProviderSrcLayoutSingleWorkdir(t *testing.T) {
 	session := "testowner/testrepo-42+review"
 
 	tasks := map[string]*contract.TaskState{}
-	vars := task.WorkflowHookVars{ResourceID: "https://github.com/testowner/testrepo/issues/42", SessionName: session, Plugins: mounted, SourcePath: prov.SourcePath}
+	vars := effect.WorkflowHookVars{ResourceID: "https://github.com/testowner/testrepo/issues/42", SessionName: session, Plugins: mounted, SourcePath: prov.SourcePath}
 	out, err := task.RunWorkflowSetup(prov, vars, tasks, nil)
 	if err != nil {
 		t.Fatalf("setup: %v", err)
@@ -221,7 +222,7 @@ func TestE2E_GithubWorkspaceProviderSrcLayoutSingleWorkdir(t *testing.T) {
 func runSetup(t *testing.T, prov config.WorkspaceProviderConfig, mounted []plugins.Mounted, session string) map[string]any {
 	t.Helper()
 	tasks := map[string]*contract.TaskState{}
-	out, err := task.RunWorkflowSetup(prov, task.WorkflowHookVars{
+	out, err := task.RunWorkflowSetup(prov, effect.WorkflowHookVars{
 		ResourceID:  "https://github.com/testowner/testrepo/issues/42",
 		SessionName: session,
 		Plugins:     mounted,
@@ -276,7 +277,7 @@ func TestE2E_GithubWorkspaceProviderConvergesAndReclaims(t *testing.T) {
 	tasks := map[string]*contract.TaskState{}
 	// delete_branch opts into branch reclaim on cleanup — the default is now
 	// to leave it, so this test's own name ("...AndReclaims") requires it.
-	vars := task.WorkflowHookVars{
+	vars := effect.WorkflowHookVars{
 		ResourceID:    "https://github.com/testowner/testrepo/issues/42",
 		SessionName:   session,
 		Plugins:       mounted,

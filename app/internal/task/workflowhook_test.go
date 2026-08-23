@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -51,7 +52,7 @@ func TestRunWorkflowSetup_ResolvesBinReference(t *testing.T) {
 			&lang.Value{Form: lang.FormBin, Bin: "official/github/github-worktree"}),
 	}
 	tasks := map[string]*contract.TaskState{}
-	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted}, tasks, nil)
+	outputs, err := RunWorkflowSetup(prov, effect.WorkflowHookVars{ResourceID: "r", SessionName: "s", Plugins: mounted}, tasks, nil)
 	if err != nil {
 		t.Fatalf("RunWorkflowSetup: %v", err)
 	}
@@ -68,7 +69,7 @@ func TestRunWorkflowSetup_ProducesWorkspaceDir(t *testing.T) {
 		Setup: providerExec(`printf '{"workspace_dir":"%s","branch":"issue/1"}' "$1"`, literalValue(dir)),
 	}
 	tasks := map[string]*contract.TaskState{}
-	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{ResourceID: "https://example.com/1", SessionName: "s"}, tasks, nil)
+	outputs, err := RunWorkflowSetup(prov, effect.WorkflowHookVars{ResourceID: "https://example.com/1", SessionName: "s"}, tasks, nil)
 	if err != nil {
 		t.Fatalf("RunWorkflowSetup: %v", err)
 	}
@@ -92,7 +93,7 @@ func TestRunWorkflowSetup_ReadsItsSurfaceRoots(t *testing.T) {
 			fromValue("config.workspace_dirs_root"), fromValueOr("session.inputs.flavour", "")),
 	}
 	tasks := map[string]*contract.TaskState{}
-	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{
+	outputs, err := RunWorkflowSetup(prov, effect.WorkflowHookVars{
 		ResourceID:        "res-1",
 		SessionName:       "sess-1",
 		WorkspaceDirsRoot: "/roots/workspace_dirs",
@@ -120,7 +121,7 @@ func TestRunWorkflowSetup_AValueIsNeverCommandText(t *testing.T) {
 	}
 	malicious := `x"; touch ` + marker + `; echo "`
 	tasks := map[string]*contract.TaskState{}
-	if _, err := RunWorkflowSetup(prov, WorkflowHookVars{ResourceID: malicious, SessionName: "s"}, tasks, nil); err != nil {
+	if _, err := RunWorkflowSetup(prov, effect.WorkflowHookVars{ResourceID: malicious, SessionName: "s"}, tasks, nil); err != nil {
 		t.Fatalf("RunWorkflowSetup: %v", err)
 	}
 	if _, err := os.Stat(marker); err == nil {
@@ -138,7 +139,7 @@ func TestRunWorkflowSetup_AValueIsNeverCommandText(t *testing.T) {
 func TestRunWorkflowSetup_MissingWorkspaceDirFails(t *testing.T) {
 	prov := config.WorkspaceProviderConfig{ID: "wf", Setup: providerExec(`echo '{"branch":"b"}'`)}
 	tasks := map[string]*contract.TaskState{}
-	_, err := RunWorkflowSetup(prov, WorkflowHookVars{}, tasks, nil)
+	_, err := RunWorkflowSetup(prov, effect.WorkflowHookVars{}, tasks, nil)
 	if err == nil {
 		t.Fatal("expected error for missing workspace_dir output")
 	}
@@ -160,7 +161,7 @@ func TestRunWorkflowSetup_IdempotentSkip(t *testing.T) {
 			Outputs: map[string]any{"workspace_dir": "/tmp/wd"},
 		},
 	}
-	outputs, err := RunWorkflowSetup(prov, WorkflowHookVars{}, tasks, nil)
+	outputs, err := RunWorkflowSetup(prov, effect.WorkflowHookVars{}, tasks, nil)
 	if err != nil {
 		t.Fatalf("produced pseudo-node must short-circuit: %v", err)
 	}
@@ -183,7 +184,7 @@ func TestRunWorkflowSetup_PrevSurvivesRetry(t *testing.T) {
 			Outputs: map[string]any{"workspace_dir": "/tmp/old"},
 		},
 	}
-	if _, err := RunWorkflowSetup(prov, WorkflowHookVars{}, tasks, nil); err != nil {
+	if _, err := RunWorkflowSetup(prov, effect.WorkflowHookVars{}, tasks, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(marker)
@@ -207,7 +208,7 @@ func TestRunWorkflowSetup_OutputsSchemaEnforced(t *testing.T) {
 		},
 	}
 	tasks := map[string]*contract.TaskState{}
-	_, err := RunWorkflowSetup(prov, WorkflowHookVars{}, tasks, nil)
+	_, err := RunWorkflowSetup(prov, effect.WorkflowHookVars{}, tasks, nil)
 	if err == nil {
 		t.Fatal("expected schema violation")
 	}
@@ -230,7 +231,7 @@ func TestRunWorkflowCleanup_RunsAndMarksClean(t *testing.T) {
 			Outputs: map[string]any{"workspace_dir": "/tmp/wd"},
 		},
 	}
-	if err := RunWorkflowCleanup(prov, WorkflowHookVars{}, tasks, nil); err != nil {
+	if err := RunWorkflowCleanup(prov, effect.WorkflowHookVars{}, tasks, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(marker)
@@ -266,7 +267,7 @@ func TestRunWorkflowCleanup_CleanupInputsReachTheAction(t *testing.T) {
 			Outputs: map[string]any{"workspace_dir": "/tmp/wd"},
 		},
 	}
-	vars := WorkflowHookVars{CleanupInputs: map[string]string{"delete_branch": "true"}}
+	vars := effect.WorkflowHookVars{CleanupInputs: map[string]string{"delete_branch": "true"}}
 	if err := RunWorkflowCleanup(prov, vars, tasks, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -297,7 +298,7 @@ func TestRunWorkflowCleanup_CleanupInputsDefaultUnset(t *testing.T) {
 			Outputs: map[string]any{"workspace_dir": "/tmp/wd"},
 		},
 	}
-	if err := RunWorkflowCleanup(prov, WorkflowHookVars{}, tasks, nil); err != nil {
+	if err := RunWorkflowCleanup(prov, effect.WorkflowHookVars{}, tasks, nil); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(marker)
@@ -311,7 +312,7 @@ func TestRunWorkflowCleanup_CleanupInputsDefaultUnset(t *testing.T) {
 
 func TestRunWorkflowCleanup_NoStateSkips(t *testing.T) {
 	prov := config.WorkspaceProviderConfig{ID: "wf", Cleanup: providerExec("exit 1")}
-	if err := RunWorkflowCleanup(prov, WorkflowHookVars{}, map[string]*contract.TaskState{}, nil); err != nil {
+	if err := RunWorkflowCleanup(prov, effect.WorkflowHookVars{}, map[string]*contract.TaskState{}, nil); err != nil {
 		t.Fatalf("no setup state must skip cleanly: %v", err)
 	}
 }
@@ -325,7 +326,7 @@ func TestRunWorkflowCleanup_FailureMarksFailed(t *testing.T) {
 			Outputs: map[string]any{"workspace_dir": "/tmp/wd"},
 		},
 	}
-	err := RunWorkflowCleanup(prov, WorkflowHookVars{}, tasks, nil)
+	err := RunWorkflowCleanup(prov, effect.WorkflowHookVars{}, tasks, nil)
 	if err == nil {
 		t.Fatal("expected cleanup failure")
 	}

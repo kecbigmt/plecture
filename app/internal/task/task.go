@@ -1,13 +1,17 @@
-// Package task implements the declarative setup/cleanup orchestrator.
-// Each task is a setup/cleanup pair declared in
-// config.toml, scoped to either the session lifecycle ("session") or the
-// run lifecycle ("run"). Tasks can depend on each other, and outputs from
-// a setup command (parsed as JSON from stdout) are exposed to dependents
-// and the task's own cleanup as values over the surface's declared roots.
+// Package task is the completion engine for task documents: compiling a
+// workflow's nodes into a Plan, instantiating them, evaluating done_when,
+// and tracking each node's persisted contracts/state.TaskState. It compiles
+// each setup/cleanup pair declared in config.toml, scoped to either the
+// session lifecycle ("session") or the run lifecycle ("run"); tasks can
+// depend on each other, and outputs from a setup command (parsed as JSON
+// from stdout) are exposed to dependents and the task's own cleanup as
+// values over the surface's declared roots.
 //
-// The runner is intentionally minimal: sequential execution, no reactivity,
-// no dynamic DAG. Scope-aware topological sort, one resolution pass per
-// execution, and persisted state via contracts/state.TaskState.
+// It is intentionally minimal: sequential execution, no reactivity, no
+// dynamic DAG. Scope-aware topological sort, one resolution pass per
+// execution. Actually running a resolved action is app/internal/effect's
+// job, not this package's — task builds the roots and calls into effect
+// only for "run this resolved action".
 package task
 
 import (
@@ -123,8 +127,8 @@ func RunAliveProbe(goCtx context.Context, p Probe, session SessionVars) error {
 	if err != nil {
 		return err
 	}
-	defer resolved.close()
-	_, stderr, err := resolved.run(goCtx, session.WorkspaceDirPath, p.Env...)
+	defer resolved.Close()
+	_, stderr, err := resolved.Run(goCtx, session.WorkspaceDirPath, p.Env...)
 	if err != nil {
 		if len(stderr) > 0 {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -166,8 +170,8 @@ func runTerminalVerb(goCtx context.Context, binding *TerminalBinding, verb strin
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resolved.close()
-	return resolved.run(goCtx, session.WorkspaceDirPath, env...)
+	defer resolved.Close()
+	return resolved.Run(goCtx, session.WorkspaceDirPath, env...)
 }
 
 // CompileWorkflow turns a workflow file plus its referenced task definitions
@@ -574,40 +578,11 @@ type TerminalBinding struct {
 	From       lang.Ownership
 }
 
-// normalizeNumbers converts integer-valued float64 entries to int64. JSON
-// unmarshal into map[string]any leaves every number as float64; templates
-// render large float64 as scientific notation (e.g. 3.052179e+06), which
-// breaks scripts that compare the rendered value as a string (`pid` etc.).
-// Walks nested maps and slices so deep outputs are covered too.
-func normalizeNumbers(v any) any {
-	switch x := v.(type) {
-	case float64:
-		if x == float64(int64(x)) {
-			return int64(x)
-		}
-		return x
-	case map[string]any:
-		out := make(map[string]any, len(x))
-		for k, vv := range x {
-			out[k] = normalizeNumbers(vv)
-		}
-		return out
-	case []any:
-		out := make([]any, len(x))
-		for i, vv := range x {
-			out[i] = normalizeNumbers(vv)
-		}
-		return out
-	}
-	return v
-}
-
+// normalizeOutputs applies lang.NormalizeNumbers to a whole outputs map,
+// named locally so every task-package call site reads as "prepare this
+// outputs map for a root" rather than naming the shared helper directly.
 func normalizeOutputs(m map[string]any) map[string]any {
-	if m == nil {
-		return nil
-	}
-	out, _ := normalizeNumbers(m).(map[string]any)
-	return out
+	return lang.NormalizeOutputs(m)
 }
 
 func orEmpty(m map[string]any) map[string]any {
@@ -798,8 +773,8 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
 				return wrapped
 			}
-			stdout, stderr, runErr := resolved.run(goCtx, session.WorkspaceDirPath)
-			resolved.close()
+			stdout, stderr, runErr := resolved.Run(goCtx, session.WorkspaceDirPath)
+			resolved.Close()
 			stderrCaptured = stderr
 			if runErr != nil {
 				tasks[r.NodeID] = failedState(r, now, runErr.Error(), prev, resolvedInputs)
@@ -1020,8 +995,8 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
 			continue
 		}
-		_, stderr, runErr := resolved.run(goCtx, session.WorkspaceDirPath)
-		resolved.close()
+		_, stderr, runErr := resolved.Run(goCtx, session.WorkspaceDirPath)
+		resolved.Close()
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = runErr.Error()

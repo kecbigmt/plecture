@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
 // SubscribeParams are the inputs to Subscribe. ResourceID is the opaque
@@ -66,7 +66,7 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 		return err
 	}
 
-	if hookErr := task.RunWorkspaceProviderSubscribe(prov, task.SubscribeHookVars{
+	if hookErr := effect.RunWorkspaceProviderSubscribe(prov, effect.SubscribeHookVars{
 		ResourceID:  params.ResourceID,
 		SessionName: sessionName,
 		Plugins:     cfg.Plugins,

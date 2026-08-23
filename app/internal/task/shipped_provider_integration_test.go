@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -189,7 +190,7 @@ func runProviderHook(t *testing.T, prov config.WorkspaceProviderConfig, hook str
 	for key := range declaredProviderInputs(prov) {
 		inputs[key] = "stand-in-" + key
 	}
-	vars := WorkflowHookVars{
+	vars := effect.WorkflowHookVars{
 		ResourceID:        "example://acme/widget/1",
 		SessionName:       "acme/widget-1",
 		WorkspaceDirsRoot: "/spy/workspace_dirs",
@@ -214,7 +215,7 @@ func runProviderHook(t *testing.T, prov config.WorkspaceProviderConfig, hook str
 		}
 		return RunWorkflowCleanup(prov, vars, tasks, nil)
 	default:
-		return RunWorkspaceProviderSubscribe(prov, SubscribeHookVars{
+		return effect.RunWorkspaceProviderSubscribe(prov, effect.SubscribeHookVars{
 			ResourceID:  vars.ResourceID,
 			SessionName: vars.SessionName,
 			Plugins:     vars.Plugins,

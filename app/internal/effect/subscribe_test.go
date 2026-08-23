@@ -1,4 +1,4 @@
-package task
+package effect
 
 import (
 	"os"
@@ -10,6 +10,10 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
+
+func mustMount(id, dir string, executables ...plugins.Executable) plugins.Mounted {
+	return plugins.Mounted{ID: id, Dir: dir, Manifest: plugins.Manifest{Executables: executables}}
+}
 
 func TestRunProviderSubscribe_ReadsItsSurfaceRoots(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "subscribe.out")

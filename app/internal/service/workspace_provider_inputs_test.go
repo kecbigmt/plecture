@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -147,7 +148,7 @@ uses = "noop"
 	// The hook is actually run, not just rendered: it echoes the parameter
 	// back as its `workspace_dir` output, so the assertion below fails unless
 	// the value survived every step from the workflow file to the script.
-	outputs, err := task.RunWorkflowSetup(prov, task.WorkflowHookVars{
+	outputs, err := task.RunWorkflowSetup(prov, effect.WorkflowHookVars{
 		ResourceID:  "demo:1",
 		SessionName: "demo-1",
 		Inputs:      inputs,

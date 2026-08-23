@@ -1,4 +1,4 @@
-package task
+package effect
 
 import (
 	"fmt"
@@ -40,7 +40,7 @@ func RunWorkspaceProviderSubscribe(prov config.WorkspaceProviderConfig, vars Sub
 		"session":  map[string]any{"name": vars.SessionName},
 		"resource": map[string]any{"id": vars.ResourceID},
 	}
-	_, stderr, runErr := runProviderAction(prov.Subscribe, providerEval(env, vars.Plugins, vars.SourcePath, prov.Ownership()))
+	_, stderr, runErr := RunProviderAction(prov.Subscribe, ProviderEval(env, vars.Plugins, vars.SourcePath, prov.Ownership()))
 	if runErr != nil {
 		if msg := strings.TrimSpace(string(stderr)); msg != "" {
 			return fmt.Errorf("workspace provider %q subscribe: %w: %s", prov.ID, runErr, msg)

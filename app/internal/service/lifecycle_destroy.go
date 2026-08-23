@@ -20,7 +20,7 @@ type DestroyParams struct {
 	Force      bool
 	// CleanupInputs are opaque key/value intents forwarded verbatim to the
 	// workspace provider cleanup hook (see
-	// task.WorkflowHookVars.CleanupInputs); core interprets none of them.
+	// effect.WorkflowHookVars.CleanupInputs); core interprets none of them.
 	CleanupInputs map[string]string
 	Observer      task.Observer
 }
