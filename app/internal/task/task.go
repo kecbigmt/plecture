@@ -123,8 +123,8 @@ func RunAliveProbe(goCtx context.Context, p Probe, session SessionVars) error {
 	if err != nil {
 		return err
 	}
-	defer resolved.close()
-	_, stderr, err := resolved.run(goCtx, session.WorkspaceDirPath, p.Env...)
+	defer resolved.Close()
+	_, stderr, err := resolved.Run(goCtx, session.WorkspaceDirPath, p.Env...)
 	if err != nil {
 		if len(stderr) > 0 {
 			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(stderr)))
@@ -166,8 +166,8 @@ func runTerminalVerb(goCtx context.Context, binding *TerminalBinding, verb strin
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resolved.close()
-	return resolved.run(goCtx, session.WorkspaceDirPath, env...)
+	defer resolved.Close()
+	return resolved.Run(goCtx, session.WorkspaceDirPath, env...)
 }
 
 // CompileWorkflow turns a workflow file plus its referenced task definitions
@@ -798,8 +798,8 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
 				return wrapped
 			}
-			stdout, stderr, runErr := resolved.run(goCtx, session.WorkspaceDirPath)
-			resolved.close()
+			stdout, stderr, runErr := resolved.Run(goCtx, session.WorkspaceDirPath)
+			resolved.Close()
 			stderrCaptured = stderr
 			if runErr != nil {
 				tasks[r.NodeID] = failedState(r, now, runErr.Error(), prev, resolvedInputs)
@@ -1020,8 +1020,8 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 			obs.OnFailure(r.Scope, r.NodeID, time.Since(now), wrapped, nil)
 			continue
 		}
-		_, stderr, runErr := resolved.run(goCtx, session.WorkspaceDirPath)
-		resolved.close()
+		_, stderr, runErr := resolved.Run(goCtx, session.WorkspaceDirPath)
+		resolved.Close()
 		if runErr != nil {
 			state.Status = contract.TaskStatusFailed
 			state.Error = runErr.Error()

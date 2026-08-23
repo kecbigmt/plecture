@@ -114,8 +114,8 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 		if resolveErr != nil {
 			return InstanceSetup{}, fmt.Errorf("setup: %w", resolveErr)
 		}
-		stdout, capturedStderr, runErr := resolved.run(goCtx, session.WorkspaceDirPath)
-		resolved.close()
+		stdout, capturedStderr, runErr := resolved.Run(goCtx, session.WorkspaceDirPath)
+		resolved.Close()
 		stderr = capturedStderr
 		if runErr != nil {
 			return InstanceSetup{Stderr: stderr}, fmt.Errorf("setup: %w", runErr)

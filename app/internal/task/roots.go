@@ -1,11 +1,8 @@
 package task
 
 import (
-	"context"
 	"fmt"
-	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -115,23 +112,34 @@ func nodeRoots(tasks map[string]map[string]any) map[string]any {
 	return out
 }
 
+// capabilitiesFor adapts ctx's session/plugin context into the plain
+// closures effect.Resolve needs, so effect never has to know what a
+// RenderContext or a TerminalBinding is.
+func capabilitiesFor(ctx RenderContext, from lang.Ownership) effect.Capabilities {
+	bins := config.MountedBins{Mounted: ctx.Session.Plugins, SourcePath: ctx.SourcePath}
+	caps := effect.Capabilities{
+		Bin: func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
+	}
+	if binding := ctx.Session.Terminal; binding != nil {
+		caps.Terminal = func(dir, verb string) (string, error) {
+			return TerminalCommand(binding, verb, ctx.Session, dir)
+		}
+	}
+	return caps
+}
+
 // effectEval pairs one surface's environment with this machine's two
 // capabilities: an executable's path and the plan's interactive endpoint.
 // dir is the private run directory a materialized terminal verb is written
 // into, so a resolved verb lives exactly as long as the execution consuming
 // it.
 func effectEval(env lang.Roots, ctx RenderContext, from lang.Ownership, dir string) lang.Eval {
-	bins := config.MountedBins{Mounted: ctx.Session.Plugins, SourcePath: ctx.SourcePath}
-	eval := lang.Eval{
-		Roots: env,
-		Bin:   func(ref string) (string, error) { return bins.ResolveBin(ref, from) },
+	caps := capabilitiesFor(ctx, from)
+	e := lang.Eval{Roots: env, Bin: caps.Bin}
+	if caps.Terminal != nil {
+		e.Terminal = func(verb string) (string, error) { return caps.Terminal(dir, verb) }
 	}
-	if binding := ctx.Session.Terminal; binding != nil {
-		eval.Terminal = func(verb string) (string, error) {
-			return TerminalCommand(binding, verb, ctx.Session, dir)
-		}
-	}
-	return eval
+	return e
 }
 
 // TerminalCommand resolves one terminal verb into the command string a
@@ -173,69 +181,15 @@ func shellWord(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
-// effectExecution is one resolved action: the process it runs, plus the
-// private run directory that process depends on — a shell action's binding
-// file and any terminal verb the action consumes live there, so the
-// directory has to outlive the resolution and not the process.
-type effectExecution struct {
-	execution *lang.Execution
-	dir       string
-}
-
 // resolveEffect resolves one effect action against its surface. Resolution
 // is separate from running so a value that cannot be resolved is reported as
 // the configuration error it is rather than as a failed execution.
-func resolveEffect(action *lang.Action, env lang.Roots, ctx RenderContext, from lang.Ownership, operands []string) (*effectExecution, error) {
-	dir, err := os.MkdirTemp("", "plect-effect-")
-	if err != nil {
-		return nil, err
-	}
-	execution, err := effectEval(env, ctx, from, dir).Run(filepath.Join(dir, "action"), action, operands)
-	if err != nil {
-		os.RemoveAll(dir)
-		return nil, err
-	}
-	return &effectExecution{execution: execution, dir: dir}, nil
-}
-
-// run executes the resolved process through the swappable executor every
-// in-session execution takes.
-func (e *effectExecution) run(goCtx context.Context, workDir string, processEnv ...string) (stdout, stderr []byte, err error) {
-	return effect.ExecHook(goCtx, e.execution, workDir, processEnv...)
-}
-
-func (e *effectExecution) close() {
-	if e != nil {
-		os.RemoveAll(e.dir)
-	}
+func resolveEffect(action *lang.Action, env lang.Roots, ctx RenderContext, from lang.Ownership, operands []string) (*effect.Execution, error) {
+	return effect.Resolve(action, env, capabilitiesFor(ctx, from), operands)
 }
 
 // resolveValues resolves one value table — a nesting joint's inputs or
-// environment — into the strings the next layer inward receives. Keys are
-// walked in order so a diagnostic and a recorded execution are reproducible
-// rather than map-ordered.
+// environment — into the strings the next layer inward receives.
 func resolveValues(values map[string]*lang.Value, env lang.Roots, ctx RenderContext, from lang.Ownership) (map[string]string, error) {
-	if len(values) == 0 {
-		return nil, nil
-	}
-	// A joint value reaches no terminal verb, so the run directory an
-	// effectEval otherwise materializes one into is never written to.
-	eval := effectEval(env, ctx, from, "")
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	out := make(map[string]string, len(values))
-	for _, key := range keys {
-		resolved, absent, err := eval.Argument(values[key])
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", key, err)
-		}
-		if absent {
-			continue
-		}
-		out[key] = resolved
-	}
-	return out, nil
+	return effect.ResolveValues(values, env, capabilitiesFor(ctx, from))
 }

@@ -142,7 +142,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 				t.Errorf("effect %q %s: %v", id, probe.field, err)
 				continue
 			}
-			resolved.close()
+			resolved.Close()
 		}
 		if def.Terminal == nil {
 			continue
@@ -157,7 +157,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 				t.Errorf("effect %q terminal.%s: %v", id, verb, err)
 				continue
 			}
-			resolved.close()
+			resolved.Close()
 		}
 	}
 }
