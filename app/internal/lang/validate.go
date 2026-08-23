@@ -483,22 +483,9 @@ func (v Validation) action(body map[string]any, field string, s *Surface, pos Po
 	return v.checkAction(action, s, at)
 }
 
-// resolveBin judges an executable reference against the registry of what the
-// enabled plugins declare. Validating such a reference without a registry is
-// a caller mistake rather than an author's, and it is reported as one: reaching
-// a nil resolver would leave a stack trace where a sentence belongs.
-func (v Validation) resolveBin(ref string, pos Position) error {
-	if v.Executables == nil {
-		return newDiag(CodeBinUnknown, LayerSemantic, pos,
-			fmt.Sprintf("%q cannot be resolved: this validation was given no executable registry", ref))
-	}
-	_, err := v.Executables.ResolveBin(ref, v.From)
-	return err
-}
-
 func (v Validation) checkAction(a *Action, s *Surface, pos Position) error {
 	if a.Bin != "" {
-		if err := v.resolveBin(a.Bin, pos); err != nil {
+		if _, err := v.Executables.ResolveBin(a.Bin, v.From); err != nil {
 			return err
 		}
 	}
@@ -549,7 +536,7 @@ func (v Validation) checkValue(value *Value, s *Surface, pos Position) error {
 	case FormExpr:
 		return checkExpression(value.Expr, s, pos)
 	case FormBin:
-		if err := v.resolveBin(value.Bin, pos); err != nil {
+		if _, err := v.Executables.ResolveBin(value.Bin, v.From); err != nil {
 			return err
 		}
 	case FormJSON:

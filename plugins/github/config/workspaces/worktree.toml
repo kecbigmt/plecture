@@ -3,7 +3,8 @@
 # issue/PR URL to a session id, acquiring and releasing the git worktree
 # that resource maps to, and binding a session to the shipped watcher's
 # subscription registry. Workflows compose on top via
-# `workspace_provider = "github"`.
+# `workspace_provider = "official.github.worktree"` (substituting the alias
+# this plugin is enabled under).
 #
 # `setup`/`cleanup`/`subscribe` name github-worktree and github-watcher
 # (this plugin's bin/) through `bin`'s plugin-local bare-name reading, so

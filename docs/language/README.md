@@ -48,7 +48,7 @@ Four layers carry the language, with deliberately different responsibilities.
 | Layer | Authoritative for | Source of truth |
 |---|---|---|
 | Semantic specification | Meaning, invariants, composition rules, security properties | This directory |
-| Structural shape | Accepted TOML shapes, field types, required fields, discriminated variants | The implementation's own validation, described for editors by [`../../plecture.schema.json`](../../plecture.schema.json) |
+| Structural schema | Accepted TOML shapes, field types, required fields, discriminated variants | [`../../plecture.schema.json`](../../plecture.schema.json) |
 | Executable specification | Exact behavior at valid, invalid, and boundary cases | [`../../testdata/config-language/`](../../testdata/config-language/) |
 | Rationale | Why a language decision was made | [`../adr/`](../adr/) |
 
@@ -56,15 +56,10 @@ The chapters here stay thin. A construct subtle enough to need a long
 paragraph also has conformance fixtures that make its cases executable, and
 every chapter's worked example is one of those fixtures quoted verbatim.
 
-Structural shape is answered by the implementation, and the conformance corpus
-holds it to naming the exact diagnostic each case declares.
-`plecture.schema.json` describes the same shape for editors and other tooling.
-It is hand-written, so it is held to one thing the corpus can check: it never
-rejects configuration the language accepts. It is not asked to name a
-diagnostic, because a schema can only report which of its rules fired, and that
-is a proxy for a diagnostic rather than the diagnostic itself. Manifest and
-config files declare no definition, so the schema remains what judges their
-shape.
+`plecture.schema.json` is hand-written and authoritative for structural shape
+until the implementation lands a schema generator whose output is
+conformance-tested against it. From that point generation is authoritative and
+the hand-written copy is retired.
 
 ## Three validation layers
 

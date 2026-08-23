@@ -2,6 +2,19 @@
 
 `official/github` declared its workspace provider as `github`, repeating the plugin's own name where the id should say what the declaration does. It is now `worktree`, which is what the conformance corpus already spelled and what the provider actually acquires.
 
+## Backup
+
+```bash
+CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+cp -r "$CONFIG_HOME" "$CONFIG_HOME.migration-backup.$STAMP"
+```
+
+No session state changes, so `state.json` needs no backup for this rename —
+see "Nothing else moves" below.
+
+## Rewrite the reference
+
 A workflow that names it takes the new address:
 
 ```toml
@@ -14,8 +27,12 @@ Find every reference:
 
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
-grep -rn 'workspace_provider *= *"' "$CONFIG_HOME"
+grep -rn "workspace_provider *= *['\"]" "$CONFIG_HOME"
 ```
+
+TOML accepts either quote, so the pattern matches both — a reference written
+`workspace_provider = 'official.github.github'` is as valid as the
+double-quoted form and needs the same edit.
 
 A hit naming your own provider stays as it is; only one selecting the GitHub plugin's changes. A reference that still names the old id resolves to nothing and says which address it meant, so `plect workflow list` will name any you miss.
 

@@ -44,7 +44,7 @@ see "Residual config" below.
 
 Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
-`workspace_provider = "github"` plus an agent pack together.
+`workspace_provider = "official.github.worktree"` plus an agent pack together.
 
 ## Cleanup
 
@@ -78,7 +78,7 @@ table:
 | `delete_branch_default` | `"true"` to reclaim the branch on destroy when the caller expressed no `delete_branch` intent. Default off. |
 
 ```toml
-workspace_provider = "github"
+workspace_provider = "official.github.worktree"
 
 [workspace_provider_inputs]
 workspace_layout_root = "~/worktrees"

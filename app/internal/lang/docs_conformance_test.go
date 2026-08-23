@@ -9,65 +9,14 @@ import (
 	"testing"
 )
 
-// The two checks here are the ones the conformance harness could not absorb
-// when it took over from the specification PR's one-time tool: that harness
-// reads the diagnostic registry, so it cannot notice the registry drifting
-// from the table that documents it, and it reads fixtures, so it cannot
-// notice a chapter quoting one inexactly. Both guard rules stated in
-// docs/language/README.md and CLAUDE.md, both can be broken by an edit that
-// looks correct in isolation, and neither costs anything per legitimate
-// change — the assertion is an equality between two files, never a pinned
-// literal.
-
-var (
-	docDiagnosticRe = regexp.MustCompile(`PLECTURE-CFG-[A-Z0-9-]+`)
-	docFixtureRe    = regexp.MustCompile("(?m)^<!-- fixture: (\\S+) -->\\n```(?:toml|markdown)\\n((?s:.*?))```\\n")
-)
-
-// documentedDiagnostics reads the diagnostic table in docs/language/README.md.
-func documentedDiagnostics(t *testing.T) map[string]bool {
-	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "docs", "language", "README.md"))
-	if err != nil {
-		t.Fatalf("read the diagnostics chapter: %v", err)
-	}
-	out := map[string]bool{}
-	for _, line := range strings.Split(string(raw), "\n") {
-		if !strings.HasPrefix(strings.TrimSpace(line), "|") {
-			continue
-		}
-		for _, code := range docDiagnosticRe.FindAllString(line, -1) {
-			out[code] = true
-		}
-	}
-	if len(out) == 0 {
-		t.Fatal("no diagnostic codes found in the diagnostics chapter")
-	}
-	return out
-}
-
-// A diagnostic the language can raise is one an author can meet, so the table
-// that documents them and the registry that defines them name the same set.
-func TestDocumentedDiagnosticsMatchTheRegistry(t *testing.T) {
-	documented := documentedDiagnostics(t)
-	registered := map[string]bool{}
-	for _, c := range Codes() {
-		registered[string(c)] = true
-	}
-	for code := range registered {
-		if !documented[code] {
-			t.Errorf("%s is registered but the diagnostics chapter does not list it", code)
-		}
-	}
-	for code := range documented {
-		if !registered[code] {
-			t.Errorf("%s is listed in the diagnostics chapter but no longer registered", code)
-		}
-	}
-}
+var docFixtureRe = regexp.MustCompile("(?m)^<!-- fixture: (\\S+) -->\\n```(?:toml|markdown)\\n((?s:.*?))```\\n")
 
 // A chapter's worked example is the fixture, not a paraphrase of it: prose
-// that drifts from the executable specification is worse than no prose.
+// that drifts from the executable specification is worse than no prose. This
+// is the one assertion the retired one-time specification tool made that
+// nothing else covers — the registry against the diagnostics table is
+// TestCodesMatchDocumentedTable's, and the fixtures themselves belong to the
+// two conformance harnesses.
 func TestChapterExamplesQuoteTheirFixtureVerbatim(t *testing.T) {
 	root := repoRoot(t)
 	fixtureRoot := filepath.Join(root, "testdata", "config-language")
