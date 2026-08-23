@@ -30,13 +30,14 @@ func TestLayerState_JSONUsesEffectID(t *testing.T) {
 	}
 }
 
-// migrationFilter is docs/migrations/task-layer-effect-id-migration.md's
-// rename filter, verbatim. Keep the two in sync.
+// migrationFilter and migrationProcedure are copy-pasted from
+// docs/migrations/task-layer-effect-id-migration.md rather than the doc
+// loading this file (or vice versa) — there is no shared source of truth,
+// so keeping them byte-for-byte identical is a manual obligation on whoever
+// edits either one.
 const migrationFilter = `(.sessions[]? | .tasks[]? | select(.layers != null) | .layers[]) |=
       (if has("task_id") then (. + {effect_id: .task_id} | del(.task_id)) else . end)`
 
-// migrationProcedure is the same doc's full State-changes section, verbatim
-// (rename, both guards, replace). Keep the two in sync.
 const migrationProcedure = `
 set -euo pipefail
 jq '` + migrationFilter + `' \
@@ -80,9 +81,8 @@ func runMigrationFilter(t *testing.T, input string) string {
 	return out.String()
 }
 
-// layerIDs extracts every layer's identity (effect_id if present, else
-// task_id) from a state.json document, for an order-independent identity
-// comparison between two migration passes.
+// layerIDs returns a set rather than a slice: a migration must preserve
+// which ids exist, not the order layers happen to appear in.
 func layerIDs(t *testing.T, doc string) map[string]bool {
 	t.Helper()
 	var parsed struct {
@@ -127,12 +127,10 @@ func TestMigrationFilter_FreshStateRenamesTaskIDToEffectID(t *testing.T) {
 	}
 }
 
-// TestMigrationFilter_AlreadyMigratedStateIsUnchanged is the regression test
-// for the bug a reviewer found in this migration's first draft: a layer
-// with no "task_id" key (already migrated) makes `.task_id` read as JSON
-// null, and `. + {effect_id: .task_id}` then overwrote the good effect_id
-// with it. Rerunning the filter — what a partially-applied or re-executed
-// migration hits — must leave an already-migrated layer's identity intact.
+// A layer with no "task_id" key (already migrated) makes `.task_id` read as
+// JSON null in jq, not "absent" — an unconditional
+// `. + {effect_id: .task_id}` overwrites a good effect_id with that null.
+// This is the regression test for that.
 func TestMigrationFilter_AlreadyMigratedStateIsUnchanged(t *testing.T) {
 	const migrated = `{"sessions":{"s":{"tasks":{"outer":{"layers":[
 		{"effect_id":"outer","status":"produced"}
@@ -161,10 +159,9 @@ func TestMigrationFilter_PartiallyMigratedStateMigratesOnlyWhatNeedsIt(t *testin
 	}
 }
 
-// runMigrationProcedure runs the doc's full State-changes section (not just
-// the rename filter) against input written as $DATA_DIR/state.json, and
-// returns the directory (so the caller can inspect what, if anything, the
-// procedure left behind) plus the shell's exit error.
+// runMigrationProcedure returns the directory rather than the file content
+// so a failure-path test can inspect exactly what, if anything, a rejected
+// run left behind.
 func runMigrationProcedure(t *testing.T, input string) (dataDir string, err error) {
 	t.Helper()
 	skipIfNoJQ(t)
@@ -203,11 +200,10 @@ func TestMigrationProcedure_MigratesFreshStateAndReplacesTheFile(t *testing.T) {
 	}
 }
 
-// TestMigrationProcedure_RejectsANullIdentityWithoutTouchingTheFile is the
-// failure-path counterpart the identity-diff guard alone cannot cover: a
-// corrupted layer with a JSON-null task_id migrates to a JSON-null
-// effect_id, and null compares equal to null on both sides of that diff. The
-// separate not-a-real-string check must reject it before `mv` ever runs.
+// A corrupted layer with a JSON-null task_id migrates to a JSON-null
+// effect_id, and null compares equal to null on both sides of the
+// identity-diff guard — that guard alone cannot catch this, which is why
+// the not-a-real-string check exists as a separate, earlier gate.
 func TestMigrationProcedure_RejectsANullIdentityWithoutTouchingTheFile(t *testing.T) {
 	const corrupted = `{"sessions":{"s":{"tasks":{"outer":{"layers":[
 		{"task_id":null,"status":"produced"}
@@ -225,10 +221,32 @@ func TestMigrationProcedure_RejectsANullIdentityWithoutTouchingTheFile(t *testin
 	}
 }
 
-// TestMigrationProcedure_AbortsOnMalformedInputWithoutTouchingTheFile proves
-// `set -euo pipefail` stops the procedure at the first jq failure rather
-// than falling through to the guards with an empty or partial
-// state.json.new.
+// A layer manually half-edited to carry both keys (effect_id and task_id,
+// with different values) passes the not-a-real-string check — task_id's
+// value is a valid non-empty string — so this isolates the identity-diff
+// guard: the filter's unconditional overwrite-on-has("task_id") silently
+// prefers task_id's value, discarding the pre-existing effect_id, and only
+// the diff against the pre-migration identity set catches that.
+func TestMigrationProcedure_RejectsConflictingDualIdentityWithoutTouchingTheFile(t *testing.T) {
+	const conflicting = `{"sessions":{"s":{"tasks":{"outer":{"layers":[
+		{"effect_id":"outer","task_id":"renamed-outer","status":"produced"}
+	]}}}}}`
+	dir, err := runMigrationProcedure(t, conflicting)
+	if err == nil {
+		t.Fatal("migration procedure: want a non-nil error for conflicting dual identity, got nil")
+	}
+	got, readErr := os.ReadFile(filepath.Join(dir, "state.json"))
+	if readErr != nil {
+		t.Fatalf("read state.json: %v", readErr)
+	}
+	if string(got) != conflicting {
+		t.Errorf("state.json = %s, want it untouched after a rejected migration", got)
+	}
+}
+
+// set -euo pipefail should stop the procedure at the first jq failure
+// rather than falling through to the guards with an empty or partial
+// state.json.new; this is the test that proves it does.
 func TestMigrationProcedure_AbortsOnMalformedInputWithoutTouchingTheFile(t *testing.T) {
 	const broken = `{not valid json`
 	dir, err := runMigrationProcedure(t, broken)
