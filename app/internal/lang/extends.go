@@ -91,21 +91,39 @@ func ComposedJudges(layers []*Definition) (map[string]bool, error) {
 }
 
 // SchemaKeyRules enforces the extends composition rules for inputs_schema
-// and state_schema, walking layers root first: a new key is free to add: an
-// existing key may only gain a default where none is set anywhere in the
-// chain so far, and any other change to an existing key's definition is a
-// load error. It returns the union of declared property keys, which is the
-// composed contract a completion predicate resolves `self.state.*` against.
-// Exported for the same reason ComposedJudges is: app/internal/config's fast
-// load path composes independently of ValidateTaskContracts and needs the
-// identical rule, not a second implementation that could drift from it.
+// and state_schema, walking layers root first: a new property key is free to
+// add: an existing one may only gain a default where none is set anywhere in
+// the chain so far, and any other change to an existing key's definition is
+// a load error. The schema object's own `type` — the one schema-object-level
+// keyword the closed whitelist still lets a non-root layer restate, since
+// every realistic object schema states it whether or not it ever disagrees —
+// must agree with whichever earlier layer already fixed it; runtime
+// composition otherwise keeps only the first value and would silently make
+// a disagreeing later layer's declaration dead weight. It returns the union
+// of declared property keys, which is the composed contract a completion
+// predicate resolves `self.state.*` against. Exported for the same reason
+// ComposedJudges is: app/internal/config's fast load path composes
+// independently of ValidateTaskContracts and needs the identical rule, not a
+// second implementation that could drift from it.
 func SchemaKeyRules(field string, layers []*Definition) (map[string]bool, error) {
 	known := map[string]map[string]any{}
 	hasDefault := map[string]bool{}
+	var typeOwner string
+	var typeValue any
+	haveType := false
 	for _, layer := range layers {
 		schema, ok := layer.Body[field].(map[string]any)
 		if !ok {
 			continue
+		}
+		if t, declaresType := schema["type"]; declaresType {
+			if !haveType {
+				typeValue, typeOwner, haveType = t, layer.ID, true
+			} else if !reflect.DeepEqual(t, typeValue) {
+				at := childPos(childPos(Position{File: layer.File, Path: layer.ID}, field), "type")
+				return nil, newDiag(CodeExtendsSchemaType, LayerSemantic, at,
+					fmt.Sprintf("%s.type %v disagrees with %v, which %q already fixed earlier in this extends chain", field, t, typeValue, typeOwner))
+			}
 		}
 		props, ok := schema["properties"].(map[string]any)
 		if !ok {

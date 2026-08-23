@@ -194,8 +194,7 @@ extends = "root_task"
 
 // TestExtendsRejectsRequiredOnAnExtensionSchema proves the schema whitelist
 // is actually closed: an extension cannot use `required` to newly constrain
-// an inherited key, which composing `required` as a union would have let
-// through as if it were an additive change.
+// an inherited key.
 func TestExtendsRejectsRequiredOnAnExtensionSchema(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -263,6 +262,31 @@ reviewed_by = { type = "string" }
 	if err := resolveTaskDocuments(t, src); err != nil {
 		t.Fatalf("type and properties alone are the closed whitelist's whole point: %v", err)
 	}
+}
+
+// TestExtendsRejectsATypeDisagreement proves the closed whitelist's one
+// restatable keyword is still checked: an extension may repeat `type`, but
+// only in agreement with whichever earlier layer already fixed it.
+func TestExtendsRejectsATypeDisagreement(t *testing.T) {
+	src := `[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[base_task.state_schema]
+type = "object"
+
+[base_task.state_schema.properties]
+priority = { type = "string" }
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.state_schema]
+type = "array"
+`
+	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsSchemaType, LayerSemantic)
 }
 
 // TestExtendsRejectsSchemaFileAcrossMoreThanOneLayer proves the guard fires

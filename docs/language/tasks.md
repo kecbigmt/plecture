@@ -339,7 +339,12 @@ Composition is a closed, entirely additive whitelist:
   root gets to set; declaring one on an extension is a load error
   (`PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE`), not something composed as a union or
   otherwise, because there is no additive reading of "this layer may also
-  narrow what counts as valid." `inputs_schema_file` / `state_schema_file` are
+  narrow what counts as valid." A restated `type` must agree with whichever
+  earlier layer already fixed it, the same redefinition error as a property's
+  (`PLECTURE-CFG-EXTENDS-SCHEMA-TYPE`); composition keeps only the first
+  value, so a disagreeing later layer's declaration would otherwise be dead
+  weight rather than the error it should be.
+  `inputs_schema_file` / `state_schema_file` are
   not supported inside a real extends chain (more than one layer): the path
   resolves relative to its declaring layer's own directory, which a single
   composed document has no per-field way to remember, so a layer using either

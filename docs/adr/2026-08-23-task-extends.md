@@ -131,7 +131,16 @@ own, gets to answer it (`PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE` structural,
 checkable from the document's own declaration alone). Composing the
 object's own shape is therefore not a merge at all: it is exactly the
 root's table, verbatim, since only the root may declare one; `properties`
-remains the one field ever combined across more than one layer. A layer using
+remains the one field ever combined across more than one layer. `type` is
+the closed set's one exception admitting more than a single declaring
+layer — every realistic object schema states it whether or not the value
+ever disagrees with an ancestor's — so a restated `type` is checked for
+agreement against whichever earlier layer already fixed it
+(`PLECTURE-CFG-EXTENDS-SCHEMA-TYPE`, the same redefinition code a property's
+own type reuses): composition keeps only the first value regardless, so a
+silently accepted disagreement would make the later layer's declaration
+dead weight rather than the load error the acceptance criteria already
+require for any redefined constraint. A layer using
 `inputs_schema_file` / `state_schema_file` anywhere in a real extends chain
 (more than one layer) fails the load outright rather than composing into
 nothing: the file path resolves relative to that layer's own directory,
@@ -160,8 +169,8 @@ three worked examples quoted verbatim in `docs/language/tasks.md` (a
 cross-tool reviewer choosing between two static chains, a gate-variant
 judge-recording extension, and a three-layer official/team/personal chain),
 plus the four required error fixtures and one fixture apiece for
-inherited-field, chain-id-duplicate, schema-shape, and
-schema-file-unsupported.
+inherited-field, chain-id-duplicate, schema-shape,
+schema-file-unsupported, and the schema-object `type` disagreement.
 
 No migration is needed: `extends` is new, additive vocabulary on an existing
 kind, and no previously valid task declaration changes meaning.

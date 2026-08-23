@@ -278,10 +278,10 @@ kind = "workflow"
 }
 
 // TestValidateTaskDocuments_ComposedSchemaKeepsBaseConstraintsClosed proves an
-// extension cannot accidentally weaken a base's closed contract: the base's
-// additionalProperties=false survives composition even though the extension's
-// own state_schema table, being newer/nearer, would otherwise have replaced
-// it wholesale; and required accumulates rather than being replaced.
+// extension cannot weaken a base's closed contract: the extension's own
+// state_schema table never touches required/additionalProperties at all, so
+// composition carries the base's through untouched while still adding the
+// extension's own new property.
 func TestValidateTaskDocuments_ComposedSchemaKeepsBaseConstraintsClosed(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
@@ -404,10 +404,6 @@ reviewed_by = { type = "string" }
 	}
 }
 
-// TestLoadTaskDocuments_RejectsSchemaShapeViolationsWithoutValidateTaskDocuments
-// is the fast-path half of the closed schema whitelist: LoadTaskDocuments
-// alone must reject an extension trying to set required or
-// additionalProperties, not only the full ValidateTaskDocuments pass.
 func TestLoadTaskDocuments_RejectsSchemaShapeViolationsWithoutValidateTaskDocuments(t *testing.T) {
 	tests := []struct {
 		name string
@@ -452,6 +448,29 @@ kind    = "task"
 extends = "work"
 `,
 			want: "PLECTURE-CFG-EXTENDS-SCHEMA-FILE-UNSUPPORTED",
+		},
+		{
+			name: "type disagreement between layers",
+			body: `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+
+[work.state_schema]
+type = "object"
+
+[work.state_schema.properties]
+priority = { type = "string" }
+
+[work_ext]
+kind    = "task"
+extends = "work"
+
+[work_ext.state_schema]
+type = "array"
+`,
+			want: "PLECTURE-CFG-EXTENDS-SCHEMA-TYPE",
 		},
 	}
 	for _, tc := range tests {
