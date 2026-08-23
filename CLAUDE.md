@@ -145,6 +145,28 @@ later commits.
 Coverage means error branches and failure paths are tested, not just the
 happy path. A change that only exercises success cases is incomplete.
 
+### Audit discipline
+
+- **Two-authorities audit lens.** Every defect in the config-language
+  implementation arc reduced to the same shape: two authorities answering
+  one question and disagreeing (a stored id vs. the workflow, a plan node
+  vs. a state entry, a schema vs. a validator). A pre-PR-ready audit runs
+  this lens, and its scope includes code authored during the PR under
+  review, not only code that predates it. (Origin: recurring shape across
+  the config-language implementation arc's defects.)
+- **Wholesale revert warning.** `git checkout <base> -- <file>` restores the
+  base branch's version of a file wholesale, including references to things
+  the current branch has since deleted or renamed. After such a revert, diff
+  the restored file against the branch's own removals before committing it.
+  (Origin: a revert during the config-language arc resurrected references to
+  identifiers the branch had already deleted.)
+- **Locate the absence, don't assert it.** A claim that something "was
+  previously unverified" about a mature area of the codebase requires citing
+  where the coverage would live (which test, which file) and showing it
+  missing there. An assertion of missing coverage without that citation is
+  not evidence. (Origin: an unverified-coverage claim during the
+  config-language arc's follow-ups turned out to be wrong.)
+
 ### Design principles: YAGNI and SOLID
 
 Stated operationally — testable rules an agent can apply and a reviewer
@@ -173,6 +195,19 @@ forever, not a one-time cost.
 - A requirement to verify that something is absent, swept, or consistent
   is satisfied **once**, by evidence in the PR body (the exact command and
   its output) — not by adding a permanent check.
+- Before writing a new corpus assertion, search for an existing harness
+  first: a measurement showing the implementation already agrees with the
+  spec is often evidence a check already exists. In `app/internal/lang`,
+  the three corpus harnesses are `TestNativeConformanceFixtures` (what the
+  package's own validators do), `TestConformanceFixtures` (what the
+  published schema accepts), and `TestCodesMatchDocumentedTable` (the
+  diagnostic registry against its documented table) — check these before
+  writing a new one. (Origin: a duplicate corpus assertion written during
+  the config-language arc.)
+- A rename is complete when a computed reference inventory — across code,
+  comments, error strings, and docs — returns empty, not when spot checks
+  pass. (Origin: a rename during the config-language arc left references
+  that spot checks missed.)
 - A standing check must guard an invariant that future changes can
   silently break, and its maintenance cost must not scale with legitimate
   edits. Never pin prose literals; never assert exact counts of document
@@ -225,6 +260,10 @@ A PR is done when:
   the implementation that satisfies them.
 - There is no formatting or vet debt (`gofmt`, `go vet` clean) in any
   module touched by the change.
+- The PR body contains `Closes #<issue>` for the issue it resolves. A PR
+  that omits this publishes no `pr_url`, and any review chain that depends
+  on that value silently never fires. (Origin: observed twice in one day
+  during the config-language arc.)
 
 ## Compatibility policy
 
