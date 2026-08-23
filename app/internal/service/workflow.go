@@ -2,10 +2,10 @@ package service
 
 import (
 	"fmt"
-	"maps"
 	"sort"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/task"
 )
 
@@ -115,7 +115,7 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 		Name:              wf.Name,
 		Description:       wf.Description,
 		WorkspaceProvider: wf.WorkspaceProvider,
-		Display:           wf.Display,
+		Display:           valueSources(wf.Display),
 		AutoSelect:        workflowAutoSelect(wf),
 		InputsSchema:      wf.InputsSchema,
 		Nodes:             nodes,
@@ -141,7 +141,7 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 				Name:    ch.Name,
 				Uses:    ch.Uses,
 				Include: ch.Include,
-				Inputs:  cloneStringMap(ch.Inputs),
+				Inputs:  valueSources(ch.Inputs),
 			}
 			if def, ok := channels[ch.Uses]; ok {
 				view.Type = def.Type
@@ -158,15 +158,19 @@ func resolvedToNode(r task.Resolved) WorkflowNode {
 		Uses:      r.TaskID,
 		Scope:     r.Scope,
 		DependsOn: append([]string(nil), r.DependsOn...),
-		Inputs:    cloneStringMap(r.Inputs),
+		Inputs:    valueSources(r.Inputs),
 	}
 }
 
-func cloneStringMap(m map[string]string) map[string]string {
-	if len(m) == 0 {
+// valueSources renders a value table the way its author wrote it, for a
+// listing that shows a configuration to a person rather than evaluating it.
+func valueSources(values map[string]*lang.Value) map[string]string {
+	if len(values) == 0 {
 		return nil
 	}
-	out := make(map[string]string, len(m))
-	maps.Copy(out, m)
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value.Source()
+	}
 	return out
 }

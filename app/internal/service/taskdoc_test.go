@@ -90,7 +90,7 @@ func writeTaskDocumentFixture(t *testing.T, workdirsRoot, wfID string, observerS
 		}
 	}
 	write(filepath.Join("resources", "issue_pr.toml"), observerDocument(observerState))
-	write(filepath.Join("workflows", wfID+".toml"), "[[nodes]]\nid = \"noop\"\n")
+	write(filepath.Join("workflows", wfID+".toml"), "["+wfID+"]\nkind = \"workflow\"\n\n[["+wfID+".nodes]]\nuses = \"noop\"\n")
 	for i, doc := range documents {
 		write(filepath.Join("tasks", fmt.Sprintf("doc%d.md", i)), doc)
 	}
@@ -360,7 +360,7 @@ revision      = { type = "string" }
 # Declared but never reported, so a value reading it exercises the absent case.
 pr_url        = { type = "string" }
 `, revisionFile))
-	write(filepath.Join("workflows", "wf.toml"), "[[nodes]]\nid = \"noop\"\n")
+	write(filepath.Join("workflows", "wf.toml"), "[wf]\nkind = \"workflow\"\n\n[[wf.nodes]]\nuses = \"noop\"\n")
 	for i, doc := range documents {
 		write(filepath.Join("tasks", fmt.Sprintf("doc%d.md", i)), doc)
 	}

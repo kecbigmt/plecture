@@ -10,19 +10,20 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// dependsOn returns an `inputs` map that wires a node to upstream nodes so
-// CompileWorkflow derives the same DAG edges that legacy `depends_on` used to
-// produce. The synthetic `_dep_<id>` key is never read by setup/cleanup —
-// it's only there to feed deriveDependsOn's regex. The template uses `get`
-// so a missing key in the upstream's outputs doesn't trip missingkey=error.
-func dependsOn(upstreams ...string) map[string]string {
-	out := make(map[string]string, len(upstreams))
+// dependsOn returns an `inputs` map that wires a node to upstream nodes, which
+// is what CompileWorkflow derives its DAG edges from. The synthetic
+// `_dep_<id>` key is never read by setup or cleanup — the edge follows from
+// the path alone — and it carries a default so an upstream that publishes no
+// such output still resolves.
+func dependsOn(upstreams ...string) map[string]*lang.Value {
+	out := make(map[string]*lang.Value, len(upstreams))
 	for _, u := range upstreams {
-		out["_dep_"+u] = `{{get .Nodes.` + u + `.outputs "_link" ""}}`
+		out["_dep_"+u] = fromValueOr("nodes."+u+".outputs._link", "")
 	}
 	return out
 }
@@ -992,18 +993,18 @@ session_name = { from = "inputs.session_name" }
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(repoDir+"/.plect/workflows/coding.toml", []byte(`
+[coding]
+kind = "workflow"
 name = "coding"
 
-[[nodes]]
-id = "tmux"
+[[coding.nodes]]
 uses = "tmux"
 
-[[nodes]]
-id = "agent"
+[[coding.nodes]]
 uses = "agent"
 
-[nodes.inputs]
-session_name = "{{.Nodes.tmux.outputs.session_name}}"
+[coding.nodes.inputs]
+session_name = { from = "nodes.tmux.outputs.session_name" }
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1076,17 +1077,21 @@ script = "echo '{}'"
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(repoDir+"/.plect/workflows/a.toml", []byte(`
+[a]
+kind = "workflow"
 name = "a"
-[[nodes]]
-id = "noop"
+
+[[a.nodes]]
 uses = "noop"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(repoDir+"/.plect/workflows/b.toml", []byte(`
+[b]
+kind = "workflow"
 name = "b"
-[[nodes]]
-id = "noop"
+
+[[b.nodes]]
 uses = "noop"
 `), 0o644); err != nil {
 		t.Fatal(err)
@@ -1148,10 +1153,11 @@ args    = ["attach", "-t", { from = "self.outputs.session_name" }]
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(repoDir+"/.plect/workflows/coding.toml", []byte(`
+[coding]
+kind = "workflow"
 name = "coding"
 
-[[nodes]]
-id   = "tmux"
+[[coding.nodes]]
 uses = "tmux"
 `), 0o644); err != nil {
 		t.Fatal(err)

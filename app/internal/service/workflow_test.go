@@ -40,20 +40,24 @@ type   = "shell"
 script = "echo '{}'"
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
 name        = "Coding agent"
 description = "Spawn tmux + agent"
 
-[inputs_schema]
+[coding.inputs_schema]
 type = "object"
 
-[inputs_schema.properties]
+[coding.inputs_schema.properties]
 template = { type = "string", description = "Initial prompt name." }
 
-[[nodes]]
+[[coding.nodes]]
 uses = "tmux"
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "bare.toml"), `
-[[nodes]]
+[bare]
+kind = "workflow"
+[[bare.nodes]]
 uses = "tmux"
 `)
 	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
@@ -134,13 +138,15 @@ body = { json = { from = "event" } }
 path = { type = "string", required = true }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
-[[nodes]]
+[withchan]
+kind = "workflow"
+[[withchan.nodes]]
 uses = "tmux"
 
-[[event.channel]]
+[[withchan.event.channel]]
 name        = "runtime"
 uses        = "claude_channel"
-inputs.path = "{{.Nodes.tmux.outputs.session_name}}"
+inputs.path = { from = "nodes.tmux.outputs.session_name" }
 include     = ["plect.instruction", "github.*"]
 `)
 	cfg, err := config.Load()
@@ -186,10 +192,12 @@ script = "echo '{}'"
 	// mismatch), so WorkflowShow returns the wrapped load error, not ErrInvalidInput.
 	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), "[claude_channel]\nkind = \"channel\"\ntype = \"unix_socket\"\npath = { from = \"inputs.path\" }\n")
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
-[[nodes]]
+[withchan]
+kind = "workflow"
+[[withchan.nodes]]
 uses = "tmux"
 
-[[event.channel]]
+[[withchan.event.channel]]
 name        = "runtime"
 uses        = "claude_channel"
 inputs.path = "p"
@@ -231,10 +239,12 @@ type   = "shell"
 script = "echo '{}'"
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "withchan.toml"), `
-[[nodes]]
+[withchan]
+kind = "workflow"
+[[withchan.nodes]]
 uses = "tmux"
 
-[[event.channel]]
+[[withchan.event.channel]]
 name    = "runtime"
 uses    = "missing_channel"
 include = ["github.*"]
@@ -277,16 +287,18 @@ func TestResolveSessionInputs_RejectsUnknownTask(t *testing.T) {
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
-[inputs_schema]
+[claude]
+kind = "workflow"
+[claude.inputs_schema]
 type = "object"
 required = ["task"]
 additionalProperties = false
 
-[inputs_schema.properties.task]
+[claude.inputs_schema.properties.task]
 type = "string"
 enum = ["work", "review", "respond", "investigate", "none"]
 
-[[nodes]]
+[[claude.nodes]]
 uses = "noop"
 `)
 	cfg, loadErr := config.Load()
@@ -321,16 +333,18 @@ func TestResolveSessionInputs_MissingRequiredTaskListsChoices(t *testing.T) {
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
-[inputs_schema]
+[claude]
+kind = "workflow"
+[claude.inputs_schema]
 type = "object"
 required = ["task"]
 additionalProperties = false
 
-[inputs_schema.properties.task]
+[claude.inputs_schema.properties.task]
 type = "string"
 enum = ["work", "review", "respond", "investigate", "none"]
 
-[[nodes]]
+[[claude.nodes]]
 uses = "noop"
 `)
 	cfg, loadErr := config.Load()

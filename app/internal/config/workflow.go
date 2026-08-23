@@ -1,83 +1,74 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/BurntSushi/toml"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// WorkflowFile is loaded from `.plect/workflows/<id>.toml` (per-repo) or from
-// `~/.config/plect/workflows/<id>.toml` (global). Per-repo wins on id conflict.
+// WorkflowFile is one `kind = "workflow"` declaration, loaded from a
+// definition document under a `workflows/` directory in any cascade layer.
 //
-// A workflow is a named bundle of nodes. Each node selects a task definition
-// via `uses` and binds its inputs as Go templates. The setup/cleanup DAG is
-// derived from `.Nodes.<id>.outputs.<key>` references in those bindings, so
-// `depends_on` is no longer part of the node surface.
+// A workflow is a named bundle of nodes plus the event channels, display
+// values and clocks for the sessions it produces. Each node selects an effect
+// through `uses` and binds that effect's inputs; the setup and cleanup graph
+// is derived from those bindings, so there is no `depends_on`.
 //
-// ID is derived from the filename stem and is *not* read from TOML — the
-// filename is the single source of truth (renaming a workflow is `mv`, not
-// `mv` + TOML edit). `name` is the human-readable display label (separate from
-// identity); `description` is a short summary used by `plect workflow list/show`
-// and the MCP discovery tools.
+// The id is the definition table's name, and `name` is the human-readable
+// display label separate from it. `description` is the short summary
+// `plect workflow list/show` and the MCP discovery tools present.
 type WorkflowFile struct {
-	ID          string `toml:"-"`
-	Name        string `toml:"name"`
-	Description string `toml:"description"`
-	// WorkspaceProvider names the workspace provider (workspaces/<id>.toml in
-	// the trusted base layers) this workflow runs on. The workspace provider
-	// owns the resource-kind knowledge — resolver, workspace setup/cleanup,
-	// the @workflow outputs contract; the workflow owns the task shape on top
-	// (nodes, inputs, done_when, display). A workflow without one cannot
-	// acquire a workspace, so it cannot back a session.
-	WorkspaceProvider string `toml:"workspace_provider"`
+	ID string
+	// Definition is the declaration this file was decoded from, kept so a
+	// reference naming this workflow resolves against what was parsed rather
+	// than against a reconstruction of it.
+	Definition  *lang.Definition
+	Name        string
+	Description string
+	// WorkspaceProvider names the workspace provider this workflow runs on.
+	// The workspace provider owns the resource-kind knowledge — resolver,
+	// workspace setup/cleanup, the @workflow outputs contract; the workflow
+	// owns the effect shape on top. A workflow without one cannot acquire a
+	// workspace, so it cannot back a session.
+	WorkspaceProvider string
 	// WorkspaceProviderInputs sets the workspace provider's author-declared
-	// parameters (its `[inputs_schema]`). Values are literal data, not
-	// templates — the provider's hooks run before any workspace exists, so
-	// there is no node output for a parameter to reference.
-	WorkspaceProviderInputs map[string]string `toml:"workspace_provider_inputs"`
-	// Display declares the values shown by `plect ls` / `show` / the web UI as
-	// templates over the session's persisted outputs:
-	//
-	//	[display]
-	//	title  = "{{.Workflow.outputs.title}}"
-	//	status = "{{.Workflow.outputs.pr_state}}"
-	//
-	// Evaluation reads state.json only — no network; freshness follows the
-	// watcher's update cadence.
-	Display    map[string]string `toml:"display"`
-	AutoSelect *bool             `toml:"auto_select"`
-	Nodes      []WorkflowNode    `toml:"nodes"`
-	Event      WorkflowEvent     `toml:"event"`
+	// parameters (its `[inputs_schema]`). The values are literal data: the
+	// provider's hooks run before any workspace or node output exists, so
+	// there is nothing for a projection to read.
+	WorkspaceProviderInputs map[string]any
+	// Display declares the values `plect ls` / `show` and the web UI render.
+	// They read persisted outputs and the session's inputs only — no network
+	// — so their freshness follows whatever cadence updates those outputs.
+	Display    map[string]*lang.Value
+	AutoSelect *bool
+	Nodes      []WorkflowNode
+	Event      WorkflowEvent
 	// Tick declares the machine-driven conditions that tick the sessions this
-	// workflow produces (docs/wiki/verification-gate.md). Unlike the other
-	// WorkflowFile fields, a deeper cascade layer's `[tick]` replaces a
-	// shallower layer's wholesale (see mergeWorkflowLayers) — the same
-	// deeper-wins policy as TaskDefinition, not the additive/no-redeclare
-	// policy the rest of this struct uses. Nil means no declaration: the
-	// session advances only via manual `plect tick` and the judge builtin.
-	Tick *TickConfig `toml:"tick"`
+	// workflow produces. Unlike the other WorkflowFile fields, a deeper
+	// cascade layer's `[tick]` replaces a shallower layer's wholesale — the
+	// deeper-wins policy the ratified language states for runtime tuning
+	// tables, not the additive/no-redeclare policy the rest of this struct
+	// uses. Nil means no declaration: the session advances only via manual
+	// `plect tick` and the judge builtin.
+	Tick *TickConfig
 	// Healthcheck declares the dedicated health sampling clock for sessions
-	// produced by this workflow. Like `[tick]`, `[healthcheck]` is a
-	// deeper-wins whole-table runtime tuning declaration. It names the
-	// sampling cycle, not what health means: what each probe observes is a
-	// task-level `[health]` declaration (see HealthConfig).
-	Healthcheck      *HealthcheckConfig `toml:"healthcheck"`
-	InputsSchema     map[string]any     `toml:"inputs_schema"`
-	InputsSchemaFile string             `toml:"inputs_schema_file"`
-	// BaseDir anchors InputsSchemaFile (and node-relative paths) so the
-	// resolved location is independent of where the workflow file lives.
-	BaseDir    string `toml:"-"`
-	SourcePath string `toml:"-"`
+	// produced by this workflow. Like `[tick]`, it is a deeper-wins
+	// whole-table runtime tuning declaration. It names the sampling cycle,
+	// not what health means: what each probe observes is an effect-level
+	// `[health]` declaration.
+	Healthcheck      *HealthcheckConfig
+	InputsSchema     map[string]any
+	InputsSchemaFile string
+	// BaseDir anchors InputsSchemaFile so the resolved location is
+	// independent of where the workflow document lives.
+	BaseDir    string
+	SourcePath string
 }
 
 // TickConfig declares when the tick reactor (internal/reactor) ticks a
@@ -96,13 +87,13 @@ type WorkflowFile struct {
 // mean "an external resource changed" is a workflow-configuration concern,
 // the same way wiring that watcher's channel is.
 type TickConfig struct {
-	On        []string `toml:"on"`
-	Heartbeat Duration `toml:"heartbeat"`
+	On        []string
+	Heartbeat Duration
 	// MaxHeartbeat caps the quiet-tick exponential backoff interval
 	// (heartbeat * 2^n) the reactor applies when consecutive heartbeat sweeps
 	// see no fingerprint change and no inbound event. Zero means the
 	// reactor's default (4h) applies — declaring it is optional.
-	MaxHeartbeat Duration `toml:"max_heartbeat"`
+	MaxHeartbeat Duration
 }
 
 // DefaultMaxHeartbeat caps the quiet-tick backoff interval when a workflow's
@@ -144,9 +135,9 @@ func BackoffInterval(base, max time.Duration, n int) time.Duration {
 // health side's stall accelerator, so it keeps sampling even when the
 // done_when brake has backed off.
 type HealthcheckConfig struct {
-	Period         Duration `toml:"period"`
-	StallThreshold Duration `toml:"stall_threshold"`
-	RenotifyEvery  int      `toml:"renotify_every"`
+	Period         Duration
+	StallThreshold Duration
+	RenotifyEvery  int
 }
 
 // DefaultHealthcheckConfig returns the workflow healthcheck defaults.
@@ -180,43 +171,40 @@ func NormalizeHealthcheckConfig(in *HealthcheckConfig) HealthcheckConfig {
 	return out
 }
 
-// WorkflowNode is a single instantiation of a task definition within a
-// workflow. ID is the state key (independent of TaskID = `uses`) and Inputs
-// is the template-string mapping fed to the task's setup/cleanup as `.Input.*`.
+// WorkflowNode is a single instantiation of an effect within a workflow. ID
+// is the state key (independent of the referenced effect's id) and Inputs is
+// the value table bound to that effect's inputs.
 //
 // Blocks declares reverse dependency edges: each listed node id becomes a
 // dependent of this one, equivalent to writing the inverse dependency in the
-// listed node. Use it when a cascade overlay needs to insert itself ahead of
-// base nodes it cannot modify directly (e.g. a workspace-dir-process killer
-// that must clean up after the runtime/agent tasks).
+// listed node. It exists for a cascade overlay that must insert itself ahead
+// of base nodes it cannot modify (e.g. a workspace-dir-process killer that
+// must clean up after the runtime and agent effects).
 type WorkflowNode struct {
-	ID     string            `toml:"id"`
-	Uses   string            `toml:"uses"`
-	Inputs map[string]string `toml:"inputs"`
-	Blocks []string          `toml:"blocks"`
+	ID     string
+	Uses   string
+	Inputs map[string]*lang.Value
+	Blocks []string
 }
 
 // WorkflowEvent wraps [[event.channel]] in an [event] table so event-level
 // settings can be added later without reshaping the workflow surface.
 type WorkflowEvent struct {
-	Channel []EventChannel `toml:"channel"`
+	Channel []EventChannel
 }
 
-// EventChannel selects a channel definition (channels/<uses>.toml) instead of
-// a task and adds an `include` allowlist. Entries are event-type globs using the
-// contracts/event MatchType rules. Inputs are template strings rendered against
-// the session's node outputs at delivery.
+// EventChannel selects a channel definition instead of an effect and adds an
+// `include` allowlist of event-type globs, matched by the contracts/event
+// MatchType rules. Its inputs are values over the same roots a node's inputs
+// read, evaluated at delivery.
 //
-//	[[event.channel]]
-//	name = "runtime"
-//	uses = "claude_channel"
-//	inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
-//	include = ["plect.instruction", "resource.*", "user.emit"]
+// Name identifies the channel binding within the workflow; two bindings may
+// select the same channel definition under different names and includes.
 type EventChannel struct {
-	Name    string            `toml:"name"`
-	Uses    string            `toml:"uses"`
-	Inputs  map[string]string `toml:"inputs"`
-	Include []string          `toml:"include"`
+	Name    string
+	Uses    string
+	Inputs  map[string]*lang.Value
+	Include []string
 }
 
 // TaskDefinition is one `kind = "effect"` declaration, loaded from a
@@ -472,103 +460,70 @@ type layerDir struct {
 	pluginID string
 }
 
-// LoadWorkflows merges plugin + global + ancestor `.plect/workflows/` layers so
-// projects can extend (not fork) shared workflows. Same-stem files append
-// nodes; duplicating a node id across layers is rejected so a deeper layer
-// can't silently stomp a base node. Same-id across two different plugin
-// layers is rejected outright, before any merge is attempted: composing two
-// arbitrary plugins under one workflow id was never a sanctioned use case —
-// only a user-owned overlay may extend a plugin's workflow.
+// LoadWorkflows loads every workflow declaration the cascade layers hold:
+// plugins (base), the global config, then each ancestor overlay ending at the
+// workspace directory. A deeper layer merges into a same-id shallower
+// workflow by the cascade rules — it may set a field the shallower layer left
+// unset, its nodes append, and its `[tick]` / `[healthcheck]` replace the
+// shallower table wholesale — so a project extends a shared workflow instead
+// of forking it.
 //
-// Trust restriction: workflow files in the workspace-dir layer may only add
-// nodes. Declaring anything else there (setup/cleanup shell, identity,
-// schemas) is a load error. Declaring `done_when` at the workflow level, in
-// any layer, is also a load error — the completion predicate lives on the
-// task definition's `[done_when]`.
+// Same-id across two different plugin layers is rejected outright, before any
+// merge is attempted: composing two arbitrary plugins under one workflow id
+// was never a sanctioned use case — only a user-owned overlay may extend a
+// plugin's workflow.
+//
+// Trust restriction: a workflow document in the workspace-dir layer is clone
+// content and may only add nodes.
 func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile, error) {
-	dirs := c.workflowSearchDirs(workspaceDirPath)
-	layered := make(map[string][]WorkflowFile)
-	order := make([]string, 0)
+	var merged []*lang.Definition
 	pluginOwner := make(map[string]string)
-	for _, layer := range dirs {
+	// The shallowest layer that declared an id owns it: that is the file a
+	// relative schema path resolves against, and the layer a reference
+	// written in the declaration resolves in.
+	source := make(map[string]string)
+	for _, layer := range c.workflowSearchDirs(workspaceDirPath) {
 		entries, err := listTOMLFiles(layer.dir)
 		if err != nil {
 			return nil, err
 		}
+		var defs []*lang.Definition
+		layerOwner := make(map[string]string)
 		for _, path := range entries {
-			wf, err := loadWorkflowFile(path)
+			parsed, err := c.loadWorkflowDocument(path, layer)
 			if err != nil {
-				return nil, fmt.Errorf("workflow %s: %w", path, err)
+				return nil, err
 			}
-			if layer.workspaceDir {
-				if err := validateWorkspaceDirLayerWorkflow(wf); err != nil {
-					return nil, err
+			for _, def := range parsed {
+				if prior, dup := layerOwner[def.ID]; dup {
+					return nil, lang.DuplicateID(def.ID, prior, path)
 				}
-			}
-			if layer.plugin {
-				if owner, exists := pluginOwner[wf.ID]; exists {
-					return nil, fmt.Errorf("workflow %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", wf.ID, owner, path)
+				layerOwner[def.ID] = path
+				if layer.plugin {
+					if owner, exists := pluginOwner[def.ID]; exists {
+						return nil, fmt.Errorf("workflow %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, path)
+					}
+					pluginOwner[def.ID] = path
 				}
-				pluginOwner[wf.ID] = path
+				if _, seen := source[def.ID]; !seen {
+					source[def.ID] = path
+				}
+				defs = append(defs, def)
 			}
-			if _, seen := layered[wf.ID]; !seen {
-				order = append(order, wf.ID)
-			}
-			layered[wf.ID] = append(layered[wf.ID], wf)
 		}
-	}
-	out := make(map[string]WorkflowFile, len(layered))
-	for _, id := range order {
-		merged, err := mergeWorkflowLayers(layered[id])
-		if err != nil {
+		if merged, err = lang.MergeLayer(merged, defs); err != nil {
 			return nil, err
 		}
-		out[id] = merged
+	}
+	out := make(map[string]WorkflowFile, len(merged))
+	for _, def := range merged {
+		wf, err := workflowFrom(def, source[def.ID])
+		if err != nil {
+			return nil, fmt.Errorf("workflow %s in %s: %w", def.ID, source[def.ID], err)
+		}
+		out[def.ID] = wf
 	}
 	return out, nil
-}
-
-// validateWorkspaceDirLayerWorkflow enforces the node-addition-only rule for
-// workflow files that live inside the workspace directory.
-func validateWorkspaceDirLayerWorkflow(wf WorkflowFile) error {
-	var offending []string
-	if wf.Name != "" {
-		offending = append(offending, "name")
-	}
-	if wf.Description != "" {
-		offending = append(offending, "description")
-	}
-	if wf.WorkspaceProvider != "" {
-		offending = append(offending, "workspace_provider")
-	}
-	if len(wf.Display) > 0 {
-		offending = append(offending, "display")
-	}
-	if wf.AutoSelect != nil {
-		offending = append(offending, "auto_select")
-	}
-	if len(wf.InputsSchema) > 0 || wf.InputsSchemaFile != "" {
-		offending = append(offending, "inputs_schema")
-	}
-	// A channel selects a delivery primitive (exec runs argv) — clone content
-	// must not introduce one, same trust rule as tasks/workspaces.
-	if len(wf.Event.Channel) > 0 {
-		offending = append(offending, "event.channel")
-	}
-	// [tick] is a declaration that produces automatic execution (the reactor
-	// ticks on it with no human/orchestrator in the loop); clone content must
-	// not be able to supply a driving condition any more than it can supply
-	// setup/cleanup shell or an event channel's exec target.
-	if wf.Tick != nil {
-		offending = append(offending, "tick")
-	}
-	if wf.Healthcheck != nil {
-		offending = append(offending, "healthcheck")
-	}
-	if len(offending) > 0 {
-		return fmt.Errorf("workflow %s: a `.plect/workflows/` file inside the workspace directory may only add [[nodes]]; %v must move to a trusted layer (global config, plugin, or a directory above the workspace dir)", wf.SourcePath, offending)
-	}
-	return nil
 }
 
 // LoadTaskDefinitions merges plugin + global + ancestor `.plect/tasks/`
@@ -704,172 +659,6 @@ func cascadeAncestors(workspaceDirPath string) []string {
 	return chain
 }
 
-func mergeWorkflowLayers(layers []WorkflowFile) (WorkflowFile, error) {
-	if len(layers) == 0 {
-		return WorkflowFile{}, fmt.Errorf("internal: mergeWorkflowLayers called with no layers")
-	}
-	if len(layers) == 1 {
-		return layers[0], nil
-	}
-	merged := layers[0]
-	merged.Nodes = append([]WorkflowNode(nil), layers[0].Nodes...)
-	merged.Event.Channel = append([]EventChannel(nil), layers[0].Event.Channel...)
-	nameSource := ""
-	descSource := ""
-	workspaceProviderSource := ""
-	autoSelectSource := ""
-	if merged.Name != "" {
-		nameSource = layers[0].SourcePath
-	}
-	if merged.Description != "" {
-		descSource = layers[0].SourcePath
-	}
-	if merged.WorkspaceProvider != "" {
-		workspaceProviderSource = layers[0].SourcePath
-	}
-	if merged.AutoSelect != nil {
-		autoSelectSource = layers[0].SourcePath
-	}
-	displaySource := ""
-	if len(merged.Display) > 0 {
-		displaySource = layers[0].SourcePath
-	}
-	wsInputsSource := ""
-	if len(merged.WorkspaceProviderInputs) > 0 {
-		wsInputsSource = layers[0].SourcePath
-	}
-	nodeSource := make(map[string]string, len(merged.Nodes))
-	for _, n := range merged.Nodes {
-		if n.ID != "" {
-			nodeSource[n.ID] = layers[0].SourcePath
-		}
-	}
-	channelSource := make(map[string]string, len(merged.Event.Channel))
-	for _, ch := range merged.Event.Channel {
-		if ch.Name != "" {
-			channelSource[ch.Name] = layers[0].SourcePath
-		}
-	}
-	for _, layer := range layers[1:] {
-		if layer.Name != "" {
-			if nameSource != "" {
-				return WorkflowFile{}, fmt.Errorf("workflow %q: `name` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, nameSource, layer.SourcePath)
-			}
-			merged.Name = layer.Name
-			nameSource = layer.SourcePath
-		}
-		if layer.Description != "" {
-			if descSource != "" {
-				return WorkflowFile{}, fmt.Errorf("workflow %q: `description` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, descSource, layer.SourcePath)
-			}
-			merged.Description = layer.Description
-			descSource = layer.SourcePath
-		}
-		if layer.WorkspaceProvider != "" {
-			if workspaceProviderSource != "" {
-				return WorkflowFile{}, fmt.Errorf("workflow %q: `workspace_provider` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, workspaceProviderSource, layer.SourcePath)
-			}
-			merged.WorkspaceProvider = layer.WorkspaceProvider
-			workspaceProviderSource = layer.SourcePath
-		}
-		if layer.AutoSelect != nil {
-			if autoSelectSource != "" {
-				return WorkflowFile{}, fmt.Errorf("workflow %q: `auto_select` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, autoSelectSource, layer.SourcePath)
-			}
-			merged.AutoSelect = layer.AutoSelect
-			autoSelectSource = layer.SourcePath
-		}
-		if len(layer.Display) > 0 {
-			if displaySource != "" {
-				return WorkflowFile{}, fmt.Errorf("workflow %q: `display` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, displaySource, layer.SourcePath)
-			}
-			merged.Display = layer.Display
-			displaySource = layer.SourcePath
-		}
-		if len(layer.WorkspaceProviderInputs) > 0 {
-			if wsInputsSource != "" {
-				return WorkflowFile{}, fmt.Errorf("workflow %q: `workspace_provider_inputs` is declared in both %s and %s; cascade layers may add new fields but cannot redeclare existing ones", merged.ID, wsInputsSource, layer.SourcePath)
-			}
-			merged.WorkspaceProviderInputs = layer.WorkspaceProviderInputs
-			wsInputsSource = layer.SourcePath
-		}
-		// Runtime tuning tables are deeper-wins whole-table replacements, not
-		// additive/no-redeclare like identity fields. A local trusted layer's
-		// judgment should be free to override a global default outright.
-		if layer.Tick != nil {
-			merged.Tick = layer.Tick
-		}
-		if layer.Healthcheck != nil {
-			merged.Healthcheck = layer.Healthcheck
-		}
-		for _, n := range layer.Nodes {
-			if n.ID != "" {
-				if prev, dup := nodeSource[n.ID]; dup {
-					return WorkflowFile{}, fmt.Errorf("workflow %q: node id %q is declared in both %s and %s; cascade layers may add new nodes but cannot redeclare existing ones", merged.ID, n.ID, prev, layer.SourcePath)
-				}
-				nodeSource[n.ID] = layer.SourcePath
-			}
-			merged.Nodes = append(merged.Nodes, n)
-		}
-		for _, ch := range layer.Event.Channel {
-			if ch.Name != "" {
-				if prev, dup := channelSource[ch.Name]; dup {
-					return WorkflowFile{}, fmt.Errorf("workflow %q: event.channel name %q is declared in both %s and %s; cascade layers may add new channels but cannot redeclare existing ones", merged.ID, ch.Name, prev, layer.SourcePath)
-				}
-				channelSource[ch.Name] = layer.SourcePath
-			}
-			merged.Event.Channel = append(merged.Event.Channel, ch)
-		}
-	}
-	schema, err := combineInputsSchemas(layers)
-	if err != nil {
-		return WorkflowFile{}, fmt.Errorf("workflow %q: %w", merged.ID, err)
-	}
-	merged.InputsSchema = schema
-	merged.InputsSchemaFile = ""
-	return merged, nil
-}
-
-// combineInputsSchemas wraps multiple layers in allOf so each layer keeps
-// enforcing its own contract instead of one silently overriding another.
-func combineInputsSchemas(layers []WorkflowFile) (map[string]any, error) {
-	var parts []map[string]any
-	for _, layer := range layers {
-		hasInline := len(layer.InputsSchema) > 0
-		hasFile := layer.InputsSchemaFile != ""
-		if hasInline && hasFile {
-			return nil, fmt.Errorf("%s: inline inputs_schema and inputs_schema_file are mutually exclusive", layer.SourcePath)
-		}
-		switch {
-		case hasInline:
-			parts = append(parts, layer.InputsSchema)
-		case hasFile:
-			path := layer.ResolvedInputsSchemaPath()
-			data, err := os.ReadFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("read %s: %w", path, err)
-			}
-			var m map[string]any
-			if err := json.Unmarshal(data, &m); err != nil {
-				return nil, fmt.Errorf("parse %s: %w", path, err)
-			}
-			parts = append(parts, m)
-		}
-	}
-	switch len(parts) {
-	case 0:
-		return nil, nil
-	case 1:
-		return parts[0], nil
-	default:
-		anyParts := make([]any, len(parts))
-		for i, p := range parts {
-			anyParts[i] = p
-		}
-		return map[string]any{"allOf": anyParts}, nil
-	}
-}
-
 // listTOMLFiles returns sorted *.toml entries in dir. A missing dir returns an
 // empty list (not an error) so missing repo/global directories are normal.
 func listTOMLFiles(dir string) ([]string, error) {
@@ -892,69 +681,4 @@ func listTOMLFiles(dir string) ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
-}
-
-// workflowStemRE constrains workflow filenames: first character must be
-// alphanumeric (so `-flag-like` doesn't look like a CLI flag, and hidden
-// `.toml` dotfiles are rejected), the rest may add `_` / `-` / `.`. Workflow
-// ids only ever appear as plain strings (CLI flag, URN segment, state.json
-// key) so they don't need to satisfy `nodeIDRE`'s Go-template constraint.
-var workflowStemRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
-
-func loadWorkflowFile(path string) (WorkflowFile, error) {
-	stem, err := validateStem(path, workflowStemRE, "workflow")
-	if err != nil {
-		return WorkflowFile{}, err
-	}
-	var wf WorkflowFile
-	md, err := toml.DecodeFile(path, &wf)
-	if err != nil {
-		return wf, err
-	}
-	for _, key := range md.Undecoded() {
-		if len(key) == 1 && (key[0] == "environment" || key[0] == "environment_inputs") {
-			return wf, fmt.Errorf("`%s` is retired along with the environment execution plane; see docs/migrations/", key[0])
-		}
-		if len(key) == 1 && key[0] == "done_when" {
-			return wf, fmt.Errorf("workflow %s: `done_when` is retired at the workflow level; declare the completion predicate on the task definition's `[done_when]` instead", path)
-		}
-		if len(key) == 2 && key[0] == "tick" && key[1] == "stale_when" {
-			return wf, fmt.Errorf("workflow %s: `tick.stale_when` was renamed to `tick.heartbeat`; update the workflow file", path)
-		}
-		if len(key) == 2 && key[0] == "tick" && key[1] == "max_stale_when" {
-			return wf, fmt.Errorf("workflow %s: `tick.max_stale_when` was renamed to `tick.max_heartbeat`; update the workflow file", path)
-		}
-		// The session-scoped movement source is retired: an activity probe is
-		// now a task-level `[health].activity` declaration the owning plugin
-		// ships, so nothing about default health coverage is wired in
-		// user-owned workflow config any more.
-		if len(key) >= 2 && key[0] == "tick" && key[1] == "movement_source" {
-			return wf, fmt.Errorf("workflow %s: `[tick.movement_source]` is retired; the task that owns the surface declares `[health].activity` instead; see docs/migrations/", path)
-		}
-	}
-	wf.ID = stem
-	wf.SourcePath = path
-	wf.BaseDir = configFileDir(path)
-	// Cross-layer name dups are caught at merge, but a single-layer workflow
-	// short-circuits merge, so catch within-file dups here.
-	seen := make(map[string]bool, len(wf.Event.Channel))
-	for _, ch := range wf.Event.Channel {
-		if ch.Name == "" {
-			continue
-		}
-		if seen[ch.Name] {
-			return wf, fmt.Errorf("event.channel name %q is declared more than once", ch.Name)
-		}
-		seen[ch.Name] = true
-	}
-	return wf, nil
-}
-
-func validateStem(path string, re *regexp.Regexp, kind string) (string, error) {
-	base := filepath.Base(path)
-	stem := base[:len(base)-len(filepath.Ext(base))]
-	if !re.MatchString(stem) {
-		return "", fmt.Errorf("%s filename stem %q is not allowed (must match %s)", kind, stem, re.String())
-	}
-	return stem, nil
 }

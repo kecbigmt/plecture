@@ -48,10 +48,12 @@ body = { json = { from = "event" } }
 path = { type = "string", required = true }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
-[[event.channel]]
+[coding]
+kind = "workflow"
+[[coding.event.channel]]
 name        = "runtime"
 uses        = "claude_channel"
-inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
+inputs.path = { from = "nodes.claude.outputs.socket_path" }
 include     = ["plect.instruction"]
 `)
 	cfg, err := config.Load()
@@ -126,10 +128,12 @@ func TestSupervisor_ValidationFailureRecordsChannelErrorAndStreak(t *testing.T) 
 	}
 	// No channels/claude_channel.toml: `uses` below resolves to nothing.
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
-[[event.channel]]
+[coding]
+kind = "workflow"
+[[coding.event.channel]]
 name        = "runtime"
 uses        = "claude_channel"
-inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
+inputs.path = { from = "nodes.claude.outputs.socket_path" }
 include     = ["plect.instruction"]
 `)
 	cfg, err := config.Load()
@@ -199,10 +203,12 @@ func TestSupervisor_ValidationRecoveryOnNextUpClearsStreak(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
-[[event.channel]]
+[coding]
+kind = "workflow"
+[[coding.event.channel]]
 name        = "runtime"
 uses        = "claude_channel"
-inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
+inputs.path = { from = "nodes.claude.outputs.socket_path" }
 include     = ["plect.instruction"]
 `)
 	cfg, err := config.Load()
@@ -309,10 +315,12 @@ body = { json = { from = "event" } }
 path = { type = "string", required = true }
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
-[[event.channel]]
+[coding]
+kind = "workflow"
+[[coding.event.channel]]
 name        = "runtime"
 uses        = "claude_channel"
-inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
+inputs.path = { from = "nodes.claude.outputs.socket_path" }
 include     = ["plect.instruction"]
 `)
 	cfg, err := config.Load()
@@ -384,10 +392,12 @@ body = { json = { from = "event" } }
 path = { type = "string", required = true }
 `)
 	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "coding.toml"), `
-[[event.channel]]
+[coding]
+kind = "workflow"
+[[coding.event.channel]]
 name        = "runtime"
 uses        = "claude"
-inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
+inputs.path = { from = "nodes.claude.outputs.socket_path" }
 include     = ["plect.instruction"]
 `)
 

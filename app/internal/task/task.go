@@ -3,11 +3,11 @@
 // config.toml, scoped to either the session lifecycle ("session") or the
 // run lifecycle ("run"). Tasks can depend on each other, and outputs from
 // a setup command (parsed as JSON from stdout) are exposed to dependents
-// and the task's own cleanup via Go templates.
+// and the task's own cleanup as values over the surface's declared roots.
 //
 // The runner is intentionally minimal: sequential execution, no reactivity,
-// no dynamic DAG. Scope-aware topological sort, single-pass template render
-// at cmd dispatch, and persisted state via contracts/state.TaskState.
+// no dynamic DAG. Scope-aware topological sort, one resolution pass per
+// execution, and persisted state via contracts/state.TaskState.
 package task
 
 import (
@@ -16,9 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -43,8 +41,11 @@ type Resolved struct {
 	Cleanup *lang.Action
 	// Terminal is the task's declared `[terminal]` table, or nil for a task
 	// that owns no interactive endpoint. See config.TerminalConfig.
-	Terminal      *config.TerminalConfig
-	Inputs        map[string]string  // template strings rendered at setup time → .Input.<key>
+	Terminal *config.TerminalConfig
+	// Inputs is the node's input wiring: one value per key, resolved at setup
+	// time against the node-inputs surface and persisted as the instance's
+	// own inputs.
+	Inputs        map[string]*lang.Value
 	InputsSchema  *jsonschema.Schema // optional: validated against resolved inputs
 	OutputsSchema *jsonschema.Schema
 	// MutableOutputs lists output keys declared `mutable = true` in the
@@ -199,37 +200,15 @@ func CompileWorkflow(wf config.WorkflowFile, defs map[string]config.TaskDefiniti
 func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDefinition) ([]Resolved, error) {
 	out := make([]Resolved, 0, len(wf.Nodes))
 	for _, node := range wf.Nodes {
-		if node.ID == "" && node.Uses == "" {
-			return nil, fmt.Errorf("workflow %q: node must declare at least one of `id` or `uses`", wf.ID)
-		}
-		// `uses` is the primary field (GHA Steps convention); `id` is a
-		// per-instance label that only needs to be spelled out when the same
-		// task is instantiated multiple times in one workflow. Since task
-		// filenames are constrained to nodeIDRE, the defaulted node id is
-		// guaranteed to be a valid Go template identifier.
-		nodeID := node.ID
-		if nodeID == "" {
-			nodeID = node.Uses
-		}
-		if !nodeIDRE.MatchString(nodeID) {
-			// Reject hyphens etc. up front. Otherwise the user discovers the
-			// problem at `plect up` time via a template parse error inside a
-			// downstream node's input binding.
-			return nil, fmt.Errorf("workflow %q: node id %q is not a valid Go template identifier (must match %s); rename it to use underscores", wf.ID, nodeID, nodeIDRE.String())
-		}
-		uses := node.Uses
-		if uses == "" {
-			uses = nodeID
-		}
-		def, ok := defs[uses]
+		def, ok := defs[node.Uses]
 		if !ok {
-			return nil, fmt.Errorf("workflow %q: node %q references unknown task %q", wf.ID, nodeID, uses)
+			return nil, fmt.Errorf("workflow %q: node %q references unknown effect %q", wf.ID, node.ID, node.Uses)
 		}
-		resolved, err := ResolveDefinition(def, nodeID)
+		resolved, err := ResolveDefinition(def, node.ID)
 		if err != nil {
 			return nil, err
 		}
-		resolved.Inputs = cloneInputs(node.Inputs)
+		resolved.Inputs = node.Inputs
 		out = append(out, resolved)
 	}
 	if err := deriveDependsOn(out); err != nil {
@@ -337,31 +316,10 @@ func hasDep(deps []string, id string) bool {
 	return false
 }
 
-func cloneInputs(m map[string]string) map[string]string {
-	if len(m) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(m))
-	for k, v := range m {
-		out[k] = v
-	}
-	return out
-}
-
-// nodeRefRE matches `{{ ... .Nodes.<id>.outputs ... }}` references in a node
-// input template. Captures the node id.
-//
-// Node ids are restricted to Go template field syntax (`[A-Za-z_][A-Za-z0-9_]*`)
-// because text/template parses `.Nodes.foo.outputs` as a chain of dotted field
-// accesses, and `-` would be lexed as the subtraction operator. Hyphenated
-// task ids are still fine (referenced via `uses = "..."` in TOML, not in
-// templates) — only the node id used as a template lookup key needs this.
-var nodeIDRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-var nodeRefRE = regexp.MustCompile(`\{\{[^}]*\.Nodes\.([A-Za-z_][A-Za-z0-9_]*)\.outputs`)
-
-// deriveDependsOn fills each node's DependsOn slice based on `.Nodes.<id>.outputs`
-// references in its inputs. Validates that referenced nodes exist and that
-// scope ordering is respected (session must not depend on run).
+// deriveDependsOn fills each node's DependsOn from the node ids the language
+// reads out of its input wiring, and validates that those nodes exist and that
+// scope ordering holds (a session-scoped node must not depend on a run-scoped
+// one, which would outlive it).
 func deriveDependsOn(nodes []Resolved) error {
 	byID := make(map[string]*Resolved, len(nodes))
 	for i := range nodes {
@@ -369,26 +327,18 @@ func deriveDependsOn(nodes []Resolved) error {
 	}
 	for i := range nodes {
 		n := &nodes[i]
-		seen := make(map[string]bool)
-		for inputKey, tmpl := range n.Inputs {
-			matches := nodeRefRE.FindAllStringSubmatch(tmpl, -1)
-			for _, m := range matches {
-				ref := m[1]
-				if ref == n.NodeID {
-					return fmt.Errorf("node %q input %q references itself", n.NodeID, inputKey)
-				}
-				dep, ok := byID[ref]
-				if !ok {
-					return fmt.Errorf("node %q input %q references unknown node %q", n.NodeID, inputKey, ref)
-				}
-				if n.Scope == config.TaskScopeSession && dep.Scope == config.TaskScopeRun {
-					return fmt.Errorf("node %q (session) depends on %q (run): session-scoped nodes must not depend on run-scoped nodes", n.NodeID, ref)
-				}
-				if !seen[ref] {
-					n.DependsOn = append(n.DependsOn, ref)
-					seen[ref] = true
-				}
+		for _, ref := range lang.NodeReads(n.Inputs) {
+			if ref == n.NodeID {
+				return fmt.Errorf("node %q reads its own outputs", n.NodeID)
 			}
+			dep, ok := byID[ref]
+			if !ok {
+				return fmt.Errorf("node %q reads unknown node %q", n.NodeID, ref)
+			}
+			if n.Scope == config.TaskScopeSession && dep.Scope == config.TaskScopeRun {
+				return fmt.Errorf("node %q (session) depends on %q (run): session-scoped nodes must not depend on run-scoped nodes", n.NodeID, ref)
+			}
+			n.DependsOn = append(n.DependsOn, ref)
 		}
 	}
 	return nil
@@ -624,34 +574,6 @@ type TerminalBinding struct {
 	From       lang.Ownership
 }
 
-var templateFuncs = template.FuncMap{
-	// get reads a key from a string-keyed map, yielding def if missing.
-	// Lets `.Prev` be safely read under setup's strict missingkey=error.
-	// A present-but-empty value is a value and does not take the default;
-	// a nil one does, because rendering it would emit the "<no value>"
-	// this helper exists to avoid.
-	"get": func(m map[string]any, key string, def any) any {
-		if m == nil {
-			return def
-		}
-		if v, ok := m[key]; ok && v != nil {
-			return v
-		}
-		return def
-	},
-	// shellQuote renders a value as a single-quoted POSIX shell word, so a
-	// hook author can interpolate a resource id, session name, or persisted
-	// output into a command string without the shell that runs it treating
-	// embedded quotes, semicolons, or command substitution as syntax. Every
-	// value crossing this template boundary is attacker-influenced at some
-	// remove (resource ids and session tags both come from create's caller),
-	// so a hook command must quote each templated value it interpolates
-	// rather than rely on surrounding literal quotes in the command string.
-	"shellQuote": func(v any) string {
-		return "'" + strings.ReplaceAll(fmt.Sprint(v), "'", `'\''`) + "'"
-	},
-}
-
 // normalizeNumbers converts integer-valued float64 entries to int64. JSON
 // unmarshal into map[string]any leaves every number as float64; templates
 // render large float64 as scientific notation (e.g. 3.052179e+06), which
@@ -702,131 +624,6 @@ func workflowOutputs(tasks map[string]*contract.TaskState) map[string]any {
 		return st.Outputs
 	}
 	return nil
-}
-
-// render is the renderer of what is still a template: a dynamic output's
-// script, a workflow node's input binding, and a chain's input binding.
-// missingkey=error, because a missing dependency is a contract violation.
-func render(cmd string, ctx RenderContext) (string, error) {
-	return renderWith(cmd, ctx, "missingkey=error")
-}
-
-func renderWith(cmd string, ctx RenderContext, opt string) (string, error) {
-	// bin is built per render call (not part of the static templateFuncs
-	// map) because it resolves against this render's own ctx.Session.Plugins
-	// — the set of plugins mounted for the config in effect, not a global.
-	dynamicFuncs := template.FuncMap{
-		"bin": func(ref string) (string, error) {
-			return plugins.ResolveBin(ctx.Session.Plugins, ctx.SourcePath, ref)
-		},
-	}
-	tmpl, err := template.New("task").
-		Option(opt).
-		Funcs(templateFuncs).
-		Funcs(dynamicFuncs).
-		Parse(cmd)
-	if err != nil {
-		return "", fmt.Errorf("template parse: %w", err)
-	}
-	// Per-node view for `.Nodes.<id>.outputs.<key>` references in input bindings
-	// (DAG derivation) and setup/cleanup templates. Built from the same
-	// dependency outputs that `.Tasks.<id>.<key>` exposes so the two names
-	// resolve to identical values.
-	tasks := map[string]map[string]any{}
-	nodes := map[string]map[string]any{}
-	for k, v := range ctx.Tasks {
-		normalized := normalizeOutputs(v)
-		tasks[k] = normalized
-		nodes[k] = map[string]any{"outputs": normalized}
-	}
-	// `.Input` is strictly the node's own resolved inputs. Session-level
-	// input is reachable as `.SessionInput.<key>` so the meaning of `.Input`
-	// is identical whether the template runs as a node-input binding or as a
-	// setup/cleanup body.
-	data := struct {
-		Self             map[string]any
-		Prev             map[string]any
-		Tasks            map[string]map[string]any
-		Nodes            map[string]map[string]any
-		Inputs           map[string]any
-		Locals           map[string]any
-		Inner            map[string]any
-		Workflow         map[string]any
-		SessionInputs    map[string]any
-		SessionName      string
-		ResourceID       string
-		ParentSession    string
-		WorkspaceDirPath string
-		Branch           string
-	}{
-		Self:             normalizeOutputs(ctx.Self),
-		Prev:             normalizeOutputs(ctx.Prev),
-		Tasks:            tasks,
-		Nodes:            nodes,
-		Inputs:           normalizeOutputs(ctx.Inputs),
-		Locals:           normalizeOutputs(ctx.Locals),
-		Inner:            map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Inner))},
-		Workflow:         map[string]any{"outputs": orEmpty(normalizeOutputs(ctx.Workflow))},
-		SessionInputs:    normalizeOutputs(ctx.Session.Inputs),
-		SessionName:      ctx.Session.Name,
-		ResourceID:       ctx.Session.ResourceID,
-		ParentSession:    ctx.Session.ParentSession,
-		WorkspaceDirPath: ctx.Session.WorkspaceDirPath,
-		Branch:           ctx.Session.Branch,
-	}
-	if data.Self == nil {
-		data.Self = map[string]any{}
-	}
-	if data.Prev == nil {
-		data.Prev = map[string]any{}
-	}
-	if data.Tasks == nil {
-		data.Tasks = map[string]map[string]any{}
-	}
-	if data.Nodes == nil {
-		data.Nodes = map[string]map[string]any{}
-	}
-	if data.Inputs == nil {
-		data.Inputs = map[string]any{}
-	}
-	if data.Locals == nil {
-		data.Locals = map[string]any{}
-	}
-	if data.SessionInputs == nil {
-		data.SessionInputs = map[string]any{}
-	}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("template execute: %w", err)
-	}
-	return buf.String(), nil
-}
-
-// RenderInputs renders each node-input template against upstream node outputs,
-// the workflow pseudo-node outputs, and the session vars. Used at setup time
-// so the resulting map can be persisted to TaskState.Inputs and exposed to
-// setup as `.Input.<key>`.
-//
-// Inputs are rendered eagerly with missingkey=error so a typo in a reference
-// fails fast rather than producing a silent empty value.
-func RenderInputs(inputs map[string]string, deps map[string]map[string]any, wfOutputs map[string]any, session SessionVars) (map[string]any, error) {
-	if len(inputs) == 0 {
-		return nil, nil
-	}
-	out := make(map[string]any, len(inputs))
-	ctx := RenderContext{
-		Tasks:    deps,
-		Workflow: wfOutputs,
-		Session:  session,
-	}
-	for k, tmpl := range inputs {
-		v, err := render(tmpl, ctx)
-		if err != nil {
-			return nil, fmt.Errorf("input %q: %w", k, err)
-		}
-		out[k] = v
-	}
-	return out, nil
 }
 
 // ParseOutputs parses a task setup's stdout as JSON. Empty input is treated
@@ -947,7 +744,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			prev = existing.Outputs
 		}
 		deps := dependencyOutputs(r.DependsOn, tasks)
-		resolvedInputs, inputErr := RenderInputs(r.Inputs, deps, workflowOutputs(tasks), session)
+		resolvedInputs, inputErr := ResolveNodeInputs(r.Inputs, deps, workflowOutputs(tasks), session)
 		if inputErr != nil {
 			tasks[r.NodeID] = failedState(r, now, inputErr.Error(), prev, nil)
 			wrapped := fmt.Errorf("node %q input: %w", r.NodeID, inputErr)

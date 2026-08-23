@@ -47,7 +47,7 @@ func MergeLayer(shallower, deeper []*Definition) ([]*Definition, error) {
 		if d.Kind == KindWorkflow {
 			body, err := mergeCascade(prior.Body, d.Body)
 			if err != nil {
-				return nil, fmt.Errorf("workflow %q: %w", d.ID, err)
+				return nil, fmt.Errorf("workflow %q (%s and %s): %w", d.ID, prior.File, d.File, err)
 			}
 			byID[d.ID] = &Definition{ID: d.ID, Kind: KindWorkflow, Body: body, File: d.File}
 			continue

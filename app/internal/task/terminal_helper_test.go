@@ -129,7 +129,7 @@ func TestRunSetup_TerminalCapabilityResolvesSamePassOutputs(t *testing.T) {
 				},
 				[]nodeStub{
 					{id: "terminal"},
-					{id: "prompt", inputs: map[string]string{"session": "{{.Nodes.terminal.outputs.session_name}}"}},
+					{id: "prompt", inputs: map[string]*lang.Value{"session": fromValue("nodes.terminal.outputs.session_name")}},
 				},
 			)
 			plan.Run[0].Terminal = paneVerbs()
@@ -160,7 +160,7 @@ func TestRunSetup_TerminalCapabilityKeepsSnapshotWhenDeclaringNodeIsElsewhere(t 
 		},
 		[]nodeStub{
 			{id: "terminal"},
-			{id: "prompt", inputs: map[string]string{"session": "{{.Nodes.terminal.outputs.session_name}}"}},
+			{id: "prompt", inputs: map[string]*lang.Value{"session": fromValue("nodes.terminal.outputs.session_name")}},
 		},
 	)
 	vars := SessionVars{Name: "s", Terminal: &TerminalBinding{

@@ -283,16 +283,9 @@ func (c *Config) ValidateTaskDocuments(docs map[string]TaskDocument, observers m
 }
 
 // taskReferenceRegistry is the namespace a task document's references resolve
-// against. Observers and task documents contribute their own declarations.
-//
-// A workflow contributes a declaration assembled from what the workflow
-// loader decoded — its id, its kind, and its inputs contract — because the
-// workflow surface has not moved onto the ratified language yet. That is the
-// workflow's own declaration read through the legacy decoder, and it is what
-// lets a chain's target be resolved and its inputs checked against that
-// target's contract at load. Retirement: the PR that moves workflows onto the
-// ratified language deletes this construction and registers the parsed
-// definitions instead.
+// against: observers, task documents, and workflows each contribute their own
+// parsed declaration, so a chain's target is resolved and its inputs checked
+// against the contract that target actually declares.
 func (c *Config) taskReferenceRegistry(docs map[string]TaskDocument, observers map[string]ResourceDef, workflows map[string]WorkflowFile) *lang.Registry {
 	var user []*lang.Definition
 	byLayer := map[lang.Ownership][]*lang.Definition{}
@@ -318,13 +311,8 @@ func (c *Config) taskReferenceRegistry(docs map[string]TaskDocument, observers m
 	for _, doc := range docs {
 		add(doc.Definition, doc.SourcePath)
 	}
-	for id, wf := range workflows {
-		add(&lang.Definition{
-			ID:   id,
-			Kind: lang.KindWorkflow,
-			File: wf.SourcePath,
-			Body: map[string]any{"inputs_schema": wf.InputsSchema},
-		}, wf.SourcePath)
+	for _, wf := range workflows {
+		add(wf.Definition, wf.SourcePath)
 	}
 	layers := make([]lang.PluginLayer, 0, len(byLayer))
 	for from, defs := range byLayer {

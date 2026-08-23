@@ -18,7 +18,7 @@ func addSetupWorkflow(t *testing.T, baseDir, wfID, workdir string) {
 	if err := os.MkdirAll(filepath.Join(baseDir, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wf := "workspace_provider = \"" + wfID + "\"\n[[nodes]]\nid = \"noop\"\n"
+	wf := "[" + wfID + "]\nkind = \"workflow\"\nworkspace_provider = \"" + wfID + "\"\n\n[[" + wfID + ".nodes]]\nuses = \"noop\"\n"
 	if err := os.WriteFile(filepath.Join(baseDir, "workflows", wfID+".toml"), []byte(wf), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func addSetupWorkflow(t *testing.T, baseDir, wfID, workdir string) {
 // sessions because each session name carries its workflow id as the tag.
 func TestCreate_DefaultTagSeparatesWorkflows(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "noop-base",
+	cfg := writeWorkflowFixture(t, t.TempDir(), "noop_base",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	addSetupWorkflow(t, cfg.BaseDir, "claude", filepath.Join(t.TempDir(), "claude"))
@@ -71,7 +71,7 @@ func TestCreate_DefaultTagSeparatesWorkflows(t *testing.T) {
 // explicit label wins over the workflow-id default.
 func TestCreate_ExplicitTagOverridesDefault(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "noop-base",
+	cfg := writeWorkflowFixture(t, t.TempDir(), "noop_base",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	addSetupWorkflow(t, cfg.BaseDir, "codex", filepath.Join(t.TempDir(), "codex"))
@@ -91,7 +91,7 @@ func TestCreate_ExplicitTagOverridesDefault(t *testing.T) {
 // auto-create reuses one session instead of forking a second.
 func TestUpCreateConvergeOnDefaultTag(t *testing.T) {
 	store := testStore(t)
-	cfg := writeWorkflowFixture(t, t.TempDir(), "noop-base",
+	cfg := writeWorkflowFixture(t, t.TempDir(), "noop_base",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
 	addSetupWorkflow(t, cfg.BaseDir, "claude", filepath.Join(t.TempDir(), "claude"))

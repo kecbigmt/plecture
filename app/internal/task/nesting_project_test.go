@@ -265,8 +265,8 @@ func TestRunSetup_DownstreamNodeReadsTheComposedContract(t *testing.T) {
 	consumer := config.TaskDefinition{ID: "consumer", Scope: "run", Setup: shellStub("consumer-setup")}
 	plan, err := CompileWorkflow(
 		config.WorkflowFile{ID: "test", Nodes: []config.WorkflowNode{
-			{ID: "runtime"},
-			{ID: "consumer", Inputs: map[string]string{"pid": "{{.Nodes.runtime.outputs.agent_pid}}"}},
+			{ID: "runtime", Uses: "runtime"},
+			{ID: "consumer", Uses: "consumer", Inputs: map[string]*lang.Value{"pid": fromValue("nodes.runtime.outputs.agent_pid")}},
 		}},
 		map[string]config.TaskDefinition{"runtime": outer, "inner": inner, "consumer": consumer},
 	)

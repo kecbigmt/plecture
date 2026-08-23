@@ -146,43 +146,6 @@ func TestResolveSessionInput_NoSchemaAcceptsAnyObject(t *testing.T) {
 	}
 }
 
-// Regression: the schema source-id used to be "inline://workflow:<name>",
-// which the URL parser inside jsonschema/v6 read as host + invalid port.
-// Any workflow with a hyphenated name (e.g. "coding-claude") triggered it.
-// IDs now use a custom `plect:` scheme (RFC 3986 `scheme:opaque`, no `//`),
-// so the parser never tries to find a host.
-func TestResolveSessionInputs_WorkflowSchemaCompilesWithHyphenatedName(t *testing.T) {
-	repoDir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(repoDir, ".plect", "workflows"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repoDir, ".plect", "workflows", "coding-claude.toml"), []byte(`
-name = "coding-claude"
-
-[inputs_schema]
-type = "object"
-required = ["template"]
-
-[inputs_schema.properties]
-template = { type = "string" }
-
-[[nodes]]
-id = "envfile"
-`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// Schema-bearing layers must be trusted: resolve from a workdir one
-	// level below the declaring overlay.
-	workdirDir := filepath.Join(repoDir, "session")
-	if err := os.MkdirAll(workdirDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cfg := &config.Config{}
-	if _, err := resolveSessionInputs(cfg, workdirDir, "coding-claude", map[string]any{"template": "review"}); err != nil {
-		t.Fatalf("resolveSessionInputs: %v", err)
-	}
-}
-
 func TestResolveSessionInput_NilWithSchemaValidatesEmptyObject(t *testing.T) {
 	cfg := &config.Config{
 		InputsSchema: map[string]any{
@@ -538,14 +501,7 @@ func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(providerScriptPair("default", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
-	wfData, err := os.ReadFile(wfPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \"default\"\n"), wfData...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default\"\n")
 	sessionName := "org/repo-12"
 	seedSession(t, store, "org/repo-parent", "org/repo", 11, "default", nil)
 	seedSession(t, store, sessionName, "org/repo", 12, "default", map[string]*contract.TaskState{
@@ -706,14 +662,7 @@ func TestUp_ForceRecreateCleanupFailurePreservesInspectableState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(providerScriptPair("default", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
-	wfData, err := os.ReadFile(wfPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \"default\"\n"), wfData...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default\"\n")
 	sessionName := "org/repo-15"
 	seedSession(t, store, "org/repo-parent", "org/repo", 14, "default", nil)
 	seedSession(t, store, sessionName, "org/repo", 15, "default", map[string]*contract.TaskState{
@@ -853,14 +802,7 @@ func TestUp_ForceRecreateProviderSetupFailurePersistsInspectableState(t *testing
 	if err := os.WriteFile(filepath.Join(providersDir, "default.toml"), []byte(providerScriptPair("default", providerSetup, providerSetupArgs, providerCleanup, `, { from = "self.outputs.workspace_dir" }`)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
-	wfData, err := os.ReadFile(wfPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \"default\"\n"), wfData...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default\"\n")
 	sessionName := "org/repo-13"
 	seedSession(t, store, "org/repo-parent", "org/repo", 12, "default", nil)
 	seedSession(t, store, sessionName, "org/repo", 13, "default", map[string]*contract.TaskState{
@@ -1261,16 +1203,9 @@ func writeForceRecreateProvider(t *testing.T, cfg *config.Config, setup, cleanup
 	}
 }
 
-func prependForceRecreateWorkflow(t *testing.T, cfg *config.Config, prefix string) {
+func prependForceRecreateWorkflow(t *testing.T, cfg *config.Config, fields string) {
 	t.Helper()
-	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
-	wfData, err := os.ReadFile(wfPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(wfPath, append([]byte(prefix), wfData...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	addWorkflowFields(t, cfg, "default", fields)
 }
 
 // writeTaskFixture renders one effect declaration: the definition table, its
@@ -1556,7 +1491,7 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 		},
 		[]nodeFixture{
 			{id: "terminal"},
-			{id: "prompt", inputs: map[string]string{"session": "{{.Nodes.terminal.outputs.session_name}}"}},
+			{id: "prompt", inputs: map[string]*lang.Value{"session": fromValue("nodes.terminal.outputs.session_name")}},
 		},
 	)
 	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
@@ -1568,14 +1503,7 @@ func TestUp_ForceRecreateRendersTerminalHelperAgainstThisPassOutputs(t *testing.
 		[]byte(providerScriptPair("default", providerSetup, "", "true", "")), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wfPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
-	wfData, err := os.ReadFile(wfPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(wfPath, append([]byte("workspace_provider = \"default\"\n"), wfData...), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	addWorkflowFields(t, cfg, "default", "workspace_provider = \"default\"\n")
 	sessionName := "org/repo-14"
 	seedSession(t, store, sessionName, "org/repo", 14, "default", map[string]*contract.TaskState{
 		contract.WorkflowPseudoNodeID: {

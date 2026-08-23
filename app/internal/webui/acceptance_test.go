@@ -39,7 +39,7 @@ func mountResolverOnlyWorkspaceProvider(t *testing.T, cfg *config.Config) {
 	if err := os.MkdirAll(filepath.Join(base, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	workflowTOML := "workspace_provider = \"test_gh\"\n"
+	workflowTOML := "[test]\nkind = \"workflow\"\nworkspace_provider = \"test_gh\"\n"
 	if err := os.WriteFile(filepath.Join(base, "workflows", "test.toml"), []byte(workflowTOML), 0o644); err != nil {
 		t.Fatal(err)
 	}

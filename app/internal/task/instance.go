@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -23,12 +24,14 @@ func InstanceKey(taskID, instanceID string) string {
 	return taskID + "#" + instanceID
 }
 
-// ValidInstanceName reports whether a `--name` is a usable instance key: it must
-// match nodeIDRE (a Go-template identifier, no `#`), so a named key can never
-// collide with the numbered "<task>#<n>" namespace nor interfere with
-// NextInstanceNumber's suffix scan.
+// instanceNameRE is the definition-id grammar, which a `--name` shares: no
+// `#`, so a named key can never collide with the numbered "<task>#<n>"
+// namespace nor interfere with NextInstanceNumber's suffix scan.
+var instanceNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// ValidInstanceName reports whether a `--name` is a usable instance key.
 func ValidInstanceName(name string) bool {
-	return nodeIDRE.MatchString(name)
+	return instanceNameRE.MatchString(name)
 }
 
 // NextInstanceNumber returns the next per-task instance number for taskID:

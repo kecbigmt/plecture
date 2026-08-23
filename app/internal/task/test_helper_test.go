@@ -5,6 +5,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
 // taskStub is a terse spec for one effect declaration used by buildPlan.
@@ -40,7 +41,7 @@ type taskStub struct {
 type nodeStub struct {
 	id     string
 	uses   string
-	inputs map[string]string
+	inputs map[string]*lang.Value
 }
 
 // buildPlan compiles a workflow with the given nodes against in-memory task
@@ -89,10 +90,23 @@ func tryBuildPlan(defs []taskStub, nodes []nodeStub) (*Plan, error) {
 	}
 	wfNodes := make([]config.WorkflowNode, 0, len(nodes))
 	for _, n := range nodes {
-		wfNodes = append(wfNodes, config.WorkflowNode{ID: n.id, Uses: n.uses, Inputs: n.inputs})
+		// The loader defaults each of the two from the other; a stub states
+		// whichever one its case is about.
+		id, uses := n.id, n.uses
+		if id == "" {
+			id = uses
+		}
+		if uses == "" {
+			uses = id
+		}
+		wfNodes = append(wfNodes, config.WorkflowNode{ID: id, Uses: uses, Inputs: n.inputs})
 	}
 	wf := config.WorkflowFile{ID: "test", Nodes: wfNodes}
 	return CompileWorkflow(wf, defMap)
+}
+
+func mustMount(id, dir string, executables ...plugins.Executable) plugins.Mounted {
+	return plugins.Mounted{ID: id, Dir: dir, Manifest: plugins.Manifest{Executables: executables}}
 }
 
 // shellStub is one shell action carrying a literal script, or nil for a

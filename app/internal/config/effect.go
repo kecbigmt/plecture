@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
@@ -126,10 +127,10 @@ func (d *TaskDefinition) readInner(def *lang.Definition, pos lang.Position) erro
 	d.Inner = uses
 	var err error
 	at := childPosition(pos, "inner")
-	if d.InnerInputs, err = valueTableFrom(tbl, "inputs", at); err != nil {
+	if d.InnerInputs, err = valueTableFrom(tbl, "inputs", lang.ClassBinding, at); err != nil {
 		return err
 	}
-	if d.InnerEnv, err = valueTableFrom(tbl, "env", at); err != nil {
+	if d.InnerEnv, err = valueTableFrom(tbl, "env", lang.ClassBinding, at); err != nil {
 		return err
 	}
 	return nil
@@ -144,7 +145,7 @@ func (d *TaskDefinition) readOutputsBind(def *lang.Definition, pos lang.Position
 	if !ok {
 		return fmt.Errorf("`outputs` is a table")
 	}
-	bind, err := valueTableFrom(tbl, "bind", childPosition(pos, "outputs"))
+	bind, err := valueTableFrom(tbl, "bind", lang.ClassBinding, childPosition(pos, "outputs"))
 	if err != nil {
 		return err
 	}
@@ -152,7 +153,7 @@ func (d *TaskDefinition) readOutputsBind(def *lang.Definition, pos lang.Position
 	return nil
 }
 
-func valueTableFrom(body map[string]any, field string, pos lang.Position) (map[string]*lang.Value, error) {
+func valueTableFrom(body map[string]any, field string, class lang.ValueClass, pos lang.Position) (map[string]*lang.Value, error) {
 	raw, ok := body[field]
 	if !ok {
 		return nil, nil
@@ -164,7 +165,7 @@ func valueTableFrom(body map[string]any, field string, pos lang.Position) (map[s
 	at := childPosition(pos, field)
 	out := make(map[string]*lang.Value, len(tbl))
 	for key, entry := range tbl {
-		value, err := lang.ParseValue(entry, lang.ClassBinding, childPosition(at, key))
+		value, err := lang.ParseValue(entry, class, childPosition(at, key))
 		if err != nil {
 			return nil, err
 		}
@@ -233,4 +234,15 @@ func actionIn(body map[string]any, field, path, tablePath string) (*lang.Action,
 		return nil, nil
 	}
 	return lang.ParseAction(raw, lang.Position{File: path, Path: tablePath + "." + field})
+}
+
+// sortedBodyKeys names a declaration's fields in a stable order, so a
+// diagnostic listing several of them reads the same on every run.
+func sortedBodyKeys(body map[string]any) []string {
+	keys := make([]string, 0, len(body))
+	for key := range body {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

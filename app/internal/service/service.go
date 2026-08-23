@@ -464,9 +464,11 @@ func loadDisplayWorkflows(cfg *config.Config) map[string]config.WorkflowFile {
 	return workflows
 }
 
-// applyDisplay renders the workflow's [display] templates into cached when
-// they produce a non-empty value. Evaluation is state-only (pseudo-node
-// outputs) — no network.
+// applyDisplay resolves the workflow's [display] values into cached when they
+// produce a non-empty result. Evaluation is state-only (the workflow's own
+// persisted outputs and the session's inputs) — no network. A value that does
+// not resolve leaves the field at what it already shows: a listing reporting
+// a blank title would read as a session that has none.
 func applyDisplay(workflows map[string]config.WorkflowFile, s *domain.Session, cached *cachedInfo) {
 	if s.Workflow == "" {
 		return
@@ -476,14 +478,19 @@ func applyDisplay(workflows map[string]config.WorkflowFile, s *domain.Session, c
 		return
 	}
 	outputs := workflowDisplayOutputs(s)
-	if expr, ok := wf.Display["title"]; ok {
-		if v, err := task.RenderOutputsTemplate(expr, outputs, s.Tasks); err == nil && v != "" {
-			cached.Title = v
+	for _, shown := range []struct {
+		key  string
+		into *string
+	}{
+		{"title", &cached.Title},
+		{"status", &cached.DisplayStatus},
+	} {
+		value, declared := wf.Display[shown.key]
+		if !declared {
+			continue
 		}
-	}
-	if expr, ok := wf.Display["status"]; ok {
-		if v, err := task.RenderOutputsTemplate(expr, outputs, s.Tasks); err == nil && v != "" {
-			cached.DisplayStatus = v
+		if resolved, err := task.ResolveDisplay(value, outputs, s.Inputs); err == nil && resolved != "" {
+			*shown.into = resolved
 		}
 	}
 }

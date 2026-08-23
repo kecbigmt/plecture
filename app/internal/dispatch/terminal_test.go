@@ -30,8 +30,10 @@ command = "tmux"
 args    = ["send-keys", "-t", { from = "self.outputs.session_name" }, "--"]
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
-[[nodes]]
-id = "tmux"
+[coding]
+kind = "workflow"
+[[coding.nodes]]
+uses = "tmux"
 `)
 	cfg, err := config.Load()
 	if err != nil {
@@ -68,8 +70,10 @@ type   = "shell"
 script = "echo '{}'"
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
-[[nodes]]
-id = "envfile"
+[coding]
+kind = "workflow"
+[[coding.nodes]]
+uses = "envfile"
 `)
 	cfg, err := config.Load()
 	if err != nil {
@@ -98,8 +102,10 @@ func TestResolveTerminalOwner_CompileFailureIsNonFatal(t *testing.T) {
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
 	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
-[[nodes]]
-id = "missing"
+[coding]
+kind = "workflow"
+[[coding.nodes]]
+uses = "missing"
 `)
 	cfg, err := config.Load()
 	if err != nil {

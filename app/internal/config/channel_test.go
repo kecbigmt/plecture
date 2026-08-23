@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 func writeChannelDoc(t *testing.T, baseDir, name, body string) {
@@ -238,13 +240,13 @@ func TestValidateWorkflowChannels(t *testing.T) {
 	}{
 		{
 			name: "ok single",
-			wf:   chan1(EventChannel{Name: "runtime", Uses: "claude_channel", Inputs: map[string]string{"path": "{{.Nodes.claude.outputs.socket_path}}"}, Include: []string{"github.*"}}),
+			wf:   chan1(EventChannel{Name: "runtime", Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": fromValue("nodes.claude.outputs.socket_path")}, Include: []string{"github.*"}}),
 		},
 		{
 			name: "ok multiple channels",
 			wf: chan1(
-				EventChannel{Name: "runtime", Uses: "claude_channel", Inputs: map[string]string{"path": "p"}, Include: []string{"plect.instruction"}},
-				EventChannel{Name: "slack", Uses: "slack_thread", Inputs: map[string]string{"channel_id": "c"}, Include: []string{"github.*", "user.emit"}},
+				EventChannel{Name: "runtime", Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": literalValue("p")}, Include: []string{"plect.instruction"}},
+				EventChannel{Name: "slack", Uses: "slack_thread", Inputs: map[string]*lang.Value{"channel_id": literalValue("c")}, Include: []string{"github.*", "user.emit"}},
 			),
 		},
 		{
@@ -259,20 +261,20 @@ func TestValidateWorkflowChannels(t *testing.T) {
 		},
 		{
 			name:    "undeclared input",
-			wf:      chan1(EventChannel{Name: "runtime", Uses: "claude_channel", Inputs: map[string]string{"path": "p", "bogus": "x"}, Include: []string{"*"}}),
+			wf:      chan1(EventChannel{Name: "runtime", Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": literalValue("p"), "bogus": literalValue("x")}, Include: []string{"*"}}),
 			wantErr: "input \"bogus\" is not declared",
 		},
 		{
 			name: "duplicate name",
 			wf: chan1(
-				EventChannel{Name: "dup", Uses: "claude_channel", Inputs: map[string]string{"path": "p"}, Include: []string{"*"}},
-				EventChannel{Name: "dup", Uses: "slack_thread", Inputs: map[string]string{"channel_id": "c"}, Include: []string{"*"}},
+				EventChannel{Name: "dup", Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": literalValue("p")}, Include: []string{"*"}},
+				EventChannel{Name: "dup", Uses: "slack_thread", Inputs: map[string]*lang.Value{"channel_id": literalValue("c")}, Include: []string{"*"}},
 			),
 			wantErr: "declared more than once",
 		},
 		{
 			name:    "missing name",
-			wf:      chan1(EventChannel{Uses: "claude_channel", Inputs: map[string]string{"path": "p"}, Include: []string{"*"}}),
+			wf:      chan1(EventChannel{Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": literalValue("p")}, Include: []string{"*"}}),
 			wantErr: "`name` is required",
 		},
 		{
@@ -282,17 +284,17 @@ func TestValidateWorkflowChannels(t *testing.T) {
 		},
 		{
 			name:    "empty include",
-			wf:      chan1(EventChannel{Name: "x", Uses: "claude_channel", Inputs: map[string]string{"path": "p"}}),
+			wf:      chan1(EventChannel{Name: "x", Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": literalValue("p")}}),
 			wantErr: "`include` must list at least one",
 		},
 		{
 			name:    "empty glob",
-			wf:      chan1(EventChannel{Name: "x", Uses: "claude_channel", Inputs: map[string]string{"path": "p"}, Include: []string{""}}),
+			wf:      chan1(EventChannel{Name: "x", Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": literalValue("p")}, Include: []string{""}}),
 			wantErr: "empty glob",
 		},
 		{
 			name:    "metadata selector",
-			wf:      chan1(EventChannel{Name: "x", Uses: "claude_channel", Inputs: map[string]string{"path": "p"}, Include: []string{"meta:relay"}}),
+			wf:      chan1(EventChannel{Name: "x", Uses: "claude_channel", Inputs: map[string]*lang.Value{"path": literalValue("p")}, Include: []string{"meta:relay"}}),
 			wantErr: "metadata selectors are no longer supported",
 		},
 	}
@@ -315,19 +317,21 @@ func TestValidateWorkflowChannels(t *testing.T) {
 func TestLoadWorkflows_ParsesEventChannel(t *testing.T) {
 	repoDir := t.TempDir()
 	writeFile(t, filepath.Join(repoDir, ".config", "plect", "workflows", "coding.toml"), `
-[[nodes]]
+[coding]
+kind = "workflow"
+[[coding.nodes]]
 uses = "tmux"
 
-[[event.channel]]
+[[coding.event.channel]]
 name        = "runtime"
 uses        = "claude_channel"
-inputs.path = "{{.Nodes.claude.outputs.socket_path}}"
+inputs.path = { from = "nodes.claude.outputs.socket_path" }
 include     = ["plect.instruction", "github.*"]
 
-[[event.channel]]
+[[coding.event.channel]]
 name           = "slack"
 uses           = "slack_thread"
-inputs.channel_id = "{{.Nodes.slack_thread.outputs.channel_id}}"
+inputs.channel_id = { from = "nodes.slack_thread.outputs.channel_id" }
 include        = ["github.*"]
 `)
 	cfg := &Config{BaseDir: filepath.Join(repoDir, ".config", "plect")}
@@ -343,7 +347,7 @@ include        = ["github.*"]
 	if runtime.Name != "runtime" || runtime.Uses != "claude_channel" {
 		t.Errorf("channel[0] = %+v", runtime)
 	}
-	if runtime.Inputs["path"] != "{{.Nodes.claude.outputs.socket_path}}" {
+	if runtime.Inputs["path"].From != "nodes.claude.outputs.socket_path" {
 		t.Errorf("channel[0] inputs not preserved: %+v", runtime.Inputs)
 	}
 	if len(runtime.Include) != 2 || runtime.Include[0] != "plect.instruction" {
@@ -351,7 +355,10 @@ include        = ["github.*"]
 	}
 }
 
-func TestLoadWorkflows_CascadeAppendsChannels(t *testing.T) {
+// The ratified cascade appends only `nodes`; every other field a shallower
+// layer set is closed, so a deeper layer wanting a different channel set
+// declares its own workflow rather than adding to one it cannot see.
+func TestLoadWorkflows_CascadeRejectsARedeclaredEventTable(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
@@ -362,7 +369,9 @@ func TestLoadWorkflows_CascadeAppendsChannels(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[event.channel]]
+[shared]
+kind = "workflow"
+[[shared.event.channel]]
 name = "runtime"
 uses = "claude_channel"
 include = ["github.*"]
@@ -372,7 +381,9 @@ include = ["github.*"]
 	orgDir := filepath.Join(tmpHome, "workdirs", "org")
 	workdirDir := filepath.Join(orgDir, "repo", "session")
 	writeFile(t, filepath.Join(orgDir, ".plect", "workflows", "shared.toml"), `
-[[event.channel]]
+[shared]
+kind = "workflow"
+[[shared.event.channel]]
 name = "slack"
 uses = "slack_thread"
 include = ["github.*"]
@@ -381,64 +392,23 @@ include = ["github.*"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := cfg.LoadWorkflows(workdirDir)
-	if err != nil {
-		t.Fatalf("LoadWorkflows: %v", err)
-	}
-	wf := got["shared"]
-	if len(wf.Event.Channel) != 2 {
-		t.Fatalf("expected 2 merged channels, got %+v", wf.Event.Channel)
-	}
-	if wf.Event.Channel[0].Name != "runtime" || wf.Event.Channel[1].Name != "slack" {
-		t.Errorf("merge order wrong: %+v", wf.Event.Channel)
-	}
-}
-
-func TestLoadWorkflows_CascadeRejectsDuplicateChannelName(t *testing.T) {
-	tmpHome := t.TempDir()
-	t.Setenv("HOME", tmpHome)
-	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	if err := os.MkdirAll(globalDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
-[[event.channel]]
-name = "runtime"
-uses = "claude_channel"
-include = ["github.*"]
-`)
-	// Redeclare from a trusted ancestor so the dup-name check fires, not the
-	// workdir guard (which would reject any event.channel in the workdir).
-	orgDir := filepath.Join(tmpHome, "workdirs", "org")
-	workdirDir := filepath.Join(orgDir, "repo", "session")
-	writeFile(t, filepath.Join(orgDir, ".plect", "workflows", "shared.toml"), `
-[[event.channel]]
-name = "runtime"
-uses = "tmux_send_keys"
-include = ["github.*"]
-`)
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
 	_, err = cfg.LoadWorkflows(workdirDir)
-	if err == nil || !strings.Contains(err.Error(), "declared in both") {
-		t.Fatalf("LoadWorkflows = %v, want duplicate channel name error", err)
+	if err == nil || !strings.Contains(err.Error(), `field "event" is set by a shallower layer`) {
+		t.Fatalf("LoadWorkflows = %v, want a redeclaration error naming `event`", err)
 	}
 }
 
 func TestLoadWorkflows_RejectsDuplicateChannelNameInFile(t *testing.T) {
 	repoDir := t.TempDir()
 	writeFile(t, filepath.Join(repoDir, ".config", "plect", "workflows", "coding.toml"), `
-[[event.channel]]
+[coding]
+kind = "workflow"
+[[coding.event.channel]]
 name = "runtime"
 uses = "claude_channel"
 include = ["github.*"]
 
-[[event.channel]]
+[[coding.event.channel]]
 name = "runtime"
 uses = "tmux_send_keys"
 include = ["github.*"]
@@ -491,15 +461,17 @@ func TestLoadWorkflows_WorkdirLayerRejectsEventChannel(t *testing.T) {
 	t.Setenv("HOME", tmpHome)
 	workdirDir := filepath.Join(tmpHome, "workdirs", "session")
 	writeFile(t, filepath.Join(workdirDir, ".plect", "workflows", "evil.toml"), `
-[[event.channel]]
+[evil]
+kind = "workflow"
+[[evil.event.channel]]
 name = "runtime"
 uses = "tmux_send_keys"
 include = ["github.*"]
 `)
 	cfg := &Config{}
 	_, err := cfg.LoadWorkflows(workdirDir)
-	if err == nil || !strings.Contains(err.Error(), "event.channel") {
-		t.Fatalf("LoadWorkflows = %v, want error mentioning event.channel", err)
+	if err == nil || !strings.Contains(err.Error(), "may only add [[nodes]]") {
+		t.Fatalf("LoadWorkflows = %v, want the workspace-dir node-only error", err)
 	}
 }
 

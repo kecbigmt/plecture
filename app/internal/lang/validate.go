@@ -251,13 +251,51 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 			return err
 		}
 	}
+	if event, ok := def.Body["event"]; ok {
+		at := childPos(pos, "event")
+		tbl, err := table(event, at)
+		if err != nil {
+			return err
+		}
+		if err := rejectUnknownFields(tbl, at, "channel"); err != nil {
+			return err
+		}
+	}
 	for i, channel := range v.eventChannels(def) {
 		at := childPos(childPos(pos, "event.channel"), fmt.Sprintf("[%d]", i))
+		if err := rejectUnknownFields(channel, at, "name", "uses", "inputs", "include"); err != nil {
+			return err
+		}
 		if err := v.valueTable(channel, "inputs", ClassData, surfaceWorkflowNodeInputs, at); err != nil {
 			return err
 		}
 	}
-	return nil
+	// A clock's table is closed the way the definition surface itself is: a
+	// misspelled `heartbeat` or `period` is a declaration with no consumer,
+	// and reading it as an unset one would leave the author believing the
+	// cadence is in force while the session sits still.
+	for _, clock := range []struct {
+		field  string
+		fields []string
+	}{
+		{"tick", []string{"on", "heartbeat", "max_heartbeat"}},
+		{"healthcheck", []string{"period", "stall_threshold", "renotify_every"}},
+	} {
+		raw, ok := def.Body[clock.field]
+		if !ok {
+			continue
+		}
+		at := childPos(pos, clock.field)
+		tbl, err := table(raw, at)
+		if err != nil {
+			return err
+		}
+		if err := rejectUnknownFields(tbl, at, clock.fields...); err != nil {
+			return err
+		}
+	}
+	_, err = WorkflowNodes(def)
+	return err
 }
 
 func (v Validation) validateTask(def *Definition, pos Position) error {

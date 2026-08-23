@@ -55,7 +55,6 @@ var nativeDeferred = map[string]string{
 	"nesting/computed-output-mutable.invalid.toml": "the nesting joint's mutability agreement",
 	"nesting/cycle.invalid.toml":                   "nesting chain resolution",
 	"nesting/projection-mismatch.invalid.toml":     "the nesting joint's type agreement",
-	"workflows/node-cycle.invalid.toml":            "the workflow dependency graph",
 	"references/alias-required.invalid.toml":       "reference resolution across enabled plugin layers",
 	"references/cross-plugin.invalid.toml":         "reference resolution across enabled plugin layers",
 	"references/duplicate-id.invalid.toml":         "duplicate-id detection across a layer's files",

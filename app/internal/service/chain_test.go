@@ -56,7 +56,8 @@ func writeWorkflowFile(t *testing.T, cfg *config.Config, id, body string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte("workspace_provider = \""+id+"\"\n"+body), 0o644); err != nil {
+	header := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + id + "\"\n"
+	if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte(header+body), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	providersDir := filepath.Join(cfg.BaseDir, "workspaces")
@@ -188,7 +189,7 @@ revision = { from = "resource.state.revision" }
 	// codex declares a closed inputs contract, so the wired `revision` is not an
 	// accepted input.
 	writeWorkflowFile(t, cfg, "codex", `
-[inputs_schema]
+[codex.inputs_schema]
 type = "object"
 additionalProperties = false
 `)
