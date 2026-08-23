@@ -84,9 +84,8 @@ func taskExtendsChain(doc config.TaskDocument) []TaskExtendsLayer {
 	return chain
 }
 
-// summarizeDoneWhenLeaf renders one declared leaf for provenance display —
-// the declaration, not an evaluation, so this names the leaf's shape rather
-// than a runtime verdict (task.DoneLeafResult's formatter is that surface).
+// summarizeDoneWhenLeaf names a declared leaf's shape; task.DoneLeafResult's
+// formatter renders a runtime verdict, a different thing this is not.
 func summarizeDoneWhenLeaf(leaf config.DoneWhenLeaf) string {
 	switch {
 	case leaf.IsJudge():
@@ -102,9 +101,6 @@ func summarizeDoneWhenLeaf(leaf config.DoneWhenLeaf) string {
 	return ""
 }
 
-// schemaOwnKeys lists a layer's own property keys, root of its inputs_schema
-// or state_schema table, each marked "(default)" when this same declaration
-// is the one that set the key's default value.
 func schemaOwnKeys(schema map[string]any) []string {
 	props, ok := schema["properties"].(map[string]any)
 	if !ok {

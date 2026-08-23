@@ -8,16 +8,9 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// composeExtendedTaskDocuments materializes the effective declaration for
-// every document that declares extends. It runs inside LoadTaskDocuments,
-// before any caller decides whether to also run the heavier
-// ValidateTaskDocuments contract pass, so it validates the extends-specific
-// composition rules itself — chain resolution, judge-id and chain-id
-// uniqueness, and the schema key rules — through lang's own exported
-// checkers rather than trusting a validation pass that may not have run yet.
-// ValidateTaskContracts runs the identical checkers against the same chain
-// later, so there remains one authority for what the rules are; this is a
-// second call site, not a second implementation.
+// composeExtendedTaskDocuments runs inside LoadTaskDocuments, ahead of the
+// heavier, optional ValidateTaskDocuments pass, so it calls lang's exported
+// checkers itself rather than trusting that pass to have already run.
 func composeExtendedTaskDocuments(docs map[string]TaskDocument, registry *lang.Registry) error {
 	// original is an immutable snapshot: composing one document must read
 	// every ancestor's own, single-layer contribution, never another
@@ -75,12 +68,6 @@ func composeExtendedTaskDocuments(docs map[string]TaskDocument, registry *lang.R
 	return nil
 }
 
-// composeTaskDocument merges an extends chain's layers, root first and the
-// extension itself last, into the single effective document every runtime
-// consumer reads: instructions and chains append in that order, done_when
-// leaves append, and inputs_schema/state_schema properties merge by key. The
-// result keeps the outermost (most specific) layer's own identity, ownership,
-// and source.
 func composeTaskDocument(layers []TaskDocument) TaskDocument {
 	composed := layers[len(layers)-1]
 	// An extension declares no resource_observer of its own (lang's structural
@@ -110,16 +97,10 @@ func composeTaskDocument(layers []TaskDocument) TaskDocument {
 	return composed
 }
 
-// mergeSchemaField merges one schema field (inputs_schema or state_schema)
-// across an extends chain. lang's structural check on `extends` guarantees
-// every keyword but `type` and `properties` comes from the root alone, so
-// those keywords are copied from whichever layer declares the field at all.
-// `type` gets its own pass rather than riding along with that copy: the root
-// may leave it unset and a later layer may be the one that actually declares
-// it (lang's SchemaKeyRules already confirms every layer that does declare
-// one agrees), and picking it from "whichever table showed up first" would
-// silently drop a later layer's type the moment the root's own table has any
-// content at all.
+// mergeSchemaField resolves `type` on its own pass, separate from copying
+// the rest of the table from whichever layer declares the field: the root
+// may leave `type` unset for an extension to declare, and picking it from
+// "whichever table appears first" would silently drop that declaration.
 func mergeSchemaField(layers []TaskDocument, field func(TaskDocument) map[string]any) map[string]any {
 	var base map[string]any
 	var typeValue any
@@ -152,12 +133,6 @@ func mergeSchemaField(layers []TaskDocument, field func(TaskDocument) map[string
 	return merged
 }
 
-// mergeSchemaProperties merges one schema field's `properties` table across
-// an extends chain. A new key from any layer is added; an existing key keeps
-// the first definition it was given (lang's extends validation has already
-// confirmed every redeclaration agrees with it apart from `default`) and
-// gains whichever layer's `default` was added, since at most one layer in a
-// valid chain ever adds one.
 func mergeSchemaProperties(layers []TaskDocument, field func(TaskDocument) map[string]any) map[string]any {
 	properties := map[string]any{}
 	for _, layer := range layers {
