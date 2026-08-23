@@ -1,7 +1,10 @@
-// Package effect runs one resolved host invocation and reports what it
-// produced. It knows nothing about sessions, task DAGs, or nesting — those
-// stay in app/internal/task, which builds the roots an action resolves
-// against and calls into this package only for "run this resolved action".
+// Package effect resolves and runs actions against their surface roots. It
+// owns the workspace-provider hooks (setup/cleanup/subscribe), which run
+// before any task DAG exists and take only plain, session-identifier-shaped
+// values as their context — no live task-DAG state. Root-building that does
+// depend on a session's task DAG (nesting layers, node outputs, self.state)
+// stays in app/internal/task, which calls into this package only to resolve
+// an action against roots it built itself and run it.
 package effect
 
 import (
