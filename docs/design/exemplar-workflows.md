@@ -173,6 +173,9 @@ An exemplar package is valid when:
   `[[placeholders]]`;
 - every catalog-owned reference in the workflow template uses the scaffold-only
   `<plugin>.<id>` form when the source plugin path has one segment;
+- every catalog-owned reference in the workflow template uses the bare `<id>`
+  form when the source plugin path has more than one segment, with the source
+  plugin identified by exactly one matching `[[references]]` entry;
 - every `[[placeholders]]` entry with `input` names a value present in
   `inputs_schema.properties.<input>.enum`;
 - every `[[placeholders]]` entry with `kind = "task"` has `input` set;
@@ -188,7 +191,9 @@ An exemplar package is valid when:
 A `[[references]]` entry is used when a workflow reference has the same expected
 kind and final id segment. For scaffold-only references, the leading plugin
 segment also matches the entry's `plugin`; `github.worktree` therefore uses the
-entry with `plugin = "github"` and `id = "worktree"`.
+entry with `plugin = "github"` and `id = "worktree"`. For bare references, the
+entry's `plugin` must have more than one path segment, and no other entry of the
+same kind may claim the same bare id.
 
 ## Scaffold verification
 
@@ -205,8 +210,12 @@ Before the destination file is stored, plect rewrites scaffold-only catalog
 references to the user's catalog alias. A template reference such as
 `codex.exec_runtime`, declared by `kind = "effect"`, `id = "exec_runtime"`,
 `plugin = "codex"`, becomes `official.codex.exec_runtime` when the exemplar is
-copied from `official/review-starter`. Bare ids are not rewritten; they remain
-relative user-owned references and must resolve from the destination workflow.
+copied from `official/review-starter`. A bare template reference that matches a
+multi-segment `[[references]]` entry is rewritten through that metadata, so
+`runtime`, declared by `plugin = "session/runtime"` and `id = "runtime"`,
+becomes `official.session.runtime.runtime`. Other bare ids are not rewritten;
+they remain relative user-owned references and must resolve from the destination
+workflow.
 
 If a plugin is not enabled, the error names the plugin to enable:
 
