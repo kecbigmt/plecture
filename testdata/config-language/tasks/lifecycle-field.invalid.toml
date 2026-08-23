@@ -1,10 +1,11 @@
-<!-- plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=task -->
-<!-- reason: lifecycle belongs to an effect; a task document brings nothing up and takes nothing down. -->
-+++
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-UNKNOWN entry=definitions
+# reason: lifecycle belongs to an effect; a task document brings nothing up and takes nothing down.
+
 [broken_task]
 kind              = "task"
 description       = "A task document that tries to own a lifecycle"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
 
 [broken_task.setup]
 type = "exec"
@@ -13,5 +14,3 @@ args = ["render-instruction"]
 
 [broken_task.done_when]
 all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
-+++
-Resolve the issue at {{ resource.id }}.

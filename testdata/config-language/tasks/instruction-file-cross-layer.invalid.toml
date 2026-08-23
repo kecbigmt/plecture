@@ -1,0 +1,11 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER entry=definitions
+# reason: an instructions element's file resolves relative to the declaring file but must stay within the same trusted layer; a path escaping it is a load error even when it happens to point at a real file.
+
+[work]
+kind              = "task"
+description       = "A task whose instructions element escapes its own layer"
+resource_observer = "issue_pr"
+instructions      = [{ file = "../../outside.md" }]
+
+[work.done_when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]

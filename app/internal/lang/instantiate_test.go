@@ -6,15 +6,13 @@ import (
 	"testing"
 )
 
-const goalTaskDocument = `+++
-[pursue_goal]
+const goalTaskDocument = `[pursue_goal]
 kind              = "task"
 resource_observer = "goal"
+instructions      = [{ text = "Pursue the goal at {{ resource.id }}." }]
 
 [pursue_goal.done_when]
 all = [{ check = "resource.state.goal_status", in = ["open"] }]
-+++
-Pursue the goal at {{ resource.id }}.
 `
 
 const goalObserverContext = `[goal]
@@ -41,8 +39,12 @@ func instantiateGoalTask(t *testing.T, resourceID string, observe ObserveFunc) (
 	if err != nil {
 		t.Fatal(err)
 	}
-	def, err := ParseTaskDocument("task.md", []byte(goalTaskDocument))
+	defs, err := ParseDefinitionDocument("task.toml", []byte(goalTaskDocument))
 	if err != nil {
+		t.Fatal(err)
+	}
+	def := defs[0]
+	if err := resolveTaskInstructions(def, "."); err != nil {
 		t.Fatal(err)
 	}
 	v := Validation{From: Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath}}

@@ -139,7 +139,7 @@ func writeWorkflowFixture(t *testing.T, workdirsRoot, wfID string, defs []taskFi
 			continue
 		}
 		needObserver = true
-		if err := os.WriteFile(filepath.Join(tasksDir, d.id+".md"), []byte(taskDocumentFixtureDoc(d)), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(tasksDir, d.id+".toml"), []byte(taskDocumentFixtureDoc(d)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -322,8 +322,8 @@ func taskDocumentFixtureDoc(d taskFixture) string {
 		return strings.HasPrefix(strings.TrimSpace(line), "requires ")
 	}), "\n")
 	var b strings.Builder
-	b.WriteString("+++\n")
-	fmt.Fprintf(&b, "[%s]\nkind = \"task\"\ndescription = %q\nresource_observer = %q\n", d.id, d.id+" fixture", fixtureObserverID)
+	fmt.Fprintf(&b, "[%s]\nkind = \"task\"\ndescription = %q\nresource_observer = %q\ninstructions = [{ text = %q }]\n",
+		d.id, d.id+" fixture", fixtureObserverID, "Carry out "+d.id+".")
 	b.WriteString(bare)
 	if keys := fixtureStateKeys(d.extra, "self"); len(keys) > 0 {
 		fmt.Fprintf(&b, "\n[%s.state_schema]\ntype = \"object\"\n\n[%s.state_schema.properties]\n", d.id, d.id)
@@ -332,8 +332,6 @@ func taskDocumentFixtureDoc(d taskFixture) string {
 		}
 	}
 	b.WriteString(tables)
-	b.WriteString("+++\n")
-	fmt.Fprintf(&b, "Carry out %s.\n", d.id)
 	return b.String()
 }
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/kecbigmt/plecture/plecture.schema.json",
   "title": "Plecture configuration language",
-  "description": "Structural schema for Plecture configuration. The root schema describes a definition document: a TOML file whose top-level tables are definition blocks. A task document is a Markdown file whose TOML frontmatter is validated at #task. The reserved root files and the plugin/catalog manifests have their own entry points too, so the full set of anchors is #definitions, #task, #config, #catalogs, #lock, #plugin, and #catalog. This schema is authoritative for accepted structural shapes until the implementation lands a schema generator whose output is conformance-tested against it. It deliberately does not encode cross-definition or evaluation-context rules, which are Plecture semantic validation, nor expression correctness, which is CEL validation.",
+  "description": "Structural schema for Plecture configuration. The root schema describes a definition document: a TOML file whose top-level tables are definition blocks, task included — a task declaration's instruction is its `instructions` array, each element either inline text or the content of a sidecar Markdown file. The reserved root files and the plugin/catalog manifests have their own entry points too, so the full set of anchors is #definitions, #config, #catalogs, #lock, #plugin, and #catalog. This schema is authoritative for accepted structural shapes until the implementation lands a schema generator whose output is conformance-tested against it. It deliberately does not encode cross-definition or evaluation-context rules, which are Plecture semantic validation, nor expression correctness, which is CEL validation.",
   "$ref": "#/$defs/definitionDocument",
   "$defs": {
     "definitionDocument": {
@@ -22,7 +22,7 @@
       "required": [
         "kind"
       ],
-      "$comment": "PLECTURE-CFG-KIND-MISSING when kind is absent; PLECTURE-CFG-KIND-UNKNOWN when it is outside the vocabulary; PLECTURE-CFG-TASK-IN-TOML-DOCUMENT when a kind whose declaration needs a body appears in a TOML definition document.",
+      "$comment": "PLECTURE-CFG-KIND-MISSING when kind is absent; PLECTURE-CFG-KIND-UNKNOWN when it is outside the vocabulary.",
       "properties": {
         "kind": {
           "enum": [
@@ -40,6 +40,9 @@
           "$ref": "#/$defs/effectDefinition"
         },
         {
+          "$ref": "#/$defs/taskDefinition"
+        },
+        {
           "$ref": "#/$defs/channelDefinition"
         },
         {
@@ -52,17 +55,7 @@
           "$ref": "#/$defs/resourceObserverDefinition"
         }
       ],
-      "description": "A definition block in a TOML definition document. Every kind is declared the same way \u2014 a table named by the definition id, carrying kind \u2014 but a kind with a body, which today means task, is declared in a Markdown file's frontmatter instead and is validated at #task.",
-      "not": {
-        "required": [
-          "kind"
-        ],
-        "properties": {
-          "kind": {
-            "const": "task"
-          }
-        }
-      }
+      "description": "A definition block in a TOML definition document. Every kind is declared the same way \u2014 a table named by the definition id, carrying kind."
     },
     "staticReference": {
       "type": "string",
@@ -1199,7 +1192,7 @@
       "properties": {
         "schema_version": {
           "type": "integer",
-          "description": "The dialect this user config tree is written in. It governs the whole tree \u2014 split definition documents and task documents inherit it \u2014 and is orthogonal to plect_min_version, which is binary compatibility rather than language dialect.",
+          "description": "The dialect this user config tree is written in. It governs the whole tree \u2014 every definition document, split across any number of files, inherits it \u2014 and is orthogonal to plect_min_version, which is binary compatibility rather than language dialect.",
           "$comment": "PLECTURE-CFG-SCHEMA-VERSION-OLDER, PLECTURE-CFG-SCHEMA-VERSION-NEWER: which dialects are accepted is the loader's three-way comparison, not a structural bound, so no range is asserted here."
         },
         "workspace_dirs_root": {
@@ -1542,10 +1535,9 @@
         "kind",
         "resource_observer"
       ],
-      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a task document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
+      "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is. Its instruction is the resolved texts of its `instructions` array, joined by a blank line in declaration order. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
       "properties": {
         "kind": {
-          "$comment": "PLECTURE-CFG-BODILESS-IN-TASK-DOCUMENT: a task document's frontmatter carries a task, and a kind with no body is declared in a TOML document instead.",
           "const": "task"
         },
         "description": {
@@ -1554,6 +1546,13 @@
         "resource_observer": {
           "$ref": "#/$defs/staticReference",
           "description": "The resource observer this task is written for. Named after the kind it references, the same way a workflow's workspace_provider field is. Declaring it is what lets every key a check or a chain input reads be resolved against that observer's published state at load time, and what lets instantiation reject an incompatible resource up front."
+        },
+        "instructions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/instructionElement"
+          },
+          "description": "The instruction, as an ordered sequence of segments joined by a blank line. Each segment is inline text or a sidecar file, so a task built by composing segments (a base instruction plus an extension) can append rather than concatenate strings."
         },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument",
@@ -1596,19 +1595,41 @@
         }
       }
     },
-    "taskFrontmatter": {
-      "$anchor": "task",
-      "$comment": "PLECTURE-CFG-TASK-BLOCK-COUNT: a task document's frontmatter holds exactly one declaration.",
+    "instructionElement": {
+      "$comment": "PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT when other than exactly one of text and file is present; PLECTURE-CFG-FIELD-UNKNOWN for any other key.",
       "type": "object",
-      "description": "The TOML frontmatter of a task document: one definition block, whose kind is task. Nothing about the grammar forks \u2014 these are two validation rules over the ordinary definition document.",
-      "minProperties": 1,
-      "maxProperties": 1,
-      "propertyNames": {
-        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      "additionalProperties": false,
+      "description": "One segment of a task's instructions array: inline text, or a sidecar Markdown file carrying the text, relative to the declaring file and resolved within the same trusted layer.",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        }
       },
-      "additionalProperties": {
-        "$ref": "#/$defs/taskDefinition"
-      }
+      "oneOf": [
+        {
+          "required": [
+            "text"
+          ],
+          "not": {
+            "required": [
+              "file"
+            ]
+          }
+        },
+        {
+          "required": [
+            "file"
+          ],
+          "not": {
+            "required": [
+              "text"
+            ]
+          }
+        }
+      ]
     },
     "completionKeyPath": {
       "$comment": "PLECTURE-CFG-FROM-ROOT: a completion key reads resource.state.* or self.state.*.",

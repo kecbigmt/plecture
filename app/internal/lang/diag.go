@@ -25,47 +25,46 @@ const (
 type Code string
 
 const (
-	CodeKindMissing               Code = "PLECTURE-CFG-KIND-MISSING"
-	CodeKindUnknown               Code = "PLECTURE-CFG-KIND-UNKNOWN"
-	CodeIDInvalid                 Code = "PLECTURE-CFG-ID-INVALID"
-	CodeFieldUnknown              Code = "PLECTURE-CFG-FIELD-UNKNOWN"
-	CodeFieldRequired             Code = "PLECTURE-CFG-FIELD-REQUIRED"
-	CodeFieldType                 Code = "PLECTURE-CFG-FIELD-TYPE"
-	CodeSchemaVersionOlder        Code = "PLECTURE-CFG-SCHEMA-VERSION-OLDER"
-	CodeSchemaVersionNewer        Code = "PLECTURE-CFG-SCHEMA-VERSION-NEWER"
-	CodeValueFromAndExpr          Code = "PLECTURE-CFG-VALUE-FROM-AND-EXPR"
-	CodeValueDefaultAndOptional   Code = "PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL"
-	CodeValueTagUnknown           Code = "PLECTURE-CFG-VALUE-TAG-UNKNOWN"
-	CodeValueTagSurface           Code = "PLECTURE-CFG-VALUE-TAG-SURFACE"
-	CodeActionTypeUnknown         Code = "PLECTURE-CFG-ACTION-TYPE-UNKNOWN"
-	CodeActionVariant             Code = "PLECTURE-CFG-ACTION-VARIANT"
-	CodeActionBinAndCommand       Code = "PLECTURE-CFG-ACTION-BIN-AND-COMMAND"
-	CodeShellInterpolation        Code = "PLECTURE-CFG-SHELL-INTERPOLATION"
-	CodeRefDynamic                Code = "PLECTURE-CFG-REF-DYNAMIC"
-	CodeChannelTimeoutRoot        Code = "PLECTURE-CFG-CHANNEL-TIMEOUT-ROOT"
-	CodeTaskFrontmatterMissing    Code = "PLECTURE-CFG-TASK-FRONTMATTER-MISSING"
-	CodeTaskBlockCount            Code = "PLECTURE-CFG-TASK-BLOCK-COUNT"
-	CodeTaskInTOMLDocument        Code = "PLECTURE-CFG-TASK-IN-TOML-DOCUMENT"
-	CodeBodilessInTaskDocument    Code = "PLECTURE-CFG-BODILESS-IN-TASK-DOCUMENT"
-	CodeUnknownRef                Code = "PLECTURE-CFG-UNKNOWN-REF"
-	CodeKindMismatch              Code = "PLECTURE-CFG-KIND-MISMATCH"
-	CodeIDDuplicate               Code = "PLECTURE-CFG-ID-DUPLICATE"
-	CodeRefAliasRequired          Code = "PLECTURE-CFG-REF-ALIAS-REQUIRED"
-	CodeRefCrossPlugin            Code = "PLECTURE-CFG-REF-CROSS-PLUGIN"
-	CodeFromRoot                  Code = "PLECTURE-CFG-FROM-ROOT"
-	CodeFromPath                  Code = "PLECTURE-CFG-FROM-PATH"
-	CodeResourceObserverMismatch  Code = "PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH"
-	CodeFirstObserveFailed        Code = "PLECTURE-CFG-FIRST-OBSERVE-FAILED"
-	CodeBinUnknown                Code = "PLECTURE-CFG-BIN-UNKNOWN"
-	CodeTerminalUnavailable       Code = "PLECTURE-CFG-TERMINAL-UNAVAILABLE"
-	CodeNestingCycle              Code = "PLECTURE-CFG-NESTING-CYCLE"
-	CodeNestingOutputMutable      Code = "PLECTURE-CFG-NESTING-OUTPUT-MUTABLE"
-	CodeNestingProjectionMismatch Code = "PLECTURE-CFG-NESTING-PROJECTION-MISMATCH"
-	CodeWorkflowCycle             Code = "PLECTURE-CFG-WORKFLOW-CYCLE"
-	CodeCELSyntax                 Code = "PLECTURE-CFG-CEL-SYNTAX"
-	CodeCELUnknownName            Code = "PLECTURE-CFG-CEL-UNKNOWN-NAME"
-	CodeCELType                   Code = "PLECTURE-CFG-CEL-TYPE"
-	CodeCELCustomFunction         Code = "PLECTURE-CFG-CEL-CUSTOM-FUNCTION"
+	CodeKindMissing                   Code = "PLECTURE-CFG-KIND-MISSING"
+	CodeKindUnknown                   Code = "PLECTURE-CFG-KIND-UNKNOWN"
+	CodeIDInvalid                     Code = "PLECTURE-CFG-ID-INVALID"
+	CodeFieldUnknown                  Code = "PLECTURE-CFG-FIELD-UNKNOWN"
+	CodeFieldRequired                 Code = "PLECTURE-CFG-FIELD-REQUIRED"
+	CodeFieldType                     Code = "PLECTURE-CFG-FIELD-TYPE"
+	CodeSchemaVersionOlder            Code = "PLECTURE-CFG-SCHEMA-VERSION-OLDER"
+	CodeSchemaVersionNewer            Code = "PLECTURE-CFG-SCHEMA-VERSION-NEWER"
+	CodeValueFromAndExpr              Code = "PLECTURE-CFG-VALUE-FROM-AND-EXPR"
+	CodeValueDefaultAndOptional       Code = "PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL"
+	CodeValueTagUnknown               Code = "PLECTURE-CFG-VALUE-TAG-UNKNOWN"
+	CodeValueTagSurface               Code = "PLECTURE-CFG-VALUE-TAG-SURFACE"
+	CodeActionTypeUnknown             Code = "PLECTURE-CFG-ACTION-TYPE-UNKNOWN"
+	CodeActionVariant                 Code = "PLECTURE-CFG-ACTION-VARIANT"
+	CodeActionBinAndCommand           Code = "PLECTURE-CFG-ACTION-BIN-AND-COMMAND"
+	CodeShellInterpolation            Code = "PLECTURE-CFG-SHELL-INTERPOLATION"
+	CodeRefDynamic                    Code = "PLECTURE-CFG-REF-DYNAMIC"
+	CodeChannelTimeoutRoot            Code = "PLECTURE-CFG-CHANNEL-TIMEOUT-ROOT"
+	CodeTaskInstructionElement        Code = "PLECTURE-CFG-TASK-INSTRUCTION-ELEMENT"
+	CodeUnknownRef                    Code = "PLECTURE-CFG-UNKNOWN-REF"
+	CodeKindMismatch                  Code = "PLECTURE-CFG-KIND-MISMATCH"
+	CodeIDDuplicate                   Code = "PLECTURE-CFG-ID-DUPLICATE"
+	CodeRefAliasRequired              Code = "PLECTURE-CFG-REF-ALIAS-REQUIRED"
+	CodeRefCrossPlugin                Code = "PLECTURE-CFG-REF-CROSS-PLUGIN"
+	CodeTaskInstructionFileMissing    Code = "PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING"
+	CodeTaskInstructionFileCrossLayer Code = "PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER"
+	CodeFromRoot                      Code = "PLECTURE-CFG-FROM-ROOT"
+	CodeFromPath                      Code = "PLECTURE-CFG-FROM-PATH"
+	CodeResourceObserverMismatch      Code = "PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH"
+	CodeFirstObserveFailed            Code = "PLECTURE-CFG-FIRST-OBSERVE-FAILED"
+	CodeBinUnknown                    Code = "PLECTURE-CFG-BIN-UNKNOWN"
+	CodeTerminalUnavailable           Code = "PLECTURE-CFG-TERMINAL-UNAVAILABLE"
+	CodeNestingCycle                  Code = "PLECTURE-CFG-NESTING-CYCLE"
+	CodeNestingOutputMutable          Code = "PLECTURE-CFG-NESTING-OUTPUT-MUTABLE"
+	CodeNestingProjectionMismatch     Code = "PLECTURE-CFG-NESTING-PROJECTION-MISMATCH"
+	CodeWorkflowCycle                 Code = "PLECTURE-CFG-WORKFLOW-CYCLE"
+	CodeCELSyntax                     Code = "PLECTURE-CFG-CEL-SYNTAX"
+	CodeCELUnknownName                Code = "PLECTURE-CFG-CEL-UNKNOWN-NAME"
+	CodeCELType                       Code = "PLECTURE-CFG-CEL-TYPE"
+	CodeCELCustomFunction             Code = "PLECTURE-CFG-CEL-CUSTOM-FUNCTION"
 )
 
 // codeLayers documents which layer(s) each code is legitimately reported at,
@@ -75,47 +74,46 @@ const (
 // still names its layer explicitly at each construction site rather than
 // deriving it from this table.
 var codeLayers = map[Code][]Layer{
-	CodeKindMissing:               {LayerStructural},
-	CodeKindUnknown:               {LayerStructural},
-	CodeIDInvalid:                 {LayerStructural},
-	CodeFieldUnknown:              {LayerStructural},
-	CodeFieldRequired:             {LayerStructural},
-	CodeFieldType:                 {LayerStructural},
-	CodeSchemaVersionOlder:        {LayerSemantic},
-	CodeSchemaVersionNewer:        {LayerSemantic},
-	CodeValueFromAndExpr:          {LayerStructural},
-	CodeValueDefaultAndOptional:   {LayerStructural},
-	CodeValueTagUnknown:           {LayerStructural},
-	CodeValueTagSurface:           {LayerStructural},
-	CodeActionTypeUnknown:         {LayerStructural},
-	CodeActionVariant:             {LayerStructural},
-	CodeActionBinAndCommand:       {LayerStructural},
-	CodeShellInterpolation:        {LayerStructural},
-	CodeRefDynamic:                {LayerStructural},
-	CodeChannelTimeoutRoot:        {LayerStructural},
-	CodeTaskFrontmatterMissing:    {LayerStructural},
-	CodeTaskBlockCount:            {LayerStructural},
-	CodeTaskInTOMLDocument:        {LayerStructural},
-	CodeBodilessInTaskDocument:    {LayerStructural},
-	CodeUnknownRef:                {LayerSemantic},
-	CodeKindMismatch:              {LayerSemantic},
-	CodeIDDuplicate:               {LayerSemantic},
-	CodeRefAliasRequired:          {LayerSemantic},
-	CodeRefCrossPlugin:            {LayerSemantic},
-	CodeFromRoot:                  {LayerStructural, LayerSemantic},
-	CodeFromPath:                  {LayerSemantic},
-	CodeResourceObserverMismatch:  {LayerInstantiation},
-	CodeFirstObserveFailed:        {LayerInstantiation},
-	CodeBinUnknown:                {LayerSemantic},
-	CodeTerminalUnavailable:       {LayerSemantic},
-	CodeNestingCycle:              {LayerSemantic},
-	CodeNestingOutputMutable:      {LayerSemantic},
-	CodeNestingProjectionMismatch: {LayerSemantic},
-	CodeWorkflowCycle:             {LayerSemantic},
-	CodeCELSyntax:                 {LayerCEL},
-	CodeCELUnknownName:            {LayerCEL},
-	CodeCELType:                   {LayerCEL},
-	CodeCELCustomFunction:         {LayerCEL},
+	CodeKindMissing:                   {LayerStructural},
+	CodeKindUnknown:                   {LayerStructural},
+	CodeIDInvalid:                     {LayerStructural},
+	CodeFieldUnknown:                  {LayerStructural},
+	CodeFieldRequired:                 {LayerStructural},
+	CodeFieldType:                     {LayerStructural},
+	CodeSchemaVersionOlder:            {LayerSemantic},
+	CodeSchemaVersionNewer:            {LayerSemantic},
+	CodeValueFromAndExpr:              {LayerStructural},
+	CodeValueDefaultAndOptional:       {LayerStructural},
+	CodeValueTagUnknown:               {LayerStructural},
+	CodeValueTagSurface:               {LayerStructural},
+	CodeActionTypeUnknown:             {LayerStructural},
+	CodeActionVariant:                 {LayerStructural},
+	CodeActionBinAndCommand:           {LayerStructural},
+	CodeShellInterpolation:            {LayerStructural},
+	CodeRefDynamic:                    {LayerStructural},
+	CodeChannelTimeoutRoot:            {LayerStructural},
+	CodeTaskInstructionElement:        {LayerStructural},
+	CodeUnknownRef:                    {LayerSemantic},
+	CodeKindMismatch:                  {LayerSemantic},
+	CodeIDDuplicate:                   {LayerSemantic},
+	CodeRefAliasRequired:              {LayerSemantic},
+	CodeRefCrossPlugin:                {LayerSemantic},
+	CodeTaskInstructionFileMissing:    {LayerSemantic},
+	CodeTaskInstructionFileCrossLayer: {LayerSemantic},
+	CodeFromRoot:                      {LayerStructural, LayerSemantic},
+	CodeFromPath:                      {LayerSemantic},
+	CodeResourceObserverMismatch:      {LayerInstantiation},
+	CodeFirstObserveFailed:            {LayerInstantiation},
+	CodeBinUnknown:                    {LayerSemantic},
+	CodeTerminalUnavailable:           {LayerSemantic},
+	CodeNestingCycle:                  {LayerSemantic},
+	CodeNestingOutputMutable:          {LayerSemantic},
+	CodeNestingProjectionMismatch:     {LayerSemantic},
+	CodeWorkflowCycle:                 {LayerSemantic},
+	CodeCELSyntax:                     {LayerCEL},
+	CodeCELUnknownName:                {LayerCEL},
+	CodeCELType:                       {LayerCEL},
+	CodeCELCustomFunction:             {LayerCEL},
 }
 
 // Codes returns every documented diagnostic code, in the order declared
@@ -128,10 +126,10 @@ func Codes() []Code {
 		CodeFieldRequired, CodeFieldType, CodeSchemaVersionOlder, CodeSchemaVersionNewer,
 		CodeValueFromAndExpr, CodeValueDefaultAndOptional, CodeValueTagUnknown, CodeValueTagSurface,
 		CodeActionTypeUnknown, CodeActionVariant, CodeActionBinAndCommand, CodeShellInterpolation,
-		CodeRefDynamic, CodeChannelTimeoutRoot, CodeTaskFrontmatterMissing, CodeTaskBlockCount,
-		CodeTaskInTOMLDocument, CodeBodilessInTaskDocument, CodeUnknownRef,
+		CodeRefDynamic, CodeChannelTimeoutRoot, CodeTaskInstructionElement, CodeUnknownRef,
 		CodeKindMismatch, CodeIDDuplicate,
-		CodeRefAliasRequired, CodeRefCrossPlugin, CodeFromRoot, CodeFromPath,
+		CodeRefAliasRequired, CodeRefCrossPlugin,
+		CodeTaskInstructionFileMissing, CodeTaskInstructionFileCrossLayer, CodeFromRoot, CodeFromPath,
 		CodeResourceObserverMismatch, CodeFirstObserveFailed, CodeBinUnknown, CodeTerminalUnavailable,
 		CodeNestingCycle, CodeNestingOutputMutable, CodeNestingProjectionMismatch, CodeWorkflowCycle,
 		CodeCELSyntax, CodeCELUnknownName, CodeCELType, CodeCELCustomFunction,

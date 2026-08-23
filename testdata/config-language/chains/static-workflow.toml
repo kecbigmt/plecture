@@ -1,10 +1,11 @@
-<!-- plect-fixture: result=valid entry=task -->
-<!-- reason: a chain names its workflow with a static reference and projects the work facts it passes on. -->
-+++
+# plect-fixture: result=valid entry=definitions
+# reason: a chain names its workflow with a static reference and projects the work facts it passes on.
+
 [pursue_goal]
 kind              = "task"
 description       = "Pursue one goal until an independent reviewer confirms it"
 resource_observer = "goal"
+instructions      = [{ text = "Pursue the goal at {{ resource.id }} until its checklist is satisfied." }]
 
 [pursue_goal.done_when]
 all = [
@@ -28,5 +29,3 @@ task         = "goal_review"
 work_session = { from = "task.session" }
 instance     = { from = "task.instance" }
 judge_ids    = { from = "task.done_when.pending_judge_ids" }
-+++
-Pursue the goal at {{ resource.id }} until its checklist is satisfied.

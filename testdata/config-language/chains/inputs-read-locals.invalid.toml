@@ -1,10 +1,11 @@
-<!-- plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=task -->
-<!-- reason: a chain passes on public work facts and observed state; an effect layer's private locals do not cross into a spawned session. -->
-+++
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
+# reason: a chain passes on public work facts and observed state; an effect layer's private locals do not cross into a spawned session.
+
 [pursue_goal]
 kind              = "task"
 description       = "A task document leaking a private local into its chain"
 resource_observer = "goal"
+instructions      = [{ text = "Pursue the goal at {{ resource.id }}." }]
 
 [[pursue_goal.chains]]
 id        = "review"
@@ -16,5 +17,3 @@ all = [{ judge_pending = "goal-met" }]
 
 [pursue_goal.chains.inputs]
 secret = { from = "locals.guard_dir" }
-+++
-Pursue the goal at {{ resource.id }}.

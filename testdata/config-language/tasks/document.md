@@ -1,29 +1,3 @@
-<!-- plect-fixture: result=valid entry=task -->
-<!-- reason: a task document's frontmatter is its completion contract and its body is the instruction. -->
-+++
-[work]
-kind              = "task"
-description       = "Implement a fix or feature for an issue and create a PR"
-resource_observer = "issue_pr"
-
-[work.inputs_schema]
-type = "object"
-
-[work.inputs_schema.properties]
-instruction = { type = "string" }
-
-[work.done_when]
-all = [
-  { check = "resource.state.resource_kind", in = ["pull", "issue"] },
-  { check = "resource.state.checks_status", in = ["SUCCESS", "NULL"] },
-  { judge = "acceptance criteria are satisfied, with a concrete reason", id = "ac-met" },
-  { judge = "the resource change actually resolves the requested work without unaddressed risks", id = "solves" },
-]
-
-[work.budget]
-heartbeat_budget = 3
-on_exhaust       = "escalate"
-+++
 Resolve the issue at {{ resource.id }}.
 
 Steps:

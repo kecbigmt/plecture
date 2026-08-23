@@ -1,0 +1,11 @@
+# plect-fixture: result=valid entry=definitions
+# reason: an instructions element's file resolves relative to the declaring file, not relative to the layer root; a `..` segment that stays inside the layer — reaching a sidecar beside the declaring file's parent directory — is not a cross-layer escape.
+
+[nested_work]
+kind              = "task"
+description       = "A task nested below tasks/, reaching a sidecar beside its parent directory"
+resource_observer = "issue_pr"
+instructions      = [{ file = "../document.md" }]
+
+[nested_work.done_when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]

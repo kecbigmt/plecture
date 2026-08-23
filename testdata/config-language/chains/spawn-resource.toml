@@ -1,10 +1,11 @@
-<!-- plect-fixture: result=valid entry=task -->
-<!-- reason: a chain names the resource its spawned session binds to, projected from the facts the firing instance reads. -->
-+++
+# plect-fixture: result=valid entry=definitions
+# reason: a chain names the resource its spawned session binds to, projected from the facts the firing instance reads.
+
 [work]
 kind              = "task"
 description       = "Implement a fix and hand the pull request to a reviewer"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue at {{ resource.id }} and open a pull request." }]
 
 [work.done_when]
 all = [
@@ -28,5 +29,3 @@ all = [
 task         = "goal_review"
 work_session = { from = "task.session" }
 judge_ids    = { from = "task.done_when.pending_judge_ids" }
-+++
-Resolve the issue at {{ resource.id }} and open a pull request.

@@ -54,8 +54,12 @@ func resolveTaskDocument(t *testing.T, src string) error {
 	if err != nil {
 		t.Fatal(err)
 	}
-	def, err := ParseTaskDocument("task.md", []byte(src))
+	defs, err := ParseDefinitionDocument("task.toml", []byte(src))
 	if err != nil {
+		return err
+	}
+	def := defs[0]
+	if err := resolveTaskInstructions(def, "."); err != nil {
 		return err
 	}
 	v := Validation{
@@ -76,36 +80,32 @@ func TestValidateTaskContractsRejectsAnUndeclaredKey(t *testing.T) {
 	}{
 		{
 			name: "a completion check on a key the observer does not publish",
-			src: `+++
-[work]
+			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ check = "resource.state.mergeability", in = ["clean"] }]
-+++
-Resolve {{ resource.id }}.
 `,
 		},
 		{
 			name: "a completion check on state this document does not keep",
-			src: `+++
-[work]
+			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ check = "self.state.verdict_revision", ne = "" }]
-+++
-Resolve {{ resource.id }}.
 `,
 		},
 		{
 			name: "a computed leaf reading an unpublished key",
-			src: `+++
-[work]
+			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.state_schema]
 type = "object"
@@ -115,26 +115,22 @@ verdict_revision = { type = "string" }
 
 [work.done_when]
 all = [{ expr = "self.state.verdict_revision == resource.state.head_sha" }]
-+++
-Resolve {{ resource.id }}.
 `,
 		},
 		{
 			name: "an instruction body projecting an unpublished key",
-			src: `+++
-[work]
+			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
-+++
-Resolve {{ resource.id }} at {{ resource.state.head_sha }}.
+instructions      = [{ text = "Resolve {{ resource.id }} at {{ resource.state.head_sha }}." }]
 `,
 		},
 		{
 			name: "a chain fact reading an unpublished key",
-			src: `+++
-[work]
+			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
 id        = "review"
@@ -146,16 +142,14 @@ all = [{ check = "resource.state.head_sha", ne = "" }]
 
 [work.chains.inputs]
 task = "review"
-+++
-Resolve {{ resource.id }}.
 `,
 		},
 		{
 			name: "a chain input projecting an unpublished key",
-			src: `+++
-[work]
+			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
 id        = "review"
@@ -168,16 +162,14 @@ all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 [work.chains.inputs]
 task = "review"
 head = { from = "resource.state.head_sha" }
-+++
-Resolve {{ resource.id }}.
 `,
 		},
 		{
 			name: "a chain waiting on a judge this document never declares",
-			src: `+++
-[work]
+			src: `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ judge = "the work is done", id = "ac-met" }]
@@ -192,8 +184,6 @@ all = [{ judge_pending = "solves" }]
 
 [work.chains.inputs]
 task = "review"
-+++
-Resolve {{ resource.id }}.
 `,
 		},
 	}
@@ -205,10 +195,10 @@ Resolve {{ resource.id }}.
 }
 
 func TestValidateTaskContractsResolvesEveryDeclaredKey(t *testing.T) {
-	src := `+++
-[work]
+	src := `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Review {{ resource.id }} at {{ resource.state.revision }}, last judged at {{ self.state.verdict_revision }}." }]
 
 [work.state_schema]
 type = "object"
@@ -238,8 +228,6 @@ all = [
 task         = "review"
 work_session = { from = "task.session" }
 revision     = { from = "resource.state.revision" }
-+++
-Review {{ resource.id }} at {{ resource.state.revision }}, last judged at {{ self.state.verdict_revision }}.
 `
 	if err := resolveTaskDocument(t, src); err != nil {
 		t.Fatalf("every key this document reads is declared: %v", err)
@@ -247,25 +235,21 @@ Review {{ resource.id }} at {{ resource.state.revision }}, last judged at {{ sel
 }
 
 func TestValidateTaskContractsRequiresAnObserver(t *testing.T) {
-	src := `+++
-[work]
-kind = "task"
+	src := `[work]
+kind        = "task"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ check = "resource.state.revision", ne = "" }]
-+++
-Resolve {{ resource.id }}.
 `
 	wantDiag(t, resolveTaskDocument(t, src), CodeFieldRequired, LayerStructural)
 }
 
 func TestValidateTaskContractsRejectsAnObserverOfAnotherKind(t *testing.T) {
-	src := `+++
-[work]
+	src := `[work]
 kind              = "task"
 resource_observer = "goal_reviewer"
-+++
-Resolve {{ resource.id }}.
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 `
 	wantDiag(t, resolveTaskDocument(t, src), CodeKindMismatch, LayerSemantic)
 }
@@ -286,17 +270,19 @@ args = ["observe"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	def, err := ParseTaskDocument("task.md", []byte(`+++
-[work]
+	defs, err := ParseDefinitionDocument("task.toml", []byte(`[work]
 kind              = "task"
 resource_observer = "filed"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [work.done_when]
 all = [{ check = "resource.state.anything", ne = "" }]
-+++
-Resolve {{ resource.id }}.
 `))
 	if err != nil {
+		t.Fatal(err)
+	}
+	def := defs[0]
+	if err := resolveTaskInstructions(def, "."); err != nil {
 		t.Fatal(err)
 	}
 	v := Validation{From: Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath}}
@@ -305,10 +291,10 @@ Resolve {{ resource.id }}.
 }
 
 func TestValidateTaskContractsRequiresTheInputsTheTargetWorkflowDeclares(t *testing.T) {
-	src := `+++
-[work]
+	src := `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
 id        = "review"
@@ -320,8 +306,6 @@ all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 
 [work.chains.inputs]
 work_session = { from = "task.session" }
-+++
-Resolve {{ resource.id }}.
 `
 	wantDiag(t, resolveTaskDocument(t, src), CodeFieldRequired, LayerStructural)
 }
@@ -331,10 +315,10 @@ Resolve {{ resource.id }}.
 // than a rule of this pass.
 func TestValidateTaskContractsChecksAnInputAgainstAClosedTargetContract(t *testing.T) {
 	document := func(extraKey string) string {
-		return `+++
-[work]
+		return `[work]
 kind              = "task"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve {{ resource.id }}." }]
 
 [[work.chains]]
 id        = "review"
@@ -347,8 +331,6 @@ all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
 [work.chains.inputs]
 task     = "review"
 smuggled = "x"
-+++
-Resolve {{ resource.id }}.
 `
 	}
 	wantDiag(t, resolveTaskDocument(t, document("goal_reviewer")), CodeFieldUnknown, LayerStructural)

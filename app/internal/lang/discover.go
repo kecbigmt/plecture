@@ -3,7 +3,6 @@ package lang
 import (
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -66,8 +65,9 @@ func asTableArray(v any) ([]map[string]any, bool) {
 
 // Definition is one discovered `[<id>] kind = "<kind>"` table, whatever file
 // it came from. Body holds every field of the table except id and kind, with
-// nested tables and arrays exactly as TOML decoded them. Instruction is the
-// prose below a task document's closing `+++`, empty for every other kind.
+// nested tables and arrays exactly as TOML decoded them. Instruction is a
+// task's `instructions` array elements resolved and joined, empty for every
+// other kind and for a task that declares none.
 type Definition struct {
 	ID          string
 	Kind        Kind
@@ -78,10 +78,8 @@ type Definition struct {
 
 // ParseDefinitionDocument decodes a TOML definition document (one that is
 // not a reserved root file) into its top-level definitions, applying the
-// structural rules that gate whether each block is even a definition:
-// `kind` present and in the vocabulary, the id well-formed, and — since a
-// kind with a body belongs in a task document's frontmatter, never a TOML
-// file — `kind = "task"` is a load error here.
+// structural rules that gate whether each block is even a definition: `kind`
+// present and in the vocabulary, and the id well-formed.
 func ParseDefinitionDocument(path string, src []byte) ([]*Definition, error) {
 	var raw map[string]any
 	if _, err := toml.Decode(string(src), &raw); err != nil {
@@ -100,10 +98,6 @@ func ParseDefinitionDocument(path string, src []byte) ([]*Definition, error) {
 		def, err := parseDefinitionTable(path, id, tbl)
 		if err != nil {
 			return nil, err
-		}
-		if def.Kind == KindTask {
-			return nil, newDiag(CodeTaskInTOMLDocument, LayerStructural, Position{File: path, Path: id + ".kind"},
-				fmt.Sprintf("definition %q declares kind = \"task\" in a TOML document; a kind with a body belongs in a task document's frontmatter", id))
 		}
 		defs = append(defs, def)
 	}
@@ -136,55 +130,4 @@ func parseDefinitionTable(path, id string, tbl map[string]any) (*Definition, err
 		body[k] = v
 	}
 	return &Definition{ID: id, Kind: Kind(kindStr), Body: body, File: path}, nil
-}
-
-const frontmatterDelim = "+++"
-
-// ParseTaskDocument decodes a task document's `+++`-delimited TOML
-// frontmatter into its one definition, carrying the prose below the closing
-// delimiter as that definition's instruction.
-func ParseTaskDocument(path string, src []byte) (*Definition, error) {
-	s := string(src)
-	if !strings.HasPrefix(s, frontmatterDelim+"\n") {
-		return nil, newDiag(CodeTaskFrontmatterMissing, LayerStructural, Position{File: path},
-			"a task document must open with +++ frontmatter")
-	}
-	rest := s[len(frontmatterDelim)+1:]
-	end := strings.Index(rest, "\n"+frontmatterDelim)
-	if end < 0 {
-		return nil, newDiag(CodeTaskFrontmatterMissing, LayerStructural, Position{File: path},
-			"frontmatter is not terminated by a closing +++")
-	}
-	fm := rest[:end+1]
-	instruction := strings.TrimPrefix(rest[end+1+len(frontmatterDelim):], "\n")
-
-	var raw map[string]any
-	if _, err := toml.Decode(fm, &raw); err != nil {
-		return nil, fmt.Errorf("%s: frontmatter does not parse as TOML: %w", path, err)
-	}
-	if len(raw) != 1 {
-		return nil, newDiag(CodeTaskBlockCount, LayerStructural, Position{File: path},
-			fmt.Sprintf("frontmatter holds %d declarations, want exactly 1", len(raw)))
-	}
-	for id, v := range raw {
-		tbl, ok := v.(map[string]any)
-		if !ok {
-			return nil, newDiag(CodeKindMissing, LayerStructural, Position{File: path, Path: id},
-				fmt.Sprintf("%q is not a definition table", id))
-		}
-		def, err := parseDefinitionTable(path, id, tbl)
-		if err != nil {
-			return nil, err
-		}
-		// The mirror of the task-in-TOML rule: a kind with a body lives in a
-		// Markdown file and a kind without one in TOML, so a bodiless kind in
-		// frontmatter would carry an instruction nothing reads.
-		if def.Kind != KindTask {
-			return nil, newDiag(CodeBodilessInTaskDocument, LayerStructural, Position{File: path, Path: id + ".kind"},
-				fmt.Sprintf("kind %q has no body to carry, so it is declared in a TOML document rather than a task document's frontmatter", def.Kind))
-		}
-		def.Instruction = instruction
-		return def, nil
-	}
-	panic("unreachable: len(raw) == 1")
 }

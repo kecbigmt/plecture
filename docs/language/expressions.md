@@ -109,13 +109,13 @@ dropped. A check that is dropped becomes an accepted-invalid conformance
 fixture, so what the language would reject stays recorded even while the
 implementation accepts it:
 
-<!-- fixture: expressions/type-mismatch.accepted-invalid.md -->
-```markdown
-+++
+<!-- fixture: expressions/type-mismatch.accepted-invalid.toml -->
+```toml
 [review]
 kind              = "task"
 description       = "A task document whose computed leaf does not type-check"
 resource_observer = "issue_pr"
+instructions      = [{ text = "Review {{ resource.id }} and record a verdict." }]
 
 [review.state_schema]
 type = "object"
@@ -125,8 +125,6 @@ verdict_revision = { type = "string" }
 
 [review.done_when]
 all = [{ expr = "self.state.verdict_revision + 1" }]
-+++
-Review {{ resource.id }} and record a verdict.
 ```
 
 Constraints that do not map naturally into the CEL type system — patterns,
