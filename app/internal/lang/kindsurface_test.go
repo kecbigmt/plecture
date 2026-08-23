@@ -87,8 +87,16 @@ type = "object"
 }
 
 // A field added to the schema and not to kindFields is accepted by one layer
-// and rejected by the other, in silence and in the accepting direction, which
-// no fixture would catch.
+// and rejected by the other, in silence and in the accepting direction.
+//
+// The conformance harness now catches part of this on its own: it asserts that
+// the published schema never rejects what the language accepts, so a schema
+// missing a field some fixture uses fails there. It is only part, in two ways
+// — the harness cannot see a field the schema allows and the language does
+// not, and it can only speak for fields a fixture exercises, which 6 of the
+// 44 declared fields do not. So this stays until the schema is generated from
+// the surface, at which point drift stops being expressible and this test
+// goes with the duplication it guards.
 func TestKindSurfaceMatchesSchema(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join(repoRoot(t), "plecture.schema.json"))
 	if err != nil {

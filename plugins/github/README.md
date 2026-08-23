@@ -18,7 +18,7 @@ session runs through.
   plugin's own Go module (`src/cmd/github-worktree`, `src/cmd/github-issue-pr`,
   `src/cmd/github-watcher`); plus `gh-guard` (`scripts/gh-guard`), a shipped
   shell shim, not a build target.
-- `workspaces/github.toml` — resolves a GitHub issue/PR URL to a session id
+- `workspaces/worktree.toml` — declares the `worktree` provider: resolves a GitHub issue/PR URL to a session id
   and acquires/releases the git worktree it maps to.
 - `resources/issue.toml`, `resources/pull.toml` — the standalone observation contracts, one per resource kind
   (`plect resource status`): resource kind, CI check rollup, issue
@@ -44,7 +44,7 @@ see "Residual config" below.
 
 Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
-`workspace_provider = "github"` plus an agent pack together.
+`workspace_provider = "official.github.worktree"` plus an agent pack together.
 
 ## Cleanup
 
@@ -78,7 +78,7 @@ table:
 | `delete_branch_default` | `"true"` to reclaim the branch on destroy when the caller expressed no `delete_branch` intent. Default off. |
 
 ```toml
-workspace_provider = "github"
+workspace_provider = "official.github.worktree"
 
 [workspace_provider_inputs]
 workspace_layout_root = "~/worktrees"

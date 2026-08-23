@@ -65,7 +65,7 @@ var readmeRowRe = regexp.MustCompile("^\\| `(PLECTURE-CFG-[A-Z0-9-]+)` \\| ([a-z
 
 // readDocumentedDiagnostics parses the diagnostics table out of
 // docs/language/README.md, the same source of truth the (now-retired)
-// scripts/config-language-check runner read.
+// the conformance harness reads.
 func readDocumentedDiagnostics(t *testing.T) map[string][]string {
 	t.Helper()
 	root := repoRoot(t)

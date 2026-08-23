@@ -52,7 +52,7 @@ type SetupOptions struct {
 	// GHClient fetches title/state metadata. Defaults to ghapi.Direct(); a
 	// mounted plugin's workspace provider hook instead passes one bound to
 	// the bundled github-watcher binary, so setup shares its shared rate
-	// budget (see workspaces/github.toml's setup hook).
+	// budget (see workspaces/worktree.toml's setup hook).
 	GHClient github.GHClient
 }
 
@@ -141,7 +141,7 @@ type CleanupOptions struct {
 	// mirroring the caller's `plect destroy --force` intent.
 	Force bool
 	// DeleteBranch mirrors the caller's `plect destroy --input
-	// delete_branch=<v>` intent (workspaces/github.toml's cleanup hook): the
+	// delete_branch=<v>` intent (workspaces/worktree.toml's cleanup hook): the
 	// empty string means the caller expressed none, so the workflow's
 	// `delete_branch_default` parameter decides.
 	DeleteBranch string

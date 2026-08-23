@@ -18,14 +18,16 @@ import (
 // TestConformanceFixtures is the structural half of this package's
 // conformance harness: it exercises every fixture under
 // testdata/config-language/ against plecture.schema.json's seven entry
-// anchors, the same assertions scripts/config-language-check made as a
-// one-time specification-PR tool (see that script's doc comment). Running
-// this in `go test` makes it a standing check: a schema or fixture edit that
-// silently drifts from the documented diagnostic is exactly the invariant a
-// future change could break without it. It does not re-implement
-// scripts/config-language-check's docs/language/ worked-example
-// byte-identity check, which is a docs-authoring concern rather than a
-// loader one.
+// anchors. Where TestNativeConformanceFixtures asserts what this package's
+// own validators do, this asserts what the published schema accepts, so the
+// two answer different questions. A schema or fixture edit that silently
+// drifts from the documented diagnostic is exactly the invariant a future
+// change could break without it.
+//
+// Two neighbours complete the corpus's contract: TestCodesMatchDocumentedTable
+// holds the diagnostic registry and the chapter documenting it to the same set
+// of codes and layers, and TestChapterExamplesQuoteTheirFixtureVerbatim holds
+// a chapter's worked example to the fixture it names.
 type fixtureExpectation struct {
 	Result     string
 	Layer      string

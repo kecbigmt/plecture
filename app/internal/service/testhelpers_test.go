@@ -146,7 +146,7 @@ func attachGithubWorkspaceProvider(t *testing.T, cfg *config.Config, wfID string
 	// the provider under the workflow's own id renames the table rather than
 	// the file.
 	provID := wfID + "_provider"
-	body := strings.ReplaceAll(shippedGithubWorkspaceProviderTOML(t), "[github", "["+provID)
+	body := strings.ReplaceAll(shippedGithubWorkspaceProviderTOML(t), "[worktree", "["+provID)
 	if err := os.WriteFile(filepath.Join(workspacesDir, provID+".toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func attachGithubWorkspaceProvider(t *testing.T, cfg *config.Config, wfID string
 // GitHub workspace provider plugin ships, so fixtures never drift from it.
 func shippedGithubWorkspaceProviderTOML(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "config", "workspaces", "github.toml"))
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "plugins", "github", "config", "workspaces", "worktree.toml"))
 	if err != nil {
 		t.Fatal(err)
 	}

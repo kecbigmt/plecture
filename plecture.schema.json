@@ -1545,6 +1545,7 @@
       "description": "A task declaration. It is an ordinary definition block, declared the same way every other kind is; what makes it a task document is that it is the single block in a Markdown file's TOML frontmatter, and that file's body is this declaration's instruction. A document is authored and referenced by its id; an instance is created from it by dynamic instantiation and identified by its resource and instance name.",
       "properties": {
         "kind": {
+          "$comment": "PLECTURE-CFG-BODILESS-IN-TASK-DOCUMENT: a task document's frontmatter carries a task, and a kind with no body is declared in a TOML document instead.",
           "const": "task"
         },
         "description": {

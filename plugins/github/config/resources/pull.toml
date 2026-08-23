@@ -1,5 +1,5 @@
 # The generic Resource contract applied to a GitHub pull request. Independent
-# of the GitHub workspace provider (workspaces/github.toml, which resolves a
+# of the GitHub workspace provider (workspaces/worktree.toml, which resolves a
 # *session's* resource identifier to a worktree) — this consolidates the same
 # observation into a standalone contract callable via `plect resource status`
 # outside any one task instance.
