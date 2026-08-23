@@ -145,6 +145,7 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-REF-CROSS-PLUGIN` | semantic | A plugin-owned reference names a catalog alias or another plugin's ownership segment. |
 | `PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING` | semantic | An `instructions` element's `file` names a file that cannot be read. |
 | `PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER` | semantic | An `instructions` element's `file` resolves outside the declaring layer. |
+| `PLECTURE-CFG-TASK-INSTRUCTION-CONTROL-FLOW` | semantic | An instruction body carries a `{{ ... }}` construct other than a dotted-path projection. |
 | `PLECTURE-CFG-FROM-ROOT` | structural / semantic | A value reads a root the containing surface does not offer. It is structural where a surface's roots are a fixed prefix set, as on an effect's `outputs.bind` and a task document's completion leaves, and semantic otherwise. |
 | `PLECTURE-CFG-FROM-PATH` | semantic | A projection names a field the resolved contract does not declare. |
 | `PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH` | instantiation | An instance's resource does not resolve to the observer its task document declares. |
@@ -168,14 +169,6 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-CEL-TYPE` | cel | An operation, or a result type, does not satisfy the site's expected type. |
 | `PLECTURE-CFG-CEL-CUSTOM-FUNCTION` | cel | An expression calls a function the profile does not define. |
 
-## Open decisions
-
-Control flow inside a task document's instruction body is not specified. A
-projection there is the language's own (see [`tasks.md`](tasks.md)), but CEL is
-expression-only, so conditional blocks need a construct that does not exist yet.
-Instruction bodies carried over from the template assets keep their existing
-conditional and defaulting forms until that decision is made.
-
 ## Scope
 
 This language governs configuration definitions in one file form: TOML
@@ -186,6 +179,7 @@ blank line in declaration order. Either way, it is a Plecture value the
 declaration carries, not a second document class.
 
 A Markdown file under a definition root that no instructions element's `file`
-names is a template asset rather than a definition. Template assets keep
-their own interpolation model, and a task's instruction is the one place
-where that model and this language meet — see [`tasks.md`](tasks.md).
+names is a template asset rather than a definition: the language does not
+read it at all. A referenced sidecar is different — its content is the
+declaration's own instruction, projected and validated the same way any
+other instruction segment is; see [`tasks.md`](tasks.md).

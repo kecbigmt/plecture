@@ -10,8 +10,12 @@ scope = "run"
 #                    up. Its value is never read; only its presence in the
 #                    workflow DAG matters, so a workflow typically wires it
 #                    to the multiplexer node's own output.
-#   template       — initial-prompt template name (from session input;
-#                    empty means no prompt is sent).
+#   prompt         — the already-resolved initial-prompt text (a task
+#                    document's own rendered instruction, typically); empty
+#                    means no prompt is sent. Resolving prompt text from a
+#                    name is the wiring layer's job (a `from` projection
+#                    against whatever root holds it), not this effect's —
+#                    it only ever delivers text it is handed.
 #   agent_session  — a second ordering edge: forces this node to run after
 #                    the agent launch effect specifically. Its value is
 #                    never read either.
@@ -57,44 +61,41 @@ if [ "$ready" != 1 ]; then
   exit 1
 fi
 
-TEMPLATE="${template-}"
-if [ -n "$TEMPLATE" ]; then
-  PROMPT=$(plect template render "$TEMPLATE" --session "$session_name" 2>/dev/null || true)
-  if [ -n "$PROMPT" ]; then
-    sh -c "$send_text" terminal-send-text "$PROMPT"
-    sleep 1
-    sh -c "$send_keys" terminal-send-keys Enter
+PROMPT="${prompt-}"
+if [ -n "$PROMPT" ]; then
+  sh -c "$send_text" terminal-send-text "$PROMPT"
+  sleep 1
+  sh -c "$send_keys" terminal-send-keys Enter
 
-    # The TUI's paste-burst detection window can still be open just after a
-    # long paste, absorbing the trailing Enter as a newline instead of a
-    # submit — a distinct race from the boot-readiness one above, so gating
-    # on boot readiness alone does not fix it. Re-check the input box and
-    # resend Enter with backoff until it reads empty (submitted); a session
-    # with heavy resume history renders and processes input slowly enough
-    # that this needs several rounds in practice.
-    submitted=0
-    for delay in 2 4 8 16; do
-      input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
-      # The `❯` glyph is followed by NBSP (U+00A0), not a regular space, in
-      # observed pane output; normalize it before the case match below.
-      input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
-      case "$input" in
-        ''|'›'|'› '|'❯'|'❯ ') submitted=1; break ;;
-      esac
-      sleep "$delay"
-      sh -c "$send_keys" terminal-send-keys Enter
-    done
-    if [ "$submitted" != 1 ]; then
-      input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
-      input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
-      case "$input" in
-        ''|'›'|'› '|'❯'|'❯ ') submitted=1 ;;
-      esac
-    fi
-    if [ "$submitted" != 1 ]; then
-      echo "initial_prompt: instruction still unsubmitted after retries" >&2
-      exit 1
-    fi
+  # The TUI's paste-burst detection window can still be open just after a
+  # long paste, absorbing the trailing Enter as a newline instead of a
+  # submit — a distinct race from the boot-readiness one above, so gating
+  # on boot readiness alone does not fix it. Re-check the input box and
+  # resend Enter with backoff until it reads empty (submitted); a session
+  # with heavy resume history renders and processes input slowly enough
+  # that this needs several rounds in practice.
+  submitted=0
+  for delay in 2 4 8 16; do
+    input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
+    # The `❯` glyph is followed by NBSP (U+00A0), not a regular space, in
+    # observed pane output; normalize it before the case match below.
+    input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
+    case "$input" in
+      ''|'›'|'› '|'❯'|'❯ ') submitted=1; break ;;
+    esac
+    sleep "$delay"
+    sh -c "$send_keys" terminal-send-keys Enter
+  done
+  if [ "$submitted" != 1 ]; then
+    input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
+    input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
+    case "$input" in
+      ''|'›'|'› '|'❯'|'❯ ') submitted=1 ;;
+    esac
+  fi
+  if [ "$submitted" != 1 ]; then
+    echo "initial_prompt: instruction still unsubmitted after retries" >&2
+    exit 1
   fi
 fi
 
@@ -102,13 +103,12 @@ echo '{"sent":"true"}'
 '''
 
 [claude_initial_prompt.setup.bind]
-session_name = { from = "session.name" }
-template     = { from = "inputs.template", optional = true }
-repeat       = { from = "inputs.repeat", optional = true }
-prev_sent    = { from = "prev.sent", optional = true }
-capture      = { terminal = "capture" }
-send_text    = { terminal = "send_text" }
-send_keys    = { terminal = "send_keys" }
+prompt    = { from = "inputs.prompt", optional = true }
+repeat    = { from = "inputs.repeat", optional = true }
+prev_sent = { from = "prev.sent", optional = true }
+capture   = { terminal = "capture" }
+send_text = { terminal = "send_text" }
+send_keys = { terminal = "send_keys" }
 
 [claude_initial_prompt.inputs_schema]
 type                 = "object"
@@ -116,7 +116,7 @@ additionalProperties = false
 
 [claude_initial_prompt.inputs_schema.properties]
 terminal_ready = { type = "string" }
-template       = { type = "string" }
+prompt         = { type = "string" }
 agent_session  = { type = "string" }
 repeat         = { type = "string" }
 

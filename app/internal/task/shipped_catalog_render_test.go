@@ -9,7 +9,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
-	"github.com/kecbigmt/plecture/app/internal/template"
 )
 
 // loadShippedCatalogTasks returns every shipped effect declaration plus the
@@ -110,7 +109,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"mcp_servers":    `[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]`,
 		"launch_env":     `{"PLECT_TEAM_CONTEXT":"acme"}`,
 		"state_root":     "/tmp/plect-codex-exec",
-		"template":       "work",
+		"prompt":         "resolve the issue",
 		"agent_session":  "",
 		"repeat":         "",
 		"owner":          "acme",
@@ -285,7 +284,7 @@ func TestShippedCatalog_McpServersRejectsQuoteBreakout(t *testing.T) {
 // documents this repository ships (official.github's work/review/
 // investigate/respond, official.okf's pursue_goal/goal_review) against a
 // body that fails to render: an unresolvable `{{ resource.id }}` projection,
-// or an instruction-body Go-template syntax error a plugin author would
+// or any other instruction-body projection error a plugin author would
 // otherwise only discover the first time a session dispatched against it.
 func TestShippedCatalog_TaskDocumentInstructionsRender(t *testing.T) {
 	cfg := shippedCatalogConfig(t)
@@ -311,20 +310,17 @@ func TestShippedCatalog_TaskDocumentInstructionsRender(t *testing.T) {
 		env := lang.Roots{
 			"resource": map[string]any{"id": "https://github.com/acme/widgets/issues/1", "state": map[string]any{}},
 			"self":     map[string]any{"state": map[string]any{}},
+			// Every shipped document's optional `instruction` input declares
+			// its own schema default; the taskdoc binding pipeline is what
+			// applies that default in production, so it is supplied directly
+			// here since this test bypasses that pipeline.
+			"inputs":   map[string]any{"instruction": ""},
+			"session":  map[string]any{"name": "test-session", "inputs": map[string]any{}},
+			"workflow": map[string]any{"outputs": map[string]any{}},
 		}
-		rendered, err := lang.RenderInstruction(doc.Instruction, env)
+		body, err := lang.RenderInstruction(doc.Instruction, env)
 		if err != nil {
 			t.Errorf("task document %q: RenderInstruction: %v", address, err)
-			continue
-		}
-		body, err := template.RenderBody(doc.ID, rendered, template.Vars{
-			Mode:          doc.ID,
-			ResourceID:    "https://github.com/acme/widgets/issues/1",
-			SessionInputs: map[string]any{},
-			Inputs:        map[string]any{"instruction": ""},
-		})
-		if err != nil {
-			t.Errorf("task document %q: RenderBody: %v", address, err)
 			continue
 		}
 		if strings.TrimSpace(body) == "" {

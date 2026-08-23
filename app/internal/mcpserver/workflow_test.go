@@ -67,26 +67,3 @@ func TestHandleWorkflowShow_MissingIDArg(t *testing.T) {
 		t.Fatal("expected error result for missing id")
 	}
 }
-
-func TestHandleTemplateList_NoRepo(t *testing.T) {
-	setUpConfigHome(t)
-
-	result, err := handleTemplateList(context.Background(), reqWith(map[string]any{}))
-	if err != nil {
-		t.Fatalf("handleTemplateList: %v", err)
-	}
-	out := decodeJSONResult(t, result)
-	if _, ok := out["templates"]; !ok {
-		t.Fatalf("expected templates field, got %v", out)
-	}
-}
-
-func TestHandleTemplateList_WithRepo(t *testing.T) {
-	setUpConfigHome(t)
-
-	result, err := handleTemplateList(context.Background(), reqWith(map[string]any{"repo": "owner/repo"}))
-	if err != nil {
-		t.Fatalf("handleTemplateList: %v", err)
-	}
-	decodeJSONResult(t, result)
-}

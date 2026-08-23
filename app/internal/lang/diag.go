@@ -51,6 +51,7 @@ const (
 	CodeRefCrossPlugin                Code = "PLECTURE-CFG-REF-CROSS-PLUGIN"
 	CodeTaskInstructionFileMissing    Code = "PLECTURE-CFG-TASK-INSTRUCTION-FILE-MISSING"
 	CodeTaskInstructionFileCrossLayer Code = "PLECTURE-CFG-TASK-INSTRUCTION-FILE-CROSS-LAYER"
+	CodeTaskInstructionControlFlow    Code = "PLECTURE-CFG-TASK-INSTRUCTION-CONTROL-FLOW"
 	CodeFromRoot                      Code = "PLECTURE-CFG-FROM-ROOT"
 	CodeFromPath                      Code = "PLECTURE-CFG-FROM-PATH"
 	CodeResourceObserverMismatch      Code = "PLECTURE-CFG-RESOURCE-OBSERVER-MISMATCH"
@@ -108,6 +109,7 @@ var codeLayers = map[Code][]Layer{
 	CodeRefCrossPlugin:                {LayerSemantic},
 	CodeTaskInstructionFileMissing:    {LayerSemantic},
 	CodeTaskInstructionFileCrossLayer: {LayerSemantic},
+	CodeTaskInstructionControlFlow:    {LayerSemantic},
 	CodeFromRoot:                      {LayerStructural, LayerSemantic},
 	CodeFromPath:                      {LayerSemantic},
 	CodeResourceObserverMismatch:      {LayerInstantiation},
@@ -145,7 +147,8 @@ func Codes() []Code {
 		CodeRefDynamic, CodeChannelTimeoutRoot, CodeTaskInstructionElement, CodeUnknownRef,
 		CodeKindMismatch, CodeIDDuplicate,
 		CodeRefAliasRequired, CodeRefCrossPlugin,
-		CodeTaskInstructionFileMissing, CodeTaskInstructionFileCrossLayer, CodeFromRoot, CodeFromPath,
+		CodeTaskInstructionFileMissing, CodeTaskInstructionFileCrossLayer, CodeTaskInstructionControlFlow,
+		CodeFromRoot, CodeFromPath,
 		CodeResourceObserverMismatch, CodeFirstObserveFailed, CodeBinUnknown, CodeTerminalUnavailable,
 		CodeNestingCycle, CodeNestingOutputMutable, CodeNestingProjectionMismatch,
 		CodeExtendsInheritedField, CodeExtendsCycle, CodeExtendsJudgeIDDuplicate,

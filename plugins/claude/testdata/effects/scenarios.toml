@@ -15,7 +15,7 @@ path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
 [claude_initial_prompt]
-inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", template = "work", repeat = "" }
+inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
 # The readiness poll and the submit re-check both read the endpoint's input
 # box; an empty prompt line is what "ready, nothing pending" looks like.
 capture = "› "

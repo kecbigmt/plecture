@@ -373,7 +373,7 @@ adoption in their owning config kinds.
 
 The mapping leaves no listed plugin-counterpart shadow on rung 3. Configs with
 no plugin counterpart, such as local envfile, chat thread binding, initial task,
-agent docs, orchestrator workspace, local templates, and the `github` plugin's
+agent docs, orchestrator workspace, and the `github` plugin's
 task instructions (`work`, `review`, `respond`, `investigate` — the plugin
 ships none of them), are user-owned config and are outside the shadow count.
 

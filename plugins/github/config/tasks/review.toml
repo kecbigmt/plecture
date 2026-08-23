@@ -20,7 +20,7 @@ type                 = "object"
 additionalProperties = false
 
 [review.inputs_schema.properties]
-instruction = { type = "string" }
+instruction = { type = "string", default = "" }
 
 [review.state_schema]
 type = "object"

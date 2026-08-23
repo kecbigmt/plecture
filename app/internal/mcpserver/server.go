@@ -12,7 +12,6 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
-	"github.com/kecbigmt/plecture/app/internal/template"
 )
 
 // NewServer creates a new MCP server with plect tools registered.
@@ -34,7 +33,6 @@ func NewServer() *server.MCPServer {
 		server.ServerTool{Tool: statusTool, Handler: wrap("plect_status", handleStatus)},
 		server.ServerTool{Tool: captureTool, Handler: wrap("plect_capture", handleCapture)},
 		server.ServerTool{Tool: listTool, Handler: wrap("plect_list", handleList)},
-		server.ServerTool{Tool: templateListTool, Handler: wrap("plect_template_list", handleTemplateList)},
 		server.ServerTool{Tool: workflowListTool, Handler: wrap("plect_workflow_list", handleWorkflowList)},
 		server.ServerTool{Tool: workflowShowTool, Handler: wrap("plect_workflow_show", handleWorkflowShow)},
 		server.ServerTool{Tool: eventListTool, Handler: wrap("plect_event_list", handleEventList)},
@@ -129,14 +127,6 @@ var listTool = mcp.NewTool("plect_list",
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
 )
 
-var templateListTool = mcp.NewTool("plect_template_list",
-	mcp.WithDescription("List available templates with descriptions. Use this to discover templates before composing task inputs."),
-	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
-	mcp.WithString("workspace_dir",
-		mcp.Description("Workspace directory path to include templates from"),
-	),
-)
-
 var workflowListTool = mcp.NewTool("plect_workflow_list",
 	mcp.WithDescription("List workflows discoverable via the .plect/workflows cascade. Each entry surfaces id/name/description so an agent can pick the right workflow before calling plect_workflow_show or plect_up."),
 	mcp.WithToolAnnotation(mcp.ToolAnnotation{ReadOnlyHint: boolPtr(true)}),
@@ -190,23 +180,6 @@ func handleWorkflowShow(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	return jsonResult(map[string]any{
 		"ok":       true,
 		"workflow": detail,
-	})
-}
-
-func handleTemplateList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return errorResult(err), nil
-	}
-	workspaceDirPath := request.GetString("workspace_dir", "")
-	templates, err := template.List(workspaceDirPath, cfg.PluginDirs)
-	if err != nil {
-		return errorResult(err), nil
-	}
-
-	return jsonResult(map[string]any{
-		"ok":        true,
-		"templates": templates,
 	})
 }
 

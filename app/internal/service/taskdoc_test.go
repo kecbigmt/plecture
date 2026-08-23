@@ -746,7 +746,7 @@ func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
 // The instruction assets' conditional and defaulting forms read the
 // document's own inputs, which is where the extra instruction a caller adds
 // arrives — `plect task setup <id> --input instruction=...`.
-func TestTaskSetup_TaskDocumentBodyReadsItsInputsThroughTheCarriedForms(t *testing.T) {
+func TestTaskSetup_TaskDocumentBodyDefaultsAnAbsentOptionalInput(t *testing.T) {
 	store := testStore(t)
 	document := `[review]
 kind              = "task"
@@ -754,17 +754,15 @@ description       = "Review a resource"
 resource_observer = "issue_pr"
 instructions      = [{ text = """
 Review {{ resource.id }}.
-{{- if get .Inputs "instruction" ""}}
 
-Additional instructions: {{get .Inputs "instruction" ""}}
-{{- end}}
+Additional instructions from the dispatcher (may be empty): {{ inputs.instruction }}
 """ }]
 
 [review.inputs_schema]
 type = "object"
 
 [review.inputs_schema.properties]
-instruction = { type = "string" }
+instruction = { type = "string", default = "" }
 `
 	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, document)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
@@ -775,8 +773,8 @@ instruction = { type = "string" }
 	if err != nil {
 		t.Fatalf("TaskSetup: %v", err)
 	}
-	if strings.Contains(bare.Instruction, "Additional instructions") {
-		t.Errorf("an absent input leaves the section out: %q", bare.Instruction)
+	if !strings.HasSuffix(bare.Instruction, "(may be empty):") {
+		t.Errorf("an absent input's schema default renders empty: %q", bare.Instruction)
 	}
 
 	with, err := TaskSetup(cfg, store, TaskSetupParams{
@@ -786,7 +784,7 @@ instruction = { type = "string" }
 	if err != nil {
 		t.Fatalf("TaskSetup: %v", err)
 	}
-	if !strings.Contains(with.Instruction, "Additional instructions: focus on the migration") {
+	if !strings.Contains(with.Instruction, "Additional instructions from the dispatcher (may be empty): focus on the migration") {
 		t.Errorf("instruction = %q, want the caller's extra instruction", with.Instruction)
 	}
 }

@@ -65,8 +65,8 @@ type Config struct {
 	// all.
 	ResourceAllowlist []string `toml:"resource_allowlist"`
 	// PluginDirs lists plugin roots (each containing a config/ subdirectory
-	// with workspaces/, resources/, channels/, tasks/, workflows/, and
-	// templates/ subdirectories — see docs/design/plugin-packaging.md's
+	// with workspaces/, resources/, channels/, tasks/, and workflows/
+	// subdirectories — see docs/design/plugin-packaging.md's
 	// Package format section). Plugins form the base cascade layer: the
 	// global layer and ancestor overlays stack on top of them. Entries are
 	// trusted — only the user or the system's config-management tooling writes config.toml.

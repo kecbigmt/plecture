@@ -9,7 +9,7 @@ The plugin service lifecycle decision is recorded in
 The design keeps two concepts: catalog and plugin. A catalog is a trusted
 distribution unit: a subtree of a source repository marked by `catalog.toml`.
 A plugin is a distributable package inside a catalog. It may contain executable
-adapters, config resources, templates, and metadata. A plugin with only
+adapters, config resources, and metadata. A plugin with only
 configuration is still a plugin.
 
 ## Goals and constraints
@@ -17,7 +17,7 @@ configuration is still a plugin.
 - Core owns generic mechanics: fetch, verify, mount, resolve, and fail-loud
   compatibility checks.
 - Plugins own technology or domain commitments: workspace provider adapters,
-  resource observation, session runtime surfaces, workflow packs, and templates.
+  resource observation, session runtime surfaces, and workflow packs.
 - User-owned config remains the final authority.
 - No workspace-provider/resource/task/workflow contract changes are required by this
   design. Any discovered gap must become a later contract issue, not an
@@ -232,12 +232,7 @@ The standard `config/` subdirectories with plugin-layer loader behavior are:
 | `config/channels/` | Mounted as `channels/`. Trusted base layer only. Same-id conflicts between plugin layers are load errors; global user definitions replace plugin definitions. |
 | `config/tasks/` | Mounted as `tasks/`. Trusted layer plus trusted ancestor overlay. Same-id conflicts between plugin layers are load errors; user-owned layers replace whole definitions. |
 | `config/workflows/` | Mounted as `workflows/`. Trusted layer plus ancestor overlay. Same-id plugin-layer conflicts are load errors; a user-owned layer adds nodes, and every other field a shallower layer set is guarded against redeclaration. |
-| `config/templates/` | Mounted as `templates/`. Read-only plugin base layer plus user-owned template layers. Same-id conflicts between plugin layers are load errors. |
 
-The template loader includes one generic read-only plugin layer. Lookup searches
-workspace-dir ancestor overlays, `~/.config/plect/templates/`, and mounted plugin
-`config/templates/` directories. User-owned template directories take precedence
-over mounted plugin template directories.
 Install-time materialization is rejected because it copies plugin content into
 user config, and those copies drift away from the plugin revision recorded in
 the lockfile.
@@ -416,8 +411,8 @@ config, not inside cloned workspace-dir content. The global declaration file liv
 
 `~/.config/plect` here is the default config home. `--config-home` overrides
 it for the whole config tree (`config.toml`, `catalogs.toml`, `plect.lock`, and
-the global `templates/`, `tasks/`, `workflows/`, `workspaces/`, `resources/`,
-and `channels/` overlays); absent that flag, `PLECT_CONFIG_HOME` wins, then
+the global `tasks/`, `workflows/`, `workspaces/`, `resources/`, and
+`channels/` overlays); absent that flag, `PLECT_CONFIG_HOME` wins, then
 `$XDG_CONFIG_HOME/plect`, then the `~/.config/plect` default. The plugin cache
 and runtime state stay on the XDG data/cache dirs regardless of which of these
 resolves the config home.
@@ -796,8 +791,6 @@ Loader trust restrictions follow this shape:
   global config.
 - Tasks reject definitions inside the workspace-dir layer.
 - Workflows allow workspace-dir files only to add nodes.
-- Templates can be overridden by workspace-dir content, but templates are rendered as
-  text; the execution risk comes from tasks or human action that consume them.
 
 ## Shadowing and precedence
 
@@ -826,10 +819,6 @@ Same-id behavior by kind, within one namespace:
 | Tasks | A deeper user-owned layer replaces the whole definition. No partial override. |
 | Workflows | User-owned layers merge by adding nodes. Every other field a shallower layer set cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
 | Workflow input schemas | A workflow's input contract is stated by one layer. A deeper layer redeclaring it is a load error, since a contract no single layer states is one no author can read. |
-| Templates | Same-id conflicts between plugin layers fail. Lookup then remains user-overridable: nearest workspace dir or ancestor template, then global user templates, then plugin templates. |
-
-Templates are looked up by name rather than addressed, which is why a same-id
-conflict between plugin layers is still a template's load error.
 
 Partial override model:
 
@@ -840,8 +829,6 @@ Partial override model:
 - To stand a task, workspace provider, resource, or channel in for a plugin's,
   declare your own and reference yours. Yours answers to its bare id and the
   plugin's to its address, so the reference is what chooses.
-- To customize a template, place a same-named Markdown template in the nearest
-  desired overlay.
 - A plugin-provided task cannot be edited in place through a patch mechanism.
   Whole-definition replacement keeps arbitrary shell behavior auditable.
 
@@ -941,27 +928,17 @@ produce from source modules at add/update time — build output, not catalog
 content, so they are never committed (see the Package format section's
 `src`/`bin`/`scripts` split).
 
-Plugin-owned templates:
-
-```text
-claude/config/templates/work.md
-codex/config/templates/work.md
-```
-
 Residual user config:
 
 - Which multiplexer and agent runtime are selected for a workflow.
 - Local command path or model defaults if they differ from plugin defaults.
 - Event channel bindings for the user's runtime session and team conversation.
 - Team-specific workflow overlays that add local notification or review nodes.
-- Prompt templates that encode team operating style.
 - Slack credentials or environment files. Without credentials, the Slack
   service remains inert.
 
 No workspace-provider, task, workflow, or channel contract change is required. The
-workflow still references tasks and channels by their existing ids. Shipping
-templates from the plugin requires the generic read-only template-loader layer
-described above; it does not require task or workflow contract changes.
+workflow still references tasks and channels by their existing ids.
 The tmux plumbing is genuinely shared runtime logic with no agent-specific
 branch. Agent activity remains de-generalized: Claude and Codex each carry a
 small branch-free activity script instead of sharing one helper that switches on
@@ -1096,7 +1073,6 @@ Residual user config:
   these against their own agent-runtime and channel plugins, or against a
   team-owned overlay (see `plugins/okf/README.md` and
   `docs/language/tasks.md`).
-- Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 
 No workspace-provider/resource/task/workflow contract changes are needed. If the plugin

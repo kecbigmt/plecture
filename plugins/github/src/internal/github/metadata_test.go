@@ -77,7 +77,7 @@ func TestFetchIssueMeta_MalformedJSONIsTolerated(t *testing.T) {
 func TestFetchPullMeta_UsesRESTPath(t *testing.T) {
 	// Regression guard: production reads via `gh api` REST, never the `gh
 	// pr view` porcelain — porcelain reads consume GraphQL quota that
-	// write-side `gh` calls also share (see templates/review.md).
+	// write-side `gh` calls also share (see config/tasks/review.md).
 	runner := &recordingRunner{stdout: []byte(`{"head":{"ref":"main"},"title":"t","state":"open"}`)}
 	client := &ghapi.Client{Program: "gh", Args: []string{"api"}, Runner: runner}
 

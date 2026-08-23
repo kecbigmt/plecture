@@ -50,7 +50,7 @@ identifier no resolver matches selects a workflow explicitly (see
 func init() {
 	rootCmd.PersistentFlags().StringVar(&configHomeFlag, "config-home", "",
 		"Override the config home directory (declarations only: config.toml, catalogs.toml, "+
-			"plect.lock, templates/, tasks/, workflows/, ...); else $"+confighome.EnvVar+
+			"plect.lock, tasks/, workflows/, ...); else $"+confighome.EnvVar+
 			", else $"+confighome.XDGEnvVar+"/plect, else ~/.config/plect. "+
 			"Runtime state and the plugin cache always resolve from the XDG data/cache dirs, unaffected by this.")
 }
