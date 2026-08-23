@@ -7,18 +7,18 @@ and, for the activity envelope's shape,
 
 ## Design Core
 
-A task declares how its health is determined in one `[health]` table holding
-two probes:
+An effect declares how its health is determined in one `[health]` table
+holding two probes:
 
 - **`alive`** — the liveness probe. Exit-code semantics: zero means the
-  execution surface this task owns is present.
+  execution surface this effect owns is present.
 - **`activity`** — the activity probe. Fingerprint semantics: it writes a JSON
   activity envelope whose opaque fingerprint core compares across evaluations,
   and its exit code reports whether the probe itself is well.
 
-`setup`, `cleanup`, and `[health]` are the universal task lifecycle trio: what
-brings the surface up, what takes it down, and what says whether it is still
-there and moving.
+`setup`, `cleanup`, and `[health]` are the universal effect lifecycle trio:
+what brings the surface up, what takes it down, and what says whether it is
+still there and moving.
 
 Probes are plugin-shipped capability. A plugin that owns a surface ships the
 probes for it, so default health coverage requires no user configuration.
@@ -89,16 +89,23 @@ one per implementation technique.
 
 ## Probe semantics
 
+Either probe is an action, so what runs follows the variant it declares: an
+`exec` probe runs its declared executable with its resolved argv, and a
+`shell` probe writes its literal script and a binding file into a private run
+directory and invokes the generated wrapper. Neither substitutes anything into
+the script, so a value that cannot be resolved fails before a process starts —
+reported as the configuration error it is rather than as a failed probe.
+
 ### alive
 
-Run via `bash -c`. Exit zero means the surface is present. A non-zero exit or
-a render failure makes the session unhealthy, and the failing task instance is
-named in the reported reason. The first failing probe ends the evaluation.
+Exit zero means the surface is present. A non-zero exit makes the session
+unhealthy, and the failing instance is named in the reported reason. The first
+failing probe ends the evaluation.
 
 ### activity
 
-Run via `bash -c`. Stdout decides what the instance contributes, and the exit
-code decides the health of the probe itself. The two are orthogonal: a probe
+Stdout decides what the instance contributes, and the exit code decides the
+health of the probe itself. The two are orthogonal: a probe
 that contributes nothing may be perfectly well, and a broken probe is a fault
 whatever it managed to print.
 
@@ -150,7 +157,7 @@ is expected.
 
 ## Composition across instances
 
-A session's health is composed from every produced run-scoped task instance:
+A session's health is composed from every produced run-scoped effect instance:
 
 - **`alive` composes by AND.** Liveness is a chain of necessary resources, so
   any failing probe makes the session unhealthy, reported with the failing
@@ -177,4 +184,4 @@ so the author-declared-surface principle applies to probe placement too.
 A workflow's `[healthcheck]` table declares the sampling cycle — how often the
 probes run, the stall threshold they are judged against, and the parent
 re-notification interval. It names when health is observed; `[health]` names
-what health means for one task.
+what health means for one effect.
