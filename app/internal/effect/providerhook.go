@@ -61,18 +61,18 @@ func ProviderRoots(vars WorkflowHookVars, prev, self map[string]any, cleanup boo
 		"resource": map[string]any{"id": vars.ResourceID},
 		"session": map[string]any{
 			"name":   vars.SessionName,
-			"inputs": normalizeOutputs(vars.SessionInputs),
+			"inputs": lang.NormalizeOutputs(vars.SessionInputs),
 		},
-		"inputs": normalizeOutputs(vars.Inputs),
+		"inputs": lang.NormalizeOutputs(vars.Inputs),
 		"config": map[string]any{"workspace_dirs_root": vars.WorkspaceDirsRoot},
 	}
 	if cleanup {
-		env["self"] = map[string]any{"outputs": normalizeOutputs(self)}
+		env["self"] = map[string]any{"outputs": lang.NormalizeOutputs(self)}
 		env["cleanup"] = map[string]any{"inputs": stringMapAsAny(vars.CleanupInputs)}
 		env["force"] = vars.Force
 		return env
 	}
-	env["prev"] = normalizeOutputs(prev)
+	env["prev"] = lang.NormalizeOutputs(prev)
 	return env
 }
 
@@ -120,44 +120,5 @@ func stringMapAsAny(in map[string]string) map[string]any {
 	for k, v := range in {
 		out[k] = v
 	}
-	return out
-}
-
-// normalizeNumbers converts integer-valued float64 entries to int64. JSON
-// unmarshal into map[string]any leaves every number as float64; templates
-// render large float64 as scientific notation (e.g. 3.052179e+06), which
-// breaks scripts that compare the rendered value as a string (`pid` etc.).
-// Walks nested maps and slices so deep outputs are covered too.
-//
-// Duplicated from app/internal/task rather than shared: it is a small pure
-// helper and the two packages must not import each other.
-func normalizeNumbers(v any) any {
-	switch x := v.(type) {
-	case float64:
-		if x == float64(int64(x)) {
-			return int64(x)
-		}
-		return x
-	case map[string]any:
-		out := make(map[string]any, len(x))
-		for k, vv := range x {
-			out[k] = normalizeNumbers(vv)
-		}
-		return out
-	case []any:
-		out := make([]any, len(x))
-		for i, vv := range x {
-			out[i] = normalizeNumbers(vv)
-		}
-		return out
-	}
-	return v
-}
-
-func normalizeOutputs(m map[string]any) map[string]any {
-	if m == nil {
-		return nil
-	}
-	out, _ := normalizeNumbers(m).(map[string]any)
 	return out
 }
