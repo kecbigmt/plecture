@@ -75,7 +75,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	if err != nil {
 		return nil, err
 	}
-	flushPendingUnsubscribes(cfg, store, resolvedName)
+	flushPendingDelivery(cfg, store, resolvedName)
 
 	st := session.Tasks[params.Instance]
 	if st == nil {
@@ -135,37 +135,41 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 
 	result := &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true, Resource: st.Resource}
 	if st.Resource != "" {
-		// Read fresh right here rather than reusing a decision made inside
-		// the delete's own store.Update: a concurrent TaskSetup can bind a
-		// new instance to this same resource in the gap between that commit
-		// and this (necessarily unlocked, since it shells out) hook call,
-		// and that binding must win over an unsubscribe that no longer
-		// applies. This narrows the race but cannot close it — the watcher's
-		// registry has no "delete only if unreferenced" primitive, so a
-		// subscribe landing there after this last look is still possible.
-		// Either way, a failure from here on is queued in
-		// pendingUnsubscribeFile rather than dropped: the instance record
-		// that would otherwise be the retry handle is already gone, so the
-		// queue is what makes the next TaskSetup/TaskCleanup on this session
-		// retry it instead of leaking the registration forever.
-		fresh, freshErr := store.GetE(resolvedName)
-		switch {
-		case freshErr != nil:
-			result.UnsubscribeError = fmt.Sprintf("could not verify whether %s is still needed: %v", st.Resource, freshErr)
-			queuePendingUnsubscribe(store, resolvedName, st.Resource)
-		case fresh != nil && !taskCleanupResourceStillNeeded(fresh, st.Resource):
-			unsubscribed, unsubErr := unsubscribeIfWired(cfg, resolvedName, st.Resource)
-			result.Unsubscribed = unsubscribed
-			if unsubErr != nil {
-				result.UnsubscribeError = unsubErr.Error()
-				queuePendingUnsubscribe(store, resolvedName, st.Resource)
+		// The whole decide-then-act sequence runs under withDeliveryLock, not
+		// just a fresh read beforehand: a read immediately before the
+		// (necessarily unlocked, since it shells out) unsubscribe call only
+		// narrows the window a concurrent TaskSetup's own subscribe could
+		// land in — the watcher's registry has no "delete only if
+		// unreferenced" primitive to close it the rest of the way. Excluding
+		// TaskSetup's own subscribe decision for this session from running
+		// at the same time closes it instead.
+		lockErr := withDeliveryLock(store, resolvedName, func() {
+			fresh, freshErr := store.GetE(resolvedName)
+			switch {
+			case freshErr != nil:
+				result.UnsubscribeError = fmt.Sprintf("could not verify whether %s is still needed: %v", st.Resource, freshErr)
+				if queueErr := queuePendingUnsubscribe(store, resolvedName, st.Resource); queueErr != nil {
+					result.UnsubscribeError = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", result.UnsubscribeError, queueErr)
+				}
+			case fresh != nil && !resourceStillNeededBySession(fresh, st.Resource):
+				unsubscribed, unsubErr := unsubscribeIfWired(cfg, resolvedName, st.Resource)
+				result.Unsubscribed = unsubscribed
+				if unsubErr != nil {
+					result.UnsubscribeError = unsubErr.Error()
+					if queueErr := queuePendingUnsubscribe(store, resolvedName, st.Resource); queueErr != nil {
+						result.UnsubscribeError = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", result.UnsubscribeError, queueErr)
+					}
+				}
 			}
+		})
+		if lockErr != nil {
+			result.UnsubscribeError = fmt.Sprintf("could not acquire the delivery lock: %v", lockErr)
 		}
 	}
 	return result, nil
 }
 
-func taskCleanupResourceStillNeeded(s *domain.Session, resource string) bool {
+func resourceStillNeededBySession(s *domain.Session, resource string) bool {
 	if resource == "" {
 		return false
 	}

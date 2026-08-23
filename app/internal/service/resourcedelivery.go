@@ -6,7 +6,37 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/effect"
+	"github.com/kecbigmt/plecture/app/internal/state"
 )
+
+// wireDeliveryOnSetup is TaskSetup's/setupTaskDocument's shared entry point
+// for binding-implies-delivery: it runs subscribeIfWired under
+// withDeliveryLock (excluding any concurrent TaskCleanup's own
+// unsubscribe decision for this session, closing the race a fresh read
+// alone could only narrow), and on failure queues the resource for a
+// durable retry rather than losing the one-shot attempt — mirroring
+// TaskCleanup's own queuePendingUnsubscribe path. Never returns an error:
+// both callers treat a wiring failure as non-fatal to the instantiation
+// that already succeeded, reporting it via the returned message instead.
+func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, resource string) (subscribed bool, errMsg string) {
+	if strings.TrimSpace(resource) == "" {
+		return false, ""
+	}
+	lockErr := withDeliveryLock(store, sessionName, func() {
+		var subErr error
+		subscribed, subErr = subscribeIfWired(cfg, sessionName, resource)
+		if subErr != nil {
+			errMsg = subErr.Error()
+			if queueErr := queuePendingSubscribe(store, sessionName, resource); queueErr != nil {
+				errMsg = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", errMsg, queueErr)
+			}
+		}
+	})
+	if lockErr != nil {
+		return false, fmt.Sprintf("could not acquire the delivery lock: %v", lockErr)
+	}
+	return subscribed, errMsg
+}
 
 // subscribeIfWired registers resourceID for event delivery to sessionName,
 // the runtime counterpart of `plect subscribe` a dynamic task instance's

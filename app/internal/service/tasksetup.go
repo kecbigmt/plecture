@@ -98,7 +98,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if err != nil {
 		return nil, err
 	}
-	flushPendingUnsubscribes(cfg, store, resolvedName)
+	flushPendingDelivery(cfg, store, resolvedName)
 	if session.Tasks == nil {
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
@@ -266,11 +266,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	// [[event.channel]] delivers.
 	appendInstruction(store, resolvedName, key, params.Resource, instructionOutput(resultOutputs))
 
-	subscribed, subErr := subscribeIfWired(cfg, resolvedName, params.Resource)
-	subscribeErrMsg := ""
-	if subErr != nil {
-		subscribeErrMsg = subErr.Error()
-	}
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource)
 
 	return &TaskSetupResult{
 		SessionName:    resolvedName,
