@@ -108,9 +108,10 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 		dynKeys = append(dynKeys, key)
 	}
 	sort.Strings(dynKeys)
+	nodes := nodeAddresses(cfg, session)
 	for _, key := range dynKeys {
 		st := session.Tasks[key]
-		taskID := taskIDForInstance(key, st)
+		taskID := instanceDefinitionAddress(key, st, nodes)
 		// Build only the cleanup-relevant fields straight from the definition —
 		// no schema / requires / done_when validation (that runs at create / up /
 		// task run). Teardown must stay resilient to a def whose config drifted

@@ -69,7 +69,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	// schema / done_when validation (teardown stays resilient to a def whose
 	// config drifted to invalid after the instance was created). Cleanup needs
 	// only the script plus the persisted inputs/outputs/resource.
-	taskID := taskIDForInstance(params.Instance, st)
+	taskID := instanceDefinitionAddress(params.Instance, st, nodeAddresses(cfg, session))
 	r := task.Resolved{NodeID: params.Instance, TaskID: taskID, Scope: st.Scope}
 	defs, defErr := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
 	if defErr != nil {

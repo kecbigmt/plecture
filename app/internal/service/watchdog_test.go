@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -1035,5 +1038,66 @@ func TestEvaluateHealth_UndeclaredInstanceCastsNoVote(t *testing.T) {
 	}
 	if report.State() != domain.HealthStalled {
 		t.Fatalf("report = %+v, state = %q, want stalled (the declaring instance's fingerprint is unchanged)", report, report.State())
+	}
+}
+
+// A workflow node's instance stores no task id when its id equals the node's,
+// so the node id is what the health walk has to resolve an effect from. With
+// the effect declared by a plugin, that id is not the address the effect
+// answers to — the session's own workflow is what says which declaration the
+// node runs.
+func TestEvaluateHealth_NodeInstanceResolvesAPluginOwnedEffect(t *testing.T) {
+	store := testStore(t)
+	pluginDir, base := t.TempDir(), t.TempDir()
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(pluginDir, "config", "tasks", "runner.toml"), `
+[runner]
+kind  = "effect"
+scope = "run"
+
+[runner.setup]
+type   = "shell"
+script = "true"
+
+[runner.health.alive]
+type   = "shell"
+script = "false"
+`)
+	write(filepath.Join(base, "workflows", "default.toml"), `
+[default]
+kind = "workflow"
+
+[[default.nodes]]
+id   = "initial"
+uses = "official.acme.runner"
+`)
+	cfg := &config.Config{
+		BaseDir:    base,
+		PluginDirs: []string{pluginDir},
+		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
+	}
+	// TaskID omitted, as it is for every node whose id equals the referenced
+	// definition's id.
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if !report.Declared {
+		t.Fatalf("report = %+v, want the plugin's [health].alive to be found", report)
+	}
+	if report.Healthy {
+		t.Errorf("report = %+v, want unhealthy: the found probe fails", report)
 	}
 }
