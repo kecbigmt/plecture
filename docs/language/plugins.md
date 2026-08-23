@@ -14,7 +14,7 @@ executables it owns, and the services the resident process supervises.
 schema_version    = 1
 version           = "0.1.0"
 plect_min_version = "0.0.0"
-description       = "GitHub workspace provider, resource observation, watcher subscription, and the work/review/respond/investigate task pack."
+description       = "GitHub workspace provider, resource observation, and watcher subscription."
 
 [[executables]]
 name  = "github-worktree"

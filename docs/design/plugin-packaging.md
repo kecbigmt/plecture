@@ -1021,9 +1021,10 @@ channel contracts. It does not parse GitHub URLs or know GitHub exists.
 
 The okf plugin is scoped by the OKF specification, not by one use case. Its
 first version owns the goal resource mechanics that have machine semantics
-(observation, finalization, and workspace dispatch) and the goal task pack
-built on top of them. Bundle records that do not have machine semantics,
-such as retrospectives, stay plain files outside the plugin.
+(observation, finalization, and workspace dispatch) and the `goal_bootstrap`
+effect that re-creates a dropped instance of a host-owned goal task. Bundle
+records that do not have machine semantics, such as retrospectives, stay
+plain files outside the plugin.
 
 Catalog registration and plugin enablement:
 
@@ -1044,8 +1045,6 @@ catalog.toml
 okf/plugin.toml
 okf/config/workspaces/local_okf.toml
 okf/config/resources/okf_goal.toml
-okf/config/tasks/pursue_goal.md
-okf/config/tasks/goal_review.md
 okf/config/tasks/goal_bootstrap.toml
 okf/src/go.mod
 okf/src/cmd/okf-goal/main.go
@@ -1065,12 +1064,9 @@ Plugin-owned behavior:
 - Goal observation and finalization entrypoints.
 - Revision and checklist status reporting for goal resources.
 - Idempotent completion logging for goal resources.
-- The `pursue_goal` / `goal_review` / `goal_bootstrap` task pack that tracks
-  a goal to completion and re-creates a dropped `pursue_goal` instance.
-  `pursue_goal` only gates the resource kind; goal-specific completion
-  conditions live in the goal file's own "## Done When" checklist.
-- The `goal_review` task's instruction template, which the reviewer session
-  renders to record the review verdict.
+- The `goal_bootstrap` effect, which re-creates a dropped `pursue_goal`
+  instance for every open goal a host's own `pursue_goal` task document
+  admits.
 
 Internally separable plugin behavior:
 
@@ -1082,17 +1078,24 @@ Internally separable plugin behavior:
 Not plugin-owned:
 
 - Retrospectives or other bundle records without machine semantics.
+- The `pursue_goal` and `goal_review` task documents themselves: which agent
+  reviews a goal, on what instruction, and under what completion gates is a
+  choice the OKF specification does not make, so the host declares both.
+  `goal_bootstrap` has nothing to instantiate until the host's own
+  `pursue_goal` document exists.
 - The `goal_review` workflow itself: not runnable config this plugin ships.
-  The host must define its own `goal_review` workflow before
-  `pursue_goal`'s chain can spawn one.
+  The host must define its own `goal_review` workflow before a host-defined
+  `pursue_goal` chain can spawn one.
 
 Residual user config:
 
 - Which goal roots or owners are allowed.
 - Which orchestrator workflow is used.
-- The `goal_review` workflow and which session runtime handles the work —
-  an operator defines this workflow's nodes against their own
-  agent-runtime and channel plugins, or against a team-owned overlay.
+- The `pursue_goal` and `goal_review` task documents, and the `goal_review`
+  workflow and session runtime that handles the work — an operator defines
+  these against their own agent-runtime and channel plugins, or against a
+  team-owned overlay (see `plugins/okf/README.md` and
+  `docs/language/tasks.md`).
 - Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 

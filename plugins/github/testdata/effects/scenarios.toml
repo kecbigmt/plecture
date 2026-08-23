@@ -2,9 +2,9 @@
 # record is regenerated. The stand-ins under bin/ answer for the GitHub CLI
 # and pin the scratch directory mktemp would otherwise randomize.
 #
-# The completion declarations are task documents, which own no lifecycle and
-# so invoke nothing; what they say is recorded by the gate-key record beside
-# this one.
+# This plugin ships no task documents: the work/review/respond/investigate
+# instructions are host config now, so there is nothing here for them to
+# invoke.
 
 [gh_guard]
 # The guard's product is the wrapper it writes into the directory it reports,
