@@ -128,6 +128,9 @@ func workspaceProviderFor(wf config.WorkflowFile, workspaceProviders map[string]
 	}
 	prov, ok := workspaceProviders[wf.WorkspaceProvider]
 	if !ok {
+		if hint := config.AddressHint(config.Addresses(workspaceProviders), wf.WorkspaceProvider); hint != "" {
+			return config.WorkspaceProviderConfig{}, false, fmt.Errorf("workflow %q references unknown workspace provider %q%s", wf.ID, wf.WorkspaceProvider, hint)
+		}
 		return config.WorkspaceProviderConfig{}, false, fmt.Errorf("workflow %q references unknown workspace provider %q; add workspaces/%s.toml to the global config or a plugin", wf.ID, wf.WorkspaceProvider, wf.WorkspaceProvider)
 	}
 	return prov, true, nil

@@ -269,7 +269,7 @@ func ValidateWorkflowChannels(wf WorkflowFile, defs map[string]ChannelDefinition
 		}
 		def, ok := defs[ch.Uses]
 		if !ok {
-			return fmt.Errorf("event.channel %q: uses unknown channel definition %q", ch.Name, ch.Uses)
+			return fmt.Errorf("event.channel %q: uses unknown channel definition %q%s", ch.Name, ch.Uses, AddressHint(Addresses(defs), ch.Uses))
 		}
 		for key := range ch.Inputs {
 			if _, declared := def.InputSchema[key]; !declared {

@@ -202,7 +202,7 @@ func resolveWorkflowNodes(wf config.WorkflowFile, defs map[string]config.TaskDef
 	for _, node := range wf.Nodes {
 		def, ok := defs[node.Uses]
 		if !ok {
-			return nil, fmt.Errorf("workflow %q: node %q references unknown effect %q", wf.ID, node.ID, node.Uses)
+			return nil, fmt.Errorf("workflow %q: node %q references unknown effect %q%s", wf.ID, node.ID, node.Uses, config.AddressHint(config.Addresses(defs), node.Uses))
 		}
 		resolved, err := ResolveDefinition(def, node.ID)
 		if err != nil {
