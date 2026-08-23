@@ -2,11 +2,12 @@
 
 ## Context
 
-The OKF goal-review workflow composition references effect, task document, and
-channel ids outside the OKF plugin. Some of those ids belong to other provider
-plugins, and some are local user configuration. Carrying that composition as
-runnable plugin config makes the plugin unresolvable on a fresh install and
-blurs the boundary between a capability package and a team's workflow policy.
+The deleted OKF goal-review workflow composition referenced effect, task
+document, and channel ids outside the OKF plugin. Some of those ids belonged to
+other provider plugins, and some were local user configuration. Carrying that
+composition as runnable plugin config made the plugin unresolvable on a fresh
+install and blurred the boundary between a capability package and a team's
+workflow policy.
 
 The plugin boundary decision already says core must not grow provider-specific
 knowledge or plugin dependency metadata. The missing distinction is where useful
@@ -28,11 +29,12 @@ effect, task document, channel, workspace provider, or resource observer.
 exemplar into user-owned workflow config after verifying all references and
 explicit placeholders.
 
-The OKF goal review composition is catalog-level exemplar workflow content, not
-plugin-mounted workflow content. Local-only references such as the host-owned
-goal-review task document, team Slack-thread effect, environment-producing
-effect, and initial-instruction effect are scaffold-time placeholders, not
-hidden runtime dependencies.
+An OKF goal-review workflow is host-owned workflow policy unless a catalog
+explicitly publishes a suitable exemplar package under `exemplars/workflows/`
+and lists it in `workflow_exemplars`. Local-only references such as the
+host-owned goal-review task document, team Slack-thread effect,
+environment-producing effect, and initial-instruction effect are scaffold-time
+placeholders in such an exemplar, not hidden runtime dependencies.
 
 Capability plugins must not ship runnable workflows that reference ids outside
 the same plugin. Cross-plugin compositions belong in exemplar workflow packages
@@ -97,7 +99,7 @@ the policy it encodes.
 Manual copying plus first-use workflow validation would avoid new scaffold
 commands and metadata, but it reports missing ids only after the user has
 already copied an opaque file into their config. It also cannot distinguish a
-catalog-owned reference from a team-local placeholder, so the OKF starter would
+catalog-owned reference from a team-local placeholder, so a starter would
 still rely on prose to explain which failures are expected setup work and which
 ones indicate a broken exemplar.
 

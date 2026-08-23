@@ -41,10 +41,6 @@ plugins = [
   "github",
   "session/runtime",
 ]
-
-workflow_exemplars = [
-  "okf-goal-review",
-]
 ```
 
 Catalog fields:
@@ -55,6 +51,14 @@ Catalog fields:
 | `plugins` | yes | Explicit catalog-relative paths to directories that directly contain `plugin.toml`. |
 | `workflow_exemplars` | no | Explicit ids of exemplar workflow packages under `exemplars/workflows/`. |
 | `description` | no | Display-only summary for list/show commands. |
+
+A catalog that ships exemplar workflows lists them explicitly:
+
+```toml
+workflow_exemplars = [
+  "review-starter",
+]
+```
 
 Catalogs have no upstream identity field. A catalog name exists only as the
 user's local alias in the catalog registration.
@@ -1064,8 +1068,6 @@ okf/config/tasks/goal_bootstrap.toml
 okf/src/go.mod
 okf/src/cmd/okf-goal/main.go
 okf/src/cmd/okf-bundle/main.go
-exemplars/workflows/okf-goal-review/exemplar.toml
-exemplars/workflows/okf-goal-review/workflow.toml
 ```
 
 `okf/bin/okf-goal` and `okf/bin/okf-bundle` are what `plect plugin
@@ -1111,9 +1113,8 @@ Residual user config:
 - The `pursue_goal` and `goal_review` task documents, and the `goal_review`
   workflow and session runtime that handles the work — an operator defines
   these against their own agent-runtime and channel plugins, against a
-  team-owned overlay, or by owning the copy scaffolded from the catalog's
-  `okf-goal-review` exemplar (see `plugins/okf/README.md` and
-  `docs/language/tasks.md`).
+  team-owned overlay, or by adapting a historical workflow into user-owned
+  config (see `plugins/okf/README.md` and `docs/language/tasks.md`).
 - Team-owned operating procedure templates.
 - Any local overlay that maps goal review into the team's workflow shape.
 

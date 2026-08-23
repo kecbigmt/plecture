@@ -20,13 +20,13 @@ time because they are team-local policy rather than catalog-owned config.
 
 ```text
 catalog.toml
-okf/
+github/
 tmux/
 codex/
 slack/
 exemplars/
   workflows/
-    okf-goal-review/
+    review-starter/
       exemplar.toml
       workflow.toml
 ```
@@ -39,20 +39,20 @@ publish an exemplar.
 schema_version = 1
 
 plugins = [
-  "okf",
+  "github",
   "tmux",
   "codex",
   "slack",
 ]
 
 workflow_exemplars = [
-  "okf-goal-review",
+  "review-starter",
 ]
 ```
 
 The exemplar id is the listed path under `exemplars/workflows/`, such as
-`okf-goal-review`. The source identity used by commands is
-`<catalog-alias>/<exemplar-id>`, such as `official/okf-goal-review`.
+`review-starter`. The source identity used by commands is
+`<catalog-alias>/<exemplar-id>`, such as `official/review-starter`.
 
 `plect workflow exemplar list` lists exemplar packages from registered catalogs.
 `plect workflow exemplar show <catalog-alias>/<exemplar-id>` shows the
@@ -85,13 +85,13 @@ copy-time verification.
 schema_version = 1
 kind = "workflow"
 workflow = "workflow.toml"
-name = "OKF goal review"
-description = "Dispatch an agent session against a local OKF goal resource, then record a review verdict."
+name = "Review starter"
+description = "Dispatch an agent session against a GitHub worktree, then record a review verdict."
 
 [[references]]
 kind = "workspace_provider"
-id = "local_okf"
-plugin = "okf"
+id = "worktree"
+plugin = "github"
 
 [[references]]
 kind = "effect"
@@ -150,7 +150,7 @@ Reference fields:
 | Field | Required | Meaning |
 |---|---:|---|
 | `kind` | yes | One of `workspace_provider`, `resource_observer`, `effect`, `task`, or `channel`. |
-| `id` | yes | The id referenced by the workflow template. |
+| `id` | yes | Definition id referenced by the workflow template, or the final id segment of a scaffold-only catalog reference. |
 | `plugin` | yes | Catalog-relative plugin path expected to provide the id. |
 
 Input-reference fields:
@@ -180,6 +180,8 @@ An exemplar package is valid when:
 - every workflow-level workspace provider reference, every node effect `uses`,
   and every event channel `uses` is declared in either `[[references]]` or
   `[[placeholders]]`;
+- every catalog-owned reference in the workflow template uses the scaffold-only
+  `<plugin>.<id>` form when the source plugin path has one segment;
 - every `[[input_references]]` entry names a value present in
   `inputs_schema.properties.<input>.enum`;
 - every `[[placeholders]]` entry with `input` names a value present in
@@ -193,6 +195,11 @@ An exemplar package is valid when:
 - no `[[placeholders]]` entry is unused by either the workflow template or,
   when `input` is set, the named input enum;
 - no `[[input_references]]` entry is unused by the named input enum.
+
+A `[[references]]` entry is used when a workflow reference has the same expected
+kind and final id segment. For scaffold-only references, the leading plugin
+segment also matches the entry's `plugin`; `github.worktree` therefore uses the
+entry with `plugin = "github"` and `id = "worktree"`.
 
 ## Scaffold verification
 
@@ -209,28 +216,35 @@ For each `[[input_references]]` entry, plect checks that the configured plugin
 is enabled and provides the referenced id. These entries verify literal config
 ids carried by workflow inputs rather than by workflow grammar positions.
 
+Before the destination file is stored, plect rewrites scaffold-only catalog
+references to the user's catalog alias. A template reference such as
+`codex.exec_runtime`, declared by `kind = "effect"`, `id = "exec_runtime"`,
+`plugin = "codex"`, becomes `official.codex.exec_runtime` when the exemplar is
+copied from `official/review-starter`. Bare ids are not rewritten; they remain
+relative user-owned references and must resolve from the destination workflow.
+
 If a plugin is not enabled, the error names the plugin to enable:
 
 ```text
-exemplar official/okf-goal-review requires effect "exec_runtime" from plugin official/codex
+exemplar official/review-starter requires effect "exec_runtime" from plugin official/codex
 ```
 
 If a placeholder remains unresolved, the error names the placeholder and its
 description:
 
 ```text
-exemplar official/okf-goal-review needs effect placeholder "slack_thread": provide a local effect that returns channel_id and thread_ts for the team conversation
+exemplar official/review-starter needs effect placeholder "slack_thread": provide a local effect that returns channel_id and thread_ts for the team conversation
 ```
 
 Placeholder replacement is explicit. A caller supplies replacements on the
 init command:
 
 ```bash
-plect workflow init goal-review --from official/okf-goal-review \
+plect workflow init goal-review --from official/review-starter \
   --replace task:goal_review=team_goal_review \
   --replace effect:envfile=team_envfile \
   --replace effect:slack_thread=team_slack_thread \
-  --replace effect:initial_task=codex_initial_prompt
+  --replace effect:initial_task=codex.codex_initial_prompt
 ```
 
 Each replacement must resolve in the destination workflow's config cascade
@@ -241,12 +255,21 @@ replacement changes the node's `uses` value and preserves the node `id`. For
 task placeholders used by workflow input enums, replacement changes the matching
 enum literal, default value, and example values for the declared input.
 
-The OKF goal review workflow template declares placeholder node ids explicitly:
+Replacement values use the stored config reference grammar plus the
+scaffold-only catalog form. A bare value such as `team_goal_review` is a
+relative user-owned reference and is written unchanged. A value such as
+`codex.codex_initial_prompt` names the `codex` plugin from the exemplar's
+source catalog and is written as `official.codex.codex_initial_prompt` when the
+copy is made from the `official` catalog alias. A fully catalog-qualified value
+such as `team.codex.codex_initial_prompt` is accepted only when it resolves from
+the destination workflow and is written unchanged.
+
+The exemplar workflow template declares placeholder node ids explicitly:
 
 ```toml
 [goal_reviewer]
 kind               = "workflow"
-workspace_provider = "okf.local_okf"
+workspace_provider = "github.worktree"
 
 [[goal_reviewer.nodes]]
 id   = "slack_thread"
@@ -262,38 +285,36 @@ thread_ts  = { from = "nodes.slack_thread.outputs.thread_ts" }
 ```
 
 The `--replace effect:slack_thread=team_slack_thread` result keeps the node id as
-`slack_thread` and changes only `uses`:
+`slack_thread` and changes only `uses`. Catalog-owned scaffold-only references
+are also alias-qualified in the stored copy:
 
 ```toml
+[goal_reviewer]
+kind               = "workflow"
+workspace_provider = "official.github.worktree"
+
 [[goal_reviewer.nodes]]
 id   = "slack_thread"
 uses = "team_slack_thread"
+
+[[goal_reviewer.event.channel]]
+name = "slack"
+uses = "official.slack.slack"
 ```
 
-## OKF goal review exemplar
+## OKF goal review boundary
 
-The OKF goal review composition is an exemplar workflow package. The OKF plugin
-continues to own `local_okf`, `okf_goal`, and `goal_bootstrap`. Host-owned
+The OKF plugin owns `local_okf`, `okf_goal`, and `goal_bootstrap`. Host-owned
 `pursue_goal` and `goal_review` task documents supply the review policy around
-those plugin-owned mechanics. The workflow that combines OKF with a terminal
-multiplexer, an agent runtime, and team conversation delivery lives at:
+those plugin-owned mechanics, and the host owns the `goal_review` workflow that
+chooses the terminal, agent runtime, and team conversation delivery.
 
-```text
-exemplars/workflows/okf-goal-review/
-```
-
-The exemplar template uses `local_okf` as its workspace provider, starts the
-selected terminal and agent runtime effects, and wires event channels for
-runtime delivery and team conversation delivery. `goal_review`, `slack_thread`,
-and `initial_task` are scaffold-time placeholders unless the catalog later grows
-plugin-owned provider-neutral declarations for those roles. `envfile` is also a
-scaffold-time placeholder when the selected runtime expects a local effect that
-supplies environment values.
-
-The scaffolded user-owned copy may use any equivalent local declaration ids. The
-exemplar metadata names the catalog defaults so missing plugin errors are
-actionable, but the copied workflow is free to replace tmux, Codex, or Slack
-with different providers after ownership transfers to the user.
+The official catalog does not publish an OKF goal-review exemplar package unless
+`plugins/catalog.toml` lists one in `workflow_exemplars` and the corresponding
+`exemplars/workflows/<id>/` package is committed. A historical runnable
+`goal_review` workflow can be copied from git history as user-owned config, but
+that historical file is not a catalog-owned exemplar package and is not mounted
+from the OKF plugin.
 
 ## Capability plugin rule
 
