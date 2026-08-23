@@ -27,8 +27,12 @@ func TestCorpusFixture_QualifiedReferencesCompile(t *testing.T) {
 	}
 
 	// One directory per plugin the fixture addresses, each declaring the id the
-	// fixture names under that plugin's path.
-	githubDir, tmuxDir, claudeDir := t.TempDir(), t.TempDir(), t.TempDir()
+	// fixture names under that plugin's path. tmux is the real shipped plugin:
+	// its pane effect answers to official.tmux.pane, the address the fixture
+	// names, so no synthetic stand-in is needed for it.
+	repoRoot := repoRootForTest(t)
+	githubDir, claudeDir := t.TempDir(), t.TempDir()
+	tmux := mountShippedPlugin(t, repoRoot, "official", "plugins/tmux")
 	write(filepath.Join(githubDir, "config", "workspaces", "worktree.toml"), `
 [worktree]
 kind = "workspace_provider"
@@ -36,18 +40,6 @@ kind = "workspace_provider"
 [worktree.setup]
 type    = "exec"
 command = "true"
-`)
-	write(filepath.Join(tmuxDir, "config", "tasks", "pane.toml"), `
-[pane]
-kind  = "effect"
-scope = "run"
-
-[pane.setup]
-type   = "shell"
-script = "echo pane"
-
-[pane.outputs_schema]
-session_name = { type = "string" }
 `)
 	write(filepath.Join(claudeDir, "config", "tasks", "runtime.toml"), `
 [runtime]
@@ -75,7 +67,7 @@ body = { json = { from = "event" } }
 path = { type = "string", required = true }
 `)
 
-	fixture, err := os.ReadFile(filepath.Join(repoRootForTest(t), "testdata", "config-language", "references", "qualified.toml"))
+	fixture, err := os.ReadFile(filepath.Join(repoRoot, "testdata", "config-language", "references", "qualified.toml"))
 	if err != nil {
 		t.Fatalf("read corpus fixture: %v", err)
 	}
@@ -83,10 +75,10 @@ path = { type = "string", required = true }
 
 	cfg := &config.Config{
 		BaseDir:    base,
-		PluginDirs: []string{githubDir, tmuxDir, claudeDir},
+		PluginDirs: []string{githubDir, tmux.Dir, claudeDir},
 		Plugins: []plugins.Mounted{
 			{ID: "official/github", Dir: githubDir},
-			{ID: "official/tmux", Dir: tmuxDir},
+			tmux,
 			{ID: "official/claude", Dir: claudeDir},
 		},
 	}
