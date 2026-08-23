@@ -454,6 +454,10 @@ type layerDir struct {
 	dir          string
 	workspaceDir bool
 	plugin       bool
+	// global marks the machine's own config root, which is trusted the way a
+	// plugin layer is but is not one, so a same-id collision with a plugin
+	// layer is a replacement rather than an error.
+	global bool
 	// pluginID is the catalog-qualified identity of the plugin this layer
 	// was mounted from, empty for a hand-authored plugin_dirs entry (which
 	// carries no catalog identity) and for the non-plugin layers.
@@ -476,39 +480,30 @@ type layerDir struct {
 // Trust restriction: a workflow document in the workspace-dir layer is clone
 // content and may only add nodes.
 func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile, error) {
+	layers, err := c.discoverLayers(workspaceDirPath)
+	if err != nil {
+		return nil, err
+	}
 	var merged []*lang.Definition
 	pluginOwner := make(map[string]string)
 	// The shallowest layer that declared an id owns it: that is the file a
 	// relative schema path resolves against, and the layer a reference
 	// written in the declaration resolves in.
 	source := make(map[string]string)
-	for _, layer := range c.workflowSearchDirs(workspaceDirPath) {
-		entries, err := listTOMLFiles(layer.dir)
-		if err != nil {
-			return nil, err
-		}
-		var defs []*lang.Definition
-		layerOwner := make(map[string]string)
-		for _, path := range entries {
-			parsed, err := c.loadWorkflowDocument(path, layer)
-			if err != nil {
+	for _, discovered := range layers {
+		defs := discovered.ofKind(lang.KindWorkflow)
+		for _, def := range defs {
+			if err := c.checkWorkflowDefinition(def, discovered.layer); err != nil {
 				return nil, err
 			}
-			for _, def := range parsed {
-				if prior, dup := layerOwner[def.ID]; dup {
-					return nil, lang.DuplicateID(def.ID, prior, path)
+			if discovered.layer.plugin {
+				if owner, exists := pluginOwner[def.ID]; exists {
+					return nil, fmt.Errorf("workflow %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, def.File)
 				}
-				layerOwner[def.ID] = path
-				if layer.plugin {
-					if owner, exists := pluginOwner[def.ID]; exists {
-						return nil, fmt.Errorf("workflow %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, path)
-					}
-					pluginOwner[def.ID] = path
-				}
-				if _, seen := source[def.ID]; !seen {
-					source[def.ID] = path
-				}
-				defs = append(defs, def)
+				pluginOwner[def.ID] = def.File
+			}
+			if _, seen := source[def.ID]; !seen {
+				source[def.ID] = def.File
 			}
 		}
 		if merged, err = lang.MergeLayer(merged, defs); err != nil {
@@ -539,50 +534,34 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 // rather than a silent skip — silently ignoring it would make the author
 // think the task is active.
 func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDefinition, error) {
+	layers, err := c.discoverLayers(workspaceDirPath)
+	if err != nil {
+		return nil, err
+	}
 	out := make(map[string]TaskDefinition)
 	pluginOwner := make(map[string]string)
-	// all keeps every definition file that was read, including a plugin
-	// definition a same-id user task shadows in out: a catalog-qualified
-	// `inner` reference exists precisely to reach one.
+	// all keeps every definition that was read, including a plugin definition
+	// a same-id user effect shadows in out: a catalog-qualified `inner`
+	// reference exists precisely to reach one.
 	var all []TaskDefinition
 	pluginOfSource := make(map[string]string)
-	dirs := c.tasksSearchDirs(workspaceDirPath)
-	for _, layer := range dirs {
-		entries, err := listTOMLFiles(layer.dir)
-		if err != nil {
-			return nil, err
-		}
-		if layer.workspaceDir && len(entries) > 0 {
-			return nil, fmt.Errorf("task definitions inside the workspace directory are not loaded (clone content must not carry shell): %s; move them to the global layer (~/.config/plect/tasks/), a plugin, or a repo overlay above the workspace dir", entries[0])
-		}
-		// One layer spreads its declarations over as many files as it likes,
-		// but an id is unique within it: resolving a same-layer collision by
-		// traversal order would let a filename decide which of two
-		// declarations is live. A deeper layer replacing a shallower same-id
-		// declaration is the cascade rule and stays allowed.
-		layerOwner := make(map[string]string)
-		for _, path := range entries {
-			defs, err := c.loadEffectDocument(path, layer.plugin)
+	for _, discovered := range layers {
+		for _, parsed := range discovered.ofKind(lang.KindEffect) {
+			def, err := c.effectFromDefinition(parsed, discovered.layer.plugin)
 			if err != nil {
 				return nil, err
 			}
-			for _, def := range defs {
-				if prior, dup := layerOwner[def.ID]; dup {
-					return nil, lang.DuplicateID(def.ID, prior, path)
+			if discovered.layer.plugin {
+				if owner, exists := pluginOwner[def.ID]; exists {
+					return nil, fmt.Errorf("effect %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, def.SourcePath)
 				}
-				layerOwner[def.ID] = path
-				if layer.plugin {
-					if owner, exists := pluginOwner[def.ID]; exists {
-						return nil, fmt.Errorf("effect %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, path)
-					}
-					pluginOwner[def.ID] = path
-					if layer.pluginID != "" {
-						pluginOfSource[def.SourcePath] = layer.pluginID
-					}
+				pluginOwner[def.ID] = def.SourcePath
+				if discovered.layer.pluginID != "" {
+					pluginOfSource[def.SourcePath] = discovered.layer.pluginID
 				}
-				all = append(all, def)
-				out[def.ID] = def
 			}
+			all = append(all, def)
+			out[def.ID] = def
 		}
 	}
 	if err := resolveNestedDefinitions(out, all, pluginOfSource, func(ref string) string {
@@ -593,38 +572,32 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 	return out, nil
 }
 
-// workflowSearchDirs orders the cascade: plugins (base) → global → ancestors
-// (outermost-first, ending at the workspace dir itself — the only untrusted
-// layer).
-func (c *Config) workflowSearchDirs(workspaceDirPath string) []layerDir {
-	return c.searchDirs(workspaceDirPath, "workflows")
-}
-
-func (c *Config) tasksSearchDirs(workspaceDirPath string) []layerDir {
-	return c.searchDirs(workspaceDirPath, "tasks")
-}
-
-func (c *Config) searchDirs(workspaceDirPath, kind string) []layerDir {
+// definitionRoots orders the cascade: plugins (base) → global → ancestor
+// overlays, outermost-first, ending at the workspace directory itself — the
+// only untrusted layer. Each entry is a whole definition root rather than one
+// kind's directory, because a directory under a root is author organization.
+//
+// The workspace-dir layer is walked whole too, but it is not a definition
+// root: a declaration it must not carry has to be found in order to be
+// refused, and only `.plect/workflows/` contributes (see discoverLayer).
+func (c *Config) definitionRoots(workspaceDirPath string) []layerDir {
 	pluginIDs := make(map[string]string, len(c.Plugins))
 	for _, m := range c.Plugins {
 		pluginIDs[m.Dir] = m.ID
 	}
 	var dirs []layerDir
 	for _, plugin := range c.PluginDirs {
-		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, "config", kind), plugin: true, pluginID: pluginIDs[plugin]})
+		dirs = append(dirs, layerDir{dir: filepath.Join(plugin, "config"), plugin: true, pluginID: pluginIDs[plugin]})
 	}
 	if c.BaseDir != "" {
-		dirs = append(dirs, layerDir{dir: filepath.Join(c.BaseDir, kind)})
+		dirs = append(dirs, layerDir{dir: c.BaseDir, global: true})
 	}
 	cleanWorkspaceDir := ""
 	if workspaceDirPath != "" {
 		cleanWorkspaceDir = filepath.Clean(workspaceDirPath)
 	}
 	for _, anc := range cascadeAncestors(workspaceDirPath) {
-		dirs = append(dirs, layerDir{
-			dir:          filepath.Join(anc, ".plect", kind),
-			workspaceDir: anc == cleanWorkspaceDir,
-		})
+		dirs = append(dirs, layerDir{dir: filepath.Join(anc, ".plect"), workspaceDir: anc == cleanWorkspaceDir})
 	}
 	return dirs
 }

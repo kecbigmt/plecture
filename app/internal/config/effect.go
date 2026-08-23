@@ -2,42 +2,26 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"sort"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// loadEffectDocument reads every `kind = "effect"` declaration in one
-// definition document.
-func (c *Config) loadEffectDocument(path string, fromPlugin bool) ([]TaskDefinition, error) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := lang.ParseDefinitionDocument(path, src)
-	if err != nil {
-		return nil, err
-	}
+// effectFromDefinition checks one discovered effect declaration against the
+// effect surface and reads the fields the runtime needs off it.
+func (c *Config) effectFromDefinition(def *lang.Definition, fromPlugin bool) (TaskDefinition, error) {
 	validation := lang.Validation{
 		From:        lang.Ownership{IsPlugin: fromPlugin},
-		Executables: c.binResolver(path),
+		Executables: c.binResolver(def.File),
 	}
-	out := make([]TaskDefinition, 0, len(parsed))
-	for _, def := range parsed {
-		if def.Kind != lang.KindEffect {
-			return nil, fmt.Errorf("%s: %q declares kind %q; a definition under tasks/ is an effect", path, def.ID, def.Kind)
-		}
-		if err := validation.ValidateDefinition(def); err != nil {
-			return nil, err
-		}
-		effect, err := effectFrom(def, path, fromPlugin)
-		if err != nil {
-			return nil, fmt.Errorf("effect %s in %s: %w", def.ID, path, err)
-		}
-		out = append(out, effect)
+	if err := validation.ValidateDefinition(def); err != nil {
+		return TaskDefinition{}, err
 	}
-	return out, nil
+	effect, err := effectFrom(def, def.File, fromPlugin)
+	if err != nil {
+		return TaskDefinition{}, fmt.Errorf("effect %s in %s: %w", def.ID, def.File, err)
+	}
+	return effect, nil
 }
 
 // effectFrom reads the fields the runtime needs off a validated declaration.

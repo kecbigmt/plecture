@@ -2,45 +2,26 @@ package config
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
-// loadWorkflowDocument reads every `kind = "workflow"` declaration in one
-// definition document, checking each against the workflow surface before the
-// cascade merges it with the layers around it.
-func (c *Config) loadWorkflowDocument(path string, layer layerDir) ([]*lang.Definition, error) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := lang.ParseDefinitionDocument(path, src)
-	if err != nil {
-		return nil, err
+// checkWorkflowDefinition checks one discovered workflow declaration against
+// the workflow surface, and against the trust restriction of the layer that
+// wrote it. It runs per layer rather than once over the merged definition so a
+// diagnostic names the layer that wrote the offending value; the merged
+// definition's own topology is checked when it is decoded.
+func (c *Config) checkWorkflowDefinition(def *lang.Definition, layer layerDir) error {
+	if layer.workspaceDir {
+		if err := checkWorkspaceDirFragment(def, def.File); err != nil {
+			return err
+		}
 	}
 	validation := lang.Validation{
 		From:        lang.Ownership{IsPlugin: layer.plugin},
-		Executables: c.binResolver(path),
+		Executables: c.binResolver(def.File),
 	}
-	for _, def := range parsed {
-		if def.Kind != lang.KindWorkflow {
-			return nil, fmt.Errorf("%s: %q declares kind %q; a definition under workflows/ is a workflow", path, def.ID, def.Kind)
-		}
-		if layer.workspaceDir {
-			if err := checkWorkspaceDirFragment(def, path); err != nil {
-				return nil, err
-			}
-		}
-		// Validation runs per document rather than once over the merged
-		// definition so a diagnostic names the layer that wrote the offending
-		// value; the merged definition's own topology is checked when it is
-		// decoded.
-		if err := validation.ValidateDefinition(def); err != nil {
-			return nil, err
-		}
-	}
-	return parsed, nil
+	return validation.ValidateDefinition(def)
 }
 
 // checkWorkspaceDirFragment enforces the node-addition-only rule for a

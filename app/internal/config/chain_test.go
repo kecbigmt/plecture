@@ -22,34 +22,35 @@ func writeTaskFile(t *testing.T, base, id, body string) {
 }
 
 // A surviving chains/*.toml file gets one warning naming it, so a migration
-// straggler has a signal that the rule stopped firing instead of silence.
-func TestLegacyChainsDirNotice_WarnsPerFile(t *testing.T) {
+
+// A definition root admits no non-definition TOML, so a leftover chains/ file
+// from before chains moved into the declaration that fires them stops the
+// layer from loading. The error names the file and the fix, because the
+// generic "not a definition table" diagnostic explains neither.
+func TestDiscoverLayer_RetiredChainsDirIsAnActionableLoadError(t *testing.T) {
 	base := t.TempDir()
 	dir := filepath.Join(base, "chains")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "review.toml"), []byte("[[work.chains]]\nid=\"review\"\nworkflow=\"codex\"\n[work.chains.when]\nall=[{judge_pending=\"x\"}]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "review.toml"), []byte("[[work.chains]]\nid=\"review\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
-	warnings, err := (&Config{BaseDir: base}).LegacyChainsDirNotice()
-	if err != nil {
-		t.Fatalf("LegacyChainsDirNotice: %v", err)
+	_, err := (&Config{BaseDir: base}).LoadTaskDefinitions("")
+	if err == nil {
+		t.Fatal("expected a load error for a leftover chains/*.toml")
 	}
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "review.toml") {
-		t.Fatalf("expected one warning naming the file, got %v", warnings)
+	for _, want := range []string{"review.toml", "[[chains]]", "delete the retired chains/ directory"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %q: %v", want, err)
+		}
 	}
 }
 
-// No chains/ dir at all is the common case and must not warn.
-func TestLegacyChainsDirNotice_NoDirIsSilent(t *testing.T) {
-	warnings, err := (&Config{BaseDir: t.TempDir()}).LegacyChainsDirNotice()
-	if err != nil {
-		t.Fatalf("LegacyChainsDirNotice: %v", err)
-	}
-	if len(warnings) != 0 {
-		t.Fatalf("expected no warnings, got %v", warnings)
+// No chains/ dir at all is the common case and must load.
+func TestDiscoverLayer_NoChainsDirLoads(t *testing.T) {
+	if _, err := (&Config{BaseDir: t.TempDir()}).LoadTaskDefinitions(""); err != nil {
+		t.Fatalf("LoadTaskDefinitions: %v", err)
 	}
 }
 

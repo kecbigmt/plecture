@@ -90,11 +90,6 @@ func TestLoadChannels_RejectedDeclarations(t *testing.T) {
 			want: "kind",
 		},
 		{
-			name: "another kind under channels",
-			body: "[c]\nkind = \"effect\"\nscope = \"run\"\n",
-			want: "channel",
-		},
-		{
 			name: "unknown primitive",
 			body: "[c]\nkind = \"channel\"\ntype = \"webhook\"\n",
 			want: "webhook",

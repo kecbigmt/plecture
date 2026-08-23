@@ -252,10 +252,9 @@ func handleCheck(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 	}
 
 	return jsonResult(map[string]any{
-		"ok":       true,
-		"actions":  result.Actions,
-		"chains":   result.Chains,
-		"warnings": result.Warnings,
+		"ok":      true,
+		"actions": result.Actions,
+		"chains":  result.Chains,
 	})
 }
 
@@ -278,10 +277,9 @@ func handleTick(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 	}
 
 	return jsonResult(map[string]any{
-		"ok":       true,
-		"actions":  result.Actions,
-		"chains":   result.Chains,
-		"warnings": result.Warnings,
+		"ok":      true,
+		"actions": result.Actions,
+		"chains":  result.Chains,
 	})
 }
 

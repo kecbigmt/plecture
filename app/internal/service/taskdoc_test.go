@@ -721,7 +721,10 @@ Note something about {{ resource.id }}.
 func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
 	store := testStore(t)
 	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "broken.md"), []byte("no frontmatter here\n"), 0o644); err != nil {
+	// Frontmatter that parses but declares a field outside the task surface: a
+	// `.md` without frontmatter at all is a template asset rather than a
+	// broken document, so it would not fail the load.
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "broken.md"), []byte("+++\n[broken]\nkind = \"task\"\nbogus = 1\n+++\nA body.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{

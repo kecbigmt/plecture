@@ -204,12 +204,8 @@ func TestCheckSession_TaskDocumentChainsAreNoLongerAnnouncedAsUnevaluated(t *tes
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 	setUpDocumentInstance(t, cfg, store, "pursue")
 
-	result, err := CheckSession(cfg, store, CheckParams{SessionName: "org/repo-1"})
-	if err != nil {
+	if _, err := CheckSession(cfg, store, CheckParams{SessionName: "org/repo-1"}); err != nil {
 		t.Fatalf("CheckSession: %v", err)
-	}
-	for _, w := range result.Warnings {
-		t.Errorf("unexpected warning: %s", w)
 	}
 }
 

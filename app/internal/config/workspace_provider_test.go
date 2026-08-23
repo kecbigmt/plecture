@@ -143,11 +143,6 @@ func TestLoadWorkspaceProviders_RejectedDeclarations(t *testing.T) {
 			want: "kind",
 		},
 		{
-			name: "another kind under workspaces",
-			body: "[p]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n",
-			want: "workspace_provider",
-		},
-		{
 			name: "match without name",
 			body: "[p]\nkind = \"workspace_provider\"\nmatch = '^x'\n\n[p.setup]\ntype = \"exec\"\ncommand = \"true\"\n",
 			want: "declared together",

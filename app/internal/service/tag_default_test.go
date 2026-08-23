@@ -18,12 +18,12 @@ func addSetupWorkflow(t *testing.T, baseDir, wfID, workdir string) {
 	if err := os.MkdirAll(filepath.Join(baseDir, "workspaces"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wf := "[" + wfID + "]\nkind = \"workflow\"\nworkspace_provider = \"" + wfID + "\"\n\n[[" + wfID + ".nodes]]\nuses = \"noop\"\n"
+	provID, prov := providerAside(wfID, providerCreatingWorkspace(wfID, workdir))
+	wf := "[" + wfID + "]\nkind = \"workflow\"\nworkspace_provider = \"" + provID + "\"\n\n[[" + wfID + ".nodes]]\nuses = \"noop\"\n"
 	if err := os.WriteFile(filepath.Join(baseDir, "workflows", wfID+".toml"), []byte(wf), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	prov := providerCreatingWorkspace(wfID, workdir)
-	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", wfID+".toml"), []byte(prov), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(baseDir, "workspaces", provID+".toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

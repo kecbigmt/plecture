@@ -1,4 +1,4 @@
-== codex_exec / with-body
+== exec_delivery / with-body
 type: exec
 argv[0]: "<plugin>/scripts/codex-exec-enqueue"
 argv[1]: "stand-in-queue_dir"
@@ -9,7 +9,7 @@ argv[5]: "a summary"
 argv[6]: "https://example.test/x"
 timeout: 5s
 
-== codex_exec / summary-only
+== exec_delivery / summary-only
 type: exec
 argv[0]: "<plugin>/scripts/codex-exec-enqueue"
 argv[1]: "stand-in-queue_dir"

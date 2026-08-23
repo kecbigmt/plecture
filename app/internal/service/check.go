@@ -1,7 +1,6 @@
 package service
 
 import (
-	"fmt"
 	"os"
 	"slices"
 
@@ -52,10 +51,6 @@ type CheckResult struct {
 	// evaluation) always reports it as a dry-run plan (Spawned is always
 	// false); TickSession spawns each fired, not-already-active entry.
 	Chains []ChainSpawn `json:"chains,omitempty"`
-	// Warnings carries config-level notices unrelated to any one instance —
-	// currently just a surviving legacy chains/*.toml file, which the retired
-	// dual-read no longer reads (config.LegacyChainsDirNotice).
-	Warnings []string `json:"warnings,omitempty"`
 }
 
 type CheckUnmetItem struct {
@@ -102,28 +97,28 @@ type computedAction struct {
 // fired, not-already-active chain. observe is false for every CheckSession
 // call: check reads persisted state only, so that repeated calls cannot
 // themselves change what a session reports.
-func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName string, observe bool, trigger TickTrigger) (string, []computedAction, []ChainSpawn, []string, error) {
+func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName string, observe bool, trigger TickTrigger) (string, []computedAction, []ChainSpawn, error) {
 	if sessionName == "" {
 		sessionName = os.Getenv("PLECT_SESSION_NAME")
 	}
 	if sessionName == "" {
-		return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass a session or run inside a plect session pane"}
+		return "", nil, nil, &Error{Code: ErrInvalidInput, Message: "no session in scope: pass a session or run inside a plect session pane"}
 	}
 	if observe {
 		// Observation comes first and lands in state before anything reads
 		// it, so every leaf of this pass — a completion predicate and the
 		// chain conditions beside it — decides against one snapshot.
 		if _, err := ObserveSessionResources(cfg, store, sessionName); err != nil {
-			return "", nil, nil, nil, err
+			return "", nil, nil, err
 		}
 	}
 	resolvedName, session, err := resolveSession(cfg, store, sessionName)
 	if err != nil {
-		return "", nil, nil, nil, err
+		return "", nil, nil, err
 	}
 	allSessions, err := store.AllE()
 	if err != nil {
-		return "", nil, nil, nil, err
+		return "", nil, nil, err
 	}
 	// An id that resolves to no task document declares no completion
 	// predicate: an effect brings something up and takes it down and answers
@@ -131,11 +126,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 	// id, so a collision is reported rather than silently choosing a side.
 	docs, _, err := loadTaskDeclarations(cfg, session)
 	if err != nil {
-		return "", nil, nil, nil, err
-	}
-	legacyWarnings, err := cfg.LegacyChainsDirNotice()
-	if err != nil {
-		return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("legacy chains dir: %v", err)}
+		return "", nil, nil, err
 	}
 	var computed []computedAction
 	var chainPlan []ChainSpawn
@@ -154,14 +145,14 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 		}
 		action, spawns, derr := evaluateDocumentInstance(cfg, store, doc, resolvedName, session, key, st, allSessions, trigger)
 		if derr != nil {
-			return "", nil, nil, nil, derr
+			return "", nil, nil, derr
 		}
 		if action != nil {
 			computed = append(computed, *action)
 		}
 		chainPlan = append(chainPlan, spawns...)
 	}
-	return resolvedName, computed, chainPlan, legacyWarnings, nil
+	return resolvedName, computed, chainPlan, nil
 }
 
 // CheckSession reports the same done_when/chain evaluation tick would act on,
@@ -171,7 +162,7 @@ func evaluateSessionActions(cfg *config.Config, store *state.Store, sessionName 
 // times leaves state, event log, and session list unchanged. Use plect tick to
 // actually advance the gate, refresh outputs, and fire chains.
 func CheckSession(cfg *config.Config, store *state.Store, params CheckParams) (*CheckResult, error) {
-	_, computed, chainPlan, warnings, err := evaluateSessionActions(cfg, store, params.SessionName, false, "")
+	_, computed, chainPlan, err := evaluateSessionActions(cfg, store, params.SessionName, false, "")
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +170,7 @@ func CheckSession(cfg *config.Config, store *state.Store, params CheckParams) (*
 	for _, c := range computed {
 		actions = append(actions, c.action)
 	}
-	return &CheckResult{Actions: actions, Chains: chainPlan, Warnings: warnings}, nil
+	return &CheckResult{Actions: actions, Chains: chainPlan}, nil
 }
 
 func sessionResourceForCheck(session *domain.Session, st *contract.TaskState) string {

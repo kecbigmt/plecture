@@ -56,7 +56,8 @@ func writeWorkflowFile(t *testing.T, cfg *config.Config, id, body string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	header := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + id + "\"\n"
+	provID, prov := providerAside(id, providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`))
+	header := "[" + id + "]\nkind = \"workflow\"\nworkspace_provider = \"" + provID + "\"\n"
 	if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte(header+body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -64,8 +65,7 @@ func writeWorkflowFile(t *testing.T, cfg *config.Config, id, body string) {
 	if err := os.MkdirAll(providersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	prov := providerEchoingOutputs(id, `{"workdir":"/tmp/x"}`)
-	if err := os.WriteFile(filepath.Join(providersDir, id+".toml"), []byte(prov), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(providersDir, provID+".toml"), []byte(prov), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -560,7 +560,7 @@ all = [ { judge = "ac met", id = "ac-met" } ]
 // merged, never fires. It is still surfaced as a migration-nudge warning
 // (config.LegacyChainsDirNotice) so a straggler file isn't silently inert
 // with zero signal.
-func TestCheckSession_LegacyChainsDirIsIgnored(t *testing.T) {
+func TestCheckSession_LegacyChainsDirIsRefused(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
 		[]taskFixture{
@@ -584,15 +584,9 @@ all = [ { judge_pending = "ac-met" } ]
 		"a": {Scope: contract.TaskScopeSession, TaskID: "a", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	})
 
-	res, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
-	if err != nil {
-		t.Fatalf("CheckSession: %v", err)
-	}
-	if len(res.Chains) != 0 {
-		t.Fatalf("expected the legacy chains/*.toml declaration to be ignored, got %+v", res.Chains)
-	}
-	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "review.toml") {
-		t.Fatalf("expected one warning naming the ignored file, got %+v", res.Warnings)
+	_, err := CheckSession(cfg, store, CheckParams{SessionName: "owner/repo-1"})
+	if err == nil || !strings.Contains(err.Error(), "review.toml") {
+		t.Fatalf("err = %v, want the load to refuse the leftover chains/*.toml by name", err)
 	}
 }
 

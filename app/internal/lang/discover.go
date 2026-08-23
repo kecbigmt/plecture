@@ -176,6 +176,15 @@ func ParseTaskDocument(path string, src []byte) (*Definition, error) {
 		if err != nil {
 			return nil, err
 		}
+		// The mirror of the task-in-TOML rule: a kind with a body lives in a
+		// Markdown file and a kind without one in TOML, so a bodiless kind in
+		// frontmatter would carry an instruction nothing reads. A plain error
+		// rather than a coded diagnostic, because the structural schema a coded
+		// structural diagnostic must also be rejected by does not reach
+		// frontmatter.
+		if def.Kind != KindTask {
+			return nil, fmt.Errorf("%s: %q declares kind %q in a task document's frontmatter; a kind without a body is declared in a TOML document", path, id, def.Kind)
+		}
 		def.Instruction = instruction
 		return def, nil
 	}

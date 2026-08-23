@@ -82,7 +82,7 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 			t.Errorf("shipped catalog task %q not found", id)
 		}
 	}
-	for _, id := range []string{"terminal_submit", "claude", "codex_exec", "slack"} {
+	for _, id := range []string{"terminal_submit", "delivery", "exec_delivery", "slack"} {
 		if _, ok := channels[id]; !ok {
 			t.Errorf("shipped catalog channel %q not found", id)
 		}

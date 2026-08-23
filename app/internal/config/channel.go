@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -89,51 +87,32 @@ func (d ChannelDefinition) ApplyInputDefaults(inputs map[string]any) map[string]
 	return out
 }
 
-// LoadChannels loads the channels declared under `channels/` in the trusted
-// base layers only: plugin dirs first, then the global config dir. The
-// per-workspace-dir cascade is excluded for the same reason as workspace
-// providers — a channel may run a process. Discovery is directory-scoped for
-// the same transitional reason LoadResourceDefs states.
+// LoadChannels loads every channel the trusted base layers declare: plugin
+// roots first, then the global config dir. The per-workspace-dir cascade is
+// excluded for the same reason as workspace providers — a channel may run a
+// process.
 func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
-	var pluginDirs []string
-	for _, plugin := range c.PluginDirs {
-		pluginDirs = append(pluginDirs, filepath.Join(plugin, "config", "channels"))
+	layers, err := c.trustedLayers()
+	if err != nil {
+		return nil, err
 	}
-	globalDir := ""
-	if c.BaseDir != "" {
-		globalDir = filepath.Join(c.BaseDir, "channels")
-	}
-	return loadTrustedLayer(pluginDirs, globalDir, c.loadChannelDocument, func(d ChannelDefinition) string { return d.ID })
+	return loadTrustedKind(layers, lang.KindChannel, c.channelFromDefinition,
+		func(d ChannelDefinition) string { return d.ID })
 }
 
-func (c *Config) loadChannelDocument(path string, fromPlugin bool) ([]ChannelDefinition, error) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	parsed, err := lang.ParseDefinitionDocument(path, src)
-	if err != nil {
-		return nil, err
-	}
+func (c *Config) channelFromDefinition(def *lang.Definition, fromPlugin bool) (ChannelDefinition, error) {
 	validation := lang.Validation{
 		From:        lang.Ownership{IsPlugin: fromPlugin},
-		Executables: c.binResolver(path),
+		Executables: c.binResolver(def.File),
 	}
-	out := make([]ChannelDefinition, 0, len(parsed))
-	for _, def := range parsed {
-		if def.Kind != lang.KindChannel {
-			return nil, fmt.Errorf("%s: %q declares kind %q; a definition under channels/ is a channel", path, def.ID, def.Kind)
-		}
-		if err := validation.ValidateDefinition(def); err != nil {
-			return nil, err
-		}
-		channel, err := channelDefinitionFrom(def, path, fromPlugin)
-		if err != nil {
-			return nil, fmt.Errorf("channel %s in %s: %w", def.ID, path, err)
-		}
-		out = append(out, channel)
+	if err := validation.ValidateDefinition(def); err != nil {
+		return ChannelDefinition{}, err
 	}
-	return out, nil
+	channel, err := channelDefinitionFrom(def, def.File, fromPlugin)
+	if err != nil {
+		return ChannelDefinition{}, fmt.Errorf("channel %s in %s: %w", def.ID, def.File, err)
+	}
+	return channel, nil
 }
 
 // channelDefinitionFrom reads the fields delivery needs off a validated
