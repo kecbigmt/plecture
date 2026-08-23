@@ -71,3 +71,5 @@ go test ./plugins/slack/src/slack-adapter/...
 ## License
 
 Apache License 2.0 — see [LICENSE](./LICENSE).
+
+<!-- ci-verify marker: readme-only diff -->
