@@ -1304,3 +1304,45 @@ uses = "tmux"
 		t.Fatalf("LoadWorkflows = %v, want a mutually-exclusive error", err)
 	}
 }
+
+// A channel binding that is not an array of tables used to load as no
+// channels at all, which leaves the session unreachable with nothing said.
+func TestLoadWorkflows_NonArrayEventChannelRejected(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[coding.event]
+channel = "runtime"
+
+[[coding.nodes]]
+uses = "tmux"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+	if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-FIELD-TYPE") {
+		t.Fatalf("LoadWorkflows = %v, want a field-type diagnostic", err)
+	}
+}
+
+// A binding with no name cannot be addressed and one with no target delivers
+// nowhere, so the load refuses both rather than leaving them to whichever
+// consumer notices the gap first.
+func TestLoadWorkflows_EventChannelRequiresNameAndUses(t *testing.T) {
+	for _, entry := range []string{"uses = \"delivery\"\n", "name = \"runtime\"\n"} {
+		baseDir := t.TempDir()
+		writeFile(t, filepath.Join(baseDir, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[[coding.nodes]]
+uses = "tmux"
+
+[[coding.event.channel]]
+`+entry)
+		_, err := (&Config{BaseDir: baseDir}).LoadWorkflows("")
+		if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-FIELD-REQUIRED") {
+			t.Fatalf("LoadWorkflows with %q = %v, want a required-field diagnostic", entry, err)
+		}
+	}
+}

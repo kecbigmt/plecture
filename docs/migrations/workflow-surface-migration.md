@@ -208,8 +208,19 @@ inputs._dep_envfile = { from = "nodes.envfile.outputs._link", default = "" }
   workflow instantiates the same effect twice.
 - **A node's fields are `id`, `uses`, `inputs`, and `blocks`.** Anything else
   is a load error; there is still no `depends_on` — the dependency graph is
-  derived from the `nodes.<id>.outputs.*` projections in the wiring, and a
-  cycle in it is `PLECTURE-CFG-WORKFLOW-CYCLE` at load.
+  derived from the `nodes.<id>.outputs.*` projections in the wiring, wherever
+  they sit (including inside a `{ json = ... }` operand), and a cycle in it is
+  `PLECTURE-CFG-WORKFLOW-CYCLE` at load.
+
+### Event channels
+
+An `[[<id>.event.channel]]` entry declares `name` and `uses`, and its fields
+are those two plus `inputs` and `include`. Both requirements are load errors
+now rather than complaints from whichever consumer noticed first: a binding
+with no name cannot be addressed, and one with no target delivers nowhere.
+`[<id>.event]` must also hold an array of tables — a scalar `channel = "..."`
+used to load as *no channels at all*, leaving the session unreachable with
+nothing said.
 
 ### Provider parameters are literal data
 

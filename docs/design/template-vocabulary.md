@@ -1,40 +1,35 @@
 # Config template vocabulary
 
-Plect config is a wiring language: task hooks, node inputs, channel arguments,
-and instruction templates are Go `text/template` strings rendered against a
-session's own render context. This document specifies how a reference
+Markdown instruction templates are Go `text/template` strings rendered against
+a session's own variable bundle. This document specifies how a reference
 resolves, how optional access is written, and how a template-bearing value is
-quoted. Which helpers a surface registers varies, so availability is stated
-here only for the helper this document specifies.
+quoted, for that one surface: every other configuration surface states its
+values in the configuration language (`docs/language/values.md`), where a
+projection is `{ from = "<root>.<path>" }` rather than a template action.
 
 Decision record: [`docs/adr/2026-08-18-template-get-default-argument.md`](../adr/2026-08-18-template-get-default-argument.md).
 
-## References are required by default
+## References are optional by default
 
-Rendering uses `missingkey=error`, so a direct field reference is the strict
-form: an absent key fails the render rather than producing an empty string.
-Required-by-default is the correct marking for wiring — a typo in a reference
-is a config bug, and it surfaces at the site that made it.
+An absent key renders as the literal `<no value>` rather than failing the
+render, which is precisely why optional access matters here. The variable
+bundle mirrors what a task's own surface offers — `.SessionName`,
+`.ResourceID`, `.WorkspaceDirPath`, `.Workflow.outputs.<key>`,
+`.SessionInputs.<key>`, and the declaring definition's own `.Inputs.<key>` —
+so a template reads the same way as the definition that delivers it.
 
-```toml
-setup = 'launch --workspace-dir {{.WorkspaceDirPath | shellQuote}}'
+```markdown
+Resolve the issue at {{.ResourceID}} in {{.WorkspaceDirPath}}.
 ```
-
-Cleanup hooks — a task's and a workspace provider's — render with
-`missingkey=zero` instead, because a partial setup must still be torn down. So
-do a workflow's `[display]` templates, which read persisted outputs that may
-not exist yet. Markdown instruction templates are the third departure: an
-absent key renders as the literal `<no value>` rather than failing, which is
-precisely why optional access matters there.
 
 ## Optional access states its own default
 
-`{{get m "key" "default"}}` is the escape hatch from strictness. All three
-arguments are required, so every optional access carries, at the site, the
-value an absent key produces.
+`{{get m "key" "default"}}` is how a template guards a variable that may be
+absent. All three arguments are required, so every optional access carries, at
+the site, the value an absent key produces.
 
-```toml
-inputs.model = '{{get .SessionInputs "model" "fable"}}'
+```markdown
+Focus this pass on {{get .SessionInputs "focus" "whatever the issue asks for"}}.
 ```
 
 | Map entry | Result |
@@ -49,37 +44,16 @@ defined: `{{get .Inputs "pid" 0}}`.
 
 Presence testing is written with an explicit empty default:
 
-```toml
-setup = '''
-if [ '{{get .Prev "sent" ""}}' = "true" ]; then exit 0; fi
-'''
+```markdown
+{{if get .SessionInputs "pr_url" ""}}Review {{.SessionInputs.pr_url}}.{{end}}
 ```
 
 A call with any argument count other than three fails the render with an error
 naming the template site.
 
-## Where `get` is available
+## Control flow is unsettled
 
-`get` is registered for task hooks and node inputs, workspace provider hooks,
-resource and subscribe hooks, a workflow's `[display]` templates, and Markdown
-instruction templates.
-
-Three surfaces render without it, and a config author reaching for optional
-access there has to restructure instead: channel argument templates, chain
-input templates, and a workspace provider's session-name resolver.
-
-## Quoting a template-bearing value
-
-A template action quotes its own string arguments with double quotes, so a
-template-bearing TOML value is written as a TOML literal string
-(single-quoted) and needs no escaping:
-
-```toml
-inputs.task = '{{get .SessionInputs "task" ""}}'
-send_text   = 'tmux send-keys -t {{.Self.session_name}} -- "$1"'
-```
-
-A value that must itself contain a single quote falls back to a TOML basic
-string with the escapes that requires. A multi-line hook body uses the
-multi-line literal form (`'''`), which is why shipped `setup` scripts can
-splice `'{{get .Inputs "model" ""}}'` into shell single quotes directly.
+A template action holding anything but a dotted path — a conditional, a range,
+a pipeline — is a transitional form. `docs/language/tasks.md` defers what
+control flow an instruction body may express, and this pass survives until
+that decision lands.

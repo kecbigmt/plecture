@@ -807,14 +807,14 @@ Same-id behavior by kind:
 |---|---|
 | Workspace providers, resources, channels | Same-id conflicts between plugin layers fail. A deeper user-owned layer replaces the whole definition. No partial override. |
 | Tasks | Same-id conflicts between plugin layers fail. A deeper user-owned layer replaces the whole definition. No partial override. |
-| Workflows | Same-id conflicts between plugin workflow node ids, event channel names, or singleton fields fail. User-owned layers merge by adding nodes and event channels. Singleton fields cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
-| Workflow input schemas | Plugin-layer schemas for the same workflow id conflict unless they belong to the same selected plugin workflow. User-owned layer schemas combine with `allOf`. |
+| Workflows | Same-id conflicts between plugin layers fail. User-owned layers merge by adding nodes. Every other field a shallower layer set cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
+| Workflow input schemas | A workflow's input contract is stated by one layer. A deeper layer redeclaring it is a load error, since a contract no single layer states is one no author can read. |
 | Templates | Same-id conflicts between plugin layers fail. Lookup then remains user-overridable: nearest workspace dir or ancestor template, then global user templates, then plugin templates. |
 
 Partial override model:
 
-- To partially customize a plugin workflow, add a same-named workflow file in a
-  trusted overlay that adds new `[[nodes]]` or new `[[event.channel]]` entries.
+- To partially customize a plugin workflow, add a same-id workflow declaration
+  in a trusted overlay that adds new `[[nodes]]` entries.
 - To replace a plugin task, workspace provider, resource, or channel, place a
   full same-id definition in global config or a trusted overlay.
 - To customize a template, place a same-named Markdown template in the nearest

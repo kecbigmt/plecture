@@ -160,7 +160,10 @@ func workflowNodesFrom(def *lang.Definition, pos lang.Position) ([]WorkflowNode,
 	if err != nil {
 		return nil, err
 	}
-	raw := asNodeTables(def.Body["nodes"])
+	raw, err := lang.WorkflowNodeTables(def)
+	if err != nil {
+		return nil, err
+	}
 	if len(raw) != len(topology) {
 		return nil, fmt.Errorf("internal: workflow %q declares %d nodes but the language read %d", def.ID, len(raw), len(topology))
 	}
@@ -182,11 +185,10 @@ func workflowNodesFrom(def *lang.Definition, pos lang.Position) ([]WorkflowNode,
 }
 
 func eventChannelsFrom(def *lang.Definition, pos lang.Position) ([]EventChannel, error) {
-	event, ok := def.Body["event"].(map[string]any)
-	if !ok {
-		return nil, nil
+	raw, err := lang.WorkflowEventChannels(def)
+	if err != nil {
+		return nil, err
 	}
-	raw := asNodeTables(event["channel"])
 	at := childPosition(pos, "event.channel")
 	out := make([]EventChannel, 0, len(raw))
 	names := make(map[string]bool, len(raw))
@@ -319,24 +321,4 @@ func stringList(tbl map[string]any, key string) ([]string, error) {
 		out = append(out, value)
 	}
 	return out, nil
-}
-
-// asNodeTables normalizes an array-of-tables body field, which TOML decodes
-// as []map[string]any but a cascade merge rebuilds as []any.
-func asNodeTables(raw any) []map[string]any {
-	switch arr := raw.(type) {
-	case []map[string]any:
-		return arr
-	case []any:
-		out := make([]map[string]any, 0, len(arr))
-		for _, entry := range arr {
-			tbl, ok := entry.(map[string]any)
-			if !ok {
-				return nil
-			}
-			out = append(out, tbl)
-		}
-		return out
-	}
-	return nil
 }

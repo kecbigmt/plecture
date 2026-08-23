@@ -261,10 +261,23 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 			return err
 		}
 	}
-	for i, channel := range v.eventChannels(def) {
+	channels, err := v.eventChannels(def, pos)
+	if err != nil {
+		return err
+	}
+	for i, channel := range channels {
 		at := childPos(childPos(pos, "event.channel"), fmt.Sprintf("[%d]", i))
 		if err := rejectUnknownFields(channel, at, "name", "uses", "inputs", "include"); err != nil {
 			return err
+		}
+		// A binding with no name cannot be addressed and one with no target
+		// delivers nowhere, so both are required here rather than left to
+		// whichever consumer notices the gap first.
+		for _, field := range []string{"name", "uses"} {
+			if _, declared := channel[field]; !declared {
+				return newDiag(CodeFieldRequired, LayerStructural, childPos(at, field),
+					fmt.Sprintf("an event channel declares `%s`", field))
+			}
 		}
 		if err := v.valueTable(channel, "inputs", ClassData, surfaceWorkflowNodeInputs, at); err != nil {
 			return err
@@ -413,7 +426,11 @@ func (v Validation) checkStaticTopology(def *Definition, pos Position) error {
 			}
 		}
 	}
-	for i, channel := range v.eventChannels(def) {
+	channels, err := v.eventChannels(def, pos)
+	if err != nil {
+		return err
+	}
+	for i, channel := range channels {
 		if uses, ok := channel["uses"]; ok {
 			at := childPos(childPos(childPos(pos, "event.channel"), fmt.Sprintf("[%d]", i)), "uses")
 			if _, err := staticRef(uses, at.Path); err != nil {
@@ -436,13 +453,21 @@ func (v Validation) checkStaticTopology(def *Definition, pos Position) error {
 	return nil
 }
 
-func (v Validation) eventChannels(def *Definition) []map[string]any {
-	event, ok := def.Body["event"].(map[string]any)
+// eventChannels reads a workflow's channel bindings. A malformed `event` or
+// `channel` is reported rather than read as no channels: a workflow whose
+// delivery silently disappeared would be indistinguishable from one that
+// declared none, and the session would sit unreachable.
+func (v Validation) eventChannels(def *Definition, pos Position) ([]map[string]any, error) {
+	raw, ok := def.Body["event"]
 	if !ok {
-		return nil
+		return nil, nil
 	}
-	channels, _ := asTableArray(event["channel"])
-	return channels
+	at := childPos(pos, "event")
+	event, err := table(raw, at)
+	if err != nil {
+		return nil, err
+	}
+	return tableArray(event, "channel", at)
 }
 
 func (v Validation) action(body map[string]any, field string, s *Surface, pos Position) error {

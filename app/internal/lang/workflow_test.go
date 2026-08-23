@@ -156,3 +156,76 @@ peer = { from = "nodes.pane.outputs.session_name" }
 		t.Fatalf("ValidateDefinition: %v", err)
 	}
 }
+
+// A value surface accepts a whole JSON document built from projections, so an
+// edge can be declared arbitrarily deep inside one. Validation already walks
+// those leaves; the topology has to walk the same ones or the graph it reports
+// is not the graph the wiring declares.
+func TestWorkflowNodes_ReadsThroughAJSONOperand(t *testing.T) {
+	def := workflowDef(t, `
+[session]
+kind = "workflow"
+
+[[session.nodes]]
+uses = "producer"
+
+[[session.nodes]]
+uses = "consumer"
+
+[session.nodes.inputs]
+payload = { json = { nested = { list = [ { from = "nodes.producer.outputs.value" } ] } } }
+`)
+	nodes, err := WorkflowNodes(def)
+	if err != nil {
+		t.Fatalf("WorkflowNodes: %v", err)
+	}
+	if len(nodes[1].Reads) != 1 || nodes[1].Reads[0] != "producer" {
+		t.Fatalf("consumer reads = %v, want [producer]", nodes[1].Reads)
+	}
+}
+
+func TestValidateWorkflow_CycleThroughAJSONOperandRejected(t *testing.T) {
+	def := workflowDef(t, `
+[session]
+kind = "workflow"
+
+[[session.nodes]]
+uses = "first"
+
+[session.nodes.inputs]
+payload = { json = { peer = { from = "nodes.second.outputs.value" } } }
+
+[[session.nodes]]
+uses = "second"
+
+[session.nodes.inputs]
+peer = { from = "nodes.first.outputs.value" }
+`)
+	assertDiagnostic(t, Validation{}.ValidateDefinition(def), CodeWorkflowCycle, LayerSemantic)
+}
+
+// A channel binding that is not an array of tables reaches the runtime as no
+// channels at all, so the session would sit unreachable with nothing said.
+func TestValidateWorkflow_NonArrayEventChannelRejected(t *testing.T) {
+	def := workflowDef(t, `
+[session]
+kind = "workflow"
+
+[session.event]
+channel = "runtime"
+
+[[session.nodes]]
+uses = "pane"
+`)
+	assertDiagnostic(t, Validation{}.ValidateDefinition(def), CodeFieldType, LayerStructural)
+}
+
+func TestValidateWorkflow_EventChannelRequiresNameAndUses(t *testing.T) {
+	for _, body := range []string{
+		"[[session.event.channel]]\nuses = \"delivery\"\n",
+		"[[session.event.channel]]\nname = \"runtime\"\n",
+	} {
+		def := workflowDef(t, "[session]\nkind = \"workflow\"\n\n[[session.nodes]]\nuses = \"pane\"\n\n"+body)
+		assertDiagnostic(t, Validation{}.ValidateDefinition(def), CodeFieldRequired, LayerStructural)
+	}
+}

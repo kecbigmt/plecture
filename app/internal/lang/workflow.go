@@ -59,6 +59,18 @@ func WorkflowNodes(def *Definition) ([]WorkflowNode, error) {
 	return out, nil
 }
 
+// WorkflowNodeTables and WorkflowEventChannels hand a decoder the same
+// array-of-tables the validator read, so a malformed one is the language's
+// diagnostic rather than a nil slice the decoder would read as "declares
+// none".
+func WorkflowNodeTables(def *Definition) ([]map[string]any, error) {
+	return tableArray(def.Body, "nodes", Position{File: def.File, Path: def.ID})
+}
+
+func WorkflowEventChannels(def *Definition) ([]map[string]any, error) {
+	return Validation{}.eventChannels(def, Position{File: def.File, Path: def.ID})
+}
+
 func workflowNode(entry map[string]any, pos Position) (WorkflowNode, error) {
 	var node WorkflowNode
 	if err := rejectUnknownFields(entry, pos, "id", "uses", "inputs", "blocks"); err != nil {
@@ -161,17 +173,46 @@ func NodeReads(inputs map[string]*Value) []string {
 		out = append(out, id)
 	}
 	for _, key := range sortedValueKeys(inputs) {
-		value := inputs[key]
-		switch value.Form {
-		case FormFrom:
-			add(value.From)
-		case FormExpr:
-			for _, path := range expressionPaths(value.Expr, surfaceWorkflowNodeInputs) {
-				add(path)
-			}
-		}
+		valueReads(inputs[key], add)
 	}
 	return out
+}
+
+// valueReads walks one value for the projections it makes, descending into a
+// JSON operand's own leaves: a value surface accepts a whole document built
+// from projections, so an edge can be declared arbitrarily deep inside one
+// and a walk that stopped at the top would miss it.
+func valueReads(value *Value, add func(string)) {
+	if value == nil {
+		return
+	}
+	switch value.Form {
+	case FormFrom:
+		add(value.From)
+	case FormExpr:
+		for _, path := range expressionPaths(value.Expr, surfaceWorkflowNodeInputs) {
+			add(path)
+		}
+	case FormJSON:
+		operandReads(value.JSON, add)
+	}
+}
+
+func operandReads(op *JSONOperand, add func(string)) {
+	switch {
+	case op == nil:
+		return
+	case op.Leaf != nil:
+		valueReads(op.Leaf, add)
+	case op.Object != nil:
+		for _, key := range sortedOperandKeys(op.Object) {
+			operandReads(op.Object[key], add)
+		}
+	default:
+		for _, child := range op.Array {
+			operandReads(child, add)
+		}
+	}
 }
 
 // nodeReadID reads the node id out of a `nodes.<id>.outputs.<key>`

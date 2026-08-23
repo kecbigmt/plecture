@@ -1,11 +1,13 @@
 package task
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 func TestCompileWorkflow_DerivesDAGFromInputs(t *testing.T) {
@@ -407,5 +409,67 @@ func TestResolveNodeInputs_DefaultAndOptionalCoverAbsence(t *testing.T) {
 	}
 	if _, present := out["effort"]; present {
 		t.Errorf("effort should be omitted, got %v", out["effort"])
+	}
+}
+
+// The edge a projection nested inside a JSON operand declares has to reach
+// execution order too: the consumer resolving that operand needs the
+// producer's outputs in its dependency view, which only a DependsOn edge puts
+// there.
+func TestCompileWorkflow_DerivesDAGThroughAJSONOperand(t *testing.T) {
+	payload := &lang.Value{Form: lang.FormJSON, JSON: &lang.JSONOperand{
+		Object: map[string]*lang.JSONOperand{
+			"value": {Leaf: fromValue("nodes.producer.outputs.value")},
+		},
+	}}
+	wf := config.WorkflowFile{
+		ID: "wiring",
+		Nodes: []config.WorkflowNode{
+			{ID: "consumer", Uses: "consumer", Inputs: map[string]*lang.Value{"payload": payload}},
+			{ID: "producer", Uses: "producer"},
+		},
+	}
+	defs := map[string]config.TaskDefinition{
+		"producer": {ID: "producer", Scope: "run", Setup: shellStub(`echo '{"value":"v"}'`)},
+		"consumer": {ID: "consumer", Scope: "run", Setup: shellStub("true")},
+	}
+	plan, err := CompileWorkflow(wf, defs)
+	if err != nil {
+		t.Fatalf("CompileWorkflow: %v", err)
+	}
+	if len(plan.Run) != 2 || plan.Run[0].NodeID != "producer" || plan.Run[1].NodeID != "consumer" {
+		t.Fatalf("run order = %+v, want producer before consumer", ids(plan.Run))
+	}
+	consumer := plan.Run[1]
+	if len(consumer.DependsOn) != 1 || consumer.DependsOn[0] != "producer" {
+		t.Fatalf("consumer.DependsOn = %v, want [producer]", consumer.DependsOn)
+	}
+}
+
+// The same edge end to end: without it the consumer runs first and its
+// operand resolves against a dependency view the producer is absent from.
+func TestRunSetup_JSONOperandResolvesAgainstItsDerivedDependency(t *testing.T) {
+	payload := &lang.Value{Form: lang.FormJSON, JSON: &lang.JSONOperand{
+		Object: map[string]*lang.JSONOperand{
+			"seen": {Leaf: fromValue("nodes.producer.outputs.value")},
+		},
+	}}
+	plan := buildPlan(t,
+		[]taskStub{
+			{id: "producer", scope: "run", setup: `echo '{"value":"from-producer"}'`},
+			{id: "consumer", scope: "run", setup: "true"},
+		},
+		[]nodeStub{
+			{id: "consumer", inputs: map[string]*lang.Value{"payload": payload}},
+			{id: "producer"},
+		},
+	)
+	tasks := map[string]*contract.TaskState{}
+	if err := RunSetup(context.Background(), plan.Run, SessionVars{Name: "s"}, tasks, nil); err != nil {
+		t.Fatalf("RunSetup: %v", err)
+	}
+	got, _ := tasks["consumer"].Inputs["payload"].(string)
+	if got != `{"seen":"from-producer"}` {
+		t.Fatalf("consumer payload = %q, want the producer's output serialized into the operand", got)
 	}
 }
