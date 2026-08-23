@@ -20,7 +20,8 @@ cat > "$fixture/plugins/pluginB/scripts/b_selftest.sh" <<'EOF'
 echo "ran pluginB selftest"
 EOF
 
-# pluginC intentionally has no selftest script (a legitimate, common case).
+# The pluginC fixture intentionally has no selftest script (a legitimate,
+# common case).
 
 cat > "$fixture/plugins/pluginD/scripts/d_fails_selftest.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -47,8 +48,8 @@ else
   echo "ok: requesting pluginA does not run pluginB's selftest"
 fi
 
-# pluginC has no selftest script at all; requesting it alone (as an
-# incidentally-affected plugin, not a full-repo scan) must not fail.
+# The pluginC fixture has no selftest script at all; requesting it alone
+# (as an incidentally-affected plugin, not a full-repo scan) must not fail.
 if ! PLUGIN_SELFTEST_ROOT="$fixture" "$runner" pluginC >"$fixture/c.log" 2>&1; then
   echo "FAIL: a selftest-less plugin, requested on its own, must not fail" >&2
   cat "$fixture/c.log" >&2

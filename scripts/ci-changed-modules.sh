@@ -14,17 +14,24 @@
 # docs/language/**/*.md and testdata/config-language/** are the same kind
 # of reverse edge, not prose: app/internal/lang's conformance tests
 # (docs_conformance_test.go, diag_test.go, native_conformance_test.go)
-# read these files directly off disk as the executable specification, so
-# they must not fall under the "docs-only, no job needed" treatment that
-# the generic *.md pattern below gives everything else.
+# read these files directly off disk as the executable specification.
 #
-# An unrecognized changed path falls back to a full run: skipping a job is
-# only safe when its rationale traces to an enforced boundary or an
-# explicit reverse edge above, not by default.
+# The "docs-only, no job needed" list below is a whitelist of locations
+# individually confirmed (by grep, not by extension) to hold prose no Go
+# code reads — docs/** other than docs/language/, the root CLAUDE.md and
+# AGENTS.md (read only by check-agent-config.sh, already unconditional),
+# and each plugin's own README.md. It is deliberately not "any *.md
+# anywhere": a bare extension match would silently wave through a future
+# fixture suite that happens to use .md files somewhere new (e.g. a
+# testdata/new-suite/case.md), the exact false-green this reverse edge was
+# added to close. Anything not on this list, or one of the reverse edges
+# above, falls back to a full run: skipping a job is only safe when its
+# rationale traces to an enforced boundary or an explicit reverse edge, not
+# by default.
 set -euo pipefail
 
-# plugins/legacy-migration has no src/ subdirectory of its own — its module
-# root doubles as what every other plugin calls src/.
+# The plugins/legacy-migration module has no src/ subdirectory of its
+# own — its module root doubles as what every other plugin calls src/.
 BUILD_TEST_ALL='["app","contracts/atomicfile","contracts/channel-protocol","contracts/event","contracts/state","plugins/claude/src/channel-server","plugins/github/src","plugins/legacy-migration","plugins/okf/src","plugins/slack/src/slack-adapter"]'
 ALL_PLUGIN_DIRS='["claude","codex","github","legacy-migration","okf","slack","tmux"]'
 
@@ -66,9 +73,11 @@ LANG_DOCS_RE='^docs/language/'
 LANG_TESTDATA_RE='^testdata/config-language/'
 README_RE='^README\.md$'
 FULL_RUN_TRIGGER_RE='^\.github/workflows/|^scripts/[^/]+\.sh$'
-DOCS_OR_MD_RE='^docs/|\.md$'
+DOCS_PROSE_RE='^docs/'
+ROOT_PROSE_RE='^(CLAUDE|AGENTS)\.md$'
+PLUGIN_README_RE='^plugins/[^/]+/README\.md$'
 
-KNOWN_RE="$CONTRACTS_RE|$APP_RE|$CLAUDE_SRC_RE|$GITHUB_SRC_RE|$LEGACY_MIGRATION_RE|$OKF_SRC_RE|$SLACK_SRC_RE|$CLAUDE_CFG_RE|$GITHUB_CFG_RE|$OKF_CFG_RE|$SLACK_CFG_RE|$CODEX_CFG_RE|$TMUX_CFG_RE|$LANG_DOCS_RE|$LANG_TESTDATA_RE|$FULL_RUN_TRIGGER_RE|$DOCS_OR_MD_RE"
+KNOWN_RE="$CONTRACTS_RE|$APP_RE|$CLAUDE_SRC_RE|$GITHUB_SRC_RE|$LEGACY_MIGRATION_RE|$OKF_SRC_RE|$SLACK_SRC_RE|$CLAUDE_CFG_RE|$GITHUB_CFG_RE|$OKF_CFG_RE|$SLACK_CFG_RE|$CODEX_CFG_RE|$TMUX_CFG_RE|$LANG_DOCS_RE|$LANG_TESTDATA_RE|$FULL_RUN_TRIGGER_RE|$README_RE|$DOCS_PROSE_RE|$ROOT_PROSE_RE|$PLUGIN_README_RE"
 
 unknown=false
 if [ -n "$files" ] && grep -Eqv "$KNOWN_RE" <<< "$files"; then

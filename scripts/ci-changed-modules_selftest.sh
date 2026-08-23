@@ -105,6 +105,25 @@ check "a plugin's own plugin.toml is unmapped -> full run, not silently skipped"
   'plugins/github/plugin.toml' \
   "$full_run_expected"
 
+# Regression for the fail-open the whitelist design closes: a bare *.md
+# extension match would have waved through a brand new, never-audited
+# fixture suite just because it happens to use .md files.
+check "an unrecognized new .md path outside every audited prose location -> full run, not docs-only" \
+  'testdata/new-suite/case.md' \
+  "$full_run_expected"
+
+check "root AGENTS.md is audited prose (read only by check-agent-config.sh, already unconditional)" \
+  'AGENTS.md' \
+  $'FULL_RUN=false\nBUILD_TEST_MATRIX=[]\nINTEGRATION_TEST=false\nREADME_VERIFY=false\nAFFECTED_PLUGINS=[]'
+
+check "a plugin's own README.md is audited prose, not read by any test" \
+  'plugins/github/README.md' \
+  $'FULL_RUN=false\nBUILD_TEST_MATRIX=[]\nINTEGRATION_TEST=false\nREADME_VERIFY=false\nAFFECTED_PLUGINS=[]'
+
+check "a loose docs/ file outside any subdirectory is still audited prose" \
+  'docs/naming.md' \
+  $'FULL_RUN=false\nBUILD_TEST_MATRIX=[]\nINTEGRATION_TEST=false\nREADME_VERIFY=false\nAFFECTED_PLUGINS=[]'
+
 check "no changed files -> nothing runs beyond the unconditional lint set" \
   '' \
   $'FULL_RUN=false\nBUILD_TEST_MATRIX=[]\nINTEGRATION_TEST=false\nREADME_VERIFY=false\nAFFECTED_PLUGINS=[]'
