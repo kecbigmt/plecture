@@ -54,14 +54,14 @@ output without a header row so the result is consumable by cut/awk/etc.`,
 			if err != nil {
 				return err
 			}
-			fmt.Println(string(b))
+			fmt.Fprintln(cmd.OutOrStdout(), string(b))
 			return nil
 		}
 		if len(workflows) == 0 {
-			fmt.Fprintln(os.Stderr, "No workflows found")
+			fmt.Fprintln(cmd.ErrOrStderr(), "No workflows found")
 			return nil
 		}
-		return writeWorkflowList(os.Stdout, workflows, workflowListNoHeader)
+		return writeWorkflowList(cmd.OutOrStdout(), workflows, workflowListNoHeader)
 	},
 }
 
@@ -97,7 +97,14 @@ func writeWorkflowList(out io.Writer, workflows []service.WorkflowSummary, noHea
 var workflowShowCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show full information about a workflow",
-	Args:  cobra.ExactArgs(1),
+	Long: `Show full information about a workflow: identity, workspace provider,
+inputs schema, node DAG, and event channels.
+
+Exit code is nonzero when the workflow's referenced workspace provider is
+declared but fails to load — the failure is still printed (or included in
+--json as workspace_provider_error) alongside everything else that resolved
+cleanly.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -116,10 +123,14 @@ var workflowShowCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			fmt.Println(string(b))
-			return nil
+			fmt.Fprintln(cmd.OutOrStdout(), string(b))
+		} else if err := printWorkflowDetail(cmd.OutOrStdout(), detail); err != nil {
+			return err
 		}
-		return printWorkflowDetail(os.Stdout, detail)
+		if detail.WorkspaceProviderError != "" {
+			return fmt.Errorf("workspace provider %q failed to load: %s", detail.WorkspaceProvider, detail.WorkspaceProviderError)
+		}
+		return nil
 	},
 }
 
@@ -152,6 +163,9 @@ func printWorkflowDetail(out io.Writer, d *service.WorkflowDetail) error {
 		if len(hooks) > 0 {
 			fmt.Fprintf(w, "Workspace provider hooks:\t%s (use --json for the scripts)\n", strings.Join(hooks, ", "))
 		}
+	}
+	if d.WorkspaceProviderError != "" {
+		fmt.Fprintf(w, "Workspace provider error:\t%s\n", d.WorkspaceProviderError)
 	}
 	if d.Tick != nil {
 		if len(d.Tick.On) > 0 {

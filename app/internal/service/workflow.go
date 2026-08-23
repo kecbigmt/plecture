@@ -30,11 +30,17 @@ type WorkflowDetail struct {
 	// `workflow show` can present the whole picture without a second lookup.
 	WorkspaceProvider     string                          `json:"workspace_provider,omitempty"`
 	WorkspaceProviderInfo *config.WorkspaceProviderConfig `json:"workspace_provider_info,omitempty"`
-	Display               map[string]string               `json:"display,omitempty"`
-	AutoSelect            bool                            `json:"auto_select"`
-	InputsSchema          map[string]any                  `json:"inputs_schema,omitempty"`
-	Nodes                 []WorkflowNode                  `json:"nodes"`
-	Channels              []WorkflowChannel               `json:"channels,omitempty"`
+	// WorkspaceProviderError carries the load failure when the referenced
+	// workspace provider is declared but fails to load — set instead of
+	// WorkspaceProviderInfo, never both, so `workflow show` still renders
+	// everything else it resolved rather than reporting a broken workflow as
+	// clean.
+	WorkspaceProviderError string            `json:"workspace_provider_error,omitempty"`
+	Display                map[string]string `json:"display,omitempty"`
+	AutoSelect             bool              `json:"auto_select"`
+	InputsSchema           map[string]any    `json:"inputs_schema,omitempty"`
+	Nodes                  []WorkflowNode    `json:"nodes"`
+	Channels               []WorkflowChannel `json:"channels,omitempty"`
 	// Tick is the workflow's declared [tick] table (docs/wiki/verification-gate.md),
 	// nil when undeclared.
 	Tick *config.TickConfig `json:"tick,omitempty"`
@@ -122,10 +128,11 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 		Tick:              wf.Tick,
 	}
 	if wf.WorkspaceProvider != "" {
-		if workspaceProviders, err := cfg.LoadWorkspaceProviders(); err == nil {
-			if prov, ok := workspaceProviders[wf.WorkspaceProvider]; ok {
-				detail.WorkspaceProviderInfo = &prov
-			}
+		workspaceProviders, err := cfg.LoadWorkspaceProviders()
+		if err != nil {
+			detail.WorkspaceProviderError = err.Error()
+		} else if prov, ok := workspaceProviders[wf.WorkspaceProvider]; ok {
+			detail.WorkspaceProviderInfo = &prov
 		}
 	}
 	if len(wf.Event.Channel) > 0 {

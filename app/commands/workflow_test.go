@@ -2,11 +2,23 @@ package commands
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/service"
 )
+
+func writeWorkflowShowFixtureFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestWriteWorkflowList_NoHeaderUsesLiteralTabs(t *testing.T) {
 	var buf bytes.Buffer
@@ -79,6 +91,46 @@ func TestWriteChannels_OmitsBlankTypeAndDelivers(t *testing.T) {
 	want := "  runtime (uses claude_channel)\n"
 	if got != want {
 		t.Errorf("got:\n%q\nwant:\n%q", got, want)
+	}
+}
+
+func TestWorkflowShow_WorkspaceProviderLoadErrorExitsNonzero(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	globalDir := filepath.Join(fakeHome, ".config", "plect")
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
+[tmux]
+kind  = "effect"
+scope = "run"
+
+[tmux.setup]
+type   = "shell"
+script = "echo '{}'"
+`)
+	// `setup` is required for a workspace provider; omitting it fails the load.
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "workspaces", "broken.toml"), `
+[broken]
+kind = "workspace_provider"
+`)
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "workflows", "usesbroken.toml"), `
+[usesbroken]
+kind = "workflow"
+workspace_provider = "broken"
+
+[[usesbroken.nodes]]
+uses = "tmux"
+`)
+
+	out, err := execRoot(t, "workflow", "show", "usesbroken")
+	if err == nil {
+		t.Fatalf("expected nonzero exit when the referenced workspace provider fails to load; output:\n%s", out)
+	}
+	if !strings.Contains(out, "usesbroken") {
+		t.Errorf("output should still render the rest of the workflow; got:\n%s", out)
+	}
+	if !strings.Contains(out, "setup") {
+		t.Errorf("output should name the load failure; got:\n%s", out)
 	}
 }
 

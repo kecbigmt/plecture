@@ -108,6 +108,60 @@ func TestWorkflowShow_ReturnsCompiledDAG(t *testing.T) {
 	}
 }
 
+func TestWorkflowShow_WorkspaceProviderLoadErrorIsSurfaced(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
+[tmux]
+kind  = "effect"
+scope = "run"
+
+[tmux.setup]
+type   = "shell"
+script = "echo '{}'"
+`)
+	// `setup` is required for a workspace provider; omitting it fails the load.
+	writeFile(t, filepath.Join(globalDir, "workspaces", "broken.toml"), `
+[broken]
+kind = "workspace_provider"
+`)
+	writeFile(t, filepath.Join(globalDir, "workflows", "usesbroken.toml"), `
+[usesbroken]
+kind = "workflow"
+workspace_provider = "broken"
+
+[[usesbroken.nodes]]
+uses = "tmux"
+`)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := WorkflowShow(cfg, filepath.Join(tmpHome, "workdirs", "session"), "usesbroken")
+	if err != nil {
+		t.Fatalf("WorkflowShow should still return a partial result, got error: %v", err)
+	}
+	if got.WorkspaceProviderInfo != nil {
+		t.Errorf("expected no resolved workspace provider info, got %+v", got.WorkspaceProviderInfo)
+	}
+	if got.WorkspaceProviderError == "" {
+		t.Fatal("expected WorkspaceProviderError to be populated")
+	}
+	if !strings.Contains(got.WorkspaceProviderError, "setup") {
+		t.Errorf("error should name the missing field: %q", got.WorkspaceProviderError)
+	}
+	if len(got.Nodes) != 1 {
+		t.Errorf("expected the rest of the workflow to still render: %+v", got.Nodes)
+	}
+}
+
 func TestWorkflowShow_PopulatesChannels(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
