@@ -1,0 +1,20 @@
+# plect-fixture: result=valid entry=definitions
+# reason: the base's schema table omits `type`; the extension is the first layer to declare it, and composition must not drop that declaration just because the base's table is the one that appears first in the chain.
+
+[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[base_task.state_schema.properties]
+priority = { type = "string" }
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.state_schema]
+type = "object"
+
+[ext_task.state_schema.properties]
+reviewed_by = { type = "string" }

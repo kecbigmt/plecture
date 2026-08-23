@@ -28,6 +28,11 @@ type PluginLayer struct {
 type Registry struct {
 	plugins map[string]map[string]*Definition // "<alias>.<path>" -> id -> Definition
 	user    map[string]*Definition
+	// owner records which layer wrote each definition this registry holds, so
+	// a caller resolving a second reference hop — extends walking a base's own
+	// extends, for instance — resolves it in that base's namespace rather than
+	// the first reference's.
+	owner map[*Definition]Ownership
 }
 
 // NewRegistry builds a Registry from the enabled plugin layers and the
@@ -36,18 +41,32 @@ func NewRegistry(plugins []PluginLayer, user []*Definition) *Registry {
 	r := &Registry{
 		plugins: make(map[string]map[string]*Definition, len(plugins)),
 		user:    make(map[string]*Definition, len(user)),
+		owner:   make(map[*Definition]Ownership),
 	}
 	for _, p := range plugins {
 		layer := make(map[string]*Definition, len(p.Defs))
+		from := Ownership{IsPlugin: true, Alias: p.Alias, Path: p.Path}
 		for _, d := range p.Defs {
 			layer[d.ID] = d
+			r.owner[d] = from
 		}
 		r.plugins[p.Alias+"."+p.Path] = layer
 	}
 	for _, d := range user {
 		r.user[d.ID] = d
+		r.owner[d] = Ownership{}
 	}
 	return r
+}
+
+// OwnerOf reports the Ownership def was registered under, for resolving a
+// reference written inside def itself. A def this registry did not load
+// resolves as user-owned, the safe default for a definition reached only
+// through a value it does not itself control (a Resolve result is always
+// registered, so this only matters for a def a caller constructed outside
+// the registry).
+func (r *Registry) OwnerOf(def *Definition) Ownership {
+	return r.owner[def]
 }
 
 // existsUnderSomeEnabledPlugin reports whether id is declared by any

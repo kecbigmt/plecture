@@ -361,6 +361,11 @@ func canonicalizeDocumentRefs(doc *TaskDocument, prefix string) error {
 		return fmt.Errorf("task %q resource_observer: %w", doc.ID, err)
 	}
 	doc.ResourceObserver = observer
+	extends, err := referenceAddress(prefix, doc.Extends)
+	if err != nil {
+		return fmt.Errorf("task %q extends: %w", doc.ID, err)
+	}
+	doc.Extends = extends
 	for i := range doc.Chains {
 		workflow, err := referenceAddress(prefix, doc.Chains[i].Workflow)
 		if err != nil {

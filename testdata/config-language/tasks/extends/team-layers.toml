@@ -1,0 +1,24 @@
+# plect-fixture: result=valid entry=definitions
+# reason: three layers deep — an official base, a team extension, and a member's personal extension of the team's — the team-adoption shape unbounded depth and inner-first defaults exist for. The innermost layer's instructions and judge reach the outermost through composition.
+
+[official_review]
+kind              = "task"
+description       = "Review a change against the official contract"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Review the change at {{ resource.id }}." }]
+
+[official_review.done_when]
+all = [{ judge = "the change is correct", id = "correct" }]
+
+[team_review]
+kind         = "task"
+extends      = "official_review"
+instructions = [{ text = "Additionally check the team's own style checklist." }]
+
+[team_review.done_when]
+all = [{ judge = "the team style checklist is satisfied", id = "team-style" }]
+
+[my_review]
+kind         = "task"
+extends      = "team_review"
+instructions = [{ text = "Additionally leave inline comments for anything worth changing." }]

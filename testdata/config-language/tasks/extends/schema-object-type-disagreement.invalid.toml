@@ -1,0 +1,20 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-EXTENDS-SCHEMA-TYPE entry=definitions
+# reason: an extension's own schema table may restate `type`, but only in agreement with whichever earlier layer already fixed it — composition otherwise keeps just the first value, making a disagreeing later layer's declaration dead weight rather than the redefinition error it should be.
+
+[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[base_task.state_schema]
+type = "object"
+
+[base_task.state_schema.properties]
+priority = { type = "string" }
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.state_schema]
+type = "array"

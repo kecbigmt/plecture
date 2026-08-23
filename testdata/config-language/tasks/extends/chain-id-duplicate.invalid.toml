@@ -1,0 +1,33 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-EXTENDS-CHAIN-ID-DUPLICATE entry=definitions
+# reason: a chain id is unique across the whole extends chain, the same rule a judge id follows — two layers naming one id would collide in spawn routing, which has no way to tell the two firings apart.
+
+[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[[base_task.chains]]
+id        = "review"
+workflow  = "goal_reviewer"
+placement = "sibling"
+
+[base_task.chains.when]
+all = [{ check = "resource.state.checks_status", in = ["SUCCESS"] }]
+
+[base_task.chains.inputs]
+task = "review"
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[[ext_task.chains]]
+id        = "review"
+workflow  = "goal_reviewer"
+placement = "sibling"
+
+[ext_task.chains.when]
+all = [{ check = "resource.state.checks_status", in = ["FAILURE"] }]
+
+[ext_task.chains.inputs]
+task = "review"

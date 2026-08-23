@@ -1,0 +1,6 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-EXTENDS-CYCLE entry=definitions
+# reason: an extends chain that reaches itself has no base to compose against.
+
+[loop_task]
+kind    = "task"
+extends = "loop_task"

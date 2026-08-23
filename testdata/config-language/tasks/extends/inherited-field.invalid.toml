@@ -1,0 +1,12 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-EXTENDS-INHERITED-FIELD entry=definitions
+# reason: resource_observer is inherited through extends, not restated; declaring both is two authorities for the same fact.
+
+[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[ext_task]
+kind              = "task"
+extends           = "base_task"
+resource_observer = "issue_pr"

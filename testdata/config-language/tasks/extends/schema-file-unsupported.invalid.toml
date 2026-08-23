@@ -1,0 +1,12 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-EXTENDS-SCHEMA-FILE-UNSUPPORTED entry=definitions
+# reason: a schema_file path resolves relative to its declaring layer's own directory, which a single composed document has no per-field way to remember, so an extends chain of more than one layer rejects it rather than silently composing into an empty contract.
+
+[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+state_schema_file = "state.schema.json"
+
+[ext_task]
+kind    = "task"
+extends = "base_task"

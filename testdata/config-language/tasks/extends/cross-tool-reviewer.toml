@@ -1,0 +1,44 @@
+# plect-fixture: result=valid entry=definitions
+# reason: two small extensions of one base each choose a different reviewer with a static chain, dissolving a templated conditional into two plain declarations. Each chain's `judge_pending` names a judge id the base declares, exercising judge ids composed across the chain.
+
+[work]
+kind              = "task"
+description       = "Implement a fix and hand it to review"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
+
+[work.done_when]
+all = [
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
+  { judge = "acceptance criteria are satisfied", id = "ac-met" },
+]
+
+[work_claude]
+kind    = "task"
+extends = "work"
+
+[[work_claude.chains]]
+id        = "review"
+workflow  = "claude_reviewer"
+placement = "sibling"
+
+[work_claude.chains.when]
+all = [{ judge_pending = "ac-met" }]
+
+[work_codex]
+kind    = "task"
+extends = "work"
+
+[[work_codex.chains]]
+id        = "review"
+workflow  = "codex_reviewer"
+placement = "sibling"
+
+[work_codex.chains.when]
+all = [{ judge_pending = "ac-met" }]
+
+[claude_reviewer]
+kind = "workflow"
+
+[codex_reviewer]
+kind = "workflow"

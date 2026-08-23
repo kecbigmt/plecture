@@ -60,6 +60,14 @@ const (
 	CodeNestingCycle                  Code = "PLECTURE-CFG-NESTING-CYCLE"
 	CodeNestingOutputMutable          Code = "PLECTURE-CFG-NESTING-OUTPUT-MUTABLE"
 	CodeNestingProjectionMismatch     Code = "PLECTURE-CFG-NESTING-PROJECTION-MISMATCH"
+	CodeExtendsInheritedField         Code = "PLECTURE-CFG-EXTENDS-INHERITED-FIELD"
+	CodeExtendsCycle                  Code = "PLECTURE-CFG-EXTENDS-CYCLE"
+	CodeExtendsJudgeIDDuplicate       Code = "PLECTURE-CFG-EXTENDS-JUDGE-ID-DUPLICATE"
+	CodeExtendsChainIDDuplicate       Code = "PLECTURE-CFG-EXTENDS-CHAIN-ID-DUPLICATE"
+	CodeExtendsDefaultRedeclared      Code = "PLECTURE-CFG-EXTENDS-DEFAULT-REDECLARED"
+	CodeExtendsSchemaType             Code = "PLECTURE-CFG-EXTENDS-SCHEMA-TYPE"
+	CodeExtendsSchemaShape            Code = "PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE"
+	CodeExtendsSchemaFileUnsupported  Code = "PLECTURE-CFG-EXTENDS-SCHEMA-FILE-UNSUPPORTED"
 	CodeWorkflowCycle                 Code = "PLECTURE-CFG-WORKFLOW-CYCLE"
 	CodeCELSyntax                     Code = "PLECTURE-CFG-CEL-SYNTAX"
 	CodeCELUnknownName                Code = "PLECTURE-CFG-CEL-UNKNOWN-NAME"
@@ -109,6 +117,14 @@ var codeLayers = map[Code][]Layer{
 	CodeNestingCycle:                  {LayerSemantic},
 	CodeNestingOutputMutable:          {LayerSemantic},
 	CodeNestingProjectionMismatch:     {LayerSemantic},
+	CodeExtendsInheritedField:         {LayerStructural},
+	CodeExtendsCycle:                  {LayerSemantic},
+	CodeExtendsJudgeIDDuplicate:       {LayerSemantic},
+	CodeExtendsChainIDDuplicate:       {LayerSemantic},
+	CodeExtendsDefaultRedeclared:      {LayerSemantic},
+	CodeExtendsSchemaType:             {LayerSemantic},
+	CodeExtendsSchemaShape:            {LayerStructural},
+	CodeExtendsSchemaFileUnsupported:  {LayerSemantic},
 	CodeWorkflowCycle:                 {LayerSemantic},
 	CodeCELSyntax:                     {LayerCEL},
 	CodeCELUnknownName:                {LayerCEL},
@@ -131,7 +147,10 @@ func Codes() []Code {
 		CodeRefAliasRequired, CodeRefCrossPlugin,
 		CodeTaskInstructionFileMissing, CodeTaskInstructionFileCrossLayer, CodeFromRoot, CodeFromPath,
 		CodeResourceObserverMismatch, CodeFirstObserveFailed, CodeBinUnknown, CodeTerminalUnavailable,
-		CodeNestingCycle, CodeNestingOutputMutable, CodeNestingProjectionMismatch, CodeWorkflowCycle,
+		CodeNestingCycle, CodeNestingOutputMutable, CodeNestingProjectionMismatch,
+		CodeExtendsInheritedField, CodeExtendsCycle, CodeExtendsJudgeIDDuplicate,
+		CodeExtendsChainIDDuplicate, CodeExtendsDefaultRedeclared, CodeExtendsSchemaType,
+		CodeExtendsSchemaShape, CodeExtendsSchemaFileUnsupported, CodeWorkflowCycle,
 		CodeCELSyntax, CodeCELUnknownName, CodeCELType, CodeCELCustomFunction,
 	}
 }

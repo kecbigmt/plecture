@@ -1,0 +1,22 @@
+# plect-fixture: result=valid entry=definitions
+# reason: an extension appends an instructions element asking for one more recorded judgment, plus the judge leaf that records it — the gate-variant shape, additive on both surfaces at once.
+
+[review]
+kind              = "task"
+description       = "Review a pull request and record a verdict"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Review the pull request at {{ resource.id }}." }]
+
+[review.done_when]
+all = [
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
+  { judge = "the change is correct", id = "correct" },
+]
+
+[review_security]
+kind         = "task"
+extends      = "review"
+instructions = [{ text = "Additionally record whether the change introduces a security risk." }]
+
+[review_security.done_when]
+all = [{ judge = "the change introduces no security risk", id = "no-security-risk" }]

@@ -210,6 +210,7 @@ A reference carries no kind segment. After resolution, the target's declared
 | Workflow event channel `uses` | `channel` |
 | Effect `inner.uses` | `effect` |
 | Task field `resource_observer` | `resource_observer` |
+| Task field `extends` | `task` |
 | Task chain `workflow` | `workflow` |
 | Dynamic-instantiation target | `task` |
 | Chain spawn target | `task` |
@@ -223,8 +224,8 @@ definition's id — not to the full dotted reference. For
 `uses = "official.claude.runtime"` the default node id is `runtime`. Two nodes
 that would default to the same id need an explicit `id`.
 
-Nesting and chain-spawn references use this same grammar. They get no second
-reference language.
+Nesting, extends, and chain-spawn references use this same grammar. They get
+no second reference language.
 
 Executable lookup is a separate namespace, not a definition reference: it
 keeps the slash grammar described in

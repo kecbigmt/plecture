@@ -67,13 +67,16 @@ func asTableArray(v any) ([]map[string]any, bool) {
 // it came from. Body holds every field of the table except id and kind, with
 // nested tables and arrays exactly as TOML decoded them. Instruction is a
 // task's `instructions` array elements resolved and joined, empty for every
-// other kind and for a task that declares none.
+// other kind and for a task that declares none. InstructionElements holds
+// the same resolved texts unjoined, one per declared element, for a consumer
+// that needs to attribute a single element rather than the whole instruction.
 type Definition struct {
-	ID          string
-	Kind        Kind
-	Body        map[string]any
-	Instruction string
-	File        string
+	ID                  string
+	Kind                Kind
+	Body                map[string]any
+	Instruction         string
+	InstructionElements []string
+	File                string
 }
 
 // ParseDefinitionDocument decodes a TOML definition document (one that is

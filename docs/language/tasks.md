@@ -299,6 +299,181 @@ A workflow's `[[nodes]]` never reference a task document. A node names an effect
 because a node is a position in a lifecycle graph; task arrives afterward,
 against the session that graph produced.
 
+## Extension
+
+`extends` specializes a task document without copying it: `[<id>] kind = "task"`
+plus `extends = "<task reference>"`, the ordinary dotted reference grammar,
+naming the base. An extension is a real declaration with its own id —
+referencing sites (workflows, dispatch, another chain) name the extension, and
+the base stays untouched and independently referable.
+
+An extension does not declare `resource_observer`; it inherits the base's, so
+the observer a completion leaf resolves against has one source, never two
+declarations that could disagree.
+`description` is the one exception to composition: it is per-declaration
+display metadata, entirely outside it. An extension states its own
+(omitted means empty), and the base's is untouchable by construction.
+
+Composition is a closed, entirely additive whitelist:
+
+- `[[instructions]]` — the extension's elements append after the base's
+  (concatenated array, blank-line join at render — the array shape
+  [`instructions`](#the-instruction) already carries).
+- `[[chains]]` — the extension's own chains add to the base's. A chain id is
+  unique across the whole extends chain, the same rule a judge id follows; a
+  collision is a load error (`PLECTURE-CFG-EXTENDS-CHAIN-ID-DUPLICATE`).
+- `done_when.all` — leaf append only, monotone strengthening. Judge ids are
+  unique across the whole extends chain; a collision is a load error
+  (`PLECTURE-CFG-EXTENDS-JUDGE-ID-DUPLICATE`).
+- `inputs_schema` / `state_schema` — new keys are freely addable. An existing
+  key may only gain a default where none is set anywhere in the inner chain;
+  redeclaring a default the inner chain already fixed is a load error
+  (`PLECTURE-CFG-EXTENDS-DEFAULT-REDECLARED`). Redefining a key's type or any
+  other constraint is always a load error (`PLECTURE-CFG-EXTENDS-SCHEMA-TYPE`).
+  From outside, an extended task is simply a task with those defaults — its
+  interior is hidden, the same inner-first encapsulation
+  [`effects.md`](effects.md) states for nesting. An extension's own
+  `inputs_schema` / `state_schema` table declares only `type` and `properties`
+  — `required`, `additionalProperties`, and every other schema-object-level
+  keyword answer for the composed contract's overall shape, which only the
+  root gets to set; declaring one on an extension is a load error
+  (`PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE`), not something composed as a union or
+  otherwise, because there is no additive reading of "this layer may also
+  narrow what counts as valid." A restated `type` must agree with whichever
+  earlier layer already fixed it, the same redefinition error as a property's
+  (`PLECTURE-CFG-EXTENDS-SCHEMA-TYPE`); composition keeps only the first
+  value, so a disagreeing later layer's declaration would otherwise be dead
+  weight rather than the error it should be.
+  `inputs_schema_file` / `state_schema_file` are
+  not supported inside a real extends chain (more than one layer): the path
+  resolves relative to its declaring layer's own directory, which a single
+  composed document has no per-field way to remember, so a layer using either
+  form anywhere in the chain is a load error
+  (`PLECTURE-CFG-EXTENDS-SCHEMA-FILE-UNSUPPORTED`) rather than a contract
+  silently dropped. Both forms stay fully supported outside an extends chain.
+
+There is no way to remove, replace, or weaken a base leaf, element, or key. A
+task essentially different from its base is a full declaration of its own — a
+fork — deliberately: weakening a gate has to be visible as a whole
+declaration, never a small diff against something it silently no longer
+agrees with.
+
+Depth is unbounded, aligned with effect nesting: an extends chain that reaches
+itself is a load error (`PLECTURE-CFG-EXTENDS-CYCLE`). A plugin's base
+`instructions` are written append-aware — neutral prose a variant can extend
+with "when dispatched as X, additionally …" — rather than the if/else
+interleaving a Go template made possible.
+
+`plect task show` on an extension prints the composed extends chain, outermost
+(the extension) first, naming for every layer each instruction element,
+chain, `done_when` leaf (of every kind — check, expr, and judge — not only
+judges), and schema key that layer itself contributes to the composed
+declaration, including which layer's own declaration set a key's default.
+
+Two extensions of one base each choosing a different reviewer with a static
+chain — the shape that dissolves a templated `{{if eq .Work.workflow
+"claude"}}codex{{else}}claude{{end}}` conditional into two plain declarations:
+
+<!-- fixture: tasks/extends/cross-tool-reviewer.toml -->
+```toml
+[work]
+kind              = "task"
+description       = "Implement a fix and hand it to review"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue at {{ resource.id }}." }]
+
+[work.done_when]
+all = [
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
+  { judge = "acceptance criteria are satisfied", id = "ac-met" },
+]
+
+[work_claude]
+kind    = "task"
+extends = "work"
+
+[[work_claude.chains]]
+id        = "review"
+workflow  = "claude_reviewer"
+placement = "sibling"
+
+[work_claude.chains.when]
+all = [{ judge_pending = "ac-met" }]
+
+[work_codex]
+kind    = "task"
+extends = "work"
+
+[[work_codex.chains]]
+id        = "review"
+workflow  = "codex_reviewer"
+placement = "sibling"
+
+[work_codex.chains.when]
+all = [{ judge_pending = "ac-met" }]
+
+[claude_reviewer]
+kind = "workflow"
+
+[codex_reviewer]
+kind = "workflow"
+```
+
+A gate variant appends one instruction segment and the judge that records it —
+additive on both surfaces the same declaration touches:
+
+<!-- fixture: tasks/extends/gate-variant.toml -->
+```toml
+[review]
+kind              = "task"
+description       = "Review a pull request and record a verdict"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Review the pull request at {{ resource.id }}." }]
+
+[review.done_when]
+all = [
+  { check = "resource.state.checks_status", in = ["SUCCESS"] },
+  { judge = "the change is correct", id = "correct" },
+]
+
+[review_security]
+kind         = "task"
+extends      = "review"
+instructions = [{ text = "Additionally record whether the change introduces a security risk." }]
+
+[review_security.done_when]
+all = [{ judge = "the change introduces no security risk", id = "no-security-risk" }]
+```
+
+Three layers deep — an official base, a team extension, and a member's
+personal extension of the team's — is the team-adoption shape unbounded depth
+and the inner-first default rule exist for:
+
+<!-- fixture: tasks/extends/team-layers.toml -->
+```toml
+[official_review]
+kind              = "task"
+description       = "Review a change against the official contract"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Review the change at {{ resource.id }}." }]
+
+[official_review.done_when]
+all = [{ judge = "the change is correct", id = "correct" }]
+
+[team_review]
+kind         = "task"
+extends      = "official_review"
+instructions = [{ text = "Additionally check the team's own style checklist." }]
+
+[team_review.done_when]
+all = [{ judge = "the team style checklist is satisfied", id = "team-style" }]
+
+[my_review]
+kind         = "task"
+extends      = "team_review"
+instructions = [{ text = "Additionally leave inline comments for anything worth changing." }]
+```
+
 ## Validation rules
 
 - A task declaration carries a `resource_observer`.
@@ -315,3 +490,15 @@ against the session that graph produced.
   instantiation, and no instance is created.
 - A lifecycle field is not part of the task grammar.
 - A workflow node referencing a task document is a kind mismatch.
+- `extends` resolves to a definition of kind `task`.
+- A document declaring `extends` does not also declare `resource_observer`.
+- An extends chain that reaches itself is a load error.
+- A judge id is declared by at most one definition in an extends chain.
+- A chain id is declared by at most one definition in an extends chain.
+- An existing `inputs_schema` / `state_schema` key may gain a default only
+  where the inner chain sets none; redeclaring one already set, or redefining
+  the key's type or any other constraint, is a load error.
+- A document declaring `extends` declares only `type` and `properties` on its
+  own `inputs_schema` / `state_schema`.
+- An extends chain of more than one layer includes no layer declaring
+  `inputs_schema_file` / `state_schema_file`.

@@ -1,0 +1,17 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-EXTENDS-JUDGE-ID-DUPLICATE entry=definitions
+# reason: judge ids are unique across the whole extends chain; an extension reusing the base's id would let two unrelated criteria answer to the same recorded verdict.
+
+[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[base_task.done_when]
+all = [{ judge = "the change is correct", id = "correct" }]
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.done_when]
+all = [{ judge = "a different question entirely", id = "correct" }]

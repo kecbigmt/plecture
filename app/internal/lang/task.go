@@ -16,8 +16,23 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 		return nil
 	}
 	pos := Position{File: def.File, Path: def.ID}
-	at := childPos(pos, "resource_observer")
-	raw, ok := def.Body["resource_observer"]
+
+	chain, err := v.ExtendsChain(def, r)
+	if err != nil {
+		return err
+	}
+	// layers is the whole composed chain, root first and def itself last: the
+	// order composition accumulates in, since each layer's own additions land
+	// on top of everything before it.
+	layers := append(append([]*Definition{}, chain...), def)
+
+	root := layers[0]
+	rootFrom := v.From
+	if root != def {
+		rootFrom = r.OwnerOf(root)
+	}
+	at := childPos(Position{File: root.File, Path: root.ID}, "resource_observer")
+	raw, ok := root.Body["resource_observer"]
 	if !ok {
 		return newDiag(CodeFieldRequired, LayerStructural, at,
 			"a task document declares the resource observer it is written for")
@@ -26,15 +41,35 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 	if err != nil {
 		return err
 	}
-	observer, err := r.ExpectKind(ref, v.From, KindResourceObserver, at.Path)
+	observer, err := r.ExpectKind(ref, rootFrom, KindResourceObserver, at.Path)
 	if err != nil {
+		return err
+	}
+
+	if err := RejectSchemaFileInChain(layers); err != nil {
+		return err
+	}
+	// inputs_schema carries no contract this pass resolves against, but its
+	// extends composition rules are load-time rules regardless.
+	if _, err := SchemaKeyRules("inputs_schema", layers); err != nil {
+		return err
+	}
+	selfKeys, err := SchemaKeyRules("state_schema", layers)
+	if err != nil {
+		return err
+	}
+	judges, err := ComposedJudges(layers)
+	if err != nil {
+		return err
+	}
+	if _, err := ComposedChainIDs(layers); err != nil {
 		return err
 	}
 
 	c := taskContracts{
 		resource: declaredState(observer.Body),
-		self:     declaredState(def.Body),
-		judges:   declaredJudges(def.Body),
+		self:     selfKeys,
+		judges:   judges,
 	}
 	if err := c.checkPredicate(def.Body, "done_when", pos); err != nil {
 		return err
@@ -43,18 +78,18 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 	if err != nil {
 		return err
 	}
-	for i, chain := range chains {
+	for i, chainTbl := range chains {
 		chainAt := childPos(childPos(pos, "chains"), fmt.Sprintf("[%d]", i))
-		if err := c.checkPredicate(chain, "when", chainAt); err != nil {
+		if err := c.checkPredicate(chainTbl, "when", chainAt); err != nil {
 			return err
 		}
-		if err := c.checkChainResource(chain, chainAt); err != nil {
+		if err := c.checkChainResource(chainTbl, chainAt); err != nil {
 			return err
 		}
-		if err := c.checkChainInputs(chain, chainAt); err != nil {
+		if err := c.checkChainInputs(chainTbl, chainAt); err != nil {
 			return err
 		}
-		if err := v.checkChainWorkflowInputs(chain, chainAt, r); err != nil {
+		if err := v.checkChainWorkflowInputs(chainTbl, chainAt, r); err != nil {
 			return err
 		}
 	}
@@ -90,27 +125,6 @@ func declaredState(body map[string]any) map[string]bool {
 		props[key] = true
 	}
 	return props
-}
-
-func declaredJudges(body map[string]any) map[string]bool {
-	ids := map[string]bool{}
-	done, ok := body["done_when"].(map[string]any)
-	if !ok {
-		return ids
-	}
-	leaves, ok := asTableArray(done["all"])
-	if !ok {
-		return ids
-	}
-	for _, leaf := range leaves {
-		if _, isJudge := leaf["judge"]; !isJudge {
-			continue
-		}
-		if id, ok := leaf["id"].(string); ok {
-			ids[id] = true
-		}
-	}
-	return ids
 }
 
 func (c taskContracts) checkPredicate(body map[string]any, field string, pos Position) error {

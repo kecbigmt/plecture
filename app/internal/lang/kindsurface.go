@@ -14,7 +14,7 @@ var kindFields = map[Kind]map[string]bool{
 		"locals_schema", "locals_schema_file", "outputs", "outputs_schema",
 		"outputs_schema_file", "scope", "setup", "terminal"),
 	KindTask: fieldSet(
-		"budget", "chains", "description", "done_when", "inputs_schema",
+		"budget", "chains", "description", "done_when", "extends", "inputs_schema",
 		"inputs_schema_file", "instructions",
 		"resource_observer", "state_schema", "state_schema_file"),
 	KindChannel: fieldSet(

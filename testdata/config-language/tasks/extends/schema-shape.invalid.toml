@@ -1,0 +1,24 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE entry=definitions
+# reason: the schema whitelist is closed to `properties` (and the incidental `type`); required, additionalProperties, and every other schema-object-level keyword answer for the composed contract's overall shape, which only the root gets to set — an extension declaring one is exactly the unbounded merge algebra the ratified design rejected.
+
+[base_task]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Base." }]
+
+[base_task.state_schema]
+type = "object"
+
+[base_task.state_schema.properties]
+priority = { type = "string" }
+
+[ext_task]
+kind    = "task"
+extends = "base_task"
+
+[ext_task.state_schema]
+type     = "object"
+required = ["priority"]
+
+[ext_task.state_schema.properties]
+reviewed_by = { type = "string" }
