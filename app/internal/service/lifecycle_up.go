@@ -7,6 +7,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -253,7 +254,7 @@ func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, sess
 	if inputsErr != nil {
 		return nil, inputsErr
 	}
-	vars := task.WorkflowHookVars{
+	vars := effect.WorkflowHookVars{
 		ResourceID:        session.ResourceID,
 		SessionName:       session.Name,
 		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,

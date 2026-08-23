@@ -1,4 +1,4 @@
-package task
+package effect
 
 import (
 	"strings"
@@ -11,7 +11,7 @@ import (
 // environment, which is how a hook reaches its author-declared parameters.
 func resolveProviderValue(t *testing.T, vars WorkflowHookVars, value *lang.Value) (string, error) {
 	t.Helper()
-	eval := providerEval(providerRoots(vars, nil, nil, false), nil, "", lang.Ownership{})
+	eval := ProviderEval(ProviderRoots(vars, nil, nil, false), nil, "", lang.Ownership{})
 	resolved, absent, err := eval.Argument(value)
 	if absent {
 		return "", nil

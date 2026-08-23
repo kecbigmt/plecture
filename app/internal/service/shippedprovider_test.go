@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -104,7 +105,7 @@ func TestShippedWorkspaceProvider_SetupHookDoesNotShellInjectResourceID(t *testi
 	malicious := `https://github.com/acme/widgets/issues/1"; touch ` + marker + `; echo "`
 
 	tasks := map[string]*contract.TaskState{}
-	vars := task.WorkflowHookVars{ResourceID: malicious, SessionName: "acme/widgets-1"}
+	vars := effect.WorkflowHookVars{ResourceID: malicious, SessionName: "acme/widgets-1"}
 	// Setup is expected to fail (github-worktree is not on PATH in this
 	// test and the resource id is not a valid URL); only the absence of the
 	// injected side effect is under test.
@@ -129,7 +130,7 @@ func TestShippedWorkspaceProvider_CleanupHookDoesNotShellInjectWorkspaceDirOrBra
 			Outputs: map[string]any{"workspace_dir": "/tmp/does-not-matter", "branch": maliciousBranch},
 		},
 	}
-	vars := task.WorkflowHookVars{ResourceID: "https://github.com/acme/widgets/issues/1", SessionName: "acme/widgets-1"}
+	vars := effect.WorkflowHookVars{ResourceID: "https://github.com/acme/widgets/issues/1", SessionName: "acme/widgets-1"}
 	_ = task.RunWorkflowCleanup(prov, vars, tasks, nil)
 
 	if _, err := os.Stat(marker); err == nil {

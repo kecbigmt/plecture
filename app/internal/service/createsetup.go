@@ -8,6 +8,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/dispatch"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
@@ -98,7 +99,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	if provInputsErr != nil {
 		return nil, &Error{Code: ErrInvalidInput, Message: provInputsErr.Error()}
 	}
-	vars := task.WorkflowHookVars{
+	vars := effect.WorkflowHookVars{
 		ResourceID:        resource,
 		SessionName:       sessionName,
 		WorkspaceDirsRoot: cfg.WorkspaceDirsRoot,
