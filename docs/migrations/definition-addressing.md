@@ -20,7 +20,7 @@ cp "$DATA_HOME/state.json" "$DATA_HOME/state.json.migration-backup.$STAMP"
 
 ## Qualify every reference that names a plugin's declaration
 
-An address is the catalog alias, then the plugin path with each `/` written as `.`, then the definition id. A plugin enabled as `official/github` declares `work` at `official.github.work`; one enabled as `official/plugins/acme` declares `runtime` at `official.plugins.acme.runtime`.
+An address is the catalog alias, then the plugin path with each `/` written as `.`, then the definition id. A plugin enabled as `official/github` declares `gh_guard` at `official.github.gh_guard`; one enabled as `official/plugins/acme` declares `runtime` at `official.plugins.acme.runtime`.
 
 Find every reference to review:
 
@@ -87,7 +87,7 @@ An `inner` reference written in the slash form takes the dotted form:
 
 ```toml
 [wrapper.inner]
-uses = "official.github.work"   # was "official/github/work"
+uses = "official.claude.runtime"   # was "official/claude/runtime"
 ```
 
 The two forms addressed the same declaration, so this is a spelling change with no behavioural difference. Executable references — `bin` — keep the slash grammar and are not touched: selecting an executable has to split an arbitrary-depth plugin path from an executable name, which the dotted grammar cannot do.
@@ -96,13 +96,13 @@ The two forms addressed the same declaration, so this is a spelling change with 
 
 This is the one change that is silent, because the reference still resolves — to something else.
 
-Where you declared your own `work` and a plugin also declares `work`, a bare `work` used to reach the plugin's declaration whenever yours was of another kind, because each kind was looked up in its own map. Now yours is what `work` addresses, and the plugin's is `official.github.work`.
+Where you declared your own `runtime` and a plugin also declares `runtime`, a bare `runtime` used to reach the plugin's declaration whenever yours was of another kind, because each kind was looked up in its own map. Now yours is what `runtime` addresses, and the plugin's is `official.claude.runtime`.
 
 It matters most where an id is typed rather than stored — `plect task setup <id>` and a chain's `workflow`:
 
 ```bash
-plect task setup official.github.work    # the plugin's task document
-plect task setup work                    # your own declaration of that id
+plect task setup official.claude.runtime    # the plugin's effect
+plect task setup runtime                    # your own declaration of that id
 ```
 
 Check your own declarations against the table above before assuming a command still means what it did:
@@ -133,7 +133,22 @@ for task_id, count in sorted(held.items()):
 PY
 ```
 
-Then rewrite. The script refuses to write anything unless every stored id is mapped, so a missed row is a stop rather than a half-migrated store:
+Then rewrite. The script refuses to write anything unless every stored id is mapped, so a missed row is a stop rather than a half-migrated store.
+
+**`work`, `review`, `investigate`, `respond`, `pursue_goal`, and `goal_review` only belong in this map on a catalog from before those six were removed from the plugins.** On this repository's current catalog they are not plugin declarations at all — the `github` and `okf` plugins ship none of them (see the table above) — so a held id spelled that way is already your own bare declaration and needs no address. Map each such id to itself so the script's every-id-accounted-for check passes without changing it:
+
+```bash
+cat > /tmp/plect-address-map <<'MAP'
+work	work
+review	review
+investigate	investigate
+respond	respond
+pursue_goal	pursue_goal
+goal_review	goal_review
+MAP
+```
+
+On a catalog snapshot from before the removal, where these six were still the plugins' own declarations, map them to the addresses they held then instead:
 
 ```bash
 cat > /tmp/plect-address-map <<'MAP'
@@ -144,7 +159,11 @@ respond	official.github.respond
 pursue_goal	official.okf.pursue_goal
 goal_review	official.okf.goal_review
 MAP
+```
 
+Then run the rewrite script, pointing it at the map you just wrote:
+
+```bash
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
 python3 - "$DATA_HOME/state.json" /tmp/plect-address-map <<'PY'
 import json, sys
