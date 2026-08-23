@@ -2,11 +2,53 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/service"
 )
+
+func writeWorkflowShowFixtureFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func setUpBrokenWorkspaceProviderFixture(t *testing.T) {
+	t.Helper()
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	globalDir := filepath.Join(fakeHome, ".config", "plect")
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
+[tmux]
+kind  = "effect"
+scope = "run"
+
+[tmux.setup]
+type   = "shell"
+script = "echo '{}'"
+`)
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "workspaces", "broken.toml"), `
+[broken]
+kind = "workspace_provider"
+`)
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "workflows", "usesbroken.toml"), `
+[usesbroken]
+kind = "workflow"
+workspace_provider = "broken"
+
+[[usesbroken.nodes]]
+uses = "tmux"
+`)
+}
 
 func TestWriteWorkflowList_NoHeaderUsesLiteralTabs(t *testing.T) {
 	var buf bytes.Buffer
@@ -79,6 +121,50 @@ func TestWriteChannels_OmitsBlankTypeAndDelivers(t *testing.T) {
 	want := "  runtime (uses claude_channel)\n"
 	if got != want {
 		t.Errorf("got:\n%q\nwant:\n%q", got, want)
+	}
+}
+
+func TestWorkflowShow_WorkspaceProviderLoadErrorExitsNonzero(t *testing.T) {
+	setUpBrokenWorkspaceProviderFixture(t)
+
+	out, err := execRoot(t, "workflow", "show", "usesbroken")
+	if err == nil {
+		t.Fatalf("expected nonzero exit when the referenced workspace provider fails to load; output:\n%s", out)
+	}
+	if !strings.Contains(out, "usesbroken") {
+		t.Errorf("output should still render the rest of the workflow; got:\n%s", out)
+	}
+	if !strings.Contains(out, "broken") {
+		t.Errorf("output should name the failing definition; got:\n%s", out)
+	}
+	if !strings.Contains(out, "setup") {
+		t.Errorf("output should name the load diagnostic; got:\n%s", out)
+	}
+}
+
+func TestWorkflowShow_JSONWorkspaceProviderLoadErrorExitsNonzeroAndKeepsDetail(t *testing.T) {
+	t.Cleanup(func() { workflowShowJSON = false })
+	setUpBrokenWorkspaceProviderFixture(t)
+
+	out, err := execRoot(t, "workflow", "show", "--json", "usesbroken")
+	if err == nil {
+		t.Fatalf("expected nonzero exit for --json output too; output:\n%s", out)
+	}
+	var detail service.WorkflowDetail
+	if jsonErr := json.Unmarshal([]byte(out), &detail); jsonErr != nil {
+		t.Fatalf("--json output is not valid JSON: %v; got:\n%s", jsonErr, out)
+	}
+	if detail.WorkspaceProviderError == "" {
+		t.Fatal("expected workspace_provider_error to be populated in JSON output")
+	}
+	if !strings.Contains(detail.WorkspaceProviderError, "broken") {
+		t.Errorf("workspace_provider_error should name the failing definition; got %q", detail.WorkspaceProviderError)
+	}
+	if !strings.Contains(detail.WorkspaceProviderError, "setup") {
+		t.Errorf("workspace_provider_error should name the setup diagnostic; got %q", detail.WorkspaceProviderError)
+	}
+	if len(detail.Nodes) != 1 || detail.Nodes[0].ID != "tmux" {
+		t.Errorf("expected the rest of the workflow detail to be preserved; got nodes=%+v", detail.Nodes)
 	}
 }
 

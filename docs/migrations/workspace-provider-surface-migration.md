@@ -174,13 +174,7 @@ unresolvable capture in `name`.
 
 ## Verification
 
-**`plect workflow show` will not tell you.** It treats a workspace provider's
-details as best-effort and swallows a load failure, so it prints a workflow
-happily while that workflow's provider is unloadable. Do not read it as an
-all-clear.
-
-Two checks that do work. First, structural — every converted document
-declares its kind:
+Two checks. First, structural — every converted document declares its kind:
 
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
@@ -190,14 +184,14 @@ for f in "$CONFIG_HOME"/workspaces/*.toml; do
 done
 ```
 
-Second, the real load, without creating anything: ask for a resource whose
-shape no resolver matches. Provider loading happens before name resolution,
-so reaching the resolver error proves every provider loaded.
+Second, the real load, without creating anything: `plect workflow show`
+names a referenced workspace provider's load failure and exits nonzero when
+one occurs, rather than swallowing it.
 
 ```bash
-plect up "does-not-match://x" --workflow <workflow-id>
-# want: resource "does-not-match://x" does not match workspace provider ... resolver (...)
-# a PLECTURE-CFG-* error instead means a provider is still unconverted
+plect workflow show <workflow-id>
+# want: no "Workspace provider error:" line, and a zero exit code
+# a PLECTURE-CFG-* diagnostic there means a provider is still unconverted
 ```
 
 A converted provider's `setup` is first genuinely exercised by a session
