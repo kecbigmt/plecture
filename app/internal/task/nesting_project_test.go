@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -205,7 +206,7 @@ func TestApplyMutableOutputs_NestedRoutesThroughDirectBindings(t *testing.T) {
 		t.Fatalf("RunSetup: %v", err)
 	}
 	st := tasks["outer"]
-	if err := ApplyMutableOutputs(ordered[0].Layers, st, map[string]any{"agent_pid": "99"}); err != nil {
+	if err := effect.ApplyMutableOutputs(ordered[0].Layers, st, map[string]any{"agent_pid": "99"}); err != nil {
 		t.Fatalf("ApplyMutableOutputs: %v", err)
 	}
 	if got := st.Layers[2].Outputs["pid"]; got != "99" {
@@ -238,9 +239,9 @@ func TestApplyMutableOutputs_NestedRefusesComputedBindings(t *testing.T) {
 		t.Fatalf("RunSetup: %v", err)
 	}
 	for _, key := range []string{"label", "guard_dir"} {
-		err := ApplyMutableOutputs(ordered[0].Layers, tasks["outer"], map[string]any{key: "x"})
+		err := effect.ApplyMutableOutputs(ordered[0].Layers, tasks["outer"], map[string]any{key: "x"})
 		if err == nil {
-			t.Fatalf("ApplyMutableOutputs(%s): want an error for a computed binding, got nil", key)
+			t.Fatalf("effect.ApplyMutableOutputs(%s): want an error for a computed binding, got nil", key)
 		}
 		if !strings.Contains(err.Error(), key) {
 			t.Errorf("error = %v, want it to name the key %q", err, key)

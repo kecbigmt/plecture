@@ -63,7 +63,7 @@ func RunWorkflowSetup(prov config.WorkspaceProviderConfig, vars effect.WorkflowH
 		obs.OnFailure(workflowHookScope, id, time.Since(now), wrapped, stderr)
 		return nil, wrapped
 	}
-	outputs, parseErr := ParseOutputs(stdout)
+	outputs, parseErr := lang.ParseOutputs(stdout)
 	if parseErr != nil {
 		fail(parseErr.Error())
 		wrapped := fmt.Errorf("workspace provider %q setup: %w", prov.ID, parseErr)

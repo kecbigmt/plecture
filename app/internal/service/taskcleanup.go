@@ -10,6 +10,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -78,7 +79,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	if def, ok := defs[taskID]; ok {
 		r.Cleanup = def.Cleanup
 		r.SourcePath = def.SourcePath
-		r.Layers = task.CleanupLayers(def)
+		r.Layers = effect.CleanupLayers(def)
 	}
 
 	// RunCleanup mutates st (the snapshot's entry) in place. Persist only that one

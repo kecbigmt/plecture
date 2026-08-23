@@ -1,10 +1,15 @@
-// Package effect resolves and runs actions against their surface roots. It
-// owns the workspace-provider hooks (setup/cleanup/subscribe), which run
-// before any task DAG exists and take only plain, session-identifier-shaped
-// values as their context — no live task-DAG state. Root-building that does
-// depend on a session's task DAG (nesting layers, node outputs, self.state)
-// stays in app/internal/task, which calls into this package only to resolve
-// an action against roots it built itself and run it.
+// Package effect resolves and runs actions against their surface roots, and
+// owns the effect-nesting machinery a chain of layers composes: setup/
+// cleanup execution, the `[id.inner]` joint, `[outputs.bind]` projection, and
+// `[terminal]` lookup — effects own these, not tasks. It also owns the
+// workspace-provider hooks (setup/cleanup/subscribe), which run before any
+// task DAG exists and take only plain, session-identifier-shaped values as
+// their context.
+//
+// Root-building that depends on a session's task-DAG state (node outputs,
+// self.state) stays in app/internal/task, which hands this package only the
+// closures a chain walk needs (ChainHost, Capabilities) — this package never
+// references a RenderContext or an Observer by name.
 package effect
 
 import (

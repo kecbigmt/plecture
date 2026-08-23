@@ -8,6 +8,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // The environments below are docs/language/values.md's per-surface root
@@ -178,4 +179,76 @@ func resolveEffect(action *lang.Action, env lang.Roots, ctx RenderContext, from 
 // environment — into the strings the next layer inward receives.
 func resolveValues(values map[string]*lang.Value, env lang.Roots, ctx RenderContext, from lang.Ownership) (map[string]string, error) {
 	return effect.ResolveValues(values, env, capabilitiesFor(ctx, from))
+}
+
+// ProjectLayerOutputs adapts session into the capabilities a nesting chain's
+// output projection needs and delegates to effect.ProjectLayerOutputs, so a
+// caller outside this package can re-derive a chain's per-layer contracts
+// (e.g. for display or a health probe) without building an
+// effect.Capabilities closure itself.
+func ProjectLayerOutputs(layers []effect.Layer, states []contract.LayerState, session SessionVars) ([]map[string]any, error) {
+	return effect.ProjectLayerOutputs(layers, states, capsForChain(RenderContext{Session: session}))
+}
+
+// projectNestedOutputs renders the composed public contract a produced chain
+// presents and holds it to the composed task's own outputs schema, the same
+// obligation a plain task's setup output carries.
+func projectNestedOutputs(r Resolved, states []contract.LayerState, session SessionVars) (map[string]any, error) {
+	outputs, err := effect.ProjectPublicOutputs(r.Layers, states, capsForChain(RenderContext{Session: session}))
+	if err != nil {
+		return nil, err
+	}
+	if r.OutputsSchema != nil {
+		if vErr := r.OutputsSchema.Validate(outputs); vErr != nil {
+			return nil, fmt.Errorf("outputs schema: %w", vErr)
+		}
+	}
+	return outputs, nil
+}
+
+// capsForChain adapts base into the per-layer capabilities closure a nesting
+// chain's execution and its output projection share: each layer resolves its
+// own bin references and terminal verbs from its own declaration, against
+// the session base carries.
+func capsForChain(base RenderContext) effect.CapsFor {
+	return func(layer effect.Layer) effect.Capabilities {
+		ctx := base
+		ctx.SourcePath = layer.SourcePath
+		return capabilitiesFor(ctx, layer.From)
+	}
+}
+
+// chainHost adapts base and obs into the closures a nesting chain's
+// execution needs, so app/internal/effect never sees a RenderContext or an
+// Observer — only what each closure derives from them for one layer.
+func chainHost(base RenderContext, observer Observer, scope, nodeID string) effect.ChainHost {
+	obs := observerOr(observer)
+	return effect.ChainHost{
+		SetupRoots: func(layer effect.Layer, inputs map[string]any) lang.Roots {
+			ctx := base
+			ctx.Self = map[string]any{}
+			ctx.Inputs = inputs
+			ctx.Locals = map[string]any{}
+			ctx.SourcePath = layer.SourcePath
+			return setupRoots(ctx)
+		},
+		CleanupRoots: func(layer effect.Layer, self, inputs map[string]any) lang.Roots {
+			ctx := base
+			ctx.Self = self
+			ctx.Inputs = inputs
+			ctx.SourcePath = layer.SourcePath
+			return cleanupRoots(ctx)
+		},
+		InnerRoots: func(layer effect.Layer, inputs, locals map[string]any) lang.Roots {
+			ctx := base
+			ctx.Inputs = inputs
+			ctx.Locals = locals
+			ctx.SourcePath = layer.SourcePath
+			return innerRoots(ctx)
+		},
+		Caps: capsForChain(base),
+		OnSkip: func(msg string) {
+			obs.OnSkip(scope, nodeID, msg)
+		},
+	}
 }

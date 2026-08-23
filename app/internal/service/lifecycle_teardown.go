@@ -132,7 +132,7 @@ func unifiedTeardownList(cfg *config.Config, session *domain.Session, plan *task
 		if def, ok := defs[taskID]; ok {
 			r.Cleanup = def.Cleanup
 			r.SourcePath = def.SourcePath
-			r.Layers = task.CleanupLayers(def)
+			r.Layers = effect.CleanupLayers(def)
 		}
 		items = append(items, seqResolved{seq: st.Seq, r: r})
 	}

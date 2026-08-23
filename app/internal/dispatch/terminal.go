@@ -6,6 +6,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/channel"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/task"
 )
@@ -16,7 +17,7 @@ import (
 type terminalOwner struct {
 	NodeID     string
 	Ops        *config.TerminalConfig
-	Layers     []task.ResolvedLayer
+	Layers     []effect.Layer
 	SourcePath string
 	From       lang.Ownership
 }
@@ -58,7 +59,7 @@ func terminalResolver(s *domain.Session, owner *terminalOwner, session task.Sess
 	}
 	outputs := map[string]any{}
 	if st, ok := s.Tasks[owner.NodeID]; ok && st != nil {
-		if self := task.TerminalSelf(owner.Layers, st); self != nil {
+		if self := effect.TerminalSelf(owner.Layers, st); self != nil {
 			outputs = self
 		}
 	}

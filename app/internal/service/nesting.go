@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -13,7 +14,7 @@ import (
 // layer chain and each layer's own current output contract. Nil for a plain
 // task, which is how every consumer tells the two apart.
 type instanceComposition struct {
-	Layers []task.ResolvedLayer
+	Layers []effect.Layer
 	Views  []map[string]any
 }
 
@@ -25,7 +26,7 @@ func composeInstance(def config.TaskDefinition, st *contract.TaskState, vars tas
 	if !def.IsNested() || st == nil {
 		return nil, nil
 	}
-	layers, err := task.ResolveLayers(def)
+	layers, err := effect.ResolveLayers(def)
 	if err != nil {
 		return nil, fmt.Errorf("task %q: %w", def.ID, err)
 	}
@@ -98,12 +99,12 @@ func probeTargets(instance string, def config.TaskDefinition, st *contract.TaskS
 			continue
 		}
 		targets = append(targets, probeTarget{
-			Label:      fmt.Sprintf("%s layer %q", instance, layer.TaskID),
+			Label:      fmt.Sprintf("%s layer %q", instance, layer.EffectID),
 			Alive:      layer.Health.AliveProbe(),
 			Activity:   layer.Health.ActivityProbe(),
 			Self:       comp.Views[i],
 			Inputs:     st.Layers[i].Inputs,
-			Env:        task.EnclosingEnv(st.Layers, i),
+			Env:        effect.EnclosingEnv(st.Layers, i),
 			SourcePath: layer.SourcePath,
 			From:       layer.From,
 		})
@@ -128,9 +129,9 @@ func terminalLayerEnv(target *task.Resolved, st *contract.TaskState) []string {
 	if target == nil || st == nil || len(target.Layers) == 0 {
 		return nil
 	}
-	i := task.TerminalLayer(target.Layers)
+	i := effect.TerminalLayer(target.Layers)
 	if i <= 0 || i >= len(st.Layers) {
 		return nil
 	}
-	return task.EnclosingEnv(st.Layers, i)
+	return effect.EnclosingEnv(st.Layers, i)
 }

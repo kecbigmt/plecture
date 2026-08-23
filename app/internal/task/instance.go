@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kecbigmt/plecture/app/internal/effect"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -100,7 +102,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 		SourcePath: r.SourcePath,
 	}
 	if len(r.Layers) > 0 {
-		layers, stderr, err := runNestedSetup(goCtx, r.Layers, ctx, inputs)
+		layers, stderr, err := effect.RunLayers(goCtx, r.Layers, chainHost(ctx, nil, r.Scope, r.NodeID), session.WorkspaceDirPath, inputs)
 		if err != nil {
 			return InstanceSetup{Layers: layers, Stderr: stderr}, err
 		}
@@ -120,7 +122,7 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 		if runErr != nil {
 			return InstanceSetup{Stderr: stderr}, fmt.Errorf("setup: %w", runErr)
 		}
-		parsed, parseErr := ParseOutputs(stdout)
+		parsed, parseErr := lang.ParseOutputs(stdout)
 		if parseErr != nil {
 			return InstanceSetup{Stderr: stderr}, fmt.Errorf("setup: %w", parseErr)
 		}

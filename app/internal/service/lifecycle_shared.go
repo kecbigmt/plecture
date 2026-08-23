@@ -7,6 +7,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
@@ -110,7 +111,7 @@ func terminalBinding(plan *task.Plan, s *domain.Session) *task.TerminalBinding {
 	}
 	outputs := map[string]any{}
 	if st, ok := s.Tasks[t.NodeID]; ok && st != nil {
-		if self := task.TerminalSelf(t.Layers, st); self != nil {
+		if self := effect.TerminalSelf(t.Layers, st); self != nil {
 			outputs = self
 		}
 	}

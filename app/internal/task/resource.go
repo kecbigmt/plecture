@@ -89,7 +89,7 @@ func ObserveResource(def config.ResourceDef, resourceID string, branch string, w
 		}
 		return nil, fmt.Errorf("resource %s: %w", def.ID, runErr)
 	}
-	obj, perr := ParseOutputs(stdout)
+	obj, perr := lang.ParseOutputs(stdout)
 	if perr != nil {
 		return nil, fmt.Errorf("resource %s: %w", def.ID, perr)
 	}
