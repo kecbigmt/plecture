@@ -594,9 +594,9 @@ func TestCleanupLayers_CarryTheOutwardJoint(t *testing.T) {
 	tasks := map[string]*contract.TaskState{"outer": {
 		Scope:  config.TaskScopeRun,
 		Status: contract.TaskStatusProduced,
-		Layers: []contract.TaskLayerState{
-			{TaskID: "outer", Status: contract.TaskStatusProduced, Locals: map[string]any{"guard_dir": "/tmp/guard"}},
-			{TaskID: "inner", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "42"}},
+		Layers: []contract.LayerState{
+			{EffectID: "outer", Status: contract.TaskStatusProduced, Locals: map[string]any{"guard_dir": "/tmp/guard"}},
+			{EffectID: "inner", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "42"}},
 		},
 	}}
 	if err := RunCleanup(context.Background(), []Resolved{r}, SessionVars{Name: "s"}, tasks, nil); err != nil {

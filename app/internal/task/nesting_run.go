@@ -116,8 +116,8 @@ func CleanupLayers(def config.TaskDefinition) []ResolvedLayer {
 // per layer that reached an outcome. The records are returned on failure too:
 // a layer that produced must be unwound by the next cleanup, so the caller
 // persists them either way.
-func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderContext, nodeInputs map[string]any) ([]contract.TaskLayerState, []byte, error) {
-	states := make([]contract.TaskLayerState, 0, len(layers))
+func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderContext, nodeInputs map[string]any) ([]contract.LayerState, []byte, error) {
+	states := make([]contract.LayerState, 0, len(layers))
 	inputs := orEmpty(nodeInputs)
 	var env []string
 	var lastStderr []byte
@@ -133,7 +133,7 @@ func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderCo
 				return states, lastStderr, fmt.Errorf("layer %q: bound inputs: %w", layer.TaskID, err)
 			}
 		}
-		state := contract.TaskLayerState{TaskID: layer.TaskID, Inputs: inputs, SetupAt: now}
+		state := contract.LayerState{EffectID: layer.TaskID, Inputs: inputs, SetupAt: now}
 		ctx := base
 		ctx.Self = map[string]any{}
 		ctx.Inputs = inputs
@@ -229,21 +229,21 @@ func runNestedSetup(goCtx context.Context, layers []ResolvedLayer, base RenderCo
 // it: the node's status is what `plect status` reads long after the
 // observer's line has scrolled away, so `cleaned` must never be reachable
 // while a record still owes a release.
-func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []contract.TaskLayerState, base RenderContext, obs Observer, scope, nodeID string) ([]byte, error) {
+func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []contract.LayerState, base RenderContext, obs Observer, scope, nodeID string) ([]byte, error) {
 	var firstErr error
 	var lastStderr []byte
 	for i := len(states) - 1; i >= 0; i-- {
 		state := &states[i]
 		if state.Status == contract.TaskStatusCleaned {
-			obs.OnSkip(scope, nodeID, fmt.Sprintf("layer %q: already cleaned", state.TaskID))
+			obs.OnSkip(scope, nodeID, fmt.Sprintf("layer %q: already cleaned", state.EffectID))
 			continue
 		}
-		if i >= len(layers) || layers[i].TaskID != state.TaskID {
+		if i >= len(layers) || layers[i].TaskID != state.EffectID {
 			// The definition's chain no longer matches what was set up.
 			// Running a script from a layer that is not the one recorded
 			// would release the wrong thing, so the record stands and the
 			// debt stays visible.
-			obs.OnSkip(scope, nodeID, fmt.Sprintf("layer %q: definition no longer declares this layer", state.TaskID))
+			obs.OnSkip(scope, nodeID, fmt.Sprintf("layer %q: definition no longer declares this layer", state.EffectID))
 			continue
 		}
 		now := time.Now()
@@ -267,7 +267,7 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 			state.FailedAt = now
 			state.Error = resolveErr.Error()
 			if firstErr == nil {
-				firstErr = fmt.Errorf("layer %q cleanup: %w", state.TaskID, resolveErr)
+				firstErr = fmt.Errorf("layer %q cleanup: %w", state.EffectID, resolveErr)
 			}
 			continue
 		}
@@ -279,7 +279,7 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 			state.FailedAt = now
 			state.Error = runErr.Error()
 			if firstErr == nil {
-				firstErr = fmt.Errorf("layer %q cleanup: %w", state.TaskID, runErr)
+				firstErr = fmt.Errorf("layer %q cleanup: %w", state.EffectID, runErr)
 			}
 			continue
 		}
@@ -289,7 +289,7 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 	}
 	for i := range states {
 		if states[i].Status != contract.TaskStatusCleaned && firstErr == nil {
-			firstErr = fmt.Errorf("layer %q is not released (%s)", states[i].TaskID, states[i].Status)
+			firstErr = fmt.Errorf("layer %q is not released (%s)", states[i].EffectID, states[i].Status)
 		}
 	}
 	return lastStderr, firstErr
@@ -298,7 +298,7 @@ func runNestedCleanup(goCtx context.Context, layers []ResolvedLayer, states []co
 // layerSelf is one layer's own public contract as of the recorded state. A
 // chain whose records no longer line up with the declaration cannot be
 // projected, so that layer falls back to what it recorded directly.
-func layerSelf(layers []ResolvedLayer, states []contract.TaskLayerState, i int) map[string]any {
+func layerSelf(layers []ResolvedLayer, states []contract.LayerState, i int) map[string]any {
 	if len(states) != len(layers) {
 		return states[i].Outputs
 	}
@@ -312,7 +312,7 @@ func layerSelf(layers []ResolvedLayer, states []contract.TaskLayerState, i int) 
 // EnclosingEnv is the process environment the layers outside index i inject
 // into its executions: its setup and cleanup, and equally its probes, output
 // scripts, and terminal operation commands.
-func EnclosingEnv(states []contract.TaskLayerState, i int) []string {
+func EnclosingEnv(states []contract.LayerState, i int) []string {
 	var env []string
 	for _, outer := range states[:i] {
 		env = append(env, envAssignments(outer.Env)...)
@@ -341,7 +341,7 @@ func envAssignments(env map[string]string) []string {
 // projectNestedOutputs renders the composed public contract a produced chain
 // presents and holds it to the composed task's own outputs schema, the same
 // obligation a plain task's setup output carries.
-func projectNestedOutputs(r Resolved, states []contract.TaskLayerState, session SessionVars) (map[string]any, error) {
+func projectNestedOutputs(r Resolved, states []contract.LayerState, session SessionVars) (map[string]any, error) {
 	outputs, err := ProjectPublicOutputs(r.Layers, states, session)
 	if err != nil {
 		return nil, err

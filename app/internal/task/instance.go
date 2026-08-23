@@ -68,7 +68,7 @@ func NextInstanceNumber(taskID string, tasks map[string]*contract.TaskState) int
 // so the caller persists it either way.
 type InstanceSetup struct {
 	Outputs map[string]any
-	Layers  []contract.TaskLayerState
+	Layers  []contract.LayerState
 	Stderr  []byte
 }
 

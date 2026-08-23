@@ -132,7 +132,7 @@ func mergeLayerLifecycle(cur, snapshot *contract.TaskState) {
 		return
 	}
 	for i := range snapshot.Layers {
-		if cur.Layers[i].TaskID != snapshot.Layers[i].TaskID {
+		if cur.Layers[i].EffectID != snapshot.Layers[i].EffectID {
 			return
 		}
 	}

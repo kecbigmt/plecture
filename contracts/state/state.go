@@ -134,15 +134,15 @@ type TaskState struct {
 	// referenced definition's own id, and omits it when that equals the node
 	// id; either way the workflow is what names the node's declaration, so a
 	// node's value is not an address and is not resolved as one.
-	TaskID   string           `json:"task_id,omitempty"`
-	Status   string           `json:"status"`             // "produced" | "failed" | "cleaned"
-	Inputs   map[string]any   `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
-	Outputs  map[string]any   `json:"outputs,omitempty"`  // parsed JSON from setup stdout
-	Seq      int              `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
-	Dynamic  bool             `json:"dynamic,omitempty"`  // true for runtime `plect task setup` instances
-	Resource string           `json:"resource,omitempty"` // bound --resource at instantiation
-	Name     string           `json:"name,omitempty"`     // --name instance identity (key == name when set)
-	Layers   []TaskLayerState `json:"layers,omitempty"`   // per-layer record for a nested task; empty for a plain one
+	TaskID   string         `json:"task_id,omitempty"`
+	Status   string         `json:"status"`             // "produced" | "failed" | "cleaned"
+	Inputs   map[string]any `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
+	Outputs  map[string]any `json:"outputs,omitempty"`  // parsed JSON from setup stdout
+	Seq      int            `json:"seq,omitempty"`      // instantiation order; 0 = legacy/unset
+	Dynamic  bool           `json:"dynamic,omitempty"`  // true for runtime `plect task setup` instances
+	Resource string         `json:"resource,omitempty"` // bound --resource at instantiation
+	Name     string         `json:"name,omitempty"`     // --name instance identity (key == name when set)
+	Layers   []LayerState   `json:"layers,omitempty"`   // per-layer record for a nested task; empty for a plain one
 	// State is what a task instance holds about itself: the keys a reviewer
 	// or another session records into it, read by a completion predicate as
 	// `self.state.*`. Distinct from Outputs, which is what an effect's setup
@@ -172,7 +172,7 @@ type ResourceObservation struct {
 	At    time.Time      `json:"at,omitzero"`
 }
 
-// TaskLayerState is one layer of a nested task's lifecycle, recorded
+// LayerState is one layer of a nested task's lifecycle, recorded
 // outermost-first. Cleanup unwinds these inside-out and skips any layer that
 // never reached setup, so each layer carries its own status rather than
 // inheriting the composed task's.
@@ -182,13 +182,16 @@ type ResourceObservation struct {
 // output object. Env is the process environment this layer contributes to the
 // executions of the layers inside it, persisted at setup so a later cleanup
 // injects exactly what the setup did rather than re-deriving it.
-type TaskLayerState struct {
-	TaskID  string            `json:"task_id"`
-	Status  string            `json:"status"` // "produced" | "failed" | "cleaned"
-	Inputs  map[string]any    `json:"inputs,omitempty"`
-	Locals  map[string]any    `json:"locals,omitempty"`
-	Outputs map[string]any    `json:"outputs,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
+type LayerState struct {
+	// EffectID names the effect declaration this layer runs — a nesting
+	// layer is an effect, not a task, the same distinction TaskState.TaskID
+	// draws for the composed instance itself.
+	EffectID string            `json:"effect_id"`
+	Status   string            `json:"status"` // "produced" | "failed" | "cleaned"
+	Inputs   map[string]any    `json:"inputs,omitempty"`
+	Locals   map[string]any    `json:"locals,omitempty"`
+	Outputs  map[string]any    `json:"outputs,omitempty"`
+	Env      map[string]string `json:"env,omitempty"`
 	// HeartbeatTicks and HeartbeatEscalations are this layer's own patience
 	// accounting. A layer's budget watches only the conditions that layer
 	// declared, so the counters are per layer rather than per instance and

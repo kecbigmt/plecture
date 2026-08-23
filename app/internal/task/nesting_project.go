@@ -19,7 +19,7 @@ import (
 // as a plain task's outputs simply lack a key its setup did not emit — an
 // empty string would read as a value the check leaves and templates would
 // then act on.
-func ProjectPublicOutputs(layers []ResolvedLayer, states []contract.TaskLayerState, session SessionVars) (map[string]any, error) {
+func ProjectPublicOutputs(layers []ResolvedLayer, states []contract.LayerState, session SessionVars) (map[string]any, error) {
 	views, err := ProjectLayerOutputs(layers, states, session)
 	if err != nil {
 		return nil, err
@@ -38,7 +38,7 @@ func ProjectPublicOutputs(layers []ResolvedLayer, states []contract.TaskLayerSta
 // A layer's contract is its `[outputs.bind]` projection of the layer inside
 // it plus the values that layer produces itself — the two sources one public
 // name may never share, which is why merging them needs no precedence rule.
-func ProjectLayerOutputs(layers []ResolvedLayer, states []contract.TaskLayerState, session SessionVars) ([]map[string]any, error) {
+func ProjectLayerOutputs(layers []ResolvedLayer, states []contract.LayerState, session SessionVars) ([]map[string]any, error) {
 	if len(layers) == 0 {
 		return nil, nil
 	}
