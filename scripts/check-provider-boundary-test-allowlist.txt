@@ -1,0 +1,163 @@
+# check-provider-boundary.sh's test-file allowlist.
+#
+# check-provider-boundary.sh scans every app/**/*_test.go file. Each path
+# below is exempted because it predates that scanning and uses one of two
+# pre-existing conventions the checker would otherwise flag: a shipped
+# plugin name used as a generic placeholder id in a catalog/resolver/
+# service test, or an "owner/repo-N"-shaped example session name used as
+# the default example session. Neither is a leak this checker was built to
+# find (see the leak that motivated it, app/internal/channel's shipped
+# channel tests, which are scanned like any other file) — it is unrelated,
+# pre-existing debt.
+#
+# Issue #280 tracks migrating these fixtures off that convention, one
+# package at a time; a path is removed from this list only once its file
+# no longer trips the checker on its own, never in bulk. The list must
+# shrink toward empty, never grow: a new test file belongs in the scanned
+# set from the day it is written.
+#
+# One path per line, relative to the repository root. Blank lines and
+# lines starting with "#" are ignored.
+app/commands/catalog_test.go
+app/commands/event_test.go
+app/commands/init_test.go
+app/commands/ls_test.go
+app/commands/mcp_listen_guard_test.go
+app/commands/mcp_listen_socket_test.go
+app/commands/orchestrator_seed_test.go
+app/commands/plugin_test.go
+app/commands/status_test.go
+app/commands/taskshow_test.go
+app/commands/workflow_test.go
+app/internal/busservice/testmain_test.go
+app/internal/config/address_test.go
+app/internal/config/binref_test.go
+app/internal/config/channel_test.go
+app/internal/config/config_test.go
+app/internal/config/namespace_test.go
+app/internal/config/nesting_reference_test.go
+app/internal/config/nesting_test.go
+app/internal/config/plugin_test.go
+app/internal/config/resource_test.go
+app/internal/config/retired_fields_test.go
+app/internal/config/shipped_catalog_test.go
+app/internal/config/taskdoc_test.go
+app/internal/config/terminal_test.go
+app/internal/config/testmain_test.go
+app/internal/config/workflow_test.go
+app/internal/config/workspace_provider_test.go
+app/internal/dispatch/dispatcher_test.go
+app/internal/dispatch/render_test.go
+app/internal/dispatch/supervisor_test.go
+app/internal/dispatch/terminal_test.go
+app/internal/dispatch/testmain_test.go
+app/internal/effect/executor_test.go
+app/internal/effect/subscribe_test.go
+app/internal/eventbus/server_test.go
+app/internal/eventlog/store_test.go
+app/internal/lang/action_test.go
+app/internal/lang/bin_test.go
+app/internal/lang/cel_test.go
+app/internal/lang/discover_test.go
+app/internal/lang/eval_test.go
+app/internal/lang/instantiate_test.go
+app/internal/lang/kindsurface_test.go
+app/internal/lang/manifest_test.go
+app/internal/lang/native_conformance_test.go
+app/internal/lang/provider_test.go
+app/internal/lang/reference_test.go
+app/internal/lang/reserved_test.go
+app/internal/lang/shellbind_test.go
+app/internal/lang/task_test.go
+app/internal/lang/value_test.go
+app/internal/lang/workflow_test.go
+app/internal/mcpserver/event_test.go
+app/internal/mcpserver/testmain_test.go
+app/internal/mcpserver/workflow_test.go
+app/internal/plugins/bin_test.go
+app/internal/plugins/catalogs_test.go
+app/internal/plugins/catalog_test.go
+app/internal/pluginservice/declaration_test.go
+app/internal/pluginservice/integration_test.go
+app/internal/plugins/fetch_test.go
+app/internal/plugins/lockfile_test.go
+app/internal/plugins/manifest_test.go
+app/internal/plugins/resolve_git_test.go
+app/internal/plugins/resolve_path_test.go
+app/internal/plugins/resolver_test.go
+app/internal/reactor/config_recovery_test.go
+app/internal/reactor/deadman_sweep_test.go
+app/internal/reactor/reactor_e2e_test.go
+app/internal/reactor/reactor_test.go
+app/internal/service/catalog_test.go
+app/internal/service/chain_integration_test.go
+app/internal/service/chain_test.go
+app/internal/service/channel_health_test.go
+app/internal/service/check_test.go
+app/internal/service/createsetup_test.go
+app/internal/service/deadman_test.go
+app/internal/service/dispatch_test.go
+app/internal/service/event_test.go
+app/internal/service/finalize_test.go
+app/internal/service/flake_overlay_test.go
+app/internal/service/nesting_test.go
+app/internal/service/plugin_test.go
+app/internal/service/postmigration_test.go
+app/internal/service/provider_github_e2e_test.go
+app/internal/service/resource_test.go
+app/internal/service/service_test.go
+app/internal/service/sessionguard_test.go
+app/internal/service/setoutput_test.go
+app/internal/service/shippedprovider_test.go
+app/internal/service/status_test.go
+app/internal/service/subscribe_test.go
+app/internal/service/tag_default_test.go
+app/internal/service/taskcleanup_test.go
+app/internal/service/taskdocchain_test.go
+app/internal/service/taskdoc_test.go
+app/internal/service/tasksetup_test.go
+app/internal/service/taskshow_test.go
+app/internal/service/tasks_integration_test.go
+app/internal/service/tasks_test.go
+app/internal/service/templatevars_test.go
+app/internal/service/terminal_test.go
+app/internal/service/testhelpers_test.go
+app/internal/service/tick_publish_test.go
+app/internal/service/watchdog_test.go
+app/internal/service/workflow_address_test.go
+app/internal/service/workflow_test.go
+app/internal/service/workspace_provider_inputs_test.go
+app/internal/sessionhub/registry_test.go
+app/internal/state/store_test.go
+app/internal/task/activity_test.go
+app/internal/task/capture_notmux_test.go
+app/internal/task/corpus_qualified_reference_test.go
+app/internal/task/executor_test.go
+app/internal/task/health_bin_test.go
+app/internal/task/nesting_run_test.go
+app/internal/task/progress_test.go
+app/internal/task/resource_test.go
+app/internal/task/shipped_bin_alias_test.go
+app/internal/task/shipped_catalog_render_test.go
+app/internal/task/shipped_claude_mcp_servers_test.go
+app/internal/task/shipped_effect_integration_test.go
+app/internal/task/shipped_provider_integration_test.go
+app/internal/task/shipped_workspace_provider_inputs_test.go
+app/internal/task/task_test.go
+app/internal/task/terminal_helper_test.go
+app/internal/task/workflowhook_test.go
+app/internal/task/workflow_test.go
+app/internal/template/template_test.go
+app/internal/template/testmain_test.go
+app/internal/webui/acceptance_test.go
+app/internal/webui/components_test.go
+app/internal/webui/detail_test.go
+app/internal/webui/done_test.go
+app/internal/webui/events_stream_test.go
+app/internal/webui/events_test.go
+app/internal/webui/handlers_test.go
+app/internal/webui/live_test.go
+app/internal/webui/mutations_test.go
+app/internal/webui/rows_test.go
+app/internal/webui/security_test.go
+app/internal/webui/testmain_test.go

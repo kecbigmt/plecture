@@ -120,6 +120,49 @@ if ! grep -q "app/commands/seeded_dotted.go" /tmp/boundary-selftest-dirty4.log; 
 fi
 echo "ok: checker fails and names the file on a dotted provider token"
 
+# Dirty fixture #5: a *_test.go file not on the allowlist must be scanned
+# like any other file — test files are in scope by default; the allowlist
+# is the one enumerated exception, not a directory-wide carve-out.
+dirty5=$(mktemp -d)
+trap 'rm -rf "$dirty" "$clean" "$dirty2" "$dirty3" "$dirty4" "$dirty5" "$dirty6"' EXIT
+mkdir -p "$dirty5/app/commands" "$dirty5/contracts"
+cat > "$dirty5/app/commands/newthing_test.go" <<'EOF'
+package commands
+
+const seededTestViolation = "okf"
+EOF
+
+if run_against "$dirty5" >/tmp/boundary-selftest-dirty5.log 2>&1; then
+  echo "FAIL: checker passed against a seeded violation in a non-allowlisted test file" >&2
+  cat /tmp/boundary-selftest-dirty5.log >&2
+  exit 1
+fi
+if ! grep -q "app/commands/newthing_test.go" /tmp/boundary-selftest-dirty5.log; then
+  echo "FAIL: checker did not name the offending non-allowlisted test file" >&2
+  cat /tmp/boundary-selftest-dirty5.log >&2
+  exit 1
+fi
+echo "ok: checker fails and names the file for a seeded violation in a non-allowlisted test file"
+
+# Dirty fixture #6: a test file whose path exactly matches an entry in
+# check-provider-boundary-test-allowlist.txt must be skipped even though it
+# has a seeded violation — the allowlist actually exempts what it names.
+dirty6=$(mktemp -d)
+allowlisted_path=$(grep -v '^#' "$root/scripts/check-provider-boundary-test-allowlist.txt" | grep -v '^$' | head -1)
+mkdir -p "$dirty6/$(dirname "$allowlisted_path")" "$dirty6/contracts"
+cat > "$dirty6/$allowlisted_path" <<'EOF'
+package commands
+
+const seededAllowlistedViolation = "okf"
+EOF
+
+if ! run_against "$dirty6" >/tmp/boundary-selftest-dirty6.log 2>&1; then
+  echo "FAIL: checker flagged a seeded violation in an allowlisted file ($allowlisted_path)" >&2
+  cat /tmp/boundary-selftest-dirty6.log >&2
+  exit 1
+fi
+echo "ok: checker skips a seeded violation in an allowlisted file ($allowlisted_path)"
+
 # Clean fixture: no provider tokens, nothing to report.
 clean=$(mktemp -d)
 mkdir -p "$clean/app/commands" "$clean/contracts"

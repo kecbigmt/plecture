@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Fails if app/ (excluding most tests — see the scope decision below) or
-# contracts/ reference a specific external provider by name or assume its
-# identifier shape. Core owns the durable structure of work; a provider
-# commitment belongs in plugins/ instead.
+# Fails if app/ or contracts/ reference a specific external provider by
+# name or assume its identifier shape. Core owns the durable structure of
+# work; a provider commitment belongs in plugins/ instead. Every *.go file
+# under app/ and contracts/ is scanned, tests included — see the allowlist
+# note below for the one carve-out.
 #
 # The provider-name half of the vocabulary is derived from every published
 # plugin's plugin.toml (its directory id, plus its `[[executables]]` names)
@@ -19,20 +20,12 @@
 # example is always borrowing a specific hosting provider's naming
 # convention, so it is caught alongside literal provider names.
 #
-# Scope decision: *_test.go under app/ is NOT scanned in general, except for
-# app/internal/channel — a package a prior review found hardcoding shipped
-# plugin names in a test — which is scanned like any other core file.
-# Widening the file set to *all* of app/'s tests surfaces on the order of a
-# thousand pre-existing lines across most of the module's test suite — not
-# an isolated leak like that one, but two much larger, pre-existing
-# conventions: (1) shipped plugin ids/names used throughout generic
-# catalog/resolver/service tests as arbitrary placeholder data, and (2) an
-# "owner/repo-N"-shaped session name used almost everywhere as the default
-# example session. Fixing that is a repo-wide test-fixture migration, not a
-# boundary-checker change, and is tracked separately rather than folded
-# into this script's default scope. contracts/*_test.go stays in scope
-# too: that module is small enough that its few violations were fixed
-# outright instead of deferred.
+# Allowlist: scripts/check-provider-boundary-test-allowlist.txt names test
+# files exempted from scanning because they predate it and use a
+# pre-existing, unrelated test-fixture convention (see that file's own
+# header). Every non-test file, and every test file not on that list, is
+# scanned in full — the allowlist is an explicit, enumerated, shrinking
+# exception list, not a directory-wide carve-out.
 #
 # A line that genuinely needs to keep a provider token can allowlist itself
 # with a trailing "// boundary-allow: <reason>" comment.
@@ -47,9 +40,18 @@ set -euo pipefail
 # relative or absolute path.
 vocab_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/provider-vocab.py"
 plugins_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../plugins" && pwd)"
+allowlist_file="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-provider-boundary-test-allowlist.txt"
 
 root="${BOUNDARY_CHECK_ROOT:-$(pwd)}"
 cd "$root"
+
+declare -A allowlisted=()
+while IFS= read -r line; do
+  case "$line" in
+    ''|'#'*) continue ;;
+  esac
+  allowlisted["$line"]=1
+done < "$allowlist_file"
 
 # Each alternative targets a distinct leak:
 #   - a shipped plugin's id or executable name (derived above) — boundaried
@@ -91,8 +93,13 @@ pattern="$vocab_pattern|(^|[^A-Za-z0-9_])gh([^A-Za-z0-9_]|\$)|pvti|<?[Oo]wner>?/
 
 fail=0
 count=0
+skipped=0
 while IFS= read -r f; do
   [ -z "$f" ] && continue
+  if [ -n "${allowlisted[$f]+x}" ]; then
+    skipped=$((skipped + 1))
+    continue
+  fi
   count=$((count + 1))
   while IFS=: read -r lineno content; do
     [ -z "$lineno" ] && continue
@@ -103,7 +110,7 @@ while IFS= read -r f; do
     echo "$f:$lineno: $content"
     fail=1
   done < <(grep -niE "$pattern" "$f" || true)
-done < <({ find app -name '*.go' -not -name '*_test.go'; find app/internal/channel -name '*_test.go'; find contracts -name '*.go'; } | sort)
+done < <({ find app -name '*.go'; find contracts -name '*.go'; } | sort)
 
 if [ "$fail" -ne 0 ]; then
   echo
@@ -114,4 +121,4 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
-echo "boundary check passed ($count files scanned)"
+echo "boundary check passed ($count files scanned, $skipped allowlisted)"
