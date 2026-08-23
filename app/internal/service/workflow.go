@@ -103,12 +103,19 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 	if err != nil {
 		return nil, fmt.Errorf("compile workflow %q: %w", id, err)
 	}
+	// A node shows the reference its author wrote, not the resolved
+	// definition's id: two plugins may declare that id, so the id alone would
+	// not say which declaration this node runs.
+	references := make(map[string]string, len(wf.Nodes))
+	for _, node := range wf.Nodes {
+		references[node.ID] = node.Uses
+	}
 	nodes := make([]WorkflowNode, 0, len(plan.Session)+len(plan.Run))
 	for _, r := range plan.Session {
-		nodes = append(nodes, resolvedToNode(r))
+		nodes = append(nodes, resolvedToNode(r, references[r.NodeID]))
 	}
 	for _, r := range plan.Run {
-		nodes = append(nodes, resolvedToNode(r))
+		nodes = append(nodes, resolvedToNode(r, references[r.NodeID]))
 	}
 	detail := &WorkflowDetail{
 		ID:                wf.ID,
@@ -152,10 +159,13 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 	return detail, nil
 }
 
-func resolvedToNode(r task.Resolved) WorkflowNode {
+func resolvedToNode(r task.Resolved, reference string) WorkflowNode {
+	if reference == "" {
+		reference = r.TaskID
+	}
 	return WorkflowNode{
 		ID:        r.NodeID,
-		Uses:      r.TaskID,
+		Uses:      reference,
 		Scope:     r.Scope,
 		DependsOn: append([]string(nil), r.DependsOn...),
 		Inputs:    valueSources(r.Inputs),

@@ -808,27 +808,38 @@ For loaders that receive plugin dirs, resolution order is:
 3. Trusted ancestor overlays, outermost to innermost.
 4. Workspace-dir `.plect/` overlay, with the same restrictions.
 
-The user layer always wins because every user-owned layer is deeper than the
-plugin layers. Declaration order never chooses between same-id definitions from
-two plugin layers: that conflict is a load error, and the user must resolve it
-explicitly in global config by choosing one plugin or disabling one plugin.
+Each mounted plugin is its own namespace, addressed by its catalog alias and
+plugin path, and the user-owned layers are one namespace between them. Two
+plugins may therefore declare one id, and a user-owned declaration sharing an id
+with a plugin's does not replace it: the two hold different addresses, and which
+one a reference selects follows from how the reference is written. Two plugin
+layers with no catalog identity are the exception, because no address can name
+them apart, so declaration order would be choosing: that stays a load error the
+user resolves by enabling them through a catalog or replacing one definition in
+global config.
 
-Same-id behavior by kind:
+Same-id behavior by kind, within one namespace:
 
 | Kind | Same-id rule |
 |---|---|
-| Workspace providers, resources, channels | Same-id conflicts between plugin layers fail. A deeper user-owned layer replaces the whole definition. No partial override. |
-| Tasks | Same-id conflicts between plugin layers fail. A deeper user-owned layer replaces the whole definition. No partial override. |
-| Workflows | Same-id conflicts between plugin layers fail. User-owned layers merge by adding nodes. Every other field a shallower layer set cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
+| Workspace providers, resources, channels | A deeper user-owned layer replaces the whole definition. No partial override. |
+| Tasks | A deeper user-owned layer replaces the whole definition. No partial override. |
+| Workflows | User-owned layers merge by adding nodes. Every other field a shallower layer set cannot be redeclared, except runtime tuning tables where deeper trusted layers replace the whole table. |
 | Workflow input schemas | A workflow's input contract is stated by one layer. A deeper layer redeclaring it is a load error, since a contract no single layer states is one no author can read. |
 | Templates | Same-id conflicts between plugin layers fail. Lookup then remains user-overridable: nearest workspace dir or ancestor template, then global user templates, then plugin templates. |
 
+Templates are looked up by name rather than addressed, which is why a same-id
+conflict between plugin layers is still a template's load error.
+
 Partial override model:
 
-- To partially customize a plugin workflow, add a same-id workflow declaration
-  in a trusted overlay that adds new `[[nodes]]` entries.
-- To replace a plugin task, workspace provider, resource, or channel, place a
-  full same-id definition in global config or a trusted overlay.
+- To partially customize a workflow you own, add a same-id workflow declaration
+  in a trusted overlay that adds new `[[nodes]]` entries. A plugin's workflow is
+  a separate address and is not extended this way; a workflow that starts from
+  one is a copy.
+- To stand a task, workspace provider, resource, or channel in for a plugin's,
+  declare your own and reference yours. Yours answers to its bare id and the
+  plugin's to its address, so the reference is what chooses.
 - To customize a template, place a same-named Markdown template in the nearest
   desired overlay.
 - A plugin-provided task cannot be edited in place through a patch mechanism.
