@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -173,5 +174,56 @@ func TestExecuteTaskSetup_SeesWorkflowOutputs(t *testing.T) {
 	}
 	if result.Outputs["branch"] != "feat/x" {
 		t.Errorf("expected @workflow outputs visible, got %v", result.Outputs)
+	}
+}
+
+// TestExecuteTaskSetup_NestedRunsTheWholeChain covers the dynamic
+// instantiation path: `plect task setup` on a nested task runs every layer,
+// so the two setup entry points agree on what instantiating one task means.
+func TestExecuteTaskSetup_NestedRunsTheWholeChain(t *testing.T) {
+	exec := withScriptedExecutor(t, &scriptedExecutor{stdout: map[string]string{
+		"outer-setup": `{"guard_dir":"/tmp/guard"}`,
+		"inner-setup": `{"pid":"7"}`,
+	}})
+	ordered := nestedPlan(t,
+		config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup")},
+		config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")},
+	)
+	result, err := ExecuteTaskSetup(context.Background(), ordered[0], nil, SessionVars{Name: "s"}, nil)
+	if err != nil {
+		t.Fatalf("ExecuteTaskSetup: %v", err)
+	}
+	if got := exec.commands(); !reflect.DeepEqual(got, []string{"outer-setup", "inner-setup"}) {
+		t.Fatalf("setup order = %v, want the whole chain outside-in", got)
+	}
+	if len(result.Layers) != 2 || result.Layers[1].Outputs["pid"] != "7" {
+		t.Errorf("Layers = %+v, want a record per layer with the innermost's outputs", result.Layers)
+	}
+}
+
+// TestExecuteTaskSetup_NestedFailureKeepsProducedLayers covers the
+// partial-failure contract of the dynamic path: the caller persists what
+// produced so the next cleanup can unwind it.
+func TestExecuteTaskSetup_NestedFailureKeepsProducedLayers(t *testing.T) {
+	withScriptedExecutor(t, &scriptedExecutor{
+		stdout: map[string]string{"outer-setup": `{"guard_dir":"/tmp/guard"}`},
+		failOn: "inner-setup",
+	})
+	ordered := nestedPlan(t,
+		config.TaskDefinition{ID: "outer", Scope: "run", Setup: shellStub("outer-setup")},
+		config.TaskDefinition{ID: "inner", Scope: "run", Setup: shellStub("inner-setup")},
+	)
+	result, err := ExecuteTaskSetup(context.Background(), ordered[0], nil, SessionVars{Name: "s"}, nil)
+	if err == nil {
+		t.Fatal("ExecuteTaskSetup: want an error when the inner setup fails, got nil")
+	}
+	if len(result.Layers) != 2 {
+		t.Fatalf("Layers = %+v, want a record for the produced layer and the failed one", result.Layers)
+	}
+	if result.Layers[0].Status != contract.TaskStatusProduced {
+		t.Errorf("outer layer status = %q, want %q", result.Layers[0].Status, contract.TaskStatusProduced)
+	}
+	if result.Layers[1].Status != contract.TaskStatusFailed {
+		t.Errorf("inner layer status = %q, want %q", result.Layers[1].Status, contract.TaskStatusFailed)
 	}
 }
