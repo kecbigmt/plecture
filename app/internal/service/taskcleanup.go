@@ -42,10 +42,10 @@ type TaskCleanupResult struct {
 	Resource string `json:"resource,omitempty"`
 	// UnsubscribeError carries a failed unsubscribe attempt's message. Never
 	// fails TaskCleanup itself: the instance and its own cleanup script
-	// already succeeded by the time this runs, and the reclaimed instance
-	// record is gone, so there is nothing left to retry against — leaving
-	// this in the result is the only way the caller learns delivery may now
-	// be orphaned.
+	// already succeeded by the time this runs. The failure is also queued
+	// for a durable retry (see queuePendingUnsubscribe) since the reclaimed
+	// instance record itself is gone and so is no longer a retry handle —
+	// this field is what lets the caller learn about it now, immediately.
 	UnsubscribeError string `json:"unsubscribe_error,omitempty"`
 }
 
@@ -75,7 +75,7 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	if err != nil {
 		return nil, err
 	}
-	flushPendingDelivery(cfg, store, resolvedName)
+	flushPendingDeliveryLogged(cfg, store, resolvedName)
 
 	st := session.Tasks[params.Instance]
 	if st == nil {
@@ -143,27 +143,35 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 		// unreferenced" primitive to close it the rest of the way. Excluding
 		// TaskSetup's own subscribe decision for this session from running
 		// at the same time closes it instead.
-		lockErr := withDeliveryLock(store, resolvedName, func() {
+		if lockErr := withDeliveryLock(store, resolvedName, func() {
 			fresh, freshErr := store.GetE(resolvedName)
 			switch {
 			case freshErr != nil:
 				result.UnsubscribeError = fmt.Sprintf("could not verify whether %s is still needed: %v", st.Resource, freshErr)
-				if queueErr := queuePendingUnsubscribe(store, resolvedName, st.Resource); queueErr != nil {
-					result.UnsubscribeError = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", result.UnsubscribeError, queueErr)
-				}
-			case fresh != nil && !resourceStillNeededBySession(fresh, st.Resource):
+			case fresh == nil:
+				// The session itself is gone (destroyed between
+				// resolveSession above and this read): nothing can need the
+				// resource any more than resourceStillNeededBySession's "no"
+				// case already covers, so it is handled identically.
+				fallthrough
+			case !resourceStillNeededBySession(fresh, st.Resource):
 				unsubscribed, unsubErr := unsubscribeIfWired(cfg, resolvedName, st.Resource)
 				result.Unsubscribed = unsubscribed
 				if unsubErr != nil {
 					result.UnsubscribeError = unsubErr.Error()
-					if queueErr := queuePendingUnsubscribe(store, resolvedName, st.Resource); queueErr != nil {
-						result.UnsubscribeError = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", result.UnsubscribeError, queueErr)
-					}
 				}
 			}
-		})
-		if lockErr != nil {
+		}); lockErr != nil {
 			result.UnsubscribeError = fmt.Sprintf("could not acquire the delivery lock: %v", lockErr)
+		}
+		// The queue call sits outside the lock's callback (and outside the
+		// switch above) so a failure to acquire the lock itself is queued
+		// too, the same as a failure inside it — queuing must not depend on
+		// which of the two ways this can fail.
+		if result.UnsubscribeError != "" {
+			if queueErr := queuePendingUnsubscribe(store, resolvedName, st.Resource); queueErr != nil {
+				result.UnsubscribeError = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", result.UnsubscribeError, queueErr)
+			}
 		}
 	}
 	return result, nil

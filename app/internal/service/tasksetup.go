@@ -49,11 +49,13 @@ type TaskSetupResult struct {
 	// when nothing needed wiring.
 	Subscribed bool `json:"subscribed,omitempty"`
 	// SubscribeError carries a failed subscribe attempt's message (an
-	// ambiguous provider match, or the hook itself failing). Never fails
-	// TaskSetup: the instance above is already fully instantiated by the
-	// time this runs, so returning an error here would tell the caller
-	// nothing happened when something did — this field is the only honest
-	// way to report the failure.
+	// ambiguous provider match, the hook itself failing, or the delivery
+	// lock failing to acquire). Never fails TaskSetup: the instance above is
+	// already fully instantiated by the time this runs, so returning an
+	// error here would tell the caller nothing happened when something did.
+	// The failure is also queued for a durable retry (see
+	// queuePendingSubscribe); this field is what lets the caller learn
+	// about it now, immediately.
 	SubscribeError string         `json:"subscribe_error,omitempty"`
 	Outputs        map[string]any `json:"outputs,omitempty"`
 	// Instruction is the rendered body of a task document instance. Empty for
@@ -98,7 +100,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if err != nil {
 		return nil, err
 	}
-	flushPendingDelivery(cfg, store, resolvedName)
+	flushPendingDeliveryLogged(cfg, store, resolvedName)
 	if session.Tasks == nil {
 		session.Tasks = make(map[string]*contract.TaskState)
 	}

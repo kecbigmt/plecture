@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,12 +14,13 @@ import (
 )
 
 // pendingDeliveryFile durably queues, per session, resources a subscribe or
-// unsubscribe attempt could not carry out — a failed hook, or (unsubscribe
-// only) a failed freshness re-check — so the failure is a retry candidate
-// on the session's next activity rather than a lost one-shot attempt. Kept
-// out of contracts/state.Session (a separately pseudo-version-pinned module
-// this change must not touch) and rooted next to state.json instead, as a
-// pure implementation detail of this package's own retry behavior.
+// unsubscribe attempt could not carry out — a failed hook, a failed
+// delivery-lock acquisition, or (unsubscribe only) a failed freshness
+// re-check — so the failure is a retry candidate on the session's next
+// activity rather than a lost one-shot attempt. Kept out of
+// contracts/state.Session (a separately pseudo-version-pinned module this
+// change must not touch) and rooted next to state.json instead, as a pure
+// implementation detail of this package's own retry behavior.
 type pendingDeliveryFile struct {
 	Subscribe   map[string][]string `json:"subscribe,omitempty"`
 	Unsubscribe map[string][]string `json:"unsubscribe,omitempty"`
@@ -118,14 +120,26 @@ func dequeuePendingUnsubscribe(store *state.Store, sessionName, resource string)
 	})
 }
 
+// flushPendingDeliveryLogged is TaskSetup's/TaskCleanup's own call site for
+// flushPendingDelivery: neither has a result field for "an unrelated
+// resource's queued retry also failed just now" (their own result is about
+// the instance the caller asked about, not the whole queue), so this logs
+// what flushPendingDelivery could not resolve instead of the bare
+// discard-the-return-value call that used to sit here — the operator can
+// still see it happened, in the log, even though it has nowhere to surface
+// in either service call's own return value.
+func flushPendingDeliveryLogged(cfg *config.Config, store *state.Store, sessionName string) {
+	for _, err := range flushPendingDelivery(cfg, store, sessionName) {
+		slog.Default().Warn("pending delivery flush failed", "session", sessionName, "error", err)
+	}
+}
+
 // flushPendingDelivery retries every subscribe/unsubscribe queued for
 // sessionName, under the same per-session lock a fresh subscribe/unsubscribe
 // decision runs under (withDeliveryLock) — so a flush can never interleave
 // with one either. Called opportunistically at the top of
 // TaskSetup/TaskCleanup: ordinary session activity is what drains the
-// queue, there is no background process. Errors flushing hit are returned,
-// not swallowed here — a caller that only logs or ignores them does so
-// explicitly, not because this function hid them.
+// queue, there is no background process.
 func flushPendingDelivery(cfg *config.Config, store *state.Store, sessionName string) []error {
 	var errs []error
 	if lockErr := withDeliveryLock(store, sessionName, func() {

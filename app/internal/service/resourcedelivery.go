@@ -15,25 +15,32 @@ import (
 // unsubscribe decision for this session, closing the race a fresh read
 // alone could only narrow), and on failure queues the resource for a
 // durable retry rather than losing the one-shot attempt — mirroring
-// TaskCleanup's own queuePendingUnsubscribe path. Never returns an error:
-// both callers treat a wiring failure as non-fatal to the instantiation
-// that already succeeded, reporting it via the returned message instead.
-func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, resource string) (subscribed bool, errMsg string) {
+// TaskCleanup's own queuePendingUnsubscribe path. The queue call sits
+// outside withDeliveryLock's callback so a failure to acquire the lock
+// itself is queued too, the same as a failure inside it; only the lock's
+// own success or failure decides whether subscribeIfWired ran, not whether
+// a retry gets queued. Never returns an error: both callers treat a wiring
+// failure as non-fatal to the instantiation that already succeeded,
+// reporting it via the returned message instead.
+func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, resource string) (bool, string) {
 	if strings.TrimSpace(resource) == "" {
 		return false, ""
 	}
-	lockErr := withDeliveryLock(store, sessionName, func() {
+	var subscribed bool
+	var errMsg string
+	if lockErr := withDeliveryLock(store, sessionName, func() {
 		var subErr error
 		subscribed, subErr = subscribeIfWired(cfg, sessionName, resource)
 		if subErr != nil {
 			errMsg = subErr.Error()
-			if queueErr := queuePendingSubscribe(store, sessionName, resource); queueErr != nil {
-				errMsg = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", errMsg, queueErr)
-			}
 		}
-	})
-	if lockErr != nil {
-		return false, fmt.Sprintf("could not acquire the delivery lock: %v", lockErr)
+	}); lockErr != nil {
+		errMsg = fmt.Sprintf("could not acquire the delivery lock: %v", lockErr)
+	}
+	if errMsg != "" {
+		if queueErr := queuePendingSubscribe(store, sessionName, resource); queueErr != nil {
+			errMsg = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", errMsg, queueErr)
+		}
 	}
 	return subscribed, errMsg
 }
