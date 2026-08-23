@@ -128,8 +128,11 @@ const OutputKeyWorkspaceDir = "workspace_dir"
 //     a second `setup --name <name>` collides. Empty for the numbered
 //     `<task>#<n>` form. Shown by `plect status` / `ls`.
 type TaskState struct {
-	Scope    string           `json:"scope"`              // "session" | "run"
-	TaskID   string           `json:"task_id,omitempty"`  // workflow node's `uses` target; omitted when node id == task id (legacy)
+	Scope string `json:"scope"` // "session" | "run"
+	// TaskID is the address the instance's declaration answers to. It is
+	// omitted for a workflow node, whose id is its key and whose declaration
+	// the workflow itself names.
+	TaskID   string           `json:"task_id,omitempty"`
 	Status   string           `json:"status"`             // "produced" | "failed" | "cleaned"
 	Inputs   map[string]any   `json:"inputs,omitempty"`   // resolved node inputs (post-template), persisted for cleanup
 	Outputs  map[string]any   `json:"outputs,omitempty"`  // parsed JSON from setup stdout
