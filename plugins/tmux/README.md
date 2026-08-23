@@ -9,7 +9,7 @@ Surface.
 
 ## Contents
 
-- `config/tasks/tmux.toml` — creates/attaches/tears down the tmux pane an
+- `config/tasks/pane.toml` — creates/attaches/tears down the tmux pane an
   agent CLI runs in. `[terminal].attach`/`.capture` let `plect attach`/
   `plect capture` reach the pane; `[terminal].send_text`/`.send_keys` are
   consumed by agent-runtime plugins (`claude`, `codex`) via
@@ -19,7 +19,7 @@ Surface.
   never sets `silence_expected`, since a pane's contents cannot establish
   that quiet is intended.
 
-No executables: every `[terminal]` verb is inline shell in `tmux.toml`, so
+No executables: every `[terminal]` verb is inline shell in `pane.toml`, so
 this plugin ships config only.
 
 ## Install

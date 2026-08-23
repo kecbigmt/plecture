@@ -38,7 +38,7 @@ Each hit is one of two cases, and the id alone does not say which:
 
 | Declaration | Kind | Address |
 |---|---|---|
-| `tmux` | effect | `official.tmux.tmux` |
+| `pane` | effect | `official.tmux.pane` |
 | `runtime` | effect | `official.claude.runtime` |
 | `claude_initial_prompt` | effect | `official.claude.claude_initial_prompt` |
 | `codex` | effect | `official.codex.codex` |

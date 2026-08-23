@@ -1,4 +1,4 @@
-[tmux]
+[pane]
 kind  = "effect"
 scope = "run"
 
@@ -6,7 +6,7 @@ scope = "run"
 # upstream nodes — tmux has no node-level inputs. A workflow wires this
 # effect's `session_name` output into downstream nodes that send keys into
 # the pane it creates.
-[tmux.setup]
+[pane.setup]
 type   = "shell"
 script = '''
 tmux has-session -t "$session_name" 2>/dev/null \
@@ -16,15 +16,15 @@ tmux has-session -t "$session_name" \
 jq -nc --arg name "$session_name" '{session_name:$name}'
 '''
 
-[tmux.setup.bind]
+[pane.setup.bind]
 session_name  = { from = "session.name" }
 workspace_dir = { from = "workspace.dir" }
 
-[tmux.cleanup]
+[pane.cleanup]
 type   = "shell"
 script = 'tmux kill-session -t "$session_name" 2>/dev/null || true'
 
-[tmux.cleanup.bind]
+[pane.cleanup.bind]
 session_name = { from = "self.outputs.session_name" }
 
 # `activity` is the generic, agent-agnostic half of the session's activity
@@ -33,12 +33,12 @@ session_name = { from = "self.outputs.session_name" }
 # runtime's own turn-boundary probe — a single long turn crosses no boundary,
 # so without this pane fingerprint the session would read stalled while the
 # agent is plainly working.
-[tmux.health.alive]
+[pane.health.alive]
 type    = "exec"
 command = "tmux"
 args    = ["has-session", "-t", { from = "self.outputs.session_name" }]
 
-[tmux.health.activity]
+[pane.health.activity]
 type   = "shell"
 script = '''
 PANE=$(tmux capture-pane -p -t "$session_name") || exit 1
@@ -51,7 +51,7 @@ jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{fingerprint: $fp, observed_at: $at}'
 '''
 
-[tmux.health.activity.bind]
+[pane.health.activity.bind]
 session_name = { from = "self.outputs.session_name" }
 
 # The four verbs below are this effect's interactive endpoint:
@@ -60,29 +60,29 @@ session_name = { from = "self.outputs.session_name" }
 # `{ terminal = "<verb>" }` without that consumer knowing tmux is behind it.
 # send_text receives the literal text to type as its operand; send_keys
 # receives a key token (e.g. "Enter") the same way.
-[tmux.terminal.attach]
+[pane.terminal.attach]
 type    = "exec"
 command = "tmux"
 args    = ["attach", "-t", { from = "self.outputs.session_name" }]
 
-[tmux.terminal.capture]
+[pane.terminal.capture]
 type    = "exec"
 command = "tmux"
 args    = ["capture-pane", "-p", "-t", { from = "self.outputs.session_name" }]
 
-[tmux.terminal.send_text]
+[pane.terminal.send_text]
 type    = "exec"
 command = "tmux"
 args    = ["send-keys", "-t", { from = "self.outputs.session_name" }, "--"]
 
-[tmux.terminal.send_keys]
+[pane.terminal.send_keys]
 type    = "exec"
 command = "tmux"
 args    = ["send-keys", "-t", { from = "self.outputs.session_name" }]
 
-[tmux.outputs_schema]
+[pane.outputs_schema]
 type     = "object"
 required = ["session_name"]
 
-[tmux.outputs_schema.properties]
+[pane.outputs_schema.properties]
 session_name = { type = "string" }

@@ -2,5 +2,5 @@
 # record is regenerated. The stand-ins under bin/ answer for the multiplexer
 # itself and pin the clock, so the recorded pane fingerprint is reproducible.
 
-[tmux]
+[pane]
 capture = "spy pane line"

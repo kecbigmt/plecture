@@ -39,7 +39,7 @@ path.
 For every standard config declaration a candidate plugin ships under
 `config/`, compare the plugin path with the `config/` prefix stripped against
 the matching path under your config home. For example, plugin file
-`config/tasks/tmux.toml` maps to config-home file `tasks/tmux.toml`, and
+`config/tasks/pane.toml` maps to config-home file `tasks/pane.toml`, and
 plugin file `config/templates/work.md` maps to config-home file
 `templates/work.md`.
 

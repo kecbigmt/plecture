@@ -81,7 +81,7 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 	// test: a shipped declaration answers to its catalog path, so a plugin
 	// moving between catalog directories changes how config selects it.
 	for _, address := range []string{
-		"official.tmux.tmux",
+		"official.tmux.pane",
 		"official.claude.claude_initial_prompt",
 		"official.claude.runtime",
 		"official.codex.codex",

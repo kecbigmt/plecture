@@ -910,7 +910,7 @@ Catalog-owned files:
 ```text
 catalog.toml
 tmux/plugin.toml
-tmux/config/tasks/tmux.toml
+tmux/config/tasks/pane.toml
 claude/plugin.toml
 claude/config/tasks/runtime.toml
 claude/config/tasks/initial_prompt.toml
