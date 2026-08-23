@@ -108,6 +108,8 @@ var (
 		"config.workspace_dirs_root", "force")
 	surfaceProviderSubscribe = newSurface("workspace_provider.subscribe", LayerSemantic,
 		"session.name", "resource.id")
+	surfaceProviderUnsubscribe = newSurface("workspace_provider.unsubscribe", LayerSemantic,
+		"session.name", "resource.id")
 
 	surfaceObserverObserve = newSurface("resource_observer.observe", LayerSemantic,
 		"resource.id", "workspace.dir", "workspace.branch")

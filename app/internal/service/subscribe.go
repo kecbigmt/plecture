@@ -77,15 +77,17 @@ func Subscribe(cfg *config.Config, store *state.Store, params SubscribeParams) e
 	return nil
 }
 
-// workspaceProviderForResource selects the single workspace provider whose
-// resolver matches the resource. Mirrors dispatchResource's no-flag branch
-// but keys on the workspace provider's `match` directly (subscribe has no
-// workflow): zero matches is an "unknown resource" error, several is
-// ambiguity. The chosen workspace provider must declare a `subscribe` hook.
-func workspaceProviderForResource(cfg *config.Config, resource string) (config.WorkspaceProviderConfig, error) {
+// matchWorkspaceProviders returns every workspace provider whose resolver
+// matches the resource, in deterministic (id-sorted) order. It does not
+// check which hooks a match declares — callers that need a particular hook
+// (subscribe, unsubscribe) check that themselves, since a resource with no
+// match, or an unhooked match, means different things to different callers
+// (an explicit `plect subscribe` fails outright; the implicit wiring a
+// dynamic task instance's `--resource` gets is left unwired instead).
+func matchWorkspaceProviders(cfg *config.Config, resource string) ([]config.WorkspaceProviderConfig, error) {
 	workspaceProviders, err := cfg.LoadWorkspaceProviders()
 	if err != nil {
-		return config.WorkspaceProviderConfig{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", err)}
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", err)}
 	}
 	ids := make([]string, 0, len(workspaceProviders))
 	for id := range workspaceProviders {
@@ -101,11 +103,24 @@ func workspaceProviderForResource(cfg *config.Config, resource string) (config.W
 		}
 		re, reErr := regexp.Compile(prov.Match)
 		if reErr != nil {
-			return config.WorkspaceProviderConfig{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q resolver match: %v", prov.ID, reErr)}
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q resolver match: %v", prov.ID, reErr)}
 		}
 		if re.MatchString(resource) {
 			matched = append(matched, prov)
 		}
+	}
+	return matched, nil
+}
+
+// workspaceProviderForResource selects the single workspace provider whose
+// resolver matches the resource. Mirrors dispatchResource's no-flag branch
+// but keys on the workspace provider's `match` directly (subscribe has no
+// workflow): zero matches is an "unknown resource" error, several is
+// ambiguity. The chosen workspace provider must declare a `subscribe` hook.
+func workspaceProviderForResource(cfg *config.Config, resource string) (config.WorkspaceProviderConfig, error) {
+	matched, err := matchWorkspaceProviders(cfg, resource)
+	if err != nil {
+		return config.WorkspaceProviderConfig{}, err
 	}
 	switch len(matched) {
 	case 0:

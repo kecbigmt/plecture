@@ -245,16 +245,21 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	}
 	recordLifecycle(store, resolvedName, "task_setup", fmt.Sprintf("instantiated %s", key))
 	appendInstruction(store, resolvedName, key, params.Resource, instruction)
+
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource)
+
 	return &TaskSetupResult{
 		SessionName: resolvedName,
 		Instance:    key,
 		// The address the reference selected, so a caller echoing this back at
 		// another command names the same declaration.
-		TaskID:      params.TaskID,
-		Scope:       contract.TaskScopeSession,
-		Name:        params.Name,
-		Resource:    params.Resource,
-		Instruction: instruction,
+		TaskID:         params.TaskID,
+		Scope:          contract.TaskScopeSession,
+		Name:           params.Name,
+		Resource:       params.Resource,
+		Subscribed:     subscribed,
+		SubscribeError: subscribeErrMsg,
+		Instruction:    instruction,
 	}, nil
 }
 

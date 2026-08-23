@@ -59,6 +59,166 @@ func TestTaskSetup_NoInstructionEventWithoutOutput(t *testing.T) {
 	}
 }
 
+// Binding implies delivery: an explicit --resource that a workspace
+// provider's resolver claims is registered for event delivery to the
+// session, the same registration `plect subscribe` performs.
+func TestTaskSetup_ResourceSubscribesToMatchingProvider(t *testing.T) {
+	subRec := filepath.Join(t.TempDir(), "sub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, subRec, "")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	result, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	if !result.Subscribed {
+		t.Error("Subscribed = false, want true for a resource a workspace provider recognizes")
+	}
+	got, readErr := os.ReadFile(subRec)
+	if readErr != nil {
+		t.Fatalf("subscribe hook did not run: %v", readErr)
+	}
+	if want := "o/r-1\n" + prURL + "\n"; string(got) != want {
+		t.Errorf("subscribe hook recorded %q, want %q", got, want)
+	}
+}
+
+// A --resource no workspace provider's resolver recognizes is left unwired —
+// silently, not an error — since not every bound resource is a
+// workspace-provider-governed one.
+func TestTaskSetup_ResourceWithNoMatchingProviderLeavesItUnwired(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "work"}},
+	)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	result, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: "https://jira.example.com/browse/PROJ-1",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	if result.Subscribed {
+		t.Error("Subscribed = true, want false when no workspace provider matches")
+	}
+}
+
+// Re-setup (or a setup after a manual `plect subscribe`) must not fail: the
+// underlying registry's own upsert is what makes it idempotent, and TaskSetup
+// must not add a hook-failure of its own on top of it.
+func TestTaskSetup_ResourceSubscribeIsIdempotentAcrossRepeatedSetup(t *testing.T) {
+	subRec := filepath.Join(t.TempDir(), "sub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, subRec, "")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "a", Resource: prURL}); err != nil {
+		t.Fatalf("first setup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "a", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "a", Resource: prURL}); err != nil {
+		t.Fatalf("re-setup: %v", err)
+	}
+}
+
+// A resource matching more than one workspace provider is a real
+// configuration defect, but the instance itself is already fully
+// instantiated by the time delivery wiring runs — failing TaskSetup here
+// would tell the caller nothing happened when something did. TaskSetup
+// reports the defect via SubscribeError instead of erroring out.
+func TestTaskSetup_AmbiguousProviderMatchDoesNotFailSetup(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "work"}},
+	)
+	writeProviderDoc(t, cfg.BaseDir, "a", ghMatch, "")
+	writeProviderDoc(t, cfg.BaseDir, "b", ghMatch, "")
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	result, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: "https://github.com/o/r/pull/9",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	if result.Subscribed {
+		t.Error("Subscribed = true, want false: an ambiguous match wires nothing")
+	}
+	if result.SubscribeError == "" {
+		t.Error("SubscribeError is empty, want the ambiguous-match defect reported")
+	}
+	if store.Get("o/r-1").Tasks["pr"] == nil {
+		t.Error("the instance itself must still exist: a delivery-wiring defect must not orphan it")
+	}
+}
+
+// A subscribe hook that fails to run must not fail TaskSetup either, for the
+// same reason: the instance is already committed by the time this runs.
+func TestTaskSetup_SubscribeHookFailureDoesNotFailSetup(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "work"}},
+	)
+	body := `
+[github]
+kind  = "workspace_provider"
+match = '` + ghMatch + `'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[github.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workdir":"/tmp/x"}']
+
+[github.subscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", "echo boom >&2; exit 3"]
+`
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	result, err := TaskSetup(cfg, store, TaskSetupParams{
+		TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: "https://github.com/o/r/pull/9",
+	})
+	if err != nil {
+		t.Fatalf("TaskSetup: %v", err)
+	}
+	if result.Subscribed {
+		t.Error("Subscribed = true, want false: the hook failed")
+	}
+	if result.SubscribeError == "" {
+		t.Error("SubscribeError is empty, want the hook failure reported")
+	}
+	if store.Get("o/r-1").Tasks["pr"] == nil {
+		t.Error("the instance itself must still exist: a hook failure must not orphan it")
+	}
+}
+
 func waitUntil(t *testing.T, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

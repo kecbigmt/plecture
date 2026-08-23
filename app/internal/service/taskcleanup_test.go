@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -301,6 +302,253 @@ type = "string"
 	}
 	if got := strings.TrimSpace(string(data)); got != guard {
 		t.Errorf("released %q, want the local the outer setup produced (%q)", got, guard)
+	}
+}
+
+// TaskCleanup drops the delivery registration a matching TaskSetup wired,
+// once nothing else in the session still needs it — the counterpart of
+// TestTaskSetup_ResourceSubscribesToMatchingProvider.
+func TestTaskCleanup_UnsubscribesResourceWhenNoLongerNeeded(t *testing.T) {
+	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", unsubRec)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	got, err := os.ReadFile(unsubRec)
+	if err != nil {
+		t.Fatalf("unsubscribe hook did not run: %v", err)
+	}
+	if want := "o/r-1\n" + prURL + "\n"; string(got) != want {
+		t.Errorf("unsubscribe hook recorded %q, want %q", got, want)
+	}
+}
+
+// A dynamic instance bound to the session's own primary resource must not
+// have delivery unregistered on cleanup: the primary subscription outlives
+// any one instance and is not this instance's to drop.
+func TestTaskCleanup_DoesNotUnsubscribeSessionPrimaryResource(t *testing.T) {
+	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", unsubRec)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	// seedSession's ResourceID is derived from (ownerRepo, number): this is
+	// the session's own primary resource.
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+	primary := "https://github.com/o/r/issues/1"
+
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "again", Resource: primary}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "again", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if _, err := os.Stat(unsubRec); err == nil {
+		t.Error("cleanup must not unsubscribe the session's own primary resource")
+	}
+}
+
+// Two instances bound to the same non-primary resource share one delivery
+// registration; cleaning up one must leave it wired for the other.
+func TestTaskCleanup_DoesNotUnsubscribeResourceStillBoundByAnotherInstance(t *testing.T) {
+	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, "", unsubRec)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "a", Resource: prURL}); err != nil {
+		t.Fatalf("setup a: %v", err)
+	}
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "b", Resource: prURL}); err != nil {
+		t.Fatalf("setup b: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "a", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup a: %v", err)
+	}
+	if _, err := os.Stat(unsubRec); err == nil {
+		t.Fatal("cleanup must not unsubscribe while a sibling instance still binds the resource")
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "b", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup b: %v", err)
+	}
+	if _, err := os.Stat(unsubRec); err != nil {
+		t.Error("cleanup of the last instance bound to the resource must unsubscribe it")
+	}
+}
+
+// A provider that supports subscribe but not unsubscribe leaves nothing to
+// run at cleanup time; Unsubscribed must report that honestly rather than
+// inferring "unsubscribed" from "no longer needed" alone.
+func TestTaskCleanup_DoesNotFalselyReportUnsubscribedWhenNoHookDeclared(t *testing.T) {
+	subRec := filepath.Join(t.TempDir(), "sub-rec")
+	provCfg := writeSubscribeUnsubscribeProvider(t, "github", ghMatch, subRec, "")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	mergeWorkspacesDir(t, provCfg, cfg)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	result, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "o/r-1"})
+	if err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+	if result.Unsubscribed {
+		t.Error("Unsubscribed = true, want false: the provider declares no unsubscribe hook to run")
+	}
+}
+
+// A failing unsubscribe hook must not fail TaskCleanup: the instance and its
+// own cleanup script already succeeded by the time this runs, so failing the
+// call now couldn't undo that. The failure is durably queued for retry (the
+// instance record itself is already gone, so the queue is the only
+// surviving retry handle) and reported to this call's own caller via
+// UnsubscribeError.
+func TestTaskCleanup_UnsubscribeHookFailureDoesNotFailCleanup(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	body := `
+[github]
+kind  = "workspace_provider"
+match = '` + ghMatch + `'
+name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
+
+[github.setup]
+type    = "exec"
+command = "printf"
+args    = ['{"workdir":"/tmp/x"}']
+
+[github.subscribe]
+type    = "exec"
+command = "true"
+
+[github.unsubscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", "echo boom >&2; exit 3"]
+`
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workspaces"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workspaces", "github.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	const prURL = "https://github.com/o/r/pull/9"
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "pr", Resource: prURL}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	result, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "pr", SessionName: "o/r-1"})
+	if err != nil {
+		t.Fatalf("TaskCleanup must not fail on a failed unsubscribe hook, got: %v", err)
+	}
+	if !result.Found {
+		t.Error("Found = false, want true: the instance itself was reclaimed")
+	}
+	if result.Unsubscribed {
+		t.Error("Unsubscribed = true, want false: the hook failed")
+	}
+	if result.UnsubscribeError == "" {
+		t.Error("UnsubscribeError is empty, want the hook failure reported")
+	}
+}
+
+// An instance created without --resource has nothing to unregister; cleanup
+// must not fail just because no workspace provider is even configured.
+func TestTaskCleanup_NoResourceBoundIsANoOpForDelivery(t *testing.T) {
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "work"}},
+	)
+	store := testStore(t)
+	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
+
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "o/r-1", Name: "x"}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := TaskCleanup(cfg, store, TaskCleanupParams{Instance: "x", SessionName: "o/r-1"}); err != nil {
+		t.Fatalf("cleanup: %v", err)
+	}
+}
+
+// A session destroyed between resolveSession and TaskCleanup's fresh
+// delivery-lock read must not silently skip the unsubscribe decision: a nil
+// session means nothing can need the resource any more than an explicit
+// "not needed" answer already covers.
+func TestShouldUnsubscribe(t *testing.T) {
+	tests := []struct {
+		name     string
+		session  *domain.Session
+		resource string
+		want     bool
+	}{
+		{"nil session (destroyed mid-cleanup) has nothing left to need it", nil, "r", true},
+		{"present session still needs the resource as its primary", &domain.Session{ResourceID: "r"}, "r", false},
+		{"present session no longer needs the resource", &domain.Session{ResourceID: "other"}, "r", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldUnsubscribe(tc.session, tc.resource); got != tc.want {
+				t.Errorf("shouldUnsubscribe(%+v, %q) = %v, want %v", tc.session, tc.resource, got, tc.want)
+			}
+		})
+	}
+}
+
+// mergeWorkspacesDir copies a fixture's workspaces/ directory (built by
+// writeSubscribeUnsubscribeProvider, which allocates its own BaseDir) into
+// the target cfg's BaseDir, so a test can compose a workflow fixture with a
+// resource-delivery provider fixture without one helper needing to know
+// about the other.
+func mergeWorkspacesDir(t *testing.T, from, to *config.Config) {
+	t.Helper()
+	srcDir := filepath.Join(from.BaseDir, "workspaces")
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dstDir := filepath.Join(to.BaseDir, "workspaces")
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(srcDir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dstDir, e.Name()), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

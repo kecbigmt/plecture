@@ -1142,6 +1142,9 @@
         "subscribe": {
           "$ref": "#/$defs/action"
         },
+        "unsubscribe": {
+          "$ref": "#/$defs/action"
+        },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument"
         },

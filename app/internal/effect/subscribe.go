@@ -49,3 +49,25 @@ func RunWorkspaceProviderSubscribe(prov config.WorkspaceProviderConfig, vars Sub
 	}
 	return nil
 }
+
+// RunWorkspaceProviderUnsubscribe renders and runs the workspace provider's
+// `unsubscribe` hook — the counterpart to RunWorkspaceProviderSubscribe,
+// dropping a session's binding to a resource rather than creating one. Same
+// fire-and-forget contract: no outputs, no persisted core state.
+func RunWorkspaceProviderUnsubscribe(prov config.WorkspaceProviderConfig, vars SubscribeHookVars) error {
+	if prov.Unsubscribe == nil {
+		return fmt.Errorf("workspace provider %q declares no unsubscribe hook", prov.ID)
+	}
+	env := lang.Roots{
+		"session":  map[string]any{"name": vars.SessionName},
+		"resource": map[string]any{"id": vars.ResourceID},
+	}
+	_, stderr, runErr := RunProviderAction(prov.Unsubscribe, ProviderEval(env, vars.Plugins, vars.SourcePath, prov.Ownership()))
+	if runErr != nil {
+		if msg := strings.TrimSpace(string(stderr)); msg != "" {
+			return fmt.Errorf("workspace provider %q unsubscribe: %w: %s", prov.ID, runErr, msg)
+		}
+		return fmt.Errorf("workspace provider %q unsubscribe: %w", prov.ID, runErr)
+	}
+	return nil
+}

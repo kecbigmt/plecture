@@ -207,6 +207,7 @@ func (v Validation) validateProvider(def *Definition, pos Position) error {
 		{"setup", surfaceProviderSetup},
 		{"cleanup", surfaceProviderCleanup},
 		{"subscribe", surfaceProviderSubscribe},
+		{"unsubscribe", surfaceProviderUnsubscribe},
 	} {
 		if err := v.action(def.Body, hook.field, hook.surface, pos); err != nil {
 			return err

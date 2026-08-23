@@ -92,6 +92,16 @@ type = "exec"
 bin  = "github-watcher"
 args = ["subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
 
+# unsubscribe drops a single (session, resource) binding — the counterpart of
+# `subscribe`, run when a dynamic task instance bound to that resource is
+# reclaimed and nothing else in the session still needs it (`plect task
+# cleanup`). Distinct from `cleanup`'s own unconditional unsubscribe-all,
+# which drops every resource this session ever bound, on session destroy.
+[worktree.unsubscribe]
+type = "exec"
+bin  = "github-watcher"
+args = ["unsubscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
+
 # Author-declared parameters, set by a workflow's
 # `[workspace_provider_inputs]`. Every one is data — a path, a naming
 # template, a boolean — so wiring one can change where and under what name a

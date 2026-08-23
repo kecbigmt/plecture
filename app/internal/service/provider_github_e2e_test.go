@@ -3,6 +3,7 @@
 package service
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -183,6 +184,87 @@ func setupSrcRepo(t *testing.T) string {
 	run(srcDir, "git", "remote", "add", "origin", bareDir)
 	run(srcDir, "git", "push", "-u", "origin", "main")
 	return srcDir
+}
+
+// watcherSubscriptions reads the real github-watcher's on-disk subscription
+// registry (~/.local/share/github-watcher/subscriptions.json, following its
+// own XDG default) directly: core never imports the plugin's watcher
+// package, so this is the only way an app-side e2e test can see what the
+// real `subscribe`/`unsubscribe` hooks — the shipped worktree.toml this
+// package cannot otherwise observe — actually persisted.
+func watcherSubscriptions(t *testing.T, home string) map[string]json.RawMessage {
+	t.Helper()
+	path := filepath.Join(home, ".local", "share", "github-watcher", "subscriptions.json")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		t.Fatalf("read subscriptions.json: %v", err)
+	}
+	var doc struct {
+		Subscriptions map[string]json.RawMessage `json:"subscriptions"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("parse subscriptions.json: %v", err)
+	}
+	return doc.Subscriptions
+}
+
+// TestE2E_GithubWorkspaceProviderWiresAndDropsEventDelivery pins
+// binding-implies-delivery against the real shipped hooks, not a fixture
+// provider: binding a resource via subscribeIfWired — the same call
+// TaskSetup makes for an explicit --resource — must actually register a
+// subscription the real github-watcher binary persists, through the shipped
+// worktree.toml's `subscribe` hook. unsubscribeIfWired — TaskCleanup's
+// counterpart — must drop exactly that one registration through the
+// worktree.toml's `unsubscribe` hook.
+func TestE2E_GithubWorkspaceProviderWiresAndDropsEventDelivery(t *testing.T) {
+	root := repoRoot(t)
+	mounted := buildWorkspaceProviderBinaries(t, root)
+	workspacesDir := filepath.Join(mounted[0].Dir, "config", "workspaces")
+	if err := os.MkdirAll(workspacesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	shipped, err := os.ReadFile(filepath.Join(root, "plugins", "github", "config", "workspaces", "worktree.toml"))
+	if err != nil {
+		t.Fatalf("read shipped github workspace provider: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspacesDir, "github.toml"), shipped, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{PluginDirs: []string{mounted[0].Dir}, Plugins: mounted}
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_DATA_HOME", "")
+
+	const session = "testowner/testrepo-42+review"
+	const resource = "https://github.com/testowner/testrepo/pull/42"
+
+	wired, err := subscribeIfWired(cfg, session, resource)
+	if err != nil {
+		t.Fatalf("subscribeIfWired: %v", err)
+	}
+	if !wired {
+		t.Fatal("the shipped github workspace provider must wire delivery for an issue/PR URL")
+	}
+	subs := watcherSubscriptions(t, home)
+	if len(subs) != 1 {
+		t.Fatalf("subscriptions after subscribeIfWired = %v, want exactly one", subs)
+	}
+
+	unsubscribed, err := unsubscribeIfWired(cfg, session, resource)
+	if err != nil {
+		t.Fatalf("unsubscribeIfWired: %v", err)
+	}
+	if !unsubscribed {
+		t.Fatal("the shipped github workspace provider must unwire delivery for an issue/PR URL")
+	}
+	subs = watcherSubscriptions(t, home)
+	if len(subs) != 0 {
+		t.Fatalf("subscriptions after unsubscribeIfWired = %v, want none", subs)
+	}
 }
 
 // TestE2E_GithubWorkspaceProviderSrcLayoutSingleWorkdir covers the ~/src

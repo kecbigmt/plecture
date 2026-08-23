@@ -38,13 +38,26 @@ type TaskSetupParams struct {
 
 // TaskSetupResult reports the instantiated task instance.
 type TaskSetupResult struct {
-	SessionName string         `json:"session_name"`
-	Instance    string         `json:"instance"` // instance key: <name> when named, else <task>#<number>
-	TaskID      string         `json:"task_id"`
-	Scope       string         `json:"scope"`
-	Name        string         `json:"name,omitempty"`
-	Resource    string         `json:"resource,omitempty"`
-	Outputs     map[string]any `json:"outputs,omitempty"`
+	SessionName string `json:"session_name"`
+	Instance    string `json:"instance"` // instance key: <name> when named, else <task>#<number>
+	TaskID      string `json:"task_id"`
+	Scope       string `json:"scope"`
+	Name        string `json:"name,omitempty"`
+	Resource    string `json:"resource,omitempty"`
+	// Subscribed is true only when binding this instance to Resource also ran
+	// a subscribe hook that registered it for event delivery — not merely
+	// when nothing needed wiring.
+	Subscribed bool `json:"subscribed,omitempty"`
+	// SubscribeError carries a failed subscribe attempt's message (an
+	// ambiguous provider match, the hook itself failing, or the delivery
+	// lock failing to acquire). Never fails TaskSetup: the instance above is
+	// already fully instantiated by the time this runs, so returning an
+	// error here would tell the caller nothing happened when something did.
+	// The failure is also queued for a durable retry (see
+	// queuePendingSubscribe); this field is what lets the caller learn
+	// about it now, immediately.
+	SubscribeError string         `json:"subscribe_error,omitempty"`
+	Outputs        map[string]any `json:"outputs,omitempty"`
 	// Instruction is the rendered body of a task document instance. Empty for
 	// an effect instance, whose instruction is an output of its setup.
 	Instruction string `json:"instruction,omitempty"`
@@ -87,6 +100,7 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	if err != nil {
 		return nil, err
 	}
+	flushPendingDeliveryLogged(cfg, store, resolvedName)
 	if session.Tasks == nil {
 		session.Tasks = make(map[string]*contract.TaskState)
 	}
@@ -254,14 +268,18 @@ func TaskSetup(cfg *config.Config, store *state.Store, params TaskSetupParams) (
 	// [[event.channel]] delivers.
 	appendInstruction(store, resolvedName, key, params.Resource, instructionOutput(resultOutputs))
 
+	subscribed, subscribeErrMsg := wireDeliveryOnSetup(cfg, store, resolvedName, params.Resource)
+
 	return &TaskSetupResult{
-		SessionName: resolvedName,
-		Instance:    key,
-		TaskID:      params.TaskID,
-		Scope:       resolved.Scope,
-		Name:        params.Name,
-		Resource:    params.Resource,
-		Outputs:     resultOutputs,
+		SessionName:    resolvedName,
+		Instance:       key,
+		TaskID:         params.TaskID,
+		Scope:          resolved.Scope,
+		Name:           params.Name,
+		Resource:       params.Resource,
+		Subscribed:     subscribed,
+		SubscribeError: subscribeErrMsg,
+		Outputs:        resultOutputs,
 	}, nil
 }
 

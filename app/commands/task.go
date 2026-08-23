@@ -60,7 +60,12 @@ session-global singleton: the instance key IS the name and a second
 'setup --name <name>' is a collision error — recreate it by running
 'plect task cleanup <name>' first. --resource binds the external resource this
 instance works on (exposed to its setup/done_when as .ResourceID); it is
-decoupled from the instance's identity. Inputs the task declares are bound
+decoupled from the instance's identity. Binding implies delivery: when a
+workspace provider recognizes --resource, it is also registered for event
+delivery to the session (the same registration 'plect subscribe' performs),
+so done_when re-evaluation and chain firing react to its events instead of
+waiting for the heartbeat. 'plect task cleanup' drops that registration once
+nothing else in the session still needs it. Inputs the task declares are bound
 from --input first, then the workflow/provider outputs, then the session inputs.
 --done-when-json appends additional done_when leaves to this instance only.
 
@@ -92,6 +97,11 @@ Examples:
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Instantiated %s [%s] for %s\n", taskDisplayName(result.Name, result.Instance), result.Scope, result.SessionName)
+		if result.Subscribed {
+			fmt.Fprintf(os.Stderr, "Registered %s for event delivery to %s\n", result.Resource, result.SessionName)
+		} else if result.SubscribeError != "" {
+			fmt.Fprintf(os.Stderr, "Warning: could not register %s for event delivery: %s\n", result.Resource, result.SubscribeError)
+		}
 		return nil
 	},
 }
@@ -131,6 +141,11 @@ Examples:
 		}
 		if result.Found {
 			fmt.Fprintf(os.Stderr, "Reclaimed %s from %s\n", result.Instance, result.SessionName)
+			if result.Unsubscribed {
+				fmt.Fprintf(os.Stderr, "Dropped event delivery for %s from %s\n", result.Resource, result.SessionName)
+			} else if result.UnsubscribeError != "" {
+				fmt.Fprintf(os.Stderr, "Warning: could not drop event delivery for %s: %s\n", result.Resource, result.UnsubscribeError)
+			}
 		} else {
 			fmt.Fprintf(os.Stderr, "No instance %s in %s (nothing to clean)\n", result.Instance, result.SessionName)
 		}
