@@ -9,6 +9,8 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/effect"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -113,7 +115,7 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 		// object: the write addresses the inner output its direct binding
 		// publishes, and the contract is re-read from there.
 		if len(layers) > 0 {
-			if applyErr := task.ApplyMutableOutputs(layers, st, params.Outputs); applyErr != nil {
+			if applyErr := effect.ApplyMutableOutputs(layers, st, params.Outputs); applyErr != nil {
 				return &Error{Code: ErrInvalidInput, Message: applyErr.Error()}
 			}
 			if schema != nil {
@@ -149,7 +151,7 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 // resolveSetOutputTarget maps the selected target to the Tasks map key plus
 // the mutable-key set, compiled outputs schema, and — for a nested task — the
 // layer chain a write routes through.
-func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params SetOutputParams) (target string, mutable []string, schema *jsonschema.Schema, layers []task.ResolvedLayer, err *Error) {
+func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params SetOutputParams) (target string, mutable []string, schema *jsonschema.Schema, layers []effect.Layer, err *Error) {
 	if params.Workflow {
 		workflows, loadErr := cfg.LoadWorkflows(session.WorkspaceDirPath)
 		if loadErr != nil {
@@ -174,7 +176,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		if mErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, mErr)}
 		}
-		compiled, cErr := task.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
+		compiled, cErr := lang.CompileSchema(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath(), "plect:workspace_provider:"+prov.ID+":outputs")
 		if cErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workspace provider %q: outputs schema: %v", prov.ID, cErr)}
 		}
@@ -210,11 +212,11 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		if mErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, mErr)}
 		}
-		compiled, cErr := task.CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plect:task:"+taskID+":outputs")
+		compiled, cErr := lang.CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plect:task:"+taskID+":outputs")
 		if cErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: outputs schema: %v", taskID, cErr)}
 		}
-		resolvedLayers, lErr := task.ResolveLayers(def)
+		resolvedLayers, lErr := effect.ResolveLayers(def)
 		if lErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %q: %v", taskID, lErr)}
 		}

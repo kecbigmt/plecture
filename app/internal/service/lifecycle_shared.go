@@ -7,6 +7,8 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/effect"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -109,7 +111,7 @@ func terminalBinding(plan *task.Plan, s *domain.Session) *task.TerminalBinding {
 	}
 	outputs := map[string]any{}
 	if st, ok := s.Tasks[t.NodeID]; ok && st != nil {
-		if self := task.TerminalSelf(t.Layers, st); self != nil {
+		if self := effect.TerminalSelf(t.Layers, st); self != nil {
 			outputs = self
 		}
 	}
@@ -142,7 +144,7 @@ func resolveSessionInputs(cfg *config.Config, workspaceDirPath, workflowName str
 			}
 		}
 	}
-	schema, err := task.CompileSchema(inline, file, sourceID)
+	schema, err := lang.CompileSchema(inline, file, sourceID)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("input schema: %v", err)}
 	}
@@ -212,7 +214,7 @@ func loadSessionWorkflow(cfg *config.Config, workspaceDirPath string, session *d
 // all: silently ignoring a key the author never declared would let a typo'd
 // parameter read as configured.
 func resolveWorkspaceProviderInputs(prov config.WorkspaceProviderConfig, wf config.WorkflowFile) (map[string]any, error) {
-	schema, err := task.CompileSchema(prov.InputsSchema, prov.ResolvedInputsSchemaPath(), "plect:workspace:"+prov.ID+":inputs")
+	schema, err := lang.CompileSchema(prov.InputsSchema, prov.ResolvedInputsSchemaPath(), "plect:workspace:"+prov.ID+":inputs")
 	if err != nil {
 		return nil, fmt.Errorf("workspace provider %q inputs schema: %w", prov.ID, err)
 	}

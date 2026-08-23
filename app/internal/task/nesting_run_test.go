@@ -566,7 +566,7 @@ func TestCompileWorkflow_NestedNodeCarriesItsLayers(t *testing.T) {
 	}
 	got := make([]string, 0, len(plan.Run[0].Layers))
 	for _, l := range plan.Run[0].Layers {
-		got = append(got, l.TaskID)
+		got = append(got, l.EffectID)
 	}
 	if !reflect.DeepEqual(got, []string{"team_claude", "claude"}) {
 		t.Errorf("node layers = %v, want the whole chain outermost first", got)
@@ -590,13 +590,13 @@ func TestCleanupLayers_CarryTheOutwardJoint(t *testing.T) {
 		InnerChain:  []config.TaskDefinition{{ID: "inner", Scope: "run", Cleanup: shellStub("inner-cleanup")}},
 	}
 	outer.Inner = "inner"
-	r := Resolved{NodeID: "outer", Scope: config.TaskScopeRun, Cleanup: outer.Cleanup, Layers: CleanupLayers(outer)}
+	r := Resolved{NodeID: "outer", Scope: config.TaskScopeRun, Cleanup: outer.Cleanup, Layers: effect.CleanupLayers(outer)}
 	tasks := map[string]*contract.TaskState{"outer": {
 		Scope:  config.TaskScopeRun,
 		Status: contract.TaskStatusProduced,
-		Layers: []contract.TaskLayerState{
-			{TaskID: "outer", Status: contract.TaskStatusProduced, Locals: map[string]any{"guard_dir": "/tmp/guard"}},
-			{TaskID: "inner", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "42"}},
+		Layers: []contract.LayerState{
+			{EffectID: "outer", Status: contract.TaskStatusProduced, Locals: map[string]any{"guard_dir": "/tmp/guard"}},
+			{EffectID: "inner", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "42"}},
 		},
 	}}
 	if err := RunCleanup(context.Background(), []Resolved{r}, SessionVars{Name: "s"}, tasks, nil); err != nil {

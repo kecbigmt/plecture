@@ -9,21 +9,20 @@
 //
 // It is intentionally minimal: sequential execution, no reactivity, no
 // dynamic DAG. Scope-aware topological sort, one resolution pass per
-// execution. Actually running a resolved action is app/internal/effect's
-// job, not this package's — task builds the roots and calls into effect
-// only for "run this resolved action".
+// execution. Actually running a resolved action — including walking a task's
+// nesting chain, when it declares one — is app/internal/effect's job, not
+// this package's: task builds the roots and the per-layer closures a chain
+// walk needs, and calls into effect to resolve and run.
 package task
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -67,7 +66,7 @@ type Resolved struct {
 	// Layers is the node's nesting chain, outermost first, when its task
 	// definition declares `inner`. Empty for a plain task, which is the one
 	// distinction the lifecycle runners make between the two.
-	Layers []ResolvedLayer
+	Layers []effect.Layer
 }
 
 // Plan groups tasks by scope, in topo-sorted order.
@@ -236,7 +235,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		return Resolved{}, fmt.Errorf("task %q: invalid scope %q (want %q or %q)",
 			def.ID, def.Scope, config.TaskScopeSession, config.TaskScopeRun)
 	}
-	outputsSchema, err := CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plect:task:"+def.ID+":outputs")
+	outputsSchema, err := lang.CompileSchema(def.OutputsSchema, def.ResolvedOutputsSchemaPath(), "plect:task:"+def.ID+":outputs")
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: outputs schema: %w", def.ID, err)
 	}
@@ -244,11 +243,11 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: outputs schema: %w", def.ID, err)
 	}
-	inputsSchema, err := CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "plect:task:"+def.ID+":inputs")
+	inputsSchema, err := lang.CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "plect:task:"+def.ID+":inputs")
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: input schema: %w", def.ID, err)
 	}
-	layers, err := ResolveLayers(def)
+	layers, err := effect.ResolveLayers(def)
 	if err != nil {
 		return Resolved{}, fmt.Errorf("task %q: %w", def.ID, err)
 	}
@@ -257,7 +256,7 @@ func ResolveDefinition(def config.TaskDefinition, nodeID string) (Resolved, erro
 		// A nested task presents one [terminal], whichever layer declared it:
 		// from the outside it is exactly an effect, so nothing downstream
 		// asks which layer answered.
-		if t := TerminalLayer(layers); t >= 0 {
+		if t := effect.TerminalLayer(layers); t >= 0 {
 			terminal = layers[t].Terminal
 		}
 	}
@@ -409,48 +408,6 @@ func filterByScope(resolved []Resolved, scope string) []Resolved {
 	return out
 }
 
-// CompileSchema returns (nil, nil) when neither input is set; both set is an error.
-func CompileSchema(inline map[string]any, filePath, inlineID string) (*jsonschema.Schema, error) {
-	hasInline := len(inline) > 0
-	hasFile := filePath != ""
-	if hasInline && hasFile {
-		return nil, fmt.Errorf("inline schema and schema file are mutually exclusive")
-	}
-	switch {
-	case hasInline:
-		// TOML decodes ints as int64; round-trip through JSON so the
-		// validator sees the same shape it would from a .json file.
-		raw, err := json.Marshal(inline)
-		if err != nil {
-			return nil, fmt.Errorf("marshal inline schema: %w", err)
-		}
-		return compileSchemaBytes(inlineID, raw)
-	case hasFile:
-		data, err := os.ReadFile(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", filePath, err)
-		}
-		return compileSchemaBytes(filePath, data)
-	}
-	return nil, nil
-}
-
-func compileSchemaBytes(id string, raw []byte) (*jsonschema.Schema, error) {
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
-	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", id, err)
-	}
-	compiler := jsonschema.NewCompiler()
-	if err := compiler.AddResource(id, doc); err != nil {
-		return nil, fmt.Errorf("add %s: %w", id, err)
-	}
-	schema, err := compiler.Compile(id)
-	if err != nil {
-		return nil, fmt.Errorf("compile %s: %w", id, err)
-	}
-	return schema, nil
-}
-
 // topoSortNodes returns nodes in dependency-respecting order using Kahn's
 // algorithm. Dependencies pointing outside `list` are treated as already
 // satisfied — run-scoped nodes can depend on session-scoped nodes that live
@@ -532,10 +489,6 @@ type RenderContext struct {
 	// emitted from its own setup, visible to that layer's cleanup and to its
 	// own binding templates and nowhere else. Empty for a plain task.
 	Locals map[string]any
-	// Inner is the public contract of the layer one step inward, read by a
-	// `[bind.outputs]` template as `.Inner.outputs.<key>`. Empty everywhere
-	// but a projection render.
-	Inner map[string]any
 	// SourcePath is the absolute path of the file the rendered template
 	// (Setup/Cleanup/...) came from. It feeds the bare-name `bin = "<name>"`
 	// reading only — plugins.ResolveBin uses it to find the containing plugin — so a
@@ -599,28 +552,6 @@ func workflowOutputs(tasks map[string]*contract.TaskState) map[string]any {
 		return st.Outputs
 	}
 	return nil
-}
-
-// ParseOutputs parses a task setup's stdout as JSON. Empty input is treated
-// as an empty object. Parse failure returns an error so the caller can mark
-// the task as failed (contract violation).
-//
-// The contract requires a JSON *object*. A literal `null` unmarshals into a
-// nil map without error, so we reject it explicitly — silently treating it
-// as `{}` would mask a misbehaving setup script.
-func ParseOutputs(stdout []byte) (map[string]any, error) {
-	trimmed := bytes.TrimSpace(stdout)
-	if len(trimmed) == 0 {
-		return map[string]any{}, nil
-	}
-	var out map[string]any
-	if err := json.Unmarshal(trimmed, &out); err != nil {
-		return nil, fmt.Errorf("setup stdout is not a JSON object: %w", err)
-	}
-	if out == nil {
-		return nil, fmt.Errorf("setup stdout is not a JSON object: got null")
-	}
-	return out, nil
 }
 
 // dependencyOutputs builds the .Tasks.<id> / .Nodes.<id>.outputs map for the
@@ -730,7 +661,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			SourcePath: r.SourcePath,
 		}
 		if len(r.Layers) > 0 {
-			layers, stderr, nestErr := runNestedSetup(goCtx, r.Layers, ctx, resolvedInputs)
+			layers, stderr, nestErr := effect.RunLayers(goCtx, r.Layers, chainHost(ctx, obs, r.Scope, r.NodeID), ctx.Session.WorkspaceDirPath, resolvedInputs)
 			if nestErr != nil {
 				// The layers that did produce are persisted with the
 				// failure: the next cleanup has to unwind exactly those.
@@ -783,7 +714,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				return wrapped
 			}
 			var parseErr error
-			outputs, parseErr = ParseOutputs(stdout)
+			outputs, parseErr = lang.ParseOutputs(stdout)
 			if parseErr != nil {
 				tasks[r.NodeID] = failedState(r, now, parseErr.Error(), prev, resolvedInputs)
 				wrapped := fmt.Errorf("task %q setup: %w", r.NodeID, parseErr)
@@ -839,7 +770,7 @@ func withFreshTerminalOutputs(session SessionVars, owner *Resolved, tasks map[st
 	if !ok || st == nil {
 		return session
 	}
-	self := TerminalSelf(owner.Layers, st)
+	self := effect.TerminalSelf(owner.Layers, st)
 	if self == nil {
 		return session
 	}
@@ -939,7 +870,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 				Workflow: workflowOutputs(tasks),
 				Session:  sess,
 			}
-			stderr, nestErr := runNestedCleanup(goCtx, r.Layers, state.Layers, base, obs, r.Scope, r.NodeID)
+			stderr, nestErr := effect.RunLayerCleanup(goCtx, r.Layers, state.Layers, chainHost(base, obs, r.Scope, r.NodeID), base.Session.WorkspaceDirPath)
 			if nestErr != nil {
 				state.Status = contract.TaskStatusFailed
 				state.Error = nestErr.Error()

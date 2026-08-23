@@ -134,7 +134,7 @@ func TestShippedGithubProvider_HooksResolveWithNoParametersDeclared(t *testing.T
 func TestShippedGithubProvider_ParametersRejectShellMetacharacters(t *testing.T) {
 	provs, _ := loadShippedWorkspaceProviders(t)
 	prov := provs["official.github.worktree"]
-	schema, err := CompileSchema(prov.InputsSchema, prov.ResolvedInputsSchemaPath(), "test:github:inputs")
+	schema, err := lang.CompileSchema(prov.InputsSchema, prov.ResolvedInputsSchemaPath(), "test:github:inputs")
 	if err != nil {
 		t.Fatalf("CompileSchema: %v", err)
 	}

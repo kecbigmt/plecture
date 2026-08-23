@@ -186,7 +186,7 @@ func TestShippedCatalog_ModelEffortInputsRejectShellMetacharacters(t *testing.T)
 			continue
 		}
 		checked++
-		schema, err := CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "test:"+id)
+		schema, err := lang.CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "test:"+id)
 		if err != nil {
 			t.Fatalf("task %q: CompileSchema: %v", id, err)
 		}
@@ -226,7 +226,7 @@ func TestShippedCatalog_LaunchEnvRejectsQuoteBreakout(t *testing.T) {
 			continue
 		}
 		checked++
-		schema, err := CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "test:"+id)
+		schema, err := lang.CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "test:"+id)
 		if err != nil {
 			t.Fatalf("task %q: CompileSchema: %v", id, err)
 		}
@@ -263,7 +263,7 @@ func TestShippedCatalog_McpServersRejectsQuoteBreakout(t *testing.T) {
 			continue
 		}
 		checked++
-		schema, err := CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "test:"+id)
+		schema, err := lang.CompileSchema(def.InputsSchema, def.ResolvedInputsSchemaPath(), "test:"+id)
 		if err != nil {
 			t.Fatalf("task %q: CompileSchema: %v", id, err)
 		}

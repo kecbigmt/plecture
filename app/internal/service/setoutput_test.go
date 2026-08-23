@@ -430,9 +430,9 @@ func TestSetOutput_NestedRoutesWriteToTheBoundInnerOutput(t *testing.T) {
 			Scope:   contract.TaskScopeSession,
 			Status:  contract.TaskStatusProduced,
 			Outputs: map[string]any{"agent_pid": "1"},
-			Layers: []contract.TaskLayerState{
-				{TaskID: "team_runtime", Status: contract.TaskStatusProduced},
-				{TaskID: "runtime", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "1"}},
+			Layers: []contract.LayerState{
+				{EffectID: "team_runtime", Status: contract.TaskStatusProduced},
+				{EffectID: "runtime", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "1"}},
 			},
 			SetupAt: time.Now(),
 		},
@@ -475,9 +475,9 @@ func TestSetOutput_NestedDynamicInstanceRoutesThroughItsLayers(t *testing.T) {
 			Dynamic: true,
 			Status:  contract.TaskStatusProduced,
 			Outputs: map[string]any{"agent_pid": "1"},
-			Layers: []contract.TaskLayerState{
-				{TaskID: "team_runtime", Status: contract.TaskStatusProduced},
-				{TaskID: "runtime", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "1"}},
+			Layers: []contract.LayerState{
+				{EffectID: "team_runtime", Status: contract.TaskStatusProduced},
+				{EffectID: "runtime", Status: contract.TaskStatusProduced, Outputs: map[string]any{"pid": "1"}},
 			},
 			SetupAt: time.Now(),
 		},
