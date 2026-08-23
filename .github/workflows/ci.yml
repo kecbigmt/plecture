@@ -230,3 +230,38 @@ jobs:
           go test ./plugins/legacy-migration/...
           go test ./plugins/okf/src/...
           go test ./plugins/slack/src/slack-adapter/...
+
+  # The only job a branch-protection ruleset can require without going
+  # BLOCKED forever on a path-filtered PR: matrix jobs above report nothing
+  # when skipped by the changes job, and GitHub's required-status-check
+  # semantics treat a never-reporting required context as forever-pending.
+  # if: always() plus needs on every other job makes this the one context
+  # that always reports, so the ruleset can require it alone and still
+  # cover the full matrix.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs:
+      - changes
+      - gofmt
+      - provider-boundary
+      - comment-references
+      - instruction-orphans
+      - gh-guard
+      - plugin-script-selftests
+      - build-test
+      - integration-test
+      - readme-verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every needed job to have succeeded or been skipped
+        # The needs context is passed via env, not spliced into the script
+        # body, because needs.*.outputs can carry diff-derived strings (e.g.
+        # affected_plugins) that a malicious PR could shape to break out of
+        # an inline interpolation.
+        env:
+          NEEDS_CONTEXT: ${{ toJson(needs) }}
+        run: |
+          echo "$NEEDS_CONTEXT" | jq -e '
+            to_entries | all(.value.result == "success" or .value.result == "skipped")
+          '
