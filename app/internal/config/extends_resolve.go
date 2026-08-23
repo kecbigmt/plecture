@@ -111,26 +111,42 @@ func composeTaskDocument(layers []TaskDocument) TaskDocument {
 }
 
 // mergeSchemaField merges one schema field (inputs_schema or state_schema)
-// across an extends chain. lang's structural check on `extends` already
-// guarantees that no layer but the root declares anything besides
-// `properties` on this field, so the composed object's own shape — `type`,
-// `required`, `additionalProperties`, and anything else — is exactly the
-// root's, verbatim, with no per-key merge decision to make for any of them;
-// only `properties` itself is ever the union of more than one layer.
+// across an extends chain. lang's structural check on `extends` guarantees
+// every keyword but `type` and `properties` comes from the root alone, so
+// those keywords are copied from whichever layer declares the field at all.
+// `type` gets its own pass rather than riding along with that copy: the root
+// may leave it unset and a later layer may be the one that actually declares
+// it (lang's SchemaKeyRules already confirms every layer that does declare
+// one agrees), and picking it from "whichever table showed up first" would
+// silently drop a later layer's type the moment the root's own table has any
+// content at all.
 func mergeSchemaField(layers []TaskDocument, field func(TaskDocument) map[string]any) map[string]any {
 	var base map[string]any
+	var typeValue any
+	haveType := false
 	for _, layer := range layers {
-		if schema := field(layer); schema != nil {
+		schema := field(layer)
+		if schema == nil {
+			continue
+		}
+		if base == nil {
 			base = schema
-			break
+		}
+		if !haveType {
+			if t, ok := schema["type"]; ok {
+				typeValue, haveType = t, true
+			}
 		}
 	}
 	if base == nil {
 		return nil
 	}
-	merged := make(map[string]any, len(base))
+	merged := make(map[string]any, len(base)+1)
 	for k, v := range base {
 		merged[k] = v
+	}
+	if haveType {
+		merged["type"] = typeValue
 	}
 	merged["properties"] = mergeSchemaProperties(layers, field)
 	return merged

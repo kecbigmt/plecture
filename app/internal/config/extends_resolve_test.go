@@ -6,10 +6,6 @@ import (
 	"testing"
 )
 
-// The composed contract is exactly base+deltas: an extension's instruction
-// appends after the base's, its own chains join the base's, and done_when
-// leaves accumulate — while the base document itself stays exactly what it
-// declared, independently referable and untouched by the extension.
 func TestValidateTaskDocuments_ComposesInstructionsChainsAndDoneWhen(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
@@ -75,9 +71,6 @@ kind = "workflow"
 	}
 }
 
-// Three layers deep, each layer's instructions append in order and every
-// layer's judge id is reachable from the outermost declaration — the
-// team-adoption shape unbounded depth exists for.
 func TestValidateTaskDocuments_ComposesThreeLayersDeep(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
@@ -130,13 +123,6 @@ instructions = [{ text = "Additionally leave inline comments." }]
 	}
 }
 
-// TestLoadTaskDocuments_ComposesExtendsWithoutValidateTaskDocuments guards the
-// fast display and health-check paths (service.loadDisplayTasks,
-// watchdog.EvaluateHealth), which read task documents straight off
-// LoadTaskDeclarations/LoadTaskDocuments and deliberately skip the full
-// ValidateTaskDocuments contract pass for speed. Composition must not be
-// something only the slow path performs, or those callers would evaluate an
-// extension's done_when missing every leaf its base contributed.
 func TestLoadTaskDocuments_ComposesExtendsWithoutValidateTaskDocuments(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
@@ -169,11 +155,6 @@ extends = "work"
 	}
 }
 
-// TestLoadTaskDocuments_RejectsInvalidExtendsWithoutValidateTaskDocuments is
-// the other half of the fast-path guard: LoadTaskDocuments must not silently
-// merge an extends chain that breaks a composition rule just because the
-// caller skips the heavier ValidateTaskDocuments pass. Composition runs its
-// own copy of lang's checkers rather than assuming they already ran.
 func TestLoadTaskDocuments_RejectsInvalidExtendsWithoutValidateTaskDocuments(t *testing.T) {
 	tests := []struct {
 		name string
@@ -277,11 +258,6 @@ kind = "workflow"
 	}
 }
 
-// TestValidateTaskDocuments_ComposedSchemaKeepsBaseConstraintsClosed proves an
-// extension cannot weaken a base's closed contract: the extension's own
-// state_schema table never touches required/additionalProperties at all, so
-// composition carries the base's through untouched while still adding the
-// extension's own new property.
 func TestValidateTaskDocuments_ComposedSchemaKeepsBaseConstraintsClosed(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
@@ -331,10 +307,6 @@ reviewed_by = { type = "string" }
 	}
 }
 
-// TestLoadTaskDocuments_RejectsSchemaFileInExtendsChain guards against silent
-// data loss: composition reads only inline schema tables, so a schema_file
-// contract anywhere in the chain must fail loud rather than compose into
-// nothing.
 func TestLoadTaskDocuments_RejectsSchemaFileInExtendsChain(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
@@ -359,11 +331,6 @@ extends = "work"
 	}
 }
 
-// TestValidateTaskDocuments_ComposedSchemaPreservesSchemaValuedAdditionalProperties
-// guards a JSON Schema shape a simple `.(bool)` type assertion would silently
-// drop: additionalProperties may itself be a schema, not only true/false.
-// Composition must carry the root's value through verbatim, whatever its
-// type, since only the root may set it at all.
 func TestValidateTaskDocuments_ComposedSchemaPreservesSchemaValuedAdditionalProperties(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
@@ -489,9 +456,6 @@ type = "array"
 	}
 }
 
-// inputs_schema and state_schema properties merge by key: a new key an
-// extension adds joins the base's, and a default the extension adds to an
-// existing key survives composition.
 func TestValidateTaskDocuments_ComposesSchemaProperties(t *testing.T) {
 	base := t.TempDir()
 	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
@@ -534,5 +498,41 @@ reviewed_by = { type = "string" }
 	}
 	if _, ok := props["reviewed_by"]; !ok {
 		t.Errorf("properties = %+v, want the extension's new key added", props)
+	}
+}
+
+func TestLoadTaskDocuments_ComposedSchemaKeepsATypeIntroducedByALaterLayer(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
+[work]
+kind              = "task"
+resource_observer = "issue_pr"
+instructions      = [{ text = "Resolve the issue." }]
+
+[work.state_schema.properties]
+priority = { type = "string" }
+
+[work_ext]
+kind    = "task"
+extends = "work"
+
+[work_ext.state_schema]
+type = "object"
+
+[work_ext.state_schema.properties]
+reviewed_by = { type = "string" }
+`)
+	docs, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments: %v", err)
+	}
+	ext := docs["work_ext"]
+	if got := ext.StateSchema["type"]; got != "object" {
+		t.Errorf("type = %v, want the extension's declared type — the base's table appearing first in the chain must not discard it", got)
+	}
+	props, _ := ext.StateSchema["properties"].(map[string]any)
+	if _, ok := props["priority"]; !ok {
+		t.Errorf("properties = %v, want the base's key still present", props)
 	}
 }

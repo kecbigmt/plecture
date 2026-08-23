@@ -102,11 +102,6 @@ func TestTaskShow_UnknownTask(t *testing.T) {
 	}
 }
 
-// TestTaskShow_ReportsExtendsChainWithPerLayerProvenance is the acceptance
-// criterion made concrete: every composed element — each instruction
-// element, every done_when leaf kind (not only judges), each chain, and
-// every schema key (including which layer set a default) — names the
-// declaration in the extends chain that supplied it.
 func TestTaskShow_ReportsExtendsChainWithPerLayerProvenance(t *testing.T) {
 	base := t.TempDir()
 	writeTaskFile(t, base, "resources", `

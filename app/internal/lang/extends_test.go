@@ -45,10 +45,6 @@ func resolveTaskDocuments(t *testing.T, src string) error {
 	return nil
 }
 
-// TestExtendsResolvesStateInheritedFromTheBase is the regression this feature
-// exists to fix: an extension's own done_when reads a self.state key its base
-// declares and it never restates, which a per-document contract check would
-// otherwise reject as unpublished.
 func TestExtendsResolvesStateInheritedFromTheBase(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -73,9 +69,6 @@ all = [{ check = "self.state.verdict_revision", ne = "" }]
 	}
 }
 
-// TestExtendsAccumulatesJudgeIdsAcrossThreeLayers proves the duplicate check
-// walks the whole chain, not just the immediate base: a grandchild reusing
-// the root's judge id collides even though its own parent declares none.
 func TestExtendsAccumulatesJudgeIdsAcrossThreeLayers(t *testing.T) {
 	src := `[root_task]
 kind              = "task"
@@ -99,9 +92,6 @@ all = [{ judge = "a different question", id = "correct" }]
 	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsJudgeIDDuplicate, LayerSemantic)
 }
 
-// TestExtendsAllowsAnUnrelatedNewSchemaKey confirms the closed whitelist's
-// "new keys freely addable" half: adding a key the base never declared, with
-// its own default, is not a redeclaration of anything.
 func TestExtendsAllowsAnUnrelatedNewSchemaKey(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -129,10 +119,6 @@ reviewed_by = { type = "string", default = "" }
 	}
 }
 
-// TestExtendsAllowsBudgetAlongsideExtends documents that budget, unlike
-// resource_observer, is not part of the closed whitelist but also is not
-// forbidden: each declaration's own convergence bound is independent of
-// composition, so an extension may set its own.
 func TestExtendsAllowsBudgetAlongsideExtends(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -152,8 +138,6 @@ on_exhaust       = "escalate"
 	}
 }
 
-// TestExtendsRejectsAComputedReference holds extends to the same static
-// topology rule as workspace_provider and inner.uses.
 func TestExtendsRejectsAComputedReference(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -167,8 +151,6 @@ extends = { from = "inputs.base" }
 	wantDiag(t, resolveTaskDocuments(t, src), CodeRefDynamic, LayerStructural)
 }
 
-// TestExtendsRejectsABaseOfAnotherKind holds extends to the same expected-kind
-// rule every other reference site follows.
 func TestExtendsRejectsABaseOfAnotherKind(t *testing.T) {
 	src := `[ext_task]
 kind    = "task"
@@ -177,9 +159,6 @@ extends = "goal_reviewer"
 	wantDiag(t, resolveTaskDocuments(t, src), CodeKindMismatch, LayerSemantic)
 }
 
-// TestExtendsRequiresTheObserverSomewhereInTheChain proves the required-field
-// rule still fires when the missing observer is several layers away from the
-// document under validation.
 func TestExtendsRequiresTheObserverSomewhereInTheChain(t *testing.T) {
 	src := `[root_task]
 kind         = "task"
@@ -192,9 +171,6 @@ extends = "root_task"
 	wantDiag(t, resolveTaskDocuments(t, src), CodeFieldRequired, LayerStructural)
 }
 
-// TestExtendsRejectsRequiredOnAnExtensionSchema proves the schema whitelist
-// is actually closed: an extension cannot use `required` to newly constrain
-// an inherited key.
 func TestExtendsRejectsRequiredOnAnExtensionSchema(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -218,9 +194,6 @@ required = ["priority"]
 	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsSchemaShape, LayerStructural)
 }
 
-// TestExtendsRejectsAdditionalPropertiesOnAnExtensionSchema closes the other
-// half: additionalProperties answers for the composed contract's overall
-// shape, which only the root gets to set.
 func TestExtendsRejectsAdditionalPropertiesOnAnExtensionSchema(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -241,8 +214,6 @@ reviewed_by = { type = "string" }
 	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsSchemaShape, LayerStructural)
 }
 
-// TestExtendsAllowsTypeAndPropertiesOnAnExtensionSchema is the positive case:
-// the two keys every realistic object schema needs stay allowed.
 func TestExtendsAllowsTypeAndPropertiesOnAnExtensionSchema(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -264,9 +235,6 @@ reviewed_by = { type = "string" }
 	}
 }
 
-// TestExtendsRejectsATypeDisagreement proves the closed whitelist's one
-// restatable keyword is still checked: an extension may repeat `type`, but
-// only in agreement with whichever earlier layer already fixed it.
 func TestExtendsRejectsATypeDisagreement(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -289,9 +257,6 @@ type = "array"
 	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsSchemaType, LayerSemantic)
 }
 
-// TestExtendsRejectsSchemaFileAcrossMoreThanOneLayer proves the guard fires
-// once a real extends chain exists, even when the file-backed layer is the
-// root rather than the extension itself.
 func TestExtendsRejectsSchemaFileAcrossMoreThanOneLayer(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -306,9 +271,6 @@ extends = "base_task"
 	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsSchemaFileUnsupported, LayerSemantic)
 }
 
-// TestExtendsAllowsSchemaFileOnAStandaloneDocument is the guard's other half:
-// a lone document with no extends of its own, and nothing here extending it,
-// keeps state_schema_file fully supported.
 func TestExtendsAllowsSchemaFileOnAStandaloneDocument(t *testing.T) {
 	src := `[work]
 kind              = "task"
@@ -321,8 +283,6 @@ state_schema_file = "state.schema.json"
 	}
 }
 
-// TestExtendsRejectsADuplicateChainID mirrors judge-id uniqueness for chain
-// ids: two layers naming the same chain id would collide in spawn routing.
 func TestExtendsRejectsADuplicateChainID(t *testing.T) {
 	src := `[base_task]
 kind              = "task"
@@ -358,9 +318,6 @@ task = "review"
 	wantDiag(t, resolveTaskDocuments(t, src), CodeExtendsChainIDDuplicate, LayerSemantic)
 }
 
-// TestExtendsRejectsAnIndirectCycle proves cycle detection walks the whole
-// chain, not just an immediate self-reference: three declarations extending
-// each other in a loop reach themselves just as surely as one.
 func TestExtendsRejectsAnIndirectCycle(t *testing.T) {
 	src := `[task_a]
 kind    = "task"

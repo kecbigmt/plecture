@@ -129,18 +129,18 @@ and every other schema-object-level keyword answer for the composed
 contract's overall shape, and only the root, which has no extends of its
 own, gets to answer it (`PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE` structural,
 checkable from the document's own declaration alone). Composing the
-object's own shape is therefore not a merge at all: it is exactly the
-root's table, verbatim, since only the root may declare one; `properties`
-remains the one field ever combined across more than one layer. `type` is
-the closed set's one exception admitting more than a single declaring
-layer — every realistic object schema states it whether or not the value
-ever disagrees with an ancestor's — so a restated `type` is checked for
-agreement against whichever earlier layer already fixed it
-(`PLECTURE-CFG-EXTENDS-SCHEMA-TYPE`, the same redefinition code a property's
-own type reuses): composition keeps only the first value regardless, so a
-silently accepted disagreement would make the later layer's declaration
-dead weight rather than the load error the acceptance criteria already
-require for any redefined constraint. A layer using
+object's own shape is therefore not a merge at all for any keyword but
+`type`: every other keyword is copied from whichever layer declares the
+field at all, since only the root may set one; `properties` is the one
+field ever combined across more than one layer. `type` is the closed set's
+one exception admitting more than a single declaring layer — every
+realistic object schema states it whether or not the value ever disagrees
+with an ancestor's, and the root may leave it unset for an extension to
+supply. A restated `type` is checked for agreement against whichever
+earlier layer already fixed it (`PLECTURE-CFG-EXTENDS-SCHEMA-TYPE`, the
+same redefinition code a property's own type reuses), and composition
+resolves it the identical way validation does — the first layer, root
+first, that actually declares one. A layer using
 `inputs_schema_file` / `state_schema_file` anywhere in a real extends chain
 (more than one layer) fails the load outright rather than composing into
 nothing: the file path resolves relative to that layer's own directory,
@@ -168,9 +168,10 @@ The conformance corpus gains `testdata/config-language/tasks/extends/`: the
 three worked examples quoted verbatim in `docs/language/tasks.md` (a
 cross-tool reviewer choosing between two static chains, a gate-variant
 judge-recording extension, and a three-layer official/team/personal chain),
-plus the four required error fixtures and one fixture apiece for
-inherited-field, chain-id-duplicate, schema-shape,
-schema-file-unsupported, and the schema-object `type` disagreement.
+plus the four required error fixtures, one fixture apiece for
+inherited-field, chain-id-duplicate, schema-shape, schema-file-unsupported,
+and the schema-object `type` disagreement, and a fourth valid fixture for a
+root that leaves `type` for an extension to declare.
 
 No migration is needed: `extends` is new, additive vocabulary on an existing
 kind, and no previously valid task declaration changes meaning.
@@ -226,6 +227,18 @@ Closing the whitelist to `type`/`properties` outright removes the whole
 category: there is no schema-object keyword left that a merge rule could
 handle correctly for some values and silently wrong for others, because none
 of them are composed at all.
+
+### Pick `type` from whichever layer's table appears first in the chain
+
+Composition originally picked the composed object's `type` (and every other
+keyword) from the first layer, root first, that declared *a table at all*
+for the field — correct for every keyword but `type`, since only the root
+may set the others, but wrong for `type` specifically: a root table that
+declares `properties` without `type` still counted as "first," so an
+extension that was the actual first layer to declare `type` had it silently
+discarded. Composition now resolves `type` on its own pass, matching
+validation's own rule exactly: the first layer, root first, that declares
+`type` itself, not merely a table.
 
 ### A separate `docs/design/task-extends.md`
 

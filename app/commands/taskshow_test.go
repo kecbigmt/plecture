@@ -43,10 +43,6 @@ func TestWriteTaskDetail_PlainTaskPrintsNoChainSection(t *testing.T) {
 	}
 }
 
-// TestWriteTaskDetail_PrintsExtendsChainWithProvenance is the CLI half of the
-// per-element provenance acceptance criterion: every layer names each
-// instruction element, its chains, every done_when leaf (not only judges),
-// and its schema keys, including which key it gave a default.
 func TestWriteTaskDetail_PrintsExtendsChainWithProvenance(t *testing.T) {
 	var buf bytes.Buffer
 	err := writeTaskDetail(&buf, &service.TaskDetail{
