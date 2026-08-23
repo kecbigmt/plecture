@@ -39,9 +39,9 @@ plugins:
 | `slack` | Slack adapter service, Slack thread binding, Slack event ingress and egress | conversation events, plugin services, channel delivery | agent runtimes, channel-server sockets, VCS guards |
 | `github` | GitHub resource observation, workspace acquisition, watcher service, GitHub CLI write guard | resource definitions, workspace providers, subscriptions, plugin services | session runtime tasks, chat-service adapters |
 
-A plugin with only workflow, task, channel, template, or other configuration
+A plugin with only workflow, task, channel, or other configuration
 resources is still a plugin. A shared review workflow may be distributed as a
-configuration-only plugin, or it may remain user-owned workflow and template
+configuration-only plugin, or it may remain user-owned workflow
 configuration.
 
 ## Terminal Operation Surface

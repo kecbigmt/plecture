@@ -179,6 +179,7 @@ blank line in declaration order. Either way, it is a Plecture value the
 declaration carries, not a second document class.
 
 A Markdown file under a definition root that no instructions element's `file`
-names is a template asset rather than a definition. Template assets keep
-their own interpolation model, and a task's instruction is the one place
-where that model and this language meet — see [`tasks.md`](tasks.md).
+names is a template asset rather than a definition: the language does not
+read it at all. A referenced sidecar is different — its content is the
+declaration's own instruction, projected and validated the same way any
+other instruction segment is; see [`tasks.md`](tasks.md).
