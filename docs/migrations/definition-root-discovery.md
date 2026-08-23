@@ -12,7 +12,8 @@ that does not:
   `tasks/` mean the same thing, and a declaration is found wherever it sits.
 - A layer has one definition id namespace across every kind, so two
   declarations sharing an id inside one layer are a load error even when their
-  kinds differ.
+  kinds differ. Across layers they coexist: a plugin and your config are
+  different namespaces.
 - A non-reserved `.toml` under a root must be a definition document. There is
   nowhere left for a file that is not one.
 
@@ -69,6 +70,23 @@ Every hit changes; which name it takes depends on the header above it. A hit
 under `[[…nodes]]` becomes `runtime` or `exec_runtime`; a hit under
 `[[…event.channel]]` becomes `delivery` or `exec_delivery`.
 
+**Keep the node's id.** A node whose `id` is omitted takes the referenced
+definition's id, so changing `uses` alone silently renames the node — and a
+node id is both the key its task state is stored under and the name every
+`nodes.<id>.outputs.*` projection uses. Name the old id explicitly and nothing
+else has to move:
+
+```toml
+[[claude.nodes]]
+id   = "claude"            # was defaulted from uses; now stated
+uses = "runtime"
+```
+
+Without that line, a workflow whose other nodes project
+`nodes.claude.outputs.*` fails to compile — `node "claude_initial_prompt"
+reads unknown node "claude"` — and any live session's persisted state for that
+node is orphaned. The same applies to a `codex_exec` node.
+
 The other shipped ids the corpus spells differently — `tmux`'s effect as
 `pane`, `github`'s provider as `worktree` — are **not** renamed here. No
 collision forces them, and every rename is migration churn; reconciling the
@@ -103,40 +121,51 @@ anything else under a root is a template asset. That is a loosening rather
 than a tightening: a stray Markdown file beside a task document used to fail
 the load and is now simply not a declaration.
 
-## Give a same-id pair distinct ids
+## Give a same-id pair inside one layer distinct ids
 
-One layer's ids are shared across kinds, so a workflow and the workspace
-provider it selects cannot both be `github`:
+Ids are shared across kinds **within a layer**, so your own config cannot
+declare a workflow and the workspace provider it selects under one name:
 
 ```text
-~/.config/plect/workspaces/github.toml: github: PLECTURE-CFG-ID-DUPLICATE:
-id github is already declared in ~/.config/plect/workflows/github.toml
+~/.config/plect/workspaces/orchestrator.toml: orchestrator:
+PLECTURE-CFG-ID-DUPLICATE: id orchestrator is already declared in
+~/.config/plect/workflows/orchestrator.toml
 ```
 
-Rename one of the two and update every reference to it — a workflow's
-`workspace_provider`, a node's `uses`, a chain's `workflow`, a document's
-`resource_observer`, an `[[event.channel]]`'s `uses`. The id is the table
-name, so a rename is a TOML edit rather than a `mv`.
+**Rename the provider, not the workflow.** A workflow id is a segment of every
+session name it produces, so renaming it changes the identity of every live
+session frozen to it; a provider is named only by the `workspace_provider`
+line that selects it:
 
-**The loader is the detector.** Every collision it reports names both files
-and both kinds, and it reports one per load, so the procedure is to run a
-command that loads config, fix what it names, and repeat:
+```toml
+# workspaces/orchestrator_provider.toml — the id is the table name, so this is
+# a TOML edit and the filename follows only for legibility
+[orchestrator_provider]
+kind = "workspace_provider"
+
+# workflows/orchestrator.toml
+[orchestrator]
+kind               = "workflow"
+workspace_provider = "orchestrator_provider"
+```
+
+This applies inside one layer only. Across layers the same pair coexists: a
+plugin and your own config are different namespaces, so a plugin's
+`goal_review` task document and your `goal_review` workflow both load, and a
+reference resolves by the kind its site expects — a chain's `workflow` finds
+the workflow, an instantiation finds the document. You do not have to rename
+anything to avoid a plugin's ids.
+
+**The loader is the detector.** Every collision it reports names both files,
+and it reports one per load, so the procedure is to run a command that loads
+config, fix what it names, and repeat:
 
 ```bash
 plect workflow list
-# id "codex" is declared as kind "effect" in <plugin>/config/tasks/codex.toml
-# and kind "workflow" in ~/.config/plect/workflows/codex.toml
 ```
 
-Use that rather than a hand-rolled scan, for a reason worth stating: a
-pre-check over your own config home cannot see the mounted plugin roots, and a
-collision between your config and a plugin's is exactly the kind this change
-surfaces. There is no CLI surface that enumerates plugin directories, so a
-scan that looks complete would not be.
-
-What a local scan *is* good for is the collisions inside your own layer, which
-you can fix before mounting anything. A `kind = "task"` declaration lives only
-in `+++` frontmatter, so it has to read both serializations:
+A local scan finds them in one pass instead. A `kind = "task"` declaration
+lives only in `+++` frontmatter, so it has to read both serializations:
 
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
@@ -150,13 +179,13 @@ CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
 } | sort | uniq -d
 ```
 
-Anything that prints is declared twice in your own layer — a workspace provider
-and a workflow both called `orchestrator`, say. The `.md` half reads only a
-file that *opens* with `+++`, and only lines inside that frontmatter, so a
-template asset is never mistaken for a declaration: a bracketed word in
-ordinary prose, and a `[…]` line in a template's own body, are both skipped.
-`nextfile` needs GNU awk, which is what `awk` is on most Linux distributions;
-without it, check `*.md` frontmatter by eye.
+Anything that prints is declared twice in your own layer. Scanning one layer is
+the right scope now: a collision with a plugin is not one. The `.md` half reads
+only a file that *opens* with `+++`, and only lines inside that frontmatter, so
+a template asset is never mistaken for a declaration — a bracketed word in
+prose, and a `[…]` line in a template's body, are both skipped. `nextfile`
+needs GNU awk, which is what `awk` is on most Linux distributions; without it,
+check `*.md` frontmatter by eye.
 
 ## What did not change
 

@@ -15,9 +15,9 @@ import (
 // machine rather than to any directory a project owns. Such a declaration in
 // an ancestor overlay is skipped rather than refused, because a project's own
 // directory holding one is not a mistake — it simply does not participate.
-func loadTrustedKind[T any](namespace map[string]resolvedDefinition, kind lang.Kind, one func(*lang.Definition, bool) (T, error), idOf func(T) string) (map[string]T, error) {
+func loadTrustedKind[T any](resolved []resolvedDefinition, one func(*lang.Definition, bool) (T, error), idOf func(T) string) (map[string]T, error) {
 	out := make(map[string]T)
-	for _, entry := range ofKind(namespace, kind) {
+	for _, entry := range resolved {
 		loaded, err := one(entry.def, entry.fromPlugin)
 		if err != nil {
 			return nil, err
@@ -27,13 +27,13 @@ func loadTrustedKind[T any](namespace map[string]resolvedDefinition, kind lang.K
 	return out, nil
 }
 
-// trustedNamespace resolves the base layers alone. A caller loading a kind the
-// cascade does not reach has no workspace directory to pass, and reading the
-// overlays anyway would only discover declarations it must then skip.
-func (c *Config) trustedNamespace() (map[string]resolvedDefinition, error) {
+// trustedKind resolves one kind over the base layers alone. A caller loading a
+// kind the cascade does not reach has no workspace directory to pass, and
+// reading the overlays anyway would only discover declarations it must skip.
+func (c *Config) trustedKind(kind lang.Kind) ([]resolvedDefinition, error) {
 	layers, err := c.discoverLayers("")
 	if err != nil {
 		return nil, err
 	}
-	return c.resolveNamespace(layers)
+	return c.resolveNamespace(layers, kind)
 }

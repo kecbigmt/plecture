@@ -89,12 +89,12 @@ func (c *Config) LoadTaskDocuments(workspaceDirPath string) (map[string]TaskDocu
 	if err != nil {
 		return nil, err
 	}
-	namespace, err := c.resolveNamespace(layers)
+	resolved, err := c.resolveNamespace(layers, lang.KindTask)
 	if err != nil {
 		return nil, err
 	}
 	out := make(map[string]TaskDocument)
-	for _, entry := range ofKind(namespace, lang.KindTask) {
+	for _, entry := range resolved {
 		doc, err := c.taskDocumentFromDefinition(entry.def, entry.fromPlugin)
 		if err != nil {
 			return nil, err
@@ -315,28 +315,5 @@ func (c *Config) LoadTaskDeclarations(workspaceDirPath string) (map[string]TaskD
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := validateTaskIDNamespace(docs, effects); err != nil {
-		return nil, nil, err
-	}
 	return docs, effects, nil
-}
-
-// validateTaskIDNamespace rejects one id declared by both kinds. A deeper
-// layer replacing a shallower same-id declaration is the cascade rule only
-// when both declare the same kind: replacing an effect with a task document
-// would silently drop a lifecycle a workflow node still names.
-func validateTaskIDNamespace(docs map[string]TaskDocument, effects map[string]TaskDefinition) error {
-	ids := make([]string, 0, len(docs))
-	for id := range docs {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		effect, clash := effects[id]
-		if !clash {
-			continue
-		}
-		return fmt.Errorf("id %q is declared as a task by %s and as an effect by %s; an id names one declaration, and a task document does not replace an effect a workflow node may still name", id, docs[id].SourcePath, effect.SourcePath)
-	}
-	return nil
 }

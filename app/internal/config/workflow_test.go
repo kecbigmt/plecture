@@ -1347,18 +1347,16 @@ uses = "tmux"
 	}
 }
 
-// A layer stack has one id namespace across every kind, so a deeper
-// declaration reusing an id under a different kind is a load error. Every
-// loader has to see it: filtering by kind before comparing ids would let each
-// hold a winner with neither knowing about the other.
-func TestLoadDeclarations_CrossLayerCrossKindCollisionRejected(t *testing.T) {
-	pluginDir := t.TempDir()
+// Id uniqueness across kinds is a rule within a layer, so every loader has to
+// see a same-layer collision: filtering by kind before comparing ids would let
+// each hold a winner with neither knowing about the other.
+func TestLoadDeclarations_SameLayerCrossKindCollisionRejected(t *testing.T) {
 	base := t.TempDir()
-	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "shared.toml"),
+	writeFile(t, filepath.Join(base, "tasks", "shared.toml"),
 		"[shared]\nkind = \"effect\"\n\n[shared.setup]\ntype = \"shell\"\nscript = \"true\"\n")
 	writeFile(t, filepath.Join(base, "channels", "shared.toml"),
 		"[shared]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n")
-	cfg := &Config{BaseDir: base, PluginDirs: []string{pluginDir}}
+	cfg := &Config{BaseDir: base}
 
 	for _, load := range []struct {
 		name string
@@ -1374,9 +1372,37 @@ func TestLoadDeclarations_CrossLayerCrossKindCollisionRejected(t *testing.T) {
 		t.Run(load.name, func(t *testing.T) {
 			err := load.run()
 			if err == nil || !strings.Contains(err.Error(), "PLECTURE-CFG-ID-DUPLICATE") {
-				t.Fatalf("%s = %v, want a duplicate-id diagnostic naming both kinds", load.name, err)
+				t.Fatalf("%s = %v, want a duplicate-id diagnostic", load.name, err)
 			}
 		})
+	}
+}
+
+// Across layers the same pair coexists: each layer has its own namespace, so
+// neither declaration shadows the other and each loader sees its own kind.
+// Owner ruling 2026-08-23.
+func TestLoadDeclarations_CrossLayerCrossKindCoexists(t *testing.T) {
+	pluginDir := t.TempDir()
+	base := t.TempDir()
+	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "shared.toml"),
+		"[shared]\nkind = \"effect\"\n\n[shared.setup]\ntype = \"shell\"\nscript = \"true\"\n")
+	writeFile(t, filepath.Join(base, "channels", "shared.toml"),
+		"[shared]\nkind = \"channel\"\ntype = \"exec\"\ncommand = \"true\"\n")
+	cfg := &Config{BaseDir: base, PluginDirs: []string{pluginDir}}
+
+	channels, err := cfg.LoadChannels()
+	if err != nil {
+		t.Fatalf("LoadChannels: %v", err)
+	}
+	if _, ok := channels["shared"]; !ok {
+		t.Errorf("the user-owned channel is missing: %v", channels)
+	}
+	effects, err := cfg.LoadTaskDefinitions("")
+	if err != nil {
+		t.Fatalf("LoadTaskDefinitions: %v", err)
+	}
+	if _, ok := effects["shared"]; !ok {
+		t.Errorf("the plugin effect is missing: %v", effects)
 	}
 }
 

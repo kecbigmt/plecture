@@ -188,24 +188,25 @@ type resolvedDefinition struct {
 	source string
 }
 
-// resolveNamespace folds every cascade layer into the one id namespace the
-// stack has: plugin layers are its base, and a deeper user-owned layer
-// replaces, merges with, or collides with what they declare. Doing the fold
-// across kinds at once is the point — a deeper declaration that reuses an id
-// under a different kind is a load error, and a per-kind fold could not see
-// it, because each kind's map would hold a winner and neither would know
-// about the other.
+// resolveNamespace folds one kind's declarations across the cascade: plugin
+// layers are the base, and a deeper user-owned layer replaces what they
+// declared, except a workflow, which merges by the cascade rules. Two plugin
+// layers claiming one id is a load error, since declaration order must never
+// decide between two plugins.
 //
-// A same-id, same-kind deeper declaration replaces a shallower one, except a
-// workflow, which merges by the cascade rules. Two plugin layers claiming one
-// id is a load error, since declaration order must never decide between two
-// plugins.
-func (c *Config) resolveNamespace(layers []discoveredLayer) (map[string]resolvedDefinition, error) {
+// The fold is per kind because id uniqueness across kinds is a rule *within* a
+// layer, which discovery enforces for a whole root, and not across them: each
+// plugin is its own namespace, and a reference disambiguates by the kind its
+// site expects. So a plugin's `goal_review` task document and a user-owned
+// `goal_review` workflow coexist — a chain naming that id wants the workflow,
+// and an instantiation wants the document.
+func (c *Config) resolveNamespace(layers []discoveredLayer, kind lang.Kind) ([]resolvedDefinition, error) {
 	var merged []*lang.Definition
 	facts := make(map[string]resolvedDefinition)
 	pluginOwner := make(map[string]string)
 	for _, discovered := range layers {
-		for _, def := range discovered.defs {
+		defs := discovered.ofKind(kind)
+		for _, def := range defs {
 			if discovered.layer.plugin {
 				if owner, exists := pluginOwner[def.ID]; exists {
 					return nil, fmt.Errorf("id %q is defined by more than one plugin layer (%s and %s); replace one definition in global config to resolve the conflict", def.ID, owner, def.File)
@@ -226,34 +227,24 @@ func (c *Config) resolveNamespace(layers []discoveredLayer) (map[string]resolved
 			}
 			facts[def.ID] = entry
 		}
-		combined, err := lang.MergeLayer(merged, discovered.defs)
+		combined, err := lang.MergeLayer(merged, defs)
 		if err != nil {
 			return nil, err
 		}
 		merged = combined
 	}
-	out := make(map[string]resolvedDefinition, len(merged))
+	out := make([]resolvedDefinition, 0, len(merged))
+	ids := make([]string, 0, len(merged))
+	byID := make(map[string]*lang.Definition, len(merged))
 	for _, def := range merged {
-		entry := facts[def.ID]
-		entry.def = def
-		out[def.ID] = entry
-	}
-	return out, nil
-}
-
-// ofKind selects one kind from a resolved namespace, in id order so a
-// diagnostic naming the first offender is reproducible.
-func ofKind(namespace map[string]resolvedDefinition, kind lang.Kind) []resolvedDefinition {
-	ids := make([]string, 0, len(namespace))
-	for id, entry := range namespace {
-		if entry.def.Kind == kind {
-			ids = append(ids, id)
-		}
+		ids = append(ids, def.ID)
+		byID[def.ID] = def
 	}
 	sort.Strings(ids)
-	out := make([]resolvedDefinition, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, namespace[id])
+		entry := facts[id]
+		entry.def = byID[id]
+		out = append(out, entry)
 	}
-	return out
+	return out, nil
 }

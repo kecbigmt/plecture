@@ -494,12 +494,12 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 			}
 		}
 	}
-	namespace, err := c.resolveNamespace(layers)
+	resolved, err := c.resolveNamespace(layers, lang.KindWorkflow)
 	if err != nil {
 		return nil, err
 	}
 	out := make(map[string]WorkflowFile)
-	for _, entry := range ofKind(namespace, lang.KindWorkflow) {
+	for _, entry := range resolved {
 		wf, err := workflowFrom(entry.def, entry.source)
 		if err != nil {
 			return nil, fmt.Errorf("workflow %s in %s: %w", entry.def.ID, entry.source, err)
@@ -543,12 +543,12 @@ func (c *Config) LoadTaskDefinitions(workspaceDirPath string) (map[string]TaskDe
 			all = append(all, def)
 		}
 	}
-	namespace, err := c.resolveNamespace(layers)
+	resolved, err := c.resolveNamespace(layers, lang.KindEffect)
 	if err != nil {
 		return nil, err
 	}
 	out := make(map[string]TaskDefinition)
-	for _, entry := range ofKind(namespace, lang.KindEffect) {
+	for _, entry := range resolved {
 		def, err := c.effectFromDefinition(entry.def, entry.fromPlugin)
 		if err != nil {
 			return nil, err

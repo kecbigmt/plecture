@@ -92,11 +92,11 @@ func (d ChannelDefinition) ApplyInputDefaults(inputs map[string]any) map[string]
 // excluded for the same reason as workspace providers — a channel may run a
 // process.
 func (c *Config) LoadChannels() (map[string]ChannelDefinition, error) {
-	namespace, err := c.trustedNamespace()
+	resolved, err := c.trustedKind(lang.KindChannel)
 	if err != nil {
 		return nil, err
 	}
-	return loadTrustedKind(namespace, lang.KindChannel, c.channelFromDefinition,
+	return loadTrustedKind(resolved, c.channelFromDefinition,
 		func(d ChannelDefinition) string { return d.ID })
 }
 

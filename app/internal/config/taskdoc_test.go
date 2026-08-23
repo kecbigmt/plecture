@@ -308,46 +308,84 @@ Review it.
 // Ids share one namespace per layer across kinds, so a document and an effect
 // declaring the same id in one layer is a load error rather than a silent
 // choice of one of them.
-func TestLoadTaskDeclarations_CollidesWithAnEffect(t *testing.T) {
-	tests := []struct {
-		name string
-		// build writes the two declarations and returns the config that
-		// reads them.
-		build func(t *testing.T) *Config
-	}{
-		{
-			name: "in one layer",
-			build: func(t *testing.T) *Config {
-				base := t.TempDir()
-				writeFile(t, filepath.Join(base, "tasks", "review.md"), duplicateTaskDoc)
-				writeFile(t, filepath.Join(base, "tasks", "review.toml"), collidingEffect)
-				return &Config{BaseDir: base}
-			},
-		},
-		{
-			// The cascade lets a deeper layer replace a shallower same-id
-			// declaration, but only of the same kind: a document does not
-			// replace an effect a workflow node may still name.
-			name: "a deeper document over a plugin effect",
-			build: func(t *testing.T) *Config {
-				pluginDir := t.TempDir()
-				base := t.TempDir()
-				writeFile(t, filepath.Join(pluginDir, "config", "tasks", "review.toml"), collidingEffect)
-				writeFile(t, filepath.Join(base, "tasks", "review.md"), duplicateTaskDoc)
-				return &Config{BaseDir: base, PluginDirs: []string{pluginDir}}
-			},
-		},
+// Id uniqueness across kinds is a rule within a layer: one layer declaring an
+// id as both a document and an effect is ambiguous, and traversal order must
+// not pick a winner.
+func TestLoadTaskDeclarations_SameLayerCollisionRejected(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "tasks", "review.md"), duplicateTaskDoc)
+	writeFile(t, filepath.Join(base, "tasks", "review.toml"), collidingEffect)
+
+	_, _, err := (&Config{BaseDir: base}).LoadTaskDeclarations("")
+	if err == nil {
+		t.Fatal("expected a load error for one id declared by both a document and an effect in one layer")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := tt.build(t).LoadTaskDeclarations("")
-			if err == nil {
-				t.Fatal("expected a load error for one id declared by both a document and an effect")
-			}
-			if !strings.Contains(err.Error(), "review") {
-				t.Errorf("error = %v, want it to name the id", err)
-			}
-		})
+	if !strings.Contains(err.Error(), "review") {
+		t.Errorf("error = %v, want it to name the id", err)
+	}
+}
+
+// Across layers the rule does not apply: each layer has its own namespace, so
+// a deeper declaration of another kind shadows nothing and both load. A
+// reference resolves by the kind its site expects — which is what lets a
+// plugin ship a `goal_review` task document while the host declares the
+// `goal_review` workflow a chain fires into. Owner ruling 2026-08-23.
+func TestLoadTaskDeclarations_CrossLayerDifferentKindsCoexist(t *testing.T) {
+	pluginDir := t.TempDir()
+	base := t.TempDir()
+	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "review.toml"), collidingEffect)
+	writeFile(t, filepath.Join(base, "tasks", "review.md"), duplicateTaskDoc)
+	cfg := &Config{BaseDir: base, PluginDirs: []string{pluginDir}}
+
+	docs, effects, err := cfg.LoadTaskDeclarations("")
+	if err != nil {
+		t.Fatalf("LoadTaskDeclarations: %v", err)
+	}
+	if _, ok := docs["review"]; !ok {
+		t.Errorf("the user-owned document is missing: %v", docs)
+	}
+	if _, ok := effects["review"]; !ok {
+		t.Errorf("the plugin effect is missing: %v", effects)
+	}
+}
+
+// The same shape one kind up: a plugin task document and a user-owned workflow
+// sharing an id both load, which is the goal_review arrangement the shipped
+// okf plugin and a host config produce together.
+func TestLoadDeclarations_PluginDocumentAndUserWorkflowShareAnID(t *testing.T) {
+	pluginDir := t.TempDir()
+	base := t.TempDir()
+	writeFile(t, filepath.Join(pluginDir, "config", "resources", "issue_pr.toml"), minimalObserver)
+	writeFile(t, filepath.Join(pluginDir, "config", "tasks", "goal_review.md"), `+++
+[goal_review]
+kind              = "task"
+description       = "Review a goal"
+resource_observer = "issue_pr"
++++
+Review it.
+`)
+	writeFile(t, filepath.Join(base, "workflows", "goal_review.toml"), `
+[goal_review]
+kind = "workflow"
+
+[[goal_review.nodes]]
+uses = "noop"
+`)
+	cfg := &Config{BaseDir: base, PluginDirs: []string{pluginDir}}
+
+	docs, err := cfg.LoadTaskDocuments("")
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments: %v", err)
+	}
+	if _, ok := docs["goal_review"]; !ok {
+		t.Errorf("the plugin task document is missing: %v", docs)
+	}
+	workflows, err := cfg.LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	if _, ok := workflows["goal_review"]; !ok {
+		t.Errorf("the user-owned workflow is missing: %v", workflows)
 	}
 }
 
