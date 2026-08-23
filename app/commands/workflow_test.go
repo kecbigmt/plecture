@@ -21,9 +21,6 @@ func writeWorkflowShowFixtureFile(t *testing.T, path, content string) {
 	}
 }
 
-// setUpBrokenWorkspaceProviderFixture writes a workflow named "usesbroken"
-// that references a workspace provider ("broken") missing its required
-// `setup` field, so cfg.LoadWorkspaceProviders fails.
 func setUpBrokenWorkspaceProviderFixture(t *testing.T) {
 	t.Helper()
 	fakeHome := t.TempDir()
