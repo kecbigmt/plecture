@@ -2,8 +2,8 @@
 # record is regenerated. stdout/okf-goal is what this plugin's own executable
 # reports back to the effect that calls it.
 #
-# The goal task pack is task documents, which own no lifecycle and so invoke
-# nothing; what they say is recorded by the gate-key record beside this one.
+# This plugin ships no `pursue_goal`/`goal_review` task documents: they are
+# host config now, so there is nothing here for them to invoke.
 
 [goal_bootstrap]
 inputs = { owner = "acme", assignees = '["user:acme"]' }

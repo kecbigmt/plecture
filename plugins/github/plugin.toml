@@ -5,7 +5,7 @@ version = "0.1.0"
 # would make the plugin unloadable for every current build, not gate on any
 # real compatibility fact. Raise this once a first tagged release exists.
 plect_min_version = "0.0.0"
-description = "GitHub workspace provider, resource observation, watcher subscription, and the work/review/respond/investigate task pack."
+description = "GitHub workspace provider, resource observation, and watcher subscription."
 
 [[executables]]
 name = "github-worktree"

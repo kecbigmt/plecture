@@ -75,9 +75,7 @@ Consequences to check in your own config:
 - `issue_status` is an issue observation's alone. `respond` used to copy it as
   an output; it does not, and no gate read it.
 - Nothing else moved: every other fact a shipped gate reads is published by
-  the observer the document now declares. `plugins/github/testdata/gate-keys.txt`
-  and `plugins/okf/testdata/gate-keys.txt` are the full mapping, one line per
-  fact, regenerated from the shipped declarations.
+  the observer the document now declares.
 
 ## A chain names the pull request its reviewer is about
 
@@ -156,8 +154,20 @@ rather than the shipped document's:
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
 rm "$CONFIG_HOME/tasks/work.toml"
+```
+
+If your catalog still ships `work` as a task document, copy it and edit:
+
+```bash
 cp "$(plect task show work --json | jq -r .source_path)" "$CONFIG_HOME/tasks/work.md"
 ```
+
+If your catalog no longer ships `work` at all — the `github` plugin later
+dropped its task pack entirely; see `docs/migrations/definition-addressing.md`
+— there is nothing to copy. Author `tasks/work.md` directly instead, using
+`docs/language/tasks.md`'s worked example as a starting point; this
+repository's own git history carries the plugin's last shipped `work.md` for
+reference.
 
 **Qualify every reference the copy carries.** A plugin's own reference is
 relative and resolves in that plugin's namespace; the same text in user-owned
@@ -210,7 +220,10 @@ ships no runnable `goal_review` workflow, because which agent runs a review is
 a choice the OKF specification does not make.
 
 A host that wants the reviewer spawned automatically declares its own
-`pursue_goal` document. Copy the shipped one and append the chain:
+`pursue_goal` document.
+
+If your catalog still ships `pursue_goal` as a task document, copy it and
+append the chain:
 
 ```bash
 CONFIG_HOME="${PLECT_CONFIG_HOME:-$HOME/.config/plect}"
@@ -220,7 +233,16 @@ sed -i 's/^resource_observer = "okf_goal"$/resource_observer = "official.okf.okf
 ```
 
 The observer reference is qualified because the copy is user-owned now; see
-the note above. Then add, inside the frontmatter, before the closing `+++`:
+the note above.
+
+If your catalog no longer ships `pursue_goal` at all — the `okf` plugin
+later dropped its task pack entirely; see
+`docs/migrations/definition-addressing.md` — there is nothing to copy.
+Author `tasks/pursue_goal.md` directly instead, declaring
+`resource_observer = "official.okf.okf_goal"` and a `done_when` over that
+observer's state (see `plugins/okf/README.md` and `docs/language/tasks.md`).
+
+Either way, add, inside the frontmatter, before the closing `+++`:
 
 ```toml
 [[pursue_goal.chains]]

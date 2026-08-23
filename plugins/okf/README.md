@@ -35,21 +35,19 @@ change out of scope for this plugin's extraction.
   `task`) hold the actual logic; each `cmd/` main is a thin flag-parsing and
   JSON-encoding shell around them — `okf-bundle` wraps the workspace
   provider hooks, `okf-goal` wraps the resource and goal task hooks.
-- `tasks/pursue_goal.md`, `tasks/goal_review.md` — the goal task documents:
-  `pursue_goal` tracks one goal to completion, `goal_review` reviews one and
-  records a verdict. Each is a task document, so its body is the instruction
-  and its `done_when` reads the `okf_goal` observer it declares.
 - `tasks/goal_bootstrap.toml` — the effect that re-creates any `pursue_goal`
-  instance a session lost across a destroy→up cycle.
-- **`pursue_goal` declares no chain**, although a goal's reviewer is spawned
-  by one. A chain's `workflow` is a static reference, and a reference written
-  inside a plugin resolves only in that plugin's own namespace; this plugin
-  ships no runnable `goal_review` workflow, because which agent runs a review
-  is a choice the OKF specification does not make. A host that wants the
-  reviewer spawned automatically declares its own `pursue_goal` task document
-  carrying the chain to its own `goal_review` workflow —
-  `docs/migrations/shipped-completion-conversion.md` gives it verbatim, and a
-  prior version of this plugin's own `config/workflows/goal_review.toml` is
+  instance a session lost across a destroy→up cycle. It shells out to
+  `plect task setup pursue_goal`, so a host that enables this plugin must
+  declare its own `pursue_goal` task document for that instance to attach
+  to — this plugin ships no task documents of its own.
+- **No `pursue_goal` or `goal_review` task document ships here.** Which
+  agent reviews a goal, on what instruction, and under what completion
+  gates is a choice the OKF specification does not make, so it is host
+  config, not plugin config. See `docs/language/tasks.md` for what a task
+  document needs (`done_when`, `resource_observer`, `[[chains]]`);
+  `pursue_goal`'s `done_when` reads this plugin's `okf_goal` observer, and
+  its chain (if any) spawns the host's own `goal_review` workflow — a prior
+  version of this plugin's own `config/workflows/goal_review.toml` is
   readable from this repository's git history as a starting point.
 
 ## Install
@@ -82,5 +80,6 @@ own copied outputs.
   `goal_bootstrap` shells out to `plect task setup` to create instances.
 - A knowledge bundle at `<orchestrator workspace directory>/knowledge/bundle/`,
   with goal Concept files under `goals/`.
-- A host-defined `goal_review` workflow in local config for
-  `tasks/pursue_goal.toml`'s chain to spawn.
+- A host-defined `pursue_goal` task document for `goal_bootstrap` to
+  instantiate (see Contents above), and, if it declares a chain to spawn a
+  reviewer, a host-defined `goal_review` workflow for that chain to target.
