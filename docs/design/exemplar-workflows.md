@@ -14,9 +14,9 @@ the catalog changes.
 Catalogs ship workflow starters as exemplar workflow packages, not as
 `config/workflows/*.toml` files. An exemplar package contains a workflow TOML
 template plus metadata that names the catalog plugins expected to supply every
-referenced effect, channel, workspace provider, resource observer, and task
-document. The metadata also names placeholders that must be replaced at scaffold
-time because they are team-local policy rather than catalog-owned config.
+referenced effect, channel, and workspace provider. The metadata also names
+placeholders that must be replaced at scaffold time because they are team-local
+policy rather than catalog-owned config.
 
 ```text
 catalog.toml
@@ -149,24 +149,15 @@ Reference fields:
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `kind` | yes | One of `workspace_provider`, `resource_observer`, `effect`, `task`, or `channel`. |
+| `kind` | yes | One of `workspace_provider`, `effect`, or `channel`. |
 | `id` | yes | Definition id referenced by the workflow template, or the final id segment of a scaffold-only catalog reference. |
-| `plugin` | yes | Catalog-relative plugin path expected to provide the id. |
-
-Input-reference fields:
-
-| Field | Required | Meaning |
-|---|---:|---|
-| `input` | yes | Workflow input name whose enum contains the referenced id. |
-| `kind` | yes | One of `workspace_provider`, `resource_observer`, `effect`, `task`, or `channel`. |
-| `id` | yes | The id accepted as a literal workflow input value. |
 | `plugin` | yes | Catalog-relative plugin path expected to provide the id. |
 
 Placeholder fields:
 
 | Field | Required | Meaning |
 |---|---:|---|
-| `kind` | yes | One of `workspace_provider`, `resource_observer`, `effect`, `task`, or `channel`. |
+| `kind` | yes | One of `workspace_provider`, `effect`, `task`, or `channel`. |
 | `id` | yes | The id present in the template before replacement. |
 | `description` | yes | Human-facing guidance for the local replacement. |
 | `input` | no | Workflow input name whose enum contains this placeholder id. |
@@ -182,19 +173,17 @@ An exemplar package is valid when:
   `[[placeholders]]`;
 - every catalog-owned reference in the workflow template uses the scaffold-only
   `<plugin>.<id>` form when the source plugin path has one segment;
-- every `[[input_references]]` entry names a value present in
-  `inputs_schema.properties.<input>.enum`;
 - every `[[placeholders]]` entry with `input` names a value present in
   `inputs_schema.properties.<input>.enum`;
-- every `[[references]]` and `[[input_references]]` entry names a plugin path
-  listed by the same catalog's `catalog.toml`;
+- every `[[placeholders]]` entry with `kind = "task"` has `input` set;
+- every `[[references]]` entry names a plugin path listed by the same catalog's
+  `catalog.toml`;
 - every `[[placeholders]]` entry has a non-empty description;
 - a node whose `uses` is an effect placeholder declares an explicit `id` matching
   the placeholder id;
 - no `[[references]]` entry is unused by the workflow template;
 - no `[[placeholders]]` entry is unused by either the workflow template or,
-  when `input` is set, the named input enum;
-- no `[[input_references]]` entry is unused by the named input enum.
+  when `input` is set, the named input enum.
 
 A `[[references]]` entry is used when a workflow reference has the same expected
 kind and final id segment. For scaffold-only references, the leading plugin
@@ -211,10 +200,6 @@ For each `[[references]]` entry, plect checks that:
 2. the enabled plugin provides the referenced id for the declared kind;
 3. the referenced id resolves exactly as it will resolve from the destination
    workflow after the copy.
-
-For each `[[input_references]]` entry, plect checks that the configured plugin
-is enabled and provides the referenced id. These entries verify literal config
-ids carried by workflow inputs rather than by workflow grammar positions.
 
 Before the destination file is stored, plect rewrites scaffold-only catalog
 references to the user's catalog alias. A template reference such as

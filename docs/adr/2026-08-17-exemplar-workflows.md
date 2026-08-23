@@ -24,10 +24,9 @@ cross-plugin workflows as runnable workflow definitions.
 
 Catalogs may ship exemplar workflows: inert copy-templates with metadata that
 states which enabled plugins in the registered catalog provide each referenced
-effect, task document, channel, workspace provider, or resource observer.
-`plect workflow init <name> --from <catalog-alias>/<exemplar-id>` copies one
-exemplar into user-owned workflow config after verifying all references and
-explicit placeholders.
+effect, channel, or workspace provider. `plect workflow init <name> --from
+<catalog-alias>/<exemplar-id>` copies one exemplar into user-owned workflow
+config after verifying all references and explicit placeholders.
 
 An OKF goal-review workflow is host-owned workflow policy unless a catalog
 explicitly publishes a suitable exemplar package under `exemplars/workflows/`

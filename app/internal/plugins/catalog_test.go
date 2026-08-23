@@ -27,16 +27,34 @@ func TestLoadCatalogManifest_Valid(t *testing.T) {
 schema_version = 1
 description = "Example catalog."
 plugins = ["github", "agent/runtime"]
+workflow_exemplars = ["review-starter"]
 `)
 	writeMinimalPlugin(t, filepath.Join(root, "github"))
 	writeMinimalPlugin(t, filepath.Join(root, "agent", "runtime"))
+	if err := os.MkdirAll(filepath.Join(root, "exemplars", "workflows", "review-starter"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	m, err := LoadCatalogManifest(root)
 	if err != nil {
 		t.Fatalf("LoadCatalogManifest: unexpected error: %v", err)
 	}
-	if len(m.Plugins) != 2 || m.Description != "Example catalog." {
+	if len(m.Plugins) != 2 || len(m.WorkflowExemplars) != 1 || m.Description != "Example catalog." {
 		t.Fatalf("Manifest = %+v", m)
+	}
+}
+
+func TestLoadCatalogManifest_WorkflowExemplarMissingDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeCatalogManifest(t, root, `
+schema_version = 1
+plugins = ["github"]
+workflow_exemplars = ["missing"]
+`)
+	writeMinimalPlugin(t, filepath.Join(root, "github"))
+
+	if _, err := LoadCatalogManifest(root); err == nil {
+		t.Fatal("want error for a listed workflow exemplar with no package directory, got nil")
 	}
 }
 

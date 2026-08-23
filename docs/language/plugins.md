@@ -76,11 +76,19 @@ plugins = [
   "okf",
   "github",
 ]
+
+workflow_exemplars = [
+  "review-starter",
+]
 ```
 
 Explicit enumeration, not directory presence, is what publishes a plugin. A
 directory inside the catalog's trust space that the manifest does not list is
 not catalog-addressable — nor is a listed plugin's own build source.
+
+`workflow_exemplars` explicitly publishes exemplar workflow packages directly
+under `exemplars/workflows/`. Directory presence alone does not publish an
+exemplar.
 
 ## Config resources
 
@@ -96,6 +104,8 @@ reference written inside a plugin is relative.
 - `schema_version`, `version`, `plect_min_version`, and `description` are
   required in a plugin manifest.
 - `schema_version` and `plugins` are required in a catalog manifest.
+- Every `workflow_exemplars` entry names a package directory directly under
+  `exemplars/workflows/`.
 - An executable `name` is unique within a manifest.
 - A service's `executable` names a declared executable.
 - A plugin's `plect_min_version` must not exceed the running `plect`.

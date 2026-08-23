@@ -12,3 +12,7 @@ plugins = [
   "okf",
   "github",
 ]
+
+workflow_exemplars = [
+  "review-starter",
+]
