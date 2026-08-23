@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Proves provider-vocab.py works before check-provider-boundary.sh trusts it
 # for its vocabulary: a valid catalog + plugin.toml produces the expected
-# words, and each of catalog.toml missing, catalog.toml malformed, a listed
-# plugin with no plugin.toml, and a plugin.toml that is malformed all fail
-# loudly (non-zero exit) rather than silently producing wrong or empty
-# vocabulary.
+# words, and each of a wrong argument count, catalog.toml missing,
+# catalog.toml malformed, a listed plugin with no plugin.toml, and a
+# plugin.toml that is malformed all fail loudly (non-zero exit) rather than
+# silently producing wrong or empty vocabulary.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -38,6 +38,19 @@ if [ "$got" != "$want" ]; then
   exit 1
 fi
 echo "ok: derives a published plugin's id and executable name"
+
+# Failure: wrong argument count (the explicit usage-error branch).
+if python3 "$tool" >/tmp/provider-vocab-selftest-usage.log 2>&1; then
+  echo "FAIL: succeeded with no plugins-root argument" >&2
+  cat /tmp/provider-vocab-selftest-usage.log >&2
+  exit 1
+fi
+if ! grep -q "usage:" /tmp/provider-vocab-selftest-usage.log; then
+  echo "FAIL: missing-argument case did not print a usage message" >&2
+  cat /tmp/provider-vocab-selftest-usage.log >&2
+  exit 1
+fi
+echo "ok: fails with a usage message when the plugins-root argument is missing"
 
 # Failure: no catalog.toml at all.
 no_catalog=$(mktemp -d)

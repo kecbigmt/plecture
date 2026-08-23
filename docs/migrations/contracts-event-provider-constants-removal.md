@@ -8,6 +8,18 @@ comment already says provider-specific Source/Type constants belong in
 that provider's own package, not in core's event contract, so these are
 removed rather than kept as a compatibility shim.
 
+## Backup
+
+Before upgrading, back up `state.json` the same way every migration in
+this directory does:
+
+```bash
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
+BACKUP_DIR="$DATA_DIR/migration-backups/$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$BACKUP_DIR"
+cp "$DATA_DIR/state.json" "$BACKUP_DIR/state.json"
+```
+
 ## No config or persisted-data rewrite is needed
 
 Unlike every other entry in this directory, this change touches neither a
@@ -23,21 +35,7 @@ data format:
 - No declarative config file names these Go identifiers; they were
   Go-source-only.
 
-There is accordingly no rewrite procedure for an operator to run. The
-backup below is precautionary only, kept for the same reason every
-migration in this directory takes one before any plect upgrade: to have a
-known-good copy of the event log on hand if something else about the
-upgrade goes wrong, not because this specific change reads or writes it
-differently.
-
-## Backup
-
-```bash
-DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/plect"
-BACKUP_DIR="$DATA_DIR/migration-backups/$(date -u +%Y%m%dT%H%M%SZ)"
-mkdir -p "$BACKUP_DIR"
-cp -r "$DATA_DIR/events" "$BACKUP_DIR/events" 2>/dev/null || true
-```
+There is accordingly no rewrite procedure to run after the backup above.
 
 ## What breaks, and the one-line fix
 
