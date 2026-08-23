@@ -16,8 +16,8 @@ func TestMatchType(t *testing.T) {
 		{"acme.*", "acme.ci_status", true},
 		{"acme.*", "acme.", true},
 		{"acme.*", "acme", false}, // prefix is "acme." — bare "acme" excluded
-		{"acme.*", "slack.message", false},
-		{"claude.*", "claude.reply", true},
+		{"acme.*", "widget.message", false},
+		{"widget.*", "widget.reply", true},
 	}
 	for _, c := range cases {
 		if got := MatchType(c.pattern, c.typ); got != c.want {

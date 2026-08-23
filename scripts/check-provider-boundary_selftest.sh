@@ -70,9 +70,9 @@ fi
 echo "ok: checker fails and names the file on a bare owner/repo placeholder"
 
 # Dirty fixture #3: a shipped plugin name outside the old github-only
-# vocabulary must also be caught — this is the gap issue #224 found: the
-# hand-kept pattern covered only github/gh/pvti/owner-repo, so claude,
-# codex, slack, tmux, and okf leakage was invisible.
+# vocabulary must also be caught. The hand-kept pattern covered only
+# github/gh/pvti/owner-repo, so claude, codex, slack, tmux, and okf leakage
+# was invisible.
 dirty3=$(mktemp -d)
 trap 'rm -rf "$dirty" "$clean" "$dirty2" "$dirty3"' EXIT
 mkdir -p "$dirty3/app/commands" "$dirty3/contracts"

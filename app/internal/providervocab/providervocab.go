@@ -1,45 +1,41 @@
 // Package providervocab derives the provider-name vocabulary
 // scripts/check-provider-boundary.sh treats as leaked into core: a shipped
-// plugin's directory id, plus every executable name its plugin.toml
-// declares. It decodes plugin.toml through the same manifest loader plect
-// itself uses, rather than scanning it as text, so a commented-out
+// plugin's id, plus every executable name its plugin.toml declares. It
+// decodes plugin.toml and catalog.toml through the same manifest loaders
+// plect itself uses, rather than scanning them as text, so a commented-out
 // executable or a name embedded in some other field can't be mistaken for
 // live vocabulary.
 package providervocab
 
 import (
-	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// Collect returns the sorted, de-duplicated provider vocabulary declared
-// under pluginsRoot: each subdirectory with a plugin.toml contributes its
-// directory name (the plugin id) and every name its `[[executables]]`
-// declares. A subdirectory without a plugin.toml is not a plugin and is
-// skipped.
+// Collect returns the sorted, de-duplicated provider vocabulary published
+// by the catalog rooted at pluginsRoot: each listed plugin's id (the last
+// path segment of its catalog.toml entry) and every name its
+// `[[executables]]` declares. Publication is read from catalog.toml's
+// `plugins` list — the same explicit, reviewable enumeration
+// LoadCatalogManifest already treats as authoritative — rather than by
+// scanning pluginsRoot's subdirectories: a plugin.toml present but not yet
+// listed is not a published plugin, and LoadCatalogManifest already fails
+// the reverse case (a listed plugin with no plugin.toml, or a plugin.toml
+// nothing lists) before this ever runs.
 func Collect(pluginsRoot string) ([]string, error) {
-	entries, err := os.ReadDir(pluginsRoot)
+	catalog, err := plugins.LoadCatalogManifest(pluginsRoot)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", pluginsRoot, err)
+		return nil, err
 	}
 	seen := map[string]bool{}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := filepath.Join(pluginsRoot, entry.Name())
-		if _, err := os.Stat(filepath.Join(dir, "plugin.toml")); err != nil {
-			continue
-		}
-		manifest, err := plugins.LoadManifest(dir)
+	for _, p := range catalog.Plugins {
+		seen[filepath.Base(filepath.Clean(p))] = true
+		manifest, err := plugins.LoadManifest(filepath.Join(pluginsRoot, p))
 		if err != nil {
 			return nil, err
 		}
-		seen[entry.Name()] = true
 		for _, ex := range manifest.Executables {
 			seen[ex.Name] = true
 		}

@@ -16,7 +16,7 @@ const SchemaVersion = 7
 // Conversation holds information about an external communication channel
 // associated with a session (e.g., a chat thread).
 type Conversation struct {
-	Source   string            `json:"source"`             // Display label for the chat platform, e.g. "Discord"
+	Source   string            `json:"source"`             // Display label for the chat platform
 	URL      string            `json:"url"`                // Permalink to the conversation
 	Metadata map[string]string `json:"metadata,omitempty"` // Plugin-specific data (thread_ts, channel_id, etc.)
 }

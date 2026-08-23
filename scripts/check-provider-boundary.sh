@@ -17,19 +17,19 @@
 # convention, so it is caught alongside literal provider names.
 #
 # Scope decision: *_test.go under app/ is NOT scanned in general, except for
-# app/internal/channel — the package the original PR #223 review caught
-# hardcoding plugin names in a test — which is scanned like any other core
-# file. Widening the file set to *all* of app/'s tests surfaces on the order
-# of a thousand pre-existing lines across most of the module's test suite —
-# not the isolated leak PR #223's review caught, but two much larger,
-# pre-existing conventions: (1) shipped plugin ids/names used throughout
-# generic catalog/resolver/service tests as arbitrary placeholder data, and
-# (2) an "owner/repo-N"-shaped session name used almost everywhere as the
-# default example session. Fixing that is a repo-wide test-fixture
-# migration, not a boundary-checker change, and is tracked separately
-# rather than folded into this script's default scope. contracts/*_test.go
-# stays in scope too: that module is small enough that its few violations
-# were fixed outright instead of deferred.
+# app/internal/channel — a package a prior review found hardcoding shipped
+# plugin names in a test — which is scanned like any other core file.
+# Widening the file set to *all* of app/'s tests surfaces on the order of a
+# thousand pre-existing lines across most of the module's test suite — not
+# an isolated leak like that one, but two much larger, pre-existing
+# conventions: (1) shipped plugin ids/names used throughout generic
+# catalog/resolver/service tests as arbitrary placeholder data, and (2) an
+# "owner/repo-N"-shaped session name used almost everywhere as the default
+# example session. Fixing that is a repo-wide test-fixture migration, not a
+# boundary-checker change, and is tracked separately rather than folded
+# into this script's default scope. contracts/*_test.go stays in scope
+# too: that module is small enough that its few violations were fixed
+# outright instead of deferred.
 #
 # A line that genuinely needs to keep a provider token can allowlist itself
 # with a trailing "// boundary-allow: <reason>" comment.
@@ -49,7 +49,13 @@ root="${BOUNDARY_CHECK_ROOT:-$(pwd)}"
 cd "$root"
 
 # Each alternative targets a distinct leak:
-#   - a shipped plugin's id or executable name (derived above);
+#   - a shipped plugin's id or executable name (derived above) — boundaried
+#     on a non-alnum-non-underscore character on each side, treating "."
+#     as a valid boundary (not excluded from it) so a dotted event-type-style
+#     token like "slack.message" or "claude.reply" is still caught. The one
+#     place that costs something is a Go import path ("github.com/..."),
+#     handled below by an explicit skip case rather than by narrowing every
+#     word's boundary and going blind to the dotted form instead;
 #   - "gh" and "pvti", GitHub-CLI/API vocabulary that names no plugin
 #     executable but is still a GitHub-specific token;
 #   - a session/resource-id EXAMPLE shaped like a GitHub-style "owner/repo"
@@ -70,7 +76,7 @@ vocab_pattern=""
 while IFS= read -r word; do
   [ -z "$word" ] && continue
   escaped=$(printf '%s' "$word" | sed -E 's/[.[\*^$()+?{|\\]/\\&/g')
-  alt="(^|[^A-Za-z0-9_.])${escaped}([^A-Za-z0-9_.]|\$)"
+  alt="(^|[^A-Za-z0-9_])${escaped}([^A-Za-z0-9_]|\$)"
   if [ -z "$vocab_pattern" ]; then
     vocab_pattern="$alt"
   else
