@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
@@ -89,7 +90,10 @@ func WorkflowList(cfg *config.Config, workspaceDirPath string) ([]WorkflowSummar
 // WorkflowShow resolves a single workflow and compiles it so the returned
 // DAG matches what `plect up` would actually execute. Returns an ErrInvalidInput
 // service error when the id isn't present in the cascade (mirrors the
-// "workflow not found" path in tasks.go's buildWorkflowPlan).
+// "workflow not found" path in tasks.go's buildWorkflowPlan), or when a
+// node's input wiring has drifted from its task's inputs_schema — the same
+// mismatch RunSetup would otherwise only catch once dispatch reaches that
+// node, by which point earlier nodes may already have run.
 func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDetail, error) {
 	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {
@@ -106,6 +110,9 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 	plan, err := task.CompileWorkflow(wf, defs)
 	if err != nil {
 		return nil, fmt.Errorf("compile workflow %q: %w", id, err)
+	}
+	if svcErr := validateNodeInputsStatic(id, plan); svcErr != nil {
+		return nil, svcErr
 	}
 	// A node shows the reference its author wrote, not the resolved
 	// definition's id: two plugins may declare that id, so the id alone would
@@ -162,6 +169,25 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 		}
 	}
 	return detail, nil
+}
+
+// validateNodeInputsStatic runs task.ValidateInputsStatic over every node in
+// the compiled plan and folds the result into one ErrInvalidInput naming the
+// workflow, node, and offending key for each issue found, or nil when every
+// node's declared inputs still fit its task's inputs_schema.
+func validateNodeInputsStatic(id string, plan *task.Plan) *Error {
+	var lines []string
+	for _, group := range [][]task.Resolved{plan.Session, plan.Run} {
+		for _, r := range group {
+			for _, issue := range task.ValidateInputsStatic(r) {
+				lines = append(lines, fmt.Sprintf("workflow %q: node %q: %s", id, r.NodeID, issue.Message))
+			}
+		}
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	return &Error{Code: ErrInvalidInput, Message: strings.Join(lines, "\n")}
 }
 
 func resolvedToNode(r task.Resolved, reference string) WorkflowNode {

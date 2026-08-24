@@ -335,6 +335,83 @@ func TestWorkflowShow_UnknownIDReturnsInvalidInput(t *testing.T) {
 	}
 }
 
+// setupDriftedInputFixture writes a task whose inputs_schema no longer
+// declares `tmux_session` (additionalProperties = false), and a workflow
+// whose node still wires it — the incident #301 exists to catch: a
+// task/workflow drift that previously surfaced only once `plect up`
+// dispatched to that node.
+func setupDriftedInputFixture(t *testing.T, nodeInputs string) (*config.Config, string) {
+	t.Helper()
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	globalDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(globalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
+[tmux]
+kind  = "effect"
+scope = "run"
+
+[tmux.setup]
+type   = "shell"
+script = "echo '{}'"
+
+[tmux.inputs_schema]
+type = "object"
+additionalProperties = false
+
+[tmux.inputs_schema.properties]
+template = { type = "string" }
+`)
+	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
+[coding]
+kind = "workflow"
+
+[[coding.nodes]]
+uses = "tmux"
+`+nodeInputs)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg, filepath.Join(tmpHome, "workdirs", "session")
+}
+
+func TestWorkflowShow_NodeInputNotInSchemaReturnsInvalidInput(t *testing.T) {
+	cfg, workdirDir := setupDriftedInputFixture(t, `inputs.tmux_session = "main"`)
+	_, err := WorkflowShow(cfg, workdirDir, "coding")
+	if err == nil {
+		t.Fatal("expected error for a node input the task's inputs_schema no longer accepts")
+	}
+	svcErr, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("expected *service.Error, got %T: %v", err, err)
+	}
+	if svcErr.Code != ErrInvalidInput {
+		t.Errorf("Code = %q, want %q", svcErr.Code, ErrInvalidInput)
+	}
+	for _, want := range []string{`"coding"`, `"tmux"`, `"tmux_session"`} {
+		if !strings.Contains(svcErr.Message, want) {
+			t.Errorf("Message = %q, want it to contain %s", svcErr.Message, want)
+		}
+	}
+}
+
+func TestWorkflowShow_CorrectedNodeInputsPass(t *testing.T) {
+	cfg, workdirDir := setupDriftedInputFixture(t, `inputs.template = "main"`)
+	got, err := WorkflowShow(cfg, workdirDir, "coding")
+	if err != nil {
+		t.Fatalf("WorkflowShow: %v", err)
+	}
+	if len(got.Nodes) != 1 || got.Nodes[0].Uses != "tmux" {
+		t.Errorf("nodes mismatch: %+v", got.Nodes)
+	}
+}
+
 func TestResolveSessionInputs_RejectsUnknownTask(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
