@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -119,6 +120,186 @@ func TestEvaluateHealth_AliveProbeCanReadNodeInputs(t *testing.T) {
 	}
 	if !report.Healthy {
 		t.Fatalf("report = %+v, want healthy (node inputs must be visible to healthcheck)", report)
+	}
+}
+
+func TestEvaluateHealth_AliveProbeCanBindTerminalPID(t *testing.T) {
+	agent := startSleepProcess(t)
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+		{
+			id:    "pane",
+			scope: contract.TaskScopeRun,
+			extra: `
+[terminal.pid]
+type   = "shell"
+script = "printf '%s\n' \"$root_pid\""
+
+[terminal.pid.bind]
+root_pid = { from = "self.outputs.root_pid" }
+`,
+		},
+		{
+			id:    "runtime",
+			scope: contract.TaskScopeRun,
+			alive: `
+pane_pid=$(sh -c "{{terminal "pid"}}" terminal-pid)
+[ "$pane_pid" = "{{.Inputs.pane_pid}}" ] || exit 1
+kill -0 "{{.Self.pid}}" 2>/dev/null
+`,
+		},
+	}, []nodeFixture{{id: "pane"}, {id: "runtime"}})
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"pane": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "pane",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"root_pid": os.Getpid()},
+		},
+		"runtime": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runtime",
+			Status:  contract.TaskStatusProduced,
+			Inputs:  map[string]any{"pane_pid": os.Getpid()},
+			Outputs: map[string]any{"pid": agent.Process.Pid},
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("report = %+v, state = %q, want healthy with terminal pid bind resolved", report, report.State())
+	}
+
+	stopProcess(t, agent)
+
+	report, err = EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth after process exit: %v", err)
+	}
+	if report.State() != domain.HealthUnhealthy {
+		t.Fatalf("report = %+v, state = %q, want unhealthy after agent process exits", report, report.State())
+	}
+	if strings.Contains(report.Reason, `terminal capability "pid" is not available`) {
+		t.Fatalf("reason = %q, terminal pid bind should still resolve", report.Reason)
+	}
+}
+
+func TestEvaluateHealth_UnproducedInvalidDefinitionDoesNotBlockTerminalBind(t *testing.T) {
+	agent := startSleepProcess(t)
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+		{
+			id:    "pane",
+			scope: contract.TaskScopeRun,
+			extra: `
+[terminal.pid]
+type   = "shell"
+script = "printf '%s\n' \"$root_pid\""
+
+[terminal.pid.bind]
+root_pid = { from = "self.outputs.root_pid" }
+`,
+		},
+		{
+			id:    "runtime",
+			scope: contract.TaskScopeRun,
+			alive: `
+sh -c "{{terminal "pid"}}" terminal-pid >/dev/null
+kill -0 "{{.Self.pid}}" 2>/dev/null
+`,
+		},
+		{
+			id:    "drifted",
+			scope: contract.TaskScopeRun,
+			extra: `
+[outputs_schema]
+type = 1
+`,
+		},
+	}, []nodeFixture{{id: "pane"}, {id: "runtime"}, {id: "drifted"}})
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"pane": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "pane",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"root_pid": os.Getpid()},
+		},
+		"runtime": {
+			Scope:   contract.TaskScopeRun,
+			TaskID:  "runtime",
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"pid": agent.Process.Pid},
+		},
+		"drifted": {
+			Scope:  contract.TaskScopeRun,
+			TaskID: "drifted",
+			Status: contract.TaskStatusProduced,
+		},
+	})
+
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("report = %+v, state = %q, want unrelated invalid definition ignored", report, report.State())
+	}
+}
+
+func TestEvaluateHealth_DuplicateProducedTerminalNodesError(t *testing.T) {
+	store := testStore(t)
+	terminal := `
+[terminal.pid]
+type   = "shell"
+script = "true"
+`
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{
+		{id: "pane_a", scope: contract.TaskScopeRun, extra: terminal},
+		{id: "pane_b", scope: contract.TaskScopeRun, extra: terminal},
+		{id: "runtime", scope: contract.TaskScopeRun, alive: "true"},
+	}, []nodeFixture{{id: "pane_a"}, {id: "pane_b"}, {id: "runtime"}})
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"pane_a":  {Scope: contract.TaskScopeRun, TaskID: "pane_a", Status: contract.TaskStatusProduced},
+		"pane_b":  {Scope: contract.TaskScopeRun, TaskID: "pane_b", Status: contract.TaskStatusProduced},
+		"runtime": {Scope: contract.TaskScopeRun, TaskID: "runtime", Status: contract.TaskStatusProduced},
+	})
+
+	_, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err == nil {
+		t.Fatal("expected an error for duplicate produced terminal nodes")
+	}
+	if !strings.Contains(err.Error(), "resolve terminal binding") || !strings.Contains(err.Error(), "pane_a") || !strings.Contains(err.Error(), "pane_b") {
+		t.Fatalf("error = %q, want duplicate terminal nodes named", err.Error())
+	}
+}
+
+func startSleepProcess(t *testing.T) *exec.Cmd {
+	t.Helper()
+	cmd := exec.Command("sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start sleep process: %v", err)
+	}
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil {
+			stopProcess(t, cmd)
+		}
+	})
+	return cmd
+}
+
+func stopProcess(t *testing.T, cmd *exec.Cmd) {
+	t.Helper()
+	if cmd.ProcessState != nil {
+		return
+	}
+	if err := cmd.Process.Kill(); err != nil {
+		t.Fatalf("kill sleep process: %v", err)
+	}
+	if err := cmd.Wait(); err != nil && !strings.Contains(err.Error(), "killed") {
+		t.Fatalf("wait for sleep process: %v", err)
 	}
 }
 

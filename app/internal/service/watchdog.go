@@ -132,8 +132,13 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	if wf != nil {
 		healthCfg = config.NormalizeHealthcheckConfig(wf.Healthcheck)
 	}
+	nodes := nodeAddresses(cfg, s)
+	plan, err := healthTerminalPlan(s.Tasks, nodes, defs)
+	if err != nil {
+		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("resolve terminal binding: %v", err)}
+	}
 	now := time.Now()
-	report := evaluateHealthFor(name, s.Tasks, docs, defs, nodeAddresses(cfg, s), sessionVars(cfg, s, nil), healthCfg.StallThreshold.Duration, s.Health, now)
+	report := evaluateHealthFor(name, s.Tasks, docs, defs, nodes, sessionVars(cfg, s, plan), healthCfg.StallThreshold.Duration, s.Health, now)
 	finalizeActivityObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
 	persistHealthState(store, name, report, now)
 	return report, nil
@@ -149,6 +154,45 @@ func sessionWorkflowConfig(cfg *config.Config, workflowID, workspaceDirPath stri
 		return nil
 	}
 	return &wf
+}
+
+func healthTerminalPlan(tasks map[string]*contract.TaskState, nodes map[string]string, defs map[string]config.TaskDefinition) (*task.Plan, error) {
+	var terminal *task.Resolved
+	for _, key := range sortedTaskKeys(tasks) {
+		st := tasks[key]
+		if st == nil || st.Status != contract.TaskStatusProduced || st.Dynamic {
+			continue
+		}
+		address, ok := nodes[key]
+		if !ok {
+			continue
+		}
+		def, ok := defs[address]
+		if !ok {
+			continue
+		}
+		resolved, err := task.ResolveDefinition(def, key)
+		if err != nil {
+			continue
+		}
+		if resolved.Terminal == nil {
+			continue
+		}
+		if terminal != nil {
+			return nil, fmt.Errorf("more than one produced workflow node declares [terminal]: %q and %q", terminal.NodeID, resolved.NodeID)
+		}
+		terminal = &resolved
+	}
+	if terminal == nil {
+		return nil, nil
+	}
+	plan := &task.Plan{}
+	if terminal.Scope == config.TaskScopeSession {
+		plan.Session = []task.Resolved{*terminal}
+	} else {
+		plan.Run = []task.Resolved{*terminal}
+	}
+	return plan, nil
 }
 
 func persistHealthState(store *state.Store, name string, report HealthReport, checkedAt time.Time) {
