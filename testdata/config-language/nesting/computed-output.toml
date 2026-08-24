@@ -7,9 +7,6 @@ kind = "effect"
 [labelled_runtime.inner]
 uses = "official.claude.runtime"
 
-[labelled_runtime.inner.inputs]
-tmux_session = { from = "inputs.tmux_session" }
-
 [labelled_runtime.outputs.bind]
 pid   = { from = "inner.outputs.pid" }
 label = { expr = "'pid-' + string(inner.outputs.pid)" }
@@ -20,11 +17,3 @@ type = "object"
 [labelled_runtime.outputs_schema.properties]
 pid   = { type = "integer", mutable = true }
 label = { type = "string" }
-
-[labelled_runtime.inputs_schema]
-type                 = "object"
-required             = ["tmux_session"]
-additionalProperties = false
-
-[labelled_runtime.inputs_schema.properties]
-tmux_session = { type = "string" }

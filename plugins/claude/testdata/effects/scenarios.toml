@@ -5,7 +5,7 @@
 # answers/ scripts are how this plugin's own executables reply.
 
 [runtime]
-inputs = { tmux_session = "acme-widget-1", model = "opus", effort = "high", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', mcp_servers = '[{"name":"kbn","command":"kbn-mcp"}]', path_prepend = "/spy/guard" }
+inputs = { model = "opus", effort = "high", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', mcp_servers = '[{"name":"kbn","command":"kbn-mcp"}]', path_prepend = "/spy/guard" }
 
 # The launch polls for the session file the agent writes; it names the id
 # uuidgen reported and a live process, so the poll accepts it on its first

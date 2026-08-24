@@ -11,10 +11,10 @@ dependency.
 ## Contents
 
 - `config/tasks/codex.toml` — the interactive Codex TUI task. Launch
-  keystrokes go through `{ terminal = "send_text" }`/`{ terminal = "send_keys" }`; process-tree pid discovery and TUI-readiness polling
-  (`tmux display-message`/`tmux capture-pane`, via `{ terminal = "capture" }` where possible) remain direct, documented tmux dependencies
-  — no `[terminal]` verb covers "what pid does this endpoint run as" or
-  raw pane introspection beyond a capture.
+  keystrokes go through `{ terminal = "send_text" }`/`{ terminal = "send_keys" }`;
+  process-tree pid discovery starts from `{ terminal = "pid" }`, and
+  TUI-readiness polling reads `{ terminal = "capture" }` — no direct
+  multiplexer dependency remains.
 - `config/tasks/codex_initial_prompt.toml` — sends a session's initial prompt via
   `{ terminal = "..." }` once the CLI's input box is visible, or on every
   `plect up` when `repeat = "true"`.

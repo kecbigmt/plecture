@@ -140,13 +140,15 @@ session_name = { type = "string" }
 ## Terminal
 
 `[terminal]` declares that the effect owns an interactive endpoint, offering
-`attach`, `capture`, `send_text`, and `send_keys` against it. At most one effect
-in a plan declares it. The CLI's attach and capture commands resolve through
-it, and the `terminal` capability reaches all four verbs without the consumer
-knowing what is behind them.
+`attach`, `capture`, `send_text`, `send_keys`, and `pid` against it. At most
+one effect in a plan declares it. The CLI's attach and capture commands
+resolve through it, and the `terminal` capability reaches all five verbs
+without the consumer knowing what is behind them.
 
 `send_text` and `send_keys` receive their operand — the literal text to type,
-or a key token — as the action's first positional argument.
+or a key token — as the action's first positional argument. `attach`,
+`capture`, and `pid` receive no operand; `pid` returns the endpoint's root
+process pid.
 
 <!-- fixture: effects/terminal.toml -->
 ```toml
@@ -186,6 +188,13 @@ type   = "shell"
 script = 'tmux send-keys -t "$session_name" "$1"'
 
 [pane.terminal.send_keys.bind]
+session_name = { from = "self.outputs.session_name" }
+
+[pane.terminal.pid]
+type   = "shell"
+script = 'tmux display-message -p -t "$session_name" "#{pane_pid}"'
+
+[pane.terminal.pid.bind]
 session_name = { from = "self.outputs.session_name" }
 
 [pane.outputs_schema]
@@ -238,7 +247,6 @@ guard_dir = { type = "string" }
 uses = "official.claude.runtime"
 
 [guarded_runtime.inner.inputs]
-tmux_session = { from = "inputs.tmux_session" }
 model        = { from = "inputs.model", default = "fable" }
 path_prepend = { from = "locals.guard_dir" }
 
@@ -261,11 +269,9 @@ guard_dir   = { type = "string" }
 
 [guarded_runtime.inputs_schema]
 type                 = "object"
-required             = ["tmux_session"]
 additionalProperties = false
 
 [guarded_runtime.inputs_schema.properties]
-tmux_session = { type = "string" }
 model        = { type = "string" }
 ```
 
@@ -288,7 +294,6 @@ scope = "run"
 uses = "official.claude.runtime"
 
 [team_runtime.inner.inputs]
-tmux_session = { from = "nodes.pane.outputs.session_name" }
 mcp_servers  = { from = "inputs.mcp_servers", optional = true }
 
 [team_runtime.outputs.bind]

@@ -3,17 +3,6 @@ kind  = "effect"
 scope = "run"
 
 # Inputs:
-#   tmux_session — the multiplexer's own session/pane identifier (typically
-#                  this workflow's pane node's `session_name` output). The
-#                  launch below goes through the plan's terminal verbs, but
-#                  this value is still needed directly for `tmux
-#                  display-message`'s pid discovery — the worker is exec'd in
-#                  place of the pane shell, so the pane's own pid *is* the
-#                  worker's pid, and there is no terminal verb for "what pid
-#                  does this endpoint run as" (a documented, scoped-out gap;
-#                  see docs/design/plugin-boundary-contracts.md's Terminal
-#                  Operation Surface). This is also the observation window
-#                  `plect attach` reaches for the worker's stdout.
 #   model        — when set, exported as CODEX_MODEL so the worker appends
 #                  `-m <value>` to every `codex exec`/`codex exec resume`
 #                  call. Empty = codex's own config default. Restricted to a
@@ -121,7 +110,7 @@ rm -f "$STATE_DIR/ready"
 sh -c "$send_text" terminal-send-text "${EXPORTS}exec $worker_bin '$QUEUE_DIR' '$STATE_DIR' '$PROFILE_NAME'"
 sh -c "$send_keys" terminal-send-keys Enter
 
-PANE_PID=$(tmux display-message -p -t "$tmux_session" '#{pane_pid}')
+PANE_PID=$(sh -c "$terminal_pid" terminal-pid)
 READY_TIMEOUT_SECONDS="${PLECT_CODEX_EXEC_READY_TIMEOUT_SECONDS:-30}"
 READY=0
 for _ in $(seq 1 $((READY_TIMEOUT_SECONDS * 2))); do
@@ -144,7 +133,6 @@ jq -nc \
 
 [exec_runtime.setup.bind]
 session_name   = { from = "session.name" }
-tmux_session   = { from = "inputs.tmux_session" }
 model          = { from = "inputs.model", optional = true }
 effort         = { from = "inputs.effort", optional = true }
 launch_env     = { from = "inputs.launch_env", optional = true }
@@ -155,6 +143,7 @@ activity_bin   = { bin = "codex-agent-activity" }
 worker_bin     = { bin = "codex-exec-worker" }
 send_text      = { terminal = "send_text" }
 send_keys      = { terminal = "send_keys" }
+terminal_pid   = { terminal = "pid" }
 
 [exec_runtime.cleanup]
 type   = "shell"
@@ -203,14 +192,12 @@ args = ["probe", { from = "session.name" }]
 
 [exec_runtime.inputs_schema]
 type                 = "object"
-required             = ["tmux_session"]
 additionalProperties = false
 
 # model/effort: restricted to a plain-token charset (no quotes, whitespace,
 # or newlines) because they reach the pane's shell as keystrokes — see the
 # setup script's comment above.
 [exec_runtime.inputs_schema.properties]
-tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 # launch_env: a JSON object. jq rejects anything that is not an object of

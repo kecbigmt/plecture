@@ -3,15 +3,6 @@ kind  = "effect"
 scope = "run"
 
 # Inputs:
-#   tmux_session — the multiplexer's own session/pane identifier (typically
-#                  this workflow's pane node's `session_name` output). Launch
-#                  keystrokes go through the plan's terminal verbs; this value
-#                  is still needed directly below for `tmux display-message`'s
-#                  process-tree discovery, which has no terminal verb of its
-#                  own — a documented, scoped-out gap, same as this plugin's
-#                  claude counterpart (see
-#                  docs/design/plugin-boundary-contracts.md's Terminal
-#                  Operation Surface).
 #   model        — when set, appended to every launch as `-m <value>`. Empty
 #                  = codex's own config default. Restricted to a plain-token
 #                  charset (see inputs_schema) since it reaches the pane's
@@ -117,7 +108,7 @@ ATTEMPTS=$((TIMEOUT_SECONDS * 2))
 sh -c "$send_text" terminal-send-text "${EXPORTS}${CODEX_CMD}"
 sh -c "$send_keys" terminal-send-keys Enter
 
-PANE_PID=$(tmux display-message -p -t "$tmux_session" '#{pane_pid}')
+PANE_PID=$(sh -c "$terminal_pid" terminal-pid)
 PID=""
 SID=""
 for _ in $(seq 1 "$ATTEMPTS"); do
@@ -184,7 +175,6 @@ jq -nc \
 [codex.setup.bind]
 session_name    = { from = "session.name" }
 workspace_dir   = { from = "workspace.dir" }
-tmux_session    = { from = "inputs.tmux_session" }
 model           = { from = "inputs.model", optional = true }
 effort          = { from = "inputs.effort", optional = true }
 launch_env      = { from = "inputs.launch_env", optional = true }
@@ -194,6 +184,7 @@ activity_bin    = { bin = "codex-agent-activity" }
 capture         = { terminal = "capture" }
 send_text       = { terminal = "send_text" }
 send_keys       = { terminal = "send_keys" }
+terminal_pid    = { terminal = "pid" }
 
 [codex.cleanup]
 type   = "shell"
@@ -237,13 +228,11 @@ args = ["probe", { from = "session.name" }]
 
 [codex.inputs_schema]
 type                 = "object"
-required             = ["tmux_session"]
 additionalProperties = false
 
 # model/effort: restricted to a plain-token charset (no quotes, whitespace,
 # or newlines) because they reach the pane's shell as keystrokes.
 [codex.inputs_schema.properties]
-tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 # launch_env: a JSON object. jq rejects anything that is not an object of

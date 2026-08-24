@@ -17,6 +17,10 @@ activity: fingerprint="7375367613" silence_expected=false
 call[0]: "tmux" "capture-pane" "-p" "-t" "acme/widget-1"
 captured: "spy pane line\n"
 
+== pane / terminal.pid
+call[0]: "tmux" "display-message" "-p" "-t" "acme/widget-1" "#{pane_pid}"
+pid: "<pid>\n"
+
 == pane / cleanup
 call[0]: "tmux" "kill-session" "-t" "acme/widget-1"
 cleaned

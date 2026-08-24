@@ -51,21 +51,24 @@ A task that owns an interactive terminal endpoint declares:
 - `setup`, returning an `interactive_endpoint` output;
 - top-level `cleanup` and a `[health]` table (see
   [`health-declaration.md`](health-declaration.md));
-- a `[terminal]` table with `attach`, `capture`, `send_text`, and `send_keys`.
+- a `[terminal]` table with `attach`, `capture`, `send_text`, `send_keys`,
+  and `pid`.
 
 Availability is per verb: an effect declares the verbs it can honor, and a
 value consuming a verb no effect in the plan declares fails where it is
 consumed. Each member is an action (see
 [`../language/actions.md`](../language/actions.md)).
 
-`attach` and `capture` receive no terminal operand. `send_text` and `send_keys`
-receive the literal text or key token as the action's first positional
-argument.
+`attach`, `capture`, and `pid` receive no terminal operand. `send_text` and
+`send_keys` receive the literal text or key token as the action's first
+positional argument.
 
 Terminal commands are raw verbs. `send_text` sends literal text, `send_keys`
-sends key-combo input, and `capture` returns terminal text for the consumer to
-interpret. Agent-runtime plugins compose those verbs into submit/readiness
-behavior.
+sends key-combo input, `capture` returns terminal text for the consumer to
+interpret, and `pid` returns the endpoint's root process pid — the one piece
+of process identity a consumer needs that typing into or reading the
+endpoint cannot answer. Agent-runtime plugins compose those verbs into
+submit/readiness behavior and process-identity discovery.
 
 ### tmux Provider
 

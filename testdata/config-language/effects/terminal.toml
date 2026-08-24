@@ -39,6 +39,13 @@ script = 'tmux send-keys -t "$session_name" "$1"'
 [pane.terminal.send_keys.bind]
 session_name = { from = "self.outputs.session_name" }
 
+[pane.terminal.pid]
+type   = "shell"
+script = 'tmux display-message -p -t "$session_name" "#{pane_pid}"'
+
+[pane.terminal.pid.bind]
+session_name = { from = "self.outputs.session_name" }
+
 [pane.outputs_schema]
 type     = "object"
 required = ["session_name"]

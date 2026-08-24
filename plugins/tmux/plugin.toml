@@ -4,4 +4,4 @@ version = "0.1.0"
 # release/tagging process yet, so any higher floor would reject the plugin
 # against every build until real versioning exists.
 plect_min_version = "0.0.0"
-description = "tmux-backed interactive endpoint: the tmux pane lifecycle task and its [terminal] table (attach/capture/send_text/send_keys)."
+description = "tmux-backed interactive endpoint: the tmux pane lifecycle task and its [terminal] table (attach/capture/send_text/send_keys/pid)."

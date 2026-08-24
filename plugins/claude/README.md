@@ -14,8 +14,8 @@ independently selectable plugin this one composes through `{ terminal = "..." }`
   `~/.claude/sessions/*.json`, wires a channel-server MCP socket when
   `channel-server` is on `PATH`, and registers turn-boundary activity
   hooks. `[health].alive` self-heals a stale pid by re-deriving the live
-  process from the pane's process tree (still a direct, documented tmux
-  dependency — no `[terminal]` verb covers process discovery), so a
+  process from the pane's process tree, reached via
+  `{ terminal = "pid" }` for the pane's own root process id, so a
   crash-and-relaunch or a manual `--resume` does not require a session
   down/up to keep event delivery working. `[health].activity` reads back the
   record those turn-boundary hooks write, so hook and probe are two halves of
@@ -59,7 +59,6 @@ id   = "agent"
 uses = "official.claude.runtime"
 
 [my_workflow.nodes.inputs]
-tmux_session = { from = "nodes.pane.outputs.session_name" }
 launch_env   = '{"PLECT_TEAM_CONTEXT":"acme"}'
 mcp_servers  = '[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]'
 

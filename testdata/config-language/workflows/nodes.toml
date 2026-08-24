@@ -36,14 +36,12 @@ uses = "pane"
 id   = "worker"
 uses = "official.codex.exec_runtime"
 
-[goal_reviewer.nodes.inputs]
-tmux_session = { from = "nodes.pane.outputs.session_name" }
-
 [[goal_reviewer.nodes]]
 uses = "initial_task"
 
 [goal_reviewer.nodes.inputs]
-task = { from = "session.inputs.task", default = "" }
+task      = { from = "session.inputs.task", default = "" }
+queue_dir = { from = "nodes.worker.outputs.queue_dir" }
 
 [[goal_reviewer.event.channel]]
 name    = "runtime"

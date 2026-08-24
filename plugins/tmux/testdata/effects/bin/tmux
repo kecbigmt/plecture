@@ -9,5 +9,6 @@ case "$1" in
   new-session)  : > "$marker" ;;
   kill-session) rm -f "$marker" ;;
   capture-pane) printf '%s\n' "spy pane line" ;;
+  display-message) printf '%s\n' "$PLECT_EFFECT_PID" ;;
 esac
 exit 0

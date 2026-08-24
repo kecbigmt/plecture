@@ -273,11 +273,16 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 		"PATH=$(printf '%s' \"$PATH\" | sed 's|^'\"$PLECT_EFFECT_BIN\"':||')\n"+
 		"export PATH\n"+
 		"exec \"$@\"\n")
-	for _, verb := range []string{"attach", "capture", "send_text", "send_keys"} {
+	for _, verb := range []string{"attach", "capture", "send_text", "send_keys", "pid"} {
 		body := "#!/usr/bin/env sh\n" +
 			"plect-effect-record terminal-" + verb + " \"$@\"\n"
-		if verb == "capture" {
+		switch verb {
+		case "capture":
 			body += "[ -n \"$PLECT_EFFECT_CAPTURE\" ] && printf '%s\\n' \"$PLECT_EFFECT_CAPTURE\"\ntrue\n"
+		case "pid":
+			// The scenario's own live process stands in for the endpoint's
+			// root process, the same one a liveness check finds.
+			body += "printf '%s\\n' \"$PLECT_EFFECT_PID\"\n"
 		}
 		h.writeSpy(t, "terminal-"+verb, body)
 	}
@@ -401,6 +406,9 @@ func (s effectScenario) hooks(def config.TaskDefinition) []string {
 	if def.Terminal != nil && def.Terminal.Capture != nil {
 		out = append(out, "terminal.capture")
 	}
+	if def.Terminal != nil && def.Terminal.PID != nil {
+		out = append(out, "terminal.pid")
+	}
 	if def.Cleanup != nil {
 		out = append(out, "cleanup")
 	}
@@ -432,6 +440,7 @@ func (h *effectHarness) terminalBinding() *TerminalBinding {
 			Capture:  verb("capture"),
 			SendText: verb("send_text"),
 			SendKeys: verb("send_keys"),
+			PID:      verb("pid"),
 		},
 		Outputs: map[string]any{"session_name": "acme/widget-1"},
 	}
@@ -482,6 +491,13 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 			return "declined: " + err.Error()
 		}
 		return "captured: " + strconv.Quote(out)
+	case "terminal.pid":
+		binding := &TerminalBinding{Ops: def.Terminal, Outputs: self, SourcePath: def.SourcePath, From: def.Ownership()}
+		stdout, _, err := runTerminalVerb(ctx, binding, "pid", session, nil, nil)
+		if err != nil {
+			return "declined: " + err.Error()
+		}
+		return "pid: " + strconv.Quote(string(stdout))
 	default:
 		t.Fatalf("scenario names unknown hook %q", hook)
 		return ""

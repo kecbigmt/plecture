@@ -25,7 +25,7 @@ import (
 )
 
 // TerminalResolver resolves one [terminal] verb (attach/capture/send_text/
-// send_keys) to the command string a script runs it by, backing a
+// send_keys/pid) to the command string a script runs it by, backing a
 // `{ terminal = "..." }` capability in a channel's delivery. dir is this
 // delivery's private run directory: a verb declared as a shell action is
 // materialized there, so it stays runnable exactly as long as the delivery

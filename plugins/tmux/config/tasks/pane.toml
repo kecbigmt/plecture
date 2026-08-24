@@ -54,12 +54,14 @@ jq -nc --arg fp "$FP" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
 [pane.health.activity.bind]
 session_name = { from = "self.outputs.session_name" }
 
-# The four verbs below are this effect's interactive endpoint:
-# attach/capture are consumed by `plect attach`/`plect capture`, and all four
+# The five verbs below are this effect's interactive endpoint:
+# attach/capture are consumed by `plect attach`/`plect capture`, and all five
 # are reachable from any action or channel through
 # `{ terminal = "<verb>" }` without that consumer knowing tmux is behind it.
 # send_text receives the literal text to type as its operand; send_keys
-# receives a key token (e.g. "Enter") the same way.
+# receives a key token (e.g. "Enter") the same way. pid takes no operand and
+# returns the pane's root process pid, the one piece of process identity a
+# consumer needs that typing/reading the pane's contents cannot answer.
 [pane.terminal.attach]
 type    = "exec"
 command = "tmux"
@@ -79,6 +81,11 @@ args    = ["send-keys", "-t", { from = "self.outputs.session_name" }, "--"]
 type    = "exec"
 command = "tmux"
 args    = ["send-keys", "-t", { from = "self.outputs.session_name" }]
+
+[pane.terminal.pid]
+type    = "exec"
+command = "tmux"
+args    = ["display-message", "-p", "-t", { from = "self.outputs.session_name" }, "#{pane_pid}"]
 
 [pane.outputs_schema]
 type     = "object"

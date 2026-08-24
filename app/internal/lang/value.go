@@ -63,7 +63,7 @@ var tagKeys = []string{"from", "expr", "terminal", "bin", "json"}
 
 // terminalVerbOrder is ordered so a walk over a terminal table reports the
 // same diagnostic on every run.
-var terminalVerbOrder = []string{"attach", "capture", "send_text", "send_keys"}
+var terminalVerbOrder = []string{"attach", "capture", "send_text", "send_keys", "pid"}
 
 var terminalVerbs = func() map[string]bool {
 	verbs := make(map[string]bool, len(terminalVerbOrder))
@@ -168,7 +168,7 @@ func parseTagged(tbl map[string]any, class ValueClass, pos Position) (*Value, er
 		}
 		if !terminalVerbs[verb] {
 			return nil, newDiag(CodeValueTagUnknown, LayerStructural, pos,
-				fmt.Sprintf("%q is not one of the terminal verbs attach, capture, send_text, send_keys", verb))
+				fmt.Sprintf("%q is not one of the terminal verbs attach, capture, send_text, send_keys, pid", verb))
 		}
 		return &Value{Form: FormTerminal, Terminal: verb, Pos: pos}, nil
 	case "bin":

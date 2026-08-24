@@ -3,17 +3,6 @@ kind  = "effect"
 scope = "run"
 
 # Inputs:
-#   tmux_session — the multiplexer's own session/pane identifier (typically
-#                  this workflow's pane node's `session_name` output). Launch
-#                  keystrokes go through the plan's terminal verbs and never
-#                  need this value directly; the alive probe below still does,
-#                  to walk this pane's process tree with `tmux list-panes` —
-#                  that introspection has no terminal verb of its own, so it
-#                  stays a direct, explicit tmux dependency (a documented,
-#                  scoped-out gap: see docs/design/plugin-boundary-contracts.md's
-#                  Terminal Operation Surface, which covers attach/capture/
-#                  send_text/send_keys, not process discovery inside the
-#                  endpoint).
 #   model        — when set, appended to the launch command as
 #                  `--model <value>` (fresh, resume, and resume-fallback
 #                  launches alike). Empty = no flag (CLI default). Use a
@@ -265,7 +254,10 @@ type   = "shell"
 script = '''
 kill -0 "$pid" 2>/dev/null && exit 0
 
-PANE_PID=$(tmux list-panes -t "$tmux_session" -F '#{pane_pid}' 2>/dev/null | head -1)
+# The terminal verbs compose against whichever effect in this workflow
+# declares the interactive endpoint — never a concrete multiplexer named
+# here directly.
+PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
 [ -n "$PANE_PID" ] || exit 1
 
 FOUND_PID=""
@@ -297,7 +289,7 @@ plect state set-output "$session_name" --node claude "$(jq -nc \
 
 [runtime.health.alive.bind]
 pid          = { from = "self.outputs.pid", optional = true }
-tmux_session = { from = "inputs.tmux_session" }
+terminal_pid = { terminal = "pid" }
 session_name = { from = "session.name" }
 
 # activity: the turn-boundary hook this effect registers at setup is its
@@ -313,14 +305,12 @@ args = ["probe", { from = "session.name" }]
 
 [runtime.inputs_schema]
 type                 = "object"
-required             = ["tmux_session"]
 additionalProperties = false
 
 # model/effort: restricted to a plain-token charset (no quotes, whitespace,
 # or newlines) because they reach the pane's shell as keystrokes — see the
 # setup script's comment above.
 [runtime.inputs_schema.properties]
-tmux_session = { type = "string" }
 model        = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort       = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 # launch_env: a JSON object. jq rejects anything that is not an object of

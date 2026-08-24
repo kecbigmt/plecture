@@ -12,9 +12,6 @@ uses = "official.tmux.pane"
 id   = "agent"
 uses = "official.claude.runtime"
 
-[my_review.nodes.inputs]
-tmux_session = { from = "nodes.pane.outputs.session_name" }
-
 [[my_review.event.channel]]
 name    = "runtime"
 uses    = "official.claude.delivery"

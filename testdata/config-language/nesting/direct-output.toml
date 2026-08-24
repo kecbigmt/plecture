@@ -23,7 +23,6 @@ guard_dir = { type = "string" }
 uses = "official.claude.runtime"
 
 [guarded_runtime.inner.inputs]
-tmux_session = { from = "inputs.tmux_session" }
 model        = { from = "inputs.model", default = "fable" }
 path_prepend = { from = "locals.guard_dir" }
 
@@ -46,9 +45,7 @@ guard_dir   = { type = "string" }
 
 [guarded_runtime.inputs_schema]
 type                 = "object"
-required             = ["tmux_session"]
 additionalProperties = false
 
 [guarded_runtime.inputs_schema.properties]
-tmux_session = { type = "string" }
 model        = { type = "string" }
