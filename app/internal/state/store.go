@@ -326,13 +326,10 @@ func (s *Store) loadLocked() (*stateFile, error) {
 	return sf, nil
 }
 
-// checkLayerIdentityMigrated rejects a state file carrying a nesting layer
-// with no valid effect_id: either the pre-rename task_id field is still
-// present, or effect_id itself decoded empty. json.Unmarshal silently drops
-// unknown struct fields, so without this check an unmigrated task_id would
-// decode as a zero-value EffectID and a later whole-file save would persist
-// that zero value, permanently destroying the layer's identity. See
-// docs/migrations/task-layer-effect-id-migration.md.
+// json.Unmarshal silently drops unknown struct fields, so without this
+// check an unmigrated task_id would decode as a zero-value EffectID and a
+// later whole-file save would persist that zero value, destroying the
+// layer's identity. See docs/migrations/task-layer-effect-id-migration.md.
 func checkLayerIdentityMigrated(data []byte) error {
 	var raw struct {
 		Sessions map[string]struct {
