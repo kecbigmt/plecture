@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -51,7 +53,7 @@ func TestReserveChildCapSlot_NoCapDeclaredAllowsUnlimitedChildren(t *testing.T) 
 		setParent(t, store, name, "parent1")
 	}
 
-	reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "parent1", false)
 	if err != nil {
 		t.Fatalf("reserveChildCapSlot: %v, want nil (no cap declared)", err)
 	}
@@ -68,7 +70,7 @@ func TestReserveChildCapSlot_UnderCapAllowsNewChild(t *testing.T) {
 	seedSession(t, store, "child0", "acct", 0, "", upTasks())
 	setParent(t, store, "child0", "parent1")
 
-	reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "parent1", false)
 	if err != nil {
 		t.Fatalf("reserveChildCapSlot: %v, want nil (1 up child, cap 2)", err)
 	}
@@ -88,7 +90,7 @@ func TestReserveChildCapSlot_AtCapRejectsNewChild(t *testing.T) {
 		setParent(t, store, name, "parent1")
 	}
 
-	reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "parent1", false)
 	if reserved {
 		t.Error("reserved = true, want false: parent is already at cap")
 	}
@@ -116,7 +118,7 @@ func TestReserveChildCapSlot_DownChildDoesNotCountTowardCap(t *testing.T) {
 	seedSession(t, store, "childDown", "acct", 1, "", nil)
 	setParent(t, store, "childDown", "parent1")
 
-	reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "parent1", false)
 	if err != nil {
 		t.Fatalf("reserveChildCapSlot: %v, want nil (1 up + 1 down, cap 2)", err)
 	}
@@ -139,7 +141,7 @@ func TestReserveChildCapSlot_AlreadyUpTargetIsExemptEvenAtFullCap(t *testing.T) 
 	// A re-up on an already-up child must stay idempotent, not be rejected by
 	// the cap it is itself already counted under — and must not reserve a
 	// slot, since it never releases one either.
-	reserved, err := reserveChildCapSlot(cfg, store, "parent1", true)
+	reserved, err := reserveChildCapSlot(cfg, store, "child0", "parent1", true)
 	if err != nil {
 		t.Fatalf("reserveChildCapSlot: %v, want nil (already-up target is exempt)", err)
 	}
@@ -152,7 +154,7 @@ func TestReserveChildCapSlot_NoParentSkipsCheck(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
 
-	reserved, err := reserveChildCapSlot(cfg, store, "", false)
+	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "", false)
 	if err != nil {
 		t.Fatalf("reserveChildCapSlot: %v, want nil (no parent, e.g. a root session)", err)
 	}
@@ -168,7 +170,7 @@ func TestReserveChildCapSlot_UnknownParentSkipsCheck(t *testing.T) {
 	// The "root:<target>" pseudo-parent form (see resolveParentSession)
 	// stores a literal string with no corresponding session state; a cap
 	// declared on a workflow can only bind a session that actually exists.
-	reserved, err := reserveChildCapSlot(cfg, store, "root:external", false)
+	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "root:external", false)
 	if err != nil {
 		t.Fatalf("reserveChildCapSlot: %v, want nil (parent has no state entry)", err)
 	}
@@ -186,12 +188,12 @@ func TestReserveChildCapSlot_OutstandingReservationCountsTowardCap(t *testing.T)
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
 	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
 
-	first, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	first, err := reserveChildCapSlot(cfg, store, "childA", "parent1", false)
 	if err != nil || !first {
 		t.Fatalf("first reservation: reserved=%v err=%v, want true/nil", first, err)
 	}
 
-	second, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	second, err := reserveChildCapSlot(cfg, store, "childB", "parent1", false)
 	if second {
 		t.Error("second reservation succeeded despite the first still being outstanding")
 	}
@@ -199,17 +201,17 @@ func TestReserveChildCapSlot_OutstandingReservationCountsTowardCap(t *testing.T)
 		t.Fatalf("second reservation err = %v, want ErrChildCapExceeded", err)
 	}
 
-	releaseChildCapSlot(store, "parent1")
+	releaseChildCapSlot(store, "childA")
 
-	third, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	third, err := reserveChildCapSlot(cfg, store, "childB", "parent1", false)
 	if err != nil || !third {
 		t.Fatalf("reservation after release: reserved=%v err=%v, want true/nil", third, err)
 	}
 }
 
 // The atomicity guarantee itself: concurrent reservations against the same
-// capped parent must never admit more than the declared limit, however many
-// callers race it at once.
+// capped parent, each for its own distinct child, must never admit more
+// than the declared limit, however many callers race it at once.
 func TestReserveChildCapSlot_ConcurrentReservationsRespectCap(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
@@ -224,7 +226,8 @@ func TestReserveChildCapSlot_ConcurrentReservationsRespectCap(t *testing.T) {
 	for i := 0; i < attempts; i++ {
 		go func(i int) {
 			defer wg.Done()
-			reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+			child := fmt.Sprintf("child%d", i)
+			reserved, err := reserveChildCapSlot(cfg, store, child, "parent1", false)
 			if err != nil && err.Code != ErrChildCapExceeded {
 				t.Errorf("reserveChildCapSlot: unexpected error %v", err)
 				return
@@ -242,5 +245,60 @@ func TestReserveChildCapSlot_ConcurrentReservationsRespectCap(t *testing.T) {
 	}
 	if admitted != limit {
 		t.Fatalf("admitted = %d, want exactly %d (the declared limit) across %d concurrent attempts", admitted, limit, attempts)
+	}
+}
+
+// approveAnyReservation is a store.ReserveUpSlot fn that always approves —
+// used to plant a reservation directly, simulating one an earlier `plect
+// up` process made and then never released (a SIGKILL, a crashed machine).
+func approveAnyReservation(map[string]*domain.Session, map[string]state.UpReservation) bool {
+	return true
+}
+
+// A retried `plect up` for the very same child must reclaim its own
+// reservation immediately, not be blocked by the leftover one its own
+// earlier, crashed attempt left behind.
+func TestReserveChildCapSlot_RetryAfterCrashReclaimsItsOwnSlot(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{BaseDir: t.TempDir()}
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+
+	if _, err := store.ReserveUpSlot("childA", "parent1", approveAnyReservation); err != nil {
+		t.Fatalf("simulate a crashed prior reservation: %v", err)
+	}
+
+	reserved, err := reserveChildCapSlot(cfg, store, "childA", "parent1", false)
+	if err != nil || !reserved {
+		t.Fatalf("retry after crash: reserved=%v err=%v, want true/nil", reserved, err)
+	}
+}
+
+// Destroying the stuck child — the operator's actual recovery command, no
+// new verb needed — frees its reservation immediately rather than making
+// a sibling wait out ReserveUpSlot's TTL.
+func TestReserveChildCapSlot_DestroyingTheStuckChildFreesItsReservation(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{BaseDir: t.TempDir()}
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+
+	if _, err := store.ReserveUpSlot("childA", "parent1", approveAnyReservation); err != nil {
+		t.Fatalf("simulate a crashed prior reservation: %v", err)
+	}
+
+	// While the reservation stands, a different new child is genuinely
+	// blocked — the cap really is full from this decision's point of view.
+	if reserved, err := reserveChildCapSlot(cfg, store, "childB", "parent1", false); reserved || err == nil {
+		t.Fatalf("childB before destroying childA: reserved=%v err=%v, want rejected", reserved, err)
+	}
+
+	if err := store.Delete("childA"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	reserved, err := reserveChildCapSlot(cfg, store, "childB", "parent1", false)
+	if err != nil || !reserved {
+		t.Fatalf("childB after destroying childA: reserved=%v err=%v, want true/nil", reserved, err)
 	}
 }

@@ -161,11 +161,38 @@ func TestUp_ReleasesReservationAfterSuccessfulAdmission(t *testing.T) {
 	// Only one of the two slots is genuinely up now. A second reservation
 	// must succeed — it would wrongly fail if the first Up's reservation
 	// were still outstanding on top of the real up child it produced.
-	reserved, capErr := reserveChildCapSlot(cfg, store, "parent1", false)
+	reserved, capErr := reserveChildCapSlot(cfg, store, "second", "parent1", false)
 	if capErr != nil {
 		t.Fatalf("reserveChildCapSlot after a completed Up: %v, want nil", capErr)
 	}
 	if !reserved {
 		t.Error("reserved = false, want true: the first Up's reservation should have been released")
+	}
+}
+
+// The end-to-end recovery path for a reservation a crashed `plect up` left
+// behind: `plect destroy` on the stuck child, an existing command, needs no
+// new verb to free the slot for a sibling.
+func TestDestroy_ClearsStaleReservationForTheDestroyedChild(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "child_wf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+	seedSession(t, store, "childA", "acct", 0, "child_wf", nil)
+	setParent(t, store, "childA", "parent1")
+
+	if _, err := store.ReserveUpSlot("childA", "parent1", approveAnyReservation); err != nil {
+		t.Fatalf("simulate a crashed prior reservation: %v", err)
+	}
+
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "childA", Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+
+	reserved, capErr := reserveChildCapSlot(cfg, store, "childB", "parent1", false)
+	if capErr != nil || !reserved {
+		t.Fatalf("childB after destroying childA: reserved=%v err=%v, want true/nil", reserved, capErr)
 	}
 }

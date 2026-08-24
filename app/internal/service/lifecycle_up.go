@@ -79,9 +79,8 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
-		// Checked before Create runs (not after): a brand new child must be
-		// rejected without leaving a state entry behind, and Create is what
-		// would persist one.
+		// Before Create, not after: Create is what persists a new child's
+		// state entry, and a rejected child must leave none.
 		targetAlreadyUp := existing != nil && sessionRunState(existing) == domain.RunUp
 		parentSessionName := ""
 		if existing != nil {
@@ -93,12 +92,12 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 			}
 			parentSessionName = resolved
 		}
-		reserved, capErr := reserveChildCapSlot(cfg, store, parentSessionName, targetAlreadyUp)
+		reserved, capErr := reserveChildCapSlot(cfg, store, sessionName, parentSessionName, targetAlreadyUp)
 		if capErr != nil {
 			return nil, capErr
 		}
 		if reserved {
-			defer releaseChildCapSlot(store, parentSessionName)
+			defer releaseChildCapSlot(store, sessionName)
 		}
 		if existing == nil || hasIncompleteSessionTask(cfg, existing) {
 			if _, err := Create(cfg, store, CreateParams{
@@ -132,16 +131,15 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
 	}
-	// Mirrors the matched branch's pre-Create reservation above, for a
-	// bare-name session going straight from down to up (matched already
-	// reserved its slot before Create ran).
+	// Mirrors the matched branch's reservation above, for a bare-name
+	// session going straight from down to up.
 	if !matched {
-		reserved, capErr := reserveChildCapSlot(cfg, store, session.ParentSession, sessionRunState(session) == domain.RunUp)
+		reserved, capErr := reserveChildCapSlot(cfg, store, sessionName, session.ParentSession, sessionRunState(session) == domain.RunUp)
 		if capErr != nil {
 			return nil, capErr
 		}
 		if reserved {
-			defer releaseChildCapSlot(store, session.ParentSession)
+			defer releaseChildCapSlot(store, sessionName)
 		}
 	}
 	if params.ForceRecreate && !matched {

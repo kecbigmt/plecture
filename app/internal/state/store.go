@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/contracts/atomicfile"
@@ -17,14 +18,26 @@ import (
 
 const stateVersion = contract.SchemaVersion
 
+// upReservationTTL bounds how long a reservation counts without being
+// released — otherwise a `plect up` killed between reserving and releasing
+// costs its parent a slot forever.
+const upReservationTTL = 30 * time.Minute
+
+// UpReservation is one child's outstanding child-cap admission decision,
+// standing in until ReleaseUpSlot fires or upReservationTTL passes.
+type UpReservation struct {
+	Parent string    `json:"parent"`
+	At     time.Time `json:"at"`
+}
+
 type stateFile struct {
 	Version  int                        `json:"version"`
 	Sessions map[string]*domain.Session `json:"sessions"`
-	// UpReservations counts, per parent session name, admission decisions
-	// whose child hasn't reached run state "up" yet, so its own record
-	// doesn't reflect them. Kept out of contracts/state.Session: this is
-	// bookkeeping local to this store's file, not durable session data.
-	UpReservations map[string]int `json:"up_reservations,omitempty"`
+	// UpReservations is keyed by child session name so a retry reclaims its
+	// own entry and Delete can drop one by name, rather than an anonymous
+	// count. Kept out of contracts/state.Session: local bookkeeping, not
+	// durable session data.
+	UpReservations map[string]UpReservation `json:"up_reservations,omitempty"`
 }
 
 // Store manages session state persistence.
@@ -110,46 +123,49 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	})
 }
 
-// ReserveUpSlot evaluates fn against one locked, consistent snapshot of
-// every session plus the named parent's reservation count, and — if fn
-// approves — increments that count in the same locked write. Update only
-// locks the one session it targets; a decision weighing every sibling under
-// a shared parent needs the read and the write locked together, or a second
-// concurrent decision can interleave between them and both admit past the
-// same limit. Pair with ReleaseUpSlot once the reservation resolves.
-func (s *Store) ReserveUpSlot(parentName string, fn func(sessions map[string]*domain.Session, reserved int) (approved bool)) (bool, error) {
+// ReserveUpSlot evaluates fn against one locked, consistent snapshot — read
+// and write together, unlike Update's single session — and records
+// childName's reservation under parentName if fn approves. fn's snapshot
+// already excludes childName's own prior reservation and anything past
+// upReservationTTL, so it only weighs what is genuinely still outstanding.
+// Pair with ReleaseUpSlot once the reservation resolves.
+func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map[string]*domain.Session, reservations map[string]UpReservation) (approved bool)) (bool, error) {
 	approved := false
 	err := s.withFileLock(func() error {
 		sf, err := s.loadLocked()
 		if err != nil {
-			return fmt.Errorf("state: reserve up-slot for %q: %w", parentName, err)
+			return fmt.Errorf("state: reserve up-slot for %q: %w", childName, err)
 		}
-		approved = fn(sf.Sessions, sf.UpReservations[parentName])
+		now := time.Now()
+		live := make(map[string]UpReservation, len(sf.UpReservations))
+		for name, res := range sf.UpReservations {
+			if name == childName || now.Sub(res.At) > upReservationTTL {
+				continue
+			}
+			live[name] = res
+		}
+		approved = fn(sf.Sessions, live)
 		if !approved {
 			return nil
 		}
-		if sf.UpReservations == nil {
-			sf.UpReservations = make(map[string]int)
-		}
-		sf.UpReservations[parentName]++
+		live[childName] = UpReservation{Parent: parentName, At: now}
+		sf.UpReservations = live
 		return s.saveLocked(sf)
 	})
 	return approved, err
 }
 
-// ReleaseUpSlot undoes one prior approved ReserveUpSlot for parentName.
-func (s *Store) ReleaseUpSlot(parentName string) error {
+// ReleaseUpSlot drops childName's reservation, if any.
+func (s *Store) ReleaseUpSlot(childName string) error {
 	return s.withFileLock(func() error {
 		sf, err := s.loadLocked()
 		if err != nil {
-			return fmt.Errorf("state: release up-slot for %q: %w", parentName, err)
+			return fmt.Errorf("state: release up-slot for %q: %w", childName, err)
 		}
-		if sf.UpReservations[parentName] > 0 {
-			sf.UpReservations[parentName]--
-			if sf.UpReservations[parentName] == 0 {
-				delete(sf.UpReservations, parentName)
-			}
+		if _, ok := sf.UpReservations[childName]; !ok {
+			return nil
 		}
+		delete(sf.UpReservations, childName)
 		return s.saveLocked(sf)
 	})
 }
@@ -171,6 +187,7 @@ func (s *Store) Delete(name string) error {
 			session.Children = removeSessionName(session.Children, name)
 		}
 		delete(sf.Sessions, name)
+		delete(sf.UpReservations, name) // an operator's recovery path for a stuck reservation, ahead of its TTL
 		normalizeSessionTree(sf.Sessions)
 		return s.saveLocked(sf)
 	})

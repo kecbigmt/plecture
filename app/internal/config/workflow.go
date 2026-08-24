@@ -52,11 +52,8 @@ type WorkflowFile struct {
 	// — so their freshness follows whatever cadence updates those outputs.
 	Display    map[string]*lang.Value
 	AutoSelect *bool
-	// MaxUpChildren caps how many sessions parented on a session produced by
-	// this workflow may hold run state "up" at once — a child with any
-	// run-scoped task produced. `plect up` rejects a child that would push
-	// the parent past this cap rather than queueing it; nil means no cap
-	// (today's unlimited behavior).
+	// MaxUpChildren optionally caps concurrently-up children under a session
+	// this workflow produces (see service.reserveChildCapSlot); nil means no cap.
 	MaxUpChildren *int
 	Nodes         []WorkflowNode
 	Event         WorkflowEvent

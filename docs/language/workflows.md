@@ -128,6 +128,10 @@ rejection's reported count can briefly exceed what `plect ls` shows. A
 `plect up` that only brings an already-up child back up again (an idempotent
 re-up) is exempt from the cap, since that child is already counted.
 
+An in-flight admission that never resolves — its `plect up` process killed
+before it went up or gave up — stops counting after a bounded time on its
+own; `plect destroy` on that child clears it immediately instead of waiting.
+
 Unset means no cap, the same behavior as today.
 
 ## Provider parameters
