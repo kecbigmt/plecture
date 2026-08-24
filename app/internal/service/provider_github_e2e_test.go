@@ -268,8 +268,8 @@ func TestE2E_GithubWorkspaceProviderWiresAndDropsEventDelivery(t *testing.T) {
 	}
 }
 
-// TestIntegration_CreateSubscribesToGithubWatcher pins issue #295's fix at
-// the real Create entry point (not subscribeIfWired called directly, as
+// TestIntegration_CreateSubscribesToGithubWatcher pins binding-implies-delivery
+// at the real Create entry point (not subscribeIfWired called directly, as
 // above): the session's own resource must reach the shipped github-watcher
 // subscribe hook during session creation, the same way an explicit
 // --resource on a dynamic task setup already did before this change.
