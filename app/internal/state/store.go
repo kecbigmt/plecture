@@ -288,6 +288,10 @@ func (s *Store) loadLocked() (*stateFile, error) {
 		return nil, fmt.Errorf("read state file: %w", err)
 	}
 
+	if err := checkLayerIdentityMigrated(data); err != nil {
+		return nil, err
+	}
+
 	var header struct {
 		Version int `json:"version"`
 	}
@@ -320,6 +324,42 @@ func (s *Store) loadLocked() (*stateFile, error) {
 	normalizeSessionTree(sf.Sessions)
 
 	return sf, nil
+}
+
+// json.Unmarshal silently drops unknown struct fields, so without this
+// check an unmigrated task_id would decode as a zero-value EffectID and a
+// later whole-file save would persist that zero value, destroying the
+// layer's identity. See docs/migrations/task-layer-effect-id-migration.md.
+func checkLayerIdentityMigrated(data []byte) error {
+	var raw struct {
+		Sessions map[string]struct {
+			Tasks map[string]struct {
+				Layers []map[string]json.RawMessage `json:"layers"`
+			} `json:"tasks"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		// Malformed JSON is reported by the caller's own parse step.
+		return nil
+	}
+
+	for sessionName, session := range raw.Sessions {
+		for taskID, task := range session.Tasks {
+			for i, layer := range task.Layers {
+				if _, hasLegacyField := layer["task_id"]; hasLegacyField {
+					return fmt.Errorf("state file: session %q task %q layer %d still has the pre-rename task_id field instead of effect_id; run the migration in docs/migrations/task-layer-effect-id-migration.md before using this binary", sessionName, taskID, i)
+				}
+				var effectID string
+				if effectIDRaw, ok := layer["effect_id"]; ok {
+					_ = json.Unmarshal(effectIDRaw, &effectID)
+				}
+				if effectID == "" {
+					return fmt.Errorf("state file: session %q task %q layer %d has no effect_id; run the migration in docs/migrations/task-layer-effect-id-migration.md before using this binary", sessionName, taskID, i)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func validateStateVersion(got int) error {

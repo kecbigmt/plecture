@@ -15,6 +15,17 @@ own `task_id` field (naming which task declaration an instance runs) is
 untouched — only a nested instance's per-layer records are affected, and only
 for a session with at least one nested task instance.
 
+## Ordering relative to a binary update
+
+A deployment step that updates the plect binary (a package rebuild, a
+service manager restart, an orchestrator redeploy) can bring plect processes
+back online before this migration finishes, even if they were stopped a
+moment before the step ran. "Stopped at the start of the window" does not
+imply "still stopped when the swap below runs." Run this migration to
+completion *before* any such binary update, or, if that ordering cannot be
+guaranteed, re-stop plect processes immediately before the `mv` in [State
+changes](#state-changes) below performs the swap.
+
 ## Backup
 
 Before editing any data directory, stop running plect processes and copy the

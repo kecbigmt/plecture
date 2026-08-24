@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 func TestStore_PutAndGet(t *testing.T) {
@@ -491,6 +492,71 @@ func TestStore_StateVersionMismatchFailsWritesInsteadOfOverwriting(t *testing.T)
 			}
 			if string(data) != string(original) {
 				t.Fatalf("mismatched state file was rewritten: got %q, want unchanged %q", data, original)
+			}
+		})
+	}
+}
+
+func TestStore_UnmigratedLayerTaskIDFailsLoudInsteadOfZeroingEffectID(t *testing.T) {
+	tests := []struct {
+		name     string
+		layerRaw string
+	}{
+		{
+			name:     "pre-rename task_id field still present",
+			layerRaw: `{"task_id": "some-effect", "status": "produced"}`,
+		},
+		{
+			name:     "effect_id present but empty",
+			layerRaw: `{"effect_id": "", "status": "produced"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			statePath := filepath.Join(dir, "state.json")
+			original := []byte(fmt.Sprintf(`{
+  "version": %d,
+  "sessions": {
+    "org/repo-1": {
+      "session_name": "org/repo-1",
+      "workspace_dir_path": "/tmp/workdir",
+      "tasks": {
+        "nested-task": {
+          "scope": "session",
+          "status": "produced",
+          "layers": [%s]
+        }
+      }
+    }
+  }
+}`, contract.SchemaVersion, tt.layerRaw))
+			if err := os.WriteFile(statePath, original, 0644); err != nil {
+				t.Fatal(err)
+			}
+			store := NewStore(dir)
+
+			if err := store.CheckReadable(); err == nil {
+				t.Fatal("CheckReadable() over a pre-rename layers[].task_id record must fail loud, not load-then-zero effect_id")
+			} else if !strings.Contains(err.Error(), "effect_id") || !strings.Contains(err.Error(), "task-layer-effect-id-migration.md") {
+				t.Fatalf("error = %q, want it to name effect_id and the migration doc", err.Error())
+			}
+
+			if _, err := store.AllE(); err == nil {
+				t.Fatal("AllE() over a pre-rename layer record must fail loud")
+			}
+
+			if err := store.Put(&domain.Session{Name: "org/repo-2"}); err == nil {
+				t.Fatal("Put() over a pre-rename layer record must fail loud, not silently write effect_id=\"\"")
+			}
+
+			data, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(data) != string(original) {
+				t.Fatalf("pre-rename state file was rewritten: got %q, want unchanged %q", data, original)
 			}
 		})
 	}
