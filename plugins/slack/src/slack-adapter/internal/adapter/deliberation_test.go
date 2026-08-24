@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -12,9 +13,15 @@ import (
 type fakeThreadFetcher struct {
 	messages []slack.Message
 	names    map[string]string
+	err      error
+	calls    int
 }
 
 func (f *fakeThreadFetcher) fetchThreadReplies(channelID, threadTS string) ([]slack.Message, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
 	return f.messages, nil
 }
 
@@ -220,6 +227,66 @@ func TestHandleAppMentionWrongChannelDoesNotPublish(t *testing.T) {
 
 	if len(publisher.events) != 0 {
 		t.Fatalf("published events = %d, want 0", len(publisher.events))
+	}
+}
+
+func TestHandleAppMentionSubscriptionWithoutSessionNameDoesNotPublish(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	fetcher := &fakeThreadFetcher{
+		messages: []slack.Message{
+			slackMessage("1000.000001", "U-root", "Review thread opened"),
+		},
+	}
+	publisher := &recordingEventPublisher{}
+	a.threadFetcher = fetcher
+	a.eventPublisher = publisher
+	a.broker.Subscribe(Subscriber{
+		ThreadTS:  "1000.000001",
+		ChannelID: "C-review",
+	})
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> hello",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	if fetcher.calls != 0 {
+		t.Fatalf("fetchThreadReplies calls = %d, want 0", fetcher.calls)
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("published events = %d, want 0", len(publisher.events))
+	}
+}
+
+func TestHandleAppMentionFetchFailureDoesNotPublishOrAdvanceWatermark(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	publisher := &recordingEventPublisher{}
+	a.threadFetcher = &fakeThreadFetcher{err: errors.New("slack unavailable")}
+	a.eventPublisher = publisher
+	a.broker.Subscribe(Subscriber{
+		ThreadTS:         "1000.000001",
+		ChannelID:        "C-review",
+		SessionName:      "owner/repo-1",
+		DeliveredThrough: "1000.000003",
+	})
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> hello",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	if len(publisher.events) != 0 {
+		t.Fatalf("published events = %d, want 0", len(publisher.events))
+	}
+	sub, _ := a.broker.Find("1000.000001")
+	if sub.DeliveredThrough != "1000.000003" {
+		t.Fatalf("DeliveredThrough = %q, want unchanged watermark", sub.DeliveredThrough)
 	}
 }
 
