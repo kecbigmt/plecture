@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# gh app-token+guard shim: mints/refreshes a GitHub App installation access
+# token and denies merge/close, both in this one wrapper — one process hop
+# between a session's `gh` and the real gh, with auth and deny ordering
+# explicit right here, instead of two nested shims where the ordering (and
+# which hop set GH_TOKEN) would be implicit in how they happen to chain.
+#
+# Deny is checked before minting: a call about to be denied never gets a
+# token minted for it, so a forgotten "don't merge" instruction costs
+# nothing beyond the deny check itself.
+#
+# GH_GUARD_REAL_GH must be the real gh's absolute path, resolved by the
+# setup script before the shim directory is prepended to PATH — see
+# gh-guard's own header comment for why a value resolving back to this
+# file is rejected as a misconfiguration rather than silently falling back.
+set -euo pipefail
+
+: "${GH_GUARD_REAL_GH:?gh-app-guard: GH_GUARD_REAL_GH must point at the real gh binary}"
+: "${GH_APP_GUARD_TOKEN_BIN:?gh-app-guard: GH_APP_GUARD_TOKEN_BIN must point at the gh-app-token helper}"
+: "${GH_APP_GUARD_APP_ID:?gh-app-guard: GH_APP_GUARD_APP_ID must be set}"
+: "${GH_APP_GUARD_PRIVATE_KEY_PATH:?gh-app-guard: GH_APP_GUARD_PRIVATE_KEY_PATH must be set}"
+: "${GH_APP_GUARD_CACHE_PATH:?gh-app-guard: GH_APP_GUARD_CACHE_PATH must be set}"
+
+if [ "$(readlink -f "$GH_GUARD_REAL_GH")" = "$(readlink -f "$0")" ]; then
+  echo "gh-app-guard: GH_GUARD_REAL_GH=$GH_GUARD_REAL_GH resolves back to this shim; refusing to recurse" >&2
+  exit 1
+fi
+[ -x "$GH_GUARD_REAL_GH" ] || {
+  echo "gh-app-guard: GH_GUARD_REAL_GH=$GH_GUARD_REAL_GH is not executable" >&2
+  exit 1
+}
+
+lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=gh-guard-lib.sh
+. "$lib_dir/gh-guard-lib.sh"
+trap 'rm -f "$GH_GUARD_STDIN_CAPTURE"' EXIT
+
+if gh_guard_check_denied "$@"; then
+  gh_guard_deny
+fi
+
+token_args=(print
+  --app-id "$GH_APP_GUARD_APP_ID"
+  --private-key-path "$GH_APP_GUARD_PRIVATE_KEY_PATH"
+  --cache-path "$GH_APP_GUARD_CACHE_PATH")
+[ -n "${GH_APP_GUARD_INSTALLATION_ID:-}" ] && token_args+=(--installation-id "$GH_APP_GUARD_INSTALLATION_ID")
+[ -n "${GH_APP_GUARD_OWNER:-}" ] && token_args+=(--owner "$GH_APP_GUARD_OWNER")
+[ -n "${GH_APP_GUARD_REPO:-}" ] && token_args+=(--repo "$GH_APP_GUARD_REPO")
+[ -n "${GH_APP_GUARD_BASE_URL:-}" ] && token_args+=(--base-url "$GH_APP_GUARD_BASE_URL")
+
+# gh-app-token's own stderr is already redacted (it never folds key or
+# token bytes into an error string — see plugins/github/src/internal/
+# githubapp); this wrapper does not need a second redaction pass, only to
+# let that stderr through unmodified, which happens automatically since it
+# is not captured here.
+token=$("$GH_APP_GUARD_TOKEN_BIN" "${token_args[@]}")
+
+if [ -n "$GH_GUARD_STDIN_CAPTURE" ]; then
+  # See gh-guard's own EXIT-trap comment: the buffered body is reopened on a
+  # separate fd and unlinked before exec so it survives the replacement
+  # process image without leaking a temp file.
+  exec 3< "$GH_GUARD_STDIN_CAPTURE"
+  rm -f "$GH_GUARD_STDIN_CAPTURE"
+  GH_TOKEN="$token" exec "$GH_GUARD_REAL_GH" "$@" <&3
+fi
+
+# GH_TOKEN is set only in this exec's own environment prefix, so it reaches
+# the delegated gh child process and nothing else — this wrapper's own
+# process image is replaced by that call, and no assignment here is ever
+# exported into a longer-lived shell.
+GH_TOKEN="$token" exec "$GH_GUARD_REAL_GH" "$@"

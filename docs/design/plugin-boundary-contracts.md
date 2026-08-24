@@ -200,3 +200,10 @@ The GitHub CLI write guard belongs to the `github` plugin. Workflows that need
 the guard compose the GitHub plugin's guard task or environment output as an
 upstream runtime input. Agent plugins accept only generic environment or path
 inputs; they do not carry a GitHub-specific guard switch.
+
+A session authenticating as a GitHub App installation composes
+`official.github.gh_app_guard` in place of `gh_guard`: one composite wrapper
+that mints/caches the installation token and applies the same merge/close
+denial, rather than two shims chained through the PATH-prepend input. Auth
+and deny ordering both live in that one wrapper, deny checked first, so a
+call about to be denied never costs a mint.

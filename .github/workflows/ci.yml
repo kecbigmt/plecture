@@ -130,6 +130,14 @@ jobs:
       - name: Prove the gh_guard shim denies merge/close and passes through everything else
         run: ./scripts/gh-guard_selftest.sh
 
+  gh-app-guard:
+    name: gh-app-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove the gh_app_guard shim mints before allow, denies before mint, and scopes GH_TOKEN to the delegated gh
+        run: ./scripts/gh-app-guard_selftest.sh
+
   # This job covers the script-side half of a plugin's delivery contract;
   # its argv side is pinned by the channel-invocation records the
   # integration-test job regenerates from the shipped declarations. It is
