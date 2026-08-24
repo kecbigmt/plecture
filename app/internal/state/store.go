@@ -19,33 +19,30 @@ import (
 
 const stateVersion = contract.SchemaVersion
 
-// UpReservation is one child's outstanding child-cap admission decision. No
-// TTL: RunSetup has no deadline, so only a confirmed-dead holder — never
-// elapsed time — may expire one.
+// UpReservation has no TTL field: RunSetup has no deadline, so only a
+// confirmed-dead holder, never elapsed time, may expire one.
 type UpReservation struct {
 	Parent string    `json:"parent"`
 	At     time.Time `json:"at"` // diagnostic only; expiry never reads it
 	PID    int       `json:"pid"`
 }
 
-// processAlive probes pid via kill(2) signal 0, like a PID-file lock.
-// EPERM still means alive. A crashed holder's PID reused by an unrelated
-// live process is this technique's known false negative — accepted, since
-// a stuck reservation stays recoverable via retry or Destroy either way.
+// PID reuse (a crashed holder's PID reassigned to an unrelated live
+// process) is an accepted false negative of this technique — a stuck
+// reservation stays recoverable via retry or Destroy either way.
 func processAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
 	err := syscall.Kill(pid, 0)
-	return err == nil || err == syscall.EPERM
+	return err == nil || err == syscall.EPERM // EPERM: exists, just unsignalable
 }
 
 type stateFile struct {
 	Version  int                        `json:"version"`
 	Sessions map[string]*domain.Session `json:"sessions"`
-	// UpReservations is keyed by child session name (not an anonymous
-	// count) so a retry reclaims its own entry and Delete can drop one by
-	// name. Kept out of contracts/state.Session: local bookkeeping.
+	// Keyed by child name so a retry reclaims its own entry and Delete can
+	// drop one by name. Kept out of contracts/state.Session: local bookkeeping.
 	UpReservations map[string]UpReservation `json:"up_reservations,omitempty"`
 }
 
@@ -132,17 +129,14 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	})
 }
 
-// ErrUpAlreadyReserved is ReserveUpSlot's error when childName's
-// reservation is already held by a live process — a second concurrent
-// `plect up` for that exact child, not a sibling contending for the cap.
+// ErrUpAlreadyReserved: childName's reservation is held by another live
+// process — a second concurrent `plect up` for that child, not a sibling.
 var ErrUpAlreadyReserved = errors.New("state: up already reserved by a live process")
 
-// ReserveUpSlot evaluates fn against one locked, consistent snapshot — read
-// and write together, unlike Update's single session — and records
-// childName's reservation under parentName if fn approves. The snapshot
-// excludes any reservation whose holder process is confirmed gone, but
-// never overwrites a still-live one for childName itself (ErrUpAlreadyReserved).
-// Pair a true result with ReleaseUpSlot once resolved.
+// ReserveUpSlot evaluates fn against one locked snapshot — read and write
+// together, unlike Update's single session — and records childName's
+// reservation if fn approves. A still-live reservation for childName
+// itself is never overwritten (ErrUpAlreadyReserved).
 func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map[string]*domain.Session, reservations map[string]UpReservation) (approved bool)) (bool, error) {
 	approved := false
 	err := s.withFileLock(func() error {
@@ -203,7 +197,7 @@ func (s *Store) Delete(name string) error {
 			session.Children = removeSessionName(session.Children, name)
 		}
 		delete(sf.Sessions, name)
-		delete(sf.UpReservations, name) // an operator's own recovery path for a stuck one
+		delete(sf.UpReservations, name) // lets Destroy free a stuck one
 		normalizeSessionTree(sf.Sessions)
 		return s.saveLocked(sf)
 	})

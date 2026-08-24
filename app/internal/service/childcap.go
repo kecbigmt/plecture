@@ -9,19 +9,16 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
-// reserveChildCapSlot enforces `max_up_children` (docs/language/workflows.md)
-// atomically via ReserveUpSlot's locked snapshot, so two racing `plect up`
-// processes can't both admit past the cap. targetAlreadyUp exempts an
-// idempotent re-up; release reserved=true via releaseChildCapSlot once the
-// child's state settles.
+// reserveChildCapSlot decides inside ReserveUpSlot's locked snapshot rather
+// than an unlocked read, so two racing `plect up` processes can't both
+// admit past the cap.
 func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionName, parentSessionName string, targetAlreadyUp bool) (reserved bool, capErr *Error) {
 	if targetAlreadyUp || parentSessionName == "" {
 		return false, nil
 	}
 	parent := store.Get(parentSessionName)
 	if parent == nil {
-		// The "root:<target>" pseudo-parent form has no session state to
-		// read a cap from (resolveParentSession).
+		// A "root:" pseudo-parent (resolveParentSession) has no session to read a cap from.
 		return false, nil
 	}
 	wf, err := loadSessionWorkflow(cfg, parent.WorkspaceDirPath, parent)
@@ -38,17 +35,14 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 		up := make(map[string]bool)
 		count := 0
 		for _, name := range childNames(sessions, parentSessionName) {
-			// Skip self: its current state must not compete with the
-			// reservation this call is deciding for it (a force-recreate).
 			if name == childSessionName {
-				continue
+				continue // this decides its own slot, not a sibling's
 			}
 			if sessionRunState(sessions[name]) == domain.RunUp {
 				count++
 				up[name] = true
 			}
 		}
-		// Skip: real run state already counted this child (post-release overlap).
 		for name, res := range reservations {
 			if res.Parent != parentSessionName || up[name] {
 				continue
@@ -82,8 +76,6 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 	return true, nil
 }
 
-// releaseChildCapSlot is safe to call unconditionally from a defer:
-// releasing a child with no outstanding reservation is a no-op.
 func releaseChildCapSlot(store *state.Store, childSessionName string) {
 	if childSessionName == "" {
 		return
