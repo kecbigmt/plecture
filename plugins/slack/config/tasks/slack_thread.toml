@@ -7,15 +7,6 @@ type = "shell"
 script = '''
 set -eu
 
-pr_url="${pr_url-}"
-[ -z "$pr_url" ] && pr_url="${resource_id-}"
-if [ -z "$pr_url" ]; then
-  echo "slack_thread requires inputs.pr_url or a session resource id" >&2
-  exit 1
-fi
-
-head_short=$(printf '%s' "$head_sha" | cut -c 1-12)
-root_text=$(printf '[AI review] %s — %s\nsession %s · head %s' "$pr_title" "$pr_url" "$session_name" "$head_short")
 payload=$(jq -nc --arg channel_id "$channel_id" --arg text "$root_text" \
   '{channel_id:$channel_id,text:$text}')
 
@@ -30,9 +21,7 @@ plect state set-conversation "$session_name" \
   --source Slack \
   --url "$permalink" \
   --meta "thread_ts=$thread_ts" \
-  --meta "channel_id=$response_channel_id" \
-  --meta "pr_url=$pr_url" \
-  --meta "review_session=$session_name"
+  --meta "channel_id=$response_channel_id"
 
 jq -nc \
   --arg thread_ts "$thread_ts" \
@@ -44,23 +33,18 @@ jq -nc \
 [slack_thread.setup.bind]
 base_url     = { from = "inputs.base_url" }
 channel_id   = { from = "inputs.channel_id" }
-pr_title     = { from = "inputs.pr_title" }
-head_sha     = { from = "inputs.head_sha" }
-pr_url       = { from = "inputs.pr_url", optional = true }
-resource_id  = { from = "resource.id", optional = true }
+root_text    = { from = "inputs.root_text" }
 session_name = { from = "session.name" }
 
 [slack_thread.inputs_schema]
 type                 = "object"
-required             = ["base_url", "channel_id", "pr_title", "head_sha"]
+required             = ["base_url", "channel_id", "root_text"]
 additionalProperties = false
 
 [slack_thread.inputs_schema.properties]
 base_url   = { type = "string", minLength = 1 }
 channel_id = { type = "string", minLength = 1 }
-pr_title   = { type = "string", minLength = 1 }
-head_sha   = { type = "string", minLength = 1 }
-pr_url     = { type = "string" }
+root_text  = { type = "string", minLength = 1 }
 
 [slack_thread.outputs_schema]
 type     = "object"

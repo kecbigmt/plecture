@@ -138,7 +138,7 @@ thread.
 
 ## Setting up the Slack App
 
-For outbound review threads only:
+For outbound threads only:
 
 1. Create an app at [Slack API](https://api.slack.com/apps)
 2. Add Bot Token Scopes under **OAuth & Permissions**:

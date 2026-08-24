@@ -11,8 +11,8 @@ another plugin's package.
 
 ## Contents
 
-- `config/tasks/slack_thread.toml` — creates one Slack root message for a PR
-  review session through `slack-adapter` and records the conversation with
+- `config/tasks/slack_thread.toml` — creates one Slack root message through
+  `slack-adapter` and records the conversation with
   `plect state set-conversation`. Outputs: `thread_ts`, `channel_id`, and
   `permalink`.
 - `config/channels/slack.toml` — delivers a session event to its Slack
@@ -42,32 +42,35 @@ the resident process). Outbound thread creation and message posting require
 only `SLACK_BOT_TOKEN`; `SLACK_APP_TOKEN` is optional and only activates
 Socket Mode inbound relay.
 
-## Review thread contract
+## Thread contract
 
-`slack_thread` creates the root message as:
+`slack_thread` posts whatever `root_text` input it is handed as the root
+message and records the session conversation with `source=Slack`, the
+adapter permalink, and metadata keys `thread_ts` and `channel_id`. It carries
+no opinion about what the thread is for — review, or anything else — and no
+PR-specific inputs: how the root text is framed is the composing workflow's
+concern.
 
-```text
-[AI review] <PR title> — <PR URL>
-session <name> · head <short sha>
-```
+`examples/review-thread-workflow.toml` shows the review case: it composes
+`root_text` from a PR title, URL, and head sha, then wires `slack_thread`
+outputs into the `slack` channel bound with `include =
+["plect.judge.recorded"]`. Its conclusion event is the `plect.judge.recorded`
+event that plect appends when a reviewer records a done_when judge verdict;
+the body is the recorded judge reason, so the Slack reply text is exactly the
+conclusion the reviewer recorded, and metadata carries `instance`, `leaf_id`,
+`action`, `revision`, `reviewer_session`, `reviewer_workflow`, and
+`relation`. The posted text is the event body, falling back to the summary
+only for legacy events without a body; progress, heartbeats, terminal events,
+and GitHub watcher events do not match that binding.
 
-It records the session conversation with `source=Slack`, the adapter
-permalink, and metadata keys `thread_ts`, `channel_id`, `pr_url`, and
-`review_session`.
+## Presentation-only exceptions
 
-The final review conclusion is the `plect.judge.recorded` event that plect
-appends when a reviewer records a done_when judge verdict. Its body is the
-recorded judge reason, so the Slack reply text is exactly the conclusion the
-reviewer recorded. Metadata carries `instance`, `leaf_id`, `action`,
-`revision`, `reviewer_session`, `reviewer_workflow`, and `relation`.
-
-Bind the Slack channel with `include = ["plect.judge.recorded"]`; the posted
-text is the event body, falling back to the summary only for legacy events
-without a body. Progress, heartbeats, terminal events, and GitHub watcher
-events do not match that binding.
-
-See `examples/review-thread-workflow.toml` for a user-owned composition that
-wires `slack_thread` outputs into the `slack` channel.
+`slack-adapter`'s deprecated `/notify` rollback path (see
+`src/slack-adapter/CLAUDE.md`) inspects a GitHub-derived `change_type` to
+pick an emoji prefix, falling back to a generic prefix for anything else.
+This is a display detail of an already-deprecated path, not a workflow
+commitment the config layer makes, so it is left as is rather than
+generalized.
 
 ## Not included
 

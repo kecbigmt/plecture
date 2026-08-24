@@ -1,5 +1,10 @@
 # Copy this into a user-owned config layer and adjust the runtime/provider
 # choices for the review workflow that should discuss conclusions in Slack.
+#
+# slack_thread itself knows nothing about reviews: it just opens a thread for
+# whatever root_text it is handed. The review framing — composing that text
+# from a PR title, URL, and head sha — lives here, in the workflow that wants
+# it.
 
 [pr_review_with_slack]
 kind               = "workflow"
@@ -7,13 +12,14 @@ workspace_provider = "official.github.worktree"
 
 [pr_review_with_slack.inputs_schema]
 type                 = "object"
-required             = ["slack_base_url", "slack_channel_id", "pr_title", "head_sha"]
+required             = ["slack_base_url", "slack_channel_id", "pr_title", "pr_url", "head_sha"]
 additionalProperties = false
 
 [pr_review_with_slack.inputs_schema.properties]
 slack_base_url   = { type = "string" }
 slack_channel_id = { type = "string" }
 pr_title         = { type = "string" }
+pr_url           = { type = "string" }
 head_sha         = { type = "string" }
 
 [[pr_review_with_slack.nodes]]
@@ -23,8 +29,7 @@ uses = "official.slack.slack_thread"
 [pr_review_with_slack.nodes.inputs]
 base_url   = { from = "session.inputs.slack_base_url" }
 channel_id = { from = "session.inputs.slack_channel_id" }
-pr_title   = { from = "session.inputs.pr_title" }
-head_sha   = { from = "session.inputs.head_sha" }
+root_text  = { expr = "'[AI review] ' + session.inputs.pr_title + ' — ' + session.inputs.pr_url + '\\nsession ' + session.name + ' · head ' + session.inputs.head_sha.substring(0, 12)" }
 
 [[pr_review_with_slack.nodes]]
 id   = "reviewer"

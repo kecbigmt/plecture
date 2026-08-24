@@ -1,11 +1,11 @@
 display_information:
-  name: Plecture Review Threads
-  description: Posts Plecture review threads and conclusions to Slack
+  name: Plecture
+  description: Posts Plecture session threads and updates to Slack
   background_color: "#DE7356"
 
 features:
   bot_user:
-    display_name: plect-review
+    display_name: plect
     always_online: true
 
 oauth_config:
