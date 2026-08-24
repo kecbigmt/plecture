@@ -4,15 +4,16 @@
 # ends of one fingerprint format.
 #
 # Usage:
-#   codex-agent-activity working|waiting   # hook; session from $PLECT_SESSION_NAME
-#   codex-agent-activity probe <session>   # activity probe; writes the envelope
-#   codex-agent-activity reset <session>   # drop the record (setup/cleanup)
+#   codex-agent-activity working|waiting             # hook; session from $PLECT_SESSION_NAME
+#   codex-agent-activity probe <session> [state_dir]  # activity probe; writes the envelope
+#   codex-agent-activity reset <session>              # drop the record (setup/cleanup)
 #
 # The hook path reads the hook event JSON from stdin (only hook_event_name is
 # used) and is fire-and-forget by design: a failure here must never fail the
-# agent's turn, so every hook exit path is 0. The probe path is not
-# fire-and-forget — a probe that cannot read its record must exit non-zero so
-# core reports a broken probe rather than reading it as a quiet surface.
+# agent's turn, so every hook exit path is 0. The probe path only fails loud
+# (non-zero exit, no stdout) when the session name itself is missing — an
+# unreadable or torn hook record degrades to "no hook evidence" instead,
+# since the log-file signal below can still carry the probe on its own.
 
 set -u
 
@@ -23,16 +24,52 @@ record_path() {
   printf '%s/%s.json' "$dir" "$(printf '%s' "$1" | tr '/' '_')"
 }
 
+# The turn-boundary hooks only fire at a turn's start and end, so a single
+# long-running `codex exec` — whose stdout is redirected into this file,
+# never the pane — produces no evidence for its entire duration. The tmux
+# pane fingerprint that pairs with an interactive agent's turn-boundary
+# probe for exactly this reason (see plugins/tmux's pane.toml) cannot cover
+# for it here, since that pane never repaints. The turn's own log file
+# (one per turn, named at turn start, growing as codex streams to it) is
+# the only signal this runtime produces in between: its name changing marks
+# a new turn, and its size changing marks one still in progress.
+latest_log_fingerprint() {
+  local state_dir="$1" latest size
+  [ -n "$state_dir" ] && [ -d "$state_dir/log" ] || return 0
+  latest="$(ls -t "$state_dir/log" 2>/dev/null | head -n 1)"
+  [ -n "$latest" ] || return 0
+  size="$(wc -c < "$state_dir/log/$latest" 2>/dev/null | tr -d ' ')"
+  printf '%s:%s' "$latest" "$size"
+}
+
 case "${1:-}" in
   probe)
     session="${2:-}"
+    state_dir="${3:-}"
     [ -n "$session" ] || { echo "probe: session name required" >&2; exit 1; }
     file="$(record_path "$session")"
-    # No record yet means this run has not crossed a turn boundary — no
-    # evidence to report, which is exit 0 with empty stdout, not a stall.
-    [ -f "$file" ] || exit 0
-    jq -c '{fingerprint: .fingerprint, silence_expected: (.silence_expected // false), observed_at: .observed_at}' "$file"
-    exit $?
+
+    hook_fp=""
+    silence_expected="false"
+    observed_at=""
+    if [ -f "$file" ]; then
+      hook_fp="$(jq -r '.fingerprint // empty' "$file" 2>/dev/null)" || hook_fp=""
+      silence_expected="$(jq -r '(.silence_expected // false)' "$file" 2>/dev/null)" || silence_expected="false"
+      observed_at="$(jq -r '.observed_at // empty' "$file" 2>/dev/null)" || observed_at=""
+    fi
+
+    log_fp="$(latest_log_fingerprint "$state_dir")"
+
+    # Neither source has crossed a boundary yet — no evidence to report,
+    # which is exit 0 with empty stdout, not a stall.
+    [ -n "$hook_fp$log_fp" ] || exit 0
+    [ -n "$observed_at" ] || observed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    jq -nc \
+      --arg fp "hook=${hook_fp}|log=${log_fp}" \
+      --argjson silence "$silence_expected" \
+      --arg at "$observed_at" \
+      '{fingerprint: $fp, silence_expected: $silence, observed_at: $at}'
+    exit 0
     ;;
   reset)
     session="${2:-}"
@@ -67,12 +104,18 @@ case "$activity" in
   waiting) silence_expected=true ;;
   *)       silence_expected=false ;;
 esac
+# A temp-file-then-rename, not a direct redirect: `> "$file"` truncates
+# before jq produces a byte of output, so a probe reading in that window
+# would see (and fail to parse) an empty file instead of the record it
+# replaced. rename is atomic, so a concurrent probe only ever sees the old
+# record or the new one, never neither.
+tmp="$(mktemp "$(dirname "$file")/.activity.XXXXXX" 2>/dev/null)" || exit 0
 jq -nc \
   --arg activity "$activity" \
   --argjson silence_expected "$silence_expected" \
   --argjson seq "$((seq + 1))" \
   --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{seq: $seq, silence_expected: $silence_expected, fingerprint: "\($activity):\($seq)", observed_at: $at}' \
-  > "$file" 2>/dev/null
+  > "$tmp" 2>/dev/null && mv "$tmp" "$file" || rm -f "$tmp"
 
 exit 0

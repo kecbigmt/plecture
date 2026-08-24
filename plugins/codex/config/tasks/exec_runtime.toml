@@ -184,11 +184,14 @@ state_dir = { from = "self.outputs.state_dir" }
 # activity reads back the record the same turn-boundary hooks this setup
 # registers write, so hook and probe are two halves of one fingerprint
 # format. Unlike the interactive shape there is no pane to fingerprint here,
-# so the turn boundary is this effect's only activity evidence.
+# so state_dir is passed through too: a turn's own log file (one per turn,
+# growing as codex streams to it, never touching the pane) is this runtime's
+# only evidence for a turn still running long enough to outlast the
+# stall_threshold before its own Stop hook ever fires.
 [exec_runtime.health.activity]
 type = "exec"
 bin  = "codex-agent-activity"
-args = ["probe", { from = "session.name" }]
+args = ["probe", { from = "session.name" }, { from = "self.outputs.state_dir" }]
 
 [exec_runtime.inputs_schema]
 type                 = "object"

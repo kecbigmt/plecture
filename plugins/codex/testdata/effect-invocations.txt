@@ -43,7 +43,7 @@ outputs: {"pid":<pid>,"profile_path":"<home>/.codex/plect-aaaaaaaa-bbbb-cccc-ddd
 alive
 
 == exec_runtime / health.activity
-call[0]: "codex-agent-activity" "probe" "acme/widget-1"
+call[0]: "codex-agent-activity" "probe" "acme/widget-1" "<state>/plect-codex-exec/acme/widget-1"
 activity: fingerprint="spy-turn-1" silence_expected=false
 
 == exec_runtime / cleanup
