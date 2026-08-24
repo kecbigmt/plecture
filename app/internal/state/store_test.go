@@ -377,10 +377,12 @@ func TestStore_ReleaseUpSlotOnUnreservedChildIsANoop(t *testing.T) {
 // A `plect up` process killed between ReserveUpSlot and its deferred
 // ReleaseUpSlot (a SIGKILL, a crashed machine) leaves a reservation
 // nobody will ever release. ReserveUpSlot must not let that permanently
-// cost its parent a slot.
-func TestStore_ReserveUpSlotExcludesExpiredReservations(t *testing.T) {
+// cost its parent a slot — detected by the holder process being gone, not
+// by elapsed time (see TestStore_ReserveUpSlotDoesNotExpireALiveReservation
+// for why elapsed time alone would be wrong).
+func TestStore_ReserveUpSlotExcludesReservationsFromDeadProcesses(t *testing.T) {
 	store := NewStore(t.TempDir())
-	plantReservation(t, store, "stale-child", UpReservation{Parent: "parent1", At: time.Now().Add(-2 * upReservationTTL)})
+	plantReservation(t, store, "crashed-child", UpReservation{Parent: "parent1", At: time.Now(), PID: deadPID(t)})
 
 	var seen map[string]UpReservation
 	approved, err := store.ReserveUpSlot("new-child", "parent1", func(_ map[string]*domain.Session, reservations map[string]UpReservation) bool {
@@ -390,9 +392,70 @@ func TestStore_ReserveUpSlotExcludesExpiredReservations(t *testing.T) {
 	if err != nil || !approved {
 		t.Fatalf("ReserveUpSlot: approved=%v err=%v", approved, err)
 	}
-	if _, ok := seen["stale-child"]; ok {
-		t.Error("an expired reservation was still visible to the admission decision")
+	if _, ok := seen["crashed-child"]; ok {
+		t.Error("a reservation from a dead process was still visible to the admission decision")
 	}
+}
+
+// A `plect up` whose RunSetup runs long (an agent session, a slow
+// workspace provider) is not the same as a crashed one: its reservation
+// must survive as long as its process does, however long that takes —
+// this is the case the prior fixed-TTL design got wrong.
+func TestStore_ReserveUpSlotDoesNotExpireALiveReservation(t *testing.T) {
+	store := NewStore(t.TempDir())
+	plantReservation(t, store, "long-running-child", UpReservation{
+		Parent: "parent1",
+		At:     time.Now().Add(-2 * time.Hour), // longer than the old fixed 30m TTL
+		PID:    os.Getpid(),                    // this test process: definitely still alive
+	})
+
+	var seen map[string]UpReservation
+	approved, err := store.ReserveUpSlot("new-child", "parent1", func(_ map[string]*domain.Session, reservations map[string]UpReservation) bool {
+		seen = reservations
+		return true
+	})
+	if err != nil || !approved {
+		t.Fatalf("ReserveUpSlot: approved=%v err=%v", approved, err)
+	}
+	if _, ok := seen["long-running-child"]; !ok {
+		t.Error("a reservation held by a still-live process was treated as abandoned")
+	}
+}
+
+// upReservationBackstopTTL exists only for PID reuse (a crashed holder's
+// PID reassigned to an unrelated live process) — a case liveness alone
+// can't distinguish from the original holder still running. It applies
+// even to a PID that is, coincidentally, this test process's own.
+func TestStore_ReserveUpSlotBackstopAppliesEvenToALivePID(t *testing.T) {
+	store := NewStore(t.TempDir())
+	plantReservation(t, store, "very-old-child", UpReservation{
+		Parent: "parent1",
+		At:     time.Now().Add(-upReservationBackstopTTL - time.Hour),
+		PID:    os.Getpid(),
+	})
+
+	var seen map[string]UpReservation
+	approved, err := store.ReserveUpSlot("new-child", "parent1", func(_ map[string]*domain.Session, reservations map[string]UpReservation) bool {
+		seen = reservations
+		return true
+	})
+	if err != nil || !approved {
+		t.Fatalf("ReserveUpSlot: approved=%v err=%v", approved, err)
+	}
+	if _, ok := seen["very-old-child"]; ok {
+		t.Error("the PID-reuse backstop should have excluded a reservation past its TTL")
+	}
+}
+
+// deadPID returns a PID guaranteed not to be running: a helper process's,
+// after it has already exited.
+func deadPID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("true")
+	if err := cmd.Run(); err != nil {
+		t.Skipf("could not run a helper process to obtain a dead PID: %v", err)
+	}
+	return cmd.Process.Pid
 }
 
 // A retried `plect up` for the same child (after a crash, or simply a

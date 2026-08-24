@@ -18,25 +18,36 @@ import (
 
 const stateVersion = contract.SchemaVersion
 
-// upReservationTTL bounds how long a reservation counts without being
-// released — otherwise a `plect up` killed between reserving and releasing
-// costs its parent a slot forever.
-const upReservationTTL = 30 * time.Minute
+// upReservationBackstopTTL guards only the PID-reuse edge case
+// (processAlive can't tell a crashed holder's reused PID from the
+// original holder still running). Long, since a real `plect up` can
+// legitimately run for hours.
+const upReservationBackstopTTL = 24 * time.Hour
 
 // UpReservation is one child's outstanding child-cap admission decision,
-// standing in until ReleaseUpSlot fires or upReservationTTL passes.
+// standing in until ReleaseUpSlot fires or PID is confirmed gone.
 type UpReservation struct {
 	Parent string    `json:"parent"`
 	At     time.Time `json:"at"`
+	PID    int       `json:"pid"` // reserving process, checked via processAlive
+}
+
+// processAlive probes pid the way a PID-file-based lock would (kill(2),
+// signal 0). EPERM still means alive — it exists, we just can't signal it.
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil || err == syscall.EPERM
 }
 
 type stateFile struct {
 	Version  int                        `json:"version"`
 	Sessions map[string]*domain.Session `json:"sessions"`
-	// UpReservations is keyed by child session name so a retry reclaims its
-	// own entry and Delete can drop one by name, rather than an anonymous
-	// count. Kept out of contracts/state.Session: local bookkeeping, not
-	// durable session data.
+	// UpReservations is keyed by child session name (not an anonymous
+	// count) so a retry reclaims its own entry and Delete can drop one by
+	// name. Kept out of contracts/state.Session: local bookkeeping.
 	UpReservations map[string]UpReservation `json:"up_reservations,omitempty"`
 }
 
@@ -125,10 +136,9 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 
 // ReserveUpSlot evaluates fn against one locked, consistent snapshot — read
 // and write together, unlike Update's single session — and records
-// childName's reservation under parentName if fn approves. fn's snapshot
-// already excludes childName's own prior reservation and anything past
-// upReservationTTL, so it only weighs what is genuinely still outstanding.
-// Pair with ReleaseUpSlot once the reservation resolves.
+// childName's reservation under parentName if fn approves. The snapshot
+// already excludes childName's own prior reservation and any whose holder
+// process is confirmed gone. Pair with ReleaseUpSlot once resolved.
 func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map[string]*domain.Session, reservations map[string]UpReservation) (approved bool)) (bool, error) {
 	approved := false
 	err := s.withFileLock(func() error {
@@ -139,7 +149,7 @@ func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map
 		now := time.Now()
 		live := make(map[string]UpReservation, len(sf.UpReservations))
 		for name, res := range sf.UpReservations {
-			if name == childName || now.Sub(res.At) > upReservationTTL {
+			if name == childName || !processAlive(res.PID) || now.Sub(res.At) > upReservationBackstopTTL {
 				continue
 			}
 			live[name] = res
@@ -148,7 +158,7 @@ func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map
 		if !approved {
 			return nil
 		}
-		live[childName] = UpReservation{Parent: parentName, At: now}
+		live[childName] = UpReservation{Parent: parentName, At: now, PID: os.Getpid()}
 		sf.UpReservations = live
 		return s.saveLocked(sf)
 	})
@@ -187,7 +197,7 @@ func (s *Store) Delete(name string) error {
 			session.Children = removeSessionName(session.Children, name)
 		}
 		delete(sf.Sessions, name)
-		delete(sf.UpReservations, name) // an operator's recovery path for a stuck reservation, ahead of its TTL
+		delete(sf.UpReservations, name) // operator recovery, ahead of the backstop TTL
 		normalizeSessionTree(sf.Sessions)
 		return s.saveLocked(sf)
 	})
