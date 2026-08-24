@@ -16,7 +16,7 @@ plect up
             │ Unix socket (CHANNEL_SOCKET_PATH)
             ▼
        slack-adapter (long-running broker)
-            │ in-memory map: thread_ts → {channel_id, socket_path, since}
+            │ in-memory map: thread_ts → {channel_id, socket_path, session_name, since, delivered_through}
             │ Slack Socket Mode (1 connection)
             ▼
           Slack
@@ -35,10 +35,20 @@ slack_app_token = "xapp-..." # optional; enables Socket Mode inbound relay
 channel_id = "C..."          # optional default for requests without channel_id
 listen_addr = "127.0.0.1:7890"
 allowed_user_ids = ["U..."]
+deliver_full_thread = false # optional; default is root + delta on @-mention
 ```
 
 Outbound-only operation requires only `slack_bot_token`. Requests that omit
 `channel_id` require the optional configured default.
+
+When Socket Mode is enabled, an `app_mention` in a subscribed thread publishes
+one inbound `user.emit` to the bound `session_name`. The event body is an
+ordered Slack transcript with display names, message times, and text. By
+default each delivery includes the root message plus only replies after the
+thread's last successful delivery watermark, followed by the mentioning
+message. Set `deliver_full_thread = true` to send the full thread on every
+mention. Empty `allowed_user_ids` allows any channel member to drive this
+mention path; setting it restricts app mentions to the listed Slack users.
 
 ## HTTP API
 
@@ -79,16 +89,18 @@ reason as the reply text.
 ### POST /subscribe
 
 Registers a `thread_ts` → `socket_path` subscription. slack-adapter keeps
-`{thread_ts, channel_id, socket_path, since}` in an internal map and routes
-incoming Slack messages to the right socket in O(1). Registration also
-pre-connects to channel-server, so claude's replies flow to Slack right away.
+`{thread_ts, channel_id, socket_path, session_name, since, delivered_through}`
+in an internal map and routes incoming Slack messages to the right socket in
+O(1). Registration also pre-connects to channel-server, so claude's replies
+flow to Slack right away. `session_name` is required for app-mention
+deliberation delivery because it is the target for `plect event publish`.
 
 ```json
 // Request
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "/run/user/1000/claude-channel/<uuid>.sock"}
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "/run/user/1000/claude-channel/<uuid>.sock", "session_name": "owner/repo-1"}
 
 // Response
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "...", "since": "2026-05-17T00:00:00Z"}
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "...", "session_name": "owner/repo-1", "since": "2026-05-17T00:00:00Z"}
 ```
 
 ### DELETE /subscribe?thread_ts=...
@@ -135,6 +147,16 @@ For outbound review threads only:
 4. Invite the bot to the target channel (`/invite @botname`)
 
 See `slack-app-manifest.yml` for the app manifest.
+
+For inbound thread deliberation, enable Socket Mode, create an app-level token
+with `connections:write`, configure it as `SLACK_APP_TOKEN`, subscribe the app
+to `app_mention`, and add Bot Token Scopes:
+
+- `app_mentions:read` -- receive bot mentions
+- `channels:history` -- fetch public-channel thread replies
+- `groups:history` -- fetch private-channel thread replies, only when private
+  channels are used
+- `users:read` -- resolve display names
 
 ## Claude Code hooks (`~/.claude/settings.json`)
 

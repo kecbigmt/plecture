@@ -15,11 +15,12 @@ import (
 // the routing key for Slack → channel-server. SessionName is the routing key
 // for external notifications (POST /notify) that don't know about thread_ts.
 type Subscriber struct {
-	ThreadTS    string    `json:"thread_ts"`
-	ChannelID   string    `json:"channel_id"`
-	SocketPath  string    `json:"socket_path"`
-	SessionName string    `json:"session_name"`
-	Since       time.Time `json:"since"`
+	ThreadTS         string    `json:"thread_ts"`
+	ChannelID        string    `json:"channel_id"`
+	SocketPath       string    `json:"socket_path"`
+	SessionName      string    `json:"session_name"`
+	Since            time.Time `json:"since"`
+	DeliveredThrough string    `json:"delivered_through,omitempty"`
 }
 
 // Broker is the in-memory subscriber registry. With a non-empty persistence
@@ -59,6 +60,9 @@ func (b *Broker) Subscribe(s Subscriber) Subscriber {
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if existing, ok := b.subs[s.ThreadTS]; ok && s.DeliveredThrough == "" {
+		s.DeliveredThrough = existing.DeliveredThrough
+	}
 	b.subs[s.ThreadTS] = s
 	b.persist(b.snapshotLocked())
 	return s
@@ -81,6 +85,25 @@ func (b *Broker) Find(threadTS string) (Subscriber, bool) {
 	defer b.mu.RUnlock()
 	s, ok := b.subs[threadTS]
 	return s, ok
+}
+
+func (b *Broker) MarkDelivered(threadTS, deliveredThrough string) (Subscriber, bool) {
+	if deliveredThrough == "" {
+		return Subscriber{}, false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	s, ok := b.subs[threadTS]
+	if !ok {
+		return Subscriber{}, false
+	}
+	if s.DeliveredThrough != "" && compareSlackTS(s.DeliveredThrough, deliveredThrough) >= 0 {
+		return s, true
+	}
+	s.DeliveredThrough = deliveredThrough
+	b.subs[threadTS] = s
+	b.persist(b.snapshotLocked())
+	return s, true
 }
 
 // BySession returns the first subscriber whose SessionName matches.

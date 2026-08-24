@@ -149,3 +149,22 @@ func TestMentionPrefix(t *testing.T) {
 		})
 	}
 }
+
+func TestIsMentionUserAllowedDefaultsToAnyMember(t *testing.T) {
+	cfg := &Config{}
+
+	if !cfg.IsMentionUserAllowed("U12345") {
+		t.Fatal("empty allowed_user_ids should allow app mentions")
+	}
+}
+
+func TestIsMentionUserAllowedHonorsAllowListWhenSet(t *testing.T) {
+	cfg := &Config{AllowedUserIDs: []string{"U-allowed"}}
+
+	if !cfg.IsMentionUserAllowed("U-allowed") {
+		t.Fatal("configured allowed user should be allowed")
+	}
+	if cfg.IsMentionUserAllowed("U-other") {
+		t.Fatal("user outside configured allow-list should be rejected")
+	}
+}

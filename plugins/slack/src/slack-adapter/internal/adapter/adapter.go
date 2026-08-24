@@ -18,15 +18,17 @@ import (
 
 // Adapter connects Slack (via Socket Mode) to channel server instances (via Unix socket).
 type Adapter struct {
-	cfg        *Config
-	api        *slack.Client
-	sm         *socketmode.Client
-	workspace  string
-	socketPool *SocketPool
-	broker     *Broker
-	poster     ThreadPoster
-	threader   ThreadCreator
-	logger     *slog.Logger
+	cfg            *Config
+	api            *slack.Client
+	sm             *socketmode.Client
+	workspace      string
+	socketPool     *SocketPool
+	broker         *Broker
+	poster         ThreadPoster
+	threader       ThreadCreator
+	threadFetcher  threadFetcher
+	eventPublisher eventPublisher
+	logger         *slog.Logger
 }
 
 // SubscribersStatePath resolves $XDG_STATE_HOME/slack-adapter/subscribers.json,
@@ -61,6 +63,8 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 	}
 	a.poster = a
 	a.threader = a
+	a.threadFetcher = a
+	a.eventPublisher = cliEventPublisher{}
 	a.socketPool = NewSocketPool(a.poster, logger, a.captureOutbound)
 	// Cache workspace name from Slack API
 	resp, err := api.AuthTest()
@@ -144,6 +148,8 @@ func (a *Adapter) handleEventsAPI(event slackevents.EventsAPIEvent) {
 		switch ev := event.InnerEvent.Data.(type) {
 		case *slackevents.MessageEvent:
 			a.handleMessage(ev)
+		case *slackevents.AppMentionEvent:
+			a.handleAppMention(ev)
 		}
 	}
 }

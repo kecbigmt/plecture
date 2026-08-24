@@ -12,12 +12,13 @@ import (
 )
 
 type Config struct {
-	SlackBotToken  string   `toml:"slack_bot_token"`
-	SlackAppToken  string   `toml:"slack_app_token"`
-	ChannelID      string   `toml:"channel_id"`
-	ListenAddr     string   `toml:"listen_addr"`
-	AllowedUserIDs []string `toml:"allowed_user_ids"`
-	NotifyUserIDs  []string `toml:"notify_user_ids"`
+	SlackBotToken     string   `toml:"slack_bot_token"`
+	SlackAppToken     string   `toml:"slack_app_token"`
+	ChannelID         string   `toml:"channel_id"`
+	ListenAddr        string   `toml:"listen_addr"`
+	AllowedUserIDs    []string `toml:"allowed_user_ids"`
+	NotifyUserIDs     []string `toml:"notify_user_ids"`
+	DeliverFullThread bool     `toml:"deliver_full_thread"`
 }
 
 func LoadConfig() *Config {
@@ -79,6 +80,13 @@ func (c *Config) IsUserAllowed(userID string) bool {
 		}
 	}
 	return false
+}
+
+func (c *Config) IsMentionUserAllowed(userID string) bool {
+	if len(c.AllowedUserIDs) == 0 {
+		return true
+	}
+	return c.IsUserAllowed(userID)
 }
 
 // MentionPrefix returns a string of Slack user mentions (e.g. "<@U123> <@U456> ")
