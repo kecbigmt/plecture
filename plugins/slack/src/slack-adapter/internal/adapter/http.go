@@ -43,12 +43,14 @@ type infoResponse struct {
 }
 
 type createThreadRequest struct {
-	Text string `json:"text"`
+	ChannelID string `json:"channel_id"`
+	Text      string `json:"text"`
 }
 
 type createThreadResponse struct {
 	ThreadTS  string `json:"thread_ts"`
 	ChannelID string `json:"channel_id"`
+	Permalink string `json:"permalink"`
 }
 
 type postMessageRequest struct {
@@ -83,8 +85,20 @@ func (a *Adapter) HandleCreateThread(w http.ResponseWriter, req *http.Request) {
 	if body.Text == "" {
 		body.Text = "Claude Code session started."
 	}
+	channelID := body.ChannelID
+	if channelID == "" {
+		channelID = a.cfg.ChannelID
+	}
+	if channelID == "" {
+		http.Error(w, "channel_id is required", http.StatusBadRequest)
+		return
+	}
 
-	ts, err := a.CreateThread(a.cfg.ChannelID, body.Text)
+	threader := a.threader
+	if threader == nil {
+		threader = a
+	}
+	ts, permalink, err := threader.CreateThread(channelID, body.Text)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -93,7 +107,8 @@ func (a *Adapter) HandleCreateThread(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(createThreadResponse{
 		ThreadTS:  ts,
-		ChannelID: a.cfg.ChannelID,
+		ChannelID: channelID,
+		Permalink: permalink,
 	})
 }
 
@@ -118,6 +133,10 @@ func (a *Adapter) HandlePostMessage(w http.ResponseWriter, req *http.Request) {
 	channelID := body.ChannelID
 	if channelID == "" {
 		channelID = a.cfg.ChannelID
+	}
+	if channelID == "" {
+		http.Error(w, "channel_id is required", http.StatusBadRequest)
+		return
 	}
 
 	text := body.Text

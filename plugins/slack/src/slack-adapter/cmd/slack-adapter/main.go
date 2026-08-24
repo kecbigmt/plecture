@@ -17,12 +17,8 @@ func main() {
 
 	cfg := adapter.LoadConfig()
 
-	if cfg.SlackBotToken == "" || cfg.SlackAppToken == "" {
-		logger.Error("slack_bot_token and slack_app_token must be set in config")
-		os.Exit(1)
-	}
-	if cfg.ChannelID == "" {
-		logger.Error("channel_id must be set in config")
+	if err := cfg.ValidateStartup(); err != nil {
+		logger.Error(err.Error())
 		os.Exit(1)
 	}
 
@@ -50,7 +46,7 @@ func main() {
 		}
 	}()
 
-	// Start Slack Socket Mode
+	// Start the optional Slack Socket Mode relay.
 	go func() {
 		if err := a.Run(ctx); err != nil {
 			logger.Error("slack socket mode error", "error", err)

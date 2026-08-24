@@ -388,10 +388,15 @@ func recordJudgeRecorded(store *state.Store, sessionName string, judge *contract
 		Source:      event.SourcePlect,
 		Direction:   event.Internal,
 		Summary:     fmt.Sprintf("judge %s recorded (%s) by %s", judge.LeafID, judge.Action, judge.ReviewerSession),
+		Body:        judge.Reason,
 		Metadata: map[string]string{
-			"instance": judge.Instance,
-			"leaf_id":  judge.LeafID,
-			"action":   judge.Action,
+			"instance":          judge.Instance,
+			"leaf_id":           judge.LeafID,
+			"action":            judge.Action,
+			"revision":          judge.Revision,
+			"reviewer_session":  judge.ReviewerSession,
+			"reviewer_workflow": judge.ReviewerWorkflow,
+			"relation":          judge.Relation,
 		},
 	})
 }

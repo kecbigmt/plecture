@@ -1,6 +1,7 @@
 # slack-adapter -- Slack adapter for channel-server
 
-Keeps a single Socket Mode connection to Slack and routes messages to/from
+Creates and posts to Slack threads over HTTP. When an app token is configured
+it also keeps a Socket Mode connection to Slack and routes messages to/from
 Claude Code sessions (channel-server) over a Unix socket.
 
 ## Architecture
@@ -30,11 +31,14 @@ and torn down explicitly through the HTTP API.
 
 ```toml
 slack_bot_token = "xoxb-..."
-slack_app_token = "xapp-..."
-channel_id = "C..."
+slack_app_token = "xapp-..." # optional; enables Socket Mode inbound relay
+channel_id = "C..."          # optional default for requests without channel_id
 listen_addr = "127.0.0.1:7890"
 allowed_user_ids = ["U..."]
 ```
+
+Outbound-only operation requires only `slack_bot_token`. Requests that omit
+`channel_id` require the optional configured default.
 
 ## HTTP API
 
@@ -50,20 +54,22 @@ fetched from Slack's `auth.test` API at startup and cached.
 
 ### POST /threads
 
-Posts a message to a Slack channel, creating a thread. Returns `thread_ts` and
-`channel_id`.
+Posts a message to a Slack channel, creating a thread. Returns `thread_ts`,
+`channel_id`, and Slack's `chat.getPermalink` URL.
 
 ```json
 // Request
-{"text": "session start message"}
+{"channel_id": "C...", "text": "session start message"}
 
 // Response
-{"thread_ts": "1234567890.123456", "channel_id": "C..."}
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "permalink": "https://example.slack.com/archives/C.../p1234567890123456"}
 ```
 
 ### POST /messages
 
-Posts a message to an existing thread (used from hook scripts).
+Posts a message to an existing thread. The shipped `slack` channel uses this
+endpoint for `plect.judge.recorded` delivery, posting the recorded judge
+reason as the reply text.
 
 ```json
 // Request
@@ -120,16 +126,13 @@ thread.
 
 ## Setting up the Slack App
 
+For outbound review threads only:
+
 1. Create an app at [Slack API](https://api.slack.com/apps)
-2. Enable **Socket Mode** and generate an App-Level Token (`xapp-`)
-3. Add Bot Token Scopes under **OAuth & Permissions**:
+2. Add Bot Token Scopes under **OAuth & Permissions**:
    - `chat:write` -- post messages
-   - `channels:history` -- read channel messages
-   - `users:read` -- resolve user names
-4. Enable **Event Subscriptions** and subscribe to bot events:
-   - `message.channels`
-5. Install to the workspace and get the Bot Token (`xoxb-`)
-6. Invite the bot to the target channel (`/invite @botname`)
+3. Install to the workspace and get the Bot Token (`xoxb-`)
+4. Invite the bot to the target channel (`/invite @botname`)
 
 See `slack-app-manifest.yml` for the app manifest.
 

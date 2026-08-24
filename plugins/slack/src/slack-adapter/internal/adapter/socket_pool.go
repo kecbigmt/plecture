@@ -32,6 +32,11 @@ type ThreadPoster interface {
 	PostToThread(channelID, threadTS, text string) (string, error)
 }
 
+// ThreadCreator creates Slack thread roots and returns their canonical URL.
+type ThreadCreator interface {
+	CreateThread(channelID, text string) (threadTS, permalink string, err error)
+}
+
 // NewSocketPool creates a new socket connection pool.
 func NewSocketPool(poster ThreadPoster, logger *slog.Logger, capture func(threadTS, eventType, body string)) *SocketPool {
 	return &SocketPool{

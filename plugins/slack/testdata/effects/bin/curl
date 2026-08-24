@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+plect-effect-record curl "$@"
+printf '%s\n' '{"thread_ts":"1234.5678","channel_id":"C-review","permalink":"https://example.slack.com/archives/C-review/p12345678"}'

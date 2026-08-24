@@ -14,11 +14,8 @@ build = "go -C src/slack-adapter build -o ../../bin/slack-adapter ./cmd/slack-ad
 [[services]]
 name = "slack-adapter"
 executable = "slack-adapter"
-# main.go exits(1) at startup if any of these three is empty (bot token,
-# app token, and channel id — see cmd/slack-adapter/main.go); all three
-# must gate the resident-supervised service, or a process with tokens set
-# but no channel id would crash-loop instead of staying inert like an
-# unconfigured service should.
-required_env = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL_ID"]
+# A bot token is enough for outbound thread creation and posting. Socket Mode
+# remains inactive until an app token is configured.
+required_env = ["SLACK_BOT_TOKEN"]
 restart = "on-failure"
 health = { type = "process" }

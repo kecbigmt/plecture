@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/contracts/channel-protocol"
+	"github.com/slack-go/slack"
 )
 
 // withFastSubscribeRetry tightens the /subscribe connect retry loop so tests
@@ -84,6 +85,19 @@ func (p *recordingPoster) PostToThread(channelID, threadTS, text string) (string
 	return "ts-" + threadTS, nil
 }
 
+type recordingThreader struct {
+	calls []recordedThread
+}
+
+type recordedThread struct {
+	ChannelID, Text string
+}
+
+func (t *recordingThreader) CreateThread(channelID, text string) (string, string, error) {
+	t.calls = append(t.calls, recordedThread{ChannelID: channelID, Text: text})
+	return "1234.5678", "https://example.slack.com/archives/C123/p12345678", nil
+}
+
 func newTestAdapter(cfg *Config) *Adapter {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	a := &Adapter{
@@ -94,6 +108,126 @@ func newTestAdapter(cfg *Config) *Adapter {
 	}
 	a.socketPool = NewSocketPool(a.poster, logger, nil)
 	return a
+}
+
+func TestCreateThreadFetchesSlackPermalink(t *testing.T) {
+	var sawPost, sawPermalink bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Path {
+		case "/chat.postMessage":
+			sawPost = true
+			if err := req.ParseForm(); err != nil {
+				t.Errorf("ParseForm: %v", err)
+			}
+			if got := req.PostForm.Get("channel"); got != "C-review" {
+				t.Errorf("postMessage channel = %q, want C-review", got)
+			}
+			if got := req.PostForm.Get("text"); got != "root text" {
+				t.Errorf("postMessage text = %q, want root text", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"ok":true,"channel":"C-review","ts":"1234.5678"}`))
+		case "/chat.getPermalink":
+			sawPermalink = true
+			if got := req.URL.Query().Get("channel"); got != "C-review" {
+				t.Errorf("getPermalink channel = %q, want C-review", got)
+			}
+			if got := req.URL.Query().Get("message_ts"); got != "1234.5678" {
+				t.Errorf("getPermalink message_ts = %q, want 1234.5678", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"ok":true,"channel":"C-review","permalink":"https://example.slack.com/archives/C-review/p12345678"}`))
+		default:
+			t.Errorf("unexpected Slack API path %s", req.URL.Path)
+			http.NotFound(w, req)
+		}
+	}))
+	defer server.Close()
+
+	a := &Adapter{api: slack.New("xoxb-test", slack.OptionAPIURL(server.URL+"/"))}
+	threadTS, permalink, err := a.CreateThread("C-review", "root text")
+	if err != nil {
+		t.Fatalf("CreateThread() error = %v", err)
+	}
+	if threadTS != "1234.5678" {
+		t.Errorf("threadTS = %q, want 1234.5678", threadTS)
+	}
+	if permalink != "https://example.slack.com/archives/C-review/p12345678" {
+		t.Errorf("permalink = %q, want Slack permalink", permalink)
+	}
+	if !sawPost || !sawPermalink {
+		t.Fatalf("Slack API calls: post=%v permalink=%v, want both", sawPost, sawPermalink)
+	}
+}
+
+func TestHandleCreateThread_UsesRequestChannelAndReturnsPermalink(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C-default"})
+	threader := &recordingThreader{}
+	a.threader = threader
+
+	body, _ := json.Marshal(createThreadRequest{
+		ChannelID: "C-review",
+		Text:      "[AI review] Fix widgets — https://github.com/acme/widgets/pull/7",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/threads", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleCreateThread(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if len(threader.calls) != 1 {
+		t.Fatalf("CreateThread calls = %d, want 1", len(threader.calls))
+	}
+	if got := threader.calls[0].ChannelID; got != "C-review" {
+		t.Errorf("CreateThread channel_id = %q, want C-review", got)
+	}
+
+	var resp createThreadResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.ThreadTS != "1234.5678" {
+		t.Errorf("thread_ts = %q, want 1234.5678", resp.ThreadTS)
+	}
+	if resp.ChannelID != "C-review" {
+		t.Errorf("channel_id = %q, want C-review", resp.ChannelID)
+	}
+	if resp.Permalink != "https://example.slack.com/archives/C123/p12345678" {
+		t.Errorf("permalink = %q, want Slack permalink", resp.Permalink)
+	}
+}
+
+func TestHandleCreateThread_FallsBackToConfiguredChannel(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C-default"})
+	threader := &recordingThreader{}
+	a.threader = threader
+
+	body, _ := json.Marshal(createThreadRequest{Text: "hello"})
+	req := httptest.NewRequest(http.MethodPost, "/threads", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleCreateThread(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if got := threader.calls[0].ChannelID; got != "C-default" {
+		t.Errorf("CreateThread channel_id = %q, want C-default", got)
+	}
+}
+
+func TestHandleCreateThread_RejectsMissingChannelIDWithoutDefault(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	a.threader = &recordingThreader{}
+
+	body, _ := json.Marshal(createThreadRequest{Text: "hello"})
+	req := httptest.NewRequest(http.MethodPost, "/threads", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleCreateThread(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
 }
 
 func TestHandleInfo(t *testing.T) {
@@ -235,6 +369,19 @@ func TestHandlePostMessage_MissingFields(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandlePostMessage_RejectsMissingChannelIDWithoutDefault(t *testing.T) {
+	a := newTestAdapter(&Config{})
+
+	body, _ := json.Marshal(postMessageRequest{ThreadTS: "1111.000", Text: "done"})
+	req := httptest.NewRequest(http.MethodPost, "/messages", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandlePostMessage(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("got status %d, want %d", w.Code, http.StatusBadRequest)
 	}
 }
 
