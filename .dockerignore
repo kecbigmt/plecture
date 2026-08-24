@@ -1,0 +1,9 @@
+# deploy/docker/Dockerfile only ever COPYs go.work, go.work.sum, app/,
+# contracts/, plugins/, and deploy/docker/ itself — everything else here
+# just keeps unrelated local state out of the build context.
+.git
+.claude
+.agents
+docs
+testdata
+*.md

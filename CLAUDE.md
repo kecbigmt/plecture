@@ -86,6 +86,7 @@ prose naming.
 | `app/`        | CLI + MCP server: session lifecycle, task DAG, state, dispatch |
 | `contracts/`  | Shared data contracts between the CLI and plugins               |
 | `plugins/`    | Distributable packages: executable adapters and config resources for a particular technology (channel relay, GitHub workspace provider and watcher, Slack adapter) |
+| `deploy/`     | Deployment packaging: container images and their runtime contract (build, process supervision, persistence, first boot) — not a catalog plugin, not core |
 
 Core (`app/`, `contracts/*`) never imports `plugins/*`.
 

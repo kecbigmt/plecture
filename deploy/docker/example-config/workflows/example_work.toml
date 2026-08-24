@@ -1,0 +1,83 @@
+# A neutral, generic example: dispatch a Claude Code session against a
+# GitHub issue or pull request in a tmux pane, authenticated as a GitHub
+# App installation instead of an operator's personal `gh auth login` (the
+# phase-1 ECS contract — see the container README's First boot section).
+#
+# This file is the piece a downstream deployment (its own image, `FROM`
+# this one) is expected to replace or overlay with its own team-specific
+# process: additional chains, a different agent CLI, project-board wiring,
+# and so on. Nothing here is specific to any one team's process; it exists
+# to prove the example plugin set composes into a real, dispatchable
+# session.
+[example_work]
+kind                = "workflow"
+name                = "example GitHub work session (Claude Code)"
+description         = "Acquire a GitHub issue/PR worktree, launch Claude Code in a tmux pane under a GitHub App gh identity, and deliver session events to it."
+workspace_provider  = "official.github.worktree"
+
+[example_work.display]
+title  = { from = "workflow.outputs.branch" }
+status = "work"
+
+[example_work.inputs_schema]
+type                 = "object"
+required             = ["app_id", "private_key_path"]
+additionalProperties = false
+
+[example_work.inputs_schema.properties]
+# Operator-provisioned GitHub App identity (see the github plugin's App
+# auth README section) — never committed as literal values, always passed
+# at dispatch time or defaulted by a downstream deployment's own overlay.
+# installation_id/owner/repo carry no default: gh_app_guard's own pattern
+# rejects an empty string, so an unset one must stay genuinely absent
+# (see the node bindings below) rather than default to "".
+app_id           = { type = "string", pattern = "^[0-9]+$" }
+installation_id  = { type = "string", pattern = "^[0-9]+$" }
+owner            = { type = "string", pattern = "^[A-Za-z0-9-]+$" }
+repo             = { type = "string", pattern = "^[A-Za-z0-9._-]+$" }
+private_key_path = { type = "string", pattern = "^[A-Za-z0-9_./:-]+$" }
+# The initial instruction typed into the agent once its pane is ready.
+# Empty means the session comes up with no prompt sent — an operator (or a
+# downstream workflow layering a real dispatcher on top) attaches and
+# drives it directly.
+prompt           = { type = "string", default = "" }
+
+[[example_work.nodes]]
+uses = "official.tmux.pane"
+
+[[example_work.nodes]]
+id   = "gh_app_guard"
+uses = "official.github.gh_app_guard"
+
+[example_work.nodes.inputs]
+app_id            = { from = "session.inputs.app_id" }
+installation_id   = { from = "session.inputs.installation_id", optional = true }
+owner             = { from = "session.inputs.owner", optional = true }
+repo              = { from = "session.inputs.repo", optional = true }
+private_key_path  = { from = "session.inputs.private_key_path" }
+
+[[example_work.nodes]]
+id   = "agent"
+uses = "official.claude.runtime"
+
+[example_work.nodes.inputs]
+path_prepend = { from = "nodes.gh_app_guard.outputs.dir" }
+
+[[example_work.nodes]]
+uses = "official.claude.claude_initial_prompt"
+
+[example_work.nodes.inputs]
+terminal_ready = { from = "nodes.pane.outputs.session_name" }
+agent_session  = { from = "nodes.agent.outputs.pid" }
+prompt         = { from = "session.inputs.prompt", default = "" }
+
+[[example_work.event.channel]]
+name    = "runtime"
+uses    = "official.claude.delivery"
+include = ["plect.instruction", "user.emit", "plect.terminal.*"]
+
+[example_work.event.channel.inputs]
+path = { from = "nodes.agent.outputs.socket_path" }
+
+[example_work.tick]
+heartbeat = "15m"

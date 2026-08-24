@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# runit service definition: started by runsvdir at boot, restarted
+# automatically (runit's default policy for any `run` script that exits)
+# on crash. `chpst -u` is the privilege drop — see entrypoint.sh's comment
+# for why root has to run first and this does not.
+exec 2>&1
+exec chpst -u plect:plect plect serve --socket "$PLECT_BUS_SOCKET"
