@@ -196,3 +196,34 @@ func TestDestroy_ClearsStaleReservationForTheDestroyedChild(t *testing.T) {
 		t.Fatalf("childB after destroying childA: reserved=%v err=%v, want true/nil", reserved, capErr)
 	}
 }
+
+// End-to-end through the real Up() admission path (not just
+// reserveChildCapSlot/ReserveUpSlot in isolation): a child reservation held
+// by a live process must keep blocking a sibling no matter how long that
+// process has held it — see
+// TestStore_ReserveUpSlotNeverExpiresALiveReservationRegardlessOfAge for the
+// state-layer proof that no amount of elapsed time overrides this.
+func TestUp_LiveReservationBlocksSiblingThroughTheRealUpPath(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+
+	// childA's `plect up` is still mid-RunSetup: its reservation is
+	// genuinely outstanding, held by this (live) test process.
+	if _, err := store.ReserveUpSlot("childA", "parent1", approveAnyReservation); err != nil {
+		t.Fatalf("simulate an in-progress reservation: %v", err)
+	}
+
+	_, err := Up(cfg, store, UpParams{Identifier: "https://example.test/cases/blocked", ParentSession: "parent1"})
+	if err == nil {
+		t.Fatal("expected Up to reject a sibling while childA's live reservation stands")
+	}
+	if svcErr, ok := err.(*Error); !ok || svcErr.Code != ErrChildCapExceeded {
+		t.Fatalf("want ErrChildCapExceeded, got %v", err)
+	}
+}

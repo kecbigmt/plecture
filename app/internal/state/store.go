@@ -18,22 +18,19 @@ import (
 
 const stateVersion = contract.SchemaVersion
 
-// upReservationBackstopTTL guards only the PID-reuse edge case
-// (processAlive can't tell a crashed holder's reused PID from the
-// original holder still running). Long, since a real `plect up` can
-// legitimately run for hours.
-const upReservationBackstopTTL = 24 * time.Hour
-
-// UpReservation is one child's outstanding child-cap admission decision,
-// standing in until ReleaseUpSlot fires or PID is confirmed gone.
+// UpReservation is one child's outstanding child-cap admission decision. No
+// TTL: RunSetup has no deadline, so only a confirmed-dead holder — never
+// elapsed time — may expire one.
 type UpReservation struct {
 	Parent string    `json:"parent"`
-	At     time.Time `json:"at"`
-	PID    int       `json:"pid"` // reserving process, checked via processAlive
+	At     time.Time `json:"at"` // diagnostic only; expiry never reads it
+	PID    int       `json:"pid"`
 }
 
-// processAlive probes pid the way a PID-file-based lock would (kill(2),
-// signal 0). EPERM still means alive — it exists, we just can't signal it.
+// processAlive probes pid via kill(2) signal 0, like a PID-file lock.
+// EPERM still means alive. A crashed holder's PID reused by an unrelated
+// live process is this technique's known false negative — accepted, since
+// a stuck reservation stays recoverable via retry or Destroy either way.
 func processAlive(pid int) bool {
 	if pid <= 0 {
 		return false
@@ -149,7 +146,7 @@ func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map
 		now := time.Now()
 		live := make(map[string]UpReservation, len(sf.UpReservations))
 		for name, res := range sf.UpReservations {
-			if name == childName || !processAlive(res.PID) || now.Sub(res.At) > upReservationBackstopTTL {
+			if name == childName || !processAlive(res.PID) {
 				continue
 			}
 			live[name] = res
@@ -197,7 +194,7 @@ func (s *Store) Delete(name string) error {
 			session.Children = removeSessionName(session.Children, name)
 		}
 		delete(sf.Sessions, name)
-		delete(sf.UpReservations, name) // operator recovery, ahead of the backstop TTL
+		delete(sf.UpReservations, name) // an operator's own recovery path for a stuck one
 		normalizeSessionTree(sf.Sessions)
 		return s.saveLocked(sf)
 	})

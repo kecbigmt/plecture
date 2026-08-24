@@ -8,12 +8,11 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
-// reserveChildCapSlot enforces a parent workflow's `max_up_children`
-// (docs/language/workflows.md), atomically: the decision runs inside
-// ReserveUpSlot's locked snapshot, so two `plect up` processes racing the
-// same parent can't both admit past the cap. targetAlreadyUp exempts an
-// idempotent re-up; release a reserved=true result via releaseChildCapSlot
-// once the child's state settles.
+// reserveChildCapSlot enforces `max_up_children` (docs/language/workflows.md)
+// atomically via ReserveUpSlot's locked snapshot, so two racing `plect up`
+// processes can't both admit past the cap. targetAlreadyUp exempts an
+// idempotent re-up; release reserved=true via releaseChildCapSlot once the
+// child's state settles.
 func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionName, parentSessionName string, targetAlreadyUp bool) (reserved bool, capErr *Error) {
 	if targetAlreadyUp || parentSessionName == "" {
 		return false, nil
@@ -43,8 +42,7 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 				up[name] = true
 			}
 		}
-		// Skip: already counted via real run state (the brief post-release
-		// overlap), not a second slot.
+		// Skip: real run state already counted this child (post-release overlap).
 		for name, res := range reservations {
 			if res.Parent != parentSessionName || up[name] {
 				continue
@@ -78,5 +76,5 @@ func releaseChildCapSlot(store *state.Store, childSessionName string) {
 	if childSessionName == "" {
 		return
 	}
-	_ = store.ReleaseUpSlot(childSessionName) // best-effort: TTL or Destroy clears a failed release
+	_ = store.ReleaseUpSlot(childSessionName) // best-effort: a retry or Destroy still recovers it
 }

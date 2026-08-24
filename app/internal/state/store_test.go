@@ -375,11 +375,9 @@ func TestStore_ReleaseUpSlotOnUnreservedChildIsANoop(t *testing.T) {
 }
 
 // A `plect up` process killed between ReserveUpSlot and its deferred
-// ReleaseUpSlot (a SIGKILL, a crashed machine) leaves a reservation
-// nobody will ever release. ReserveUpSlot must not let that permanently
-// cost its parent a slot — detected by the holder process being gone, not
-// by elapsed time (see TestStore_ReserveUpSlotDoesNotExpireALiveReservation
-// for why elapsed time alone would be wrong).
+// ReleaseUpSlot leaves a reservation nobody will ever release. Detected by
+// the holder process being confirmed gone — never by elapsed time (see
+// TestStore_ReserveUpSlotNeverExpiresALiveReservationRegardlessOfAge).
 func TestStore_ReserveUpSlotExcludesReservationsFromDeadProcesses(t *testing.T) {
 	store := NewStore(t.TempDir())
 	plantReservation(t, store, "crashed-child", UpReservation{Parent: "parent1", At: time.Now(), PID: deadPID(t)})
@@ -399,14 +397,16 @@ func TestStore_ReserveUpSlotExcludesReservationsFromDeadProcesses(t *testing.T) 
 
 // A `plect up` whose RunSetup runs long (an agent session, a slow
 // workspace provider) is not the same as a crashed one: its reservation
-// must survive as long as its process does, however long that takes —
-// this is the case the prior fixed-TTL design got wrong.
-func TestStore_ReserveUpSlotDoesNotExpireALiveReservation(t *testing.T) {
+// must survive as long as its process does, however long that takes. No
+// wall-clock TTL should ever expire a confirmed-live reservation — only
+// processAlive decides — which this proves with a duration so far past any
+// plausible RunSetup that a fixed-TTL design would already have failed it.
+func TestStore_ReserveUpSlotNeverExpiresALiveReservationRegardlessOfAge(t *testing.T) {
 	store := NewStore(t.TempDir())
 	plantReservation(t, store, "long-running-child", UpReservation{
 		Parent: "parent1",
-		At:     time.Now().Add(-2 * time.Hour), // longer than the old fixed 30m TTL
-		PID:    os.Getpid(),                    // this test process: definitely still alive
+		At:     time.Now().Add(-10000 * time.Hour),
+		PID:    os.Getpid(), // this test process: definitely still alive
 	})
 
 	var seen map[string]UpReservation
@@ -419,31 +419,6 @@ func TestStore_ReserveUpSlotDoesNotExpireALiveReservation(t *testing.T) {
 	}
 	if _, ok := seen["long-running-child"]; !ok {
 		t.Error("a reservation held by a still-live process was treated as abandoned")
-	}
-}
-
-// upReservationBackstopTTL exists only for PID reuse (a crashed holder's
-// PID reassigned to an unrelated live process) — a case liveness alone
-// can't distinguish from the original holder still running. It applies
-// even to a PID that is, coincidentally, this test process's own.
-func TestStore_ReserveUpSlotBackstopAppliesEvenToALivePID(t *testing.T) {
-	store := NewStore(t.TempDir())
-	plantReservation(t, store, "very-old-child", UpReservation{
-		Parent: "parent1",
-		At:     time.Now().Add(-upReservationBackstopTTL - time.Hour),
-		PID:    os.Getpid(),
-	})
-
-	var seen map[string]UpReservation
-	approved, err := store.ReserveUpSlot("new-child", "parent1", func(_ map[string]*domain.Session, reservations map[string]UpReservation) bool {
-		seen = reservations
-		return true
-	})
-	if err != nil || !approved {
-		t.Fatalf("ReserveUpSlot: approved=%v err=%v", approved, err)
-	}
-	if _, ok := seen["very-old-child"]; ok {
-		t.Error("the PID-reuse backstop should have excluded a reservation past its TTL")
 	}
 }
 
