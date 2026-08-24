@@ -79,6 +79,27 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
+		// Before Create: a rejected new child must leave no state entry.
+		// ForceRecreate excludes even an up target, since it tears the
+		// child down and rebuilds — the slot must stay reserved through that.
+		targetAlreadyUp := existing != nil && sessionRunState(existing) == domain.RunUp && !params.ForceRecreate
+		parentSessionName := ""
+		if existing != nil {
+			parentSessionName = existing.ParentSession
+		} else {
+			resolved, parentErr := resolveParentSession(store, sessionName, params.ParentSession)
+			if parentErr != nil {
+				return nil, parentErr
+			}
+			parentSessionName = resolved
+		}
+		reserved, capErr := reserveChildCapSlot(cfg, store, sessionName, parentSessionName, targetAlreadyUp)
+		if capErr != nil {
+			return nil, capErr
+		}
+		if reserved {
+			defer releaseChildCapSlot(store, sessionName)
+		}
 		if existing == nil || hasIncompleteSessionTask(cfg, existing) {
 			if _, err := Create(cfg, store, CreateParams{
 				URL:           params.Identifier,
@@ -110,6 +131,18 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	// via Create — this catches `plect up <bare-existing-session>`, which skips it.
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
+	}
+	// Mirrors the matched branch's reservation above, for a bare-name
+	// session going straight from down to up.
+	if !matched {
+		targetAlreadyUp := sessionRunState(session) == domain.RunUp && !params.ForceRecreate
+		reserved, capErr := reserveChildCapSlot(cfg, store, sessionName, session.ParentSession, targetAlreadyUp)
+		if capErr != nil {
+			return nil, capErr
+		}
+		if reserved {
+			defer releaseChildCapSlot(store, sessionName)
+		}
 	}
 	if params.ForceRecreate && !matched {
 		forceRecreateExisting = true

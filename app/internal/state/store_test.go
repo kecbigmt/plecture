@@ -295,6 +295,193 @@ func TestStore_ConcurrentPutAcrossProcesses(t *testing.T) {
 	}
 }
 
+// Each attempt uses its own Store instance, like TestStore_ConcurrentPut,
+// exercising the real cross-process file lock, not just the in-process mutex.
+func TestStore_ReserveUpSlotSerializesConcurrentReservations(t *testing.T) {
+	dir := t.TempDir()
+	const limit = 3
+	const attempts = 20
+
+	var wg sync.WaitGroup
+	results := make([]bool, attempts)
+	wg.Add(attempts)
+	for i := 0; i < attempts; i++ {
+		go func(i int) {
+			defer wg.Done()
+			store := NewStore(dir)
+			child := fmt.Sprintf("child%d", i)
+			approved, err := store.ReserveUpSlot(child, "parent1", func(sessions map[string]*domain.Session, reservations map[string]UpReservation) bool {
+				return len(reservations) < limit
+			})
+			if err != nil {
+				t.Errorf("ReserveUpSlot: %v", err)
+				return
+			}
+			results[i] = approved
+		}(i)
+	}
+	wg.Wait()
+
+	approved := 0
+	for _, ok := range results {
+		if ok {
+			approved++
+		}
+	}
+	if approved != limit {
+		t.Fatalf("approved = %d, want exactly %d (the declared limit) despite %d concurrent attempts", approved, limit, attempts)
+	}
+
+	sf, err := NewStore(dir).loadE()
+	if err != nil {
+		t.Fatalf("loadE: %v", err)
+	}
+	if len(sf.UpReservations) != limit {
+		t.Errorf("len(UpReservations) = %d, want %d", len(sf.UpReservations), limit)
+	}
+}
+
+func TestStore_ReleaseUpSlotDropsTheNamedReservation(t *testing.T) {
+	store := NewStore(t.TempDir())
+	for _, child := range []string{"childA", "childB"} {
+		approved, err := store.ReserveUpSlot(child, "parent1", func(map[string]*domain.Session, map[string]UpReservation) bool { return true })
+		if err != nil || !approved {
+			t.Fatalf("ReserveUpSlot(%q): approved=%v err=%v", child, approved, err)
+		}
+	}
+
+	if err := store.ReleaseUpSlot("childA"); err != nil {
+		t.Fatalf("ReleaseUpSlot: %v", err)
+	}
+	sf, err := store.loadE()
+	if err != nil {
+		t.Fatalf("loadE: %v", err)
+	}
+	if _, ok := sf.UpReservations["childA"]; ok {
+		t.Error("childA's reservation should be gone after ReleaseUpSlot")
+	}
+	if _, ok := sf.UpReservations["childB"]; !ok {
+		t.Error("childB's reservation should survive releasing childA's")
+	}
+}
+
+func TestStore_ReleaseUpSlotOnUnreservedChildIsANoop(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if err := store.ReleaseUpSlot("childA"); err != nil {
+		t.Fatalf("ReleaseUpSlot on a child with no reservation: %v", err)
+	}
+}
+
+func TestStore_ReserveUpSlotExcludesReservationsFromDeadProcesses(t *testing.T) {
+	store := NewStore(t.TempDir())
+	plantReservation(t, store, "crashed-child", UpReservation{Parent: "parent1", At: time.Now(), PID: deadPID(t)})
+
+	var seen map[string]UpReservation
+	approved, err := store.ReserveUpSlot("new-child", "parent1", func(_ map[string]*domain.Session, reservations map[string]UpReservation) bool {
+		seen = reservations
+		return true
+	})
+	if err != nil || !approved {
+		t.Fatalf("ReserveUpSlot: approved=%v err=%v", approved, err)
+	}
+	if _, ok := seen["crashed-child"]; ok {
+		t.Error("a reservation from a dead process was still visible to the admission decision")
+	}
+}
+
+// A duration so far past any plausible RunSetup that a fixed-TTL design
+// would already have failed it.
+func TestStore_ReserveUpSlotNeverExpiresALiveReservationRegardlessOfAge(t *testing.T) {
+	store := NewStore(t.TempDir())
+	plantReservation(t, store, "long-running-child", UpReservation{
+		Parent: "parent1",
+		At:     time.Now().Add(-10000 * time.Hour),
+		PID:    os.Getpid(), // this test process: definitely still alive
+	})
+
+	var seen map[string]UpReservation
+	approved, err := store.ReserveUpSlot("new-child", "parent1", func(_ map[string]*domain.Session, reservations map[string]UpReservation) bool {
+		seen = reservations
+		return true
+	})
+	if err != nil || !approved {
+		t.Fatalf("ReserveUpSlot: approved=%v err=%v", approved, err)
+	}
+	if _, ok := seen["long-running-child"]; !ok {
+		t.Error("a reservation held by a still-live process was treated as abandoned")
+	}
+}
+
+// deadPID returns a PID guaranteed not to be running: a helper process's,
+// after it has already exited.
+func deadPID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("true")
+	if err := cmd.Run(); err != nil {
+		t.Skipf("could not run a helper process to obtain a dead PID: %v", err)
+	}
+	return cmd.Process.Pid
+}
+
+func TestStore_ReserveUpSlotSupersedesItsOwnPriorReservation(t *testing.T) {
+	store := NewStore(t.TempDir())
+	plantReservation(t, store, "childA", UpReservation{Parent: "parent1", At: time.Now()})
+
+	sawItself := false
+	// ReserveUpSlot records the new reservation into this same map right
+	// after fn returns, so the assertion must happen inside fn — checking
+	// the map afterward would see the write this attempt itself just made.
+	approved, err := store.ReserveUpSlot("childA", "parent1", func(_ map[string]*domain.Session, reservations map[string]UpReservation) bool {
+		_, sawItself = reservations["childA"]
+		return true
+	})
+	if err != nil || !approved {
+		t.Fatalf("ReserveUpSlot: approved=%v err=%v", approved, err)
+	}
+	if sawItself {
+		t.Error("a reservation attempt saw its own prior (fresh, non-expired) reservation as if it were a sibling's")
+	}
+}
+
+func TestStore_DeleteClearsTheSessionsUpReservation(t *testing.T) {
+	store := NewStore(t.TempDir())
+	now := time.Now()
+	if err := store.Put(&domain.Session{Name: "childA", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	plantReservation(t, store, "childA", UpReservation{Parent: "parent1", At: now})
+
+	if err := store.Delete("childA"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	sf, err := store.loadE()
+	if err != nil {
+		t.Fatalf("loadE: %v", err)
+	}
+	if _, ok := sf.UpReservations["childA"]; ok {
+		t.Error("Delete should have cleared childA's reservation")
+	}
+}
+
+// plantReservation writes res directly, bypassing ReserveUpSlot's own
+// PID/timestamp stamping — for planting a specific PID or backdated time.
+func plantReservation(t *testing.T, store *Store, child string, res UpReservation) {
+	t.Helper()
+	if err := store.withFileLock(func() error {
+		sf, err := store.loadLocked()
+		if err != nil {
+			return err
+		}
+		if sf.UpReservations == nil {
+			sf.UpReservations = make(map[string]UpReservation)
+		}
+		sf.UpReservations[child] = res
+		return store.saveLocked(sf)
+	}); err != nil {
+		t.Fatalf("plantReservation: %v", err)
+	}
+}
+
 func TestStorePutHelperProcess(t *testing.T) {
 	if os.Getenv("PLECT_STATE_PUT_HELPER") != "1" {
 		return

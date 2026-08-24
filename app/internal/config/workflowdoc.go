@@ -80,6 +80,19 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 		}
 		w.AutoSelect = &value
 	}
+	if raw, ok := def.Body["max_up_children"]; ok {
+		count, ok := raw.(int64)
+		if !ok {
+			return w, fmt.Errorf("`max_up_children` is an integer")
+		}
+		// Only this decode enforces the schema's `minimum: 1` at load time;
+		// the published schema itself only guides an editor.
+		if count < 1 {
+			return w, fmt.Errorf("`max_up_children` must be at least 1, got %d", count)
+		}
+		value := int(count)
+		w.MaxUpChildren = &value
+	}
 	if raw, ok := def.Body["inputs_schema"]; ok {
 		schema, ok := raw.(map[string]any)
 		if !ok {

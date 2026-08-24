@@ -109,6 +109,38 @@ Unlike the rest of a workflow's fields, `[tick]` and `[healthcheck]` are
 whole-table runtime tuning: a deeper cascade layer replaces a shallower layer's
 table wholesale rather than merging into it.
 
+## Concurrency
+
+`max_up_children` optionally caps how many sessions parented on a session
+this workflow produces may hold run state "up" at once — for example, an
+orchestrator workflow declaring `max_up_children = 7` limits itself to 7
+concurrently-up child sessions. `plect up` rejects a child that would push
+its parent past the cap, naming the parent, the cap, and the current count;
+it does not queue the request, so the caller (typically an orchestrator
+tick) retries on a later cycle once a child frees up.
+
+Counting rule: a child counts toward the cap while it holds run state
+"up" — any run-scoped task produced — and stops counting the moment it goes
+down or is destroyed. A `plect up` in flight against the same parent, admitted
+but not yet up itself, also counts, closing the window between two
+concurrent `plect up` processes deciding at the same instant; this is why a
+rejection's reported count can briefly exceed what `plect ls` shows. A
+`plect up` that only brings an already-up child back up again (an idempotent
+re-up) is exempt from the cap, since that child is already counted.
+`--force-recreate` is not this case even on an already-up child: it tears
+run state down before rebuilding it, so it holds an admission of its own
+for that whole window rather than being exempt.
+
+An in-flight admission survives however long its `plect up` process
+legitimately keeps running — it counts until that process is confirmed
+gone, not until some fixed time passes. A second `plect up` for that same
+child while the first is still running is itself rejected outright, not
+queued behind it; once the first process is confirmed gone (killed rather
+than finished), a retry on that child reclaims the admission, and `plect
+destroy` on it clears the admission immediately either way.
+
+Unset means no cap, the same behavior as today.
+
 ## Provider parameters
 
 `[<id>.workspace_provider_inputs]` sets the provider's author-declared

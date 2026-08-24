@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/contracts/atomicfile"
@@ -17,9 +19,31 @@ import (
 
 const stateVersion = contract.SchemaVersion
 
+// UpReservation has no TTL field: RunSetup has no deadline, so only a
+// confirmed-dead holder, never elapsed time, may expire one.
+type UpReservation struct {
+	Parent string    `json:"parent"`
+	At     time.Time `json:"at"` // diagnostic only; expiry never reads it
+	PID    int       `json:"pid"`
+}
+
+// PID reuse (a crashed holder's PID reassigned to an unrelated live
+// process) is an accepted false negative of this technique — a stuck
+// reservation stays recoverable via retry or Destroy either way.
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil || err == syscall.EPERM // EPERM: exists, just unsignalable
+}
+
 type stateFile struct {
 	Version  int                        `json:"version"`
 	Sessions map[string]*domain.Session `json:"sessions"`
+	// Keyed by child name so a retry reclaims its own entry and Delete can
+	// drop one by name. Kept out of contracts/state.Session: local bookkeeping.
+	UpReservations map[string]UpReservation `json:"up_reservations,omitempty"`
 }
 
 // Store manages session state persistence.
@@ -105,6 +129,55 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	})
 }
 
+// ErrUpAlreadyReserved: childName's reservation is held by another live
+// process — a second concurrent `plect up` for that child, not a sibling.
+var ErrUpAlreadyReserved = errors.New("state: up already reserved by a live process")
+
+// ReserveUpSlot locks the whole snapshot, unlike Update's single session,
+// so fn can weigh every session and reservation together; it never
+// overwrites a still-live reservation for childName itself (ErrUpAlreadyReserved).
+func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map[string]*domain.Session, reservations map[string]UpReservation) (approved bool)) (bool, error) {
+	approved := false
+	err := s.withFileLock(func() error {
+		sf, err := s.loadLocked()
+		if err != nil {
+			return fmt.Errorf("state: reserve up-slot for %q: %w", childName, err)
+		}
+		live := make(map[string]UpReservation, len(sf.UpReservations))
+		for name, res := range sf.UpReservations {
+			if !processAlive(res.PID) {
+				continue
+			}
+			live[name] = res
+		}
+		if _, held := live[childName]; held {
+			return ErrUpAlreadyReserved
+		}
+		approved = fn(sf.Sessions, live)
+		if !approved {
+			return nil
+		}
+		live[childName] = UpReservation{Parent: parentName, At: time.Now(), PID: os.Getpid()}
+		sf.UpReservations = live
+		return s.saveLocked(sf)
+	})
+	return approved, err
+}
+
+func (s *Store) ReleaseUpSlot(childName string) error {
+	return s.withFileLock(func() error {
+		sf, err := s.loadLocked()
+		if err != nil {
+			return fmt.Errorf("state: release up-slot for %q: %w", childName, err)
+		}
+		if _, ok := sf.UpReservations[childName]; !ok {
+			return nil
+		}
+		delete(sf.UpReservations, childName)
+		return s.saveLocked(sf)
+	})
+}
+
 // Delete removes a session by name.
 func (s *Store) Delete(name string) error {
 	return s.withFileLock(func() error {
@@ -122,6 +195,7 @@ func (s *Store) Delete(name string) error {
 			session.Children = removeSessionName(session.Children, name)
 		}
 		delete(sf.Sessions, name)
+		delete(sf.UpReservations, name) // lets Destroy free a stuck one
 		normalizeSessionTree(sf.Sessions)
 		return s.saveLocked(sf)
 	})
@@ -322,6 +396,7 @@ func (s *Store) loadLocked() (*stateFile, error) {
 		sf.Sessions[name] = session
 	}
 	normalizeSessionTree(sf.Sessions)
+	sf.UpReservations = parsed.UpReservations
 
 	return sf, nil
 }
