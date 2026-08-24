@@ -86,6 +86,27 @@ else
   echo "ok   a turn-boundary hook still changes the fingerprint"
 fi
 
+# A torn hook record (the write half's temp-file-then-rename closes the
+# window this simulates directly, but the read half must still degrade
+# gracefully rather than assume the write half is the only way to get here)
+# must not fail the probe outright: with no log evidence either, that is
+# indistinguishable from "no basis yet".
+record_file="${XDG_STATE_HOME}/plect/codex-activity/$(printf '%s' "$session" | tr '/' '_').json"
+mkdir -p "$(dirname "$record_file")"
+printf '{"seq":3,"fingerprint":"working:3"' > "$record_file"
+rm -rf "${state_dir:?}/log"
+mkdir -p "$state_dir/log"
+out="$("$activity" probe "$session" "$state_dir")"
+check "a torn hook record with no log evidence degrades to empty output" "" "$out"
+
+# The same torn record must not poison the log half: a turn's own log file
+# is independent evidence, and the probe must still emit it.
+touch "$state_dir/log/1800000000.jsonl"
+torn_envelope="$("$activity" probe "$session" "$state_dir")"
+check_nonempty "a torn hook record still emits valid log evidence when logs exist" "$torn_envelope"
+check "the emitted fingerprint carries no hook half from the torn record" "hook=|log=1800000000.jsonl:0" \
+  "$(printf '%s' "$torn_envelope" | jq -r .fingerprint)"
+
 # reset drops all of it, hook record and log-derived state alike (the log
 # directory itself is this test's fixture, not something reset owns, so it
 # is only the hook half that reset can clear).
