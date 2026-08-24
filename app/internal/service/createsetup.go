@@ -151,10 +151,8 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		session = refreshed
 	}
 
-	// Binding implies delivery for the session's own resource too, not only
-	// for a dynamic task setup's explicit --resource: the same subscribe
-	// hook, the same idempotency, the same durable retry queue on failure.
-	// Never fails Create: the session above is already fully instantiated.
+	// Binding implies delivery for the session's own resource too, not just
+	// a dynamic task setup's own bound one.
 	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, resource); errMsg != "" {
 		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", resource, "error", errMsg)
 	}

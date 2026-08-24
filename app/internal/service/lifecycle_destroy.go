@@ -48,11 +48,6 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	if err != nil {
 		return nil, err
 	}
-	// Opportunistic, like TaskSetup's/TaskCleanup's own call: drains this
-	// session's own backlog (e.g. a prior TaskCleanup unsubscribe failure)
-	// and sweeps every other already-destroyed session's stuck entries too,
-	// since this is itself an "ordinary activity" moment other sessions'
-	// stuck entries can piggyback on.
 	flushPendingDeliveryLogged(cfg, store, sessionName)
 	// Tearing down an existing session is a per-session write; clamp it to the
 	// active guard so a guarded orchestrator can't destroy another owner's
@@ -160,11 +155,8 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to delete state entry: %v", err)}
 	}
 
-	// The session that bound this resource at create is gone, so nothing can
-	// still need it; drop its event-delivery registration through the same
-	// locked, durably-retried path TaskCleanup uses for a dynamic instance's
-	// own bound resource. Never fails Destroy: the state entry above is
-	// already gone by the time this runs.
+	// After the delete, so unwireDeliveryOnTeardown's fresh read sees the
+	// session as gone rather than skipping the unsubscribe as still needed.
 	if _, errMsg := unwireDeliveryOnTeardown(cfg, store, sessionName, session.ResourceID); errMsg != "" {
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("resource delivery unsubscribe: %s", errMsg))
 	}

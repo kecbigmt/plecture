@@ -204,12 +204,8 @@ func TestFlushPendingDelivery_RetriesUnsubscribeAndDrainsOnSuccess(t *testing.T)
 	}
 }
 
-// A resource queued under a session that no longer has a state entry (the
-// post-destroy case: resolveSession would refuse that identifier, so
-// nothing of its own can ever call TaskSetup/TaskCleanup/Destroy again to
-// drain it) must still drain — through a completely unrelated session's
-// ordinary activity, via flushPendingDeliveryLogged's sweep of other
-// sessions' stuck entries.
+// A resource queued under a session with no state entry (the post-destroy
+// case) must still drain, through a wholly unrelated session's activity.
 func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivity(t *testing.T) {
 	toggle := filepath.Join(t.TempDir(), "toggle")
 	rec := filepath.Join(t.TempDir(), "rec")
@@ -220,8 +216,8 @@ func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivit
 	toggledUnsubscribeProvider(t, cfg.BaseDir, toggle, rec)
 	store := testStore(t)
 
-	// "gone-1" never gets a state entry: stands in for a session already
-	// destroyed by the time its queued unsubscribe would otherwise retry.
+	// "gone-1" never gets a state entry, standing in for an already-destroyed
+	// session.
 	const prURL = "resource://sess/proj/pull/9"
 	if err := queuePendingUnsubscribe(store, "gone-1", prURL); err != nil {
 		t.Fatal(err)
@@ -230,8 +226,6 @@ func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivit
 		t.Fatal(err)
 	}
 
-	// A wholly unrelated session's own ordinary TaskSetup call is the only
-	// remaining "activity" gone-1's stuck entry can piggyback on.
 	seedSession(t, store, "other-1", "other", 1, "coding", map[string]*contract.TaskState{})
 	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "other-1"}); err != nil {
 		t.Fatalf("setup: %v", err)

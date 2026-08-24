@@ -199,9 +199,8 @@ args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
 	}
 }
 
-// A resource-less (or unmatched-resource) workflow must behave exactly as it
-// did before delivery wiring was added at create time: no subscribe hook to
-// run means Create succeeds with nothing queued for retry either.
+// A resource no workspace provider hooks for must leave Create unaffected:
+// no subscribe hook to run means nothing queued for retry either.
 func TestCreate_NoDeliverableResourceBehavesAsBefore(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -314,10 +313,9 @@ echo '{"workspace_dir":"%s"}'
 	}
 }
 
-// Create-time delivery wiring introduces a subscription Destroy must undo:
-// a session torn down must drop its own resource's event-delivery
-// registration through the same locked, durable-retry unsubscribe path
-// TaskCleanup already runs for a dynamic instance's own bound resource.
+// A session torn down must drop its own resource's event-delivery
+// registration, through the same locked, durable-retry unsubscribe path
+// TaskCleanup runs for a dynamic instance's own bound resource.
 func TestDestroy_UnsubscribesSessionResource(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -366,14 +364,10 @@ args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
 	}
 }
 
-// A Destroy whose own session-resource unsubscribe hook fails must still
-// succeed and delete the state entry, with the failure durably queued under
-// the now-deleted session's own name. Nothing of that session's own can
-// ever run again to retry it — resolveSession refuses its identifier once
-// its state entry is gone — so this exercises Destroy's actual failure path
-// end to end (not a synthetic queue injection) and proves a wholly
-// unrelated session's own later, ordinary TaskSetup activity is what
-// eventually drains it.
+// Destroy's own unsubscribe hook failing must not fail Destroy itself, and
+// the durably-queued retry must still drain via an unrelated session's
+// later activity, since nothing of the now-deleted session's own can ever
+// retry it again.
 func TestDestroy_UnsubscribeFailureIsDurablyQueuedAndDrainsViaAnotherSession(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -400,8 +394,7 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 `
 	writeSetupWorkflow(t, cfg, "wf", extra)
 
-	// toggle is absent, so this session's own Destroy-time unsubscribe hook
-	// fails.
+	// toggle is absent, so the unsubscribe hook fails.
 	url := "https://github.com/org/repo/issues/13"
 	deadSession := "org/repo-13+wf"
 	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
@@ -418,9 +411,8 @@ args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + to
 		t.Fatalf("pending unsubscribe queue after Destroy = %v (err=%v), want [%s] for %s", f.Unsubscribe, loadErr, url, deadSession)
 	}
 
-	// Flip the toggle so the hook would now succeed. deadSession has no state
-	// entry left to receive a call of its own, so only a completely
-	// unrelated session's ordinary activity can still drain it.
+	// deadSession has no state entry left to retry itself, so only an
+	// unrelated session's activity can drain it.
 	if err := os.WriteFile(toggle, []byte("go"), 0o644); err != nil {
 		t.Fatal(err)
 	}

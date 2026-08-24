@@ -268,11 +268,9 @@ func TestE2E_GithubWorkspaceProviderWiresAndDropsEventDelivery(t *testing.T) {
 	}
 }
 
-// TestIntegration_CreateSubscribesToGithubWatcher pins binding-implies-delivery
-// at the real Create entry point (not subscribeIfWired called directly, as
-// above): the session's own resource must reach the shipped github-watcher
-// subscribe hook during session creation, the same way an explicit
-// --resource on a dynamic task setup already did before this change.
+// TestIntegration_CreateSubscribesToGithubWatcher exercises Create itself
+// against the real shipped github-watcher hooks, not subscribeIfWired
+// directly as above.
 func TestIntegration_CreateSubscribesToGithubWatcher(t *testing.T) {
 	workspaceDirsRoot := setupE2ERepo(t)
 	home := os.Getenv("HOME")
@@ -295,10 +293,8 @@ func TestIntegration_CreateSubscribesToGithubWatcher(t *testing.T) {
 	}
 }
 
-// TestIntegration_DestroyUnsubscribesFromGithubWatcher is
-// TestIntegration_CreateSubscribesToGithubWatcher's teardown counterpart: a
-// session torn down by Destroy must drop the registration Create made,
-// through the real shipped github-watcher unsubscribe hook.
+// TestIntegration_DestroyUnsubscribesFromGithubWatcher is the previous
+// test's teardown counterpart, against the real shipped hooks.
 func TestIntegration_DestroyUnsubscribesFromGithubWatcher(t *testing.T) {
 	workspaceDirsRoot := setupE2ERepo(t)
 	home := os.Getenv("HOME")
