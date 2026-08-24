@@ -133,13 +133,14 @@ expect_passthrough_with_token "api GET" api repos/o/r/issues/1
 # stdout.
 reset_records
 TOKEN_BIN_ANSWER="fail:gh-app-token: private key unreadable"
+mintfail_log="$stub_dir/mintfail.err"
 out=""
 err=""
-if out=$(run_guard issue view 123 2>/tmp/gh-app-guard-selftest-mintfail.err); then
+if out=$(run_guard issue view 123 2>"$mintfail_log"); then
   echo "FAIL: mint failure — guard allowed the call through: $out" >&2
   fail=1
 fi
-err=$(cat /tmp/gh-app-guard-selftest-mintfail.err)
+err=$(cat "$mintfail_log")
 if [ -e "$recorded_gh_args" ]; then
   echo "FAIL: mint failure — real gh ran despite the mint failing" >&2
   fail=1
@@ -179,9 +180,15 @@ else
 fi
 
 # Misconfiguration must fail loud, same discipline as gh-guard.
+# Each misconfiguration case below redirects to its own file inside
+# stub_dir (this run's private mktemp -d, removed by the EXIT trap above)
+# rather than a fixed /tmp path: a fixed path is shared across concurrent
+# runs of this script (a race on its content) and can be pre-created as a
+# symlink by another party, redirecting this script's output somewhere it
+# does not control.
 if GH_GUARD_REAL_GH="" GH_APP_GUARD_TOKEN_BIN="$token_bin" GH_APP_GUARD_APP_ID="1" \
   GH_APP_GUARD_PRIVATE_KEY_PATH="$private_key_path" GH_APP_GUARD_CACHE_PATH="$cache_path" \
-  "$guard" issue view 123 >/tmp/gh-app-guard-selftest-unset.log 2>&1; then
+  "$guard" issue view 123 >"$stub_dir/unset.log" 2>&1; then
   echo "FAIL: guard ran with GH_GUARD_REAL_GH unset" >&2
   fail=1
 else
@@ -190,7 +197,7 @@ fi
 
 if GH_GUARD_REAL_GH="$guard" GH_APP_GUARD_TOKEN_BIN="$token_bin" GH_APP_GUARD_APP_ID="1" \
   GH_APP_GUARD_PRIVATE_KEY_PATH="$private_key_path" GH_APP_GUARD_CACHE_PATH="$cache_path" \
-  "$guard" issue view 123 >/tmp/gh-app-guard-selftest-self.log 2>&1; then
+  "$guard" issue view 123 >"$stub_dir/self.log" 2>&1; then
   echo "FAIL: guard ran with GH_GUARD_REAL_GH pointing at itself" >&2
   fail=1
 else
@@ -199,7 +206,7 @@ fi
 
 if GH_GUARD_REAL_GH="$real_gh" GH_APP_GUARD_APP_ID="1" \
   GH_APP_GUARD_PRIVATE_KEY_PATH="$private_key_path" GH_APP_GUARD_CACHE_PATH="$cache_path" \
-  "$guard" issue view 123 >/tmp/gh-app-guard-selftest-notoken.log 2>&1; then
+  "$guard" issue view 123 >"$stub_dir/notoken.log" 2>&1; then
   echo "FAIL: guard ran with GH_APP_GUARD_TOKEN_BIN unset" >&2
   fail=1
 else
