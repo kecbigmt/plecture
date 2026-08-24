@@ -14,6 +14,7 @@ const (
 	ErrHasChildren        = "has_children"
 	ErrRelationNotAllowed = "relation_not_allowed"
 	ErrChildCapExceeded   = "child_cap_exceeded"
+	ErrChildUpInProgress  = "child_up_in_progress"
 )
 
 // Error is a structured error with a machine-readable code.

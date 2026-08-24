@@ -255,22 +255,30 @@ func approveAnyReservation(map[string]*domain.Session, map[string]state.UpReserv
 	return true
 }
 
-// A retried `plect up` for the very same child must reclaim its own
-// reservation immediately, not be blocked by the leftover one its own
-// earlier, crashed attempt left behind.
-func TestReserveChildCapSlot_RetryAfterCrashReclaimsItsOwnSlot(t *testing.T) {
+// Two concurrent `plect up` attempts for the exact same child must not
+// both hold a reservation: the second, while the first is still live, is
+// rejected outright rather than silently overwriting the first's entry —
+// which would let the first's own eventual release free a slot the second
+// is actually still using (state.Store.ReserveUpSlot). This is unrelated
+// to the declared cap (set generously here) — it fires even with room to
+// spare, because it's the same child racing itself, not a sibling.
+func TestReserveChildCapSlot_ConcurrentAttemptForTheSameChildIsRejected(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
-	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(5))
 	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
 
-	if _, err := store.ReserveUpSlot("childA", "parent1", approveAnyReservation); err != nil {
-		t.Fatalf("simulate a crashed prior reservation: %v", err)
+	first, err := reserveChildCapSlot(cfg, store, "childA", "parent1", false)
+	if err != nil || !first {
+		t.Fatalf("first reservation: reserved=%v err=%v, want true/nil", first, err)
 	}
 
-	reserved, err := reserveChildCapSlot(cfg, store, "childA", "parent1", false)
-	if err != nil || !reserved {
-		t.Fatalf("retry after crash: reserved=%v err=%v, want true/nil", reserved, err)
+	second, err := reserveChildCapSlot(cfg, store, "childA", "parent1", false)
+	if second {
+		t.Error("a second concurrent reservation for the same child succeeded while the first was still live")
+	}
+	if err == nil || err.Code != ErrChildUpInProgress {
+		t.Fatalf("second reservation err = %v, want ErrChildUpInProgress", err)
 	}
 }
 

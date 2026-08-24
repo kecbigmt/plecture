@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,11 +132,17 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 	})
 }
 
+// ErrUpAlreadyReserved is ReserveUpSlot's error when childName's
+// reservation is already held by a live process — a second concurrent
+// `plect up` for that exact child, not a sibling contending for the cap.
+var ErrUpAlreadyReserved = errors.New("state: up already reserved by a live process")
+
 // ReserveUpSlot evaluates fn against one locked, consistent snapshot — read
 // and write together, unlike Update's single session — and records
 // childName's reservation under parentName if fn approves. The snapshot
-// already excludes childName's own prior reservation and any whose holder
-// process is confirmed gone. Pair with ReleaseUpSlot once resolved.
+// excludes any reservation whose holder process is confirmed gone, but
+// never overwrites a still-live one for childName itself (ErrUpAlreadyReserved).
+// Pair a true result with ReleaseUpSlot once resolved.
 func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map[string]*domain.Session, reservations map[string]UpReservation) (approved bool)) (bool, error) {
 	approved := false
 	err := s.withFileLock(func() error {
@@ -143,19 +150,21 @@ func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map
 		if err != nil {
 			return fmt.Errorf("state: reserve up-slot for %q: %w", childName, err)
 		}
-		now := time.Now()
 		live := make(map[string]UpReservation, len(sf.UpReservations))
 		for name, res := range sf.UpReservations {
-			if name == childName || !processAlive(res.PID) {
+			if !processAlive(res.PID) {
 				continue
 			}
 			live[name] = res
+		}
+		if _, held := live[childName]; held {
+			return ErrUpAlreadyReserved
 		}
 		approved = fn(sf.Sessions, live)
 		if !approved {
 			return nil
 		}
-		live[childName] = UpReservation{Parent: parentName, At: now, PID: os.Getpid()}
+		live[childName] = UpReservation{Parent: parentName, At: time.Now(), PID: os.Getpid()}
 		sf.UpReservations = live
 		return s.saveLocked(sf)
 	})

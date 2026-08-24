@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -61,6 +62,12 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 		}
 		return true
 	})
+	if errors.Is(lockErr, state.ErrUpAlreadyReserved) {
+		return false, &Error{
+			Code:    ErrChildUpInProgress,
+			Message: fmt.Sprintf("session %s already has a `plect up` in progress; retry once it finishes", childSessionName),
+		}
+	}
 	if lockErr != nil {
 		return false, &Error{Code: ErrExecutionFailed, Message: lockErr.Error()}
 	}

@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -21,7 +22,17 @@ name  = { expr = "'case_' + match.id" }
 // providerCreatingWorkspace, but built on capResolverFields instead of the
 // shared githubResolverFields.
 func capProviderCreatingWorkspace(id, workspaceDir string) string {
-	script := fmt.Sprintf("mkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workspaceDir, workspaceDir)
+	return capProviderRunning(id, fmt.Sprintf("mkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workspaceDir, workspaceDir))
+}
+
+// capProviderSlowWorkspace is capProviderCreatingWorkspace but pauses
+// first, widening the window a concurrent Up() attempt for the same child
+// has to land its own reservation attempt while this one is still in flight.
+func capProviderSlowWorkspace(id, workspaceDir string) string {
+	return capProviderRunning(id, fmt.Sprintf("sleep 0.5\nmkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workspaceDir, workspaceDir))
+}
+
+func capProviderRunning(id, script string) string {
 	return providerDoc(id, capResolverFields, `[%[1]s.setup]
 type    = "exec"
 command = "sh"
@@ -225,5 +236,55 @@ func TestUp_LiveReservationBlocksSiblingThroughTheRealUpPath(t *testing.T) {
 	}
 	if svcErr, ok := err.(*Error); !ok || svcErr.Code != ErrChildCapExceeded {
 		t.Fatalf("want ErrChildCapExceeded, got %v", err)
+	}
+}
+
+// End-to-end: real concurrent Up() calls racing to create the exact same
+// new child (a doubled-up orchestrator dispatch, say). The cap here is set
+// generously — this isn't about max_up_children, it's the same child
+// racing itself — so exactly one attempt may win the reservation and the
+// rest see it already in progress, never both ending up holding it (see
+// TestReserveChildCapSlot_ConcurrentAttemptForTheSameChildIsRejected for
+// the isolated proof this exercises through the real Up() path).
+func TestUp_ConcurrentSameChildAttemptsRejectAllButOne(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	writeSetupWorkflow(t, cfg, "capwf", capProviderSlowWorkspace("capwf", workdir))
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(5))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+
+	const attempts = 5
+	var wg sync.WaitGroup
+	results := make([]error, attempts)
+	wg.Add(attempts)
+	for i := 0; i < attempts; i++ {
+		go func(i int) {
+			defer wg.Done()
+			_, err := Up(cfg, store, UpParams{Identifier: "https://example.test/cases/race", ParentSession: "parent1"})
+			results[i] = err
+		}(i)
+	}
+	wg.Wait()
+
+	succeeded, inProgress := 0, 0
+	for _, err := range results {
+		if err == nil {
+			succeeded++
+			continue
+		}
+		if svcErr, ok := err.(*Error); ok && svcErr.Code == ErrChildUpInProgress {
+			inProgress++
+			continue
+		}
+		t.Errorf("unexpected error from a racing Up(): %v", err)
+	}
+	if succeeded != 1 {
+		t.Errorf("succeeded = %d, want exactly 1 of %d concurrent attempts", succeeded, attempts)
+	}
+	if inProgress != attempts-1 {
+		t.Errorf("inProgress = %d, want %d", inProgress, attempts-1)
 	}
 }

@@ -130,9 +130,11 @@ re-up) is exempt from the cap, since that child is already counted.
 
 An in-flight admission survives however long its `plect up` process
 legitimately keeps running — it counts until that process is confirmed
-gone, not until some fixed time passes. If the process was killed instead
-of finishing, `plect destroy` on that child clears the admission
-immediately; a retried `plect up` on the same child also reclaims it.
+gone, not until some fixed time passes. A second `plect up` for that same
+child while the first is still running is itself rejected outright, not
+queued behind it; once the first process is confirmed gone (killed rather
+than finished), a retry on that child reclaims the admission, and `plect
+destroy` on it clears the admission immediately either way.
 
 Unset means no cap, the same behavior as today.
 
