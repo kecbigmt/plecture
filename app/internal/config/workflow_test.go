@@ -327,10 +327,9 @@ uses = "tmux"
 	}
 }
 
-// A workspace-directory .plect/workflows/ layer may only add [[nodes]] (see
-// TestLoadWorkflows_WorkspaceDirLayerNodesOnly), so these fixtures use a
-// trusted global-config layer (BaseDir) instead — the layer max_up_children
-// is actually meant to be declared in.
+// A workspace-dir .plect/workflows/ layer may only add [[nodes]] (see
+// TestLoadWorkflows_WorkspaceDirLayerNodesOnly), so these use BaseDir, the
+// trusted layer max_up_children is actually meant for.
 func TestLoadWorkflows_MaxUpChildrenRejectsZero(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "workflows", "capped.toml"), `

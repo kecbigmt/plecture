@@ -21,9 +21,6 @@ const capResolverFields = `match = '^https://example\.test/cases/(?P<id>[A-Za-z0
 name  = { expr = "'case_' + match.id" }
 `
 
-// capProviderCreatingWorkspace mirrors dispatch_test.go's
-// providerCreatingWorkspace, but built on capResolverFields instead of the
-// shared githubResolverFields.
 func capProviderCreatingWorkspace(id, workspaceDir string) string {
 	return capProviderRunning(id, fmt.Sprintf("mkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workspaceDir, workspaceDir))
 }
@@ -43,10 +40,6 @@ args    = ["-c", `+fmt.Sprintf("%q", script)+`, "provider"]
 `)
 }
 
-// Given a parent whose workflow declares max_up_children = 2 with 2 children
-// up, when `plect up` would add a third child, then the command fails
-// naming the parent, cap, and current count, and no session/state entry is
-// created.
 func TestUp_RejectsThirdChildAtCapAndCreatesNoStateEntry(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -77,8 +70,6 @@ func TestUp_RejectsThirdChildAtCapAndCreatesNoStateEntry(t *testing.T) {
 	}
 }
 
-// Given the same parent after one child is downed or destroyed, when
-// `plect up` adds a new child, then it succeeds.
 func TestUp_AllowsNewChildAfterSiblingDrops(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -91,8 +82,6 @@ func TestUp_AllowsNewChildAfterSiblingDrops(t *testing.T) {
 	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
 	seedSession(t, store, "childA", "acct", 0, "", upTasks())
 	setParent(t, store, "childA", "parent1")
-	// childB is down (destroyed would remove the entry outright; downed is
-	// the case with a state entry but no produced run-scoped task).
 	seedSession(t, store, "childB", "acct", 1, "", nil)
 	setParent(t, store, "childB", "parent1")
 
@@ -110,8 +99,6 @@ func TestUp_AllowsNewChildAfterSiblingDrops(t *testing.T) {
 	}
 }
 
-// Given a workflow with no cap declared, when any number of children are
-// brought up, then behavior is unchanged from today.
 func TestUp_NoCapDeclaredAllowsUnlimitedChildrenViaUp(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -133,8 +120,6 @@ func TestUp_NoCapDeclaredAllowsUnlimitedChildrenViaUp(t *testing.T) {
 	}
 }
 
-// Given an already-up child of a capped, full parent, when `plect up` is
-// re-run on that child, then it succeeds (idempotency preserved).
 func TestUp_ReRunOnAlreadyUpChildAtFullCapStaysIdempotent(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "child_wf",
@@ -169,9 +154,6 @@ func TestUp_ReleasesReservationAfterSuccessfulAdmission(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
-	// Only one of the two slots is genuinely up now. A second reservation
-	// must succeed — it would wrongly fail if the first Up's reservation
-	// were still outstanding on top of the real up child it produced.
 	reserved, capErr := reserveChildCapSlot(cfg, store, "second", "parent1", false)
 	if capErr != nil {
 		t.Fatalf("reserveChildCapSlot after a completed Up: %v, want nil", capErr)
@@ -217,8 +199,6 @@ func TestUp_LiveReservationBlocksSiblingThroughTheRealUpPath(t *testing.T) {
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
 	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
 
-	// childA's `plect up` is still mid-RunSetup: its reservation is
-	// genuinely outstanding, held by this (live) test process.
 	if _, err := store.ReserveUpSlot("childA", "parent1", approveAnyReservation); err != nil {
 		t.Fatalf("simulate an in-progress reservation: %v", err)
 	}

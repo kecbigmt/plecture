@@ -14,9 +14,8 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// writeCapWorkflow declares a workflow with no nodes, optionally carrying
-// `max_up_children`. reserveChildCapSlot only ever reads the parent's
-// workflow for this one field, so a parent fixture needs nothing else.
+// writeCapWorkflow declares a workflow with no nodes: reserveChildCapSlot
+// only ever reads the parent's workflow for max_up_children.
 func writeCapWorkflow(t *testing.T, baseDir, id string, maxUpChildren *int) {
 	t.Helper()
 	dir := filepath.Join(baseDir, "workflows")
@@ -32,8 +31,6 @@ func writeCapWorkflow(t *testing.T, baseDir, id string, maxUpChildren *int) {
 	}
 }
 
-// upTasks is a single produced run-scoped task, the fact sessionRunState
-// reads as "up".
 func upTasks() map[string]*contract.TaskState {
 	return map[string]*contract.TaskState{
 		"run_node": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
@@ -114,7 +111,6 @@ func TestReserveChildCapSlot_DownChildDoesNotCountTowardCap(t *testing.T) {
 	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
 	seedSession(t, store, "childUp", "acct", 0, "", upTasks())
 	setParent(t, store, "childUp", "parent1")
-	// A down child (no produced run-scoped task) must not count toward the cap.
 	seedSession(t, store, "childDown", "acct", 1, "", nil)
 	setParent(t, store, "childDown", "parent1")
 
@@ -138,9 +134,6 @@ func TestReserveChildCapSlot_AlreadyUpTargetIsExemptEvenAtFullCap(t *testing.T) 
 		setParent(t, store, name, "parent1")
 	}
 
-	// A re-up on an already-up child must stay idempotent, not be rejected by
-	// the cap it is itself already counted under — and must not reserve a
-	// slot, since it never releases one either.
 	reserved, err := reserveChildCapSlot(cfg, store, "child0", "parent1", true)
 	if err != nil {
 		t.Fatalf("reserveChildCapSlot: %v, want nil (already-up target is exempt)", err)
@@ -167,9 +160,6 @@ func TestReserveChildCapSlot_UnknownParentSkipsCheck(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
 
-	// The "root:<target>" pseudo-parent form (see resolveParentSession)
-	// stores a literal string with no corresponding session state; a cap
-	// declared on a workflow can only bind a session that actually exists.
 	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "root:external", false)
 	if err != nil {
 		t.Fatalf("reserveChildCapSlot: %v, want nil (parent has no state entry)", err)
@@ -243,9 +233,8 @@ func TestReserveChildCapSlot_ConcurrentReservationsRespectCap(t *testing.T) {
 	}
 }
 
-// approveAnyReservation is a store.ReserveUpSlot fn that always approves —
-// used to plant a reservation directly, simulating one an earlier `plect
-// up` process made and then never released (a SIGKILL, a crashed machine).
+// approveAnyReservation plants a reservation via store.ReserveUpSlot,
+// simulating one a crashed `plect up` left behind.
 func approveAnyReservation(map[string]*domain.Session, map[string]state.UpReservation) bool {
 	return true
 }
@@ -282,8 +271,6 @@ func TestReserveChildCapSlot_DestroyingTheStuckChildFreesItsReservation(t *testi
 		t.Fatalf("simulate a crashed prior reservation: %v", err)
 	}
 
-	// While the reservation stands, a different new child is genuinely
-	// blocked — the cap really is full from this decision's point of view.
 	if reserved, err := reserveChildCapSlot(cfg, store, "childB", "parent1", false); reserved || err == nil {
 		t.Fatalf("childB before destroying childA: reserved=%v err=%v, want rejected", reserved, err)
 	}
@@ -298,9 +285,6 @@ func TestReserveChildCapSlot_DestroyingTheStuckChildFreesItsReservation(t *testi
 	}
 }
 
-// lifecycle_up.go passes targetAlreadyUp=false for a force-recreate, even
-// on an already-up child; that reservation attempt must not be blocked by
-// the child's own current up state.
 func TestReserveChildCapSlot_ForceRecreateOfAnUpChildDoesNotBlockItself(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
@@ -326,8 +310,8 @@ func TestReserveChildCapSlot_ForceRecreateReservationStillBlocksASibling(t *test
 	if reserved, err := reserveChildCapSlot(cfg, store, "childA", "parent1", false); err != nil || !reserved {
 		t.Fatalf("reserve childA (force-recreate): reserved=%v err=%v", reserved, err)
 	}
-	// The real teardown clears run-scoped tasks; simulate that so only the
-	// reservation, not childA's real state, is left protecting the cap.
+	// Simulate teardown clearing run-scoped tasks: only the reservation
+	// should still protect the cap.
 	if err := store.Update("childA", func(s *domain.Session) error {
 		s.Tasks = nil
 		return nil

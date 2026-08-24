@@ -133,10 +133,9 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 // process — a second concurrent `plect up` for that child, not a sibling.
 var ErrUpAlreadyReserved = errors.New("state: up already reserved by a live process")
 
-// ReserveUpSlot evaluates fn against one locked snapshot — read and write
-// together, unlike Update's single session — and records childName's
-// reservation if fn approves. A still-live reservation for childName
-// itself is never overwritten (ErrUpAlreadyReserved).
+// ReserveUpSlot locks the whole snapshot, unlike Update's single session,
+// so fn can weigh every session and reservation together; it never
+// overwrites a still-live reservation for childName itself (ErrUpAlreadyReserved).
 func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map[string]*domain.Session, reservations map[string]UpReservation) (approved bool)) (bool, error) {
 	approved := false
 	err := s.withFileLock(func() error {
@@ -165,7 +164,6 @@ func (s *Store) ReserveUpSlot(childName, parentName string, fn func(sessions map
 	return approved, err
 }
 
-// ReleaseUpSlot drops childName's reservation, if any.
 func (s *Store) ReleaseUpSlot(childName string) error {
 	return s.withFileLock(func() error {
 		sf, err := s.loadLocked()

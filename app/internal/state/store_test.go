@@ -295,10 +295,8 @@ func TestStore_ConcurrentPutAcrossProcesses(t *testing.T) {
 	}
 }
 
-// Each attempt uses its own Store instance, like TestStore_ConcurrentPut, so
-// this exercises the real cross-process file lock rather than only the
-// in-process mutex. Each attempt reserves a distinctly-named child, since
-// reservations are keyed by child, not by an anonymous per-parent count.
+// Each attempt uses its own Store instance, like TestStore_ConcurrentPut,
+// exercising the real cross-process file lock, not just the in-process mutex.
 func TestStore_ReserveUpSlotSerializesConcurrentReservations(t *testing.T) {
 	dir := t.TempDir()
 	const limit = 3
@@ -374,10 +372,6 @@ func TestStore_ReleaseUpSlotOnUnreservedChildIsANoop(t *testing.T) {
 	}
 }
 
-// A `plect up` process killed between ReserveUpSlot and its deferred
-// ReleaseUpSlot leaves a reservation nobody will ever release. Detected by
-// the holder process being confirmed gone — never by elapsed time (see
-// TestStore_ReserveUpSlotNeverExpiresALiveReservationRegardlessOfAge).
 func TestStore_ReserveUpSlotExcludesReservationsFromDeadProcesses(t *testing.T) {
 	store := NewStore(t.TempDir())
 	plantReservation(t, store, "crashed-child", UpReservation{Parent: "parent1", At: time.Now(), PID: deadPID(t)})
@@ -395,12 +389,8 @@ func TestStore_ReserveUpSlotExcludesReservationsFromDeadProcesses(t *testing.T) 
 	}
 }
 
-// A `plect up` whose RunSetup runs long (an agent session, a slow
-// workspace provider) is not the same as a crashed one: its reservation
-// must survive as long as its process does, however long that takes. No
-// wall-clock TTL should ever expire a confirmed-live reservation — only
-// processAlive decides — which this proves with a duration so far past any
-// plausible RunSetup that a fixed-TTL design would already have failed it.
+// A duration so far past any plausible RunSetup that a fixed-TTL design
+// would already have failed it.
 func TestStore_ReserveUpSlotNeverExpiresALiveReservationRegardlessOfAge(t *testing.T) {
 	store := NewStore(t.TempDir())
 	plantReservation(t, store, "long-running-child", UpReservation{
@@ -433,9 +423,6 @@ func deadPID(t *testing.T) int {
 	return cmd.Process.Pid
 }
 
-// A retried `plect up` for the same child (after a crash, or simply a
-// re-run) must reclaim its own reservation immediately rather than waiting
-// out the TTL or being blocked by its own leftover entry.
 func TestStore_ReserveUpSlotSupersedesItsOwnPriorReservation(t *testing.T) {
 	store := NewStore(t.TempDir())
 	plantReservation(t, store, "childA", UpReservation{Parent: "parent1", At: time.Now()})
@@ -456,8 +443,6 @@ func TestStore_ReserveUpSlotSupersedesItsOwnPriorReservation(t *testing.T) {
 	}
 }
 
-// Destroying a child is the operator-driven recovery path for a stuck
-// reservation: it should not have to wait for upReservationTTL to elapse.
 func TestStore_DeleteClearsTheSessionsUpReservation(t *testing.T) {
 	store := NewStore(t.TempDir())
 	now := time.Now()
@@ -478,10 +463,8 @@ func TestStore_DeleteClearsTheSessionsUpReservation(t *testing.T) {
 	}
 }
 
-// plantReservation writes res directly into state.json, simulating a
-// reservation ReserveUpSlot made in the past (a crashed process's, or one
-// old enough to test TTL expiry against) without going through the timing
-// ReserveUpSlot itself would stamp.
+// plantReservation writes res directly, bypassing ReserveUpSlot's own
+// PID/timestamp stamping — for planting a specific PID or backdated time.
 func plantReservation(t *testing.T, store *Store, child string, res UpReservation) {
 	t.Helper()
 	if err := store.withFileLock(func() error {
