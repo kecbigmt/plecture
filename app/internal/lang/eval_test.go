@@ -156,13 +156,8 @@ func TestEvalStringifiesNativeScalarTypes(t *testing.T) {
 	}
 }
 
-// TestEvalSubstringPastStringLengthErrorsUnlessClamped is a regression test:
-// the strings extension's substring(start, end) errors once end exceeds the
-// operand's length, unlike a shell truncation idiom such as `cut -c 1-N`,
-// which silently returns whatever is there. A config author porting that
-// shell idiom to CEL (composing a shortened identifier from a value that can
-// legitimately be shorter than the truncation length) needs the end bound
-// clamped with size() first.
+// Unlike the `cut -c 1-N` shell idiom, CEL's substring(start, end) errors
+// once end exceeds the operand's length rather than silently clamping.
 func TestEvalSubstringPastStringLengthErrorsUnlessClamped(t *testing.T) {
 	unclamped := &Value{Form: FormExpr, Expr: "inputs.v.substring(0, 12)"}
 	clamped := &Value{Form: FormExpr, Expr: "inputs.v.substring(0, inputs.v.size() < 12 ? inputs.v.size() : 12)"}

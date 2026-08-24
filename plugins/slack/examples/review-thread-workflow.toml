@@ -29,10 +29,8 @@ uses = "official.slack.slack_thread"
 [pr_review_with_slack.nodes.inputs]
 base_url   = { from = "session.inputs.slack_base_url" }
 channel_id = { from = "session.inputs.slack_channel_id" }
-# CEL's substring(start, end) errors past the string's own length, so the
-# end bound is clamped to head_sha's length for a valid sha shorter than 12
-# characters — cut -c in the effect this replaced silently clamped the same
-# way.
+# The end bound is clamped with size(): unlike `cut -c 1-12`, CEL's
+# substring(start, end) errors once end exceeds the operand's own length.
 root_text  = { expr = "'[AI review] ' + session.inputs.pr_title + ' — ' + session.inputs.pr_url + '\\nsession ' + session.name + ' · head ' + session.inputs.head_sha.substring(0, session.inputs.head_sha.size() < 12 ? session.inputs.head_sha.size() : 12)" }
 
 [[pr_review_with_slack.nodes]]
