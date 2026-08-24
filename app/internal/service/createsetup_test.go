@@ -366,6 +366,80 @@ args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
 	}
 }
 
+// A Destroy whose own session-resource unsubscribe hook fails must still
+// succeed and delete the state entry, with the failure durably queued under
+// the now-deleted session's own name. Nothing of that session's own can
+// ever run again to retry it — resolveSession refuses its identifier once
+// its state entry is gone — so this exercises Destroy's actual failure path
+// end to end (not a synthetic queue injection) and proves a wholly
+// unrelated session's own later, ordinary TaskSetup activity is what
+// eventually drains it.
+func TestDestroy_UnsubscribeFailureIsDurablyQueuedAndDrainsViaAnotherSession(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	toggle := filepath.Join(t.TempDir(), "toggle")
+	rec := filepath.Join(t.TempDir(), "rec")
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{
+			{id: "probe", scope: "session", setup: `echo '{}'`},
+			{id: "work", scope: "session", setup: `echo '{}'`},
+		},
+		[]nodeFixture{{id: "probe"}})
+	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
+echo '{"workspace_dir":"%s"}'
+`, workdir, workdir)) + `
+[wf.subscribe]
+type    = "exec"
+command = "true"
+
+[wf.unsubscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + toggle + `", "` + rec + `"]
+`
+	writeSetupWorkflow(t, cfg, "wf", extra)
+
+	// toggle is absent, so this session's own Destroy-time unsubscribe hook
+	// fails.
+	url := "https://github.com/org/repo/issues/13"
+	deadSession := "org/repo-13+wf"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: deadSession}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if store.Get(deadSession) != nil {
+		t.Fatal("state entry should be deleted despite the unsubscribe failure")
+	}
+	f, loadErr := loadPendingDelivery(pendingDeliveryPath(store))
+	if loadErr != nil || len(f.Unsubscribe[deadSession]) != 1 || f.Unsubscribe[deadSession][0] != url {
+		t.Fatalf("pending unsubscribe queue after Destroy = %v (err=%v), want [%s] for %s", f.Unsubscribe, loadErr, url, deadSession)
+	}
+
+	// Flip the toggle so the hook would now succeed. deadSession has no state
+	// entry left to receive a call of its own, so only a completely
+	// unrelated session's ordinary activity can still drain it.
+	if err := os.WriteFile(toggle, []byte("go"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/14"}); err != nil {
+		t.Fatalf("Create (unrelated session): %v", err)
+	}
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "org/repo-14+wf"}); err != nil {
+		t.Fatalf("TaskSetup (unrelated session): %v", err)
+	}
+
+	if _, err := os.Stat(rec); err != nil {
+		t.Errorf("deadSession's orphaned unsubscribe hook did not run via the unrelated session's activity: %v", err)
+	}
+	f, loadErr = loadPendingDelivery(pendingDeliveryPath(store))
+	if loadErr != nil || len(f.Unsubscribe[deadSession]) != 0 {
+		t.Errorf("pending unsubscribe queue for %s = %v (err=%v), want drained", deadSession, f.Unsubscribe, loadErr)
+	}
+}
+
 func TestDestroy_RunsWorkflowCleanup(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
