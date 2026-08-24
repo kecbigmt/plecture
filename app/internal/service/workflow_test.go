@@ -337,9 +337,8 @@ func TestWorkflowShow_UnknownIDReturnsInvalidInput(t *testing.T) {
 
 // setupDriftedInputFixture writes a task whose inputs_schema no longer
 // declares `tmux_session` (additionalProperties = false), and a workflow
-// whose node still wires it — the incident #301 exists to catch: a
-// task/workflow drift that previously surfaced only once `plect up`
-// dispatched to that node.
+// whose node still wires it: a task/workflow drift that previously
+// surfaced only once `plect up` dispatched to that node.
 func setupDriftedInputFixture(t *testing.T, nodeInputs string) (*config.Config, string) {
 	t.Helper()
 	tmpHome := t.TempDir()
