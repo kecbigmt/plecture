@@ -156,6 +156,47 @@ func TestEvalStringifiesNativeScalarTypes(t *testing.T) {
 	}
 }
 
+// TestEvalSubstringPastStringLengthErrorsUnlessClamped is a regression test:
+// the strings extension's substring(start, end) errors once end exceeds the
+// operand's length, unlike a shell truncation idiom such as `cut -c 1-N`,
+// which silently returns whatever is there. A config author porting that
+// shell idiom to CEL (composing a shortened identifier from a value that can
+// legitimately be shorter than the truncation length) needs the end bound
+// clamped with size() first.
+func TestEvalSubstringPastStringLengthErrorsUnlessClamped(t *testing.T) {
+	unclamped := &Value{Form: FormExpr, Expr: "inputs.v.substring(0, 12)"}
+	clamped := &Value{Form: FormExpr, Expr: "inputs.v.substring(0, inputs.v.size() < 12 ? inputs.v.size() : 12)"}
+
+	for _, tc := range []struct {
+		name string
+		v    string
+		want string
+	}{
+		{"shorter than the bound", "abc123", "abc123"},
+		{"exactly at the bound", "abcdef123456", "abcdef123456"},
+		{"longer than the bound", "abcdef1234567890", "abcdef123456"},
+		{"empty", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			eval := observerEval(Roots{"inputs": map[string]any{"v": tc.v}})
+
+			if len(tc.v) < 12 {
+				if _, _, err := eval.Argument(unclamped); err == nil {
+					t.Fatalf("unclamped substring(0, 12) on %q did not error", tc.v)
+				}
+			}
+
+			got, absent, err := eval.Argument(clamped)
+			if err != nil || absent {
+				t.Fatalf("clamped substring: absent=%v err=%v", absent, err)
+			}
+			if got != tc.want {
+				t.Errorf("clamped substring = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestEvalArgumentRejectsAComposite(t *testing.T) {
 	_, _, err := observerEval(Roots{"inputs": map[string]any{"v": []any{"a", "b"}}}).
 		Argument(&Value{Form: FormFrom, From: "inputs.v"})
