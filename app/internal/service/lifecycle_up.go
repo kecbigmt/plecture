@@ -79,6 +79,23 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
+		// Checked before Create runs (not after): a brand new child must be
+		// rejected without leaving a state entry behind, and Create is what
+		// would persist one.
+		targetAlreadyUp := existing != nil && sessionRunState(existing) == domain.RunUp
+		parentSessionName := ""
+		if existing != nil {
+			parentSessionName = existing.ParentSession
+		} else {
+			resolved, parentErr := resolveParentSession(store, sessionName, params.ParentSession)
+			if parentErr != nil {
+				return nil, parentErr
+			}
+			parentSessionName = resolved
+		}
+		if capErr := checkChildCap(cfg, store, parentSessionName, targetAlreadyUp); capErr != nil {
+			return nil, capErr
+		}
 		if existing == nil || hasIncompleteSessionTask(cfg, existing) {
 			if _, err := Create(cfg, store, CreateParams{
 				URL:           params.Identifier,
@@ -110,6 +127,14 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	// via Create — this catches `plect up <bare-existing-session>`, which skips it.
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
+	}
+	// Same reasoning as the matched branch's own pre-Create check above, for
+	// the down-to-up transition of an already-created bare-name session
+	// (matched already checked its own path before Create ran).
+	if !matched {
+		if capErr := checkChildCap(cfg, store, session.ParentSession, sessionRunState(session) == domain.RunUp); capErr != nil {
+			return nil, capErr
+		}
 	}
 	if params.ForceRecreate && !matched {
 		forceRecreateExisting = true

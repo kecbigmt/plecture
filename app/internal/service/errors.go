@@ -13,6 +13,7 @@ const (
 	ErrNotCapturable      = "not_capturable"
 	ErrHasChildren        = "has_children"
 	ErrRelationNotAllowed = "relation_not_allowed"
+	ErrChildCapExceeded   = "child_cap_exceeded"
 )
 
 // Error is a structured error with a machine-readable code.

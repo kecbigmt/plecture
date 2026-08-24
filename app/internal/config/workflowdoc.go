@@ -80,6 +80,14 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 		}
 		w.AutoSelect = &value
 	}
+	if raw, ok := def.Body["max_up_children"]; ok {
+		count, ok := raw.(int64)
+		if !ok {
+			return w, fmt.Errorf("`max_up_children` is an integer")
+		}
+		value := int(count)
+		w.MaxUpChildren = &value
+	}
 	if raw, ok := def.Body["inputs_schema"]; ok {
 		schema, ok := raw.(map[string]any)
 		if !ok {

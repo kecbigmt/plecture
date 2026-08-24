@@ -738,6 +738,11 @@
         "auto_select": {
           "type": "boolean"
         },
+        "max_up_children": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Caps how many sessions parented on a session this workflow produces may hold run state \"up\" (any run-scoped task produced) at once. `plect up` rejects a child that would exceed this rather than queueing it. Unset means no cap."
+        },
         "inputs_schema": {
           "$ref": "#/$defs/schemaDocument"
         },

@@ -52,8 +52,14 @@ type WorkflowFile struct {
 	// — so their freshness follows whatever cadence updates those outputs.
 	Display    map[string]*lang.Value
 	AutoSelect *bool
-	Nodes      []WorkflowNode
-	Event      WorkflowEvent
+	// MaxUpChildren caps how many sessions parented on a session produced by
+	// this workflow may hold run state "up" at once — a child with any
+	// run-scoped task produced. `plect up` rejects a child that would push
+	// the parent past this cap rather than queueing it; nil means no cap
+	// (today's unlimited behavior).
+	MaxUpChildren *int
+	Nodes         []WorkflowNode
+	Event         WorkflowEvent
 	// Tick declares the machine-driven conditions that tick the sessions this
 	// workflow produces. Unlike the other WorkflowFile fields, a deeper
 	// cascade layer's `[tick]` replaces a shallower layer's wholesale — the
