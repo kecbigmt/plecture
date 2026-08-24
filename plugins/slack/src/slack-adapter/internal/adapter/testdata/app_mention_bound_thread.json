@@ -1,0 +1,28 @@
+{
+  "token": "verification-token",
+  "team_id": "T-review",
+  "api_app_id": "A-review",
+  "event": {
+    "type": "app_mention",
+    "user": "U-dana",
+    "text": "<@U-bot> please act on this",
+    "ts": "1000.000005",
+    "thread_ts": "1000.000001",
+    "channel": "C-review",
+    "event_ts": "1000.000005"
+  },
+  "type": "event_callback",
+  "event_id": "Ev-review-thread-mention",
+  "event_time": 1000,
+  "authorizations": [
+    {
+      "enterprise_id": null,
+      "team_id": "T-review",
+      "user_id": "U-bot",
+      "is_bot": true,
+      "is_enterprise_install": false
+    }
+  ],
+  "is_ext_shared_channel": false,
+  "event_context": "EC-review-thread-mention"
+}

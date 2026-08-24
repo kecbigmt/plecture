@@ -108,6 +108,38 @@ func TestBroker_SubscribeReplacesExisting(t *testing.T) {
 	}
 }
 
+func TestBroker_SubscribePreservesDeliveryWatermarkWhenReplacing(t *testing.T) {
+	b := NewBroker("", nil)
+	b.Subscribe(Subscriber{ThreadTS: "t", ChannelID: "C1", SocketPath: "/old", DeliveredThrough: "1000.000005"})
+	b.Subscribe(Subscriber{ThreadTS: "t", ChannelID: "C2", SocketPath: "/new"})
+
+	got, _ := b.Find("t")
+	if got.DeliveredThrough != "1000.000005" {
+		t.Fatalf("DeliveredThrough = %q, want preserved watermark", got.DeliveredThrough)
+	}
+}
+
+func TestBroker_MarkDeliveredAdvancesWatermark(t *testing.T) {
+	b := NewBroker("", nil)
+	b.Subscribe(Subscriber{ThreadTS: "t", DeliveredThrough: "1000.000005"})
+
+	got, ok := b.MarkDelivered("t", "1000.000008")
+	if !ok {
+		t.Fatalf("MarkDelivered should find the subscriber")
+	}
+	if got.DeliveredThrough != "1000.000008" {
+		t.Fatalf("DeliveredThrough = %q, want advanced watermark", got.DeliveredThrough)
+	}
+
+	got, ok = b.MarkDelivered("t", "1000.000006")
+	if !ok {
+		t.Fatalf("MarkDelivered should find the subscriber")
+	}
+	if got.DeliveredThrough != "1000.000008" {
+		t.Fatalf("DeliveredThrough = %q, want unchanged watermark", got.DeliveredThrough)
+	}
+}
+
 func TestBroker_List(t *testing.T) {
 	b := NewBroker("", nil)
 	if got := b.List(); len(got) != 0 {

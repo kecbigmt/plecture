@@ -8,6 +8,22 @@ import (
 	protocol "github.com/kecbigmt/plecture/contracts/channel-protocol"
 )
 
+type publishedEvent struct {
+	SessionName string
+	Type        string
+	Source      string
+	Direction   string
+	Summary     string
+	Body        string
+	Meta        map[string]string
+}
+
+type eventPublisher interface {
+	PublishSessionEvent(sessionName string, ev publishedEvent) error
+}
+
+type cliEventPublisher struct{}
+
 // Conversation capture: slack-adapter mirrors the Slack↔Claude traffic that
 // flows through it into plect's per-session event log, so a session's timeline
 // shows the actual back-and-forth, not just GitHub/lifecycle events.
@@ -50,18 +66,35 @@ func captureArgs(sessionName, eventType, source, direction, summary, body string
 	return args
 }
 
-// publishEvent records one conversation event, best-effort.
-func (a *Adapter) publishEvent(sessionName, eventType, source, direction, summary, body string, meta map[string]string) {
-	if sessionName == "" {
-		return // no session context to key the log on
-	}
-	cmd := exec.Command("plect", captureArgs(sessionName, eventType, source, direction, summary, body, meta)...)
+func (cliEventPublisher) PublishSessionEvent(sessionName string, ev publishedEvent) error {
+	cmd := exec.Command("plect", captureArgs(sessionName, ev.Type, ev.Source, ev.Direction, ev.Summary, ev.Body, ev.Meta)...)
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	return cmd.Run()
+}
+
+// publishEvent records one event in plect's session event log.
+func (a *Adapter) publishEvent(sessionName, eventType, source, direction, summary, body string, meta map[string]string) error {
+	if sessionName == "" {
+		return nil // no session context to key the log on
+	}
+	publisher := a.eventPublisher
+	if publisher == nil {
+		publisher = cliEventPublisher{}
+	}
+	if err := publisher.PublishSessionEvent(sessionName, publishedEvent{
+		Type:      eventType,
+		Source:    source,
+		Direction: direction,
+		Summary:   summary,
+		Body:      body,
+		Meta:      meta,
+	}); err != nil {
 		a.logger.Warn("plect event capture failed",
 			"component", "slack-adapter", "event", "capture_failed",
 			"session_name", sessionName, "type", eventType, "error", err)
+		return err
 	}
+	return nil
 }
 
 // captureInbound records a Slack message delivered to a session.
