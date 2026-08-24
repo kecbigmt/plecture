@@ -55,11 +55,16 @@ It records the session conversation with `source=Slack`, the adapter
 permalink, and metadata keys `thread_ts`, `channel_id`, `pr_url`, and
 `review_session`.
 
-The final review conclusion is an event with type `plect.review.conclusion`.
-The Slack channel should be bound with `include = ["plect.review.conclusion"]`;
-the posted text is the event body, falling back to the summary. Progress,
-heartbeats, terminal events, and GitHub watcher events do not match that
-binding.
+The final review conclusion is the `plect.judge.recorded` event that plect
+appends when a reviewer records a done_when judge verdict. Its body is the
+recorded judge reason, so the Slack reply text is exactly the conclusion the
+reviewer recorded. Metadata carries `instance`, `leaf_id`, `action`,
+`revision`, `reviewer_session`, `reviewer_workflow`, and `relation`.
+
+Bind the Slack channel with `include = ["plect.judge.recorded"]`; the posted
+text is the event body, falling back to the summary only for legacy events
+without a body. Progress, heartbeats, terminal events, and GitHub watcher
+events do not match that binding.
 
 See `examples/review-thread-workflow.toml` for a user-owned composition that
 wires `slack_thread` outputs into the `slack` channel.

@@ -105,6 +105,24 @@ func TestRecordJudge_AppendsJudgeRecordedEvent(t *testing.T) {
 	if len(onTarget) != 1 {
 		t.Fatalf("target session events = %+v, want exactly one plect.judge.recorded", onTarget)
 	}
+	got := onTarget[0]
+	if got.Body != "AC verified in test" {
+		t.Fatalf("event body = %q, want recorded judge reason", got.Body)
+	}
+	wantMeta := map[string]string{
+		"instance":          "initial",
+		"leaf_id":           "ac-met",
+		"action":            "approve",
+		"revision":          "sha1",
+		"reviewer_session":  reviewer,
+		"reviewer_workflow": "",
+		"relation":          string(domain.RelationUnrelated),
+	}
+	for key, want := range wantMeta {
+		if got.Metadata[key] != want {
+			t.Fatalf("event metadata[%q] = %q, want %q; event = %+v", key, got.Metadata[key], want, got)
+		}
+	}
 	onReviewer, _, _, err := log.List(reviewer, 0, event.Filter{Types: []string{event.TypeJudgeRecorded}})
 	if err != nil {
 		t.Fatalf("list reviewer events: %v", err)

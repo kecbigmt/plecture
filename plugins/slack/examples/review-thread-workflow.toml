@@ -33,7 +33,7 @@ uses = "official.codex.codex"
 [[pr_review_with_slack.event.channel]]
 name    = "review_conclusion"
 uses    = "official.slack.slack"
-include = ["plect.review.conclusion"]
+include = ["plect.judge.recorded"]
 
 [pr_review_with_slack.event.channel.inputs]
 base_url   = { from = "session.inputs.slack_base_url" }

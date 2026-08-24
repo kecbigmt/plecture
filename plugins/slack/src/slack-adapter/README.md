@@ -68,7 +68,8 @@ Posts a message to a Slack channel, creating a thread. Returns `thread_ts`,
 ### POST /messages
 
 Posts a message to an existing thread. The shipped `slack` channel uses this
-endpoint for `plect.review.conclusion` delivery.
+endpoint for `plect.judge.recorded` delivery, posting the recorded judge
+reason as the reply text.
 
 ```json
 // Request
