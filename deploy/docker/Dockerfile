@@ -9,44 +9,45 @@
 # base image digest — bookworm is a frozen stable release, so its packages
 # move only via security updates.
 
+# ---- source --------------------------------------------------------
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS source
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+  ca-certificates=20250419~deb12u1 \
+  git=1:2.39.5-0+deb12u3 \
+  && rm -rf /var/lib/apt/lists/*
+
+# Fetched by this exact commit from PLECT_SOURCE_REPO, not read from the
+# local build context: a plain COPY would package whatever a local working
+# tree happens to hold, so a wrong-but-well-formed PLECT_SOURCE_SHA (an
+# older commit, a typo) could stamp source it never actually verified. A
+# `git fetch` of one commit SHA either resolves to exactly that commit's
+# tree or fails outright — there is no third outcome to assert against.
+ARG PLECT_SOURCE_REPO=https://github.com/kecbigmt/plecture.git
+ARG PLECT_SOURCE_SHA
+RUN test -n "${PLECT_SOURCE_SHA}" && echo "${PLECT_SOURCE_SHA}" | grep -Eq '^[0-9a-f]{40}$' \
+  || { echo "PLECT_SOURCE_SHA must be set to a 40-character commit SHA" >&2; exit 1; }
+RUN git init -q /src \
+  && git -C /src remote add origin "${PLECT_SOURCE_REPO}" \
+  && git -C /src fetch --depth 1 origin "${PLECT_SOURCE_SHA}" \
+  && git -C /src checkout -q --detach FETCH_HEAD \
+  && test "$(git -C /src rev-parse HEAD)" = "${PLECT_SOURCE_SHA}"
+
 # ---- builder ---------------------------------------------------------
 FROM golang:1.25.6-bookworm@sha256:f4490d7b261d73af4543c46ac6597d7d101b6e1755bcdd8c5159fda7046b6b3e AS builder
 
-# Required, no default: the build context itself (a plain directory tree,
-# not a git fetch) carries no commit identity, so the pin has to be
-# supplied and is checked against the format a real commit SHA has —
-# `docker build --build-arg PLECT_SOURCE_SHA="$(git rev-parse HEAD)" ...`
-# (see README's Build section). Stamped into the runtime image below so
-# it's independently inspectable rather than living only in build history.
-ARG PLECT_SOURCE_SHA
-RUN test -n "${PLECT_SOURCE_SHA}" && echo "${PLECT_SOURCE_SHA}" | grep -Eq '^[0-9a-f]{40}$' \
-  || { echo "PLECT_SOURCE_SHA must be set to the 40-character commit SHA the build context was checked out at" >&2; exit 1; }
-
-WORKDIR /src
-COPY go.work go.work.sum ./
-COPY app/ app/
-COPY contracts/ contracts/
-COPY plugins/ plugins/
-
+COPY --from=source /src /opt/plect-repo
 RUN mkdir -p /out/bin \
-  && go -C app build -o /out/bin/plect ./cmd/plect
+  && go -C /opt/plect-repo/app build -o /out/bin/plect ./cmd/plect
 
-# /opt/plect-repo is this image's path catalog source: app/ and
-# contracts/ ride along as siblings of plugins/ because some in-repo
-# plugin executables' go.mod `replace`s a contracts/ module by a path
-# relative to the repository root — the same full layout a
-# `git+https://...--subdir plugins` catalog would have fetched, just
-# copied rather than cloned since the build context already has it at
-# PLECT_SOURCE_SHA.
-RUN mkdir -p /opt/plect-repo \
-  && cp -a go.work go.work.sum app contracts plugins /opt/plect-repo/
-
-# `plect init` registers that catalog as a `path://` source (which mounts
-# the directory directly, so nothing at runtime needs network access to
-# resolve it), enables the example plugin set, and builds their
-# executables in the same step. The allowlist pattern is a placeholder — a
-# downstream deployment's config.toml overlay replaces it (README's
-# Extending section).
+# `plect init` registers /opt/plect-repo (app/ and contracts/ ride along as
+# plugins/'s siblings because some in-repo plugin executables' go.mod
+# `replace`s a contracts/ module by a repo-root-relative path) as a
+# `path://` catalog — which mounts the directory directly, so nothing at
+# runtime needs network access to resolve it — enables the example plugin
+# set, and builds their executables in the same step. The allowlist
+# pattern is a placeholder: a downstream deployment's config.toml overlay
+# replaces it (README's Extending section).
 ENV HOME=/root
 RUN /out/bin/plect init --yes \
   --config-home /etc/plect \
@@ -57,7 +58,7 @@ RUN /out/bin/plect init --yes \
   --allowlist '^https://github\.com/your-org/' \
   --workspace-dirs-root /var/lib/plect/workspace_dirs
 
-COPY deploy/docker/example-config/workflows/ /etc/plect/workflows/
+COPY --from=source /src/deploy/docker/example-config/workflows/ /etc/plect/workflows/
 
 # Fails the build loud if the example config doesn't actually load and
 # resolve — this is the one place a broken example ships silently
@@ -135,9 +136,9 @@ COPY --from=builder /etc/plect /etc/plect
 # to read them.
 RUN chmod -R a+rX /etc/plect
 
-COPY deploy/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY deploy/docker/healthcheck.sh /usr/local/bin/plect-healthcheck
-COPY deploy/docker/service/ /etc/service/
+COPY --from=source /src/deploy/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --from=source /src/deploy/docker/healthcheck.sh /usr/local/bin/plect-healthcheck
+COPY --from=source /src/deploy/docker/service/ /etc/service/
 RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/plect-healthcheck /etc/service/plect-serve/run
 
 # The runtime layout contract documented in README.md's Persistence

@@ -1,6 +1,7 @@
-# deploy/docker/Dockerfile only ever COPYs go.work, go.work.sum, app/,
-# contracts/, plugins/, and deploy/docker/ itself — everything else here
-# just keeps unrelated local state out of the build context.
+# deploy/docker/Dockerfile fetches the source it packages from
+# PLECT_SOURCE_REPO at PLECT_SOURCE_SHA rather than the local build
+# context (see the Dockerfile's own "source" stage) — the build context
+# itself is effectively unused. This file just keeps it small regardless.
 .git
 .claude
 .agents

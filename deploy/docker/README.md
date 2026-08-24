@@ -31,32 +31,38 @@ out of scope here (see "Extending this image" below).
 
 ## Build
 
-Pin by checking out the exact commit and passing it as a build arg — the
-Dockerfile refuses to build without `PLECT_SOURCE_SHA` (a well-formed
-40-character commit SHA), since a plain directory build context otherwise
-carries no commit identity of its own:
+Pass the exact commit as a build arg — the Dockerfile requires
+`PLECT_SOURCE_SHA` (a well-formed 40-character commit SHA) and fetches the
+source it packages (`app/`, `contracts/`, `plugins/`, and this directory's
+own scripts/example config) directly from `PLECT_SOURCE_REPO` at that
+commit, rather than reading the local build context — so a locally-edited
+or stale working tree can never produce an image that stamps a SHA it
+didn't actually build from:
 
 ```bash
-git checkout <commit-sha>
 docker build -f deploy/docker/Dockerfile \
   --build-arg PLECT_SOURCE_SHA="$(git rev-parse HEAD)" \
   -t plecture-base:<tag> .
 ```
 
+(`PLECT_SOURCE_REPO` defaults to this repository's own GitHub URL; a
+build from a fork or a private mirror overrides it as a second
+`--build-arg`.)
+
 That SHA is stamped into the built image (the `org.opencontainers.image.revision`
 label, and a plain `/etc/plecture-source-revision` file readable from inside
 the running container) — a way to confirm, after the fact, exactly which
-commit a given image or running container claims to be built from:
+commit a given image or running container was built from:
 
 ```bash
 docker inspect --format='{{index .Config.Labels "org.opencontainers.image.revision"}}' <image>
 docker exec <container> cat /etc/plecture-source-revision
 ```
 
-The build is otherwise self-contained (a Go toolchain and network access to
-fetch Go modules, the `gh`/Node.js release tarballs, and the two npm
-packages — no access to this repository's own remote needed, since the
-build context is already the checked-out commit).
+The build otherwise needs only network access (to fetch that source, Go
+modules, the `gh`/Node.js release tarballs, and the two npm packages) — no
+local checkout of this repository is required at all, only the Dockerfile
+itself.
 
 ## Process model
 
@@ -239,10 +245,13 @@ Observed:
   restart.
 - Building without `PLECT_SOURCE_SHA`, or with a value that isn't a
   40-character hex SHA, fails the build at that check, before anything
-  else runs. Building with the real `git rev-parse HEAD` value: the
-  `org.opencontainers.image.revision` label and
-  `/etc/plecture-source-revision` inside the running container both match
-  it exactly.
+  else runs; a well-formed but nonexistent SHA fails at the `git fetch`
+  step instead (`upload-pack: not our ref`). Building with a real, pushed
+  commit SHA — deliberately one behind the current, uncommitted working
+  tree, to prove the source stage isn't reading local disk — produced an
+  image whose `org.opencontainers.image.revision` label,
+  `/etc/plecture-source-revision`, and packaged `entrypoint.sh` content
+  all matched that older commit exactly, not the newer local edits.
 - `entrypoint.sh`'s path guard: a normal boot (no env override) is
   unaffected; `-e HOME=/etc`, `-e HOME=/var/lib/plect/../../etc` (a `..`
   traversal that resolves outside `/var/lib/plect` despite the literal
