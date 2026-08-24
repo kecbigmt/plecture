@@ -15,6 +15,7 @@ decide whether the work is finished — that is a [task document](tasks.md).
 | `inputs_schema`, `outputs_schema` | The effect's contracts. |
 | `[health]` | The `alive` and `activity` probes. |
 | `[terminal]` | The interactive endpoint, if this effect owns one. |
+| `[setup.process]` | The effect's long-lived process, if it starts one. |
 | `inner`, `[inner.inputs]`, `[inner.env]`, `[outputs.bind]`, `locals_schema` | The nesting joint. |
 
 That is the whole grammar. A completion predicate, the keys it reads, its
@@ -202,6 +203,86 @@ kind = "workflow"
 uses = "pane"
 ```
 
+## Process
+
+`[<id>.setup.process]` declares the effect's one long-lived process — an
+agent's event loop, for instance — and submits it into the plan's declared
+`[terminal]` endpoint. An effect that starts no long-lived process omits it.
+
+It is a sub-step of `setup`, not a lifecycle table of its own: within one
+`setup` action, the action's own `script` or `exec` body runs first and
+produces this layer's setup outputs, and only then does core resolve and
+submit the process step. A downstream node that depends on this node's setup
+output is scheduled only after that submission, so a later setup step —
+delivering an agent's first prompt into an already-live pane, for instance —
+may assume the process has already received its launch line.
+
+| Field | Required | Meaning |
+|---|---:|---|
+| `command` | yes | The text submitted into the endpoint. Typically `{ from = "self.outputs.command" }`, sound because the process step runs after the script that produced it. |
+| `env` | no | Literal environment assignments, keyed by `^[A-Za-z_][A-Za-z0-9_]*$`. Each value is resolved once and never expanded — a value containing `$PATH` types out as that literal text, not a shell expansion. |
+| `path` | no | `prepend` and/or `append`, each a value producing a directory. Both may be present; core applies them in a fixed order, prepend then append. |
+
+```toml
+[runtime]
+kind = "effect"
+
+[runtime.setup]
+type   = "shell"
+script = '''
+SID=$(uuidgen)
+jq -nc --arg sid "$SID" --arg cmd "claude --session-id $SID" \
+  '{session_id:$sid, command:$cmd}'
+'''
+
+[runtime.setup.process]
+command = { from = "self.outputs.command" }
+
+[runtime.setup.process.env]
+PLECT_SESSION_NAME = { from = "session.name" }
+
+[runtime.setup.process.path]
+prepend = { from = "inputs.path_prepend", optional = true }
+
+[runtime.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+[runtime.inputs_schema.properties]
+path_prepend = { type = "string" }
+
+[runtime.outputs_schema]
+type     = "object"
+required = ["session_id", "command"]
+
+[runtime.outputs_schema.properties]
+session_id = { type = "string" }
+command    = { type = "string" }
+
+[runtime.terminal.send_text]
+type   = "shell"
+script = 'tmux send-keys -t "$session_id" -- "$1"'
+
+[runtime.terminal.send_text.bind]
+session_id = { from = "self.outputs.session_id" }
+
+[runtime.terminal.send_keys]
+type   = "shell"
+script = 'tmux send-keys -t "$session_id" "$1"'
+
+[runtime.terminal.send_keys.bind]
+session_id = { from = "self.outputs.session_id" }
+```
+
+Composing the launch line — quoting `env` values, applying the `path`
+operations, and appending `command` — and submitting it through the
+endpoint's `send_text` followed by `send_keys` (`Enter`) is core's job. A
+setup script never builds or sends this line itself; it produces only the
+data `command`, `env`, and `path` are made from. This keeps quoting and
+key-name validation a data-time check, before any keystroke is sent, on the
+same footing as a shell action's `bind` values never reaching rendered
+source (see [`actions.md`](actions.md)).
+
 ## Nesting
 
 `inner` makes a definition the outer layer of a nesting chain. Inner and outer
@@ -333,3 +414,12 @@ env     = { type = "object" }
 - At most one effect in a plan declares `[terminal]`.
 - A dynamic-instantiation target resolving to an effect is a kind mismatch:
   instantiation creates a task instance from a task document.
+- At most one layer of a nesting chain declares `[setup.process]`, mirroring
+  the `[terminal]` per-chain rule above.
+- `[setup.process]` requires some effect in the plan to declare `[terminal]`.
+- `[setup.process]`'s `command` is required and resolves to a string.
+- A `[setup.process.env]` key that does not match `^[A-Za-z_][A-Za-z0-9_]*$`
+  is rejected.
+- A `[setup.process.env]` value, or a `path.prepend`/`path.append` value, that
+  resolves to anything but a scalar is rejected.
+- `[setup.process.path]`'s only keys are `prepend` and `append`.

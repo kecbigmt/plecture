@@ -1,7 +1,9 @@
 # Plugin boundary contracts
 
 This design is governed by
-[`../adr/2026-08-17-plugin-boundary-contracts.md`](../adr/2026-08-17-plugin-boundary-contracts.md).
+[`../adr/2026-08-17-plugin-boundary-contracts.md`](../adr/2026-08-17-plugin-boundary-contracts.md),
+with the Terminal Operation Surface's process-starting boundary decided by
+[`../adr/2026-08-24-effect-setup-process-substep.md`](../adr/2026-08-24-effect-setup-process-substep.md).
 
 ## Design Core
 
@@ -65,7 +67,130 @@ argument.
 Terminal commands are raw verbs. `send_text` sends literal text, `send_keys`
 sends key-combo input, and `capture` returns terminal text for the consumer to
 interpret. Agent-runtime plugins compose those verbs into submit/readiness
-behavior.
+behavior — with one exception: starting the agent's own long-lived process,
+covered next, is core's job, not the plugin's.
+
+### Starting a Long-Lived Process
+
+An effect that starts a long-lived agent process (a `claude` or `codex`
+runtime, for instance) declares `[setup.process]` on its `setup` action
+instead of hand-composing a launch line and sending it through `send_text`
+and `send_keys` itself. This is the one composition step core owns on the
+plugin's behalf, because it is a security boundary: nothing a plugin passes
+into `[setup.process]` as `env` or `path` data can become part of the command
+line typed into the pane.
+
+```toml
+[runtime.setup.process]
+command = { from = "self.outputs.command" }
+
+[runtime.setup.process.env]
+PLECT_SESSION_NAME = { from = "session.name" }
+
+[runtime.setup.process.path]
+prepend = { from = "inputs.path_prepend", optional = true }
+```
+
+Core resolves `command`, `env`, and `path`, composes `env` into shell-quoted
+`export` statements (rejecting any key that is not a valid environment
+variable name), applies `path`'s `prepend` then `append` operations, appends
+`command`, and submits the composed line into the plan's declared `[terminal]`
+endpoint through its own `send_text` followed by `send_keys` (`Enter`) — once.
+This runs as part of the `setup` action itself, after the action's own
+`script`/`exec` body has produced the outputs `command`, `env`, and `path`
+read from, and before `setup` returns: a later node's setup that depends on
+this one may assume the process is already running. The full grammar and
+validation rules are in [`../language/effects.md`](../language/effects.md).
+
+Everything else about starting an agent — deriving a resume/fresh session id,
+assembling an MCP config or hooks file, choosing model/effort flags, and
+confirming the process actually came up — stays plugin-owned. `[setup.process]`
+replaces only the launch-line construction and its terminal handoff.
+
+### Claude and Codex, Rewritten
+
+Both shipped agent-runtime effects carry the identical kernel this surface
+retires: a `launch_env` JSON object parsed, key-validated, and shell-quoted
+into `export` statements; a `path_prepend` input composed into `PATH`; the
+result sent via `send_text` and `send_keys`. Eliding the parts of each effect
+that do not change (resume branching, MCP/hooks assembly, model/effort flags,
+the post-launch readiness poll — see
+[`../adr/2026-08-24-effect-setup-process-substep.md`](../adr/2026-08-24-effect-setup-process-substep.md)
+for where that poll moves), the `claude` runtime effect's setup becomes:
+
+```toml
+[runtime.setup]
+type   = "shell"
+script = '''
+# Unchanged: derive SID/CLAUDE_ARG from prev_session_id, assemble the MCP
+# config and socket path, write the hooks settings file, reset the activity
+# probe, and build MODEL_FLAG/EFFORT_FLAG/DISALLOWED_FLAG.
+#
+# What is gone: the launch_env parse/validate/quote block, the path_prepend
+# composition, and the send_text/send_keys handoff. What is added: the
+# composed CLAUDE_CMD is emitted as a "command" output instead of being typed
+# into the pane directly. pid moves from a required setup output to one the
+# health.alive probe discovers and writes back (see the ADR).
+jq -nc \
+  --arg sid "$SID" --arg sock "$SOCKET" --arg mcp "$MCP" --arg hooks "$HOOKS" \
+  --arg command "$CLAUDE_CMD" \
+  '{session_id:$sid, socket_path:$sock, mcp_config:$mcp, hooks_settings:$hooks, command:$command}'
+'''
+
+[runtime.setup.bind]
+session_name    = { from = "session.name" }
+prev_session_id = { from = "prev.session_id", optional = true }
+prev_pid        = { from = "prev.pid", optional = true }
+model           = { from = "inputs.model", optional = true }
+effort          = { from = "inputs.effort", optional = true }
+mcp_servers     = { from = "inputs.mcp_servers", optional = true }
+activity_bin    = { bin = "claude-agent-activity" }
+mcp_servers_bin = { bin = "claude-mcp-servers" }
+
+[runtime.setup.process]
+command = { from = "self.outputs.command" }
+
+[runtime.setup.process.env]
+PLECT_SESSION_NAME = { from = "session.name" }
+# One entry per launch_env key the caller supplies today; core rejects an
+# invalid key name and never expands a value, so the effect's own
+# inputs_schema pattern restrictions on model/effort (a plain-token charset)
+# remain the defense for values that still reach the pane as part of the
+# composed command text.
+
+[runtime.setup.process.path]
+prepend = { from = "inputs.path_prepend", optional = true }
+```
+
+`exec_runtime` (Codex headless) changes the same way: its `launch_env`
+parse/quote block and `path_prepend` composition are deleted, its
+`send_text`/`send_keys exec $worker_bin ...` line becomes a `command` output,
+and `[setup.process]` submits it — `CODEX_MODEL` and
+`CODEX_MODEL_REASONING_EFFORT` move from hand-built `export` lines in the
+script into `[setup.process.env]` entries alongside `PLECT_SESSION_NAME` and
+`PLECT_AGENT_ACTIVITY_BIN`. The interactive Codex TUI effect
+(`codex.toml`) carries the same duplicated kernel; whether it is rewritten in
+the same implementation change is a scope decision for that change, not this
+design.
+
+Node-inputs wiring above these effects — `path_prepend = { from =
+"locals.guard_dir" }` on a workflow node, or a nested outer effect's
+`[inner.inputs]` — is unaffected: `path_prepend` still flows in as an input,
+it is simply consumed by `[setup.process.path]` instead of by the script's own
+`PATH` composition.
+
+### Validation
+
+`command` is required and resolves to a string; `env` keys match
+`^[A-Za-z_][A-Za-z0-9_]*$` and their resolved values, like `path.prepend` and
+`path.append`, are scalars; `path` admits only the `prepend` and `append`
+keys, and both may be present together. A `[setup.process]` declaration
+requires some effect in the plan to declare `[terminal]`, the endpoint it
+submits into, and at most one layer of a nesting chain may declare it — the
+same per-chain shape `[terminal]` itself already has. The full rule set lives
+in [`../language/effects.md`](../language/effects.md); this design adds no
+rule beyond it, only the boundary-ownership fact that composing and
+submitting the launch line is core's job, never a plugin script's.
 
 ### tmux Provider
 
