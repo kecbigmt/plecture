@@ -162,6 +162,70 @@ echo '{"workspace_dir":"%s"}'
 	}
 }
 
+// Binding-implies-delivery applies at session creation too, not only to a
+// dynamic task setup: the session's own resource is wired through the same
+// subscribeIfWired call TaskSetup makes for an explicit --resource.
+func TestCreate_ResourceSubscribesToMatchingProvider(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	subRec := filepath.Join(t.TempDir(), "sub-rec")
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "probe"}})
+	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
+echo '{"workspace_dir":"%s"}'
+`, workdir, workdir)) + `
+[wf.subscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
+  { from = "session.name" }, { from = "resource.id" }, "` + subRec + `"]
+`
+	writeSetupWorkflow(t, cfg, "wf", extra)
+
+	url := "https://github.com/org/repo/issues/9"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, readErr := os.ReadFile(subRec)
+	if readErr != nil {
+		t.Fatalf("subscribe hook did not run: %v", readErr)
+	}
+	want := "org/repo-9+wf\n" + url + "\n"
+	if string(got) != want {
+		t.Errorf("subscribe hook recorded %q, want %q", got, want)
+	}
+}
+
+// A resource-less (or unmatched-resource) workflow must behave exactly as it
+// did before delivery wiring was added at create time: no subscribe hook to
+// run means Create succeeds with nothing queued for retry either.
+func TestCreate_NoDeliverableResourceBehavesAsBefore(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "probe"}})
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
+echo '{"workspace_dir":"%s"}'
+`, workdir, workdir)))
+
+	url := "https://github.com/org/repo/issues/10"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if s := store.Get("org/repo-10+wf"); s == nil {
+		t.Fatal("session not persisted")
+	}
+	if _, err := os.Stat(pendingDeliveryPath(store)); !os.IsNotExist(err) {
+		t.Fatalf("pending delivery queue should stay empty (no hooked provider to fail): stat err=%v", err)
+	}
+}
+
 // The workflow-setup create path must record lifecycle.created for a new
 // session (the legacy path did, this one didn't), and a recovery/re-run
 // must not append a duplicate.

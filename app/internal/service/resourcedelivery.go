@@ -9,17 +9,17 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
-// wireDeliveryOnSetup is TaskSetup's/setupTaskDocument's shared entry point
-// for binding-implies-delivery: it runs subscribeIfWired under
-// withDeliveryLock (excluding any concurrent TaskCleanup's own
-// unsubscribe decision for this session, closing the race a fresh read
-// alone could only narrow), and on failure queues the resource for a
-// durable retry rather than losing the one-shot attempt — mirroring
+// wireDeliveryOnSetup is TaskSetup's/setupTaskDocument's/
+// createWithWorkflowSetup's shared entry point for binding-implies-delivery:
+// it runs subscribeIfWired under withDeliveryLock (excluding any concurrent
+// TaskCleanup's own unsubscribe decision for this session, closing the race
+// a fresh read alone could only narrow), and on failure queues the resource
+// for a durable retry rather than losing the one-shot attempt — mirroring
 // TaskCleanup's own queuePendingUnsubscribe path. The queue call sits
 // outside withDeliveryLock's callback so a failure to acquire the lock
 // itself is queued too, the same as a failure inside it; only the lock's
 // own success or failure decides whether subscribeIfWired ran, not whether
-// a retry gets queued. Never returns an error: both callers treat a wiring
+// a retry gets queued. Never returns an error: every caller treats a wiring
 // failure as non-fatal to the instantiation that already succeeded,
 // reporting it via the returned message instead.
 func wireDeliveryOnSetup(cfg *config.Config, store *state.Store, sessionName, resource string) (bool, string) {
