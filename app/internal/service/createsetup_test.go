@@ -314,6 +314,58 @@ echo '{"workspace_dir":"%s"}'
 	}
 }
 
+// Create-time delivery wiring introduces a subscription Destroy must undo:
+// a session torn down must drop its own resource's event-delivery
+// registration through the same locked, durable-retry unsubscribe path
+// TaskCleanup already runs for a dynamic instance's own bound resource.
+func TestDestroy_UnsubscribesSessionResource(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	subRec := filepath.Join(t.TempDir(), "sub-rec")
+	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "probe"}})
+	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
+echo '{"workspace_dir":"%s"}'
+`, workdir, workdir)) + `
+[wf.subscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
+  { from = "session.name" }, { from = "resource.id" }, "` + subRec + `"]
+
+[wf.unsubscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
+  { from = "session.name" }, { from = "resource.id" }, "` + unsubRec + `"]
+`
+	writeSetupWorkflow(t, cfg, "wf", extra)
+
+	url := "https://github.com/org/repo/issues/12"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := os.ReadFile(subRec); err != nil {
+		t.Fatalf("precondition: subscribe hook did not run at create: %v", err)
+	}
+
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-12+wf"}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+
+	got, readErr := os.ReadFile(unsubRec)
+	if readErr != nil {
+		t.Fatalf("unsubscribe hook did not run: %v", readErr)
+	}
+	want := "org/repo-12+wf\n" + url + "\n"
+	if string(got) != want {
+		t.Errorf("unsubscribe hook recorded %q, want %q", got, want)
+	}
+}
+
 func TestDestroy_RunsWorkflowCleanup(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")

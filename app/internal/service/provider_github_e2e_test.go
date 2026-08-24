@@ -295,6 +295,39 @@ func TestIntegration_CreateSubscribesToGithubWatcher(t *testing.T) {
 	}
 }
 
+// TestIntegration_DestroyUnsubscribesFromGithubWatcher is
+// TestIntegration_CreateSubscribesToGithubWatcher's teardown counterpart: a
+// session torn down by Destroy must drop the registration Create made,
+// through the real shipped github-watcher unsubscribe hook.
+func TestIntegration_DestroyUnsubscribesFromGithubWatcher(t *testing.T) {
+	workspaceDirsRoot := setupE2ERepo(t)
+	home := os.Getenv("HOME")
+	setupFakeScripts(t)
+	store := state.NewStore(t.TempDir())
+
+	cfg := writeIntegrationFixture(t, workspaceDirsRoot, "default",
+		[]taskFixture{{id: "noop", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "noop"}},
+	)
+
+	url := "https://github.com/testowner/testrepo/issues/56"
+	sessionName := "testowner/testrepo-56+default"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if subs := watcherSubscriptions(t, home); len(subs) != 1 {
+		t.Fatalf("precondition: subscriptions after Create = %v, want exactly one", subs)
+	}
+
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: sessionName, Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+
+	if subs := watcherSubscriptions(t, home); len(subs) != 0 {
+		t.Fatalf("subscriptions after Destroy = %v, want none", subs)
+	}
+}
+
 // TestE2E_GithubWorkspaceProviderSrcLayoutSingleWorkdir covers the ~/src
 // layout's thinnest case: the session owns the container's only workdir.
 // Cleanup has no sibling workdir and no bare layout to fall back to, so

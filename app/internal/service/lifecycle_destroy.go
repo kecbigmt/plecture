@@ -153,5 +153,15 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	if err := store.Delete(sessionName); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to delete state entry: %v", err)}
 	}
+
+	// The session that bound this resource at create is gone, so nothing can
+	// still need it; drop its event-delivery registration through the same
+	// locked, durably-retried path TaskCleanup uses for a dynamic instance's
+	// own bound resource. Never fails Destroy: the state entry above is
+	// already gone by the time this runs.
+	if _, errMsg := unwireDeliveryOnTeardown(cfg, store, sessionName, session.ResourceID); errMsg != "" {
+		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("resource delivery unsubscribe: %s", errMsg))
+	}
+
 	return result, nil
 }
