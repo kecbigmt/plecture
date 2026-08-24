@@ -140,3 +140,32 @@ func TestUp_ReRunOnAlreadyUpChildAtFullCapStaysIdempotent(t *testing.T) {
 		t.Fatalf("Up (re-up on already-up child): %v, want success", err)
 	}
 }
+
+// A completed Up must release the reservation it took, or every successful
+// admission would permanently eat into the cap on top of the real up child
+// it produced — double-counting the same slot forever.
+func TestUp_ReleasesReservationAfterSuccessfulAdmission(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+
+	if _, err := Up(cfg, store, UpParams{Identifier: "https://example.test/cases/first", ParentSession: "parent1"}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// Only one of the two slots is genuinely up now. A second reservation
+	// must succeed — it would wrongly fail if the first Up's reservation
+	// were still outstanding on top of the real up child it produced.
+	reserved, capErr := reserveChildCapSlot(cfg, store, "parent1", false)
+	if capErr != nil {
+		t.Fatalf("reserveChildCapSlot after a completed Up: %v, want nil", capErr)
+	}
+	if !reserved {
+		t.Error("reserved = false, want true: the first Up's reservation should have been released")
+	}
+}

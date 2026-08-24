@@ -327,6 +327,65 @@ uses = "tmux"
 	}
 }
 
+// A workspace-directory .plect/workflows/ layer may only add [[nodes]] (see
+// TestLoadWorkflows_WorkspaceDirLayerNodesOnly), so these fixtures use a
+// trusted global-config layer (BaseDir) instead — the layer max_up_children
+// is actually meant to be declared in.
+func TestLoadWorkflows_MaxUpChildrenRejectsZero(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "capped.toml"), `
+[capped]
+kind = "workflow"
+max_up_children = 0
+`)
+	cfg := &Config{BaseDir: baseDir}
+	_, err := cfg.LoadWorkflows(t.TempDir())
+	if err == nil {
+		t.Fatal("expected LoadWorkflows to reject max_up_children = 0")
+	}
+	if !strings.Contains(err.Error(), "max_up_children") {
+		t.Errorf("unexpected message: %v", err)
+	}
+}
+
+func TestLoadWorkflows_MaxUpChildrenRejectsNegative(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "capped.toml"), `
+[capped]
+kind = "workflow"
+max_up_children = -1
+`)
+	cfg := &Config{BaseDir: baseDir}
+	_, err := cfg.LoadWorkflows(t.TempDir())
+	if err == nil {
+		t.Fatal("expected LoadWorkflows to reject max_up_children = -1")
+	}
+	if !strings.Contains(err.Error(), "max_up_children") {
+		t.Errorf("unexpected message: %v", err)
+	}
+}
+
+func TestLoadWorkflows_MaxUpChildrenAcceptsPositive(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "workflows", "capped.toml"), `
+[capped]
+kind = "workflow"
+max_up_children = 7
+`)
+	cfg := &Config{BaseDir: baseDir}
+	got, err := cfg.LoadWorkflows(t.TempDir())
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	wf, ok := got["capped"]
+	if !ok {
+		t.Fatalf("expected capped in %+v", got)
+	}
+	if wf.MaxUpChildren == nil || *wf.MaxUpChildren != 7 {
+		t.Errorf("MaxUpChildren = %v, want 7", wf.MaxUpChildren)
+	}
+}
+
 func TestLoadWorkflows_NameAndDescription(t *testing.T) {
 	repoDir := t.TempDir()
 	writeFile(t, filepath.Join(repoDir, ".plect", "workflows", "coding_claude.toml"), `

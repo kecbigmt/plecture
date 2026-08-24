@@ -93,8 +93,12 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 			}
 			parentSessionName = resolved
 		}
-		if capErr := checkChildCap(cfg, store, parentSessionName, targetAlreadyUp); capErr != nil {
+		reserved, capErr := reserveChildCapSlot(cfg, store, parentSessionName, targetAlreadyUp)
+		if capErr != nil {
 			return nil, capErr
+		}
+		if reserved {
+			defer releaseChildCapSlot(store, parentSessionName)
 		}
 		if existing == nil || hasIncompleteSessionTask(cfg, existing) {
 			if _, err := Create(cfg, store, CreateParams{
@@ -128,12 +132,16 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return nil, guardErr
 	}
-	// Same reasoning as the matched branch's own pre-Create check above, for
-	// the down-to-up transition of an already-created bare-name session
-	// (matched already checked its own path before Create ran).
+	// Mirrors the matched branch's pre-Create reservation above, for a
+	// bare-name session going straight from down to up (matched already
+	// reserved its slot before Create ran).
 	if !matched {
-		if capErr := checkChildCap(cfg, store, session.ParentSession, sessionRunState(session) == domain.RunUp); capErr != nil {
+		reserved, capErr := reserveChildCapSlot(cfg, store, session.ParentSession, sessionRunState(session) == domain.RunUp)
+		if capErr != nil {
 			return nil, capErr
+		}
+		if reserved {
+			defer releaseChildCapSlot(store, session.ParentSession)
 		}
 	}
 	if params.ForceRecreate && !matched {

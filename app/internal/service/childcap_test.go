@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -12,8 +13,8 @@ import (
 )
 
 // writeCapWorkflow declares a workflow with no nodes, optionally carrying
-// `max_up_children`. checkChildCap only ever reads the parent's workflow for
-// this one field, so a parent fixture needs nothing else.
+// `max_up_children`. reserveChildCapSlot only ever reads the parent's
+// workflow for this one field, so a parent fixture needs nothing else.
 func writeCapWorkflow(t *testing.T, baseDir, id string, maxUpChildren *int) {
 	t.Helper()
 	dir := filepath.Join(baseDir, "workflows")
@@ -39,7 +40,7 @@ func upTasks() map[string]*contract.TaskState {
 
 func intPtr(n int) *int { return &n }
 
-func TestCheckChildCap_NoCapDeclaredAllowsUnlimitedChildren(t *testing.T) {
+func TestReserveChildCapSlot_NoCapDeclaredAllowsUnlimitedChildren(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", nil)
@@ -50,12 +51,16 @@ func TestCheckChildCap_NoCapDeclaredAllowsUnlimitedChildren(t *testing.T) {
 		setParent(t, store, name, "parent1")
 	}
 
-	if err := checkChildCap(cfg, store, "parent1", false); err != nil {
-		t.Fatalf("checkChildCap = %v, want nil (no cap declared)", err)
+	reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	if err != nil {
+		t.Fatalf("reserveChildCapSlot: %v, want nil (no cap declared)", err)
+	}
+	if reserved {
+		t.Error("reserved = true, want false: no cap declared means nothing to reserve against")
 	}
 }
 
-func TestCheckChildCap_UnderCapAllowsNewChild(t *testing.T) {
+func TestReserveChildCapSlot_UnderCapAllowsNewChild(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
@@ -63,12 +68,16 @@ func TestCheckChildCap_UnderCapAllowsNewChild(t *testing.T) {
 	seedSession(t, store, "child0", "acct", 0, "", upTasks())
 	setParent(t, store, "child0", "parent1")
 
-	if err := checkChildCap(cfg, store, "parent1", false); err != nil {
-		t.Fatalf("checkChildCap = %v, want nil (1 up child, cap 2)", err)
+	reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	if err != nil {
+		t.Fatalf("reserveChildCapSlot: %v, want nil (1 up child, cap 2)", err)
+	}
+	if !reserved {
+		t.Error("reserved = false, want true: a slot was free")
 	}
 }
 
-func TestCheckChildCap_AtCapRejectsNewChild(t *testing.T) {
+func TestReserveChildCapSlot_AtCapRejectsNewChild(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
@@ -79,9 +88,12 @@ func TestCheckChildCap_AtCapRejectsNewChild(t *testing.T) {
 		setParent(t, store, name, "parent1")
 	}
 
-	err := checkChildCap(cfg, store, "parent1", false)
+	reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	if reserved {
+		t.Error("reserved = true, want false: parent is already at cap")
+	}
 	if err == nil {
-		t.Fatal("checkChildCap = nil, want ErrChildCapExceeded (2 up children, cap 2)")
+		t.Fatal("err = nil, want ErrChildCapExceeded (2 up children, cap 2)")
 	}
 	if err.Code != ErrChildCapExceeded {
 		t.Errorf("Code = %q, want %q", err.Code, ErrChildCapExceeded)
@@ -93,7 +105,7 @@ func TestCheckChildCap_AtCapRejectsNewChild(t *testing.T) {
 	}
 }
 
-func TestCheckChildCap_DownChildDoesNotCountTowardCap(t *testing.T) {
+func TestReserveChildCapSlot_DownChildDoesNotCountTowardCap(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
@@ -104,12 +116,16 @@ func TestCheckChildCap_DownChildDoesNotCountTowardCap(t *testing.T) {
 	seedSession(t, store, "childDown", "acct", 1, "", nil)
 	setParent(t, store, "childDown", "parent1")
 
-	if err := checkChildCap(cfg, store, "parent1", false); err != nil {
-		t.Fatalf("checkChildCap = %v, want nil (1 up + 1 down, cap 2)", err)
+	reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	if err != nil {
+		t.Fatalf("reserveChildCapSlot: %v, want nil (1 up + 1 down, cap 2)", err)
+	}
+	if !reserved {
+		t.Error("reserved = false, want true: the down child left a slot free")
 	}
 }
 
-func TestCheckChildCap_AlreadyUpTargetIsExemptEvenAtFullCap(t *testing.T) {
+func TestReserveChildCapSlot_AlreadyUpTargetIsExemptEvenAtFullCap(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
@@ -121,29 +137,110 @@ func TestCheckChildCap_AlreadyUpTargetIsExemptEvenAtFullCap(t *testing.T) {
 	}
 
 	// A re-up on an already-up child must stay idempotent, not be rejected by
-	// the cap it is itself already counted under.
-	if err := checkChildCap(cfg, store, "parent1", true); err != nil {
-		t.Fatalf("checkChildCap = %v, want nil (already-up target is exempt)", err)
+	// the cap it is itself already counted under — and must not reserve a
+	// slot, since it never releases one either.
+	reserved, err := reserveChildCapSlot(cfg, store, "parent1", true)
+	if err != nil {
+		t.Fatalf("reserveChildCapSlot: %v, want nil (already-up target is exempt)", err)
+	}
+	if reserved {
+		t.Error("reserved = true, want false: an already-up target needs no reservation")
 	}
 }
 
-func TestCheckChildCap_NoParentSkipsCheck(t *testing.T) {
+func TestReserveChildCapSlot_NoParentSkipsCheck(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
 
-	if err := checkChildCap(cfg, store, "", false); err != nil {
-		t.Fatalf("checkChildCap = %v, want nil (no parent, e.g. a root session)", err)
+	reserved, err := reserveChildCapSlot(cfg, store, "", false)
+	if err != nil {
+		t.Fatalf("reserveChildCapSlot: %v, want nil (no parent, e.g. a root session)", err)
+	}
+	if reserved {
+		t.Error("reserved = true, want false")
 	}
 }
 
-func TestCheckChildCap_UnknownParentSkipsCheck(t *testing.T) {
+func TestReserveChildCapSlot_UnknownParentSkipsCheck(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
 
 	// The "root:<target>" pseudo-parent form (see resolveParentSession)
 	// stores a literal string with no corresponding session state; a cap
 	// declared on a workflow can only bind a session that actually exists.
-	if err := checkChildCap(cfg, store, "root:external", false); err != nil {
-		t.Fatalf("checkChildCap = %v, want nil (parent has no state entry)", err)
+	reserved, err := reserveChildCapSlot(cfg, store, "root:external", false)
+	if err != nil {
+		t.Fatalf("reserveChildCapSlot: %v, want nil (parent has no state entry)", err)
+	}
+	if reserved {
+		t.Error("reserved = true, want false")
+	}
+}
+
+// A reservation the target's own state doesn't reflect yet still must count
+// toward the cap, or a second decision computed before the first
+// reservation's child actually goes up would admit past the limit.
+func TestReserveChildCapSlot_OutstandingReservationCountsTowardCap(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{BaseDir: t.TempDir()}
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+
+	first, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	if err != nil || !first {
+		t.Fatalf("first reservation: reserved=%v err=%v, want true/nil", first, err)
+	}
+
+	second, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	if second {
+		t.Error("second reservation succeeded despite the first still being outstanding")
+	}
+	if err == nil || err.Code != ErrChildCapExceeded {
+		t.Fatalf("second reservation err = %v, want ErrChildCapExceeded", err)
+	}
+
+	releaseChildCapSlot(store, "parent1")
+
+	third, err := reserveChildCapSlot(cfg, store, "parent1", false)
+	if err != nil || !third {
+		t.Fatalf("reservation after release: reserved=%v err=%v, want true/nil", third, err)
+	}
+}
+
+// The atomicity guarantee itself: concurrent reservations against the same
+// capped parent must never admit more than the declared limit, however many
+// callers race it at once.
+func TestReserveChildCapSlot_ConcurrentReservationsRespectCap(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{BaseDir: t.TempDir()}
+	const limit = 3
+	const attempts = 20
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(limit))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+
+	var wg sync.WaitGroup
+	results := make([]bool, attempts)
+	wg.Add(attempts)
+	for i := 0; i < attempts; i++ {
+		go func(i int) {
+			defer wg.Done()
+			reserved, err := reserveChildCapSlot(cfg, store, "parent1", false)
+			if err != nil && err.Code != ErrChildCapExceeded {
+				t.Errorf("reserveChildCapSlot: unexpected error %v", err)
+				return
+			}
+			results[i] = reserved
+		}(i)
+	}
+	wg.Wait()
+
+	admitted := 0
+	for _, ok := range results {
+		if ok {
+			admitted++
+		}
+	}
+	if admitted != limit {
+		t.Fatalf("admitted = %d, want exactly %d (the declared limit) across %d concurrent attempts", admitted, limit, attempts)
 	}
 }

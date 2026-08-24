@@ -295,6 +295,91 @@ func TestStore_ConcurrentPutAcrossProcesses(t *testing.T) {
 	}
 }
 
+// Each attempt uses its own Store instance, like TestStore_ConcurrentPut, so
+// this exercises the real cross-process file lock rather than only the
+// in-process mutex.
+func TestStore_ReserveUpSlotSerializesConcurrentReservations(t *testing.T) {
+	dir := t.TempDir()
+	const limit = 3
+	const attempts = 20
+
+	var wg sync.WaitGroup
+	results := make([]bool, attempts)
+	wg.Add(attempts)
+	for i := 0; i < attempts; i++ {
+		go func(i int) {
+			defer wg.Done()
+			store := NewStore(dir)
+			approved, err := store.ReserveUpSlot("parent1", func(sessions map[string]*domain.Session, reserved int) bool {
+				return reserved < limit
+			})
+			if err != nil {
+				t.Errorf("ReserveUpSlot: %v", err)
+				return
+			}
+			results[i] = approved
+		}(i)
+	}
+	wg.Wait()
+
+	approved := 0
+	for _, ok := range results {
+		if ok {
+			approved++
+		}
+	}
+	if approved != limit {
+		t.Fatalf("approved = %d, want exactly %d (the declared limit) despite %d concurrent attempts", approved, limit, attempts)
+	}
+
+	sf, err := NewStore(dir).loadE()
+	if err != nil {
+		t.Fatalf("loadE: %v", err)
+	}
+	if sf.UpReservations["parent1"] != limit {
+		t.Errorf("UpReservations[parent1] = %d, want %d", sf.UpReservations["parent1"], limit)
+	}
+}
+
+func TestStore_ReleaseUpSlotDecrementsAndClearsAtZero(t *testing.T) {
+	store := NewStore(t.TempDir())
+	for i := 0; i < 2; i++ {
+		approved, err := store.ReserveUpSlot("parent1", func(map[string]*domain.Session, int) bool { return true })
+		if err != nil || !approved {
+			t.Fatalf("ReserveUpSlot: approved=%v err=%v", approved, err)
+		}
+	}
+
+	if err := store.ReleaseUpSlot("parent1"); err != nil {
+		t.Fatalf("ReleaseUpSlot: %v", err)
+	}
+	sf, err := store.loadE()
+	if err != nil {
+		t.Fatalf("loadE: %v", err)
+	}
+	if sf.UpReservations["parent1"] != 1 {
+		t.Errorf("UpReservations[parent1] = %d, want 1", sf.UpReservations["parent1"])
+	}
+
+	if err := store.ReleaseUpSlot("parent1"); err != nil {
+		t.Fatalf("ReleaseUpSlot: %v", err)
+	}
+	sf, err = store.loadE()
+	if err != nil {
+		t.Fatalf("loadE: %v", err)
+	}
+	if n, ok := sf.UpReservations["parent1"]; ok {
+		t.Errorf("UpReservations[parent1] should be cleared once it drops to zero, got %d", n)
+	}
+}
+
+func TestStore_ReleaseUpSlotOnUnreservedParentIsANoop(t *testing.T) {
+	store := NewStore(t.TempDir())
+	if err := store.ReleaseUpSlot("parent1"); err != nil {
+		t.Fatalf("ReleaseUpSlot on a parent with no reservation: %v", err)
+	}
+}
+
 func TestStorePutHelperProcess(t *testing.T) {
 	if os.Getenv("PLECT_STATE_PUT_HELPER") != "1" {
 		return

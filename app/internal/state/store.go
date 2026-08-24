@@ -20,6 +20,11 @@ const stateVersion = contract.SchemaVersion
 type stateFile struct {
 	Version  int                        `json:"version"`
 	Sessions map[string]*domain.Session `json:"sessions"`
+	// UpReservations counts, per parent session name, admission decisions
+	// whose child hasn't reached run state "up" yet, so its own record
+	// doesn't reflect them. Kept out of contracts/state.Session: this is
+	// bookkeeping local to this store's file, not durable session data.
+	UpReservations map[string]int `json:"up_reservations,omitempty"`
 }
 
 // Store manages session state persistence.
@@ -101,6 +106,50 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 			return err
 		}
 		normalizeSessionTree(sf.Sessions)
+		return s.saveLocked(sf)
+	})
+}
+
+// ReserveUpSlot evaluates fn against one locked, consistent snapshot of
+// every session plus the named parent's reservation count, and — if fn
+// approves — increments that count in the same locked write. Update only
+// locks the one session it targets; a decision weighing every sibling under
+// a shared parent needs the read and the write locked together, or a second
+// concurrent decision can interleave between them and both admit past the
+// same limit. Pair with ReleaseUpSlot once the reservation resolves.
+func (s *Store) ReserveUpSlot(parentName string, fn func(sessions map[string]*domain.Session, reserved int) (approved bool)) (bool, error) {
+	approved := false
+	err := s.withFileLock(func() error {
+		sf, err := s.loadLocked()
+		if err != nil {
+			return fmt.Errorf("state: reserve up-slot for %q: %w", parentName, err)
+		}
+		approved = fn(sf.Sessions, sf.UpReservations[parentName])
+		if !approved {
+			return nil
+		}
+		if sf.UpReservations == nil {
+			sf.UpReservations = make(map[string]int)
+		}
+		sf.UpReservations[parentName]++
+		return s.saveLocked(sf)
+	})
+	return approved, err
+}
+
+// ReleaseUpSlot undoes one prior approved ReserveUpSlot for parentName.
+func (s *Store) ReleaseUpSlot(parentName string) error {
+	return s.withFileLock(func() error {
+		sf, err := s.loadLocked()
+		if err != nil {
+			return fmt.Errorf("state: release up-slot for %q: %w", parentName, err)
+		}
+		if sf.UpReservations[parentName] > 0 {
+			sf.UpReservations[parentName]--
+			if sf.UpReservations[parentName] == 0 {
+				delete(sf.UpReservations, parentName)
+			}
+		}
 		return s.saveLocked(sf)
 	})
 }
@@ -322,6 +371,7 @@ func (s *Store) loadLocked() (*stateFile, error) {
 		sf.Sessions[name] = session
 	}
 	normalizeSessionTree(sf.Sessions)
+	sf.UpReservations = parsed.UpReservations
 
 	return sf, nil
 }

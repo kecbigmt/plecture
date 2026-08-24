@@ -121,9 +121,12 @@ tick) retries on a later cycle once a child frees up.
 
 Counting rule: a child counts toward the cap while it holds run state
 "up" — any run-scoped task produced — and stops counting the moment it goes
-down or is destroyed. A `plect up` that only brings an already-up child back
-up again (an idempotent re-up) is exempt from the cap, since that child is
-already counted.
+down or is destroyed. A `plect up` in flight against the same parent, admitted
+but not yet up itself, also counts, closing the window between two
+concurrent `plect up` processes deciding at the same instant; this is why a
+rejection's reported count can briefly exceed what `plect ls` shows. A
+`plect up` that only brings an already-up child back up again (an idempotent
+re-up) is exempt from the cap, since that child is already counted.
 
 Unset means no cap, the same behavior as today.
 

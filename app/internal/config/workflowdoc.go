@@ -85,6 +85,13 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 		if !ok {
 			return w, fmt.Errorf("`max_up_children` is an integer")
 		}
+		// A cap of zero or less can never admit a child, which is not what
+		// "declare a cap" means; the schema's own `minimum: 1` states the
+		// same rule for an editor, but only this native decode actually
+		// blocks a bad value from loading.
+		if count < 1 {
+			return w, fmt.Errorf("`max_up_children` must be at least 1, got %d", count)
+		}
 		value := int(count)
 		w.MaxUpChildren = &value
 	}

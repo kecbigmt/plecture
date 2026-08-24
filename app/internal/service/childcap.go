@@ -8,55 +8,76 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
-// checkChildCap enforces a parent workflow's optional `max_up_children`: it
-// rejects bringing a not-yet-up session (a brand new child, or an existing
-// child transitioning from down to up) to run state "up" when doing so would
-// push its parent's currently-up child count past the cap. targetAlreadyUp
-// exempts an idempotent re-up of a session that is already up — it is
-// already counted among the parent's up children, so re-upping it changes
-// nothing the cap cares about.
+// reserveChildCapSlot enforces a parent workflow's optional
+// `max_up_children`, exempting an idempotent re-up of an already-up target
+// (targetAlreadyUp) since it is already counted. Counting rule: a child
+// counts while its run state is "up" (a run-scoped task produced) or while
+// a reservation for it is outstanding; down and destroyed children do not
+// (docs/language/workflows.md).
 //
-// Counting rule: only children whose run state is "up" (any run-scoped task
-// produced) count toward the cap; down and destroyed children do not (see
-// docs/language/workflows.md).
-func checkChildCap(cfg *config.Config, store *state.Store, parentSessionName string, targetAlreadyUp bool) *Error {
+// The count-then-decide runs inside state.Store.ReserveUpSlot's locked
+// snapshot rather than an unlocked read: two `plect up` processes racing
+// the same at-capacity parent could otherwise both read "one slot free"
+// before either persists anything, and both admit past the cap. A
+// reserved=true result must be released (releaseChildCapSlot) once the
+// child's own state settles the question.
+func reserveChildCapSlot(cfg *config.Config, store *state.Store, parentSessionName string, targetAlreadyUp bool) (reserved bool, capErr *Error) {
 	if targetAlreadyUp || parentSessionName == "" {
-		return nil
+		return false, nil
 	}
 	parent := store.Get(parentSessionName)
 	if parent == nil {
 		// The "root:<target>" pseudo-parent form (resolveParentSession)
 		// stores a literal string with no session state behind it — nothing
 		// to read a cap from.
-		return nil
+		return false, nil
 	}
 	wf, err := loadSessionWorkflow(cfg, parent.WorkspaceDirPath, parent)
 	if err != nil {
-		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load parent %s workflow: %v", parentSessionName, err)}
+		return false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load parent %s workflow: %v", parentSessionName, err)}
 	}
 	if wf.MaxUpChildren == nil {
-		return nil
+		return false, nil
 	}
 	limit := *wf.MaxUpChildren
 
-	sessions, err := store.AllE()
-	if err != nil {
-		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
-	}
-	count := 0
-	for _, name := range childNames(sessions, parentSessionName) {
-		if sessionRunState(sessions[name]) == domain.RunUp {
-			count++
+	var rejection *Error
+	approved, lockErr := store.ReserveUpSlot(parentSessionName, func(sessions map[string]*domain.Session, alreadyReserved int) bool {
+		count := alreadyReserved
+		for _, name := range childNames(sessions, parentSessionName) {
+			if sessionRunState(sessions[name]) == domain.RunUp {
+				count++
+			}
 		}
-	}
-	if count >= limit {
-		return &Error{
-			Code: ErrChildCapExceeded,
-			Message: fmt.Sprintf(
-				"parent session %s has reached its max_up_children cap of %d (%d child session(s) currently up); bring one down or destroy it, then retry",
-				parentSessionName, limit, count,
-			),
+		if count >= limit {
+			rejection = &Error{
+				Code: ErrChildCapExceeded,
+				Message: fmt.Sprintf(
+					"parent session %s has reached its max_up_children cap of %d (%d child session(s) currently up or reserved); bring one down or destroy it, then retry",
+					parentSessionName, limit, count,
+				),
+			}
+			return false
 		}
+		return true
+	})
+	if lockErr != nil {
+		return false, &Error{Code: ErrExecutionFailed, Message: lockErr.Error()}
 	}
-	return nil
+	if !approved {
+		return false, rejection
+	}
+	return true, nil
+}
+
+// releaseChildCapSlot undoes a reserveChildCapSlot(...) that returned
+// reserved=true. Safe to call unconditionally from a defer: releasing a
+// parent with no outstanding reservation is a no-op.
+func releaseChildCapSlot(store *state.Store, parentSessionName string) {
+	if parentSessionName == "" {
+		return
+	}
+	// Best-effort: a failed release only leaves the counter one over,
+	// biasing later decisions stricter than declared, never past the cap.
+	_ = store.ReleaseUpSlot(parentSessionName)
 }
