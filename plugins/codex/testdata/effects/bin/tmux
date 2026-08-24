@@ -1,8 +1,0 @@
-#!/usr/bin/env sh
-# Stands in for the multiplexer's pane introspection: the pane runs the
-# scenario's live process.
-plect-effect-record tmux "$@"
-case "$1" in
-  display-message) printf '%s\n' "$PLECT_EFFECT_PID" ;;
-esac
-exit 0

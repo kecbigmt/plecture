@@ -20,6 +20,7 @@ func TestTerminalConfigVerb(t *testing.T) {
 		Capture:  terminalVerbAction("c"),
 		SendText: terminalVerbAction("t"),
 		SendKeys: terminalVerbAction("k"),
+		PID:      terminalVerbAction("p"),
 	}
 	tests := []struct {
 		name    string
@@ -28,6 +29,7 @@ func TestTerminalConfigVerb(t *testing.T) {
 		wantErr string
 	}{
 		{name: "declared verb resolves", term: full, verb: "capture"},
+		{name: "pid resolves", term: full, verb: "pid"},
 		{name: "no endpoint at all", term: nil, verb: "capture", wantErr: "capture"},
 		{name: "bare table declares no verb", term: &TerminalConfig{}, verb: "attach", wantErr: "attach"},
 		{
@@ -81,6 +83,11 @@ args    = ["attach", "-t", { from = "self.outputs.session_name" }]
 type    = "exec"
 command = "tmux"
 args    = ["capture-pane", "-p", "-t", { from = "self.outputs.session_name" }]
+
+[pane.terminal.pid]
+type    = "exec"
+command = "tmux"
+args    = ["display-message", "-p", "-t", { from = "self.outputs.session_name" }, "#{pane_pid}"]
 `)
 	defs, err := cfg.LoadTaskDefinitions("")
 	if err != nil {
@@ -95,6 +102,9 @@ args    = ["capture-pane", "-p", "-t", { from = "self.outputs.session_name" }]
 	}
 	if _, err := def.Terminal.Verb("capture"); err != nil {
 		t.Errorf("capture: %v", err)
+	}
+	if _, err := def.Terminal.Verb("pid"); err != nil {
+		t.Errorf("pid: %v", err)
 	}
 	if _, err := def.Terminal.Verb("send_text"); err == nil {
 		t.Error("send_text resolved, but this effect declares no such verb")

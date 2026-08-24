@@ -141,14 +141,15 @@ effect, or commands the inner effect sends into an interactive endpoint. Agent r
 therefore need an author-declared input for launch-line environment exports.
 
 Among the terminal operations, the injection reaches the ones plect runs
-itself: `capture`. `send_text` and `send_keys` resolve into another execution
-through a `{ terminal = "..." }` binding and carry whatever environment that
-execution runs with. `attach` resolves to a command string the caller's own
-shell executes, and carries the caller's environment: placing bound values
-there would mean synthesizing quoted assignments into that command string, and
-this design specifies no quoting for it. A runtime needing bound
-environment on the attach line declares an author-declared launch input for
-it, the same rung-1 answer terminal-launched agent runtimes already take.
+itself: `capture` and `pid`. `send_text` and `send_keys` resolve into
+another execution through a `{ terminal = "..." }` binding and carry
+whatever environment that execution runs with. `attach` resolves to a
+command string the caller's own shell executes, and carries the caller's
+environment: placing bound values there would mean synthesizing quoted
+assignments into that command string, and this design specifies no quoting
+for it. A runtime needing bound environment on the attach line declares an
+author-declared launch input for it, the same rung-1 answer
+terminal-launched agent runtimes already take.
 
 Nesting fields:
 
@@ -364,7 +365,7 @@ adoption in their owning config kinds.
 
 | Shadow | Durable intent | Rung | Zero-copy path |
 |---|---|---:|---|
-| `tasks/runtime.toml` | Different runtime inputs, extra agent-process env, path injection. | 1 + 2 | Rung 2 binds `tmux_session`/model/effort/path inputs. Rung 1 in the `claude` plugin provides an author-declared `launch_env` input whose exports are included in the terminal launch line. Workflow-owned defaults stay in the workflow node. |
+| `tasks/runtime.toml` | Different runtime inputs, extra agent-process env, path injection. | 1 + 2 | Rung 2 binds model/effort/path inputs. Rung 1 in the `claude` plugin provides an author-declared `launch_env` input whose exports are included in the terminal launch line. Workflow-owned defaults stay in the workflow node. |
 | `tasks/codex.toml` | Different runtime inputs, extra agent-process env, path injection. | 1 + 2 | Rung 2 binds the plugin effect's inputs. Rung 1 in the `codex` plugin provides an author-declared `launch_env` input whose exports are included in the Codex TUI launch line. |
 | `tasks/exec_runtime.toml` | Different runtime inputs, extra worker-process env, path injection, worker state location. | 1 + 2 | Rung 2 binds runtime/path inputs. Rung 1 in the `codex` plugin provides author-declared `launch_env` and `state_root` inputs for the worker's exported environment and state directory. |
 | `channels/exec_delivery.toml` | Queue timeout and message formatting around the shipped enqueue executable. | 1 | The channel adopts the plugin's shipped enqueue executable. Rung 1 in the `codex` plugin declares `enqueue_timeout` and `message_envelope`; `message_envelope` is a formatting template over the existing event fields, not executable substitution. |

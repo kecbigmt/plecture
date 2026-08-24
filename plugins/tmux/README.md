@@ -2,10 +2,10 @@
 
 The tmux-backed interactive endpoint: a task that creates/attaches/tears
 down a tmux pane, plus the `[terminal]` table (`attach`/`capture`/
-`send_text`/`send_keys`) that lets any other plugin's task hook or channel
-reach it through `{ terminal = "..." }` without knowing tmux is behind it —
-see `docs/design/plugin-boundary-contracts.md`'s Terminal Operation
-Surface.
+`send_text`/`send_keys`/`pid`) that lets any other plugin's task hook or
+channel reach it through `{ terminal = "..." }` without knowing tmux is
+behind it — see `docs/design/plugin-boundary-contracts.md`'s Terminal
+Operation Surface.
 
 ## Contents
 
@@ -13,11 +13,13 @@ Surface.
   agent CLI runs in. `[terminal].attach`/`.capture` let `plect attach`/
   `plect capture` reach the pane; `[terminal].send_text`/`.send_keys` are
   consumed by agent-runtime plugins (`claude`, `codex`) via
-  `{ terminal = "..." }`. `[health].alive` is a plain `tmux has-session`, and
-  `[health].activity` fingerprints the pane's visible contents so any
-  workload running in it, agent or not, contributes activity evidence; it
-  never sets `silence_expected`, since a pane's contents cannot establish
-  that quiet is intended.
+  `{ terminal = "..." }`; `[terminal].pid` returns the pane's root process
+  pid the same way, for a runtime's own process-identity discovery.
+  `[health].alive` is a plain `tmux has-session`, and `[health].activity`
+  fingerprints the pane's visible contents so any workload running in it,
+  agent or not, contributes activity evidence; it never sets
+  `silence_expected`, since a pane's contents cannot establish that quiet is
+  intended.
 
 No executables: every `[terminal]` verb is inline shell in `pane.toml`, so
 this plugin ships config only.

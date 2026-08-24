@@ -143,8 +143,7 @@ func TestShippedClaude_McpServersStaysOffEveryCommandLine(t *testing.T) {
 		Self: map[string]any{},
 		Prev: map[string]any{},
 		Inputs: map[string]any{
-			"tmux_session": "s",
-			"mcp_servers":  `[{"name":"` + marker + `","command":"` + marker + `-mcp"}]`,
+			"mcp_servers": `[{"name":"` + marker + `","command":"` + marker + `-mcp"}]`,
 		},
 		Session: SessionVars{
 			Name:             "test-session",
@@ -203,15 +202,12 @@ kind = "effect"
 uses = "official.claude.runtime"
 
 [team_claude.inner.inputs]
-tmux_session = { from = "inputs.tmux_session" }
 mcp_servers  = { from = "inputs.mcp_servers" }
 
 [team_claude.inputs_schema]
-type     = "object"
-required = ["tmux_session"]
+type = "object"
 
 [team_claude.inputs_schema.properties]
-tmux_session = { type = "string" }
 mcp_servers  = { type = "string" }
 `
 	if err := os.WriteFile(outer, []byte(body), 0o644); err != nil {

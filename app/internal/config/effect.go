@@ -202,6 +202,7 @@ func terminalFrom(def *lang.Definition, path string) (*TerminalConfig, error) {
 		{"capture", &terminal.Capture},
 		{"send_text", &terminal.SendText},
 		{"send_keys", &terminal.SendKeys},
+		{"pid", &terminal.PID},
 	} {
 		action, err := actionIn(tbl, verb.name, path, def.ID+".terminal")
 		if err != nil {

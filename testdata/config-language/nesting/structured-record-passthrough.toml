@@ -9,7 +9,6 @@ scope = "run"
 uses = "official.claude.runtime"
 
 [team_runtime.inner.inputs]
-tmux_session = { from = "nodes.pane.outputs.session_name" }
 mcp_servers  = { from = "inputs.mcp_servers", optional = true }
 
 [team_runtime.outputs.bind]

@@ -9,12 +9,14 @@ import (
 // TerminalConfig is an effect's `[terminal]` table: the terminal verbs an
 // effect that owns an interactive endpoint declares, each an action.
 //
-// `attach` and `capture` receive no operand; `send_text` and `send_keys`
-// receive the literal text or key token as the action's first positional
-// argument. Consumers reach these verbs through `plect attach` /
-// `plect capture` or through a `{ terminal = "<verb>" }` value — never by
-// naming the concrete multiplexer, so an effect's own terminal
-// implementation stays swappable behind the same verb vocabulary.
+// `attach`, `capture`, and `pid` receive no operand; `send_text` and
+// `send_keys` receive the literal text or key token as the action's first
+// positional argument. `pid` returns the endpoint's root process pid as its
+// output, the same way `capture` returns terminal text. Consumers reach
+// these verbs through `plect attach` / `plect capture` or through a
+// `{ terminal = "<verb>" }` value — never by naming the concrete
+// multiplexer, so an effect's own terminal implementation stays swappable
+// behind the same verb vocabulary.
 //
 // A partial table is legal: availability is per verb, so an effect may offer
 // a capture and nothing else, and a value consuming a verb no effect in the
@@ -24,6 +26,7 @@ type TerminalConfig struct {
 	Capture  *lang.Action
 	SendText *lang.Action
 	SendKeys *lang.Action
+	PID      *lang.Action
 }
 
 // Verb returns the action one verb name selects. An undeclared verb is an
@@ -40,8 +43,10 @@ func (t *TerminalConfig) Verb(name string) (*lang.Action, error) {
 			action = t.SendText
 		case "send_keys":
 			action = t.SendKeys
+		case "pid":
+			action = t.PID
 		default:
-			return nil, fmt.Errorf("unknown terminal verb %q (want attach, capture, send_text, or send_keys)", name)
+			return nil, fmt.Errorf("unknown terminal verb %q (want attach, capture, send_text, send_keys, or pid)", name)
 		}
 	}
 	if action == nil {
@@ -54,5 +59,5 @@ func (t *TerminalConfig) Verb(name string) (*lang.Action, error) {
 // a nil pointer, or a bare `[terminal]` header with every member left
 // empty).
 func (t *TerminalConfig) IsDeclared() bool {
-	return t != nil && (t.Attach != nil || t.Capture != nil || t.SendText != nil || t.SendKeys != nil)
+	return t != nil && (t.Attach != nil || t.Capture != nil || t.SendText != nil || t.SendKeys != nil || t.PID != nil)
 }

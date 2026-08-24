@@ -133,7 +133,8 @@
             "attach",
             "capture",
             "send_text",
-            "send_keys"
+            "send_keys",
+            "pid"
           ],
           "description": "A terminal capability, resolved through whichever task in the plan declares the interactive endpoint."
         }
@@ -461,7 +462,7 @@
     "terminalTable": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The task owns an interactive endpoint. send_text and send_keys receive their operand as the action's first positional argument.",
+      "description": "The task owns an interactive endpoint. send_text and send_keys receive their operand as the action's first positional argument. attach, capture, and pid receive no operand; pid returns the endpoint's root process pid.",
       "properties": {
         "attach": {
           "$ref": "#/$defs/action"
@@ -473,6 +474,9 @@
           "$ref": "#/$defs/action"
         },
         "send_keys": {
+          "$ref": "#/$defs/action"
+        },
+        "pid": {
           "$ref": "#/$defs/action"
         }
       }

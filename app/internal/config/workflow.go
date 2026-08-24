@@ -249,7 +249,7 @@ type TaskDefinition struct {
 	// effect that declares neither.
 	Health *HealthConfig
 	// Terminal declares the effect's `[terminal]` table: the effect owns an
-	// interactive endpoint and offers attach/capture/send_text/send_keys
+	// interactive endpoint and offers attach/capture/send_text/send_keys/pid
 	// against it.
 	Terminal          *TerminalConfig
 	OutputsSchema     map[string]any

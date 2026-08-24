@@ -32,6 +32,7 @@ func paneVerbs() *config.TerminalConfig {
 		Capture:  verb("capture-pane", "-p", "-t", pane),
 		SendText: verb("send-keys", "-t", pane, "--"),
 		SendKeys: verb("send-keys", "-t", pane),
+		PID:      verb("display-message", "-p", "-t", pane, "#{pane_pid}"),
 	}
 }
 
@@ -48,6 +49,7 @@ func TestTerminalCommand_ResolvesEveryVerb(t *testing.T) {
 		{"capture", `'tmux' 'capture-pane' '-p' '-t' 'owner/repo-1' "$@"`},
 		{"send_text", `'tmux' 'send-keys' '-t' 'owner/repo-1' '--' "$@"`},
 		{"send_keys", `'tmux' 'send-keys' '-t' 'owner/repo-1' "$@"`},
+		{"pid", `'tmux' 'display-message' '-p' '-t' 'owner/repo-1' '#{pane_pid}' "$@"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.verb, func(t *testing.T) {

@@ -80,6 +80,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 				Capture:  shellStub("tmux capture-pane -p -t test-session"),
 				SendText: shellStub(`tmux send-keys -t test-session -- "$1"`),
 				SendKeys: shellStub(`tmux send-keys -t test-session "$1"`),
+				PID:      shellStub(`tmux display-message -p -t test-session '#{pane_pid}'`),
 			},
 			Outputs: map[string]any{"session_name": "test-session"},
 		},
@@ -101,7 +102,6 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"dir":            "/tmp/plect-gh-guard.x",
 	}
 	inputs := map[string]any{
-		"tmux_session":   "test-session",
 		"terminal_ready": "test-session",
 		"model":          "fable",
 		"effort":         "high",
@@ -148,7 +148,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		if def.Terminal == nil {
 			continue
 		}
-		for _, verb := range []string{"attach", "capture", "send_text", "send_keys"} {
+		for _, verb := range []string{"attach", "capture", "send_text", "send_keys", "pid"} {
 			action, err := def.Terminal.Verb(verb)
 			if err != nil {
 				continue // a verb this effect does not offer
@@ -174,8 +174,8 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 func TestShippedCatalog_ModelEffortInputsRejectShellMetacharacters(t *testing.T) {
 	tasks, _ := loadShippedCatalogTasks(t)
 
-	malicious := map[string]any{"tmux_session": "s", "model": "x' ; touch /tmp/pwned ; echo '"}
-	benign := map[string]any{"tmux_session": "s", "model": "fable"}
+	malicious := map[string]any{"model": "x' ; touch /tmp/pwned ; echo '"}
+	benign := map[string]any{"model": "fable"}
 
 	checked := 0
 	for id, def := range tasks {
@@ -214,8 +214,8 @@ func TestShippedCatalog_ModelEffortInputsRejectShellMetacharacters(t *testing.T)
 func TestShippedCatalog_LaunchEnvRejectsQuoteBreakout(t *testing.T) {
 	tasks, _ := loadShippedCatalogTasks(t)
 
-	breakout := map[string]any{"tmux_session": "s", "launch_env": `{"A":"x'; touch /tmp/pwned; echo '"}`}
-	benign := map[string]any{"tmux_session": "s", "launch_env": `{"PLECT_TEAM_CONTEXT":"acme"}`}
+	breakout := map[string]any{"launch_env": `{"A":"x'; touch /tmp/pwned; echo '"}`}
+	benign := map[string]any{"launch_env": `{"PLECT_TEAM_CONTEXT":"acme"}`}
 
 	checked := 0
 	for id, def := range tasks {
@@ -251,8 +251,8 @@ func TestShippedCatalog_LaunchEnvRejectsQuoteBreakout(t *testing.T) {
 func TestShippedCatalog_McpServersRejectsQuoteBreakout(t *testing.T) {
 	tasks, _ := loadShippedCatalogTasks(t)
 
-	breakout := map[string]any{"tmux_session": "s", "mcp_servers": `[{"name":"x'; touch /tmp/pwned; echo '","command":"y"}]`}
-	benign := map[string]any{"tmux_session": "s", "mcp_servers": `[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]`}
+	breakout := map[string]any{"mcp_servers": `[{"name":"x'; touch /tmp/pwned; echo '","command":"y"}]`}
+	benign := map[string]any{"mcp_servers": `[{"name":"kbn","command":"kbn-mcp","args":["--scoped"]}]`}
 
 	checked := 0
 	for id, def := range tasks {
