@@ -1,11 +1,33 @@
 package service
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+// capResolverFields is a resolver fixture private to this file. It
+// deliberately avoids dispatch_test.go's shared githubResolverFields: that
+// derives a session name shaped like a hosting provider's owner+repo slug,
+// which scripts/check-provider-boundary.sh treats as a leaked convention,
+// and this file is not on that script's (shrinking) test allowlist.
+const capResolverFields = `match = '^https://example\.test/cases/(?P<id>[A-Za-z0-9]+)'
+name  = { expr = "'case_' + match.id" }
+`
+
+// capProviderCreatingWorkspace mirrors dispatch_test.go's
+// providerCreatingWorkspace, but built on capResolverFields instead of the
+// shared githubResolverFields.
+func capProviderCreatingWorkspace(id, workspaceDir string) string {
+	script := fmt.Sprintf("mkdir -p %s\nprintf '{\"workspace_dir\":\"%s\"}'\n", workspaceDir, workspaceDir)
+	return providerDoc(id, capResolverFields, `[%[1]s.setup]
+type    = "exec"
+command = "sh"
+args    = ["-c", `+fmt.Sprintf("%q", script)+`, "provider"]
+`)
+}
 
 // Given a parent whose workflow declares max_up_children = 2 with 2 children
 // up, when `plect up` would add a third child, then the command fails
@@ -14,21 +36,21 @@ import (
 func TestUp_RejectsThirdChildAtCapAndCreatesNoStateEntry(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "gh",
+	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", providerCreatingWorkspace("gh", workdir))
+	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
 
-	seedSession(t, store, "org/parent-1", "org/parent", 1, "parent_wf", nil)
-	for i, name := range []string{"org/child-a", "org/child-b"} {
-		seedSession(t, store, name, "org/child", i, "", upTasks())
-		setParent(t, store, name, "org/parent-1")
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+	for i, name := range []string{"childA", "childB"} {
+		seedSession(t, store, name, "acct", i, "", upTasks())
+		setParent(t, store, name, "parent1")
 	}
 
-	url := "https://github.com/org/repo/issues/77"
-	newChildName := "org/repo-77+gh"
-	_, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "org/parent-1"})
+	url := "https://example.test/cases/reject"
+	newChildName := "case_reject+capwf"
+	_, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1"})
 	if err == nil {
 		t.Fatal("expected Up to reject the third child")
 	}
@@ -46,22 +68,22 @@ func TestUp_RejectsThirdChildAtCapAndCreatesNoStateEntry(t *testing.T) {
 func TestUp_AllowsNewChildAfterSiblingDrops(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "gh",
+	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", providerCreatingWorkspace("gh", workdir))
+	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
 
-	seedSession(t, store, "org/parent-1", "org/parent", 1, "parent_wf", nil)
-	seedSession(t, store, "org/child-a", "org/child", 0, "", upTasks())
-	setParent(t, store, "org/child-a", "org/parent-1")
-	// org/child-b is down (destroyed would remove the entry outright; downed
-	// is the case with a state entry but no produced run-scoped task).
-	seedSession(t, store, "org/child-b", "org/child", 1, "", nil)
-	setParent(t, store, "org/child-b", "org/parent-1")
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+	seedSession(t, store, "childA", "acct", 0, "", upTasks())
+	setParent(t, store, "childA", "parent1")
+	// childB is down (destroyed would remove the entry outright; downed is
+	// the case with a state entry but no produced run-scoped task).
+	seedSession(t, store, "childB", "acct", 1, "", nil)
+	setParent(t, store, "childB", "parent1")
 
-	url := "https://github.com/org/repo/issues/78"
-	result, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "org/parent-1"})
+	url := "https://example.test/cases/accept"
+	result, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1"})
 	if err != nil {
 		t.Fatalf("Up: %v", err)
 	}
@@ -69,8 +91,8 @@ func TestUp_AllowsNewChildAfterSiblingDrops(t *testing.T) {
 	if s == nil {
 		t.Fatal("new child session not persisted")
 	}
-	if s.ParentSession != "org/parent-1" {
-		t.Errorf("ParentSession = %q, want org/parent-1", s.ParentSession)
+	if s.ParentSession != "parent1" {
+		t.Errorf("ParentSession = %q, want parent1", s.ParentSession)
 	}
 }
 
@@ -79,20 +101,20 @@ func TestUp_AllowsNewChildAfterSiblingDrops(t *testing.T) {
 func TestUp_NoCapDeclaredAllowsUnlimitedChildrenViaUp(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
-	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "gh",
+	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
 		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
 		[]nodeFixture{{id: "noop"}})
-	writeSetupWorkflow(t, cfg, "gh", providerCreatingWorkspace("gh", workdir))
+	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", nil)
 
-	seedSession(t, store, "org/parent-1", "org/parent", 1, "parent_wf", nil)
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
 	for i, name := range []string{"a", "b", "c", "d", "e"} {
-		seedSession(t, store, "org/child-"+name, "org/child", i, "", upTasks())
-		setParent(t, store, "org/child-"+name, "org/parent-1")
+		seedSession(t, store, "child"+name, "acct", i, "", upTasks())
+		setParent(t, store, "child"+name, "parent1")
 	}
 
-	url := "https://github.com/org/repo/issues/79"
-	if _, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "org/parent-1"}); err != nil {
+	url := "https://example.test/cases/many"
+	if _, err := Up(cfg, store, UpParams{Identifier: url, ParentSession: "parent1"}); err != nil {
 		t.Fatalf("Up: %v, want success (no cap declared)", err)
 	}
 }
@@ -106,15 +128,15 @@ func TestUp_ReRunOnAlreadyUpChildAtFullCapStaysIdempotent(t *testing.T) {
 		[]nodeFixture{{id: "noop"}})
 	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(2))
 
-	seedSession(t, store, "org/parent-1", "org/parent", 1, "parent_wf", nil)
-	seedSession(t, store, "org/child-a", "org/child", 0, "child_wf", map[string]*contract.TaskState{
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+	seedSession(t, store, "childA", "acct", 0, "child_wf", map[string]*contract.TaskState{
 		"noop": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 	})
-	setParent(t, store, "org/child-a", "org/parent-1")
-	seedSession(t, store, "org/child-b", "org/child", 1, "child_wf", upTasks())
-	setParent(t, store, "org/child-b", "org/parent-1")
+	setParent(t, store, "childA", "parent1")
+	seedSession(t, store, "childB", "acct", 1, "child_wf", upTasks())
+	setParent(t, store, "childB", "parent1")
 
-	if _, err := Up(cfg, store, UpParams{Identifier: "org/child-a"}); err != nil {
+	if _, err := Up(cfg, store, UpParams{Identifier: "childA"}); err != nil {
 		t.Fatalf("Up (re-up on already-up child): %v, want success", err)
 	}
 }
