@@ -61,7 +61,7 @@ pid = { from = "self.outputs.pid" }
 [exec_runtime.health.activity]
 type = "exec"
 bin  = "codex-agent-activity"
-args = ["probe", { from = "session.name" }]
+args = ["probe", { from = "session.name" }, { from = "self.outputs.state_dir" }]
 ```
 
 A hook and a pane fingerprint are two implementations of one probe. Both reach

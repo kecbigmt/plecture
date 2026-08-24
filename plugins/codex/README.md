@@ -35,7 +35,12 @@ dependency.
 - `scripts/codex-agent-activity` — both halves of the turn-boundary activity
   fingerprint (setting `silence_expected` once a turn ends, and withholding it
   inside a turn): the hook the `codex`/`exec_runtime` effects register, and the
-  `probe` verb those tasks declare as their `[health].activity`.
+  `probe` verb those tasks declare as their `[health].activity`. For
+  `exec_runtime`, `probe` also takes the worker's `state_dir` and folds in its
+  current turn's own log file (name and size): unlike the interactive TUI,
+  whose pane fingerprint (see the `tmux` plugin) covers a single long turn
+  that crosses no hook boundary, `codex exec`'s output never reaches the
+  pane, so this is the only mid-turn evidence this shape produces.
 - `scripts/codex-exec-worker` — the worker script `exec_runtime.toml`
   launches, resolved through `bin = "<name>"` so it needs no `PATH` entry of
   its own.
