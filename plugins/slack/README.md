@@ -11,6 +11,10 @@ another plugin's package.
 
 ## Contents
 
+- `config/tasks/slack_thread.toml` — creates one Slack root message for a PR
+  review session through `slack-adapter` and records the conversation with
+  `plect state set-conversation`. Outputs: `thread_ts`, `channel_id`, and
+  `permalink`.
 - `config/channels/slack.toml` — delivers a session event to its Slack
   thread by posting to the `slack-adapter` service's HTTP API. Inputs:
   `base_url` (e.g. `http://127.0.0.1:7890` for its default `listen_addr`),
@@ -34,10 +38,31 @@ builds it automatically.
 
 `slack-adapter` is declared as a `[[services]]` in `plugin.toml`,
 supervised by `plect serve` (start, crash-restart with backoff, stop with
-the resident process). It needs `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, and
-`SLACK_CHANNEL_ID` in the resident process's own environment before it
-starts — without all three it stays inert rather than crash-looping (its
-`cmd/slack-adapter/main.go` exits at startup if any is unset).
+the resident process). Outbound thread creation and message posting require
+only `SLACK_BOT_TOKEN`; `SLACK_APP_TOKEN` is optional and only activates
+Socket Mode inbound relay.
+
+## Review thread contract
+
+`slack_thread` creates the root message as:
+
+```text
+[AI review] <PR title> — <PR URL>
+session <name> · head <short sha>
+```
+
+It records the session conversation with `source=Slack`, the adapter
+permalink, and metadata keys `thread_ts`, `channel_id`, `pr_url`, and
+`review_session`.
+
+The final review conclusion is an event with type `plect.review.conclusion`.
+The Slack channel should be bound with `include = ["plect.review.conclusion"]`;
+the posted text is the event body, falling back to the summary. Progress,
+heartbeats, terminal events, and GitHub watcher events do not match that
+binding.
+
+See `examples/review-thread-workflow.toml` for a user-owned composition that
+wires `slack_thread` outputs into the `slack` channel.
 
 ## Not included
 

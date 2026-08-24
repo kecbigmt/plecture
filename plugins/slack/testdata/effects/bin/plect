@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+plect-effect-record plect "$@"

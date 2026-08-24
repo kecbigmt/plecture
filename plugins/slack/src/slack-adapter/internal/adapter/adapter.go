@@ -25,6 +25,7 @@ type Adapter struct {
 	socketPool *SocketPool
 	broker     *Broker
 	poster     ThreadPoster
+	threader   ThreadCreator
 	logger     *slog.Logger
 }
 
@@ -43,17 +44,23 @@ func SubscribersStatePath() string {
 
 // New creates a new Adapter.
 func New(cfg *Config, logger *slog.Logger) *Adapter {
-	api := slack.New(cfg.SlackBotToken, slack.OptionAppLevelToken(cfg.SlackAppToken))
-	sm := socketmode.New(api)
+	options := []slack.Option{}
+	if cfg.SlackAppToken != "" {
+		options = append(options, slack.OptionAppLevelToken(cfg.SlackAppToken))
+	}
+	api := slack.New(cfg.SlackBotToken, options...)
 
 	a := &Adapter{
 		cfg:    cfg,
 		api:    api,
-		sm:     sm,
 		broker: NewBroker(SubscribersStatePath(), logger),
 		logger: logger,
 	}
+	if cfg.SlackAppToken != "" {
+		a.sm = socketmode.New(api)
+	}
 	a.poster = a
+	a.threader = a
 	a.socketPool = NewSocketPool(a.poster, logger, a.captureOutbound)
 	// Cache workspace name from Slack API
 	resp, err := api.AuthTest()
@@ -85,6 +92,10 @@ func (a *Adapter) Close() {}
 
 // Run starts the Slack Socket Mode listener. Blocks until ctx is cancelled.
 func (a *Adapter) Run(ctx context.Context) error {
+	if a.sm == nil {
+		<-ctx.Done()
+		return nil
+	}
 	go a.handleSlackEvents(ctx)
 	return a.sm.RunContext(ctx)
 }
@@ -264,11 +275,21 @@ func (a *Adapter) PostToThread(channelID, threadTS, text string) (string, error)
 	return ts, err
 }
 
-// CreateThread posts a new message to a channel (becomes thread parent).
-func (a *Adapter) CreateThread(channelID, text string) (string, error) {
+// CreateThread posts a new message to a channel and returns Slack's permalink.
+func (a *Adapter) CreateThread(channelID, text string) (string, string, error) {
 	_, ts, err := a.api.PostMessage(
 		channelID,
 		slack.MsgOptionText(text, false),
 	)
-	return ts, err
+	if err != nil {
+		return "", "", err
+	}
+	permalink, err := a.api.GetPermalink(&slack.PermalinkParameters{
+		Channel: channelID,
+		Ts:      ts,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	return ts, permalink, nil
 }

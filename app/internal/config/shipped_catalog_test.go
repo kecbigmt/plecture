@@ -96,6 +96,7 @@ func TestShippedCatalog_LoadsAndCompiles(t *testing.T) {
 		"official.codex.codex_initial_prompt",
 		"official.codex.exec_runtime",
 		"official.github.gh_guard",
+		"official.slack.slack_thread",
 	} {
 		if _, ok := tasks[address]; !ok {
 			t.Errorf("shipped catalog effect %q not found", address)
@@ -148,17 +149,7 @@ func TestShippedCatalog_LoadsUnderArbitraryAlias(t *testing.T) {
 	}
 }
 
-// TestShippedCatalog_SlackAdapterServiceRequiresAllStartupCredentials guards
-// the slack-adapter [[services]] declaration in the slack plugin's
-// plugin.toml against a partial required_env list: slack-adapter's
-// cmd/slack-adapter/main.go exits(1) at startup if any of the bot token,
-// app token, or channel id is unset, so a required_env list missing one of
-// them would let the plugin service supervisor start (and then crash-loop)
-// slack-adapter instead of leaving it inert, the way an unconfigured
-// service should stay. This regression guards the specific gap a review
-// caught: required_env originally listed only the two tokens, not the
-// channel id.
-func TestShippedCatalog_SlackAdapterServiceRequiresAllStartupCredentials(t *testing.T) {
+func TestShippedCatalog_SlackAdapterServiceRequiresBotTokenOnly(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 
 	var svc *plugins.Service
@@ -173,17 +164,7 @@ func TestShippedCatalog_SlackAdapterServiceRequiresAllStartupCredentials(t *test
 		t.Fatal("no shipped plugin declares a slack-adapter service")
 	}
 
-	want := []string{"SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_CHANNEL_ID"}
-	for _, name := range want {
-		found := false
-		for _, e := range svc.RequiredEnv {
-			if e == name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("slack-adapter service required_env = %v, missing %q (main.go exits at startup without it)", svc.RequiredEnv, name)
-		}
+	if len(svc.RequiredEnv) != 1 || svc.RequiredEnv[0] != "SLACK_BOT_TOKEN" {
+		t.Errorf("slack-adapter service required_env = %v, want bot-token-only outbound startup", svc.RequiredEnv)
 	}
 }

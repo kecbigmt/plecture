@@ -4,11 +4,11 @@
 
 Slack-specific message relay + subscription broker.
 
-- Receives messages via Slack Socket Mode
+- Receives messages via Slack Socket Mode when an app token is configured
 - Resolves `thread_ts → {channel_id, socket_path}` with an in-memory map (`Broker`)
 - Persists subscriptions to `$XDG_STATE_HOME/slack-adapter/subscribers.json` via atomic write and reloads them at startup (makes broker restarts transparent to plect)
 - Forwards messages to channel-server; posts replies via the Slack API
-- HTTP API: `/threads` (create a thread), `/messages` (post), `/subscribe` (register/unregister a subscription), `/subscribers` (list subscriptions)
+- HTTP API: `/threads` (create a thread and return its permalink), `/messages` (post), `/subscribe` (register/unregister a subscription), `/subscribers` (list subscriptions)
 
 ## Dependency rules
 
@@ -37,9 +37,9 @@ Slack-specific message relay + subscription broker.
 
 | Endpoint | Purpose | Caller |
 |---|---|---|
-| `GET /info` | Returns workspace name and channel ID | plect task (`slack_thread`) |
-| `POST /threads` | Creates a Slack thread | plect task (`slack_thread`) |
-| `POST /messages` | Posts a message to a thread | `slack_thread` cleanup, `claude-slack-notify.sh` |
+| `GET /info` | Returns workspace name and default channel ID | plect task (`slack_thread`) |
+| `POST /threads` | Creates a Slack thread and returns its permalink | plect task (`slack_thread`) |
+| `POST /messages` | Posts a message to a thread | plect channel (`slack`), `claude-slack-notify.sh` |
 | `POST /subscribe` / `DELETE /subscribe?thread_ts=...` | Register/unregister a subscription | plect task (`slack_subscribe`) |
 | `GET /subscribers` | Lists subscriptions (for the `[health].alive` probe) | plect task (`slack_subscribe`) |
 | `POST /notify` | Notifies Slack + channel-server, keyed by `session_name` | deprecated rollback path (`github-watcher serve --allow-legacy-notify` only) |

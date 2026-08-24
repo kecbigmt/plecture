@@ -100,6 +100,22 @@ func TestLoadConfig_ConfigFileTakesPriorityOverEnvVars(t *testing.T) {
 	}
 }
 
+func TestValidateStartup_AllowsOutboundOnlyConfig(t *testing.T) {
+	cfg := &Config{SlackBotToken: "xoxb-test"}
+
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("ValidateStartup() error = %v, want nil", err)
+	}
+}
+
+func TestValidateStartup_RequiresBotToken(t *testing.T) {
+	cfg := &Config{SlackAppToken: "xapp-test", ChannelID: "C123"}
+
+	if err := cfg.ValidateStartup(); err == nil {
+		t.Fatal("ValidateStartup() error = nil, want missing bot token error")
+	}
+}
+
 func TestMentionPrefix(t *testing.T) {
 	tests := []struct {
 		name           string

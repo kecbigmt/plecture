@@ -115,6 +115,11 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"owner":          "acme",
 		"assignees":      "",
 		"instruction":    "",
+		"base_url":       "http://127.0.0.1:7890",
+		"channel_id":     "C123",
+		"pr_title":       "Fix widgets",
+		"head_sha":       "abcdef1234567890",
+		"pr_url":         "https://github.com/acme/widgets/pull/7",
 	}
 
 	for id, def := range tasks {

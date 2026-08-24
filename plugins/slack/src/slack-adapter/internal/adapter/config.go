@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -50,6 +51,13 @@ func LoadConfig() *Config {
 	fillFromEnv(&cfg.ChannelID, "SLACK_CHANNEL_ID")
 
 	return cfg
+}
+
+func (c *Config) ValidateStartup() error {
+	if c.SlackBotToken == "" {
+		return errors.New("slack_bot_token must be set in config")
+	}
+	return nil
 }
 
 func fillFromEnv(field *string, envVar string) {

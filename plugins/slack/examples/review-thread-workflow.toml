@@ -1,0 +1,41 @@
+# Copy this into a user-owned config layer and adjust the runtime/provider
+# choices for the review workflow that should discuss conclusions in Slack.
+
+[pr_review_with_slack]
+kind               = "workflow"
+workspace_provider = "official.github.worktree"
+
+[pr_review_with_slack.inputs_schema]
+type                 = "object"
+required             = ["slack_base_url", "slack_channel_id", "pr_title", "head_sha"]
+additionalProperties = false
+
+[pr_review_with_slack.inputs_schema.properties]
+slack_base_url   = { type = "string" }
+slack_channel_id = { type = "string" }
+pr_title         = { type = "string" }
+head_sha         = { type = "string" }
+
+[[pr_review_with_slack.nodes]]
+id   = "slack_thread"
+uses = "official.slack.slack_thread"
+
+[pr_review_with_slack.nodes.inputs]
+base_url   = { from = "session.inputs.slack_base_url" }
+channel_id = { from = "session.inputs.slack_channel_id" }
+pr_title   = { from = "session.inputs.pr_title" }
+head_sha   = { from = "session.inputs.head_sha" }
+
+[[pr_review_with_slack.nodes]]
+id   = "reviewer"
+uses = "official.codex.codex"
+
+[[pr_review_with_slack.event.channel]]
+name    = "review_conclusion"
+uses    = "official.slack.slack"
+include = ["plect.review.conclusion"]
+
+[pr_review_with_slack.event.channel.inputs]
+base_url   = { from = "session.inputs.slack_base_url" }
+channel_id = { from = "nodes.slack_thread.outputs.channel_id" }
+thread_ts  = { from = "nodes.slack_thread.outputs.thread_ts" }
