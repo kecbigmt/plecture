@@ -9,28 +9,16 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6/kind"
 )
 
-// StaticInputIssue is one input-shape violation ValidateInputsStatic found
-// without live dispatch data: which input key is at fault, and why.
 type StaticInputIssue struct {
 	Key     string
 	Message string
 }
 
 // ValidateInputsStatic checks a node's declared input bindings against its
-// own compiled InputsSchema — the same schema and the same Validate call
-// RunSetup runs against the resolved inputs at dispatch (task.go's
-// toJSONShape+InputsSchema.Validate) — using only what a workflow's config
-// already declares, so a mismatch surfaces at verify time instead of only
-// once dispatch reaches that node.
-//
-// An unknown key (`additionalProperties = false`) and a missing required key
-// are decidable from the declared key set alone. A type or pattern violation
-// is decidable only for a key whose value is known before dispatch: a
-// literal, or a `{ from = ..., default = ... }` binding's own default. A
-// plain `from`, `expr`, `terminal`, `bin`, or `json` binding's key still
-// counts toward `required`/`additionalProperties` — both are presence
-// checks — but this function has no value to hold against its type or
-// pattern, so it stays silent there and leaves that check to dispatch.
+// own compiled InputsSchema, the same schema RunSetup validates the resolved
+// inputs against at dispatch. A binding whose value is only known at
+// dispatch (anything but a literal or a from-binding's own default) can't be
+// type-checked here, so it counts toward required/additionalProperties only.
 func ValidateInputsStatic(r Resolved) []StaticInputIssue {
 	if r.InputsSchema == nil {
 		return nil
@@ -57,12 +45,6 @@ func ValidateInputsStatic(r Resolved) []StaticInputIssue {
 	return dedupIssues(issues)
 }
 
-// staticInputShape builds the best-effort object a node's declared inputs
-// resolve to without live dispatch data. known reports which keys carry a
-// value this check actually trusts for a type/pattern verdict — a literal,
-// or a from-binding's own default; every other key gets a nil placeholder so
-// it still counts as present (satisfying required/additionalProperties)
-// without pretending to know what dispatch will substitute there.
 func staticInputShape(inputs map[string]*lang.Value) (shape map[string]any, known map[string]bool) {
 	shape = make(map[string]any, len(inputs))
 	known = make(map[string]bool, len(inputs))
@@ -81,13 +63,6 @@ func staticInputShape(inputs map[string]*lang.Value) (shape map[string]any, know
 	return shape, known
 }
 
-// collectDecidableIssues walks a jsonschema validation error's cause tree,
-// keeping only the violations ValidateInputsStatic's doc comment promises:
-// required/additionalProperties (decidable from key presence alone,
-// regardless of the placeholder standing in for an unresolved value) and any
-// other kind at a key staticInputShape actually knows the value of — a type
-// or pattern mismatch reported against the nil placeholder would be a false
-// positive about a value dispatch hasn't produced yet.
 func collectDecidableIssues(e *jsonschema.ValidationError, known map[string]bool, issues []StaticInputIssue) []StaticInputIssue {
 	switch k := e.ErrorKind.(type) {
 	case *kind.Required:

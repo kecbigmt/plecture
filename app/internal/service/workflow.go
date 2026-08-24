@@ -171,10 +171,6 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 	return detail, nil
 }
 
-// validateNodeInputsStatic runs task.ValidateInputsStatic over every node in
-// the compiled plan and folds the result into one ErrInvalidInput naming the
-// workflow, node, and offending key for each issue found, or nil when every
-// node's declared inputs still fit its task's inputs_schema.
 func validateNodeInputsStatic(id string, plan *task.Plan) *Error {
 	var lines []string
 	for _, group := range [][]task.Resolved{plan.Session, plan.Run} {
