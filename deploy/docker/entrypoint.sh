@@ -1,22 +1,34 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Runs as root — the container's default user — so it can fix ownership on
-# a freshly attached ECS volume (which mounts root:root by default) before
-# the single supervised process drops to the unprivileged `plect` user (see
-# service/plect-serve/run). Nothing below this file ever needs root once
-# runsvdir has started.
+# Runs as root once per boot, to fix ownership on a freshly attached ECS
+# volume, before the supervised process drops to `plect` (see
+# service/plect-serve/run).
 PLECT_UID="${PLECT_UID:-10000}"
 PLECT_GID="${PLECT_GID:-10000}"
 
-# Every path here is a persisted-volume path from the runtime layout
-# contract (deploy/docker/README.md's Persistence section) except
-# XDG_RUNTIME_DIR, handled separately below because it is deliberately NOT
-# persisted. A `chown -R` here would re-walk the whole volume — including
-# every git worktree under workspace_dirs — on every single boot; these
-# directories are chowned non-recursively instead, and new content under
-# them inherits correct ownership because it is always created by the
-# plect-uid process, never by this root-run script.
+# HOME/XDG_*_HOME/XDG_RUNTIME_DIR are environment-controlled, and this
+# script runs as root before anything drops privilege — an env override
+# (a task definition, a downstream image's ENV) pointing one of them
+# outside its expected root must fail loud here rather than let a
+# chown/mkdir land somewhere unintended. `realpath -m` resolves `..`
+# before the comparison so a traversal can't slip past a literal prefix
+# match.
+require_under() {
+  local resolved
+  resolved="$(realpath -m -- "$1")"
+  case "$resolved" in
+  "$2" | "$2"/*) ;;
+  *)
+    echo "entrypoint: refusing $1 (resolves to $resolved, outside $2)" >&2
+    exit 1
+    ;;
+  esac
+}
+
+# Non-recursive: chowning the whole volume on every boot would re-walk
+# every git worktree under workspace_dirs, and content created below these
+# dirs is already plect-owned (the plect-uid process is what creates it).
 for dir in \
   "$HOME" \
   "$XDG_DATA_HOME" \
@@ -24,14 +36,14 @@ for dir in \
   /var/lib/plect/workspace_dirs \
   /var/lib/plect/codex-exec \
   ; do
+  require_under "$dir" /var/lib/plect
   mkdir -p "$dir"
   chown "$PLECT_UID:$PLECT_GID" "$dir"
 done
 
-# Recreated every boot, never on the persisted volume: UDS paths (the bus
-# socket) are run-scoped, and a stale one from a previous boot must not
-# outlive the container that created it.
-rm -rf "$XDG_RUNTIME_DIR"
+# Never on the persisted volume, so — unlike the loop above — this always
+# starts empty on its own; no rm needed before the mkdir.
+require_under "$XDG_RUNTIME_DIR" /run/plect
 mkdir -p "$XDG_RUNTIME_DIR"
 chown "$PLECT_UID:$PLECT_GID" "$XDG_RUNTIME_DIR"
 chmod 0700 "$XDG_RUNTIME_DIR"
@@ -39,12 +51,10 @@ chmod 0700 "$XDG_RUNTIME_DIR"
 runsvdir /etc/service &
 SUPERVISOR_PID=$!
 
-# ECS sends SIGTERM to PID 1 on task stop. runsvdir does not itself forward
-# signals to the services it supervises (runit's own model routes control
-# through `sv`, not raw signals) — without this trap, `plect serve` would
-# never see the SIGTERM its own signal.NotifyContext expects, and ECS's
-# stop timeout would end in a SIGKILL every time, on every deploy and
-# every scale-in.
+# runsvdir does not forward signals to what it supervises (runit routes
+# control through `sv`), so without this trap `plect serve` would never
+# see the SIGTERM its own signal.NotifyContext expects, and ECS's stop
+# timeout would end in a SIGKILL every time.
 shutdown() {
   sv down /etc/service/plect-serve >/dev/null 2>&1 || true
   for _ in $(seq 1 20); do

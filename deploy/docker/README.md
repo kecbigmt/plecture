@@ -31,19 +31,32 @@ out of scope here (see "Extending this image" below).
 
 ## Build
 
-Pin by checking out the exact commit first — the image has no other source
-of the "which commit" pin; there is nothing in `/etc/plect` (a path catalog
-records no git revision) that records it for you:
+Pin by checking out the exact commit and passing it as a build arg — the
+Dockerfile refuses to build without `PLECT_SOURCE_SHA` (a well-formed
+40-character commit SHA), since a plain directory build context otherwise
+carries no commit identity of its own:
 
 ```bash
 git checkout <commit-sha>
-docker build -f deploy/docker/Dockerfile -t plecture-base:<tag> .
+docker build -f deploy/docker/Dockerfile \
+  --build-arg PLECT_SOURCE_SHA="$(git rev-parse HEAD)" \
+  -t plecture-base:<tag> .
 ```
 
-The build is self-contained (a Go toolchain and network access to fetch Go
-modules, the `gh`/Node.js release tarballs, and the two npm packages — no
-access to this repository's own remote needed, since the build context is
-already the checked-out commit).
+That SHA is stamped into the built image (the `org.opencontainers.image.revision`
+label, and a plain `/etc/plecture-source-revision` file readable from inside
+the running container) — a way to confirm, after the fact, exactly which
+commit a given image or running container claims to be built from:
+
+```bash
+docker inspect --format='{{index .Config.Labels "org.opencontainers.image.revision"}}' <image>
+docker exec <container> cat /etc/plecture-source-revision
+```
+
+The build is otherwise self-contained (a Go toolchain and network access to
+fetch Go modules, the `gh`/Node.js release tarballs, and the two npm
+packages — no access to this repository's own remote needed, since the
+build context is already the checked-out commit).
 
 ## Process model
 
@@ -140,7 +153,9 @@ see the issue's own "Verification is one-time PR evidence" acceptance
 criterion; this PR does not add one):
 
 ```bash
-docker build -f deploy/docker/Dockerfile -t <registry>/<repo>:<tag> .
+docker build -f deploy/docker/Dockerfile \
+  --build-arg PLECT_SOURCE_SHA="$(git rev-parse HEAD)" \
+  -t <registry>/<repo>:<tag> .
 docker push <registry>/<repo>:<tag>
 # then: update the ECS service/task definition to the new tag (Terraform,
 # in the team's own deployment repository — out of scope here).
@@ -192,7 +207,9 @@ Built and run locally (not on ECS) against this Dockerfile, with a Docker
 named volume standing in for the ECS volume:
 
 ```bash
-docker build -f deploy/docker/Dockerfile -t plecture-base:test .
+docker build -f deploy/docker/Dockerfile \
+  --build-arg PLECT_SOURCE_SHA="$(git rev-parse HEAD)" \
+  -t plecture-base:test .
 docker volume create plecture-test-data
 docker run -d --name plecture-test -v plecture-test-data:/var/lib/plect plecture-base:test
 ```
@@ -220,3 +237,15 @@ Observed:
   back up, the healthcheck went `healthy` again, and a file written under
   `/var/lib/plect/data` before the stop was still present after the
   restart.
+- Building without `PLECT_SOURCE_SHA`, or with a value that isn't a
+  40-character hex SHA, fails the build at that check, before anything
+  else runs. Building with the real `git rev-parse HEAD` value: the
+  `org.opencontainers.image.revision` label and
+  `/etc/plecture-source-revision` inside the running container both match
+  it exactly.
+- `entrypoint.sh`'s path guard: a normal boot (no env override) is
+  unaffected; `-e HOME=/etc`, `-e HOME=/var/lib/plect/../../etc` (a `..`
+  traversal that resolves outside `/var/lib/plect` despite the literal
+  string starting with it), and `-e XDG_RUNTIME_DIR=/` are each refused
+  with a loud error before any `mkdir`/`chown` runs, instead of the
+  container silently touching a path outside its expected roots.
