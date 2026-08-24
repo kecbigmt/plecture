@@ -79,9 +79,10 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		if params.Workflow != "" && existing != nil && params.Workflow != existing.Workflow {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
 		}
-		// Before Create, not after: Create is what persists a new child's
-		// state entry, and a rejected child must leave none.
-		targetAlreadyUp := existing != nil && sessionRunState(existing) == domain.RunUp
+		// Before Create: a rejected new child must leave no state entry.
+		// ForceRecreate excludes even an up target, since it tears the
+		// child down and rebuilds — the slot must stay reserved through that.
+		targetAlreadyUp := existing != nil && sessionRunState(existing) == domain.RunUp && !params.ForceRecreate
 		parentSessionName := ""
 		if existing != nil {
 			parentSessionName = existing.ParentSession
@@ -134,7 +135,8 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	// Mirrors the matched branch's reservation above, for a bare-name
 	// session going straight from down to up.
 	if !matched {
-		reserved, capErr := reserveChildCapSlot(cfg, store, sessionName, session.ParentSession, sessionRunState(session) == domain.RunUp)
+		targetAlreadyUp := sessionRunState(session) == domain.RunUp && !params.ForceRecreate
+		reserved, capErr := reserveChildCapSlot(cfg, store, sessionName, session.ParentSession, targetAlreadyUp)
 		if capErr != nil {
 			return nil, capErr
 		}

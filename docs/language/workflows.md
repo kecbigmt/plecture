@@ -127,6 +127,9 @@ concurrent `plect up` processes deciding at the same instant; this is why a
 rejection's reported count can briefly exceed what `plect ls` shows. A
 `plect up` that only brings an already-up child back up again (an idempotent
 re-up) is exempt from the cap, since that child is already counted.
+`--force-recreate` is not this case even on an already-up child: it tears
+run state down before rebuilding it, so it holds an admission of its own
+for that whole window rather than being exempt.
 
 An in-flight admission survives however long its `plect up` process
 legitimately keeps running — it counts until that process is confirmed

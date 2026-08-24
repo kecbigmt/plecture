@@ -2,10 +2,13 @@ package service
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -152,9 +155,6 @@ func TestUp_ReRunOnAlreadyUpChildAtFullCapStaysIdempotent(t *testing.T) {
 	}
 }
 
-// A completed Up must release the reservation it took, or every successful
-// admission would permanently eat into the cap on top of the real up child
-// it produced — double-counting the same slot forever.
 func TestUp_ReleasesReservationAfterSuccessfulAdmission(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -181,9 +181,6 @@ func TestUp_ReleasesReservationAfterSuccessfulAdmission(t *testing.T) {
 	}
 }
 
-// The end-to-end recovery path for a reservation a crashed `plect up` left
-// behind: `plect destroy` on the stuck child, an existing command, needs no
-// new verb to free the slot for a sibling.
 func TestDestroy_ClearsStaleReservationForTheDestroyedChild(t *testing.T) {
 	store := testStore(t)
 	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "child_wf",
@@ -208,12 +205,8 @@ func TestDestroy_ClearsStaleReservationForTheDestroyedChild(t *testing.T) {
 	}
 }
 
-// End-to-end through the real Up() admission path (not just
-// reserveChildCapSlot/ReserveUpSlot in isolation): a child reservation held
-// by a live process must keep blocking a sibling no matter how long that
-// process has held it — see
-// TestStore_ReserveUpSlotNeverExpiresALiveReservationRegardlessOfAge for the
-// state-layer proof that no amount of elapsed time overrides this.
+// Exercises TestStore_ReserveUpSlotNeverExpiresALiveReservationRegardlessOfAge
+// through the real Up() path, not just ReserveUpSlot in isolation.
 func TestUp_LiveReservationBlocksSiblingThroughTheRealUpPath(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -239,13 +232,8 @@ func TestUp_LiveReservationBlocksSiblingThroughTheRealUpPath(t *testing.T) {
 	}
 }
 
-// End-to-end: real concurrent Up() calls racing to create the exact same
-// new child (a doubled-up orchestrator dispatch, say). The cap here is set
-// generously — this isn't about max_up_children, it's the same child
-// racing itself — so exactly one attempt may win the reservation and the
-// rest see it already in progress, never both ending up holding it (see
-// TestReserveChildCapSlot_ConcurrentAttemptForTheSameChildIsRejected for
-// the isolated proof this exercises through the real Up() path).
+// Exercises TestReserveChildCapSlot_ConcurrentAttemptForTheSameChildIsRejected
+// through real concurrent Up() calls (a doubled-up orchestrator dispatch, say).
 func TestUp_ConcurrentSameChildAttemptsRejectAllButOne(t *testing.T) {
 	store := testStore(t)
 	workdir := filepath.Join(t.TempDir(), "wd")
@@ -286,5 +274,65 @@ func TestUp_ConcurrentSameChildAttemptsRejectAllButOne(t *testing.T) {
 	}
 	if inProgress != attempts-1 {
 		t.Errorf("inProgress = %d, want %d", inProgress, attempts-1)
+	}
+}
+
+// Exercises TestReserveChildCapSlot_ForceRecreateReservationStillBlocksASibling
+// through the real Up() --force-recreate path.
+func TestUp_ForceRecreateHoldsItsCapSlotThroughTheRebuild(t *testing.T) {
+	store := testStore(t)
+	oldWorkdir := filepath.Join(t.TempDir(), "old-workdir")
+	newWorkdir := filepath.Join(t.TempDir(), "new-workdir")
+	if err := os.MkdirAll(oldWorkdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+		[]taskFixture{{id: "noop", scope: "run", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	// Slow enough that the sibling attempt below reliably lands while the
+	// teardown-and-rebuild is still in flight.
+	writeSetupWorkflow(t, cfg, "capwf", capProviderSlowWorkspace("capwf", newWorkdir))
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+	seedSession(t, store, "childA", "acct", 0, "capwf", map[string]*contract.TaskState{
+		contract.WorkflowPseudoNodeID: {
+			Scope:   contract.TaskScopeSession,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{contract.OutputKeyWorkspaceDir: oldWorkdir},
+		},
+		"noop": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+	})
+	setParent(t, store, "childA", "parent1")
+	if err := store.Update("childA", func(s *domain.Session) error {
+		s.WorkspaceDirPath = oldWorkdir
+		return nil
+	}); err != nil {
+		t.Fatalf("seed workspace dir: %v", err)
+	}
+	seedSession(t, store, "childB", "acct", 1, "capwf", nil)
+	setParent(t, store, "childB", "parent1")
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := Up(cfg, store, UpParams{Identifier: "childA", ForceRecreate: true})
+		done <- err
+	}()
+
+	// Give the recreate time to reserve its slot and start tearing down
+	// before the sibling attempts to admit.
+	time.Sleep(150 * time.Millisecond)
+
+	_, siblingErr := Up(cfg, store, UpParams{Identifier: "childB"})
+	if siblingErr == nil {
+		t.Fatal("expected childB to be rejected while childA's force-recreate was still in flight")
+	}
+	if svcErr, ok := siblingErr.(*Error); !ok || svcErr.Code != ErrChildCapExceeded {
+		t.Fatalf("childB err = %v, want ErrChildCapExceeded", siblingErr)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatalf("Up --force-recreate: %v", err)
 	}
 }

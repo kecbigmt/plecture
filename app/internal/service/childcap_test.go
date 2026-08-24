@@ -179,9 +179,6 @@ func TestReserveChildCapSlot_UnknownParentSkipsCheck(t *testing.T) {
 	}
 }
 
-// A reservation the target's own state doesn't reflect yet still must count
-// toward the cap, or a second decision computed before the first
-// reservation's child actually goes up would admit past the limit.
 func TestReserveChildCapSlot_OutstandingReservationCountsTowardCap(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
@@ -209,9 +206,7 @@ func TestReserveChildCapSlot_OutstandingReservationCountsTowardCap(t *testing.T)
 	}
 }
 
-// The atomicity guarantee itself: concurrent reservations against the same
-// capped parent, each for its own distinct child, must never admit more
-// than the declared limit, however many callers race it at once.
+// Each goroutine reserves its own distinct child, unlike the same-child case below.
 func TestReserveChildCapSlot_ConcurrentReservationsRespectCap(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
@@ -255,13 +250,8 @@ func approveAnyReservation(map[string]*domain.Session, map[string]state.UpReserv
 	return true
 }
 
-// Two concurrent `plect up` attempts for the exact same child must not
-// both hold a reservation: the second, while the first is still live, is
-// rejected outright rather than silently overwriting the first's entry —
-// which would let the first's own eventual release free a slot the second
-// is actually still using (state.Store.ReserveUpSlot). This is unrelated
-// to the declared cap (set generously here) — it fires even with room to
-// spare, because it's the same child racing itself, not a sibling.
+// Fires even with room to spare in the cap (set to 5 here) — it's the
+// same child racing itself, not a sibling contending for a slot.
 func TestReserveChildCapSlot_ConcurrentAttemptForTheSameChildIsRejected(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
@@ -282,9 +272,6 @@ func TestReserveChildCapSlot_ConcurrentAttemptForTheSameChildIsRejected(t *testi
 	}
 }
 
-// Destroying the stuck child — the operator's actual recovery command, no
-// new verb needed — frees its reservation immediately rather than making
-// a sibling wait out ReserveUpSlot's TTL.
 func TestReserveChildCapSlot_DestroyingTheStuckChildFreesItsReservation(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
@@ -308,5 +295,51 @@ func TestReserveChildCapSlot_DestroyingTheStuckChildFreesItsReservation(t *testi
 	reserved, err := reserveChildCapSlot(cfg, store, "childB", "parent1", false)
 	if err != nil || !reserved {
 		t.Fatalf("childB after destroying childA: reserved=%v err=%v, want true/nil", reserved, err)
+	}
+}
+
+// lifecycle_up.go passes targetAlreadyUp=false for a force-recreate, even
+// on an already-up child; that reservation attempt must not be blocked by
+// the child's own current up state.
+func TestReserveChildCapSlot_ForceRecreateOfAnUpChildDoesNotBlockItself(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{BaseDir: t.TempDir()}
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+	seedSession(t, store, "childA", "acct", 0, "", upTasks())
+	setParent(t, store, "childA", "parent1")
+
+	reserved, err := reserveChildCapSlot(cfg, store, "childA", "parent1", false)
+	if err != nil || !reserved {
+		t.Fatalf("reserveChildCapSlot: reserved=%v err=%v, want true/nil", reserved, err)
+	}
+}
+
+func TestReserveChildCapSlot_ForceRecreateReservationStillBlocksASibling(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{BaseDir: t.TempDir()}
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSession(t, store, "parent1", "acct", 1, "parent_wf", nil)
+	seedSession(t, store, "childA", "acct", 0, "", upTasks())
+	setParent(t, store, "childA", "parent1")
+
+	if reserved, err := reserveChildCapSlot(cfg, store, "childA", "parent1", false); err != nil || !reserved {
+		t.Fatalf("reserve childA (force-recreate): reserved=%v err=%v", reserved, err)
+	}
+	// The real teardown clears run-scoped tasks; simulate that so only the
+	// reservation, not childA's real state, is left protecting the cap.
+	if err := store.Update("childA", func(s *domain.Session) error {
+		s.Tasks = nil
+		return nil
+	}); err != nil {
+		t.Fatalf("simulate teardown: %v", err)
+	}
+
+	reserved, err := reserveChildCapSlot(cfg, store, "childB", "parent1", false)
+	if reserved {
+		t.Error("a sibling was admitted while childA's force-recreate reservation stood")
+	}
+	if err == nil || err.Code != ErrChildCapExceeded {
+		t.Fatalf("err = %v, want ErrChildCapExceeded", err)
 	}
 }

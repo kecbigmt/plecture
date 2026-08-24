@@ -38,6 +38,11 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 		up := make(map[string]bool)
 		count := 0
 		for _, name := range childNames(sessions, parentSessionName) {
+			// Skip self: its current state must not compete with the
+			// reservation this call is deciding for it (a force-recreate).
+			if name == childSessionName {
+				continue
+			}
 			if sessionRunState(sessions[name]) == domain.RunUp {
 				count++
 				up[name] = true
