@@ -17,4 +17,3 @@ type = "object"
 [labelled_runtime.outputs_schema.properties]
 pid   = { type = "integer", mutable = true }
 label = { type = "string" }
-
