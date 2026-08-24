@@ -204,6 +204,42 @@ func TestFlushPendingDelivery_RetriesUnsubscribeAndDrainsOnSuccess(t *testing.T)
 	}
 }
 
+// A resource queued under a session with no state entry (the post-destroy
+// case) must still drain, through a wholly unrelated session's activity.
+func TestFlushPendingDeliveryLogged_DrainsOrphanedEntryViaAnotherSessionsActivity(t *testing.T) {
+	toggle := filepath.Join(t.TempDir(), "toggle")
+	rec := filepath.Join(t.TempDir(), "rec")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "work", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "work"}},
+	)
+	toggledUnsubscribeProvider(t, cfg.BaseDir, toggle, rec)
+	store := testStore(t)
+
+	// "gone-1" never gets a state entry, standing in for an already-destroyed
+	// session.
+	const prURL = "resource://sess/proj/pull/9"
+	if err := queuePendingUnsubscribe(store, "gone-1", prURL); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(toggle, []byte("go"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	seedSession(t, store, "other-1", "other", 1, "coding", map[string]*contract.TaskState{})
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "other-1"}); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	if _, err := os.Stat(rec); err != nil {
+		t.Errorf("gone-1's orphaned unsubscribe hook did not run via other-1's activity: %v", err)
+	}
+	f, loadErr := loadPendingDelivery(pendingDeliveryPath(store))
+	if loadErr != nil || len(f.Unsubscribe["gone-1"]) != 0 {
+		t.Errorf("pending unsubscribe queue for gone-1 = %v (err=%v), want drained", f.Unsubscribe, loadErr)
+	}
+}
+
 // A resource re-bound by another instance since the original failure is
 // dropped from the queue without running the hook: whatever queued it is
 // moot once something else has since claimed the resource again.

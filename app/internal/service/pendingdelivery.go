@@ -120,16 +120,43 @@ func dequeuePendingUnsubscribe(store *state.Store, sessionName, resource string)
 	})
 }
 
-// flushPendingDeliveryLogged is TaskSetup's/TaskCleanup's own call site for
-// flushPendingDelivery: neither has a result field for "an unrelated
-// resource's queued retry also failed just now" (their own result is about
-// the instance the caller asked about, not the whole queue), so this logs
-// what flushPendingDelivery could not resolve — the operator can still see
-// it happened, in the log, even though it has nowhere to surface in either
-// service call's own return value.
+// flushPendingDeliveryLogged is TaskSetup's/TaskCleanup's/Destroy's own call
+// site for flushPendingDelivery, logging what it could not resolve since
+// none of them has a result field for an unrelated resource's retry
+// failure. Also sweeps other sessions' orphaned entries; see
+// sweepOrphanedPendingDeliveries.
 func flushPendingDeliveryLogged(cfg *config.Config, store *state.Store, sessionName string) {
 	for _, err := range flushPendingDelivery(cfg, store, sessionName) {
 		slog.Default().Warn("pending delivery flush failed", "session", sessionName, "error", err)
+	}
+	sweepOrphanedPendingDeliveries(cfg, store, sessionName)
+}
+
+// sweepOrphanedPendingDeliveries retries every other session's queued entry
+// whose own session no longer exists — the post-destroy case resolveSession
+// can never again resolve for that session to retry itself. A still-live
+// other session is left to drain its own queue as usual.
+func sweepOrphanedPendingDeliveries(cfg *config.Config, store *state.Store, sessionName string) {
+	f, err := loadPendingDelivery(pendingDeliveryPath(store))
+	if err != nil {
+		slog.Default().Warn("pending delivery sweep: failed to load queue", "error", err)
+		return
+	}
+	orphaned := map[string]bool{}
+	for name := range f.Subscribe {
+		orphaned[name] = true
+	}
+	for name := range f.Unsubscribe {
+		orphaned[name] = true
+	}
+	delete(orphaned, sessionName)
+	for name := range orphaned {
+		if store.Get(name) != nil {
+			continue
+		}
+		for _, err := range flushPendingDelivery(cfg, store, name) {
+			slog.Default().Warn("pending delivery flush failed", "session", name, "error", err)
+		}
 	}
 }
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -148,6 +149,12 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	}
 	if refreshed := store.Get(sessionName); refreshed != nil {
 		session = refreshed
+	}
+
+	// Binding implies delivery for the session's own resource too, not just
+	// a dynamic task setup's own bound one.
+	if _, errMsg := wireDeliveryOnSetup(cfg, store, sessionName, resource); errMsg != "" {
+		slog.Warn("resource delivery wiring failed at session create", "session", sessionName, "resource", resource, "error", errMsg)
 	}
 
 	// Record lifecycle.created on the first successful create (idempotent across

@@ -48,6 +48,7 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	if err != nil {
 		return nil, err
 	}
+	flushPendingDeliveryLogged(cfg, store, sessionName)
 	// Tearing down an existing session is a per-session write; clamp it to the
 	// active guard so a guarded orchestrator can't destroy another owner's
 	// session it can see via `plect ls`. Create guards on the way in; this
@@ -153,5 +154,12 @@ func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*Des
 	if err := store.Delete(sessionName); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to delete state entry: %v", err)}
 	}
+
+	// After the delete, so unwireDeliveryOnTeardown's fresh read sees the
+	// session as gone rather than skipping the unsubscribe as still needed.
+	if _, errMsg := unwireDeliveryOnTeardown(cfg, store, sessionName, session.ResourceID); errMsg != "" {
+		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("resource delivery unsubscribe: %s", errMsg))
+	}
+
 	return result, nil
 }

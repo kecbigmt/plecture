@@ -134,65 +134,8 @@ func TaskCleanup(cfg *config.Config, store *state.Store, params TaskCleanupParam
 	recordLifecycle(store, resolvedName, "task_cleanup", fmt.Sprintf("reclaimed %s", params.Instance))
 
 	result := &TaskCleanupResult{SessionName: resolvedName, Instance: params.Instance, Found: true, Resource: st.Resource}
-	if st.Resource != "" {
-		// The whole decide-then-act sequence runs under withDeliveryLock, not
-		// just a fresh read beforehand: a read immediately before the
-		// (necessarily unlocked, since it shells out) unsubscribe call only
-		// narrows the window a concurrent TaskSetup's own subscribe could
-		// land in — the watcher's registry has no "delete only if
-		// unreferenced" primitive to close it the rest of the way. Excluding
-		// TaskSetup's own subscribe decision for this session from running
-		// at the same time closes it instead.
-		if lockErr := withDeliveryLock(store, resolvedName, func() {
-			fresh, freshErr := store.GetE(resolvedName)
-			switch {
-			case freshErr != nil:
-				result.UnsubscribeError = fmt.Sprintf("could not verify whether %s is still needed: %v", st.Resource, freshErr)
-			case shouldUnsubscribe(fresh, st.Resource):
-				unsubscribed, unsubErr := unsubscribeIfWired(cfg, resolvedName, st.Resource)
-				result.Unsubscribed = unsubscribed
-				if unsubErr != nil {
-					result.UnsubscribeError = unsubErr.Error()
-				}
-			}
-		}); lockErr != nil {
-			result.UnsubscribeError = fmt.Sprintf("could not acquire the delivery lock: %v", lockErr)
-		}
-		// The queue call sits outside the lock's callback (and outside the
-		// switch above) so a failure to acquire the lock itself is queued
-		// too, the same as a failure inside it — queuing must not depend on
-		// which of the two ways this can fail.
-		if result.UnsubscribeError != "" {
-			if queueErr := queuePendingUnsubscribe(store, resolvedName, st.Resource); queueErr != nil {
-				result.UnsubscribeError = fmt.Sprintf("%s (and failed to durably queue a retry: %v)", result.UnsubscribeError, queueErr)
-			}
-		}
-	}
+	result.Unsubscribed, result.UnsubscribeError = unwireDeliveryOnTeardown(cfg, store, resolvedName, st.Resource)
 	return result, nil
-}
-
-// shouldUnsubscribe reports whether resource's delivery registration should
-// be dropped, given a fresh read of the session (nil when the session
-// itself no longer exists — destroyed between resolveSession and this read
-// — which is handled the same as "not needed": nothing can need a resource
-// once its owning session is gone).
-func shouldUnsubscribe(fresh *domain.Session, resource string) bool {
-	return fresh == nil || !resourceStillNeededBySession(fresh, resource)
-}
-
-func resourceStillNeededBySession(s *domain.Session, resource string) bool {
-	if resource == "" {
-		return false
-	}
-	if s.ResourceID == resource {
-		return true
-	}
-	for _, other := range s.Tasks {
-		if other != nil && other.Resource == resource {
-			return true
-		}
-	}
-	return false
 }
 
 // mergeLayerLifecycle carries a partial unwind's per-layer outcome from the

@@ -162,6 +162,69 @@ echo '{"workspace_dir":"%s"}'
 	}
 }
 
+// Binding-implies-delivery applies at session creation too, not only to a
+// dynamic task setup: the session's own resource is wired through the same
+// subscribeIfWired call TaskSetup makes for an explicit --resource.
+func TestCreate_ResourceSubscribesToMatchingProvider(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	subRec := filepath.Join(t.TempDir(), "sub-rec")
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "probe"}})
+	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
+echo '{"workspace_dir":"%s"}'
+`, workdir, workdir)) + `
+[wf.subscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
+  { from = "session.name" }, { from = "resource.id" }, "` + subRec + `"]
+`
+	writeSetupWorkflow(t, cfg, "wf", extra)
+
+	url := "https://github.com/org/repo/issues/9"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, readErr := os.ReadFile(subRec)
+	if readErr != nil {
+		t.Fatalf("subscribe hook did not run: %v", readErr)
+	}
+	want := "org/repo-9+wf\n" + url + "\n"
+	if string(got) != want {
+		t.Errorf("subscribe hook recorded %q, want %q", got, want)
+	}
+}
+
+// A resource no workspace provider hooks for must leave Create unaffected:
+// no subscribe hook to run means nothing queued for retry either.
+func TestCreate_NoDeliverableResourceBehavesAsBefore(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "probe"}})
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
+echo '{"workspace_dir":"%s"}'
+`, workdir, workdir)))
+
+	url := "https://github.com/org/repo/issues/10"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if s := store.Get("org/repo-10+wf"); s == nil {
+		t.Fatal("session not persisted")
+	}
+	if _, err := os.Stat(pendingDeliveryPath(store)); !os.IsNotExist(err) {
+		t.Fatalf("pending delivery queue should stay empty (no hooked provider to fail): stat err=%v", err)
+	}
+}
+
 // The workflow-setup create path must record lifecycle.created for a new
 // session (the legacy path did, this one didn't), and a recovery/re-run
 // must not append a duplicate.
@@ -247,6 +310,125 @@ echo '{"workspace_dir":"%s"}'
 	}
 	if len(evs) != 1 {
 		t.Fatalf("lifecycle.created after retry-success = %d, want 1", len(evs))
+	}
+}
+
+// A session torn down must drop its own resource's event-delivery
+// registration, through the same locked, durable-retry unsubscribe path
+// TaskCleanup runs for a dynamic instance's own bound resource.
+func TestDestroy_UnsubscribesSessionResource(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	subRec := filepath.Join(t.TempDir(), "sub-rec")
+	unsubRec := filepath.Join(t.TempDir(), "unsub-rec")
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "probe", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "probe"}})
+	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
+echo '{"workspace_dir":"%s"}'
+`, workdir, workdir)) + `
+[wf.subscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
+  { from = "session.name" }, { from = "resource.id" }, "` + subRec + `"]
+
+[wf.unsubscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'printf "%s\n%s\n" "$1" "$2" > "$3"', "provider",
+  { from = "session.name" }, { from = "resource.id" }, "` + unsubRec + `"]
+`
+	writeSetupWorkflow(t, cfg, "wf", extra)
+
+	url := "https://github.com/org/repo/issues/12"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := os.ReadFile(subRec); err != nil {
+		t.Fatalf("precondition: subscribe hook did not run at create: %v", err)
+	}
+
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: "org/repo-12+wf"}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+
+	got, readErr := os.ReadFile(unsubRec)
+	if readErr != nil {
+		t.Fatalf("unsubscribe hook did not run: %v", readErr)
+	}
+	want := "org/repo-12+wf\n" + url + "\n"
+	if string(got) != want {
+		t.Errorf("unsubscribe hook recorded %q, want %q", got, want)
+	}
+}
+
+// Destroy's own unsubscribe hook failing must not fail Destroy itself, and
+// the durably-queued retry must still drain via an unrelated session's
+// later activity, since nothing of the now-deleted session's own can ever
+// retry it again.
+func TestDestroy_UnsubscribeFailureIsDurablyQueuedAndDrainsViaAnotherSession(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	toggle := filepath.Join(t.TempDir(), "toggle")
+	rec := filepath.Join(t.TempDir(), "rec")
+
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{
+			{id: "probe", scope: "session", setup: `echo '{}'`},
+			{id: "work", scope: "session", setup: `echo '{}'`},
+		},
+		[]nodeFixture{{id: "probe"}})
+	extra := providerRunningScript("wf", fmt.Sprintf(`mkdir -p %s
+echo '{"workspace_dir":"%s"}'
+`, workdir, workdir)) + `
+[wf.subscribe]
+type    = "exec"
+command = "true"
+
+[wf.unsubscribe]
+type    = "exec"
+command = "sh"
+args    = ["-c", 'test -e "$1" || exit 3; echo done > "$2"', "provider", "` + toggle + `", "` + rec + `"]
+`
+	writeSetupWorkflow(t, cfg, "wf", extra)
+
+	// toggle is absent, so the unsubscribe hook fails.
+	url := "https://github.com/org/repo/issues/13"
+	deadSession := "org/repo-13+wf"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: deadSession}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if store.Get(deadSession) != nil {
+		t.Fatal("state entry should be deleted despite the unsubscribe failure")
+	}
+	f, loadErr := loadPendingDelivery(pendingDeliveryPath(store))
+	if loadErr != nil || len(f.Unsubscribe[deadSession]) != 1 || f.Unsubscribe[deadSession][0] != url {
+		t.Fatalf("pending unsubscribe queue after Destroy = %v (err=%v), want [%s] for %s", f.Unsubscribe, loadErr, url, deadSession)
+	}
+
+	// deadSession has no state entry left to retry itself, so only an
+	// unrelated session's activity can drain it.
+	if err := os.WriteFile(toggle, []byte("go"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/14"}); err != nil {
+		t.Fatalf("Create (unrelated session): %v", err)
+	}
+	if _, err := TaskSetup(cfg, store, TaskSetupParams{TaskID: "work", SessionName: "org/repo-14+wf"}); err != nil {
+		t.Fatalf("TaskSetup (unrelated session): %v", err)
+	}
+
+	if _, err := os.Stat(rec); err != nil {
+		t.Errorf("deadSession's orphaned unsubscribe hook did not run via the unrelated session's activity: %v", err)
+	}
+	f, loadErr = loadPendingDelivery(pendingDeliveryPath(store))
+	if loadErr != nil || len(f.Unsubscribe[deadSession]) != 0 {
+		t.Errorf("pending unsubscribe queue for %s = %v (err=%v), want drained", deadSession, f.Unsubscribe, loadErr)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -264,6 +265,62 @@ func TestE2E_GithubWorkspaceProviderWiresAndDropsEventDelivery(t *testing.T) {
 	subs = watcherSubscriptions(t, home)
 	if len(subs) != 0 {
 		t.Fatalf("subscriptions after unsubscribeIfWired = %v, want none", subs)
+	}
+}
+
+// TestIntegration_CreateSubscribesToGithubWatcher exercises Create itself
+// against the real shipped github-watcher hooks, not subscribeIfWired
+// directly as above.
+func TestIntegration_CreateSubscribesToGithubWatcher(t *testing.T) {
+	workspaceDirsRoot := setupE2ERepo(t)
+	home := os.Getenv("HOME")
+	setupFakeScripts(t)
+	store := state.NewStore(t.TempDir())
+
+	cfg := writeIntegrationFixture(t, workspaceDirsRoot, "default",
+		[]taskFixture{{id: "noop", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "noop"}},
+	)
+
+	url := "https://github.com/testowner/testrepo/issues/55"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	subs := watcherSubscriptions(t, home)
+	if len(subs) != 1 {
+		t.Fatalf("subscriptions after Create = %v, want exactly one", subs)
+	}
+}
+
+// TestIntegration_DestroyUnsubscribesFromGithubWatcher is the previous
+// test's teardown counterpart, against the real shipped hooks.
+func TestIntegration_DestroyUnsubscribesFromGithubWatcher(t *testing.T) {
+	workspaceDirsRoot := setupE2ERepo(t)
+	home := os.Getenv("HOME")
+	setupFakeScripts(t)
+	store := state.NewStore(t.TempDir())
+
+	cfg := writeIntegrationFixture(t, workspaceDirsRoot, "default",
+		[]taskFixture{{id: "noop", scope: "session", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "noop"}},
+	)
+
+	url := "https://github.com/testowner/testrepo/issues/56"
+	sessionName := "testowner/testrepo-56+default"
+	if _, err := Create(cfg, store, CreateParams{URL: url}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if subs := watcherSubscriptions(t, home); len(subs) != 1 {
+		t.Fatalf("precondition: subscriptions after Create = %v, want exactly one", subs)
+	}
+
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: sessionName, Force: true}); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+
+	if subs := watcherSubscriptions(t, home); len(subs) != 0 {
+		t.Fatalf("subscriptions after Destroy = %v, want none", subs)
 	}
 }
 
