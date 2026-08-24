@@ -68,6 +68,12 @@ go test ./plugins/okf/src/...
 go test ./plugins/slack/src/slack-adapter/...
 ```
 
+## Deploy
+
+[`deploy/docker/`](deploy/docker/) builds a standalone container image
+running `plect serve` — see [`deploy/docker/README.md`](deploy/docker/README.md)
+for the build, runtime layout, and first-boot procedure.
+
 ## License
 
 Apache License 2.0 — see [LICENSE](./LICENSE).
