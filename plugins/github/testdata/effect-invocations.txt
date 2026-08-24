@@ -1,3 +1,21 @@
+== gh_app_guard / setup
+call[0]: "mktemp" "-d" "<state>/plect-gh-app-guard.XXXXXX"
+outputs: {"dir":"<state>/plect-gh-app-guard"}
+artifact dir/gh:
+#!/usr/bin/env bash
+export GH_GUARD_REAL_GH='<spy>/gh'
+export GH_APP_GUARD_TOKEN_BIN='<plugin>/bin/gh-app-token'
+export GH_APP_GUARD_APP_ID='123456'
+export GH_APP_GUARD_INSTALLATION_ID='987654'
+export GH_APP_GUARD_OWNER=''
+export GH_APP_GUARD_REPO=''
+export GH_APP_GUARD_PRIVATE_KEY_PATH='/etc/plect/gh-app.pem'
+export GH_APP_GUARD_CACHE_PATH='<state>/plect-gh-app-guard/.token-cache.json'
+exec '<plugin>/scripts/gh-app-guard' "$@"
+
+== gh_app_guard / cleanup
+cleaned
+
 == gh_guard / setup
 call[0]: "mktemp" "-d" "<state>/plect-gh-guard.XXXXXX"
 outputs: {"dir":"<state>/plect-gh-guard"}

@@ -1,0 +1,86 @@
+[gh_app_guard]
+kind  = "effect"
+scope = "session"
+
+# Produces a directory an agent-runtime effect's generic PATH-prepend input
+# composes, exactly like gh_guard.toml — see that file's own comment and
+# docs/design/plugin-boundary-contracts.md's GitHub CLI Guard section for
+# the composition contract. Where gh_guard denies merge/close under the
+# operator's own `gh auth`, gh_app_guard additionally authenticates as a
+# GitHub App installation: the generated wrapper mints (and caches)
+# installation tokens itself, so it is a substitute for gh_guard, not a
+# layer on top of it — a session composes one or the other, never both.
+#
+# The private key never crosses into this wrapper's generated file content;
+# only its *path* does (an operator-provisioned file the operator is
+# responsible for keeping outside any repo, mode 0600 — see the README's
+# App auth section). The token cache this produces (`.token-cache.json`
+# inside the reported dir) is the one place a token's plaintext is ever
+# written to disk, and it inherits that same 0600 mode from
+# internal/apptoken's own write path.
+[gh_app_guard.setup]
+type   = "shell"
+script = '''
+if [ -z "$installation_id" ] && { [ -z "$owner" ] || [ -z "$repo" ]; }; then
+  echo "gh_app_guard: either installation_id, or both owner and repo, is required" >&2
+  exit 1
+fi
+REAL_GH=$(command -v gh) || { echo "gh_app_guard: no gh on PATH to guard" >&2; exit 1; }
+DIR=$(mktemp -d "${TMPDIR:-/tmp}/plect-gh-app-guard.XXXXXX")
+cat > "$DIR/gh" <<WRAPPER
+#!/usr/bin/env bash
+export GH_GUARD_REAL_GH='$REAL_GH'
+export GH_APP_GUARD_TOKEN_BIN='$token_bin'
+export GH_APP_GUARD_APP_ID='$app_id'
+export GH_APP_GUARD_INSTALLATION_ID='$installation_id'
+export GH_APP_GUARD_OWNER='$owner'
+export GH_APP_GUARD_REPO='$repo'
+export GH_APP_GUARD_PRIVATE_KEY_PATH='$private_key_path'
+export GH_APP_GUARD_CACHE_PATH='$DIR/.token-cache.json'
+exec '$app_guard_bin' "\$@"
+WRAPPER
+chmod +x "$DIR/gh"
+jq -nc --arg dir "$DIR" '{dir:$dir}'
+'''
+
+[gh_app_guard.setup.bind]
+app_guard_bin     = { bin = "gh-app-guard" }
+token_bin         = { bin = "gh-app-token" }
+app_id            = { from = "inputs.app_id" }
+installation_id   = { from = "inputs.installation_id", default = "" }
+owner             = { from = "inputs.owner", default = "" }
+repo              = { from = "inputs.repo", default = "" }
+private_key_path  = { from = "inputs.private_key_path" }
+
+[gh_app_guard.cleanup]
+type   = "shell"
+script = '[ -n "${dir-}" ] && rm -rf "$dir"; true'
+
+# optional, not required: a setup that failed before reporting the directory
+# leaves nothing to remove, and a required projection of it would fail the
+# release instead.
+[gh_app_guard.cleanup.bind]
+dir = { from = "self.outputs.dir", optional = true }
+
+[gh_app_guard.inputs_schema]
+type     = "object"
+required = ["app_id", "private_key_path"]
+
+[gh_app_guard.inputs_schema.properties]
+# GitHub App ids and installation ids are decimal integers in every GitHub
+# API response; restricting the charset here also keeps them safe to splice
+# into the generated wrapper's heredoc (see the setup script above).
+app_id           = { type = "string", pattern = "^[0-9]+$" }
+installation_id  = { type = "string", pattern = "^[0-9]+$" }
+# GitHub login/repo-name charsets, permissive enough for any real owner/repo
+# and restrictive enough to stay safe in the same heredoc splice.
+owner            = { type = "string", pattern = "^[A-Za-z0-9-]+$" }
+repo             = { type = "string", pattern = "^[A-Za-z0-9._-]+$" }
+private_key_path = { type = "string", pattern = "^[A-Za-z0-9_./:-]+$" }
+
+[gh_app_guard.outputs_schema]
+type     = "object"
+required = ["dir"]
+
+[gh_app_guard.outputs_schema.properties]
+dir = { type = "string" }

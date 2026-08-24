@@ -136,7 +136,14 @@ func TestShippedGithubOkf_BinReferencesResolveUnderArbitraryAlias(t *testing.T) 
 	}
 
 	session := SessionVars{Name: "test-session", ResourceID: "owner:test", WorkspaceDirPath: "/tmp/wd", Plugins: mounted}
-	inputs := map[string]any{"owner": "acme", "assignees": "", "instruction": ""}
+	inputs := map[string]any{
+		"owner":            "acme",
+		"assignees":        "",
+		"instruction":      "",
+		"app_id":           "123456",
+		"installation_id":  "987654",
+		"private_key_path": "/etc/plect/gh-app.pem",
+	}
 	for id, def := range taskDefs {
 		ctx := RenderContext{
 			Self:       map[string]any{},

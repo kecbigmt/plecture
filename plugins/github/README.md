@@ -11,11 +11,13 @@ rollup, and linked-PR discovery.
 ## Contents
 
 - `plugin.toml` — declares the executables this plugin builds or ships:
-  `github-worktree` (setup/cleanup), `github-issue-pr` (observe), and
-  `github-watcher` (subscribe/serve/gh-api), all built from `src/`, this
-  plugin's own Go module (`src/cmd/github-worktree`, `src/cmd/github-issue-pr`,
-  `src/cmd/github-watcher`); plus `gh-guard` (`scripts/gh-guard`), a shipped
-  shell shim, not a build target.
+  `github-worktree` (setup/cleanup), `github-issue-pr` (observe),
+  `github-watcher` (subscribe/serve/gh-api), and `gh-app-token` (mint/cache a
+  GitHub App installation token), all built from `src/`, this plugin's own Go
+  module (`src/cmd/github-worktree`, `src/cmd/github-issue-pr`,
+  `src/cmd/github-watcher`, `src/cmd/gh-app-token`); plus `gh-guard`
+  (`scripts/gh-guard`) and `gh-app-guard` (`scripts/gh-app-guard`), shipped
+  shell shims, not build targets.
 - `workspaces/worktree.toml` — declares the `worktree` provider: resolves a GitHub issue/PR URL to a session id
   and acquires/releases the git worktree it maps to.
 - `resources/issue.toml`, `resources/pull.toml` — the standalone observation contracts, one per resource kind
@@ -31,6 +33,13 @@ rollup, and linked-PR discovery.
   forgotten or de-prioritized "don't merge" instruction. Opt-in: wire it
   only into workflows that want it. See `scripts/gh-guard_selftest.sh` at
   the repository root for its behavior tests.
+- `tasks/gh_app_guard.toml` — the same PATH-prepend composition as
+  `gh_guard`, except the generated `gh` wrapper (`scripts/gh-app-guard`)
+  also authenticates: it mints and caches a GitHub App installation access
+  token (via `gh-app-token`) and sets `GH_TOKEN` for the delegated `gh`
+  child process only, before applying the same merge/close denial. A
+  session composes one guard or the other, never both. See "App auth"
+  below and `scripts/gh-app-guard_selftest.sh` at the repository root.
 - `tasks/work.toml`, `tasks/review.toml` (+ `review.md`), `tasks/investigate.toml`,
   `tasks/respond.toml` — generic task documents: the mechanism-level
   instruction, `done_when`, and completion contract for working an issue,
@@ -86,6 +95,55 @@ issue_branch_template = "work/{number}"
 delete_branch_default = "true"
 ```
 
+## App auth
+
+`gh_app_guard` is an alternative to `gh_guard` for a session that must
+authenticate as a shared GitHub App installation instead of the operator's
+own `gh auth login`: the wrapper it produces mints an installation access
+token (App JWT → `POST /app/installations/{id}/access_tokens`), caches it
+with an expiry skew so a long-running session doesn't have to re-mint on
+every call, and refreshes it once that skew window is entered — with file
+locking around the cache so two `gh` invocations racing an expired cache
+mint exactly once. Merge/close stays denied under the App identity too,
+checked before minting so a call about to be denied never costs a mint.
+
+Inputs, operator-provisioned — none of these belong in committed config:
+
+| Input | Meaning |
+|---|---|
+| `app_id` | The GitHub App's id. |
+| `installation_id` | The installation id, if known. |
+| `owner`, `repo` | Alternative to `installation_id`: the wrapper resolves the installation id for this repository on first mint. |
+| `private_key_path` | Path to the App's PEM private key. Operator-provisioned, outside any repo, mode 0600 — this plugin never writes the key itself, only reads the path it's given. |
+
+```toml
+[[nodes]]
+id   = "gh_app_guard"
+uses = "official.github.gh_app_guard"
+
+[nodes.gh_app_guard.inputs]
+app_id            = "123456"
+installation_id   = "789012"
+private_key_path  = "/etc/plect/gh-app.pem"
+```
+
+The only on-disk copy of the minted token's plaintext is the cache file
+inside the wrapper's own reported directory (`.token-cache.json`, mode
+0600), removed on session cleanup along with the rest of that directory.
+`gh-app-token`'s own errors — a missing/unreadable private key, a rejected
+mint — never fold key or token bytes into their text, so the wrapper's
+failure output is safe to surface as-is.
+
+**`github-watcher` keeps using the operator's own `gh auth`.** It is a
+single resident service shared across sessions (`[[services]]` in
+`plugin.toml`), not a per-session task in a plan — there is no per-call
+installation context for it to select a token by, and giving it one would
+need a core-side change to how a service's environment is composed (a
+service starts once at supervisor start, not per session). No concrete
+consumer needs multi-installation watcher auth yet, so this stays
+unaddressed rather than speculatively built; `gh_app_guard` composes only
+into a session's own `gh`, the same scope `gh_guard` already has.
+
 ## Install
 
 Register this repository as a catalog and enable the plugin:
@@ -111,7 +169,9 @@ supervisor.
 ## Requirements
 
 - `git`
-- the `gh` CLI, authenticated
+- the `gh` CLI on PATH — authenticated via the operator's own `gh auth
+  login`, unless a session composes `gh_app_guard` instead, which supplies
+  its own GitHub App installation token per invocation
 - a Go toolchain, to build the three executables at `plect plugin add`/`update`
   time (see `docs/design/plugin-packaging.md`'s Executable Build Model)
 

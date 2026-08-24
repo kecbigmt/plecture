@@ -12,3 +12,13 @@
 [[gh_guard.artifacts]]
 output = "dir"
 path   = "gh"
+
+[gh_app_guard]
+inputs = { app_id = "123456", installation_id = "987654", private_key_path = "/etc/plect/gh-app.pem" }
+# Same rationale as gh_guard: the wrapper file it writes is the effect's real
+# product, and its content is what actually pins the auth+deny composition
+# (which bin it execs, which env vars it bakes in) — not just that setup
+# exited 0.
+[[gh_app_guard.artifacts]]
+output = "dir"
+path   = "gh"
