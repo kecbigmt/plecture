@@ -458,6 +458,48 @@ echo '{}'`, sessionName)
 	}
 }
 
+// A workflow-definition upgrade that adds a session-scoped node (modeled
+// here on the real gh_guard effect) must still produce it for a session
+// created under the pre-upgrade definition, via a bare-name `plect up
+// <session>` — the auto-create resolver path is not the only way an existing
+// session gets brought up.
+func TestUp_ProducesSessionScopedNodeAddedAfterSessionCreation(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	store := testStore(t)
+	sessionName := "org/repo-12"
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+		[]taskFixture{
+			{id: "gh_guard", scope: "session", setup: `echo '{"dir":"the-guard-dir"}'`},
+			{id: "tmux", scope: "run", setup: `echo '{}'`},
+			{id: "claude", scope: "run", setup: `printf '{"saw":"%s"}' '{{.Nodes.gh_guard.outputs.dir}}'`},
+		},
+		[]nodeFixture{
+			{id: "gh_guard"},
+			{id: "tmux"},
+			{id: "claude", inputs: map[string]*lang.Value{"path_prepend": fromValue("nodes.gh_guard.outputs.dir")}},
+		},
+	)
+	// The session predates gh_guard: tmux is already produced, gh_guard has
+	// no entry at all, and claude was never reached — the shape a session
+	// created before the workflow gained gh_guard is in.
+	seedSession(t, store, sessionName, "org/repo", 12, "default", map[string]*contract.TaskState{
+		"tmux": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
+	})
+
+	result, err := Up(cfg, store, UpParams{Identifier: sessionName})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	if st := result.Tasks["gh_guard"]; st == nil || st.Status != contract.TaskStatusProduced {
+		t.Fatalf("gh_guard = %+v, want produced", st)
+	}
+	if st := result.Tasks["claude"]; st == nil || st.Outputs["saw"] != "the-guard-dir" {
+		t.Fatalf("claude did not resolve gh_guard's newly-produced output: %+v", st)
+	}
+}
+
 func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")

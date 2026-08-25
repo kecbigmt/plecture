@@ -75,6 +75,25 @@ type Plan struct {
 	Run     []Resolved // run-scoped nodes, setup order
 }
 
+// UpOrder returns the full node list a re-up walks: session-scoped nodes
+// first, then run-scoped nodes, each keeping its own topo order. Compile-time
+// validation already forbids a session-scoped node depending on a run-scoped
+// one, so this concatenation is itself a valid topo order over the whole
+// plan.
+//
+// Session-first exists so a workflow-definition upgrade that adds a
+// session-scoped node (e.g. a new guard effect) is produced against a
+// session created under the older definition, not silently absent from
+// every later `plect up` — RunSetup's already-produced skip makes this safe
+// to call unconditionally, since nodes a session's own create already
+// produced are simply skipped here.
+func (p *Plan) UpOrder() []Resolved {
+	ordered := make([]Resolved, 0, len(p.Session)+len(p.Run))
+	ordered = append(ordered, p.Session...)
+	ordered = append(ordered, p.Run...)
+	return ordered
+}
+
 // TerminalTask returns the resolved node that declares a `[terminal]` table,
 // or nil if none does. assemblePlan has already enforced at most one such
 // declaration per plan, so — unlike the pre-[terminal] Attach/Capture split,
