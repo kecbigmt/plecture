@@ -382,6 +382,13 @@ func HealthcheckSession(cfg *config.Config, store *state.Store, params Healthche
 	if err != nil {
 		return nil, err
 	}
+	// A down session is skipped rather than probed and re-verdicted, mirroring
+	// the gate CheckHeartbeatDeadman already applies internally. An unknown
+	// session still falls through to EvaluateHealth below, which is what
+	// reports ErrSessionNotFound.
+	if before != nil && !runScopeUp(before.Tasks) {
+		return &HealthReport{SessionName: params.SessionName}, nil
+	}
 	var prev *contract.HealthState
 	if before != nil && before.Health != nil {
 		cp := *before.Health

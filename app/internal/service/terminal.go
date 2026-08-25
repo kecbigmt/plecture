@@ -82,12 +82,17 @@ func PublishTerminalToParent(cfg *config.Config, store *state.Store, origin stri
 // best-effort brings it up (D9: delivery must create a handle-or-forward
 // opportunity within bounded time regardless of the receiver's run state).
 // Up is idempotent (already-produced tasks are skipped), so this is safe even
-// if another actor is concurrently bringing target up. wakeIfDown is false
-// for local no-live-ancestor fallback (recording `dead` back onto
-// the origin itself) — that target is the thing that just failed its own
-// alive probe, so waking it would just re-run a setup that Up's own
-// already-produced skip won't actually heal.
+// if another actor is concurrently bringing target up. wakeIfDown is ignored
+// (forced false) whenever target == origin, regardless of what the caller
+// passes: a self-targeted push is the subject reporting on its own bad news,
+// and waking it on that news would silently undo an operator's explicit
+// `down` and keep the session perpetually re-upped. Enforced here rather
+// than trusted to every call site, since a self-target push is never itself
+// a wake opportunity.
 func publishTerminalTo(cfg *config.Config, store *state.Store, origin, target string, wakeIfDown bool, p TerminalParams) (id string, wakeErr error, err error) {
+	if target == origin {
+		wakeIfDown = false
+	}
 	if p.DedupKey != "" {
 		dup, derr := hasRecentTerminalEvent(store, target, p.Type, p.DedupKey)
 		if derr != nil {

@@ -260,6 +260,30 @@ func TestPublishTerminalToParent_DownTargetWakeFailureIsReturnedButDoesNotBreakT
 	}
 }
 
+// The invariant must hold even if a caller passes wakeIfDown=true by mistake.
+func TestPublishTerminalTo_SelfTargetNeverWakesRegardlessOfCallerRequest(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	// No workflow configured, so an attempted Up would fail loudly — proving
+	// absence of a wake attempt (wakeErr == nil) rather than merely a failed one.
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
+
+	id, wakeErr, err := publishTerminalTo(cfg, store, "owner/repo-1", "owner/repo-1", true, TerminalParams{
+		Type:     event.TypeTerminalDead,
+		Summary:  "owner/repo-1 health escalation is undeliverable",
+		DedupKey: "owner/repo-1|health|unhealthy|1|undeliverable",
+	})
+	if err != nil || id == "" {
+		t.Fatalf("publishTerminalTo: id=%q err=%v", id, err)
+	}
+	if wakeErr != nil {
+		t.Fatalf("wakeErr = %v, want nil (self-target must never attempt a wake)", wakeErr)
+	}
+	if got := store.Get("owner/repo-1"); len(got.Tasks) != 0 {
+		t.Fatalf("tasks = %+v, want untouched (still down)", got.Tasks)
+	}
+}
+
 func TestRunScopeUp(t *testing.T) {
 	cases := []struct {
 		name  string
