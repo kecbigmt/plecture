@@ -260,19 +260,12 @@ func TestPublishTerminalToParent_DownTargetWakeFailureIsReturnedButDoesNotBreakT
 	}
 }
 
-// TestPublishTerminalTo_SelfTargetNeverWakesRegardlessOfCallerRequest guards
-// against a self-sustaining wake loop: a down session's own
-// undeliverable-escalation fallback pushes a terminal.dead event onto its
-// own log with target==origin. Every current call site already passes
-// wakeIfDown=false for that push, but this asserts the invariant holds even
-// if a caller got it wrong — a self-targeted push must never be a wake
-// opportunity, because the session down is the fact the push is reporting.
+// The invariant must hold even if a caller passes wakeIfDown=true by mistake.
 func TestPublishTerminalTo_SelfTargetNeverWakesRegardlessOfCallerRequest(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
-	// No run-scoped task: the session is down. No workflow configured either,
-	// so an attempted Up would fail loudly — proving absence of a wake
-	// attempt (wakeErr == nil) rather than merely a failed one.
+	// No workflow configured, so an attempted Up would fail loudly — proving
+	// absence of a wake attempt (wakeErr == nil) rather than merely a failed one.
 	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
 
 	id, wakeErr, err := publishTerminalTo(cfg, store, "owner/repo-1", "owner/repo-1", true, TerminalParams{

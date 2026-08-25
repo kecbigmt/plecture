@@ -1123,13 +1123,8 @@ func TestHealthcheckSession_RecordsUndeliverableEscalationWithNoLiveAncestor(t *
 	}
 }
 
-// TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps is a
-// regression test against a self-sustaining wake loop: a session that is
-// down (no run-scoped task produced) but carries an unhealthy verdict from
-// before it went down must never be re-probed, re-escalated, or woken by
-// repeated healthcheck sweeps — the loop was a down session's own
-// undeliverable escalation re-upping the very session it was reporting on,
-// which then looked unhealthy again on the next sweep, forever.
+// A prior unhealthy verdict must not resurface once the session is down:
+// repeated sweeps must never re-probe, re-escalate, or wake it.
 func TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
@@ -1180,6 +1175,17 @@ func TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps(t *testing.
 	}
 	if got.Health.LastState != string(domain.HealthUnhealthy) {
 		t.Fatalf("Health.LastState = %q, want the pre-down verdict left untouched", got.Health.LastState)
+	}
+}
+
+func TestHealthcheckSession_UnknownSessionStillReturnsNotFound(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+
+	_, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: "owner/repo-missing"})
+	svcErr, ok := err.(*Error)
+	if !ok || svcErr.Code != ErrSessionNotFound {
+		t.Fatalf("err = %v, want ErrSessionNotFound", err)
 	}
 }
 
