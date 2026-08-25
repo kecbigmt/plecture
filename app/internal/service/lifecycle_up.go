@@ -171,7 +171,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 			return nil, recreateErr
 		}
 	}
-	setupErr := task.RunSetup(context.Background(), plan.Run, sessionVars(cfg, session, plan), session.Tasks, params.Observer)
+	setupErr := task.RunSetup(context.Background(), plan.UpOrder(), sessionVars(cfg, session, plan), session.Tasks, params.Observer)
 	session.UpdatedAt = time.Now()
 	// A run-scope node's setup script can itself shell out to a nested `plect
 	// task setup` against this same session (e.g. goal_bootstrap re-deriving

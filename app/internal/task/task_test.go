@@ -174,6 +174,33 @@ func TestPlan_TopoSort_CrossScope(t *testing.T) {
 	}
 }
 
+func TestPlan_UpOrder(t *testing.T) {
+	plan := buildPlan(t,
+		[]taskStub{
+			{id: "envfile", scope: "session", setup: "true"},
+			{id: "gh_guard", scope: "session", setup: "true"},
+			{id: "tmux", scope: "run", setup: "true"},
+			{id: "claude", scope: "run", setup: "true"},
+		},
+		[]nodeStub{
+			{id: "envfile"},
+			{id: "gh_guard"},
+			{id: "tmux"},
+			{id: "claude", inputs: depInput("tmux")},
+		},
+	)
+	got := ids(plan.UpOrder())
+	want := []string{"envfile", "gh_guard", "tmux", "claude"}
+	if len(got) != len(want) {
+		t.Fatalf("UpOrder() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("UpOrder() = %v, want %v", got, want)
+		}
+	}
+}
+
 func ids(rs []Resolved) []string {
 	out := make([]string, len(rs))
 	for i, r := range rs {
@@ -300,6 +327,49 @@ func TestRunSetup_SkipsProduced(t *testing.T) {
 	}
 	if tasks["a"].Outputs["value"] != "preserved" {
 		t.Fatalf("expected preserved outputs, got %v", tasks["a"].Outputs)
+	}
+}
+
+func TestRunSetup_UpOrderProducesNodeAddedAfterSessionCreation(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	tmpDir := t.TempDir()
+	marker := tmpDir + "/tmux-ran"
+	plan := buildPlan(t,
+		[]taskStub{
+			{id: "gh_guard", scope: "session", setup: `echo '{"k":"the-dir"}'`},
+			{id: "tmux", scope: "run", setup: "touch " + marker + "; echo '{}'"},
+			{id: "claude", scope: "run", setupAction: &lang.Action{
+				Type:   lang.ActionShell,
+				Script: `jq -nc --arg saw "$saw" '{saw:$saw}'`,
+				Bind:   map[string]*lang.Value{"saw": {Form: lang.FormFrom, From: "nodes.gh_guard.outputs.k"}},
+			}},
+		},
+		[]nodeStub{
+			{id: "gh_guard"},
+			{id: "tmux"},
+			{id: "claude", inputs: depInput("gh_guard")},
+		},
+	)
+	tasks := map[string]*contract.TaskState{
+		"tmux": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
+	}
+	obs := &recordingObserver{}
+	if err := RunSetup(context.Background(), plan.UpOrder(), SessionVars{}, tasks, obs); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, statErr := exec.Command("bash", "-c", "test -f "+marker).CombinedOutput(); statErr == nil {
+		t.Fatal("tmux setup re-ran even though it was already produced")
+	}
+	if len(obs.skips) != 1 || obs.skips[0] != "tmux" {
+		t.Fatalf("skips = %v, want [tmux]", obs.skips)
+	}
+	if tasks["gh_guard"] == nil || tasks["gh_guard"].Status != contract.TaskStatusProduced {
+		t.Fatalf("gh_guard not produced: %+v", tasks["gh_guard"])
+	}
+	if tasks["claude"] == nil || tasks["claude"].Outputs["saw"] != "the-dir" {
+		t.Fatalf("claude did not resolve gh_guard's output: %+v", tasks["claude"])
 	}
 }
 

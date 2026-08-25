@@ -75,6 +75,19 @@ type Plan struct {
 	Run     []Resolved // run-scoped nodes, setup order
 }
 
+// UpOrder is session-scoped nodes followed by run-scoped nodes: a re-up
+// must walk both, not just Run, so a workflow-definition upgrade that adds a
+// session-scoped node still gets produced against a session created under
+// the older definition, instead of staying silently absent forever. Safe to
+// call unconditionally — RunSetup skips whatever a prior create/up already
+// produced.
+func (p *Plan) UpOrder() []Resolved {
+	ordered := make([]Resolved, 0, len(p.Session)+len(p.Run))
+	ordered = append(ordered, p.Session...)
+	ordered = append(ordered, p.Run...)
+	return ordered
+}
+
 // TerminalTask returns the resolved node that declares a `[terminal]` table,
 // or nil if none does. assemblePlan has already enforced at most one such
 // declaration per plan, so — unlike the pre-[terminal] Attach/Capture split,
