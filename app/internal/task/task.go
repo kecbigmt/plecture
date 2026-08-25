@@ -75,18 +75,12 @@ type Plan struct {
 	Run     []Resolved // run-scoped nodes, setup order
 }
 
-// UpOrder returns the full node list a re-up walks: session-scoped nodes
-// first, then run-scoped nodes, each keeping its own topo order. Compile-time
-// validation already forbids a session-scoped node depending on a run-scoped
-// one, so this concatenation is itself a valid topo order over the whole
-// plan.
-//
-// Session-first exists so a workflow-definition upgrade that adds a
-// session-scoped node (e.g. a new guard effect) is produced against a
-// session created under the older definition, not silently absent from
-// every later `plect up` — RunSetup's already-produced skip makes this safe
-// to call unconditionally, since nodes a session's own create already
-// produced are simply skipped here.
+// UpOrder is session-scoped nodes followed by run-scoped nodes: a re-up
+// must walk both, not just Run, so a workflow-definition upgrade that adds a
+// session-scoped node still gets produced against a session created under
+// the older definition, instead of staying silently absent forever. Safe to
+// call unconditionally — RunSetup skips whatever a prior create/up already
+// produced.
 func (p *Plan) UpOrder() []Resolved {
 	ordered := make([]Resolved, 0, len(p.Session)+len(p.Run))
 	ordered = append(ordered, p.Session...)

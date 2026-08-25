@@ -174,9 +174,6 @@ func TestPlan_TopoSort_CrossScope(t *testing.T) {
 	}
 }
 
-// UpOrder is what a re-up walks: session-scoped nodes (so a workflow
-// upgrade that adds one is produced on an existing session, not silently
-// stranded), then run-scoped nodes, each list keeping its own topo order.
 func TestPlan_UpOrder(t *testing.T) {
 	plan := buildPlan(t,
 		[]taskStub{
@@ -333,11 +330,6 @@ func TestRunSetup_SkipsProduced(t *testing.T) {
 	}
 }
 
-// A workflow-definition upgrade that adds a session-scoped node (e.g. the
-// GitHub CLI guard, gh_guard) must still produce it for a session created
-// under the pre-upgrade definition: RunSetup over plan.UpOrder() produces
-// the newly-added node, resolves a run-scoped dependent's binding against
-// it, and still skips the node that was already produced.
 func TestRunSetup_UpOrderProducesNodeAddedAfterSessionCreation(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
@@ -360,9 +352,6 @@ func TestRunSetup_UpOrderProducesNodeAddedAfterSessionCreation(t *testing.T) {
 			{id: "claude", inputs: depInput("gh_guard")},
 		},
 	)
-	// A session created before this workflow definition gained gh_guard:
-	// tmux already produced, gh_guard has no entry at all (it did not exist
-	// yet), and claude was never reached.
 	tasks := map[string]*contract.TaskState{
 		"tmux": {Scope: "run", Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	}

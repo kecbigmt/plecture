@@ -458,11 +458,6 @@ echo '{}'`, sessionName)
 	}
 }
 
-// A workflow-definition upgrade that adds a session-scoped node (modeled
-// here on the real gh_guard effect) must still produce it for a session
-// created under the pre-upgrade definition, via a bare-name `plect up
-// <session>` — the auto-create resolver path is not the only way an existing
-// session gets brought up.
 func TestUp_ProducesSessionScopedNodeAddedAfterSessionCreation(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
@@ -481,9 +476,6 @@ func TestUp_ProducesSessionScopedNodeAddedAfterSessionCreation(t *testing.T) {
 			{id: "claude", inputs: map[string]*lang.Value{"path_prepend": fromValue("nodes.gh_guard.outputs.dir")}},
 		},
 	)
-	// The session predates gh_guard: tmux is already produced, gh_guard has
-	// no entry at all, and claude was never reached — the shape a session
-	// created before the workflow gained gh_guard is in.
 	seedSession(t, store, sessionName, "org/repo", 12, "default", map[string]*contract.TaskState{
 		"tmux": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	})
