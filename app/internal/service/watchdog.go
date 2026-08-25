@@ -382,6 +382,16 @@ func HealthcheckSession(cfg *config.Config, store *state.Store, params Healthche
 	if err != nil {
 		return nil, err
 	}
+	// A down session is an explicit pause, not a liveness fact to probe: its
+	// run scope has nothing produced to check, and evaluating it anyway would
+	// both waste the probe and overwrite the session's recorded verdict with
+	// one that reflects a state the session is no longer in. This is the same
+	// gate CheckHeartbeatDeadman applies internally, kept here rather than
+	// trusted to every caller (the reactor sweep already skips a down session
+	// externally, but that must not be the only thing preventing this).
+	if before == nil || !runScopeUp(before.Tasks) {
+		return &HealthReport{SessionName: params.SessionName}, nil
+	}
 	var prev *contract.HealthState
 	if before != nil && before.Health != nil {
 		cp := *before.Health

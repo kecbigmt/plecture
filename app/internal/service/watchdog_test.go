@@ -1123,6 +1123,66 @@ func TestHealthcheckSession_RecordsUndeliverableEscalationWithNoLiveAncestor(t *
 	}
 }
 
+// TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps is the
+// issue #324 regression test: a session that is down (no run-scoped task
+// produced) but carries an unhealthy verdict from before it went down must
+// never be re-probed, re-escalated, or woken by repeated healthcheck
+// sweeps — the loop was a down session's own undeliverable escalation
+// re-upping the very session it was reporting on, which then looked
+// unhealthy again on the next sweep, forever.
+func TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
+	// No parent: a health escalation with nowhere to go is exactly the
+	// undeliverable case the loop hinged on.
+	seedSession(t, store, "owner/repo-1", "owner/repo", 1, "", nil)
+	staleCheck := time.Now().Add(-time.Hour)
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Health = &contract.HealthState{
+			LastCheckedAt: staleCheck,
+			LastState:     string(domain.HealthUnhealthy),
+			LastReason:    "initial: alive probe failed",
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed prior unhealthy verdict: %v", err)
+	}
+	healthCfg := config.HealthcheckConfig{
+		Period:         config.Duration{Duration: time.Minute},
+		StallThreshold: config.Duration{Duration: 3 * time.Minute},
+		RenotifyEvery:  1,
+	}
+
+	for i := 0; i < 3; i++ {
+		report, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: "owner/repo-1", Config: healthCfg})
+		if err != nil {
+			t.Fatalf("sweep %d: HealthcheckSession: %v", i, err)
+		}
+		if report.Pushed {
+			t.Fatalf("sweep %d: report = %+v, want a down session never pushed", i, report)
+		}
+	}
+
+	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{event.TypeTerminalDead, event.TypeTerminalEscalate}})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(evs) != 0 {
+		t.Fatalf("terminal events = %+v, want none (never probed, never escalated)", evs)
+	}
+
+	got := store.Get("owner/repo-1")
+	if len(got.Tasks) != 0 {
+		t.Fatalf("tasks = %+v, want untouched (never woken)", got.Tasks)
+	}
+	if !got.Health.LastCheckedAt.Equal(staleCheck) {
+		t.Fatalf("Health.LastCheckedAt = %v, want unchanged %v (no verdict update on a down session)", got.Health.LastCheckedAt, staleCheck)
+	}
+	if got.Health.LastState != string(domain.HealthUnhealthy) {
+		t.Fatalf("Health.LastState = %q, want the pre-down verdict left untouched", got.Health.LastState)
+	}
+}
+
 // twoInstanceHealthConfig declares a "worker" task carrying the unmet
 // done_when (so activity is expected of the session) plus a "sidecar" task,
 // each with its own [health] table, wired as two nodes of one workflow.
