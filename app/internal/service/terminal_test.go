@@ -261,12 +261,12 @@ func TestPublishTerminalToParent_DownTargetWakeFailureIsReturnedButDoesNotBreakT
 }
 
 // TestPublishTerminalTo_SelfTargetNeverWakesRegardlessOfCallerRequest guards
-// the loop in issue #324: a down session's own undeliverable-escalation
-// fallback pushes a terminal.dead event onto its own log with target==origin.
-// Every current call site already passes wakeIfDown=false for that push, but
-// this asserts the invariant holds even if a caller got it wrong — a
-// self-targeted push must never be a wake opportunity, because the session
-// down is the fact the push is reporting.
+// against a self-sustaining wake loop: a down session's own
+// undeliverable-escalation fallback pushes a terminal.dead event onto its
+// own log with target==origin. Every current call site already passes
+// wakeIfDown=false for that push, but this asserts the invariant holds even
+// if a caller got it wrong — a self-targeted push must never be a wake
+// opportunity, because the session down is the fact the push is reporting.
 func TestPublishTerminalTo_SelfTargetNeverWakesRegardlessOfCallerRequest(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}

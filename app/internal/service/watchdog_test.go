@@ -1123,13 +1123,13 @@ func TestHealthcheckSession_RecordsUndeliverableEscalationWithNoLiveAncestor(t *
 	}
 }
 
-// TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps is the
-// issue #324 regression test: a session that is down (no run-scoped task
-// produced) but carries an unhealthy verdict from before it went down must
-// never be re-probed, re-escalated, or woken by repeated healthcheck
-// sweeps — the loop was a down session's own undeliverable escalation
-// re-upping the very session it was reporting on, which then looked
-// unhealthy again on the next sweep, forever.
+// TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps is a
+// regression test against a self-sustaining wake loop: a session that is
+// down (no run-scoped task produced) but carries an unhealthy verdict from
+// before it went down must never be re-probed, re-escalated, or woken by
+// repeated healthcheck sweeps — the loop was a down session's own
+// undeliverable escalation re-upping the very session it was reporting on,
+// which then looked unhealthy again on the next sweep, forever.
 func TestHealthcheckSession_DownSessionStaysDownAcrossRepeatedSweeps(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
