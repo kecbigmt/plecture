@@ -115,26 +115,6 @@ func TestIsURL(t *testing.T) {
 	}
 }
 
-func TestIsProjectItemID(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"PVTI_lAHOAZb6ss4BU9rHzgqYmsI", true},
-		{"PVTI_abc", true},
-		{"https://github.com/org/repo/issues/1", false},
-		{"owner/repo-123", false},
-		{"PVT_abc", false},
-		{"pvti_abc", false},
-	}
-	for _, tt := range tests {
-		got := IsProjectItemID(tt.input)
-		if got != tt.want {
-			t.Errorf("IsProjectItemID(%q) = %v, want %v", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestSessionName(t *testing.T) {
 	got := SessionName("acme/widgets", 10)
 	if got != "acme/widgets-10" {

@@ -55,6 +55,16 @@ Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
 `workspace_provider = "official.github.worktree"` plus an agent pack together.
 
+**Removed:** a GitHub Projects v2 item id (`PVTI_...`) is no longer an
+accepted resource identifier. It was never reachable through shipped
+dispatch — the `worktree` provider's `match` regex above only matches an
+issue or pull request URL — so the `gh api graphql` resolution path that
+used to back it (ambient-`gh`-authenticated, never App-aware) was dead
+code, removed rather than kept behind a deprecation shim. See
+`docs/migrations/github-worktree-pvti-removal-migration.md` for the rare
+case (a custom `match` pattern, or a direct `github-worktree` invocation)
+where this is a live change.
+
 ## Cleanup
 
 `plect destroy` always releases the worktree it acquired. To also delete the
@@ -135,18 +145,24 @@ mint — never fold key or token bytes into their text, so the wrapper's
 failure output is safe to surface as-is.
 
 `official.github.worktree` can use the same App identity for raw git network
-I/O. A session sets the same task-level inputs `gh_app_guard` accepts:
+I/O and for fetching pull request/issue metadata (head branch, title,
+state). A session sets the same task-level inputs `gh_app_guard` accepts:
 `app_id`, optional `installation_id`, optional `owner`/`repo`, and
 `private_key_path`. Setup reads those values from `session.inputs` and runs
 git with process-local config that clears ambient credential helpers, installs
 a scoped `https://github.com` helper backed by `gh-app-token credential`, and
-rewrites GitHub SSH remote URLs to HTTPS for that git process. When
-`installation_id` is empty and `owner`/`repo` are not supplied, the helper
-resolves the installation from the resource owner/repo. Each credential
-request goes through the same locked token cache and expiry skew as
-`gh_app_guard`, so the next git operation after expiry mints or reuses a fresh
-installation token. With those inputs absent, worktree acquisition uses the
-host's ordinary git credential configuration unchanged.
+rewrites GitHub SSH remote URLs to HTTPS for that git process. The metadata
+fetch authenticates the same way, but directly over HTTP rather than through
+`gh` — it replaces whichever of `gh api` (direct) or `github-watcher`'s
+shared rate budget setup would otherwise use. When `installation_id` is empty
+and `owner`/`repo` are not supplied, both the git credential helper and the
+metadata fetch resolve the installation from the resource owner/repo. Both
+also share the same locked token cache and expiry skew as `gh_app_guard`, so
+whichever runs first mints the installation token and the other reuses it,
+each minting or reusing independently if the other's call never happens (a
+metadata-only run before any git operation, or vice versa). With those inputs
+absent, worktree acquisition uses the host's ordinary git credential
+configuration and gh-api client unchanged.
 
 ```bash
 plect up https://github.com/acme/widgets/issues/42 --inputs '{

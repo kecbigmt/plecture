@@ -18,7 +18,10 @@ name  = { expr = "match.owner + '/' + match.repo + '-' + match.number" }
 
 # Title/state fetches route through github-watcher's gh-api subcommand, so a
 # setup call and the daemon's own polling share one rate budget instead of
-# each independently re-tripping GitHub's secondary rate limit.
+# each independently re-tripping GitHub's secondary rate limit — unless
+# app_id/private_key_path below are set, in which case they authenticate
+# directly as the GitHub App installation instead, same as the git
+# operations these inputs already opt in below.
 [worktree.setup]
 type = "exec"
 bin  = "github-worktree"

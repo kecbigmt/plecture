@@ -103,6 +103,39 @@ type InstallationToken struct {
 	ExpiresAt time.Time
 }
 
+// tokenCache is declared here, at the consumer, rather than importing
+// apptoken.Cache's concrete type — so githubapp itself never depends on
+// apptoken; only the two packages that construct a cache do.
+type tokenCache interface {
+	Get(skew time.Duration, mint func() (token string, expiresAt time.Time, err error)) (string, error)
+}
+
+// Token is the composition cmd/gh-app-token's credential helper and
+// ghapi.App's REST client both need, kept in one place so their cache/skew/
+// resolution behavior can't drift apart. installationID resolves from
+// owner/repo once and is reused across a mint retry.
+func Token(cache tokenCache, skew time.Duration, client *http.Client, baseURL, appID string, key *rsa.PrivateKey, installationID, owner, repo string) (string, error) {
+	resolvedInstallationID := installationID
+	return cache.Get(skew, func() (string, time.Time, error) {
+		jwt, err := BuildJWT(appID, key, time.Now())
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		if resolvedInstallationID == "" {
+			id, err := ResolveInstallationID(client, baseURL, jwt, owner, repo)
+			if err != nil {
+				return "", time.Time{}, err
+			}
+			resolvedInstallationID = id
+		}
+		minted, err := MintInstallationToken(client, baseURL, jwt, resolvedInstallationID)
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		return minted.Token, minted.ExpiresAt, nil
+	})
+}
+
 // MintInstallationToken exchanges an App JWT for an installation access
 // token via POST /app/installations/{id}/access_tokens.
 func MintInstallationToken(client *http.Client, baseURL, jwt, installationID string) (InstallationToken, error) {
@@ -123,7 +156,7 @@ func MintInstallationToken(client *http.Client, baseURL, jwt, installationID str
 		return InstallationToken{}, fmt.Errorf("read mint response: %w", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
-		return InstallationToken{}, fmt.Errorf("mint installation token: %s", apiErrorMessage(resp.StatusCode, body))
+		return InstallationToken{}, fmt.Errorf("mint installation token: %s", APIErrorMessage(resp.StatusCode, body))
 	}
 	var decoded struct {
 		Token     string    `json:"token"`
@@ -163,7 +196,7 @@ func ResolveInstallationID(client *http.Client, baseURL, jwt, owner, repo string
 		return "", fmt.Errorf("read installation lookup response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("resolve installation id for %s/%s: %s", owner, repo, apiErrorMessage(resp.StatusCode, body))
+		return "", fmt.Errorf("resolve installation id for %s/%s: %s", owner, repo, APIErrorMessage(resp.StatusCode, body))
 	}
 	var decoded struct {
 		ID int64 `json:"id"`
@@ -183,11 +216,11 @@ func setAppHeaders(req *http.Request, jwt string) {
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 }
 
-// apiErrorMessage surfaces GitHub's own "message" field when the body
+// APIErrorMessage surfaces GitHub's own "message" field when the body
 // parses as their error shape, and a bare status line otherwise — never the
 // raw body, which on some failure modes (a JWT rejected as malformed) can
 // echo back request fragments an operator would not expect in a log line.
-func apiErrorMessage(status int, body []byte) string {
+func APIErrorMessage(status int, body []byte) string {
 	var decoded struct {
 		Message string `json:"message"`
 	}

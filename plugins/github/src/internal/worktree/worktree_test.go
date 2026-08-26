@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/ghapi"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/github"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/workspace"
 )
 
@@ -65,6 +67,28 @@ func (m *fakeManager) FindGitDir(string, ...string) (string, error) {
 func (m *fakeManager) RemoveByPath(ctx context.Context, workspaceDir, gitDir, branch string, force, deleteBranch bool) error {
 	m.removes = append(m.removes, removeCall{workspaceDir: workspaceDir, gitDir: gitDir, branch: branch, force: force, deleteBranch: deleteBranch})
 	return m.removeErr
+}
+
+func TestSelectGHClient_AppAuthWinsOverInjectedClient(t *testing.T) {
+	app := &ghapi.App{AppID: "123456"}
+	injected := &fakeGHClient{}
+	if got := selectGHClient(app, injected); got != github.GHClient(app) {
+		t.Errorf("selectGHClient = %v, want the app auth client", got)
+	}
+}
+
+func TestSelectGHClient_FallsBackToInjectedClientWhenAppAuthIsNotOptedIn(t *testing.T) {
+	injected := &fakeGHClient{}
+	if got := selectGHClient(nil, injected); got != github.GHClient(injected) {
+		t.Errorf("selectGHClient = %v, want the injected client", got)
+	}
+}
+
+func TestSelectGHClient_DefaultsToDirectWhenNeitherIsSet(t *testing.T) {
+	got := selectGHClient(nil, nil)
+	if _, ok := got.(*ghapi.Client); !ok {
+		t.Errorf("selectGHClient = %T, want *ghapi.Client (ghapi.Direct())", got)
+	}
 }
 
 func TestSessionTag(t *testing.T) {
@@ -277,21 +301,21 @@ func TestSetup_MissingWorkspaceDirPathIsAnError(t *testing.T) {
 	}
 }
 
-func TestAppGitAuth_UsesResourceOwnerRepoWhenInstallationIDIsOmitted(t *testing.T) {
+func TestAppAuth_UsesResourceOwnerRepoWhenInstallationIDIsOmitted(t *testing.T) {
 	cacheRoot := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", cacheRoot)
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	auth, err := appGitAuth(SetupOptions{
+	auth, _, err := appAuth(SetupOptions{
 		AppTokenBin:    "/plugins/github/bin/gh-app-token",
 		AppID:          "123456",
 		PrivateKeyPath: "/etc/plect/gh-app.pem",
 	}, parsed)
 	if err != nil {
-		t.Fatalf("appGitAuth: %v", err)
+		t.Fatalf("appAuth: %v", err)
 	}
 	got := strings.Join(auth.CredentialHelper, "\n")
 	for _, want := range []string{
@@ -309,15 +333,15 @@ func TestAppGitAuth_UsesResourceOwnerRepoWhenInstallationIDIsOmitted(t *testing.
 	}
 }
 
-func TestAppGitAuth_UsesExplicitOwnerRepoForInstallationLookup(t *testing.T) {
+func TestAppAuth_UsesExplicitOwnerRepoForInstallationLookup(t *testing.T) {
 	cacheRoot := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", cacheRoot)
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	auth, err := appGitAuth(SetupOptions{
+	auth, _, err := appAuth(SetupOptions{
 		AppTokenBin:    "/plugins/github/bin/gh-app-token",
 		AppID:          "123456",
 		Owner:          "platform",
@@ -325,7 +349,7 @@ func TestAppGitAuth_UsesExplicitOwnerRepoForInstallationLookup(t *testing.T) {
 		PrivateKeyPath: "/etc/plect/gh-app.pem",
 	}, parsed)
 	if err != nil {
-		t.Fatalf("appGitAuth: %v", err)
+		t.Fatalf("appAuth: %v", err)
 	}
 	got := strings.Join(auth.CredentialHelper, "\n")
 	for _, want := range []string{"--owner\nplatform", "--repo\nmonorepo"} {
@@ -335,24 +359,24 @@ func TestAppGitAuth_UsesExplicitOwnerRepoForInstallationLookup(t *testing.T) {
 	}
 }
 
-func TestAppGitAuth_RejectsPartialConfiguration(t *testing.T) {
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+func TestAppAuth_RejectsPartialConfiguration(t *testing.T) {
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := appGitAuth(SetupOptions{AppID: "123456"}, parsed); err == nil || !strings.Contains(err.Error(), "private_key_path") {
+	if _, _, err := appAuth(SetupOptions{AppID: "123456"}, parsed); err == nil || !strings.Contains(err.Error(), "private_key_path") {
 		t.Fatalf("error = %v, want missing private_key_path", err)
 	}
-	if _, err := appGitAuth(SetupOptions{PrivateKeyPath: "/etc/plect/gh-app.pem"}, parsed); err == nil || !strings.Contains(err.Error(), "app_id") {
+	if _, _, err := appAuth(SetupOptions{PrivateKeyPath: "/etc/plect/gh-app.pem"}, parsed); err == nil || !strings.Contains(err.Error(), "app_id") {
 		t.Fatalf("error = %v, want missing app_id", err)
 	}
-	if _, err := appGitAuth(SetupOptions{AppID: "123456", Owner: "acme", PrivateKeyPath: "/etc/plect/gh-app.pem"}, parsed); err == nil || !strings.Contains(err.Error(), "owner and repo") {
+	if _, _, err := appAuth(SetupOptions{AppID: "123456", Owner: "acme", PrivateKeyPath: "/etc/plect/gh-app.pem"}, parsed); err == nil || !strings.Contains(err.Error(), "owner and repo") {
 		t.Fatalf("error = %v, want missing owner/repo pair", err)
 	}
 }
 
-func TestAppGitAuth_RejectsUnsafeRuntimeInputs(t *testing.T) {
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+func TestAppAuth_RejectsUnsafeRuntimeInputs(t *testing.T) {
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,10 +423,56 @@ func TestAppGitAuth_RejectsUnsafeRuntimeInputs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := base
 			tt.edit(&opts)
-			if _, err := appGitAuth(opts, parsed); err == nil || !strings.Contains(err.Error(), tt.want) {
+			if _, _, err := appAuth(opts, parsed); err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestAppAuth_NotOptedInReturnsNoMetadataClient(t *testing.T) {
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, client, err := appAuth(SetupOptions{}, parsed)
+	if err != nil {
+		t.Fatalf("appAuth: %v", err)
+	}
+	if client != nil {
+		t.Errorf("client = %v, want nil when app auth is not opted in", client)
+	}
+}
+
+// Whichever runs first mints the installation token; the other reuses it
+// instead of minting its own.
+func TestAppAuth_MetadataClientSharesGitAuthsInstallationAndCache(t *testing.T) {
+	cacheRoot := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheRoot)
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gitAuth, client, err := appAuth(SetupOptions{
+		AppID:          "123456",
+		InstallationID: "789012",
+		PrivateKeyPath: "/etc/plect/gh-app.pem",
+	}, parsed)
+	if err != nil {
+		t.Fatalf("appAuth: %v", err)
+	}
+
+	app, ok := client.(*ghapi.App)
+	if !ok {
+		t.Fatalf("client = %T, want *ghapi.App", client)
+	}
+	if app.AppID != "123456" || app.InstallationID != "789012" || app.Owner != "acme" || app.Repo != "widgets" || app.PrivateKeyPath != "/etc/plect/gh-app.pem" {
+		t.Errorf("client = %+v, unexpected fields", app)
+	}
+	helperText := strings.Join(gitAuth.CredentialHelper, "\n")
+	if !strings.Contains(helperText, app.CachePath) {
+		t.Errorf("git credential helper cache path does not match the metadata client's CachePath %q:\n%s", app.CachePath, helperText)
 	}
 }
 

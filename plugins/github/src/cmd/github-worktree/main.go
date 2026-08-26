@@ -40,19 +40,19 @@ func run(args []string) error {
 	switch args[0] {
 	case "setup":
 		fs := flag.NewFlagSet("setup", flag.ContinueOnError)
-		resource := fs.String("resource", "", "resource identifier (issue URL, pull request URL, or project item id)")
+		resource := fs.String("resource", "", "resource identifier (issue URL or pull request URL)")
 		session := fs.String("session", "", "session name the workspace is acquired for")
 		workspaceDirsRoot := fs.String("workspace-dirs-root", "", "configured workspace-dirs root")
-		watcherBin := fs.String("watcher-bin", "", "path to a github-watcher binary; gh-api calls route through its shared rate budget when set, otherwise call gh directly")
+		watcherBin := fs.String("watcher-bin", "", "path to a github-watcher binary; gh-api calls route through its shared rate budget when set, otherwise call gh directly (overridden by app auth inputs below, when set)")
 		layoutRoot := fs.String("workspace-layout-root", "", "root this provider lays repository worktree containers out under (default: the workspace-dirs root)")
 		issueBranchTemplate := fs.String("issue-branch-template", "", "branch name for an issue resource, with {owner}/{repo}/{number} placeholders (default: issue/{number})")
 		taggedBranchSuffix := fs.String("tagged-branch-suffix", "", "suffix appended to the branch for a tagged session, with a {tag} placeholder (default: +{tag})")
-		appTokenBin := fs.String("app-token-bin", "", "path to gh-app-token; used only when app git auth inputs are set")
-		appID := fs.String("app-id", "", "GitHub App id for git authentication")
-		installationID := fs.String("installation-id", "", "GitHub App installation id for git authentication")
+		appTokenBin := fs.String("app-token-bin", "", "path to gh-app-token; used only when app auth inputs are set, as the git credential helper")
+		appID := fs.String("app-id", "", "GitHub App id for git and metadata-fetch authentication")
+		installationID := fs.String("installation-id", "", "GitHub App installation id for git and metadata-fetch authentication")
 		owner := fs.String("owner", "", "repository owner used to resolve a GitHub App installation id")
 		repo := fs.String("repo", "", "repository name used to resolve a GitHub App installation id")
-		privateKeyPath := fs.String("private-key-path", "", "path to the GitHub App private key for git authentication")
+		privateKeyPath := fs.String("private-key-path", "", "path to the GitHub App private key for git and metadata-fetch authentication")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}

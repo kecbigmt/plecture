@@ -157,7 +157,6 @@ func tokenFromOptions(opts tokenOptions) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	client := &http.Client{Timeout: 30 * time.Second}
 	cache := apptoken.NewCache(opts.cachePath)
 	return githubapp.Token(cache, opts.skew, client, opts.baseURL, opts.appID, key, opts.installationID, opts.owner, opts.repo)
