@@ -58,9 +58,12 @@ type SetupOptions struct {
 	// branch-naming parameters; empty means the shipped convention.
 	IssueBranchTemplate string
 	TaggedBranchSuffix  string
-	// AppID and PrivateKeyPath opt setup's raw git operations into GitHub App
-	// installation-token auth. InstallationID is optional; when empty, the
-	// token command resolves the installation from the resource owner/repo.
+	// AppID and PrivateKeyPath opt setup's raw git operations and its
+	// pull-request/issue metadata fetch into GitHub App installation-token
+	// auth, replacing GHClient outright rather than supplementing it.
+	// InstallationID is optional; when empty, both the git credential helper
+	// and the metadata client resolve the installation from the resource
+	// owner/repo.
 	AppTokenBin    string
 	AppID          string
 	InstallationID string
@@ -72,7 +75,9 @@ type SetupOptions struct {
 	// GHClient fetches title/state metadata. Defaults to ghapi.Direct(); a
 	// mounted plugin's workspace provider hook instead passes one bound to
 	// the bundled github-watcher binary, so setup shares its shared rate
-	// budget (see workspaces/worktree.toml's setup hook).
+	// budget (see workspaces/worktree.toml's setup hook). Ignored when App
+	// auth is opted in above: that path replaces this client rather than
+	// being layered on top of it.
 	GHClient github.GHClient
 }
 
@@ -86,15 +91,11 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 		return nil, err
 	}
 
-	gitAuth, err := appGitAuth(opts, parsed)
+	gitAuth, appClient, err := appAuth(opts, parsed)
 	if err != nil {
 		return nil, err
 	}
-
-	client := opts.GHClient
-	if client == nil {
-		client = ghapi.Direct()
-	}
+	client := selectGHClient(appClient, opts.GHClient)
 
 	var baseBranch, title, state string
 	if parsed.Type == github.URLTypePR {
@@ -159,15 +160,23 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 	return outputs, nil
 }
 
-func appGitAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConfig, error) {
+// appAuth builds the two GitHub App auth surfaces Setup can opt into from
+// one set of inputs: a git credential helper the caller wires into the
+// worktree's git config, and a GHClient authenticated the same way for the
+// pull-request/issue metadata fetch. Both point at the same on-disk token
+// cache, so whichever runs first mints the installation token and the
+// other reuses it. A nil GHClient means the inputs opted out (empty
+// AppID/InstallationID/PrivateKeyPath): Setup then falls back to its own
+// GHClient selection.
+func appAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConfig, github.GHClient, error) {
 	if opts.AppID == "" && opts.InstallationID == "" && opts.PrivateKeyPath == "" {
-		return workspace.GitAuthConfig{}, nil
+		return workspace.GitAuthConfig{}, nil, nil
 	}
 	if opts.AppID == "" {
-		return workspace.GitAuthConfig{}, fmt.Errorf("app git auth requires app_id")
+		return workspace.GitAuthConfig{}, nil, fmt.Errorf("app git auth requires app_id")
 	}
 	if opts.PrivateKeyPath == "" {
-		return workspace.GitAuthConfig{}, fmt.Errorf("app git auth requires private_key_path")
+		return workspace.GitAuthConfig{}, nil, fmt.Errorf("app git auth requires private_key_path")
 	}
 	tokenBin := opts.AppTokenBin
 	if tokenBin == "" {
@@ -175,14 +184,14 @@ func appGitAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthC
 	}
 	owner, repo, err := appInstallationOwnerRepo(opts, parsed)
 	if err != nil {
-		return workspace.GitAuthConfig{}, err
+		return workspace.GitAuthConfig{}, nil, err
 	}
-	if err := validateAppGitAuthInputs(opts, owner, repo); err != nil {
-		return workspace.GitAuthConfig{}, err
+	if err := validateAppAuthInputs(opts, owner, repo); err != nil {
+		return workspace.GitAuthConfig{}, nil, err
 	}
 	cachePath, err := appTokenCachePath(opts.AppID, opts.InstallationID, owner, repo)
 	if err != nil {
-		return workspace.GitAuthConfig{}, err
+		return workspace.GitAuthConfig{}, nil, err
 	}
 
 	helper := []string{
@@ -197,7 +206,32 @@ func appGitAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthC
 	} else {
 		helper = append(helper, "--owner", owner, "--repo", repo)
 	}
-	return workspace.GitAuthConfig{CredentialHelper: helper}, nil
+
+	client := &ghapi.App{
+		AppID:          opts.AppID,
+		InstallationID: opts.InstallationID,
+		Owner:          owner,
+		Repo:           repo,
+		PrivateKeyPath: opts.PrivateKeyPath,
+		CachePath:      cachePath,
+	}
+	return workspace.GitAuthConfig{CredentialHelper: helper}, client, nil
+}
+
+// selectGHClient picks the client Setup's metadata fetch uses. An opted-in
+// App auth client always wins over whatever the caller injected: App auth
+// replaces ghapi.Direct()/ghapi.ViaWatcher() outright rather than layering
+// on top of them. Absent that opt-in, the caller's own selection (main.go's
+// Direct/ViaWatcher choice) stands, and ghapi.Direct() is the last resort
+// for a caller that supplied neither.
+func selectGHClient(appClient, injected github.GHClient) github.GHClient {
+	if appClient != nil {
+		return appClient
+	}
+	if injected != nil {
+		return injected
+	}
+	return ghapi.Direct()
 }
 
 func appInstallationOwnerRepo(opts SetupOptions, parsed *github.ParsedURL) (string, string, error) {
@@ -210,7 +244,7 @@ func appInstallationOwnerRepo(opts SetupOptions, parsed *github.ParsedURL) (stri
 	return opts.Owner, opts.Repo, nil
 }
 
-func validateAppGitAuthInputs(opts SetupOptions, owner, repo string) error {
+func validateAppAuthInputs(opts SetupOptions, owner, repo string) error {
 	if !appIDPattern.MatchString(opts.AppID) {
 		return fmt.Errorf("app git auth app_id must be a decimal string")
 	}

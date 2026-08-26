@@ -135,18 +135,24 @@ mint — never fold key or token bytes into their text, so the wrapper's
 failure output is safe to surface as-is.
 
 `official.github.worktree` can use the same App identity for raw git network
-I/O. A session sets the same task-level inputs `gh_app_guard` accepts:
+I/O and for fetching pull request/issue metadata (head branch, title,
+state). A session sets the same task-level inputs `gh_app_guard` accepts:
 `app_id`, optional `installation_id`, optional `owner`/`repo`, and
 `private_key_path`. Setup reads those values from `session.inputs` and runs
 git with process-local config that clears ambient credential helpers, installs
 a scoped `https://github.com` helper backed by `gh-app-token credential`, and
-rewrites GitHub SSH remote URLs to HTTPS for that git process. When
-`installation_id` is empty and `owner`/`repo` are not supplied, the helper
-resolves the installation from the resource owner/repo. Each credential
-request goes through the same locked token cache and expiry skew as
-`gh_app_guard`, so the next git operation after expiry mints or reuses a fresh
-installation token. With those inputs absent, worktree acquisition uses the
-host's ordinary git credential configuration unchanged.
+rewrites GitHub SSH remote URLs to HTTPS for that git process. The metadata
+fetch authenticates the same way, but directly over HTTP rather than through
+`gh` — it replaces whichever of `gh api` (direct) or `github-watcher`'s
+shared rate budget setup would otherwise use. When `installation_id` is empty
+and `owner`/`repo` are not supplied, both the git credential helper and the
+metadata fetch resolve the installation from the resource owner/repo. Both
+also share the same locked token cache and expiry skew as `gh_app_guard`, so
+whichever runs first mints the installation token and the other reuses it,
+each minting or reusing independently if the other's call never happens (a
+metadata-only run before any git operation, or vice versa). With those inputs
+absent, worktree acquisition uses the host's ordinary git credential
+configuration and gh-api client unchanged.
 
 ```bash
 plect up https://github.com/acme/widgets/issues/42 --inputs '{
