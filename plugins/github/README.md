@@ -203,12 +203,17 @@ instead of staying process-healthy while every subsequent fetch dies quietly.
 Multi-installation watcher auth (a per-session or per-repository identity)
 stays out of scope until a concrete consumer needs it.
 
-`github-worktree` and `github-issue-pr` both accept a bare-`gh`, no-App-auth
-mode (omitting `--watcher-bin`), which the shipped `worktree.toml`/
-`issue.toml`/`pull.toml` configs never select — they always pass
-`--watcher-bin` so calls route through the shared rate budget above.
-Invoking either executable directly without that flag is operator-auth
-only and out of scope for an App-only deployment.
+`github-issue-pr` accepts a bare-`gh`, no-App-auth mode (omitting
+`--watcher-bin`), which the shipped `resources/issue.toml`/`pull.toml`
+configs never select — they always pass `--watcher-bin` so calls route
+through the shared rate budget above. It has no App-auth inputs of its
+own, so invoking it directly without that flag is operator-auth only and
+out of scope for an App-only deployment. `github-worktree` is different:
+its `--app-id`/`--private-key-path` App-auth inputs (see above) win
+outright over its own `--watcher-bin` selection, so a direct
+`github-worktree setup` invocation authenticates as the App whenever
+those inputs are set, `--watcher-bin` or not; only omitting both falls
+back to operator auth.
 
 ### One credential story for an App-only deployment
 
