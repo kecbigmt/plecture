@@ -1,5 +1,19 @@
 Review the PR {{ resource.id }}.
 
+**Completion condition — read this before anything else:** this review's
+completion condition is recording a `plect judge` verdict for every judge id
+the work session's `done_when` declares — `ac-met` and `solves` — at the
+PR's current head revision. That record is the goal; anything you post to
+GitHub afterward is supporting evidence, never a substitute for it.
+
+**Decision rule (check first):** does this PR have a dispatched work session
+behind it, or was it pushed directly with no work session (self-review)?
+- Default to recording via `plect judge` (step 6 below). Try it first.
+- Only fall back to a marker comment (also step 6) once `plect judge` has
+  actually rejected your verdict as self-review — never choose the fallback
+  speculatively, and never skip attempting `plect judge` because you assume
+  it will reject.
+
 Steps:
 
 1. Understand the purpose and background of the PR — derive `<owner>/<repo>` and
@@ -11,33 +25,39 @@ Steps:
 3. Evaluate code quality, design, and security
 4. Run relevant tests and linters
 5. Identify risks, concerns, and open questions
-6. Post review comments (AI disclosure rule below is mandatory)
-7. If review comments already exist, check their resolution status
-8. When this review is for a plect done_when judge, record one action per judge
-   id with a reason:
+6. Record one action per judge id (`ac-met`, `solves`) with a reason:
    `plect judge approve <work-session> <task-instance> <judge-id> --reason "<reason>"`
    Use `plect judge request-changes <work-session> <task-instance> <judge-id> --reason "<reason>"`
    for any unmet criterion and name the missing work in the reason.
    If `plect judge` rejects your verdict as self-review, the PR has no
    dispatched work session to record against (it was implemented directly) —
-   record the verdict as a review comment with an explicit marker instead:
+   only then record the verdict as a review comment with an explicit marker
+   instead:
    `gh pr review {{ resource.id }} --comment --body "APPROVE: <reason>"` (or
    `"REQUEST_CHANGES: <reason>"`). A formal `--approve`/`--request-changes`
    is rejected by GitHub when your session shares the PR author's account.
    Sharing an account is a fact about GitHub transport identity, not about
    who the actor is — it does not make this review non-independent.
-9. Record that you finished reviewing (this is what lets plect close out this
-   review session — there is no third party to judge a reviewer, so
-   completion is your own self-report): find this review's own current
-   `revision` with `plect status "$PLECT_SESSION_NAME" --json` (the `revision`
-   under `observed.state` on this session's own task instance, not the work
-   session's — `$PLECT_SESSION_NAME` is this session), then run
-   `plect state set "$PLECT_SESSION_NAME" --instance review#1 '{"verdict_revision":"<that revision>"}'`
-   (adjust the instance id if `plect status "$PLECT_SESSION_NAME" --json` shows a different one).
-   Do this whichever path you took above — judge action, marker comment, or
-   pending review. If the reviewed resource gets a new revision later (another
-   push), this review's done_when reopens automatically and you'll be asked
-   to re-review; record a fresh `verdict_revision` again when you do.
+7. Post review comments for findings from steps 3-5 that don't rise to a
+   judge verdict, or that back one (AI disclosure rule below is mandatory)
+8. If review comments already exist, check their resolution status
+9. Verify: read back this PR's judge state with
+   `plect status <work-session> --json` and confirm both `ac-met` and
+   `solves` show a recorded action at the head revision. If `plect judge`
+   errored for any reason other than the expected self-review rejection,
+   do not silently retry or fall back — report the exact error in your reply.
+10. Record that you finished reviewing (this is what lets plect close out this
+    review session — there is no third party to judge a reviewer, so
+    completion is your own self-report): find this review's own current
+    `revision` with `plect status "$PLECT_SESSION_NAME" --json` (the `revision`
+    under `observed.state` on this session's own task instance, not the work
+    session's — `$PLECT_SESSION_NAME` is this session), then run
+    `plect state set "$PLECT_SESSION_NAME" --instance review#1 '{"verdict_revision":"<that revision>"}'`
+    (adjust the instance id if `plect status "$PLECT_SESSION_NAME" --json` shows a different one).
+    Do this whichever path you took above — judge action, marker comment, or
+    pending review. If the reviewed resource gets a new revision later (another
+    push), this review's done_when reopens automatically and you'll be asked
+    to re-review; record a fresh `verdict_revision` again when you do.
 
 **A standing-rule violation is never non-blocking.** A violation of the
 target repository's own conventions (its contributing guide, house style, or
