@@ -80,6 +80,7 @@ const (
 	pluginDirName      = "github"           // boundary-allow: real plugin directory name
 	worktreeBin        = "github-worktree"  // boundary-allow: real plugin binary name
 	watcherBin         = "github-watcher"   // boundary-allow: real plugin binary name
+	appTokenBin        = "gh-app-token"     // boundary-allow: real plugin binary name
 	mountedID          = "official/github"  // boundary-allow: real catalog mount address
 	eventSource        = "github"           // boundary-allow: real event.Source the watcher publishes
 	mergeableEventType = "github.mergeable" // boundary-allow: real event type the watcher publishes
@@ -113,6 +114,7 @@ func buildGithubPluginBinaries(t *testing.T, root string) []plugins.Mounted {
 	build("app", "./cmd/plect", "plect")
 	build(filepath.Join("plugins", pluginDirName, "src"), "./cmd/"+worktreeBin, worktreeBin)
 	build(filepath.Join("plugins", pluginDirName, "src"), "./cmd/"+watcherBin, watcherBin)
+	build(filepath.Join("plugins", pluginDirName, "src"), "./cmd/"+appTokenBin, appTokenBin)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	return []plugins.Mounted{{
@@ -121,6 +123,7 @@ func buildGithubPluginBinaries(t *testing.T, root string) []plugins.Mounted {
 		Manifest: plugins.Manifest{Executables: []plugins.Executable{
 			{Name: worktreeBin, Path: worktreeBin},
 			{Name: watcherBin, Path: watcherBin},
+			{Name: appTokenBin, Path: appTokenBin},
 		}},
 	}}
 }

@@ -41,6 +41,11 @@ additionalProperties = false
 
 [investigate.inputs_schema.properties]
 instruction = { type = "string", default = "" }
+app_id = { type = "string", pattern = "^[0-9]+$" }
+installation_id = { type = "string", pattern = "^[0-9]+$" }
+owner = { type = "string", pattern = "^[A-Za-z0-9-]+$" }
+repo = { type = "string", pattern = "^[A-Za-z0-9._-]+$" }
+private_key_path = { type = "string", pattern = "^[A-Za-z0-9_./:-]+$" }
 
 [investigate.done_when]
 all = [

@@ -86,6 +86,52 @@ func TestCmdPrint_PrintsExactlyTheMintedTokenPlusNewline(t *testing.T) {
 	}
 }
 
+func TestCmdCredential_GetWritesGitCredentialFields(t *testing.T) {
+	srv := fakeTokenEndpoint(t, "ghs_for_git")
+	defer srv.Close()
+	keyPath := writeTestKey(t)
+	cachePath := filepath.Join(t.TempDir(), "cache.json")
+
+	var out bytes.Buffer
+	err := cmdCredential([]string{
+		"--app-id", "1",
+		"--installation-id", "123",
+		"--private-key-path", keyPath,
+		"--cache-path", cachePath,
+		"--base-url", srv.URL,
+		"get",
+	}, strings.NewReader("protocol=https\nhost=github.com\n\n"), &out)
+	if err != nil {
+		t.Fatalf("cmdCredential: %v", err)
+	}
+	if got, want := out.String(), "username=x-access-token\npassword=ghs_for_git\n\n"; got != want {
+		t.Errorf("credential output = %q, want %q", got, want)
+	}
+}
+
+func TestCmdCredential_IgnoresNonGitHubCredentialRequests(t *testing.T) {
+	srv := fakeTokenEndpoint(t, "ghs_for_git")
+	defer srv.Close()
+	keyPath := writeTestKey(t)
+	cachePath := filepath.Join(t.TempDir(), "cache.json")
+
+	var out bytes.Buffer
+	err := cmdCredential([]string{
+		"--app-id", "1",
+		"--installation-id", "123",
+		"--private-key-path", keyPath,
+		"--cache-path", cachePath,
+		"--base-url", srv.URL,
+		"get",
+	}, strings.NewReader("protocol=https\nhost=example.com\n\n"), &out)
+	if err != nil {
+		t.Fatalf("cmdCredential: %v", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("credential output = %q, want no credentials for a different host", out.String())
+	}
+}
+
 func TestCmdPrint_ResolvesInstallationIDFromOwnerRepo(t *testing.T) {
 	srv := fakeTokenEndpoint(t, "ghs_from_owner_repo")
 	defer srv.Close()

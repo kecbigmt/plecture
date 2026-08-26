@@ -1,5 +1,5 @@
 == worktree / setup
-call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "stand-in-workspace_layout_root" "--issue-branch-template" "stand-in-issue_branch_template" "--tagged-branch-suffix" "stand-in-tagged_branch_suffix" "--watcher-bin" "<plugin>/bin/github-watcher"
+call[0]: "github-worktree" "setup" "--resource" "example://acme/widget/1" "--session" "acme/widget-1" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "stand-in-workspace_layout_root" "--issue-branch-template" "stand-in-issue_branch_template" "--tagged-branch-suffix" "stand-in-tagged_branch_suffix" "--watcher-bin" "<plugin>/bin/github-watcher" "--app-token-bin" "<plugin>/bin/gh-app-token" "--app-id" "" "--installation-id" "" "--owner" "" "--repo" "" "--private-key-path" ""
 
 == worktree / cleanup
 call[0]: "github-worktree" "cleanup" "--workspace-dir" "/spy/workspace" "--branch" "spy-branch" "--workspace-dirs-root" "/spy/workspace_dirs" "--workspace-layout-root" "stand-in-workspace_layout_root" "--force=true" "--delete-branch=true" "--delete-branch-default=stand-in-delete_branch_default"

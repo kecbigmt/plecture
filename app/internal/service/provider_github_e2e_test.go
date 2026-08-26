@@ -107,6 +107,7 @@ func buildWorkspaceProviderBinaries(t *testing.T, root string) []plugins.Mounted
 	build("app", "./cmd/plect", "plect")
 	build(filepath.Join("plugins", "github", "src"), "./cmd/github-worktree", "github-worktree")
 	build(filepath.Join("plugins", "github", "src"), "./cmd/github-watcher", "github-watcher")
+	build(filepath.Join("plugins", "github", "src"), "./cmd/gh-app-token", "gh-app-token")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	return []plugins.Mounted{{
@@ -115,6 +116,7 @@ func buildWorkspaceProviderBinaries(t *testing.T, root string) []plugins.Mounted
 		Manifest: plugins.Manifest{Executables: []plugins.Executable{
 			{Name: "github-worktree", Path: "github-worktree"},
 			{Name: "github-watcher", Path: "github-watcher"},
+			{Name: "gh-app-token", Path: "gh-app-token"},
 		}},
 	}}
 }

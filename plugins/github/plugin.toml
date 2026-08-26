@@ -23,8 +23,7 @@ path = "bin/github-watcher"
 build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
 
 # Mints and caches GitHub App installation access tokens, consumed by
-# gh-app-guard (never invoked directly by a session) — see
-# config/tasks/gh_app_guard.toml.
+# gh-app-guard and the workspace provider's git credential helper path.
 [[executables]]
 name = "gh-app-token"
 path = "bin/gh-app-token"
