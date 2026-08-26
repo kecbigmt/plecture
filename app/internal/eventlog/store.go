@@ -545,8 +545,14 @@ func (s *Store) logMalformed(session string, offset int64, err error) {
 
 // flock opens (creating) the lock file and takes the given flock mode, returning
 // an unlock func. The session dir must already exist for LOCK_EX callers.
+//
+// The descriptor is opened O_RDWR even for a LOCK_SH caller: this one helper
+// is shared with LOCK_EX, and the Linux NFS client enforces that LOCK_EX
+// requires a writable descriptor, returning EBADF for an O_RDONLY one, even
+// though local filesystems tolerate it. The descriptor is never read or
+// written to; only its lock is used.
 func flock(path string, how int) (func(), error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return nil, err
 	}

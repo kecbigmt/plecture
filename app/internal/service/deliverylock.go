@@ -26,7 +26,11 @@ func withDeliveryLock(store *state.Store, sessionName string, fn func()) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o644)
+	// LOCK_EX requires a descriptor opened for writing: the Linux NFS client
+	// enforces this and returns EBADF for an O_RDONLY fd, even though local
+	// filesystems tolerate it. The descriptor is never read or written to;
+	// only its lock is used.
+	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		return err
 	}
