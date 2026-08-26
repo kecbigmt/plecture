@@ -159,30 +159,8 @@ func tokenFromOptions(opts tokenOptions) (string, error) {
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	resolvedInstallationID := opts.installationID
-
-	token, err := apptoken.NewCache(opts.cachePath).Get(opts.skew, func() (string, time.Time, error) {
-		jwt, err := githubapp.BuildJWT(opts.appID, key, time.Now())
-		if err != nil {
-			return "", time.Time{}, err
-		}
-		if resolvedInstallationID == "" {
-			id, err := githubapp.ResolveInstallationID(client, opts.baseURL, jwt, opts.owner, opts.repo)
-			if err != nil {
-				return "", time.Time{}, err
-			}
-			resolvedInstallationID = id
-		}
-		minted, err := githubapp.MintInstallationToken(client, opts.baseURL, jwt, resolvedInstallationID)
-		if err != nil {
-			return "", time.Time{}, err
-		}
-		return minted.Token, minted.ExpiresAt, nil
-	})
-	if err != nil {
-		return "", err
-	}
-	return token, nil
+	cache := apptoken.NewCache(opts.cachePath)
+	return githubapp.Token(cache, opts.skew, client, opts.baseURL, opts.appID, key, opts.installationID, opts.owner, opts.repo)
 }
 
 func readCredential(r io.Reader) (map[string]string, error) {
