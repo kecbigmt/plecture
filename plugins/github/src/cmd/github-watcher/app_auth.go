@@ -18,12 +18,11 @@ import (
 // independently.
 const defaultAppSkew = 5 * time.Minute
 
-// Deployment-level GitHub App auth env vars. This is the single
-// installation opted into per issue #337: one App id, one installation
-// (direct or resolved from owner/repo), backing both `serve`'s poll loop
-// and the `gh-api` subcommand, since a `gh-api` invocation is a separate
-// process from the daemon and can't receive its flags — env is the only
-// channel both share. Unset GITHUB_WATCHER_APP_ID means "no App auth
+// Deployment-level GitHub App auth env vars: a single App id, one
+// installation (direct or resolved from owner/repo), backing both `serve`'s
+// poll loop and the `gh-api` subcommand, since a `gh-api` invocation is a
+// separate process from the daemon and can't receive its flags — env is the
+// only channel both share. Unset GITHUB_WATCHER_APP_ID means "no App auth
 // configured", preserving today's ambient `gh auth` behavior byte-for-byte.
 const (
 	envAppID          = "GITHUB_WATCHER_APP_ID"
