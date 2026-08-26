@@ -2,12 +2,16 @@ package apptoken
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/flocktest"
 )
 
 func TestCache_MintsWhenEmpty(t *testing.T) {
@@ -159,5 +163,32 @@ func TestCache_CacheFileModeIsOwnerOnly(t *testing.T) {
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("cache file mode = %o, want 0600", perm)
+	}
+}
+
+// The Linux NFS client rejects LOCK_EX on an O_RDONLY descriptor with EBADF,
+// even though local filesystems tolerate it. This test inspects the lock
+// file descriptor's own open flags via /proc, so it catches the regression
+// even on a local (non-NFS) test filesystem.
+func TestCache_UpdateOpensLockFileWritable(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("lock fd flags are inspected via /proc, which is Linux-specific")
+	}
+
+	c := NewCache(filepath.Join(t.TempDir(), "cache.json"))
+	lockPath := c.path + ".lock"
+
+	err := c.update(func(*cached) error {
+		accMode, err := flocktest.AccessMode(lockPath)
+		if err != nil {
+			return err
+		}
+		if accMode == os.O_RDONLY {
+			return fmt.Errorf("lock file opened O_RDONLY; exclusive lock (LOCK_EX) requires a writable descriptor on NFS")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
 	}
 }

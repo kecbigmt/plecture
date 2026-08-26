@@ -91,7 +91,11 @@ func (c *Cache) update(fn func(*cached) error) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	lock, err := os.OpenFile(c.path+".lock", os.O_CREATE|os.O_RDONLY, 0o600)
+	// LOCK_EX requires a descriptor opened for writing: the Linux NFS client
+	// enforces this and returns EBADF for an O_RDONLY fd, even though local
+	// filesystems tolerate it. The descriptor is never read or written to;
+	// only its lock is used.
+	lock, err := os.OpenFile(c.path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
 	}

@@ -7,11 +7,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/flocktest"
 	"github.com/kecbigmt/plecture/contracts/event"
 )
 
@@ -30,6 +33,33 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+// flock is shared by Append's LOCK_EX call and every reader's LOCK_SH call,
+// so it must open the descriptor writable: the Linux NFS client rejects
+// LOCK_EX on an O_RDONLY descriptor with EBADF, even though local
+// filesystems tolerate it. This test inspects the lock file descriptor's
+// own open flags via /proc, so it catches the regression even on a local
+// (non-NFS) test filesystem.
+func TestFlockOpensLockFileWritable(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("lock fd flags are inspected via /proc, which is Linux-specific")
+	}
+
+	lockPath := filepath.Join(t.TempDir(), ".lock")
+	unlock, err := flock(lockPath, syscall.LOCK_EX)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+
+	accMode, err := flocktest.AccessMode(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accMode == os.O_RDONLY {
+		t.Error("lock file opened O_RDONLY; exclusive lock (LOCK_EX) requires a writable descriptor on NFS")
+	}
 }
 
 func TestTombstoneRoundTrip(t *testing.T) {
