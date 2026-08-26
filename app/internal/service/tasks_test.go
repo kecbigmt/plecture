@@ -492,6 +492,157 @@ func TestUp_ProducesSessionScopedNodeAddedAfterSessionCreation(t *testing.T) {
 	}
 }
 
+func TestUp_CleansAndDropsProducedNodeRemovedFromWorkflow(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	store := testStore(t)
+	sessionName := "org/repo-12"
+	cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+		[]taskFixture{
+			{
+				id:      "retired",
+				scope:   "run",
+				cleanup: fmt.Sprintf(`printf 'retired=%%s\n' '{{.Self.token}}' >> %s`, cleanupLog),
+				alive:   "false",
+			},
+			{
+				id:      "kept",
+				scope:   "run",
+				setup:   fmt.Sprintf(`printf 'kept setup\n' >> %s; echo '{}'`, cleanupLog),
+				cleanup: "true",
+				alive:   "true",
+			},
+		},
+		[]nodeFixture{{id: "kept"}},
+	)
+	seedSession(t, store, sessionName, "org/repo", 12, "default", map[string]*contract.TaskState{
+		"retired": {
+			Scope:   contract.TaskScopeRun,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"token": "old-token"},
+			Seq:     1,
+		},
+		"kept": {
+			Scope:   contract.TaskScopeRun,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{},
+			Seq:     2,
+		},
+	})
+
+	result, err := Up(cfg, store, UpParams{Identifier: sessionName})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	if st := result.Tasks["retired"]; st != nil {
+		t.Fatalf("retired task = %+v, want dropped after cleanup", st)
+	}
+	if st := result.Tasks["kept"]; st == nil || st.Status != contract.TaskStatusProduced {
+		t.Fatalf("kept task = %+v, want untouched produced state", st)
+	}
+	data, err := os.ReadFile(cleanupLog)
+	if err != nil {
+		t.Fatalf("read cleanup log: %v", err)
+	}
+	log := string(data)
+	if !strings.Contains(log, "retired=old-token\n") {
+		t.Fatalf("cleanup log = %q, want retired cleanup with recorded output", log)
+	}
+	if strings.Contains(log, "kept setup") {
+		t.Fatalf("cleanup log = %q, kept node setup should have been skipped as already produced", log)
+	}
+	report, err := EvaluateHealth(cfg, store, sessionName)
+	if err != nil {
+		t.Fatalf("EvaluateHealth: %v", err)
+	}
+	if report.State() != domain.HealthHealthy {
+		t.Fatalf("health report = %+v, want healthy after stale failing probe was dropped", report)
+	}
+}
+
+func TestUp_StaleNodeCleanupFailurePreservesInspectableState(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	store := testStore(t)
+	sessionName := "org/repo-13"
+	cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+		[]taskFixture{
+			{
+				id:      "retired",
+				scope:   "run",
+				cleanup: fmt.Sprintf(`printf 'retired=%%s\n' '{{.Self.token}}' >> %s; exit 23`, cleanupLog),
+			},
+			{id: "kept", scope: "run", setup: "echo '{}'"},
+		},
+		[]nodeFixture{{id: "kept"}},
+	)
+	seedSession(t, store, sessionName, "org/repo", 13, "default", map[string]*contract.TaskState{
+		"retired": {
+			Scope:   contract.TaskScopeRun,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"token": "old-token"},
+			Seq:     1,
+		},
+	})
+
+	_, err := Up(cfg, store, UpParams{Identifier: sessionName})
+	if err == nil {
+		t.Fatal("expected up to fail when stale node cleanup fails")
+	}
+	svcErr, ok := err.(*Error)
+	if !ok || svcErr.Code != ErrExecutionFailed {
+		t.Fatalf("want ErrExecutionFailed, got %v", err)
+	}
+	persisted := store.Get(sessionName)
+	if persisted == nil {
+		t.Fatal("session must remain inspectable after cleanup failure")
+	}
+	st := persisted.Tasks["retired"]
+	if st == nil || st.Status != contract.TaskStatusFailed || st.Outputs["token"] != "old-token" {
+		t.Fatalf("retired task = %+v, want failed state with recorded outputs preserved", st)
+	}
+	if st := persisted.Tasks["kept"]; st != nil {
+		t.Fatalf("kept task = %+v, want setup not attempted after stale cleanup failure", st)
+	}
+	data, err := os.ReadFile(cleanupLog)
+	if err != nil {
+		t.Fatalf("read cleanup log: %v", err)
+	}
+	if !strings.Contains(string(data), "retired=old-token\n") {
+		t.Fatalf("cleanup log = %q, want failed cleanup to receive recorded output", string(data))
+	}
+
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "retired.toml"), []byte(effectFixtureDoc(taskFixture{
+		id:      "retired",
+		scope:   "run",
+		cleanup: fmt.Sprintf(`printf 'retired-again=%%s\n' '{{.Self.token}}' >> %s`, cleanupLog),
+	})), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Up(cfg, store, UpParams{Identifier: sessionName})
+	if err != nil {
+		t.Fatalf("retry Up: %v", err)
+	}
+	if st := result.Tasks["retired"]; st != nil {
+		t.Fatalf("retired task after retry = %+v, want dropped after successful cleanup", st)
+	}
+	if st := result.Tasks["kept"]; st == nil || st.Status != contract.TaskStatusProduced {
+		t.Fatalf("kept task after retry = %+v, want setup after stale cleanup succeeds", st)
+	}
+	data, err = os.ReadFile(cleanupLog)
+	if err != nil {
+		t.Fatalf("read cleanup log after retry: %v", err)
+	}
+	if !strings.Contains(string(data), "retired-again=old-token\n") {
+		t.Fatalf("cleanup log = %q, want retry cleanup to receive recorded output", string(data))
+	}
+}
+
 func TestUp_ForceRecreateResetsRuntimeWithoutPrev(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
