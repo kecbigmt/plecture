@@ -5,9 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -255,6 +257,67 @@ func TestStore_ConcurrentPut(t *testing.T) {
 	if len(all) != n {
 		t.Errorf("expected %d sessions, got %d (lost updates detected)", n, len(all))
 	}
+}
+
+// The Linux NFS client rejects LOCK_EX on an O_RDONLY descriptor with EBADF,
+// even though local filesystems tolerate it (see #328). This test inspects
+// the lock file descriptor's own open flags via /proc, so it catches the
+// regression even on a local (non-NFS) test filesystem.
+func TestStore_WithFileLockOpensLockFileWritable(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("lock fd flags are inspected via /proc, which is Linux-specific")
+	}
+
+	store := NewStore(t.TempDir())
+	lockPath := store.path + ".lock"
+
+	err := store.withFileLock(func() error {
+		accMode, err := lockFileAccessMode(lockPath)
+		if err != nil {
+			return err
+		}
+		if accMode == os.O_RDONLY {
+			return fmt.Errorf("lock file opened O_RDONLY; exclusive lock (LOCK_EX) requires a writable descriptor on NFS")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+// lockFileAccessMode finds the process's own open file descriptor for path
+// and reports its access mode (O_RDONLY, O_WRONLY, or O_RDWR), read from
+// /proc/self/fdinfo. There is no portable way to query an fd's open flags
+// from outside the process that opened it.
+func lockFileAccessMode(path string) (int, error) {
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return 0, fmt.Errorf("read /proc/self/fd: %w", err)
+	}
+	for _, entry := range entries {
+		target, err := os.Readlink(filepath.Join("/proc/self/fd", entry.Name()))
+		if err != nil || target != path {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join("/proc/self/fdinfo", entry.Name()))
+		if err != nil {
+			return 0, fmt.Errorf("read fdinfo for fd %s: %w", entry.Name(), err)
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			const prefix = "flags:"
+			if !strings.HasPrefix(line, prefix) {
+				continue
+			}
+			flags, err := strconv.ParseInt(strings.TrimSpace(line[len(prefix):]), 8, 64)
+			if err != nil {
+				return 0, fmt.Errorf("parse fdinfo flags %q: %w", line, err)
+			}
+			return int(flags) & syscall.O_ACCMODE, nil
+		}
+		return 0, fmt.Errorf("fdinfo for fd %s has no flags line", entry.Name())
+	}
+	return 0, fmt.Errorf("no open fd found for %s", path)
 }
 
 func TestStore_ConcurrentPutAcrossProcesses(t *testing.T) {
