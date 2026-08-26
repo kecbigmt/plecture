@@ -307,7 +307,7 @@ func TestSetup_MissingWorkspaceDirPathIsAnError(t *testing.T) {
 func TestAppAuth_UsesResourceOwnerRepoWhenInstallationIDIsOmitted(t *testing.T) {
 	cacheRoot := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", cacheRoot)
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestAppAuth_UsesResourceOwnerRepoWhenInstallationIDIsOmitted(t *testing.T) 
 func TestAppAuth_UsesExplicitOwnerRepoForInstallationLookup(t *testing.T) {
 	cacheRoot := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", cacheRoot)
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +363,7 @@ func TestAppAuth_UsesExplicitOwnerRepoForInstallationLookup(t *testing.T) {
 }
 
 func TestAppAuth_RejectsPartialConfiguration(t *testing.T) {
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +379,7 @@ func TestAppAuth_RejectsPartialConfiguration(t *testing.T) {
 }
 
 func TestAppAuth_RejectsUnsafeRuntimeInputs(t *testing.T) {
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +438,7 @@ func TestAppAuth_RejectsUnsafeRuntimeInputs(t *testing.T) {
 // GHClient so Setup falls back to its caller-supplied client (or
 // ghapi.Direct()) unchanged — the opt-in stays additive.
 func TestAppAuth_NotOptedInReturnsNoMetadataClient(t *testing.T) {
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +458,7 @@ func TestAppAuth_NotOptedInReturnsNoMetadataClient(t *testing.T) {
 func TestAppAuth_MetadataClientSharesGitAuthsInstallationAndCache(t *testing.T) {
 	cacheRoot := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", cacheRoot)
-	parsed, err := resolve(context.Background(), "https://github.com/acme/widgets/issues/42")
+	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
 		t.Fatal(err)
 	}

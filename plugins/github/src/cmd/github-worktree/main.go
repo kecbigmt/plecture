@@ -40,7 +40,7 @@ func run(args []string) error {
 	switch args[0] {
 	case "setup":
 		fs := flag.NewFlagSet("setup", flag.ContinueOnError)
-		resource := fs.String("resource", "", "resource identifier (issue URL, pull request URL, or project item id)")
+		resource := fs.String("resource", "", "resource identifier (issue URL or pull request URL)")
 		session := fs.String("session", "", "session name the workspace is acquired for")
 		workspaceDirsRoot := fs.String("workspace-dirs-root", "", "configured workspace-dirs root")
 		watcherBin := fs.String("watcher-bin", "", "path to a github-watcher binary; gh-api calls route through its shared rate budget when set, otherwise call gh directly (overridden by app auth inputs below, when set)")

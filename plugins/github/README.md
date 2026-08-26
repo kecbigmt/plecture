@@ -55,6 +55,13 @@ Out of scope for this plugin: which agent CLI runs the session (a Claude or
 Codex task/workflow pack is a separate plugin), and the workflow that wires
 `workspace_provider = "official.github.worktree"` plus an agent pack together.
 
+**Removed:** a GitHub Projects v2 item id (`PVTI_...`) is no longer an
+accepted resource identifier. It was never reachable through shipped
+dispatch — the `worktree` provider's `match` regex above only matches an
+issue or pull request URL — so the `gh api graphql` resolution path that
+used to back it (ambient-`gh`-authenticated, never App-aware) was dead
+code, removed rather than kept behind a deprecation shim.
+
 ## Cleanup
 
 `plect destroy` always releases the worktree it acquired. To also delete the

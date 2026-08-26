@@ -68,12 +68,6 @@ func IsURL(s string) bool {
 	return strings.HasPrefix(s, "https://")
 }
 
-// IsProjectItemID returns true if the string looks like a GitHub Projects v2
-// item ID (e.g. "PVTI_xxx").
-func IsProjectItemID(s string) bool {
-	return strings.HasPrefix(s, "PVTI_")
-}
-
 // SessionNameWithTag returns a session name with a tag appended.
 // e.g. "owner/repo-79" + "review" → "owner/repo-79+review"
 func SessionNameWithTag(ownerRepo string, number int, tag string) string {

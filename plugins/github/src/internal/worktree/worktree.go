@@ -40,7 +40,7 @@ type WorktreeManager interface {
 // SetupOptions are the inputs the workspace provider setup hook receives.
 type SetupOptions struct {
 	// ResourceID is the canonical resource identifier: a GitHub issue or
-	// pull request URL, or a Projects v2 item id that resolves to one.
+	// pull request URL.
 	ResourceID string
 	// SessionName is the session the workspace is acquired for. Its
 	// "<name>+<tag>" suffix, when present, is what separates one tool's
@@ -86,7 +86,7 @@ type SetupOptions struct {
 // `workspace_dir` key plus the resource facts a workflow's templates may
 // want.
 func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
-	parsed, err := resolve(ctx, opts.ResourceID)
+	parsed, err := github.ParseURL(opts.ResourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -332,16 +332,6 @@ func SessionTag(sessionName string) string {
 		return sessionName[idx+1:]
 	}
 	return ""
-}
-
-// resolve turns a resource identifier into parsed GitHub coordinates,
-// querying the API only for a Projects v2 item id, which carries no
-// repository or number of its own.
-func resolve(ctx context.Context, resource string) (*github.ParsedURL, error) {
-	if github.IsProjectItemID(resource) {
-		return github.ResolveProjectItemID(ctx, resource)
-	}
-	return github.ParseURL(resource)
 }
 
 // ResolveDeleteBranch decides whether cleanup reclaims the branch. A caller's
