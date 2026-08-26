@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -170,6 +171,8 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		if recreateErr != nil {
 			return nil, recreateErr
 		}
+	} else if cleanupErr := cleanupStaleWorkflowNodes(cfg, store, sessionName, session, plan, params.Observer); cleanupErr != nil {
+		return nil, cleanupErr
 	}
 	setupErr := task.RunSetup(context.Background(), plan.UpOrder(), sessionVars(cfg, session, plan), session.Tasks, params.Observer)
 	session.UpdatedAt = time.Now()
@@ -194,6 +197,100 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 	}
 	recordLifecycle(store, sessionName, "up", "run-scoped tasks produced")
 	return &UpResult{SessionName: sessionName, Tasks: session.Tasks}, nil
+}
+
+func cleanupStaleWorkflowNodes(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, plan *task.Plan, observer task.Observer) error {
+	stale, err := staleProducedWorkflowNodes(cfg, session, plan)
+	if err != nil {
+		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+	cleanupErr := task.RunCleanup(context.Background(), stale, sessionVars(cfg, session, plan), session.Tasks, observer)
+	session.UpdatedAt = time.Now()
+	if err := persistStaleWorkflowCleanup(store, sessionName, session, stale); err != nil {
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+	}
+	if refreshed := store.Get(sessionName); refreshed != nil {
+		*session = *refreshed
+		if session.Tasks == nil {
+			session.Tasks = make(map[string]*contract.TaskState)
+		}
+	}
+	if cleanupErr != nil {
+		return &Error{Code: ErrExecutionFailed, Message: cleanupErr.Error()}
+	}
+	return nil
+}
+
+func persistStaleWorkflowCleanup(store *state.Store, sessionName string, session *domain.Session, stale []task.Resolved) error {
+	return store.Update(sessionName, func(s *domain.Session) error {
+		if s.Tasks == nil {
+			s.Tasks = make(map[string]*contract.TaskState)
+		}
+		for _, r := range stale {
+			st := session.Tasks[r.NodeID]
+			if st == nil {
+				continue
+			}
+			if st.Status == contract.TaskStatusCleaned {
+				delete(s.Tasks, r.NodeID)
+				continue
+			}
+			s.Tasks[r.NodeID] = st
+		}
+		s.UpdatedAt = session.UpdatedAt
+		return nil
+	})
+}
+
+func staleProducedWorkflowNodes(cfg *config.Config, session *domain.Session, plan *task.Plan) ([]task.Resolved, error) {
+	if session == nil || len(session.Tasks) == 0 {
+		return nil, nil
+	}
+	current := make(map[string]bool)
+	for _, r := range plan.UpOrder() {
+		current[r.NodeID] = true
+	}
+	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
+	if err != nil {
+		return nil, fmt.Errorf("load task definitions: %w", err)
+	}
+	type seqResolved struct {
+		seq int
+		r   task.Resolved
+	}
+	var items []seqResolved
+	for _, key := range sortedTaskKeys(session.Tasks) {
+		st := session.Tasks[key]
+		if st == nil || st.Dynamic || st.Status == contract.TaskStatusCleaned || key == contract.WorkflowPseudoNodeID || current[key] {
+			continue
+		}
+		taskID := taskIDForInstance(key, st)
+		def, ok := defs[taskID]
+		if !ok {
+			return nil, fmt.Errorf("stale workflow node %q uses unknown effect definition %q; cleanup cannot run", key, taskID)
+		}
+		items = append(items, seqResolved{
+			seq: st.Seq,
+			r: task.Resolved{
+				NodeID:     key,
+				TaskID:     taskID,
+				Scope:      st.Scope,
+				Cleanup:    def.Cleanup,
+				SourcePath: def.SourcePath,
+				From:       def.Ownership(),
+				Layers:     effect.CleanupLayers(def),
+			},
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].seq < items[j].seq })
+	out := make([]task.Resolved, len(items))
+	for i, it := range items {
+		out[i] = it.r
+	}
+	return out, nil
 }
 
 func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, wf config.WorkflowFile, teardownPlan *task.Plan, observer task.Observer) (*task.Plan, error) {
