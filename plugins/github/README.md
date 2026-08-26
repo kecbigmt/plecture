@@ -212,8 +212,11 @@ out of scope for an App-only deployment. `github-worktree` is different:
 its `--app-id`/`--private-key-path` App-auth inputs (see above) win
 outright over its own `--watcher-bin` selection, so a direct
 `github-worktree setup` invocation authenticates as the App whenever
-those inputs are set, `--watcher-bin` or not; only omitting both falls
-back to operator auth.
+those inputs are set, `--watcher-bin` or not. Without them, the metadata
+fetch falls back to whatever `--watcher-bin` selects: ambient `gh auth`
+if omitted, or `github-watcher gh-api`'s own credential source if
+passed — which is itself ambient `gh auth` unless that deployment's
+`GITHUB_WATCHER_APP_*` env (see above) is configured.
 
 ### One credential story for an App-only deployment
 
