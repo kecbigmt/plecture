@@ -113,12 +113,9 @@ type Poller struct {
 	// responses to it, so a burst hit by one poll tick backs off every other
 	// plect surface sharing the same token, not just this process.
 	Guard *ratebudget.Guard
-	// TokenFunc, when set, is called before every gh api invocation to mint
-	// (or reuse a cached, unexpired) GitHub App installation token, exported
-	// to that invocation as GH_TOKEN — the deployment-level App-auth opt-in
-	// wired by cmd/github-watcher's serve command. Nil preserves today's
-	// ambient `gh auth` behavior byte-for-byte: gh runs with this process's
-	// inherited environment, untouched.
+	// TokenFunc, when set, mints/reuses a GitHub App token exported to each
+	// gh invocation as GH_TOKEN. Nil keeps gh on this process's inherited
+	// environment (ambient `gh auth`), unchanged.
 	TokenFunc func() (string, error)
 }
 

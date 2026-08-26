@@ -146,10 +146,6 @@ func TestCmdGhAPI_DataDirRoutesGuardState(t *testing.T) {
 	}
 }
 
-// cmdGhAPI must export GH_TOKEN to the gh child when the deployment-level
-// App auth env vars are set — the same env vars serve's configureAppAuth
-// reads (see app_auth_test.go), so the daemon and this cross-process helper
-// share one App identity.
 func TestCmdGhAPI_AppAuthExportsGHTokenToGhChild(t *testing.T) {
 	tokenSrv := fakeInstallationTokenServer(t, "ghs_gh_api")
 	defer tokenSrv.Close()
@@ -184,8 +180,6 @@ func TestCmdGhAPI_AppAuthExportsGHTokenToGhChild(t *testing.T) {
 	}
 }
 
-// An App-auth mint failure must fail the gh-api call loud, without ever
-// invoking gh at all.
 func TestCmdGhAPI_AppAuthMintFailureFailsLoudWithoutCallingGh(t *testing.T) {
 	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

@@ -47,8 +47,6 @@ func fakeInstallationTokenServer(t *testing.T, token string) *httptest.Server {
 	}))
 }
 
-// With none of the App env vars set, both entry points must be a no-op —
-// ambient `gh auth` stays unchanged.
 func TestAppAuthFromEnv_UnsetIsNoAppAuth(t *testing.T) {
 	cfg, err := appAuthFromEnv(t.TempDir())
 	if err != nil {
@@ -102,8 +100,6 @@ func TestAppAuthFromEnv_CachePathDefaultsUnderDataDir(t *testing.T) {
 	}
 }
 
-// A missing/unreadable private key must fail loud here — at config-build
-// time — not on the first mint attempt buried inside a poll tick.
 func TestAppAuthConfig_TokenFuncFailsLoudOnUnreadablePrivateKey(t *testing.T) {
 	cfg := &appAuthConfig{
 		appID:          "123456",
@@ -141,8 +137,6 @@ func TestAppAuthConfig_TokenFuncMintsAndReusesTheSharedCache(t *testing.T) {
 	}
 }
 
-// appAuthTokenFunc (gh-api's entry point) surfaces a mint failure directly
-// from the returned func, with no separate eager-mint phase.
 func TestAppAuthTokenFunc_UnconfiguredReturnsNilFunc(t *testing.T) {
 	tokenFn, err := appAuthTokenFunc(t.TempDir())
 	if err != nil {
@@ -161,8 +155,6 @@ func TestAppAuthTokenFunc_InvalidConfigFailsLoud(t *testing.T) {
 	}
 }
 
-// configureAppAuth is serve's entry point: unconfigured, it leaves
-// poller.TokenFunc nil (ambient auth unchanged).
 func TestConfigureAppAuth_UnconfiguredLeavesTokenFuncNil(t *testing.T) {
 	poller := &watcher.Poller{}
 	if err := configureAppAuth(poller, t.TempDir()); err != nil {
@@ -173,7 +165,6 @@ func TestConfigureAppAuth_UnconfiguredLeavesTokenFuncNil(t *testing.T) {
 	}
 }
 
-// A valid App auth configuration wires poller.TokenFunc and succeeds.
 func TestConfigureAppAuth_ValidConfigWiresTokenFunc(t *testing.T) {
 	srv := fakeInstallationTokenServer(t, "ghs_serve")
 	defer srv.Close()
@@ -199,8 +190,6 @@ func TestConfigureAppAuth_ValidConfigWiresTokenFunc(t *testing.T) {
 	}
 }
 
-// The whole point of "fail loud": serve must not start with a bad key or a
-// rejected mint left undiscovered until the first poll tick.
 func TestConfigureAppAuth_MintFailureFailsLoudAtStartup(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -223,8 +212,8 @@ func TestConfigureAppAuth_MintFailureFailsLoudAtStartup(t *testing.T) {
 	}
 }
 
-// A configured-but-broken (missing private key) App auth also fails startup
-// loud, distinct from the mint-failure case above.
+// Distinct from the mint-failure case above: this fails on config, not on
+// the mint round trip.
 func TestConfigureAppAuth_UnreadableKeyFailsLoudAtStartup(t *testing.T) {
 	t.Setenv(envAppID, "123456")
 	t.Setenv(envInstallationID, "789012")

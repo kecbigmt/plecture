@@ -663,8 +663,6 @@ func TestPoller_GhInvocationFailureLogsWarning(t *testing.T) {
 	}
 }
 
-// TokenFunc, when set, must reach the `gh` child process as GH_TOKEN — the
-// deployment-level App-auth opt-in cmd/github-watcher wires in.
 func TestPoller_TokenFuncExportsGHTokenToGhChild(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)
@@ -711,9 +709,6 @@ GHSTUB_EOF
 	}
 }
 
-// A TokenFunc failure (a bad key, a rejected mint) must fail that fetch the
-// same way an unreachable gh binary does — no attempt to call gh with no
-// credential at all, and no crash.
 func TestPoller_TokenFuncFailureFailsFetchWithoutCallingGh(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)

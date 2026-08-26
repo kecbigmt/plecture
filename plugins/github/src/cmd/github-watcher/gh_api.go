@@ -55,11 +55,7 @@ func ghAPIDataDir(dataDir string) string {
 // runGhAPI runs `gh api` gated by the shared rate budget: a pending backoff
 // refuses the call outright (no immediate retry), and a 403/429 response
 // extends the backoff — using the real Retry-After/X-RateLimit-Reset headers
-// when available, an exponential fallback otherwise. tokenFunc, when
-// non-nil, mints (or reuses) a GitHub App installation token and exports it
-// to the `gh` child as GH_TOKEN — the deployment-level App-auth opt-in; nil
-// leaves gh running under this process's inherited environment (ambient
-// `gh auth`), unchanged.
+// when available, an exponential fallback otherwise.
 func runGhAPI(guard *ratebudget.Guard, tokenFunc func() (string, error), stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 	if wait, err := guard.Wait(); err == nil && wait > 0 {
 		fmt.Fprintf(stderr, "github-watcher gh-api: shared rate budget backed off for %s; refusing to call gh (no immediate retry)\n", wait.Round(time.Second))
@@ -77,9 +73,6 @@ func runGhAPI(guard *ratebudget.Guard, tokenFunc func() (string, error), stdin i
 	return runGhAPIConditional(guard, tokenFunc, stdin, stdout, stderr, args)
 }
 
-// ghEnv returns nil (inherit this process's environment unchanged) when
-// tokenFunc is nil, and this process's environment plus a minted GH_TOKEN
-// otherwise.
 func ghEnv(tokenFunc func() (string, error)) ([]string, error) {
 	if tokenFunc == nil {
 		return nil, nil
