@@ -563,6 +563,74 @@ func TestUp_CleansAndDropsProducedNodeRemovedFromWorkflow(t *testing.T) {
 	}
 }
 
+func TestUp_StaleNodeCleanupDoesNotClobberConcurrentSessionWrites(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq not available")
+	}
+	store := testStore(t)
+	sessionName := "org/repo-14"
+	t.Setenv("SP", filepath.Join(store.Dir(), "state.json"))
+	cleanupLog := filepath.Join(t.TempDir(), "cleanup.log")
+	concurrentWrite := fmt.Sprintf(`jq --arg name %q '.sessions[$name].tasks.kept.outputs.self_healed="yes" | .sessions[$name].health={"last_state":"healthy","last_reason":"concurrent"} | .sessions[$name].tick_backoff={"last_fingerprint":"concurrent"}' "$SP" > "$SP.tmp" && mv "$SP.tmp" "$SP"`, sessionName)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+		[]taskFixture{
+			{
+				id:      "retired",
+				scope:   "run",
+				cleanup: concurrentWrite + "\n" + fmt.Sprintf(`printf 'retired=%%s\n' '{{.Self.token}}' >> %s`, cleanupLog),
+			},
+			{
+				id:    "kept",
+				scope: "run",
+				setup: fmt.Sprintf(`printf 'kept setup\n' >> %s; echo '{}'`, cleanupLog),
+			},
+		},
+		[]nodeFixture{{id: "kept"}},
+	)
+	seedSession(t, store, sessionName, "org/repo", 14, "default", map[string]*contract.TaskState{
+		"retired": {
+			Scope:   contract.TaskScopeRun,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{"token": "old-token"},
+			Seq:     1,
+		},
+		"kept": {
+			Scope:   contract.TaskScopeRun,
+			Status:  contract.TaskStatusProduced,
+			Outputs: map[string]any{},
+			Seq:     2,
+		},
+	})
+
+	result, err := Up(cfg, store, UpParams{Identifier: sessionName})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	if st := result.Tasks["retired"]; st != nil {
+		t.Fatalf("retired task = %+v, want dropped after cleanup", st)
+	}
+	if st := result.Tasks["kept"]; st == nil || st.Outputs["self_healed"] != "yes" {
+		t.Fatalf("kept task = %+v, want concurrent output update preserved", st)
+	}
+	persisted := store.Get(sessionName)
+	if persisted.Health == nil || persisted.Health.LastState != "healthy" || persisted.Health.LastReason != "concurrent" {
+		t.Fatalf("health = %+v, want concurrent health update preserved", persisted.Health)
+	}
+	if persisted.TickBackoff == nil || persisted.TickBackoff.LastFingerprint != "concurrent" {
+		t.Fatalf("tick backoff = %+v, want concurrent tick update preserved", persisted.TickBackoff)
+	}
+	data, err := os.ReadFile(cleanupLog)
+	if err != nil {
+		t.Fatalf("read cleanup log: %v", err)
+	}
+	if strings.Contains(string(data), "kept setup") {
+		t.Fatalf("cleanup log = %q, kept setup should have been skipped as already produced", string(data))
+	}
+}
+
 func TestUp_StaleNodeCleanupFailurePreservesInspectableState(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")

@@ -208,19 +208,41 @@ func cleanupStaleWorkflowNodes(cfg *config.Config, store *state.Store, sessionNa
 		return nil
 	}
 	cleanupErr := task.RunCleanup(context.Background(), stale, sessionVars(cfg, session, plan), session.Tasks, observer)
-	for _, r := range stale {
-		if st := session.Tasks[r.NodeID]; st != nil && st.Status == contract.TaskStatusCleaned {
-			delete(session.Tasks, r.NodeID)
-		}
-	}
 	session.UpdatedAt = time.Now()
-	if err := replaceRuntimeState(store, sessionName, session); err != nil {
+	if err := persistStaleWorkflowCleanup(store, sessionName, session, stale); err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to save session state: %v", err)}
+	}
+	if refreshed := store.Get(sessionName); refreshed != nil {
+		*session = *refreshed
+		if session.Tasks == nil {
+			session.Tasks = make(map[string]*contract.TaskState)
+		}
 	}
 	if cleanupErr != nil {
 		return &Error{Code: ErrExecutionFailed, Message: cleanupErr.Error()}
 	}
 	return nil
+}
+
+func persistStaleWorkflowCleanup(store *state.Store, sessionName string, session *domain.Session, stale []task.Resolved) error {
+	return store.Update(sessionName, func(s *domain.Session) error {
+		if s.Tasks == nil {
+			s.Tasks = make(map[string]*contract.TaskState)
+		}
+		for _, r := range stale {
+			st := session.Tasks[r.NodeID]
+			if st == nil {
+				continue
+			}
+			if st.Status == contract.TaskStatusCleaned {
+				delete(s.Tasks, r.NodeID)
+				continue
+			}
+			s.Tasks[r.NodeID] = st
+		}
+		s.UpdatedAt = session.UpdatedAt
+		return nil
+	})
 }
 
 func staleProducedWorkflowNodes(cfg *config.Config, session *domain.Session, plan *task.Plan) ([]task.Resolved, error) {
