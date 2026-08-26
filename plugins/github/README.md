@@ -60,7 +60,10 @@ accepted resource identifier. It was never reachable through shipped
 dispatch — the `worktree` provider's `match` regex above only matches an
 issue or pull request URL — so the `gh api graphql` resolution path that
 used to back it (ambient-`gh`-authenticated, never App-aware) was dead
-code, removed rather than kept behind a deprecation shim.
+code, removed rather than kept behind a deprecation shim. See
+`docs/migrations/github-worktree-pvti-removal-migration.md` for the rare
+case (a custom `match` pattern, or a direct `github-worktree` invocation)
+where this is a live change.
 
 ## Cleanup
 

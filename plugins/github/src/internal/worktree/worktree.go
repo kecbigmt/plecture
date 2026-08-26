@@ -160,14 +160,10 @@ func Setup(ctx context.Context, opts SetupOptions) (map[string]any, error) {
 	return outputs, nil
 }
 
-// appAuth builds the two GitHub App auth surfaces Setup can opt into from
-// one set of inputs: a git credential helper the caller wires into the
-// worktree's git config, and a GHClient authenticated the same way for the
-// pull-request/issue metadata fetch. Both point at the same on-disk token
-// cache, so whichever runs first mints the installation token and the
-// other reuses it. A nil GHClient means the inputs opted out (empty
-// AppID/InstallationID/PrivateKeyPath): Setup then falls back to its own
-// GHClient selection.
+// appAuth builds a git credential helper and a metadata GHClient from one
+// set of inputs, pointed at the same on-disk token cache so whichever runs
+// first mints the installation token and the other reuses it. A nil
+// GHClient means the inputs opted out.
 func appAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConfig, github.GHClient, error) {
 	if opts.AppID == "" && opts.InstallationID == "" && opts.PrivateKeyPath == "" {
 		return workspace.GitAuthConfig{}, nil, nil
@@ -218,12 +214,9 @@ func appAuth(opts SetupOptions, parsed *github.ParsedURL) (workspace.GitAuthConf
 	return workspace.GitAuthConfig{CredentialHelper: helper}, client, nil
 }
 
-// selectGHClient picks the client Setup's metadata fetch uses. An opted-in
-// App auth client always wins over whatever the caller injected: App auth
-// replaces ghapi.Direct()/ghapi.ViaWatcher() outright rather than layering
-// on top of them. Absent that opt-in, the caller's own selection (main.go's
-// Direct/ViaWatcher choice) stands, and ghapi.Direct() is the last resort
-// for a caller that supplied neither.
+// selectGHClient favors an opted-in App auth client over whatever the
+// caller injected, since App auth replaces ghapi.Direct()/ViaWatcher()
+// rather than layering on them.
 func selectGHClient(appClient, injected github.GHClient) github.GHClient {
 	if appClient != nil {
 		return appClient

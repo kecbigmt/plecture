@@ -12,19 +12,14 @@ import (
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/githubapp"
 )
 
-// defaultAppSkew matches gh-app-token's own default, so a metadata fetch and
-// a git operation refresh at the same point in a token's lifetime even
-// though each mints/reuses independently.
+// defaultAppSkew matches gh-app-token's own default skew.
 const defaultAppSkew = 5 * time.Minute
 
-// App calls the GitHub REST API directly over HTTP, authenticated as a
-// GitHub App installation instead of through `gh`. It mints (or reuses a
-// cached, unexpired) installation token via the same apptoken.Cache the
-// git credential helper's App auth path uses (see cmd/gh-app-token), so
-// pointing both at the same CachePath makes them share one token rather
-// than each minting its own — while neither depends on the other's timing,
-// since apptoken.Cache mints again on its own the moment its holder's copy
-// is stale.
+// App implements GHClient over HTTP directly instead of shelling out to gh:
+// procexec.Runner has no per-call environment override, and this is the
+// only call site that would need one. Point CachePath at the same value the
+// git credential helper uses (see worktree.appAuth) to share one
+// installation token instead of minting two.
 type App struct {
 	AppID          string
 	InstallationID string // optional; resolved from Owner/Repo when empty
@@ -37,9 +32,9 @@ type App struct {
 	HTTPClient     *http.Client  // defaults to a client with a 30s timeout
 }
 
-// JSON fetches one REST endpoint via GET — the only shape
-// official.github.worktree's metadata fetch needs — and returns its JSON
-// body.
+// JSON accepts exactly one REST path argument, unlike ghapi.Client's `gh
+// api`-style variadic args — the only shape official.github.worktree's
+// metadata fetch needs.
 func (a *App) JSON(ctx context.Context, args ...string) ([]byte, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("github app client supports exactly one REST path argument, got %d", len(args))

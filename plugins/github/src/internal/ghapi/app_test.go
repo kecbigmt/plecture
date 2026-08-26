@@ -28,10 +28,6 @@ func writeTestAppKey(t *testing.T) string {
 	return path
 }
 
-// fakeGitHubAPI stands in for api.github.com: it mints installation tokens
-// and resolves installation ids exactly like githubapp's own fake token
-// endpoint, plus serves one REST resource path so a test can assert the
-// resource fetch itself carried the minted token.
 func fakeGitHubAPI(t *testing.T, token, resourcePath, resourceBody string) (*httptest.Server, *int) {
 	t.Helper()
 	mints := 0

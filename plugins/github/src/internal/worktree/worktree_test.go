@@ -69,9 +69,6 @@ func (m *fakeManager) RemoveByPath(ctx context.Context, workspaceDir, gitDir, br
 	return m.removeErr
 }
 
-// TestSelectGHClient_AppAuthWinsOverInjectedClient: App auth is meant to
-// replace ghapi.Direct()/ghapi.ViaWatcher() outright once opted in, not
-// merely supplement whichever one main.go already selected.
 func TestSelectGHClient_AppAuthWinsOverInjectedClient(t *testing.T) {
 	app := &ghapi.App{AppID: "123456"}
 	injected := &fakeGHClient{}
@@ -433,10 +430,6 @@ func TestAppAuth_RejectsUnsafeRuntimeInputs(t *testing.T) {
 	}
 }
 
-// TestAppAuth_NotOptedInReturnsNoMetadataClient: with none of app_id,
-// installation_id, or private_key_path set, appAuth must return a nil
-// GHClient so Setup falls back to its caller-supplied client (or
-// ghapi.Direct()) unchanged — the opt-in stays additive.
 func TestAppAuth_NotOptedInReturnsNoMetadataClient(t *testing.T) {
 	parsed, err := github.ParseURL("https://github.com/acme/widgets/issues/42")
 	if err != nil {
@@ -451,10 +444,8 @@ func TestAppAuth_NotOptedInReturnsNoMetadataClient(t *testing.T) {
 	}
 }
 
-// TestAppAuth_MetadataClientSharesGitAuthsInstallationAndCache: the metadata
-// fetch and the git credential helper must resolve to the same installation
-// and read/write the same on-disk token cache, so whichever runs first
-// mints and the other reuses instead of each minting its own token.
+// Whichever runs first mints the installation token; the other reuses it
+// instead of minting its own.
 func TestAppAuth_MetadataClientSharesGitAuthsInstallationAndCache(t *testing.T) {
 	cacheRoot := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", cacheRoot)
