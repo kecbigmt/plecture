@@ -263,7 +263,11 @@ func (s *Store) withFileLock(fn func() error) error {
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDONLY, 0644)
+	// LOCK_EX requires a descriptor opened for writing: the Linux NFS client
+	// enforces this and returns EBADF for an O_RDONLY fd, even though local
+	// filesystems tolerate it. The descriptor is never read or written to;
+	// only its lock is used.
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open lock file: %w", err)
 	}
