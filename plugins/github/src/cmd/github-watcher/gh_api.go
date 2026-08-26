@@ -30,7 +30,11 @@ func cmdGhAPI(args []string) error {
 		dataDir, args = args[1], args[2:]
 	}
 	guard := ratebudget.NewGuard(ghAPIDataDir(dataDir))
-	return runGhAPI(guard, os.Stdin, os.Stdout, os.Stderr, args)
+	tokenFn, err := appAuthTokenFunc(ghAPIDataDir(dataDir))
+	if err != nil {
+		return err
+	}
+	return runGhAPI(guard, tokenFn, os.Stdin, os.Stdout, os.Stderr, args)
 }
 
 // ghAPIDataDir mirrors NewStore's default so `github-watcher gh-api` and
@@ -51,8 +55,12 @@ func ghAPIDataDir(dataDir string) string {
 // runGhAPI runs `gh api` gated by the shared rate budget: a pending backoff
 // refuses the call outright (no immediate retry), and a 403/429 response
 // extends the backoff — using the real Retry-After/X-RateLimit-Reset headers
-// when available, an exponential fallback otherwise.
-func runGhAPI(guard *ratebudget.Guard, stdin io.Reader, stdout, stderr io.Writer, args []string) error {
+// when available, an exponential fallback otherwise. tokenFunc, when
+// non-nil, mints (or reuses) a GitHub App installation token and exports it
+// to the `gh` child as GH_TOKEN — the deployment-level App-auth opt-in; nil
+// leaves gh running under this process's inherited environment (ambient
+// `gh auth`), unchanged.
+func runGhAPI(guard *ratebudget.Guard, tokenFunc func() (string, error), stdin io.Reader, stdout, stderr io.Writer, args []string) error {
 	if wait, err := guard.Wait(); err == nil && wait > 0 {
 		fmt.Fprintf(stderr, "github-watcher gh-api: shared rate budget backed off for %s; refusing to call gh (no immediate retry)\n", wait.Round(time.Second))
 		return fmt.Errorf("gh rate budget backed off for %s", wait.Round(time.Second))
@@ -64,16 +72,35 @@ func runGhAPI(guard *ratebudget.Guard, stdin io.Reader, stdout, stderr io.Writer
 	// detection (no precise Retry-After/reset) rather than risk corrupting a
 	// paginated caller's stdout.
 	if slices.Contains(args, "--paginate") {
-		return runGhAPIPlain(guard, stdin, stdout, stderr, args)
+		return runGhAPIPlain(guard, tokenFunc, stdin, stdout, stderr, args)
 	}
-	return runGhAPIConditional(guard, stdin, stdout, stderr, args)
+	return runGhAPIConditional(guard, tokenFunc, stdin, stdout, stderr, args)
+}
+
+// ghEnv returns nil (inherit this process's environment unchanged) when
+// tokenFunc is nil, and this process's environment plus a minted GH_TOKEN
+// otherwise.
+func ghEnv(tokenFunc func() (string, error)) ([]string, error) {
+	if tokenFunc == nil {
+		return nil, nil
+	}
+	token, err := tokenFunc()
+	if err != nil {
+		return nil, fmt.Errorf("github app token: %w", err)
+	}
+	return append(os.Environ(), "GH_TOKEN="+token), nil
 }
 
 // runGhAPIConditional runs `gh api -i <args>`, relays only the body to
 // stdout, and reports 403/429 to guard using the real Retry-After/
 // X-RateLimit-Reset headers when GitHub sends them.
-func runGhAPIConditional(guard *ratebudget.Guard, stdin io.Reader, stdout, stderr io.Writer, args []string) error {
+func runGhAPIConditional(guard *ratebudget.Guard, tokenFunc func() (string, error), stdin io.Reader, stdout, stderr io.Writer, args []string) error {
+	env, err := ghEnv(tokenFunc)
+	if err != nil {
+		return err
+	}
 	c := exec.Command("gh", append([]string{"api"}, append(args, "-i")...)...)
+	c.Env = env
 	c.Stdin = stdin
 	var buf bytes.Buffer
 	c.Stdout = &buf
@@ -113,13 +140,18 @@ func runGhAPIConditional(guard *ratebudget.Guard, stdin io.Reader, stdout, stder
 // throttle detection from gh's plain-text error only (no header access, so
 // the guard falls back to its exponential backoff rather than GitHub's exact
 // Retry-After/reset window).
-func runGhAPIPlain(guard *ratebudget.Guard, stdin io.Reader, stdout, stderr io.Writer, args []string) error {
+func runGhAPIPlain(guard *ratebudget.Guard, tokenFunc func() (string, error), stdin io.Reader, stdout, stderr io.Writer, args []string) error {
+	env, err := ghEnv(tokenFunc)
+	if err != nil {
+		return err
+	}
 	c := exec.Command("gh", append([]string{"api"}, args...)...)
+	c.Env = env
 	c.Stdin = stdin
 	c.Stdout = stdout
 	var stderrBuf bytes.Buffer
 	c.Stderr = io.MultiWriter(stderr, &stderrBuf)
-	err := c.Run()
+	err = c.Run()
 	if err != nil {
 		if isThrottleResponse(stderrBuf.String()) {
 			if rerr := guard.RecordThrottle(0, time.Time{}); rerr != nil {

@@ -156,15 +156,32 @@ plect up https://github.com/acme/widgets/issues/42 --inputs '{
 }'
 ```
 
-**`github-watcher` keeps using the operator's own `gh auth`.** It is a
-single resident service shared across sessions (`[[services]]` in
-`plugin.toml`), not a per-session task in a plan — there is no per-call
-installation context for it to select a token by, and giving it one would
-need a core-side change to how a service's environment is composed (a
-service starts once at supervisor start, not per session). No concrete
-consumer needs multi-installation watcher auth yet, so this stays
-unaddressed rather than speculatively built; `gh_app_guard` composes only
-into a session's own `gh`, the same scope `gh_guard` already has.
+**`github-watcher serve` can authenticate as one deployment-level GitHub App
+installation instead of the operator's own `gh auth`.** It is a single
+resident service shared across sessions (`[[services]]` in `plugin.toml`),
+not a per-session task in a plan, so there is no per-call installation
+context to select a token by — this is deliberately one App id/installation
+per deployment, set via environment rather than `gh_app_guard`'s per-session
+task inputs. `github-watcher gh-api`, the cross-process helper the workspace
+provider and resource observation call into, shares the same auth (same env,
+same token cache), so both the poll loop and config-layer `gh api` calls
+authenticate as the one installation. Set these on the `github-watcher serve`
+process (and anywhere `gh-api` runs standalone):
+
+| Env var | Meaning |
+|---|---|
+| `GITHUB_WATCHER_APP_ID` | The GitHub App's id. Unset means no App auth at all — ambient `gh auth` behavior is unchanged. |
+| `GITHUB_WATCHER_APP_INSTALLATION_ID` | The installation id, if known. |
+| `GITHUB_WATCHER_APP_OWNER`, `GITHUB_WATCHER_APP_REPO` | Alternative to `GITHUB_WATCHER_APP_INSTALLATION_ID`: resolves the installation id for this repository on first mint. |
+| `GITHUB_WATCHER_APP_PRIVATE_KEY_PATH` | Path to the App's PEM private key. Required once `GITHUB_WATCHER_APP_ID` is set. |
+| `GITHUB_WATCHER_APP_BASE_URL` | GitHub API base URL override (default `api.github.com`). |
+| `GITHUB_WATCHER_APP_CACHE_PATH` | Token cache path override (default `<data-dir>/.app-token-cache.json`, alongside the shared rate-budget file). |
+
+A deployment configured this way fails loud: `serve` mints once at startup
+and exits non-zero if the private key is unreadable or the mint is rejected,
+instead of staying process-healthy while every subsequent fetch dies quietly.
+Multi-installation watcher auth (a per-session or per-repository identity)
+stays out of scope until a concrete consumer needs it.
 
 ## Install
 
@@ -192,8 +209,10 @@ supervisor.
 
 - `git`
 - the `gh` CLI on PATH — authenticated via the operator's own `gh auth
-  login`, unless a session composes `gh_app_guard` instead, which supplies
-  its own GitHub App installation token per invocation
+  login`, unless a session composes `gh_app_guard` (or `github-watcher serve`
+  is given `GITHUB_WATCHER_APP_ID` and the rest of its App auth env — see
+  "App auth" above), either of which supplies its own GitHub App
+  installation token per invocation instead
 - a Go toolchain, to build the three executables at `plect plugin add`/`update`
   time (see `docs/design/plugin-packaging.md`'s Executable Build Model)
 

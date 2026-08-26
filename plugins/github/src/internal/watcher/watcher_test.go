@@ -663,6 +663,88 @@ func TestPoller_GhInvocationFailureLogsWarning(t *testing.T) {
 	}
 }
 
+// TokenFunc, when set, must reach the `gh` child process as GH_TOKEN — the
+// deployment-level App-auth opt-in cmd/github-watcher wires in.
+func TestPoller_TokenFuncExportsGHTokenToGhChild(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-9", Resource: "https://github.com/org/repo/pull/9"}); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	tokenLog := filepath.Join(t.TempDir(), "token.log")
+	gh := fakeBin(t, binDir, "gh", `echo "$GH_TOKEN" >> `+tokenLog+`
+printf 'HTTP/1.1 200 OK\n\n'
+cat <<'GHSTUB_EOF'
+{"state":"open","merged":false,"sha":"deadbeef","mergeable_state":"","draft":false}
+GHSTUB_EOF
+`)
+
+	var mints int
+	p := &Poller{
+		Store:  store,
+		Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		GhBin:  gh,
+		Guard:  ratebudget.NewGuard(t.TempDir()),
+		TokenFunc: func() (string, error) {
+			mints++
+			return "ghs_minted_token", nil
+		},
+	}
+	p.Tick()
+
+	got, err := os.ReadFile(tokenLog)
+	if err != nil {
+		t.Fatalf("token log: %v", err)
+	}
+	// The primary PR probe and the checks probe (check-runs + status) each
+	// invoke gh separately — every one of those child processes must see the
+	// minted token, not just the first.
+	for _, line := range strings.Split(strings.TrimSpace(string(got)), "\n") {
+		if line != "ghs_minted_token" {
+			t.Errorf("gh child saw GH_TOKEN=%q, want ghs_minted_token", line)
+		}
+	}
+	if mints == 0 {
+		t.Error("TokenFunc was never called")
+	}
+}
+
+// A TokenFunc failure (a bad key, a rejected mint) must fail that fetch the
+// same way an unreachable gh binary does — no attempt to call gh with no
+// credential at all, and no crash.
+func TestPoller_TokenFuncFailureFailsFetchWithoutCallingGh(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+	if err := store.Subscribe(Subscription{SessionName: "org/repo-9", Resource: "https://github.com/org/repo/pull/9"}); err != nil {
+		t.Fatal(err)
+	}
+
+	binDir := t.TempDir()
+	callLog := filepath.Join(t.TempDir(), "calls.log")
+	gh := fakeBin(t, binDir, "gh", `echo "must not be invoked" >> `+callLog)
+
+	var logs bytes.Buffer
+	p := &Poller{
+		Store:  store,
+		Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+		GhBin:  gh,
+		Guard:  ratebudget.NewGuard(t.TempDir()),
+		TokenFunc: func() (string, error) {
+			return "", fmt.Errorf("mint installation token: unauthorized")
+		},
+	}
+	p.Tick()
+
+	if _, err := os.Stat(callLog); !os.IsNotExist(err) {
+		t.Fatalf("gh must not be invoked when the token mint fails, stat err=%v", err)
+	}
+	if !bytes.Contains(logs.Bytes(), []byte("github app token mint failed")) {
+		t.Errorf("expected a warning about the failed mint, got log output: %q", logs.String())
+	}
+}
+
 func TestPoller_DoesNotPruneSubscriptionsDuringPoll(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStore(dir)

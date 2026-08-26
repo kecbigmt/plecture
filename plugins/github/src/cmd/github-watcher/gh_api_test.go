@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,7 +39,7 @@ func TestRunGhAPI_SuccessRelaysBodyOnly(t *testing.T) {
 	guard := ratebudget.NewGuard(t.TempDir())
 
 	var stdout, stderr bytes.Buffer
-	err := runGhAPI(guard, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y"})
+	err := runGhAPI(guard, nil, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y"})
 	if err != nil {
 		t.Fatalf("runGhAPI: %v (stderr=%s)", err, stderr.String())
 	}
@@ -60,7 +62,7 @@ exit 1
 	guard := ratebudget.NewGuard(t.TempDir())
 
 	var stdout, stderr bytes.Buffer
-	err := runGhAPI(guard, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y"})
+	err := runGhAPI(guard, nil, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y"})
 	if err == nil {
 		t.Fatal("expected an error on 403")
 	}
@@ -83,7 +85,7 @@ func TestRunGhAPI_RefusesCallWhileBackedOff(t *testing.T) {
 	fakeGhBin(t, `echo "must not be invoked" >> `+filepath.Join(t.TempDir(), "calls.log")+`; exit 0`)
 
 	var stdout, stderr bytes.Buffer
-	err := runGhAPI(guard, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y"})
+	err := runGhAPI(guard, nil, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y"})
 	if err == nil {
 		t.Fatal("expected refusal while backed off")
 	}
@@ -100,7 +102,7 @@ func TestRunGhAPI_PaginateFallbackDetectsThrottleFromErrorText(t *testing.T) {
 	guard := ratebudget.NewGuard(t.TempDir())
 
 	var stdout, stderr bytes.Buffer
-	err := runGhAPI(guard, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y/commits/abc/check-runs", "--paginate", "--jq", "."})
+	err := runGhAPI(guard, nil, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y/commits/abc/check-runs", "--paginate", "--jq", "."})
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -120,7 +122,7 @@ func TestRunGhAPI_PaginateFallbackRelaysStdout(t *testing.T) {
 	guard := ratebudget.NewGuard(t.TempDir())
 
 	var stdout, stderr bytes.Buffer
-	err := runGhAPI(guard, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y/commits/abc/check-runs", "--paginate"})
+	err := runGhAPI(guard, nil, strings.NewReader(""), &stdout, &stderr, []string{"repos/x/y/commits/abc/check-runs", "--paginate"})
 	if err != nil {
 		t.Fatalf("runGhAPI: %v", err)
 	}
@@ -141,6 +143,70 @@ func TestCmdGhAPI_DataDirRoutesGuardState(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "rate-budget.json")); err != nil {
 		t.Errorf("expected rate-budget.json under --data-dir, got: %v", err)
+	}
+}
+
+// cmdGhAPI must export GH_TOKEN to the gh child when the deployment-level
+// App auth env vars are set — the same env vars serve's configureAppAuth
+// reads (see app_auth_test.go), so the daemon and this cross-process helper
+// share one App identity.
+func TestCmdGhAPI_AppAuthExportsGHTokenToGhChild(t *testing.T) {
+	tokenSrv := fakeInstallationTokenServer(t, "ghs_gh_api")
+	defer tokenSrv.Close()
+
+	fakeGhBin(t, `printf 'HTTP/1.1 200 OK\r\n\r\n'; echo "GH_TOKEN=$GH_TOKEN" >&2`)
+
+	t.Setenv(envAppID, "123456")
+	t.Setenv(envInstallationID, "789012")
+	t.Setenv(envPrivateKeyPath, writeAppKey(t))
+	t.Setenv(envBaseURL, tokenSrv.URL)
+
+	dir := t.TempDir()
+	// Capture stderr, where the fake gh echoed GH_TOKEN, by redirecting the
+	// process's own stderr — cmdGhAPI writes straight to os.Stderr.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	origStderr := os.Stderr
+	os.Stderr = w
+	cmdErr := cmdGhAPI([]string{"--data-dir", dir, "repos/x/y"})
+	os.Stderr = origStderr
+	w.Close()
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	if cmdErr != nil {
+		t.Fatalf("cmdGhAPI: %v (stderr=%s)", cmdErr, buf.String())
+	}
+	if !strings.Contains(buf.String(), "GH_TOKEN=ghs_gh_api") {
+		t.Errorf("gh child stderr = %q, want it to have seen GH_TOKEN=ghs_gh_api", buf.String())
+	}
+}
+
+// An App-auth mint failure must fail the gh-api call loud, without ever
+// invoking gh at all.
+func TestCmdGhAPI_AppAuthMintFailureFailsLoudWithoutCallingGh(t *testing.T) {
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message":"Bad credentials"}`))
+	}))
+	defer tokenSrv.Close()
+
+	callLog := filepath.Join(t.TempDir(), "calls.log")
+	fakeGhBin(t, `echo "must not be invoked" >> `+callLog)
+
+	t.Setenv(envAppID, "123456")
+	t.Setenv(envInstallationID, "789012")
+	t.Setenv(envPrivateKeyPath, writeAppKey(t))
+	t.Setenv(envBaseURL, tokenSrv.URL)
+
+	err := cmdGhAPI([]string{"--data-dir", t.TempDir(), "repos/x/y"})
+	if err == nil {
+		t.Fatal("want an error when the App token mint fails")
+	}
+	if _, statErr := os.Stat(callLog); !os.IsNotExist(statErr) {
+		t.Fatalf("gh must not be invoked when the mint fails, stat err=%v", statErr)
 	}
 }
 
