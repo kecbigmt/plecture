@@ -54,7 +54,19 @@ func usage() {
   github-watcher unsubscribe --session <name> [--resource <id>]
   github-watcher list
   github-watcher serve [--interval 60s] [--allow-legacy-notify [--notify-url http://127.0.0.1:7890/notify]]
-  github-watcher gh-api [--data-dir <dir>] <gh api args...>`)
+  github-watcher gh-api [--data-dir <dir>] <gh api args...>
+
+serve and gh-api both authenticate as a single GitHub App installation
+instead of the operator's own "gh auth login" when GITHUB_WATCHER_APP_ID is
+set (fails startup/the call loudly if the rest of the App auth env is
+missing or the mint fails); unset, both use ambient "gh auth" unchanged:
+  GITHUB_WATCHER_APP_ID               GitHub App id
+  GITHUB_WATCHER_APP_INSTALLATION_ID  installation id (or set OWNER+REPO)
+  GITHUB_WATCHER_APP_OWNER            repository owner, resolves the installation id
+  GITHUB_WATCHER_APP_REPO             repository name, resolves the installation id
+  GITHUB_WATCHER_APP_PRIVATE_KEY_PATH path to the App's PEM private key
+  GITHUB_WATCHER_APP_BASE_URL         GitHub API base URL (default api.github.com)
+  GITHUB_WATCHER_APP_CACHE_PATH       token cache path (default <data-dir>/.app-token-cache.json)`)
 }
 
 func cmdSubscribe(args []string) error {
@@ -130,6 +142,9 @@ func cmdServe(args []string) error {
 		// Same data-dir resolution as `gh-api`, so poll and config-layer gh
 		// calls back off against one shared budget.
 		Guard: ratebudget.NewGuard(ghAPIDataDir(*dataDir)),
+	}
+	if err := configureAppAuth(poller, ghAPIDataDir(*dataDir)); err != nil {
+		return fmt.Errorf("github app auth: %w", err)
 	}
 
 	busSocket := os.Getenv("PLECT_BUS_SOCKET")

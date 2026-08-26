@@ -158,7 +158,8 @@ func tokenFromOptions(opts tokenOptions) (string, error) {
 		return "", err
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
-	return githubapp.Token(apptoken.NewCache(opts.cachePath), opts.skew, client, opts.baseURL, opts.appID, key, opts.installationID, opts.owner, opts.repo)
+	cache := apptoken.NewCache(opts.cachePath)
+	return githubapp.Token(cache, opts.skew, client, opts.baseURL, opts.appID, key, opts.installationID, opts.owner, opts.repo)
 }
 
 func readCredential(r io.Reader) (map[string]string, error) {

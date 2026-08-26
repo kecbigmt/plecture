@@ -46,8 +46,13 @@ name = "gh-app-guard"
 path = "scripts/gh-app-guard"
 
 # The watcher polls subscribed resources via the gh CLI, authenticated
-# outside plect (the user's own `gh auth login`) — no required_env, since
-# there is no plect-owned credential to gate on.
+# outside plect (the user's own `gh auth login`) by default — no
+# required_env, since there is no plect-owned credential to gate on. A
+# deployment that sets GITHUB_WATCHER_APP_ID (and the rest of the App auth
+# env — see `github-watcher serve`'s own usage text) authenticates as a
+# single GitHub App installation instead, and fails startup loud if that
+# configuration is incomplete or the mint fails, rather than staying
+# process-healthy with every fetch dying.
 [[services]]
 name = "github-watcher"
 executable = "github-watcher"
