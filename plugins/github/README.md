@@ -30,9 +30,13 @@ rollup, and linked-PR discovery.
   so every `gh` a session's shell resolves is `scripts/gh-guard` instead of
   the real binary — mechanically denying `pr merge`/`issue close`/`pr
   close` (and their `gh api` equivalents) so a session can't act on a
-  forgotten or de-prioritized "don't merge" instruction. Opt-in: wire it
-  only into workflows that want it. See `scripts/gh-guard_selftest.sh` at
-  the repository root for its behavior tests.
+  forgotten or de-prioritized "don't merge" instruction. It authenticates
+  as nothing itself, so the wrapped `gh` falls back to whatever `gh auth`
+  is already ambient on the host — **operator-auth only**. An App-only
+  deployment must not wire this task; it composes `gh_app_guard` instead.
+  Opt-in: wire it only into workflows that want it. See
+  `scripts/gh-guard_selftest.sh` at the repository root for its behavior
+  tests.
 - `tasks/gh_app_guard.toml` — the same PATH-prepend composition as
   `gh_guard`, except the generated `gh` wrapper (`scripts/gh-app-guard`)
   also authenticates: it mints and caches a GitHub App installation access
@@ -199,6 +203,38 @@ instead of staying process-healthy while every subsequent fetch dies quietly.
 Multi-installation watcher auth (a per-session or per-repository identity)
 stays out of scope until a concrete consumer needs it.
 
+`github-issue-pr` accepts a bare-`gh`, no-App-auth mode (omitting
+`--watcher-bin`), which the shipped `resources/issue.toml`/`pull.toml`
+configs never select — they always pass `--watcher-bin` so calls route
+through the shared rate budget above. It has no App-auth inputs of its
+own, so invoking it directly without that flag is operator-auth only and
+out of scope for an App-only deployment. `github-worktree` is different:
+its `--app-id`/`--private-key-path` App-auth inputs (see above) win
+outright over its own `--watcher-bin` selection, so a direct
+`github-worktree setup` invocation authenticates as the App whenever
+those inputs are set, `--watcher-bin` or not. Without them, the metadata
+fetch falls back to whatever `--watcher-bin` selects: ambient `gh auth`
+if omitted, or `github-watcher gh-api`'s own credential source if
+passed — which is itself ambient `gh auth` unless that deployment's
+`GITHUB_WATCHER_APP_*` env (see above) is configured.
+
+### One credential story for an App-only deployment
+
+An App-only deployment (a GitHub App installation only — no operator
+personal or shared `gh auth login` anywhere) wires all three call sites
+below to that same App identity, and never wires `gh_guard`:
+
+| Call site | Wire this | Not this |
+|---|---|---|
+| Session `gh` calls (agent runtime) | `gh_app_guard`, composed as the runtime's `path_prepend` input | `gh_guard` — operator-auth only, see above |
+| `official.github.worktree` git operations and metadata fetch | The same `app_id`/`private_key_path` (etc.) session inputs, passed at `plect up` time | Leaving those inputs unset: git operations fall back to the host's ambient git credentials, and the metadata fetch falls back to ambient `gh auth` (or the watcher's own App auth, if that's separately configured) |
+| `github-watcher serve` and its `gh-api` helper (resident, cross-session) | The `GITHUB_WATCHER_APP_*` deployment env vars | Ambient `gh auth login` on the host running `plect serve` |
+
+With all three wired, no `gh auth login` needs to run anywhere in the
+deployment — each call site independently mints or reuses its own GitHub
+App installation token, on its own schedule, with no shared process state
+between them beyond the on-disk token cache each was given.
+
 ## Install
 
 Register this repository as a catalog and enable the plugin:
@@ -225,10 +261,9 @@ supervisor.
 
 - `git`
 - the `gh` CLI on PATH — authenticated via the operator's own `gh auth
-  login`, unless a session composes `gh_app_guard` (or `github-watcher serve`
-  is given `GITHUB_WATCHER_APP_ID` and the rest of its App auth env — see
-  "App auth" above), either of which supplies its own GitHub App
-  installation token per invocation instead
+  login` by default. An App-only deployment replaces every use of that
+  ambient auth instead of running `gh auth login` at all — see "One
+  credential story for an App-only deployment" above.
 - a Go toolchain, to build the three executables at `plect plugin add`/`update`
   time (see `docs/design/plugin-packaging.md`'s Executable Build Model)
 

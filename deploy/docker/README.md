@@ -124,15 +124,17 @@ actually *use* what it gates:
 
 | Input | Gates | Notes |
 |---|---|---|
-| GitHub App id/installation id/private key path | The example workflow's `gh_app_guard` node | Operator-provisioned, never committed — see `plugins/github/README.md`'s "App auth" section. Passed as session inputs at `plect up` time in this example; a downstream deployment may instead hardcode its own App identity into its own overlay workflow. |
+| GitHub App id/installation id/private key path | The example workflow's `gh_app_guard` node, and `official.github.worktree`'s own git/metadata App auth | Operator-provisioned, never committed — see `plugins/github/README.md`'s "App auth" section. Passed as session inputs at `plect up` time in this example; a downstream deployment may instead hardcode its own App identity into its own overlay workflow. |
+| `GITHUB_WATCHER_APP_ID` (+ `GITHUB_WATCHER_APP_INSTALLATION_ID`/`_OWNER`/`_REPO`/`_PRIVATE_KEY_PATH`) | `github-watcher serve`'s resident polling and its `gh-api` helper | Deployment-level container env vars (`docker run -e ...`, or the task definition's own env), not session inputs — one GitHub App installation shared by every session's subscriptions. See `plugins/github/README.md`'s "App auth" section. Unset means the watcher falls back to ambient `gh auth` (next row); set, it fails startup loudly on an unreadable key or a rejected mint rather than staying process-healthy while every fetch dies. |
 | `SLACK_BOT_TOKEN` (+ `SLACK_APP_TOKEN` for inbound) | The `slack-adapter` plugin service, if a downstream deployment enables the `slack` plugin | Not enabled in this image's example config. |
 | Agent CLI login (`claude`, `codex`) | Actually launching a session | Interactive, via CloudShell — see "First boot" below. Not an env var; it's state written under the persisted `$HOME`. |
-| `gh auth login` | `github-watcher`'s own GitHub API calls | The watcher keeps using the operator's own `gh auth`, unchanged from local use (see `plugins/github/README.md` and #308's `github-watcher` decision) — also interactive, also under the persisted `$HOME`. |
+| `gh auth login` | `github-watcher`'s own GitHub API calls, only if `GITHUB_WATCHER_APP_ID` (above) is unset | Fallback only. A fully App-only deployment sets the `GITHUB_WATCHER_APP_*` env vars instead and never runs this — see `plugins/github/README.md`'s "One credential story for an App-only deployment". If run, it's interactive, under the persisted `$HOME`, same as agent CLI login. |
 
 No secret is ever baked into the image or into `/etc/plect`; the example
-workflow's `private_key_path` input is a path an operator provides at
-deploy/dispatch time, read at 0600 from wherever Secrets Manager (or an
-equivalent) lands it on the container's filesystem.
+workflow's `private_key_path` input, and the `GITHUB_WATCHER_APP_PRIVATE_KEY_PATH`
+env var if the deployment sets watcher App auth, are each a path an
+operator provides at deploy/dispatch time, read at 0600 from wherever
+Secrets Manager (or an equivalent) lands it on the container's filesystem.
 
 ## First boot
 
@@ -140,9 +142,13 @@ equivalent) lands it on the container's filesystem.
    `plect serve` comes up with no session yet.
 2. Exec into the running container as the `plect` user (CloudShell, or
    locally: `docker exec -u plect -it <container> bash`).
-3. Run `claude login` (or `codex login`, if the deployment uses Codex) and,
-   if `github-watcher`'s own polling needs it, `gh auth login`. Both persist
-   under `$HOME` (`/var/lib/plect/home`), which is on the volume.
+3. Run `claude login` (or `codex login`, if the deployment uses Codex). It
+   persists under `$HOME` (`/var/lib/plect/home`), which is on the volume.
+   An App-only deployment needs no further step here: `github-watcher`
+   authenticates from the `GITHUB_WATCHER_APP_*` env vars set on the
+   container (see "Secrets and configuration" above), never from `$HOME`
+   state. Only a deployment that left those env vars unset runs
+   `gh auth login` here, persisting the same way as the agent CLI login.
 4. Restart the container once and confirm the CLIs still see their auth —
    `claude --version`/re-running the login command should now report an
    existing session rather than prompting again.
