@@ -260,8 +260,8 @@ func TestStore_ConcurrentPut(t *testing.T) {
 }
 
 // The Linux NFS client rejects LOCK_EX on an O_RDONLY descriptor with EBADF,
-// even though local filesystems tolerate it (see #328). This test inspects
-// the lock file descriptor's own open flags via /proc, so it catches the
+// even though local filesystems tolerate it. This test inspects the lock
+// file descriptor's own open flags via /proc, so it catches the
 // regression even on a local (non-NFS) test filesystem.
 func TestStore_WithFileLockOpensLockFileWritable(t *testing.T) {
 	if runtime.GOOS != "linux" {
