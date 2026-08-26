@@ -47,6 +47,12 @@ func run(args []string) error {
 		layoutRoot := fs.String("workspace-layout-root", "", "root this provider lays repository worktree containers out under (default: the workspace-dirs root)")
 		issueBranchTemplate := fs.String("issue-branch-template", "", "branch name for an issue resource, with {owner}/{repo}/{number} placeholders (default: issue/{number})")
 		taggedBranchSuffix := fs.String("tagged-branch-suffix", "", "suffix appended to the branch for a tagged session, with a {tag} placeholder (default: +{tag})")
+		appTokenBin := fs.String("app-token-bin", "", "path to gh-app-token; used only when app git auth inputs are set")
+		appID := fs.String("app-id", "", "GitHub App id for git authentication")
+		installationID := fs.String("installation-id", "", "GitHub App installation id for git authentication")
+		owner := fs.String("owner", "", "repository owner used to resolve a GitHub App installation id")
+		repo := fs.String("repo", "", "repository name used to resolve a GitHub App installation id")
+		privateKeyPath := fs.String("private-key-path", "", "path to the GitHub App private key for git authentication")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -60,6 +66,12 @@ func run(args []string) error {
 			WorkspaceLayoutRoot: *layoutRoot,
 			IssueBranchTemplate: *issueBranchTemplate,
 			TaggedBranchSuffix:  *taggedBranchSuffix,
+			AppTokenBin:         *appTokenBin,
+			AppID:               *appID,
+			InstallationID:      *installationID,
+			Owner:               *owner,
+			Repo:                *repo,
+			PrivateKeyPath:      *privateKeyPath,
 			GHClient:            ghClient(*watcherBin),
 		})
 		if err != nil {

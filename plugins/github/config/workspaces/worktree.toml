@@ -38,6 +38,18 @@ args = [
   { from = "inputs.tagged_branch_suffix", default = "" },
   "--watcher-bin",
   { bin = "github-watcher" },
+  "--app-token-bin",
+  { bin = "gh-app-token" },
+  "--app-id",
+  { from = "session.inputs.app_id", default = "" },
+  "--installation-id",
+  { from = "session.inputs.installation_id", default = "" },
+  "--owner",
+  { from = "session.inputs.owner", default = "" },
+  "--repo",
+  { from = "session.inputs.repo", default = "" },
+  "--private-key-path",
+  { from = "session.inputs.private_key_path", default = "" },
 ]
 
 # --delete-branch reads the delete_branch cleanup input (`plect destroy

@@ -207,3 +207,41 @@ that mints/caches the installation token and applies the same merge/close
 denial, rather than two shims chained through the PATH-prepend input. Auth
 and deny ordering both live in that one wrapper, deny checked first, so a
 call about to be denied never costs a mint.
+
+The GitHub workspace provider has a separate App-auth path for raw git
+network operations. Sessions opt in by supplying the same task-level App
+inputs `gh_app_guard` accepts: `app_id`, optional `installation_id`, optional
+`owner`/`repo`, and `private_key_path`. The setup hook reads those values from
+`session.inputs`. Setup invokes git with process-local configuration: ambient
+credential helpers are cleared for that process, `https://github.com` receives
+a helper backed by `gh-app-token credential`, and GitHub SSH remotes are
+rewritten to HTTPS for that process. The helper returns a GitHub App
+installation token as the HTTPS password, using the same cache locking and
+expiry-skew behavior as the CLI wrapper.
+
+```toml
+[work.inputs_schema.properties]
+app_id = { type = "string", pattern = "^[0-9]+$" }
+installation_id = { type = "string", pattern = "^[0-9]+$" }
+owner = { type = "string", pattern = "^[A-Za-z0-9-]+$" }
+repo = { type = "string", pattern = "^[A-Za-z0-9._-]+$" }
+private_key_path = { type = "string", pattern = "^[A-Za-z0-9_./:-]+$" }
+```
+
+```bash
+plect up https://github.com/acme/widgets/issues/42 --inputs '{
+  "app_id": "123456",
+  "installation_id": "789012",
+  "private_key_path": "/etc/plect/gh-app.pem"
+}'
+```
+
+The shipped task schemas expose the same App input shape as the guard task,
+and the workspace provider also validates the runtime values it consumes:
+`app_id` and `installation_id` are decimal strings, `owner` is a GitHub login
+string, `repo` is a GitHub repository-name string, and `private_key_path` is a
+path string restricted to alphanumeric characters plus `_`, `.`, `/`, `:`, and
+`-`. `app_id` and `private_key_path` are all-or-nothing at runtime; omitting
+both leaves the ambient git credential path in force. If `owner` or `repo` is
+supplied, both are supplied together; omitting both makes setup use the
+resource owner/repo for installation lookup.

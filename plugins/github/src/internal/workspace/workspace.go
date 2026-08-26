@@ -34,11 +34,16 @@ type Manager struct {
 	// runner executes git child processes. Tests substitute a fake
 	// binary via PATH rather than swapping this; it defaults to
 	// procexec.Default so production Managers need not set it.
-	runner procexec.Runner
+	runner  procexec.Runner
+	GitAuth GitAuthConfig
 }
 
 func NewManager(worktreesRoot string) *Manager {
 	return &Manager{WorktreesRoot: worktreesRoot, runner: procexec.Default}
+}
+
+type GitAuthConfig struct {
+	CredentialHelper []string
 }
 
 // runner returns m.runner with its default applied, so a Manager built via
@@ -414,7 +419,7 @@ func worktreeAddError(err error, stderr string) error {
 // worktree add ...: exit status N". ctx bounds the invocation: cancellation
 // or a deadline terminates the process and surfaces as the returned error.
 func (m *Manager) runGit(ctx context.Context, dir string, args ...string) error {
-	_, _, err := m.runnerOrDefault().Run(ctx, dir, true, "git", args...)
+	_, _, err := m.runnerOrDefault().Run(ctx, dir, true, "git", m.gitArgs(args...)...)
 	return err
 }
 
@@ -422,8 +427,33 @@ func (m *Manager) runGit(ctx context.Context, dir string, args ...string) error 
 // git's message (e.g. detecting "already checked out" to add a tag hint).
 // Stderr is still streamed so the user sees it live.
 func (m *Manager) runGitCapture(ctx context.Context, dir string, args ...string) (string, error) {
-	_, stderr, err := m.runnerOrDefault().Run(ctx, dir, true, "git", args...)
+	_, stderr, err := m.runnerOrDefault().Run(ctx, dir, true, "git", m.gitArgs(args...)...)
 	return string(stderr), err
+}
+
+func (m *Manager) gitArgs(args ...string) []string {
+	if len(m.GitAuth.CredentialHelper) == 0 {
+		return args
+	}
+	config := []string{
+		"-c", "credential.helper=",
+		"-c", "credential.https://github.com.helper=!" + shellCommand(m.GitAuth.CredentialHelper),
+		"-c", "url.https://github.com/.insteadOf=git@github.com:",
+		"-c", "url.https://github.com/.insteadOf=ssh://git@github.com/",
+	}
+	return append(config, args...)
+}
+
+func shellCommand(argv []string) string {
+	quoted := make([]string, len(argv))
+	for i, arg := range argv {
+		quoted[i] = shellQuote(arg)
+	}
+	return strings.Join(quoted, " ")
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }
 
 func (m *Manager) branchExists(ctx context.Context, gitDir, branch string) bool {

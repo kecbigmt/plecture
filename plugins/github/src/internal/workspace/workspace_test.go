@@ -10,6 +10,22 @@ import (
 	"testing"
 )
 
+type runCall struct {
+	dir    string
+	mirror bool
+	name   string
+	args   []string
+}
+
+type recordingRunner struct {
+	calls []runCall
+}
+
+func (r *recordingRunner) Run(ctx context.Context, dir string, mirror bool, name string, args ...string) ([]byte, []byte, error) {
+	r.calls = append(r.calls, runCall{dir: dir, mirror: mirror, name: name, args: append([]string(nil), args...)})
+	return nil, nil, nil
+}
+
 // setupTestRepo creates a git repo structure that mimics what plect expects:
 // worktreesRoot/github.com/owner/repo/main is a real git repo (acts as gitDir).
 // A bare repo is used as a local "origin" remote so git fetch works.
@@ -427,6 +443,57 @@ func TestRunGit_ReturnsRawExitStatus(t *testing.T) {
 	}
 	if strings.Contains(msg, "git worktree add") {
 		t.Errorf("runGit should not pre-prefix the command (would cause stuttering when callers wrap), got: %s", msg)
+	}
+}
+
+func TestRunGit_LeavesAmbientCredentialsAloneByDefault(t *testing.T) {
+	runner := &recordingRunner{}
+	mgr := &Manager{runner: runner}
+
+	if err := mgr.runGit(context.Background(), "/repo", "fetch", "origin"); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(runner.calls))
+	}
+	if got := strings.Join(runner.calls[0].args, "\n"); got != "fetch\norigin" {
+		t.Errorf("git args = %q, want the original fetch args unchanged", got)
+	}
+}
+
+func TestRunGit_UsesConfiguredAppCredentialHelper(t *testing.T) {
+	runner := &recordingRunner{}
+	mgr := &Manager{
+		runner: runner,
+		GitAuth: GitAuthConfig{
+			CredentialHelper: []string{
+				"/plugins/github/bin/gh-app-token",
+				"credential",
+				"--app-id", "123",
+				"--installation-id", "456",
+				"--private-key-path", "/etc/plect/gh-app.pem",
+				"--cache-path", "/cache/app-token.json",
+			},
+		},
+	}
+
+	if err := mgr.runGit(context.Background(), "/repo", "fetch", "origin"); err != nil {
+		t.Fatal(err)
+	}
+	if len(runner.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(runner.calls))
+	}
+	got := strings.Join(runner.calls[0].args, "\n")
+	for _, want := range []string{
+		"credential.helper=",
+		"credential.https://github.com.helper=!'/plugins/github/bin/gh-app-token' 'credential' '--app-id' '123' '--installation-id' '456' '--private-key-path' '/etc/plect/gh-app.pem' '--cache-path' '/cache/app-token.json'",
+		"url.https://github.com/.insteadOf=git@github.com:",
+		"url.https://github.com/.insteadOf=ssh://git@github.com/",
+		"fetch\norigin",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("git args missing %q:\n%s", want, got)
+		}
 	}
 }
 

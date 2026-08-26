@@ -134,6 +134,28 @@ inside the wrapper's own reported directory (`.token-cache.json`, mode
 mint — never fold key or token bytes into their text, so the wrapper's
 failure output is safe to surface as-is.
 
+`official.github.worktree` can use the same App identity for raw git network
+I/O. A session sets the same task-level inputs `gh_app_guard` accepts:
+`app_id`, optional `installation_id`, optional `owner`/`repo`, and
+`private_key_path`. Setup reads those values from `session.inputs` and runs
+git with process-local config that clears ambient credential helpers, installs
+a scoped `https://github.com` helper backed by `gh-app-token credential`, and
+rewrites GitHub SSH remote URLs to HTTPS for that git process. When
+`installation_id` is empty and `owner`/`repo` are not supplied, the helper
+resolves the installation from the resource owner/repo. Each credential
+request goes through the same locked token cache and expiry skew as
+`gh_app_guard`, so the next git operation after expiry mints or reuses a fresh
+installation token. With those inputs absent, worktree acquisition uses the
+host's ordinary git credential configuration unchanged.
+
+```bash
+plect up https://github.com/acme/widgets/issues/42 --inputs '{
+  "app_id": "123456",
+  "installation_id": "789012",
+  "private_key_path": "/etc/plect/gh-app.pem"
+}'
+```
+
 **`github-watcher` keeps using the operator's own `gh auth`.** It is a
 single resident service shared across sessions (`[[services]]` in
 `plugin.toml`), not a per-session task in a plan — there is no per-call

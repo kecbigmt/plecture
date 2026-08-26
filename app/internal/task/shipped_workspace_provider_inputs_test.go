@@ -74,10 +74,10 @@ func providerResolution(t *testing.T, prov config.WorkspaceProviderConfig, mount
 	return strings.Join(execution.Argv, "\n")
 }
 
-func githubProviderEnv(inputs, cleanupInputs map[string]any) lang.Roots {
+func githubProviderEnv(inputs, sessionInputs, cleanupInputs map[string]any) lang.Roots {
 	return lang.Roots{
 		"resource": map[string]any{"id": "https://github.com/acme/widgets/issues/42"},
-		"session":  map[string]any{"name": "acme/widgets-42", "inputs": map[string]any{}},
+		"session":  map[string]any{"name": "acme/widgets-42", "inputs": sessionInputs},
 		"inputs":   inputs,
 		"config":   map[string]any{"workspace_dirs_root": "/tmp/workspace_dirs"},
 		"prev":     map[string]any{},
@@ -99,15 +99,22 @@ func TestShippedGithubProvider_ParametersReachTheHooks(t *testing.T) {
 		"tagged_branch_suffix":  "/{tag}",
 		"delete_branch_default": "true",
 	}
-	setup := providerResolution(t, prov, mounted, prov.Setup, githubProviderEnv(inputs, map[string]any{}))
-	for _, want := range []string{"~/worktrees", "work/{number}", "/{tag}"} {
+	sessionInputs := map[string]any{
+		"app_id":           "123456",
+		"installation_id":  "987654",
+		"owner":            "acme",
+		"repo":             "widgets",
+		"private_key_path": "/etc/plect/gh-app.pem",
+	}
+	setup := providerResolution(t, prov, mounted, prov.Setup, githubProviderEnv(inputs, sessionInputs, map[string]any{}))
+	for _, want := range []string{"~/worktrees", "work/{number}", "/{tag}", "123456", "987654", "acme", "widgets", "/etc/plect/gh-app.pem"} {
 		if !strings.Contains(setup, want) {
 			t.Errorf("setup does not pass %q:\n%s", want, setup)
 		}
 	}
 
 	cleanup := providerResolution(t, prov, mounted, prov.Cleanup,
-		githubProviderEnv(inputs, map[string]any{"delete_branch": "false"}))
+		githubProviderEnv(inputs, sessionInputs, map[string]any{"delete_branch": "false"}))
 	if !strings.Contains(cleanup, "delete_branch=false") || !strings.Contains(cleanup, "delete_branch_default=true") {
 		t.Errorf("cleanup does not carry both the caller's intent and the declared default:\n%s", cleanup)
 	}
@@ -118,7 +125,7 @@ func TestShippedGithubProvider_ParametersReachTheHooks(t *testing.T) {
 func TestShippedGithubProvider_HooksResolveWithNoParametersDeclared(t *testing.T) {
 	provs, mounted := loadShippedWorkspaceProviders(t)
 	prov := provs["official.github.worktree"]
-	env := githubProviderEnv(map[string]any{}, map[string]any{})
+	env := githubProviderEnv(map[string]any{}, map[string]any{}, map[string]any{})
 	setup := providerResolution(t, prov, mounted, prov.Setup, env)
 	// The flag is still passed, with an empty value the executable reads as
 	// "no template declared".

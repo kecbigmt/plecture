@@ -286,6 +286,57 @@ func TestShippedCatalog_McpServersRejectsQuoteBreakout(t *testing.T) {
 	}
 }
 
+func TestShippedGithubTaskDocuments_AppGitAuthInputsMatchGuardShape(t *testing.T) {
+	cfg := shippedCatalogConfig(t)
+	docs, err := cfg.LoadTaskDocuments("")
+	if err != nil {
+		t.Fatalf("LoadTaskDocuments(shipped catalog): %v", err)
+	}
+
+	benign := map[string]any{
+		"instruction":      "",
+		"app_id":           "123456",
+		"installation_id":  "987654",
+		"owner":            "acme",
+		"repo":             "widgets",
+		"private_key_path": "/etc/plect/gh-app.pem",
+	}
+	badAppID := map[string]any{"app_id": "123; touch /tmp/pwned"}
+	badOwner := map[string]any{"owner": "acme/widgets"}
+	badRepo := map[string]any{"repo": "widgets;touch"}
+	badKeyPath := map[string]any{"private_key_path": "/etc/plect/app key.pem"}
+
+	for _, address := range []string{
+		"official.github.work",
+		"official.github.review",
+		"official.github.investigate",
+		"official.github.respond",
+	} {
+		doc, ok := docs[address]
+		if !ok {
+			t.Errorf("shipped catalog task document %q not found", address)
+			continue
+		}
+		schema, err := lang.CompileSchema(doc.InputsSchema, doc.ResolvedInputsSchemaPath(), "test:"+address)
+		if err != nil {
+			t.Fatalf("task document %q: CompileSchema: %v", address, err)
+		}
+		if err := schema.Validate(toJSONShape(benign)); err != nil {
+			t.Errorf("task document %q rejected App git auth inputs: %v", address, err)
+		}
+		for name, value := range map[string]map[string]any{
+			"app_id":           badAppID,
+			"owner":            badOwner,
+			"repo":             badRepo,
+			"private_key_path": badKeyPath,
+		} {
+			if err := schema.Validate(toJSONShape(value)); err == nil {
+				t.Errorf("task document %q accepted unsafe %s input", address, name)
+			}
+		}
+	}
+}
+
 // TestShippedCatalog_TaskDocumentInstructionsRender guards the six task
 // documents this repository ships (official.github's work/review/
 // investigate/respond, official.okf's pursue_goal/goal_review) against a
