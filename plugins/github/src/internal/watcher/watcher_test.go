@@ -9,11 +9,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kecbigmt/plecture/contracts/event"
+	"github.com/kecbigmt/plecture/plugins/github/src/internal/flocktest"
 	"github.com/kecbigmt/plecture/plugins/github/src/internal/ratebudget"
 )
 
@@ -52,6 +54,33 @@ func TestStore_SubscribeUnsubscribe(t *testing.T) {
 	subs, _ = store.All()
 	if len(subs) != 0 {
 		t.Fatalf("subs after unsubscribe = %+v", subs)
+	}
+}
+
+// The Linux NFS client rejects LOCK_EX on an O_RDONLY descriptor with EBADF,
+// even though local filesystems tolerate it. This test inspects the lock
+// file descriptor's own open flags via /proc, so it catches the regression
+// even on a local (non-NFS) test filesystem.
+func TestStore_UpdateOpensLockFileWritable(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("lock fd flags are inspected via /proc, which is Linux-specific")
+	}
+
+	store := NewStore(t.TempDir())
+	lockPath := store.path + ".lock"
+
+	err := store.update(func(*registry) error {
+		accMode, err := flocktest.AccessMode(lockPath)
+		if err != nil {
+			return err
+		}
+		if accMode == os.O_RDONLY {
+			return fmt.Errorf("lock file opened O_RDONLY; exclusive lock (LOCK_EX) requires a writable descriptor on NFS")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
 	}
 }
 
