@@ -40,41 +40,6 @@ import (
 // Set PLECT_UPDATE_EFFECT_RECORDS=1 to rewrite the records after an intended
 // contract change.
 
-// effectScenario is one declaration's run conditions, read from the
-// plugin's own testdata.
-type effectScenario struct {
-	// Inputs are the node inputs this effect is set up with, and Prev the
-	// outputs a prior run of it left behind.
-	Inputs map[string]string `toml:"inputs"`
-	Prev   map[string]string `toml:"prev"`
-	// Self stands in for setup's outputs when cleanup and the probes must be
-	// exercised against an instance this scenario does not set up.
-	Self map[string]string `toml:"self"`
-	// Hooks selects what to run, defaulting to every action the declaration
-	// carries.
-	Hooks []string `toml:"hooks"`
-	// Files are seeded into the sandbox home before the run, for a script
-	// that discovers its own subject by reading the filesystem.
-	Files []effectScenarioFile `toml:"files"`
-	// Capture is what the terminal's capture verb reports, for a script that
-	// waits on what the endpoint displays.
-	Capture string `toml:"capture"`
-	// Artifacts name files a setup generated rather than invoked, each
-	// located by the output key that carries its directory. A generated
-	// wrapper script is as much the effect's product as any call it made.
-	Artifacts []effectScenarioArtifact `toml:"artifacts"`
-}
-
-type effectScenarioFile struct {
-	Path    string `toml:"path"`
-	Content string `toml:"content"`
-}
-
-type effectScenarioArtifact struct {
-	Output string `toml:"output"`
-	Path   string `toml:"path"`
-}
-
 const effectRecordName = "effect-invocations.txt"
 
 func TestShippedEffects_InvocationsMatchTheirPluginsRecord(t *testing.T) {
@@ -107,7 +72,7 @@ func TestShippedEffects_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 	}
 }
 
-func loadEffectScenarios(t *testing.T, source string) map[string]effectScenario {
+func loadEffectScenarios(t *testing.T, source string) map[string][]effectScenario {
 	t.Helper()
 	path := filepath.Join(source, "testdata", "effects", "scenarios.toml")
 	raw, err := os.ReadFile(path)
@@ -117,8 +82,11 @@ func loadEffectScenarios(t *testing.T, source string) map[string]effectScenario 
 		}
 		t.Fatal(err)
 	}
-	scenarios := map[string]effectScenario{}
+	scenarios := map[string][]effectScenario{}
 	if err := toml.Unmarshal(raw, &scenarios); err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	if err := validateScenarioVariantNames(scenarios); err != nil {
 		t.Fatalf("%s: %v", path, err)
 	}
 	return scenarios
@@ -143,7 +111,7 @@ type effectHarness struct {
 	expand      []struct{ from, to string }
 }
 
-func recordShippedEffects(t *testing.T, source string, scenarios map[string]effectScenario) string {
+func recordShippedEffects(t *testing.T, source string, scenarios map[string][]effectScenario) string {
 	t.Helper()
 	h := newEffectHarness(t, source)
 	cfg := &config.Config{PluginDirs: []string{h.mounted.Dir}, Plugins: []plugins.Mounted{h.mounted}}
@@ -169,9 +137,35 @@ func recordShippedEffects(t *testing.T, source string, scenarios map[string]effe
 
 	var b strings.Builder
 	for _, id := range ids {
-		h.runScenario(t, &b, byID[id], id, scenarios[id])
+		for _, variant := range scenarios[id] {
+			label := id
+			if variant.Name != "" {
+				label = id + ":" + variant.Name
+			}
+			h.removeAbsentExecutables(t, variant.AbsentExecutables)
+			h.runScenario(t, &b, byID[id], id, label, variant)
+		}
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n"
+}
+
+// removeAbsentExecutables deletes the spy this harness installed for each
+// named executable, simulating a mount whose manifest declares it but whose
+// build never produced it — the one condition spyPlugin's blanket spy
+// installation can't otherwise represent.
+func (h *effectHarness) removeAbsentExecutables(t *testing.T, names []string) {
+	t.Helper()
+	for _, name := range names {
+		for _, exec := range h.mounted.Manifest.Executables {
+			if exec.Name != name {
+				continue
+			}
+			path := filepath.Join(h.mounted.Dir, exec.Path)
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				t.Fatalf("remove %s: %v", name, err)
+			}
+		}
+	}
 }
 
 func newEffectHarness(t *testing.T, source string) *effectHarness {
@@ -315,7 +309,7 @@ func copyDirOver(t *testing.T, from, to string) {
 	}
 }
 
-func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config.TaskDefinition, id string, scenario effectScenario) {
+func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config.TaskDefinition, id, label string, scenario effectScenario) {
 	t.Helper()
 	h.startLiveProcess(t)
 	t.Setenv("PLECT_EFFECT_CAPTURE", scenario.Capture)
@@ -351,7 +345,7 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 		if err := os.Remove(h.argvLog); err != nil && !os.IsNotExist(err) {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(b, "== %s / %s\n", id, hook)
+		fmt.Fprintf(b, "== %s / %s\n", label, hook)
 		outcome := h.runHook(t, hook, def, resolved, session, tasks, self, scenario.Inputs)
 		for i, call := range recordedCalls(t, h.argvLog, h.mounted.Dir) {
 			fmt.Fprintf(b, "call[%d]: %s\n", i, h.scrubbed(call))

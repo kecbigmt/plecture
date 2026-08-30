@@ -1,1 +1,14 @@
-printf '%s' '{"mcpServers":{"channel-server":{"command":"channel-server"}}}'
+# A trimmed stand-in for the real merge: it still folds CLAUDE_MCP_SERVERS
+# records into whatever mcpServers object arrives on stdin, which is what
+# lets the recorded mcp_config artifact show the actual command value setup
+# assembled (e.g. channel-server's resolved bin path) rather than a value
+# this stand-in invented.
+if [ -n "${CLAUDE_MCP_SERVERS:-}" ]; then
+  jq --argjson recs "$CLAUDE_MCP_SERVERS" \
+    'reduce $recs[] as $r (.;
+      .mcpServers[$r.name] = ({command: $r.command}
+        + (if $r.args then {args: $r.args} else {} end)
+        + (if $r.env then {env: $r.env} else {} end)))'
+else
+  cat
+fi

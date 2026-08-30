@@ -59,11 +59,16 @@ mv "$MCP" "$MCP.json" && MCP="$MCP.json"
 # installed: claude fails the whole launch on an MCP entry pointing at a
 # missing command, and channel-server (this catalog's unix-socket delivery
 # target) is an optional companion, not a hard dependency of this effect.
+# channel_server_bin is a plain path join against the plugin manifest's
+# declaration — it resolves whether or not the binary was ever built — so
+# the presence check is a file-existence test on that resolved path, not a
+# shell PATH lookup (the shipped image never puts plugin executables on
+# PATH).
 MCP_JSON='{"mcpServers":{}}'
 CHANNELS_FLAG=""
-if command -v channel-server >/dev/null 2>&1; then
-  MCP_JSON=$(printf '%s' "$MCP_JSON" | jq --arg sock "$SOCKET" \
-    '.mcpServers["channel-server"]={command:"channel-server",env:{CHANNEL_SOCKET_PATH:$sock}}')
+if [ -x "$channel_server_bin" ]; then
+  MCP_JSON=$(printf '%s' "$MCP_JSON" | jq --arg cmd "$channel_server_bin" --arg sock "$SOCKET" \
+    '.mcpServers["channel-server"]={command:$cmd,env:{CHANNEL_SOCKET_PATH:$sock}}')
   CHANNELS_FLAG="--dangerously-load-development-channels server:channel-server"
 fi
 # From here the records travel only in the environment: claude-mcp-servers
@@ -203,18 +208,19 @@ jq -nc \
 '''
 
 [runtime.setup.bind]
-session_name     = { from = "session.name" }
-prev_session_id  = { from = "prev.session_id", optional = true }
-prev_pid         = { from = "prev.pid", optional = true }
-model            = { from = "inputs.model", optional = true }
-effort           = { from = "inputs.effort", optional = true }
-launch_env       = { from = "inputs.launch_env", optional = true }
-mcp_servers      = { from = "inputs.mcp_servers", optional = true }
-path_prepend     = { from = "inputs.path_prepend", optional = true }
-activity_bin     = { bin = "claude-agent-activity" }
-mcp_servers_bin  = { bin = "claude-mcp-servers" }
-send_text        = { terminal = "send_text" }
-send_keys        = { terminal = "send_keys" }
+session_name        = { from = "session.name" }
+prev_session_id     = { from = "prev.session_id", optional = true }
+prev_pid            = { from = "prev.pid", optional = true }
+model               = { from = "inputs.model", optional = true }
+effort              = { from = "inputs.effort", optional = true }
+launch_env          = { from = "inputs.launch_env", optional = true }
+mcp_servers         = { from = "inputs.mcp_servers", optional = true }
+path_prepend        = { from = "inputs.path_prepend", optional = true }
+activity_bin        = { bin = "claude-agent-activity" }
+mcp_servers_bin     = { bin = "claude-mcp-servers" }
+channel_server_bin  = { bin = "channel-server" }
+send_text           = { terminal = "send_text" }
+send_keys           = { terminal = "send_keys" }
 
 [runtime.cleanup]
 type   = "shell"

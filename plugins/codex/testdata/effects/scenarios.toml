@@ -4,7 +4,7 @@
 # answers the pane introspection each launch performs, and — for the headless
 # shape — stands in for the worker's own readiness signal.
 
-[codex]
+[[codex]]
 inputs = { model = "gpt-5.6-sol", effort = "high", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', path_prepend = "/spy/guard" }
 # The readiness poll reads the endpoint; a bare prompt line is neither the
 # boot banner nor the busy indicator, so it reads as ready.
@@ -15,9 +15,9 @@ capture = "› "
 path    = ".codex/sessions/rollout.jsonl"
 content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
 
-[exec_runtime]
+[[exec_runtime]]
 inputs = { model = "gpt-5.6-sol", effort = "high", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', path_prepend = "/spy/guard" }
 
-[codex_initial_prompt]
+[[codex_initial_prompt]]
 inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
 capture = "› "
