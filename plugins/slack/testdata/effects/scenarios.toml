@@ -1,2 +1,2 @@
-[slack_thread]
+[[slack_thread]]
 inputs = { base_url = "http://127.0.0.1:7890", channel_id = "C-review", root_text = "[AI review] Fix widgets — https://github.com/acme/widgets/pull/7\nsession acme/widget-1 · head abcdef123456" }

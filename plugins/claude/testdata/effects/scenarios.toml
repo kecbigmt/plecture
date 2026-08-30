@@ -4,7 +4,8 @@
 # the scratch paths, and seeds the session file the launch waits for; the
 # answers/ scripts are how this plugin's own executables reply.
 
-[runtime]
+[[runtime]]
+name   = "channel-server-present"
 inputs = { model = "opus", effort = "high", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', mcp_servers = '[{"name":"kbn","command":"kbn-mcp"}]', path_prepend = "/spy/guard" }
 
 # The launch polls for the session file the agent writes; it names the id
@@ -16,15 +17,32 @@ content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
 # The mcp_config content is the record of the presence check that gates
 # channel-server registration: this plugin's channel-server executable is
-# always present in this harness (spyPlugin writes an executable spy for
-# every declared executable), so the record shows the resolved bin path
+# present in this variant, so the record shows the resolved bin path
 # actually used as the mcpServers entry's command, not a bare "channel-server"
 # name that would only ever work by coincidence of the runner's own PATH.
 [[runtime.artifacts]]
 output = "mcp_config"
 path   = ""
 
-[claude_initial_prompt]
+# The counterpart to the variant above: a mount that declares channel-server
+# but never built it (a custom catalog omitting it, or a builder stage that
+# failed partway). absent_executables removes the spy this harness would
+# otherwise install for it, so the setup script's presence check has to take
+# its false branch on its own — the launch line must come out with no
+# channels flag and no channel-server registration.
+[[runtime]]
+name               = "channel-server-absent"
+absent_executables = ["channel-server"]
+
+[[runtime.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
+[[runtime.artifacts]]
+output = "mcp_config"
+path   = ""
+
+[[claude_initial_prompt]]
 inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
 # The readiness poll and the submit re-check both read the endpoint's input
 # box; an empty prompt line is what "ready, nothing pending" looks like.

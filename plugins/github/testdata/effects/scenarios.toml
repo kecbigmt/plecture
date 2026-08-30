@@ -6,14 +6,14 @@
 # instructions are host config now, so there is nothing here for them to
 # invoke.
 
-[gh_guard]
+[[gh_guard]]
 # The guard's product is the wrapper it writes into the directory it reports,
 # so the record carries that file's contents as well as the calls.
 [[gh_guard.artifacts]]
 output = "dir"
 path   = "gh"
 
-[gh_app_guard]
+[[gh_app_guard]]
 inputs = { app_id = "123456", installation_id = "987654", private_key_path = "/etc/plect/gh-app.pem" }
 # Same rationale as gh_guard: the wrapper file it writes is the effect's real
 # product, and its content is what actually pins the auth+deny composition
