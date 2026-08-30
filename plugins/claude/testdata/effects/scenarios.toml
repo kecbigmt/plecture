@@ -14,6 +14,16 @@ inputs = { model = "opus", effort = "high", launch_env = '{"PLECT_TEAM_CONTEXT":
 path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
+# The mcp_config content is the record of the presence check that gates
+# channel-server registration: this plugin's channel-server executable is
+# always present in this harness (spyPlugin writes an executable spy for
+# every declared executable), so the record shows the resolved bin path
+# actually used as the mcpServers entry's command, not a bare "channel-server"
+# name that would only ever work by coincidence of the runner's own PATH.
+[[runtime.artifacts]]
+output = "mcp_config"
+path   = ""
+
 [claude_initial_prompt]
 inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
 # The readiness poll and the submit re-check both read the endpoint's input

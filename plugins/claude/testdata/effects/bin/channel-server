@@ -1,3 +1,0 @@
-#!/usr/bin/env sh
-# Present on PATH so the launch takes its channel-server branch.
-plect-effect-record channel-server "$@"
