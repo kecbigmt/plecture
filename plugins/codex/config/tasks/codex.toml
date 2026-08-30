@@ -119,6 +119,16 @@ for _ in $(seq 1 "$ATTEMPTS"); do
     case "$COMM" in codex|codex-*) PID="$child"; break ;; esac
   done
 
+  if [ -z "$PID" ]; then
+    # No codex child under the pane yet — most likely this launch's Enter
+    # was lost and the command line still sits unexecuted at the shell
+    # prompt. Resend Enter and keep polling; once a codex child is found,
+    # this branch stops being taken, so extra Enters stop reaching the pane
+    # before codex's TUI has any input box to double-submit into.
+    sh -c "$send_keys" terminal-send-keys Enter
+    continue
+  fi
+
   SID=$(find "$HOME/.codex/sessions" -type f -newer "$MARKER" -name '*.jsonl' 2>/dev/null \
     | while IFS= read -r file; do
         head -n 1 "$file" | jq -r --arg cwd "$workspace_dir" \
@@ -126,7 +136,7 @@ for _ in $(seq 1 "$ATTEMPTS"); do
       done \
     | grep -E '^[0-9a-fA-F-]{36}$' \
     | tail -1)
-  [ -n "$PID" ] && break
+  break
 done
 if [ -z "$PID" ]; then
   echo "codex not detected within ${TIMEOUT_SECONDS}s under pane pid $PANE_PID" >&2
