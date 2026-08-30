@@ -136,10 +136,15 @@ func loadEffectScenarios(t *testing.T, source string) map[string][]effectScenari
 		if len(variants) <= 1 {
 			continue
 		}
+		seen := make(map[string]bool, len(variants))
 		for _, variant := range variants {
 			if variant.Name == "" {
 				t.Fatalf("%s: %q declares %d scenario variants; every variant needs a distinct name", path, id, len(variants))
 			}
+			if seen[variant.Name] {
+				t.Fatalf("%s: %q declares more than one scenario variant named %q; names must be distinct", path, id, variant.Name)
+			}
+			seen[variant.Name] = true
 		}
 	}
 	return scenarios
