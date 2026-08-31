@@ -84,6 +84,9 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
   procps=2:4.0.2-3 \
   runit=2.1.2-54 \
   tmux=3.3a-3 \
+  # uuid-runtime: the claude/codex runtime tasks mint agent session ids
+  # with uuidgen.
+  uuid-runtime=2.38.1-5+deb12u3 \
   xz-utils=5.4.1-1+deb12u1 \
   && rm -rf /var/lib/apt/lists/* \
   # The runit package registers its own placeholder "default-syslog"
