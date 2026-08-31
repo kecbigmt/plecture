@@ -1,0 +1,73 @@
+# Registers a Slack thread ↔ agent runtime binding with slack-adapter
+# (`POST /subscribe`), so an `app_mention` in that thread reaches the
+# session over Socket Mode. Run-scoped, unlike `slack_thread` (session
+# scope): the thread outlives an agent restart, but the runtime's
+# channel-server socket path does not, so the binding has to be re-made
+# on every run.
+#
+# `socket_path` is an opaque string input — which runtime provides it is the
+# composing workflow's decision, and this task never imports or inspects a
+# runtime plugin.
+[slack_subscribe]
+kind  = "effect"
+scope = "run"
+
+[slack_subscribe.setup]
+type   = "shell"
+script = '''
+set -eu
+
+payload=$(jq -nc \
+  --arg thread_ts "$thread_ts" --arg channel_id "$channel_id" \
+  --arg socket_path "$socket_path" --arg session_name "$session_name" \
+  '{thread_ts:$thread_ts,channel_id:$channel_id,socket_path:$socket_path,session_name:$session_name}')
+
+# slack-adapter rejects a subscription whose socket it cannot connect to, and
+# the runtime's socket may not exist for the first moments after launch —
+# retry briefly instead of failing the run on that window.
+i=0
+until curl -sf --max-time 10 -X POST "$base_url/subscribe" \
+  -H "Content-Type: application/json" -d "$payload" >/dev/null; do
+  i=$((i + 1))
+  if [ "$i" -ge 15 ]; then
+    echo "slack-adapter /subscribe failed for thread $thread_ts" >&2
+    exit 1
+  fi
+  sleep 2
+done
+
+jq -nc --arg thread_ts "$thread_ts" '{thread_ts:$thread_ts}'
+'''
+
+[slack_subscribe.setup.bind]
+base_url     = { from = "inputs.base_url" }
+thread_ts    = { from = "inputs.thread_ts" }
+channel_id   = { from = "inputs.channel_id" }
+socket_path  = { from = "inputs.socket_path" }
+session_name = { from = "session.name" }
+
+[slack_subscribe.cleanup]
+type   = "shell"
+script = 'curl -sf --max-time 10 -X DELETE "$base_url/subscribe?thread_ts=$thread_ts" >/dev/null 2>&1 || true'
+
+[slack_subscribe.cleanup.bind]
+base_url  = { from = "inputs.base_url" }
+thread_ts = { from = "self.outputs.thread_ts" }
+
+[slack_subscribe.inputs_schema]
+type                 = "object"
+required             = ["base_url", "thread_ts", "channel_id", "socket_path"]
+additionalProperties = false
+
+[slack_subscribe.inputs_schema.properties]
+base_url    = { type = "string", minLength = 1 }
+thread_ts   = { type = "string", minLength = 1 }
+channel_id  = { type = "string", minLength = 1 }
+socket_path = { type = "string", minLength = 1 }
+
+[slack_subscribe.outputs_schema]
+type     = "object"
+required = ["thread_ts"]
+
+[slack_subscribe.outputs_schema.properties]
+thread_ts = { type = "string" }
