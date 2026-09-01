@@ -1,0 +1,102 @@
+# Both permalink forms resolve to the same session because `name` prefers
+# the reply form's `thread_ts` query capture, dot stripped via CEL's
+# `replace`, and falls back to the root form's already-digit-only `ts16`
+# path capture; a capture unmatched under the branch a given permalink took
+# is present in `match` as the empty string, not absent, which is what
+# makes that fallback safe rather than an unresolved-root error.
+#
+# No `subscribe`/`unsubscribe`: this plugin owns no watcher a session could
+# bind to or drop a binding from for a thread resource.
+[thread]
+kind  = "workspace_provider"
+match = '^https://[A-Za-z0-9.-]+\.slack\.com/archives/(?P<channel_id>[A-Z0-9]+)/p(?P<ts16>\d{16})(?:\?thread_ts=(?P<thread_ts>\d{10}\.\d{6})&cid=[A-Z0-9]+)?$'
+name  = { expr = "'slack/' + match.channel_id + '-' + (match.thread_ts != '' ? match.thread_ts.replace('.', '') : match.ts16)" }
+
+# `setup` has no `match` root — it runs once a session already exists, past
+# the point `name` resolved it — so it recovers channel_id and the root
+# timestamp by splitting `session.name` instead of re-parsing the permalink
+# with a second regex. That keeps the directory `setup` creates and the
+# session `name` already picked in agreement by construction: one
+# derivation of those digits, not two that could drift apart.
+[thread.setup]
+type = "shell"
+script = '''
+set -eu
+
+# workspace_dirs_root is operator config, not something this file's own
+# regex constrains, so it cannot be assumed JSON-safe the way a `match`
+# capture is. Escaping it by hand, rather than reaching for jq, keeps this
+# hook's dependencies at plect and a POSIX shell.
+json_escape() {
+  value=$1
+  ctrl=$(printf '\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037')
+  out=
+  while [ -n "$value" ]; do
+    case $value in
+      *[\\\"$ctrl]*)
+        prefix=${value%%[\\\"$ctrl]*}
+        rest=${value#"$prefix"}
+        char=${rest%"${rest#?}"}
+        case $char in
+          '\') repl='\\' ;;
+          '"') repl='\"' ;;
+          *) repl="\\u00$(printf '%02x' "'$char")" ;;
+        esac
+        out="$out$prefix$repl"
+        value=${rest#?}
+        ;;
+      *)
+        out="$out$value"
+        value=
+        ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+rest=${session_name#slack/}
+channel_id=${rest%-*}
+ts_digits=${rest##*-}
+thread_ts="${ts_digits%??????}.${ts_digits#??????????}"
+
+workspace_dir="$workspace_dirs_root/slack/$channel_id/$thread_ts"
+mkdir -p "$workspace_dir"
+
+plect state set-conversation "$session_name" \
+  --source Slack \
+  --url "$permalink" \
+  --meta "thread_ts=$thread_ts" \
+  --meta "channel_id=$channel_id"
+
+printf '{"workspace_dir":"%s","channel_id":"%s","thread_ts":"%s","permalink":"%s"}\n' \
+  "$(json_escape "$workspace_dir")" "$(json_escape "$channel_id")" \
+  "$(json_escape "$thread_ts")" "$(json_escape "$permalink")"
+'''
+
+[thread.setup.bind]
+session_name         = { from = "session.name" }
+permalink            = { from = "resource.id" }
+workspace_dirs_root  = { from = "config.workspace_dirs_root" }
+
+[thread.cleanup]
+type   = "shell"
+script = 'rm -rf "$workspace_dir"'
+
+[thread.cleanup.bind]
+workspace_dir = { from = "self.outputs.workspace_dir" }
+
+[thread.outputs_schema]
+type     = "object"
+required = ["workspace_dir", "channel_id", "thread_ts", "permalink"]
+
+[thread.outputs_schema.properties.workspace_dir]
+type = "string"
+
+[thread.outputs_schema.properties.channel_id]
+type = "string"
+
+[thread.outputs_schema.properties.thread_ts]
+type = "string"
+
+[thread.outputs_schema.properties.permalink]
+type = "string"

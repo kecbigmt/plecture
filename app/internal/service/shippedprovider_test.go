@@ -3,7 +3,9 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
@@ -149,5 +151,199 @@ func TestShippedWorkspaceProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
 	}
 	if prov.Cleanup == nil {
 		t.Error("the shipped workspace provider must declare cleanup")
+	}
+}
+
+// TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline pins that
+// both permalink forms for one thread resolve to the same session name.
+func TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
+	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+	if !prov.HasResolver() {
+		t.Fatal("the shipped workspace provider must declare a resolver")
+	}
+
+	tests := []struct {
+		name     string
+		resource string
+		want     string
+		matched  bool
+	}{
+		{
+			"root permalink",
+			"https://acme.slack.com/archives/C01ABCDEF/p1788226930843789",
+			"slack/C01ABCDEF-1788226930843789",
+			true,
+		},
+		{
+			"reply permalink carrying the root thread_ts",
+			"https://acme.slack.com/archives/C01ABCDEF/p1788227011000100?thread_ts=1788226930.843789&cid=C01ABCDEF",
+			"slack/C01ABCDEF-1788226930843789",
+			true,
+		},
+		{"unrelated url", "https://example.test/archives/C01ABCDEF/p1788226930843789", "", false},
+		{"bare identifier", "slack/C01ABCDEF-1788226930843789", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, matched, err := tryResolveName(prov, tt.resource)
+			if err != nil {
+				t.Fatalf("tryResolveName: %v", err)
+			}
+			if matched != tt.matched {
+				t.Fatalf("matched = %v, want %v", matched, tt.matched)
+			}
+			if got != tt.want {
+				t.Errorf("name = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestShippedSlackThreadProvider_HasNoSubscriptionRegistry pins that this
+// provider declares no subscribe/unsubscribe hook: the slack plugin owns no
+// watcher for a thread session to bind to.
+func TestShippedSlackThreadProvider_HasNoSubscriptionRegistry(t *testing.T) {
+	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+	if prov.Setup == nil {
+		t.Error("the shipped workspace provider must declare setup")
+	}
+	if prov.Cleanup == nil {
+		t.Error("the shipped workspace provider must declare cleanup")
+	}
+	if prov.Subscribe != nil {
+		t.Error("the shipped slack thread provider must declare no subscribe hook")
+	}
+	if prov.Unsubscribe != nil {
+		t.Error("the shipped slack thread provider must declare no unsubscribe hook")
+	}
+}
+
+// stubPlectRecordingArgv logs plect's argv instead of running it for real:
+// `state set-conversation` needs a session already in a real state store,
+// which this test never creates one of.
+func stubPlectRecordingArgv(t *testing.T, log string) {
+	t.Helper()
+	dir := t.TempDir()
+	script := "#!/usr/bin/env sh\n" +
+		"for a in \"$@\"; do printf '%s\\n' \"$a\"; done >> " + shQuoteForTest(log) + "\n" +
+		"printf -- '--\\n' >> " + shQuoteForTest(log) + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "plect"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func shQuoteForTest(v string) string { return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'" }
+
+func firstPlectCall(t *testing.T, log string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("read %s: %v", log, err)
+	}
+	call, _, _ := strings.Cut(string(raw), "--\n")
+	call = strings.TrimSuffix(call, "\n")
+	if call == "" {
+		return nil
+	}
+	return strings.Split(call, "\n")
+}
+
+// TestShippedSlackThreadProvider_SetupRecordsConversationAndCreatesWorkspace
+// runs the shipped setup/cleanup scripts themselves, not a stand-in for them.
+func TestShippedSlackThreadProvider_SetupRecordsConversationAndCreatesWorkspace(t *testing.T) {
+	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+
+	plectLog := filepath.Join(t.TempDir(), "plect.log")
+	stubPlectRecordingArgv(t, plectLog)
+
+	workspaceDirsRoot := t.TempDir()
+	const (
+		permalink   = "https://acme.slack.com/archives/C01ABCDEF/p1788226930843789"
+		sessionName = "slack/C01ABCDEF-1788226930843789"
+		channelID   = "C01ABCDEF"
+		threadTS    = "1788226930.843789"
+	)
+	vars := effect.WorkflowHookVars{ResourceID: permalink, SessionName: sessionName, WorkspaceDirsRoot: workspaceDirsRoot}
+
+	outputs, err := task.RunWorkflowSetup(prov, vars, map[string]*contract.TaskState{}, nil)
+	if err != nil {
+		t.Fatalf("RunWorkflowSetup: %v", err)
+	}
+
+	wantOutputs := map[string]any{
+		"workspace_dir": filepath.Join(workspaceDirsRoot, "slack", channelID, threadTS),
+		"channel_id":    channelID,
+		"thread_ts":     threadTS,
+		"permalink":     permalink,
+	}
+	for key, want := range wantOutputs {
+		if outputs[key] != want {
+			t.Errorf("outputs[%q] = %v, want %v", key, outputs[key], want)
+		}
+	}
+	workspaceDir, _ := outputs["workspace_dir"].(string)
+	if info, statErr := os.Stat(workspaceDir); statErr != nil || !info.IsDir() {
+		t.Fatalf("setup did not create %q as a directory: %v", workspaceDir, statErr)
+	}
+
+	wantCall := []string{
+		"state", "set-conversation", sessionName,
+		"--source", "Slack",
+		"--url", permalink,
+		"--meta", "thread_ts=" + threadTS,
+		"--meta", "channel_id=" + channelID,
+	}
+	if gotCall := firstPlectCall(t, plectLog); !reflect.DeepEqual(gotCall, wantCall) {
+		t.Errorf("plect argv = %v, want %v", gotCall, wantCall)
+	}
+
+	tasks := map[string]*contract.TaskState{
+		contract.WorkflowPseudoNodeID: {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, Outputs: outputs},
+	}
+	if err := task.RunWorkflowCleanup(prov, vars, tasks, nil); err != nil {
+		t.Fatalf("RunWorkflowCleanup: %v", err)
+	}
+	if _, statErr := os.Stat(workspaceDir); !os.IsNotExist(statErr) {
+		t.Fatalf("cleanup did not remove %q: %v", workspaceDir, statErr)
+	}
+}
+
+// TestShippedSlackThreadProvider_SetupToleratesJSONSpecialCharactersInWorkspaceDirsRoot
+// pins that a workspace_dirs_root byte outside what `match` constrains still
+// round-trips through setup's outputs JSON.
+func TestShippedSlackThreadProvider_SetupToleratesJSONSpecialCharactersInWorkspaceDirsRoot(t *testing.T) {
+	tests := []struct {
+		name string
+		root string
+	}{
+		{"quote and backslash", `we"ird\root`},
+		{"newline", "weird\nroot"},
+		{"other control bytes", "weird\t\x01\x1froot"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+			stubPlectRecordingArgv(t, filepath.Join(t.TempDir(), "plect.log"))
+
+			workspaceDirsRoot := filepath.Join(t.TempDir(), tt.root)
+			vars := effect.WorkflowHookVars{
+				ResourceID:        "https://acme.slack.com/archives/C01ABCDEF/p1788226930843789",
+				SessionName:       "slack/C01ABCDEF-1788226930843789",
+				WorkspaceDirsRoot: workspaceDirsRoot,
+			}
+
+			outputs, err := task.RunWorkflowSetup(prov, vars, map[string]*contract.TaskState{}, nil)
+			if err != nil {
+				t.Fatalf("RunWorkflowSetup: %v", err)
+			}
+			want := filepath.Join(workspaceDirsRoot, "slack", "C01ABCDEF", "1788226930.843789")
+			if got, _ := outputs["workspace_dir"].(string); got != want {
+				t.Errorf("workspace_dir = %q, want %q", got, want)
+			}
+			if info, statErr := os.Stat(want); statErr != nil || !info.IsDir() {
+				t.Fatalf("setup did not create %q as a directory: %v", want, statErr)
+			}
+		})
 	}
 }

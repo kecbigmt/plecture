@@ -11,6 +11,10 @@ another plugin's package.
 
 ## Contents
 
+- `config/workspaces/thread.toml` — declares the `thread` workspace provider:
+  resolves a Slack thread permalink to a session id and acquires/releases a
+  bare workspace directory for it, with no GitHub artifact standing in for
+  the session. See "Workspace provider" below.
 - `config/tasks/slack_thread.toml` — creates one Slack root message through
   `slack-adapter` and records the conversation with
   `plect state set-conversation`. Outputs: `thread_ts`, `channel_id`, and
@@ -56,6 +60,25 @@ supervised by `plect serve` (start, crash-restart with backoff, stop with
 the resident process). Outbound thread creation and message posting require
 only `SLACK_BOT_TOKEN`; `SLACK_APP_TOKEN` is optional and only activates
 Socket Mode inbound relay.
+
+## Workspace provider
+
+`config/workspaces/thread.toml` resolves a thread's Slack permalink —
+either the root message's own permalink or a reply's permalink carrying
+`?thread_ts=<root>&cid=<channel_id>` — to a session named
+`slack/<channel_id>-<root thread_ts digits>`, so both forms of the same
+thread's permalink resolve to the same session. `setup` creates a bare
+directory under `config.workspace_dirs_root` and records the same
+`source=Slack` conversation `slack_thread` writes, so the shipped
+`slack`/`status` channels and `slack_subscribe` effect bind from a session
+this provider backs exactly as they would from one `slack_thread` created.
+`cleanup` removes the directory. Dependencies: `plect` and a POSIX shell —
+no git, and no `slack-adapter` HTTP call, so a workflow that wants a
+repository checkout composes a separate effect for it.
+
+Unlike `official.github.worktree`, this provider declares no
+`subscribe`/`unsubscribe` hook: the slack plugin owns no watcher a session
+could bind to or drop a binding from for a thread resource.
 
 ## Thread contract
 
