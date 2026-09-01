@@ -1,27 +1,23 @@
-# Slack-thread workspace provider — resolves a thread permalink into a
-# session without any GitHub artifact standing in for it. Composing on top
-# via `workspace_provider = "official.slack.thread"` gets a session named
-# after the thread, a bare directory for it, and the same conversation
-# record `slack_thread` writes, so the shipped `slack`/`status` channels and
-# `slack_subscribe` effect bind from it unchanged.
+# Slack-thread workspace provider: resolves a thread permalink into a
+# session with no GitHub artifact standing in for it.
 #
-# Both permalink forms — the root message's own permalink and a reply
-# permalink carrying `?thread_ts=<root>&cid=<channel_id>` — resolve to the
-# same session: `p<ts16>` in the path is already the root's 16-digit
-# timestamp when the permalink IS the root, and `thread_ts` in the query is
-# the root's dotted timestamp when the permalink is a reply. `name` prefers
-# the query form when present (`match.thread_ts` is the empty string when
-# the permalink carried no query, since an unmatched named group in `match`
-# still keys the `match` root, just with an empty value) and strips its dot
-# with the CEL strings extension rather than needing a second named group.
+# Both permalink forms resolve to the same session because `name` prefers
+# the reply form's `thread_ts` query capture, dot stripped via CEL's
+# `replace`, and falls back to the root form's already-digit-only `ts16`
+# path capture; a capture unmatched under the branch a given permalink took
+# is present in `match` as the empty string, not absent, which is what
+# makes that fallback safe rather than an unresolved-root error.
 #
-# No `subscribe`/`unsubscribe`: this plugin owns no watcher or subscription
-# registry for a thread the way `official.github.worktree` does for a
-# GitHub resource, so a session backed by this provider is never dispatched
-# to by resource id and never has a resource-kind binding to drop.
+# The hostname, channel id, and timestamp captures are restricted to
+# `.`/`-`/alphanumerics/digits — never `"` or `\` — so `setup` below can
+# assemble its outputs as a JSON literal with plain `printf`, with nothing
+# to escape.
+#
+# No `subscribe`/`unsubscribe`: this plugin owns no watcher a session could
+# bind to or drop a binding from for a thread resource.
 [thread]
 kind  = "workspace_provider"
-match = '^https://[^/]+\.slack\.com/archives/(?P<channel_id>[A-Z0-9]+)/p(?P<ts16>\d{16})(?:\?thread_ts=(?P<thread_ts>\d{10}\.\d{6})&cid=[A-Z0-9]+)?$'
+match = '^https://[A-Za-z0-9.-]+\.slack\.com/archives/(?P<channel_id>[A-Z0-9]+)/p(?P<ts16>\d{16})(?:\?thread_ts=(?P<thread_ts>\d{10}\.\d{6})&cid=[A-Z0-9]+)?$'
 name  = { expr = "'slack/' + match.channel_id + '-' + (match.thread_ts != '' ? match.thread_ts.replace('.', '') : match.ts16)" }
 
 # `setup` has no `match` root — it runs once a session already exists, past
@@ -49,12 +45,8 @@ plect state set-conversation "$session_name" \
   --meta "thread_ts=$thread_ts" \
   --meta "channel_id=$channel_id"
 
-jq -nc \
-  --arg workspace_dir "$workspace_dir" \
-  --arg channel_id "$channel_id" \
-  --arg thread_ts "$thread_ts" \
-  --arg permalink "$permalink" \
-  '{workspace_dir:$workspace_dir,channel_id:$channel_id,thread_ts:$thread_ts,permalink:$permalink}'
+printf '{"workspace_dir":"%s","channel_id":"%s","thread_ts":"%s","permalink":"%s"}\n' \
+  "$workspace_dir" "$channel_id" "$thread_ts" "$permalink"
 '''
 
 [thread.setup.bind]
