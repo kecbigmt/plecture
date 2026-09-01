@@ -8,11 +8,6 @@
 # is present in `match` as the empty string, not absent, which is what
 # makes that fallback safe rather than an unresolved-root error.
 #
-# The hostname, channel id, and timestamp captures are restricted to
-# `.`/`-`/alphanumerics/digits — never `"` or `\` — so `setup` below can
-# assemble its outputs as a JSON literal with plain `printf`, with nothing
-# to escape.
-#
 # No `subscribe`/`unsubscribe`: this plugin owns no watcher a session could
 # bind to or drop a binding from for a thread resource.
 [thread]
@@ -31,6 +26,46 @@ type = "shell"
 script = '''
 set -eu
 
+# workspace_dirs_root is operator config, not a value this file's own regex
+# constrains — any byte a POSIX filename allows is legal in it — so the JSON
+# printf builds below cannot assume it is quote/backslash-free the way a
+# `match` capture would be. Escaping by hand, rather than reaching for jq,
+# keeps this hook's dependencies at plect and a POSIX shell. Backslashes are
+# doubled in their own pass, finished before quotes are escaped in a second
+# pass, so a quote's inserted backslash is never itself mistaken for one of
+# the original string's and escaped again.
+json_escape() {
+  value=$1
+  out=
+  while :; do
+    case $value in
+      *'\'*)
+        out="$out${value%%\\*}\\\\"
+        value=${value#*\\}
+        ;;
+      *)
+        out="$out$value"
+        break
+        ;;
+    esac
+  done
+  value=$out
+  out=
+  while :; do
+    case $value in
+      *'"'*)
+        out="$out${value%%\"*}\\\""
+        value=${value#*\"}
+        ;;
+      *)
+        out="$out$value"
+        break
+        ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
 rest=${session_name#slack/}
 channel_id=${rest%-*}
 ts_digits=${rest##*-}
@@ -46,7 +81,8 @@ plect state set-conversation "$session_name" \
   --meta "channel_id=$channel_id"
 
 printf '{"workspace_dir":"%s","channel_id":"%s","thread_ts":"%s","permalink":"%s"}\n' \
-  "$workspace_dir" "$channel_id" "$thread_ts" "$permalink"
+  "$(json_escape "$workspace_dir")" "$(json_escape "$channel_id")" \
+  "$(json_escape "$thread_ts")" "$(json_escape "$permalink")"
 '''
 
 [thread.setup.bind]
