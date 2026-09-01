@@ -198,12 +198,15 @@ thread.
 
 Subscriptions and unsubscribed threads' delivery tombstones are persisted to
 `$XDG_STATE_HOME/slack-adapter/subscribers.json` (default
-`~/.local/state/slack-adapter/subscribers.json`) with an atomic write (tmp →
+`~/.local/state/slack-adapter/subscribers.json`) as
+`{"subscribers": [...], "tombstones": [...]}`, with an atomic write (tmp →
 rename) on every subscribe/unsubscribe. Restarting slack-adapter reads it
 back at startup, so subscriptions survive a restart and routing continues
 without any action on the plect side. A failed read-back (missing or corrupt
-file) logs a warning and starts with an empty state, which the next
-`/subscribe` repopulates.
+file, including the bare-array shape this file held before tombstones
+existed — see `docs/migrations/slack-adapter-subscribers-envelope-migration.md`)
+logs a warning and starts with an empty state, which the next `/subscribe`
+repopulates.
 
 **Operational requirement:** this state directory must live on the same
 persistent storage as plect's own state. `official.slack.slack_subscribe` is

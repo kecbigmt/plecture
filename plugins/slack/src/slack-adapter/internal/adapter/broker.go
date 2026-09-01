@@ -23,12 +23,11 @@ type Subscriber struct {
 	DeliveredThrough string    `json:"delivered_through,omitempty"`
 }
 
-// Tombstone preserves a thread's delivery watermark across Unsubscribe, so
-// that plect down / up (or an ECS task replacement doing the same) does not
-// re-deliver the transcript the resumed session already saw. It is scoped to
-// the (thread_ts, session_name) pair that produced it: a different session
-// later binding the same thread is a new subscription, not a resumed one,
-// and gets no watermark.
+// Tombstone survives a Subscriber's removal so plect down / up (or an ECS
+// task replacement doing the same) does not re-deliver the transcript the
+// resumed session already saw. It is keyed by (thread_ts, session_name)
+// rather than thread_ts alone, because a different session binding the same
+// thread later is meant to see it as new, not resumed.
 type Tombstone struct {
 	ThreadTS         string    `json:"thread_ts"`
 	SessionName      string    `json:"session_name"`
@@ -197,11 +196,6 @@ func (b *Broker) tombstonesSnapshotLocked() []Tombstone {
 	return out
 }
 
-// pruneTombstonesLocked drops tombstones older than tombstoneTTL. Called on
-// load and on every persist (persistLocked), per the fixed 30-day retention
-// — no config key, since a longer-lived gap between unsubscribe and
-// resubscribe means the resuming session no longer needs the redelivery
-// guard.
 func (b *Broker) pruneTombstonesLocked() {
 	cutoff := time.Now().Add(-tombstoneTTL)
 	for k, t := range b.tombstones {
@@ -211,31 +205,14 @@ func (b *Broker) pruneTombstonesLocked() {
 	}
 }
 
-// persistedState is subscribers.json's on-disk shape.
 type persistedState struct {
 	Subscribers []Subscriber `json:"subscribers"`
 	Tombstones  []Tombstone  `json:"tombstones,omitempty"`
 }
 
-// decodeState parses subscribers.json. Two shapes are accepted: the current
-// {"subscribers": [...], "tombstones": [...]} envelope, and the bare
-// []Subscriber array written before tombstones existed. This is read-only
-// compatibility, not migration code — a file in the old shape has no
-// tombstones key, which just means an empty tombstones list.
-func decodeState(data []byte) (persistedState, error) {
-	var ps persistedState
-	if err := json.Unmarshal(data, &ps); err == nil {
-		return ps, nil
-	}
-	var legacy []Subscriber
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return persistedState{}, err
-	}
-	return persistedState{Subscribers: legacy}, nil
-}
-
 // load reads b.path. Missing / corrupt → start empty (next /subscribe
-// rewrites the file cleanly).
+// rewrites the file cleanly). A pre-tombstone bare-array file is corrupt by
+// this reading — see docs/migrations for the one-time conversion.
 func (b *Broker) load() {
 	data, err := os.ReadFile(b.path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -246,8 +223,8 @@ func (b *Broker) load() {
 		b.logger.Warn("failed to read subscriber state, starting empty", "path", b.path, "error", err)
 		return
 	}
-	ps, err := decodeState(data)
-	if err != nil {
+	var ps persistedState
+	if err := json.Unmarshal(data, &ps); err != nil {
 		b.logger.Warn("failed to parse subscriber state, starting empty", "path", b.path, "error", err)
 		return
 	}
@@ -267,15 +244,14 @@ func (b *Broker) load() {
 	b.logger.Info("restored subscribers", "count", len(b.subs), "tombstones", len(b.tombstones), "path", b.path)
 }
 
-// persistLocked prunes expired tombstones, then writes the full snapshot
-// (subscribers + tombstones) atomically (tmp → rename), deliberately
-// without the fsync that contracts/atomicfile applies to plect's durable
-// paths (state, subscription registries, event cursors): losing the last
-// write before a crash just means a stale reload, self-healed by producers
-// re-registering, so paying an fsync on every subscribe/unsubscribe isn't
-// worth it. Failures are logged but never propagate: the in-memory mutation
-// the HTTP handler just acknowledged outranks the on-disk copy. Must be
-// called with b.mu held.
+// persistLocked writes subs and tombstones to b.path atomically (tmp →
+// rename), deliberately without the fsync that contracts/atomicfile applies
+// to plect's durable paths (state, subscription registries, event cursors):
+// losing the last write before a crash just means a stale reload, self-healed
+// by producers re-registering, so paying an fsync on every subscribe/
+// unsubscribe isn't worth it. Failures are logged but never propagate: the
+// in-memory mutation the HTTP handler just acknowledged outranks the
+// on-disk copy.
 func (b *Broker) persistLocked() {
 	b.pruneTombstonesLocked()
 	if b.path == "" {

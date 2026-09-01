@@ -672,10 +672,7 @@ func TestHandleSubscribe_CatchUpThroughOmittedIsUnchanged(t *testing.T) {
 	}
 }
 
-// Models a clean plect down / up (or an ECS task replacement doing the
-// same): DELETE /subscribe must tombstone the watermark so the following
-// POST /subscribe from the same session_name restores it, and a
-// catch_up_through the watermark already covers delivers no transcript.
+// Models a clean plect down / up (or an ECS task replacement doing the same).
 func TestHandleSubscribe_UnsubscribeThenResubscribeSameSessionRestoresWatermark(t *testing.T) {
 	socketPath := startTestListener(t)
 	a := newTestAdapter(&Config{ChannelID: "C0"})
@@ -736,10 +733,7 @@ func TestHandleSubscribe_UnsubscribeThenResubscribeSameSessionRestoresWatermark(
 	}
 }
 
-// A different session_name binding the same thread after unsubscribe (e.g.
-// plect destroy followed by a fresh plect up) is a new subscription, not a
-// resumed one: it gets no watermark, so the same catch_up_through delivers
-// the transcript again.
+// Models plect destroy followed by a fresh plect up.
 func TestHandleSubscribe_UnsubscribeThenResubscribeDifferentSessionDeliversFullHistory(t *testing.T) {
 	socketPath := startTestListener(t)
 	a := newTestAdapter(&Config{ChannelID: "C0"})

@@ -140,9 +140,6 @@ func TestBroker_MarkDeliveredAdvancesWatermark(t *testing.T) {
 	}
 }
 
-// Given a subscription with DeliveredThrough = T, when Unsubscribe runs and
-// the same session_name re-subscribes the thread, DeliveredThrough is T
-// again.
 func TestBroker_UnsubscribeThenSubscribeSameSessionRestoresWatermark(t *testing.T) {
 	b := NewBroker("", nil)
 	b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1", DeliveredThrough: "1000.000005"})
@@ -164,9 +161,6 @@ func TestBroker_UnsubscribeThenSubscribeSameSessionRestoresWatermark(t *testing.
 	}
 }
 
-// Given the same sequence but a re-subscribe from a different session_name,
-// DeliveredThrough is empty: a different session binding the thread is a new
-// subscription, not a resumed one.
 func TestBroker_UnsubscribeThenSubscribeDifferentSessionGetsNoWatermark(t *testing.T) {
 	b := NewBroker("", nil)
 	b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1", DeliveredThrough: "1000.000005"})
@@ -178,9 +172,6 @@ func TestBroker_UnsubscribeThenSubscribeDifferentSessionGetsNoWatermark(t *testi
 	}
 }
 
-// A subscriber that never received anything (DeliveredThrough == "") leaves
-// no tombstone: there is nothing to protect against redelivery, and an
-// empty tombstone would only cost pruning work.
 func TestBroker_UnsubscribeWithoutWatermarkLeavesNoTombstone(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")
@@ -202,8 +193,6 @@ func TestBroker_UnsubscribeWithoutWatermarkLeavesNoTombstone(t *testing.T) {
 	}
 }
 
-// Restoring a tombstone consumes it: a second resubscribe of the same
-// thread/session must not find it again through some stale path.
 func TestBroker_SubscribeConsumesTombstone(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")
@@ -226,8 +215,6 @@ func TestBroker_SubscribeConsumesTombstone(t *testing.T) {
 	}
 }
 
-// Given an adapter restart between unsubscribe and re-subscribe, the
-// tombstone is read back from disk and restore still works.
 func TestBroker_TombstoneSurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")
@@ -238,7 +225,7 @@ func TestBroker_TombstoneSurvivesRestart(t *testing.T) {
 		b.Unsubscribe("t")
 	}()
 
-	// A fresh Broker over the same path models the adapter process restarting.
+	// A fresh Broker over the same path models an adapter process restart.
 	b := NewBroker(path, discardLogger())
 	got := b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1"})
 	if got.DeliveredThrough != "1000.000005" {
@@ -246,8 +233,6 @@ func TestBroker_TombstoneSurvivesRestart(t *testing.T) {
 	}
 }
 
-// Given a tombstone older than 30 days, when the broker loads its state,
-// the tombstone is gone.
 func TestBroker_LoadPrunesTombstonesOlderThan30Days(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")
@@ -270,9 +255,6 @@ func TestBroker_LoadPrunesTombstonesOlderThan30Days(t *testing.T) {
 	}
 }
 
-// Given a tombstone older than 30 days, when the broker persists its state
-// (for any reason, not just the expired entry's own thread), the tombstone
-// is gone.
 func TestBroker_PersistPrunesTombstonesOlderThan30Days(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")
@@ -307,12 +289,11 @@ func TestBroker_PersistPrunesTombstonesOlderThan30Days(t *testing.T) {
 	}
 }
 
-// Given subscribers.json written by the pre-tombstone version (a bare
-// []Subscriber array, no "tombstones" key), it loads unchanged: no
-// migration code, an absent tombstones list is just empty, and a different
-// session resubscribing the loaded thread gets no watermark since there was
-// never an Unsubscribe on this broker instance to tombstone one.
-func TestBroker_LoadLegacyBareArrayFileHasNoTombstones(t *testing.T) {
+// The pre-tombstone wire format (a bare []Subscriber array) has no
+// "subscribers" key for the new envelope struct to bind, so it decodes as
+// corrupt rather than silently in a legacy shape — no compatibility shim;
+// see docs/migrations for the one-time conversion this requires.
+func TestBroker_LoadRejectsLegacyBareArrayFileAsCorrupt(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")
 
@@ -325,18 +306,8 @@ func TestBroker_LoadLegacyBareArrayFileHasNoTombstones(t *testing.T) {
 	}
 
 	b := NewBroker(path, discardLogger())
-	got, ok := b.Find("1111.000")
-	if !ok {
-		t.Fatalf("expected subscriber restored from legacy bare-array file")
-	}
-	if got.DeliveredThrough != "1000.000005" {
-		t.Fatalf("DeliveredThrough = %q, want 1000.000005", got.DeliveredThrough)
-	}
-
-	b.Unsubscribe("1111.000")
-	resub := b.Subscribe(Subscriber{ThreadTS: "1111.000", SessionName: "owner/repo-2"})
-	if resub.DeliveredThrough != "" {
-		t.Fatalf("DeliveredThrough = %q, want empty for a different session", resub.DeliveredThrough)
+	if got := b.List(); len(got) != 0 {
+		t.Fatalf("expected empty broker for a legacy-format file, got %d entries", len(got))
 	}
 }
 
@@ -401,9 +372,11 @@ func TestBroker_LoadRestoresState(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")
 
-	initial := []Subscriber{
-		{ThreadTS: "1111.000", ChannelID: "C123", SocketPath: "/a", Since: time.Now()},
-		{ThreadTS: "2222.000", ChannelID: "C456", SocketPath: "/b", Since: time.Now()},
+	initial := persistedState{
+		Subscribers: []Subscriber{
+			{ThreadTS: "1111.000", ChannelID: "C123", SocketPath: "/a", Since: time.Now()},
+			{ThreadTS: "2222.000", ChannelID: "C456", SocketPath: "/b", Since: time.Now()},
+		},
 	}
 	data, _ := json.Marshal(initial)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
