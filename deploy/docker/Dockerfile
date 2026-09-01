@@ -125,8 +125,12 @@ RUN npm install -g --no-fund --no-audit \
 # owner, so this is part of the container's contract with its Terraform.
 ARG PLECT_UID=10000
 ARG PLECT_GID=10000
+# bash, not nologin: tmux resolves default-shell from the passwd entry when
+# $SHELL is absent (the supervised services run without one), and a nologin
+# pane exits instantly — taking the freshly started tmux server down with it,
+# so official.tmux.pane can never produce on a stock deployment.
 RUN groupadd -g "${PLECT_GID}" plect \
-  && useradd -u "${PLECT_UID}" -g "${PLECT_GID}" -M -s /usr/sbin/nologin plect
+  && useradd -u "${PLECT_UID}" -g "${PLECT_GID}" -M -s /bin/bash plect
 
 COPY --from=builder /out/bin/plect /usr/local/bin/plect
 # Only plugins/, the catalog's own subdir: app/ and contracts/ earned
