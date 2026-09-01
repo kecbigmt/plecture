@@ -90,6 +90,7 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 		return
 	}
 	a.broker.MarkDelivered(threadTS, deliveredThrough)
+	a.showThreadStatus(channelID, threadTS)
 }
 
 func (a *Adapter) fetchThreadReplies(channelID, threadTS string) ([]slack.Message, error) {

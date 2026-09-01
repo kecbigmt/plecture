@@ -28,6 +28,7 @@ type Adapter struct {
 	threader       ThreadCreator
 	threadFetcher  threadFetcher
 	eventPublisher eventPublisher
+	statusManager  *StatusManager
 	logger         *slog.Logger
 }
 
@@ -65,7 +66,8 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 	a.threader = a
 	a.threadFetcher = a
 	a.eventPublisher = cliEventPublisher{}
-	a.socketPool = NewSocketPool(a.poster, logger, a.captureOutbound)
+	a.statusManager = NewStatusManager(a.poster, cfg.StatusTTLDuration(), logger)
+	a.socketPool = NewSocketPool(a.poster, logger, a.captureOutbound, a.statusManager)
 	// Cache workspace name from Slack API
 	resp, err := api.AuthTest()
 	if err != nil {
@@ -92,7 +94,11 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 }
 
 // Close releases the adapter's background resources.
-func (a *Adapter) Close() {}
+func (a *Adapter) Close() {
+	if a.statusManager != nil {
+		a.statusManager.Stop()
+	}
+}
 
 // Run starts the Slack Socket Mode listener. Blocks until ctx is cancelled.
 func (a *Adapter) Run(ctx context.Context) error {
@@ -221,6 +227,19 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 		return
 	}
 	a.captureInbound(sub, msg)
+	a.showThreadStatus(sub.ChannelID, threadTS)
+}
+
+// showThreadStatus sets the configured shimmer status on a thread after an
+// inbound delivery succeeded. Best-effort: a failure here is logged, not
+// surfaced, since it's UX sugar riding on top of a delivery that already
+// succeeded.
+func (a *Adapter) showThreadStatus(channelID, threadTS string) {
+	if err := a.statusManager.Set(channelID, threadTS, a.cfg.EffectiveStatusText(), a.cfg.StatusLoadingMessages); err != nil {
+		a.logger.Error("failed to set Slack thread status",
+			"component", "slack-adapter", "event", "slack_status_error",
+			"channel_id", channelID, "thread_ts", threadTS, "error", err)
+	}
 }
 
 // deliverToChannelServer sends msg over the subscriber's Unix socket,
@@ -279,6 +298,17 @@ func (a *Adapter) PostToThread(channelID, threadTS, text string) (string, error)
 		slack.MsgOptionTS(threadTS),
 	)
 	return ts, err
+}
+
+// SetThreadStatus sets or clears (via an empty status) a Slack thread's
+// assistant shimmer status line.
+func (a *Adapter) SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error {
+	return a.api.SetAssistantThreadsStatus(slack.AssistantThreadsSetStatusParameters{
+		ChannelID:       channelID,
+		ThreadTS:        threadTS,
+		Status:          status,
+		LoadingMessages: loadingMessages,
+	})
 }
 
 // CreateThread posts a new message to a channel and returns Slack's permalink.

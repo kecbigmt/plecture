@@ -7,18 +7,22 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
 
 type Config struct {
-	SlackBotToken     string   `toml:"slack_bot_token"`
-	SlackAppToken     string   `toml:"slack_app_token"`
-	ChannelID         string   `toml:"channel_id"`
-	ListenAddr        string   `toml:"listen_addr"`
-	AllowedUserIDs    []string `toml:"allowed_user_ids"`
-	NotifyUserIDs     []string `toml:"notify_user_ids"`
-	DeliverFullThread bool     `toml:"deliver_full_thread"`
+	SlackBotToken         string   `toml:"slack_bot_token"`
+	SlackAppToken         string   `toml:"slack_app_token"`
+	ChannelID             string   `toml:"channel_id"`
+	ListenAddr            string   `toml:"listen_addr"`
+	AllowedUserIDs        []string `toml:"allowed_user_ids"`
+	NotifyUserIDs         []string `toml:"notify_user_ids"`
+	DeliverFullThread     bool     `toml:"deliver_full_thread"`
+	StatusText            string   `toml:"status_text"`
+	StatusLoadingMessages []string `toml:"status_loading_messages"`
+	StatusTTL             string   `toml:"status_ttl"`
 }
 
 func LoadConfig() *Config {
@@ -58,7 +62,39 @@ func (c *Config) ValidateStartup() error {
 	if c.SlackBotToken == "" {
 		return errors.New("slack_bot_token must be set in config")
 	}
+	if err := validateLoadingMessages(c.StatusLoadingMessages); err != nil {
+		return fmt.Errorf("status_loading_messages: %w", err)
+	}
 	return nil
+}
+
+// EffectiveStatusText returns the configured status text, or the
+// workflow-neutral default when unset. Config is built directly (not only
+// via LoadConfig) in tests and by callers that don't go through the
+// config.toml/env-var path, so the default lives here rather than only in
+// LoadConfig's zero value — an empty StatusText would otherwise be sent to
+// Slack as a status, which clears the thread's shimmer instead of showing
+// one.
+func (c *Config) EffectiveStatusText() string {
+	if c.StatusText == "" {
+		return defaultStatusText
+	}
+	return c.StatusText
+}
+
+// StatusTTLDuration parses StatusTTL, falling back to defaultStatusTTL (with
+// a warning) when it is empty or unparsable so a malformed value disables
+// the TTL fallback for one thread instead of the whole plugin.
+func (c *Config) StatusTTLDuration() time.Duration {
+	if c.StatusTTL == "" {
+		return defaultStatusTTL
+	}
+	d, err := time.ParseDuration(c.StatusTTL)
+	if err != nil {
+		slog.Warn("status_ttl invalid, using default", "value", c.StatusTTL, "default", defaultStatusTTL, "error", err)
+		return defaultStatusTTL
+	}
+	return d
 }
 
 func fillFromEnv(field *string, envVar string) {

@@ -261,6 +261,68 @@ func TestHandleAppMentionSubscriptionWithoutSessionNameDoesNotPublish(t *testing
 	}
 }
 
+// Answers "did my message arrive": a mention that successfully delivers the
+// deliberation transcript should show the shimmer on that thread.
+func TestHandleAppMentionSetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
+	a := newTestAdapter(&Config{StatusText: "is reviewing…", StatusLoadingMessages: []string{"Checking…"}})
+	poster := a.poster.(*recordingPoster)
+	a.threadFetcher = &fakeThreadFetcher{
+		messages: []slack.Message{slackMessage("1000.000001", "U-root", "Review thread opened")},
+	}
+	a.eventPublisher = &recordingEventPublisher{}
+	a.broker.Subscribe(Subscriber{
+		ThreadTS:    "1000.000001",
+		ChannelID:   "C-review",
+		SessionName: "owner/repo-1",
+	})
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> please act",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	if len(poster.statusCalls) != 1 {
+		t.Fatalf("SetThreadStatus calls = %d, want 1", len(poster.statusCalls))
+	}
+	got := poster.statusCalls[0]
+	if got.ChannelID != "C-review" || got.ThreadTS != "1000.000001" || got.Status != "is reviewing…" {
+		t.Errorf("status call = %+v, want C-review/1000.000001/is reviewing…", got)
+	}
+	if len(got.LoadingMessages) != 1 || got.LoadingMessages[0] != "Checking…" {
+		t.Errorf("loading_messages = %v, want [Checking…]", got.LoadingMessages)
+	}
+}
+
+// A skipped mention (fetch failure here; the same holds for the other
+// skip/drop branches earlier in handleAppMention) must not set a status —
+// nothing was actually delivered to the session.
+func TestHandleAppMentionFetchFailureDoesNotSetThreadStatus(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	poster := a.poster.(*recordingPoster)
+	a.threadFetcher = &fakeThreadFetcher{err: errors.New("slack unavailable")}
+	a.eventPublisher = &recordingEventPublisher{}
+	a.broker.Subscribe(Subscriber{
+		ThreadTS:    "1000.000001",
+		ChannelID:   "C-review",
+		SessionName: "owner/repo-1",
+	})
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> hello",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	if len(poster.statusCalls) != 0 {
+		t.Errorf("SetThreadStatus calls = %d, want 0 (fetch failed, nothing delivered)", len(poster.statusCalls))
+	}
+}
+
 func TestHandleAppMentionFetchFailureDoesNotPublishOrAdvanceWatermark(t *testing.T) {
 	a := newTestAdapter(&Config{})
 	publisher := &recordingEventPublisher{}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadConfig_NoConfigFileUsesDefaultsSilently(t *testing.T) {
@@ -166,5 +167,63 @@ func TestIsMentionUserAllowedHonorsAllowListWhenSet(t *testing.T) {
 	}
 	if cfg.IsMentionUserAllowed("U-other") {
 		t.Fatal("user outside configured allow-list should be rejected")
+	}
+}
+
+// A Config built directly (not via LoadConfig) is the norm in this test
+// package, so the default must apply on read, not only when LoadConfig
+// populates a zero-value field.
+func TestEffectiveStatusText_DefaultsWhenUnset(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.EffectiveStatusText(); got != defaultStatusText {
+		t.Errorf("EffectiveStatusText() = %q, want default %q", got, defaultStatusText)
+	}
+}
+
+func TestEffectiveStatusText_UsesConfiguredValue(t *testing.T) {
+	cfg := &Config{StatusText: "is reviewing…"}
+	if got := cfg.EffectiveStatusText(); got != "is reviewing…" {
+		t.Errorf("EffectiveStatusText() = %q, want configured value", got)
+	}
+}
+
+func TestStatusTTLDuration_DefaultsWhenUnset(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.StatusTTLDuration(); got != defaultStatusTTL {
+		t.Errorf("StatusTTLDuration() = %v, want default %v", got, defaultStatusTTL)
+	}
+}
+
+func TestStatusTTLDuration_ParsesConfiguredValue(t *testing.T) {
+	cfg := &Config{StatusTTL: "5m"}
+	if got := cfg.StatusTTLDuration(); got != 5*time.Minute {
+		t.Errorf("StatusTTLDuration() = %v, want 5m", got)
+	}
+}
+
+func TestStatusTTLDuration_FallsBackOnUnparsableValue(t *testing.T) {
+	cfg := &Config{StatusTTL: "not-a-duration"}
+	if got := cfg.StatusTTLDuration(); got != defaultStatusTTL {
+		t.Errorf("StatusTTLDuration() = %v, want default %v on parse failure", got, defaultStatusTTL)
+	}
+}
+
+func TestValidateStartup_RejectsTooManyStatusLoadingMessages(t *testing.T) {
+	cfg := &Config{
+		SlackBotToken:         "xoxb-test",
+		StatusLoadingMessages: make([]string, 11),
+	}
+	if err := cfg.ValidateStartup(); err == nil {
+		t.Fatal("ValidateStartup() error = nil, want a rejection for >10 status_loading_messages")
+	}
+}
+
+func TestValidateStartup_AllowsTenStatusLoadingMessages(t *testing.T) {
+	cfg := &Config{
+		SlackBotToken:         "xoxb-test",
+		StatusLoadingMessages: make([]string, 10),
+	}
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("ValidateStartup() error = %v, want nil for exactly 10 status_loading_messages", err)
 	}
 }

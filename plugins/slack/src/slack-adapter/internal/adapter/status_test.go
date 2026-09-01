@@ -1,0 +1,185 @@
+package adapter
+
+import (
+	"errors"
+	"sync"
+	"testing"
+	"time"
+)
+
+// fakeStatusSetter records SetThreadStatus calls and lets tests inject a
+// failure for the next call.
+type fakeStatusSetter struct {
+	mu    sync.Mutex
+	calls []statusCall
+	err   error
+}
+
+type statusCall struct {
+	channelID, threadTS, status string
+	loadingMessages             []string
+}
+
+func (f *fakeStatusSetter) SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, statusCall{channelID, threadTS, status, loadingMessages})
+	return f.err
+}
+
+func (f *fakeStatusSetter) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.calls)
+}
+
+func (f *fakeStatusSetter) last() statusCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls[len(f.calls)-1]
+}
+
+func TestStatusManager_Set_ShowsStatus(t *testing.T) {
+	setter := &fakeStatusSetter{}
+	mgr := NewStatusManager(setter, time.Hour, testLogger())
+	defer mgr.Stop()
+
+	if err := mgr.Set("C1", "111.0", "is thinking…", []string{"Reviewing…", "Checking…"}); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	if setter.callCount() != 1 {
+		t.Fatalf("SetThreadStatus calls = %d, want 1", setter.callCount())
+	}
+	got := setter.last()
+	if got.channelID != "C1" || got.threadTS != "111.0" || got.status != "is thinking…" {
+		t.Errorf("call = %+v, want C1/111.0/is thinking…", got)
+	}
+	if len(got.loadingMessages) != 2 {
+		t.Errorf("loadingMessages = %v, want 2 entries", got.loadingMessages)
+	}
+}
+
+func TestStatusManager_Clear_ClearsImmediately(t *testing.T) {
+	setter := &fakeStatusSetter{}
+	mgr := NewStatusManager(setter, time.Hour, testLogger())
+	defer mgr.Stop()
+
+	if err := mgr.Set("C1", "111.0", "is thinking…", nil); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	if err := mgr.Clear("C1", "111.0"); err != nil {
+		t.Fatalf("Clear() error = %v", err)
+	}
+
+	if setter.callCount() != 2 {
+		t.Fatalf("SetThreadStatus calls = %d, want 2 (set, clear)", setter.callCount())
+	}
+	got := setter.last()
+	if got.status != "" || got.loadingMessages != nil {
+		t.Errorf("clear call = %+v, want empty status and nil loading messages", got)
+	}
+}
+
+// The TTL fallback exists for a session that ends its turn without ever
+// calling reply (e.g. it reports on the PR instead) — nothing else would
+// ever clear the shimmer.
+func TestStatusManager_TTL_ClearsWithoutAnyPost(t *testing.T) {
+	setter := &fakeStatusSetter{}
+	mgr := NewStatusManager(setter, 30*time.Millisecond, testLogger())
+	defer mgr.Stop()
+
+	if err := mgr.Set("C1", "111.0", "is thinking…", nil); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	deadline := time.After(2 * time.Second)
+	for setter.callCount() < 2 {
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for TTL clear")
+		default:
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	got := setter.last()
+	if got.status != "" {
+		t.Errorf("TTL clear status = %q, want empty", got.status)
+	}
+}
+
+// A new Set on an already-showing thread must push the TTL clear out again,
+// not let the original timer fire mid-turn.
+func TestStatusManager_Set_ResetsTTLTimer(t *testing.T) {
+	setter := &fakeStatusSetter{}
+	mgr := NewStatusManager(setter, 60*time.Millisecond, testLogger())
+	defer mgr.Stop()
+
+	if err := mgr.Set("C1", "111.0", "is thinking…", nil); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	time.Sleep(40 * time.Millisecond)
+	if err := mgr.Set("C1", "111.0", "still thinking…", nil); err != nil {
+		t.Fatalf("second Set() error = %v", err)
+	}
+	// Original timer would have fired ~20ms from here if it wasn't reset.
+	time.Sleep(40 * time.Millisecond)
+	if setter.callCount() != 2 {
+		t.Fatalf("SetThreadStatus calls = %d, want 2 (no premature TTL clear)", setter.callCount())
+	}
+
+	time.Sleep(60 * time.Millisecond)
+	if setter.callCount() != 3 {
+		t.Fatalf("SetThreadStatus calls = %d, want 3 (TTL clear after the reset delay)", setter.callCount())
+	}
+}
+
+// Clearing explicitly must cancel the pending TTL timer so an idle period
+// afterward doesn't fire a redundant (or, once the thread has moved on to a
+// new status, incorrect) clear.
+func TestStatusManager_Clear_CancelsPendingTTLTimer(t *testing.T) {
+	setter := &fakeStatusSetter{}
+	mgr := NewStatusManager(setter, 20*time.Millisecond, testLogger())
+	defer mgr.Stop()
+
+	if err := mgr.Set("C1", "111.0", "is thinking…", nil); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+	if err := mgr.Clear("C1", "111.0"); err != nil {
+		t.Fatalf("Clear() error = %v", err)
+	}
+
+	// Wait past the original TTL window with nothing further happening on
+	// the thread. If Clear didn't cancel the timer, it fires here.
+	time.Sleep(60 * time.Millisecond)
+	if got := setter.callCount(); got != 2 {
+		t.Fatalf("SetThreadStatus calls = %d, want 2 (set, clear) — stale TTL timer fired again", got)
+	}
+}
+
+func TestStatusManager_Set_PropagatesSlackError(t *testing.T) {
+	wantErr := errors.New("slack down")
+	setter := &fakeStatusSetter{err: wantErr}
+	mgr := NewStatusManager(setter, time.Hour, testLogger())
+	defer mgr.Stop()
+
+	if err := mgr.Set("C1", "111.0", "is thinking…", nil); !errors.Is(err, wantErr) {
+		t.Fatalf("Set() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestValidateLoadingMessages(t *testing.T) {
+	ok := make([]string, 10)
+	if err := validateLoadingMessages(ok); err != nil {
+		t.Errorf("10 messages should be accepted, got error: %v", err)
+	}
+
+	tooMany := make([]string, 11)
+	if err := validateLoadingMessages(tooMany); err == nil {
+		t.Error("11 messages should be rejected")
+	}
+
+	if err := validateLoadingMessages(nil); err != nil {
+		t.Errorf("nil should be accepted, got error: %v", err)
+	}
+}

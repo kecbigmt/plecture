@@ -19,6 +19,10 @@ type SocketPool struct {
 	// prompt) the channel-server sent back, keyed by thread_ts. Optional (nil in
 	// tests that don't exercise capture).
 	capture func(threadTS, eventType, body string)
+	// statusMgr, if set, clears the thread's shimmer status once an outbound
+	// message actually reaches Slack. Optional (nil in tests that don't
+	// exercise status).
+	statusMgr *StatusManager
 }
 
 // socketConn holds a connection and its associated metadata.
@@ -27,9 +31,11 @@ type socketConn struct {
 	channelID string
 }
 
-// ThreadPoster posts messages to Slack threads.
+// ThreadPoster posts messages to Slack threads and sets their shimmer
+// status line.
 type ThreadPoster interface {
 	PostToThread(channelID, threadTS, text string) (string, error)
+	ThreadStatusSetter
 }
 
 // ThreadCreator creates Slack thread roots and returns their canonical URL.
@@ -38,12 +44,13 @@ type ThreadCreator interface {
 }
 
 // NewSocketPool creates a new socket connection pool.
-func NewSocketPool(poster ThreadPoster, logger *slog.Logger, capture func(threadTS, eventType, body string)) *SocketPool {
+func NewSocketPool(poster ThreadPoster, logger *slog.Logger, capture func(threadTS, eventType, body string), statusMgr *StatusManager) *SocketPool {
 	return &SocketPool{
-		conns:   make(map[string]*socketConn),
-		poster:  poster,
-		logger:  logger,
-		capture: capture,
+		conns:     make(map[string]*socketConn),
+		poster:    poster,
+		logger:    logger,
+		capture:   capture,
+		statusMgr: statusMgr,
 	}
 }
 
@@ -94,6 +101,7 @@ func (sr *SocketPool) getOrConnect(socketPath, channelID, threadTS string) (*soc
 			if sr.capture != nil {
 				sr.capture(reply.ThreadTS, "claude.reply", reply.Text)
 			}
+			sr.clearStatus(channelID, reply.ThreadTS)
 		},
 		func(perm protocol.PermissionPayload) {
 			if _, err := sr.poster.PostToThread(channelID, perm.ThreadTS, perm.Text); err != nil {
@@ -103,6 +111,7 @@ func (sr *SocketPool) getOrConnect(socketPath, channelID, threadTS string) (*soc
 			if sr.capture != nil {
 				sr.capture(perm.ThreadTS, "claude.permission_request", perm.Text)
 			}
+			sr.clearStatus(channelID, perm.ThreadTS)
 		},
 	)
 	if err != nil {
@@ -125,6 +134,19 @@ func (sr *SocketPool) getOrConnect(socketPath, channelID, threadTS string) (*soc
 
 	sr.logger.Info("connected", "socket_path", socketPath)
 	return conn, nil
+}
+
+// clearStatus clears the thread's shimmer status after an outbound message
+// reached Slack. Slack auto-clears status on an app reply, but SocketPool
+// clears explicitly rather than relying on that, matching the permission
+// prompt path (which isn't a "reply" from Slack's perspective).
+func (sr *SocketPool) clearStatus(channelID, threadTS string) {
+	if sr.statusMgr == nil {
+		return
+	}
+	if err := sr.statusMgr.Clear(channelID, threadTS); err != nil {
+		sr.logger.Error("failed to clear Slack thread status", "channel_id", channelID, "thread_ts", threadTS, "error", err)
+	}
 }
 
 // Connect establishes a connection to a channel-server socket without sending a message.

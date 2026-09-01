@@ -36,10 +36,25 @@ channel_id = "C..."          # optional default for requests without channel_id
 listen_addr = "127.0.0.1:7890"
 allowed_user_ids = ["U..."]
 deliver_full_thread = false # optional; default is root + delta on @-mention
+status_text = "is thinking…"          # optional; shown on a thread's shimmer status line
+status_loading_messages = ["Checking…"] # optional; rotates under status_text, max 10 entries
+status_ttl = "15m"                    # optional; clears a stale status if nothing posts by then
 ```
 
 Outbound-only operation requires only `slack_bot_token`. Requests that omit
 `channel_id` require the optional configured default.
+
+### Thread status (shimmer)
+
+When Socket Mode delivers an inbound message or app-mention deliberation to
+a session, slack-adapter shows the bound thread's assistant status line
+(`assistant.threads.setStatus`) with `status_text`, rotating through
+`status_loading_messages` if configured. The status is cleared once the
+session posts a reply or a permission prompt through this adapter, or after
+`status_ttl` elapses with nothing posted (covers a session that ends its
+turn without ever calling reply). `status_text` and `status_loading_messages`
+are plain config — this plugin has no built-in wording tied to any
+particular workflow.
 
 When Socket Mode is enabled, an `app_mention` in a subscribed thread publishes
 one inbound `user.emit` to the bound `session_name`. The event body is an
@@ -101,6 +116,22 @@ deliberation delivery because it is the target for `plect event publish`.
 
 // Response
 {"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "...", "session_name": "owner/repo-1", "since": "2026-05-17T00:00:00Z"}
+```
+
+### POST /status
+
+Sets or clears a thread's assistant shimmer status line directly, without
+posting a message. A non-empty `status` shows it (optionally rotating
+through `loading_messages`, max 10); an empty (or omitted) `status` clears
+it. Wiring this to agent hooks (e.g. reporting the current tool name as
+status) is left to a caller of this endpoint, not built into the plugin.
+
+```json
+// Request
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "status": "is reviewing the diff…", "loading_messages": ["Checking CI…"]}
+
+// Request (clear)
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "status": ""}
 ```
 
 ### DELETE /subscribe?thread_ts=...

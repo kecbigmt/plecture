@@ -19,15 +19,21 @@ func testLogger() *slog.Logger {
 }
 
 type mockPoster struct {
-	mu    sync.Mutex
-	posts []postedMessage
-	err   error // when set, PostToThread records the attempt then returns it
+	mu          sync.Mutex
+	posts       []postedMessage
+	statusCalls []postedStatus
+	err         error // when set, PostToThread records the attempt then returns it
 }
 
 type postedMessage struct {
 	channelID string
 	threadTS  string
 	text      string
+}
+
+type postedStatus struct {
+	channelID, threadTS, status string
+	loadingMessages             []string
 }
 
 func (m *mockPoster) PostToThread(channelID, threadTS, text string) (string, error) {
@@ -40,10 +46,23 @@ func (m *mockPoster) PostToThread(channelID, threadTS, text string) (string, err
 	return "ts", nil
 }
 
+func (m *mockPoster) SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.statusCalls = append(m.statusCalls, postedStatus{channelID, threadTS, status, loadingMessages})
+	return nil
+}
+
 func (m *mockPoster) postCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.posts)
+}
+
+func (m *mockPoster) statusCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.statusCalls)
 }
 
 func TestSocketPool_SendAndReceive(t *testing.T) {
@@ -70,7 +89,7 @@ func TestSocketPool_SendAndReceive(t *testing.T) {
 	go listener.Serve()
 
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil)
+	router := NewSocketPool(poster, testLogger(), nil, nil)
 	defer router.Close()
 
 	msg := protocol.MessagePayload{
@@ -135,7 +154,7 @@ func TestSocketPool_CaptureGatedOnPostSuccess(t *testing.T) {
 			captureMu.Lock()
 			captures++
 			captureMu.Unlock()
-		})
+		}, nil)
 		defer pool.Close()
 
 		_ = pool.Send(socketPath, "C01", protocol.MessagePayload{Text: "go", ThreadTS: "111.0"})
@@ -185,7 +204,7 @@ func TestSocketPool_ReplyPostsToSlack(t *testing.T) {
 	go listener.Serve()
 
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil)
+	router := NewSocketPool(poster, testLogger(), nil, nil)
 	defer router.Close()
 
 	_ = router.Send(socketPath, "C01TEST", protocol.MessagePayload{
@@ -219,9 +238,130 @@ func TestSocketPool_ReplyPostsToSlack(t *testing.T) {
 	poster.mu.Unlock()
 }
 
+// Slack auto-clears status on an app reply, but SocketPool clears
+// explicitly rather than relying on that (see StatusManager doc).
+func TestSocketPool_ReplyClearsThreadStatus(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, err := newFakeSocketListener(socketPath, func(env protocol.Envelope, conn net.Conn) {
+		if env.Type == protocol.MsgMessage {
+			data, _ := protocol.NewEnvelope(protocol.MsgReply, protocol.ReplyPayload{Text: "done", ThreadTS: "111.0"})
+			writeFakeMessage(conn, data)
+		}
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("NewSocketListener() error: %v", err)
+	}
+	defer listener.Close()
+	go listener.Serve()
+
+	poster := &mockPoster{}
+	statusMgr := NewStatusManager(poster, time.Hour, testLogger())
+	defer statusMgr.Stop()
+	router := NewSocketPool(poster, testLogger(), nil, statusMgr)
+	defer router.Close()
+
+	_ = router.Send(socketPath, "C01TEST", protocol.MessagePayload{Text: "go", ThreadTS: "111.0"})
+
+	deadline := time.After(2 * time.Second)
+	for poster.statusCallCount() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for status clear")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	poster.mu.Lock()
+	defer poster.mu.Unlock()
+	if got := poster.statusCalls[0]; got.channelID != "C01TEST" || got.threadTS != "111.0" || got.status != "" {
+		t.Errorf("status clear call = %+v, want C01TEST/111.0/empty", got)
+	}
+}
+
+// A permission prompt isn't a "reply" from Slack's perspective, so its
+// delivery must clear the status explicitly the same way a reply does.
+func TestSocketPool_PermissionPromptClearsThreadStatus(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, err := newFakeSocketListener(socketPath, func(env protocol.Envelope, conn net.Conn) {
+		if env.Type == protocol.MsgMessage {
+			data, _ := protocol.NewEnvelope(protocol.MsgPermission, protocol.PermissionPayload{Text: "allow?", ThreadTS: "111.0"})
+			writeFakeMessage(conn, data)
+		}
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("NewSocketListener() error: %v", err)
+	}
+	defer listener.Close()
+	go listener.Serve()
+
+	poster := &mockPoster{}
+	statusMgr := NewStatusManager(poster, time.Hour, testLogger())
+	defer statusMgr.Stop()
+	router := NewSocketPool(poster, testLogger(), nil, statusMgr)
+	defer router.Close()
+
+	_ = router.Send(socketPath, "C01TEST", protocol.MessagePayload{Text: "go", ThreadTS: "111.0"})
+
+	deadline := time.After(2 * time.Second)
+	for poster.statusCallCount() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for status clear")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	poster.mu.Lock()
+	defer poster.mu.Unlock()
+	if got := poster.statusCalls[0]; got.status != "" {
+		t.Errorf("status clear call = %+v, want empty status", got)
+	}
+}
+
+// A reply that fails to post must not clear status either — nothing
+// reached Slack, so the thread should keep showing it's still working.
+func TestSocketPool_ReplyPostFailureDoesNotClearThreadStatus(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "test.sock")
+	listener, err := newFakeSocketListener(socketPath, func(env protocol.Envelope, conn net.Conn) {
+		if env.Type == protocol.MsgMessage {
+			data, _ := protocol.NewEnvelope(protocol.MsgReply, protocol.ReplyPayload{Text: "done", ThreadTS: "111.0"})
+			writeFakeMessage(conn, data)
+		}
+	}, testLogger())
+	if err != nil {
+		t.Fatalf("NewSocketListener() error: %v", err)
+	}
+	defer listener.Close()
+	go listener.Serve()
+
+	poster := &mockPoster{err: errors.New("slack down")}
+	statusMgr := NewStatusManager(poster, time.Hour, testLogger())
+	defer statusMgr.Stop()
+	router := NewSocketPool(poster, testLogger(), nil, statusMgr)
+	defer router.Close()
+
+	_ = router.Send(socketPath, "C01TEST", protocol.MessagePayload{Text: "go", ThreadTS: "111.0"})
+
+	deadline := time.After(2 * time.Second)
+	for poster.postCount() == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for reply post attempt")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	time.Sleep(50 * time.Millisecond) // let any (erroneous) clear run
+	if got := poster.statusCallCount(); got != 0 {
+		t.Errorf("SetThreadStatus calls = %d, want 0 (post failed, nothing reached Slack)", got)
+	}
+}
+
 func TestSocketPool_SendToInvalidSocket(t *testing.T) {
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil)
+	router := NewSocketPool(poster, testLogger(), nil, nil)
 	defer router.Close()
 
 	err := router.Send("/nonexistent/path.sock", "C01TEST", protocol.MessagePayload{
@@ -254,7 +394,7 @@ func TestSocketPool_ReusesConnection(t *testing.T) {
 	go listener.Serve()
 
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil)
+	router := NewSocketPool(poster, testLogger(), nil, nil)
 	defer router.Close()
 
 	// Send two messages to the same socket
