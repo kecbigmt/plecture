@@ -4,6 +4,28 @@
 # the scratch paths, and seeds the session file the launch waits for; the
 # answers/ scripts are how this plugin's own executables reply.
 
+# A resume whose only session record is the previous (now-dead) process's
+# stale entry: this plugin's own terminal-send_keys stand-in withholds the
+# live-pid record until a second Enter arrives, so the scenario only
+# succeeds if the poll loop resends Enter past the stale one. Runs before
+# the channel-server pair below so channel-server-absent's executable
+# removal doesn't shape its record too.
+[[runtime]]
+name = "resume-stale-record"
+prev = { session_id = "11111111-2222-3333-4444-555555555555", pid = "999999" }
+
+[[runtime.files]]
+path    = ".claude/sessions/stale.json"
+content = '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":999999}'
+
+[[runtime.artifacts]]
+output = "hooks_settings"
+path   = ""
+
+[[runtime.artifacts]]
+output = "mcp_config"
+path   = ""
+
 [[runtime]]
 name   = "channel-server-present"
 inputs = { model = "opus", effort = "high", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', mcp_servers = '[{"name":"kbn","command":"kbn-mcp"}]', path_prepend = "/spy/guard" }

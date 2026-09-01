@@ -158,17 +158,19 @@ fi
 sh -c "$send_text" terminal-send-text "${EXPORTS}${CLAUDE_CMD}"
 sh -c "$send_keys" terminal-send-keys Enter
 
-# Keep sending Enter until the session JSON file appears, then confirm the
-# PID is alive. claude's own startup can stall on a warning banner (e.g. the
+# Keep sending Enter until a live candidate appears, then confirm the PID is
+# alive. claude's own startup can stall on a warning banner (e.g. the
 # --dangerously-load-development-channels warning) right after launch, and
 # nothing but Enter clears it — so ~/.claude/sessions/*.json is never written
 # until that happens. Polling for the JSON's appearance is more resilient to
 # prompt-render delay than a fixed sleep would be (the same warning
 # reappears on --resume, so the same loop covers both cases).
 #
-# On --resume, the session JSON can still carry the previous run's now-dead
-# pid, so skip any candidate matching the previous pid and confirm liveness
-# with kill -0 before accepting it.
+# Enter must be resent whenever no *live* candidate is found, not merely
+# when no record is found at all: on --resume, the previous run's now-dead
+# pid can still satisfy the sessionId match from the first iteration, and
+# withholding Enter on that basis deadlocks the launch on the banner
+# forever.
 # 30s, not 10s: a cold pane can spend several seconds loading its shell
 # environment before the claude command even runs, and a warm pane still
 # clears in a couple of iterations, so the longer bound only costs time on
@@ -179,19 +181,15 @@ i=0
 while [ "$i" -lt 60 ]; do
   i=$((i + 1))
   sleep 0.5
-  CANDIDATE=$(jq -r --arg sid "$SID" 'select(.sessionId == $sid) | .pid' \
-        "$HOME/.claude/sessions/"*.json 2>/dev/null | grep -v null | head -1)
-  if [ -z "$CANDIDATE" ]; then
-    # No session JSON yet — most likely still stuck on the warning banner.
-    # Send another Enter and keep polling; once the JSON appears, this
-    # branch stops being taken, so extra Enters stop being sent.
-    sh -c "$send_keys" terminal-send-keys Enter
-    continue
-  fi
-  [ -n "$PREV_PID" ] && [ "$CANDIDATE" = "$PREV_PID" ] && continue
-  kill -0 "$CANDIDATE" 2>/dev/null || continue
-  PID="$CANDIDATE"
-  break
+  for CANDIDATE in $(jq -r --arg sid "$SID" 'select(.sessionId == $sid) | .pid' \
+        "$HOME/.claude/sessions/"*.json 2>/dev/null | grep -v null); do
+    [ -n "$PREV_PID" ] && [ "$CANDIDATE" = "$PREV_PID" ] && continue
+    kill -0 "$CANDIDATE" 2>/dev/null || continue
+    PID="$CANDIDATE"
+    break
+  done
+  [ -n "$PID" ] && break
+  sh -c "$send_keys" terminal-send-keys Enter
 done
 if [ -z "$PID" ]; then
   echo "claude not detected within 30s for session_id $SID (prev_pid=$PREV_PID)" >&2

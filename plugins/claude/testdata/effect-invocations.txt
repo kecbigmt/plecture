@@ -5,6 +5,40 @@ call[2]: "terminal-send_keys" "Enter"
 call[3]: "terminal-capture"
 outputs: {"sent":"true"}
 
+== runtime:resume-stale-record / setup
+call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[1]: "claude-mcp-servers"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json --dangerously-load-development-channels server:channel-server   --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json --dangerously-load-development-channels server:channel-server   --disallowedTools AskUserQuestion"
+call[5]: "terminal-send_keys" "Enter"
+call[6]: "terminal-send_keys" "Enter"
+outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock"}
+artifact hooks_settings/:
+{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"Stop":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity waiting"}]}]}}
+artifact mcp_config/:
+{
+  "mcpServers": {
+    "channel-server": {
+      "command": "<plugin>/bin/channel-server",
+      "env": {
+        "CHANNEL_SOCKET_PATH": "<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock"
+      }
+    }
+  }
+}
+
+== runtime:resume-stale-record / health.alive
+alive
+
+== runtime:resume-stale-record / health.activity
+call[0]: "claude-agent-activity" "probe" "acme/widget-1"
+activity: fingerprint="spy-turn-1" silence_expected=false
+
+== runtime:resume-stale-record / cleanup
+call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
 == runtime:channel-server-present / setup
 call[0]: "uuidgen"
 call[1]: "mktemp" "<state>/plect-mcp.XXXXXX"

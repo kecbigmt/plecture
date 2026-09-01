@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+# Withholds the live-pid session file until the second call, so the
+# resume-stale-record scenario only succeeds if the poll loop actually
+# resends Enter after finding just the stale (dead-pid) record.
+plect-effect-record terminal-send_keys "$@"
+count=$(grep -o terminal-send_keys "$PLECT_EFFECT_LOG" 2>/dev/null | wc -l)
+if [ "$count" -ge 2 ]; then
+  mkdir -p "$HOME/.claude/sessions"
+  printf '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":%s}\n' "$PLECT_EFFECT_PID" \
+    > "$HOME/.claude/sessions/live.json"
+fi
+true
