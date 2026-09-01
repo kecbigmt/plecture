@@ -51,3 +51,14 @@ text="${got#state set-message owner/repo-1 }"
 got="$(run_hook '{"hook_event_name":"UserPromptSubmit"}')"
 want='state set-message owner/repo-1 working'
 [ "$got" = "$want" ] || { printf 'UserPromptSubmit text = %q, want %q\n' "$got" "$want" >&2; exit 1; }
+
+# The Stop hook's waiting phase clears the message rather than reporting the
+# literal word "waiting" as if it were a current activity.
+PLECT_SESSION_NAME="owner/repo-1" \
+PLECT_CALLS="$tmp/calls" \
+XDG_STATE_HOME="$tmp/state" \
+PATH="$bin_dir:$PATH" \
+"$subject" waiting <<<'{"hook_event_name":"Stop"}'
+got="$(tail -n 1 "$tmp/calls")"
+want='state set-message owner/repo-1 '
+[ "$got" = "$want" ] || { printf 'Stop text = %q, want %q\n' "$got" "$want" >&2; exit 1; }

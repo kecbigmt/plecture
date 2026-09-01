@@ -18,6 +18,16 @@ session="$PLECT_SESSION_NAME"
 state_dir="$tmp/state"
 mkdir -p "$state_dir/log"
 
+bin_dir="$tmp/bin"
+mkdir -p "$bin_dir"
+cat > "$bin_dir/plect" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PLECT_CALLS"
+EOF
+chmod +x "$bin_dir/plect"
+export PLECT_CALLS="$tmp/calls"
+export PATH="$bin_dir:$PATH"
+
 fail=0
 check() {
   local label="$1" want="$2" got="$3"
@@ -72,10 +82,14 @@ fi
 printf '{"hook_event_name":"UserPromptSubmit"}\n' | "$activity" working
 working_envelope="$("$activity" probe "$session" "$state_dir")"
 check "hook activity is not silence-expected" "false" "$(printf '%s' "$working_envelope" | jq -r .silence_expected)"
+check "working reports its activity as the message" "state set-message selftest/session-1 working (codex UserPromptSubmit)" "$(tail -n 1 "$tmp/calls")"
 
 printf '{"hook_event_name":"Stop"}\n' | "$activity" waiting
 waiting_envelope="$("$activity" probe "$session" "$state_dir")"
 check "a completed turn's hook pardons silence" "true" "$(printf '%s' "$waiting_envelope" | jq -r .silence_expected)"
+# The waiting phase marks a completed turn, not an activity: an idle session
+# is reported as an empty message, not the literal word "waiting".
+check "waiting clears the message instead of reporting itself as an activity" "state set-message selftest/session-1 " "$(tail -n 1 "$tmp/calls")"
 
 fp_before_hooks="$fp_grown"
 fp_after_hooks="$(printf '%s' "$waiting_envelope" | jq -r .fingerprint)"

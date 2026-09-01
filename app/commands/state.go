@@ -74,14 +74,15 @@ Example:
 var setMessageCmd = &cobra.Command{
 	Use:   "set-message <session-or-url> <text>",
 	Short: "Set the session's self-reported status message",
-	Long: `Set or clear the session-level status message. plect does not interpret
-the text — it is a slot for external self-reports (e.g. an agent's
-turn-boundary hook announcing "working" / "waiting").
+	Long: `Set or clear the session-level status message: the session's current
+activity, or empty when the session is idle. plect does not interpret the
+text — it is a slot for external self-reports (e.g. an agent's
+turn-boundary hook).
 
 An empty string clears the message.
 
 Example:
-  plect state set-message session-1 "working"
+  plect state set-message session-1 "running tests"
   plect state set-message session-1 ""`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {

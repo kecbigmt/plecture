@@ -21,9 +21,10 @@ type Conversation struct {
 	Metadata map[string]string `json:"metadata,omitempty"` // Plugin-specific data (thread_ts, channel_id, etc.)
 }
 
-// Message is a session-level, self-reported free-text status line (e.g. an
-// agent's turn-boundary "working"/"waiting" self-report). plect does not
-// interpret Text; it is a slot for external updaters, not a plect concept.
+// Message is a session-level, self-reported free-text status line: the
+// session's current activity, or empty when the session is idle. plect does
+// not interpret Text; it is a slot for external updaters, not a plect
+// concept.
 type Message struct {
 	Text      string    `json:"text"`
 	UpdatedAt time.Time `json:"updated_at"`

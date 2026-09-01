@@ -79,6 +79,10 @@ if [ "$event" = "PreToolUse" ] && [ -n "$tool" ]; then
 fi
 text="${text:0:80}"
 
+# The waiting phase marks a completed turn, not an activity: an idle session
+# is reported as an empty message, not the literal word "waiting".
+[ "$activity" = "waiting" ] && text=""
+
 plect state set-message "$PLECT_SESSION_NAME" "$text" >/dev/null 2>&1
 
 file="$(record_path "$PLECT_SESSION_NAME")"
