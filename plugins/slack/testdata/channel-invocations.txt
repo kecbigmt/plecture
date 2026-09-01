@@ -40,7 +40,7 @@ argv[6]: "stand-in-base_url/status"
 argv[7]: "-H"
 argv[8]: "Content-Type: application/json"
 argv[9]: "-d"
-argv[10]: "{\"channel_id\":\"stand-in-channel_id\",\"status\":\"a <tag> & an \\\"amp\\\"\\nover two lines\",\"thread_ts\":\"stand-in-thread_ts\"}"
+argv[10]: "{\"channel_id\":\"stand-in-channel_id\",\"loading_messages\":[\"a <tag> & an \\\"amp\\\"\\nover two lines\"],\"status\":\"a <tag> & an \\\"amp\\\"\\nover two lines\",\"thread_ts\":\"stand-in-thread_ts\"}"
 timeout: 10s
 
 == status / summary-only
@@ -55,5 +55,5 @@ argv[6]: "stand-in-base_url/status"
 argv[7]: "-H"
 argv[8]: "Content-Type: application/json"
 argv[9]: "-d"
-argv[10]: "{\"channel_id\":\"stand-in-channel_id\",\"status\":\"only a summary\",\"thread_ts\":\"stand-in-thread_ts\"}"
+argv[10]: "{\"channel_id\":\"stand-in-channel_id\",\"loading_messages\":[\"only a summary\"],\"status\":\"only a summary\",\"thread_ts\":\"stand-in-thread_ts\"}"
 timeout: 10s

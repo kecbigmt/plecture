@@ -9,17 +9,22 @@ import (
 )
 
 const (
-	// defaultStatusText is workflow-neutral: the plugin must not carry
-	// workflow knowledge (e.g. "reviewing…"), only a generic "something is
-	// happening" signal.
-	defaultStatusText  = "is thinking…"
 	defaultStatusTTL   = 15 * time.Minute
 	maxLoadingMessages = 10
+
+	// statusShowFlag is the non-empty `status` string sent when a caller has
+	// no more specific text of its own to send (only loading_messages
+	// renders in a channel thread — confirmed empirically — so `status`'s
+	// content is otherwise irrelevant; it only has to be non-empty to mean
+	// "show" rather than "clear").
+	statusShowFlag = "active"
 )
 
 // ThreadStatusSetter sets a Slack thread's shimmer status line
-// (assistant.threads.setStatus). An empty status clears it, matching
-// Slack's own convention for the underlying API.
+// (assistant.threads.setStatus). `status` is purely an on/off flag: a
+// non-empty value shows the thread's loading_messages (or, absent any,
+// Slack's own default text); empty clears it. `status`'s own content is
+// never rendered in a channel thread.
 type ThreadStatusSetter interface {
 	SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error
 }
@@ -62,9 +67,19 @@ func NewStatusManager(setter ThreadStatusSetter, ttl time.Duration, logger *slog
 	}
 }
 
-// Set pushes the TTL timer out on a later call for the same thread rather
-// than stacking a second clear.
+// Set clears before it sets: a loading_messages entry sent right after an
+// earlier status call on the same thread was observed (against a live
+// workspace) to flash once and then revert to Slack's own default text,
+// while the same entry sent right after an explicit clear renders
+// persistently. This can collapse back to a single call if a later check
+// shows a direct overwrite rendering reliably too.
+//
+// It also pushes the TTL timer out on a later call for the same thread
+// rather than stacking a second clear.
 func (m *StatusManager) Set(channelID, threadTS, status string, loadingMessages []string) error {
+	if err := m.setter.SetThreadStatus(channelID, threadTS, "", nil); err != nil {
+		return err
+	}
 	if err := m.setter.SetThreadStatus(channelID, threadTS, status, loadingMessages); err != nil {
 		return err
 	}

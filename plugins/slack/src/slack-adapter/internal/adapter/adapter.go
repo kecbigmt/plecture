@@ -233,7 +233,7 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 // showThreadStatus is best-effort: a failure here is logged, not surfaced,
 // since it's UX sugar riding on top of a delivery that already succeeded.
 func (a *Adapter) showThreadStatus(channelID, threadTS string) {
-	if err := a.statusManager.Set(channelID, threadTS, a.cfg.EffectiveStatusText(), a.cfg.StatusLoadingMessages); err != nil {
+	if err := a.statusManager.Set(channelID, threadTS, statusShowFlag, a.cfg.StatusLoadingMessages); err != nil {
 		a.logger.Error("failed to set Slack thread status",
 			"component", "slack-adapter", "event", "slack_status_error",
 			"channel_id", channelID, "thread_ts", threadTS, "error", err)

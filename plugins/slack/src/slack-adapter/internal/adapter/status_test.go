@@ -48,12 +48,17 @@ func TestStatusManager_Set_ShowsStatus(t *testing.T) {
 		t.Fatalf("Set() error = %v", err)
 	}
 
-	if setter.callCount() != 1 {
-		t.Fatalf("SetThreadStatus calls = %d, want 1", setter.callCount())
+	// Set clears before it sets (see StatusManager.Set), so a single Set
+	// call produces two SetThreadStatus calls.
+	if setter.callCount() != 2 {
+		t.Fatalf("SetThreadStatus calls = %d, want 2 (clear, then show)", setter.callCount())
+	}
+	if got := setter.calls[0]; got.status != "" {
+		t.Errorf("first call = %+v, want an empty-status clear", got)
 	}
 	got := setter.last()
 	if got.channelID != "C1" || got.threadTS != "111.0" || got.status != "is thinking…" {
-		t.Errorf("call = %+v, want C1/111.0/is thinking…", got)
+		t.Errorf("show call = %+v, want C1/111.0/is thinking…", got)
 	}
 	if len(got.loadingMessages) != 2 {
 		t.Errorf("loadingMessages = %v, want 2 entries", got.loadingMessages)
@@ -72,8 +77,8 @@ func TestStatusManager_Clear_ClearsImmediately(t *testing.T) {
 		t.Fatalf("Clear() error = %v", err)
 	}
 
-	if setter.callCount() != 2 {
-		t.Fatalf("SetThreadStatus calls = %d, want 2 (set, clear)", setter.callCount())
+	if setter.callCount() != 3 {
+		t.Fatalf("SetThreadStatus calls = %d, want 3 (clear, show, clear)", setter.callCount())
 	}
 	got := setter.last()
 	if got.status != "" || got.loadingMessages != nil {
@@ -90,8 +95,10 @@ func TestStatusManager_TTL_ClearsWithoutAnyPost(t *testing.T) {
 		t.Fatalf("Set() error = %v", err)
 	}
 
+	// Set's own clear-then-set already accounts for 2 calls; wait for a 3rd
+	// (the TTL fallback's clear).
 	deadline := time.After(2 * time.Second)
-	for setter.callCount() < 2 {
+	for setter.callCount() < 3 {
 		select {
 		case <-deadline:
 			t.Fatal("timeout waiting for TTL clear")
@@ -118,14 +125,15 @@ func TestStatusManager_Set_ResetsTTLTimer(t *testing.T) {
 		t.Fatalf("second Set() error = %v", err)
 	}
 	// Original timer would have fired ~20ms from here if it wasn't reset.
+	// Each Set is 2 calls (clear, show), so two Sets is 4 so far.
 	time.Sleep(40 * time.Millisecond)
-	if setter.callCount() != 2 {
-		t.Fatalf("SetThreadStatus calls = %d, want 2 (no premature TTL clear)", setter.callCount())
+	if setter.callCount() != 4 {
+		t.Fatalf("SetThreadStatus calls = %d, want 4 (no premature TTL clear)", setter.callCount())
 	}
 
 	time.Sleep(60 * time.Millisecond)
-	if setter.callCount() != 3 {
-		t.Fatalf("SetThreadStatus calls = %d, want 3 (TTL clear after the reset delay)", setter.callCount())
+	if setter.callCount() != 5 {
+		t.Fatalf("SetThreadStatus calls = %d, want 5 (TTL clear after the reset delay)", setter.callCount())
 	}
 }
 
@@ -142,10 +150,10 @@ func TestStatusManager_Clear_CancelsPendingTTLTimer(t *testing.T) {
 	}
 
 	// Wait past the original TTL window with nothing further happening on
-	// the thread. If Clear didn't cancel the timer, it fires here.
+	// the thread. If Clear didn't cancel the timer, it fires a 4th call here.
 	time.Sleep(60 * time.Millisecond)
-	if got := setter.callCount(); got != 2 {
-		t.Fatalf("SetThreadStatus calls = %d, want 2 (set, clear) — stale TTL timer fired again", got)
+	if got := setter.callCount(); got != 3 {
+		t.Fatalf("SetThreadStatus calls = %d, want 3 (clear, show, clear) — stale TTL timer fired again", got)
 	}
 }
 

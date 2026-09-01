@@ -819,12 +819,12 @@ func TestHandleSetStatus_NonEmptyStatusSetsWithoutPosting(t *testing.T) {
 	if len(poster.calls) != 0 {
 		t.Errorf("PostToThread calls = %d, want 0 (status update must not post a message)", len(poster.calls))
 	}
-	if len(poster.statusCalls) != 1 {
-		t.Fatalf("SetThreadStatus calls = %d, want 1", len(poster.statusCalls))
+	if len(poster.statusCalls) != 2 {
+		t.Fatalf("SetThreadStatus calls = %d, want 2 (clear, then show)", len(poster.statusCalls))
 	}
-	got := poster.statusCalls[0]
+	got := poster.statusCalls[1]
 	if got.ChannelID != "C123" || got.ThreadTS != "1111.000" || got.Status != "is reviewing…" {
-		t.Errorf("status call = %+v, want C123/1111.000/is reviewing…", got)
+		t.Errorf("show call = %+v, want C123/1111.000/is reviewing…", got)
 	}
 	if len(got.LoadingMessages) != 1 || got.LoadingMessages[0] != "Checking CI…" {
 		t.Errorf("loading_messages = %v, want [Checking CI…]", got.LoadingMessages)

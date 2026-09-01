@@ -161,7 +161,9 @@ func (a *Adapter) HandlePostMessage(w http.ResponseWriter, req *http.Request) {
 }
 
 // HandleSetStatus lets a caller report what a session is doing right now
-// without posting a message. An empty status clears it.
+// without posting a message. `status` is only an on/off flag (empty
+// clears); custom text belongs in `loading_messages`, the only part of a
+// channel thread's shimmer status that actually renders.
 func (a *Adapter) HandleSetStatus(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

@@ -170,20 +170,6 @@ func TestIsMentionUserAllowedHonorsAllowListWhenSet(t *testing.T) {
 	}
 }
 
-func TestEffectiveStatusText_DefaultsWhenUnset(t *testing.T) {
-	cfg := &Config{}
-	if got := cfg.EffectiveStatusText(); got != defaultStatusText {
-		t.Errorf("EffectiveStatusText() = %q, want default %q", got, defaultStatusText)
-	}
-}
-
-func TestEffectiveStatusText_UsesConfiguredValue(t *testing.T) {
-	cfg := &Config{StatusText: "is reviewing…"}
-	if got := cfg.EffectiveStatusText(); got != "is reviewing…" {
-		t.Errorf("EffectiveStatusText() = %q, want configured value", got)
-	}
-}
-
 func TestStatusTTLDuration_DefaultsWhenUnset(t *testing.T) {
 	cfg := &Config{}
 	if got := cfg.StatusTTLDuration(); got != defaultStatusTTL {

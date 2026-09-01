@@ -13,14 +13,19 @@ import (
 )
 
 type Config struct {
-	SlackBotToken         string   `toml:"slack_bot_token"`
-	SlackAppToken         string   `toml:"slack_app_token"`
-	ChannelID             string   `toml:"channel_id"`
-	ListenAddr            string   `toml:"listen_addr"`
-	AllowedUserIDs        []string `toml:"allowed_user_ids"`
-	NotifyUserIDs         []string `toml:"notify_user_ids"`
-	DeliverFullThread     bool     `toml:"deliver_full_thread"`
-	StatusText            string   `toml:"status_text"`
+	SlackBotToken     string   `toml:"slack_bot_token"`
+	SlackAppToken     string   `toml:"slack_app_token"`
+	ChannelID         string   `toml:"channel_id"`
+	ListenAddr        string   `toml:"listen_addr"`
+	AllowedUserIDs    []string `toml:"allowed_user_ids"`
+	NotifyUserIDs     []string `toml:"notify_user_ids"`
+	DeliverFullThread bool     `toml:"deliver_full_thread"`
+	// StatusLoadingMessages is the default loading_messages shown on an
+	// inbound-delivery status. There is no separate status-text config:
+	// Slack's assistant.threads.setStatus renders only loading_messages
+	// against a real channel thread, never the `status` string itself
+	// (confirmed empirically), so a would-be "default text" setting would
+	// silently never render.
 	StatusLoadingMessages []string `toml:"status_loading_messages"`
 	StatusTTL             string   `toml:"status_ttl"`
 }
@@ -66,17 +71,6 @@ func (c *Config) ValidateStartup() error {
 		return fmt.Errorf("status_loading_messages: %w", err)
 	}
 	return nil
-}
-
-// EffectiveStatusText applies the default here rather than in LoadConfig,
-// because a Config built directly (as tests and some callers do) would
-// otherwise carry an empty StatusText — which Slack reads as a clear, not
-// as "show the default text".
-func (c *Config) EffectiveStatusText() string {
-	if c.StatusText == "" {
-		return defaultStatusText
-	}
-	return c.StatusText
 }
 
 // StatusTTLDuration falls back to defaultStatusTTL (with a warning) on an

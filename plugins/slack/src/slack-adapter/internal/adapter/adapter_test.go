@@ -28,7 +28,7 @@ func fakeSlackAPI(t *testing.T) *slack.Client {
 
 func TestHandleMessage_SetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
 	socketPath, _ := startCapturingListener(t)
-	a := newTestAdapter(&Config{AllowedUserIDs: []string{"U-dana"}, StatusText: "is thinking…"})
+	a := newTestAdapter(&Config{AllowedUserIDs: []string{"U-dana"}, StatusLoadingMessages: []string{"is thinking…"}})
 	a.api = fakeSlackAPI(t)
 	poster := a.poster.(*recordingPoster)
 	a.broker.Subscribe(Subscriber{
@@ -45,12 +45,20 @@ func TestHandleMessage_SetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
 		Channel:         "C123",
 	})
 
-	if len(poster.statusCalls) != 1 {
-		t.Fatalf("SetThreadStatus calls = %d, want 1", len(poster.statusCalls))
+	// Set clears before it sets (see StatusManager.Set), so a successful
+	// delivery produces a clear call followed by the real show call.
+	if len(poster.statusCalls) != 2 {
+		t.Fatalf("SetThreadStatus calls = %d, want 2 (clear, then show)", len(poster.statusCalls))
 	}
-	got := poster.statusCalls[0]
-	if got.ChannelID != "C123" || got.ThreadTS != "1111.000" || got.Status != "is thinking…" {
-		t.Errorf("status call = %+v, want C123/1111.000/is thinking…", got)
+	if got := poster.statusCalls[0]; got.Status != "" {
+		t.Errorf("first call = %+v, want an empty-status clear", got)
+	}
+	got := poster.statusCalls[1]
+	if got.ChannelID != "C123" || got.ThreadTS != "1111.000" || got.Status == "" {
+		t.Errorf("show call = %+v, want C123/1111.000/non-empty status", got)
+	}
+	if len(got.LoadingMessages) != 1 || got.LoadingMessages[0] != "is thinking…" {
+		t.Errorf("loading_messages = %v, want [is thinking…]", got.LoadingMessages)
 	}
 }
 

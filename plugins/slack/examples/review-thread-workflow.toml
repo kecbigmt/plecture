@@ -52,8 +52,17 @@ name    = "thread_status"
 uses    = "official.slack.status"
 include = ["plect.status_message"]
 
+# No per-event `status`/`text` input here: an [event.channel.inputs] binding
+# resolves from session/node outputs only (the same surface a node's own
+# inputs read), with no `event` root — so a workflow cannot branch on the
+# delivered event's own content at this binding site. The `status` channel
+# itself carries the event's body-or-summary verbatim into the thread's
+# status line (see channels/status.toml), which is why a
+# `plect.status_message` event whose text is the literal word "waiting"
+# (this plugin's Stop-hook convention) shows as "waiting" rather than
+# clearing the status — turning that into a clear needs the event itself to
+# carry an empty body and summary, which is the emitting hook's call.
 [pr_review_with_slack.event.channel.inputs]
 base_url   = { from = "session.inputs.slack_base_url" }
 channel_id = { from = "nodes.slack_thread.outputs.channel_id" }
 thread_ts  = { from = "nodes.slack_thread.outputs.thread_ts" }
-status     = { expr = "event.summary == 'waiting' ? '' : event.summary" }
