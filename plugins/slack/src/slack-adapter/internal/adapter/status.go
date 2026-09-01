@@ -17,15 +17,16 @@ const (
 	maxLoadingMessages = 10
 )
 
-// ThreadStatusSetter sets or clears a Slack thread's shimmer status line
-// (assistant.threads.setStatus). An empty status clears it.
+// ThreadStatusSetter sets a Slack thread's shimmer status line
+// (assistant.threads.setStatus). An empty status clears it, matching
+// Slack's own convention for the underlying API.
 type ThreadStatusSetter interface {
 	SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error
 }
 
-// validateLoadingMessages enforces Slack's assistant.threads.setStatus limit
-// of 10 loading_messages. Shared by config startup validation and the
-// POST /status request path so both reject the same way.
+// validateLoadingMessages is shared by config startup validation and the
+// POST /status request path so both reject over Slack's 10-message limit
+// the same way.
 func validateLoadingMessages(msgs []string) error {
 	if len(msgs) > maxLoadingMessages {
 		return fmt.Errorf("loading_messages must have at most %d entries, got %d", maxLoadingMessages, len(msgs))
@@ -46,8 +47,6 @@ type StatusManager struct {
 	timers map[string]*time.Timer // keyed by thread_ts
 }
 
-// NewStatusManager returns a StatusManager. ttl <= 0 falls back to
-// defaultStatusTTL.
 func NewStatusManager(setter ThreadStatusSetter, ttl time.Duration, logger *slog.Logger) *StatusManager {
 	if ttl <= 0 {
 		ttl = defaultStatusTTL
@@ -63,9 +62,8 @@ func NewStatusManager(setter ThreadStatusSetter, ttl time.Duration, logger *slog
 	}
 }
 
-// Set shows status on the thread and (re)starts the TTL timer that clears
-// it. A later Set on the same thread pushes the timer out again rather than
-// stacking a second clear.
+// Set pushes the TTL timer out on a later call for the same thread rather
+// than stacking a second clear.
 func (m *StatusManager) Set(channelID, threadTS, status string, loadingMessages []string) error {
 	if err := m.setter.SetThreadStatus(channelID, threadTS, status, loadingMessages); err != nil {
 		return err
@@ -74,16 +72,16 @@ func (m *StatusManager) Set(channelID, threadTS, status string, loadingMessages 
 	return nil
 }
 
-// Clear clears the thread's status immediately and cancels any pending TTL
-// timer, so an idle period afterward doesn't fire a redundant (or, if the
-// thread has since moved on to a new status, incorrect) clear.
+// Clear cancels any pending TTL timer first, so an idle period afterward
+// doesn't fire a redundant (or, once the thread has moved on to a new
+// status, incorrect) clear.
 func (m *StatusManager) Clear(channelID, threadTS string) error {
 	m.cancelTimer(threadTS)
 	return m.setter.SetThreadStatus(channelID, threadTS, "", nil)
 }
 
-// Stop cancels every pending TTL timer without clearing status on Slack.
-// Callers use this on shutdown, not as a substitute for Clear.
+// Stop is for shutdown, not a substitute for Clear: it cancels pending
+// timers without touching Slack.
 func (m *StatusManager) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -160,12 +160,8 @@ func (a *Adapter) HandlePostMessage(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// HandleSetStatus handles POST /status, updating a thread's assistant
-// shimmer status line without posting a message — the "update the status
-// without posting a message" entry point for agent hooks and similar
-// callers that just want to report what a session is doing right now. An
-// empty status clears it, the same convention SetAssistantThreadsStatus
-// itself uses.
+// HandleSetStatus lets a caller report what a session is doing right now
+// without posting a message. An empty status clears it.
 func (a *Adapter) HandleSetStatus(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

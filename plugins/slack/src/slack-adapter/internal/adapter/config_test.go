@@ -170,9 +170,6 @@ func TestIsMentionUserAllowedHonorsAllowListWhenSet(t *testing.T) {
 	}
 }
 
-// A Config built directly (not via LoadConfig) is the norm in this test
-// package, so the default must apply on read, not only when LoadConfig
-// populates a zero-value field.
 func TestEffectiveStatusText_DefaultsWhenUnset(t *testing.T) {
 	cfg := &Config{}
 	if got := cfg.EffectiveStatusText(); got != defaultStatusText {

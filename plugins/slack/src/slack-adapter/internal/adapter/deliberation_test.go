@@ -261,8 +261,6 @@ func TestHandleAppMentionSubscriptionWithoutSessionNameDoesNotPublish(t *testing
 	}
 }
 
-// Answers "did my message arrive": a mention that successfully delivers the
-// deliberation transcript should show the shimmer on that thread.
 func TestHandleAppMentionSetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
 	a := newTestAdapter(&Config{StatusText: "is reviewing…", StatusLoadingMessages: []string{"Checking…"}})
 	poster := a.poster.(*recordingPoster)
@@ -296,9 +294,8 @@ func TestHandleAppMentionSetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
 	}
 }
 
-// A skipped mention (fetch failure here; the same holds for the other
-// skip/drop branches earlier in handleAppMention) must not set a status —
-// nothing was actually delivered to the session.
+// Representative of every skip/drop branch in handleAppMention, not just
+// this one: none of them deliver anything, so none should set a status.
 func TestHandleAppMentionFetchFailureDoesNotSetThreadStatus(t *testing.T) {
 	a := newTestAdapter(&Config{})
 	poster := a.poster.(*recordingPoster)

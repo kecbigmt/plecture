@@ -31,8 +31,7 @@ type socketConn struct {
 	channelID string
 }
 
-// ThreadPoster posts messages to Slack threads and sets their shimmer
-// status line.
+// ThreadPoster posts messages to Slack threads.
 type ThreadPoster interface {
 	PostToThread(channelID, threadTS, text string) (string, error)
 	ThreadStatusSetter
@@ -136,10 +135,9 @@ func (sr *SocketPool) getOrConnect(socketPath, channelID, threadTS string) (*soc
 	return conn, nil
 }
 
-// clearStatus clears the thread's shimmer status after an outbound message
-// reached Slack. Slack auto-clears status on an app reply, but SocketPool
-// clears explicitly rather than relying on that, matching the permission
-// prompt path (which isn't a "reply" from Slack's perspective).
+// clearStatus doesn't rely on Slack's own auto-clear on an app reply,
+// which wouldn't cover the permission-prompt path anyway (not a "reply"
+// from Slack's perspective).
 func (sr *SocketPool) clearStatus(channelID, threadTS string) {
 	if sr.statusMgr == nil {
 		return

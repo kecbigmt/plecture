@@ -238,8 +238,6 @@ func TestSocketPool_ReplyPostsToSlack(t *testing.T) {
 	poster.mu.Unlock()
 }
 
-// Slack auto-clears status on an app reply, but SocketPool clears
-// explicitly rather than relying on that (see StatusManager doc).
 func TestSocketPool_ReplyClearsThreadStatus(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "test.sock")
 	listener, err := newFakeSocketListener(socketPath, func(env protocol.Envelope, conn net.Conn) {
@@ -279,8 +277,6 @@ func TestSocketPool_ReplyClearsThreadStatus(t *testing.T) {
 	}
 }
 
-// A permission prompt isn't a "reply" from Slack's perspective, so its
-// delivery must clear the status explicitly the same way a reply does.
 func TestSocketPool_PermissionPromptClearsThreadStatus(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "test.sock")
 	listener, err := newFakeSocketListener(socketPath, func(env protocol.Envelope, conn net.Conn) {
@@ -320,8 +316,6 @@ func TestSocketPool_PermissionPromptClearsThreadStatus(t *testing.T) {
 	}
 }
 
-// A reply that fails to post must not clear status either — nothing
-// reached Slack, so the thread should keep showing it's still working.
 func TestSocketPool_ReplyPostFailureDoesNotClearThreadStatus(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "test.sock")
 	listener, err := newFakeSocketListener(socketPath, func(env protocol.Envelope, conn net.Conn) {

@@ -26,8 +26,6 @@ func fakeSlackAPI(t *testing.T) *slack.Client {
 	return slack.New("xoxb-test", slack.OptionAPIURL(server.URL+"/"))
 }
 
-// Answers "did my message arrive": a bound thread reply that successfully
-// reaches channel-server should show the shimmer on that thread.
 func TestHandleMessage_SetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
 	socketPath, _ := startCapturingListener(t)
 	a := newTestAdapter(&Config{AllowedUserIDs: []string{"U-dana"}, StatusText: "is thinking…"})
@@ -56,8 +54,6 @@ func TestHandleMessage_SetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
 	}
 }
 
-// A failed delivery keeps the existing :warning: post and must not show a
-// status implying the session is working on a message it never received.
 func TestHandleMessage_DeliveryFailureDoesNotSetThreadStatus(t *testing.T) {
 	a := newTestAdapter(&Config{AllowedUserIDs: []string{"U-dana"}})
 	a.api = fakeSlackAPI(t)

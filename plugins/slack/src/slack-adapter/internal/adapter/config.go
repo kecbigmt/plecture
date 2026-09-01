@@ -68,13 +68,10 @@ func (c *Config) ValidateStartup() error {
 	return nil
 }
 
-// EffectiveStatusText returns the configured status text, or the
-// workflow-neutral default when unset. Config is built directly (not only
-// via LoadConfig) in tests and by callers that don't go through the
-// config.toml/env-var path, so the default lives here rather than only in
-// LoadConfig's zero value — an empty StatusText would otherwise be sent to
-// Slack as a status, which clears the thread's shimmer instead of showing
-// one.
+// EffectiveStatusText applies the default here rather than in LoadConfig,
+// because a Config built directly (as tests and some callers do) would
+// otherwise carry an empty StatusText — which Slack reads as a clear, not
+// as "show the default text".
 func (c *Config) EffectiveStatusText() string {
 	if c.StatusText == "" {
 		return defaultStatusText
@@ -82,9 +79,9 @@ func (c *Config) EffectiveStatusText() string {
 	return c.StatusText
 }
 
-// StatusTTLDuration parses StatusTTL, falling back to defaultStatusTTL (with
-// a warning) when it is empty or unparsable so a malformed value disables
-// the TTL fallback for one thread instead of the whole plugin.
+// StatusTTLDuration falls back to defaultStatusTTL (with a warning) on an
+// unparsable value, so a config typo disables the TTL fallback rather than
+// startup itself.
 func (c *Config) StatusTTLDuration() time.Duration {
 	if c.StatusTTL == "" {
 		return defaultStatusTTL

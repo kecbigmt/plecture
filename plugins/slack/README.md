@@ -28,6 +28,12 @@ another plugin's package.
   `base_url` (e.g. `http://127.0.0.1:7890` for its default `listen_addr`),
   `channel_id`, and `thread_ts` (typically wired from whatever task created
   the thread via slack-adapter's `POST /threads`).
+- `config/channels/status.toml` — same inputs and delivery mechanics as
+  `slack.toml`, but posts to `POST /status` instead of `POST /messages`: the
+  event's text becomes the thread's shimmer status line instead of a posted
+  message. Carries no event-type logic of its own — the composing workflow's
+  `include` list decides which events reach it, and an event whose body and
+  summary are both empty clears the status.
 - `src/slack-adapter/` — Slack-specific message relay + subscription
   broker. See `src/slack-adapter/CLAUDE.md`.
 

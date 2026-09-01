@@ -81,9 +81,6 @@ func TestStatusManager_Clear_ClearsImmediately(t *testing.T) {
 	}
 }
 
-// The TTL fallback exists for a session that ends its turn without ever
-// calling reply (e.g. it reports on the PR instead) — nothing else would
-// ever clear the shimmer.
 func TestStatusManager_TTL_ClearsWithoutAnyPost(t *testing.T) {
 	setter := &fakeStatusSetter{}
 	mgr := NewStatusManager(setter, 30*time.Millisecond, testLogger())
@@ -108,8 +105,6 @@ func TestStatusManager_TTL_ClearsWithoutAnyPost(t *testing.T) {
 	}
 }
 
-// A new Set on an already-showing thread must push the TTL clear out again,
-// not let the original timer fire mid-turn.
 func TestStatusManager_Set_ResetsTTLTimer(t *testing.T) {
 	setter := &fakeStatusSetter{}
 	mgr := NewStatusManager(setter, 60*time.Millisecond, testLogger())
@@ -134,9 +129,6 @@ func TestStatusManager_Set_ResetsTTLTimer(t *testing.T) {
 	}
 }
 
-// Clearing explicitly must cancel the pending TTL timer so an idle period
-// afterward doesn't fire a redundant (or, once the thread has moved on to a
-// new status, incorrect) clear.
 func TestStatusManager_Clear_CancelsPendingTTLTimer(t *testing.T) {
 	setter := &fakeStatusSetter{}
 	mgr := NewStatusManager(setter, 20*time.Millisecond, testLogger())
