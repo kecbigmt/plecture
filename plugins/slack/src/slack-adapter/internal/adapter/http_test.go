@@ -490,10 +490,6 @@ func TestHandleSubscribe_PostRetriesUntilSocketReady(t *testing.T) {
 	}
 }
 
-// TestHandleSubscribe_CatchUpThroughDeliversHistoryOnce covers the issue's
-// first GWT: a thread with prior replies and a mention at ts M, subscribed
-// with catch_up_through=M, delivers exactly one transcript (root + replies +
-// mention) and advances delivered_through to M.
 func TestHandleSubscribe_CatchUpThroughDeliversHistoryOnce(t *testing.T) {
 	socketPath := startTestListener(t)
 	a := newTestAdapter(&Config{ChannelID: "C0"})
@@ -549,10 +545,8 @@ func TestHandleSubscribe_CatchUpThroughDeliversHistoryOnce(t *testing.T) {
 	}
 }
 
-// TestHandleSubscribe_CatchUpThroughIsIdempotentAcrossResubscribe covers the
-// issue's second GWT: a runtime restart re-runs the run-scoped
-// slack_subscribe task, re-posting the same catch_up_through. The watermark
-// already covers it, so no second transcript goes out.
+// Models a runtime restart re-running the run-scoped slack_subscribe task
+// with the same catch_up_through.
 func TestHandleSubscribe_CatchUpThroughIsIdempotentAcrossResubscribe(t *testing.T) {
 	socketPath := startTestListener(t)
 	a := newTestAdapter(&Config{ChannelID: "C0"})
@@ -589,10 +583,6 @@ func TestHandleSubscribe_CatchUpThroughIsIdempotentAcrossResubscribe(t *testing.
 	}
 }
 
-// TestHandleSubscribe_CatchUpThroughThenLaterMentionDeliversOnlyDelta covers
-// the issue's third GWT: after a catch-up, a later mention at M2 > M
-// delivers only what's new — existing selectDeliberationMessages behavior,
-// now exercised starting from a catch-up watermark instead of an empty one.
 func TestHandleSubscribe_CatchUpThroughThenLaterMentionDeliversOnlyDelta(t *testing.T) {
 	socketPath := startTestListener(t)
 	a := newTestAdapter(&Config{ChannelID: "C0"})
@@ -649,8 +639,6 @@ func TestHandleSubscribe_CatchUpThroughThenLaterMentionDeliversOnlyDelta(t *test
 	})
 }
 
-// TestHandleSubscribe_CatchUpThroughOmittedIsUnchanged covers the issue's
-// fourth GWT: no catch_up_through means no fetch, no publish.
 func TestHandleSubscribe_CatchUpThroughOmittedIsUnchanged(t *testing.T) {
 	socketPath := startTestListener(t)
 	a := newTestAdapter(&Config{ChannelID: "C0"})

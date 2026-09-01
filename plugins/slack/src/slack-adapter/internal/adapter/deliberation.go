@@ -161,17 +161,10 @@ func buildDeliberationTranscript(fetcher threadFetcher, replies []slack.Message,
 	return strings.Join(lines, "\n"), deliveredThrough
 }
 
-// catchUpThread delivers a subscription's pre-existing thread history once,
-// on first binding, so the escalation shape (people discuss in a thread,
-// then someone mentions the bot) doesn't lose the thread that preceded the
-// mention. through is the caller-supplied upper bound — usually the ts of a
-// mention that arrived before any session existed to receive it, so unlike
-// handleAppMention there is no live mention event to append; through is
-// already among the fetched replies. Best-effort and idempotent: a fetch or
-// publish failure, or an empty/no-session subscription, leaves
-// DeliveredThrough untouched so a later re-subscribe (e.g. after a runtime
-// restart re-runs the run-scoped slack_subscribe task) retries instead of
-// silently losing the history.
+// catchUpThread never propagates a fetch or publish failure to the caller:
+// leaving DeliveredThrough untouched on failure means a later re-subscribe
+// (e.g. after a runtime restart re-runs the run-scoped slack_subscribe
+// task) retries instead of silently losing the history.
 func (a *Adapter) catchUpThread(sub Subscriber, through string) Subscriber {
 	if through == "" {
 		return sub
@@ -217,11 +210,10 @@ func (a *Adapter) catchUpThread(sub Subscriber, through string) Subscriber {
 	return sub
 }
 
-// selectCatchUpMessages returns the thread root plus every renderable reply
-// after watermark and up to and including through. Unlike
-// selectDeliberationMessages' live-tail case, there is no separately
-// appended mention: through IS the boundary message, delivered inline like
-// any other reply.
+// selectCatchUpMessages includes through itself, unlike
+// selectDeliberationMessages' mentionTS bound: there is no separate live
+// mention event to append here, so the boundary message is just another
+// reply.
 func selectCatchUpMessages(replies []slack.Message, threadTS, through, watermark string) []slack.Message {
 	sorted := sortedReplies(replies)
 	out := make([]slack.Message, 0, len(sorted))
@@ -242,7 +234,6 @@ func selectCatchUpMessages(replies []slack.Message, threadTS, through, watermark
 	return out
 }
 
-// buildCatchUpTranscript formats messages for one-time history delivery.
 func buildCatchUpTranscript(fetcher threadFetcher, messages []slack.Message) string {
 	lines := make([]string, 0, len(messages))
 	for _, msg := range messages {
@@ -251,8 +242,6 @@ func buildCatchUpTranscript(fetcher threadFetcher, messages []slack.Message) str
 	return strings.Join(lines, "\n")
 }
 
-// sortedReplies returns a copy of replies ordered oldest-first by Slack
-// timestamp.
 func sortedReplies(replies []slack.Message) []slack.Message {
 	sorted := append([]slack.Message(nil), replies...)
 	sort.SliceStable(sorted, func(i, j int) bool {
