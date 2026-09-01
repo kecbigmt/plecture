@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# Stands in for a real process-tree walk: always reports one fixed fake
+# child pid, so the launch-timeout-kills-pane-child scenario can exercise
+# the setup script's kill-on-timeout branch deterministically instead of
+# depending on a real claude process existing in the test sandbox.
+plect-effect-record pgrep "$@"
+printf '31337\n'

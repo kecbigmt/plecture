@@ -100,3 +100,17 @@ activity: fingerprint="spy-turn-1" silence_expected=false
 == runtime:channel-server-absent / cleanup
 call[0]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
+
+== runtime:launch-timeout-kills-pane-child / setup
+call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[1]: "claude-mcp-servers"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 33333333-4444-5555-6666-777777777777 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --disallowedTools AskUserQuestion || claude --session-id 33333333-4444-5555-6666-777777777777 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --disallowedTools AskUserQuestion"
+call[5]: "terminal-send_keys" "Enter"
+call[6]: "terminal-send_keys" "Enter"
+call[7]: "terminal-send_keys" "Enter"
+call[8]: "terminal-pid"
+call[9]: "pgrep" "-P" "<pid>"
+call[10]: "ps" "-p" "31337" "-o" "comm="
+declined: task "runtime" setup: exit status 1

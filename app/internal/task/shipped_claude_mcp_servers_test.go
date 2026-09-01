@@ -150,7 +150,7 @@ func TestShippedClaude_McpServersStaysOffEveryCommandLine(t *testing.T) {
 			WorkspaceDirPath: t.TempDir(),
 			Plugins:          mounted,
 			Terminal: &TerminalBinding{
-				Ops:     &config.TerminalConfig{Attach: shellStub("a"), Capture: shellStub("c"), SendText: shellStub("t"), SendKeys: shellStub("k")},
+				Ops:     &config.TerminalConfig{Attach: shellStub("a"), Capture: shellStub("c"), SendText: shellStub("t"), SendKeys: shellStub("k"), PID: shellStub("p")},
 				Outputs: map[string]any{"session_name": "test-session"},
 			},
 		},

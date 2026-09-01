@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Paired with the pgrep stand-in above: answers "claude" only for the fixed
+# fake child pid pgrep reports, so the comm-name match in the setup script's
+# kill-on-timeout branch has something to match against.
+plect-effect-record ps "$@"
+case "$2" in
+  31337) printf 'claude\n' ;;
+esac
