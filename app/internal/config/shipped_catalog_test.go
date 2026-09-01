@@ -168,3 +168,24 @@ func TestShippedCatalog_SlackAdapterServiceRequiresBotTokenOnly(t *testing.T) {
 		t.Errorf("slack-adapter service required_env = %v, want bot-token-only outbound startup", svc.RequiredEnv)
 	}
 }
+
+// TestShippedCatalog_GhAppGuardIsRunScoped guards against gh_app_guard.toml
+// reverting to session scope: its output is a directory under the current
+// runtime's TMPDIR, meaningful only while that runtime's PATH points at it,
+// so a session-scoped declaration would survive a container replacement in
+// state but not on disk, leaving a resumed session with a PATH entry that no
+// longer exists.
+func TestShippedCatalog_GhAppGuardIsRunScoped(t *testing.T) {
+	cfg := loadShippedCatalog(t, "official")
+	_, tasks, err := cfg.LoadTaskDeclarations("")
+	if err != nil {
+		t.Fatalf("LoadTaskDeclarations(shipped catalog): %v", err)
+	}
+	def, ok := tasks["official.github.gh_app_guard"]
+	if !ok {
+		t.Fatal("shipped catalog effect \"official.github.gh_app_guard\" not found")
+	}
+	if got := def.EffectiveScope(); got != TaskScopeRun {
+		t.Errorf("official.github.gh_app_guard scope = %q, want %q", got, TaskScopeRun)
+	}
+}
