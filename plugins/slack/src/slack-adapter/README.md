@@ -36,8 +36,7 @@ channel_id = "C..."          # optional default for requests without channel_id
 listen_addr = "127.0.0.1:7890"
 allowed_user_ids = ["U..."]
 deliver_full_thread = false # optional; default is root + delta on @-mention
-status_loading_messages = ["Checking…"] # optional; shown on a thread's shimmer status line, max 10 entries
-status_ttl = "15m"                      # optional; clears a stale status if nothing posts by then
+status_ttl = "15m"          # optional; clears a stale status if nothing posts by then
 on_unbound_mention = "/path/to/dispatch-command" # optional; see below
 ```
 
@@ -50,14 +49,18 @@ Outbound-only operation requires only `slack_bot_token`. Requests that omit
 
 ### Thread status (shimmer)
 
-When Socket Mode delivers an inbound message or app-mention deliberation to
-a session, slack-adapter shows the bound thread's assistant status line
-(`assistant.threads.setStatus`) with `status_loading_messages` (empty shows
-Slack's own default text). The status is cleared once the session posts a
-reply or a permission prompt through this adapter, or after `status_ttl`
-elapses with nothing posted (covers a session that ends its turn without
-ever calling reply). `status_loading_messages` is plain config — this plugin
-has no built-in wording tied to any particular workflow.
+slack-adapter never sets a bound thread's assistant status line
+(`assistant.threads.setStatus`) on inbound receipt (a message or an
+app-mention): the adapter cannot confirm delivery reached a live runtime,
+so a shimmer set at receipt time would assert progress the system has not
+observed. The shimmer is instead driven entirely by
+`POST /status` — the `status` channel a workflow wires to the runtime's own
+`plect.status_message` reports (see the top-level `plugins/slack` README) —
+so it only ever shows what a live runtime has actually said about itself.
+Once shown, the status is cleared once the session posts a reply or a
+permission prompt through this adapter, or after `status_ttl` elapses with
+nothing posted (covers a session that ends its turn without ever calling
+reply).
 
 There is no `status_text` config: confirmed empirically against real Slack
 workspaces, a channel thread never renders `assistant.threads.setStatus`'s

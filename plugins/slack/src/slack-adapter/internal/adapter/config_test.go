@@ -202,23 +202,3 @@ func TestStatusTTLDuration_FallsBackOnUnparsableValue(t *testing.T) {
 		t.Errorf("StatusTTLDuration() = %v, want default %v on parse failure", got, defaultStatusTTL)
 	}
 }
-
-func TestValidateStartup_RejectsTooManyStatusLoadingMessages(t *testing.T) {
-	cfg := &Config{
-		SlackBotToken:         "xoxb-test",
-		StatusLoadingMessages: make([]string, 11),
-	}
-	if err := cfg.ValidateStartup(); err == nil {
-		t.Fatal("ValidateStartup() error = nil, want a rejection for >10 status_loading_messages")
-	}
-}
-
-func TestValidateStartup_AllowsTenStatusLoadingMessages(t *testing.T) {
-	cfg := &Config{
-		SlackBotToken:         "xoxb-test",
-		StatusLoadingMessages: make([]string, 10),
-	}
-	if err := cfg.ValidateStartup(); err != nil {
-		t.Fatalf("ValidateStartup() error = %v, want nil for exactly 10 status_loading_messages", err)
-	}
-}

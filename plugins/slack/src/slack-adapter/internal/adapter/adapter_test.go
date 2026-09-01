@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -26,9 +27,13 @@ func fakeSlackAPI(t *testing.T) *slack.Client {
 	return slack.New("xoxb-test", slack.OptionAPIURL(server.URL+"/"))
 }
 
-func TestHandleMessage_SetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
-	socketPath, _ := startCapturingListener(t)
-	a := newTestAdapter(&Config{AllowedUserIDs: []string{"U-dana"}, StatusLoadingMessages: []string{"is thinking…"}})
+// The adapter no longer sets a receipt-time shimmer: a live runtime reports
+// its own progress via plect.status_message, and a receipt-time shimmer for
+// a runtime that turns out to be unreachable asserts progress until
+// status_ttl clears it.
+func TestHandleMessage_SuccessfulDeliveryDoesNotSetThreadStatus(t *testing.T) {
+	socketPath, msgs := startCapturingListener(t)
+	a := newTestAdapter(&Config{AllowedUserIDs: []string{"U-dana"}})
 	a.api = fakeSlackAPI(t)
 	poster := a.poster.(*recordingPoster)
 	a.broker.Subscribe(Subscriber{
@@ -45,20 +50,13 @@ func TestHandleMessage_SetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
 		Channel:         "C123",
 	})
 
-	// Set clears before it sets (see StatusManager.Set), so a successful
-	// delivery produces a clear call followed by the real show call.
-	if len(poster.statusCalls) != 2 {
-		t.Fatalf("SetThreadStatus calls = %d, want 2 (clear, then show)", len(poster.statusCalls))
+	select {
+	case <-msgs:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for the message to be delivered")
 	}
-	if got := poster.statusCalls[0]; got.Status != "" {
-		t.Errorf("first call = %+v, want an empty-status clear", got)
-	}
-	got := poster.statusCalls[1]
-	if got.ChannelID != "C123" || got.ThreadTS != "1111.000" || got.Status == "" {
-		t.Errorf("show call = %+v, want C123/1111.000/non-empty status", got)
-	}
-	if len(got.LoadingMessages) != 1 || got.LoadingMessages[0] != "is thinking…" {
-		t.Errorf("loading_messages = %v, want [is thinking…]", got.LoadingMessages)
+	if len(poster.statusCalls) != 0 {
+		t.Errorf("SetThreadStatus calls = %d, want 0 (no receipt-time shimmer)", len(poster.statusCalls))
 	}
 }
 
