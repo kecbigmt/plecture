@@ -6,7 +6,7 @@ Slack-specific message relay + subscription broker.
 
 - Receives messages via Slack Socket Mode when an app token is configured
 - Resolves `thread_ts → {channel_id, socket_path}` with an in-memory map (`Broker`)
-- Persists subscriptions to `$XDG_STATE_HOME/slack-adapter/subscribers.json` via atomic write and reloads them at startup (makes broker restarts transparent to plect)
+- Persists subscriptions (and unsubscribed threads' delivery-watermark tombstones) to `$XDG_STATE_HOME/slack-adapter/subscribers.json` via atomic write and reloads them at startup (makes broker restarts transparent to plect)
 - Forwards messages to channel-server; posts replies via the Slack API
 - Shows/clears a bound thread's assistant shimmer status line (`StatusManager`, `assistant.threads.setStatus`) around inbound delivery and outbound replies, with a TTL fallback for a session that never posts back
 - HTTP API: `/threads` (create a thread and return its permalink), `/messages` (post), `/status` (set/clear the shimmer status), `/subscribe` (register/unregister a subscription), `/subscribers` (list subscriptions)

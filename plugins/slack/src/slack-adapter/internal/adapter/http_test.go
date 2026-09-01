@@ -672,6 +672,135 @@ func TestHandleSubscribe_CatchUpThroughOmittedIsUnchanged(t *testing.T) {
 	}
 }
 
+// Models a clean plect down / up (or an ECS task replacement doing the same).
+func TestHandleSubscribe_UnsubscribeThenResubscribeSameSessionRestoresWatermark(t *testing.T) {
+	socketPath := startTestListener(t)
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	fetcher := &fakeThreadFetcher{
+		messages: []slack.Message{
+			slackMessage("1000.000001", "U-root", "Review thread opened"),
+			slackMessage("1000.000003", "U-bob", "<@U-bot> please act on this"),
+		},
+		names: map[string]string{"U-root": "Plecture", "U-bob": "Bob"},
+	}
+	a.threadFetcher = fetcher
+	publisher := &recordingEventPublisher{}
+	a.eventPublisher = publisher
+
+	subscribeBody, _ := json.Marshal(subscribeRequest{
+		ThreadTS:       "1000.000001",
+		ChannelID:      "C-review",
+		SocketPath:     socketPath,
+		SessionName:    "owner/repo-1",
+		CatchUpThrough: "1000.000003",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/subscribe", bytes.NewBuffer(subscribeBody))
+	w := httptest.NewRecorder()
+	a.HandleSubscribe(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("initial subscribe: got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events after initial subscribe = %d, want 1", len(publisher.events))
+	}
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/subscribe?thread_ts=1000.000001", nil)
+	delW := httptest.NewRecorder()
+	a.HandleSubscribe(delW, delReq)
+	if delW.Code != http.StatusNoContent {
+		t.Fatalf("unsubscribe: got status %d, want %d", delW.Code, http.StatusNoContent)
+	}
+	if _, ok := a.broker.Find("1000.000001"); ok {
+		t.Fatalf("subscription should be removed after unsubscribe")
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/subscribe", bytes.NewBuffer(subscribeBody))
+	w2 := httptest.NewRecorder()
+	a.HandleSubscribe(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("resubscribe: got status %d, want %d, body=%s", w2.Code, http.StatusOK, w2.Body.String())
+	}
+
+	var resp Subscriber
+	if err := json.NewDecoder(w2.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.DeliveredThrough != "1000.000003" {
+		t.Errorf("resubscribe response delivered_through = %q, want restored 1000.000003", resp.DeliveredThrough)
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events after resubscribe = %d, want still 1 (no redelivery)", len(publisher.events))
+	}
+}
+
+// Models plect destroy followed by a fresh plect up.
+func TestHandleSubscribe_UnsubscribeThenResubscribeDifferentSessionDeliversFullHistory(t *testing.T) {
+	socketPath := startTestListener(t)
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	fetcher := &fakeThreadFetcher{
+		messages: []slack.Message{
+			slackMessage("1000.000001", "U-root", "Review thread opened"),
+			slackMessage("1000.000003", "U-bob", "<@U-bot> please act on this"),
+		},
+		names: map[string]string{"U-root": "Plecture", "U-bob": "Bob"},
+	}
+	a.threadFetcher = fetcher
+	publisher := &recordingEventPublisher{}
+	a.eventPublisher = publisher
+
+	firstBody, _ := json.Marshal(subscribeRequest{
+		ThreadTS:       "1000.000001",
+		ChannelID:      "C-review",
+		SocketPath:     socketPath,
+		SessionName:    "owner/repo-1",
+		CatchUpThrough: "1000.000003",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/subscribe", bytes.NewBuffer(firstBody))
+	w := httptest.NewRecorder()
+	a.HandleSubscribe(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("initial subscribe: got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events after initial subscribe = %d, want 1", len(publisher.events))
+	}
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/subscribe?thread_ts=1000.000001", nil)
+	delW := httptest.NewRecorder()
+	a.HandleSubscribe(delW, delReq)
+	if delW.Code != http.StatusNoContent {
+		t.Fatalf("unsubscribe: got status %d, want %d", delW.Code, http.StatusNoContent)
+	}
+
+	secondBody, _ := json.Marshal(subscribeRequest{
+		ThreadTS:       "1000.000001",
+		ChannelID:      "C-review",
+		SocketPath:     socketPath,
+		SessionName:    "owner/repo-2",
+		CatchUpThrough: "1000.000003",
+	})
+	req2 := httptest.NewRequest(http.MethodPost, "/subscribe", bytes.NewBuffer(secondBody))
+	w2 := httptest.NewRecorder()
+	a.HandleSubscribe(w2, req2)
+	if w2.Code != http.StatusOK {
+		t.Fatalf("resubscribe: got status %d, want %d, body=%s", w2.Code, http.StatusOK, w2.Body.String())
+	}
+
+	var resp Subscriber
+	if err := json.NewDecoder(w2.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.DeliveredThrough != "1000.000003" {
+		t.Errorf("resubscribe response delivered_through = %q, want 1000.000003", resp.DeliveredThrough)
+	}
+	if len(publisher.events) != 2 {
+		t.Fatalf("published events after different-session resubscribe = %d, want 2 (full history redelivered)", len(publisher.events))
+	}
+	if publisher.events[1].SessionName != "owner/repo-2" {
+		t.Errorf("second delivery session_name = %q, want owner/repo-2", publisher.events[1].SessionName)
+	}
+}
+
 func TestHandleSubscribe_PostRejectsMissingFields(t *testing.T) {
 	a := newTestAdapter(&Config{ChannelID: "C0"})
 

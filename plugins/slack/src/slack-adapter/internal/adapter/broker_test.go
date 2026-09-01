@@ -140,6 +140,176 @@ func TestBroker_MarkDeliveredAdvancesWatermark(t *testing.T) {
 	}
 }
 
+func TestBroker_UnsubscribeThenSubscribeSameSessionRestoresWatermark(t *testing.T) {
+	b := NewBroker("", nil)
+	b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1", DeliveredThrough: "1000.000005"})
+
+	removed, ok := b.Unsubscribe("t")
+	if !ok {
+		t.Fatalf("expected Unsubscribe to report removal")
+	}
+	if removed.DeliveredThrough != "1000.000005" {
+		t.Fatalf("removed watermark = %q, want 1000.000005", removed.DeliveredThrough)
+	}
+	if _, ok := b.Find("t"); ok {
+		t.Fatalf("Find should miss right after Unsubscribe")
+	}
+
+	got := b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1"})
+	if got.DeliveredThrough != "1000.000005" {
+		t.Fatalf("DeliveredThrough = %q, want restored from tombstone", got.DeliveredThrough)
+	}
+}
+
+func TestBroker_UnsubscribeThenSubscribeDifferentSessionGetsNoWatermark(t *testing.T) {
+	b := NewBroker("", nil)
+	b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1", DeliveredThrough: "1000.000005"})
+	b.Unsubscribe("t")
+
+	got := b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-2"})
+	if got.DeliveredThrough != "" {
+		t.Fatalf("DeliveredThrough = %q, want empty for a different session", got.DeliveredThrough)
+	}
+}
+
+func TestBroker_UnsubscribeWithoutWatermarkLeavesNoTombstone(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "subscribers.json")
+	b := NewBroker(path, discardLogger())
+
+	b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1"})
+	b.Unsubscribe("t")
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ps persistedState
+	if err := json.Unmarshal(data, &ps); err != nil {
+		t.Fatal(err)
+	}
+	if len(ps.Tombstones) != 0 {
+		t.Fatalf("expected no tombstone for a subscriber with no watermark, got %+v", ps.Tombstones)
+	}
+}
+
+func TestBroker_SubscribeConsumesTombstone(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "subscribers.json")
+	b := NewBroker(path, discardLogger())
+
+	b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1", DeliveredThrough: "1000.000005"})
+	b.Unsubscribe("t")
+	b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1"})
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ps persistedState
+	if err := json.Unmarshal(data, &ps); err != nil {
+		t.Fatal(err)
+	}
+	if len(ps.Tombstones) != 0 {
+		t.Fatalf("expected tombstone consumed after resubscribe, got %+v", ps.Tombstones)
+	}
+}
+
+func TestBroker_TombstoneSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "subscribers.json")
+
+	func() {
+		b := NewBroker(path, discardLogger())
+		b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1", DeliveredThrough: "1000.000005"})
+		b.Unsubscribe("t")
+	}()
+
+	// A fresh Broker over the same path models an adapter process restart.
+	b := NewBroker(path, discardLogger())
+	got := b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1"})
+	if got.DeliveredThrough != "1000.000005" {
+		t.Fatalf("DeliveredThrough = %q, want restored from tombstone after restart", got.DeliveredThrough)
+	}
+}
+
+func TestBroker_LoadPrunesTombstonesOlderThan30Days(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "subscribers.json")
+
+	old := time.Now().Add(-tombstoneTTL - time.Hour)
+	initial := persistedState{
+		Tombstones: []Tombstone{
+			{ThreadTS: "t", SessionName: "owner/repo-1", DeliveredThrough: "1000.000005", UnsubscribedAt: old},
+		},
+	}
+	data, _ := json.Marshal(initial)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	b := NewBroker(path, discardLogger())
+	got := b.Subscribe(Subscriber{ThreadTS: "t", SessionName: "owner/repo-1"})
+	if got.DeliveredThrough != "" {
+		t.Fatalf("DeliveredThrough = %q, want empty (tombstone older than 30 days must not survive load)", got.DeliveredThrough)
+	}
+}
+
+func TestBroker_PersistPrunesTombstonesOlderThan30Days(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "subscribers.json")
+	b := NewBroker(path, discardLogger())
+
+	old := time.Now().Add(-tombstoneTTL - time.Hour)
+	b.mu.Lock()
+	b.tombstones[tombstoneKey("old-thread", "owner/repo-1")] = Tombstone{
+		ThreadTS:         "old-thread",
+		SessionName:      "owner/repo-1",
+		DeliveredThrough: "1000.000005",
+		UnsubscribedAt:   old,
+	}
+	b.mu.Unlock()
+
+	// Any persist prunes, not just one touching the expired tombstone's own
+	// thread_ts.
+	b.Subscribe(Subscriber{ThreadTS: "other", SessionName: "owner/repo-2"})
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ps persistedState
+	if err := json.Unmarshal(data, &ps); err != nil {
+		t.Fatal(err)
+	}
+	for _, tomb := range ps.Tombstones {
+		if tomb.ThreadTS == "old-thread" {
+			t.Fatalf("expected tombstone older than 30 days pruned on persist, got %+v", ps.Tombstones)
+		}
+	}
+}
+
+// Deliberate: no compatibility shim for the pre-tombstone bare-array shape,
+// per the repo's no-backward-compat-code policy; see docs/migrations for
+// the one-time conversion this requires instead.
+func TestBroker_LoadRejectsLegacyBareArrayFileAsCorrupt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "subscribers.json")
+
+	legacy := []Subscriber{
+		{ThreadTS: "1111.000", ChannelID: "C123", SocketPath: "/a", SessionName: "owner/repo-1", DeliveredThrough: "1000.000005", Since: time.Now()},
+	}
+	data, _ := json.Marshal(legacy)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	b := NewBroker(path, discardLogger())
+	if got := b.List(); len(got) != 0 {
+		t.Fatalf("expected empty broker for a legacy-format file, got %d entries", len(got))
+	}
+}
+
 func TestBroker_List(t *testing.T) {
 	b := NewBroker("", nil)
 	if got := b.List(); len(got) != 0 {
@@ -172,14 +342,15 @@ func TestBroker_PersistOnSubscribeAndUnsubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected state file after subscribe: %v", err)
 	}
-	var got []Subscriber
+	var got persistedState
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(got) != 1 || got[0].ThreadTS != "1111.000" || got[0].ChannelID != "C123" {
+	if len(got.Subscribers) != 1 || got.Subscribers[0].ThreadTS != "1111.000" || got.Subscribers[0].ChannelID != "C123" {
 		t.Fatalf("unexpected persisted state: %+v", got)
 	}
 
+	// No DeliveredThrough was ever set, so unsubscribe leaves no tombstone.
 	b.Unsubscribe("1111.000")
 	data, err = os.ReadFile(path)
 	if err != nil {
@@ -188,8 +359,11 @@ func TestBroker_PersistOnSubscribeAndUnsubscribe(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("decode after unsubscribe: %v", err)
 	}
-	if len(got) != 0 {
-		t.Fatalf("expected empty list after unsubscribe, got %+v", got)
+	if len(got.Subscribers) != 0 {
+		t.Fatalf("expected empty subscriber list after unsubscribe, got %+v", got)
+	}
+	if len(got.Tombstones) != 0 {
+		t.Fatalf("expected no tombstone for a subscriber with no watermark, got %+v", got.Tombstones)
 	}
 }
 
@@ -197,9 +371,11 @@ func TestBroker_LoadRestoresState(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")
 
-	initial := []Subscriber{
-		{ThreadTS: "1111.000", ChannelID: "C123", SocketPath: "/a", Since: time.Now()},
-		{ThreadTS: "2222.000", ChannelID: "C456", SocketPath: "/b", Since: time.Now()},
+	initial := persistedState{
+		Subscribers: []Subscriber{
+			{ThreadTS: "1111.000", ChannelID: "C123", SocketPath: "/a", Since: time.Now()},
+			{ThreadTS: "2222.000", ChannelID: "C456", SocketPath: "/b", Since: time.Now()},
+		},
 	}
 	data, _ := json.Marshal(initial)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
@@ -241,12 +417,12 @@ func TestBroker_LoadCorruptFileStartsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	var got []Subscriber
+	var got persistedState
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("decode after recovery write: %v", err)
 	}
-	if len(got) != 1 {
-		t.Fatalf("expected 1 entry after recovery write, got %d", len(got))
+	if len(got.Subscribers) != 1 {
+		t.Fatalf("expected 1 entry after recovery write, got %d", len(got.Subscribers))
 	}
 }
 
@@ -327,8 +503,8 @@ func TestBroker_ConcurrentPersistKeepsFileValid(t *testing.T) {
 				t.Errorf("read: %v", err)
 				return
 			}
-			var subs []Subscriber
-			if err := json.Unmarshal(data, &subs); err != nil {
+			var ps persistedState
+			if err := json.Unmarshal(data, &ps); err != nil {
 				t.Errorf("subscribers.json corrupt mid-flight: %v (%q)", err, data)
 				return
 			}
@@ -344,12 +520,12 @@ func TestBroker_ConcurrentPersistKeepsFileValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("final read: %v", err)
 	}
-	var subs []Subscriber
-	if err := json.Unmarshal(data, &subs); err != nil {
+	var ps persistedState
+	if err := json.Unmarshal(data, &ps); err != nil {
 		t.Fatalf("final subscribers.json corrupt: %v (%q)", err, data)
 	}
-	if len(subs) != 0 {
-		t.Fatalf("final subs length = %d, want 0", len(subs))
+	if len(ps.Subscribers) != 0 {
+		t.Fatalf("final subs length = %d, want 0", len(ps.Subscribers))
 	}
 }
 
@@ -392,12 +568,12 @@ func TestBroker_ConcurrentPersistMatchesMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var diskList []Subscriber
-	if err := json.Unmarshal(data, &diskList); err != nil {
+	var ps persistedState
+	if err := json.Unmarshal(data, &ps); err != nil {
 		t.Fatalf("disk corrupt: %v", err)
 	}
 	diskSet := map[string]bool{}
-	for _, s := range diskList {
+	for _, s := range ps.Subscribers {
 		diskSet[s.ThreadTS] = true
 	}
 
@@ -416,9 +592,10 @@ func TestBroker_ConcurrentPersistMatchesMemory(t *testing.T) {
 	}
 }
 
-// Lock down the on-disk wire format so downstream readers (and the
-// `slack-subscribe` healthcheck jq query) don't silently break if the
-// JSON shape drifts.
+// Lock down the on-disk wire format so downstream readers don't silently
+// break if the JSON shape drifts. Top-level is an object keyed
+// "subscribers" (and "tombstones" when non-empty) — not a bare array — so a
+// tombstones list can live in the same atomic snapshot as the subscribers.
 func TestBroker_PersistedJSONWireFormat(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")
@@ -437,16 +614,25 @@ func TestBroker_PersistedJSONWireFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Bare array — top-level must NOT be `{"subscribers": [...]}`.
-	var asArr []map[string]any
-	if err := json.Unmarshal(data, &asArr); err != nil {
-		t.Fatalf("expected top-level to be a JSON array: %v (%q)", err, data)
+	var asObj map[string]any
+	if err := json.Unmarshal(data, &asObj); err != nil {
+		t.Fatalf("expected top-level to be a JSON object: %v (%q)", err, data)
 	}
-	if len(asArr) != 1 {
-		t.Fatalf("array length = %d, want 1", len(asArr))
+	subsField, ok := asObj["subscribers"].([]any)
+	if !ok {
+		t.Fatalf(`expected top-level "subscribers" array, got %+v`, asObj)
+	}
+	if len(subsField) != 1 {
+		t.Fatalf("subscribers length = %d, want 1", len(subsField))
+	}
+	if _, ok := asObj["tombstones"]; ok {
+		t.Errorf(`no tombstone was created, expected "tombstones" key omitted, got %+v`, asObj)
 	}
 
-	got := asArr[0]
+	got, ok := subsField[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected subscriber shape: %+v", subsField[0])
+	}
 	wantKeys := []string{"thread_ts", "channel_id", "socket_path", "since"}
 	for _, k := range wantKeys {
 		if _, ok := got[k]; !ok {

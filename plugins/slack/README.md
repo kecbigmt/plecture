@@ -26,7 +26,10 @@ another plugin's package.
   `channel_id`, and `socket_path` (an opaque string — wire it from whatever
   runtime task exposes its channel-server socket). Run scope, not session
   scope, because the socket path changes on every agent launch while the
-  thread does not.
+  thread does not. Because this task's cleanup runs `DELETE /subscribe` on
+  every `plect down`, `slack-adapter`'s own state directory (not this
+  plugin's config) must live on storage that survives a redeploy — see
+  "Persistence" in `src/slack-adapter/README.md`.
 - `config/channels/slack.toml` — delivers a session event to its Slack
   thread by posting to the `slack-adapter` service's HTTP API. Inputs:
   `base_url` (e.g. `http://127.0.0.1:7890` for its default `listen_addr`),

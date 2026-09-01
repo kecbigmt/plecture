@@ -173,6 +173,15 @@ transcript format app-mention deliberation uses. Re-posting the same
 `slack_subscribe` task) is a no-op once the watermark already covers it.
 Omitting the field leaves behaviour unchanged.
 
+`delivered_through` also survives a clean unsubscribe: `DELETE /subscribe`
+tombstones it instead of dropping it, and a subsequent `/subscribe` for the
+same `thread_ts` **and** `session_name` restores it before evaluating
+`catch_up_through`. This is what keeps a `plect down` / `plect up` cycle (or
+an ECS task replacement doing the same) from redelivering the thread
+transcript on every deployment — see Persistence below. A different
+`session_name` binding the same thread later is a new subscription, not a
+resumed one, and gets no watermark.
+
 ```json
 // Request
 {"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "/run/user/1000/claude-channel/<uuid>.sock", "session_name": "owner/repo-1", "catch_up_through": "1234567890.654321"}
@@ -201,7 +210,9 @@ caller of this endpoint, not built into the plugin.
 ### DELETE /subscribe?thread_ts=...
 
 Unsubscribes. A missing `thread_ts` is a no-op (`204`). Called from `plect
-down` / `destroy` cleanup.
+down` / `destroy` cleanup. If the subscription had a non-empty
+`delivered_through`, it is preserved as a tombstone (see `POST /subscribe`
+above and Persistence below), not discarded.
 
 ### GET /subscribers
 
@@ -219,17 +230,34 @@ broker. If a broker restart dropped it, the probe goes non-zero and the next
 `thread_ts` → `socket_path` resolves through an in-memory map. Subscriptions
 are registered explicitly via `/subscribe`.
 
-The map is persisted to `$XDG_STATE_HOME/slack-adapter/subscribers.json`
-(default `~/.local/state/slack-adapter/subscribers.json`) with an atomic write
-(tmp → rename) on every subscribe/unsubscribe. Restarting slack-adapter reads
-it back at startup, so subscriptions survive a restart and routing continues
-without any action on the plect side. A failed read-back (missing or corrupt
-file) logs a warning and starts with an empty map, which the next `/subscribe`
-repopulates.
-
 On an incoming message, if the subscriber's `socket_path` no longer exists, it
 is lazily removed from the map and a failure notice is posted to the Slack
 thread.
+
+## Persistence
+
+Subscriptions and unsubscribed threads' delivery tombstones are persisted to
+`$XDG_STATE_HOME/slack-adapter/subscribers.json` (default
+`~/.local/state/slack-adapter/subscribers.json`) as
+`{"subscribers": [...], "tombstones": [...]}`, with an atomic write (tmp →
+rename) on every subscribe/unsubscribe. Restarting slack-adapter reads it
+back at startup, so subscriptions survive a restart and routing continues
+without any action on the plect side. A failed read-back (missing or corrupt
+file, including the bare-array shape this file held before tombstones
+existed — see `docs/migrations/slack-adapter-subscribers-envelope-migration.md`)
+logs a warning and starts with an empty state, which the next `/subscribe`
+repopulates.
+
+**Operational requirement:** this state directory must live on the same
+persistent storage as plect's own state. `official.slack.slack_subscribe` is
+run-scoped — its cleanup runs `DELETE /subscribe` on every `plect down`, and
+the following `plect up` re-subscribes — so the tombstoned `delivered_through`
+watermark is the only thing standing between a routine restart and
+redelivering the whole thread transcript to the resumed session. In a
+container, put `HOME` (or `XDG_STATE_HOME` directly) on the volume that
+survives a redeploy. A tombstone older than 30 days is dropped on load and on
+every persist, regardless of storage — it is assumed no session will resume
+against it by then.
 
 ## Setting up the Slack App
 
