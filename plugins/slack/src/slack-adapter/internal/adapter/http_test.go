@@ -78,6 +78,7 @@ func startCapturingListener(t *testing.T) (string, <-chan protocol.MessagePayloa
 type recordingPoster struct {
 	calls       []recordedPost
 	statusCalls []recordedStatus
+	statusErr   error
 }
 
 type recordedPost struct {
@@ -96,7 +97,7 @@ func (p *recordingPoster) PostToThread(channelID, threadTS, text string) (string
 
 func (p *recordingPoster) SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error {
 	p.statusCalls = append(p.statusCalls, recordedStatus{channelID, threadTS, status, loadingMessages})
-	return nil
+	return p.statusErr
 }
 
 type recordingThreader struct {
@@ -1178,6 +1179,73 @@ func TestHandleSetStatus_FallsBackToConfiguredChannel(t *testing.T) {
 	}
 	if poster.statusCalls[0].ChannelID != "C-default" {
 		t.Errorf("channel_id = %q, want C-default", poster.statusCalls[0].ChannelID)
+	}
+}
+
+func TestHandleSetStatus_ClipsLongLoadingMessage(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	poster := a.poster.(*recordingPoster)
+
+	long := strings.Repeat("x", 200)
+	body, _ := json.Marshal(setStatusRequest{
+		ThreadTS:        "1111.000",
+		Status:          "is thinking…",
+		LoadingMessages: []string{long},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	got := poster.statusCalls[len(poster.statusCalls)-1].LoadingMessages[0]
+	if r := []rune(got); len(r) != maxLoadingMessageLen {
+		t.Errorf("relayed loading message length = %d, want %d (clipped)", len(r), maxLoadingMessageLen)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("relayed loading message = %q, want an ellipsis suffix", got)
+	}
+}
+
+func TestHandleSetStatus_ShortLoadingMessageUnchanged(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	poster := a.poster.(*recordingPoster)
+
+	exactly48 := strings.Repeat("x", 48)
+	body, _ := json.Marshal(setStatusRequest{
+		ThreadTS:        "1111.000",
+		Status:          "is thinking…",
+		LoadingMessages: []string{exactly48},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	got := poster.statusCalls[len(poster.statusCalls)-1].LoadingMessages[0]
+	if got != exactly48 {
+		t.Errorf("relayed loading message = %q, want unchanged 48-char entry", got)
+	}
+}
+
+func TestHandleSetStatus_SlackAPIErrorMapsTo422(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	poster := a.poster.(*recordingPoster)
+	poster.statusErr = slack.SlackErrorResponse{Err: "invalid_arguments"}
+
+	body, _ := json.Marshal(setStatusRequest{ThreadTS: "1111.000", Status: "is thinking…"})
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != 422 {
+		t.Fatalf("got status %d, want 422, body=%s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "invalid_arguments") {
+		t.Errorf("body = %q, want it to contain the slack error name", w.Body.String())
 	}
 }
 

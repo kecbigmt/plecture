@@ -193,6 +193,7 @@ func (a *Adapter) HandleSetStatus(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	body.LoadingMessages = clipLoadingMessages(body.LoadingMessages)
 
 	var err error
 	if body.Status == "" {
@@ -201,7 +202,7 @@ func (a *Adapter) HandleSetStatus(w http.ResponseWriter, req *http.Request) {
 		err = a.statusManager.Set(channelID, body.ThreadTS, body.Status, body.LoadingMessages)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeStatusError(a.logger, w, err)
 		return
 	}
 

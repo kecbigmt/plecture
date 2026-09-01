@@ -1,16 +1,23 @@
 package adapter
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/slack-go/slack"
 )
 
 const (
 	defaultStatusTTL   = 15 * time.Minute
 	maxLoadingMessages = 10
+	// Not documented by Slack; measured against a live workspace.
+	maxLoadingMessageLen = 48
 )
 
 // ThreadStatusSetter sets a Slack thread's shimmer status line
@@ -29,6 +36,45 @@ func validateLoadingMessages(msgs []string) error {
 		return fmt.Errorf("loading_messages must have at most %d entries, got %d", maxLoadingMessages, len(msgs))
 	}
 	return nil
+}
+
+// Clipped here rather than at the producer: the same status text also
+// feeds non-Slack consumers, which shouldn't lose characters they could
+// otherwise display.
+func clipLoadingMessages(msgs []string) []string {
+	if len(msgs) == 0 {
+		return msgs
+	}
+	clipped := make([]string, len(msgs))
+	for i, msg := range msgs {
+		clipped[i] = clipText(msg, maxLoadingMessageLen)
+	}
+	return clipped
+}
+
+// Rune-sliced, not byte-sliced: this text may be multibyte, and a byte cut
+// could split a character.
+func clipText(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max-1]) + "…"
+}
+
+// Only a Slack API rejection carries a name the caller can act on; any
+// other error stays a 500.
+func writeStatusError(logger *slog.Logger, w http.ResponseWriter, err error) {
+	var slackErr slack.SlackErrorResponse
+	if errors.As(err, &slackErr) {
+		logger.Warn("status: slack api rejected request",
+			"component", "slack-adapter", "event", "status_slack_error", "error", slackErr.Err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(map[string]string{"error": slackErr.Err})
+		return
+	}
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
 // StatusManager shows a thread's shimmer status and enforces the TTL
