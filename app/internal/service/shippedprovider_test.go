@@ -314,29 +314,41 @@ func TestShippedSlackThreadProvider_SetupRecordsConversationAndCreatesWorkspace(
 }
 
 // TestShippedSlackThreadProvider_SetupToleratesJSONSpecialCharactersInWorkspaceDirsRoot
-// pins that a workspace_dirs_root containing a quote or backslash — legal in
-// a POSIX filename, and outside the charset `match` constrains — still
-// round-trips through setup's outputs JSON rather than breaking it.
+// pins that a workspace_dirs_root byte outside what `match` constrains —
+// quote, backslash, or a raw control byte, all legal in a POSIX filename —
+// still round-trips through setup's outputs JSON rather than breaking it.
 func TestShippedSlackThreadProvider_SetupToleratesJSONSpecialCharactersInWorkspaceDirsRoot(t *testing.T) {
-	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
-	stubPlectRecordingArgv(t, filepath.Join(t.TempDir(), "plect.log"))
+	tests := []struct {
+		name string
+		root string
+	}{
+		{"quote and backslash", `we"ird\root`},
+		{"newline", "weird\nroot"},
+		{"other control bytes", "weird\t\x01\x1froot"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+			stubPlectRecordingArgv(t, filepath.Join(t.TempDir(), "plect.log"))
 
-	workspaceDirsRoot := filepath.Join(t.TempDir(), `we"ird\root`)
-	vars := effect.WorkflowHookVars{
-		ResourceID:        "https://acme.slack.com/archives/C01ABCDEF/p1788226930843789",
-		SessionName:       "slack/C01ABCDEF-1788226930843789",
-		WorkspaceDirsRoot: workspaceDirsRoot,
-	}
+			workspaceDirsRoot := filepath.Join(t.TempDir(), tt.root)
+			vars := effect.WorkflowHookVars{
+				ResourceID:        "https://acme.slack.com/archives/C01ABCDEF/p1788226930843789",
+				SessionName:       "slack/C01ABCDEF-1788226930843789",
+				WorkspaceDirsRoot: workspaceDirsRoot,
+			}
 
-	outputs, err := task.RunWorkflowSetup(prov, vars, map[string]*contract.TaskState{}, nil)
-	if err != nil {
-		t.Fatalf("RunWorkflowSetup: %v", err)
-	}
-	want := filepath.Join(workspaceDirsRoot, "slack", "C01ABCDEF", "1788226930.843789")
-	if got, _ := outputs["workspace_dir"].(string); got != want {
-		t.Errorf("workspace_dir = %q, want %q", got, want)
-	}
-	if info, statErr := os.Stat(want); statErr != nil || !info.IsDir() {
-		t.Fatalf("setup did not create %q as a directory: %v", want, statErr)
+			outputs, err := task.RunWorkflowSetup(prov, vars, map[string]*contract.TaskState{}, nil)
+			if err != nil {
+				t.Fatalf("RunWorkflowSetup: %v", err)
+			}
+			want := filepath.Join(workspaceDirsRoot, "slack", "C01ABCDEF", "1788226930.843789")
+			if got, _ := outputs["workspace_dir"].(string); got != want {
+				t.Errorf("workspace_dir = %q, want %q", got, want)
+			}
+			if info, statErr := os.Stat(want); statErr != nil || !info.IsDir() {
+				t.Fatalf("setup did not create %q as a directory: %v", want, statErr)
+			}
+		})
 	}
 }

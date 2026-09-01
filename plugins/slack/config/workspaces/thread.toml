@@ -27,39 +27,35 @@ script = '''
 set -eu
 
 # workspace_dirs_root is operator config, not a value this file's own regex
-# constrains — any byte a POSIX filename allows is legal in it — so the JSON
-# printf builds below cannot assume it is quote/backslash-free the way a
-# `match` capture would be. Escaping by hand, rather than reaching for jq,
-# keeps this hook's dependencies at plect and a POSIX shell. Backslashes are
-# doubled in their own pass, finished before quotes are escaped in a second
-# pass, so a quote's inserted backslash is never itself mistaken for one of
-# the original string's and escaped again.
+# constrains — any byte a POSIX filename allows is legal in it, control
+# characters included — so the JSON printf below cannot assume it needs no
+# escaping the way a `match` capture would. Escaping by hand, rather than
+# reaching for jq, keeps this hook's dependencies at plect and a POSIX
+# shell: one left-to-right scan finds the next byte JSON requires an escape
+# for (backslash, quote, or a 0x01-0x1F control byte), emits the right
+# escape for whichever it is, and continues past it, so nothing needs a
+# second pass over bytes an earlier pass already emitted.
 json_escape() {
   value=$1
+  ctrl=$(printf '\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037')
   out=
-  while :; do
+  while [ -n "$value" ]; do
     case $value in
-      *'\'*)
-        out="$out${value%%\\*}\\\\"
-        value=${value#*\\}
+      *[\\\"$ctrl]*)
+        prefix=${value%%[\\\"$ctrl]*}
+        rest=${value#"$prefix"}
+        char=${rest%"${rest#?}"}
+        case $char in
+          '\') repl='\\' ;;
+          '"') repl='\"' ;;
+          *) repl="\\u00$(printf '%02x' "'$char")" ;;
+        esac
+        out="$out$prefix$repl"
+        value=${rest#?}
         ;;
       *)
         out="$out$value"
-        break
-        ;;
-    esac
-  done
-  value=$out
-  out=
-  while :; do
-    case $value in
-      *'"'*)
-        out="$out${value%%\"*}\\\""
-        value=${value#*\"}
-        ;;
-      *)
-        out="$out$value"
-        break
+        value=
         ;;
     esac
   done
