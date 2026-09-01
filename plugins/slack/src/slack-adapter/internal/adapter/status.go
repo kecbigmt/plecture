@@ -16,9 +16,7 @@ import (
 const (
 	defaultStatusTTL   = 15 * time.Minute
 	maxLoadingMessages = 10
-	// maxLoadingMessageLen is Slack's rendering cap for a loading_messages
-	// entry: measured against a live workspace, a 48-character entry
-	// renders and a 52-character one is rejected with invalid_arguments.
+	// Not documented by Slack; measured against a live workspace.
 	maxLoadingMessageLen = 48
 )
 
@@ -40,11 +38,9 @@ func validateLoadingMessages(msgs []string) error {
 	return nil
 }
 
-// clipLoadingMessages truncates each entry over Slack's rendering cap so a
-// long producer text (e.g. a tool command head) degrades to a shorter one
-// instead of making the whole /status call fail; the caller's text also
-// feeds non-Slack consumers, so the clip happens here rather than at the
-// source.
+// Clipped here rather than at the producer: the same status text also
+// feeds non-Slack consumers, which shouldn't lose characters they could
+// otherwise display.
 func clipLoadingMessages(msgs []string) []string {
 	if len(msgs) == 0 {
 		return msgs
@@ -56,9 +52,8 @@ func clipLoadingMessages(msgs []string) []string {
 	return clipped
 }
 
-// clipText truncates on rune boundaries (loading message text is
-// user/tool-provided and may be multibyte) and reserves one rune for the
-// ellipsis so the result never exceeds max.
+// Rune-sliced, not byte-sliced: this text may be multibyte, and a byte cut
+// could split a character.
 func clipText(s string, max int) string {
 	r := []rune(s)
 	if len(r) <= max {
@@ -67,11 +62,8 @@ func clipText(s string, max int) string {
 	return string(r[:max-1]) + "…"
 }
 
-// writeStatusError distinguishes a Slack API rejection from an
-// adapter-internal failure. Before this, both surfaced as an opaque 500
-// with no log line, so a rejection (e.g. invalid_arguments) was
-// indistinguishable from a network error without reading Slack's raw
-// response.
+// Only a Slack API rejection carries a name the caller can act on; any
+// other error stays a 500.
 func writeStatusError(logger *slog.Logger, w http.ResponseWriter, err error) {
 	var slackErr slack.SlackErrorResponse
 	if errors.As(err, &slackErr) {
