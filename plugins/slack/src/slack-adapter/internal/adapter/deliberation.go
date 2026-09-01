@@ -161,12 +161,108 @@ func buildDeliberationTranscript(fetcher threadFetcher, replies []slack.Message,
 	return strings.Join(lines, "\n"), deliveredThrough
 }
 
-func selectDeliberationMessages(replies []slack.Message, threadTS, mentionTS, watermark string, fullThread bool) []slack.Message {
+// catchUpThread delivers a subscription's pre-existing thread history once,
+// on first binding, so the escalation shape (people discuss in a thread,
+// then someone mentions the bot) doesn't lose the thread that preceded the
+// mention. through is the caller-supplied upper bound — usually the ts of a
+// mention that arrived before any session existed to receive it, so unlike
+// handleAppMention there is no live mention event to append; through is
+// already among the fetched replies. Best-effort and idempotent: a fetch or
+// publish failure, or an empty/no-session subscription, leaves
+// DeliveredThrough untouched so a later re-subscribe (e.g. after a runtime
+// restart re-runs the run-scoped slack_subscribe task) retries instead of
+// silently losing the history.
+func (a *Adapter) catchUpThread(sub Subscriber, through string) Subscriber {
+	if through == "" {
+		return sub
+	}
+	if sub.DeliveredThrough != "" && compareSlackTS(sub.DeliveredThrough, through) >= 0 {
+		return sub
+	}
+	if sub.SessionName == "" {
+		a.logger.Info("catch-up skipped: subscription has no session_name", "thread_ts", sub.ThreadTS)
+		return sub
+	}
+
+	fetcher := a.threadFetcher
+	if fetcher == nil {
+		fetcher = a
+	}
+	replies, err := fetcher.fetchThreadReplies(sub.ChannelID, sub.ThreadTS)
+	if err != nil {
+		a.logger.Warn("catch-up skipped: failed to fetch thread replies",
+			"thread_ts", sub.ThreadTS, "channel_id", sub.ChannelID, "error", err)
+		return sub
+	}
+
+	messages := selectCatchUpMessages(replies, sub.ThreadTS, through, sub.DeliveredThrough)
+	if len(messages) == 0 {
+		a.logger.Info("catch-up skipped: empty transcript", "thread_ts", sub.ThreadTS, "channel_id", sub.ChannelID)
+		return sub
+	}
+
+	body := buildCatchUpTranscript(fetcher, messages)
+	if err := a.publishEvent(sub.SessionName, "user.emit", "slack", "inbound",
+		"Slack thread history", body,
+		map[string]string{
+			"thread_ts":  sub.ThreadTS,
+			"channel_id": sub.ChannelID,
+		}); err != nil {
+		return sub
+	}
+	if updated, ok := a.broker.MarkDelivered(sub.ThreadTS, through); ok {
+		sub = updated
+	}
+	a.showThreadStatus(sub.ChannelID, sub.ThreadTS)
+	return sub
+}
+
+// selectCatchUpMessages returns the thread root plus every renderable reply
+// after watermark and up to and including through. Unlike
+// selectDeliberationMessages' live-tail case, there is no separately
+// appended mention: through IS the boundary message, delivered inline like
+// any other reply.
+func selectCatchUpMessages(replies []slack.Message, threadTS, through, watermark string) []slack.Message {
+	sorted := sortedReplies(replies)
+	out := make([]slack.Message, 0, len(sorted))
+	for _, msg := range sorted {
+		if msg.Timestamp == "" || !renderableMessage(msg) {
+			continue
+		}
+		isRoot := msg.Timestamp == threadTS
+		switch {
+		case isRoot:
+			out = append(out, msg)
+		case compareSlackTS(msg.Timestamp, through) > 0:
+			continue
+		case watermark == "" || compareSlackTS(msg.Timestamp, watermark) > 0:
+			out = append(out, msg)
+		}
+	}
+	return out
+}
+
+// buildCatchUpTranscript formats messages for one-time history delivery.
+func buildCatchUpTranscript(fetcher threadFetcher, messages []slack.Message) string {
+	lines := make([]string, 0, len(messages))
+	for _, msg := range messages {
+		lines = append(lines, formatTranscriptLine(msg.Timestamp, displayNameForMessage(fetcher, msg), msg.Text))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// sortedReplies returns a copy of replies ordered oldest-first by Slack
+// timestamp.
+func sortedReplies(replies []slack.Message) []slack.Message {
 	sorted := append([]slack.Message(nil), replies...)
 	sort.SliceStable(sorted, func(i, j int) bool {
 		return compareSlackTS(sorted[i].Timestamp, sorted[j].Timestamp) < 0
 	})
+	return sorted
+}
 
+func selectDeliberationMessages(replies []slack.Message, threadTS, mentionTS, watermark string, fullThread bool) []slack.Message {
+	sorted := sortedReplies(replies)
 	out := make([]slack.Message, 0, len(sorted))
 	for _, msg := range sorted {
 		if msg.Timestamp == "" || !renderableMessage(msg) {

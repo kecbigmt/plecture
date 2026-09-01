@@ -120,12 +120,25 @@ O(1). Registration also pre-connects to channel-server, so claude's replies
 flow to Slack right away. `session_name` is required for app-mention
 deliberation delivery because it is the target for `plect event publish`.
 
+An optional `catch_up_through` (a Slack message ts) delivers the thread's
+existing history once, on first binding: covers the escalation shape where
+people discuss something in a thread and then mention the bot, which
+otherwise drops both the triggering mention (no session exists yet to
+receive it) and everything said before it. When set, and the subscription's
+`delivered_through` is empty or older than it, slack-adapter fetches the
+thread, publishes root + every reply through `catch_up_through` as one
+inbound `user.emit`, and advances `delivered_through` to it — the same
+transcript format app-mention deliberation uses. Re-posting the same
+`catch_up_through` (e.g. a runtime restart re-running the run-scoped
+`slack_subscribe` task) is a no-op once the watermark already covers it.
+Omitting the field leaves behaviour unchanged.
+
 ```json
 // Request
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "/run/user/1000/claude-channel/<uuid>.sock", "session_name": "owner/repo-1"}
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "/run/user/1000/claude-channel/<uuid>.sock", "session_name": "owner/repo-1", "catch_up_through": "1234567890.654321"}
 
 // Response
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "...", "session_name": "owner/repo-1", "since": "2026-05-17T00:00:00Z"}
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "socket_path": "...", "session_name": "owner/repo-1", "since": "2026-05-17T00:00:00Z", "delivered_through": "1234567890.654321"}
 ```
 
 ### POST /status

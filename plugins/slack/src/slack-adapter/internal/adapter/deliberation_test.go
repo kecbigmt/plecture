@@ -410,6 +410,88 @@ func TestHandleAppMentionFullThreadModeRedeliversEarlierReplies(t *testing.T) {
 	}
 }
 
+func TestCatchUpThreadFetchFailureLeavesWatermarkUntouched(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	publisher := &recordingEventPublisher{}
+	a.threadFetcher = &fakeThreadFetcher{err: errors.New("slack unavailable")}
+	a.eventPublisher = publisher
+	a.broker.Subscribe(Subscriber{
+		ThreadTS:    "1000.000001",
+		ChannelID:   "C-review",
+		SessionName: "owner/repo-1",
+	})
+
+	sub, _ := a.broker.Find("1000.000001")
+	a.catchUpThread(sub, "1000.000003")
+
+	if len(publisher.events) != 0 {
+		t.Fatalf("published events = %d, want 0", len(publisher.events))
+	}
+	got, _ := a.broker.Find("1000.000001")
+	if got.DeliveredThrough != "" {
+		t.Fatalf("DeliveredThrough = %q, want empty (fetch failed)", got.DeliveredThrough)
+	}
+}
+
+func TestCatchUpThreadWithoutSessionNameDoesNotPublish(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	publisher := &recordingEventPublisher{}
+	fetcher := &fakeThreadFetcher{
+		messages: []slack.Message{slackMessage("1000.000001", "U-root", "Review thread opened")},
+	}
+	a.threadFetcher = fetcher
+	a.eventPublisher = publisher
+	sub := Subscriber{ThreadTS: "1000.000001", ChannelID: "C-review"}
+
+	a.catchUpThread(sub, "1000.000003")
+
+	if fetcher.calls != 0 {
+		t.Fatalf("fetchThreadReplies calls = %d, want 0", fetcher.calls)
+	}
+	if len(publisher.events) != 0 {
+		t.Fatalf("published events = %d, want 0", len(publisher.events))
+	}
+}
+
+func TestSelectCatchUpMessagesIncludesRootThroughUpperBoundInclusive(t *testing.T) {
+	replies := []slack.Message{
+		slackMessage("1000.000001", "U-root", "root"),
+		slackMessage("1000.000002", "U-alice", "reply one"),
+		slackMessage("1000.000003", "U-bob", "boundary"),
+		slackMessage("1000.000004", "U-carol", "after boundary"),
+	}
+
+	got := selectCatchUpMessages(replies, "1000.000001", "1000.000003", "")
+
+	var gotTS []string
+	for _, msg := range got {
+		gotTS = append(gotTS, msg.Timestamp)
+	}
+	want := []string{"1000.000001", "1000.000002", "1000.000003"}
+	if len(gotTS) != len(want) {
+		t.Fatalf("got %v, want %v", gotTS, want)
+	}
+	for i := range want {
+		if gotTS[i] != want[i] {
+			t.Fatalf("got %v, want %v", gotTS, want)
+		}
+	}
+}
+
+func TestSelectCatchUpMessagesSkipsAtOrBeforeWatermark(t *testing.T) {
+	replies := []slack.Message{
+		slackMessage("1000.000001", "U-root", "root"),
+		slackMessage("1000.000002", "U-alice", "already delivered"),
+		slackMessage("1000.000003", "U-bob", "new"),
+	}
+
+	got := selectCatchUpMessages(replies, "1000.000001", "1000.000003", "1000.000002")
+
+	if len(got) != 2 || got[0].Timestamp != "1000.000001" || got[1].Timestamp != "1000.000003" {
+		t.Fatalf("got %+v, want root + 1000.000003 only", got)
+	}
+}
+
 func slackMessage(ts, user, text string) slack.Message {
 	return slack.Message{Msg: slack.Msg{Timestamp: ts, User: user, Text: text}}
 }

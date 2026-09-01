@@ -20,7 +20,9 @@ set -eu
 payload=$(jq -nc \
   --arg thread_ts "$thread_ts" --arg channel_id "$channel_id" \
   --arg socket_path "$socket_path" --arg session_name "$session_name" \
-  '{thread_ts:$thread_ts,channel_id:$channel_id,socket_path:$socket_path,session_name:$session_name}')
+  --arg catch_up_through "${catch_up_through-}" \
+  '{thread_ts:$thread_ts,channel_id:$channel_id,socket_path:$socket_path,session_name:$session_name}
+    + (if $catch_up_through == "" then {} else {catch_up_through:$catch_up_through} end)')
 
 # slack-adapter rejects a subscription whose socket it cannot connect to, and
 # the runtime's socket may not exist for the first moments after launch —
@@ -40,11 +42,12 @@ jq -nc --arg thread_ts "$thread_ts" '{thread_ts:$thread_ts}'
 '''
 
 [slack_subscribe.setup.bind]
-base_url     = { from = "inputs.base_url" }
-thread_ts    = { from = "inputs.thread_ts" }
-channel_id   = { from = "inputs.channel_id" }
-socket_path  = { from = "inputs.socket_path" }
-session_name = { from = "session.name" }
+base_url         = { from = "inputs.base_url" }
+thread_ts        = { from = "inputs.thread_ts" }
+channel_id       = { from = "inputs.channel_id" }
+socket_path      = { from = "inputs.socket_path" }
+session_name     = { from = "session.name" }
+catch_up_through = { from = "inputs.catch_up_through", optional = true }
 
 [slack_subscribe.cleanup]
 type   = "shell"
@@ -60,10 +63,11 @@ required             = ["base_url", "thread_ts", "channel_id", "socket_path"]
 additionalProperties = false
 
 [slack_subscribe.inputs_schema.properties]
-base_url    = { type = "string", minLength = 1 }
-thread_ts   = { type = "string", minLength = 1 }
-channel_id  = { type = "string", minLength = 1 }
-socket_path = { type = "string", minLength = 1 }
+base_url         = { type = "string", minLength = 1 }
+thread_ts        = { type = "string", minLength = 1 }
+channel_id       = { type = "string", minLength = 1 }
+socket_path      = { type = "string", minLength = 1 }
+catch_up_through = { type = "string", minLength = 1 }
 
 [slack_subscribe.outputs_schema]
 type     = "object"
