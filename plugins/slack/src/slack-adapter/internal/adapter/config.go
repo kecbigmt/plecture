@@ -25,7 +25,17 @@ type Config struct {
 	// name, because dispatch policy (which workflow, which channels) is
 	// deployment-specific and this plugin must not encode it.
 	OnUnboundMention string `toml:"on_unbound_mention"`
+
+	// retiredKeys holds any config.toml key this struct used to declare but
+	// no longer does. BurntSushi/toml silently ignores a key its target
+	// struct doesn't have, so a config carrying one of these would
+	// otherwise look configured for a setting that has quietly stopped
+	// doing anything; ValidateStartup rejects it explicitly instead.
+	retiredKeys []string
 }
+
+// retiredConfigKeys are toml keys a previous version of Config declared.
+var retiredConfigKeys = []string{"status_loading_messages"}
 
 func LoadConfig() *Config {
 	cfg := &Config{
@@ -40,8 +50,11 @@ func LoadConfig() *Config {
 			// present-and-unparsable one is a user mistake that would
 			// otherwise silently fall back to an empty (deny-all) config —
 			// warn so it isn't mistaken for "everything is configured".
-			if _, decodeErr := toml.DecodeFile(configPath, cfg); decodeErr != nil {
+			meta, decodeErr := toml.DecodeFile(configPath, cfg)
+			if decodeErr != nil {
 				slog.Warn("config.toml present but failed to parse; using defaults", "path", configPath, "error", decodeErr)
+			} else {
+				cfg.retiredKeys = retiredKeysPresent(meta)
 			}
 		}
 	}
@@ -61,9 +74,27 @@ func LoadConfig() *Config {
 	return cfg
 }
 
+// retiredKeysPresent reports which of retiredConfigKeys appear, undecoded,
+// in a parsed config.toml.
+func retiredKeysPresent(meta toml.MetaData) []string {
+	var found []string
+	for _, undecoded := range meta.Undecoded() {
+		key := undecoded.String()
+		for _, retired := range retiredConfigKeys {
+			if key == retired {
+				found = append(found, retired)
+			}
+		}
+	}
+	return found
+}
+
 func (c *Config) ValidateStartup() error {
 	if c.SlackBotToken == "" {
 		return errors.New("slack_bot_token must be set in config")
+	}
+	if len(c.retiredKeys) > 0 {
+		return fmt.Errorf("config.toml uses retired key(s): %s; remove them (see plugins/slack/src/slack-adapter/README.md)", strings.Join(c.retiredKeys, ", "))
 	}
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -200,5 +201,51 @@ func TestStatusTTLDuration_FallsBackOnUnparsableValue(t *testing.T) {
 	cfg := &Config{StatusTTL: "not-a-duration"}
 	if got := cfg.StatusTTLDuration(); got != defaultStatusTTL {
 		t.Errorf("StatusTTLDuration() = %v, want default %v on parse failure", got, defaultStatusTTL)
+	}
+}
+
+// BurntSushi/toml ignores keys a struct doesn't declare, so a retired key
+// like status_loading_messages would otherwise survive in config.toml with
+// no error and no effect — a deployment would look configured for a
+// setting that does nothing. ValidateStartup must reject it explicitly.
+func TestValidateStartup_RejectsRetiredStatusLoadingMessagesKey(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	configDir := filepath.Join(tmpHome, ".config", "slack-adapter")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "slack_bot_token = \"xoxb-test\"\nstatus_loading_messages = [\"Checking…\"]\n"
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := LoadConfig()
+	err := cfg.ValidateStartup()
+	if err == nil {
+		t.Fatal("ValidateStartup() error = nil, want rejection of the retired status_loading_messages key")
+	}
+	if !strings.Contains(err.Error(), "status_loading_messages") {
+		t.Errorf("ValidateStartup() error = %q, want it to name status_loading_messages", err.Error())
+	}
+}
+
+func TestValidateStartup_AllowsConfigWithoutRetiredKeys(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	configDir := filepath.Join(tmpHome, ".config", "slack-adapter")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "slack_bot_token = \"xoxb-test\"\nstatus_ttl = \"5m\"\n"
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := LoadConfig()
+	if err := cfg.ValidateStartup(); err != nil {
+		t.Fatalf("ValidateStartup() error = %v, want nil for a config without retired keys", err)
 	}
 }

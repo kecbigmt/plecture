@@ -62,6 +62,12 @@ permission prompt through this adapter, or after `status_ttl` elapses with
 nothing posted (covers a session that ends its turn without ever calling
 reply).
 
+`status_loading_messages` (the old receipt-time shimmer's text) is a
+retired config key: `ValidateStartup` fails startup with an error naming it
+if a `config.toml` still sets it, rather than silently ignoring a setting
+that no longer does anything. See
+`docs/migrations/slack-status-loading-messages-migration.md` to remove it.
+
 There is no `status_text` config: confirmed empirically against real Slack
 workspaces, a channel thread never renders `assistant.threads.setStatus`'s
 `status` string, only `loading_messages`. `SetThreadStatus`'s `status`
