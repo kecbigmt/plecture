@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+# Confirms the poll loop keeps sending Enter across iterations rather than
+# stopping the first time it finds any record at all: this stand-in
+# withholds the live-pid session file until its second call within a single
+# hook run, so a scenario seeded with only a stale record only succeeds if a
+# second Enter is actually sent once the first one finds nothing live.
+plect-effect-record terminal-send_keys "$@"
+count=$(grep -o terminal-send_keys "$PLECT_EFFECT_LOG" 2>/dev/null | wc -l)
+if [ "$count" -ge 2 ]; then
+  mkdir -p "$HOME/.claude/sessions"
+  printf '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":%s}\n' "$PLECT_EFFECT_PID" \
+    > "$HOME/.claude/sessions/live.json"
+fi
+true
