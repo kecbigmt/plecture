@@ -1,16 +1,25 @@
 package adapter
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/slack-go/slack"
 )
 
 const (
 	defaultStatusTTL   = 15 * time.Minute
 	maxLoadingMessages = 10
+	// maxLoadingMessageLen is Slack's rendering cap for a loading_messages
+	// entry: measured against a live workspace, a 48-character entry
+	// renders and a 52-character one is rejected with invalid_arguments.
+	maxLoadingMessageLen = 48
 )
 
 // ThreadStatusSetter sets a Slack thread's shimmer status line
@@ -29,6 +38,51 @@ func validateLoadingMessages(msgs []string) error {
 		return fmt.Errorf("loading_messages must have at most %d entries, got %d", maxLoadingMessages, len(msgs))
 	}
 	return nil
+}
+
+// clipLoadingMessages truncates each entry over Slack's rendering cap so a
+// long producer text (e.g. a tool command head) degrades to a shorter one
+// instead of making the whole /status call fail; the caller's text also
+// feeds non-Slack consumers, so the clip happens here rather than at the
+// source.
+func clipLoadingMessages(msgs []string) []string {
+	if len(msgs) == 0 {
+		return msgs
+	}
+	clipped := make([]string, len(msgs))
+	for i, msg := range msgs {
+		clipped[i] = clipText(msg, maxLoadingMessageLen)
+	}
+	return clipped
+}
+
+// clipText truncates on rune boundaries (loading message text is
+// user/tool-provided and may be multibyte) and reserves one rune for the
+// ellipsis so the result never exceeds max.
+func clipText(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max-1]) + "…"
+}
+
+// writeStatusError distinguishes a Slack API rejection from an
+// adapter-internal failure. Before this, both surfaced as an opaque 500
+// with no log line, so a rejection (e.g. invalid_arguments) was
+// indistinguishable from a network error without reading Slack's raw
+// response.
+func writeStatusError(logger *slog.Logger, w http.ResponseWriter, err error) {
+	var slackErr slack.SlackErrorResponse
+	if errors.As(err, &slackErr) {
+		logger.Warn("status: slack api rejected request",
+			"component", "slack-adapter", "event", "status_slack_error", "error", slackErr.Err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(map[string]string{"error": slackErr.Err})
+		return
+	}
+	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
 // StatusManager shows a thread's shimmer status and enforces the TTL

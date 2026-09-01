@@ -2,9 +2,13 @@ package adapter
 
 import (
 	"errors"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/slack-go/slack"
 )
 
 // fakeStatusSetter records SetThreadStatus calls and lets tests inject a
@@ -181,5 +185,52 @@ func TestValidateLoadingMessages(t *testing.T) {
 
 	if err := validateLoadingMessages(nil); err != nil {
 		t.Errorf("nil should be accepted, got error: %v", err)
+	}
+}
+
+func TestClipLoadingMessages(t *testing.T) {
+	exactly48 := strings.Repeat("a", 48)
+	over48 := strings.Repeat("b", 200)
+
+	got := clipLoadingMessages([]string{exactly48, over48})
+
+	if got[0] != exactly48 {
+		t.Errorf("48-char entry changed: got %q, want unchanged", got[0])
+	}
+	if r := []rune(got[1]); len(r) != maxLoadingMessageLen {
+		t.Errorf("clipped entry length = %d, want %d", len(r), maxLoadingMessageLen)
+	}
+	if !strings.HasSuffix(got[1], "…") {
+		t.Errorf("clipped entry = %q, want an ellipsis suffix", got[1])
+	}
+	if !strings.HasPrefix(got[1], strings.Repeat("b", 47)) {
+		t.Errorf("clipped entry = %q, want the first 47 source runes preserved", got[1])
+	}
+}
+
+func TestClipLoadingMessages_NilStaysNil(t *testing.T) {
+	if got := clipLoadingMessages(nil); got != nil {
+		t.Errorf("clipLoadingMessages(nil) = %v, want nil", got)
+	}
+}
+
+func TestWriteStatusError_SlackAPIErrorMapsTo422(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeStatusError(testLogger(), w, slack.SlackErrorResponse{Err: "invalid_arguments"})
+
+	if w.Code != 422 {
+		t.Fatalf("status = %d, want 422", w.Code)
+	}
+	if body := w.Body.String(); !strings.Contains(body, `"error":"invalid_arguments"`) {
+		t.Errorf("body = %q, want it to contain the slack error name", body)
+	}
+}
+
+func TestWriteStatusError_OtherErrorStays500(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeStatusError(testLogger(), w, errors.New("dial tcp: connection refused"))
+
+	if w.Code != 500 {
+		t.Fatalf("status = %d, want 500", w.Code)
 	}
 }
