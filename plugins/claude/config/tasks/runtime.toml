@@ -28,6 +28,13 @@ scope = "run"
 #                  GitHub-specific guard switch of its own. A workflow that
 #                  wants the write guard wires this from the github plugin's
 #                  own gh_guard effect output.
+#   launch_timeout — when set, how long the launch poll loop waits for
+#                  claude's session file to register before giving up, as a
+#                  plain "<seconds>s" token (e.g. "180s"). Default 120s. A
+#                  cold pane on a slow $HOME volume can take well over a
+#                  fixed short window to write that file even though claude
+#                  itself did come up, so raise this rather than treat a
+#                  live-but-slow launch as a failure.
 #
 # Every value the script needs arrives through the binding transport, so
 # nothing below is spliced into this source and no value can become part of
@@ -171,14 +178,20 @@ sh -c "$send_keys" terminal-send-keys Enter
 # pid can still satisfy the sessionId match from the first iteration, and
 # withholding Enter on that basis deadlocks the launch on the banner
 # forever.
-# 30s, not 10s: a cold pane can spend several seconds loading its shell
-# environment before the claude command even runs, and a warm pane still
-# clears in a couple of iterations, so the longer bound only costs time on
+# launch_timeout, not a fixed bound: a cold pane can spend several seconds
+# loading its shell environment before the claude command even runs, and
+# that wait can run well past a short fixed window on a $HOME that lives on
+# a network volume, even though claude itself did come up. A warm pane still
+# clears in a couple of iterations, so a longer default only costs time on
 # the failure path.
+LAUNCH_TIMEOUT="${launch_timeout:-120s}"
+LAUNCH_TIMEOUT_SECONDS="${LAUNCH_TIMEOUT%s}"
+ATTEMPTS=$((LAUNCH_TIMEOUT_SECONDS * 2))
+
 PREV_PID="${prev_pid-}"
 PID=""
 i=0
-while [ "$i" -lt 60 ]; do
+while [ "$i" -lt "$ATTEMPTS" ]; do
   i=$((i + 1))
   sleep 0.5
   for CANDIDATE in $(jq -r --arg sid "$SID" 'select(.sessionId == $sid) | .pid' \
@@ -192,7 +205,31 @@ while [ "$i" -lt 60 ]; do
   sh -c "$send_keys" terminal-send-keys Enter
 done
 if [ -z "$PID" ]; then
-  echo "claude not detected within 30s for session_id $SID (prev_pid=$PREV_PID)" >&2
+  echo "claude not detected within $LAUNCH_TIMEOUT for session_id $SID (prev_pid=$PREV_PID)" >&2
+  # A launch that typed its command but never registered a session file can
+  # still be visibly alive in the pane (the banner-clearing Enters above
+  # reach a real claude prompt, just not one that ever wrote to
+  # ~/.claude/sessions). Leaving that process running would trap the next
+  # `plect up`: its retry types a second launch line into a pane that
+  # already holds a live claude, and the retry fails the same way. Killing
+  # whatever claude child the pane still holds, on top of failing this node,
+  # is what keeps the retry's pane clean.
+  PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
+  if [ -n "$PANE_PID" ]; then
+    for CHILD in $(pgrep -P "$PANE_PID" 2>/dev/null); do
+      COMM=$(ps -p "$CHILD" -o comm= 2>/dev/null | tr -d '[:space:]')
+      case "$COMM" in
+        claude|claude-*)
+          kill -TERM "$CHILD" 2>/dev/null
+          for _ in 1 2 3 4 5; do
+            sleep 0.5
+            kill -0 "$CHILD" 2>/dev/null || break
+          done
+          kill -KILL "$CHILD" 2>/dev/null || true
+          ;;
+      esac
+    done
+  fi
   exit 1
 fi
 
@@ -214,11 +251,13 @@ effort              = { from = "inputs.effort", optional = true }
 launch_env          = { from = "inputs.launch_env", optional = true }
 mcp_servers         = { from = "inputs.mcp_servers", optional = true }
 path_prepend        = { from = "inputs.path_prepend", optional = true }
+launch_timeout      = { from = "inputs.launch_timeout", optional = true }
 activity_bin        = { bin = "claude-agent-activity" }
 mcp_servers_bin     = { bin = "claude-mcp-servers" }
 channel_server_bin  = { bin = "channel-server" }
 send_text           = { terminal = "send_text" }
 send_keys           = { terminal = "send_keys" }
+terminal_pid        = { terminal = "pid" }
 
 [runtime.cleanup]
 type   = "shell"
@@ -330,6 +369,10 @@ mcp_servers  = { type = "string", pattern = "^[^']*$" }
 # metacharacters), same reasoning as model/effort above — the value crosses
 # the same keystroke boundary.
 path_prepend = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
+# launch_timeout: restricted to digits-plus-"s" so the setup script can strip
+# the suffix and use the result directly in shell arithmetic — no separate
+# duration parser needed, and no non-numeric value can reach $(( )).
+launch_timeout = { type = "string", pattern = "^[1-9][0-9]*s$" }
 
 [runtime.outputs_schema]
 type     = "object"

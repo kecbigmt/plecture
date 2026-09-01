@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+# The pane's child (the scenario's own live process, per the pgrep stand-in
+# above) reports itself as the agent CLI, which is what the setup script's
+# kill-on-timeout branch is looking for.
+plect-effect-record ps "$@"
+printf 'claude\n'

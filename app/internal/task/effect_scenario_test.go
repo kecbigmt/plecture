@@ -45,6 +45,13 @@ type effectScenario struct {
 	// actually being missing rather than always being the spy this harness
 	// would otherwise install for every declared executable.
 	AbsentExecutables []string `toml:"absent_executables"`
+	// ExpectLiveProcessDead asserts, once every hook this variant runs has
+	// finished, that the sandbox's own live process — the harness's real,
+	// owned stand-in for whatever an agent launch would have started — has
+	// actually been terminated. This is what lets a script's kill-on-failure
+	// or cleanup path be verified by a real process's death rather than by
+	// trusting that a recorded call did what it claims.
+	ExpectLiveProcessDead bool `toml:"expect_live_process_dead"`
 }
 
 type effectScenarioFile struct {
