@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/kecbigmt/plecture/contracts/channel-protocol"
 	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/slackevents"
 )
 
 // withFastSubscribeRetry tightens the /subscribe connect retry loop so tests
@@ -485,6 +487,188 @@ func TestHandleSubscribe_PostRetriesUntilSocketReady(t *testing.T) {
 	}
 	if _, ok := a.broker.Find("1111.000"); !ok {
 		t.Fatalf("broker should hold the subscription after retry succeeded")
+	}
+}
+
+func TestHandleSubscribe_CatchUpThroughDeliversHistoryOnce(t *testing.T) {
+	socketPath := startTestListener(t)
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	fetcher := &fakeThreadFetcher{
+		messages: []slack.Message{
+			slackMessage("1000.000001", "U-root", "Review thread opened"),
+			slackMessage("1000.000002", "U-alice", "Looks ready."),
+			slackMessage("1000.000003", "U-bob", "<@U-bot> please act on this"),
+		},
+		names: map[string]string{"U-root": "Plecture", "U-alice": "Alice", "U-bob": "Bob"},
+	}
+	a.threadFetcher = fetcher
+	publisher := &recordingEventPublisher{}
+	a.eventPublisher = publisher
+
+	body, _ := json.Marshal(subscribeRequest{
+		ThreadTS:       "1000.000001",
+		ChannelID:      "C-review",
+		SocketPath:     socketPath,
+		SessionName:    "owner/repo-1",
+		CatchUpThrough: "1000.000003",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/subscribe", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSubscribe(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(publisher.events))
+	}
+	ev := publisher.events[0]
+	if ev.SessionName != "owner/repo-1" || ev.Type != "user.emit" || ev.Source != "slack" || ev.Direction != "inbound" {
+		t.Fatalf("unexpected event envelope: %+v", ev)
+	}
+	assertBodyContainsInOrder(t, ev.Body, []string{
+		"Plecture: Review thread opened",
+		"Alice: Looks ready.",
+		"Bob: <@U-bot> please act on this",
+	})
+
+	var resp Subscriber
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.DeliveredThrough != "1000.000003" {
+		t.Errorf("response delivered_through = %q, want 1000.000003", resp.DeliveredThrough)
+	}
+	sub, _ := a.broker.Find("1000.000001")
+	if sub.DeliveredThrough != "1000.000003" {
+		t.Errorf("broker DeliveredThrough = %q, want 1000.000003", sub.DeliveredThrough)
+	}
+}
+
+// Models a runtime restart re-running the run-scoped slack_subscribe task
+// with the same catch_up_through.
+func TestHandleSubscribe_CatchUpThroughIsIdempotentAcrossResubscribe(t *testing.T) {
+	socketPath := startTestListener(t)
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	fetcher := &fakeThreadFetcher{
+		messages: []slack.Message{
+			slackMessage("1000.000001", "U-root", "Review thread opened"),
+			slackMessage("1000.000003", "U-bob", "<@U-bot> please act on this"),
+		},
+		names: map[string]string{"U-root": "Plecture", "U-bob": "Bob"},
+	}
+	a.threadFetcher = fetcher
+	publisher := &recordingEventPublisher{}
+	a.eventPublisher = publisher
+
+	subscribeBody, _ := json.Marshal(subscribeRequest{
+		ThreadTS:       "1000.000001",
+		ChannelID:      "C-review",
+		SocketPath:     socketPath,
+		SessionName:    "owner/repo-1",
+		CatchUpThrough: "1000.000003",
+	})
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/subscribe", bytes.NewBuffer(subscribeBody))
+		w := httptest.NewRecorder()
+		a.HandleSubscribe(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("attempt %d: got status %d, want %d, body=%s", i, w.Code, http.StatusOK, w.Body.String())
+		}
+	}
+
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1 (second subscribe must not redeliver)", len(publisher.events))
+	}
+}
+
+func TestHandleSubscribe_CatchUpThroughThenLaterMentionDeliversOnlyDelta(t *testing.T) {
+	socketPath := startTestListener(t)
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	fetcher := &fakeThreadFetcher{
+		messages: []slack.Message{
+			slackMessage("1000.000001", "U-root", "Review thread opened"),
+			slackMessage("1000.000003", "U-bob", "<@U-bot> please act on this"),
+			slackMessage("1000.000006", "U-alice", "new reply"),
+		},
+		names: map[string]string{"U-root": "Plecture", "U-bob": "Bob", "U-alice": "Alice", "U-dana": "Dana"},
+	}
+	a.threadFetcher = fetcher
+	publisher := &recordingEventPublisher{}
+	a.eventPublisher = publisher
+
+	subscribeBody, _ := json.Marshal(subscribeRequest{
+		ThreadTS:       "1000.000001",
+		ChannelID:      "C-review",
+		SocketPath:     socketPath,
+		SessionName:    "owner/repo-1",
+		CatchUpThrough: "1000.000003",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/subscribe", bytes.NewBuffer(subscribeBody))
+	w := httptest.NewRecorder()
+	a.HandleSubscribe(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events after catch-up = %d, want 1", len(publisher.events))
+	}
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> send the update",
+		TimeStamp:       "1000.000008",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	if len(publisher.events) != 2 {
+		t.Fatalf("published events after mention = %d, want 2", len(publisher.events))
+	}
+	// The root re-sends on every delivery (selectDeliberationMessages'
+	// existing behavior); only the already-caught-up reply must not repeat.
+	deltaBody := publisher.events[1].Body
+	if strings.Contains(deltaBody, "please act on this") {
+		t.Fatalf("delta body should not redeliver the caught-up reply, got:\n%s", deltaBody)
+	}
+	assertBodyContainsInOrder(t, deltaBody, []string{
+		"Plecture: Review thread opened",
+		"Alice: new reply",
+		"Dana: <@U-bot> send the update",
+	})
+}
+
+func TestHandleSubscribe_CatchUpThroughOmittedIsUnchanged(t *testing.T) {
+	socketPath := startTestListener(t)
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	fetcher := &fakeThreadFetcher{}
+	a.threadFetcher = fetcher
+	publisher := &recordingEventPublisher{}
+	a.eventPublisher = publisher
+
+	body, _ := json.Marshal(subscribeRequest{
+		ThreadTS:    "1000.000001",
+		ChannelID:   "C-review",
+		SocketPath:  socketPath,
+		SessionName: "owner/repo-1",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/subscribe", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSubscribe(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if fetcher.calls != 0 {
+		t.Errorf("fetchThreadReplies calls = %d, want 0", fetcher.calls)
+	}
+	if len(publisher.events) != 0 {
+		t.Errorf("published events = %d, want 0", len(publisher.events))
+	}
+	sub, _ := a.broker.Find("1000.000001")
+	if sub.DeliveredThrough != "" {
+		t.Errorf("DeliveredThrough = %q, want empty", sub.DeliveredThrough)
 	}
 }
 

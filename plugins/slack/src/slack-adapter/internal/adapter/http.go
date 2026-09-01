@@ -16,10 +16,11 @@ var (
 )
 
 type subscribeRequest struct {
-	ThreadTS    string `json:"thread_ts"`
-	ChannelID   string `json:"channel_id"`
-	SocketPath  string `json:"socket_path"`
-	SessionName string `json:"session_name"`
+	ThreadTS       string `json:"thread_ts"`
+	ChannelID      string `json:"channel_id"`
+	SocketPath     string `json:"socket_path"`
+	SessionName    string `json:"session_name"`
+	CatchUpThrough string `json:"catch_up_through,omitempty"`
 }
 
 type notifyRequest struct {
@@ -247,6 +248,8 @@ func (a *Adapter) handleSubscribePost(w http.ResponseWriter, req *http.Request) 
 		SessionName: body.SessionName,
 	})
 	a.logger.Info("subscribed", "thread_ts", sub.ThreadTS, "socket_path", sub.SocketPath, "session_name", sub.SessionName)
+
+	sub = a.catchUpThread(sub, body.CatchUpThrough)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sub)
