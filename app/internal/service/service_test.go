@@ -10,9 +10,11 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/confighome"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -405,6 +407,92 @@ func TestSetMessage(t *testing.T) {
 	}
 	if store.Get("owner/repo-1").Message != nil {
 		t.Error("empty text should clear Message")
+	}
+}
+
+func TestSetMessage_EmitsStatusMessageEventsOnlyWhenTextChanges(t *testing.T) {
+	store := testStore(t)
+	now := time.Now()
+	store.Put(&domain.Session{Name: "owner/repo-1", CreatedAt: now, UpdatedAt: now})
+
+	if err := SetMessage(nil, store, "owner/repo-1", "working"); err != nil {
+		t.Fatalf("SetMessage(working) error: %v", err)
+	}
+	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{
+		{
+			Type:      event.TypeStatusMessage,
+			Source:    event.SourcePlect,
+			Direction: event.Outbound,
+			Summary:   "working",
+			Metadata:  map[string]string{"text": "working", "cleared": "false", "previous": ""},
+		},
+	})
+
+	if err := SetMessage(nil, store, "owner/repo-1", "working"); err != nil {
+		t.Fatalf("SetMessage(same) error: %v", err)
+	}
+	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{
+		{
+			Type:      event.TypeStatusMessage,
+			Source:    event.SourcePlect,
+			Direction: event.Outbound,
+			Summary:   "working",
+			Metadata:  map[string]string{"text": "working", "cleared": "false", "previous": ""},
+		},
+	})
+
+	if err := SetMessage(nil, store, "owner/repo-1", "working: Bash go"); err != nil {
+		t.Fatalf("SetMessage(changed) error: %v", err)
+	}
+	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
+		t.Fatalf("SetMessage(clear) error: %v", err)
+	}
+	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
+		t.Fatalf("SetMessage(clear same) error: %v", err)
+	}
+	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{
+		{
+			Type:      event.TypeStatusMessage,
+			Source:    event.SourcePlect,
+			Direction: event.Outbound,
+			Summary:   "working",
+			Metadata:  map[string]string{"text": "working", "cleared": "false", "previous": ""},
+		},
+		{
+			Type:      event.TypeStatusMessage,
+			Source:    event.SourcePlect,
+			Direction: event.Outbound,
+			Summary:   "working: Bash go",
+			Metadata:  map[string]string{"text": "working: Bash go", "cleared": "false", "previous": "working"},
+		},
+		{
+			Type:      event.TypeStatusMessage,
+			Source:    event.SourcePlect,
+			Direction: event.Outbound,
+			Summary:   "",
+			Metadata:  map[string]string{"text": "", "cleared": "true", "previous": "working: Bash go"},
+		},
+	})
+}
+
+func assertStatusMessageEvents(t *testing.T, store *state.Store, sessionName string, want []event.Event) {
+	t.Helper()
+	got, _, _, err := eventlog.NewStore(store.Dir()).List(sessionName, 0, event.Filter{Types: []string{event.TypeStatusMessage}})
+	if err != nil {
+		t.Fatalf("List status messages: %v", err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("status message events = %d, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i].Type != want[i].Type || got[i].Source != want[i].Source || got[i].Direction != want[i].Direction || got[i].Summary != want[i].Summary || got[i].Body != "" {
+			t.Fatalf("event[%d] = %+v, want type/source/direction/summary/body from %+v", i, got[i], want[i])
+		}
+		for key, value := range want[i].Metadata {
+			if got[i].Metadata[key] != value {
+				t.Fatalf("event[%d].Metadata[%q] = %q, want %q; metadata=%+v", i, key, got[i].Metadata[key], value, got[i].Metadata)
+			}
+		}
 	}
 }
 

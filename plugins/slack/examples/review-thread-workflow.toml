@@ -46,3 +46,14 @@ include = ["plect.judge.recorded"]
 base_url   = { from = "session.inputs.slack_base_url" }
 channel_id = { from = "nodes.slack_thread.outputs.channel_id" }
 thread_ts  = { from = "nodes.slack_thread.outputs.thread_ts" }
+
+[[pr_review_with_slack.event.channel]]
+name    = "thread_status"
+uses    = "official.slack.status"
+include = ["plect.status_message"]
+
+[pr_review_with_slack.event.channel.inputs]
+base_url   = { from = "session.inputs.slack_base_url" }
+channel_id = { from = "nodes.slack_thread.outputs.channel_id" }
+thread_ts  = { from = "nodes.slack_thread.outputs.thread_ts" }
+status     = { expr = "event.summary == 'waiting' ? '' : event.summary" }

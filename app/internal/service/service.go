@@ -16,6 +16,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/app/internal/task"
+	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -530,6 +531,11 @@ func SetMessage(cfg *config.Config, store *state.Store, identifier string, text 
 	if guardErr := checkSessionGuard(cfg, sessionName); guardErr != nil {
 		return guardErr
 	}
+	previous := ""
+	if session.Message != nil {
+		previous = session.Message.Text
+	}
+	changed := previous != text
 	now := time.Now()
 	if text == "" {
 		session.Message = nil
@@ -537,5 +543,30 @@ func SetMessage(cfg *config.Config, store *state.Store, identifier string, text 
 		session.Message = &domain.Message{Text: text, UpdatedAt: now}
 	}
 	session.UpdatedAt = now
-	return store.Put(session)
+	if err := store.Put(session); err != nil {
+		return err
+	}
+	if !changed {
+		return nil
+	}
+	cleared := "false"
+	if text == "" {
+		cleared = "true"
+	}
+	_, _, _, err = eventlog.NewStore(store.Dir()).Append(event.Event{
+		SessionName: sessionName,
+		Type:        event.TypeStatusMessage,
+		Source:      event.SourcePlect,
+		Direction:   event.Outbound,
+		Summary:     text,
+		Metadata: map[string]string{
+			"text":     text,
+			"cleared":  cleared,
+			"previous": previous,
+		},
+	})
+	if err != nil {
+		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
+	}
+	return nil
 }

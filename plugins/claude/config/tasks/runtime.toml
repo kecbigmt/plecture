@@ -79,12 +79,11 @@ MCP_JSON=$(printf '%s' "$MCP_JSON" \
 
 printf '%s' "$MCP_JSON" > "$MCP"
 
-# agent_activity self-report hooks: UserPromptSubmit/Stop call
-# claude-agent-activity, which is fire-and-forget by design, so a
-# missing PLECT_SESSION_NAME or plect binary never blocks the turn. A
-# dedicated --settings file (not ~/.claude/settings.json) keeps this
-# session-scoped rather than colliding with any global hooks configuration
-# the user owns.
+# agent_activity self-report hooks call claude-agent-activity, which is
+# fire-and-forget by design, so a missing PLECT_SESSION_NAME or plect binary
+# never blocks the turn. A dedicated --settings file (not
+# ~/.claude/settings.json) keeps this session-scoped rather than colliding with
+# any global hooks configuration the user owns.
 #
 # The reset drops any record a previous run left behind, so this run's
 # activity probe reports "no basis yet" until this run's first turn
@@ -96,6 +95,7 @@ mv "$HOOKS" "$HOOKS.json" && HOOKS="$HOOKS.json"
 jq -nc --arg activity "$activity_bin" '{
   hooks: {
     UserPromptSubmit: [{hooks: [{type: "command", command: ($activity + " working")}]}],
+    PreToolUse:       [{hooks: [{type: "command", command: ($activity + " working")}]}],
     Stop:             [{hooks: [{type: "command", command: ($activity + " waiting")}]}]
   }
 }' > "$HOOKS"
