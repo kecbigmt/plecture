@@ -10,9 +10,8 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
-// unboundMentionPayload is the JSON document handed to on_unbound_mention on
-// stdin. Field names are the deployment-facing contract documented in the
-// plugin's README; keep them stable.
+// unboundMentionPayload's field names are a deployment-facing contract
+// documented in the README and must not be renamed casually.
 type unboundMentionPayload struct {
 	ChannelID string `json:"channel_id"`
 	ThreadTS  string `json:"thread_ts"`
@@ -22,9 +21,8 @@ type unboundMentionPayload struct {
 	Permalink string `json:"permalink"`
 }
 
-// permalinkResolver looks up the canonical Slack permalink for an existing
-// message. A separate seam from threadFetcher because it is needed only by
-// the on_unbound_mention path, not by deliberation transcript building.
+// permalinkResolver is split out from threadFetcher because only the
+// on_unbound_mention path needs it, not deliberation transcript building.
 type permalinkResolver interface {
 	permalink(channelID, ts string) (string, error)
 }
@@ -33,14 +31,13 @@ func (a *Adapter) permalink(channelID, ts string) (string, error) {
 	return a.api.GetPermalink(&slack.PermalinkParameters{Channel: channelID, Ts: ts})
 }
 
-// mentionHookRunner executes the deployment-configured on_unbound_mention
-// command. The default implementation shells out (no import of plect/app),
-// matching how this adapter already records session events via the plect
-// CLI (capture.go).
 type mentionHookRunner interface {
 	Run(command string, payload []byte) error
 }
 
+// cliMentionHookRunner shells out rather than importing plect/app directly,
+// matching how this adapter already records session events via the plect
+// CLI instead of a direct import (see capture.go).
 type cliMentionHookRunner struct{}
 
 func (cliMentionHookRunner) Run(command string, payload []byte) error {
@@ -50,11 +47,9 @@ func (cliMentionHookRunner) Run(command string, payload []byte) error {
 	return cmd.Run()
 }
 
-// dispatchUnboundMention runs on_unbound_mention for a mention that resolved
-// to no subscription. It fires once and only ever inspects the command's exit
-// status (logged, never retried) — everything else, such as which workflow to
-// start or which channels to honour, is the command's job: core/the plugin
-// must not encode that deployment policy.
+// dispatchUnboundMention only ever inspects the command's exit status
+// (logged, never retried): which workflow to start and which channels to
+// honour is deployment policy this plugin must not encode.
 func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, threadTS string) {
 	if a.cfg.OnUnboundMention == "" {
 		return

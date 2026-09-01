@@ -28,10 +28,9 @@ type Config struct {
 	// silently never render.
 	StatusLoadingMessages []string `toml:"status_loading_messages"`
 	StatusTTL             string   `toml:"status_ttl"`
-	// OnUnboundMention, when set, is run for an app_mention that resolves to
-	// no subscription instead of being dropped. What to do with the mention
-	// (which workflow to start, which channels to honour) is deployment
-	// policy the plugin does not encode; see dispatchUnboundMention.
+	// OnUnboundMention is left as an opaque command, not e.g. a workflow
+	// name, because dispatch policy (which workflow, which channels) is
+	// deployment-specific and this plugin must not encode it.
 	OnUnboundMention string `toml:"on_unbound_mention"`
 }
 

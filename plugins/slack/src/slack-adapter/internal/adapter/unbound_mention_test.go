@@ -1,8 +1,11 @@
 package adapter
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/slack-go/slack"
@@ -196,5 +199,31 @@ func TestDispatchUnboundMentionSkipsHookWhenPermalinkLookupFails(t *testing.T) {
 
 	if runner.calls != 0 {
 		t.Fatalf("hook calls = %d, want 0 when the permalink lookup fails", runner.calls)
+	}
+}
+
+func TestDispatchUnboundMentionCommandFailureIsLoggedAndNotRetried(t *testing.T) {
+	a := newTestAdapter(&Config{OnUnboundMention: "/path/to/dispatch"})
+	a.threadFetcher = &fakeThreadFetcher{}
+	a.permalinkResolver = &fakePermalinkResolver{link: "https://example.slack.com/archives/C-review/p1000000001"}
+	runner := &recordingMentionHookRunner{err: errors.New("dispatch command failed")}
+	a.mentionHook = runner
+
+	var logs bytes.Buffer
+	a.logger = slog.New(slog.NewTextHandler(&logs, nil))
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> hello",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	if runner.calls != 1 {
+		t.Fatalf("hook calls = %d, want exactly 1 (no retry) when the command exits with an error", runner.calls)
+	}
+	if !strings.Contains(logs.String(), "dispatch command failed") {
+		t.Errorf("expected the command's exit error to be logged, got: %q", logs.String())
 	}
 }

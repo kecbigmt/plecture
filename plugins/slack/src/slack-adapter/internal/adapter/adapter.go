@@ -30,9 +30,7 @@ type Adapter struct {
 	eventPublisher eventPublisher
 	statusManager  *StatusManager
 	logger         *slog.Logger
-	// permalinkResolver and mentionHook back the on_unbound_mention hook;
-	// see unbound_mention.go. Both default to production implementations
-	// in New and are swapped for fakes in tests.
+
 	permalinkResolver permalinkResolver
 	mentionHook       mentionHookRunner
 }
