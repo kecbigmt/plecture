@@ -28,6 +28,11 @@ type Config struct {
 	// silently never render.
 	StatusLoadingMessages []string `toml:"status_loading_messages"`
 	StatusTTL             string   `toml:"status_ttl"`
+	// OnUnboundMention, when set, is run for an app_mention that resolves to
+	// no subscription instead of being dropped. What to do with the mention
+	// (which workflow to start, which channels to honour) is deployment
+	// policy the plugin does not encode; see dispatchUnboundMention.
+	OnUnboundMention string `toml:"on_unbound_mention"`
 }
 
 func LoadConfig() *Config {
@@ -59,6 +64,7 @@ func LoadConfig() *Config {
 	fillFromEnv(&cfg.SlackBotToken, "SLACK_BOT_TOKEN")
 	fillFromEnv(&cfg.SlackAppToken, "SLACK_APP_TOKEN")
 	fillFromEnv(&cfg.ChannelID, "SLACK_CHANNEL_ID")
+	fillFromEnv(&cfg.OnUnboundMention, "SLACK_ADAPTER_ON_UNBOUND_MENTION")
 
 	return cfg
 }

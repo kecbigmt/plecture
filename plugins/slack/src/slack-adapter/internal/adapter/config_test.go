@@ -75,6 +75,18 @@ func TestLoadConfig_EnvVarsFillCredentialsWhenConfigFileAbsent(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_OnUnboundMentionEnvVarFillsWhenConfigFileAbsent(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	t.Setenv("SLACK_ADAPTER_ON_UNBOUND_MENTION", "/path/to/dispatch-command")
+
+	cfg := LoadConfig()
+
+	if cfg.OnUnboundMention != "/path/to/dispatch-command" {
+		t.Errorf("OnUnboundMention = %q, want the env var value", cfg.OnUnboundMention)
+	}
+}
+
 func TestLoadConfig_ConfigFileTakesPriorityOverEnvVars(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)

@@ -43,6 +43,7 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 	sub, ok := a.broker.Find(threadTS)
 	if !ok {
 		a.logger.Info("app mention skipped: unbound thread", "thread_ts", threadTS, "channel_id", ev.Channel)
+		a.dispatchUnboundMention(ev, threadTS)
 		return
 	}
 	if sub.ChannelID != "" && ev.Channel != "" && sub.ChannelID != ev.Channel {
