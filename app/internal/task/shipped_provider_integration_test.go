@@ -83,6 +83,25 @@ func spyPlugin(t *testing.T, source string, argvLog string, answer func(name str
 
 func shellQuoteForTest(v string) string { return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'" }
 
+// stubHostPlect puts a no-op `plect` ahead of PATH for the duration of the
+// test. A shell-typed provider hook is free to shell out to the real `plect`
+// (the substrate CLI every session already runs under, and the same pattern
+// this catalog's shipped effects use), but this corpus records only what a
+// hook invokes through its own plugin's declared executables — an ambient
+// `plect` on the machine running the test is neither faked nor recorded, so
+// without this stub the record would depend on whether the host happens to
+// have one installed, and could otherwise reach the developer's or runner's
+// real `~/.local/share/plect` state.
+func stubHostPlect(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plect")
+	if err := os.WriteFile(path, []byte("#!/usr/bin/env sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
 // recordedCalls reads the spy log into one line per invocation, with any path
 // inside the plugin recorded relative to it so the record carries no
 // checkout or temp-directory path.
@@ -116,6 +135,13 @@ func recordedCalls(t *testing.T, argvLog, pluginDir string) []string {
 func TestShippedProviders_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 	for _, source := range repoPluginDirs(t) {
 		t.Run(filepath.Base(source), func(t *testing.T) {
+			stubHostPlect(t)
+			// A real directory, not the literal "/spy/workspace_dirs" a
+			// recorded call names it as: an exec-type provider only ever
+			// passes this value through to its own (spied) executable, but a
+			// shell-type provider's script can `mkdir` under it directly, so
+			// the sandbox needs somewhere it is actually allowed to write.
+			workspaceDirsRoot := t.TempDir()
 			argvLog := filepath.Join(t.TempDir(), "argv.log")
 			// Every provider hook that parses stdout wants one outputs
 			// document; the keys are the union the shipped providers declare
@@ -150,12 +176,13 @@ func TestShippedProviders_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 						t.Fatal(err)
 					}
 					fmt.Fprintf(&b, "== %s / %s\n", id, hook)
-					if err := runProviderHook(t, prov, hook, mounted); err != nil {
-						fmt.Fprintf(&b, "declined: %s\n\n", err)
+					if err := runProviderHook(t, prov, hook, mounted, workspaceDirsRoot); err != nil {
+						msg := strings.ReplaceAll(err.Error(), workspaceDirsRoot, "/spy/workspace_dirs")
+						fmt.Fprintf(&b, "declined: %s\n\n", msg)
 						continue
 					}
 					for i, call := range recordedCalls(t, argvLog, mounted.Dir) {
-						fmt.Fprintf(&b, "call[%d]: %s\n", i, call)
+						fmt.Fprintf(&b, "call[%d]: %s\n", i, strings.ReplaceAll(call, workspaceDirsRoot, "/spy/workspace_dirs"))
 					}
 					b.WriteString("\n")
 				}
@@ -184,7 +211,7 @@ func TestShippedProviders_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 
 // runProviderHook drives one hook with a fixed, generic set of values, so a
 // record is reproducible and carries no provider vocabulary.
-func runProviderHook(t *testing.T, prov config.WorkspaceProviderConfig, hook string, mounted plugins.Mounted) error {
+func runProviderHook(t *testing.T, prov config.WorkspaceProviderConfig, hook string, mounted plugins.Mounted, workspaceDirsRoot string) error {
 	t.Helper()
 	inputs := map[string]any{}
 	for key := range declaredProviderInputs(prov) {
@@ -193,7 +220,7 @@ func runProviderHook(t *testing.T, prov config.WorkspaceProviderConfig, hook str
 	vars := effect.WorkflowHookVars{
 		ResourceID:        "example://acme/widget/1",
 		SessionName:       "acme/widget-1",
-		WorkspaceDirsRoot: "/spy/workspace_dirs",
+		WorkspaceDirsRoot: workspaceDirsRoot,
 		SessionInputs:     map[string]any{},
 		Inputs:            inputs,
 		Plugins:           []plugins.Mounted{mounted},

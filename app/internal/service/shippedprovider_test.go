@@ -151,3 +151,71 @@ func TestShippedWorkspaceProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
 		t.Error("the shipped workspace provider must declare cleanup")
 	}
 }
+
+// TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline pins the
+// one lasting decision at stake in this resolver: a root permalink and a
+// reply permalink to the same thread must resolve to the same session name,
+// even though only the reply carries a `thread_ts` query capture and the
+// root form does not.
+func TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
+	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+	if !prov.HasResolver() {
+		t.Fatal("the shipped workspace provider must declare a resolver")
+	}
+
+	tests := []struct {
+		name     string
+		resource string
+		want     string
+		matched  bool
+	}{
+		{
+			"root permalink",
+			"https://acme.slack.com/archives/C01ABCDEF/p1788226930843789",
+			"slack/C01ABCDEF-1788226930843789",
+			true,
+		},
+		{
+			"reply permalink carrying the root thread_ts",
+			"https://acme.slack.com/archives/C01ABCDEF/p1788227011000100?thread_ts=1788226930.843789&cid=C01ABCDEF",
+			"slack/C01ABCDEF-1788226930843789",
+			true,
+		},
+		{"unrelated url", "https://example.test/archives/C01ABCDEF/p1788226930843789", "", false},
+		{"bare identifier", "slack/C01ABCDEF-1788226930843789", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, matched, err := tryResolveName(prov, tt.resource)
+			if err != nil {
+				t.Fatalf("tryResolveName: %v", err)
+			}
+			if matched != tt.matched {
+				t.Fatalf("matched = %v, want %v", matched, tt.matched)
+			}
+			if got != tt.want {
+				t.Errorf("name = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestShippedSlackThreadProvider_HasNoSubscriptionRegistry pins that this
+// provider declares no subscribe/unsubscribe hook: unlike
+// official.github.worktree, the slack plugin owns no watcher a session
+// could bind to or drop a binding from for a thread resource.
+func TestShippedSlackThreadProvider_HasNoSubscriptionRegistry(t *testing.T) {
+	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+	if prov.Setup == nil {
+		t.Error("the shipped workspace provider must declare setup")
+	}
+	if prov.Cleanup == nil {
+		t.Error("the shipped workspace provider must declare cleanup")
+	}
+	if prov.Subscribe != nil {
+		t.Error("the shipped slack thread provider must declare no subscribe hook")
+	}
+	if prov.Unsubscribe != nil {
+		t.Error("the shipped slack thread provider must declare no unsubscribe hook")
+	}
+}

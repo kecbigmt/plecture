@@ -1,0 +1,86 @@
+# Slack-thread workspace provider — resolves a thread permalink into a
+# session without any GitHub artifact standing in for it. Composing on top
+# via `workspace_provider = "official.slack.thread"` gets a session named
+# after the thread, a bare directory for it, and the same conversation
+# record `slack_thread` writes, so the shipped `slack`/`status` channels and
+# `slack_subscribe` effect bind from it unchanged.
+#
+# Both permalink forms — the root message's own permalink and a reply
+# permalink carrying `?thread_ts=<root>&cid=<channel_id>` — resolve to the
+# same session: `p<ts16>` in the path is already the root's 16-digit
+# timestamp when the permalink IS the root, and `thread_ts` in the query is
+# the root's dotted timestamp when the permalink is a reply. `name` prefers
+# the query form when present (`match.thread_ts` is the empty string when
+# the permalink carried no query, since an unmatched named group in `match`
+# still keys the `match` root, just with an empty value) and strips its dot
+# with the CEL strings extension rather than needing a second named group.
+#
+# No `subscribe`/`unsubscribe`: this plugin owns no watcher or subscription
+# registry for a thread the way `official.github.worktree` does for a
+# GitHub resource, so a session backed by this provider is never dispatched
+# to by resource id and never has a resource-kind binding to drop.
+[thread]
+kind  = "workspace_provider"
+match = '^https://[^/]+\.slack\.com/archives/(?P<channel_id>[A-Z0-9]+)/p(?P<ts16>\d{16})(?:\?thread_ts=(?P<thread_ts>\d{10}\.\d{6})&cid=[A-Z0-9]+)?$'
+name  = { expr = "'slack/' + match.channel_id + '-' + (match.thread_ts != '' ? match.thread_ts.replace('.', '') : match.ts16)" }
+
+# `setup` has no `match` root — it runs once a session already exists, past
+# the point `name` resolved it — so it recovers channel_id and the root
+# timestamp by splitting `session.name` instead of re-parsing the permalink
+# with a second regex. That keeps the directory `setup` creates and the
+# session `name` already picked in agreement by construction: one
+# derivation of those digits, not two that could drift apart.
+[thread.setup]
+type = "shell"
+script = '''
+set -eu
+
+rest=${session_name#slack/}
+channel_id=${rest%-*}
+ts_digits=${rest##*-}
+thread_ts="${ts_digits%??????}.${ts_digits#??????????}"
+
+workspace_dir="$workspace_dirs_root/slack/$channel_id/$thread_ts"
+mkdir -p "$workspace_dir"
+
+plect state set-conversation "$session_name" \
+  --source Slack \
+  --url "$permalink" \
+  --meta "thread_ts=$thread_ts" \
+  --meta "channel_id=$channel_id"
+
+jq -nc \
+  --arg workspace_dir "$workspace_dir" \
+  --arg channel_id "$channel_id" \
+  --arg thread_ts "$thread_ts" \
+  --arg permalink "$permalink" \
+  '{workspace_dir:$workspace_dir,channel_id:$channel_id,thread_ts:$thread_ts,permalink:$permalink}'
+'''
+
+[thread.setup.bind]
+session_name         = { from = "session.name" }
+permalink            = { from = "resource.id" }
+workspace_dirs_root  = { from = "config.workspace_dirs_root" }
+
+[thread.cleanup]
+type   = "shell"
+script = 'rm -rf "$workspace_dir"'
+
+[thread.cleanup.bind]
+workspace_dir = { from = "self.outputs.workspace_dir" }
+
+[thread.outputs_schema]
+type     = "object"
+required = ["workspace_dir", "channel_id", "thread_ts", "permalink"]
+
+[thread.outputs_schema.properties.workspace_dir]
+type = "string"
+
+[thread.outputs_schema.properties.channel_id]
+type = "string"
+
+[thread.outputs_schema.properties.thread_ts]
+type = "string"
+
+[thread.outputs_schema.properties.permalink]
+type = "string"
