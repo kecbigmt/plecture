@@ -1,6 +1,6 @@
 [gh_app_guard]
 kind  = "effect"
-scope = "session"
+scope = "run"
 
 # Produces a directory an agent-runtime effect's generic PATH-prepend input
 # composes, exactly like gh_guard.toml — see that file's own comment and
@@ -10,6 +10,13 @@ scope = "session"
 # GitHub App installation: the generated wrapper mints (and caches)
 # installation tokens itself, so it is a substitute for gh_guard, not a
 # layer on top of it — a session composes one or the other, never both.
+#
+# Run-scoped, not session-scoped: the reported directory lives under the
+# current runtime's TMPDIR and is only ever valid while that runtime's PATH
+# points at it. A container replacement discards it, and a session-scoped
+# node would never be revisited to re-create it — every resume path that
+# re-creates the runtime (the thing that actually needs the wrapper) also
+# re-runs this node, and the token cache it seeds is short-lived anyway.
 #
 # The private key never crosses into this wrapper's generated file content;
 # only its *path* does (an operator-provisioned file the operator is
