@@ -204,10 +204,6 @@ func TestStatusTTLDuration_FallsBackOnUnparsableValue(t *testing.T) {
 	}
 }
 
-// BurntSushi/toml ignores keys a struct doesn't declare, so a retired key
-// like status_loading_messages would otherwise survive in config.toml with
-// no error and no effect — a deployment would look configured for a
-// setting that does nothing. ValidateStartup must reject it explicitly.
 func TestValidateStartup_RejectsRetiredStatusLoadingMessagesKey(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -231,7 +227,7 @@ func TestValidateStartup_RejectsRetiredStatusLoadingMessagesKey(t *testing.T) {
 	}
 }
 
-func TestValidateStartup_AllowsConfigWithoutRetiredKeys(t *testing.T) {
+func TestValidateStartup_AllowsConfigWithoutStatusLoadingMessages(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
@@ -246,6 +242,6 @@ func TestValidateStartup_AllowsConfigWithoutRetiredKeys(t *testing.T) {
 
 	cfg := LoadConfig()
 	if err := cfg.ValidateStartup(); err != nil {
-		t.Fatalf("ValidateStartup() error = %v, want nil for a config without retired keys", err)
+		t.Fatalf("ValidateStartup() error = %v, want nil for a config without status_loading_messages", err)
 	}
 }
