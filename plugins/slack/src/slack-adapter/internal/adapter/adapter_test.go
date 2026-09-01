@@ -27,10 +27,6 @@ func fakeSlackAPI(t *testing.T) *slack.Client {
 	return slack.New("xoxb-test", slack.OptionAPIURL(server.URL+"/"))
 }
 
-// The adapter no longer sets a receipt-time shimmer: a live runtime reports
-// its own progress via plect.status_message, and a receipt-time shimmer for
-// a runtime that turns out to be unreachable asserts progress until
-// status_ttl clears it.
 func TestHandleMessage_SuccessfulDeliveryDoesNotSetThreadStatus(t *testing.T) {
 	socketPath, msgs := startCapturingListener(t)
 	a := newTestAdapter(&Config{AllowedUserIDs: []string{"U-dana"}})

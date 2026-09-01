@@ -261,10 +261,6 @@ func TestHandleAppMentionSubscriptionWithoutSessionNameDoesNotPublish(t *testing
 	}
 }
 
-// The adapter no longer sets a receipt-time shimmer on a mention: a live
-// runtime reports its own progress via plect.status_message, and a
-// receipt-time shimmer for a runtime that turns out to be unreachable
-// asserts progress until status_ttl clears it.
 func TestHandleAppMentionSuccessfulDeliveryDoesNotSetThreadStatus(t *testing.T) {
 	a := newTestAdapter(&Config{})
 	poster := a.poster.(*recordingPoster)
