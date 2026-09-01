@@ -21,10 +21,10 @@ starting the new binary.
 
 Before editing the file, stop the running slack-adapter process (or make
 sure nothing will call `POST/DELETE /subscribe` mid-conversion). `set -e`
-alone would not stop the script if `cp` fails but still leaves a
-zero-length or partial file behind (a full disk can do this), so the
-backup is verified byte-for-byte against the source before conversion is
-allowed to touch the original file:
+already stops the script if `cp` itself exits non-zero, but exit status
+alone doesn't rule out a truncated or otherwise incomplete copy, so the
+backup is also verified byte-for-byte against the source before conversion
+is allowed to touch the original file:
 
 ```bash
 set -euo pipefail
