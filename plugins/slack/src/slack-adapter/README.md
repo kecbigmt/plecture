@@ -38,7 +38,12 @@ allowed_user_ids = ["U..."]
 deliver_full_thread = false # optional; default is root + delta on @-mention
 status_loading_messages = ["Checking…"] # optional; shown on a thread's shimmer status line, max 10 entries
 status_ttl = "15m"                      # optional; clears a stale status if nothing posts by then
+on_unbound_mention = "/path/to/dispatch-command" # optional; see below
 ```
+
+`on_unbound_mention` can also be set via `SLACK_ADAPTER_ON_UNBOUND_MENTION`,
+subject to the same config-file-wins-over-env-var rule as the credential
+fields above.
 
 Outbound-only operation requires only `slack_bot_token`. Requests that omit
 `channel_id` require the optional configured default.
@@ -74,6 +79,32 @@ thread's last successful delivery watermark, followed by the mentioning
 message. Set `deliver_full_thread = true` to send the full thread on every
 mention. Empty `allowed_user_ids` allows any channel member to drive this
 mention path; setting it restricts app mentions to the listed Slack users.
+
+### `on_unbound_mention` hook
+
+An `app_mention` that resolves to no subscription is normally logged and
+dropped (`app mention skipped: unbound thread`). When `on_unbound_mention` is
+set, slack-adapter instead runs that command once, with a JSON document on
+stdin describing the mention, and logs its exit status. `allowed_user_ids`
+is applied first, so a mention from a disallowed user never reaches the
+hook. A top-level mention (no `thread_ts`) is treated as the root of a new
+thread: `thread_ts` in the payload equals the mention's own `ts`. A mention
+in a *bound* thread is unaffected — the hook only fires where today's code
+drops the event.
+
+```json
+{"channel_id": "C...", "thread_ts": "1788222413.916339", "ts": "1788224629.760139", "user": "U...", "text": "<@U...> ...", "permalink": "https://<ws>.slack.com/archives/C.../p..."}
+```
+
+slack-adapter does not wait for anything beyond the command's exit status
+(logged) and never retries. Everything else — which channels to honour,
+which workflow to start, rate limits — is the command's job, not this
+plugin's: it is deployment policy, and the adapter stays a source-agnostic
+relay. A typical command runs
+`plect up <permalink> --workflow <wf> --inputs '{"mention_ts": "<ts>"}'`,
+and the workflow's `slack_subscribe` node (with `catch_up_through =
+mention_ts`) brings the thread's history, including the triggering mention,
+to the runtime.
 
 ## HTTP API
 

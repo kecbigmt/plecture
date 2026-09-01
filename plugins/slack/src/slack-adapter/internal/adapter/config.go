@@ -28,6 +28,10 @@ type Config struct {
 	// silently never render.
 	StatusLoadingMessages []string `toml:"status_loading_messages"`
 	StatusTTL             string   `toml:"status_ttl"`
+	// OnUnboundMention is left as an opaque command, not e.g. a workflow
+	// name, because dispatch policy (which workflow, which channels) is
+	// deployment-specific and this plugin must not encode it.
+	OnUnboundMention string `toml:"on_unbound_mention"`
 }
 
 func LoadConfig() *Config {
@@ -59,6 +63,7 @@ func LoadConfig() *Config {
 	fillFromEnv(&cfg.SlackBotToken, "SLACK_BOT_TOKEN")
 	fillFromEnv(&cfg.SlackAppToken, "SLACK_APP_TOKEN")
 	fillFromEnv(&cfg.ChannelID, "SLACK_CHANNEL_ID")
+	fillFromEnv(&cfg.OnUnboundMention, "SLACK_ADAPTER_ON_UNBOUND_MENTION")
 
 	return cfg
 }
