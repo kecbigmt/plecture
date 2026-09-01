@@ -112,5 +112,5 @@ call[6]: "terminal-send_keys" "Enter"
 call[7]: "terminal-send_keys" "Enter"
 call[8]: "terminal-pid"
 call[9]: "pgrep" "-P" "<pid>"
-call[10]: "ps" "-p" "31337" "-o" "comm="
+call[10]: "ps" "-p" "<pid>" "-o" "comm="
 declined: task "runtime" setup: exit status 1

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-# Stands in for a real process-tree walk: always reports one fixed fake
-# child pid, so the launch-timeout-kills-pane-child scenario can exercise
-# the setup script's kill-on-timeout branch deterministically instead of
-# depending on a real claude process existing in the test sandbox.
+# The pane's child is the scenario's own live process (the harness's real,
+# owned stand-in for whatever an agent launch would have started) — not a
+# fixed pid, which could otherwise name an unrelated process still running
+# on the host by the time the setup script's kill dance reaches it.
 plect-effect-record pgrep "$@"
-printf '31337\n'
+printf '%s\n' "$PLECT_EFFECT_PID"

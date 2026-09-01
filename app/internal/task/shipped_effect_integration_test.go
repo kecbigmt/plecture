@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -105,8 +106,11 @@ type effectHarness struct {
 	// liveProcess is a process the sandbox owns, standing in for whatever an
 	// agent launch would have started: a script that discovers a pid and
 	// checks it is alive finds this one, and a cleanup that signals the pid
-	// it recorded signals this one rather than the test.
+	// it recorded signals this one rather than the test. liveCmd is the same
+	// process's *exec.Cmd, kept so a scenario can wait for its real exit
+	// rather than polling signal 0 (which a zombie still answers).
 	liveProcess int
+	liveCmd     *exec.Cmd
 	scrub       []struct{ from, to string }
 	expand      []struct{ from, to string }
 }
@@ -223,6 +227,7 @@ func (h *effectHarness) startLiveProcess(t *testing.T) {
 		_, _ = cmd.Process.Wait()
 	})
 	h.liveProcess = cmd.Process.Pid
+	h.liveCmd = cmd
 	t.Setenv("PLECT_EFFECT_PID", strconv.Itoa(h.liveProcess))
 	// A seeded file is written before the run, so anything in it that only
 	// this run knows is named by a placeholder.
@@ -358,6 +363,30 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 			h.writeArtifacts(t, b, scenario.Artifacts, self)
 		}
 		b.WriteString("\n")
+	}
+	if scenario.ExpectLiveProcessDead {
+		h.assertLiveProcessDead(t)
+	}
+}
+
+// assertLiveProcessDead waits for the sandbox's live process to be reaped,
+// proving a script actually terminated it rather than merely invoking
+// something that claims to. Waiting for exit, not polling signal 0, is what
+// makes this reliable: a killed child is a zombie — and still answers signal
+// 0 — until its parent (this test) reaps it.
+func (h *effectHarness) assertLiveProcessDead(t *testing.T) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		_ = h.liveCmd.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Error("scenario declares expect_live_process_dead, but the sandbox's live process is still running")
+		_ = h.liveCmd.Process.Kill()
+		<-done
 	}
 }
 
