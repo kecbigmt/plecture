@@ -56,5 +56,5 @@ status_ttl = "15m"
 
 Re-run the grep from [Find the declaration](#find-the-declaration): no
 hits is the completion condition. Then restart `slack-adapter` (or run
-`plect serve` if it manages the service) and confirm it starts without the
-"config.toml uses retired key(s)" error.
+`plect serve` if it manages the service) and confirm it starts without a
+"status_loading_messages is retired" error.
