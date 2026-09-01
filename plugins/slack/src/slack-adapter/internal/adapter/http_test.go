@@ -70,19 +70,31 @@ func startCapturingListener(t *testing.T) (string, <-chan protocol.MessagePayloa
 	return socketPath, ch
 }
 
-// recordingPoster captures PostToThread calls so tests can verify the
-// framing the broker produces for /notify (emoji prefix + summary).
+// recordingPoster captures PostToThread and SetThreadStatus calls so tests
+// can verify the framing the broker produces for /notify (emoji prefix +
+// summary) and the shimmer status set/cleared on a thread.
 type recordingPoster struct {
-	calls []recordedPost
+	calls       []recordedPost
+	statusCalls []recordedStatus
 }
 
 type recordedPost struct {
 	ChannelID, ThreadTS, Text string
 }
 
+type recordedStatus struct {
+	ChannelID, ThreadTS, Status string
+	LoadingMessages             []string
+}
+
 func (p *recordingPoster) PostToThread(channelID, threadTS, text string) (string, error) {
 	p.calls = append(p.calls, recordedPost{channelID, threadTS, text})
 	return "ts-" + threadTS, nil
+}
+
+func (p *recordingPoster) SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error {
+	p.statusCalls = append(p.statusCalls, recordedStatus{channelID, threadTS, status, loadingMessages})
+	return nil
 }
 
 type recordingThreader struct {
@@ -106,7 +118,8 @@ func newTestAdapter(cfg *Config) *Adapter {
 		poster: &recordingPoster{},
 		logger: logger,
 	}
-	a.socketPool = NewSocketPool(a.poster, logger, nil)
+	a.statusManager = NewStatusManager(a.poster, cfg.StatusTTLDuration(), logger)
+	a.socketPool = NewSocketPool(a.poster, logger, nil, a.statusManager)
 	return a
 }
 
@@ -783,6 +796,146 @@ func TestHandleNotify_MethodNotAllowed(t *testing.T) {
 	a.HandleNotify(w, req)
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", w.Code)
+	}
+}
+
+func TestHandleSetStatus_NonEmptyStatusSetsWithoutPosting(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	poster := a.poster.(*recordingPoster)
+
+	body, _ := json.Marshal(setStatusRequest{
+		ChannelID:       "C123",
+		ThreadTS:        "1111.000",
+		Status:          "is reviewing…",
+		LoadingMessages: []string{"Checking CI…"},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if len(poster.calls) != 0 {
+		t.Errorf("PostToThread calls = %d, want 0 (status update must not post a message)", len(poster.calls))
+	}
+	if len(poster.statusCalls) != 2 {
+		t.Fatalf("SetThreadStatus calls = %d, want 2 (clear, then show)", len(poster.statusCalls))
+	}
+	got := poster.statusCalls[1]
+	if got.ChannelID != "C123" || got.ThreadTS != "1111.000" || got.Status != "is reviewing…" {
+		t.Errorf("show call = %+v, want C123/1111.000/is reviewing…", got)
+	}
+	if len(got.LoadingMessages) != 1 || got.LoadingMessages[0] != "Checking CI…" {
+		t.Errorf("loading_messages = %v, want [Checking CI…]", got.LoadingMessages)
+	}
+}
+
+func TestHandleSetStatus_EmptyStatusClears(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	poster := a.poster.(*recordingPoster)
+
+	body, _ := json.Marshal(setStatusRequest{ChannelID: "C123", ThreadTS: "1111.000", Status: ""})
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if len(poster.statusCalls) != 1 {
+		t.Fatalf("SetThreadStatus calls = %d, want 1", len(poster.statusCalls))
+	}
+	if got := poster.statusCalls[0].Status; got != "" {
+		t.Errorf("status = %q, want empty (clear)", got)
+	}
+}
+
+func TestHandleSetStatus_FallsBackToConfiguredChannel(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C-default"})
+	poster := a.poster.(*recordingPoster)
+
+	body, _ := json.Marshal(setStatusRequest{ThreadTS: "1111.000", Status: "is thinking…"})
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if poster.statusCalls[0].ChannelID != "C-default" {
+		t.Errorf("channel_id = %q, want C-default", poster.statusCalls[0].ChannelID)
+	}
+}
+
+func TestHandleSetStatus_RejectsMissingChannelIDWithoutDefault(t *testing.T) {
+	a := newTestAdapter(&Config{})
+
+	body, _ := json.Marshal(setStatusRequest{ThreadTS: "1111.000", Status: "is thinking…"})
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleSetStatus_RejectsMissingThreadTS(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+
+	body, _ := json.Marshal(setStatusRequest{Status: "is thinking…"})
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleSetStatus_RejectsTooManyLoadingMessages(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	poster := a.poster.(*recordingPoster)
+
+	body, _ := json.Marshal(setStatusRequest{
+		ThreadTS:        "1111.000",
+		Status:          "is thinking…",
+		LoadingMessages: make([]string, 11),
+	})
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	if len(poster.statusCalls) != 0 {
+		t.Errorf("SetThreadStatus calls = %d, want 0 (rejected before reaching Slack)", len(poster.statusCalls))
+	}
+}
+
+func TestHandleSetStatus_InvalidJSON(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+
+	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBufferString("not json"))
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("got status %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestHandleSetStatus_MethodNotAllowed(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+
+	req := httptest.NewRequest(http.MethodGet, "/status", nil)
+	w := httptest.NewRecorder()
+	a.HandleSetStatus(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("got status %d, want %d", w.Code, http.StatusMethodNotAllowed)
 	}
 }
 

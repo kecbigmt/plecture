@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -19,6 +20,14 @@ type Config struct {
 	AllowedUserIDs    []string `toml:"allowed_user_ids"`
 	NotifyUserIDs     []string `toml:"notify_user_ids"`
 	DeliverFullThread bool     `toml:"deliver_full_thread"`
+	// StatusLoadingMessages is the default loading_messages shown on an
+	// inbound-delivery status. There is no separate status-text config:
+	// Slack's assistant.threads.setStatus renders only loading_messages
+	// against a real channel thread, never the `status` string itself
+	// (confirmed empirically), so a would-be "default text" setting would
+	// silently never render.
+	StatusLoadingMessages []string `toml:"status_loading_messages"`
+	StatusTTL             string   `toml:"status_ttl"`
 }
 
 func LoadConfig() *Config {
@@ -58,7 +67,25 @@ func (c *Config) ValidateStartup() error {
 	if c.SlackBotToken == "" {
 		return errors.New("slack_bot_token must be set in config")
 	}
+	if err := validateLoadingMessages(c.StatusLoadingMessages); err != nil {
+		return fmt.Errorf("status_loading_messages: %w", err)
+	}
 	return nil
+}
+
+// StatusTTLDuration falls back to defaultStatusTTL (with a warning) on an
+// unparsable value, so a config typo disables the TTL fallback rather than
+// startup itself.
+func (c *Config) StatusTTLDuration() time.Duration {
+	if c.StatusTTL == "" {
+		return defaultStatusTTL
+	}
+	d, err := time.ParseDuration(c.StatusTTL)
+	if err != nil {
+		slog.Warn("status_ttl invalid, using default", "value", c.StatusTTL, "default", defaultStatusTTL, "error", err)
+		return defaultStatusTTL
+	}
+	return d
 }
 
 func fillFromEnv(field *string, envVar string) {

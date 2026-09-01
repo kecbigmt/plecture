@@ -261,6 +261,65 @@ func TestHandleAppMentionSubscriptionWithoutSessionNameDoesNotPublish(t *testing
 	}
 }
 
+func TestHandleAppMentionSetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
+	a := newTestAdapter(&Config{StatusLoadingMessages: []string{"Checking…"}})
+	poster := a.poster.(*recordingPoster)
+	a.threadFetcher = &fakeThreadFetcher{
+		messages: []slack.Message{slackMessage("1000.000001", "U-root", "Review thread opened")},
+	}
+	a.eventPublisher = &recordingEventPublisher{}
+	a.broker.Subscribe(Subscriber{
+		ThreadTS:    "1000.000001",
+		ChannelID:   "C-review",
+		SessionName: "owner/repo-1",
+	})
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> please act",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	if len(poster.statusCalls) != 2 {
+		t.Fatalf("SetThreadStatus calls = %d, want 2 (clear, then show)", len(poster.statusCalls))
+	}
+	got := poster.statusCalls[1]
+	if got.ChannelID != "C-review" || got.ThreadTS != "1000.000001" || got.Status == "" {
+		t.Errorf("show call = %+v, want C-review/1000.000001/non-empty status", got)
+	}
+	if len(got.LoadingMessages) != 1 || got.LoadingMessages[0] != "Checking…" {
+		t.Errorf("loading_messages = %v, want [Checking…]", got.LoadingMessages)
+	}
+}
+
+// Representative of every skip/drop branch in handleAppMention, not just
+// this one: none of them deliver anything, so none should set a status.
+func TestHandleAppMentionFetchFailureDoesNotSetThreadStatus(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	poster := a.poster.(*recordingPoster)
+	a.threadFetcher = &fakeThreadFetcher{err: errors.New("slack unavailable")}
+	a.eventPublisher = &recordingEventPublisher{}
+	a.broker.Subscribe(Subscriber{
+		ThreadTS:    "1000.000001",
+		ChannelID:   "C-review",
+		SessionName: "owner/repo-1",
+	})
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> hello",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	if len(poster.statusCalls) != 0 {
+		t.Errorf("SetThreadStatus calls = %d, want 0 (fetch failed, nothing delivered)", len(poster.statusCalls))
+	}
+}
+
 func TestHandleAppMentionFetchFailureDoesNotPublishOrAdvanceWatermark(t *testing.T) {
 	a := newTestAdapter(&Config{})
 	publisher := &recordingEventPublisher{}

@@ -28,6 +28,13 @@ another plugin's package.
   `base_url` (e.g. `http://127.0.0.1:7890` for its default `listen_addr`),
   `channel_id`, and `thread_ts` (typically wired from whatever task created
   the thread via slack-adapter's `POST /threads`).
+- `config/channels/status.toml` — same inputs and delivery mechanics as
+  `slack.toml`, but posts to `POST /status` instead of `POST /messages`: the
+  event's text becomes the thread's shimmer status line instead of a posted
+  message. Carries no event-type logic of its own — the composing workflow's
+  `include` list decides which events reach it. An event's body-or-summary
+  becomes the sole `loading_messages` entry; an event whose body and summary
+  are both empty clears the status instead.
 - `src/slack-adapter/` — Slack-specific message relay + subscription
   broker. See `src/slack-adapter/CLAUDE.md`.
 
@@ -71,12 +78,26 @@ conclusion the reviewer recorded, and metadata carries `instance`, `leaf_id`,
 only for legacy events without a body; progress, heartbeats, terminal events,
 and GitHub watcher events do not match that binding.
 
-The same example also shows the binding for the `status` channel. Its
-workflow expression maps `plect.status_message` events with summary `waiting`
-to an empty `status` input, which clears the Slack thread status line, and
-passes every other summary through as the visible text. The binding supplies
-the documented `status` channel inputs: `base_url`, `channel_id`, `thread_ts`,
-and `status`.
+The same example also shows the binding for the `status` channel, bound to
+`plect.status_message` with the same three inputs as the `slack` binding
+above (`base_url`, `channel_id`, `thread_ts`) — no per-event input, because
+an `[event.channel.inputs]` binding resolves from session/node outputs only
+and has no access to the event being delivered; only the channel's own
+action does (see `channels/status.toml`).
+
+### Verified channel-thread rendering facts
+
+Confirmed empirically against real Slack workspaces (bot scopes as shipped,
+no `features.assistant_view`): in a bound **channel thread**,
+`assistant.threads.setStatus`'s `status` string is never rendered — Slack
+shows its own localized default text instead — and only `loading_messages`
+entries render. A `loading_messages` entry sent right after a prior
+status-only call on the same thread flashes once and reverts to the
+default text; the same entry sent right after an explicit clear (`status:
+""`) renders persistently. This is why `StatusManager.Set` always clears
+before it sets, and why `status_text` is not a config option: only
+`loading_messages` (default `status_loading_messages`, or per-event via the
+`status` channel) ever reaches the thread.
 
 ## Presentation-only exceptions
 

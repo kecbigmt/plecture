@@ -1,0 +1,37 @@
+# Channel: deliver a session event's text as a thread's shimmer status via
+# this plugin's slack-adapter service, over that service's POST /status.
+# Mirrors channels/slack.toml's shape and delivery mechanics (see its own
+# comment for the exec/escaping rationale); only the endpoint and payload
+# differ. No event-type switch here on purpose: which events reach this
+# channel is the composing workflow's `include` list, and the shown text is
+# just whatever those events carry — same passthrough this plugin's `slack`
+# channel already uses for its message text.
+#
+# The computed text is sent twice on purpose: once as `status` (POST
+# /status's on/off flag — a channel thread never renders `status`'s own
+# content, only `loading_messages`, confirmed empirically) and once as the
+# sole `loading_messages` entry (what actually renders). A
+# body-and-summary-both-empty event sends an empty `status`, which clears
+# the thread's status regardless of `loading_messages`'s content.
+[status]
+kind    = "channel"
+type    = "exec"
+command = "curl"
+args = [
+  "-sf",
+  "--max-time",
+  "10",
+  "-X",
+  "POST",
+  { expr = "inputs.base_url + '/status'" },
+  "-H",
+  "Content-Type: application/json",
+  "-d",
+  { json = { thread_ts = { from = "inputs.thread_ts" }, channel_id = { from = "inputs.channel_id" }, status = { expr = "event.body != '' ? event.body : event.summary" }, loading_messages = [{ expr = "event.body != '' ? event.body : event.summary" }] } },
+]
+timeout = "10s"
+
+[status.input_schema]
+base_url   = { type = "string", required = true }
+channel_id = { type = "string", required = true }
+thread_ts  = { type = "string", required = true }

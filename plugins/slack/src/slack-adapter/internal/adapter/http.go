@@ -60,6 +60,13 @@ type postMessageRequest struct {
 	Mention   bool   `json:"mention,omitempty"`
 }
 
+type setStatusRequest struct {
+	ChannelID       string   `json:"channel_id"`
+	ThreadTS        string   `json:"thread_ts"`
+	Status          string   `json:"status"`
+	LoadingMessages []string `json:"loading_messages,omitempty"`
+}
+
 // HandleInfo handles GET /info to return workspace and channel information.
 func (a *Adapter) HandleInfo(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -145,6 +152,53 @@ func (a *Adapter) HandlePostMessage(w http.ResponseWriter, req *http.Request) {
 	}
 
 	_, err := a.PostToThread(channelID, body.ThreadTS, text)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// HandleSetStatus lets a caller report what a session is doing right now
+// without posting a message. `status` is only an on/off flag (empty
+// clears); custom text belongs in `loading_messages`, the only part of a
+// channel thread's shimmer status that actually renders.
+func (a *Adapter) HandleSetStatus(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body setStatusRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	if body.ThreadTS == "" {
+		http.Error(w, "thread_ts is required", http.StatusBadRequest)
+		return
+	}
+	channelID := body.ChannelID
+	if channelID == "" {
+		channelID = a.cfg.ChannelID
+	}
+	if channelID == "" {
+		http.Error(w, "channel_id is required", http.StatusBadRequest)
+		return
+	}
+	if err := validateLoadingMessages(body.LoadingMessages); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var err error
+	if body.Status == "" {
+		err = a.statusManager.Clear(channelID, body.ThreadTS)
+	} else {
+		err = a.statusManager.Set(channelID, body.ThreadTS, body.Status, body.LoadingMessages)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

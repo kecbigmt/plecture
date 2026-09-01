@@ -32,6 +32,7 @@ func main() {
 	mux.HandleFunc("/subscribe", a.HandleSubscribe)
 	mux.HandleFunc("/subscribers", a.HandleSubscribers)
 	mux.HandleFunc("/notify", a.HandleNotify)
+	mux.HandleFunc("/status", a.HandleSetStatus)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
