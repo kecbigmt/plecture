@@ -15,6 +15,14 @@ another plugin's package.
   `slack-adapter` and records the conversation with
   `plect state set-conversation`. Outputs: `thread_ts`, `channel_id`, and
   `permalink`.
+- `config/tasks/slack_subscribe.toml` — run-scoped effect that registers a
+  thread ↔ runtime binding with `slack-adapter` (`POST /subscribe`, undone
+  with `DELETE /subscribe` on cleanup), so an `app_mention` in the thread
+  reaches the session over Socket Mode. Inputs: `base_url`, `thread_ts`,
+  `channel_id`, and `socket_path` (an opaque string — wire it from whatever
+  runtime task exposes its channel-server socket). Run scope, not session
+  scope, because the socket path changes on every agent launch while the
+  thread does not.
 - `config/channels/slack.toml` — delivers a session event to its Slack
   thread by posting to the `slack-adapter` service's HTTP API. Inputs:
   `base_url` (e.g. `http://127.0.0.1:7890` for its default `listen_addr`),
