@@ -23,11 +23,11 @@ type Subscriber struct {
 	DeliveredThrough string    `json:"delivered_through,omitempty"`
 }
 
-// Tombstone survives a Subscriber's removal so plect down / up (or an ECS
-// task replacement doing the same) does not re-deliver the transcript the
-// resumed session already saw. It is keyed by (thread_ts, session_name)
-// rather than thread_ts alone, because a different session binding the same
-// thread later is meant to see it as new, not resumed.
+// Tombstone exists so that plect down / up (or an ECS task replacement doing
+// the same) does not re-deliver the transcript a resumed session already
+// saw. Keyed by (thread_ts, session_name), not thread_ts alone, because a
+// different session binding the same thread later must see it as new, not
+// resumed.
 type Tombstone struct {
 	ThreadTS         string    `json:"thread_ts"`
 	SessionName      string    `json:"session_name"`
@@ -97,10 +97,9 @@ func (b *Broker) Subscribe(s Subscriber) Subscriber {
 
 // Unsubscribe returns the removed subscriber, or zero value + false if absent.
 //
-// A non-empty watermark is preserved as a tombstone rather than dropped, so
-// a same-session resubscribe (Subscribe, above) can restore it. A
-// subscriber that never received anything leaves no tombstone — there is
-// nothing to protect against redelivery.
+// A watermark becomes a tombstone rather than being dropped, so a
+// same-session Subscribe can restore it; an unset watermark stays dropped —
+// there is nothing to protect against redelivery.
 func (b *Broker) Unsubscribe(threadTS string) (Subscriber, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -178,7 +177,6 @@ func (b *Broker) List() []Subscriber {
 	return b.subsSnapshotLocked()
 }
 
-// subsSnapshotLocked must be called with b.mu held.
 func (b *Broker) subsSnapshotLocked() []Subscriber {
 	out := make([]Subscriber, 0, len(b.subs))
 	for _, s := range b.subs {
@@ -187,7 +185,6 @@ func (b *Broker) subsSnapshotLocked() []Subscriber {
 	return out
 }
 
-// tombstonesSnapshotLocked must be called with b.mu held.
 func (b *Broker) tombstonesSnapshotLocked() []Tombstone {
 	out := make([]Tombstone, 0, len(b.tombstones))
 	for _, t := range b.tombstones {
@@ -211,8 +208,9 @@ type persistedState struct {
 }
 
 // load reads b.path. Missing / corrupt → start empty (next /subscribe
-// rewrites the file cleanly). A pre-tombstone bare-array file is corrupt by
-// this reading — see docs/migrations for the one-time conversion.
+// rewrites the file cleanly). A pre-tombstone bare-array file falls into
+// "corrupt" here by design — see docs/migrations for the one-time
+// conversion this requires.
 func (b *Broker) load() {
 	data, err := os.ReadFile(b.path)
 	if errors.Is(err, fs.ErrNotExist) {

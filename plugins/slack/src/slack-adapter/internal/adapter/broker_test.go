@@ -289,10 +289,9 @@ func TestBroker_PersistPrunesTombstonesOlderThan30Days(t *testing.T) {
 	}
 }
 
-// The pre-tombstone wire format (a bare []Subscriber array) has no
-// "subscribers" key for the new envelope struct to bind, so it decodes as
-// corrupt rather than silently in a legacy shape — no compatibility shim;
-// see docs/migrations for the one-time conversion this requires.
+// Deliberate: no compatibility shim for the pre-tombstone bare-array shape,
+// per the repo's no-backward-compat-code policy; see docs/migrations for
+// the one-time conversion this requires instead.
 func TestBroker_LoadRejectsLegacyBareArrayFileAsCorrupt(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "subscribers.json")

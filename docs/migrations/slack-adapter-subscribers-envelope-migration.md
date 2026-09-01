@@ -20,29 +20,57 @@ starting the new binary.
 ## Backup
 
 Before editing the file, stop the running slack-adapter process (or make
-sure nothing will call `POST/DELETE /subscribe` mid-conversion) and copy
-the current file to a timestamped backup directory:
+sure nothing will call `POST/DELETE /subscribe` mid-conversion). `set -e`
+alone would not stop the script if `cp` fails but still leaves a
+zero-length or partial file behind (a full disk can do this), so the
+backup is verified byte-for-byte against the source before conversion is
+allowed to touch the original file:
 
 ```bash
+set -euo pipefail
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/slack-adapter"
+SRC="$STATE_DIR/subscribers.json"
+
+if [ ! -f "$SRC" ]; then
+  echo "no subscribers.json to migrate" >&2
+  exit 0
+fi
+
 BACKUP_DIR="$STATE_DIR/migration-backups/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$BACKUP_DIR"
-cp "$STATE_DIR/subscribers.json" "$BACKUP_DIR/subscribers.json" 2>/dev/null
+cp "$SRC" "$BACKUP_DIR/subscribers.json"
+cmp -s "$SRC" "$BACKUP_DIR/subscribers.json" || {
+  echo "backup does not match source, aborting" >&2
+  exit 1
+}
 ```
 
 ## Conversion
 
 Wrap the existing array under a `subscribers` key. There is nothing to
 populate `tombstones` with — no thread was ever unsubscribed under the new
-binary yet — so it is omitted (an absent key decodes as an empty list):
+binary yet — so it is omitted (an absent key decodes as an empty list).
+The adapter creates `subscribers.json` mode `0600`; `jq`'s output would
+otherwise land under the shell's umask, so the replacement file is put in
+place with `0600` before anything is written to it, and `mv` (same
+filesystem) carries that mode into the final name rather than the
+original file's:
 
 ```bash
-jq '{subscribers: .}' "$STATE_DIR/subscribers.json" > "$STATE_DIR/subscribers.json.new" \
-  && mv "$STATE_DIR/subscribers.json.new" "$STATE_DIR/subscribers.json"
+set -euo pipefail
+NEW="$STATE_DIR/subscribers.json.new"
+: > "$NEW"
+chmod 600 "$NEW"
+jq '{subscribers: .}' "$SRC" > "$NEW"
+mv "$NEW" "$SRC"
 ```
 
-If the file does not exist (no subscriptions registered yet), skip this
-step — there is nothing to migrate.
+`set -euo pipefail` here is not redundant with Backup's: if this block runs
+in a shell that never ran Backup, `$SRC` is unset and `-u` aborts
+immediately instead of operating on an empty path. With Backup run first
+in the same shell, a failing `jq` call (malformed input, for instance)
+still stops the script before `mv` replaces `subscribers.json`, leaving
+the original file untouched and the verified backup as the recovery path.
 
 ## Verification
 
