@@ -47,10 +47,37 @@ if [ -z "${PLECT_SESSION_NAME:-}" ] || [ -z "$activity" ]; then
   exit 0
 fi
 
-event="$(jq -r '.hook_event_name // ""' 2>/dev/null)" || event=""
+parsed="$(jq -r 'def clean: tostring | gsub("[\n\t\r]+"; " "); [(.hook_event_name // "" | clean), (.tool_name // "" | clean), (.tool_input.command // "" | clean), ((.tool_input.file_path // .tool_input.path // .tool_input.notebook_path // "") | clean)] | join("\u001f")' 2>/dev/null)" || parsed=$'\037\037\037'
+IFS=$'\037' read -r event tool command target_path <<EOF
+$parsed
+EOF
+
+collapse_spaces() {
+  printf '%s' "$1" | tr '\n\t\r' '   ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+}
+
+basename_of() {
+  local path="$1"
+  path="${path%/}"
+  printf '%s' "${path##*/}"
+}
 
 text="$activity"
-[ -n "$event" ] && text="$activity (claude $event)"
+if [ "$event" = "PreToolUse" ] && [ -n "$tool" ]; then
+  summary=""
+  case "$tool" in
+    Bash)
+      command="$(collapse_spaces "$command")"
+      summary="${command%% *}"
+      ;;
+    Read|Write|Edit|MultiEdit|NotebookEdit)
+      [ -n "$target_path" ] && summary="$(basename_of "$target_path")"
+      ;;
+  esac
+  text="$activity: $tool"
+  [ -n "$summary" ] && text="$text $summary"
+fi
+text="${text:0:80}"
 
 plect state set-message "$PLECT_SESSION_NAME" "$text" >/dev/null 2>&1
 

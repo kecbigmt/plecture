@@ -24,6 +24,10 @@ content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 output = "mcp_config"
 path   = ""
 
+[[runtime.artifacts]]
+output = "hooks_settings"
+path   = ""
+
 # The counterpart to the variant above: a mount that declares channel-server
 # but never built it (a custom catalog omitting it, or a builder stage that
 # failed partway). absent_executables removes the spy this harness would
@@ -37,6 +41,10 @@ absent_executables = ["channel-server"]
 [[runtime.files]]
 path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
+[[runtime.artifacts]]
+output = "hooks_settings"
+path   = ""
 
 [[runtime.artifacts]]
 output = "mcp_config"

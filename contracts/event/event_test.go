@@ -99,6 +99,7 @@ func TestPlectEventNamespaceConstants(t *testing.T) {
 		"tick source":     SourceTick,
 		"instruction":     TypeInstruction,
 		"channel error":   TypeChannelError,
+		"status message":  TypeStatusMessage,
 		"terminal prefix": TypeTerminalPrefix,
 		"terminal done":   TypeTerminalDone,
 		"terminal dead":   TypeTerminalDead,
@@ -116,6 +117,9 @@ func TestPlectEventNamespaceConstants(t *testing.T) {
 	}
 	if TypeInstruction != "plect.instruction" {
 		t.Fatalf("TypeInstruction = %q, want plect.instruction", TypeInstruction)
+	}
+	if TypeStatusMessage != "plect.status_message" {
+		t.Fatalf("TypeStatusMessage = %q, want plect.status_message", TypeStatusMessage)
 	}
 }
 

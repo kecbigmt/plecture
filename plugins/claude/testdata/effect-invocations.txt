@@ -28,6 +28,8 @@ artifact mcp_config/:
     }
   }
 }
+artifact hooks_settings/:
+{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"Stop":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity waiting"}]}]}}
 
 == runtime:channel-server-present / health.alive
 alive
@@ -49,6 +51,8 @@ call[4]: "mktemp" "<state>/plect-hooks.XXXXXX"
 call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --session-id aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --disallowedTools AskUserQuestion"
 call[6]: "terminal-send_keys" "Enter"
 outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","socket_path":"<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock"}
+artifact hooks_settings/:
+{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"Stop":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity waiting"}]}]}}
 artifact mcp_config/:
 {"mcpServers":{}}
 

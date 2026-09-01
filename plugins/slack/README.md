@@ -71,6 +71,13 @@ conclusion the reviewer recorded, and metadata carries `instance`, `leaf_id`,
 only for legacy events without a body; progress, heartbeats, terminal events,
 and GitHub watcher events do not match that binding.
 
+The same example also shows the binding for the `status` channel. Its
+workflow expression maps `plect.status_message` events with summary `waiting`
+to an empty `status` input, which clears the Slack thread status line, and
+passes every other summary through as the visible text. The binding supplies
+the documented `status` channel inputs: `base_url`, `channel_id`, `thread_ts`,
+and `status`.
+
 ## Presentation-only exceptions
 
 `slack-adapter`'s deprecated `/notify` rollback path (see
