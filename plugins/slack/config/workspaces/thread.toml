@@ -1,6 +1,3 @@
-# Slack-thread workspace provider: resolves a thread permalink into a
-# session with no GitHub artifact standing in for it.
-#
 # Both permalink forms resolve to the same session because `name` prefers
 # the reply form's `thread_ts` query capture, dot stripped via CEL's
 # `replace`, and falls back to the root form's already-digit-only `ts16`
@@ -26,15 +23,10 @@ type = "shell"
 script = '''
 set -eu
 
-# workspace_dirs_root is operator config, not a value this file's own regex
-# constrains — any byte a POSIX filename allows is legal in it, control
-# characters included — so the JSON printf below cannot assume it needs no
-# escaping the way a `match` capture would. Escaping by hand, rather than
-# reaching for jq, keeps this hook's dependencies at plect and a POSIX
-# shell: one left-to-right scan finds the next byte JSON requires an escape
-# for (backslash, quote, or a 0x01-0x1F control byte), emits the right
-# escape for whichever it is, and continues past it, so nothing needs a
-# second pass over bytes an earlier pass already emitted.
+# workspace_dirs_root is operator config, not something this file's own
+# regex constrains, so it cannot be assumed JSON-safe the way a `match`
+# capture is. Escaping it by hand, rather than reaching for jq, keeps this
+# hook's dependencies at plect and a POSIX shell.
 json_escape() {
   value=$1
   ctrl=$(printf '\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037')
