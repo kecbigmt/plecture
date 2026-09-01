@@ -23,14 +23,34 @@ type Subscriber struct {
 	DeliveredThrough string    `json:"delivered_through,omitempty"`
 }
 
+// Tombstone preserves a thread's delivery watermark across Unsubscribe, so
+// that plect down / up (or an ECS task replacement doing the same) does not
+// re-deliver the transcript the resumed session already saw. It is scoped to
+// the (thread_ts, session_name) pair that produced it: a different session
+// later binding the same thread is a new subscription, not a resumed one,
+// and gets no watermark.
+type Tombstone struct {
+	ThreadTS         string    `json:"thread_ts"`
+	SessionName      string    `json:"session_name"`
+	DeliveredThrough string    `json:"delivered_through"`
+	UnsubscribedAt   time.Time `json:"unsubscribed_at"`
+}
+
+// tombstoneTTL bounds how long an unsubscribed thread's watermark survives.
+// Fixed rather than configurable: this is a single-user adapter and the
+// value only needs to outlast the gap between a deploy's down and up, not
+// tune to a workload.
+const tombstoneTTL = 30 * 24 * time.Hour
+
 // Broker is the in-memory subscriber registry. With a non-empty persistence
 // path, every mutation is written tmp→rename and reloaded on startup so a
 // restart does not require producers to re-register.
 type Broker struct {
-	mu     sync.RWMutex
-	subs   map[string]Subscriber
-	path   string
-	logger *slog.Logger
+	mu         sync.RWMutex
+	subs       map[string]Subscriber
+	tombstones map[string]Tombstone
+	path       string
+	logger     *slog.Logger
 }
 
 // NewBroker returns a Broker. A non-empty path enables disk persistence.
@@ -39,9 +59,10 @@ func NewBroker(path string, logger *slog.Logger) *Broker {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	}
 	b := &Broker{
-		subs:   make(map[string]Subscriber),
-		path:   path,
-		logger: logger,
+		subs:       make(map[string]Subscriber),
+		tombstones: make(map[string]Tombstone),
+		path:       path,
+		logger:     logger,
 	}
 	if path != "" {
 		b.load()
@@ -63,21 +84,47 @@ func (b *Broker) Subscribe(s Subscriber) Subscriber {
 	if existing, ok := b.subs[s.ThreadTS]; ok && s.DeliveredThrough == "" {
 		s.DeliveredThrough = existing.DeliveredThrough
 	}
+	if s.DeliveredThrough == "" {
+		key := tombstoneKey(s.ThreadTS, s.SessionName)
+		if tomb, ok := b.tombstones[key]; ok {
+			s.DeliveredThrough = tomb.DeliveredThrough
+			delete(b.tombstones, key)
+		}
+	}
 	b.subs[s.ThreadTS] = s
-	b.persist(b.snapshotLocked())
+	b.persistLocked()
 	return s
 }
 
 // Unsubscribe returns the removed subscriber, or zero value + false if absent.
+//
+// A non-empty watermark is preserved as a tombstone rather than dropped, so
+// a same-session resubscribe (Subscribe, above) can restore it. A
+// subscriber that never received anything leaves no tombstone — there is
+// nothing to protect against redelivery.
 func (b *Broker) Unsubscribe(threadTS string) (Subscriber, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	s, ok := b.subs[threadTS]
-	if ok {
-		delete(b.subs, threadTS)
-		b.persist(b.snapshotLocked())
+	if !ok {
+		return Subscriber{}, false
 	}
-	return s, ok
+	delete(b.subs, threadTS)
+	if s.DeliveredThrough != "" {
+		key := tombstoneKey(s.ThreadTS, s.SessionName)
+		b.tombstones[key] = Tombstone{
+			ThreadTS:         s.ThreadTS,
+			SessionName:      s.SessionName,
+			DeliveredThrough: s.DeliveredThrough,
+			UnsubscribedAt:   time.Now(),
+		}
+	}
+	b.persistLocked()
+	return s, true
+}
+
+func tombstoneKey(threadTS, sessionName string) string {
+	return threadTS + "\x00" + sessionName
 }
 
 func (b *Broker) Find(threadTS string) (Subscriber, bool) {
@@ -102,7 +149,7 @@ func (b *Broker) MarkDelivered(threadTS, deliveredThrough string) (Subscriber, b
 	}
 	s.DeliveredThrough = deliveredThrough
 	b.subs[threadTS] = s
-	b.persist(b.snapshotLocked())
+	b.persistLocked()
 	return s, true
 }
 
@@ -129,16 +176,62 @@ func (b *Broker) BySession(sessionName string) (Subscriber, bool) {
 func (b *Broker) List() []Subscriber {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.snapshotLocked()
+	return b.subsSnapshotLocked()
 }
 
-// snapshotLocked must be called with b.mu held.
-func (b *Broker) snapshotLocked() []Subscriber {
+// subsSnapshotLocked must be called with b.mu held.
+func (b *Broker) subsSnapshotLocked() []Subscriber {
 	out := make([]Subscriber, 0, len(b.subs))
 	for _, s := range b.subs {
 		out = append(out, s)
 	}
 	return out
+}
+
+// tombstonesSnapshotLocked must be called with b.mu held.
+func (b *Broker) tombstonesSnapshotLocked() []Tombstone {
+	out := make([]Tombstone, 0, len(b.tombstones))
+	for _, t := range b.tombstones {
+		out = append(out, t)
+	}
+	return out
+}
+
+// pruneTombstonesLocked drops tombstones older than tombstoneTTL. Called on
+// load and on every persist (persistLocked), per the fixed 30-day retention
+// — no config key, since a longer-lived gap between unsubscribe and
+// resubscribe means the resuming session no longer needs the redelivery
+// guard.
+func (b *Broker) pruneTombstonesLocked() {
+	cutoff := time.Now().Add(-tombstoneTTL)
+	for k, t := range b.tombstones {
+		if t.UnsubscribedAt.Before(cutoff) {
+			delete(b.tombstones, k)
+		}
+	}
+}
+
+// persistedState is subscribers.json's on-disk shape.
+type persistedState struct {
+	Subscribers []Subscriber `json:"subscribers"`
+	Tombstones  []Tombstone  `json:"tombstones,omitempty"`
+}
+
+// decodeState parses subscribers.json. Two shapes are accepted: the current
+// {"subscribers": [...], "tombstones": [...]} envelope, and the bare
+// []Subscriber array written before tombstones existed. This is read-only
+// compatibility, not migration code — a file in the old shape has no
+// tombstones key, which just means an empty tombstones list.
+func decodeState(data []byte) (persistedState, error) {
+	var ps persistedState
+	if err := json.Unmarshal(data, &ps); err == nil {
+		return ps, nil
+	}
+	var legacy []Subscriber
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return persistedState{}, err
+	}
+	return persistedState{Subscribers: legacy}, nil
 }
 
 // load reads b.path. Missing / corrupt → start empty (next /subscribe
@@ -153,30 +246,44 @@ func (b *Broker) load() {
 		b.logger.Warn("failed to read subscriber state, starting empty", "path", b.path, "error", err)
 		return
 	}
-	var subs []Subscriber
-	if err := json.Unmarshal(data, &subs); err != nil {
+	ps, err := decodeState(data)
+	if err != nil {
 		b.logger.Warn("failed to parse subscriber state, starting empty", "path", b.path, "error", err)
 		return
 	}
-	for _, s := range subs {
+	for _, s := range ps.Subscribers {
 		if s.ThreadTS == "" {
 			continue
 		}
 		b.subs[s.ThreadTS] = s
 	}
-	b.logger.Info("restored subscribers", "count", len(b.subs), "path", b.path)
+	for _, t := range ps.Tombstones {
+		if t.ThreadTS == "" {
+			continue
+		}
+		b.tombstones[tombstoneKey(t.ThreadTS, t.SessionName)] = t
+	}
+	b.pruneTombstonesLocked()
+	b.logger.Info("restored subscribers", "count", len(b.subs), "tombstones", len(b.tombstones), "path", b.path)
 }
 
-// persist writes subs to b.path atomically (tmp → rename), deliberately
-// without the fsync that contracts/atomicfile applies to plect's durable paths
-// (state, subscription registries, event cursors): losing the last write
-// before a crash just means a stale reload, self-healed by producers
+// persistLocked prunes expired tombstones, then writes the full snapshot
+// (subscribers + tombstones) atomically (tmp → rename), deliberately
+// without the fsync that contracts/atomicfile applies to plect's durable
+// paths (state, subscription registries, event cursors): losing the last
+// write before a crash just means a stale reload, self-healed by producers
 // re-registering, so paying an fsync on every subscribe/unsubscribe isn't
-// worth it. Failures are logged but never propagate: the in-memory
-// registration the HTTP handler just acknowledged outranks the on-disk copy.
-func (b *Broker) persist(subs []Subscriber) {
+// worth it. Failures are logged but never propagate: the in-memory mutation
+// the HTTP handler just acknowledged outranks the on-disk copy. Must be
+// called with b.mu held.
+func (b *Broker) persistLocked() {
+	b.pruneTombstonesLocked()
 	if b.path == "" {
 		return
+	}
+	ps := persistedState{
+		Subscribers: b.subsSnapshotLocked(),
+		Tombstones:  b.tombstonesSnapshotLocked(),
 	}
 	dir := filepath.Dir(b.path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -191,7 +298,7 @@ func (b *Broker) persist(subs []Subscriber) {
 	tmpPath := tmp.Name()
 	enc := json.NewEncoder(tmp)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(subs); err != nil {
+	if err := enc.Encode(ps); err != nil {
 		tmp.Close()
 		os.Remove(tmpPath)
 		b.logger.Warn("failed to encode subscriber state", "error", err)
