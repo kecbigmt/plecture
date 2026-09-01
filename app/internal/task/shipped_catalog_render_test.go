@@ -100,6 +100,7 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"sent":           "true",
 		"session_name":   "test-session",
 		"dir":            "/tmp/plect-gh-guard.x",
+		"thread_ts":      "1234567890.123456",
 	}
 	inputs := map[string]any{
 		"terminal_ready":   "test-session",
@@ -118,6 +119,8 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 		"base_url":         "http://127.0.0.1:7890",
 		"channel_id":       "C123",
 		"root_text":        "[AI review] Fix widgets — https://github.com/acme/widgets/pull/7",
+		"thread_ts":        "1234567890.123456",
+		"socket_path":      "/tmp/claude-channel/x.sock",
 		"app_id":           "123456",
 		"installation_id":  "987654",
 		"private_key_path": "/etc/plect/gh-app.pem",
