@@ -166,12 +166,11 @@ sh -c "$send_keys" terminal-send-keys Enter
 # prompt-render delay than a fixed sleep would be (the same warning
 # reappears on --resume, so the same loop covers both cases).
 #
-# On --resume, the session JSON can still carry the previous run's now-dead
-# pid — so every candidate matching the previous pid, or matching no live
-# process at all, is discarded before Enter is withheld. Withholding Enter
-# just because *some* record exists deadlocks the launch: a stale record
-# satisfies the jq select from the first iteration, so the loop must judge
-# liveness before it judges presence.
+# Enter must be resent whenever no *live* candidate is found, not merely
+# when no record is found at all: on --resume, the previous run's now-dead
+# pid can still satisfy the sessionId match from the first iteration, and
+# withholding Enter on that basis deadlocks the launch on the banner
+# forever.
 # 30s, not 10s: a cold pane can spend several seconds loading its shell
 # environment before the claude command even runs, and a warm pane still
 # clears in a couple of iterations, so the longer bound only costs time on
@@ -190,11 +189,6 @@ while [ "$i" -lt 60 ]; do
     break
   done
   [ -n "$PID" ] && break
-  # No live candidate yet — most likely still stuck on the warning banner,
-  # which a stale record for the previous (dead) pid can mask without this
-  # loop ever noticing. Send another Enter and keep polling; once a live
-  # candidate is found, this branch stops being taken, so extra Enters stop
-  # being sent.
   sh -c "$send_keys" terminal-send-keys Enter
 done
 if [ -z "$PID" ]; then

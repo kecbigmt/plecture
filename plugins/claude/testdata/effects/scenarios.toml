@@ -4,15 +4,12 @@
 # the scratch paths, and seeds the session file the launch waits for; the
 # answers/ scripts are how this plugin's own executables reply.
 
-# A resume onto a session id whose only session file left over from the
-# previous (now-dead) process still satisfies the launch's own sessionId
-# match. The poll loop must discard that stale, dead-pid candidate and keep
-# sending Enter rather than treating its mere presence as done; this
-# plugin's own terminal-send-keys stand-in only produces the live-pid
-# session file once a second Enter actually arrives, so this scenario only
-# succeeds if the loop does that. It runs before the channel-server pair
-# below so its own record isn't shaped by the executable removal
-# "channel-server-absent" performs.
+# A resume whose only session record is the previous (now-dead) process's
+# stale entry: this plugin's own terminal-send_keys stand-in withholds the
+# live-pid record until a second Enter arrives, so the scenario only
+# succeeds if the poll loop resends Enter past the stale one. Runs before
+# the channel-server pair below so channel-server-absent's executable
+# removal doesn't shape its record too.
 [[runtime]]
 name = "resume-stale-record"
 prev = { session_id = "11111111-2222-3333-4444-555555555555", pid = "999999" }
