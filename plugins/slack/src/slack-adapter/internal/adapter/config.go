@@ -20,18 +20,17 @@ type Config struct {
 	AllowedUserIDs    []string `toml:"allowed_user_ids"`
 	NotifyUserIDs     []string `toml:"notify_user_ids"`
 	DeliverFullThread bool     `toml:"deliver_full_thread"`
-	// StatusLoadingMessages is the default loading_messages shown on an
-	// inbound-delivery status. There is no separate status-text config:
-	// Slack's assistant.threads.setStatus renders only loading_messages
-	// against a real channel thread, never the `status` string itself
-	// (confirmed empirically), so a would-be "default text" setting would
-	// silently never render.
-	StatusLoadingMessages []string `toml:"status_loading_messages"`
-	StatusTTL             string   `toml:"status_ttl"`
+	StatusTTL         string   `toml:"status_ttl"`
 	// OnUnboundMention is left as an opaque command, not e.g. a workflow
 	// name, because dispatch policy (which workflow, which channels) is
 	// deployment-specific and this plugin must not encode it.
 	OnUnboundMention string `toml:"on_unbound_mention"`
+
+	// hasRetiredStatusLoadingMessages records whether config.toml still
+	// declares the retired status_loading_messages key. BurntSushi/toml
+	// silently ignores a key this struct doesn't declare, so ValidateStartup
+	// checks this instead of letting the key quietly do nothing.
+	hasRetiredStatusLoadingMessages bool
 }
 
 func LoadConfig() *Config {
@@ -47,8 +46,15 @@ func LoadConfig() *Config {
 			// present-and-unparsable one is a user mistake that would
 			// otherwise silently fall back to an empty (deny-all) config —
 			// warn so it isn't mistaken for "everything is configured".
-			if _, decodeErr := toml.DecodeFile(configPath, cfg); decodeErr != nil {
+			meta, decodeErr := toml.DecodeFile(configPath, cfg)
+			if decodeErr != nil {
 				slog.Warn("config.toml present but failed to parse; using defaults", "path", configPath, "error", decodeErr)
+			} else {
+				for _, key := range meta.Undecoded() {
+					if key.String() == "status_loading_messages" {
+						cfg.hasRetiredStatusLoadingMessages = true
+					}
+				}
 			}
 		}
 	}
@@ -72,8 +78,8 @@ func (c *Config) ValidateStartup() error {
 	if c.SlackBotToken == "" {
 		return errors.New("slack_bot_token must be set in config")
 	}
-	if err := validateLoadingMessages(c.StatusLoadingMessages); err != nil {
-		return fmt.Errorf("status_loading_messages: %w", err)
+	if c.hasRetiredStatusLoadingMessages {
+		return errors.New("status_loading_messages is retired and no longer accepted; remove it from config.toml (see plugins/slack/src/slack-adapter/README.md)")
 	}
 	return nil
 }

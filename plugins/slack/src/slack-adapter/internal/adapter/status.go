@@ -11,13 +11,6 @@ import (
 const (
 	defaultStatusTTL   = 15 * time.Minute
 	maxLoadingMessages = 10
-
-	// statusShowFlag is the non-empty `status` string sent when a caller has
-	// no more specific text of its own to send (only loading_messages
-	// renders in a channel thread — confirmed empirically — so `status`'s
-	// content is otherwise irrelevant; it only has to be non-empty to mean
-	// "show" rather than "clear").
-	statusShowFlag = "active"
 )
 
 // ThreadStatusSetter sets a Slack thread's shimmer status line
@@ -29,9 +22,8 @@ type ThreadStatusSetter interface {
 	SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error
 }
 
-// validateLoadingMessages is shared by config startup validation and the
-// POST /status request path so both reject over Slack's 10-message limit
-// the same way.
+// validateLoadingMessages rejects a POST /status request over Slack's
+// 10-message limit.
 func validateLoadingMessages(msgs []string) error {
 	if len(msgs) > maxLoadingMessages {
 		return fmt.Errorf("loading_messages must have at most %d entries, got %d", maxLoadingMessages, len(msgs))

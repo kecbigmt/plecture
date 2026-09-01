@@ -261,13 +261,14 @@ func TestHandleAppMentionSubscriptionWithoutSessionNameDoesNotPublish(t *testing
 	}
 }
 
-func TestHandleAppMentionSetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
-	a := newTestAdapter(&Config{StatusLoadingMessages: []string{"Checking…"}})
+func TestHandleAppMentionSuccessfulDeliveryDoesNotSetThreadStatus(t *testing.T) {
+	a := newTestAdapter(&Config{})
 	poster := a.poster.(*recordingPoster)
 	a.threadFetcher = &fakeThreadFetcher{
 		messages: []slack.Message{slackMessage("1000.000001", "U-root", "Review thread opened")},
 	}
-	a.eventPublisher = &recordingEventPublisher{}
+	publisher := &recordingEventPublisher{}
+	a.eventPublisher = publisher
 	a.broker.Subscribe(Subscriber{
 		ThreadTS:    "1000.000001",
 		ChannelID:   "C-review",
@@ -282,15 +283,11 @@ func TestHandleAppMentionSetsThreadStatusOnSuccessfulDelivery(t *testing.T) {
 		Channel:         "C-review",
 	})
 
-	if len(poster.statusCalls) != 2 {
-		t.Fatalf("SetThreadStatus calls = %d, want 2 (clear, then show)", len(poster.statusCalls))
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(publisher.events))
 	}
-	got := poster.statusCalls[1]
-	if got.ChannelID != "C-review" || got.ThreadTS != "1000.000001" || got.Status == "" {
-		t.Errorf("show call = %+v, want C-review/1000.000001/non-empty status", got)
-	}
-	if len(got.LoadingMessages) != 1 || got.LoadingMessages[0] != "Checking…" {
-		t.Errorf("loading_messages = %v, want [Checking…]", got.LoadingMessages)
+	if len(poster.statusCalls) != 0 {
+		t.Errorf("SetThreadStatus calls = %d, want 0 (no receipt-time shimmer)", len(poster.statusCalls))
 	}
 }
 

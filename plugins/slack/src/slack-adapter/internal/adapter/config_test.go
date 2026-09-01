@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -203,22 +204,44 @@ func TestStatusTTLDuration_FallsBackOnUnparsableValue(t *testing.T) {
 	}
 }
 
-func TestValidateStartup_RejectsTooManyStatusLoadingMessages(t *testing.T) {
-	cfg := &Config{
-		SlackBotToken:         "xoxb-test",
-		StatusLoadingMessages: make([]string, 11),
+func TestValidateStartup_RejectsRetiredStatusLoadingMessagesKey(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	configDir := filepath.Join(tmpHome, ".config", "slack-adapter")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	if err := cfg.ValidateStartup(); err == nil {
-		t.Fatal("ValidateStartup() error = nil, want a rejection for >10 status_loading_messages")
+	body := "slack_bot_token = \"xoxb-test\"\nstatus_loading_messages = [\"Checking…\"]\n"
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := LoadConfig()
+	err := cfg.ValidateStartup()
+	if err == nil {
+		t.Fatal("ValidateStartup() error = nil, want rejection of the retired status_loading_messages key")
+	}
+	if !strings.Contains(err.Error(), "status_loading_messages") {
+		t.Errorf("ValidateStartup() error = %q, want it to name status_loading_messages", err.Error())
 	}
 }
 
-func TestValidateStartup_AllowsTenStatusLoadingMessages(t *testing.T) {
-	cfg := &Config{
-		SlackBotToken:         "xoxb-test",
-		StatusLoadingMessages: make([]string, 10),
+func TestValidateStartup_AllowsConfigWithoutStatusLoadingMessages(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	configDir := filepath.Join(tmpHome, ".config", "slack-adapter")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
+	body := "slack_bot_token = \"xoxb-test\"\nstatus_ttl = \"5m\"\n"
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := LoadConfig()
 	if err := cfg.ValidateStartup(); err != nil {
-		t.Fatalf("ValidateStartup() error = %v, want nil for exactly 10 status_loading_messages", err)
+		t.Fatalf("ValidateStartup() error = %v, want nil for a config without status_loading_messages", err)
 	}
 }

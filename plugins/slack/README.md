@@ -119,8 +119,8 @@ status-only call on the same thread flashes once and reverts to the
 default text; the same entry sent right after an explicit clear (`status:
 ""`) renders persistently. This is why `StatusManager.Set` always clears
 before it sets, and why `status_text` is not a config option: only
-`loading_messages` (default `status_loading_messages`, or per-event via the
-`status` channel) ever reaches the thread.
+`loading_messages`, supplied per-event via the `status` channel, ever
+reaches the thread.
 
 ## Presentation-only exceptions
 

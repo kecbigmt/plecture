@@ -91,7 +91,6 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 		return
 	}
 	a.broker.MarkDelivered(threadTS, deliveredThrough)
-	a.showThreadStatus(channelID, threadTS)
 }
 
 func (a *Adapter) fetchThreadReplies(channelID, threadTS string) ([]slack.Message, error) {
@@ -207,7 +206,6 @@ func (a *Adapter) catchUpThread(sub Subscriber, through string) Subscriber {
 	if updated, ok := a.broker.MarkDelivered(sub.ThreadTS, through); ok {
 		sub = updated
 	}
-	a.showThreadStatus(sub.ChannelID, sub.ThreadTS)
 	return sub
 }
 
