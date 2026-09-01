@@ -154,11 +154,8 @@ func TestShippedWorkspaceProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
 	}
 }
 
-// TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline pins the
-// one lasting decision at stake in this resolver: a root permalink and a
-// reply permalink to the same thread must resolve to the same session name,
-// even though only the reply carries a `thread_ts` query capture and the
-// root form does not.
+// TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline pins that
+// both permalink forms for one thread resolve to the same session name.
 func TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
 	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
 	if !prov.HasResolver() {
@@ -203,9 +200,8 @@ func TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline(t *testin
 }
 
 // TestShippedSlackThreadProvider_HasNoSubscriptionRegistry pins that this
-// provider declares no subscribe/unsubscribe hook: unlike
-// official.github.worktree, the slack plugin owns no watcher a session
-// could bind to or drop a binding from for a thread resource.
+// provider declares no subscribe/unsubscribe hook: the slack plugin owns no
+// watcher for a thread session to bind to.
 func TestShippedSlackThreadProvider_HasNoSubscriptionRegistry(t *testing.T) {
 	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
 	if prov.Setup == nil {
@@ -222,9 +218,9 @@ func TestShippedSlackThreadProvider_HasNoSubscriptionRegistry(t *testing.T) {
 	}
 }
 
-// stubPlectRecordingArgv puts a `plect` on PATH that logs its argv instead of
-// running for real: `plect state set-conversation` needs a session already
-// in a real state store, which this test never creates one of.
+// stubPlectRecordingArgv logs plect's argv instead of running it for real:
+// `state set-conversation` needs a session already in a real state store,
+// which this test never creates one of.
 func stubPlectRecordingArgv(t *testing.T, log string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -314,9 +310,8 @@ func TestShippedSlackThreadProvider_SetupRecordsConversationAndCreatesWorkspace(
 }
 
 // TestShippedSlackThreadProvider_SetupToleratesJSONSpecialCharactersInWorkspaceDirsRoot
-// pins that a workspace_dirs_root byte outside what `match` constrains —
-// quote, backslash, or a raw control byte, all legal in a POSIX filename —
-// still round-trips through setup's outputs JSON rather than breaking it.
+// pins that a workspace_dirs_root byte outside what `match` constrains still
+// round-trips through setup's outputs JSON.
 func TestShippedSlackThreadProvider_SetupToleratesJSONSpecialCharactersInWorkspaceDirsRoot(t *testing.T) {
 	tests := []struct {
 		name string

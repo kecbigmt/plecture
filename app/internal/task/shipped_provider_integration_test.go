@@ -83,14 +83,8 @@ func spyPlugin(t *testing.T, source string, argvLog string, answer func(name str
 
 func shellQuoteForTest(v string) string { return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'" }
 
-// stubHostPlect puts a no-op `plect` ahead of PATH for the duration of the
-// test. A shell-typed provider hook is free to shell out to the real `plect`
-// (the substrate CLI every session already runs under, and the same pattern
-// this catalog's shipped effects use), but this corpus records only what a
-// hook invokes through its own plugin's declared executables — an ambient
-// `plect` on the machine running the test is neither faked nor recorded, so
-// without this stub the record would depend on whether the host happens to
-// have one installed, and could otherwise reach the developer's or runner's
+// stubHostPlect keeps an ambient `plect` off PATH, so this corpus's record
+// never depends on whether the host has one installed and can't reach its
 // real `~/.local/share/plect` state.
 func stubHostPlect(t *testing.T) {
 	t.Helper()
@@ -136,11 +130,8 @@ func TestShippedProviders_InvocationsMatchTheirPluginsRecord(t *testing.T) {
 	for _, source := range repoPluginDirs(t) {
 		t.Run(filepath.Base(source), func(t *testing.T) {
 			stubHostPlect(t)
-			// A real directory, not the literal "/spy/workspace_dirs" a
-			// recorded call names it as: an exec-type provider only ever
-			// passes this value through to its own (spied) executable, but a
-			// shell-type provider's script can `mkdir` under it directly, so
-			// the sandbox needs somewhere it is actually allowed to write.
+			// A real directory: unlike an exec-type provider, a shell-type
+			// one can `mkdir` under it directly.
 			workspaceDirsRoot := t.TempDir()
 			argvLog := filepath.Join(t.TempDir(), "argv.log")
 			// Every provider hook that parses stdout wants one outputs
