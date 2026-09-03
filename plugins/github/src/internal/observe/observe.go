@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -262,7 +263,12 @@ func branchPullRequest(ctx context.Context, client github.GHClient, parsed *gith
 	if branch == "" {
 		return ""
 	}
-	path := fmt.Sprintf("repos/%s/%s/pulls?head=%s:%s&state=all", parsed.Owner, parsed.Repo, parsed.Owner, branch)
+	// The branch name reaches the query string verbatim, unlike a path
+	// segment: a devbox-style name like "issue/2243+claude" has GitHub decode
+	// the '+' as a space unless it is percent-encoded, which turns the head
+	// filter into a lookup for a branch that does not exist.
+	query := url.Values{"head": {parsed.Owner + ":" + branch}, "state": {"all"}}
+	path := fmt.Sprintf("repos/%s/%s/pulls?%s", parsed.Owner, parsed.Repo, query.Encode())
 	raw, err := client.JSON(ctx, path)
 	if err != nil {
 		return ""
