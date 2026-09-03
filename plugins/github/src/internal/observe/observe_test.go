@@ -159,11 +159,7 @@ func TestObserve_Issue_LinkedPRViaBranch(t *testing.T) {
 	}
 }
 
-// A branch name containing characters the query string treats specially
-// (devbox's issue-keyed workspace naming produces "issue/2243+claude") must
-// reach GitHub still meaning that literal branch name: an unescaped '+' is
-// GitHub's own query decoder for a space, which turns the lookup into one
-// for a branch that does not exist and silently reports no linked PR.
+// A '+' in the branch name must not be decoded as a space by GitHub's query parser.
 func TestObserve_Issue_LinkedPRViaBranch_EncodesSpecialCharacters(t *testing.T) {
 	client := &fakeGHClient{responses: map[string]string{
 		"repos/acme/widgets/issues/7":                                       `{"state":"open","updated_at":"2026-01-01T00:00:00Z"}`,
