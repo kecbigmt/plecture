@@ -130,6 +130,7 @@ is:
 | `type`, `bin`/`command`, `args` or `script`/`bind` | Required action. | Runs the plugin-owned discover implementation using the existing action variants. |
 | `inputs_schema` | Required JSON Schema object. | Declares deployment parameters consumed by the action as `inputs.*`. An empty object schema is valid. |
 | `item_schema` | Required JSON Schema object. | Declares every discovery record. It must require a string `resource` property. |
+| `wake` | Optional action for poll; forbidden for push. | Supervises a hint stream that requests an immediate complete snapshot, as specified in Decision 6. |
 
 The action's `inputs.*` root is the source definition's literal
 `discover_inputs` object, validated against `inputs_schema` before the action
@@ -146,6 +147,15 @@ stream and writes one JSON object per line as resources appear. Stream
 termination or a non-zero exit is a discovery failure and is restarted with
 the resident supervisor's bounded backoff. It never implies that any resource
 disappeared.
+
+Mode describes whether membership in the resource set can be enumerated, not
+how a provider receives notifications. An enumerable pull request remains
+`poll` even when a webhook reduces its discovery latency. An unbound chat
+mention remains `push` whether its adapter receives Socket Mode events or an
+Events API webhook; that transport choice belongs to the adapter service and
+is invisible to the language. Choosing `push` for an enumerable resource
+would discard the complete snapshot that repairs missed notifications and
+proves absence.
 
 Both outputs validate each object against `item_schema`. Within a
 `session_source` session input, the item's declared properties are available
@@ -198,6 +208,14 @@ args = [
   "--draft", { expr = "inputs.draft ? 'true' : 'false'" },
 ]
 
+[pull.discover.wake]
+type = "exec"
+bin  = "github-webhook-receiver"
+args = [
+  "stream-hints",
+  "--repositories", { json = { from = "inputs.repositories" } },
+]
+
 [pull.discover.inputs_schema]
 type                 = "object"
 required             = ["repositories", "labels", "state", "draft"]
@@ -234,6 +252,12 @@ mergeable_state = { type = "string", enum = ["clean", "dirty", "unstable", "bloc
 review_decision = { type = "string", enum = ["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", "NULL"] }
 lifecycle_state = { type = "string", enum = ["open", "closed", "merged"] }
 ```
+
+The wake executable is introduced with this discover face. It connects to a
+webhook-receiver service and streams hints; it does not emit pull-request
+records. Exposing the webhook endpoint and verifying request signatures are
+deployment-infrastructure responsibilities outside the configuration
+language.
 
 #### Push discover sketch
 
@@ -652,10 +676,11 @@ instance, idle expiry proceeds.
 #### Recommendation
 
 The evaluator lives in `plect serve`. A poll source receives its own
-`poll_every` clock; a push source owns one supervised discover stream. A
-successful config reload adds, replaces, or stops evaluator loops. A failed
-reload keeps the last valid loops and desired state, matching the resident
-process's fail-closed posture.
+`poll_every` clock and, when its observer declares one, its own parameterized
+wake stream; a push source owns one supervised discover stream. A successful
+config reload adds, replaces, or stops evaluator loops. A failed reload keeps
+the last valid loops and desired state, matching the resident process's
+fail-closed posture.
 
 Each evaluation is plan-then-apply. It computes the complete set of allowed
 creates, idempotent ups, initial task setups, and owned destroys before
@@ -690,6 +715,50 @@ chain got there first. This preserves the chain's placement and the source's
 destruction guard rather than letting two authorities rewrite one session's
 provenance.
 
+### 6. Wake streams for poll sources
+
+#### Options
+
+1. Reduce `poll_every` until creation latency is acceptable. This preserves
+   correctness but converts a burst-latency requirement into continuous API
+   load, and still cannot provide a prompt reaction without aggressive
+   polling.
+2. Model an enumerable resource as `push` when webhooks are available. This
+   treats transport as membership semantics: one missed delivery can prevent
+   creation forever, and the evaluator loses snapshot absence as a destruction
+   signal.
+3. Keep the complete poll snapshot authoritative and let an optional stream
+   wake that snapshot early.
+
+#### Recommendation
+
+A poll discover may additionally declare
+`[<observer>.discover.wake]`. It is an action with the same supervised-stream
+execution shape as a push discover action, but not the same data contract. The
+wake action has no `item_schema`; each complete output line is an untrusted
+hint whose bytes are discarded. A hint cannot name a resource, supply
+`discovery.*` values, admit a session, or destroy one. It only requests that
+each source using this observer run its ordinary complete snapshot now.
+
+The wake action reads the same `inputs.*` root as the poll action, backed by
+the source's one `discover_inputs` object and validated once against the
+discover `inputs_schema`. A second parameter surface is rejected because the
+wake and snapshot are two timing faces of the same query, not independently
+selectable populations.
+
+The evaluator maintains one pending-wake latch per source. Hints that arrive
+before an evaluation starts collapse into one immediate poll. A hint received
+while that poll is running requests at most one immediate follow-up; it does
+not start a concurrent evaluation. A scheduled `poll_every` tick coalesces
+with the same latch. The resulting snapshot follows the full validation,
+plan, and apply rules from Decisions 3–5.
+
+Wake stream termination and restart use the same supervised bounded-backoff
+rules as a push discover stream. Stream failure does not change desired
+membership and never implies absence. `poll_every` remains required and is
+the recovery floor, so delayed, duplicated, reordered, or at-most-once webhook
+delivery can affect latency but not eventual correctness.
+
 ## Consequences
 
 Implementation changes the configuration language and therefore requires a
@@ -702,8 +771,9 @@ without adding any provider name to core.
 The implementation order is:
 
 1. Add poll and push discover faces to the relevant plugin observers,
-   including parameter and item schemas. The Slack adapter exposes its
-   unbound-mention stream without deciding a workflow.
+   including parameter and item schemas, then add the optional wake stream to
+   the poll observer. The Slack adapter exposes its unbound-mention stream
+   without deciding a workflow.
 2. Add language validation and the resident evaluator, including provenance,
    fail-closed planning, admission, expiry, and ordinary session events.
 3. Cut a downstream deployment over to each user-owned `session_source`
@@ -728,6 +798,8 @@ and lifecycle contracts without any of the following:
 - a cross-resource join or a new predicate language;
 - plugin-owned team repositories, channels, limits, or retention values;
 - a push mode that must infer absence from stream silence;
+- a wake stream that must carry trusted discovery items or change membership
+  without a complete snapshot;
 - adoption or destruction of sessions lacking source provenance.
 
 If one of those is necessary, the generic kind is not retained merely because
