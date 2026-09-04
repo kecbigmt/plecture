@@ -23,8 +23,8 @@ must join:
 - A task document declares which observer its work is written for, and its
   completion and chains read the observer's facts
   ([tasks](../language/tasks.md)).
-- A workflow declares the effects and workspace provider that house a session
-  ([workflows](../language/workflows.md)).
+- A workflow declares the user-owned policy, effects, and workspace provider
+  that produce a session ([workflows](../language/workflows.md)).
 - A chain is colocated with the task whose instance facts it reads, allowing
   its condition, target workflow, and inputs to be validated before it fires
   ([chains](../language/chains.md)).
@@ -41,9 +41,11 @@ must join:
 
 The missing construct is deployment policy. A plugin can say how resources
 are discovered, but it cannot choose a team's repositories, labels, chat
-channels, workflow, task, concurrency, or retention policy. Conversely, a
-workflow describes one session but is not intrinsically the owner of every
-resource population that may dispatch it.
+channels, workflow, task, concurrency, or retention policy. The owner-ratified
+[exemplar-workflow direction](https://github.com/kecbigmt/plecture/issues/155)
+makes running workflows user-owned: catalogs ship copy-templates, never
+mounted workflow definitions. Its premise that workflows are policy changes
+where standing population policy belongs.
 
 This decision concerns desired session presence. It does not change whether a
 persisted node is still valid, whether `plect up` verifies before skipping it,
@@ -52,58 +54,93 @@ the responsibility of [the failure-model work](https://github.com/kecbigmt/plect
 
 ## Decision
 
-### 1. Placement: use a deployment-owned definition
+### 1. Placement: nest populations in the user-owned workflow
 
 #### Options
 
 | Option | Load-time validation | Layer and cascade owner | Plugin-boundary consequence | Assessment |
 |---|---|---|---|---|
-| (a) New top-level kind | The observer and its `discover` face, the optional initial task, the workflow, both input contracts, predicate roots, and item roots all resolve from one definition. | A trusted user or machine layer owns it. It is a whole-definition kind, so a deeper same-id declaration replaces it. Workspace overlays cannot declare it. | Plugins own discovery mechanics and schemas; deployments own parameter values and session policy. | Clean responsibility and complete static validation, at the cost of adding one kind. |
-| (b) Nested in `workflow` | The workflow and session inputs are local, but discovery and lifecycle facts still require an external observer reference. | Workflow cascade would make a population policy append to or replace runtime wiring. A plugin workflow could not contain team values, while an overlay would need to amend plugin-owned policy. | It invites deployment data into shipped workflows and makes manual, chain, and discovered uses of one workflow unexpectedly share population semantics. | Rejected: the reference direction is twisted and a workflow is reusable housing, not a population owner. |
-| (c) Nested in `task` beside chains | The observer facts are local and a target workflow can be resolved like a chain. | Task `extends` is additive, so source policy would compose through task specialization even though only one deployment should own a population. | Shipped tasks would either contain team data or require a user to replace or extend plugin work merely to choose deployment policy. | Rejected: chains fire from an existing instance, while discovery fires before an instance exists and must also support sessions that intentionally start without a task. |
+| (a) New top-level kind | The observer, optional initial task, target workflow, both input contracts, predicate roots, and item roots resolve from one definition. | A trusted layer owns a separate whole definition and a static workflow reference. | Plugin mechanics and deployment values remain separated, but population policy gets an identity outside the user policy it activates. | Viable, but unnecessary once a running workflow is always user-owned; it adds a kind and a second policy owner for no additional validation. |
+| (b) Array nested in `workflow` | The target workflow and its input contract are local; observer, task, discover, item, and predicate references still resolve statically. | The user-owned workflow owns its complete population array. A deeper eligible workflow layer replaces that array wholesale, in the same cascade family as `[tick]` rather than additive `nodes`. | Catalogs may show commented scaffold placeholders, but mounted plugin content cannot activate them. Team parameters remain in the user's copy. | Recommended: a standing population is policy for producing sessions of this workflow, which is exactly the responsibility the user-owned workflow already carries. |
+| (c) Nested in `task` beside chains | The observer facts are local and a target workflow can be resolved like a chain. | Task `extends` is additive, so population policy would compose through task specialization even though only one deployment should own a population. | Shipped tasks would either contain team data or require a user to replace or extend plugin work merely to choose deployment policy. | Rejected: chains fire from an existing instance, while discovery fires before an instance exists and must also support sessions that intentionally start without a task. |
 | (d) Added to `config.toml` | References and schemas could be checked, but the entry would have no definition identity of its own. | The reserved file is machine-wide resolution and defaults, outside definition discovery and cascade. | It would centralize every deployment rule in a reserved file and provide no address for provenance or events. | Rejected: it violates the definition-block principle and cannot name the authority allowed to destroy a session. |
 | (e) Nested in `resource_observer` | Discovery, item schema, and lifecycle fact roots would be colocated. The workflow and task could also be resolved. | Resource observers are whole-definition plugin resources; a user cannot append policy to one and replacing one copies plugin mechanics into the deployment layer. | Team repositories, channels, limits, and workflow choices would land in plugin-owned files or force a fork. | Rejected: the observer should gain the reusable discovery mechanism, not deployment policy that consumes it. |
 
 #### Recommendation
 
-Add a top-level `session_source` definition. The cost of a kind is justified
-because it is the independently addressable owner of a durable relationship:
-one discover face supplies a desired population of sessions built by one
-workflow. Neither endpoint owns that relationship.
+Use a named array of tables on `workflow`. A workflow may declare zero or more
+population entries. The workflow reference carried by the former top-level
+shape disappears: the containing workflow is the target, so there is no
+second reference that can disagree with it.
 
-A `session_source` is accepted only from trusted user and machine definition
-roots. Plugin definition roots may declare resource observers with discover
-faces and may ship source examples outside `config/`, but cannot activate a
-source. The untrusted workspace overlay does not load this kind.
+Only user- and machine-owned trusted workflow layers may declare the array. A
+declaration in mounted plugin content is a load error even though the exemplar
+direction removes that activation vector; a declaration in the untrusted
+workspace overlay is also a load error. An exemplar may carry a commented
+placeholder, and scaffolding verifies its references and required parameters
+when it copies the workflow into user ownership.
 
-`session_source` is a whole-definition kind. Its fully resolved definition
-address is persisted as creator provenance on every session it creates. A
-clean replacement of the same definition id continues to own those sessions;
-an invalid config reload keeps the last valid evaluator, and clean removal of
-the definition stops its evaluator without destroying its sessions. Removing
-configuration is not evidence that any resource left a successfully observed
-set; the operator can destroy the provenance-marked sessions explicitly or
-first replace the source with parameters whose successful snapshot is empty.
+Across eligible workflow cascade layers, omission inherits the shallower
+array and declaration replaces the whole array. Entries never append across
+layers: partial composition could retain a shallower deployment policy the
+deeper owner believed it replaced. Within one definition layer, the ordinary
+cross-file array rule still appends entries in traversal order. Entry names
+must be unique after that same-layer assembly.
 
-### 2. Kind name: `session_source`
+Each entry requires a `name` matching the definition-id grammar. The creator
+provenance persisted on every session is the workflow id (its fully resolved
+address) plus the entry's required `name`, which serves as its block name. A
+deeper whole-array replacement may keep ownership by retaining the name; a
+differently named entry cannot adopt or destroy those sessions. An invalid
+reload keeps the last valid evaluator. Clean removal of an entry stops its
+evaluator without destroying its sessions, because removal
+of policy is not evidence that a resource left a successfully observed set;
+the operator can destroy the provenance-marked sessions explicitly or first
+replace the entry with parameters whose successful snapshot is empty.
+
+One bootstrap constraint remains: an active population must come from the
+resident process's workspace-independent trusted workflow load. A workflow
+fragment discoverable only after a resource workspace exists cannot decide
+whether that first workspace should be created; such a population declaration
+is a load error rather than inert configuration. This constraint would apply
+to any placement, including a top-level definition, so it is not a reason to
+retain the extra kind.
+
+No load-bearing reason for the top-level kind survives these identity, trust,
+cascade, and bootstrap rules. Workflow nesting retains complete load-time
+validation while matching the ratified policy owner.
+
+### 2. Population block name
 
 #### Options
 
-| Candidate | Kind-vocabulary reading | Tradeoff |
-|---|---|---|
-| `session_source` | A role compound: the declaration sources sessions that exist apart from it. | Names the produced object and follows `workspace_provider` / `resource_observer`; “source” alone does not convey reconciliation, which the contract must explain. |
-| `resource_intake` | A role compound centered on incoming resources. | Reads as one-way ingestion and underweights destruction and continued convergence. |
-| `dispatch_rule` | A rule that dispatches. | Names a serialization mechanism rather than a runtime responsibility, and “dispatch” suggests a one-shot action. |
-| `session_controller` | A role compound centered on reconciliation. | Overstates authority: it does not control a session after creation beyond source-owned lifecycle. |
-| `standing_dispatch` | Describes the use case. | “Standing” is lifecycle prose and “dispatch” is an action, not the thing the declaration produces or observes. |
+The collection field chosen here and each entry's required `name` are
+distinct. This decision names the array below the workflow; the entry name is
+the stable block identity used with the workflow id for provenance.
+
+| Candidate | Discovery face | Lifecycle face | Language fit |
+|---|---|---|---|
+| `sources` | Clearly says where sessions come from. | Says little about continued membership, expiry, or teardown. | Plural agrees with `nodes` and `chains`, but keeps the misleading one-way emphasis. |
+| `triggers` | Clearly suggests an event or condition starts work. | Implies one-shot firing rather than reconciliation and destruction. | Familiar, but wrong for poll snapshots and ongoing ownership. |
+| `population` | Names the desired set produced by one entry. | Membership naturally includes both presence and removal. | Precise, but singular is inconsistent with array field names. |
+| `populations` | Names the desired sets the workflow maintains. | Membership naturally covers admission, retention, and removal. | Matches the plural array convention of `nodes`, `chains`, and `instructions`. |
+| `presence` | Emphasizes the desired-state guarantee. | Covers keeping and removing sessions, but underplays discovery and admission. | A good semantic noun, though several entries read less naturally as one `presence` array. |
+| `standing` | Suggests continuous operation. | Implies duration without saying what is maintained. | An adjective, unlike the workflow's noun field vocabulary. |
+| `roster` | Suggests a membership set. | Can imply addition and removal. | Reads as a manually curated list rather than dynamic discovery. |
+| `intake` | Expresses admission from an external source. | Underweights retention and teardown. | A process noun, but still one-way. |
+| `lifecycle` | Expresses retention and teardown directly. | Underweights discovery and the desired set. | Overlaps effect lifecycle while governing sessions rather than workflow nodes. |
+| `reconciliation` | Covers convergence of membership in both directions. | Makes creation and destruction equally visible. | Names the evaluator mechanism rather than the declarative thing being maintained. |
 
 #### Recommendation
 
-Use `session_source`. The declaration produces and retracts desired sessions
-from a resource source, so the role-compound rule in
-[declarations](../language/declarations.md) applies. The bare concept is not
-used because a source resource exists apart from its declaration, and no kind
-name includes `definition` or `rule` merely to describe its syntax.
+Recommend `populations`, pending an explicit owner ruling. Each
+`[[<workflow>.populations]]` entry declares one desired population, and its
+required `name` identifies that entry for provenance. The plural spelling
+follows the language's array-field convention, while “population” covers both
+the discover/admit face and the retain/remove face without naming evaluator
+mechanics. The examples below use this recommendation so the proposed shape
+is concrete; choosing another candidate changes the collection path and event
+namespace, not the semantics in Decisions 3–6.
 
 ### 3. Discover contract: a third resource-observer face
 
@@ -132,7 +169,7 @@ is:
 | `item_schema` | Required JSON Schema object. | Declares every discovery record. It must require a string `resource` property. |
 | `wake` | Optional action for poll; forbidden for push. | Supervises a hint stream that requests an immediate complete snapshot, as specified in Decision 6. |
 
-The action's `inputs.*` root is the source definition's literal
+The action's `inputs.*` root is the population entry's literal
 `discover_inputs` object, validated against `inputs_schema` before the action
 runs. No session, workspace, node, or resource exists yet, so no other data
 root is exposed. Capabilities remain available only in the action positions
@@ -157,20 +194,21 @@ is invisible to the language. Choosing `push` for an enumerable resource
 would discard the complete snapshot that repairs missed notifications and
 proves absence.
 
-Both outputs validate each object against `item_schema`. Within a
-`session_source` session input, the item's declared properties are available
-as `discovery.*`, while its required `resource` property also becomes the
+Both outputs validate each object against `item_schema`. Within a population
+entry's session input, the item's declared properties are available as
+`discovery.*`, while its required `resource` property also becomes the
 `resource.id` passed to session dispatch. These are per-item production
 records, not live roots. They are evaluated when a session is first created;
 a later discovery of the same resource does not mutate frozen session inputs.
 
-A source's required static `resource_observer` reference is the single
-authority for resource recognition, discovery, and `destroy_when` facts. The
-loader resolves it and requires it to declare `discover`. When the source also
-declares an initial `session.task`, the loader requires that task's observer to
-resolve to the exact same definition. The two references answer different
-questions—what population is discovered and what work starts—but their
-load-time equality prevents them from becoming competing resource authorities.
+A population entry's required static `resource_observer` reference is the
+single authority for resource recognition, discovery, and `destroy_when`
+facts. The loader resolves it and requires it to declare `discover`. When the
+entry also declares an initial `session.task`, the loader requires that task's
+observer to resolve to the exact same definition. The two references answer
+different questions—what population is discovered and what work starts—but
+their load-time equality prevents them from becoming competing resource
+authorities.
 
 For each evaluation, core first validates the action result, all items,
 resource matches, workflow dispatch, lifecycle observations, and input
@@ -327,7 +365,7 @@ mention creates one session.
 1. Let the plugin discover action return complete `plect up` commands. This
    puts workflow and team policy in executable output and makes topology
    dynamic.
-2. Give each source its own predicate syntax and timeout expressions. This
+2. Give each population its own predicate syntax and timeout expressions. This
    creates a second language for facts already expressible by task conditions
    and moves duration arithmetic into CEL.
 3. Make session topology static, session values schema-checked, and lifecycle
@@ -335,24 +373,23 @@ mention creates one session.
 
 #### Recommendation
 
-Use this closed `session_source` surface:
+Use this closed workflow-population surface:
 
 | Field | Requirement | Meaning |
 |---|---|---|
-| `kind` | Required; `session_source`. | Selects this definition contract. |
-| `resource_observer` | Required static resource-observer reference. | Selects the sole recognition, discovery, and source-resource lifecycle authority. |
-| `discover_inputs` | Required table. | Literal deployment data validated against the observer's discover `inputs_schema`. |
-| `session.workflow` | Required static workflow reference. | Selects the session's effect and workspace shape. |
-| `session.task` | Optional static task reference. | Selects a task to set up after the session is up; its observer must equal `resource_observer`. |
-| `session.inputs` | Optional value table. | Session inputs over literals, `resource.id`, and the discover `item_schema`'s `discovery.*` properties. |
-| `session.max_sessions` | Required positive integer. | Bounds sessions owned by this source. |
-| `session.destroy.force` | Optional boolean; default false. | Uses the lifecycle service's explicit force-destroy path for source-owned sessions. |
-| `poll_every` | Required positive duration for poll; forbidden for push. | Sets complete-snapshot cadence. |
-| `idle` | Required positive duration for push; forbidden for poll. | Makes a push-owned session eligible for expiry after no inbound activity. |
-| `grace` | Optional non-negative duration for push; forbidden for poll; default zero. | Requires idle eligibility to remain continuous before destruction. |
-| `destroy_when` | Optional conjunction of check or expression leaves. | Destroys an owned session when current resource facts satisfy it. |
-| `keep_while.task` | Required static task reference when `keep_while` is present; push only. | Selects dynamic task instances whose own resource facts can retain the session. |
-| `keep_while.all` | Required conjunction of check or expression leaves when `keep_while` is present; push only. | Suppresses idle expiry while any selected task instance satisfies it. |
+| `populations.name` | Required identifier, unique within the workflow. | Gives this entry stable provenance below the workflow address. |
+| `populations.resource_observer` | Required static resource-observer reference. | Selects the sole recognition, discovery, and population-resource lifecycle authority. |
+| `populations.discover_inputs` | Required table. | Literal deployment data validated against the observer's discover `inputs_schema`. |
+| `populations.session.task` | Optional static task reference. | Selects a task to set up after the session is up; its observer must equal `resource_observer`. |
+| `populations.session.inputs` | Optional value table. | Session inputs over literals, `resource.id`, and the discover `item_schema`'s `discovery.*` properties. |
+| `populations.session.max_sessions` | Required positive integer. | Bounds sessions owned by this population entry. |
+| `populations.session.destroy.force` | Optional boolean; default false. | Uses the lifecycle service's explicit force-destroy path for entry-owned sessions. |
+| `populations.poll_every` | Required positive duration for poll; forbidden for push. | Sets complete-snapshot cadence. |
+| `populations.idle` | Required positive duration for push; forbidden for poll. | Makes a push-owned session eligible for expiry after no inbound activity. |
+| `populations.grace` | Optional non-negative duration for push; forbidden for poll; default zero. | Requires idle eligibility to remain continuous before destruction. |
+| `populations.destroy_when` | Optional conjunction of check or expression leaves. | Destroys an owned session when current population-resource facts satisfy it. |
+| `populations.keep_while.task` | Required static task reference when `keep_while` is present; push only. | Selects dynamic task instances whose own resource facts can retain the session. |
+| `populations.keep_while.all` | Required conjunction of check or expression leaves when `keep_while` is present; push only. | Suppresses idle expiry while any selected task instance satisfies it. |
 
 The complete `session.inputs` object is validated against the target
 workflow's `inputs_schema` at load time: literal types are checked directly,
@@ -363,22 +400,21 @@ present, every task input not supplied explicitly is bound from the session
 inputs by the existing dynamic task-setup rules, and each common field must
 also satisfy the task's `inputs_schema`.
 
-`resource_observer`, `session.workflow`, `session.task`, and
-`keep_while.task` are static topology. They accept the ordinary relative or
-catalog-qualified reference grammar and cannot be CEL expressions. A
-workflow's workspace provider and the source observer must both match each
-discovered `resource`; the provider remains the single authority for session
-naming.
+`resource_observer`, `session.task`, and `keep_while.task` are static topology.
+They accept the ordinary relative or catalog-qualified reference grammar and
+cannot be CEL expressions. The containing workflow's workspace provider and
+the population observer must both match each discovered `resource`; the
+provider remains the single authority for session naming.
 
 `destroy_when` and `keep_while.all` use the check and expression leaf forms
 from `done_when` and chain `when`; neither accepts judge leaves.
-`destroy_when` exposes only `resource.state.*`, resolved against the source
-observer's `state_schema`. Each selected `keep_while.task` instance exposes
-`resource.state.*` from its own observer and `self.state.*` from its task
-state, exactly as that task's `done_when` does. Its keys resolve at load time
-against those two schemas. No matching task instance means false; multiple
-matching instances use any semantics. This lets an explicitly escalated
-conversation remain alive because of a later task bound to another resource,
+`destroy_when` exposes only `resource.state.*`, resolved against the
+population observer's `state_schema`. Each selected `keep_while.task`
+instance exposes `resource.state.*` from its own observer and `self.state.*`
+from its task state, exactly as that task's `done_when` does. Its keys resolve
+at load time against those two schemas. No matching task instance means false;
+multiple matching instances use any semantics. This lets an explicitly
+escalated conversation remain alive because of a later task bound to another resource,
 without teaching either plugin about the other's resource type or adding a
 cross-resource join to core. Every lifecycle decision observes each relevant
 resource once, and all leaves for that resource read the coherent snapshot.
@@ -397,17 +433,17 @@ lifecycle events, and outbound agent events do not keep a conversation alive.
 After `idle` elapses, `keep_while` is evaluated. A true or failed evaluation
 resets expiry eligibility. A false result starts `grace`; eligibility must
 remain continuous through that duration before destruction. `destroy_when`
-remains an independent immediate source-resource-fact path.
+remains an independent immediate population-resource-fact path.
 
 `session.max_sessions` is an admission guard, not a priority or lifecycle
-rule. Desired sessions the source already owns are resumed and converged even
-when the cap is full; the cap applies only to admitting new sessions. New
-candidates are ordered by resource id, and the source creates only enough to
-reach the cap. Reducing the cap does not evict sessions; ordinary absence,
+rule. Desired sessions the population already owns are resumed and converged
+even when the cap is full; the cap applies only to admitting new sessions.
+New candidates are ordered by resource id, and the population creates only
+enough to reach the cap. Reducing the cap does not evict sessions; ordinary absence,
 `destroy_when`, or push expiry must make them eligible for destruction. This
 avoids inventing a ranking language.
 
-A valid push appearance is persisted in source-evaluator state before
+A valid push appearance is persisted in population-evaluator state before
 admission. If the cap is full, it remains pending and is admitted in resource
 id order when capacity becomes available; process restart does not forget an
 appearance core already accepted. A repeated appearance replaces the pending
@@ -420,20 +456,21 @@ Creation and destruction use the same service paths as `plect up` and
 `plect destroy`, including resource allowlists, workspace-provider resolution,
 cleanup, and errors. `session.destroy.force` is an explicit choice to pass the
 same force option; discovery itself never silently weakens cleanup guards. A
-source persists its definition address on sessions it successfully creates
-and may destroy only those sessions. It never adopts an existing session with
-the same derived name. A source/chain or source/source name collision emits a
-conflict and leaves the existing session untouched.
+population entry persists its containing workflow address and entry name on
+sessions it successfully creates and may destroy only those sessions. It never
+adopts an existing session with the same derived name. A population/chain or
+population/population name collision emits a conflict and leaves the existing
+session untouched.
 
 When `session.task` is present, a successful `up` is followed by the existing
 task-setup service with the fixed instance name `initial` and the discovered
 `resource`. The evaluator first reads session state: an `initial` instance
 with the exact resolved task and resource is already converged; a missing one
-is set up; and any conflicting `initial` instance fails closed. The source
+is set up; and any conflicting `initial` instance fails closed. The population
 does not use `plect up --task`, because that flag is only workflow-input
-shorthand and does not instantiate a task by itself. A source with no
-`session.task` starts only the workflow. It may receive dynamically created
-tasks later through the ordinary task-setup path.
+shorthand and does not instantiate a task by itself. A population with no
+`session.task` starts only its containing workflow. It may receive dynamically
+created tasks later through the ordinary task-setup path.
 
 #### Review-dispatch configuration
 
@@ -503,7 +540,7 @@ socket_path = { from = "nodes.agent.outputs.socket_path" }
 [[review_agent.event.channel]]
 name    = "runtime"
 uses    = "official.claude.delivery"
-include = ["plect.instruction", "user.emit", "plect.session_source.*"]
+include = ["plect.instruction", "user.emit", "plect.workflow_population.*"]
 
 [review_agent.event.channel.inputs]
 path = { from = "nodes.agent.outputs.socket_path" }
@@ -511,7 +548,7 @@ path = { from = "nodes.agent.outputs.socket_path" }
 [[review_agent.event.channel]]
 name    = "review_thread"
 uses    = "official.slack.slack"
-include = ["plect.judge.recorded", "plect.session_source.*", "plect.channel.error"]
+include = ["plect.judge.recorded", "plect.workflow_population.*", "plect.channel.error"]
 
 [review_agent.event.channel.inputs]
 base_url   = { from = "session.inputs.slack_base_url" }
@@ -522,26 +559,25 @@ thread_ts  = { from = "nodes.slack_thread.outputs.thread_ts" }
 on        = ["resource.*", "plect.judge.recorded"]
 heartbeat = "15m"
 
-[review_dispatch]
-kind              = "session_source"
+[[review_agent.populations]]
+name              = "review_dispatch"
 resource_observer = "official.github.pull"
 poll_every        = "1m"
 
-[review_dispatch.discover_inputs]
+[review_agent.populations.discover_inputs]
 repositories = ["example/widgets"]
 labels       = ["agent-review"]
 state        = "open"
 draft        = false
 
-[review_dispatch.session]
-workflow     = "review_agent"
+[review_agent.populations.session]
 task         = "official.github.review"
 max_sessions = 8
 
-[review_dispatch.session.destroy]
+[review_agent.populations.session.destroy]
 force = true
 
-[review_dispatch.session.inputs]
+[review_agent.populations.session.inputs]
 app_id           = "123456"
 private_key_path = "/etc/plect/github-app.pem"
 slack_base_url   = "http://127.0.0.1:7890"
@@ -553,16 +589,16 @@ pr_url           = { from = "resource.id" }
 head_sha         = { from = "discovery.head_sha" }
 instruction      = "Review the pull request and record the verdict against its current revision."
 
-[review_dispatch.destroy_when]
+[review_agent.populations.destroy_when]
 all = [{ check = "resource.state.lifecycle_state", in = ["closed", "merged"] }]
 ```
 
 Every reference in the example is static. `official.github.review` exists as
 a task written for `official.github.pull`; the ADR adds that observer's
-discover and `lifecycle_state` contracts. The workflow, source, credentials,
+discover and `lifecycle_state` contracts. The workflow, population, credentials,
 team parameters, and instructions are user-owned. Each `discovery.*` path is
 declared by the item schema, `resource.state.lifecycle_state` resolves through
-the source observer, and every workflow root and plugin definition already
+the population observer, and every workflow root and plugin definition already
 exists. The initial task receives its declared `app_id`, `owner`, `repo`,
 `private_key_path`, and `instruction` inputs from the session after `up`.
 
@@ -617,7 +653,7 @@ path = { from = "nodes.agent.outputs.socket_path" }
 [[ops_chat_session.event.channel]]
 name    = "thread"
 uses    = "official.slack.slack"
-include = ["plect.session_source.*", "plect.channel.error"]
+include = ["plect.workflow_population.*", "plect.channel.error"]
 
 [ops_chat_session.event.channel.inputs]
 base_url   = { from = "session.inputs.slack_base_url" }
@@ -628,25 +664,24 @@ thread_ts  = { from = "workspace.thread_ts" }
 on        = ["user.emit", "resource.*"]
 heartbeat = "15m"
 
-[ops_mentions]
-kind              = "session_source"
+[[ops_chat_session.populations]]
+name              = "ops_mentions"
 resource_observer = "official.slack.thread_state"
 idle              = "8h"
 grace             = "15m"
 
-[ops_mentions.discover_inputs]
+[ops_chat_session.populations.discover_inputs]
 base_url    = "http://127.0.0.1:7890"
 channel_ids = ["C01234567"]
 
-[ops_mentions.session]
-workflow     = "ops_chat_session"
+[ops_chat_session.populations.session]
 max_sessions = 12
 
-[ops_mentions.session.inputs]
+[ops_chat_session.populations.session.inputs]
 slack_base_url = "http://127.0.0.1:7890"
 mention_ts     = { from = "discovery.mention_ts" }
 
-[ops_mentions.keep_while]
+[ops_chat_session.populations.keep_while]
 task = "official.github.investigate"
 all  = [{ check = "resource.state.issue_status", in = ["PENDING"] }]
 ```
@@ -668,54 +703,55 @@ instance, idle expiry proceeds.
 1. Generate shell or Go reconcilers from configuration. This leaves lifecycle
    correctness, provenance, event recording, and retry behavior outside core.
 2. Run reconciliation from an ordinary session's tick. This requires a
-   bootstrap session, makes source survival depend on the work it supervises,
+   bootstrap session, makes population survival depend on the work it supervises,
    and subjects discovered sessions to a parent's `max_up_children` cap.
-3. Run one source evaluator in `plect serve`, beside but separate from session
-   tick reactors.
+3. Run one evaluator per workflow population in `plect serve`, beside but
+   separate from session tick reactors.
 
 #### Recommendation
 
-The evaluator lives in `plect serve`. A poll source receives its own
+The evaluator lives in `plect serve`. A poll population receives its own
 `poll_every` clock and, when its observer declares one, its own parameterized
-wake stream; a push source owns one supervised discover stream. A successful
-config reload adds, replaces, or stops evaluator loops. A failed reload keeps
-the last valid loops and desired state, matching the resident process's
-fail-closed posture.
+wake stream; a push population owns one supervised discover stream. A
+successful config reload adds, replaces, or stops evaluator loops. A failed
+reload keeps the last valid loops and desired state, matching the resident
+process's fail-closed posture.
 
 Each evaluation is plan-then-apply. It computes the complete set of allowed
 creates, idempotent ups, initial task setups, and owned destroys before
 mutating state, then invokes the existing lifecycle and task-setup services.
 For a new member it runs `up` before task setup; for a removed member it never
-sets up a task before destruction. Concurrent evaluations of one source are
-coalesced. A failed mutation remains visible and is retried on the next poll,
+sets up a task before destruction. Concurrent evaluations of one population
+are coalesced. A failed mutation remains visible and is retried on the next poll,
 appearance, inbound event, or expiry deadline; it does not stop or roll back a
 different session whose lifecycle already completed.
 
-Source-created sessions then use ordinary workflow tick reactors. The source
-evaluator does not tick tasks, interpret completion, or deliver notifications.
-It records `plect.session_source.*` decision, conflict, and failure events on
-an affected session. Workflow `[[event.channel]]` bindings may relay those
-events like any other. A discover failure with no owned session is visible in
-resident logs; the language gains no destination, message, or notification
-field to special-case it.
+Population-created sessions then use ordinary workflow tick reactors. The
+population evaluator does not tick tasks, interpret completion, or deliver
+notifications. It records `plect.workflow_population.*` decision, conflict,
+and failure events on an affected session. Workflow `[[event.channel]]`
+bindings may relay those events like any other. A discover failure with no
+owned session is visible in resident logs; the language gains no destination,
+message, or notification field to special-case it.
 
 `session.max_sessions` and workflow `max_up_children` answer different
-questions. The former bounds parentless sessions created by one source. The
-latter continues to bound concurrently-up children of each source-created
-session, including chain-spawned children. Source-owned sessions do not count
-against one another's child cap, and chain-owned sessions never count against
-the source cap. Multiple sources do not implicitly share capacity: a future
-need for one pool across sources requires its own explicit authority rather
-than overloading either limit.
+questions. The former bounds parentless sessions created by one population
+entry. The latter continues to bound concurrently-up children of each
+population-created session, including chain-spawned children.
+Population-owned sessions do not count against one another's child cap, and
+chain-owned sessions never count against the population cap. Multiple
+populations, including multiple entries on one workflow, do not implicitly
+share capacity: a future need for one pool across populations requires its
+own explicit authority rather than overloading either limit.
 
-Chains and sources share session-name resolution but not ownership. A chain
-that reaches a name already owned by a source gets the existing-name conflict
-instead of adopting or destroying it, and the source behaves the same when a
-chain got there first. This preserves the chain's placement and the source's
-destruction guard rather than letting two authorities rewrite one session's
-provenance.
+Chains and populations share session-name resolution but not ownership. A
+chain that reaches a name already owned by a population gets the existing-name
+conflict instead of adopting or destroying it, and the population behaves the
+same when a chain got there first. This preserves the chain's placement and
+the population's destruction guard rather than letting two authorities
+rewrite one session's provenance.
 
-### 6. Wake streams for poll sources
+### 6. Wake streams for poll populations
 
 #### Options
 
@@ -738,16 +774,16 @@ execution shape as a push discover action, but not the same data contract. The
 wake action has no `item_schema`; each complete output line is an untrusted
 hint whose bytes are discarded. A hint cannot name a resource, supply
 `discovery.*` values, admit a session, or destroy one. It only requests that
-each source using this observer run its ordinary complete snapshot now.
+each population using this observer run its ordinary complete snapshot now.
 
 The wake action reads the same `inputs.*` root as the poll action, backed by
-the source's one `discover_inputs` object and validated once against the
+the population's one `discover_inputs` object and validated once against the
 discover `inputs_schema`. A second parameter surface is rejected because the
 wake and snapshot are two timing faces of the same query, not independently
 selectable populations.
 
-The evaluator maintains one pending-wake latch per source. Hints that arrive
-before an evaluation starts collapse into one immediate poll. A hint received
+The evaluator maintains one pending-wake latch per population. Hints that
+arrive before an evaluation starts collapse into one immediate poll. A hint received
 while that poll is running requests at most one immediate follow-up; it does
 not start a concurrent evaluation. A scheduled `poll_every` tick coalesces
 with the same latch. The resulting snapshot follows the full validation,
@@ -764,9 +800,10 @@ delivery can affect latency but not eventual correctness.
 Implementation changes the configuration language and therefore requires a
 dialect increment, a migration procedure with a backup step, structural schema
 updates, and conformance fixtures for every valid, invalid, and boundary case.
-The implementation must add `session_source` to definition discovery,
-references, trusted-layer rules, status output, and the resident supervisor,
-without adding any provider name to core.
+The implementation must add the chosen workflow population array to workflow
+decoding, references, whole-array cascade, trusted-layer rules, status output,
+and the resident supervisor, without adding a new definition kind or any
+provider name to core.
 
 The implementation order is:
 
@@ -776,8 +813,8 @@ The implementation order is:
    without deciding a workflow.
 2. Add language validation and the resident evaluator, including provenance,
    fail-closed planning, admission, expiry, and ordinary session events.
-3. Cut a downstream deployment over to each user-owned `session_source`
-   declaration and remove its dispatch loop.
+3. Cut a downstream deployment over to each user-owned workflow population
+   entry and remove its dispatch loop.
 4. Remove the Slack opaque command hook and publish its one-time migration.
 
 After cutover, configuration in a downstream deployment retains team
@@ -800,15 +837,28 @@ and lifecycle contracts without any of the following:
 - a push mode that must infer absence from stream silence;
 - a wake stream that must carry trusted discovery items or change membership
   without a complete snapshot;
-- adoption or destruction of sessions lacking source provenance.
+- adoption or destruction of sessions lacking matching workflow-population
+  provenance.
 
-If one of those is necessary, the generic kind is not retained merely because
-it was designed here. The incompatible consumer stays plugin- or
+If one of those is necessary, the generic population surface is not retained
+merely because it was designed here. The incompatible consumer stays plugin- or
 deployment-local while a narrower language decision is made. If only one
 consumer remains after the poll, push, and orchestrator prototypes, the shared
 abstraction also loses its justification under the repository's YAGNI rule.
 
 ## Alternatives considered
+
+### Add a top-level population kind
+
+A separate kind gives each population a definition address and can reference
+its workflow statically. That identity was attractive while workflows might
+arrive as mounted plugin content or be composed by multiple owners. Once
+running workflows are always user-owned policy, the extra kind duplicates
+that owner and makes the workflow an external endpoint of policy that exists
+only to produce sessions of that workflow. The required per-entry `name`,
+whole-array cascade, trusted-layer restriction, and workflow-plus-entry
+provenance preserve the useful identity and safety properties without adding
+to the kind vocabulary.
 
 ### Keep reconcilers in a downstream deployment
 
@@ -821,7 +871,7 @@ decision removes.
 ### Make discover a new standalone plugin kind
 
 A standalone `resource_discoverer` could be referenced by both observer and
-source. No concrete consumer needs discovery independently of a resource
+population. No concrete consumer needs discovery independently of a resource
 contract, and it would introduce a second reference whose item resource must
 still be checked against an observer. Keeping discover as a face of the
 observer makes recognition, observation, finalization, and appearance one
