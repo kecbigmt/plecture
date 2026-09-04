@@ -14,6 +14,13 @@ rather than an enumerable query. A downstream deployment needs the enumerable
 form for orchestrator polling. These are three concrete consumers of one
 missing language concept, not a speculative extension point.
 
+One of those deployments also reaches `max_sessions` while review sessions
+are merely waiting for human replies. Destroying them would release capacity
+only by discarding the state, workspace, event log, and thread continuity that
+the eventual reply must resume. Desired-set membership and run-resource
+occupancy therefore need separate transitions: the member remains present
+while its session goes down, then comes up when work returns.
+
 The existing language already separates the responsibilities this feature
 must join:
 
@@ -140,7 +147,7 @@ follows the language's array-field convention, while “population” covers bot
 the discover/admit face and the retain/remove face without naming evaluator
 mechanics. The examples below use this recommendation so the proposed shape
 is concrete; choosing another candidate changes the collection path and event
-namespace, not the semantics in Decisions 3–6.
+namespace, not the semantics in Decisions 3–7.
 
 ### 3. Discover contract: a third resource-observer face
 
@@ -279,7 +286,7 @@ head_sha   = { type = "string" }
 
 [pull.state_schema]
 type     = "object"
-required = ["resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision", "lifecycle_state"]
+required = ["resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision", "review_reply_state", "lifecycle_state"]
 
 [pull.state_schema.properties]
 resource_kind   = { type = "string", enum = ["pull"] }
@@ -288,6 +295,7 @@ revision        = { type = "string" }
 pr_url          = { type = "string" }
 mergeable_state = { type = "string", enum = ["clean", "dirty", "unstable", "blocked", "behind", "unknown", "draft", "has_hooks"] }
 review_decision = { type = "string", enum = ["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", "NULL"] }
+review_reply_state = { type = "string", enum = ["waiting_for_human", "human_replied", "not_applicable"] }
 lifecycle_state = { type = "string", enum = ["open", "closed", "merged"] }
 ```
 
@@ -295,7 +303,13 @@ The wake executable is introduced with this discover face. It connects to a
 webhook-receiver service and streams hints; it does not emit pull-request
 records. Exposing the webhook endpoint and verifying request signatures are
 deployment-infrastructure responsibilities outside the configuration
-language.
+language. The current pull observer's aggregate `review_decision` cannot say
+whose reply is next. The sketch therefore also introduces
+`review_reply_state`, derived by the plugin from the authenticated review
+actor and review-thread participants: `waiting_for_human` means that actor's
+latest relevant message awaits a human response, `human_replied` means a
+later human response needs handling, and `not_applicable` means neither state
+has been established. Core sees only the declared fact contract.
 
 #### Push discover sketch
 
@@ -382,12 +396,14 @@ Use this closed workflow-population surface:
 | `populations.discover_inputs` | Required table. | Literal deployment data validated against the observer's discover `inputs_schema`. |
 | `populations.session.task` | Optional static task reference. | Selects a task to set up after the session is up; its observer must equal `resource_observer`. |
 | `populations.session.inputs` | Optional value table. | Session inputs over literals, `resource.id`, and the discover `item_schema`'s `discovery.*` properties. |
-| `populations.session.max_sessions` | Required positive integer. | Bounds sessions owned by this population entry. |
+| `populations.session.max_sessions` | Required positive integer. | Bounds up sessions and in-flight up admissions owned by this population entry. |
 | `populations.session.destroy.force` | Optional boolean; default false. | Uses the lifecycle service's explicit force-destroy path for entry-owned sessions. |
 | `populations.poll_every` | Required positive duration for poll; forbidden for push. | Sets complete-snapshot cadence. |
 | `populations.idle` | Required positive duration for push; forbidden for poll. | Makes a push-owned session eligible for expiry after no inbound activity. |
 | `populations.grace` | Optional non-negative duration for push; forbidden for poll; default zero. | Requires idle eligibility to remain continuous before destruction. |
 | `populations.destroy_when` | Optional conjunction of check or expression leaves. | Destroys an owned session when current population-resource facts satisfy it. |
+| `populations.down_when` | Optional conjunction of check or expression leaves; requires `up_when`. | Takes an owned up session down when current population-resource facts satisfy it. |
+| `populations.up_when` | Optional conjunction of check or expression leaves; requires `down_when`. | Brings an owned down session up when current population-resource facts satisfy it. |
 | `populations.keep_while.task` | Required static task reference when `keep_while` is present; push only. | Selects dynamic task instances whose own resource facts can retain the session. |
 | `populations.keep_while.all` | Required conjunction of check or expression leaves when `keep_while` is present; push only. | Suppresses idle expiry while any selected task instance satisfies it. |
 
@@ -406,9 +422,9 @@ cannot be CEL expressions. The containing workflow's workspace provider and
 the population observer must both match each discovered `resource`; the
 provider remains the single authority for session naming.
 
-`destroy_when` and `keep_while.all` use the check and expression leaf forms
-from `done_when` and chain `when`; neither accepts judge leaves.
-`destroy_when` exposes only `resource.state.*`, resolved against the
+`destroy_when`, `down_when`, `up_when`, and `keep_while.all` use the check and
+expression leaf forms from `done_when` and chain `when`; none accepts judge
+leaves. The first three expose only `resource.state.*`, resolved against the
 population observer's `state_schema`. Each selected `keep_while.task`
 instance exposes `resource.state.*` from its own observer and `self.state.*`
 from its task state, exactly as that task's `done_when` does. Its keys resolve
@@ -418,7 +434,8 @@ escalated conversation remain alive because of a later task bound to another res
 without teaching either plugin about the other's resource type or adding a
 cross-resource join to core. Every lifecycle decision observes each relevant
 resource once, and all leaves for that resource read the coherent snapshot.
-An observation or expression failure is fail-closed and destroys nothing.
+An observation or expression failure is fail-closed and changes no lifecycle
+state.
 
 A successful poll snapshot has two removal paths. An owned resource absent
 from the complete snapshot is no longer a member and is destroyed. A present
@@ -435,13 +452,10 @@ resets expiry eligibility. A false result starts `grace`; eligibility must
 remain continuous through that duration before destruction. `destroy_when`
 remains an independent immediate population-resource-fact path.
 
-`session.max_sessions` is an admission guard, not a priority or lifecycle
-rule. Desired sessions the population already owns are resumed and converged
-even when the cap is full; the cap applies only to admitting new sessions.
-New candidates are ordered by resource id, and the population creates only
-enough to reach the cap. Reducing the cap does not evict sessions; ordinary absence,
-`destroy_when`, or push expiry must make them eligible for destruction. This
-avoids inventing a ranking language.
+`session.max_sessions` is an up-session admission guard, not a destruction or
+down policy. Decision 7 defines its counting and ordering rules. Reducing the
+cap does not evict, destroy, or automatically take sessions down; configured
+lifecycle conditions must make those transitions eligible.
 
 A valid push appearance is persisted in population-evaluator state before
 admission. If the cap is full, it remains pending and is admitted in resource
@@ -450,14 +464,19 @@ appearance core already accepted. A repeated appearance replaces the pending
 production record for that resource. Its idle clock begins only when the
 session is created, so waiting behind the cap cannot cause silent expiry.
 Successful destruction forgets that appearance, and a later appearance may
-create a new session.
+create a new session. A repeated push appearance also guarantees that an
+owned down session becomes an up candidate through the ordinary `plect up`
+path. If the up-session cap is full, the persisted appearance keeps that
+re-up pending and gives it existing-member priority when a slot opens; it is
+never discarded as a duplicate no-op.
 
-Creation and destruction use the same service paths as `plect up` and
-`plect destroy`, including resource allowlists, workspace-provider resolution,
-cleanup, and errors. `session.destroy.force` is an explicit choice to pass the
-same force option; discovery itself never silently weakens cleanup guards. A
-population entry persists its containing workflow address and entry name on
-sessions it successfully creates and may destroy only those sessions. It never
+Creation, up, down, and destruction use the same service paths as `plect up`,
+`plect down`, and `plect destroy`, including resource allowlists,
+workspace-provider resolution, cleanup, and errors. `session.destroy.force`
+is an explicit choice to pass the same force option; discovery itself never
+silently weakens cleanup guards. A population entry persists its containing
+workflow address and entry name on sessions it successfully creates and may
+destroy only those sessions. It never
 adopts an existing session with the same derived name. A population/chain or
 population/population name collision emits a conflict and leaves the existing
 session untouched.
@@ -591,6 +610,12 @@ instruction      = "Review the pull request and record the verdict against its c
 
 [review_agent.populations.destroy_when]
 all = [{ check = "resource.state.lifecycle_state", in = ["closed", "merged"] }]
+
+[review_agent.populations.down_when]
+all = [{ check = "resource.state.review_reply_state", in = ["waiting_for_human"] }]
+
+[review_agent.populations.up_when]
+all = [{ check = "resource.state.review_reply_state", in = ["human_replied"] }]
 ```
 
 Every reference in the example is static. `official.github.review` exists as
@@ -600,7 +625,11 @@ team parameters, and instructions are user-owned. Each `discovery.*` path is
 declared by the item schema, `resource.state.lifecycle_state` resolves through
 the population observer, and every workflow root and plugin definition already
 exists. The initial task receives its declared `app_id`, `owner`, `repo`,
-`private_key_path`, and `instruction` inputs from the session after `up`.
+`private_key_path`, and `instruction` inputs from the session after `up`. The
+current observer cannot infer a reply turn from `review_decision`, so the
+example deliberately relies on the newly declared `review_reply_state`: it
+takes a session down only while a human response is outstanding and brings it
+up after that response arrives.
 
 #### Operations-chat configuration
 
@@ -718,7 +747,7 @@ reload keeps the last valid loops and desired state, matching the resident
 process's fail-closed posture.
 
 Each evaluation is plan-then-apply. It computes the complete set of allowed
-creates, idempotent ups, initial task setups, and owned destroys before
+creates, idempotent ups, downs, initial task setups, and owned destroys before
 mutating state, then invokes the existing lifecycle and task-setup services.
 For a new member it runs `up` before task setup; for a removed member it never
 sets up a task before destruction. Concurrent evaluations of one population
@@ -735,9 +764,9 @@ owned session is visible in resident logs; the language gains no destination,
 message, or notification field to special-case it.
 
 `session.max_sessions` and workflow `max_up_children` answer different
-questions. The former bounds parentless sessions created by one population
-entry. The latter continues to bound concurrently-up children of each
-population-created session, including chain-spawned children.
+questions. The former bounds concurrently-up parentless sessions owned by one
+population entry. The latter continues to bound concurrently-up children of
+each population-created session, including chain-spawned children.
 Population-owned sessions do not count against one another's child cap, and
 chain-owned sessions never count against the population cap. Multiple
 populations, including multiple entries on one workflow, do not implicitly
@@ -795,6 +824,93 @@ membership and never implies absence. `poll_every` remains required and is
 the recovery floor, so delayed, duplicated, reordered, or at-most-once webhook
 delivery can affect latency but not eventual correctness.
 
+### 7. Down/up policy for population sessions
+
+#### Options
+
+1. Destroy a session while it waits and recreate it when work returns. This
+   releases resources but discards the state, workspace, event log, and thread
+   continuity that make it the same session.
+2. Declare only `down_when` and bring the session up whenever its logical
+   inverse holds. This is compact, but the check-leaf grammar has no general
+   inverse and a boundary with no neutral region can cycle on noisy facts.
+3. Pair `down_when` with `up_when`. Both use existing fact leaves and existing
+   run-state operations, while distinct conditions can encode a neutral band.
+4. Bring every down session up on any inbound event. This is responsive, but
+   lets unrelated channel traffic override the workflow's resource policy.
+
+#### Recommendation
+
+Allow `down_when` and `up_when` only as an optional pair on a population
+entry. They use the same conjunction of check or CEL expression leaves as
+`destroy_when`, expose only `resource.state.*`, resolve every key against the
+population observer's `state_schema` at load time, and reject judge leaves.
+Requiring both avoids inventing negation for check leaves and lets the owner
+choose disjoint conditions with a neutral region. No new run state or
+lifecycle operation is introduced: sessions go down and come up with the
+semantics already defined by `plect down` and `plect up`.
+
+The evaluator observes the resource once and evaluates `destroy_when`,
+`down_when`, and `up_when` against that coherent snapshot. Precedence is
+`destroy_when`, then `down_when`, then `up_when`. An up session satisfying
+`down_when` goes down through the ordinary service path. A down session stays
+down until `up_when` holds, except for the push re-appearance guarantee in
+Decision 4. Overlapping down/up conditions therefore settle down rather than
+cycling within one evaluation. An observation or expression failure causes no
+transition. A down or up service error leaves the ordinary lifecycle path's
+persisted result authoritative, is not treated as success, records a failure
+event, and is retried later.
+
+Successful evaluator-initiated transitions record
+`plect.workflow_population.down` and `plect.workflow_population.up` on the
+affected session, using the existing population event namespace rather than a
+new lifecycle noun.
+
+A successful poll snapshot, including one requested by a wake hint, observes
+every present member and may bring a down member up when `up_when` holds. A
+push re-appearance of an owned down member always requests its re-up and does
+not require `up_when` to be true. An inbound event continues to append to a
+down session's durable log and triggers an immediate population lifecycle
+evaluation. It does not itself override policy: for poll, and for push events
+that are not discover re-appearances, the fresh observation must satisfy
+`up_when` before the evaluator brings the session up. Scheduled lifecycle
+deadlines use the same evaluation path. Concurrent triggers still coalesce
+per population.
+
+`session.max_sessions` counts only owned sessions whose run state is up, plus
+in-flight up admissions, mirroring workflow `max_up_children`. A successful
+down immediately releases its slot. Eligible owned down members take
+available slots before never-created members, and each class is ordered by
+resource id; this prevents a reply to an existing session from being starved
+by newly discovered work. A re-up waits in durable evaluator state when the
+cap is full and is retried when capacity changes. Reducing the cap below the
+current up count does not select victims: no new up is admitted until the
+count falls within the bound.
+
+There is no separate cap on total retained membership. Such a cap would
+either reproduce saturation with down sessions or require an eviction policy
+that destroys continuity, without a concrete consumer defining which member
+may be discarded. Poll snapshot absence, `destroy_when`, and push
+idle/`grace` remain the ways retained membership ends. A demonstrated need to
+bound retained down state with deterministic eviction would require a
+separate decision rather than changing `max_sessions` to answer two questions.
+
+Going down runs ordinary run-scoped cleanup while preserving the session,
+workspace, event log, session-scoped state, and population provenance. The
+Slack subscription cleanup tombstones its delivery watermark, so the next up
+restores it and does not redeliver the transcript. Going up idempotently
+recreates run-scoped nodes such as the agent, pane, and credential guard and
+resumes preserved dynamic task state. Whether produced state that claims to
+be live is actually healthy remains the independent failure-model question in
+[issue #371](https://github.com/kecbigmt/plecture/issues/371).
+
+The paired predicates are the initial flapping guard: owners can make the
+down and up boundaries disjoint, and unchanged facts cause no repeated
+operation. This decision adds no timer beyond the existing push idle
+`grace`. If a concrete consumer cannot express a stable neutral band and
+demonstrates repeated transitions, a duration-based guard should be designed
+from that evidence rather than preemptively adding another clock.
+
 ## Consequences
 
 Implementation changes the configuration language and therefore requires a
@@ -812,7 +928,8 @@ The implementation order is:
    the poll observer. The Slack adapter exposes its unbound-mention stream
    without deciding a workflow.
 2. Add language validation and the resident evaluator, including provenance,
-   fail-closed planning, admission, expiry, and ordinary session events.
+   fail-closed planning, admission, down/up policy, expiry, and ordinary
+   session events.
 3. Cut a downstream deployment over to each user-owned workflow population
    entry and remove its dispatch loop.
 4. Remove the Slack opaque command hook and publish its one-time migration.
@@ -837,6 +954,10 @@ and lifecycle contracts without any of the following:
 - a push mode that must infer absence from stream silence;
 - a wake stream that must carry trusted discovery items or change membership
   without a complete snapshot;
+- a down/up policy that needs facts outside its resource observer or a new run
+  state;
+- a retained population that needs a total bound and deterministic eviction
+  rather than explicit absence, destruction, or push expiry;
 - adoption or destruction of sessions lacking matching workflow-population
   provenance.
 
