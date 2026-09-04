@@ -14,12 +14,12 @@ rather than an enumerable query. A downstream deployment needs the enumerable
 form for orchestrator polling. These are three concrete consumers of one
 missing language concept, not a speculative extension point.
 
-One of those deployments also reaches `max_sessions` while review sessions
-are merely waiting for human replies. Destroying them would release capacity
-only by discarding the state, workspace, event log, and thread continuity that
-the eventual reply must resume. Desired-set membership and run-resource
-occupancy therefore need separate transitions: the member remains present
-while its session goes down, then comes up when work returns.
+One of those deployments also exhausts root-level run capacity while review
+sessions are merely waiting for human replies. Destroying them would release
+capacity only by discarding the state, workspace, event log, and thread
+continuity that the eventual reply must resume. Desired-set membership and
+run-resource occupancy therefore need separate transitions: the member
+remains present while its session goes down, then comes up when work returns.
 
 The existing language already separates the responsibilities this feature
 must join:
@@ -396,7 +396,6 @@ Use this closed workflow-population surface:
 | `populations.discover_inputs` | Required table. | Literal deployment data validated against the observer's discover `inputs_schema`. |
 | `populations.session.task` | Optional static task reference. | Selects a task to set up after the session is up; its observer must equal `resource_observer`. |
 | `populations.session.inputs` | Optional value table. | Session inputs over literals, `resource.id`, and the discover `item_schema`'s `discovery.*` properties. |
-| `populations.session.max_sessions` | Required positive integer. | Bounds up sessions and in-flight up admissions owned by this population entry. |
 | `populations.session.destroy.force` | Optional boolean; default false. | Uses the lifecycle service's explicit force-destroy path for entry-owned sessions. |
 | `populations.poll_every` | Required positive duration for poll; forbidden for push. | Sets complete-snapshot cadence. |
 | `populations.idle` | Required positive duration for push; forbidden for poll. | Makes a push-owned session eligible for expiry after no inbound activity. |
@@ -452,21 +451,21 @@ resets expiry eligibility. A false result starts `grace`; eligibility must
 remain continuous through that duration before destruction. `destroy_when`
 remains an independent immediate population-resource-fact path.
 
-`session.max_sessions` is an up-session admission guard, not a destruction or
-down policy. Decision 7 defines its counting and ordering rules. Reducing the
-cap does not evict, destroy, or automatically take sessions down; configured
-lifecycle conditions must make those transitions eligible.
+Capacity is not declared on a population entry. Decision 7 completes the
+session tree with a virtual root so the existing `max_up_children` vocabulary
+governs both real-parent and parentless admission.
 
 A valid push appearance is persisted in population-evaluator state before
-admission. If the cap is full, it remains pending and is admitted in resource
-id order when capacity becomes available; process restart does not forget an
-appearance core already accepted. A repeated appearance replaces the pending
-production record for that resource. Its idle clock begins only when the
-session is created, so waiting behind the cap cannot cause silent expiry.
+admission. If the virtual-root cap is full, it remains pending and is admitted
+in resource-id order when capacity becomes available; process restart does
+not forget an appearance core already accepted. A repeated appearance
+replaces the pending production record for that resource. Its idle clock
+begins only when the session is created, so waiting behind the cap cannot
+cause silent expiry.
 Successful destruction forgets that appearance, and a later appearance may
 create a new session. A repeated push appearance also guarantees that an
 owned down session becomes an up candidate through the ordinary `plect up`
-path. If the up-session cap is full, the persisted appearance keeps that
+path. If the virtual-root cap is full, the persisted appearance keeps that
 re-up pending and gives it existing-member priority when a slot opens; it is
 never discarded as a duplicate no-op.
 
@@ -493,8 +492,16 @@ created tasks later through the ordinary task-setup path.
 
 #### Review-dispatch configuration
 
-This complete user-owned TOML binds the GitHub poll face above to an existing
-review task and a review workflow. It replaces an external reconcile loop.
+The machine's reserved configuration declares the one cap for every session
+whose logical parent is the virtual root:
+
+```toml
+# config.toml excerpt
+max_up_children = 8
+```
+
+This complete user-owned workflow TOML binds the GitHub poll face above to an
+existing review task. Together they replace an external reconcile loop.
 
 ```toml
 [review_agent]
@@ -590,8 +597,7 @@ state        = "open"
 draft        = false
 
 [review_agent.populations.session]
-task         = "official.github.review"
-max_sessions = 8
+task = "official.github.review"
 
 [review_agent.populations.session.destroy]
 force = true
@@ -629,7 +635,9 @@ exists. The initial task receives its declared `app_id`, `owner`, `repo`,
 current observer cannot infer a reply turn from `review_decision`, so the
 example deliberately relies on the newly declared `review_reply_state`: it
 takes a session down only while a human response is outstanding and brings it
-up after that response arrives.
+up after that response arrives. Each successful down frees one virtual-root
+slot for a newly discovered pull request; the reply-driven up waits for a slot
+if all root capacity is active again.
 
 #### Operations-chat configuration
 
@@ -703,9 +711,6 @@ grace             = "15m"
 base_url    = "http://127.0.0.1:7890"
 channel_ids = ["C01234567"]
 
-[ops_chat_session.populations.session]
-max_sessions = 12
-
 [ops_chat_session.populations.session.inputs]
 slack_base_url = "http://127.0.0.1:7890"
 mention_ts     = { from = "discovery.mention_ts" }
@@ -763,15 +768,13 @@ bindings may relay those events like any other. A discover failure with no
 owned session is visible in resident logs; the language gains no destination,
 message, or notification field to special-case it.
 
-`session.max_sessions` and workflow `max_up_children` answer different
-questions. The former bounds concurrently-up parentless sessions owned by one
-population entry. The latter continues to bound concurrently-up children of
-each population-created session, including chain-spawned children.
-Population-owned sessions do not count against one another's child cap, and
-chain-owned sessions never count against the population cap. Multiple
-populations, including multiple entries on one workflow, do not implicitly
-share capacity: a future need for one pool across populations requires its
-own explicit authority rather than overloading either limit.
+`max_up_children` is the only concurrency vocabulary. A real session's
+workflow continues to bound its direct children, including chain-spawned
+children. The virtual-root form in Decision 7 bounds all root-level sessions,
+including population-created and manually dispatched sessions, without
+introducing a population-specific counter. A session counts only against its
+logical immediate parent's cap, so a real child is not also counted at the
+virtual root.
 
 Chains and populations share session-name resolution but not ownership. A
 chain that reaches a name already owned by a population gets the existing-name
@@ -877,15 +880,71 @@ that are not discover re-appearances, the fresh observation must satisfy
 deadlines use the same evaluation path. Concurrent triggers still coalesce
 per population.
 
-`session.max_sessions` counts only owned sessions whose run state is up, plus
-in-flight up admissions, mirroring workflow `max_up_children`. A successful
-down immediately releases its slot. Eligible owned down members take
-available slots before never-created members, and each class is ordered by
-resource id; this prevents a reply to an existing session from being starved
-by newly discovered work. A re-up waits in durable evaluator state when the
-cap is full and is retried when capacity changes. Reducing the cap below the
-current up count does not select victims: no new up is admitted until the
-count falls within the bound.
+The session forest is completed as one tree with a non-addressable virtual
+root. Every session with no real session parent is logically its direct child,
+whether created by a population, dispatched manually, or placed beside a
+parentless session through the existing `root:<session>` marker. The virtual
+root has no workflow, workspace, resource, event log, or lifecycle operation;
+it is the structural parent needed to apply the ordinary child-cap rule at
+the top of the tree. Parentless sessions may continue to store an empty
+`ParentSession`; the virtual edge is derived rather than persisted.
+
+The virtual root must not turn independent root-level sessions into trusted
+reviewers or lifecycle actors for one another. The existing `root:<session>`
+marker continues to record an explicit sibling cohort for relation, judge,
+and terminal-delivery semantics, while resolving to the virtual root for
+capacity accounting. Two independently created root-level sessions therefore
+remain unrelated for authority even though both consume the virtual root's
+direct-child capacity. This separation is required because the current
+session-scoped implicit roots deliberately prevent unrelated root sessions
+from gaining sibling authority.
+
+#### Capacity options
+
+1. Apply the virtual-root cap only to evaluator-driven up operations. Manual
+   dispatch would retain its current freedom, but could silently bypass the
+   same host constraint the evaluator is required to respect.
+2. Apply it to every up of a logical virtual-root child, including manual
+   `plect up`. This changes manual behavior when an operator has explicitly
+   configured a cap, but leaves one admission authority and one counting rule.
+3. Also add per-population caps for allocation fairness. This could reserve or
+   divide root capacity, but no concrete contention between populations yet
+   defines the intended allocation policy.
+
+#### Capacity recommendation
+
+Use option 2. The virtual root's optional positive `max_up_children` is
+declared in `config.toml`, because machine-wide resolution and defaults are
+the only existing owner for a root that has no workflow. Unset retains
+unlimited parentless ups. A real parent's cap remains on that parent's
+workflow and is unchanged. Each session counts only against its logical
+immediate parent's cap, so real children are not also counted at the virtual
+root.
+
+The documented counting rule is unchanged: a child counts while its run state
+is up, an in-flight up admission also counts, and an idempotent up of an
+already-up child is exempt. `--force-recreate` still holds an admission because
+it first tears run state down. A successful down immediately frees a slot.
+Reducing a cap below its current up count selects no victims; new ups wait or
+fail until the count is within the bound.
+
+Manual `plect up` at the configured virtual-root cap returns the same cap
+error as an up under a capped real parent. This is the intended meaning of an
+operator declaring a host boundary: silently exempting the manual path would
+make the bound advisory. The operator may take another root session down,
+raise the machine setting, and retry. Population evaluators instead persist
+their desired create or re-up, defer it without treating the cap as a
+lifecycle failure, and retry on later cycles, wake hints, inbound events, or
+capacity-changing transitions.
+
+Within one population evaluation, eligible owned down members take available
+slots before never-created members, and each class is ordered by resource id;
+this prevents a reply to an existing session from being starved by newly
+discovered work. Atomic admissions preserve the shared root cap when
+different populations or manual commands race, but no cross-population
+fairness or reservation is promised. A per-population fairness limit can be
+added later without changing virtual-root counting if observed contention
+defines how it should allocate capacity.
 
 There is no separate cap on total retained membership. Such a cap would
 either reproduce saturation with down sessions or require an eviction policy
@@ -893,7 +952,8 @@ that destroys continuity, without a concrete consumer defining which member
 may be discarded. Poll snapshot absence, `destroy_when`, and push
 idle/`grace` remain the ways retained membership ends. A demonstrated need to
 bound retained down state with deterministic eviction would require a
-separate decision rather than changing `max_sessions` to answer two questions.
+separate decision rather than overloading `max_up_children` with a second
+question.
 
 Going down runs ordinary run-scoped cleanup while preserving the session,
 workspace, event log, session-scoped state, and population provenance. The
@@ -919,7 +979,10 @@ updates, and conformance fixtures for every valid, invalid, and boundary case.
 The implementation must add the chosen workflow population array to workflow
 decoding, references, whole-array cascade, trusted-layer rules, status output,
 and the resident supervisor, without adding a new definition kind or any
-provider name to core.
+provider name to core. It must also accept root `max_up_children` in
+`config.toml`, canonicalize every no-real-parent admission under the virtual
+root, and preserve explicit sibling-cohort authority independently from that
+capacity key.
 
 The implementation order is:
 
@@ -927,9 +990,9 @@ The implementation order is:
    including parameter and item schemas, then add the optional wake stream to
    the poll observer. The Slack adapter exposes its unbound-mention stream
    without deciding a workflow.
-2. Add language validation and the resident evaluator, including provenance,
-   fail-closed planning, admission, down/up policy, expiry, and ordinary
-   session events.
+2. Complete the virtual-root admission path, then add language validation and
+   the resident evaluator, including provenance, fail-closed planning,
+   admission, down/up policy, expiry, and ordinary session events.
 3. Cut a downstream deployment over to each user-owned workflow population
    entry and remove its dispatch loop.
 4. Remove the Slack opaque command hook and publish its one-time migration.
@@ -958,6 +1021,8 @@ and lifecycle contracts without any of the following:
   state;
 - a retained population that needs a total bound and deterministic eviction
   rather than explicit absence, destruction, or push expiry;
+- virtual-root capacity accounting that grants relation, judge, lifecycle, or
+  delivery authority between independently created root-level sessions;
 - adoption or destruction of sessions lacking matching workflow-population
   provenance.
 
