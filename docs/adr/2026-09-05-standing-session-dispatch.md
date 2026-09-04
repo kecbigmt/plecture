@@ -41,8 +41,9 @@ must join:
 - Each value surface exposes only the roots that exist at that point, and live
   `resource.state.*` reads are coherent within one evaluation
   ([values](../language/values.md)).
-- Conditions use the existing check and CEL expression leaves. Plecture does
-  not add a predicate language of its own
+- Conditions reuse the existing check and CEL expression leaves. Lifecycle
+  policy adds structural idle and task-quantifier facts, not provider-specific
+  predicate operators
   ([tasks](../language/tasks.md),
   [language overview](../language/README.md)).
 
@@ -398,13 +399,11 @@ Use this closed workflow-population surface:
 | `populations.session.inputs` | Optional value table. | Session inputs over literals, `resource.id`, and the discover `item_schema`'s `discovery.*` properties. |
 | `populations.session.destroy.force` | Optional boolean; default false. | Uses the lifecycle service's explicit force-destroy path for entry-owned sessions. |
 | `populations.poll_every` | Required positive duration for poll; forbidden for push. | Sets complete-snapshot cadence. |
-| `populations.idle` | Required positive duration for push; forbidden for poll. | Makes a push-owned session eligible for expiry after no inbound activity. |
-| `populations.grace` | Optional non-negative duration for push; forbidden for poll; default zero. | Requires idle eligibility to remain continuous before destruction. |
-| `populations.destroy_when` | Optional conjunction of check or expression leaves. | Destroys an owned session when current population-resource facts satisfy it. |
-| `populations.down_when` | Optional conjunction of check or expression leaves; requires `up_when`. | Takes an owned up session down when current population-resource facts satisfy it. |
-| `populations.up_when` | Optional conjunction of check or expression leaves; requires `down_when`. | Brings an owned down session up when current population-resource facts satisfy it. |
-| `populations.keep_while.task` | Required static task reference when `keep_while` is present; push only. | Selects dynamic task instances whose own resource facts can retain the session. |
-| `populations.keep_while.all` | Required conjunction of check or expression leaves when `keep_while` is present; push only. | Suppresses idle expiry while any selected task instance satisfies it. |
+| `populations.destroy_when` | Optional lifecycle rule with required `all` and optional `grace`. | Destroys an owned session when its condition remains satisfied. |
+| `populations.down_when` | Optional lifecycle rule with required `all` and optional `grace`; requires `up_when`. | Takes an owned up session down when its condition remains satisfied. |
+| `populations.up_when` | Optional lifecycle rule with required `all` and optional `grace`; requires `down_when`. | Brings an owned down session up when its condition remains satisfied. |
+| `populations.*_when.all` | Required non-empty conjunction when its lifecycle rule is present. | Accepts the lifecycle condition leaves defined below. |
+| `populations.*_when.grace` | Optional non-negative duration; default zero. | Requires the rule's complete conjunction to remain true continuously before it may fire. |
 
 The complete `session.inputs` object is validated against the target
 workflow's `inputs_schema` at load time: literal types are checked directly,
@@ -415,26 +414,77 @@ present, every task input not supplied explicitly is bound from the session
 inputs by the existing dynamic task-setup rules, and each common field must
 also satisfy the task's `inputs_schema`.
 
-`resource_observer`, `session.task`, and `keep_while.task` are static topology.
-They accept the ordinary relative or catalog-qualified reference grammar and
-cannot be CEL expressions. The containing workflow's workspace provider and
-the population observer must both match each discovered `resource`; the
-provider remains the single authority for session naming.
+`resource_observer` and `session.task` are static topology. They accept the
+ordinary relative or catalog-qualified reference grammar and cannot be CEL
+expressions. The containing workflow's workspace provider and the population
+observer must both match each discovered `resource`; the provider remains the
+single authority for session naming.
 
-`destroy_when`, `down_when`, `up_when`, and `keep_while.all` use the check and
-expression leaf forms from `done_when` and chain `when`; none accepts judge
-leaves. The first three expose only `resource.state.*`, resolved against the
-population observer's `state_schema`. Each selected `keep_while.task`
-instance exposes `resource.state.*` from its own observer and `self.state.*`
-from its task state, exactly as that task's `done_when` does. Its keys resolve
-at load time against those two schemas. No matching task instance means false;
-multiple matching instances use any semantics. This lets an explicitly
-escalated conversation remain alive because of a later task bound to another resource,
-without teaching either plugin about the other's resource type or adding a
-cross-resource join to core. Every lifecycle decision observes each relevant
-resource once, and all leaves for that resource read the coherent snapshot.
-An observation or expression failure is fail-closed and changes no lifecycle
-state.
+Each lifecycle rule's `all` uses the check and expression leaf forms from
+`done_when` and chain `when`, plus an idle leaf and a task-instance quantifier
+leaf. No lifecycle rule accepts judge leaves. An ordinary check or expression
+leaf exposes only `resource.state.*`, resolved against the population
+observer's `state_schema`.
+
+An idle leaf has the closed shape `{ idle = "8h" }`, with a required positive
+duration, and is valid in any lifecycle rule. It becomes true when that much
+time has elapsed since the latest of session creation, an accepted repeated
+push appearance for the same resource, and an event recorded on the session
+log with `direction = "inbound"`. A poll snapshot repeatedly reporting a
+present member is not a re-appearance and does not reset the clock. Internal
+ticks, lifecycle events, outbound agent events, and changes to the
+session-level status message do not reset it.
+
+This leaf measures external-input quiescence. It is unrelated to the
+session-message convention in which an empty message means the agent
+self-reports that it is idle, and it is unrelated to a health probe's
+`silence_expected`, which narrows turn-boundary health expectations. Reusing
+the word does not combine those three authorities: neither an agent status
+message nor a health pardon can make a lifecycle idle leaf true or false.
+
+#### Task-instance quantification: owner ruling required
+
+Lifecycle policy sometimes needs to exclude a session from destruction while
+a dynamic task instance still represents open work. Two shapes can express
+that exclusion:
+
+| Option | Shape | Strengths | Costs |
+|---|---|---|---|
+| (a) A `tasks` CEL root | `tasks.filter(t, t.document == 'investigate').all(t, t.resource.state.issue_status == 'SUCCESS')` | Uses CEL's existing `filter`, `all`, and `exists` macros and permits arbitrary combinations without new fact-leaf operators. Those macros are already in the documented Plecture CEL profile. | A session can contain tasks with different observer and state schemas. The iterator is therefore heterogeneous, and the current CEL path validation deliberately does not treat a comprehension-bound path as a surface root. `t.resource.state.issue_status` would lose the load-time key resolution that lifecycle facts otherwise promise unless Plecture adds flow-sensitive schema refinement. The expression is also substantially harder to read and broadens CEL from value computation into topology selection. |
+| (b) A quantified task leaf | `{ task = "official.github.investigate", every = { check = "resource.state.issue_status", in = ["SUCCESS"] } }` | Keeps the task reference structural, resolves it at load time, and validates the nested fact paths against that one task and observer. The small `any`/`every` vocabulary states the only demonstrated collection operation directly. | Adds one lifecycle-leaf variant and cannot express arbitrary cross-instance computations. A later need beyond selection plus `any`/`every` would require another language decision. |
+
+Recommend option (b), pending an explicit owner ruling. CEL's comprehension
+macros are in profile, so option (a) is not rejected as syntactically
+unavailable; it is rejected because heterogeneous task schemas make its
+important key paths dynamic at precisely the site where the rest of the
+lifecycle surface is statically checked. Extending CEL typing and the
+Plecture path walker solely for this one collection would broaden the
+lifecycle expression-site profile and the validator without another concrete
+consumer.
+
+Under option (b), `task` is an ordinary static task reference that selects
+instances of that exact resolved task definition, and exactly one of `any` or
+`every` contains one ordinary check or expression leaf. The nested leaf
+exposes `resource.state.*` from the selected task's observer and
+`self.state.*` from its task state, exactly as that task's `done_when` does;
+its keys resolve against both schemas at load time. Nested idle, judge, and
+task-quantifier leaves are forbidden. `any` is false for no matching dynamic
+instance, while `every` is true for no matching instance. The latter gives
+“every selected instance is closed or no selected instance exists” without a
+second absence operator. Selection follows instances the session already owns
+and their existing resource bindings; it cannot discover or join arbitrary
+resources by matching keys.
+
+Every lifecycle decision observes each relevant resource once, and all leaves
+for that resource read the coherent snapshot. An observation or expression
+failure, including failure for any selected instance of a quantified leaf,
+makes the conjunction unsatisfied and no lifecycle action fires. A rule's
+optional `grace` modifies the whole
+conjunction, not an individual leaf: all leaves must remain true continuously
+for the duration, and a false or failed evaluation clears the eligibility
+time. This is the same safe direction as the former `keep_while`: a failed
+task observation used to keep the session, and now prevents the
+`destroy_when` conjunction from firing.
 
 A successful poll snapshot has two removal paths. An owned resource absent
 from the complete snapshot is no longer a member and is destroyed. A present
@@ -442,14 +492,11 @@ resource satisfying `destroy_when` is also destroyed and is not recreated in
 the same pass. Thus a removed label and a merged pull request both converge
 without treating a failed or partial query as absence.
 
-A push stream cannot prove non-membership. For push, `idle` measures from the
-latest of session creation, a repeated appearance, or an event already
-recorded on that session with `direction = "inbound"`. Internal ticks,
-lifecycle events, and outbound agent events do not keep a conversation alive.
-After `idle` elapses, `keep_while` is evaluated. A true or failed evaluation
-resets expiry eligibility. A false result starts `grace`; eligibility must
-remain continuous through that duration before destruction. `destroy_when`
-remains an independent immediate population-resource-fact path.
+A push stream cannot prove non-membership. A push population that needs
+expiry declares it explicitly as a `destroy_when` conjunction containing an
+idle leaf and any exclusions, with `grace` on that rule when continuous
+eligibility is required. The same leaves are available to poll populations;
+mode does not create a second lifecycle grammar.
 
 Capacity is not declared on a population entry. Decision 7 completes the
 session tree with a virtual root so the existing `max_up_children` vocabulary
@@ -643,7 +690,7 @@ if all root capacity is active again.
 
 This complete user-owned TOML binds the Slack push face above to an operations
 workflow. The triggering `mention_ts` is a typed discovery-item field, and
-later inbound thread events extend the idle deadline without a dispatcher
+later inbound thread events reset the lifecycle idle leaf without a dispatcher
 process. The session intentionally starts without a task.
 
 ```toml
@@ -704,8 +751,6 @@ heartbeat = "15m"
 [[ops_chat_session.populations]]
 name              = "ops_mentions"
 resource_observer = "official.slack.thread_state"
-idle              = "8h"
-grace             = "15m"
 
 [ops_chat_session.populations.discover_inputs]
 base_url    = "http://127.0.0.1:7890"
@@ -715,9 +760,12 @@ channel_ids = ["C01234567"]
 slack_base_url = "http://127.0.0.1:7890"
 mention_ts     = { from = "discovery.mention_ts" }
 
-[ops_chat_session.populations.keep_while]
-task = "official.github.investigate"
-all  = [{ check = "resource.state.issue_status", in = ["PENDING"] }]
+[ops_chat_session.populations.destroy_when]
+grace = "15m"
+all = [
+  { idle = "8h" },
+  { task = "official.github.investigate", every = { check = "resource.state.issue_status", in = ["SUCCESS"] } },
+]
 ```
 
 The Slack plugin sketch introduces `official.slack.thread_state` and its
@@ -725,10 +773,15 @@ The Slack plugin sketch introduces `official.slack.thread_state` and its
 workflow, workspace, node-output, session-input, task, effect, and channel
 surfaces. An explicit escalation may later create an
 `official.github.investigate` instance, bound to an issue resource, through
-the ordinary dynamic task-setup path. An open issue observes
-`resource.state.issue_status = "PENDING"`, so that instance retains the chat
-session without adding issue knowledge to the Slack plugin. With no such
-instance, idle expiry proceeds.
+the ordinary dynamic task-setup path. Its observer declares
+`resource.state.issue_status` as `PENDING` for open and `SUCCESS` for closed.
+The quantified leaf is therefore false while any selected issue remains open
+and is vacuously true when no such instance exists. Once external input has
+been quiet for eight hours and every investigation is closed or absent, the
+whole conjunction must remain true for the rule's fifteen-minute grace before
+destruction. A failed task observation prevents destruction, preserving the
+former keep-on-failure behavior without `keep_while` or a dedicated
+population `idle` field.
 
 ### 5. Evaluator placement: the resident process
 
@@ -845,24 +898,26 @@ delivery can affect latency but not eventual correctness.
 #### Recommendation
 
 Allow `down_when` and `up_when` only as an optional pair on a population
-entry. They use the same conjunction of check or CEL expression leaves as
-`destroy_when`, expose only `resource.state.*`, resolve every key against the
-population observer's `state_schema` at load time, and reject judge leaves.
+entry. They use the lifecycle condition grammar in Decision 4, including its
+idle and statically selected task-instance leaves, and reject judge leaves.
 Requiring both avoids inventing negation for check leaves and lets the owner
 choose disjoint conditions with a neutral region. No new run state or
 lifecycle operation is introduced: sessions go down and come up with the
 semantics already defined by `plect down` and `plect up`.
 
-The evaluator observes the resource once and evaluates `destroy_when`,
-`down_when`, and `up_when` against that coherent snapshot. Precedence is
-`destroy_when`, then `down_when`, then `up_when`. An up session satisfying
+The evaluator observes each referenced resource once and evaluates
+`destroy_when`, `down_when`, and `up_when` against those coherent snapshots.
+A rule becomes eligible only after its conjunction has remained true through
+its optional `grace`. Precedence among eligible actions is `destroy_when`,
+then `down_when`, then `up_when`. An up session satisfying an eligible
 `down_when` goes down through the ordinary service path. A down session stays
-down until `up_when` holds, except for the push re-appearance guarantee in
-Decision 4. Overlapping down/up conditions therefore settle down rather than
-cycling within one evaluation. An observation or expression failure causes no
-transition. A down or up service error leaves the ordinary lifecycle path's
-persisted result authoritative, is not treated as success, records a failure
-event, and is retried later.
+down until `up_when` becomes eligible, except for the push re-appearance
+guarantee in Decision 4. Overlapping down/up conditions therefore settle down
+rather than cycling within one evaluation. An observation or expression
+failure causes no transition and clears that rule's grace eligibility. A down
+or up service error leaves the ordinary lifecycle path's persisted result
+authoritative, is not treated as success, records a failure event, and is
+retried later.
 
 Successful evaluator-initiated transitions record
 `plect.workflow_population.down` and `plect.workflow_population.up` on the
@@ -950,10 +1005,10 @@ There is no separate cap on total retained membership. Such a cap would
 either reproduce saturation with down sessions or require an eviction policy
 that destroys continuity, without a concrete consumer defining which member
 may be discarded. Poll snapshot absence, `destroy_when`, and push
-idle/`grace` remain the ways retained membership ends. A demonstrated need to
-bound retained down state with deterministic eviction would require a
-separate decision rather than overloading `max_up_children` with a second
-question.
+expiry expressed by `destroy_when` remain the ways retained membership ends.
+A demonstrated need to bound retained down state with deterministic eviction
+would require a separate decision rather than overloading `max_up_children`
+with a second question.
 
 Going down runs ordinary run-scoped cleanup while preserving the session,
 workspace, event log, session-scoped state, and population provenance. The
@@ -964,12 +1019,14 @@ resumes preserved dynamic task state. Whether produced state that claims to
 be live is actually healthy remains the independent failure-model question in
 [issue #371](https://github.com/kecbigmt/plecture/issues/371).
 
-The paired predicates are the initial flapping guard: owners can make the
+The paired predicates are the primary flapping guard: owners can make the
 down and up boundaries disjoint, and unchanged facts cause no repeated
-operation. This decision adds no timer beyond the existing push idle
-`grace`. If a concrete consumer cannot express a stable neutral band and
-demonstrates repeated transitions, a duration-based guard should be designed
-from that evidence rather than preemptively adding another clock.
+operation. A rule-level `grace` is also available when a boundary must remain
+true for a known duration; it applies uniformly to destroy, down, and up
+rather than introducing another lifecycle timer. If a concrete consumer
+cannot express a stable neutral band or a sufficient continuous-eligibility
+period and demonstrates repeated transitions, another guard should be
+designed from that evidence.
 
 ## Consequences
 
@@ -1017,8 +1074,12 @@ and lifecycle contracts without any of the following:
 - a push mode that must infer absence from stream silence;
 - a wake stream that must carry trusted discovery items or change membership
   without a complete snapshot;
-- a down/up policy that needs facts outside its resource observer or a new run
-  state;
+- lifecycle policy that needs arbitrary computation across heterogeneous task
+  instances rather than a static task selection with `any` or `every`;
+- an idle condition whose authority must be an agent self-report or a health
+  probe rather than elapsed external-input quiescence;
+- a down/up policy that needs facts outside its resource observer and
+  statically selected task instances, or a new run state;
 - a retained population that needs a total bound and deterministic eviction
   rather than explicit absence, destruction, or push expiry;
 - virtual-root capacity accounting that grants relation, judge, lifecycle, or
@@ -1078,7 +1139,7 @@ There is no session log before the appearance creates a session. Inventing a
 placeholder session solely to receive that event would make bootstrap identity
 and cleanup circular. The discover stream is ingress to desired-state
 evaluation; after creation, ordinary inbound events belong to the real
-session's durable log and extend its idle deadline.
+session's durable log and reset any lifecycle idle leaf.
 
 ### Add recovery and verify-before-skip
 
