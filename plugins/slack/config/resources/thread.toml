@@ -1,20 +1,20 @@
-# A separate identity from workspaces/thread.toml's `thread` provider, even
-# though both match the same permalink: `thread` resolves a session's
-# workspace, while `thread_state` only hosts the query face below. A
+# A separate identity from workspaces/thread_workspace.toml's provider,
+# even though both match the same permalink: that provider resolves a
+# session's workspace, while this one only hosts the query face below. A
 # mention is not enumerable, so this observer declares no query.poll.
 
-[thread_state]
+[thread]
 kind  = "resource_observer"
 match = '^https://[A-Za-z0-9.-]+\.slack\.com/archives/[A-Z0-9]+/p\d{16}(?:\?thread_ts=\d{10}\.\d{6}&cid=[A-Z0-9]+)?$'
 
 # observe is required even though this observer has no live fact of its
 # own to add; the bound command prints "{}" rather than fabricate one.
-[thread_state.observe]
+[thread.observe]
 type = "exec"
 bin  = "slack-adapter"
 args = ["resource", "observe", "--resource", { from = "resource.id" }]
 
-[thread_state.query.subscribe]
+[thread.query.subscribe]
 type = "exec"
 bin  = "slack-adapter"
 args = [
@@ -26,26 +26,26 @@ args = [
   { json = { from = "inputs.channel_ids" } },
 ]
 
-[thread_state.query.inputs_schema]
+[thread.query.inputs_schema]
 type                 = "object"
 required             = ["base_url", "channel_ids"]
 additionalProperties = false
 
-[thread_state.query.inputs_schema.properties]
+[thread.query.inputs_schema.properties]
 base_url    = { type = "string", format = "uri" }
 channel_ids = { type = "array", minItems = 1, items = { type = "string" } }
 
-[thread_state.query.item_schema]
+[thread.query.item_schema]
 type                 = "object"
 required             = ["resource"]
 additionalProperties = false
 
-[thread_state.query.item_schema.properties]
+[thread.query.item_schema.properties]
 resource   = { type = "string", format = "uri" }
 channel_id = { type = "string" }
 thread_ts  = { type = "string" }
 mention_ts = { type = "string" }
 
-[thread_state.state_schema]
+[thread.state_schema]
 type                 = "object"
 additionalProperties = false

@@ -217,18 +217,18 @@ func TestShippedCatalog_GitHubPullQueryInvokesDocumentedFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
-	def, ok := observers["official.github.pull"]
+	def, ok := observers["official.github.pull_request"]
 	if !ok {
-		t.Fatal("shipped catalog resource observer \"official.github.pull\" not found")
+		t.Fatal("shipped catalog resource observer \"official.github.pull_request\" not found")
 	}
 	if def.Query == nil {
-		t.Fatal("official.github.pull declares no query face")
+		t.Fatal("official.github.pull_request declares no query face")
 	}
 	if def.Query.Poll == nil {
-		t.Fatal("official.github.pull's query declares no poll means")
+		t.Fatal("official.github.pull_request's query declares no poll means")
 	}
 	if def.Query.Subscribe == nil {
-		t.Fatal("official.github.pull's query declares no subscribe means")
+		t.Fatal("official.github.pull_request's query declares no subscribe means")
 	}
 
 	inputs := map[string]any{
@@ -287,9 +287,9 @@ func TestShippedCatalog_GitHubPullQueryItemSchemaBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
-	def, ok := observers["official.github.pull"]
+	def, ok := observers["official.github.pull_request"]
 	if !ok {
-		t.Fatal("shipped catalog resource observer \"official.github.pull\" not found")
+		t.Fatal("shipped catalog resource observer \"official.github.pull_request\" not found")
 	}
 	required, _ := def.Query.ItemSchema["required"].([]any)
 	if len(required) != 1 || required[0] != "resource" {
@@ -304,24 +304,24 @@ func TestShippedCatalog_GitHubPullQueryItemSchemaBoundary(t *testing.T) {
 	}
 }
 
-func TestShippedCatalog_SlackThreadStateQueryInvokesDocumentedFlags(t *testing.T) {
+func TestShippedCatalog_SlackThreadQueryInvokesDocumentedFlags(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	observers, err := cfg.LoadResourceDefs()
 	if err != nil {
 		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
 	}
-	def, ok := observers["official.slack.thread_state"]
+	def, ok := observers["official.slack.thread"]
 	if !ok {
-		t.Fatal("shipped catalog resource observer \"official.slack.thread_state\" not found")
+		t.Fatal("shipped catalog resource observer \"official.slack.thread\" not found")
 	}
 	if def.Query == nil {
-		t.Fatal("official.slack.thread_state declares no query face")
+		t.Fatal("official.slack.thread declares no query face")
 	}
 	if def.Query.Poll != nil {
-		t.Error("official.slack.thread_state declares a poll means, but a mention appearance is not enumerable")
+		t.Error("official.slack.thread declares a poll means, but a mention appearance is not enumerable")
 	}
 	if def.Query.Subscribe == nil {
-		t.Fatal("official.slack.thread_state's query declares no subscribe means")
+		t.Fatal("official.slack.thread's query declares no subscribe means")
 	}
 
 	inputs := map[string]any{
@@ -376,7 +376,7 @@ workspace_provider = "official.github.worktree"
 
 [[agent.populations]]
 name              = "dispatch"
-resource_observer = "official.github.pull"
+resource_observer = "official.github.pull_request"
 poll_every        = "1m"
 auto_down         = true
 auto_destroy      = true
@@ -392,24 +392,24 @@ draft        = false
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
 	populations := workflows["agent"].Populations
-	if len(populations) != 1 || populations[0].ResourceObserver != "official.github.pull" {
+	if len(populations) != 1 || populations[0].ResourceObserver != "official.github.pull_request" {
 		t.Fatalf("populations = %+v", populations)
 	}
 }
 
 // expire_after (not poll_every) is required here because
-// official.slack.thread_state declares no poll means.
-func TestShippedCatalog_WorkflowPopulationResolvesSlackThreadStateQuery(t *testing.T) {
+// official.slack.thread declares no poll means.
+func TestShippedCatalog_WorkflowPopulationResolvesSlackThreadQuery(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	cfg.BaseDir = t.TempDir()
 	writeFile(t, filepath.Join(cfg.BaseDir, "ops.toml"), `
 [ops]
 kind               = "workflow"
-workspace_provider = "official.slack.thread"
+workspace_provider = "official.slack.thread_workspace"
 
 [[ops.populations]]
 name              = "mentions"
-resource_observer = "official.slack.thread_state"
+resource_observer = "official.slack.thread"
 expire_after      = "8h"
 auto_down         = true
 auto_destroy      = true
@@ -423,7 +423,7 @@ channel_ids = ["C01234567"]
 		t.Fatalf("LoadWorkflows: %v", err)
 	}
 	populations := workflows["ops"].Populations
-	if len(populations) != 1 || populations[0].ResourceObserver != "official.slack.thread_state" {
+	if len(populations) != 1 || populations[0].ResourceObserver != "official.slack.thread" {
 		t.Fatalf("populations = %+v", populations)
 	}
 }

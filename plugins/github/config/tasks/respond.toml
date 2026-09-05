@@ -1,11 +1,11 @@
-# Written for the pull observer: this task addresses review comments on a
-# pull request, so its subject is that pull request rather than the issue it
-# closes. See tasks/work.toml for why checks_status accepts the "NULL"
-# sentinel.
+# Written for the pull_request observer: this task addresses review
+# comments on a pull request, so its subject is that pull request rather
+# than the issue it closes. See tasks/work.toml for why checks_status
+# accepts the "NULL" sentinel.
 [respond]
 kind              = "task"
 description       = "Address review comments on a PR and push fixes"
-resource_observer = "pull"
+resource_observer = "pull_request"
 instructions      = [{ text = """
 Address the review comments on PR at {{ resource.id }}.
 

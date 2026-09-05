@@ -157,7 +157,7 @@ func TestShippedWorkspaceProvider_DeclaresAcquisitionAndRelease(t *testing.T) {
 // TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline pins that
 // both permalink forms for one thread resolve to the same session name.
 func TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline(t *testing.T) {
-	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+	prov := loadShippedWorkspaceProvider(t, "slack", "thread_workspace")
 	if !prov.HasResolver() {
 		t.Fatal("the shipped workspace provider must declare a resolver")
 	}
@@ -203,7 +203,7 @@ func TestShippedSlackThreadProvider_ResolvesResourceIdentifiersOffline(t *testin
 // provider declares no subscribe/unsubscribe hook: the slack plugin owns no
 // watcher for a thread session to bind to.
 func TestShippedSlackThreadProvider_HasNoSubscriptionRegistry(t *testing.T) {
-	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+	prov := loadShippedWorkspaceProvider(t, "slack", "thread_workspace")
 	if prov.Setup == nil {
 		t.Error("the shipped workspace provider must declare setup")
 	}
@@ -252,7 +252,7 @@ func firstPlectCall(t *testing.T, log string) []string {
 // TestShippedSlackThreadProvider_SetupRecordsConversationAndCreatesWorkspace
 // runs the shipped setup/cleanup scripts themselves, not a stand-in for them.
 func TestShippedSlackThreadProvider_SetupRecordsConversationAndCreatesWorkspace(t *testing.T) {
-	prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+	prov := loadShippedWorkspaceProvider(t, "slack", "thread_workspace")
 
 	plectLog := filepath.Join(t.TempDir(), "plect.log")
 	stubPlectRecordingArgv(t, plectLog)
@@ -323,7 +323,7 @@ func TestShippedSlackThreadProvider_SetupToleratesJSONSpecialCharactersInWorkspa
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			prov := loadShippedWorkspaceProvider(t, "slack", "thread")
+			prov := loadShippedWorkspaceProvider(t, "slack", "thread_workspace")
 			stubPlectRecordingArgv(t, filepath.Join(t.TempDir(), "plect.log"))
 
 			workspaceDirsRoot := filepath.Join(t.TempDir(), tt.root)

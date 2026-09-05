@@ -11,10 +11,10 @@ another plugin's package.
 
 ## Contents
 
-- `config/workspaces/thread.toml` — declares the `thread` workspace provider:
-  resolves a Slack thread permalink to a session id and acquires/releases a
-  bare workspace directory for it, with no GitHub artifact standing in for
-  the session. See "Workspace provider" below.
+- `config/workspaces/thread_workspace.toml` — declares the `thread_workspace`
+  workspace provider: resolves a Slack thread permalink to a session id and
+  acquires/releases a bare workspace directory for it, with no GitHub
+  artifact standing in for the session. See "Workspace provider" below.
 - `config/tasks/slack_thread.toml` — creates one Slack root message through
   `slack-adapter` and records the conversation with
   `plect state set-conversation`. Outputs: `thread_ts`, `channel_id`, and
@@ -42,11 +42,11 @@ another plugin's package.
   `include` list decides which events reach it. An event's body-or-summary
   becomes the sole `loading_messages` entry; an event whose body and summary
   are both empty clears the status instead.
-- `config/resources/thread_state.toml` — declares the `thread_state`
-  resource observer: a `[thread_state.query]` face whose `subscribe` means
-  is the workflow population source for an unbound Slack mention (see
-  "Query (population source)" below). Distinct from the `thread` workspace
-  provider above — same permalink, different responsibility.
+- `config/resources/thread.toml` — declares the `thread` resource observer:
+  a `[thread.query]` face whose `subscribe` means is the workflow
+  population source for an unbound Slack mention (see "Query (population
+  source)" below). Distinct from the `thread_workspace` provider above —
+  same permalink, different responsibility.
 - `src/slack-adapter/` — Slack-specific message relay + subscription
   broker. See `src/slack-adapter/CLAUDE.md`.
 
@@ -71,7 +71,7 @@ Socket Mode inbound relay.
 
 ## Workspace provider
 
-`config/workspaces/thread.toml` resolves a thread's Slack permalink —
+`config/workspaces/thread_workspace.toml` resolves a thread's Slack permalink —
 either the root message's own permalink or a reply's permalink carrying
 `?thread_ts=<root>&cid=<channel_id>` — to a session named
 `slack/<channel_id>-<root thread_ts digits>`, so both forms of the same
@@ -141,8 +141,8 @@ generalized.
 
 ## Query (population source)
 
-`config/resources/thread_state.toml` declares the `thread_state` resource
-observer's `[thread_state.query]` face
+`config/resources/thread.toml` declares the `thread` resource observer's
+`[thread.query]` face
 (`docs/adr/2026-09-05-standing-session-dispatch.md`, "Subscribe-only
 observer sketch"): the item source a workflow's `[[workflow.populations]]`
 entry binds to keep a session present for a Slack thread that received an
@@ -156,11 +156,11 @@ observer always sets `expire_after` rather than `poll_every`.
   `/unbound-mentions` feed and converting each `unboundMentionItem` straight
   into the query's item shape: `resource` (the mention's permalink,
   required) plus `channel_id`, `thread_ts`, and `mention_ts` context.
-- **`slack-adapter resource observe`** is `thread_state`'s `observe`
-  action. The language requires every `resource_observer` to declare one,
-  but this observer's `state_schema` is empty — a mention appearance is
-  already the only fact `query.subscribe` reports — so it prints `{}`
-  rather than fabricating a state key the schema does not declare.
+- **`slack-adapter resource observe`** is `thread`'s `observe` action. The
+  language requires every `resource_observer` to declare one, but this
+  observer's `state_schema` is empty — a mention appearance is already the
+  only fact `query.subscribe` reports — so it prints `{}` rather than
+  fabricating a state key the schema does not declare.
 
 ## Not included
 

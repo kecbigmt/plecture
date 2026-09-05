@@ -1,8 +1,9 @@
 // Command github-issue-pr is the executable the shipped GitHub resource
 // config invokes. Observe prints the observed state of whichever kind the
-// identifier names, for resources/issue.toml or resources/pull.toml.
+// identifier names, for resources/issue.toml or resources/pull_request.toml.
 // Query-pulls prints one complete JSON array of pull requests matching a
-// set of query parameters — the pull resource observer's query.poll means.
+// set of query parameters — the pull_request resource observer's
+// query.poll means.
 package main
 
 import (

@@ -1,7 +1,7 @@
-# Written for the pull observer: a reviewer's subject is the pull request. A
-# chain spawning a reviewer names it — `resource = { from =
-# "resource.state.pr_url" }` — so an issue-keyed work session hands its review
-# the pull request rather than its own issue.
+# Written for the pull_request observer: a reviewer's subject is the pull
+# request. A chain spawning a reviewer names it — `resource = { from =
+# "resource.state.pr_url" }` — so an issue-keyed work session hands its
+# review the pull request rather than its own issue.
 #
 # There is no third party to judge a reviewer (self-judge is structurally
 # rejected), so completion cannot use a judge leaf the way work/investigate/
@@ -12,7 +12,7 @@
 [review]
 kind              = "task"
 description       = "Review a pull request and record a verdict"
-resource_observer = "pull"
+resource_observer = "pull_request"
 instructions      = [{ file = "review.md" }]
 
 [review.inputs_schema]

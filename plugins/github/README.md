@@ -22,12 +22,12 @@ rollup, and linked-PR discovery.
   (`scripts/gh-app-guard`), shipped shell shims, not build targets.
 - `workspaces/worktree.toml` — declares the `worktree` provider: resolves a GitHub issue/PR URL to a session id
   and acquires/releases the git worktree it maps to.
-- `resources/issue.toml`, `resources/pull.toml` — the standalone observation contracts, one per resource kind
+- `resources/issue.toml`, `resources/pull_request.toml` — the standalone observation contracts, one per resource kind
   (`plect resource status`): resource kind, CI check rollup, issue
   completion, revision, linked PR, mergeability, and GitHub's own aggregate
-  review decision. `pull.toml`'s observer also declares `[pull.query]`: a
-  workflow population source with both `poll` and `subscribe` means (see
-  "Query (population source)" below).
+  review decision. `pull_request.toml`'s observer also declares
+  `[pull_request.query]`: a workflow population source with both `poll`
+  and `subscribe` means (see "Query (population source)" below).
 - `tasks/gh_guard.toml` — produces a directory an agent-runtime plugin's
   task composes as a generic PATH-prepend input (see
   `docs/design/plugin-boundary-contracts.md`'s GitHub CLI Guard section),
@@ -91,7 +91,8 @@ still refuses a branch carrying unmerged commits regardless of this flag.
 
 ## Query (population source)
 
-`resources/pull.toml`'s pull request observer declares `[pull.query]`
+`resources/pull_request.toml`'s pull request observer declares
+`[pull_request.query]`
 (`docs/adr/2026-09-05-standing-session-dispatch.md`, "Query contract: one
 purpose with poll and subscribe means"): the item source a workflow's
 `[[workflow.populations]]` entry binds to keep one session present per
@@ -246,7 +247,7 @@ Multi-installation watcher auth (a per-session or per-repository identity)
 stays out of scope until a concrete consumer needs it.
 
 `github-issue-pr observe` accepts a bare-`gh`, no-App-auth mode (omitting
-`--watcher-bin`), which the shipped `resources/issue.toml`/`pull.toml`
+`--watcher-bin`), which the shipped `resources/issue.toml`/`pull_request.toml`
 configs never select — they always pass `--watcher-bin` so calls route
 through the shared rate budget above. It has no App-auth inputs of its
 own, so invoking it directly without that flag is operator-auth only and

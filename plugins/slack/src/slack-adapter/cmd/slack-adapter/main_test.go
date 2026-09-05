@@ -85,11 +85,6 @@ func TestRunResourceCommandRequiresResource(t *testing.T) {
 	}
 }
 
-// The thread_state resource observer's state_schema is empty: this
-// subcommand exists only because the language requires every
-// resource_observer to declare an observe action, and printing "{}" is the
-// honest answer for one with no facts of its own, rather than inventing a
-// state key the shipped config does not declare.
 func TestRunResourceCommandPrintsAnEmptyObjectForAResolvedResource(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := runResourceCommand([]string{"observe", "--resource", "https://acme.slack.com/archives/C01234567/p1234567890123456"}, &out, &errOut)

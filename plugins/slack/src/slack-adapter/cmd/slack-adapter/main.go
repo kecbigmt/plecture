@@ -64,9 +64,9 @@ func runSubscribeCommand(args []string, out, errOut io.Writer) int {
 	return 0
 }
 
-// thread_state has nothing live to report beyond a mention appearance,
-// which already flows through query.subscribe, so this prints "{}" rather
-// than fabricate a state key.
+// thread has nothing live to report beyond a mention appearance, which
+// already flows through query.subscribe, so this prints "{}" rather than
+// fabricate a state key.
 func runResourceCommand(args []string, out, errOut io.Writer) int {
 	if len(args) == 0 || args[0] != "observe" {
 		fmt.Fprintln(errOut, "usage: slack-adapter resource observe --resource <url>")

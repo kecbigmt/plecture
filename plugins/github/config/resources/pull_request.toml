@@ -14,11 +14,11 @@
 # A pull request needs neither, and the flag is passed for one observe
 # invocation shared with issue.toml.
 
-[pull]
+[pull_request]
 kind  = "resource_observer"
 match = '^https://github\.com/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>\d+)'
 
-[pull.observe]
+[pull_request.observe]
 type = "exec"
 bin  = "github-issue-pr"
 args = [
@@ -35,7 +35,7 @@ args = [
 # per-call app_id/private_key_path input to select a token by, so both
 # binaries read deployment-level GitHub App auth from the environment
 # instead.
-[pull.query.poll]
+[pull_request.query.poll]
 type = "exec"
 bin  = "github-issue-pr"
 args = [
@@ -50,7 +50,7 @@ args = [
   { expr = "inputs.draft ? 'true' : 'false'" },
 ]
 
-[pull.query.subscribe]
+[pull_request.query.subscribe]
 type = "exec"
 bin  = "github-webhook-receiver"
 args = [
@@ -65,32 +65,32 @@ args = [
   { expr = "inputs.draft ? 'true' : 'false'" },
 ]
 
-[pull.query.inputs_schema]
+[pull_request.query.inputs_schema]
 type                 = "object"
 required             = ["repositories", "labels", "state", "draft"]
 additionalProperties = false
 
-[pull.query.inputs_schema.properties]
+[pull_request.query.inputs_schema.properties]
 repositories = { type = "array", minItems = 1, items = { type = "string" } }
 labels       = { type = "array", items = { type = "string" } }
 state        = { type = "string", enum = ["open", "closed", "all"] }
 draft        = { type = "boolean" }
 
-[pull.query.item_schema]
+[pull_request.query.item_schema]
 type                 = "object"
 required             = ["resource"]
 additionalProperties = false
 
-[pull.query.item_schema.properties]
+[pull_request.query.item_schema.properties]
 resource   = { type = "string", format = "uri" }
 owner      = { type = "string" }
 repository = { type = "string" }
 
-[pull.state_schema]
+[pull_request.state_schema]
 type     = "object"
 required = ["resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision"]
 
-[pull.state_schema.properties]
+[pull_request.state_schema.properties]
 resource_kind = { type = "string", enum = ["pull"] }
 # "NULL" here means the head commit has no checks configured at all, which is
 # distinct from a rollup that is merely still running. A gh failure exits
