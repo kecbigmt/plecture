@@ -63,9 +63,6 @@ func (r *recordingRunner) Subscribe(ctx context.Context, _ Definition, _ func(ma
 	return ctx.Err()
 }
 
-// TestRunEvaluatorOnlyStartsSelectedMeans covers the population-level
-// acceptance criterion directly: an observer declaring both means must not
-// spawn the means an entry's `uses` selection excludes.
 func TestRunEvaluatorOnlyStartsSelectedMeans(t *testing.T) {
 	store := state.NewStore(t.TempDir())
 	def := Definition{

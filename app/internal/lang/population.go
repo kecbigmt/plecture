@@ -240,12 +240,10 @@ func (v Validation) ValidatePopulationContracts(workflow *Definition, registry *
 	return nil
 }
 
-// validatePopulationTiming derives the required timing field from the
-// entry's own `uses` selection, not from what the observer additionally
-// declares: a population that selects only `subscribe` follows the
-// subscribe-only rules even when the observer's query also offers poll,
-// since the point of the selection is to let an entry opt out of either
-// means independently.
+// validatePopulationTiming branches on the entry's own `uses` selection
+// rather than the observer's declared means, so a population selecting only
+// `subscribe` follows the subscribe-only rules even against an observer
+// whose query also offers poll.
 func validatePopulationTiming(entry map[string]any, at Position) error {
 	if populationUses(entry, "poll") {
 		if _, ok := entry["poll_every"]; !ok {
@@ -283,9 +281,8 @@ func validatePopulationTiming(entry map[string]any, at Position) error {
 	return nil
 }
 
-// populationUses reports whether a structurally valid `uses` array names the
-// given means. It is only called once validatePopulationUses has confirmed
-// the array's shape, so the type assertions here cannot fail.
+// populationUses assumes validatePopulationUses has already confirmed the
+// array's shape, so the type assertion below cannot fail.
 func populationUses(entry map[string]any, means string) bool {
 	list, _ := entry["uses"].([]any)
 	for _, item := range list {
@@ -298,11 +295,10 @@ func populationUses(entry map[string]any, means string) bool {
 
 var populationMeans = map[string]bool{"poll": true, "subscribe": true}
 
-// validatePopulationUses checks the structural shape of `uses` alone: a
-// non-empty array of the two known keywords, each named at most once.
-// Whether a selected keyword is one the resolved observer's query actually
-// declares is a cross-definition question, checked separately by
-// validatePopulationUsesContract once the observer is resolved.
+// validatePopulationUses checks only the shape of `uses`; whether a keyword
+// is one the resolved observer's query declares needs the registry, so
+// validatePopulationUsesContract checks that separately once the observer
+// resolves.
 func validatePopulationUses(entry map[string]any, at Position) error {
 	usesPos := childPos(at, "uses")
 	list, ok := entry["uses"].([]any)
@@ -332,8 +328,6 @@ func validatePopulationUses(entry map[string]any, at Position) error {
 	return nil
 }
 
-// validatePopulationUsesContract rejects a selected means the resolved
-// observer's query does not declare, once the observer is known.
 func validatePopulationUsesContract(entry, query map[string]any, at Position) error {
 	list, _ := entry["uses"].([]any)
 	for i, item := range list {
