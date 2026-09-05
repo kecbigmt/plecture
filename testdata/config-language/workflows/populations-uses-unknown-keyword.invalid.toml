@@ -1,0 +1,15 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-TYPE entry=definitions
+# reason: a query means is one of the two keywords the language defines, not an arbitrary string.
+
+[bad_uses_keyword]
+kind               = "workflow"
+workspace_provider = "query_provider"
+
+[[bad_uses_keyword.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+uses              = ["watch"]
+poll_every        = "5m"
+
+[bad_uses_keyword.populations.query]
+scope = "open"

@@ -40,7 +40,7 @@ func TestCapacityPriorityOnlyAppliesWhenVirtualRootCapIsFull(t *testing.T) {
 			cfg := populationConfig(t, `[source.query.poll]
 type = "exec"
 command = "true"
-`, `poll_every = "1m"`, `resource = { from = "resource.id" }`)
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
 			writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
 kind = "workspace_provider"
 match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"

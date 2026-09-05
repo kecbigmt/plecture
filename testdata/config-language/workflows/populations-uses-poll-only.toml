@@ -1,0 +1,15 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a population may select only poll from an observer whose query declares both means, opting out of subscribe.
+
+[poll_only_cases]
+kind               = "workflow"
+workspace_provider = "query_provider"
+
+[[poll_only_cases.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+uses              = ["poll"]
+poll_every        = "5m"
+
+[poll_only_cases.populations.query]
+scope = "open"

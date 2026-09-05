@@ -1,15 +1,15 @@
 # plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-POPULATION-CONTRACT entry=definitions
-# reason: one population parameter table must satisfy the shared query inputs_schema.
+# reason: a population may select only a query means its resolved observer actually declares.
 
-[bad_query]
+[bad_uses_undeclared]
 kind               = "workflow"
 workspace_provider = "query_provider"
 
-[[bad_query.populations]]
+[[bad_uses_undeclared.populations]]
 name              = "dispatch"
-resource_observer = "query_source"
+resource_observer = "subscribe_only_source"
 uses              = ["poll"]
 poll_every        = "5m"
 
-[bad_query.populations.query]
-unexpected = "value"
+[bad_uses_undeclared.populations.query]
+scope = "open"

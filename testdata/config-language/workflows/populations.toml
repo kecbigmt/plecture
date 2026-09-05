@@ -1,5 +1,5 @@
 # plect-fixture: result=valid entry=definitions
-# reason: a user-owned workflow binds a query-backed population to session inputs and an initial task.
+# reason: a user-owned workflow binds a query-backed population to session inputs and an initial task, using both means the observer's query declares.
 
 [standing_cases]
 kind               = "workflow"
@@ -17,6 +17,7 @@ context  = { type = "string" }
 [[standing_cases.populations]]
 name              = "dispatch"
 resource_observer = "query_source"
+uses              = ["poll", "subscribe"]
 poll_every        = "5m"
 auto_down         = true
 auto_destroy      = false

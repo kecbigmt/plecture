@@ -118,12 +118,12 @@ type sourceResult struct {
 func (s *Supervisor) runEvaluator(ctx context.Context, engine *Engine, runner queryRunner) {
 	def := engine.definition
 	source := make(chan sourceResult)
-	if def.Observer.Query.Subscribe != nil {
+	if def.Observer.Query.Subscribe != nil && def.Population.UsesSubscribe() {
 		go s.runSubscription(ctx, runner, def, source)
 	}
 	var poll <-chan time.Time
 	var pollTicker *time.Ticker
-	if def.Observer.Query.Poll != nil {
+	if def.Observer.Query.Poll != nil && def.Population.UsesPoll() {
 		pollTicker = time.NewTicker(def.Population.PollEvery.Duration)
 		defer pollTicker.Stop()
 		immediate := make(chan time.Time, 1)

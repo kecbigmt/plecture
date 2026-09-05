@@ -1,0 +1,15 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-TYPE entry=definitions
+# reason: a query means is either selected or not; naming it twice is not a distinct selection.
+
+[bad_uses_duplicate]
+kind               = "workflow"
+workspace_provider = "query_provider"
+
+[[bad_uses_duplicate.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+uses              = ["poll", "poll"]
+poll_every        = "5m"
+
+[bad_uses_duplicate.populations.query]
+scope = "open"

@@ -154,21 +154,47 @@ on every admitted session and is required for later mutation or destruction.
 | `name` | Required stable identifier, unique within the workflow. |
 | `resource_observer` | Required static reference to the observer that recognizes, queries, and observes population resources. |
 | `query` | Required literal parameter object validated by the observer query's `inputs_schema`. |
+| `uses` | Required, non-empty selection of query means this entry runs, e.g. `["poll"]`. Each keyword must be one the resolved observer's query declares. |
 | `session.task` | Optional static initial task, installed with the name `initial`; it uses the same observer. |
 | `session.inputs` | Optional values over literals, `resource.id`, and properties declared by the query `item_schema` under `item.*`. |
 | `session.destroy.force` | Whether an enabled automatic destruction uses force; defaults to false. |
-| `poll_every` | Required positive duration when the observer has `query.poll`. |
-| `expire_after` | Required positive external-input quiescence duration for a subscribe-only observer; forbidden when poll exists. |
+| `poll_every` | Required positive duration when `uses` selects `poll`; forbidden otherwise. |
+| `expire_after` | Required positive external-input quiescence duration when `uses` does not select `poll`; forbidden when it does. |
 | `auto_down` | Permits capacity-pressure down selection; defaults to false. |
 | `auto_destroy` | Permits guarded automatic destruction; defaults to false, producing a dry-run verdict instead. |
 
-Poll is the sole membership and absence authority. A complete snapshot is
-validated before membership changes. Subscribe items admit or re-up one
-member, but cannot undo an absence tombstone produced by a combined query;
-only a later positive poll opens a new generation. Subscribe-only expiry is
+`uses` is the sole authority for which means run: an entry naming only
+`poll` never starts the observer's subscribe action even when the observer
+declares one, and an entry naming only `subscribe` never runs poll, even
+against an observer whose query declares both. There is no default
+selection, so a means a plugin observer adds later cannot start running in an
+existing deployment until an entry names it explicitly.
+
+Selecting `poll` makes it the sole membership and absence authority for that
+entry: a complete snapshot is validated before membership changes, and
+subscribe items (when also selected) admit or re-up a member but cannot undo
+an absence tombstone; only a later positive poll opens a new generation.
+Deselecting `poll` follows the subscribe-only rules instead: expiry is
 measured from successful session creation and reset by accepted repeated
-appearances or inbound session events. Internal, outbound, and status events
-do not reset it.
+appearances or inbound session events, and a resource is never presumed
+absent. Internal, outbound, and status events do not reset that clock.
+
+Deselecting `poll` on an observer whose query declares it is a deliberate
+trade: it drops absence detection and missed-event repair (a subscribe
+delivery gap is never independently corrected) in exchange for not running a
+poll means that is too expensive, rate-limited, or unavailable for this
+deployment. An enumerable resource should normally keep `poll` selected;
+deselecting `subscribe` instead is the more common case, e.g. for a
+deployment with no reachable webhook endpoint to run a fail-closed subscribe
+action against, which would otherwise become a permanent restart loop under
+the resident supervisor.
+
+Changing an entry's `uses` on a config reload keeps its owned sessions and
+their provenance — removal or replacement of policy is never evidence about
+a resource — but the evaluator re-derives membership from the new
+selection's authority alone. A resource tombstoned under a since-deselected
+`poll` is admitted again by a later subscribe appearance instead of staying
+locked out waiting for a poll snapshot that will never come.
 
 Destruction waits until every produced dynamic task with a `done_when`
 predicate is satisfied. A missing predicate, observation error, evaluation
@@ -206,6 +232,7 @@ context  = { type = "string" }
 [[standing_cases.populations]]
 name              = "dispatch"
 resource_observer = "query_source"
+uses              = ["poll", "subscribe"]
 poll_every        = "5m"
 auto_down         = true
 auto_destroy      = false

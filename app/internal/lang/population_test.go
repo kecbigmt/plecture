@@ -162,6 +162,7 @@ workspace_provider = "provider"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"
+uses = ["poll"]
 poll_every = "1m"
 [agent.populations.query]
 scope = "all"
@@ -217,10 +218,12 @@ kind = "workflow"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"
+uses = ["poll"]
 [agent.populations.query]
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"
+uses = ["poll"]
 [agent.populations.query]
 `)
 	var d *Diagnostic
@@ -258,6 +261,7 @@ workspace_provider = "provider"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"
+uses = ["poll"]
 poll_every = "1m"
 [agent.populations.query]
 scope = "all"

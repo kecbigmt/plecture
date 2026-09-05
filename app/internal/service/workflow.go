@@ -57,6 +57,9 @@ type WorkflowPopulation struct {
 	ExpireAfter      string            `json:"expire_after,omitempty"`
 	AutoDown         bool              `json:"auto_down"`
 	AutoDestroy      bool              `json:"auto_destroy"`
+	// Uses is the entry's selection of query means, e.g. ["poll"] or
+	// ["poll", "subscribe"].
+	Uses []string `json:"uses"`
 }
 
 // WorkflowChannel is the show-time view of an [[event.channel]]: its name, the
@@ -203,6 +206,7 @@ func workflowPopulationViews(populations []config.WorkflowPopulation) []Workflow
 			ExpireAfter:      durationSource(population.ExpireAfter),
 			AutoDown:         population.AutoDown,
 			AutoDestroy:      population.AutoDestroy,
+			Uses:             population.Uses,
 		})
 	}
 	return out

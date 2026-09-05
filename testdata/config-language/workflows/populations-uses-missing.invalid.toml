@@ -1,0 +1,14 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-REQUIRED entry=definitions
+# reason: a population declares which query means it uses; there is no default selection.
+
+[bad_uses_missing]
+kind               = "workflow"
+workspace_provider = "query_provider"
+
+[[bad_uses_missing.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+poll_every        = "5m"
+
+[bad_uses_missing.populations.query]
+scope = "open"

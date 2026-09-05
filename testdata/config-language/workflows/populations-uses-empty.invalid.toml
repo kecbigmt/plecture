@@ -1,0 +1,15 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-TYPE entry=definitions
+# reason: an empty selection runs no query means at all.
+
+[bad_uses_empty]
+kind               = "workflow"
+workspace_provider = "query_provider"
+
+[[bad_uses_empty.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+uses              = []
+poll_every        = "5m"
+
+[bad_uses_empty.populations.query]
+scope = "open"

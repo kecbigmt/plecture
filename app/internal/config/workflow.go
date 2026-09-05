@@ -203,10 +203,33 @@ type WorkflowPopulation struct {
 	ResourceObserver string
 	Query            map[string]any
 	Session          PopulationSession
-	PollEvery        Duration
-	ExpireAfter      Duration
-	AutoDown         bool
-	AutoDestroy      bool
+	// Uses is the required, non-empty selection of query means ("poll",
+	// "subscribe") this entry runs. It is a subset of the means the resolved
+	// observer's query declares; the loader rejects any other relationship.
+	Uses        []string
+	PollEvery   Duration
+	ExpireAfter Duration
+	AutoDown    bool
+	AutoDestroy bool
+}
+
+// UsesPoll reports whether this entry's selection includes poll.
+func (p WorkflowPopulation) UsesPoll() bool {
+	return usesContains(p.Uses, "poll")
+}
+
+// UsesSubscribe reports whether this entry's selection includes subscribe.
+func (p WorkflowPopulation) UsesSubscribe() bool {
+	return usesContains(p.Uses, "subscribe")
+}
+
+func usesContains(uses []string, means string) bool {
+	for _, u := range uses {
+		if u == means {
+			return true
+		}
+	}
+	return false
 }
 
 type PopulationSession struct {

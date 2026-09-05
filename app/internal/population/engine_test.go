@@ -48,7 +48,7 @@ command = "true"
 [source.query.subscribe]
 type = "exec"
 command = "true"
-`, `poll_every = "1m"`, `resource = { from = "resource.id" }`)
+`, "uses = [\"poll\", \"subscribe\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
 	defs, err := Load(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -136,6 +136,42 @@ func TestPollAbsenceTombstonesBeforeDryRunAndSuppressesSubscribe(t *testing.T) {
 	events, _, _, err := engine.log.List("session-urn:case:a", 0, event.Filter{Types: []string{event.TypeWorkflowPopulationDestroyDryRun}})
 	if err != nil || len(events) != 1 {
 		t.Fatalf("dry-run events = %v, %v", events, err)
+	}
+}
+
+// TestUsesSwitchLiftsPollTombstoneSuppression covers the reload case where an
+// entry's `uses` selection drops poll: a resource poll tombstoned under the
+// old selection would otherwise never see another positive poll snapshot to
+// reopen it, so the new selection's subscribe authority must be able to
+// admit it directly instead of treating the stale poll tombstone as binding.
+func TestUsesSwitchLiftsPollTombstoneSuppression(t *testing.T) {
+	engine, hooks, _ := engineFixture(t, false)
+	ctx := context.Background()
+	if err := engine.ApplyPoll(ctx, []map[string]any{{"resource": "urn:case:a"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.ApplyPoll(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	state, _ := engine.state.Population(engine.key)
+	if !state.Members["urn:case:a"].Tombstoned {
+		t.Fatalf("resource not tombstoned by poll absence: %+v", state.Members["urn:case:a"])
+	}
+
+	// Simulates the supervisor recreating the evaluator after a config
+	// reload that changes this entry's `uses`: same key, same persisted
+	// state, only the selection differs.
+	engine.definition.Population.Uses = []string{"subscribe"}
+	before := len(hooks.ups)
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(hooks.ups) != before+1 {
+		t.Fatalf("switching away from poll did not admit the previously tombstoned resource: %v", hooks.ups)
+	}
+	state, _ = engine.state.Population(engine.key)
+	if state.Members["urn:case:a"].Tombstoned {
+		t.Fatal("resource still tombstoned after admission under the new selection")
 	}
 }
 
@@ -234,7 +270,7 @@ func TestSubscribeExpiryUsesAppearanceAndInboundClock(t *testing.T) {
 	cfg := populationConfig(t, `[source.query.subscribe]
 type = "exec"
 command = "true"
-`, `expire_after = "1h"`, `resource = { from = "resource.id" }`)
+`, "uses = [\"subscribe\"]\nexpire_after = \"1h\"", `resource = { from = "resource.id" }`)
 	defs, err := Load(cfg)
 	if err != nil {
 		t.Fatal(err)

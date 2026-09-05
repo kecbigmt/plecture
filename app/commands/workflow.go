@@ -217,6 +217,7 @@ func printWorkflowDetail(out io.Writer, d *service.WorkflowDetail) error {
 func writePopulations(out io.Writer, populations []service.WorkflowPopulation) {
 	for _, population := range populations {
 		fmt.Fprintf(out, "  %s (observer %s)\n", population.Name, population.ResourceObserver)
+		fmt.Fprintf(out, "    uses: %s\n", strings.Join(population.Uses, ", "))
 		if population.PollEvery != "" {
 			fmt.Fprintf(out, "    poll every: %s\n", population.PollEvery)
 		}

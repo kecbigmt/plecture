@@ -84,7 +84,7 @@ func TestLoadAcceptsPollPopulationAndCompilesContracts(t *testing.T) {
 	cfg := populationConfig(t, `[source.query.poll]
 type = "exec"
 command = "printf"
-`, `poll_every = "1m"`, `resource = { from = "resource.id" }`)
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
 
 	defs, err := Load(cfg)
 	if err != nil {
@@ -95,17 +95,17 @@ command = "printf"
 	}
 }
 
-func TestLoadRequiresTimingForTheObserverMeans(t *testing.T) {
+func TestLoadRequiresTimingForTheUsesSelection(t *testing.T) {
 	tests := []struct {
 		name   string
 		means  string
 		timing string
 		want   string
 	}{
-		{"poll requires poll_every", "[source.query.poll]\ntype = \"exec\"\ncommand = \"true\"\n", "", "poll_every"},
-		{"poll forbids expire_after", "[source.query.poll]\ntype = \"exec\"\ncommand = \"true\"\n", "poll_every = \"1m\"\nexpire_after = \"1h\"", "expire_after"},
-		{"subscribe-only requires expire_after", "[source.query.subscribe]\ntype = \"exec\"\ncommand = \"true\"\n", "", "expire_after"},
-		{"subscribe-only forbids poll_every", "[source.query.subscribe]\ntype = \"exec\"\ncommand = \"true\"\n", "poll_every = \"1m\"\nexpire_after = \"1h\"", "poll_every"},
+		{"poll requires poll_every", "[source.query.poll]\ntype = \"exec\"\ncommand = \"true\"\n", `uses = ["poll"]`, "poll_every"},
+		{"poll forbids expire_after", "[source.query.poll]\ntype = \"exec\"\ncommand = \"true\"\n", "uses = [\"poll\"]\npoll_every = \"1m\"\nexpire_after = \"1h\"", "expire_after"},
+		{"subscribe-only requires expire_after", "[source.query.subscribe]\ntype = \"exec\"\ncommand = \"true\"\n", `uses = ["subscribe"]`, "expire_after"},
+		{"subscribe-only forbids poll_every", "[source.query.subscribe]\ntype = \"exec\"\ncommand = \"true\"\n", "uses = [\"subscribe\"]\npoll_every = \"1m\"\nexpire_after = \"1h\"", "poll_every"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -117,11 +117,22 @@ func TestLoadRequiresTimingForTheObserverMeans(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsAUsesSelectionTheObserverDoesNotDeclare(t *testing.T) {
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, `uses = ["subscribe"]`, `resource = { from = "resource.id" }`)
+	_, err := Load(cfg)
+	if err == nil || !strings.Contains(err.Error(), "subscribe") {
+		t.Fatalf("error = %v, want a diagnostic naming the undeclared subscribe means", err)
+	}
+}
+
 func TestLoadRejectsUnknownItemProjection(t *testing.T) {
 	cfg := populationConfig(t, `[source.query.poll]
 type = "exec"
 command = "true"
-`, `poll_every = "1m"`, `resource = { from = "item.missing" }`)
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "item.missing" }`)
 
 	_, err := Load(cfg)
 	if err == nil || !strings.Contains(err.Error(), "item.missing") {
