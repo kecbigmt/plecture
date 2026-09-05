@@ -1,0 +1,10 @@
+# plect-fixture: result=valid entry=definitions
+# reason: an initial population task uses the same observer that supplies its resource item.
+
+[population_task]
+kind              = "task"
+resource_observer = "query_source"
+instructions      = [{ text = "Handle {{ resource.id }}." }]
+
+[population_task.state_schema]
+type = "object"

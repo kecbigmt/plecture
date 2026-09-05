@@ -44,6 +44,7 @@ type ResourceDef struct {
 	// straight to `plect task cleanup` (ADR D4: cleanup itself never gains
 	// completion semantics).
 	Finalize        *lang.Action
+	Query           *ResourceQuery
 	StateSchema     map[string]any
 	StateSchemaFile string
 	BaseDir         string
@@ -51,6 +52,15 @@ type ResourceDef struct {
 	// FromPlugin says a plugin layer wrote this definition, which is what
 	// decides whether its bin references may name another plugin.
 	FromPlugin bool
+}
+
+// ResourceQuery is one observer's shared item-source contract. Poll and
+// Subscribe are independent execution means over the same inputs and items.
+type ResourceQuery struct {
+	InputsSchema map[string]any
+	ItemSchema   map[string]any
+	Poll         *lang.Action
+	Subscribe    *lang.Action
 }
 
 // ResolvedStateSchemaPath joins StateSchemaFile with BaseDir.
@@ -127,6 +137,28 @@ func resourceDefFrom(def *lang.Definition, path string, fromPlugin bool) (Resour
 	r.Observe = observe
 	if r.Finalize, err = actionField(def, path, "finalize"); err != nil {
 		return r, err
+	}
+	if raw, ok := def.Body["query"]; ok {
+		query := raw.(map[string]any)
+		r.Query = &ResourceQuery{
+			InputsSchema: query["inputs_schema"].(map[string]any),
+			ItemSchema:   query["item_schema"].(map[string]any),
+		}
+		for _, means := range []struct {
+			name   string
+			target **lang.Action
+		}{
+			{"poll", &r.Query.Poll},
+			{"subscribe", &r.Query.Subscribe},
+		} {
+			if actionRaw, exists := query[means.name]; exists {
+				action, parseErr := lang.ParseAction(actionRaw, lang.Position{File: path, Path: def.ID + ".query." + means.name})
+				if parseErr != nil {
+					return r, parseErr
+				}
+				*means.target = action
+			}
+		}
 	}
 	if raw, ok := def.Body["state_schema"]; ok {
 		schema, ok := raw.(map[string]any)

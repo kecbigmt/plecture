@@ -164,6 +164,7 @@ the CLI's name would claim the language's rules for one of its consumers.
 | `PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE` | structural | A document declaring `extends` declares an `inputs_schema`/`state_schema` key other than `type` or `properties`. |
 | `PLECTURE-CFG-EXTENDS-SCHEMA-FILE-UNSUPPORTED` | semantic | An extends chain of more than one layer includes a layer using `inputs_schema_file`/`state_schema_file`. |
 | `PLECTURE-CFG-WORKFLOW-CYCLE` | semantic | The dependencies derived from node projections form a cycle. |
+| `PLECTURE-CFG-POPULATION-CONTRACT` | semantic | A population violates its trusted ownership, query parameter, timing, or shared observer contract. |
 | `PLECTURE-CFG-CEL-SYNTAX` | cel | An expression does not parse as CEL. |
 | `PLECTURE-CFG-CEL-UNKNOWN-NAME` | cel | An expression names a variable not visible at its site. |
 | `PLECTURE-CFG-CEL-TYPE` | cel | An operation, or a result type, does not satisfy the site's expected type. |

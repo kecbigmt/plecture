@@ -12,7 +12,7 @@ import (
 )
 
 // LockfileSchemaVersion is the current plect.lock schema version.
-const LockfileSchemaVersion = 1
+const LockfileSchemaVersion = 2
 
 // CatalogLockRecord is one [[catalogs]] entry in plect.lock: the last
 // explicitly trusted catalog snapshot. CatalogResolvedRevision is git-only

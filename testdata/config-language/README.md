@@ -27,7 +27,7 @@ issue, and the residues it surfaced are owner calls on the specification PR.
 | `expressions/` | The CEL profile |
 | `nesting/` | The nesting joint and its output boundary |
 | `effects/` | The effect kind: lifecycle, health, terminal, nesting |
-| `workflows/` | The workflow kind |
+| `workflows/` | The workflow kind, including user-owned populations |
 | `channels/` | The channel kind |
 | `providers/` | The workspace provider kind |
 | `observers/` | The resource observer kind |

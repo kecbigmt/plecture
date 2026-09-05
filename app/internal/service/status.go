@@ -23,15 +23,16 @@ const statusFlowLimit = 5
 // is currently running. No workspace-provider-shaped field belongs here —
 // ResourceID is an opaque string any workspace provider can own.
 type StatusIdentity struct {
-	SessionName   string    `json:"session_name"`
-	ResourceID    string    `json:"resource_id,omitempty"`
-	Title         string    `json:"title,omitempty"`
-	Branch        string    `json:"branch,omitempty"`
-	Workflow      string    `json:"workflow,omitempty"`
-	Tag           string    `json:"tag,omitempty"`
-	ParentSession string    `json:"parent_session,omitempty"`
-	Children      []string  `json:"children,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	SessionName   string                         `json:"session_name"`
+	ResourceID    string                         `json:"resource_id,omitempty"`
+	Title         string                         `json:"title,omitempty"`
+	Branch        string                         `json:"branch,omitempty"`
+	Workflow      string                         `json:"workflow,omitempty"`
+	Population    *contract.PopulationProvenance `json:"population,omitempty"`
+	Tag           string                         `json:"tag,omitempty"`
+	ParentSession string                         `json:"parent_session,omitempty"`
+	Children      []string                       `json:"children,omitempty"`
+	CreatedAt     time.Time                      `json:"created_at"`
 }
 
 // StatusRuntimeTask is one run-scoped task instance's lifecycle state.
@@ -200,6 +201,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 			Title:         displayTitle,
 			Branch:        session.Branch,
 			Workflow:      session.Workflow,
+			Population:    session.Population,
 			Tag:           sessionTag(sessionName),
 			ParentSession: session.ParentSession,
 			Children:      childNames(sessions, sessionName),
@@ -388,11 +390,12 @@ type StatusSummary struct {
 }
 
 type StatusSummaryIdentity struct {
-	SessionName   string `json:"session_name"`
-	ResourceID    string `json:"resource_id,omitempty"`
-	Workflow      string `json:"workflow,omitempty"`
-	Tag           string `json:"tag,omitempty"`
-	ParentSession string `json:"parent_session,omitempty"`
+	SessionName   string                         `json:"session_name"`
+	ResourceID    string                         `json:"resource_id,omitempty"`
+	Workflow      string                         `json:"workflow,omitempty"`
+	Population    *contract.PopulationProvenance `json:"population,omitempty"`
+	Tag           string                         `json:"tag,omitempty"`
+	ParentSession string                         `json:"parent_session,omitempty"`
 }
 
 type StatusSummaryWork struct {
@@ -442,6 +445,7 @@ func Summarize(result *StatusResult) *StatusSummary {
 			SessionName:   result.Identity.SessionName,
 			ResourceID:    result.Identity.ResourceID,
 			Workflow:      result.Identity.Workflow,
+			Population:    result.Identity.Population,
 			Tag:           result.Identity.Tag,
 			ParentSession: result.Identity.ParentSession,
 		},

@@ -1,0 +1,13 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-VALUE-TAG-SURFACE entry=definitions
+# reason: query parameters are literal data, so a tagged value cannot select them dynamically.
+
+[bad_query]
+kind = "workflow"
+
+[[bad_query.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+poll_every        = "5m"
+
+[bad_query.populations.query]
+scope = { from = "session.inputs.scope" }

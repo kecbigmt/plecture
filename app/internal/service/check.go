@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"slices"
+	"sort"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
@@ -10,6 +11,52 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
+
+// PopulationTaskBlockers evaluates every dynamic task through the ordinary
+// completion path. A missing policy or any result other than satisfied is a
+// blocker because automatic population teardown must fail closed.
+func PopulationTaskBlockers(cfg *config.Config, store *state.Store, sessionName string) ([]string, error) {
+	if _, err := ObserveSessionResources(cfg, store, sessionName); err != nil {
+		return nil, err
+	}
+	resolvedName, session, err := resolveSession(cfg, store, sessionName)
+	if err != nil {
+		return nil, err
+	}
+	declarations, err := loadDeclarations(cfg, session)
+	if err != nil {
+		return nil, err
+	}
+	allSessions, err := store.AllE()
+	if err != nil {
+		return nil, err
+	}
+	var blockers []string
+	for _, key := range sortedTaskKeys(session.Tasks) {
+		st := session.Tasks[key]
+		if st == nil || !st.Dynamic || st.Status == contract.TaskStatusCleaned {
+			continue
+		}
+		if st.Status != contract.TaskStatusProduced {
+			blockers = append(blockers, key)
+			continue
+		}
+		dw, live, gateErr := declarations.gate(key, st)
+		if gateErr != nil {
+			return nil, gateErr
+		}
+		if dw == nil {
+			blockers = append(blockers, key)
+			continue
+		}
+		result := task.EvaluateTaskDoneWhenWithContext(dw, live, doneWhenEvalContext(resolvedName, st, allSessions))
+		if result.Overall != task.DoneSatisfied {
+			blockers = append(blockers, key)
+		}
+	}
+	sort.Strings(blockers)
+	return blockers, nil
+}
 
 // CheckParams has no refresh option: check always reads persisted state (see
 // CheckSession). Only tick refreshes dynamic outputs before evaluating.

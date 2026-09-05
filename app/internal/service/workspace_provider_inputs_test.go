@@ -88,7 +88,7 @@ func TestWorkspaceProviderInputs_FromTOMLReachTheHook(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(globalDir, "workspaces", "demo.toml"), `
 [demo_provider]
 kind = "workspace_provider"
@@ -169,7 +169,7 @@ func TestWorkspaceProviderInputs_FromTOMLRejectsAnUndeclaredParameter(t *testing
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(globalDir, "workspaces", "demo.toml"), `
 [demo_provider]
 kind = "workspace_provider"

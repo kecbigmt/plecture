@@ -15,6 +15,7 @@ task document's `resource.state.*` reads resolve against.
 | `match` | Regular expression recognizing the resource identifier. |
 | `observe` | Action producing the resource's current state. |
 | `finalize` | Action recording completion and its judge evidence. |
+| `query` | Optional shared contract with `poll` and/or `subscribe` item sources. |
 | `state_schema` | JSON Schema contract for the observed state. |
 
 <!-- fixture: observers/observe-finalize.toml -->
@@ -93,9 +94,79 @@ key, and exits zero.
 Because the observer is named in the document, a key this `state_schema` does
 not declare is a load error, `PLECTURE-CFG-FROM-PATH`.
 
+## Query
+
+`[<id>.query]` finds resources of the observer's kind. Its required
+`inputs_schema` describes the literal parameter object supplied by a workflow
+population, and its required `item_schema` describes every item produced by
+either means. At least one means is present:
+
+- `poll` runs to completion and returns a JSON array containing the complete
+  matching set. Only a successful, fully validated poll proves absence.
+- `subscribe` stays supervised and emits one JSON object per line. An item
+  reports an appearance; silence, failure, and restart never prove absence.
+
+The item schema has type `object`, requires only a string `resource`, and may
+declare optional identity or appearance context. Query items do not duplicate
+properties from `state_schema`.
+
+The three faces answer separate questions: `observe` answers what a resource's
+state is, `query.poll` answers which resources match now, and
+`query.subscribe` answers when one appears. `observe` remains the sole source
+of live `resource.state.*` facts.
+
+<!-- fixture: observers/query.toml -->
+```toml
+[query_source]
+kind  = "resource_observer"
+match = '^urn:case:[A-Za-z0-9]+$'
+
+[query_source.observe]
+type    = "exec"
+command = "observe-case"
+args    = [{ from = "resource.id" }]
+
+[query_source.state_schema]
+type = "object"
+
+[query_source.state_schema.properties]
+phase = { type = "string" }
+
+[query_source.query.inputs_schema]
+type                 = "object"
+required             = ["scope"]
+additionalProperties = false
+
+[query_source.query.inputs_schema.properties]
+scope = { type = "string" }
+
+[query_source.query.item_schema]
+type                 = "object"
+required             = ["resource"]
+additionalProperties = false
+
+[query_source.query.item_schema.properties]
+resource = { type = "string" }
+context  = { type = "string" }
+
+[query_source.query.poll]
+type    = "exec"
+command = "query-cases"
+args    = ["--scope", { from = "inputs.scope" }]
+
+[query_source.query.subscribe]
+type    = "exec"
+command = "subscribe-cases"
+args    = ["--scope", { from = "inputs.scope" }]
+```
+
 ## Validation rules
 
 - `observe` is declared; `finalize` is optional.
+- A query declares both shared schemas and at least one of `poll` and
+  `subscribe`.
+- A query item requires only its string `resource` property and declares no
+  property also declared by `state_schema`.
 - A non-zero `observe` exit rejects instantiation at the first observation, and
   is recorded degradation at every later one.
 - A `resource.state.<key>` projection names a `state_schema` property.

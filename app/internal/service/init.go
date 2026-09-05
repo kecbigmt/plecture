@@ -7,6 +7,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
@@ -25,6 +26,7 @@ type InitConfigValues struct {
 // override of config.DefaultConfig's baseline, which init never asked
 // about.
 type initConfigDoc struct {
+	SchemaVersion     int      `toml:"schema_version"`
 	WorkspaceDirsRoot string   `toml:"workspace_dirs_root"`
 	ResourceAllowlist []string `toml:"resource_allowlist,omitempty"`
 }
@@ -44,7 +46,7 @@ func WriteInitConfig(path string, values InitConfigValues) error {
 	}
 	defer f.Close()
 
-	doc := initConfigDoc{WorkspaceDirsRoot: values.WorkspaceDirsRoot, ResourceAllowlist: values.ResourceAllowlist}
+	doc := initConfigDoc{SchemaVersion: lang.KnownSchemaVersion, WorkspaceDirsRoot: values.WorkspaceDirsRoot, ResourceAllowlist: values.ResourceAllowlist}
 	if err := toml.NewEncoder(f).Encode(doc); err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

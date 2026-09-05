@@ -78,7 +78,7 @@ func newLocalCatalogGitRepoWithSubdir(t *testing.T, dirName string) (repoDir, fi
 	}
 
 	catalogRoot := filepath.Join(dir, dirName)
-	writeCatalogManifest(t, catalogRoot, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, catalogRoot, "schema_version = 2\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(catalogRoot, "okf"))
 	// A sibling directory outside dirName, unrelated to the catalog, so a
 	// test can assert the resolved catalog root does not reach it.
@@ -208,7 +208,7 @@ func TestVerifyAndMountCatalog_GitSource_Success(t *testing.T) {
 
 func TestVerifyAndMountCatalog_PathEditable_NeedsNoLock(t *testing.T) {
 	dir := t.TempDir()
-	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, dir, "schema_version = 2\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 
 	entry := CatalogEntry{Alias: "local", Source: "path+editable://" + dir, Plugins: []string{"okf"}}
@@ -224,7 +224,7 @@ func TestVerifyAndMountCatalog_PathEditable_NeedsNoLock(t *testing.T) {
 
 func TestVerifyAndMountCatalog_PathLocked_RequiresCatalogLock(t *testing.T) {
 	dir := t.TempDir()
-	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, dir, "schema_version = 2\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 
 	entry := CatalogEntry{Alias: "local", Source: "path://" + dir, Plugins: []string{"okf"}}
@@ -238,7 +238,7 @@ func TestVerifyAndMountCatalog_PathLocked_RequiresCatalogLock(t *testing.T) {
 
 func TestVerifyAndMountPlugin_MissingLockFailsLoud(t *testing.T) {
 	dir := t.TempDir()
-	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, dir, "schema_version = 2\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 	catalog := ResolvedCatalog{Alias: "local", Source: "path://" + dir, Root: dir, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
 
@@ -251,7 +251,7 @@ func TestVerifyAndMountPlugin_MissingLockFailsLoud(t *testing.T) {
 
 func TestVerifyAndMountPlugin_TamperedContentFailsLoud(t *testing.T) {
 	dir := t.TempDir()
-	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, dir, "schema_version = 2\nplugins = [\"okf\"]\n")
 	pluginDir := filepath.Join(dir, "okf")
 	writeMinimalPlugin(t, pluginDir)
 	hash, err := HashTree(pluginDir)
@@ -261,7 +261,7 @@ func TestVerifyAndMountPlugin_TamperedContentFailsLoud(t *testing.T) {
 	catalog := ResolvedCatalog{Alias: "local", Source: "path://" + dir, Root: dir, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
 	lock := &Lockfile{Plugins: []PluginLockEntry{{ID: "local/okf", Path: "okf", ContentHash: hash}}}
 
-	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte("schema_version = 1\nplect_min_version = \"9.9.9\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte("schema_version = 2\nplect_min_version = \"9.9.9\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -274,7 +274,7 @@ func TestVerifyAndMountPlugin_TamperedContentFailsLoud(t *testing.T) {
 
 func TestVerifyAndMountPlugin_LockedSuccess(t *testing.T) {
 	dir := t.TempDir()
-	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, dir, "schema_version = 2\nplugins = [\"okf\"]\n")
 	pluginDir := filepath.Join(dir, "okf")
 	writeMinimalPlugin(t, pluginDir)
 	hash, err := HashTree(pluginDir)
@@ -311,7 +311,7 @@ func TestVerifyAndMountPlugin_EditableCatalogNeedsNoLockEntry(t *testing.T) {
 func TestVerifyAndMountPlugin_IncompatibleMinVersionFailsLoud(t *testing.T) {
 	dir := t.TempDir()
 	pluginDir := filepath.Join(dir, "okf")
-	writeManifest(t, pluginDir, "schema_version = 1\nplect_min_version = \"99.0.0\"\n")
+	writeManifest(t, pluginDir, "schema_version = 2\nplect_min_version = \"99.0.0\"\n")
 	catalog := ResolvedCatalog{Alias: "local", Source: "path+editable://" + dir, Root: dir, NonReproducible: true, Manifest: CatalogManifest{Plugins: []string{"okf"}}}
 
 	_, err := VerifyAndMountPlugin(catalog, "okf", t.TempDir(), &Lockfile{}, testPlectVersion)
@@ -323,7 +323,7 @@ func TestVerifyAndMountPlugin_IncompatibleMinVersionFailsLoud(t *testing.T) {
 
 func TestVerifyAndMountAll_EndToEnd(t *testing.T) {
 	dir := t.TempDir()
-	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\", \"github\"]\n")
+	writeCatalogManifest(t, dir, "schema_version = 2\nplugins = [\"okf\", \"github\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 	writeMinimalPlugin(t, filepath.Join(dir, "github"))
 	okfHash, err := HashTree(filepath.Join(dir, "okf"))
@@ -361,7 +361,7 @@ func TestVerifyAndMountAll_EndToEnd(t *testing.T) {
 
 func TestVerifyAndMountAll_EnabledPathNotListedInCatalogFailsLoud(t *testing.T) {
 	dir := t.TempDir()
-	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, dir, "schema_version = 2\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 
 	// "github" is enabled in the user's registration but not published by
@@ -411,7 +411,7 @@ func newLocalCatalogGitRepoTwoPlugins(t *testing.T) (repoDir, firstCommit, secon
 		return strings.TrimSpace(string(out))
 	}
 	write := func(okfVersion, otherVersion string) {
-		if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 1\nplugins = [\"okf\", \"other\"]\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 2\nplugins = [\"okf\", \"other\"]\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		for name, minVersion := range map[string]string{"okf": okfVersion, "other": otherVersion} {
@@ -419,7 +419,7 @@ func newLocalCatalogGitRepoTwoPlugins(t *testing.T) (repoDir, firstCommit, secon
 			if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			content := "schema_version = 1\nplect_min_version = \"" + minVersion + "\"\n"
+			content := "schema_version = 2\nplect_min_version = \"" + minVersion + "\"\n"
 			if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -530,7 +530,7 @@ func newLocalCatalogGitRepoPluginRemovedLater(t *testing.T) (repoDir, firstCommi
 	}
 
 	run("init", "--quiet", "--initial-branch=main")
-	if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 1\nplugins = [\"okf\", \"other\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 2\nplugins = [\"okf\", \"other\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"okf", "other"} {
@@ -538,7 +538,7 @@ func newLocalCatalogGitRepoPluginRemovedLater(t *testing.T) (repoDir, firstCommi
 		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte("schema_version = 1\nplect_min_version = \"0.1.0\"\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte("schema_version = 2\nplect_min_version = \"0.1.0\"\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -547,10 +547,10 @@ func newLocalCatalogGitRepoPluginRemovedLater(t *testing.T) (repoDir, firstCommi
 	run("tag", "v1.0.0")
 	first := run("rev-parse", "HEAD")
 
-	if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 1\nplugins = [\"okf\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 2\nplugins = [\"okf\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "okf", "plugin.toml"), []byte("schema_version = 1\nplect_min_version = \"0.2.0\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "okf", "plugin.toml"), []byte("schema_version = 2\nplect_min_version = \"0.2.0\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	run("rm", "--quiet", "-r", "other")

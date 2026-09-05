@@ -2,12 +2,13 @@ package lang
 
 import "fmt"
 
-// cascadeWholeTableFields replace wholesale rather than merge: workflows.md
-// calls out `tick` and `healthcheck` as runtime tuning tables a deeper
-// cascade layer overwrites entirely.
-var cascadeWholeTableFields = map[string]bool{
+// cascadeWholeFields replace wholesale rather than merge: mixing table
+// members or population entries from two layers would produce policy no
+// author wrote.
+var cascadeWholeFields = map[string]bool{
 	"tick":        true,
 	"healthcheck": true,
+	"populations": true,
 }
 
 // DuplicateID reports a definition id declared twice inside one layer, the
@@ -81,7 +82,7 @@ func mergeCascade(shallower, deeper map[string]any) (map[string]any, error) {
 		switch {
 		case !exists:
 			merged[k] = dv
-		case cascadeWholeTableFields[k]:
+		case cascadeWholeFields[k]:
 			merged[k] = dv
 		case k == "nodes":
 			sArr, sOK := asTableArray(sv)

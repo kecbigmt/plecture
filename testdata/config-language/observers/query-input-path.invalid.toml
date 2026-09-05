@@ -1,0 +1,20 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=definitions
+# reason: a query action may read only a parameter declared by its shared inputs_schema.
+
+[source]
+kind = "resource_observer"
+
+[source.query.inputs_schema]
+type = "object"
+
+[source.query.item_schema]
+type     = "object"
+required = ["resource"]
+
+[source.query.item_schema.properties]
+resource = { type = "string" }
+
+[source.query.poll]
+type    = "exec"
+command = "printf"
+args    = [{ from = "inputs.missing" }]

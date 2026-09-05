@@ -3,38 +3,66 @@ package service
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
+const virtualRootCapParent = "@virtual-root"
+
 // reserveChildCapSlot decides inside ReserveUpSlot's locked snapshot rather
 // than an unlocked read, so two racing `plect up` processes can't both
 // admit past the cap.
 func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionName, parentSessionName string, targetAlreadyUp bool) (reserved bool, capErr *Error) {
-	if targetAlreadyUp || parentSessionName == "" {
+	if targetAlreadyUp {
 		return false, nil
 	}
-	parent := store.Get(parentSessionName)
-	if parent == nil {
-		// A "root:" pseudo-parent (resolveParentSession) has no session to read a cap from.
+	virtualRoot := parentSessionName == "" || strings.HasPrefix(parentSessionName, "root:")
+	limit := 0
+	capParent := parentSessionName
+	capLabel := "parent session " + parentSessionName
+	if virtualRoot {
+		if cfg == nil || cfg.MaxUpChildren == nil {
+			return false, nil
+		}
+		limit = *cfg.MaxUpChildren
+		capParent = virtualRootCapParent
+		capLabel = "virtual root"
+	} else {
+		parent := store.Get(parentSessionName)
+		if parent == nil {
+			return false, nil
+		}
+		wf, err := loadSessionWorkflow(cfg, parent.WorkspaceDirPath, parent)
+		if err != nil {
+			return false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load parent %s workflow: %v", parentSessionName, err)}
+		}
+		if wf.MaxUpChildren == nil {
+			return false, nil
+		}
+		limit = *wf.MaxUpChildren
+	}
+	if limit < 1 {
 		return false, nil
 	}
-	wf, err := loadSessionWorkflow(cfg, parent.WorkspaceDirPath, parent)
-	if err != nil {
-		return false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load parent %s workflow: %v", parentSessionName, err)}
-	}
-	if wf.MaxUpChildren == nil {
-		return false, nil
-	}
-	limit := *wf.MaxUpChildren
 
 	var rejection *Error
-	approved, lockErr := store.ReserveUpSlot(childSessionName, parentSessionName, func(sessions map[string]*domain.Session, reservations map[string]state.UpReservation) bool {
+	approved, lockErr := store.ReserveUpSlot(childSessionName, capParent, func(sessions map[string]*domain.Session, reservations map[string]state.UpReservation) bool {
 		up := make(map[string]bool)
 		count := 0
-		for _, name := range childNames(sessions, parentSessionName) {
+		var children []string
+		if virtualRoot {
+			for name, session := range sessions {
+				if session != nil && (session.ParentSession == "" || strings.HasPrefix(session.ParentSession, "root:")) {
+					children = append(children, name)
+				}
+			}
+		} else {
+			children = childNames(sessions, parentSessionName)
+		}
+		for _, name := range children {
 			if name == childSessionName {
 				continue // this decides its own slot, not a sibling's
 			}
@@ -44,7 +72,7 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 			}
 		}
 		for name, res := range reservations {
-			if res.Parent != parentSessionName || up[name] {
+			if res.Parent != capParent || up[name] {
 				continue
 			}
 			count++
@@ -53,8 +81,8 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 			rejection = &Error{
 				Code: ErrChildCapExceeded,
 				Message: fmt.Sprintf(
-					"parent session %s has reached its max_up_children cap of %d (%d child session(s) currently up or reserved); bring one down or destroy it, then retry",
-					parentSessionName, limit, count,
+					"%s has reached its max_up_children cap of %d (%d child session(s) currently up or reserved); bring one down or destroy it, then retry",
+					capLabel, limit, count,
 				),
 			}
 			return false

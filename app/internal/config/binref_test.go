@@ -18,11 +18,11 @@ func TestLoad_UnresolvedCrossPluginBinRefNamesPluginToEnable(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
-schema_version = 1
+schema_version = 2
 plugins = ["runtime", "claude"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "runtime", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 
 [[executables]]
@@ -30,10 +30,10 @@ name = "activity"
 path = "bin/activity"
 `)
 	writeFile(t, filepath.Join(catalogDir, "claude", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "")
+	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "tasks", "claude.toml"), `
 [claude]
 kind  = "effect"
@@ -46,7 +46,7 @@ args = ["claude", "working"]
 `)
 
 	writeCatalogsToml(t, tmpHome, `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"
@@ -80,11 +80,11 @@ func TestLoad_PluginLocalBinRefStillResolves(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
-schema_version = 1
+schema_version = 2
 plugins = ["okf"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 
 [[executables]]
@@ -103,7 +103,7 @@ args = ["task", "bootstrap"]
 `)
 
 	writeCatalogsToml(t, tmpHome, `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"
@@ -130,11 +130,11 @@ func TestLoad_UnknownBinRefAliasFailsWithoutFalseRemediation(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
-schema_version = 1
+schema_version = 2
 plugins = ["claude"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "claude", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(catalogDir, "claude", "config", "tasks", "claude.toml"), `
@@ -149,7 +149,7 @@ args = ["claude", "working"]
 `)
 
 	writeCatalogsToml(t, tmpHome, `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"
@@ -179,11 +179,11 @@ func TestLoad_UnresolvedProviderBinRefFailsLoud(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
-schema_version = 1
+schema_version = 2
 plugins = ["runtime", "github"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "runtime", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 
 [[executables]]
@@ -191,7 +191,7 @@ name = "watcher"
 path = "bin/watcher"
 `)
 	writeFile(t, filepath.Join(catalogDir, "github", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(catalogDir, "github", "config", "workspaces", "github.toml"), `
@@ -208,7 +208,7 @@ bin  = "local/runtime/watcher"
 `)
 
 	writeCatalogsToml(t, tmpHome, `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"
@@ -240,11 +240,11 @@ func TestLoad_UnresolvedResourceBinRefFailsLoud(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
-schema_version = 1
+schema_version = 2
 plugins = ["runtime", "github"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "runtime", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 
 [[executables]]
@@ -252,10 +252,10 @@ name = "watcher"
 path = "bin/watcher"
 `)
 	writeFile(t, filepath.Join(catalogDir, "github", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 `)
-	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "")
+	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "resources", "github.toml"), `
 [github]
 kind  = "resource_observer"
@@ -267,7 +267,7 @@ bin  = "local/runtime/watcher"
 `)
 
 	writeCatalogsToml(t, tmpHome, `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"

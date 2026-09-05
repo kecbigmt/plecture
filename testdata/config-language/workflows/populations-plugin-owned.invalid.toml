@@ -1,0 +1,12 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-POPULATION-CONTRACT entry=definitions
+# reason: a plugin cannot ship the user-owned deployment policy that decides which sessions exist.
+
+[plugin_dispatch]
+kind = "workflow"
+
+[[plugin_dispatch.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+
+[plugin_dispatch.populations.query]
+scope = "open"

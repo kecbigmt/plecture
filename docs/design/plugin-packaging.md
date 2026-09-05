@@ -33,7 +33,7 @@ or mount files outside that subtree for plugins in the catalog.
 `catalog.toml` is hand-authored catalog metadata, not a generated index:
 
 ```toml
-schema_version = 1
+schema_version = 2
 description = "Example Plecture plugin catalog."
 
 plugins = [
@@ -109,7 +109,7 @@ shipped config needs neither.
 `plugin.toml` is the only required plugin-local file:
 
 ```toml
-schema_version = 1
+schema_version = 2
 version = "0.3.0"
 plect_min_version = "0.8.0"
 description = "GitHub workspace provider, resource observation, and workflow support."
@@ -420,7 +420,7 @@ resolves the config home.
 Example:
 
 ```toml
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "official"
@@ -580,7 +580,7 @@ lockfile is ignored for plugin resolution.
 Example:
 
 ```toml
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "official"

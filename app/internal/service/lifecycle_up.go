@@ -26,6 +26,7 @@ type UpParams struct {
 	Inputs        map[string]any // forwarded to auto-create; rejected when state already exists
 	ParentSession string         // forwarded to auto-create; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
+	Population    *contract.PopulationProvenance
 	// ForceRecreate rebuilds the runtime for an existing session while
 	// preserving durable identity and event log state.
 	ForceRecreate bool
@@ -73,6 +74,14 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		}
 		sessionName := disp.Name + "+" + tag
 		existing := store.Get(sessionName)
+		if existing != nil {
+			switch {
+			case params.Population != nil && !samePopulation(existing.Population, params.Population):
+				return nil, populationCollision(sessionName, existing.Population, params.Population)
+			case params.Population == nil && existing.Population != nil && params.ParentSession != "":
+				return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q is owned by workflow %q population %q and cannot be adopted by another lifecycle authority", sessionName, existing.Population.Workflow, existing.Population.Name)}
+			}
+		}
 		forceRecreateExisting = existing != nil
 		if params.Inputs != nil && existing != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: inputsOnExistingSessionMessage()}
@@ -109,6 +118,7 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 				Inputs:        params.Inputs,
 				ParentSession: params.ParentSession,
 				Observer:      params.Observer,
+				Population:    params.Population,
 			}); err != nil {
 				return nil, err
 			}

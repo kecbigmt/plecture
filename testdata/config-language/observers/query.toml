@@ -1,0 +1,44 @@
+# plect-fixture: result=valid entry=definitions
+# reason: poll and subscribe share one literal parameter contract and one identity-plus-context item contract.
+
+[query_source]
+kind  = "resource_observer"
+match = '^urn:case:[A-Za-z0-9]+$'
+
+[query_source.observe]
+type    = "exec"
+command = "observe-case"
+args    = [{ from = "resource.id" }]
+
+[query_source.state_schema]
+type = "object"
+
+[query_source.state_schema.properties]
+phase = { type = "string" }
+
+[query_source.query.inputs_schema]
+type                 = "object"
+required             = ["scope"]
+additionalProperties = false
+
+[query_source.query.inputs_schema.properties]
+scope = { type = "string" }
+
+[query_source.query.item_schema]
+type                 = "object"
+required             = ["resource"]
+additionalProperties = false
+
+[query_source.query.item_schema.properties]
+resource = { type = "string" }
+context  = { type = "string" }
+
+[query_source.query.poll]
+type    = "exec"
+command = "query-cases"
+args    = ["--scope", { from = "inputs.scope" }]
+
+[query_source.query.subscribe]
+type    = "exec"
+command = "subscribe-cases"
+args    = ["--scope", { from = "inputs.scope" }]

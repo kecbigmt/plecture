@@ -44,6 +44,9 @@ var fixtureExecutables = []string{
 var fixtureContext = []string{
 	"observers/issue-pr.toml",
 	"observers/observe-finalize.toml",
+	"observers/query.toml",
+	"providers/query.toml",
+	"tasks/population.toml",
 	"workflows/nodes.toml",
 }
 
@@ -229,11 +232,19 @@ func nativeLoad(path, body string, context []*Definition, root string) error {
 		}
 	}
 
+	from := Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath}
+	plugins := []PluginLayer{{Alias: fixtureAlias, Path: fixturePath, Defs: append(append([]*Definition(nil), context...), defs...)}}
+	var user []*Definition
+	if strings.Contains(filepath.ToSlash(path), "/workflows/populations") && !strings.HasSuffix(path, "populations-plugin-owned.invalid.toml") {
+		from = Ownership{}
+		plugins = nil
+		user = append(append([]*Definition(nil), context...), defs...)
+	}
 	v := Validation{
-		From:        Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath},
+		From:        from,
 		Executables: NewExecutableRegistry(PluginExecutables{Alias: fixtureAlias, Path: fixturePath, Names: fixtureExecutables}),
 	}
-	registry := NewRegistry([]PluginLayer{{Alias: fixtureAlias, Path: fixturePath, Defs: append(append([]*Definition(nil), context...), defs...)}}, nil)
+	registry := NewRegistry(plugins, user)
 
 	sorted := append([]*Definition(nil), defs...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })

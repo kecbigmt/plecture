@@ -89,6 +89,23 @@ func TestMergeLayerWorkflowCascadeReplacesClocksWholesale(t *testing.T) {
 	}
 }
 
+func TestMergeLayerWorkflowCascadeReplacesPopulationsWholesale(t *testing.T) {
+	shallower := []*Definition{defOf("review_session", KindWorkflow, map[string]any{
+		"populations": []any{map[string]any{"name": "old"}},
+	})}
+	deeper := []*Definition{defOf("review_session", KindWorkflow, map[string]any{
+		"populations": []any{map[string]any{"name": "new"}},
+	})}
+	merged, err := MergeLayer(shallower, deeper)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	populations := findByID(merged, "review_session").Body["populations"].([]any)
+	if len(populations) != 1 || populations[0].(map[string]any)["name"] != "new" {
+		t.Fatalf("expected the deeper population array to replace the shallower one wholesale, got %v", populations)
+	}
+}
+
 func findByID(defs []*Definition, id string) *Definition {
 	for _, d := range defs {
 		if d.ID == id {

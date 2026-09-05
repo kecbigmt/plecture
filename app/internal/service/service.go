@@ -535,7 +535,15 @@ func SetMessage(cfg *config.Config, store *state.Store, identifier string, text 
 	if session.Message != nil {
 		previous = session.Message.Text
 	}
-	changed := previous != text
+	reported := session.Message != nil
+	if !reported {
+		events, tailErr := eventlog.NewStore(store.Dir()).Tail(sessionName, event.Filter{Types: []string{event.TypeStatusMessage}}, 1)
+		if tailErr != nil {
+			return &Error{Code: ErrExecutionFailed, Message: tailErr.Error()}
+		}
+		reported = len(events) > 0
+	}
+	changed := previous != text || !reported
 	now := time.Now()
 	if text == "" {
 		session.Message = nil

@@ -19,6 +19,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/eventbus"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/pluginservice"
+	"github.com/kecbigmt/plecture/app/internal/population"
 	"github.com/kecbigmt/plecture/app/internal/reactor"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
@@ -112,6 +113,10 @@ restart, within one refresh interval.`,
 		var reactWG sync.WaitGroup
 		reactWG.Go(func() { react.Run(ctx) })
 
+		populations := population.NewSupervisor(live.Get, stateStore, store)
+		var populationWG sync.WaitGroup
+		populationWG.Go(func() { populations.Run(ctx) })
+
 		go live.Run(ctx)
 
 		// Plugin-declared [[services]] (a plugin-owned daemon such as a chat
@@ -137,8 +142,9 @@ restart, within one refresh interval.`,
 		stop()         // cancel ctx so the supervisors tear down even if Serve failed without a signal
 		supWG.Wait()   // let the dispatch supervisor cancel and join its dispatchers
 		reactWG.Wait() // let the reactor supervisor cancel and join its reactors
-		svcWG.Wait()   // let the service supervisor stop every running plugin service
-		hub.Close()    // cancel any reader still alive after subscribers/dispatchers/reactors left
+		populationWG.Wait()
+		svcWG.Wait() // let the service supervisor stop every running plugin service
+		hub.Close()  // cancel any reader still alive after subscribers/dispatchers/reactors left
 		if serveErr != nil && serveErr != http.ErrServerClosed {
 			return serveErr
 		}

@@ -115,6 +115,8 @@ var (
 		"resource.id", "workspace.dir", "workspace.branch")
 	surfaceObserverFinalize = newSurface("resource_observer.finalize", LayerSemantic,
 		"resource.id", "session.name", "resource.revision", "judges")
+	surfaceObserverQuery = newSurface("resource_observer.query", LayerSemantic,
+		"inputs.<key>")
 
 	surfaceWorkflowDisplay = newSurface("workflow.display", LayerSemantic,
 		"workflow.outputs.<key>", "session.inputs.<key>")
@@ -122,6 +124,8 @@ var (
 	surfaceWorkflowNodeInputs = newSurface("workflow.node.inputs", LayerSemantic,
 		"nodes.<id>.outputs.<key>", "workflow.outputs.<key>", "session.*",
 		"session.inputs.<key>", "workspace.*")
+	surfaceWorkflowPopulationInputs = newSurface("workflow.population.session.inputs", LayerSemantic,
+		"resource.id", "item.<key>")
 
 	surfaceChannelDelivery = newSurface("channel.delivery", LayerSemantic,
 		"event.*", "event.metadata.<key>", "inputs.<key>")

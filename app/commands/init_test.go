@@ -18,7 +18,7 @@ import (
 func writeInitCatalogFixture(t *testing.T, pluginPaths ...string) string {
 	t.Helper()
 	dir := t.TempDir()
-	manifest := "schema_version = 1\nplugins = [" + quoteJoin(pluginPaths) + "]\n"
+	manifest := "schema_version = 2\nplugins = [" + quoteJoin(pluginPaths) + "]\n"
 	if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func writeInitCatalogFixture(t *testing.T, pluginPaths ...string) string {
 		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		content := "schema_version = 1\nplect_min_version = \"0.0.0\"\n"
+		content := "schema_version = 2\nplect_min_version = \"0.0.0\"\n"
 		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +45,7 @@ func writeInitCatalogFixtureWithSubdir(t *testing.T, dirName string, pluginPaths
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manifest := "schema_version = 1\nplugins = [" + quoteJoin(pluginPaths) + "]\n"
+	manifest := "schema_version = 2\nplugins = [" + quoteJoin(pluginPaths) + "]\n"
 	if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func writeInitCatalogFixtureWithSubdir(t *testing.T, dirName string, pluginPaths
 		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		content := "schema_version = 1\nplect_min_version = \"0.0.0\"\n"
+		content := "schema_version = 2\nplect_min_version = \"0.0.0\"\n"
 		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +183,7 @@ func TestInit_RefusesWhenConfigTomlAlreadyExists(t *testing.T) {
 	if err := os.MkdirAll(configHome, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configHome, "config.toml"), []byte("workspace_dirs_root = \"/existing\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configHome, "config.toml"), []byte("schema_version = 2\nworkspace_dirs_root = \"/existing\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	fixture := writeInitCatalogFixture(t, "okf")
@@ -206,7 +206,7 @@ func TestInit_RefusesWhenCatalogAlreadyRegistered(t *testing.T) {
 	if err := os.MkdirAll(configHome, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	existingCatalogs := `schema_version = 1
+	existingCatalogs := `schema_version = 2
 
 [[catalogs]]
 alias = "existing"

@@ -18,7 +18,7 @@
 # kinds of plugin under one taxonomy. They replace the former
 # `session/runtime` plugin, split along the terminal/agent-runtime/
 # chat-delivery boundary that plugin used to merge.
-schema_version = 1
+schema_version = 2
 description = "Plecture's official plugin catalog: reusable workspace provider, resource, task, and channel packs shipped from this repository."
 
 plugins = [

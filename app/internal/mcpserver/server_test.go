@@ -29,7 +29,7 @@ func setUpConfigHome(t *testing.T) {
 		}
 	}
 	if err := os.WriteFile(filepath.Join(baseDir, "config.toml"),
-		[]byte("workspace_dirs_root = \""+filepath.Join(home, "workspace_dirs")+"\"\n"), 0o644); err != nil {
+		[]byte("schema_version = 2\nworkspace_dirs_root = \""+filepath.Join(home, "workspace_dirs")+"\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	workspaceDirPath := filepath.Join(home, "wd")

@@ -53,6 +53,7 @@ func TestLoad_WithConfigFile(t *testing.T) {
 	}
 
 	configContent := `
+schema_version = 2
 workspace_dirs_root = "~/my-workspace-dirs"
 resource_allowlist = ["^https://example\\.test/org/", "^https://example\\.test/other/"]
 detached = false
@@ -87,6 +88,22 @@ func TestLoad_NoConfigFile(t *testing.T) {
 	// Should return defaults
 	if cfg.Detached != true {
 		t.Errorf("Detached = %v, want true", cfg.Detached)
+	}
+}
+
+func TestLoad_RejectsSupersededDialect(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+	configDir := filepath.Join(tmpHome, ".config", "plect")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("schema_version = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load()
+	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("standing-session-dispatch-dialect-migration.md")) {
+		t.Fatalf("error = %v, want the dialect migration named", err)
 	}
 }
 
@@ -127,7 +144,7 @@ func TestLoad_LegacyWorktreesRootWarns(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`worktrees_root = "/legacy/worktrees"`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("schema_version = 2\nworktrees_root = \"/legacy/worktrees\""), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -156,7 +173,7 @@ func TestLoad_LegacyWorkdirsRootWarns(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(`workdirs_root = "/legacy/workdirs"`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("schema_version = 2\nworkdirs_root = \"/legacy/workdirs\""), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -184,7 +201,7 @@ func TestLoad_PopulatesBaseDir(t *testing.T) {
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("inputs_schema_file = \"in.schema.json\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("schema_version = 2\ninputs_schema_file = \"in.schema.json\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -208,12 +225,12 @@ func TestLoad_ReadsFromConfigHomeEnvVarInsteadOfRealHome(t *testing.T) {
 	if err := os.MkdirAll(realConfigDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(realConfigDir, "config.toml"), []byte("workspace_dirs_root = \"/real-home-workspace-dirs\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(realConfigDir, "config.toml"), []byte("schema_version = 2\nworkspace_dirs_root = \"/real-home-workspace-dirs\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	overrideDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(overrideDir, "config.toml"), []byte("workspace_dirs_root = \"/override-workspace-dirs\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(overrideDir, "config.toml"), []byte("schema_version = 2\nworkspace_dirs_root = \"/override-workspace-dirs\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(confighome.EnvVar, overrideDir)
@@ -238,6 +255,8 @@ func TestLoad_InlineInputsSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfgContent := `
+schema_version = 2
+
 [inputs_schema]
 type = "object"
 required = ["template"]

@@ -1,0 +1,20 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-REQUIRED entry=definitions
+# reason: resource is the query item's only universally required property because either means may omit optional context.
+
+[source]
+kind = "resource_observer"
+
+[source.query.inputs_schema]
+type = "object"
+
+[source.query.item_schema]
+type     = "object"
+required = ["resource", "context"]
+
+[source.query.item_schema.properties]
+resource = { type = "string" }
+context  = { type = "string" }
+
+[source.query.poll]
+type    = "exec"
+command = "true"

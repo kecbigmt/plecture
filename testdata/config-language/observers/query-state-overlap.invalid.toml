@@ -1,0 +1,26 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=definitions
+# reason: query items carry identity and appearance context while observe alone produces resource state.
+
+[source]
+kind = "resource_observer"
+
+[source.state_schema]
+type = "object"
+
+[source.state_schema.properties]
+phase = { type = "string" }
+
+[source.query.inputs_schema]
+type = "object"
+
+[source.query.item_schema]
+type     = "object"
+required = ["resource"]
+
+[source.query.item_schema.properties]
+resource = { type = "string" }
+phase    = { type = "string" }
+
+[source.query.poll]
+type    = "exec"
+command = "true"

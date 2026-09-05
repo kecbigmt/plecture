@@ -229,6 +229,7 @@ type Session struct {
 	Conversation     *Conversation         `json:"conversation,omitempty"`
 	Message          *Message              `json:"message,omitempty"`
 	Workflow         string                `json:"workflow,omitempty"`
+	Population       *PopulationProvenance `json:"population,omitempty"`
 	Inputs           map[string]any        `json:"inputs,omitempty"`
 	Tasks            map[string]*TaskState `json:"tasks,omitempty"`
 	// Health is the last probe observation and activity fingerprint core
@@ -258,6 +259,13 @@ type Session struct {
 	TickBackoff *TickBackoff `json:"tick_backoff,omitempty"`
 	CreatedAt   time.Time    `json:"created_at"`
 	UpdatedAt   time.Time    `json:"updated_at"`
+}
+
+// PopulationProvenance is the sole lifecycle authority an automatic
+// workflow-population evaluator may use to mutate or destroy a session.
+type PopulationProvenance struct {
+	Workflow string `json:"workflow"`
+	Name     string `json:"name"`
 }
 
 // HealthState is core's own record of the last opaque activity fingerprint,

@@ -10,7 +10,7 @@ import (
 // understands. It governs config.toml, catalogs.toml, and plect.lock alike:
 // docs/language/config.md's "Reserved root files" validation rules apply the
 // same directional schema_version comparison to all three.
-const KnownSchemaVersion = 1
+const KnownSchemaVersion = 2
 
 // ReservedFileNames are the three reserved root files in the user config
 // home. A trusted definition root's recursive discovery sweep skips them —
@@ -26,6 +26,7 @@ var ReservedFileNames = map[string]bool{
 type ConfigToml struct {
 	SchemaVersion     int            `toml:"schema_version"`
 	WorkspaceDirsRoot string         `toml:"workspace_dirs_root"`
+	MaxUpChildren     *int           `toml:"max_up_children"`
 	ResourceAllowlist []string       `toml:"resource_allowlist"`
 	PluginDirs        []string       `toml:"plugin_dirs"`
 	Channels          []string       `toml:"channels"`
@@ -89,6 +90,10 @@ func LoadConfigToml(path string) (*ConfigToml, error) {
 	}
 	if err := validateReservedFile(path, meta, c.SchemaVersion); err != nil {
 		return nil, err
+	}
+	if c.MaxUpChildren != nil && *c.MaxUpChildren < 1 {
+		return nil, newDiag(CodeFieldType, LayerStructural, Position{File: path, Path: "max_up_children"},
+			"max_up_children is a positive integer")
 	}
 	return &c, nil
 }

@@ -1,0 +1,35 @@
+# plect-fixture: result=valid entry=definitions
+# reason: a user-owned workflow binds a query-backed population to session inputs and an initial task.
+
+[standing_cases]
+kind               = "workflow"
+workspace_provider = "query_provider"
+
+[standing_cases.inputs_schema]
+type                 = "object"
+required             = ["resource"]
+additionalProperties = false
+
+[standing_cases.inputs_schema.properties]
+resource = { type = "string" }
+context  = { type = "string" }
+
+[[standing_cases.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+poll_every        = "5m"
+auto_down         = true
+auto_destroy      = false
+
+[standing_cases.populations.query]
+scope = "open"
+
+[standing_cases.populations.session]
+task = "population_task"
+
+[standing_cases.populations.session.inputs]
+resource = { from = "resource.id" }
+context  = { from = "item.context", optional = true }
+
+[standing_cases.populations.session.destroy]
+force = false

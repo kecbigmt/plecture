@@ -12,6 +12,9 @@ import (
 // diagnostic names the layer that wrote the offending value; the merged
 // definition's own topology is checked when it is decoded.
 func (c *Config) checkWorkflowDefinition(def *lang.Definition, layer layerDir) error {
+	if _, declares := def.Body["populations"]; declares && !layer.global {
+		return fmt.Errorf("workflow %s: populations must be declared in the workspace-independent user configuration layer", def.File)
+	}
 	if layer.workspaceDir {
 		if err := checkWorkspaceDirFragment(def, def.File); err != nil {
 			return err
@@ -116,6 +119,9 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 	if w.Nodes, err = workflowNodesFrom(def, pos); err != nil {
 		return w, err
 	}
+	if w.Populations, err = workflowPopulationsFrom(def, pos); err != nil {
+		return w, err
+	}
 	if w.Event.Channel, err = eventChannelsFrom(def, pos); err != nil {
 		return w, err
 	}
@@ -126,6 +132,71 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 		return w, err
 	}
 	return w, nil
+}
+
+func workflowPopulationsFrom(def *lang.Definition, pos lang.Position) ([]WorkflowPopulation, error) {
+	raw, ok := def.Body["populations"]
+	if !ok {
+		return nil, nil
+	}
+	entries, ok := raw.([]map[string]any)
+	if !ok {
+		untyped, ok := raw.([]any)
+		if !ok {
+			return nil, fmt.Errorf("`populations` is an array of tables")
+		}
+		entries = make([]map[string]any, 0, len(untyped))
+		for _, entry := range untyped {
+			table, ok := entry.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("`populations` is an array of tables")
+			}
+			entries = append(entries, table)
+		}
+	}
+	out := make([]WorkflowPopulation, 0, len(entries))
+	for i, entry := range entries {
+		p := WorkflowPopulation{
+			Name:             entry["name"].(string),
+			ResourceObserver: entry["resource_observer"].(string),
+			Query:            entry["query"].(map[string]any),
+		}
+		for _, field := range []struct {
+			key    string
+			target *Duration
+		}{
+			{"poll_every", &p.PollEvery},
+			{"expire_after", &p.ExpireAfter},
+		} {
+			if _, declared := entry[field.key]; !declared {
+				continue
+			}
+			value, err := durationField(entry, field.key)
+			if err != nil {
+				return nil, fmt.Errorf("population %q: %w", p.Name, err)
+			}
+			if value.Duration <= 0 {
+				return nil, fmt.Errorf("population %q: `%s` must be a positive duration", p.Name, field.key)
+			}
+			*field.target = value
+		}
+		p.AutoDown, _ = entry["auto_down"].(bool)
+		p.AutoDestroy, _ = entry["auto_destroy"].(bool)
+		if session, ok := entry["session"].(map[string]any); ok {
+			p.Session.Task, _ = session["task"].(string)
+			at := childPosition(childPosition(pos, "populations"), fmt.Sprintf("[%d].session", i))
+			inputs, err := valueTableFrom(session, "inputs", lang.ClassData, at)
+			if err != nil {
+				return nil, err
+			}
+			p.Session.Inputs = inputs
+			if destroy, ok := session["destroy"].(map[string]any); ok {
+				p.Session.Destroy.Force, _ = destroy["force"].(bool)
+			}
+		}
+		out = append(out, p)
+	}
+	return out, nil
 }
 
 func providerInputsFrom(body map[string]any, pos lang.Position) (map[string]any, error) {

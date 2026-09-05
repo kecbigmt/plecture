@@ -55,7 +55,7 @@ uses = "runtime"
 
 func TestDiscoverRootSkipsReservedFiles(t *testing.T) {
 	dir := t.TempDir()
-	mustWrite(t, dir, "config.toml", `schema_version = 1`)
+	mustWrite(t, dir, "config.toml", `schema_version = 2`)
 	mustWrite(t, dir, "runtime.toml", `
 [runtime]
 kind = "effect"

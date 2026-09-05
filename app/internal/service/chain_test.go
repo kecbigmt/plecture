@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -372,6 +373,37 @@ pr_url = { from = "resource.state.pr_url" }
 	}
 	if len(evs) != 1 {
 		t.Fatalf("same revision should not emit a duplicate kick, got %d events: %+v", len(evs), evs)
+	}
+}
+
+func TestTickSession_ChainCannotAdoptPopulationOwnedTarget(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{workTaskWithChain(`
+[[chains]]
+id       = "review"
+workflow = "codex"
+[chains.when]
+all = [ { judge_pending = "ac-met" } ]
+`)},
+		[]nodeFixture{{id: "work"}})
+	writeWorkflowFile(t, cfg, "codex", "")
+	seedReviewWork(t, store, "owner/repo-1", map[string]any{"checks_status": "SUCCESS", "revision": "sha1"})
+	seedSession(t, store, "owner/repo-1+review-work", "owner/repo", 1, "codex", nil)
+	if err := store.Update("owner/repo-1+review-work", func(session *domain.Session) error {
+		session.Population = &contract.PopulationProvenance{Workflow: "codex", Name: "standing"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true})
+	if err != nil {
+		t.Fatalf("TickSession: %v", err)
+	}
+	sp, _ := findSpawn(res.Chains, "review")
+	if !sp.Fired || sp.AlreadyActive || sp.Spawned || len(sp.Warnings) != 1 || !strings.Contains(sp.Warnings[0], "population") {
+		t.Fatalf("chain collision = %+v, want a population ownership warning without adoption", sp)
 	}
 }
 

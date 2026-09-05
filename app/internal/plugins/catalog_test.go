@@ -18,13 +18,13 @@ func writeCatalogManifest(t *testing.T, dir, content string) {
 
 func writeMinimalPlugin(t *testing.T, dir string) {
 	t.Helper()
-	writeManifest(t, dir, "schema_version = 1\nplect_min_version = \"0.1.0\"\n")
+	writeManifest(t, dir, "schema_version = 2\nplect_min_version = \"0.1.0\"\n")
 }
 
 func TestLoadCatalogManifest_Valid(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogManifest(t, root, `
-schema_version = 1
+schema_version = 2
 description = "Example catalog."
 plugins = ["github", "agent/runtime"]
 `)
@@ -49,7 +49,7 @@ func TestLoadCatalogManifest_MissingFile(t *testing.T) {
 func TestLoadCatalogManifest_UnknownSchemaVersion(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogManifest(t, root, `
-schema_version = 2
+schema_version = 3
 plugins = ["x"]
 `)
 	if _, err := LoadCatalogManifest(root); err == nil {
@@ -59,7 +59,7 @@ plugins = ["x"]
 
 func TestLoadCatalogManifest_EmptyPluginsList(t *testing.T) {
 	root := t.TempDir()
-	writeCatalogManifest(t, root, `schema_version = 1`)
+	writeCatalogManifest(t, root, `schema_version = 2`)
 	if _, err := LoadCatalogManifest(root); err == nil {
 		t.Fatal("want error for an empty plugins list, got nil")
 	}
@@ -68,7 +68,7 @@ func TestLoadCatalogManifest_EmptyPluginsList(t *testing.T) {
 func TestLoadCatalogManifest_ListedPathEscapesRoot(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogManifest(t, root, `
-schema_version = 1
+schema_version = 2
 plugins = ["../escape"]
 `)
 	if _, err := LoadCatalogManifest(root); err == nil {
@@ -79,7 +79,7 @@ plugins = ["../escape"]
 func TestLoadCatalogManifest_ListedPathMissingPluginToml(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogManifest(t, root, `
-schema_version = 1
+schema_version = 2
 plugins = ["github"]
 `)
 	if err := os.MkdirAll(filepath.Join(root, "github"), 0o755); err != nil {
@@ -93,7 +93,7 @@ plugins = ["github"]
 func TestLoadCatalogManifest_UnlistedPluginTomlFailsLoud(t *testing.T) {
 	root := t.TempDir()
 	writeCatalogManifest(t, root, `
-schema_version = 1
+schema_version = 2
 plugins = ["github"]
 `)
 	writeMinimalPlugin(t, filepath.Join(root, "github"))
@@ -178,7 +178,7 @@ func TestLoadCatalogManifest_SymlinkEscapeRejected(t *testing.T) {
 		t.Skipf("symlink not supported in this environment: %v", err)
 	}
 	writeCatalogManifest(t, root, `
-schema_version = 1
+schema_version = 2
 plugins = ["linked"]
 `)
 

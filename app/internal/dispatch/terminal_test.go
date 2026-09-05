@@ -14,7 +14,7 @@ func TestResolveTerminalOwner_FindsDeclaringNode(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
 [tmux]
 kind  = "effect"
@@ -59,7 +59,7 @@ func TestResolveTerminalOwner_NilWhenNoNodeDeclaresTerminal(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(globalDir, "tasks", "envfile.toml"), `
 [envfile]
 kind  = "effect"
@@ -100,7 +100,7 @@ func TestResolveTerminalOwner_CompileFailureIsNonFatal(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
 kind = "workflow"

@@ -56,6 +56,7 @@ type WorkflowFile struct {
 	// this workflow produces (see service.reserveChildCapSlot); nil means no cap.
 	MaxUpChildren *int
 	Nodes         []WorkflowNode
+	Populations   []WorkflowPopulation
 	Event         WorkflowEvent
 	// Tick declares the machine-driven conditions that tick the sessions this
 	// workflow produces. Unlike the other WorkflowFile fields, a deeper
@@ -193,6 +194,29 @@ type WorkflowNode struct {
 	Uses   string
 	Inputs map[string]*lang.Value
 	Blocks []string
+}
+
+// WorkflowPopulation declares one desired set of sessions owned by its
+// containing workflow and identified below it by Name.
+type WorkflowPopulation struct {
+	Name             string
+	ResourceObserver string
+	Query            map[string]any
+	Session          PopulationSession
+	PollEvery        Duration
+	ExpireAfter      Duration
+	AutoDown         bool
+	AutoDestroy      bool
+}
+
+type PopulationSession struct {
+	Task    string
+	Inputs  map[string]*lang.Value
+	Destroy PopulationDestroy
+}
+
+type PopulationDestroy struct {
+	Force bool
 }
 
 // WorkflowEvent wraps [[event.channel]] in an [event] table so event-level
@@ -517,7 +541,38 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 		}
 		out[entry.address] = wf
 	}
+	if !workflowsHavePopulations(out) {
+		return out, nil
+	}
+	observers, err := c.LoadResourceDefs()
+	if err != nil {
+		return nil, err
+	}
+	docs, err := c.LoadTaskDocuments(workspaceDirPath)
+	if err != nil {
+		return nil, err
+	}
+	registry := c.taskReferenceRegistry(docs, observers, out)
+	for _, address := range Addresses(out) {
+		wf := out[address]
+		if len(wf.Populations) == 0 {
+			continue
+		}
+		validation := lang.Validation{From: registry.OwnerOf(wf.Definition), Executables: c.binResolver(wf.SourcePath)}
+		if err := validation.ValidatePopulationContracts(wf.Definition, registry); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
+}
+
+func workflowsHavePopulations(workflows map[string]WorkflowFile) bool {
+	for _, workflow := range workflows {
+		if len(workflow.Populations) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // LoadTaskDefinitions merges plugin + global + ancestor `.plect/tasks/`

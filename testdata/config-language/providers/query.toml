@@ -1,0 +1,14 @@
+# plect-fixture: result=valid entry=definitions
+# reason: the population fixture's provider recognizes the same resource identifiers as its observer.
+
+[query_provider]
+kind  = "workspace_provider"
+match = '^urn:case:(?P<id>[A-Za-z0-9]+)$'
+name  = { from = "match.id" }
+
+[query_provider.setup]
+type    = "exec"
+command = "setup-case"
+
+[query_provider.outputs_schema]
+type = "object"

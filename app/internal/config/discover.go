@@ -347,6 +347,18 @@ func canonicalizeWorkflowRefs(wf *WorkflowFile, prefix string) error {
 		}
 		wf.Event.Channel[i].Uses = uses
 	}
+	for i := range wf.Populations {
+		observer, err := referenceAddress(prefix, wf.Populations[i].ResourceObserver)
+		if err != nil {
+			return fmt.Errorf("workflow %q population %q resource_observer: %w", wf.ID, wf.Populations[i].Name, err)
+		}
+		wf.Populations[i].ResourceObserver = observer
+		task, err := referenceAddress(prefix, wf.Populations[i].Session.Task)
+		if err != nil {
+			return fmt.Errorf("workflow %q population %q session.task: %w", wf.ID, wf.Populations[i].Name, err)
+		}
+		wf.Populations[i].Session.Task = task
+	}
 	return nil
 }
 
