@@ -22,6 +22,15 @@ name = "github-watcher"
 path = "bin/github-watcher"
 build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
 
+# Verifies GitHub webhook deliveries and streams matching pull-request
+# appearances. Not declared under [[services]]: exposing its endpoint and
+# provisioning its signing secret are deployment infrastructure, so it runs
+# only when something invokes it, not as a plugin-managed daemon.
+[[executables]]
+name = "github-webhook-receiver"
+path = "bin/github-webhook-receiver"
+build = "go -C src build -o ../bin/github-webhook-receiver ./cmd/github-webhook-receiver"
+
 # Mints and caches GitHub App installation access tokens, consumed by
 # gh-app-guard and the workspace provider's git credential helper path.
 [[executables]]
