@@ -15,10 +15,10 @@ func nestingCatalog(t *testing.T, published, enabled []string, pluginTasks, user
 	t.Setenv("HOME", tmpHome)
 
 	catalogDir := t.TempDir()
-	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), "schema_version = 1\nplugins = [\""+strings.Join(published, "\", \"")+"\"]\n")
+	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), "schema_version = 2\nplugins = [\""+strings.Join(published, "\", \"")+"\"]\n")
 	for _, p := range published {
 		writeFile(t, filepath.Join(catalogDir, p, "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 `)
 	}
@@ -27,7 +27,7 @@ plect_min_version = "0.0.0"
 	}
 
 	writeCatalogsToml(t, tmpHome, `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"
@@ -35,7 +35,7 @@ source = "path+editable://`+catalogDir+`"
 plugins = ["`+strings.Join(enabled, "\", \"")+`"]
 `)
 	base := filepath.Join(tmpHome, ".config", "plect")
-	writeFile(t, filepath.Join(base, "config.toml"), "")
+	writeFile(t, filepath.Join(base, "config.toml"), "schema_version = 2\n")
 	for id, body := range userTasks {
 		writeFile(t, filepath.Join(base, "tasks", id+".toml"), body)
 	}

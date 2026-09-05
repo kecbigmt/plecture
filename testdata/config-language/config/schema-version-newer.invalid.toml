@@ -1,6 +1,6 @@
 # plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-SCHEMA-VERSION-NEWER entry=config
 # reason: the tree declares a dialect this binary does not know, so the error names the binary as too old rather than guessing at a shape it has never seen.
 
-schema_version = 2
+schema_version = 3
 
 workspace_dirs_root = "~/worktrees"

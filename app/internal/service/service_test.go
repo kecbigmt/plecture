@@ -475,6 +475,28 @@ func TestSetMessage_EmitsStatusMessageEventsOnlyWhenTextChanges(t *testing.T) {
 	})
 }
 
+func TestSetMessage_FirstExplicitEmptyReportEmitsClearEvent(t *testing.T) {
+	store := testStore(t)
+	now := time.Now()
+	store.Put(&domain.Session{Name: "owner/repo-1", CreatedAt: now, UpdatedAt: now})
+
+	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
+		t.Fatalf("SetMessage(empty) error: %v", err)
+	}
+	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
+		t.Fatalf("SetMessage(repeated empty) error: %v", err)
+	}
+
+	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{
+		{
+			Type:      event.TypeStatusMessage,
+			Source:    event.SourcePlect,
+			Direction: event.Outbound,
+			Metadata:  map[string]string{"text": "", "cleared": "true", "previous": ""},
+		},
+	})
+}
+
 func assertStatusMessageEvents(t *testing.T, store *state.Store, sessionName string, want []event.Event) {
 	t.Helper()
 	got, _, _, err := eventlog.NewStore(store.Dir()).List(sessionName, 0, event.Filter{Types: []string{event.TypeStatusMessage}})

@@ -22,6 +22,36 @@ type CreateParams struct {
 	Inputs        map[string]any // frozen at create time; passing to an existing session returns ErrInvalidInput
 	ParentSession string         // parent session name; empty falls back to PLECT_SESSION_NAME when it exists and is not self.
 	Observer      task.Observer
+	Population    *contract.PopulationProvenance
+}
+
+func samePopulation(left, right *contract.PopulationProvenance) bool {
+	return left != nil && right != nil && *left == *right
+}
+
+func populationCollision(session string, existing, requested *contract.PopulationProvenance) *Error {
+	owner := "manual or another lifecycle authority"
+	if existing != nil {
+		owner = fmt.Sprintf("workflow %q population %q", existing.Workflow, existing.Name)
+	}
+	return &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("session %q is owned by %s; workflow %q population %q cannot adopt it", session, owner, requested.Workflow, requested.Name)}
+}
+
+// ResolvePopulationSessionName runs the same static workflow/provider
+// resolver as Up without creating or mutating a session.
+func ResolvePopulationSessionName(cfg *config.Config, workflow, resource string) (string, error) {
+	dispatch, matched, err := dispatchResource(cfg, workflow, resource)
+	if err != nil {
+		return "", err
+	}
+	if !matched {
+		return "", &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q does not resolve population resource %q", workflow, resource)}
+	}
+	tag, tagErr := effectiveTag("", dispatch.Workflow.ID)
+	if tagErr != nil {
+		return "", tagErr
+	}
+	return dispatch.Name + "+" + tag, nil
 }
 
 // CreateResult holds the outcome of Create.

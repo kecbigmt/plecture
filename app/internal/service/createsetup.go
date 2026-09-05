@@ -38,6 +38,9 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	now := time.Now()
 	var session *domain.Session
 	if existing := store.Get(sessionName); existing != nil {
+		if params.Population != nil && !samePopulation(existing.Population, params.Population) {
+			return nil, populationCollision(sessionName, existing.Population, params.Population)
+		}
 		if params.Inputs != nil {
 			return nil, &Error{Code: ErrInvalidInput, Message: inputsOnExistingSessionMessage()}
 		}
@@ -71,6 +74,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 			// look for a workflow that answers to something else.
 			ParentSession: parentSession,
 			Workflow:      wf.Address,
+			Population:    params.Population,
 			Inputs:        input,
 			Tasks:         make(map[string]*contract.TaskState),
 			CreatedAt:     now,

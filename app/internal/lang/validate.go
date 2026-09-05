@@ -221,7 +221,10 @@ func (v Validation) validateObserver(def *Definition, pos Position) error {
 	if err := v.action(def.Body, "observe", surfaceObserverObserve, pos); err != nil {
 		return err
 	}
-	return v.action(def.Body, "finalize", surfaceObserverFinalize, pos)
+	if err := v.action(def.Body, "finalize", surfaceObserverFinalize, pos); err != nil {
+		return err
+	}
+	return v.validateObserverQuery(def, pos)
 }
 
 func (v Validation) validateWorkflow(def *Definition, pos Position) error {
@@ -252,6 +255,9 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 		if err := v.valueTable(node, "inputs", ClassData, surfaceWorkflowNodeInputs, at); err != nil {
 			return err
 		}
+	}
+	if err := v.validateWorkflowPopulations(def, pos); err != nil {
+		return err
 	}
 	if event, ok := def.Body["event"]; ok {
 		at := childPos(pos, "event")

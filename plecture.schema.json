@@ -77,6 +77,25 @@
         "boolean"
       ]
     },
+    "literalData": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/literalScalar"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/literalData"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/literalData"
+          }
+        }
+      ]
+    },
     "fromValue": {
       "$comment": "PLECTURE-CFG-VALUE-FROM-AND-EXPR, PLECTURE-CFG-VALUE-TAG-UNKNOWN, PLECTURE-CFG-VALUE-DEFAULT-AND-OPTIONAL.",
       "type": "object",
@@ -781,6 +800,12 @@
             }
           }
         },
+        "populations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workflowPopulation"
+          }
+        },
         "event": {
           "type": "object",
           "additionalProperties": false,
@@ -853,6 +878,70 @@
           }
         }
       }
+    },
+    "workflowPopulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "resource_observer",
+        "query"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "resource_observer": {
+          "$ref": "#/$defs/staticReference"
+        },
+        "query": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/literalData"
+          }
+        },
+        "session": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "task": {
+              "$ref": "#/$defs/staticReference"
+            },
+            "inputs": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/dataValue"
+              }
+            },
+            "destroy": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "force": {
+                  "type": "boolean",
+                  "default": false
+                }
+              }
+            }
+          }
+        },
+        "poll_every": {
+          "type": "string"
+        },
+        "expire_after": {
+          "type": "string"
+        },
+        "auto_down": {
+          "type": "boolean",
+          "default": false
+        },
+        "auto_destroy": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-ID-INVALID, PLECTURE-CFG-REF-DYNAMIC."
     },
     "channelInputSpec": {
       "type": "object",
@@ -1187,6 +1276,9 @@
         "finalize": {
           "$ref": "#/$defs/action"
         },
+        "query": {
+          "$ref": "#/$defs/resourceObserverQuery"
+        },
         "state_schema": {
           "$ref": "#/$defs/schemaDocument"
         },
@@ -1194,6 +1286,82 @@
           "type": "string"
         }
       }
+    },
+    "resourceObserverQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inputs_schema",
+        "item_schema"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "poll"
+          ]
+        },
+        {
+          "required": [
+            "subscribe"
+          ]
+        }
+      ],
+      "properties": {
+        "inputs_schema": {
+          "$ref": "#/$defs/schemaDocument"
+        },
+        "item_schema": {
+          "$ref": "#/$defs/queryItemSchema"
+        },
+        "poll": {
+          "$ref": "#/$defs/action"
+        },
+        "subscribe": {
+          "$ref": "#/$defs/action"
+        }
+      },
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED."
+    },
+    "queryItemSchema": {
+      "type": "object",
+      "required": [
+        "type",
+        "required",
+        "properties"
+      ],
+      "properties": {
+        "type": {
+          "const": "object"
+        },
+        "required": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {
+            "const": "resource"
+          }
+        },
+        "properties": {
+          "type": "object",
+          "required": [
+            "resource"
+          ],
+          "properties": {
+            "resource": {
+              "type": "object",
+              "required": [
+                "type"
+              ],
+              "properties": {
+                "type": {
+                  "const": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "$comment": "PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-FIELD-TYPE: a query item schema is an object schema whose only required property is the string resource identifier."
     },
     "configFile": {
       "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED: a reserved root file's surface is closed, a definition table is not part of it, and the dialect declaration is not optional.",
@@ -1209,6 +1377,12 @@
         },
         "workspace_dirs_root": {
           "type": "string"
+        },
+        "max_up_children": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Caps every concurrently-up session whose logical parent is the virtual root.",
+          "$comment": "PLECTURE-CFG-FIELD-TYPE: virtual-root capacity is a positive integer."
         },
         "resource_allowlist": {
           "type": "array",

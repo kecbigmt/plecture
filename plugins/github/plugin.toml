@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 version = "0.1.0"
 # No plect release has been tagged yet (pre-1.0, no version tags exist), and
 # every source build reports itself as "0.0.0-dev" — a nonzero floor here

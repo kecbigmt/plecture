@@ -28,7 +28,7 @@ func writeCatalogSource(t *testing.T, plugins map[string]string) string {
 	for name := range plugins {
 		names = append(names, name)
 	}
-	manifest := "schema_version = 1\nplugins = ["
+	manifest := "schema_version = 2\nplugins = ["
 	for i, name := range names {
 		if i > 0 {
 			manifest += ", "
@@ -44,7 +44,7 @@ func writeCatalogSource(t *testing.T, plugins map[string]string) string {
 		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		content := "schema_version = 1\nplect_min_version = \"" + minVersion + "\"\n"
+		content := "schema_version = 2\nplect_min_version = \"" + minVersion + "\"\n"
 		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -86,7 +86,7 @@ func writeCatalogSourceWithSubdir(t *testing.T, dirName string, plugins map[stri
 	for name := range plugins {
 		names = append(names, name)
 	}
-	manifest := "schema_version = 1\nplugins = ["
+	manifest := "schema_version = 2\nplugins = ["
 	for i, name := range names {
 		if i > 0 {
 			manifest += ", "
@@ -105,7 +105,7 @@ func writeCatalogSourceWithSubdir(t *testing.T, dirName string, plugins map[stri
 		if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		content := "schema_version = 1\nplect_min_version = \"" + minVersion + "\"\n"
+		content := "schema_version = 2\nplect_min_version = \"" + minVersion + "\"\n"
 		if err := os.WriteFile(filepath.Join(pluginDir, "plugin.toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -274,7 +274,7 @@ func TestCatalogUpdate_RepointsEnabledPlugins(t *testing.T) {
 	}
 
 	// Change source content, then update the catalog.
-	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 1\nplect_min_version = \"0.0.1\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 2\nplect_min_version = \"0.0.1\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	result, err := CatalogUpdate(context.Background(), paths, CatalogUpdateParams{Alias: "local"})
@@ -503,7 +503,7 @@ func TestCatalogFlow_MultiSegmentSubdir(t *testing.T) {
 
 	// When: the source content changes and the catalog is updated.
 	pluginTomlPath := filepath.Join(src, multiSegment, "okf", "plugin.toml")
-	if err := os.WriteFile(pluginTomlPath, []byte("schema_version = 1\nplect_min_version = \"0.0.1\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(pluginTomlPath, []byte("schema_version = 2\nplect_min_version = \"0.0.1\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	updateResult, err := CatalogUpdate(context.Background(), paths, CatalogUpdateParams{Alias: "local"})

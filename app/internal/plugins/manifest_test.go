@@ -19,7 +19,7 @@ func writeManifest(t *testing.T, dir, content string) {
 func TestLoadManifest_Valid(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 version = "0.3.0"
 plect_min_version = "0.8.0"
 description = "GitHub resource provider and workflow support."
@@ -34,7 +34,7 @@ build = "go build -o bin/plect-github-watcher ./cmd/plect-github-watcher"
 	if err != nil {
 		t.Fatalf("LoadManifest: unexpected error: %v", err)
 	}
-	if m.SchemaVersion != 1 || m.Version != "0.3.0" || m.PlectMinVersion != "0.8.0" {
+	if m.SchemaVersion != 2 || m.Version != "0.3.0" || m.PlectMinVersion != "0.8.0" {
 		t.Fatalf("Manifest = %+v", m)
 	}
 	if len(m.Executables) != 1 || m.Executables[0].Name != "plect-github-watcher" || m.Executables[0].Path != "bin/plect-github-watcher" {
@@ -45,7 +45,7 @@ build = "go build -o bin/plect-github-watcher ./cmd/plect-github-watcher"
 func TestLoadManifest_VersionAndDescriptionOptional(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 `)
 
@@ -88,7 +88,7 @@ plect_min_version = "0.1.0"
 
 func TestLoadManifest_MissingPlectMinVersion(t *testing.T) {
 	dir := t.TempDir()
-	writeManifest(t, dir, `schema_version = 1`)
+	writeManifest(t, dir, `schema_version = 2`)
 
 	if _, err := LoadManifest(dir); err == nil {
 		t.Fatal("want error for missing plect_min_version, got nil")
@@ -98,7 +98,7 @@ func TestLoadManifest_MissingPlectMinVersion(t *testing.T) {
 func TestLoadManifest_MalformedPlectMinVersion(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "not-a-version"
 `)
 
@@ -110,7 +110,7 @@ plect_min_version = "not-a-version"
 func TestLoadManifest_ExecutableMissingName(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]
@@ -125,7 +125,7 @@ path = "bin/x"
 func TestLoadManifest_ExecutableMissingPath(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]
@@ -140,7 +140,7 @@ name = "x"
 func TestLoadManifest_DuplicateExecutableName(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]
@@ -160,7 +160,7 @@ path = "bin/x2"
 func TestLoadManifest_ServiceValid(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]
@@ -194,7 +194,7 @@ executable = "channel-server"
 func TestLoadManifest_ServiceExplicitFields(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]
@@ -233,7 +233,7 @@ health = { type = "process" }
 func TestLoadManifest_ServiceMissingName(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]
@@ -252,7 +252,7 @@ executable = "x"
 func TestLoadManifest_ServiceMissingExecutable(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[services]]
@@ -267,7 +267,7 @@ name = "x"
 func TestLoadManifest_ServiceExecutableNotDeclared(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]
@@ -287,7 +287,7 @@ executable = "y"
 func TestLoadManifest_DuplicateServiceName(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]
@@ -311,7 +311,7 @@ executable = "x"
 func TestLoadManifest_ServiceInvalidRestartPolicy(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]
@@ -332,7 +332,7 @@ restart = "always"
 func TestLoadManifest_ServiceInvalidHealthType(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.1.0"
 
 [[executables]]

@@ -34,7 +34,7 @@ func TestSupervisor_StartsAndStopsWithRunScope(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `
@@ -123,7 +123,7 @@ func TestSupervisor_ValidationFailureRecordsChannelErrorAndStreak(t *testing.T) 
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// No channels/claude_channel.toml: `uses` below resolves to nothing.
@@ -199,7 +199,7 @@ func TestSupervisor_ValidationRecoveryOnNextUpClearsStreak(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
@@ -301,7 +301,7 @@ func TestSupervisor_ValidationSuccessDoesNotClearDeliveryFailureStreak(t *testin
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "channels", "claude_channel.toml"), `

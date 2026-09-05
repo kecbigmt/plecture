@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -67,6 +68,32 @@ func TestUp_RejectsThirdChildAtCapAndCreatesNoStateEntry(t *testing.T) {
 	}
 	if store.Get(newChildName) != nil {
 		t.Fatalf("session %q was persisted despite the cap rejection", newChildName)
+	}
+}
+
+func TestUp_ManualParentlessAdmissionHonorsVirtualRootCap(t *testing.T) {
+	store := testStore(t)
+	workdir := filepath.Join(t.TempDir(), "wd")
+	cfg := writeWorkflowFixture(t, filepath.Join(t.TempDir(), "workdirs"), "capwf",
+		[]taskFixture{{id: "noop", scope: "session", setup: "echo '{}'"}},
+		[]nodeFixture{{id: "noop"}})
+	writeSetupWorkflow(t, cfg, "capwf", capProviderCreatingWorkspace("capwf", workdir))
+	cfg.MaxUpChildren = intPtr(1)
+	seedSession(t, store, "existingRoot", "acct", 1, "", upTasks())
+
+	_, err := Up(cfg, store, UpParams{Identifier: "https://example.test/cases/manual"})
+	if err == nil {
+		t.Fatal("expected manual parentless Up to reject at the virtual-root cap")
+	}
+	svcErr, ok := err.(*Error)
+	if !ok || svcErr.Code != ErrChildCapExceeded {
+		t.Fatalf("want ErrChildCapExceeded, got %v", err)
+	}
+	if !strings.Contains(svcErr.Message, "virtual root") || !strings.Contains(svcErr.Message, "max_up_children") {
+		t.Fatalf("Message = %q, want virtual root and max_up_children named", svcErr.Message)
+	}
+	if store.Get("case_manual+capwf") != nil {
+		t.Fatal("manual admission persisted a session despite the virtual-root cap")
 	}
 }
 

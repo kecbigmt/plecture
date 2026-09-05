@@ -98,7 +98,7 @@ var workflowShowCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show full information about a workflow",
 	Long: `Show full information about a workflow: identity, workspace provider,
-inputs schema, node DAG, and event channels.
+inputs schema, node DAG, event channels, and populations.
 
 Exit code is nonzero when the workflow's referenced workspace provider is
 declared but fails to load — the failure is still printed (or included in
@@ -206,7 +206,25 @@ func printWorkflowDetail(out io.Writer, d *service.WorkflowDetail) error {
 		fmt.Fprintln(out, "Event channels:")
 		writeChannels(out, d.Channels)
 	}
+	if len(d.Populations) > 0 {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "Populations:")
+		writePopulations(out, d.Populations)
+	}
 	return nil
+}
+
+func writePopulations(out io.Writer, populations []service.WorkflowPopulation) {
+	for _, population := range populations {
+		fmt.Fprintf(out, "  %s (observer %s)\n", population.Name, population.ResourceObserver)
+		if population.PollEvery != "" {
+			fmt.Fprintf(out, "    poll every: %s\n", population.PollEvery)
+		}
+		if population.ExpireAfter != "" {
+			fmt.Fprintf(out, "    expire after: %s\n", population.ExpireAfter)
+		}
+		fmt.Fprintf(out, "    auto down: %t, auto destroy: %t\n", population.AutoDown, population.AutoDestroy)
+	}
 }
 
 // writeChannels lists each [[event.channel]] with the primitive it resolves to

@@ -17,9 +17,10 @@ sweep reads every other `.toml` file as a definition document.
 
 <!-- fixture: config/config.toml -->
 ```toml
-schema_version = 1
+schema_version = 2
 
 workspace_dirs_root = "~/worktrees"
+max_up_children     = 12
 resource_allowlist  = ["^https://github\\.com/kecbigmt/"]
 plugin_dirs         = ["~/.config/plect/plugins"]
 channels            = ["notify"]
@@ -36,6 +37,7 @@ task = { type = "string" }
 |---|---|
 | `schema_version` | The dialect this config tree is written in. |
 | `workspace_dirs_root` | Where workspace directories are created. |
+| `max_up_children` | Optional positive cap for sessions whose logical parent is the virtual root. |
 | `resource_allowlist` | Patterns a resource identifier must match to be accepted. |
 | `plugin_dirs` | Additional plugin mount directories, after the catalog-resolved ones. |
 | `channels` | Channel definitions delivering for every session. |
@@ -43,6 +45,18 @@ task = { type = "string" }
 
 `workspace_dirs_root` is the value a workspace provider projects as
 `config.workspace_dirs_root`.
+
+`max_up_children` applies one machine-wide capacity key to every session with
+no real parent, including sessions placed in an explicit `root:*` sibling
+cohort. It applies to ordinary manual `plect up` as well as resident population
+admission. A run-up session and an in-flight admission each count; an
+idempotent up of an already-up session does not, while `--force-recreate`
+holds a new admission. Real children count only against their real parent's
+workflow cap. Unset leaves virtual-root admission unlimited.
+
+A manual up rejected at the cap does not authorize the resident evaluator to
+bring another session down. Capacity-driven down is available only during a
+population admission and only for eligible population-owned members.
 
 There is no field for whether dispatch detaches. Detachment is a property of the
 invoking context — the flag given, whether a terminal is attached, whether an
@@ -85,7 +99,7 @@ resolvable on this machine, and it is why a plugin author can never write one.
 
 <!-- fixture: config/catalogs.toml -->
 ```toml
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias   = "official"
@@ -118,5 +132,6 @@ edit.
   the direction the comparison found.
 - A catalog alias matches `^[A-Za-z0-9][A-Za-z0-9_-]*$`.
 - Every `channels` entry resolves to a definition of kind `channel`.
+- `max_up_children`, when declared, is at least one.
 - A missing `catalogs.toml` means no catalogs are registered, which is not an
   error.

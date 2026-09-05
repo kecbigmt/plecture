@@ -37,13 +37,13 @@ func newLocalCatalogGitRepo(t *testing.T) (repoDir, firstCommit, secondCommit st
 		return strings.TrimSpace(string(out))
 	}
 	writeCatalogFixture := func(minVersion string) {
-		if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 1\nplugins = [\"okf\"]\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "catalog.toml"), []byte("schema_version = 2\nplugins = [\"okf\"]\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.MkdirAll(filepath.Join(dir, "okf"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		content := "schema_version = 1\nplect_min_version = \"" + minVersion + "\"\n"
+		content := "schema_version = 2\nplect_min_version = \"" + minVersion + "\"\n"
 		if err := os.WriteFile(filepath.Join(dir, "okf", "plugin.toml"), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +102,7 @@ func TestFetchCatalog_GitSource_ReusesCacheForIdenticalSnapshot(t *testing.T) {
 
 func TestFetchCatalog_PathSource(t *testing.T) {
 	dir := t.TempDir()
-	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, dir, "schema_version = 2\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 
 	result, err := FetchCatalog(context.Background(), procexec.Default, "path://"+dir, "", "", t.TempDir())
@@ -119,7 +119,7 @@ func TestFetchCatalog_PathSource(t *testing.T) {
 
 func TestFetchCatalog_PathSource_Subdir(t *testing.T) {
 	root := t.TempDir()
-	writeCatalogManifest(t, filepath.Join(root, "plugins"), "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, filepath.Join(root, "plugins"), "schema_version = 2\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(root, "plugins", "okf"))
 
 	result, err := FetchCatalog(context.Background(), procexec.Default, "path://"+root, "", "plugins", t.TempDir())
@@ -137,7 +137,7 @@ func TestFetchCatalog_PathSource_Subdir(t *testing.T) {
 
 func TestFetchCatalog_Subdir_EscapeRejected(t *testing.T) {
 	root := t.TempDir()
-	writeCatalogManifest(t, root, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, root, "schema_version = 2\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(root, "okf"))
 
 	if _, err := FetchCatalog(context.Background(), procexec.Default, "path://"+root, "", "../escape", t.TempDir()); err == nil {
@@ -147,7 +147,7 @@ func TestFetchCatalog_Subdir_EscapeRejected(t *testing.T) {
 
 func TestFetchCatalog_PathEditableSource(t *testing.T) {
 	dir := t.TempDir()
-	writeCatalogManifest(t, dir, "schema_version = 1\nplugins = [\"okf\"]\n")
+	writeCatalogManifest(t, dir, "schema_version = 2\nplugins = [\"okf\"]\n")
 	writeMinimalPlugin(t, filepath.Join(dir, "okf"))
 
 	result, err := FetchCatalog(context.Background(), procexec.Default, "path+editable://"+dir, "", "", t.TempDir())

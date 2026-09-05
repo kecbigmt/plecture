@@ -5,8 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -19,6 +21,23 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+func TestWorkflowPopulationViewsExposeResolvedPolicy(t *testing.T) {
+	views := workflowPopulationViews([]config.WorkflowPopulation{{
+		Name: "dispatch", ResourceObserver: "source", Query: map[string]any{"scope": "open"},
+		Session: config.PopulationSession{
+			Task: "work", Inputs: map[string]*lang.Value{"resource": {Form: lang.FormFrom, From: "resource.id"}},
+			Destroy: config.PopulationDestroy{Force: true},
+		},
+		PollEvery: config.Duration{Duration: time.Minute}, AutoDown: true,
+	}})
+	if len(views) != 1 || views[0].Name != "dispatch" || views[0].PollEvery != "1m0s" || views[0].ExpireAfter != "" {
+		t.Fatalf("views = %+v", views)
+	}
+	if views[0].Inputs["resource"] != `{ from = "resource.id" }` || !views[0].DestroyForce || !views[0].AutoDown {
+		t.Fatalf("view policy = %+v", views[0])
+	}
+}
+
 func setupWorkflowFixture(t *testing.T) (*config.Config, string) {
 	t.Helper()
 	tmpHome := t.TempDir()
@@ -27,7 +46,7 @@ func setupWorkflowFixture(t *testing.T) (*config.Config, string) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
@@ -115,7 +134,7 @@ func TestWorkflowShow_WorkspaceProviderLoadErrorIsSurfaced(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
@@ -169,7 +188,7 @@ func TestWorkflowShow_PopulatesChannels(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
@@ -230,7 +249,7 @@ func TestWorkflowShow_ChannelLoadErrorIsWrapped(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
@@ -280,7 +299,7 @@ func TestWorkflowShow_InvalidChannelReturnsInvalidInput(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
@@ -347,7 +366,7 @@ func setupDriftedInputFixture(t *testing.T, nodeInputs string) (*config.Config, 
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
@@ -415,7 +434,7 @@ func TestResolveSessionInputs_RejectsUnknownTask(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
 [claude]
 kind = "workflow"
@@ -461,7 +480,7 @@ func TestResolveSessionInputs_MissingRequiredTaskListsChoices(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 	globalDir := filepath.Join(tmpHome, ".config", "plect")
-	writeFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(globalDir, "workflows", "claude.toml"), `
 [claude]
 kind = "workflow"

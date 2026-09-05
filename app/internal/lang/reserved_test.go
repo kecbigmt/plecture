@@ -19,7 +19,7 @@ func writeTemp(t *testing.T, name, content string) string {
 
 func TestLoadConfigTomlValid(t *testing.T) {
 	path := writeTemp(t, "config.toml", `
-schema_version = 1
+schema_version = 2
 workspace_dirs_root = "~/worktrees"
 resource_allowlist  = ["^https://github\\.com/kecbigmt/"]
 plugin_dirs         = ["~/.config/plect/plugins"]
@@ -32,7 +32,7 @@ type = "object"
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.SchemaVersion != 1 || cfg.WorkspaceDirsRoot != "~/worktrees" {
+	if cfg.SchemaVersion != 2 || cfg.WorkspaceDirsRoot != "~/worktrees" {
 		t.Fatalf("unexpected decode: %+v", cfg)
 	}
 	if len(cfg.Channels) != 1 || cfg.Channels[0] != "notify" {
@@ -48,16 +48,22 @@ func TestLoadConfigTomlMissingSchemaVersion(t *testing.T) {
 
 func TestLoadConfigTomlUnknownField(t *testing.T) {
 	path := writeTemp(t, "config.toml", `
-schema_version = 1
+schema_version = 2
 worktrees_root = "~/worktrees"
 `)
 	_, err := LoadConfigToml(path)
 	assertDiagnostic(t, err, CodeFieldUnknown, LayerStructural)
 }
 
+func TestLoadConfigTomlRejectsNonPositiveVirtualRootCap(t *testing.T) {
+	path := writeTemp(t, "config.toml", "schema_version = 2\nmax_up_children = 0\n")
+	_, err := LoadConfigToml(path)
+	assertDiagnostic(t, err, CodeFieldType, LayerStructural)
+}
+
 func TestLoadConfigTomlDefinitionTableIsUnknownField(t *testing.T) {
 	path := writeTemp(t, "config.toml", `
-schema_version = 1
+schema_version = 2
 workspace_dirs_root = "~/worktrees"
 
 [runtime]
@@ -69,7 +75,7 @@ kind = "effect"
 
 func TestLoadConfigTomlSchemaVersionOlder(t *testing.T) {
 	path := writeTemp(t, "config.toml", `
-schema_version = 0
+schema_version = 1
 workspace_dirs_root = "~/worktrees"
 `)
 	_, err := LoadConfigToml(path)
@@ -78,7 +84,7 @@ workspace_dirs_root = "~/worktrees"
 
 func TestLoadConfigTomlSchemaVersionNewer(t *testing.T) {
 	path := writeTemp(t, "config.toml", `
-schema_version = 2
+schema_version = 3
 workspace_dirs_root = "~/worktrees"
 `)
 	_, err := LoadConfigToml(path)
@@ -87,7 +93,7 @@ workspace_dirs_root = "~/worktrees"
 
 func TestLoadCatalogsTomlValid(t *testing.T) {
 	path := writeTemp(t, "catalogs.toml", `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias   = "official"
@@ -116,7 +122,7 @@ source = "https://github.com/kecbigmt/plecture"
 
 func TestLoadLockTomlValid(t *testing.T) {
 	path := writeTemp(t, "plect.lock", `
-schema_version = 1
+schema_version = 2
 
 [[plugins]]
 id                = "official/github"
@@ -134,7 +140,7 @@ content_hash      = "sha256:abc"
 }
 
 func TestLoadLockTomlSchemaVersionNewer(t *testing.T) {
-	path := writeTemp(t, "plect.lock", `schema_version = 2`)
+	path := writeTemp(t, "plect.lock", `schema_version = 3`)
 	_, err := LoadLockToml(path)
 	assertDiagnostic(t, err, CodeSchemaVersionNewer, LayerSemantic)
 }

@@ -85,7 +85,14 @@ const (
 	// *target* work session's log (not the reviewer's) whenever a judge
 	// verdict is recorded, independent of any `[tick]` declaration — the tick
 	// reactor always reacts to it by ticking that target session.
-	TypeJudgeRecorded = "plect.judge.recorded"
+	TypeJudgeRecorded                     = "plect.judge.recorded"
+	TypeWorkflowPopulationDestroy         = "plect.workflow_population.destroy"
+	TypeWorkflowPopulationDown            = "plect.workflow_population.down"
+	TypeWorkflowPopulationUp              = "plect.workflow_population.up"
+	TypeWorkflowPopulationConflict        = "plect.workflow_population.conflict"
+	TypeWorkflowPopulationFailure         = "plect.workflow_population.failure"
+	TypeWorkflowPopulationDestroyDeferred = "plect.workflow_population.destroy_deferred"
+	TypeWorkflowPopulationDestroyDryRun   = "plect.workflow_population.destroy_dry_run"
 )
 
 // Metadata keys stamped on a pushed terminal event (TypeTerminalDone /

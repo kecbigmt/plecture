@@ -235,7 +235,7 @@ func TestLoadWorkflows_WorkspaceProviderRedeclarationRejected(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `

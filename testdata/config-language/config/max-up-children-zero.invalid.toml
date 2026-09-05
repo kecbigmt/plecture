@@ -1,0 +1,5 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-TYPE entry=config
+# reason: a declared virtual-root capacity must admit at least one session.
+
+schema_version = 2
+max_up_children = 0

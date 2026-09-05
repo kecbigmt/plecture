@@ -26,7 +26,7 @@ func setUpBrokenWorkspaceProviderFixture(t *testing.T) {
 	fakeHome := t.TempDir()
 	t.Setenv("HOME", fakeHome)
 	globalDir := filepath.Join(fakeHome, ".config", "plect")
-	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "config.toml"), "")
+	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
 	writeWorkflowShowFixtureFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
 [tmux]
 kind  = "effect"

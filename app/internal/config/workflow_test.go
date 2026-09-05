@@ -89,7 +89,7 @@ func TestLoadWorkflows_CascadeAppendsNodes(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -129,7 +129,7 @@ func TestLoadWorkflows_CascadeMultipleLayers(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -186,7 +186,7 @@ func TestLoadWorkflows_CascadeRejectsDuplicateNodeID(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -272,7 +272,7 @@ func TestLoadWorkflows_CascadeRejectsARedeclaredInputsSchema(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -423,7 +423,7 @@ func TestLoadWorkflows_NameInDeeperLayerWinsWhenAbsentAtTop(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -470,7 +470,7 @@ func TestLoadWorkflows_NameRedeclarationAcrossLayersRejected(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -541,7 +541,7 @@ func TestLoadTaskDefinitions_DeeperWinsAcrossCascade(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "tasks", "tmux.toml"), `
@@ -649,7 +649,7 @@ func TestLoadWorkflows_WorkspaceDirLayerNodesOnly(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -690,7 +690,7 @@ func TestLoadWorkflows_DoneWhenRetiredInAnyLayer(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -768,7 +768,7 @@ max_stale_when = "1h"
 			if err := os.MkdirAll(globalDir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
@@ -803,7 +803,7 @@ func TestLoadWorkflows_TickCascadeDeeperWinsWholeTable(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -856,7 +856,7 @@ func TestLoadWorkflows_TickGlobalDefaultAfterDeeperDeclarationIsNotAnError(t *te
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -897,7 +897,7 @@ func TestLoadWorkflows_HealthcheckCascadeDeeperWinsWholeTable(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `
@@ -947,7 +947,7 @@ func TestLoadWorkflows_WorkspaceDirLayerRejectsTick(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
@@ -980,7 +980,7 @@ func TestLoadWorkflows_WorkspaceDirLayerRejectsHealthcheck(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
@@ -1013,7 +1013,7 @@ func TestLoadTaskDefinitions_WorkspaceDirLayerRejected(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo", "session")
@@ -1045,7 +1045,7 @@ func TestLoadTaskDefinitions_AncestorLayerStillTrusted(t *testing.T) {
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte(""), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	repoDir := filepath.Join(tmpHome, "workspace_dirs", "github.com", "org", "repo")
@@ -1091,7 +1091,7 @@ workspace_provider = "github"
 [[shared.nodes]]
 uses = "p"
 `)
-	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("plugin_dirs = [\""+pluginDir+"\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.toml"), []byte("schema_version = 2\nplugin_dirs = [\""+pluginDir+"\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(globalDir, "workflows", "shared.toml"), `

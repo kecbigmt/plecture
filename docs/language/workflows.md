@@ -139,7 +139,102 @@ queued behind it; once the first process is confirmed gone (killed rather
 than finished), a retry on that child reclaims the admission, and `plect
 destroy` on it clears the admission immediately either way.
 
-Unset means no cap, the same behavior as today.
+Unset means no cap.
+
+## Populations
+
+`[[<id>.populations]]` declares a desired set of parentless sessions under a
+user-owned workflow. A population is deployment policy, so plugins and cloned
+workspace overlays cannot declare it. Its identity is the containing
+workflow's resolved address plus its unique `name`; that provenance is stored
+on every admitted session and is required for later mutation or destruction.
+
+| Field | Meaning |
+|---|---|
+| `name` | Required stable identifier, unique within the workflow. |
+| `resource_observer` | Required static reference to the observer that recognizes, queries, and observes population resources. |
+| `query` | Required literal parameter object validated by the observer query's `inputs_schema`. |
+| `session.task` | Optional static initial task, installed with the name `initial`; it uses the same observer. |
+| `session.inputs` | Optional values over literals, `resource.id`, and properties declared by the query `item_schema` under `item.*`. |
+| `session.destroy.force` | Whether an enabled automatic destruction uses force; defaults to false. |
+| `poll_every` | Required positive duration when the observer has `query.poll`. |
+| `expire_after` | Required positive external-input quiescence duration for a subscribe-only observer; forbidden when poll exists. |
+| `auto_down` | Permits capacity-pressure down selection; defaults to false. |
+| `auto_destroy` | Permits guarded automatic destruction; defaults to false, producing a dry-run verdict instead. |
+
+Poll is the sole membership and absence authority. A complete snapshot is
+validated before membership changes. Subscribe items admit or re-up one
+member, but cannot undo an absence tombstone produced by a combined query;
+only a later positive poll opens a new generation. Subscribe-only expiry is
+measured from successful session creation and reset by accepted repeated
+appearances or inbound session events. Internal, outbound, and status events
+do not reset it.
+
+Destruction waits until every produced dynamic task with a `done_when`
+predicate is satisfied. A missing predicate, observation error, evaluation
+error, or pending leaf blocks destruction. `auto_destroy = false` records the
+same eligible decision without applying it.
+
+At virtual-root capacity, only an up, population-owned session from an entry
+with `auto_down = true` is eligible. Its latest durable status event must be an
+explicit clear newer than its creation, last accepted appearance, and last
+inbound event. Eligible sessions are selected by oldest activity, then session
+name, and are brought down through ordinary run-scoped cleanup. An appearance,
+inbound event, or positive poll generation requests ordinary up again.
+
+`populations` is a whole-array cascade field: a deeper user-owned workflow
+declaration replaces the shallower array rather than merging entries. Removing
+or invalidly changing provenance never authorizes a differently named entry to
+adopt existing sessions. A resident config reload that fails validation keeps
+the last valid evaluator running.
+
+<!-- fixture: workflows/populations.toml -->
+```toml
+[standing_cases]
+kind               = "workflow"
+workspace_provider = "query_provider"
+
+[standing_cases.inputs_schema]
+type                 = "object"
+required             = ["resource"]
+additionalProperties = false
+
+[standing_cases.inputs_schema.properties]
+resource = { type = "string" }
+context  = { type = "string" }
+
+[[standing_cases.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+poll_every        = "5m"
+auto_down         = true
+auto_destroy      = false
+
+[standing_cases.populations.query]
+scope = "open"
+
+[standing_cases.populations.session]
+task = "population_task"
+
+[standing_cases.populations.session.inputs]
+resource = { from = "resource.id" }
+context  = { from = "item.context", optional = true }
+
+[standing_cases.populations.session.destroy]
+force = false
+```
+
+Population lifecycle decisions are durable events:
+
+| Event | Meaning |
+|---|---|
+| `plect.workflow_population.up` | A member was brought up. |
+| `plect.workflow_population.down` | Capacity policy selected or evaluated a down action. |
+| `plect.workflow_population.destroy` | An eligible member was destroyed. |
+| `plect.workflow_population.destroy_deferred` | The task guard blocked destruction. |
+| `plect.workflow_population.destroy_dry_run` | Destruction was eligible but automatic execution was disabled. |
+| `plect.workflow_population.conflict` | Existing state has incompatible provenance. |
+| `plect.workflow_population.failure` | A query or lifecycle operation failed. |
 
 ## Provider parameters
 

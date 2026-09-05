@@ -34,15 +34,29 @@ type WorkflowDetail struct {
 	// WorkspaceProviderError is set instead of WorkspaceProviderInfo, never
 	// both, so a load failure cannot make `workflow show` abort rendering
 	// the rest of an otherwise-loadable workflow.
-	WorkspaceProviderError string            `json:"workspace_provider_error,omitempty"`
-	Display                map[string]string `json:"display,omitempty"`
-	AutoSelect             bool              `json:"auto_select"`
-	InputsSchema           map[string]any    `json:"inputs_schema,omitempty"`
-	Nodes                  []WorkflowNode    `json:"nodes"`
-	Channels               []WorkflowChannel `json:"channels,omitempty"`
+	WorkspaceProviderError string               `json:"workspace_provider_error,omitempty"`
+	Display                map[string]string    `json:"display,omitempty"`
+	AutoSelect             bool                 `json:"auto_select"`
+	InputsSchema           map[string]any       `json:"inputs_schema,omitempty"`
+	Nodes                  []WorkflowNode       `json:"nodes"`
+	Channels               []WorkflowChannel    `json:"channels,omitempty"`
+	Populations            []WorkflowPopulation `json:"populations,omitempty"`
 	// Tick is the workflow's declared [tick] table (docs/wiki/verification-gate.md),
 	// nil when undeclared.
 	Tick *config.TickConfig `json:"tick,omitempty"`
+}
+
+type WorkflowPopulation struct {
+	Name             string            `json:"name"`
+	ResourceObserver string            `json:"resource_observer"`
+	Query            map[string]any    `json:"query"`
+	Task             string            `json:"task,omitempty"`
+	Inputs           map[string]string `json:"inputs,omitempty"`
+	DestroyForce     bool              `json:"destroy_force"`
+	PollEvery        string            `json:"poll_every,omitempty"`
+	ExpireAfter      string            `json:"expire_after,omitempty"`
+	AutoDown         bool              `json:"auto_down"`
+	AutoDestroy      bool              `json:"auto_destroy"`
 }
 
 // WorkflowChannel is the show-time view of an [[event.channel]]: its name, the
@@ -137,6 +151,7 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 		AutoSelect:        workflowAutoSelect(wf),
 		InputsSchema:      wf.InputsSchema,
 		Nodes:             nodes,
+		Populations:       workflowPopulationViews(wf.Populations),
 		Tick:              wf.Tick,
 	}
 	if wf.WorkspaceProvider != "" {
@@ -169,6 +184,35 @@ func WorkflowShow(cfg *config.Config, workspaceDirPath, id string) (*WorkflowDet
 		}
 	}
 	return detail, nil
+}
+
+func workflowPopulationViews(populations []config.WorkflowPopulation) []WorkflowPopulation {
+	if len(populations) == 0 {
+		return nil
+	}
+	out := make([]WorkflowPopulation, 0, len(populations))
+	for _, population := range populations {
+		out = append(out, WorkflowPopulation{
+			Name:             population.Name,
+			ResourceObserver: population.ResourceObserver,
+			Query:            population.Query,
+			Task:             population.Session.Task,
+			Inputs:           valueSources(population.Session.Inputs),
+			DestroyForce:     population.Session.Destroy.Force,
+			PollEvery:        durationSource(population.PollEvery),
+			ExpireAfter:      durationSource(population.ExpireAfter),
+			AutoDown:         population.AutoDown,
+			AutoDestroy:      population.AutoDestroy,
+		})
+	}
+	return out
+}
+
+func durationSource(duration config.Duration) string {
+	if duration.Duration <= 0 {
+		return ""
+	}
+	return duration.Duration.String()
 }
 
 func validateNodeInputsStatic(id string, plan *task.Plan) *Error {

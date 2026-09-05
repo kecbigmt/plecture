@@ -16,12 +16,12 @@ happy=$(mktemp -d)
 trap 'rm -rf "$happy" "$no_catalog" "$bad_catalog" "$unlisted_ok" "$bad_manifest"' EXIT
 mkdir -p "$happy/widget"
 cat > "$happy/catalog.toml" <<'EOF'
-schema_version = 1
+schema_version = 2
 description = "fixture catalog"
 plugins = ["widget"]
 EOF
 cat > "$happy/widget/plugin.toml" <<'EOF'
-schema_version = 1
+schema_version = 2
 version = "0.1.0"
 plect_min_version = "0.0.0"
 description = "A widget plugin."
@@ -74,7 +74,7 @@ echo "ok: fails when catalog.toml is malformed"
 # Failure: catalog.toml lists a plugin with no plugin.toml at that path.
 unlisted_ok=$(mktemp -d)
 cat > "$unlisted_ok/catalog.toml" <<'EOF'
-schema_version = 1
+schema_version = 2
 description = "fixture catalog"
 plugins = ["ghost"]
 EOF
@@ -89,7 +89,7 @@ echo "ok: fails when a listed plugin has no plugin.toml"
 bad_manifest=$(mktemp -d)
 mkdir -p "$bad_manifest/broken"
 cat > "$bad_manifest/catalog.toml" <<'EOF'
-schema_version = 1
+schema_version = 2
 description = "fixture catalog"
 plugins = ["broken"]
 EOF

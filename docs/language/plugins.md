@@ -11,7 +11,7 @@ executables it owns, and the services the resident process supervises.
 
 <!-- fixture: plugins/manifest.toml -->
 ```toml
-schema_version    = 1
+schema_version    = 2
 version           = "0.1.0"
 plect_min_version = "0.0.0"
 description       = "GitHub workspace provider, resource observation, and watcher subscription."
@@ -65,7 +65,7 @@ publishes.
 
 <!-- fixture: plugins/catalog.toml -->
 ```toml
-schema_version = 1
+schema_version = 2
 description    = "Plecture's official plugin catalog: reusable workspace provider, resource observer, task, and channel packs."
 
 plugins = [

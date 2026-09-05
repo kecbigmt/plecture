@@ -1,0 +1,17 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=definitions
+# reason: a population session input may project only a property declared by the shared item_schema.
+
+[bad_item_path]
+kind               = "workflow"
+workspace_provider = "query_provider"
+
+[[bad_item_path.populations]]
+name              = "dispatch"
+resource_observer = "query_source"
+poll_every        = "5m"
+
+[bad_item_path.populations.query]
+scope = "open"
+
+[bad_item_path.populations.session.inputs]
+missing = { from = "item.missing" }

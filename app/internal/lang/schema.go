@@ -18,13 +18,7 @@ func CompileSchema(inline map[string]any, filePath, inlineID string) (*jsonschem
 	}
 	switch {
 	case hasInline:
-		// TOML decodes ints as int64; round-trip through JSON so the
-		// validator sees the same shape it would from a .json file.
-		raw, err := json.Marshal(inline)
-		if err != nil {
-			return nil, fmt.Errorf("marshal inline schema: %w", err)
-		}
-		return compileSchemaBytes(inlineID, raw)
+		return CompileInlineSchema(inline, inlineID)
 	case hasFile:
 		data, err := os.ReadFile(filePath)
 		if err != nil {
@@ -33,6 +27,19 @@ func CompileSchema(inline map[string]any, filePath, inlineID string) (*jsonschem
 		return compileSchemaBytes(filePath, data)
 	}
 	return nil, nil
+}
+
+// CompileInlineSchema compiles a schema known to be declared, including the
+// empty schema whose empty map would otherwise be indistinguishable from an
+// omitted optional inline schema to CompileSchema.
+func CompileInlineSchema(inline map[string]any, inlineID string) (*jsonschema.Schema, error) {
+	// TOML decodes ints as int64; round-trip through JSON so the validator sees
+	// the same shape it would from a .json file.
+	raw, err := json.Marshal(inline)
+	if err != nil {
+		return nil, fmt.Errorf("marshal inline schema: %w", err)
+	}
+	return compileSchemaBytes(inlineID, raw)
 }
 
 func compileSchemaBytes(id string, raw []byte) (*jsonschema.Schema, error) {

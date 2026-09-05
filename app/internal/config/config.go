@@ -11,6 +11,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/kecbigmt/plecture/app/internal/confighome"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
@@ -56,7 +57,11 @@ const (
 )
 
 type Config struct {
+	SchemaVersion     int    `toml:"schema_version"`
 	WorkspaceDirsRoot string `toml:"workspace_dirs_root"`
+	// MaxUpChildren caps concurrently-up sessions whose logical parent is the
+	// virtual root. Nil leaves parentless admission unlimited.
+	MaxUpChildren *int `toml:"max_up_children"`
 	// ResourceAllowlist is the security boundary for session creation: regex
 	// patterns the resource identifier must match. The boundary exists
 	// because agents (MCP) can invoke plect with arbitrary input, and a
@@ -112,6 +117,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
+		SchemaVersion:     lang.KnownSchemaVersion,
 		WorkspaceDirsRoot: filepath.Join(home, "workspace_dirs"),
 		Detached:          true,
 		SessionGuard:      os.Getenv("PLECT_SESSION_GUARD"),
@@ -155,6 +161,15 @@ func Load() (*Config, error) {
 		// (disposition: surfaced) while still returning usable defaults.
 		slog.Warn("config.toml present but failed to parse; using defaults", "path", configPath, "error", err)
 		return resolveDeclaredPlugins(cfg)
+	}
+	if !meta.IsDefined("schema_version") {
+		return nil, fmt.Errorf("config.toml: schema_version is required")
+	}
+	if cfg.SchemaVersion != lang.KnownSchemaVersion {
+		return nil, fmt.Errorf("config.toml: schema_version %d is not supported (want %d); see docs/migrations/standing-session-dispatch-dialect-migration.md", cfg.SchemaVersion, lang.KnownSchemaVersion)
+	}
+	if cfg.MaxUpChildren != nil && *cfg.MaxUpChildren < 1 {
+		return nil, fmt.Errorf("config.toml: max_up_children must be at least 1, got %d", *cfg.MaxUpChildren)
 	}
 	if meta.IsDefined("worktrees_root") {
 		slog.Warn("legacy config key worktrees_root is ignored; rename it to workspace_dirs_root or run the legacy migration", "path", configPath)

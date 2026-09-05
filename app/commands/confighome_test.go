@@ -130,7 +130,7 @@ func TestConfigHomeOverride_IsolatesFromRealHome(t *testing.T) {
 	if err := os.MkdirAll(realConfigDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	realCatalogs := `schema_version = 1
+	realCatalogs := `schema_version = 2
 
 [[catalogs]]
 alias = "home-only"
@@ -146,7 +146,7 @@ plugins = []
 	}
 
 	overrideDir := t.TempDir()
-	overrideCatalogs := `schema_version = 1
+	overrideCatalogs := `schema_version = 2
 
 [[catalogs]]
 alias = "override-only"

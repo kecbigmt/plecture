@@ -203,6 +203,8 @@ A reference carries no kind segment. After resolution, the target's declared
 | Reference site | Expected kind |
 |---|---|
 | Workflow `workspace_provider` | `workspace_provider` |
+| Workflow population `resource_observer` | `resource_observer` |
+| Workflow population `session.task` | `task` |
 | Workflow node `uses` | `effect` |
 | Workflow event channel `uses` | `channel` |
 | Effect `inner.uses` | `effect` |

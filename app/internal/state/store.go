@@ -39,11 +39,35 @@ func processAlive(pid int) bool {
 }
 
 type stateFile struct {
-	Version  int                        `json:"version"`
-	Sessions map[string]*domain.Session `json:"sessions"`
+	Version     int                         `json:"version"`
+	Sessions    map[string]*domain.Session  `json:"sessions"`
+	Populations map[string]*PopulationState `json:"populations,omitempty"`
 	// Keyed by child name so a retry reclaims its own entry and Delete can
 	// drop one by name. Kept out of contracts/state.Session: local bookkeeping.
 	UpReservations map[string]UpReservation `json:"up_reservations,omitempty"`
+}
+
+// PopulationState holds durable source generations independently of session
+// state, so a successful absence can suppress stale appearances even after a
+// session has been destroyed.
+type PopulationState struct {
+	Workflow string                       `json:"workflow"`
+	Name     string                       `json:"name"`
+	Members  map[string]*PopulationMember `json:"members,omitempty"`
+}
+
+type PopulationMember struct {
+	ResourceID     string         `json:"resource_id"`
+	Item           map[string]any `json:"item,omitempty"`
+	SessionName    string         `json:"session_name,omitempty"`
+	Generation     uint64         `json:"generation"`
+	AcceptedAt     time.Time      `json:"accepted_at,omitzero"`
+	LastAppearance time.Time      `json:"last_appearance,omitzero"`
+	LastInbound    time.Time      `json:"last_inbound,omitzero"`
+	Tombstoned     bool           `json:"tombstoned,omitempty"`
+	PendingUp      bool           `json:"pending_up,omitempty"`
+	LastDecision   string         `json:"last_decision,omitempty"`
+	LastBlockers   []string       `json:"last_blockers,omitempty"`
 }
 
 // Store manages session state persistence.
@@ -127,6 +151,59 @@ func (s *Store) Update(name string, fn func(*domain.Session) error) error {
 		normalizeSessionTree(sf.Sessions)
 		return s.saveLocked(sf)
 	})
+}
+
+func (s *Store) Population(key string) (*PopulationState, error) {
+	sf, err := s.loadE()
+	if err != nil {
+		return nil, err
+	}
+	return clonePopulation(sf.Populations[key]), nil
+}
+
+func (s *Store) UpdatePopulation(key string, fn func(*PopulationState) error) error {
+	return s.withFileLock(func() error {
+		sf, err := s.loadLocked()
+		if err != nil {
+			return fmt.Errorf("state: update population %q: %w", key, err)
+		}
+		if sf.Populations == nil {
+			sf.Populations = make(map[string]*PopulationState)
+		}
+		population := sf.Populations[key]
+		if population == nil {
+			population = &PopulationState{Members: make(map[string]*PopulationMember)}
+			sf.Populations[key] = population
+		}
+		if population.Members == nil {
+			population.Members = make(map[string]*PopulationMember)
+		}
+		if err := fn(population); err != nil {
+			return err
+		}
+		return s.saveLocked(sf)
+	})
+}
+
+func clonePopulation(in *PopulationState) *PopulationState {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.Members = make(map[string]*PopulationMember, len(in.Members))
+	for key, member := range in.Members {
+		if member == nil {
+			continue
+		}
+		copyMember := *member
+		copyMember.Item = make(map[string]any, len(member.Item))
+		for itemKey, value := range member.Item {
+			copyMember.Item[itemKey] = value
+		}
+		copyMember.LastBlockers = append([]string(nil), member.LastBlockers...)
+		out.Members[key] = &copyMember
+	}
+	return &out
 }
 
 // ErrUpAlreadyReserved: childName's reservation is held by another live
@@ -356,7 +433,7 @@ func (s *Store) loadE() (*stateFile, error) {
 // treated as empty — an empty stateFile handed to a write path would
 // overwrite good on-disk state with nothing.
 func (s *Store) loadLocked() (*stateFile, error) {
-	sf := &stateFile{Version: stateVersion, Sessions: make(map[string]*domain.Session)}
+	sf := &stateFile{Version: stateVersion, Sessions: make(map[string]*domain.Session), Populations: make(map[string]*PopulationState)}
 
 	data, err := os.ReadFile(s.path)
 	if err != nil {
@@ -387,6 +464,9 @@ func (s *Store) loadLocked() (*stateFile, error) {
 	if parsed.Sessions == nil {
 		parsed.Sessions = make(map[string]*domain.Session)
 	}
+	if parsed.Populations == nil {
+		parsed.Populations = make(map[string]*PopulationState)
+	}
 	if err := validateStateVersion(parsed.Version); err != nil {
 		return nil, err
 	}
@@ -401,6 +481,7 @@ func (s *Store) loadLocked() (*stateFile, error) {
 	}
 	normalizeSessionTree(sf.Sessions)
 	sf.UpReservations = parsed.UpReservations
+	sf.Populations = parsed.Populations
 
 	return sf, nil
 }

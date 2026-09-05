@@ -1,7 +1,7 @@
 # plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-UNKNOWN-REF entry=plugin
 # reason: a service's executable names one of this manifest's own executables.
 
-schema_version    = 1
+schema_version    = 2
 version           = "0.1.0"
 plect_min_version = "0.0.0"
 description       = "A plugin whose service names an executable it does not declare."

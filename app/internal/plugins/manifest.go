@@ -10,7 +10,7 @@ import (
 // ManifestSchemaVersion is the only plugin.toml schema_version this build
 // understands. An unknown value fails loud rather than degrading — see
 // docs/design/plugin-packaging.md's Compatibility section.
-const ManifestSchemaVersion = 1
+const ManifestSchemaVersion = 2
 
 // Manifest is a plugin's plugin.toml, its only required file. It carries no
 // identity field: a plugin's identity is `<catalog-alias>/<relative-path>`,

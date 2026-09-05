@@ -1,6 +1,6 @@
 # plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-SCHEMA-VERSION-OLDER entry=config
-# reason: the tree declares a superseded dialect, so the error names the migration that carries it forward. Version 1 is the first dialect, so this fixture stands in for that branch with the one value below it until a second dialect exists.
+# reason: the tree declares dialect 1 after dialect 2 superseded it, so the error directs the operator to a migration.
 
-schema_version = 0
+schema_version = 1
 
 workspace_dirs_root = "~/worktrees"

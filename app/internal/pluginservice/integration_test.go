@@ -34,11 +34,11 @@ func TestSupervisor_OverConfigLoadPlugins_RunsADeclaredService(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeIntegrationFile(t, filepath.Join(catalogDir, "catalog.toml"), `
-schema_version = 1
+schema_version = 2
 plugins = ["svc"]
 `)
 	writeIntegrationFile(t, filepath.Join(catalogDir, "svc", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 
 [[executables]]
@@ -51,7 +51,7 @@ executable = "svc"
 `)
 
 	writeIntegrationFile(t, filepath.Join(tmpHome, ".config", "plect", "catalogs.toml"), `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"

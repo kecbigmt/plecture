@@ -70,6 +70,7 @@ const (
 	CodeExtendsSchemaShape            Code = "PLECTURE-CFG-EXTENDS-SCHEMA-SHAPE"
 	CodeExtendsSchemaFileUnsupported  Code = "PLECTURE-CFG-EXTENDS-SCHEMA-FILE-UNSUPPORTED"
 	CodeWorkflowCycle                 Code = "PLECTURE-CFG-WORKFLOW-CYCLE"
+	CodePopulationContract            Code = "PLECTURE-CFG-POPULATION-CONTRACT"
 	CodeCELSyntax                     Code = "PLECTURE-CFG-CEL-SYNTAX"
 	CodeCELUnknownName                Code = "PLECTURE-CFG-CEL-UNKNOWN-NAME"
 	CodeCELType                       Code = "PLECTURE-CFG-CEL-TYPE"
@@ -128,6 +129,7 @@ var codeLayers = map[Code][]Layer{
 	CodeExtendsSchemaShape:            {LayerStructural},
 	CodeExtendsSchemaFileUnsupported:  {LayerSemantic},
 	CodeWorkflowCycle:                 {LayerSemantic},
+	CodePopulationContract:            {LayerSemantic},
 	CodeCELSyntax:                     {LayerCEL},
 	CodeCELUnknownName:                {LayerCEL},
 	CodeCELType:                       {LayerCEL},
@@ -153,7 +155,7 @@ func Codes() []Code {
 		CodeNestingCycle, CodeNestingOutputMutable, CodeNestingProjectionMismatch,
 		CodeExtendsInheritedField, CodeExtendsCycle, CodeExtendsJudgeIDDuplicate,
 		CodeExtendsChainIDDuplicate, CodeExtendsDefaultRedeclared, CodeExtendsSchemaType,
-		CodeExtendsSchemaShape, CodeExtendsSchemaFileUnsupported, CodeWorkflowCycle,
+		CodeExtendsSchemaShape, CodeExtendsSchemaFileUnsupported, CodeWorkflowCycle, CodePopulationContract,
 		CodeCELSyntax, CodeCELUnknownName, CodeCELType, CodeCELCustomFunction,
 	}
 }

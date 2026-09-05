@@ -13,7 +13,7 @@ import (
 
 // CatalogsSchemaVersion is the only catalogs.toml schema_version this build
 // understands.
-const CatalogsSchemaVersion = 1
+const CatalogsSchemaVersion = 2
 
 // CatalogEntry is one [[catalogs]] registration in catalogs.toml: the trust
 // act itself. Registering a catalog binds a user-chosen alias to one exact

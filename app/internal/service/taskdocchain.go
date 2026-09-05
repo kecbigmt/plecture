@@ -80,7 +80,7 @@ func evalDocumentChain(cfg *config.Config, store *state.Store, def config.Docume
 	sp.Fired = true
 	if name, err := resolveSpawnSessionName(cfg, resource, def.Workflow, sp.Tag); err == nil && name != "" {
 		sp.TargetSession = name
-		if store.Get(name) != nil {
+		if existing := store.Get(name); existing != nil && existing.Population == nil {
 			sp.AlreadyActive = true
 		}
 	}

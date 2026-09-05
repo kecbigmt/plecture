@@ -12,7 +12,7 @@ import (
 
 // CatalogSchemaVersion is the only catalog.toml schema_version this build
 // understands. An unknown value fails loud rather than degrading.
-const CatalogSchemaVersion = 1
+const CatalogSchemaVersion = 2
 
 // CatalogManifest is a catalog.toml: hand-authored metadata whose directory
 // bounds a catalog's trust space and whose `plugins` list is the exact,

@@ -39,7 +39,7 @@ func TestLoadCatalogRegistrations_Valid(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalogs.toml")
 	content := `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "official"
@@ -62,7 +62,7 @@ plugins = ["github", "agent/codex-tasks"]
 func TestLoadCatalogRegistrations_UnknownSchemaVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "catalogs.toml")
-	if err := os.WriteFile(path, []byte("schema_version = 2\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("schema_version = 3\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := LoadCatalogRegistrations(path); err == nil {

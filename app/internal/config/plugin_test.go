@@ -24,11 +24,11 @@ func TestLoad_ResolvesEnabledEditableCatalogPlugin(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
-schema_version = 1
+schema_version = 2
 plugins = ["okf"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "config", "workspaces", "okf.toml"), `
@@ -41,7 +41,7 @@ command = "true"
 `)
 
 	writeCatalogsToml(t, tmpHome, `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"
@@ -72,18 +72,18 @@ func TestLoad_MissingCatalogLockFailsLoud(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
-schema_version = 1
+schema_version = 2
 plugins = ["okf"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 `)
 
 	// A locked (non-editable) path catalog, but plect.lock has no
 	// corresponding entry — it was never actually added.
 	writeCatalogsToml(t, tmpHome, `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"
@@ -106,7 +106,7 @@ func TestLoad_NoCatalogsRegisteredLeavesPluginDirsAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	legacyDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("plugin_dirs = [\""+legacyDir+"\"]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(configDir, "config.toml"), []byte("schema_version = 2\nplugin_dirs = [\""+legacyDir+"\"]\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,16 +125,16 @@ func TestLoadPlugins_ResolvesEnabledEditableCatalogPlugin(t *testing.T) {
 
 	catalogDir := t.TempDir()
 	writeFile(t, filepath.Join(catalogDir, "catalog.toml"), `
-schema_version = 1
+schema_version = 2
 plugins = ["okf"]
 `)
 	writeFile(t, filepath.Join(catalogDir, "okf", "plugin.toml"), `
-schema_version = 1
+schema_version = 2
 plect_min_version = "0.0.0"
 `)
 
 	writeCatalogsToml(t, tmpHome, `
-schema_version = 1
+schema_version = 2
 
 [[catalogs]]
 alias = "local"

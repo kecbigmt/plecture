@@ -1,0 +1,15 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FIELD-REQUIRED entry=definitions
+# reason: a query without poll or subscribe cannot produce any items.
+
+[source]
+kind = "resource_observer"
+
+[source.query.inputs_schema]
+type = "object"
+
+[source.query.item_schema]
+type     = "object"
+required = ["resource"]
+
+[source.query.item_schema.properties]
+resource = { type = "string" }

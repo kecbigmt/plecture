@@ -25,6 +25,9 @@ func TestWriteInitConfig_WritesOnlyAnsweredFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(data)
+	if !strings.Contains(got, "schema_version = 2") {
+		t.Errorf("config.toml missing schema_version:\n%s", got)
+	}
 	if !strings.Contains(got, `workspace_dirs_root = "/home/user/workdirs"`) {
 		t.Errorf("config.toml missing workspace_dirs_root:\n%s", got)
 	}

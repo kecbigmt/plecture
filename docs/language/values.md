@@ -113,6 +113,8 @@ receiving everything and relying on a later check to reject the rest.
 | Workspace provider `unsubscribe` | `session.name`, `resource.id` |
 | Resource observer `observe` | `resource.id`, `workspace.dir`, `workspace.branch` |
 | Resource observer `finalize` | `resource.id`, `session.name`, `resource.revision`, `judges` |
+| Resource observer query means | `inputs.<key>` |
+| Workflow population session `inputs` | `resource.id`, `item.<key>` |
 | Workflow `display` | `workflow.outputs.<key>`, `session.inputs.<key>` |
 | Workflow node `inputs` | `nodes.<id>.outputs.<key>`, `workflow.outputs.<key>`, `session.*`, `session.inputs.<key>`, `workspace.*` |
 | Workflow event-channel `inputs` | same as workflow node inputs |

@@ -151,6 +151,12 @@ all = [
 		"revision":      "sha1",
 		"instruction":   "a very long unreferenced instruction blob",
 	})
+	if err := store.Update("owner/repo-1", func(session *domain.Session) error {
+		session.Population = &contract.PopulationProvenance{Workflow: "wf", Name: "dispatch"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := Status(cfg, store, "owner/repo-1")
 	if err != nil {
@@ -160,6 +166,9 @@ all = [
 
 	if sum.Identity.SessionName != "owner/repo-1" {
 		t.Errorf("Identity.SessionName = %q", sum.Identity.SessionName)
+	}
+	if sum.Identity.Population == nil || sum.Identity.Population.Name != "dispatch" {
+		t.Fatalf("Identity.Population = %+v, want dispatch provenance", sum.Identity.Population)
 	}
 	if len(sum.Work) != 1 {
 		t.Fatalf("len(Work) = %d, want 1 (only the done_when-bearing instance)", len(sum.Work))

@@ -143,29 +143,48 @@ func TestReserveChildCapSlot_AlreadyUpTargetIsExemptEvenAtFullCap(t *testing.T) 
 	}
 }
 
-func TestReserveChildCapSlot_NoParentSkipsCheck(t *testing.T) {
+func TestReserveChildCapSlot_VirtualRootCapCountsEveryParentlessSession(t *testing.T) {
 	store := testStore(t)
-	cfg := &config.Config{BaseDir: t.TempDir()}
+	cfg := &config.Config{BaseDir: t.TempDir(), MaxUpChildren: intPtr(2)}
+	seedSession(t, store, "rootA", "acct", 0, "", upTasks())
+	seedSession(t, store, "rootB", "acct", 1, "", upTasks())
 
 	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "", false)
-	if err != nil {
-		t.Fatalf("reserveChildCapSlot: %v, want nil (no parent, e.g. a root session)", err)
-	}
 	if reserved {
-		t.Error("reserved = true, want false")
+		t.Error("reserved = true, want false: virtual root is already at cap")
+	}
+	if err == nil || err.Code != ErrChildCapExceeded {
+		t.Fatalf("err = %v, want ErrChildCapExceeded", err)
+	}
+	if !strings.Contains(err.Message, "virtual root") || !strings.Contains(err.Message, "max_up_children") {
+		t.Fatalf("Message = %q, want the virtual root and max_up_children named", err.Message)
 	}
 }
 
-func TestReserveChildCapSlot_UnknownParentSkipsCheck(t *testing.T) {
+func TestReserveChildCapSlot_VirtualRootCapIncludesExplicitSiblingCohorts(t *testing.T) {
+	store := testStore(t)
+	cfg := &config.Config{BaseDir: t.TempDir(), MaxUpChildren: intPtr(1)}
+	seedSession(t, store, "cohort", "acct", 0, "", nil)
+	seedSession(t, store, "sibling", "acct", 1, "", upTasks())
+	setParent(t, store, "sibling", "root:cohort")
+
+	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "", false)
+	if reserved {
+		t.Error("reserved = true, want false: sibling cohort member consumes the virtual-root slot")
+	}
+	if err == nil || err.Code != ErrChildCapExceeded {
+		t.Fatalf("err = %v, want ErrChildCapExceeded", err)
+	}
+}
+
+func TestReserveChildCapSlot_UnsetVirtualRootCapAllowsParentlessSession(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{BaseDir: t.TempDir()}
+	seedSession(t, store, "rootA", "acct", 0, "", upTasks())
 
-	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "root:external", false)
-	if err != nil {
-		t.Fatalf("reserveChildCapSlot: %v, want nil (parent has no state entry)", err)
-	}
-	if reserved {
-		t.Error("reserved = true, want false")
+	reserved, err := reserveChildCapSlot(cfg, store, "newchild", "", false)
+	if err != nil || reserved {
+		t.Fatalf("reserveChildCapSlot = %v, %v, want false, nil", reserved, err)
 	}
 }
 

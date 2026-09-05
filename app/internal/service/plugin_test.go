@@ -170,7 +170,7 @@ func TestPluginUpdate_ReHashesChangedContentAndKeepsSiblingsPinned(t *testing.T)
 	}
 	githubBefore, _ := lockBefore.FindPlugin("local/github")
 
-	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 1\nplect_min_version = \"0.0.1\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 2\nplect_min_version = \"0.0.1\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, err := PluginUpdate(context.Background(), paths, "local/okf", "")
@@ -252,7 +252,7 @@ func TestPluginVerify_TamperedContentFails(t *testing.T) {
 	if _, err := PluginAdd(context.Background(), paths, "local/okf"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 1\nplect_min_version = \"9.9.9\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(src, "okf", "plugin.toml"), []byte("schema_version = 2\nplect_min_version = \"9.9.9\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
