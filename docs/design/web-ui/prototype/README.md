@@ -11,20 +11,20 @@ reuse individual components and styles where useful.
 
 ## Run
 
-Requires Node.js 22.13 or later and npm.
+Requires Node.js 22.13 or later and pnpm 10.33.0 (pinned in package.json).
 
 ```sh
 cd docs/design/web-ui/prototype
-npm ci
-npm run dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
 Open the localhost URL printed by Vite. To verify the reference:
 
 ```sh
-npm test
-npm run build
-npm run preview
+pnpm test
+pnpm build
+pnpm preview
 ```
 
 The development and preview servers bind to loopback. No Plecture installation,

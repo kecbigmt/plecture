@@ -197,7 +197,9 @@ Plugin-specific permission workflows do not define a universal Inbox contract.
 The browser uses React and TypeScript, built by Vite. Tailwind CSS and
 shadcn/ui provide UI primitives. TanStack Query handles server data;
 React Flow and ELK.js handle graph interaction and layout. Dependencies are
-pinned at implementation time and retained in a lockfile.
+pinned at implementation time and retained in pnpm-lock.yaml. Use pnpm for
+frontend dependency installation and scripts, with its version pinned in
+package.json.
 
 `plect-web` embeds static UI assets and serves JSON APIs and SSE from the
 same origin. Users do not run a separate Node.js server. Go handlers call
