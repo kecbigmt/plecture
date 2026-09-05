@@ -115,6 +115,31 @@ and the workflow's `slack_subscribe` node (with `catch_up_through =
 mention_ts`) brings the thread's history, including the triggering mention,
 to the runtime.
 
+### `subscribe unbound-mentions` (query.subscribe action)
+
+```
+slack-adapter subscribe unbound-mentions --base-url <url> --channel-ids '["C...", "C..."]'
+```
+
+A separate invocation of the `slack-adapter` binary — not the resident
+service — that connects to a *running* resident adapter's `GET
+/unbound-mentions` feed (never opening a second Socket Mode connection
+itself), filters to `--channel-ids`, and writes one JSON item per line to
+stdout for each match, in the item shape `GET /unbound-mentions` documents
+below. This is the
+`query.subscribe` means for the Slack thread resource sketched in
+`docs/adr/2026-09-05-standing-session-dispatch.md`; it is the config
+language's job (not shipped as of this plugin's current resource_observer
+support) to invoke it and coexists with `on_unbound_mention` until that
+hook's later, separate retirement.
+
+It runs until the connection ends and then exits: staying up is the caller's
+job (a supervisor restarting it on any exit, per the ADR's query.subscribe
+contract), not this command's. Exit 0 means the caller's own context was
+cancelled (e.g. `SIGTERM`); any other exit — the resident adapter was
+unreachable, or the stream ended some other way (e.g. an adapter restart) —
+is non-zero, and never means "no mentions occurred."
+
 ## HTTP API
 
 ### GET /info
@@ -206,6 +231,29 @@ caller of this endpoint, not built into the plugin.
 // Request (clear)
 {"thread_ts": "1234567890.123456", "channel_id": "C...", "status": ""}
 ```
+
+### GET /unbound-mentions
+
+Streams one JSON item per line, one per unbound app mention as it occurs
+(never a replay of past mentions), while the connection stays open. The
+underlying event is the same one `on_unbound_mention` reacts to — both fire
+from `app mention skipped: unbound thread` — but this feed is deliberately
+unscoped: it does not accept `channel_id` filtering itself, and every
+connected reader sees every unbound mention across every channel. Filtering
+to specific channels is `subscribe unbound-mentions`'s job (above), so this
+endpoint can serve any number of such actions from one Socket Mode
+connection. `allowed_user_ids` is applied first, so a mention from a
+disallowed user reaches neither this feed nor the hook.
+
+```json
+{"resource": "https://<ws>.slack.com/archives/C.../p...", "channel_id": "C...", "thread_ts": "1788222413.916339", "mention_ts": "1788224629.760139"}
+```
+
+`resource` is the thread root's permalink, matching `official.slack.thread`'s
+`match` regex. A reader that disconnects (its request context ends) is
+unregistered; a mention that occurs while nothing is connected is simply
+lost, not queued — see `subscribe unbound-mentions` above for the supervised
+CLI client built on this feed.
 
 ### DELETE /subscribe?thread_ts=...
 

@@ -123,6 +123,7 @@ func newTestAdapter(cfg *Config) *Adapter {
 	}
 	a.statusManager = NewStatusManager(a.poster, cfg.StatusTTLDuration(), logger)
 	a.socketPool = NewSocketPool(a.poster, logger, nil, a.statusManager)
+	a.mentions = newMentionStream()
 	return a
 }
 

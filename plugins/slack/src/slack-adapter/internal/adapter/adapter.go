@@ -33,6 +33,7 @@ type Adapter struct {
 
 	permalinkResolver permalinkResolver
 	mentionHook       mentionHookRunner
+	mentions          *mentionStream
 }
 
 // SubscribersStatePath resolves $XDG_STATE_HOME/slack-adapter/subscribers.json,
@@ -71,6 +72,7 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 	a.eventPublisher = cliEventPublisher{}
 	a.permalinkResolver = a
 	a.mentionHook = cliMentionHookRunner{}
+	a.mentions = newMentionStream()
 	a.statusManager = NewStatusManager(a.poster, cfg.StatusTTLDuration(), logger)
 	a.socketPool = NewSocketPool(a.poster, logger, a.captureOutbound, a.statusManager)
 	// Cache workspace name from Slack API

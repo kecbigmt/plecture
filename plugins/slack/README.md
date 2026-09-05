@@ -142,3 +142,10 @@ generalized.
   channel-server socket or imports an agent-runtime plugin's package.
 - slack-adapter's Slack App manifest, HTTP API surface, and subscription
   broker behavior — see `src/slack-adapter/CLAUDE.md`.
+- A `resource_observer` config declaring the thread resource's
+  `query.subscribe` face (`docs/adr/2026-09-05-standing-session-dispatch.md`):
+  the config language's `resource_observer` surface has no `query` field yet,
+  so wiring one in would fail to load. `slack-adapter subscribe
+  unbound-mentions` (see `src/slack-adapter/README.md`) and its resident
+  `/unbound-mentions` feed are the plugin-side half already built for that
+  face to bind to once the language supports it.
