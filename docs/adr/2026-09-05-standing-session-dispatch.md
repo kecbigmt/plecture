@@ -41,19 +41,20 @@ must join:
 - Each value surface exposes only the roots that exist at that point, and live
   `resource.state.*` reads are coherent within one evaluation
   ([values](../language/values.md)).
-- Conditions reuse the existing check and CEL expression leaves. This decision
-  extends their shared grouping and adds structural lifecycle facts, not a
-  population-only or provider-specific predicate language
-  ([tasks](../language/tasks.md),
-  [language overview](../language/README.md)).
+- The session status command defines an empty message as the runtime's idle
+  self-report, but current session state stores both an explicit empty report
+  and “never reported” as no message. Durable status-message events already
+  record changes; capacity policy needs the first explicit empty report to be
+  recorded as well.
 
 The missing construct is deployment policy. A plugin can say how resources
 are discovered, but it cannot choose a team's repositories, labels, chat
-channels, workflow, task, concurrency, or retention policy. The owner-ratified
+channels, workflow, task, concurrency, or expiry policy. The owner-ratified
 [exemplar-workflow direction](https://github.com/kecbigmt/plecture/issues/155)
-makes running workflows user-owned: catalogs ship copy-templates, never
-mounted workflow definitions. Its premise that workflows are policy changes
-where standing population policy belongs.
+says running workflows are user-owned and catalogs ship copy-templates rather
+than mounted workflow definitions. Its formal language change is still
+pending; this decision depends on and enforces the same premise that workflows
+are policy.
 
 This decision concerns desired session presence. It does not change whether a
 persisted node is still valid, whether `plect up` verifies before skipping it,
@@ -68,11 +69,11 @@ the responsibility of [the failure-model work](https://github.com/kecbigmt/plect
 
 | Option | Load-time validation | Layer and cascade owner | Plugin-boundary consequence | Assessment |
 |---|---|---|---|---|
-| (a) New top-level kind | The observer, optional initial task, target workflow, both input contracts, predicate roots, and item roots resolve from one definition. | A trusted layer owns a separate whole definition and a static workflow reference. | Plugin mechanics and deployment values remain separated, but population policy gets an identity outside the user policy it activates. | Viable, but unnecessary once a running workflow is always user-owned; it adds a kind and a second policy owner for no additional validation. |
-| (b) Array nested in `workflow` | The target workflow and its input contract are local; observer, task, discover, item, and predicate references still resolve statically. | The user-owned workflow owns its complete population array. A deeper eligible workflow layer replaces that array wholesale, in the same cascade family as `[tick]` rather than additive `nodes`. | Catalogs may show commented scaffold placeholders, but mounted plugin content cannot activate them. Team parameters remain in the user's copy. | Recommended: a standing population is policy for producing sessions of this workflow, which is exactly the responsibility the user-owned workflow already carries. |
+| (a) New top-level kind | The observer, optional initial task, target workflow, both input contracts, and item roots resolve from one definition. | A trusted layer owns a separate whole definition and a static workflow reference. | Plugin mechanics and deployment values remain separated, but population policy gets an identity outside the user policy it activates. | Viable, but unnecessary once a running workflow is user-owned; it adds a kind and a second policy owner for no additional validation. |
+| (b) Array nested in `workflow` | The target workflow and its input contract are local; observer, task, discover, and item references still resolve statically. | The user-owned workflow owns its complete population array. A deeper eligible workflow layer replaces that array wholesale, in the same cascade family as `[tick]` rather than additive `nodes`. | Catalogs may show commented scaffold placeholders, but mounted plugin content cannot activate them. Team parameters remain in the user's copy. | Recommended: a standing population is policy for producing sessions of this workflow, which is exactly the responsibility the user-owned workflow already carries. |
 | (c) Nested in `task` beside chains | The observer facts are local and a target workflow can be resolved like a chain. | Task `extends` is additive, so population policy would compose through task specialization even though only one deployment should own a population. | Shipped tasks would either contain team data or require a user to replace or extend plugin work merely to choose deployment policy. | Rejected: chains fire from an existing instance, while discovery fires before an instance exists and must also support sessions that intentionally start without a task. |
 | (d) Added to `config.toml` | References and schemas could be checked, but the entry would have no definition identity of its own. | The reserved file is machine-wide resolution and defaults, outside definition discovery and cascade. | It would centralize every deployment rule in a reserved file and provide no address for provenance or events. | Rejected: it violates the definition-block principle and cannot name the authority allowed to destroy a session. |
-| (e) Nested in `resource_observer` | Discovery, item schema, and lifecycle fact roots would be colocated. The workflow and task could also be resolved. | Resource observers are whole-definition plugin resources; a user cannot append policy to one and replacing one copies plugin mechanics into the deployment layer. | Team repositories, channels, limits, and workflow choices would land in plugin-owned files or force a fork. | Rejected: the observer should gain the reusable discovery mechanism, not deployment policy that consumes it. |
+| (e) Nested in `resource_observer` | Discovery and item schemas would be colocated. The workflow and task could also be resolved. | Resource observers are whole-definition plugin resources; a user cannot append policy to one and replacing one copies plugin mechanics into the deployment layer. | Team repositories, channels, limits, and workflow choices would land in plugin-owned files or force a fork. | Rejected: the observer should gain the reusable discovery mechanism, not deployment policy that consumes it. |
 
 #### Recommendation
 
@@ -118,13 +119,11 @@ No load-bearing reason for the top-level kind survives these identity, trust,
 cascade, and bootstrap rules. Workflow nesting retains complete load-time
 validation while matching the ratified policy owner.
 
-### 2. Population block name
+### 2. Population block name: `populations`
 
-#### Options
-
-The collection field chosen here and each entry's required `name` are
-distinct. This decision names the array below the workflow; the entry name is
-the stable block identity used with the workflow id for provenance.
+The collection field and each entry's required `name` are distinct. This
+decision names the array below the workflow; the entry name is the stable block
+identity used with the workflow id for provenance.
 
 | Candidate | Discovery face | Lifecycle face | Language fit |
 |---|---|---|---|
@@ -139,16 +138,12 @@ the stable block identity used with the workflow id for provenance.
 | `lifecycle` | Expresses retention and teardown directly. | Underweights discovery and the desired set. | Overlaps effect lifecycle while governing sessions rather than workflow nodes. |
 | `reconciliation` | Covers convergence of membership in both directions. | Makes creation and destruction equally visible. | Names the evaluator mechanism rather than the declarative thing being maintained. |
 
-#### Recommendation
-
-Recommend `populations`, pending an explicit owner ruling. Each
+Use `populations`. Each
 `[[<workflow>.populations]]` entry declares one desired population, and its
 required `name` identifies that entry for provenance. The plural spelling
 follows the language's array-field convention, while “population” covers both
 the discover/admit face and the retain/remove face without naming evaluator
-mechanics. The examples below use this recommendation so the proposed shape
-is concrete; choosing another candidate changes the collection path and event
-namespace, not the semantics in Decisions 3–7.
+mechanics.
 
 ### 3. Discover contract: a third resource-observer face
 
@@ -210,8 +205,8 @@ records, not live roots. They are evaluated when a session is first created;
 a later discovery of the same resource does not mutate frozen session inputs.
 
 A population entry's required static `resource_observer` reference is the
-single authority for resource recognition, discovery, and its own lifecycle
-facts. The loader resolves it and requires it to declare `discover`. When the
+single authority for resource recognition, discovery, and live resource facts.
+The loader resolves it and requires it to declare `discover`. When the
 entry also declares an initial `session.task`, the loader requires that task's
 observer to resolve to the exact same definition. The two references answer
 different questions—what population is discovered and what work starts—but
@@ -219,22 +214,18 @@ their load-time equality prevents them from becoming competing resource
 authorities.
 
 For each evaluation, core first validates the action result, all items,
-resource matches, workflow dispatch, existing-member lifecycle observations,
-and input bindings. A malformed item, duplicate resource, incomplete or failed
-action, unresolved root, observer mismatch, or workspace-provider mismatch
-fails the whole evaluation before any create or destroy. A failing discover
-therefore dispatches and destroys nothing. Session-relative lifecycle facts
-for a new member are the one staged boundary: they do not exist until ordinary
-`up` and initial task setup succeed, and are evaluated immediately afterward;
-a failure there leaves the new member retained and up rather than guessing a
-destructive transition. One bad push item fails only that item's evaluation;
-it does not retract earlier appearances.
+resource matches, workflow dispatch, and input bindings. A malformed item,
+duplicate resource, incomplete or failed action, unresolved root, observer
+mismatch, or workspace-provider mismatch fails the whole evaluation before any
+create or destroy. A failing poll therefore proves neither presence nor
+absence. One bad push item fails only that item's evaluation; it does not
+retract earlier appearances.
 
 #### Poll discover sketch
 
 The GitHub plugin extends its existing pull-request observer with a complete,
-enumerable search. The added `lifecycle_state` fact gives lifecycle policy a
-declared key rather than asking core to interpret provider-specific states.
+enumerable search. Filtering `inputs.state` in the query makes that snapshot
+the authority for both presence and absence.
 
 ```toml
 [pull]
@@ -291,7 +282,7 @@ head_sha   = { type = "string" }
 
 [pull.state_schema]
 type     = "object"
-required = ["resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision", "review_reply_state", "lifecycle_state"]
+required = ["resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision"]
 
 [pull.state_schema.properties]
 resource_kind   = { type = "string", enum = ["pull"] }
@@ -300,21 +291,13 @@ revision        = { type = "string" }
 pr_url          = { type = "string" }
 mergeable_state = { type = "string", enum = ["clean", "dirty", "unstable", "blocked", "behind", "unknown", "draft", "has_hooks"] }
 review_decision = { type = "string", enum = ["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", "NULL"] }
-review_reply_state = { type = "string", enum = ["waiting_for_human", "human_replied", "not_applicable"] }
-lifecycle_state = { type = "string", enum = ["open", "closed", "merged"] }
 ```
 
 The wake executable is introduced with this discover face. It connects to a
 webhook-receiver service and streams hints; it does not emit pull-request
 records. Exposing the webhook endpoint and verifying request signatures are
 deployment-infrastructure responsibilities outside the configuration
-language. The current pull observer's aggregate `review_decision` cannot say
-whose reply is next. The sketch therefore also introduces
-`review_reply_state`, derived by the plugin from the authenticated review
-actor and review-thread participants: `waiting_for_human` means that actor's
-latest relevant message awaits a human response, `human_replied` means a
-later human response needs handling, and `not_applicable` means neither state
-has been established. Core sees only the declared fact contract.
+language.
 
 #### Push discover sketch
 
@@ -377,219 +360,131 @@ removes the opaque command hook with the required one-time migration. Keeping
 the hook indefinitely would leave two authorities deciding whether one
 mention creates one session.
 
-### 4. Shared fact grammar and session surface
+### 4. Session surface and built-in membership lifecycle
 
 #### Options
 
-1. Let the plugin discover action return complete `plect up` commands. This
-   puts workflow and team policy in executable output and makes topology
+1. Let the discover action return complete `plect up` commands. This puts
+   workflow and deployment policy in executable output and makes topology
    dynamic.
-2. Give each population its own predicate syntax and timeout expressions. This
-   creates a second language for facts already expressible by task conditions
-   and moves duration arithmetic into CEL.
-3. Keep the shared fact grammar conjunction-only and require a CEL expression
-   whenever policy needs OR. This avoids structural grammar work, but leaves a
-   common Boolean operation opaque to schema validation and has already
-   encouraged sentinel values in observer enums.
-4. Make session topology static, session values schema-checked, and extend the
-   one shared fact grammar with shallow Boolean groups and lifecycle facts.
+2. Give each population configurable predicates for destruction and up/down
+   transitions. This is expressive, but makes every deployment restate safety
+   and capacity policy that the evaluator can enforce uniformly.
+3. Keep session topology static and make membership lifecycle a closed part of
+   poll and push reconciliation.
 
 #### Recommendation
 
-Use option 4. A predicate table in `done_when`, chain `when`, or population
-lifecycle policy declares exactly one non-empty root group, `all` or `any`.
-Its elements are leaves or one opposite group: `all` may directly contain an
-`any` group, and `any` may directly contain an `all` group. A nested group's
-elements are leaves only. Same-operator and deeper nesting are load errors;
-authors use one CEL expression leaf when they need a deeper Boolean tree.
-Leaves remain surface-specific: task completion may admit judges, chain
-conditions may admit judge-state facts, and population lifecycle policy does
-not admit either.
+Use option 3. This decision makes no change to the shared fact grammar.
+`done_when` and chain `when` retain their existing conjunction-only shape,
+task extension composition is unchanged, and population entries contain no
+lifecycle predicates.
 
-The shallow cut is enough to state ordinary alternatives without turning TOML
-into a general expression tree. The shipped GitHub issue observer explicitly
-documents its `"NULL"` enum sentinel as a workaround for the current fact
-grammar's lack of null and OR. New definitions need not repeat that workaround:
-an `any` group can combine an ordinary fact with an expression leaf using
-CEL's `has` or `null` support. Existing observers and their sentinel values are
-not rewritten by this ADR. CEL could already spell the entire disjunction, so
-this is a readability and structural-validation improvement rather than a new
-computational capability.
-
-Evaluation is three-valued. A false leaf contributes false, but an observation
-or expression error makes the whole predicate indeterminate regardless of
-another branch's value. Indeterminate completion does not complete,
-indeterminate chain policy does not fire, and indeterminate lifecycle policy
-does not change state. This deliberately gives up Boolean short-circuiting so
-an OR branch cannot hide failed evidence and turn an uncertain evaluation into
-a destructive decision.
-
-Task extension composition must change with the grammar. Appending a leaf to
-an `any` group would weaken completion, violating the current monotone
-extension rule. Each extension therefore contributes one complete predicate,
-and the effective `done_when` is the conjunction of the base and every
-extension predicate. Existing all-only extensions have identical truth
-conditions. The internally composed tree may be deeper than one level; the
-nesting limit applies to each authored predicate, not to composition the loader
-constructs.
-
-One correction is load-bearing for the invariant lifecycle shape in Decision
-7: `all` plus `any` is insufficient to express the complement of the positive
-`{ idle = "8h" }` leaf. “Retain while input is recent or an investigation is
-open” needs “not idle.” Recommend admitting the lifecycle-only wrapper
-`{ not = { idle = "8h" } }`. It wraps exactly one non-judge lifecycle leaf,
-propagates indeterminate rather than negating it, and cannot wrap a group.
-Keeping it out of `done_when` and chain `when` avoids expanding those surfaces
-merely to invert the lifecycle-only clock. Without that small complement form,
-the invariant pair cannot preserve the approved idle-expiry example; the
-honest counter-recommendation would be to retain a positive `destroy_when`
-trigger. This addition is pending explicit owner approval together with the
-lifecycle field names in Decision 7.
-
-The resulting closed workflow-population surface is:
+The closed workflow-population surface is:
 
 | Field | Requirement | Meaning |
 |---|---|---|
 | `populations.name` | Required identifier, unique within the workflow. | Gives this entry stable provenance below the workflow address. |
-| `populations.resource_observer` | Required static resource-observer reference. | Selects the sole recognition, discovery, and population-resource lifecycle authority. |
+| `populations.resource_observer` | Required static resource-observer reference. | Selects the sole recognition, discovery, and population-resource observation authority. |
 | `populations.discover_inputs` | Required table. | Literal deployment data validated against the observer's discover `inputs_schema`. |
 | `populations.session.task` | Optional static task reference. | Selects a task to set up after the session is up; its observer must equal `resource_observer`. |
 | `populations.session.inputs` | Optional value table. | Session inputs over literals, `resource.id`, and the discover `item_schema`'s `discovery.*` properties. |
 | `populations.session.destroy.force` | Optional boolean; default false. | Uses the lifecycle service's explicit force-destroy path for entry-owned sessions. |
 | `populations.poll_every` | Required positive duration for poll; forbidden for push. | Sets complete-snapshot cadence. |
-| `populations.retain_while` | Required predicate for push; optional for poll with a true default. | Retains an owned member while true; false destroys it. The name is recommended pending Decision 7's owner ruling. |
-| `populations.up_while` | Optional predicate with a true default. | Keeps a retained member up while true and down while false. The name is recommended pending Decision 7's owner ruling. |
-| `populations.*_while.all` / `.any` | Exactly one required when the invariant is declared. | Uses the shared fact grammar with the lifecycle leaves below. |
-| `populations.*_while.grace` | Optional non-negative duration; default zero. | Requires a desired transition to remain continuously indicated before it occurs. |
+| `populations.expire_after` | Required positive duration for push; forbidden for poll. | Expires a push appearance after that duration of external-input quiescence, subject to the task guard below. The spelling is recommended pending the ruling below. |
 
 The complete `session.inputs` object is validated against the target
 workflow's `inputs_schema` at load time: literal types are checked directly,
 `resource.id` is a string, and every `discovery.*` path is resolved against
 the observer's discover `item_schema`. Runtime validation still checks schema
 constraints that static projection cannot prove. When `session.task` is
-present, every task input not supplied explicitly is bound from the session
-inputs by the existing dynamic task-setup rules, and each common field must
-also satisfy the task's `inputs_schema`.
+present, every task input not supplied explicitly is bound from session inputs
+by the existing dynamic task-setup rules, and each common field must also
+satisfy the task's `inputs_schema`.
 
 `resource_observer` and `session.task` are static topology. They accept the
 ordinary relative or catalog-qualified reference grammar and cannot be CEL
-expressions. The containing workflow's workspace provider and the population
+expressions. The containing workflow's workspace provider and population
 observer must both match each discovered `resource`; the provider remains the
 single authority for session naming.
 
-Each lifecycle invariant uses the check and expression leaf forms from the
-shared grammar, plus an idle leaf and a task-instance quantifier leaf. No
-lifecycle invariant accepts judge leaves. An ordinary check or expression leaf
-exposes only `resource.state.*`, resolved against the population observer's
-`state_schema`.
+#### Push-expiry field name: owner ruling required
 
-An idle leaf has the closed shape `{ idle = "8h" }`, with a required positive
-duration, and is valid in either lifecycle invariant. It becomes true when
-that much time has elapsed since the latest of session creation, an accepted
-repeated push appearance for the same resource, and an event recorded on the
-session log with `direction = "inbound"`. A poll snapshot repeatedly reporting
-a present member is not a re-appearance and does not reset the clock. Internal
-ticks, lifecycle events, outbound agent events, and changes to the session-level
-status message do not reset it.
+| Candidate | Strength | Risk |
+|---|---|---|
+| `expire` | Shortest and economical. | Reads like an imperative or an absolute timestamp rather than a duration. |
+| `expire_after` | Makes the duration shape and eventual destruction explicit. | The activity origin must still be defined by the language. |
+| `idle` | Short and familiar for elapsed inactivity. | Conflicts with the runtime's empty status message and health-probe terminology, which have different authorities. |
 
-This leaf measures external-input quiescence. It is unrelated to the
-session-message convention in which an empty message means the agent
-self-reports that it is idle, and it is unrelated to a health probe's
-`silence_expected`, which narrows turn-boundary health expectations. Reusing
-the word does not combine those three authorities: neither an agent status
-message nor a health pardon can make a lifecycle idle leaf true or false.
+Recommend `expire_after`. It is longer than `expire`, but says that the
+value is a duration and avoids overloading “idle.” The clock starts at session
+creation and is reset to the latest accepted repeated push appearance or event
+recorded on the session log with `direction = "inbound"`. Internal ticks,
+population and lifecycle events, outbound agent events, and session status
+messages do not reset it. Time spent as a pending appearance before creation
+does not count. This measures external-input quiescence; it is independent of
+the runtime's explicit empty status message used for capacity decisions and a
+health probe's `silence_expected` turn-boundary exception.
 
-#### Task-instance quantification: owner ruling required
+Poll membership is exactly the latest successful complete snapshot. For an
+owned member missing from that snapshot, the evaluator plans destruction; the
+discover query itself expresses exclusions such as `state = "open"`. A
+failed or partial query proves no absence, and a present item cannot request
+destruction. No per-entry field supplies a second removal authority.
 
-Lifecycle policy sometimes needs to exclude a session from destruction while
-a dynamic task instance still represents open work. Two shapes can express
-that exclusion:
+Push has no absence proof. Its appearance generation becomes eligible for
+destruction only when `expire_after` matures. A repeat appearance resets the
+clock and an inbound event on the session does the same. Successful destruction
+closes that generation; a later accepted appearance starts a new one.
 
-| Option | Shape | Strengths | Costs |
-|---|---|---|---|
-| (a) A `tasks` CEL root | `tasks.filter(t, t.document == 'investigate').all(t, t.resource.state.issue_status == 'SUCCESS')` | Uses CEL's existing `filter`, `all`, and `exists` macros and permits arbitrary combinations without new fact-leaf operators. Those macros are already in the documented Plecture CEL profile. | A session can contain tasks with different observer and state schemas. The iterator is therefore heterogeneous, and the current CEL path validation deliberately does not treat a comprehension-bound path as a surface root. `t.resource.state.issue_status` would lose the load-time key resolution that lifecycle facts otherwise promise unless Plecture adds flow-sensitive schema refinement. The expression is also substantially harder to read and broadens CEL from value computation into topology selection. |
-| (b) A quantified task leaf | `{ task = "official.github.investigate", instances = "every", where = { check = "resource.state.issue_status", in = ["SUCCESS"] } }` | Keeps the task reference structural, resolves it at load time, and validates the nested fact paths against that one task and observer. The small `any`/`every` vocabulary states the only demonstrated collection operation directly. | Adds one lifecycle-leaf variant and cannot express arbitrary cross-instance computations. A later need beyond selection plus `any`/`every` would require another language decision. |
+Before either poll-absence or push-expiry destruction, the evaluator checks
+every dynamic task instance owned by the session through the task's existing
+completion semantics. It never automatically destroys while any instance is
+not satisfied. Missing completion policy, an observation or expression error,
+and an unobserved or pending result all count as unsatisfied. Deferral records
+a `plect.workflow_population.destroy_deferred` event on the member, including
+the population provenance and blocking task instances. The evaluator records
+the first deferral and any change to its blocker set rather than repeating the
+same event every cycle. A blocking task-state or completion-result change wakes
+the deferred decision; observation failures retain it under bounded retry, so
+a push member does not require another appearance merely to finish deferred
+expiry. Manual `plect destroy` is outside this population guard and retains its
+ordinary cleanup and force rules. Consequently a task that can never become
+satisfied prevents automatic expiry forever; the operator must resolve it
+explicitly or fix the task's own completion design.
 
-Recommend option (b), pending an explicit owner ruling. CEL's comprehension
-macros are in profile, so option (a) is not rejected as syntactically
-unavailable; it is rejected because heterogeneous task schemas make its
-important key paths dynamic at precisely the site where the rest of the
-lifecycle surface is statically checked. Extending CEL typing and the
-Plecture path walker solely for this one collection would broaden the
-lifecycle expression-site profile and the validator without another concrete
-consumer.
+The evaluator persists a discovery-generation tombstone before completing an
+owned destruction. For poll, the successful absent generation remains closed
+until a later successful snapshot contains the resource. For push, only a later
+accepted appearance opens a new generation. The tombstone prevents stale or
+concurrent work from recreating an expired member and contains only source
+identity, provenance, and generation state, not destroyed session state.
 
-Under option (b), `task` is an ordinary static task reference that selects
-instances of that exact resolved task definition, `instances` is `any` or
-`every`, and `where` contains one ordinary check or expression leaf. Keeping
-the quantifier as a value avoids overloading the shared grammar's `any` group
-key with a different table-valued meaning. The nested leaf exposes
-`resource.state.*` from the selected task's observer and
-`self.state.*` from its task state, exactly as that task's `done_when` does;
-its keys resolve against both schemas at load time. Nested idle, judge, and
-task-quantifier leaves are forbidden. `any` is false for no matching dynamic
-instance, while `every` is true for no matching instance. The latter gives
-“every selected instance is closed or no selected instance exists” without a
-second absence operator. Selection follows instances the session already owns
-and their existing resource bindings; it cannot discover or join arbitrary
-resources by matching keys.
-
-Every lifecycle decision observes each relevant resource once, and all leaves
-for that resource read the coherent snapshot. An observation or expression
-failure, including failure for any selected instance of a quantified leaf,
-makes the invariant indeterminate and causes no transition. This is the same
-safe direction as the former `keep_while`: a failed task observation used to
-keep the session, and now cannot make the retention invariant false.
-
-A successful poll snapshot has two removal paths. An owned resource absent
-from the complete snapshot is no longer a member and is destroyed. A present
-member whose retention invariant becomes false is also destroyed. Thus a
-removed label and a merged pull request both converge without treating a
-failed or partial query as absence.
-
-A push stream cannot prove non-membership, so it requires an explicit
-retention invariant. Poll may omit the invariant when complete-snapshot
-absence is sufficient. The same leaves are available to both modes; mode does
-not create a second lifecycle grammar.
-
-Capacity is not declared on a population entry. Decision 7 completes the
-session tree with a virtual root so the existing `max_up_children` vocabulary
-governs both real-parent and parentless admission.
-
-A valid push appearance is persisted in population-evaluator state before
-admission. If the virtual-root cap is full, it remains pending and is admitted
-in resource-id order when capacity becomes available; process restart does
-not forget an appearance core already accepted. A repeated appearance
-replaces the pending production record for that resource. Its idle clock
-begins only when the session is created, so waiting behind the cap cannot
-cause silent expiry.
-Successful destruction closes that appearance generation, and a later
-appearance may create a new session. A repeated push appearance also guarantees
-that an owned down session becomes an up candidate through the ordinary
-`plect up` path. If the virtual-root cap is full, the persisted appearance
-keeps that re-up pending and gives it existing-member priority when a slot
-opens; it is never discarded as a duplicate no-op.
+A valid push appearance is persisted before admission. If root capacity is
+full, it remains pending and is admitted in resource-id order when capacity
+becomes available; process restart does not forget an accepted appearance. A
+repeated appearance replaces the pending production record. Its expiry clock
+begins only when the session is created.
 
 Creation, up, down, and destruction use the same service paths as `plect up`,
 `plect down`, and `plect destroy`, including resource allowlists,
 workspace-provider resolution, cleanup, and errors. `session.destroy.force`
 is an explicit choice to pass the same force option; discovery itself never
-silently weakens cleanup guards. A population entry persists its containing
-workflow address and entry name on sessions it successfully creates and may
-destroy only those sessions. It never
-adopts an existing session with the same derived name. A population/chain or
-population/population name collision emits a conflict and leaves the existing
-session untouched.
+silently weakens cleanup guards. A population persists its containing workflow
+address and entry name on sessions it creates and may mutate only those
+sessions. It never adopts an existing session with the same derived name. A
+population/chain or population/population name collision records a conflict and
+leaves the existing session untouched.
 
-When `session.task` is present, a successful `up` is followed by the existing
-task-setup service with the fixed instance name `initial` and the discovered
-`resource`. The evaluator first reads session state: an `initial` instance
-with the exact resolved task and resource is already converged; a missing one
-is set up; and any conflicting `initial` instance fails closed. The population
-does not use `plect up --task`, because that flag is only workflow-input
-shorthand and does not instantiate a task by itself. A population with no
-`session.task` starts only its containing workflow. It may receive dynamically
-created tasks later through the ordinary task-setup path.
+When `session.task` is present, a successful `up` is followed by the
+existing task-setup service with the fixed instance name `initial` and the
+discovered `resource`. The evaluator first reads session state: an `initial`
+instance with the exact resolved task and resource is already converged; a
+missing one is set up; and any conflicting `initial` instance fails closed.
+The population does not use `plect up --task`, because that flag is only
+workflow-input shorthand and does not instantiate a task by itself. A
+population with no `session.task` starts only its containing workflow and may
+receive dynamically created tasks later through the ordinary task-setup path.
 
 #### Review-dispatch configuration
 
@@ -714,37 +609,28 @@ pr_title         = { from = "discovery.title" }
 pr_url           = { from = "resource.id" }
 head_sha         = { from = "discovery.head_sha" }
 instruction      = "Review the pull request and record the verdict against its current revision."
-
-[review_agent.populations.retain_while]
-all = [{ check = "resource.state.lifecycle_state", in = ["open"] }]
-
-[review_agent.populations.up_while]
-all = [{ check = "resource.state.review_reply_state", in = ["human_replied", "not_applicable"] }]
 ```
 
 Every reference in the example is static. `official.github.review` exists as
 a task written for `official.github.pull`; the ADR adds that observer's
-discover and `lifecycle_state` contracts. The workflow, population, credentials,
-team parameters, and instructions are user-owned. Each `discovery.*` path is
-declared by the item schema, `resource.state.lifecycle_state` resolves through
-the population observer, and every workflow root and plugin definition already
-exists. The initial task receives its declared `app_id`, `owner`, `repo`,
+discover contract. The workflow, population, credentials, team parameters,
+and instructions are user-owned. Each `discovery.*` path is declared by the
+item schema, and every workflow root and plugin definition already exists. The
+initial task receives its declared `app_id`, `owner`, `repo`,
 `private_key_path`, and `instruction` inputs from the session after `up`. The
-current observer cannot infer a reply turn from `review_decision`, so the
-example deliberately relies on the newly declared `review_reply_state`. The
-up invariant is false only while a human response is outstanding and becomes
-true when a response needs handling or no wait has been established. Each
-successful down frees one virtual-root slot for a newly discovered pull
-request; the reply-driven up waits for a slot if all root capacity is active
-again. The retention invariant independently destroys a member once the pull
-request is no longer open.
+discover query's `state = "open"` is the removal policy: closed or merged pull
+requests leave the next successful snapshot. When root capacity is contended,
+a review session waiting for a reply can go down after its runtime explicitly
+reports idle, freeing a slot for a newly discovered pull request. The reply is
+an inbound session event, so it requests that retained member come back up; if
+the cap is still full, that request remains pending.
 
 #### Operations-chat configuration
 
 This complete user-owned TOML binds the Slack push face above to an operations
 workflow. The triggering `mention_ts` is a typed discovery-item field, and
-later inbound thread events reset the lifecycle idle leaf without a dispatcher
-process. The session intentionally starts without a task.
+later inbound thread events reset push expiry without a dispatcher process.
+The session intentionally starts without a task.
 
 ```toml
 [ops_chat_session]
@@ -804,6 +690,7 @@ heartbeat = "15m"
 [[ops_chat_session.populations]]
 name              = "ops_mentions"
 resource_observer = "official.slack.thread_state"
+expire_after      = "8h"
 
 [ops_chat_session.populations.discover_inputs]
 base_url    = "http://127.0.0.1:7890"
@@ -812,13 +699,6 @@ channel_ids = ["C01234567"]
 [ops_chat_session.populations.session.inputs]
 slack_base_url = "http://127.0.0.1:7890"
 mention_ts     = { from = "discovery.mention_ts" }
-
-[ops_chat_session.populations.retain_while]
-grace = "15m"
-any = [
-  { not = { idle = "8h" } },
-  { task = "official.github.investigate", instances = "any", where = { check = "resource.state.issue_status", in = ["PENDING"] } },
-]
 ```
 
 The Slack plugin sketch introduces `official.slack.thread_state` and its
@@ -828,13 +708,12 @@ surfaces. An explicit escalation may later create an
 `official.github.investigate` instance, bound to an issue resource, through
 the ordinary dynamic task-setup path. Its observer declares
 `resource.state.issue_status` as `PENDING` for open and `SUCCESS` for closed.
-The retention invariant is true while external input is recent or any
-selected investigation remains open. Once the session has been idle for eight
-hours and every investigation is closed or absent, the invariant must remain
-false for its fifteen-minute grace before destruction. A failed task
-observation makes the invariant indeterminate and prevents destruction,
-preserving the former keep-on-failure behavior without `keep_while` or a
-dedicated population `idle` field.
+After eight hours without a repeated appearance or inbound event, push expiry
+makes the session eligible for destruction. The built-in task guard defers that
+destruction with zero population configuration while an escalated
+investigation is unsatisfied; a failed observation is also unsatisfied and
+therefore fails closed. Once every owned task instance is satisfied, the next
+evaluation may destroy the expired session.
 
 ### 5. Evaluator placement: the resident process
 
@@ -857,24 +736,28 @@ successful config reload adds, replaces, or stops evaluator loops. A failed
 reload keeps the last valid loops and desired state, matching the resident
 process's fail-closed posture.
 
-Each evaluation is plan-then-apply for every fact that exists at its start. It
-computes the complete set of allowed creates, idempotent ups, downs, initial
-task setups, and owned destroys before mutating state, then invokes the existing
-lifecycle and task-setup services. A new member is necessarily staged: it runs
-`up`, then initial task setup, then evaluates session-relative invariants and
-plans any resulting transition. For a removed member it never sets up a task
-before destruction. Concurrent evaluations of one population are coalesced. A
-failed mutation remains visible and is retried on the next poll, appearance,
-inbound event, or expiry deadline; it does not stop or roll back a different
-session whose lifecycle already completed.
+Each evaluation is plan-then-apply for every source and task fact that exists
+at its start. It computes membership creates, initial task setups, and guarded
+owned destroys before mutating state, then invokes the existing lifecycle and
+task-setup services. Up requests enter the serialized root-cap coordinator;
+because concurrent admissions and down failures can change capacity, that
+coordinator selects one eligible down candidate and retries admission rather
+than pretending the complete down set was knowable in the source plan. For an
+absent or expired member the evaluator never sets up a task before deciding
+whether destruction is guarded. Concurrent evaluations of one population are
+coalesced. A failed mutation remains visible and is retried on the next poll,
+appearance, inbound event, expiry deadline, or capacity change; it does not
+stop or roll back a different session whose lifecycle already completed.
 
 Population-created sessions then use ordinary workflow tick reactors. The
-population evaluator does not tick tasks, interpret completion, or deliver
-notifications. It records `plect.workflow_population.*` decision, conflict,
-and failure events on an affected session. Workflow `[[event.channel]]`
-bindings may relay those events like any other. A discover failure with no
-owned session is visible in resident logs; the language gains no destination,
-message, or notification field to special-case it.
+population evaluator does not tick tasks or deliver notifications. For the
+destruction guard it invokes the same completion-evaluation path as the
+ordinary task evaluator rather than defining another interpretation. It records
+`plect.workflow_population.*` decision, deferral, conflict, and failure events
+on an affected session. Workflow `[[event.channel]]` bindings may relay those
+events like any other. A discover failure with no owned session is visible in
+resident logs; the language gains no destination, message, or notification
+field to special-case it.
 
 `max_up_children` is the only concurrency vocabulary. A real session's
 workflow continues to bound its direct children, including chain-spawned
@@ -935,225 +818,181 @@ membership and never implies absence. `poll_every` remains required and is
 the recovery floor, so delayed, duplicated, reordered, or at-most-once webhook
 delivery can affect latency but not eventual correctness.
 
-### 7. Retention and up-state invariants for population sessions
+### 7. Capacity-driven down/up and virtual-root admission
 
-Destroying a session while it waits would release resources only by discarding
-the state, workspace, event log, and thread continuity that make it the same
-session. Population lifecycle therefore declares two desired-state invariants:
-
-- while the retention predicate is true, the member is retained; false means
-  destroy it;
-- while the up-state predicate is true, a retained member is up; false means
-  it is down.
-
-Convergence is ordered: a false retention predicate destroys; otherwise a true
-up-state predicate brings the member up and a false one takes it down. Both use
-Decision 4's shared fact grammar, idle leaf, and statically selected task facts.
-No new run state or lifecycle operation is introduced: transitions retain the
-semantics already defined by `plect destroy`, `plect down`, and `plect up`.
-
-#### Retention predicate name: owner ruling required
-
-| Candidate | What it communicates | Risk |
-|---|---|---|
-| `retain_while` | Directly names continued membership and reads naturally as policy. | “Retain” is less common elsewhere in the language. |
-| `keep_while` | Short and familiar from the earlier task-based exclusion. | Resurrects a retired field with much broader and inverted semantics, making migration and old examples misleading. |
-| `member_while` | Mentions population membership explicitly. | Reads as a noun fragment rather than a condition. |
-| `exists_while` | Makes the destructive false case obvious. | Can be mistaken for external-resource or persisted-object existence rather than population membership. |
-| `hold_while` | Suggests preventing teardown. | Sounds like a temporary lock or delay rather than desired state. |
-| `present_while` | Connects to the standing-presence goal. | “Present” can be confused with up run state, which the second invariant controls separately. |
-
-Recommend `retain_while`, pending explicit owner ruling. It is the only
-candidate that names continued membership without reusing a narrower retired
-field or colliding with the separate up/down question.
-
-#### Up-state predicate name: owner ruling required
-
-| Candidate | What it communicates | Risk |
-|---|---|---|
-| `up_while` | Uses exactly the state and command vocabulary of `plect up` / `plect down`. | “Up” is terse, though already normative language vocabulary. |
-| `active_while` | Reads naturally to an operator. | Introduces a state adjacent to health activity and could imply recent work rather than allocated run resources. |
-| `run_while` | Suggests whether runtime resources exist. | Reads as an imperative and does not name the existing `up` state. |
-| `resume_when` | Emphasizes the down-to-up edge. | Reintroduces a one-sided trigger and says nothing about the up-to-down edge. |
-
-Recommend `up_while`, pending explicit owner ruling. It adds no lifecycle noun
-and makes the false case mechanically clear: not up means down.
-
-#### `while` versus `when`: owner ruling required
-
-| Suffix | Fit | Tradeoff |
-|---|---|---|
-| `*_when` | Matches `done_when` and chain `when`, the language's established condition spelling. | Those sites name a one-sided terminal or firing condition; `retain_when` and `up_when` can be misread as transition triggers and obscure that false is equally authoritative. |
-| `*_while` | States a maintained invariant: the state holds while the predicate does, and its complement is enforced when it does not. | Adds a second condition suffix to the language and needs this semantic distinction documented. |
-
-Recommend `*_while`. The difference is semantic rather than stylistic:
-`when` asks when a one-way action becomes eligible, while `while` describes a
-state continuously derived from both truth values.
-
-Each invariant carries its own optional `grace`. For retention, false must
-remain continuously and successfully observed for `grace` before destruction;
-true cancels a pending destruction. For up state, a desired state different
-from the member's current up/down state must remain continuously and
-successfully observed for `grace` before either direction runs. Thus the same
-modifier guards both up-to-down and down-to-up boundaries rather than favoring
-one edge. An indeterminate evaluation clears the corresponding eligibility
-timer and changes nothing. Retention destruction has precedence once its grace
-matures; before then the still-retained member may converge its up state.
-
-The evaluator observes each referenced resource once for an evaluation. A
-service error leaves the ordinary lifecycle path's persisted result
-authoritative, is not treated as success, records a failure event, and is
-retried later. Successful evaluator-initiated transitions record
-`plect.workflow_population.destroy`, `plect.workflow_population.down`, or
-`plect.workflow_population.up` on the affected session, using the population
-event namespace rather than a new lifecycle noun.
-
-A successful poll snapshot, including one requested by a wake hint, evaluates
-both invariants for every present member. An inbound event continues to append
-to a down session's durable log and triggers immediate lifecycle evaluation;
-it does not itself override policy. A push re-appearance is the deliberate
-exception: it resets the idle leaf and always requests `plect up` for an owned
-down member without requiring the up-state predicate. The override resets any
-pending up-state grace, so a still-false invariant must remain false for a new
-full grace before taking the member down again. A matured false retention
-invariant may still destroy it, because then it is no longer a retained member.
-Scheduled idle and grace deadlines use the same evaluation path, and concurrent
-triggers coalesce per population.
-
-One boundary prevents the invariant wording from pretending the current
-lifecycle can do more than it can. There is no “create down” operation: a new
-member is created through ordinary `plect up`, receives its initial task, and
-only then has the session-relative facts needed to evaluate both invariants. A
-new member whose up-state predicate is already false therefore consumes an
-admission slot, completes setup, and goes down in the same serialized
-evaluation. If the cap is full, its creation waits even though its eventual
-state would be down. Adding a separate create-without-run path would be a new
-lifecycle operation with no concrete consumer, so this ADR does not invent it.
-If a consumer needs down members to be materialized without ever allocating
-run-scoped resources, the proposed invariant model is incomplete.
-
-A lifecycle destruction tombstones the current discovery generation so a
-poll snapshot that still contains the resource cannot create-and-destroy it on
-every cycle. One successful poll absence ends that generation; a later
-reappearance may create a new member. For push, the next accepted appearance
-is the new generation. This tombstone retains only source identity and
-provenance, not destroyed session state.
+Desired membership and run-resource occupancy are separate. Poll absence or
+push expiry decides whether a member remains; neither deployment predicates nor
+a new lifecycle state decide whether a retained member is up. The evaluator
+uses ordinary `plect down` and `plect up` only to reclaim and refill contended
+root capacity.
 
 The session forest is completed as one tree with a non-addressable virtual
 root. Every session with no real session parent is logically its direct child,
 whether created by a population, dispatched manually, or placed beside a
 parentless session through the existing `root:<session>` marker. The virtual
 root has no workflow, workspace, resource, event log, or lifecycle operation;
-it is the structural parent needed to apply the ordinary child-cap rule at
-the top of the tree. Parentless sessions may continue to store an empty
+it is the structural parent needed to apply the ordinary child-cap rule at the
+top of the tree. Parentless sessions may continue to store an empty
 `ParentSession`; the virtual edge is derived rather than persisted.
 
 The virtual root must not turn independent root-level sessions into trusted
 reviewers or lifecycle actors for one another. The existing `root:<session>`
-marker continues to record an explicit sibling cohort for relation, judge,
-and terminal-delivery semantics, while resolving to the virtual root for
-capacity accounting. Two independently created root-level sessions therefore
-remain unrelated for authority even though both consume the virtual root's
-direct-child capacity. This separation is required because the current
-session-scoped implicit roots deliberately prevent unrelated root sessions
-from gaining sibling authority.
+marker continues to record an explicit sibling cohort for relation, judge, and
+terminal-delivery semantics, while resolving to the virtual root for capacity
+accounting. Two independently created root-level sessions therefore remain
+unrelated for authority even though both consume the virtual root's
+direct-child capacity.
 
 #### Capacity options
 
 1. Apply the virtual-root cap only to evaluator-driven up operations. Manual
    dispatch would retain its current freedom, but could silently bypass the
-   same host constraint the evaluator is required to respect.
+   same host constraint the evaluator must respect.
 2. Apply it to every up of a logical virtual-root child, including manual
    `plect up`. This changes manual behavior when an operator has explicitly
-   configured a cap, but leaves one admission authority and one counting rule.
+   configured a cap, but leaves one admission authority and counting rule.
 3. Also add per-population caps for allocation fairness. This could reserve or
-   divide root capacity, but no concrete contention between populations yet
-   defines the intended allocation policy.
+   divide root capacity, but no observed contention between populations defines
+   the intended allocation policy.
 
 #### Capacity recommendation
 
 Use option 2. The virtual root's optional positive `max_up_children` is
 declared in `config.toml`, because machine-wide resolution and defaults are
 the only existing owner for a root that has no workflow. Unset retains
-unlimited parentless ups. A real parent's cap remains on that parent's
-workflow and is unchanged. Each session counts only against its logical
-immediate parent's cap, so real children are not also counted at the virtual
-root.
+unlimited parentless ups. A real parent's cap remains on that parent's workflow
+and is unchanged. Each session counts only against its logical immediate
+parent's cap, so real children are not also counted at the virtual root.
 
 The documented counting rule is unchanged: a child counts while its run state
 is up, an in-flight up admission also counts, and an idempotent up of an
 already-up child is exempt. `--force-recreate` still holds an admission because
 it first tears run state down. A successful down immediately frees a slot.
-Reducing a cap below its current up count selects no victims; new ups wait or
-fail until the count is within the bound.
+Reducing a cap below its current up count selects no victims by itself; a later
+population admission can invoke the pressure policy below.
 
 Manual `plect up` at the configured virtual-root cap returns the same cap
-error as an up under a capped real parent. This is the intended meaning of an
-operator declaring a host boundary: silently exempting the manual path would
-make the bound advisory. The operator may take another root session down,
-raise the machine setting, and retry. Population evaluators instead persist
-their desired create or re-up, defer it without treating the cap as a
-lifecycle failure, and retry on later cycles, wake hints, inbound events, or
-capacity-changing transitions.
+error as an up under a capped real parent. The cap still applies to the manual
+path, but an operator command does not authorize the evaluator to take a
+different session down. The operator may take another root session down, raise
+the machine setting, and retry. Population evaluators persist desired creates
+and re-ups and may reclaim capacity only from population-owned sessions.
 
-Within one population evaluation, eligible owned down members take available
-slots before never-created members, and each class is ordered by resource id;
-this prevents a reply to an existing session from being starved by newly
-discovered work. Atomic admissions preserve the shared root cap when
-different populations or manual commands race, but no cross-population
-fairness or reservation is promised. A per-population fairness limit can be
-added later without changing virtual-root counting if observed contention
-defines how it should allocate capacity.
+#### Capacity-pressure policy
 
-There is no separate cap on total retained membership. Such a cap would
-either reproduce saturation with down sessions or require an eviction policy
-that destroys continuity, without a concrete consumer defining which member
-may be discarded. Poll snapshot absence and a false retention invariant remain
-the ways retained membership ends. A demonstrated need to bound retained down
-state with deterministic eviction would require a separate decision rather
-than overloading `max_up_children` with a second question.
+When an evaluator's atomic virtual-root admission is rejected at the cap, the
+resident root-cap coordinator considers up, parentless, population-owned
+members across all populations. A member is eligible to go down only after its
+runtime has explicitly reported idle by clearing the session status message.
+The durable latest `plect.status_message` event must therefore exist and have
+`cleared = "true"`; an absent event is “never reported,” not idle. A runtime
+that never reports idle is never selected, which is the safe default. The
+status write path emits that clear event for a session's first explicit empty
+report even when current state already stores no message; later identical
+empty reports remain idempotent.
 
-Going down runs ordinary run-scoped cleanup while preserving the session,
-workspace, event log, session-scoped state, and population provenance. The
-Slack subscription cleanup tombstones its delivery watermark, so the next up
-restores it and does not redeliver the transcript. Going up idempotently
-recreates run-scoped nodes such as the agent, pane, and credential guard and
-resumes preserved dynamic task state. Whether produced state that claims to
-be live is actually healthy remains the independent failure-model question in
+An accepted repeated appearance, an inbound session event, or a successful
+poll observation with changed resource facts invalidates an earlier idle
+report. A non-empty status report also supersedes it. The member cannot be
+selected again until the runtime emits a later explicit clear. For ordering,
+the coordinator defines last activity as the latest of session creation,
+accepted re-appearance, inbound event, changed-resource observation, and
+status-message event. It sorts eligible members by oldest last activity, with
+session name as the stable tie-breaker.
+
+The coordinator takes one candidate down through the ordinary lifecycle
+service, retries the pending atomic admission, and repeats only until that
+admission succeeds or no eligible candidate remains. A down failure records a
+population failure event, leaves that candidate's actual run state
+authoritative, and lets the coordinator try the next eligible candidate. It
+never selects a manually created session or a session owned by a different
+lifecycle authority merely because both count at the virtual root.
+
+A successful down frees root capacity while preserving population membership.
+It runs ordinary run-scoped cleanup and retains the session, workspace, event
+log, session-scoped state, dynamic task instances, and population provenance.
+The Slack subscription cleanup tombstones its delivery watermark, so the next
+up restores it without redelivering the transcript. A later up idempotently
+recreates run-scoped nodes such as the agent, pane, and credential guard.
+Whether produced state that claims to be live is actually healthy remains the
+independent failure-model question in
 [issue #371](https://github.com/kecbigmt/plecture/issues/371).
 
-The invariant pair removes contradictory transition triggers, and `grace` is
-the one flapping guard. It requires a changed desired state to remain stable
-before either up-state edge and requires retention false to remain stable
-before irreversible destruction. If a concrete consumer demonstrates
-flapping that continuous-evidence grace cannot control, another guard should
-be designed from that evidence.
+A retained down member becomes an up candidate on exactly these signals:
+
+- an accepted repeated push appearance;
+- an event appended to its log with `direction = "inbound"`; or
+- a successful scheduled or wake-requested poll that still contains the
+  resource and whose validated `resource.state` differs from the last
+  successfully persisted state for that member.
+
+The evaluator compares a canonical representation of the complete validated
+observer state, not selected provider fields; a failed observation neither
+changes the persisted comparison value nor requests up. An unchanged poll
+snapshot does not wake a down member. Each wake signal invalidates earlier idle
+evidence before requesting ordinary `plect up`, preventing an immediate
+down/up cycle until the resumed runtime explicitly clears its status again.
+
+If the cap remains full, the evaluator persists the up request. Owned down
+members take available slots before never-created members; within each class,
+resource id gives deterministic order. Atomic admissions preserve the shared
+cap when evaluators and manual commands race. No cross-population fairness or
+reservation is promised. Per-population fairness caps can be added as a pure
+extension if observed saturation later defines the allocation policy.
+
+There is no separate bound on total retained membership. Such a bound would
+require a destructive eviction policy and could discard the continuity this
+decision preserves. Poll snapshot absence and guarded push expiry are the only
+automatic membership-removal paths.
+
+This policy has no time-based grace. Capacity pressure is required before a
+session goes down, and an explicit idle report is consumed by any later wake
+signal. Those two edges provide hysteresis without another configuration
+field. If a runtime repeatedly clears immediately after every up, it is
+truthfully volunteering the session as the next oldest candidate; a concrete
+need for minimum residency or another neutral band can add such a guard later.
 
 ## Consequences
 
 Implementation changes the configuration language and therefore requires a
 dialect increment, a migration procedure with a backup step, structural schema
 updates, and conformance fixtures for every valid, invalid, and boundary case.
-The shared predicate change reaches `done_when`, chain `when`, and lifecycle
-policy together: decoding and the published schema must admit exactly one root
-`all`/`any` and one opposite nested group; evaluation must preserve
-indeterminate results; and task extension composition must conjoin per-layer
-predicates instead of assuming every layer contributes an `all` array. The
-lifecycle schema additionally admits the direct-leaf `not` wrapper. Fixtures
-must cover root disjunction, each legal one-level shape,
-empty/both/same-operator/deeper invalid shapes, lifecycle-negated failures,
-CEL leaves in groups, and monotone extension across mixed operators. Judge-id
-uniqueness, pending-judge projection, diagnostic paths, and chain firing must
-walk the nested group rather than assuming every leaf lives at `.all[]`.
-Existing observer sentinels remain valid and require no migration.
+It adds the workflow `populations` array, observer discover faces and wake
+action, the selected push-expiry duration, and virtual-root
+`max_up_children`. It does not change the fact grammar, add a lifecycle
+condition site, or change task-extension composition.
 
-The implementation must add the chosen workflow population array to workflow
-decoding, references, whole-array cascade, trusted-layer rules, status output,
-and the resident supervisor, without adding a new definition kind or any
-provider name to core. It must also accept root `max_up_children` in
-`config.toml`, canonicalize every no-real-parent admission under the virtual
-root, and preserve explicit sibling-cohort authority independently from that
-capacity key.
+Disjunction remains a real language issue: the GitHub observer documentation
+identifies its `"NULL"` enum sentinel as a workaround for the inability to
+state null or OR in `done_when`. Nothing in this decision needs disjunction,
+so `any`, nested groups, and their extension-composition consequences leave
+with a future standalone ADR. Keeping composition changes as groundwork would
+pay validation and migration cost without behavior used here.
+
+The implementation must add populations to workflow decoding, references,
+whole-array cascade, trusted-layer rules, status output, and the resident
+supervisor, without adding a new definition kind or provider name to core. It
+must accept root `max_up_children` in `config.toml`, canonicalize every
+no-real-parent admission under the virtual root, and preserve explicit
+sibling-cohort authority independently from that capacity key.
+
+Behavior fixtures and tests cover at least:
+
+- trusted ownership, whole-array replacement, provenance, and collisions;
+- poll and push discover validation, complete-snapshot failure, wake coalescing,
+  and supervised restart;
+- poll destruction from successful absence only, including tombstones and task
+  guard deferral;
+- push expiry from the precise external-input clock, including repeated
+  appearances, inbound resets, restart persistence, tombstones, and the same
+  task guard;
+- first-empty status recording, explicit-idle eligibility versus a runtime that
+  never reports, oldest-first selection, ordinary down cleanup, and failed-down
+  fallback;
+- the three up signals, canonical resource-state comparison, invalidated idle
+  evidence, pending existing-member priority, and concurrent admissions; and
+- one virtual-root cap for all parentless ups, including manual commands,
+  without granting relation or lifecycle authority between root sessions.
 
 The implementation order is:
 
@@ -1161,57 +1000,58 @@ The implementation order is:
    including parameter and item schemas, then add the optional wake stream to
    the poll observer. The Slack adapter exposes its unbound-mention stream
    without deciding a workflow.
-2. Complete the virtual-root admission path, then add language validation and
-   the resident evaluator, including provenance, fail-closed planning,
-   admission, retention/up-state invariants, expiry, and ordinary session
-   events.
+2. Complete virtual-root admission and durable status-event lookup, then add
+   workflow-population validation and the resident evaluator with provenance,
+   snapshot/expiry lifecycle, the built-in task guard, capacity-driven down/up,
+   and population events.
 3. Cut a downstream deployment over to each user-owned workflow population
    entry and remove its dispatch loop.
 4. Remove the Slack opaque command hook and publish its one-time migration.
 
 After cutover, configuration in a downstream deployment retains team
-parameters, workflows, task specialization, and instructions. Its deployment
-infrastructure retains credentials, service management, and Terraform. Until
-the failure-model work lands, a downstream deployment may also retain the
-narrow recovery shim that detects stale produced state and deliberately
-rebuilds it. That shim does not enumerate desired resources or choose
-sessions; this decision neither absorbs nor legitimizes its
-verify-before-skip behavior.
+parameters, workflows, task specialization, expiry, and instructions. Its
+deployment infrastructure retains credentials, service management, endpoint
+exposure, signature verification, and Terraform. Until the failure-model work
+lands, a downstream deployment may also retain the narrow recovery shim that
+detects stale produced state and deliberately rebuilds it. That shim does not
+enumerate desired resources or choose sessions; this decision neither absorbs
+nor legitimizes its verify-before-skip behavior.
 
 The new surface is falsified before implementation is accepted if prototypes
-of the three concrete consumers cannot share the same discover-item, provenance,
-and lifecycle contracts without any of the following:
+of the three concrete consumers cannot share the discover-item, provenance,
+membership, and capacity mechanisms without any of the following:
 
 - provider-specific vocabulary or branching in core;
 - dynamic workflow or task selection;
-- a cross-resource join or a population-only/provider-specific predicate
-  language;
-- plugin-owned team repositories, channels, limits, or retention values;
-- a push mode that must infer absence from stream silence;
+- plugin-owned team repositories, channels, limits, or expiry values;
+- a poll member that must be destroyed while it remains in a successful
+  complete snapshot;
+- a push source that must treat stream termination or a quiet discover stream
+  as immediate membership absence, or needs a removal rule that a single
+  per-member external-input expiry duration cannot represent;
 - a wake stream that must carry trusted discovery items or change membership
   without a complete snapshot;
-- lifecycle policy that needs arbitrary computation across heterogeneous task
-  instances rather than a static task selection with `any` or `every`;
-- a retained/down initial member that must be materialized without ever
-  allocating run-scoped resources through `plect up`;
-- an idle condition whose authority must be an agent self-report or a health
-  probe rather than elapsed external-input quiescence;
-- an invariant that needs facts outside its resource observer and statically
-  selected task instances, or a new run state;
-- a down/up boundary that needs a stateful neutral band between different
-  predicates and cannot use time-based `grace` as its flapping guard;
-- a retained population that needs a total bound and deterministic eviction
-  rather than explicit absence, destruction, or push expiry;
+- automatic destruction of a member with an unsatisfied task, including a task
+  whose completion can never become satisfied;
+- capacity reclamation from a runtime that has never explicitly reported idle,
+  from a manually owned session, or without virtual-root contention;
+- a down member that must come up for a signal other than re-appearance,
+  inbound input, or changed observed resource facts;
+- a retained population that needs a total bound and deterministic destructive
+  eviction rather than snapshot absence or guarded push expiry;
 - virtual-root capacity accounting that grants relation, judge, lifecycle, or
-  delivery authority between independently created root-level sessions;
+  delivery authority between independently created root-level sessions; or
 - adoption or destruction of sessions lacking matching workflow-population
   provenance.
 
 If one of those is necessary, the generic population surface is not retained
 merely because it was designed here. The incompatible consumer stays plugin- or
-deployment-local while a narrower language decision is made. If only one
-consumer remains after the poll, push, and orchestrator prototypes, the shared
-abstraction also loses its justification under the repository's YAGNI rule.
+deployment-local while a narrower language decision is made. Predicate-based
+lifecycle, finer task selection, expiry exceptions, residency guards, and
+per-population fairness can each return as pure extensions when a concrete
+consumer supplies their semantics. If only one consumer remains after the
+poll, push, and orchestrator prototypes, the shared abstraction also loses its
+justification under the repository's YAGNI rule.
 
 ## Alternatives considered
 
@@ -1219,13 +1059,14 @@ abstraction also loses its justification under the repository's YAGNI rule.
 
 A separate kind gives each population a definition address and can reference
 its workflow statically. That identity was attractive while workflows might
-arrive as mounted plugin content or be composed by multiple owners. Once
-running workflows are always user-owned policy, the extra kind duplicates
-that owner and makes the workflow an external endpoint of policy that exists
-only to produce sessions of that workflow. The required per-entry `name`,
-whole-array cascade, trusted-layer restriction, and workflow-plus-entry
-provenance preserve the useful identity and safety properties without adding
-to the kind vocabulary.
+arrive as mounted plugin content or be composed by multiple owners. Under the
+owner-ratified direction that running workflows are user-owned policy, the
+extra kind duplicates that owner and makes the workflow an external endpoint
+of policy that exists only to produce sessions of that workflow. The direction
+is not yet formally implemented, so this ADR also makes a plugin-layer
+population a load error. The required per-entry `name`, whole-array cascade,
+trusted-layer restriction, and workflow-plus-entry provenance preserve the
+useful identity and safety properties without adding to the kind vocabulary.
 
 ### Keep reconcilers in a downstream deployment
 
@@ -1247,11 +1088,10 @@ contract for one external resource kind.
 ### Extend workspace providers instead of resource observers
 
 A workspace provider recognizes a resource for session naming and owns
-workspace acquisition. Discovery is useful without a workspace and its
-lifecycle predicates read observed resource state. Putting discovery on the
-provider would reunite responsibilities the language deliberately separates
-and would make a provider and observer two authorities for the same resource
-kind.
+workspace acquisition. Discovery and changed-resource wake decisions are useful
+without a workspace. Putting discovery on the provider would reunite
+responsibilities the language deliberately separates and would make a provider
+and observer two authorities for the same resource kind.
 
 ### Treat push appearances as ordinary session events
 
@@ -1259,28 +1099,45 @@ There is no session log before the appearance creates a session. Inventing a
 placeholder session solely to receive that event would make bootstrap identity
 and cleanup circular. The discover stream is ingress to desired-state
 evaluation; after creation, ordinary inbound events belong to the real
-session's durable log and reset any lifecycle idle leaf.
+session's durable log and reset push expiry.
 
-### Use `destroy_when`, `down_when`, and `up_when` transition triggers
+### Configure lifecycle predicates
 
-The trigger triple states each lifecycle edge positively and can give down and
-up different thresholds with a neutral band between them. That is stronger
-than temporal grace when the desired behavior is to remember the current
-state throughout a band. It also lets the positive idle leaf appear directly
-in `destroy_when`, without the direct-leaf `not` required by a retention
-invariant.
+The first shape considered `destroy_when`, `down_when`, and `up_when`
+transition triggers. They state each edge positively and can define a neutral
+band, but independently true triggers need precedence and make every population
+author commands. Recasting them as a `retain_while` / `up_while` invariant pair
+matched `done_when`'s declarative convergence style, but still required every
+deployment to encode common lifecycle safety.
 
-It is rejected for the concrete consumers because three independently true
-conditions need precedence rules and describe commands rather than desired
-state. The shared `any` grammar makes ordinary alternatives structural, and
-the proposed direct-leaf complement makes retention readable, so the earlier
-conjunction-only grammar is no longer a reason to split up and down policy.
-`grace` supplies the demonstrated flapping control symmetrically on both
-up-state edges. OR alone would not justify this rejection: without the
-complement of `{ idle = "8h" }`, the operations example cannot be written as a
-positive retention invariant, which is why Decision 4 makes `not` an explicit
-owner-gated prerequisite rather than silently assuming De Morgan's law is
-expressible.
+The invariant shape then needed an external-input idle leaf, a lifecycle-only
+`not` wrapper to express “not idle,” and `grace` for hysteresis. Protecting open
+work also required quantification over heterogeneous dynamic task instances.
+A `tasks` CEL root with `all` / `exists` comprehensions was expressive but lost
+the language's load-time state-key validation inside heterogeneous iterators. A
+structural task leaf preserved validation but added task selection and
+quantifier vocabulary. Refining either form to ask only whether every task's
+existing completion result is satisfied exposed the simpler rule: automatic
+population destruction should never discard unsatisfied work at all.
+
+The chosen design therefore replaces configurable destruction predicates with
+poll absence or push expiry plus a built-in completion guard, and replaces
+up/down predicates with capacity pressure plus explicit runtime-idle and wake
+signals. It needs no `not`, idle fact leaf, task quantifier, or grace field. The
+trigger triple, invariant pair, and completion-based quantifier remain possible
+pure extensions if a concrete consumer later needs policy finer than the safe
+built-in mechanisms.
+
+### Add shared `any` groups now
+
+Shallow `any` groups would address an independent wart: an observer documents
+its `"NULL"` enum sentinel as a workaround for the fact grammar's lack of null
+or OR. Adding them also affects structural schemas, conformance fixtures,
+diagnostic traversal, CEL-leaf interaction, and monotone task-extension
+composition. Populations no longer need disjunction, so accepting that blast
+radius as groundwork would violate YAGNI. A future ADR can decide the grouping
+depth and extension rule on their own evidence; this decision leaves the fact
+grammar unchanged.
 
 ### Add recovery and verify-before-skip
 
