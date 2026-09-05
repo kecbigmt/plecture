@@ -47,15 +47,14 @@ func (cliMentionHookRunner) Run(command string, payload []byte) error {
 	return cmd.Run()
 }
 
-// dispatchUnboundMention feeds both delivery paths from one permalink
-// resolution: the opaque on_unbound_mention hook (only if configured) and
-// the /unbound-mentions stream (only if something is connected to it). The
-// two coexist rather than one superseding the other — see
-// docs/adr/2026-09-05-standing-session-dispatch.md's subscribe-only
-// observer sketch — until the hook's retirement (a separate, later step).
-// The hook command's exit status is only ever inspected, never retried:
-// which workflow to start and which channels to honour is deployment
-// policy this plugin must not encode.
+// dispatchUnboundMention feeds the on_unbound_mention hook and the
+// /unbound-mentions stream from one permalink resolution rather than one
+// superseding the other: a deployment that has moved its dispatch logic
+// onto the stream may still have the hook configured from before, and
+// silently dropping its deliveries would be a regression this function has
+// no way to detect. The hook command's exit status is only ever inspected,
+// never retried: which workflow to start and which channels to honour is
+// deployment policy this plugin must not encode.
 func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, threadTS string) {
 	hasHook := a.cfg.OnUnboundMention != ""
 	hasStreamReaders := a.mentions != nil && a.mentions.hasSubscribers()

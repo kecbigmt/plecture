@@ -17,11 +17,10 @@ import (
 // It returns nil only when ctx itself ends the connection — the process was
 // asked to stop. Any other termination (the initial connect failing, the
 // resident restarting mid-stream, or the stream otherwise ending) is a
-// source failure and returns a non-nil error, so the caller's exit code
-// tells the exec supervisor to restart it rather than treating quiet as
-// absence — see docs/adr/2026-09-05-standing-session-dispatch.md's
-// query.subscribe contract ("Quiet, failure, or restart never implies
-// absence").
+// source failure and returns a non-nil error: a caller cannot tell a quiet
+// channel from a dead connection any other way, and mistaking the latter
+// for the former would mean missing every mention until something else
+// notices.
 func RunSubscribeUnboundMentions(ctx context.Context, baseURL string, channelIDs []string, out io.Writer) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/unbound-mentions", nil)
 	if err != nil {

@@ -2,13 +2,9 @@ package adapter
 
 import "sync"
 
-// unboundMentionItem is the wire shape the resident adapter's
-// /unbound-mentions feed and the `subscribe unbound-mentions` CLI action
-// exchange. Its fields mirror the resource_observer query.subscribe
-// item_schema sketched in
-// docs/adr/2026-09-05-standing-session-dispatch.md: resource identifies the
-// thread, and the rest is appearance context only, never live resource
-// state.
+// unboundMentionItem deliberately carries only identity and appearance
+// context, not live thread state: mixing the two would leave two paths
+// able to disagree about what a thread's current state is.
 type unboundMentionItem struct {
 	Resource  string `json:"resource"`
 	ChannelID string `json:"channel_id"`
@@ -25,9 +21,9 @@ const mentionStreamBuffer = 16
 
 // mentionStream fans one unbound app mention out to every connected
 // /unbound-mentions reader. It holds nothing on disk: a reader that was not
-// connected when a mention occurred has no way to recover it, matching the
-// ADR's query.subscribe contract ("incremental appearance only; never the
-// complete set").
+// connected when a mention occurred has no way to recover it, since there
+// is no complete-membership snapshot for a mention to belong to — only the
+// moment it happened.
 type mentionStream struct {
 	mu   sync.Mutex
 	subs map[chan unboundMentionItem]struct{}

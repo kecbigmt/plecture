@@ -22,11 +22,10 @@ func main() {
 	runServer()
 }
 
-// runSubscribeCommand implements `slack-adapter subscribe unbound-mentions`,
-// the query.subscribe means for the Slack thread resource sketched in
-// docs/adr/2026-09-05-standing-session-dispatch.md. It never opens a second
-// Socket Mode connection: it is a client of the resident adapter's own
-// /unbound-mentions feed.
+// runSubscribeCommand implements `slack-adapter subscribe unbound-mentions`.
+// It never opens a Socket Mode connection of its own: it is a client of the
+// resident adapter's /unbound-mentions feed, so any number of these can run
+// without each consuming another connection to Slack.
 func runSubscribeCommand(args []string, out, errOut io.Writer) int {
 	if len(args) == 0 || args[0] != "unbound-mentions" {
 		fmt.Fprintln(errOut, "usage: slack-adapter subscribe unbound-mentions --base-url <url> --channel-ids <json-array>")

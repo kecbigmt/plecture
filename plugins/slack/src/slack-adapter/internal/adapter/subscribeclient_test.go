@@ -45,10 +45,9 @@ func waitForOutput(t *testing.T, out *syncBuffer) {
 	}
 }
 
-// TestRunSubscribeUnboundMentionsEmitsOneItemPerAppearance is the client-side
-// half of the ADR's "Given an unbound app mention ... exactly one item ...
-// emitted" acceptance criterion; TestHandleAppMentionPublishesToStream* in
-// unbound_mention_test.go covers the server-side half.
+// TestRunSubscribeUnboundMentionsEmitsOneItemPerAppearance covers the
+// client side of one mention's delivery; TestHandleAppMentionPublishesToStream*
+// in unbound_mention_test.go covers the server side of the same appearance.
 func TestRunSubscribeUnboundMentionsEmitsOneItemPerAppearance(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		flusher := w.(http.Flusher)
@@ -127,9 +126,6 @@ func TestRunSubscribeUnboundMentionsFiltersToChannelIDs(t *testing.T) {
 	}
 }
 
-// TestRunSubscribeUnboundMentionsReturnsErrorWhenStreamDisconnects is the
-// ADR's "Given adapter restart or stream disconnect, then the action exits
-// non-zero" acceptance criterion.
 func TestRunSubscribeUnboundMentionsReturnsErrorWhenStreamDisconnects(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Writing nothing and returning closes the body immediately,

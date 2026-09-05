@@ -287,12 +287,11 @@ func (a *Adapter) handleSubscribeDelete(w http.ResponseWriter, req *http.Request
 }
 
 // HandleUnboundMentions handles GET /unbound-mentions: a raw feed of every
-// unbound app mention as it occurs, one JSON item per line. It is
-// deliberately unscoped — the `subscribe unbound-mentions` action, not this
-// endpoint, is responsible for filtering to the channel_ids a query cares
-// about (see docs/adr/2026-09-05-standing-session-dispatch.md's
-// query.subscribe contract) — so one resident connection can serve any
-// number of actions.
+// unbound app mention as it occurs, one JSON item per line. It does not
+// filter by channel itself — that is the `subscribe unbound-mentions`
+// action's job — so this one resident connection can serve any number of
+// actions, each with its own channel set, without the adapter tracking
+// what each caller wants.
 func (a *Adapter) HandleUnboundMentions(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
