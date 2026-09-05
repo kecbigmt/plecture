@@ -392,8 +392,8 @@ The closed workflow-population surface is:
 | `populations.session.destroy.force` | Optional boolean; default false. | Uses the lifecycle service's explicit force-destroy path for entry-owned sessions. |
 | `populations.poll_every` | Required positive duration for poll; forbidden for push. | Sets complete-snapshot cadence. |
 | `populations.expire_after` | Required positive duration for push; forbidden for poll. | Expires a push appearance after that duration of external-input quiescence, subject to the task guard below. The spelling is recommended pending the ruling below. |
-| `populations.auto_down` | Optional boolean; recommended default true. | Allows the evaluator to select this entry's explicitly idle sessions under root-cap pressure. |
-| `populations.auto_destroy` | Optional boolean; recommended default true. | Allows the evaluator to execute an otherwise eligible guarded destruction. False retains the session and emits the same decision as a dry-run event. |
+| `populations.auto_down` | Optional boolean; default false. | When true, allows the evaluator to select this entry's explicitly idle sessions under root-cap pressure. |
+| `populations.auto_destroy` | Optional boolean; default false. | When true, allows the evaluator to execute an otherwise eligible guarded destruction. False retains the session and emits the same decision as a dry-run event. |
 
 The complete `session.inputs` object is validated against the target
 workflow's `inputs_schema` at load time: literal types are checked directly,
@@ -428,25 +428,26 @@ does not count. This measures external-input quiescence; it is independent of
 the runtime's explicit empty status message used for capacity decisions and a
 health probe's `silence_expected` turn-boundary exception.
 
-#### Automatic-action controls: owner confirmation required
+#### Automatic-action control shape: owner ruling required
 
-Independent down and destroy controls are required; their spelling and defaults
-need confirmation. Three compact shapes are available:
+Independent down and destroy controls are required, and both default off. Their
+spelling still needs confirmation. Three compact shapes are available:
 
 | Shape | Strength | Cost |
 |---|---|---|
-| Booleans `auto_down` / `auto_destroy` | Directly represents the two independent permissions; omission can carry a default. | Negative overrides such as `auto_destroy = false` require care when scanning. |
+| Booleans `auto_down` / `auto_destroy` | Directly represents the two independent permissions; omission safely denies each action. | Steady-state configuration must opt in with two explicit true values. |
 | Strings `down = "auto"` or `"manual"`, and likewise for destroy | Each value reads positively and can gain modes later. | Adds enum vocabulary when only permission is demonstrated. |
 | One combined mode | Uses one field. | Needs four combinations and couples permissions the owner requires independently. |
 
 Recommend the two booleans. They add only the two decisions that exist and do
-not speculate about additional modes. Recommend both default to true, pending
-owner confirmation: a declared population then fulfills its config-only
-convergence promise, while a cautious create-only rollout opts out explicitly
-with `auto_destroy = false`. Making destroy manual by default would silently
-leave every ordinary population outside its declared snapshot or expiry policy.
-Automatic down is reversible and occurs only under actual cap pressure, so it
-has no separate reason to default off.
+not speculate about additional modes. Both default to false: a freshly declared
+population discovers, creates, brings up, and sets up initial tasks, but it
+neither takes sessions down nor destroys them until the operator enables each
+action explicitly. This is a deliberate safety bias for rollout, not full
+convergence: absent or expired sessions produce dry-run destruction verdicts,
+and explicitly idle sessions remain up and consume root capacity until the
+corresponding switch is enabled or the operator acts manually. Steady-state
+configuration sets both values to true.
 
 Poll membership is exactly the latest successful complete snapshot. For an
 owned member missing from that snapshot, the evaluator plans destruction; the
@@ -659,9 +660,10 @@ a review session waiting for a reply can go down after its runtime explicitly
 reports idle, freeing a slot for a newly discovered pull request. The reply is
 an inbound session event, so it requests that retained member come back up; if
 the cap is still full, that request remains pending.
-A cautious first rollout can set `auto_destroy = false`: the same absence and
-task-guard verdicts are emitted, but teardown remains manual until the owner
-enables it.
+The explicit true settings make this the steady-state, fully convergent form.
+A fresh rollout can omit both switches: matching resources are still admitted,
+but teardown remains a dry-run and sessions remain up under cap pressure until
+the operator enables each action.
 
 #### Operations-chat configuration
 
@@ -754,6 +756,8 @@ destruction with zero population configuration while an escalated
 investigation is unsatisfied; a failed observation is also unsatisfied and
 therefore fails closed. Once every owned task instance is satisfied, the next
 evaluation may destroy the expired session.
+The explicit true settings make this the steady-state form; omitting them keeps
+automatic down and destruction disabled during rollout.
 
 ### 5. Evaluator placement: the resident process
 
@@ -1023,19 +1027,28 @@ must accept root `max_up_children` in `config.toml`, canonicalize every
 no-real-parent admission under the virtual root, and preserve explicit
 sibling-cohort authority independently from that capacity key.
 
+The false defaults intentionally make a bare population declaration
+upward-convergent only. It can discover and create desired members, but it does
+not fully converge run occupancy or removal until the operator enables the
+corresponding actions. The operational cost is visible rather than silent:
+destroy decisions remain dry-run events, and idle up members continue consuming
+root capacity. The worked examples set both switches to true explicitly because
+they show steady-state operation after rollout.
+
 Behavior fixtures and tests cover at least:
 
 - trusted ownership, whole-array replacement, provenance, and collisions;
 - poll and push discover validation, complete-snapshot failure, wake coalescing,
   and supervised restart;
 - poll destruction from successful absence only, including tombstones and task
-  guard deferral, automatic execution, and dry-run-only verdicts;
+  guard deferral, omitted-switch dry-run verdicts, and explicitly enabled
+  execution;
 - push expiry from the precise external-input clock, including repeated
   appearances, inbound resets, restart persistence, tombstones, and the same
   task guard and automatic-destroy control;
 - first-empty status recording, explicit-idle eligibility versus a runtime that
-  never reports, `auto_down` exclusion, oldest-first selection, ordinary down
-  cleanup, and failed-down fallback;
+  never reports, default and explicit `auto_down` exclusion, explicitly enabled
+  oldest-first selection, ordinary down cleanup, and failed-down fallback;
 - the three up signals, canonical resource-state comparison, invalidated idle
   evidence, pending existing-member priority, and concurrent admissions; and
 - one virtual-root cap for all parentless ups, including manual commands,
@@ -1085,6 +1098,9 @@ membership, and capacity mechanisms without any of the following:
   from a manually owned session, or without virtual-root contention;
 - automatic down or destroy control that cannot be represented by two
   independent per-entry permissions;
+- a safe initial rollout that cannot use upward-only convergence, dry-run
+  destruction verdicts, and retained up members until each automatic action is
+  explicitly enabled;
 - a down member that must come up for a signal other than re-appearance,
   inbound input, or changed observed resource facts;
 - a retained population that needs a total bound and deterministic destructive
