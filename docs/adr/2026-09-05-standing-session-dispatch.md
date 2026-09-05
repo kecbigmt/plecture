@@ -676,10 +676,7 @@ a review session waiting for a reply can go down after its runtime explicitly
 reports idle, freeing a slot for a newly matching pull request. The reply is
 an inbound session event, so it requests that retained member come back up; if
 the cap is still full, that request remains pending.
-The explicit true settings make this the steady-state, fully convergent form.
-A fresh rollout can omit both switches: matching resources are still admitted,
-but teardown remains a dry-run and sessions remain up under cap pressure until
-the operator enables each action.
+The explicit true settings select the steady-state form described in Decision 4.
 
 The same population is the combined variant because the referenced observer
 declares both `query.poll` and `query.subscribe`. Subscribe can validate and
@@ -780,8 +777,7 @@ destruction with zero population configuration while an escalated
 investigation is unsatisfied; a failed observation is also unsatisfied and
 therefore fails closed. Once every owned task instance is satisfied, the next
 evaluation may destroy the expired session.
-The explicit true settings make this the steady-state form; omitting them keeps
-automatic down and destruction disabled during rollout.
+The explicit true settings select that same steady-state form.
 
 ### 5. Evaluator placement: the resident process
 
@@ -821,12 +817,16 @@ stop or roll back a different session whose lifecycle already completed.
 Population-created sessions then use ordinary workflow tick reactors. The
 population evaluator does not tick tasks or deliver notifications. For the
 destruction guard it invokes the same completion-evaluation path as the
-ordinary task evaluator rather than defining another interpretation. It records
-`plect.workflow_population.*` decision, deferral, conflict, and failure events
-on an affected session. Workflow `[[event.channel]]` bindings may relay those
-events like any other. A poll or subscribe failure with no owned session is
-visible in resident logs; the language gains no destination, message, or
-notification field to special-case it.
+ordinary task evaluator rather than defining another interpretation. Lifecycle
+decisions record `plect.workflow_population.destroy`,
+`plect.workflow_population.down`, or `plect.workflow_population.up`; name
+collisions record `plect.workflow_population.conflict`; source or action
+failures record `plect.workflow_population.failure`; and guarded or dry-run
+destruction uses `plect.workflow_population.destroy_deferred` or
+`plect.workflow_population.destroy_dry_run`. Workflow `[[event.channel]]`
+bindings may relay those events like any other. A poll or subscribe failure
+with no owned session is visible in resident logs; the language gains no
+destination, message, or notification field to special-case it.
 
 `max_up_children` is the only concurrency vocabulary. A real session's
 workflow continues to bound its direct children, including chain-spawned
@@ -985,17 +985,17 @@ tie-breaker.
 
 The coordinator takes one candidate down through the ordinary lifecycle
 service, retries the pending atomic admission, and repeats only until that
-admission succeeds or no eligible candidate remains. A down failure records a
-population failure event, leaves that candidate's actual run state
+admission succeeds or no eligible candidate remains. A down failure records
+`plect.workflow_population.failure`, leaves that candidate's actual run state
 authoritative, and lets the coordinator try the next eligible candidate. It
 never selects a manually created session or a session owned by a different
 lifecycle authority merely because both count at the virtual root.
 
 With `auto_down = false`, the entry's sessions are omitted from the candidate
-set and continue to count while up. The evaluator records that no permitted
-candidate was available when this prevents an admission; it does not treat the
-switch as a lifecycle failure. Manual `plect down` remains available and frees
-capacity normally.
+set and continue to count while up. The evaluator records the no-permitted-
+candidate verdict as `plect.workflow_population.down` when this prevents an
+admission; it does not treat the switch as a lifecycle failure. Manual
+`plect down` remains available and frees capacity normally.
 
 A successful down frees root capacity while preserving population membership.
 It runs ordinary run-scoped cleanup and retains the session, workspace, event
@@ -1065,13 +1065,8 @@ must accept root `max_up_children` in `config.toml`, canonicalize every
 no-real-parent admission under the virtual root, and preserve explicit
 sibling-cohort authority independently from that capacity key.
 
-The false defaults intentionally make a bare population declaration
-upward-convergent only. It can query for and create desired members, but it does
-not fully converge run occupancy or removal until the operator enables the
-corresponding actions. The operational cost is visible rather than silent:
-destroy decisions remain dry-run events, and idle up members continue consuming
-root capacity. The worked examples set both switches to true explicitly because
-they show steady-state operation after rollout.
+Decision 4 specifies the false-default rollout tradeoff and explicit
+steady-state opt-ins.
 
 Behavior fixtures and tests cover at least:
 
@@ -1163,8 +1158,8 @@ deployment-local while a narrower language decision is made. Predicate-based
 lifecycle, finer task selection, expiry exceptions, residency guards, and
 per-population fairness can each return as pure extensions when a concrete
 consumer supplies their semantics. If only one consumer remains after the
-poll, subscribe, and orchestrator prototypes, the shared abstraction also loses
-its justification under the repository's YAGNI rule.
+review-dispatch, ops-chat, and orchestrator prototypes, the shared abstraction
+also loses its justification under the repository's YAGNI rule.
 
 ## Alternatives considered
 
