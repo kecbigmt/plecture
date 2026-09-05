@@ -202,6 +202,84 @@ func TestDispatchUnboundMentionSkipsHookWhenPermalinkLookupFails(t *testing.T) {
 	}
 }
 
+func TestHandleAppMentionPublishesToStreamAlongsideOnUnboundMentionHook(t *testing.T) {
+	a := newTestAdapter(&Config{OnUnboundMention: "/path/to/dispatch"})
+	a.threadFetcher = &fakeThreadFetcher{}
+	a.permalinkResolver = &fakePermalinkResolver{link: "https://example.slack.com/archives/C-review/p1000000001"}
+	a.mentionHook = &recordingMentionHookRunner{}
+	ch, cancel := a.mentions.subscribe()
+	defer cancel()
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> hello",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	runner := a.mentionHook.(*recordingMentionHookRunner)
+	if runner.calls != 1 {
+		t.Fatalf("hook calls = %d, want 1 (coexistence: the hook still fires)", runner.calls)
+	}
+
+	select {
+	case item := <-ch:
+		want := unboundMentionItem{
+			Resource:  "https://example.slack.com/archives/C-review/p1000000001",
+			ChannelID: "C-review",
+			ThreadTS:  "1000.000001",
+			MentionTS: "1000.000005",
+		}
+		if item != want {
+			t.Errorf("stream item = %+v, want %+v", item, want)
+		}
+	default:
+		t.Fatal("stream received nothing (coexistence: the stream must also fire)")
+	}
+}
+
+func TestHandleAppMentionPublishesToStreamWithoutOnUnboundMentionConfigured(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	a.threadFetcher = &fakeThreadFetcher{}
+	a.permalinkResolver = &fakePermalinkResolver{link: "https://example.slack.com/archives/C-review/p1000000001"}
+	ch, cancel := a.mentions.subscribe()
+	defer cancel()
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> hello",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	select {
+	case <-ch:
+	default:
+		t.Fatal("stream received nothing; a subscribe-only deployment (no on_unbound_mention) must still see the mention")
+	}
+}
+
+func TestHandleAppMentionSkipsPermalinkLookupWithNoHookAndNoStreamReaders(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	a.threadFetcher = &fakeThreadFetcher{}
+	resolver := &fakePermalinkResolver{link: "https://example.slack.com/archives/C-review/p1000000001"}
+	a.permalinkResolver = resolver
+
+	a.handleAppMention(&slackevents.AppMentionEvent{
+		User:            "U-dana",
+		Text:            "<@U-bot> hello",
+		TimeStamp:       "1000.000005",
+		ThreadTimeStamp: "1000.000001",
+		Channel:         "C-review",
+	})
+
+	if resolver.calls != 0 {
+		t.Fatalf("permalink lookups = %d, want 0 when neither the hook nor the stream would use it", resolver.calls)
+	}
+}
+
 func TestDispatchUnboundMentionCommandFailureIsLoggedAndNotRetried(t *testing.T) {
 	a := newTestAdapter(&Config{OnUnboundMention: "/path/to/dispatch"})
 	a.threadFetcher = &fakeThreadFetcher{}

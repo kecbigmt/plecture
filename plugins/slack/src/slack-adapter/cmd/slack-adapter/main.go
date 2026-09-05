@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,6 +16,51 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "subscribe" {
+		os.Exit(runSubscribeCommand(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	runServer()
+}
+
+// runSubscribeCommand implements `slack-adapter subscribe unbound-mentions`,
+// the query.subscribe means for the Slack thread resource sketched in
+// docs/adr/2026-09-05-standing-session-dispatch.md. It never opens a second
+// Socket Mode connection: it is a client of the resident adapter's own
+// /unbound-mentions feed.
+func runSubscribeCommand(args []string, out, errOut io.Writer) int {
+	if len(args) == 0 || args[0] != "unbound-mentions" {
+		fmt.Fprintln(errOut, "usage: slack-adapter subscribe unbound-mentions --base-url <url> --channel-ids <json-array>")
+		return 2
+	}
+
+	fs := flag.NewFlagSet("subscribe unbound-mentions", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	baseURL := fs.String("base-url", "", "resident slack-adapter base URL (required)")
+	channelIDsJSON := fs.String("channel-ids", "[]", "JSON array of channel IDs to include")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if *baseURL == "" {
+		fmt.Fprintln(errOut, "slack-adapter subscribe unbound-mentions: --base-url is required")
+		return 2
+	}
+	var channelIDs []string
+	if err := json.Unmarshal([]byte(*channelIDsJSON), &channelIDs); err != nil {
+		fmt.Fprintf(errOut, "slack-adapter subscribe unbound-mentions: --channel-ids: %v\n", err)
+		return 2
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+
+	if err := adapter.RunSubscribeUnboundMentions(ctx, *baseURL, channelIDs, out); err != nil {
+		fmt.Fprintln(errOut, "slack-adapter subscribe unbound-mentions:", err)
+		return 1
+	}
+	return 0
+}
+
+func runServer() {
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).
 		With("component", "slack-adapter")
 
@@ -31,6 +80,7 @@ func main() {
 	mux.HandleFunc("/messages", a.HandlePostMessage)
 	mux.HandleFunc("/subscribe", a.HandleSubscribe)
 	mux.HandleFunc("/subscribers", a.HandleSubscribers)
+	mux.HandleFunc("/unbound-mentions", a.HandleUnboundMentions)
 	mux.HandleFunc("/notify", a.HandleNotify)
 	mux.HandleFunc("/status", a.HandleSetStatus)
 

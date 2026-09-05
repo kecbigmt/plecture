@@ -286,6 +286,45 @@ func (a *Adapter) handleSubscribeDelete(w http.ResponseWriter, req *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandleUnboundMentions handles GET /unbound-mentions: a raw feed of every
+// unbound app mention as it occurs, one JSON item per line. It is
+// deliberately unscoped — the `subscribe unbound-mentions` action, not this
+// endpoint, is responsible for filtering to the channel_ids a query cares
+// about (see docs/adr/2026-09-05-standing-session-dispatch.md's
+// query.subscribe contract) — so one resident connection can serve any
+// number of actions.
+func (a *Adapter) HandleUnboundMentions(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ch, cancel := a.mentions.subscribe()
+	defer cancel()
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	enc := json.NewEncoder(w)
+	for {
+		select {
+		case <-req.Context().Done():
+			return
+		case item := <-ch:
+			if err := enc.Encode(item); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
 // HandleNotify handles POST /notify, routing a session-scoped notification
 // to Slack and/or channel-server based on the subscriber map. The body
 // carries session_name (the lookup key) plus the unformatted summary;

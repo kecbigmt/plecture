@@ -47,11 +47,19 @@ func (cliMentionHookRunner) Run(command string, payload []byte) error {
 	return cmd.Run()
 }
 
-// dispatchUnboundMention only ever inspects the command's exit status
-// (logged, never retried): which workflow to start and which channels to
-// honour is deployment policy this plugin must not encode.
+// dispatchUnboundMention feeds both delivery paths from one permalink
+// resolution: the opaque on_unbound_mention hook (only if configured) and
+// the /unbound-mentions stream (only if something is connected to it). The
+// two coexist rather than one superseding the other — see
+// docs/adr/2026-09-05-standing-session-dispatch.md's subscribe-only
+// observer sketch — until the hook's retirement (a separate, later step).
+// The hook command's exit status is only ever inspected, never retried:
+// which workflow to start and which channels to honour is deployment
+// policy this plugin must not encode.
 func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, threadTS string) {
-	if a.cfg.OnUnboundMention == "" {
+	hasHook := a.cfg.OnUnboundMention != ""
+	hasStreamReaders := a.mentions != nil && a.mentions.hasSubscribers()
+	if !hasHook && !hasStreamReaders {
 		return
 	}
 
@@ -61,8 +69,21 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 	}
 	link, err := resolver.permalink(ev.Channel, threadTS)
 	if err != nil {
-		a.logger.Warn("on_unbound_mention skipped: failed to resolve permalink",
+		a.logger.Warn("unbound mention dispatch skipped: failed to resolve permalink",
 			"thread_ts", threadTS, "channel_id", ev.Channel, "error", err)
+		return
+	}
+
+	if a.mentions != nil {
+		a.mentions.publish(unboundMentionItem{
+			Resource:  link,
+			ChannelID: ev.Channel,
+			ThreadTS:  threadTS,
+			MentionTS: ev.TimeStamp,
+		})
+	}
+
+	if !hasHook {
 		return
 	}
 
