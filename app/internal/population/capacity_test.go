@@ -1,6 +1,9 @@
 package population
 
 import (
+	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +25,81 @@ func capacityFixture(t *testing.T) (*capacityCoordinator, Definition, *state.Sto
 	coordinator := newCapacityCoordinator(func() *config.Config { return &config.Config{} }, store, logStore)
 	coordinator.setDefinitions([]Definition{def})
 	return coordinator, def, store, logStore, time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC)
+}
+
+func TestCapacityPriorityOnlyAppliesWhenVirtualRootCapIsFull(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		seedFull bool
+		wantErr  bool
+	}{
+		{name: "under cap"},
+		{name: "at cap", seedFull: true, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, `poll_every = "1m"`, `resource = { from = "resource.id" }`)
+			writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
+kind = "workspace_provider"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
+name = { from = "match.id" }
+[provider.setup]
+type = "exec"
+command = "printf"
+args = ['{"workspace_dir":"%s","branch":"main"}']
+[provider.outputs_schema]
+type = "object"
+`, cfg.WorkspaceDirsRoot))
+			limit := 1
+			cfg.MaxUpChildren = &limit
+			definitions, err := Load(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			def := definitions[0]
+			store := state.NewStore(t.TempDir())
+			coordinator := newCapacityCoordinator(func() *config.Config { return cfg }, store, eventlog.NewStore(store.Dir()))
+			coordinator.setDefinitions(definitions)
+			if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
+				population.Members["urn:case:new"] = &state.PopulationMember{ResourceID: "urn:case:new", PendingUp: true}
+				population.Members["urn:case:owned"] = &state.PopulationMember{
+					ResourceID: "urn:case:owned", SessionName: "owned+agent", PendingUp: true,
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Put(&contract.Session{
+				Name: "owned+agent", ResourceID: "urn:case:owned",
+				Population: &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if tc.seedFull {
+				if err := store.Put(&contract.Session{Name: "manual", Tasks: map[string]*contract.TaskState{
+					"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+				}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			session, err := coordinator.up(context.Background(), def, "urn:case:new", map[string]any{"resource": "urn:case:new"})
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "takes priority") {
+					t.Fatalf("up error = %v, want existing-member priority after a cap rejection", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("up under the virtual-root cap: %v", err)
+			}
+			if session == "" || store.Get(session) == nil {
+				t.Fatalf("session = %q, want a newly admitted population session", session)
+			}
+		})
+	}
 }
 
 func addCapacityMember(t *testing.T, def Definition, store *state.Store, logStore *eventlog.Store, name, resource string, created, cleared time.Time) {

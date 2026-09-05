@@ -92,7 +92,37 @@
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/literalData"
-          }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "from"
+                ]
+              },
+              {
+                "required": [
+                  "expr"
+                ]
+              },
+              {
+                "required": [
+                  "terminal"
+                ]
+              },
+              {
+                "required": [
+                  "bin"
+                ]
+              },
+              {
+                "required": [
+                  "json"
+                ]
+              }
+            ]
+          },
+          "$comment": "PLECTURE-CFG-VALUE-TAG-SURFACE: a literal-data object cannot be a tagged value."
         }
       ]
     },

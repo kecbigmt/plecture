@@ -50,6 +50,13 @@ command = "true"
 [provider.outputs_schema]
 type = "object"
 `)
+	writeDefinition(t, dir, "runtime", `[runtime]
+kind = "effect"
+scope = "run"
+[runtime.setup]
+type = "exec"
+command = "true"
+`)
 	writeDefinition(t, dir, "workflow", `[agent]
 kind = "workflow"
 workspace_provider = "provider"
@@ -59,6 +66,9 @@ required = ["resource"]
 additionalProperties = false
 [agent.inputs_schema.properties.resource]
 type = "string"
+[[agent.nodes]]
+id = "runtime"
+uses = "runtime"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"

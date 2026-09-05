@@ -43,12 +43,12 @@ func (c *capacityCoordinator) up(_ context.Context, def Definition, resource str
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	provenance := &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name}
-	if c.pendingExistingAhead(def, resource) {
-		return "", fmt.Errorf("an existing population member has a pending up request and takes priority")
-	}
 	session, err := upPopulation(c.cfg, c.state, def, provenance, resource, inputs)
 	if !isCapError(err) {
 		return session, err
+	}
+	if c.pendingExistingAhead(def, resource) {
+		return "", fmt.Errorf("an existing population member has a pending up request and takes priority")
 	}
 	for _, candidate := range c.idleCandidates() {
 		if _, downErr := service.Down(c.cfg(), c.state, service.DownParams{Identifier: candidate.session}); downErr != nil {
