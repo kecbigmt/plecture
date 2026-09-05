@@ -31,6 +31,66 @@ args = [
   { bin = "github-watcher" },
 ]
 
+# query-pulls (poll) is the sole authority for presence and absence, while
+# the webhook-receiver subscribe-pulls stream only accelerates admission of
+# a pull request poll would confirm anyway. --watcher-bin/--cache-path are
+# omitted here: a population evaluator has no per-call
+# app_id/private_key_path input to select a token by, so both binaries read
+# deployment-level GitHub App auth from the environment instead.
+[pull.query.poll]
+type = "exec"
+bin  = "github-issue-pr"
+args = [
+  "query-pulls",
+  "--repositories",
+  { json = { from = "inputs.repositories" } },
+  "--labels",
+  { json = { from = "inputs.labels" } },
+  "--state",
+  { from = "inputs.state" },
+  "--draft",
+  { expr = "inputs.draft ? 'true' : 'false'" },
+]
+
+[pull.query.subscribe]
+type = "exec"
+bin  = "github-webhook-receiver"
+args = [
+  "subscribe-pulls",
+  "--repositories",
+  { json = { from = "inputs.repositories" } },
+  "--labels",
+  { json = { from = "inputs.labels" } },
+  "--state",
+  { from = "inputs.state" },
+  "--draft",
+  { expr = "inputs.draft ? 'true' : 'false'" },
+]
+
+[pull.query.inputs_schema]
+type                 = "object"
+required             = ["repositories", "labels", "state", "draft"]
+additionalProperties = false
+
+[pull.query.inputs_schema.properties]
+repositories = { type = "array", minItems = 1, items = { type = "string" } }
+labels       = { type = "array", items = { type = "string" } }
+state        = { type = "string", enum = ["open", "closed", "all"] }
+draft        = { type = "boolean" }
+
+# resource, owner, and repository mirror the query executables' own item
+# shape exactly; a self-test decodes this file to confirm no property here
+# also appears in state_schema below.
+[pull.query.item_schema]
+type                 = "object"
+required             = ["resource"]
+additionalProperties = false
+
+[pull.query.item_schema.properties]
+resource   = { type = "string", format = "uri" }
+owner      = { type = "string" }
+repository = { type = "string" }
+
 [pull.state_schema]
 type     = "object"
 required = ["resource_kind", "checks_status", "revision", "pr_url", "mergeable_state", "review_decision"]

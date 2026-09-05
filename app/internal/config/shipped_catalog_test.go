@@ -1,10 +1,13 @@
 package config
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/version"
 )
@@ -187,5 +190,258 @@ func TestShippedCatalog_GhAppGuardIsRunScoped(t *testing.T) {
 	}
 	if got := def.EffectiveScope(); got != TaskScopeRun {
 		t.Errorf("official.github.gh_app_guard scope = %q, want %q", got, TaskScopeRun)
+	}
+}
+
+// renderQueryArgv resolves a query means against a fixed inputs root, the
+// same way the population evaluator would, so these tests exercise the
+// exact argv the shipped catalog produces rather than the TOML source text.
+func renderQueryArgv(t *testing.T, cfg *Config, def ResourceDef, action *lang.Action, inputs map[string]any) []string {
+	t.Helper()
+	eval := lang.Eval{
+		Roots: lang.Roots{"inputs": inputs},
+		Bin: func(ref string) (string, error) {
+			return cfg.binResolver(def.SourcePath).ResolveBin(ref, def.Ownership())
+		},
+	}
+	execution, err := eval.Run("", action, nil)
+	if err != nil {
+		t.Fatalf("render query action: %v", err)
+	}
+	return execution.Argv
+}
+
+// TestShippedCatalog_GitHubPullQueryInvokesDocumentedFlags guards
+// resources/pull.toml's query face: poll and subscribe must invoke
+// github-issue-pr query-pulls and github-webhook-receiver subscribe-pulls
+// with the same --repositories/--labels/--state/--draft flags
+// plugins/github/src/internal/pullquery.ParseInputs expects.
+func TestShippedCatalog_GitHubPullQueryInvokesDocumentedFlags(t *testing.T) {
+	cfg := loadShippedCatalog(t, "official")
+	observers, err := cfg.LoadResourceDefs()
+	if err != nil {
+		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
+	}
+	def, ok := observers["official.github.pull"]
+	if !ok {
+		t.Fatal("shipped catalog resource observer \"official.github.pull\" not found")
+	}
+	if def.Query == nil {
+		t.Fatal("official.github.pull declares no query face")
+	}
+	if def.Query.Poll == nil {
+		t.Fatal("official.github.pull's query declares no poll means")
+	}
+	if def.Query.Subscribe == nil {
+		t.Fatal("official.github.pull's query declares no subscribe means")
+	}
+
+	inputs := map[string]any{
+		"repositories": []any{"acme/widgets"},
+		"labels":       []any{"agent-review"},
+		"state":        "open",
+		"draft":        false,
+	}
+
+	pollArgv := renderQueryArgv(t, cfg, def, def.Query.Poll, inputs)
+	assertGitHubQueryArgv(t, pollArgv, "github-issue-pr", "query-pulls")
+
+	subscribeArgv := renderQueryArgv(t, cfg, def, def.Query.Subscribe, inputs)
+	assertGitHubQueryArgv(t, subscribeArgv, "github-webhook-receiver", "subscribe-pulls")
+}
+
+func assertGitHubQueryArgv(t *testing.T, argv []string, wantBin, wantSubcommand string) {
+	t.Helper()
+	if len(argv) == 0 {
+		t.Fatal("argv is empty")
+	}
+	if !strings.HasSuffix(argv[0], wantBin) {
+		t.Errorf("argv[0] = %q, want it to resolve %q", argv[0], wantBin)
+	}
+	if len(argv) < 2 || argv[1] != wantSubcommand {
+		t.Errorf("argv[1] = %v, want %q", argv, wantSubcommand)
+	}
+	flags := map[string]string{}
+	for i := 2; i+1 < len(argv); i += 2 {
+		flags[argv[i]] = argv[i+1]
+	}
+	var repositories, labels []string
+	if err := json.Unmarshal([]byte(flags["--repositories"]), &repositories); err != nil {
+		t.Fatalf("--repositories %q is not JSON: %v", flags["--repositories"], err)
+	}
+	if len(repositories) != 1 || repositories[0] != "acme/widgets" {
+		t.Errorf("--repositories = %v, want [acme/widgets]", repositories)
+	}
+	if err := json.Unmarshal([]byte(flags["--labels"]), &labels); err != nil {
+		t.Fatalf("--labels %q is not JSON: %v", flags["--labels"], err)
+	}
+	if len(labels) != 1 || labels[0] != "agent-review" {
+		t.Errorf("--labels = %v, want [agent-review]", labels)
+	}
+	if flags["--state"] != "open" {
+		t.Errorf("--state = %q, want %q", flags["--state"], "open")
+	}
+	if flags["--draft"] != "false" {
+		t.Errorf("--draft = %q, want %q", flags["--draft"], "false")
+	}
+}
+
+// TestShippedCatalog_GitHubPullQueryItemSchemaBoundary guards the
+// observe/query boundary directly on the shipped declaration: the query
+// item schema requires only "resource" and shares no property with
+// state_schema.
+func TestShippedCatalog_GitHubPullQueryItemSchemaBoundary(t *testing.T) {
+	cfg := loadShippedCatalog(t, "official")
+	observers, err := cfg.LoadResourceDefs()
+	if err != nil {
+		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
+	}
+	def, ok := observers["official.github.pull"]
+	if !ok {
+		t.Fatal("shipped catalog resource observer \"official.github.pull\" not found")
+	}
+	required, _ := def.Query.ItemSchema["required"].([]any)
+	if len(required) != 1 || required[0] != "resource" {
+		t.Errorf("query.item_schema.required = %v, want exactly [\"resource\"]", required)
+	}
+	itemProps, _ := def.Query.ItemSchema["properties"].(map[string]any)
+	stateProps, _ := def.StateSchema["properties"].(map[string]any)
+	for prop := range itemProps {
+		if _, clash := stateProps[prop]; clash {
+			t.Errorf("query item_schema property %q also appears in state_schema", prop)
+		}
+	}
+}
+
+// TestShippedCatalog_SlackThreadStateQueryInvokesDocumentedFlags guards the
+// Slack thread resource observer's subscribe-only query face: it must
+// invoke slack-adapter subscribe unbound-mentions with the flags
+// RunSubscribeUnboundMentions expects, and it declares no poll means since
+// a mention appearance is not enumerable.
+func TestShippedCatalog_SlackThreadStateQueryInvokesDocumentedFlags(t *testing.T) {
+	cfg := loadShippedCatalog(t, "official")
+	observers, err := cfg.LoadResourceDefs()
+	if err != nil {
+		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
+	}
+	def, ok := observers["official.slack.thread_state"]
+	if !ok {
+		t.Fatal("shipped catalog resource observer \"official.slack.thread_state\" not found")
+	}
+	if def.Query == nil {
+		t.Fatal("official.slack.thread_state declares no query face")
+	}
+	if def.Query.Poll != nil {
+		t.Error("official.slack.thread_state declares a poll means, but a mention appearance is not enumerable")
+	}
+	if def.Query.Subscribe == nil {
+		t.Fatal("official.slack.thread_state's query declares no subscribe means")
+	}
+
+	inputs := map[string]any{
+		"base_url":    "http://127.0.0.1:7890",
+		"channel_ids": []any{"C01234567"},
+	}
+	argv := renderQueryArgv(t, cfg, def, def.Query.Subscribe, inputs)
+	if len(argv) == 0 || !strings.HasSuffix(argv[0], "slack-adapter") {
+		t.Fatalf("argv[0] = %v, want it to resolve slack-adapter", argv)
+	}
+	if len(argv) < 3 || argv[1] != "subscribe" || argv[2] != "unbound-mentions" {
+		t.Errorf("argv = %v, want it to start with subscribe unbound-mentions", argv)
+	}
+	flags := map[string]string{}
+	for i := 3; i+1 < len(argv); i += 2 {
+		flags[argv[i]] = argv[i+1]
+	}
+	if flags["--base-url"] != "http://127.0.0.1:7890" {
+		t.Errorf("--base-url = %q, want %q", flags["--base-url"], "http://127.0.0.1:7890")
+	}
+	var channelIDs []string
+	if err := json.Unmarshal([]byte(flags["--channel-ids"]), &channelIDs); err != nil {
+		t.Fatalf("--channel-ids %q is not JSON: %v", flags["--channel-ids"], err)
+	}
+	if len(channelIDs) != 1 || channelIDs[0] != "C01234567" {
+		t.Errorf("--channel-ids = %v, want [C01234567]", channelIDs)
+	}
+
+	required, _ := def.Query.ItemSchema["required"].([]any)
+	if len(required) != 1 || required[0] != "resource" {
+		t.Errorf("query.item_schema.required = %v, want exactly [\"resource\"]", required)
+	}
+	itemProps, _ := def.Query.ItemSchema["properties"].(map[string]any)
+	stateProps, _ := def.StateSchema["properties"].(map[string]any)
+	for prop := range itemProps {
+		if _, clash := stateProps[prop]; clash {
+			t.Errorf("query item_schema property %q also appears in state_schema", prop)
+		}
+	}
+}
+
+// TestShippedCatalog_WorkflowPopulationResolvesGitHubPullQuery is a
+// host-owned test workflow, not shipped config (populations declarations
+// are deployment policy, out of scope for this plugin): it only proves
+// that official.github.pull's combined poll/subscribe query face is a
+// valid population source.
+func TestShippedCatalog_WorkflowPopulationResolvesGitHubPullQuery(t *testing.T) {
+	cfg := loadShippedCatalog(t, "official")
+	cfg.BaseDir = t.TempDir()
+	writeFile(t, filepath.Join(cfg.BaseDir, "agent.toml"), `
+[agent]
+kind               = "workflow"
+workspace_provider = "official.github.worktree"
+
+[[agent.populations]]
+name              = "dispatch"
+resource_observer = "official.github.pull"
+poll_every        = "1m"
+auto_down         = true
+auto_destroy      = true
+
+[agent.populations.query]
+repositories = ["acme/widgets"]
+labels       = ["agent-review"]
+state        = "open"
+draft        = false
+`)
+	workflows, err := cfg.LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	populations := workflows["agent"].Populations
+	if len(populations) != 1 || populations[0].ResourceObserver != "official.github.pull" {
+		t.Fatalf("populations = %+v", populations)
+	}
+}
+
+// TestShippedCatalog_WorkflowPopulationResolvesSlackThreadStateQuery mirrors
+// the test above for the subscribe-only Slack case; expire_after (not
+// poll_every) is required because official.slack.thread_state declares no
+// poll means.
+func TestShippedCatalog_WorkflowPopulationResolvesSlackThreadStateQuery(t *testing.T) {
+	cfg := loadShippedCatalog(t, "official")
+	cfg.BaseDir = t.TempDir()
+	writeFile(t, filepath.Join(cfg.BaseDir, "ops.toml"), `
+[ops]
+kind               = "workflow"
+workspace_provider = "official.slack.thread"
+
+[[ops.populations]]
+name              = "mentions"
+resource_observer = "official.slack.thread_state"
+expire_after      = "8h"
+auto_down         = true
+auto_destroy      = true
+
+[ops.populations.query]
+base_url    = "http://127.0.0.1:7890"
+channel_ids = ["C01234567"]
+`)
+	workflows, err := cfg.LoadWorkflows("")
+	if err != nil {
+		t.Fatalf("LoadWorkflows: %v", err)
+	}
+	populations := workflows["ops"].Populations
+	if len(populations) != 1 || populations[0].ResourceObserver != "official.slack.thread_state" {
+		t.Fatalf("populations = %+v", populations)
 	}
 }

@@ -127,11 +127,10 @@ service — that connects to a *running* resident adapter's `GET
 itself), filters to `--channel-ids`, and writes one JSON item per line to
 stdout for each match, in the item shape `GET /unbound-mentions` documents
 below. This is the
-`query.subscribe` means for the Slack thread resource sketched in
-`docs/adr/2026-09-05-standing-session-dispatch.md`; it is the config
-language's job (not shipped as of this plugin's current resource_observer
-support) to invoke it and coexists with `on_unbound_mention` until that
-hook's later, separate retirement.
+`query.subscribe` means `../../config/resources/thread_state.toml` binds
+for the Slack thread resource
+(`docs/adr/2026-09-05-standing-session-dispatch.md`), and coexists with
+`on_unbound_mention` until that hook's later, separate retirement.
 
 It runs until the connection ends and then exits: staying up is the caller's
 job (a supervisor restarting it on any exit, per the ADR's query.subscribe
@@ -139,6 +138,19 @@ contract), not this command's. Exit 0 means the caller's own context was
 cancelled (e.g. `SIGTERM`); any other exit — the resident adapter was
 unreachable, or the stream ended some other way (e.g. an adapter restart) —
 is non-zero, and never means "no mentions occurred."
+
+### `resource observe` (thread_state's observe action)
+
+```
+slack-adapter resource observe --resource <permalink>
+```
+
+`thread_state`'s `resource_observer` declaration requires an `observe`
+action, but the observer's `state_schema` is empty: a mention's appearance
+is already the only fact its `query.subscribe` means reports, and
+`observe` has nothing live to add without inventing a fact the schema does
+not declare. This command prints `{}` and exits 0 for any non-empty
+`--resource`.
 
 ## HTTP API
 

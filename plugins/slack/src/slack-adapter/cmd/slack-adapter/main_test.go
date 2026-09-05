@@ -62,3 +62,41 @@ func TestRunSubscribeCommandStreamsUntilDisconnected(t *testing.T) {
 		t.Fatalf("exit code = %d, want 1 (a supervisor restart signal) for an unexpected disconnect", code)
 	}
 }
+
+func TestRunResourceCommandRejectsUnknownSubcommand(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := runResourceCommand([]string{"observe-state"}, &out, &errOut)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if out.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", out.String())
+	}
+}
+
+func TestRunResourceCommandRequiresResource(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := runResourceCommand([]string{"observe"}, &out, &errOut)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if !strings.Contains(errOut.String(), "--resource") {
+		t.Errorf("stderr = %q, want a mention of --resource", errOut.String())
+	}
+}
+
+// The thread_state resource observer's state_schema is empty: this
+// subcommand exists only because the language requires every
+// resource_observer to declare an observe action, and printing "{}" is the
+// honest answer for one with no facts of its own, rather than inventing a
+// state key the shipped config does not declare.
+func TestRunResourceCommandPrintsAnEmptyObjectForAResolvedResource(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := runResourceCommand([]string{"observe", "--resource", "https://acme.slack.com/archives/C01234567/p1234567890123456"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", code, errOut.String())
+	}
+	if got := strings.TrimSpace(out.String()); got != "{}" {
+		t.Errorf("stdout = %q, want %q", got, "{}")
+	}
+}

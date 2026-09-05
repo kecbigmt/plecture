@@ -16,8 +16,13 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "subscribe" {
-		os.Exit(runSubscribeCommand(os.Args[2:], os.Stdout, os.Stderr))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "subscribe":
+			os.Exit(runSubscribeCommand(os.Args[2:], os.Stdout, os.Stderr))
+		case "resource":
+			os.Exit(runResourceCommand(os.Args[2:], os.Stdout, os.Stderr))
+		}
 	}
 	runServer()
 }
@@ -56,6 +61,33 @@ func runSubscribeCommand(args []string, out, errOut io.Writer) int {
 		fmt.Fprintln(errOut, "slack-adapter subscribe unbound-mentions:", err)
 		return 1
 	}
+	return 0
+}
+
+// runResourceCommand implements `slack-adapter resource observe`, the
+// thread_state resource observer's observe action. A mention appearance is
+// the only fact the thread resource contributes to population dispatch,
+// and that already flows through the query.subscribe stream, so this
+// action has nothing live left to report; printing "{}" says exactly that,
+// matching the observer's empty state_schema instead of a fabricated key.
+func runResourceCommand(args []string, out, errOut io.Writer) int {
+	if len(args) == 0 || args[0] != "observe" {
+		fmt.Fprintln(errOut, "usage: slack-adapter resource observe --resource <url>")
+		return 2
+	}
+
+	fs := flag.NewFlagSet("resource observe", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	resource := fs.String("resource", "", "resource identifier (a Slack thread permalink)")
+	if err := fs.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if *resource == "" {
+		fmt.Fprintln(errOut, "slack-adapter resource observe: --resource is required")
+		return 2
+	}
+
+	fmt.Fprintln(out, "{}")
 	return 0
 }
 

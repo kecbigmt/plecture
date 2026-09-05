@@ -42,6 +42,11 @@ another plugin's package.
   `include` list decides which events reach it. An event's body-or-summary
   becomes the sole `loading_messages` entry; an event whose body and summary
   are both empty clears the status instead.
+- `config/resources/thread_state.toml` — declares the `thread_state`
+  resource observer: a `[thread_state.query]` face whose `subscribe` means
+  is the workflow population source for an unbound Slack mention (see
+  "Query (population source)" below). Distinct from the `thread` workspace
+  provider above — same permalink, different responsibility.
 - `src/slack-adapter/` — Slack-specific message relay + subscription
   broker. See `src/slack-adapter/CLAUDE.md`.
 
@@ -134,6 +139,29 @@ This is a display detail of an already-deprecated path, not a workflow
 commitment the config layer makes, so it is left as is rather than
 generalized.
 
+## Query (population source)
+
+`config/resources/thread_state.toml` declares the `thread_state` resource
+observer's `[thread_state.query]` face
+(`docs/adr/2026-09-05-standing-session-dispatch.md`, "Subscribe-only
+observer sketch"): the item source a workflow's `[[workflow.populations]]`
+entry binds to keep a session present for a Slack thread that received an
+unbound `app_mention`. It declares only `subscribe` — a mention is not
+enumerable, so there is no `poll` means, and a population entry using this
+observer always sets `expire_after` rather than `poll_every`.
+
+- **`slack-adapter subscribe unbound-mentions`** (see
+  `src/slack-adapter/README.md`) is the subscribe means: it never opens a
+  second Socket Mode connection, instead reading the resident adapter's own
+  `/unbound-mentions` feed and converting each `unboundMentionItem` straight
+  into the query's item shape: `resource` (the mention's permalink,
+  required) plus `channel_id`, `thread_ts`, and `mention_ts` context.
+- **`slack-adapter resource observe`** is `thread_state`'s `observe`
+  action. The language requires every `resource_observer` to declare one,
+  but this observer's `state_schema` is empty — a mention appearance is
+  already the only fact `query.subscribe` reports — so it prints `{}`
+  rather than fabricating a state key the schema does not declare.
+
 ## Not included
 
 - Which agent runtime delivers into Slack, or vice versa — a workflow's
@@ -142,10 +170,3 @@ generalized.
   channel-server socket or imports an agent-runtime plugin's package.
 - slack-adapter's Slack App manifest, HTTP API surface, and subscription
   broker behavior — see `src/slack-adapter/CLAUDE.md`.
-- A `resource_observer` config declaring the thread resource's
-  `query.subscribe` face (`docs/adr/2026-09-05-standing-session-dispatch.md`):
-  the config language's `resource_observer` surface has no `query` field yet,
-  so wiring one in would fail to load. `slack-adapter subscribe
-  unbound-mentions` (see `src/slack-adapter/README.md`) and its resident
-  `/unbound-mentions` feed are the plugin-side half already built for that
-  face to bind to once the language supports it.
