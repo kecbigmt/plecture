@@ -1,4 +1,4 @@
-# Standing session dispatch from resource discovery
+# Standing session dispatch from resource observation
 
 ## Context
 
@@ -70,10 +70,10 @@ the responsibility of [the failure-model work](https://github.com/kecbigmt/plect
 | Option | Load-time validation | Layer and cascade owner | Plugin-boundary consequence | Assessment |
 |---|---|---|---|---|
 | (a) New top-level kind | The observer, optional initial task, target workflow, both input contracts, and item roots resolve from one definition. | A trusted layer owns a separate whole definition and a static workflow reference. | Plugin mechanics and deployment values remain separated, but population policy gets an identity outside the user policy it activates. | Viable, but unnecessary once a running workflow is user-owned; it adds a kind and a second policy owner for no additional validation. |
-| (b) Array nested in `workflow` | The target workflow and its input contract are local; observer, task, discover, and item references still resolve statically. | The user-owned workflow owns its complete population array. A deeper eligible workflow layer replaces that array wholesale, in the same cascade family as `[tick]` rather than additive `nodes`. | Catalogs may show commented scaffold placeholders, but mounted plugin content cannot activate them. Team parameters remain in the user's copy. | Recommended: a standing population is policy for producing sessions of this workflow, which is exactly the responsibility the user-owned workflow already carries. |
+| (b) Array nested in `workflow` | The target workflow and its input contract are local; observer, task, query, stream, and item references still resolve statically. | The user-owned workflow owns its complete population array. A deeper eligible workflow layer replaces that array wholesale, in the same cascade family as `[tick]` rather than additive `nodes`. | Catalogs may show commented scaffold placeholders, but mounted plugin content cannot activate them. Team parameters remain in the user's copy. | Recommended: a standing population is policy for producing sessions of this workflow, which is exactly the responsibility the user-owned workflow already carries. |
 | (c) Nested in `task` beside chains | The observer facts are local and a target workflow can be resolved like a chain. | Task `extends` is additive, so population policy would compose through task specialization even though only one deployment should own a population. | Shipped tasks would either contain team data or require a user to replace or extend plugin work merely to choose deployment policy. | Rejected: chains fire from an existing instance, while discovery fires before an instance exists and must also support sessions that intentionally start without a task. |
 | (d) Added to `config.toml` | References and schemas could be checked, but the entry would have no definition identity of its own. | The reserved file is machine-wide resolution and defaults, outside definition discovery and cascade. | It would centralize every deployment rule in a reserved file and provide no address for provenance or events. | Rejected: it violates the definition-block principle and cannot name the authority allowed to destroy a session. |
-| (e) Nested in `resource_observer` | Discovery and item schemas would be colocated. The workflow and task could also be resolved. | Resource observers are whole-definition plugin resources; a user cannot append policy to one and replacing one copies plugin mechanics into the deployment layer. | Team repositories, channels, limits, and workflow choices would land in plugin-owned files or force a fork. | Rejected: the observer should gain the reusable discovery mechanism, not deployment policy that consumes it. |
+| (e) Nested in `resource_observer` | Query, stream, and item schemas would be colocated. The workflow and task could also be resolved. | Resource observers are whole-definition plugin resources; a user cannot append policy to one and replacing one copies plugin mechanics into the deployment layer. | Team repositories, channels, limits, and workflow choices would land in plugin-owned files or force a fork. | Rejected: the observer should gain reusable item-source mechanisms, not deployment policy that consumes them. |
 
 #### Recommendation
 
@@ -104,8 +104,9 @@ differently named entry cannot adopt or destroy those sessions. An invalid
 reload keeps the last valid evaluator. Clean removal of an entry stops its
 evaluator without destroying its sessions, because removal
 of policy is not evidence that a resource left a successfully observed set;
-the operator can destroy the provenance-marked sessions explicitly or first
-replace the entry with parameters whose successful snapshot is empty.
+the operator can destroy the provenance-marked sessions explicitly or, for a
+query selection, first replace the entry with parameters whose successful
+snapshot is empty.
 
 One bootstrap constraint remains: an active population must come from the
 resident process's workspace-independent trusted workflow load. A workflow
@@ -125,107 +126,102 @@ The collection field and each entry's required `name` are distinct. This
 decision names the array below the workflow; the entry name is the stable block
 identity used with the workflow id for provenance.
 
-| Candidate | Discovery face | Lifecycle face | Language fit |
+| Candidate | Source face | Lifecycle face | Language fit |
 |---|---|---|---|
 | `sources` | Clearly says where sessions come from. | Says little about continued membership, expiry, or teardown. | Plural agrees with `nodes` and `chains`, but keeps the misleading one-way emphasis. |
-| `triggers` | Clearly suggests an event or condition starts work. | Implies one-shot firing rather than reconciliation and destruction. | Familiar, but wrong for poll snapshots and ongoing ownership. |
+| `triggers` | Clearly suggests an event or condition starts work. | Implies one-shot firing rather than reconciliation and destruction. | Familiar, but wrong for query snapshots and ongoing ownership. |
 | `population` | Names the desired set produced by one entry. | Membership naturally includes both presence and removal. | Precise, but singular is inconsistent with array field names. |
 | `populations` | Names the desired sets the workflow maintains. | Membership naturally covers admission, retention, and removal. | Matches the plural array convention of `nodes`, `chains`, and `instructions`. |
-| `presence` | Emphasizes the desired-state guarantee. | Covers keeping and removing sessions, but underplays discovery and admission. | A good semantic noun, though several entries read less naturally as one `presence` array. |
+| `presence` | Emphasizes the desired-state guarantee. | Covers keeping and removing sessions, but underplays sourcing and admission. | A good semantic noun, though several entries read less naturally as one `presence` array. |
 | `standing` | Suggests continuous operation. | Implies duration without saying what is maintained. | An adjective, unlike the workflow's noun field vocabulary. |
-| `roster` | Suggests a membership set. | Can imply addition and removal. | Reads as a manually curated list rather than dynamic discovery. |
+| `roster` | Suggests a membership set. | Can imply addition and removal. | Reads as a manually curated list rather than dynamic sourcing. |
 | `intake` | Expresses admission from an external source. | Underweights retention and teardown. | A process noun, but still one-way. |
-| `lifecycle` | Expresses retention and teardown directly. | Underweights discovery and the desired set. | Overlaps effect lifecycle while governing sessions rather than workflow nodes. |
+| `lifecycle` | Expresses retention and teardown directly. | Underweights sourcing and the desired set. | Overlaps effect lifecycle while governing sessions rather than workflow nodes. |
 | `reconciliation` | Covers convergence of membership in both directions. | Makes creation and destruction equally visible. | Names the evaluator mechanism rather than the declarative thing being maintained. |
 
 Use `populations`. Each
 `[[<workflow>.populations]]` entry declares one desired population, and its
 required `name` identifies that entry for provenance. The plural spelling
 follows the language's array-field convention, while “population” covers both
-the discover/admit face and the retain/remove face without naming evaluator
+the source/admit face and the retain/remove face without naming evaluator
 mechanics.
 
-### 3. Discover contract: a third resource-observer face
+### 3. Query and stream contracts: two resource-observer faces
 
 #### Options
 
-1. Model polling and pushing as unrelated plugin APIs. This matches their
-   transport but duplicates item validation, parameter binding, provenance,
-   and dispatch semantics.
-2. Let a discover command print resource ids only. This cannot carry the
-   triggering mention timestamp required to initialize a pushed chat session,
-   and adding ad-hoc environment variables would make those values
-   uncheckable.
-3. Give both modes one parameter schema and one item schema, while keeping
-   their execution shapes distinct.
+1. Put a `mode` discriminator under one observer action. This shares field
+   names, but every validation and runtime rule then branches on a string whose
+   two values have different execution and membership semantics.
+2. Let one action multiplex snapshot and appearance output. This hides which
+   authority is configured and makes output framing ambiguous.
+3. Give enumerable query and appearance stream their own optional named faces,
+   each with the schema and action it actually uses.
 
 #### Recommendation
 
-Add optional `[<observer>.discover]` to `resource_observer`. Its closed shape
-is:
+Use option 3. A resource observer may declare `[<observer>.query]`,
+`[<observer>.stream]`, both, or neither. Each face has the same closed field
+categories but a distinct execution contract:
 
 | Field | Requirement | Meaning |
 |---|---|---|
-| `mode` | Required; `poll` or `push`. | Selects complete-snapshot or appearance-stream semantics. |
-| `type`, `bin`/`command`, `args` or `script`/`bind` | Required action. | Runs the plugin-owned discover implementation using the existing action variants. |
-| `inputs_schema` | Required JSON Schema object. | Declares deployment parameters consumed by the action as `inputs.*`. An empty object schema is valid. |
-| `item_schema` | Required JSON Schema object. | Declares every discovery record. It must require a string `resource` property. |
-| `wake` | Optional action for poll; forbidden for push. | Supervises a hint stream that requests an immediate complete snapshot, as specified in Decision 6. |
+| `type`, `bin`/`command`, `args` or `script`/`bind` | Required action. | Runs the plugin-owned face using the existing action variants. |
+| `inputs_schema` | Required JSON Schema object. | Declares that face's deployment parameters, consumed by its action as `inputs.*`. An empty object schema is valid. |
+| `item_schema` | Required JSON Schema object. | Declares every emitted item and must require a string `resource` property. |
 
-The action's `inputs.*` root is the population entry's literal
-`discover_inputs` object, validated against `inputs_schema` before the action
-runs. No session, workspace, node, or resource exists yet, so no other data
-root is exposed. Capabilities remain available only in the action positions
-that already accept them.
+A query action runs to completion and writes one JSON array. The array is the
+complete membership snapshot for its parameters; successful exit means
+pagination and every item enrichment are complete. If metadata for one matching
+resource cannot be fetched, the action fails instead of omitting the resource
+or returning a partial item.
 
-A poll action runs to completion and writes one JSON array. That array is the
-complete current membership set for those parameters; successful exit means
-pagination and every item enrichment are complete. If metadata for one
-matching resource cannot be fetched, the action must fail instead of omitting
-that resource or returning a partial record. A push action is a supervised
-stream and writes one JSON object per line as resources appear. Stream
-termination or a non-zero exit is a discovery failure and is restarted with
-the resident supervisor's bounded backoff. It never implies that any resource
-disappeared.
+A stream action is supervised and writes one JSON object per line as resources
+appear. Termination or non-zero exit is a source failure and restarts under the
+resident supervisor's bounded backoff. Stream failure, quiet, or restart never
+implies absence.
 
-Mode describes whether membership in the resource set can be enumerated, not
-how a provider receives notifications. An enumerable pull request remains
-`poll` even when a webhook reduces its discovery latency. An unbound chat
-mention remains `push` whether its adapter receives Socket Mode events or an
-Events API webhook; that transport choice belongs to the adapter service and
-is invisible to the language. Choosing `push` for an enumerable resource
-would discard the complete snapshot that repairs missed notifications and
-proves absence.
+The face name states semantics directly. Enumerability remains a property of
+the resource set, not its notification transport. An enumerable pull request
+uses query even when webhook events also supply a stream; an unbound chat
+mention has only a stream whether its adapter receives Socket Mode events or an
+Events API webhook. Transport remains the adapter service's concern and is
+invisible to the language.
 
-Both outputs validate each object against `item_schema`. Within a population
-entry's session input, the item's declared properties are available as
-`discovery.*`, while its required `resource` property also becomes the
-`resource.id` passed to session dispatch. These are per-item production
-records, not live roots. They are evaluated when a session is first created;
-a later discovery of the same resource does not mutate frozen session inputs.
+Every output object validates against its face's `item_schema`. Use `item.*`
+for its declared properties inside population session inputs. Retaining
+`discovery.*` would name a construct this decision removes and would not say
+whether a combined population's value arrived from query or stream. The
+required `resource` property also becomes the `resource.id` passed to
+session dispatch.
 
-A population entry's required static `resource_observer` reference is the
-single authority for resource recognition, discovery, and live resource facts.
-The loader resolves it and requires it to declare `discover`. When the
-entry also declares an initial `session.task`, the loader requires that task's
-observer to resolve to the exact same definition. The two references answer
-different questions—what population is discovered and what work starts—but
-their load-time equality prevents them from becoming competing resource
-authorities.
+Items are production records, not live roots. The first accepted item that
+successfully creates a session freezes its projected session inputs; a later
+item for the same resource does not mutate them. When a population selects both
+faces, every referenced `item.*` path must exist with a compatible type in
+both item schemas because either face may create first. Unreferenced
+face-specific properties may differ. Runtime validation still checks the item
+that actually arrived.
 
-For each evaluation, core first validates the action result, all items,
-resource matches, workflow dispatch, and input bindings. A malformed item,
-duplicate resource, incomplete or failed action, unresolved root, observer
-mismatch, or workspace-provider mismatch fails the whole evaluation before any
-create or destroy. A failing poll therefore proves neither presence nor
-absence. One bad push item fails only that item's evaluation; it does not
-retract earlier appearances.
+A population entry's static `resource_observer` reference is the single
+authority for recognition, query, stream, and live resource facts. The loader
+requires every selected face to exist on that observer. When the entry declares
+an initial `session.task`, the loader requires that task's observer to resolve
+to the exact same definition. The references answer different questions—what
+population supplies items and what work starts—but their load-time equality
+prevents competing resource authorities.
 
-#### Poll discover sketch
+Core validates a complete query result before applying any membership change.
+A malformed item, duplicate resource, incomplete or failed action, unresolved
+root, observer mismatch, or workspace-provider mismatch invalidates the entire
+snapshot, so it proves neither presence nor absence. One bad stream item fails
+only that item; it does not retract earlier accepted appearances.
 
-The GitHub plugin extends its existing pull-request observer with a complete,
-enumerable search. Filtering `inputs.state` in the query makes that snapshot
-the authority for both presence and absence.
+#### Query and stream observer sketch
+
+The GitHub plugin extends its pull-request observer with both faces. Query is
+the complete membership authority. Stream consumes validated webhook events for
+low-latency items without replacing the query.
 
 ```toml
 [pull]
@@ -237,43 +233,68 @@ type = "exec"
 bin  = "github-issue-pr"
 args = ["observe", "--resource", { from = "resource.id" }]
 
-[pull.discover]
-mode = "poll"
+[pull.query]
 type = "exec"
 bin  = "github-issue-pr"
 args = [
-  "discover-pulls",
+  "query-pulls",
   "--repositories", { json = { from = "inputs.repositories" } },
   "--labels", { json = { from = "inputs.labels" } },
   "--state", { from = "inputs.state" },
   "--draft", { expr = "inputs.draft ? 'true' : 'false'" },
 ]
 
-[pull.discover.wake]
-type = "exec"
-bin  = "github-webhook-receiver"
-args = [
-  "stream-hints",
-  "--repositories", { json = { from = "inputs.repositories" } },
-]
-
-[pull.discover.inputs_schema]
+[pull.query.inputs_schema]
 type                 = "object"
 required             = ["repositories", "labels", "state", "draft"]
 additionalProperties = false
 
-[pull.discover.inputs_schema.properties]
+[pull.query.inputs_schema.properties]
 repositories = { type = "array", minItems = 1, items = { type = "string" } }
 labels       = { type = "array", items = { type = "string" } }
 state        = { type = "string", enum = ["open", "closed", "all"] }
 draft        = { type = "boolean" }
 
-[pull.discover.item_schema]
+[pull.query.item_schema]
 type                 = "object"
 required             = ["resource", "owner", "repository", "title", "head_sha"]
 additionalProperties = false
 
-[pull.discover.item_schema.properties]
+[pull.query.item_schema.properties]
+resource   = { type = "string", format = "uri" }
+owner      = { type = "string" }
+repository = { type = "string" }
+title      = { type = "string" }
+head_sha   = { type = "string" }
+
+[pull.stream]
+type = "exec"
+bin  = "github-webhook-receiver"
+args = [
+  "stream-pulls",
+  "--repositories", { json = { from = "inputs.repositories" } },
+  "--labels", { json = { from = "inputs.labels" } },
+  "--state", { from = "inputs.state" },
+  "--draft", { expr = "inputs.draft ? 'true' : 'false'" },
+]
+
+[pull.stream.inputs_schema]
+type                 = "object"
+required             = ["repositories", "labels", "state", "draft"]
+additionalProperties = false
+
+[pull.stream.inputs_schema.properties]
+repositories = { type = "array", minItems = 1, items = { type = "string" } }
+labels       = { type = "array", items = { type = "string" } }
+state        = { type = "string", enum = ["open", "closed", "all"] }
+draft        = { type = "boolean" }
+
+[pull.stream.item_schema]
+type                 = "object"
+required             = ["resource", "owner", "repository", "title", "head_sha"]
+additionalProperties = false
+
+[pull.stream.item_schema.properties]
 resource   = { type = "string", format = "uri" }
 owner      = { type = "string" }
 repository = { type = "string" }
@@ -293,18 +314,16 @@ mergeable_state = { type = "string", enum = ["clean", "dirty", "unstable", "bloc
 review_decision = { type = "string", enum = ["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", "NULL"] }
 ```
 
-The wake executable is introduced with this discover face. It connects to a
-webhook-receiver service and streams hints; it does not emit pull-request
-records. Exposing the webhook endpoint and verifying request signatures are
-deployment-infrastructure responsibilities outside the configuration
-language.
+The stream executable connects to a webhook-receiver service. Exposing its
+endpoint and verifying request signatures are deployment-infrastructure
+responsibilities outside the configuration language.
 
-#### Push discover sketch
+#### Stream-only observer sketch
 
-The Slack plugin adds a thread observer. Its discover action connects to the
-resident adapter's unbound-mention stream; it does not open a second Socket
-Mode connection. The adapter remains the integration-specific receiver, while
-the action converts its stream to the generic discovery-record contract.
+The Slack plugin adds a thread observer. Its stream connects to the resident
+adapter's unbound-mention feed; it does not open a second Socket Mode
+connection. The adapter remains the integration-specific receiver, while the
+action converts its feed to the generic item contract.
 
 ```toml
 [thread_state]
@@ -316,31 +335,30 @@ type = "exec"
 bin  = "slack-adapter"
 args = ["resource", "observe", "--resource", { from = "resource.id" }]
 
-[thread_state.discover]
-mode = "push"
+[thread_state.stream]
 type = "exec"
 bin  = "slack-adapter"
 args = [
-  "discover", "unbound-mentions",
+  "stream", "unbound-mentions",
   "--base-url", { from = "inputs.base_url" },
   "--channel-ids", { json = { from = "inputs.channel_ids" } },
 ]
 
-[thread_state.discover.inputs_schema]
+[thread_state.stream.inputs_schema]
 type                 = "object"
 required             = ["base_url", "channel_ids"]
 additionalProperties = false
 
-[thread_state.discover.inputs_schema.properties]
+[thread_state.stream.inputs_schema.properties]
 base_url    = { type = "string", format = "uri" }
 channel_ids = { type = "array", minItems = 1, items = { type = "string" } }
 
-[thread_state.discover.item_schema]
+[thread_state.stream.item_schema]
 type                 = "object"
 required             = ["resource", "channel_id", "thread_ts", "mention_ts"]
 additionalProperties = false
 
-[thread_state.discover.item_schema.properties]
+[thread_state.stream.item_schema.properties]
 resource   = { type = "string", format = "uri" }
 channel_id = { type = "string" }
 thread_ts  = { type = "string" }
@@ -354,24 +372,22 @@ additionalProperties = false
 The adapter's
 [`on_unbound_mention`](https://github.com/kecbigmt/plecture/issues/362) hook is
 subsumed, not retained as a second dispatch authority. During rollout it can
-feed the discover stream while the generic contract is proved, but the
-supported end state has the adapter expose the appearance stream directly and
-removes the opaque command hook with the required one-time migration. Keeping
-the hook indefinitely would leave two authorities deciding whether one
-mention creates one session.
+feed the stream while the generic contract is proved, but the supported end
+state exposes the appearance stream directly and removes the opaque command
+hook with the required one-time migration. Keeping the hook indefinitely would
+leave two authorities deciding whether one mention creates one session.
 
-### 4. Session surface and built-in membership lifecycle
+### 4. Population face selection and built-in membership lifecycle
 
 #### Options
 
-1. Let the discover action return complete `plect up` commands. This puts
-   workflow and deployment policy in executable output and makes topology
-   dynamic.
+1. Let a source action return complete `plect up` commands. This puts workflow
+   and deployment policy in executable output and makes topology dynamic.
 2. Give each population configurable predicates for destruction and up/down
    transitions. This is expressive, but makes every deployment restate safety
    and capacity policy that the evaluator can enforce uniformly.
-3. Keep session topology static and make membership lifecycle a closed part of
-   poll and push reconciliation.
+3. Keep session topology static, select observer faces with parameter tables,
+   and make membership lifecycle a closed part of query and stream evaluation.
 
 #### Recommendation
 
@@ -385,32 +401,41 @@ The closed workflow-population surface is:
 | Field | Requirement | Meaning |
 |---|---|---|
 | `populations.name` | Required identifier, unique within the workflow. | Gives this entry stable provenance below the workflow address. |
-| `populations.resource_observer` | Required static resource-observer reference. | Selects the sole recognition, discovery, and population-resource observation authority. |
-| `populations.discover_inputs` | Required table. | Literal deployment data validated against the observer's discover `inputs_schema`. |
+| `populations.resource_observer` | Required static resource-observer reference. | Selects the sole recognition, item-source, and population-resource observation authority. |
+| `populations.query` | Optional parameter table; at least one face table is required. | Selects the observer's query face and supplies its literal `inputs.*`, validated against that face's `inputs_schema`. |
+| `populations.stream` | Optional parameter table; at least one face table is required. | Selects the observer's stream face and supplies its literal `inputs.*`, validated against that face's `inputs_schema`. |
 | `populations.session.task` | Optional static task reference. | Selects a task to set up after the session is up; its observer must equal `resource_observer`. |
-| `populations.session.inputs` | Optional value table. | Session inputs over literals, `resource.id`, and the discover `item_schema`'s `discovery.*` properties. |
+| `populations.session.inputs` | Optional value table. | Session inputs over literals, `resource.id`, and selected-face `item_schema` properties under `item.*`. |
 | `populations.session.destroy.force` | Optional boolean; default false. | Uses the lifecycle service's explicit force-destroy path for entry-owned sessions. |
-| `populations.poll_every` | Required positive duration for poll; forbidden for push. | Sets complete-snapshot cadence. |
-| `populations.expire_after` | Required positive duration for push; forbidden for poll. | Expires a push appearance after that duration of external-input quiescence, subject to the task guard below. The spelling is recommended pending the ruling below. |
+| `populations.poll_every` | Required positive duration when `query` is present; otherwise forbidden. | Sets complete-snapshot cadence. |
+| `populations.expire_after` | Required positive duration for stream-only; otherwise forbidden. | Expires a stream-only appearance after that duration of external-input quiescence, subject to the task guard below. The spelling is recommended pending the ruling below. |
 | `populations.auto_down` | Optional boolean; default false. | When true, allows the evaluator to select this entry's explicitly idle sessions under root-cap pressure. |
 | `populations.auto_destroy` | Optional boolean; default false. | When true, allows the evaluator to execute an otherwise eligible guarded destruction. False retains the session and emits the same decision as a dry-run event. |
 
+The loader requires at least one of `query` or `stream`, rejects a face table
+the referenced observer does not declare, and validates each table independently
+against its face's `inputs_schema`. There is no discriminator field. A query
+table makes snapshot absence the removal authority whether or not stream is
+also selected; therefore `expire_after` is forbidden whenever query is
+present. A stream-only population requires `expire_after` because its source
+cannot prove absence.
+
 The complete `session.inputs` object is validated against the target
-workflow's `inputs_schema` at load time: literal types are checked directly,
-`resource.id` is a string, and every `discovery.*` path is resolved against
-the observer's discover `item_schema`. Runtime validation still checks schema
-constraints that static projection cannot prove. When `session.task` is
-present, every task input not supplied explicitly is bound from session inputs
-by the existing dynamic task-setup rules, and each common field must also
-satisfy the task's `inputs_schema`.
+workflow's `inputs_schema` at load time. Literal types are checked directly,
+`resource.id` is a string, and every `item.*` path resolves against every
+selected face that may create the session. Runtime validation still checks
+schema constraints that static projection cannot prove. When `session.task`
+is present, every task input not supplied explicitly is bound from session
+inputs by the existing dynamic task-setup rules, and each common field must
+also satisfy the task's `inputs_schema`.
 
 `resource_observer` and `session.task` are static topology. They accept the
 ordinary relative or catalog-qualified reference grammar and cannot be CEL
 expressions. The containing workflow's workspace provider and population
-observer must both match each discovered `resource`; the provider remains the
-single authority for session naming.
+observer must both match each item resource; the provider remains the single
+authority for session naming.
 
-#### Push-expiry field name: owner ruling required
+#### Stream-expiry field name: owner ruling required
 
 | Candidate | Strength | Risk |
 |---|---|---|
@@ -420,13 +445,13 @@ single authority for session naming.
 
 Recommend `expire_after`. It is longer than `expire`, but says that the
 value is a duration and avoids overloading “idle.” The clock starts at session
-creation and is reset to the latest accepted repeated push appearance or event
-recorded on the session log with `direction = "inbound"`. Internal ticks,
-population and lifecycle events, outbound agent events, and session status
-messages do not reset it. Time spent as a pending appearance before creation
-does not count. This measures external-input quiescence; it is independent of
-the runtime's explicit empty status message used for capacity decisions and a
-health probe's `silence_expected` turn-boundary exception.
+creation and is reset to the latest accepted repeated stream appearance or
+event recorded on the session log with `direction = "inbound"`. Internal
+ticks, population and lifecycle events, outbound agent events, and session
+status messages do not reset it. Time spent as a pending appearance before
+creation does not count. This measures external-input quiescence; it is
+independent of the runtime's explicit empty status message used for capacity
+decisions and a health probe's `silence_expected` turn-boundary exception.
 
 #### Automatic-action control shape: owner ruling required
 
@@ -441,26 +466,27 @@ spelling still needs confirmation. Three compact shapes are available:
 
 Recommend the two booleans. They add only the two decisions that exist and do
 not speculate about additional modes. Both default to false: a freshly declared
-population discovers, creates, brings up, and sets up initial tasks, but it
-neither takes sessions down nor destroys them until the operator enables each
-action explicitly. This is a deliberate safety bias for rollout, not full
-convergence: absent or expired sessions produce dry-run destruction verdicts,
-and explicitly idle sessions remain up and consume root capacity until the
-corresponding switch is enabled or the operator acts manually. Steady-state
-configuration sets both values to true.
+population queries or accepts stream items, creates, brings up, and sets up
+initial tasks, but it neither takes sessions down nor destroys them until the
+operator enables each action explicitly. This is a deliberate safety bias for
+rollout, not full convergence: absent or expired sessions produce dry-run
+destruction verdicts, and explicitly idle sessions remain up and consume root
+capacity until the corresponding switch is enabled or the operator acts
+manually. Steady-state configuration sets both values to true.
 
-Poll membership is exactly the latest successful complete snapshot. For an
-owned member missing from that snapshot, the evaluator plans destruction; the
-discover query itself expresses exclusions such as `state = "open"`. A
-failed or partial query proves no absence, and a present item cannot request
-destruction. No per-entry field supplies a second removal authority.
+For query-only and combined populations, membership is exactly the latest
+successful complete snapshot. An owned resource missing from that snapshot is
+eligible for destruction; query parameters express exclusions such as
+`state = "open"`. A failed or partial query proves no absence. Stream items
+never override a successful query absence. Decision 6 specifies combined-face
+ordering and tombstones.
 
-Push has no absence proof. Its appearance generation becomes eligible for
-destruction only when `expire_after` matures. A repeat appearance resets the
-clock and an inbound event on the session does the same. Successful destruction
-closes that generation; a later accepted appearance starts a new one.
+A stream-only appearance generation becomes eligible for destruction only when
+`expire_after` matures. A repeat appearance resets the clock and an inbound
+event on the session does the same. Successful destruction closes that
+generation; a later accepted appearance starts a new one.
 
-Before either poll-absence or push-expiry destruction, the evaluator checks
+Before either query-absence or stream-expiry destruction, the evaluator checks
 every dynamic task instance owned by the session through the task's existing
 completion semantics. It never automatically destroys while any instance is
 not satisfied. Missing completion policy, an observation or expression error,
@@ -468,51 +494,53 @@ and an unobserved or pending result all count as unsatisfied. Deferral records
 a `plect.workflow_population.destroy_deferred` event on the member, including
 the population provenance and blocking task instances. The evaluator records
 the first deferral and any change to its blocker set rather than repeating the
-same event every cycle. A blocking task-state or completion-result change wakes
+same event every cycle. A blocking task-state or completion-result change triggers
 the deferred decision; observation failures retain it under bounded retry, so
-a push member does not require another appearance merely to finish deferred
-expiry. Manual `plect destroy` is outside this population guard and retains its
-ordinary cleanup and force rules. Consequently a task that can never become
-satisfied prevents automatic expiry forever; the operator must resolve it
-explicitly or fix the task's own completion design.
+a stream-only member does not require another appearance merely to finish
+deferred expiry. Manual `plect destroy` is outside this population guard and
+retains its ordinary cleanup and force rules. Consequently a task that can
+never become satisfied prevents automatic expiry forever; the operator must
+resolve it explicitly or fix the task's own completion design.
 
-With `auto_destroy = false`, the evaluator still computes snapshot absence or
-push expiry and runs the built-in task guard. An unsatisfied task records the
+With `auto_destroy = false`, the evaluator still computes query absence or
+stream expiry and runs the built-in task guard. An unsatisfied task records the
 same deferral. Once the guard is clear, it records
 `plect.workflow_population.destroy_dry_run` with the source reason and
 provenance instead of calling the lifecycle service. Repeated identical
 evaluations do not duplicate that event; a changed verdict, blocker set, or
-discovery generation does. Turning `auto_destroy` on triggers re-evaluation.
-No destruction tombstone is written until a destroy is actually attempted.
+source generation does. Turning `auto_destroy` on triggers re-evaluation.
 
-The evaluator persists a discovery-generation tombstone before completing an
-owned destruction. For poll, the successful absent generation remains closed
-until a later successful snapshot contains the resource. For push, only a later
-accepted appearance opens a new generation. The tombstone prevents stale or
-concurrent work from recreating an expired member and contains only source
-identity, provenance, and generation state, not destroyed session state.
+For every query selection, successful absence closes an already accepted source
+generation before the task guard and automatic-action permission are applied.
+That absence marker remains authoritative even when destruction is deferred or
+dry-run only, and a later successful snapshot containing the resource opens the
+next generation. For stream-only, successful expiry destruction closes the
+generation and a later accepted appearance opens the next one. This durable
+generation state prevents stale or concurrent work from recreating a removed
+member and contains only source identity, provenance, and generation state,
+not destroyed session state. Decision 6 specifies its combined-face effect.
 
-A valid push appearance is persisted before admission. If root capacity is
-full, it remains pending and is admitted in resource-id order when capacity
-becomes available; process restart does not forget an accepted appearance. A
-repeated appearance replaces the pending production record. Its expiry clock
+A valid stream item is persisted before admission. If root capacity is full,
+it remains pending and is admitted in resource-id order when capacity becomes
+available; process restart does not forget an accepted appearance. A repeated
+appearance replaces the pending production record. A stream-only expiry clock
 begins only when the session is created.
 
 Creation, up, down, and destruction use the same service paths as `plect up`,
 `plect down`, and `plect destroy`, including resource allowlists,
 workspace-provider resolution, cleanup, and errors. `session.destroy.force`
-is an explicit choice to pass the same force option; discovery itself never
+is an explicit choice to pass the same force option; source evaluation never
 silently weakens cleanup guards. A population persists its containing workflow
 address and entry name on sessions it creates and may mutate only those
 sessions. It never adopts an existing session with the same derived name. A
 population/chain or population/population name collision records a conflict and
 leaves the existing session untouched. Manual `plect down`, `plect up`, and
-`plect destroy` remain available regardless of `auto_down` and `auto_destroy`;
-the switches constrain only evaluator-initiated actions.
+`plect destroy` remain available regardless of `auto_down` and
+`auto_destroy`; the switches constrain only evaluator-initiated actions.
 
 When `session.task` is present, a successful `up` is followed by the
 existing task-setup service with the fixed instance name `initial` and the
-discovered `resource`. The evaluator first reads session state: an `initial`
+item's `resource`. The evaluator first reads session state: an `initial`
 instance with the exact resolved task and resource is already converged; a
 missing one is set up; and any conflicting `initial` instance fails closed.
 The population does not use `plect up --task`, because that flag is only
@@ -530,7 +558,7 @@ whose logical parent is the virtual root:
 max_up_children = 8
 ```
 
-This complete user-owned workflow TOML binds the GitHub poll face above to an
+This complete user-owned workflow TOML binds the GitHub query face above to an
 existing review task. Together they replace an external reconcile loop.
 
 ```toml
@@ -622,7 +650,7 @@ poll_every        = "1m"
 auto_down         = true
 auto_destroy      = true
 
-[review_agent.populations.discover_inputs]
+[review_agent.populations.query]
 repositories = ["example/widgets"]
 labels       = ["agent-review"]
 state        = "open"
@@ -639,22 +667,22 @@ app_id           = "123456"
 private_key_path = "/etc/plect/github-app.pem"
 slack_base_url   = "http://127.0.0.1:7890"
 slack_channel_id = "C01234567"
-owner            = { from = "discovery.owner" }
-repo             = { from = "discovery.repository" }
-pr_title         = { from = "discovery.title" }
+owner            = { from = "item.owner" }
+repo             = { from = "item.repository" }
+pr_title         = { from = "item.title" }
 pr_url           = { from = "resource.id" }
-head_sha         = { from = "discovery.head_sha" }
+head_sha         = { from = "item.head_sha" }
 instruction      = "Review the pull request and record the verdict against its current revision."
 ```
 
 Every reference in the example is static. `official.github.review` exists as
 a task written for `official.github.pull`; the ADR adds that observer's
-discover contract. The workflow, population, credentials, team parameters,
-and instructions are user-owned. Each `discovery.*` path is declared by the
+query contract. The workflow, population, credentials, team parameters,
+and instructions are user-owned. Each `item.*` path is declared by the
 item schema, and every workflow root and plugin definition already exists. The
 initial task receives its declared `app_id`, `owner`, `repo`,
 `private_key_path`, and `instruction` inputs from the session after `up`. The
-discover query's `state = "open"` is the removal policy: closed or merged pull
+query's `state = "open"` is the removal policy: closed or merged pull
 requests leave the next successful snapshot. When root capacity is contended,
 a review session waiting for a reply can go down after its runtime explicitly
 reports idle, freeing a slot for a newly discovered pull request. The reply is
@@ -665,11 +693,26 @@ A fresh rollout can omit both switches: matching resources are still admitted,
 but teardown remains a dry-run and sessions remain up under cap pressure until
 the operator enables each action.
 
+For webhook-latency admission, the same entry may additionally select the
+observer's stream face with its own parameters:
+
+```toml
+[review_agent.populations.stream]
+repositories = ["example/widgets"]
+labels       = ["agent-review"]
+state        = "open"
+draft        = false
+```
+
+The stream can validate and admit a matching pull request immediately, while
+the existing query table remains the only authority for continued membership
+and absence. Both item schemas declare the projected `item.*` paths.
+
 #### Operations-chat configuration
 
-This complete user-owned TOML binds the Slack push face above to an operations
-workflow. The triggering `mention_ts` is a typed discovery-item field, and
-later inbound thread events reset push expiry without a dispatcher process.
+This complete user-owned TOML binds the Slack stream face above to an operations
+workflow. The triggering `mention_ts` is a typed stream-item field, and
+later inbound thread events reset stream expiry without a dispatcher process.
 The session intentionally starts without a task.
 
 ```toml
@@ -734,23 +777,23 @@ expire_after      = "8h"
 auto_down         = true
 auto_destroy      = true
 
-[ops_chat_session.populations.discover_inputs]
+[ops_chat_session.populations.stream]
 base_url    = "http://127.0.0.1:7890"
 channel_ids = ["C01234567"]
 
 [ops_chat_session.populations.session.inputs]
 slack_base_url = "http://127.0.0.1:7890"
-mention_ts     = { from = "discovery.mention_ts" }
+mention_ts     = { from = "item.mention_ts" }
 ```
 
 The Slack plugin sketch introduces `official.slack.thread_state` and its
-`discovery.mention_ts` contract. All other references and roots are existing
+`item.mention_ts` contract. All other references and roots are existing
 workflow, workspace, node-output, session-input, task, effect, and channel
 surfaces. An explicit escalation may later create an
 `official.github.investigate` instance, bound to an issue resource, through
 the ordinary dynamic task-setup path. Its observer declares
 `resource.state.issue_status` as `PENDING` for open and `SUCCESS` for closed.
-After eight hours without a repeated appearance or inbound event, push expiry
+After eight hours without a repeated appearance or inbound event, stream expiry
 makes the session eligible for destruction. The built-in task guard defers that
 destruction with zero population configuration while an escalated
 investigation is unsatisfied; a failed observation is also unsatisfied and
@@ -773,12 +816,12 @@ automatic down and destruction disabled during rollout.
 
 #### Recommendation
 
-The evaluator lives in `plect serve`. A poll population receives its own
-`poll_every` clock and, when its observer declares one, its own parameterized
-wake stream; a push population owns one supervised discover stream. A
-successful config reload adds, replaces, or stops evaluator loops. A failed
-reload keeps the last valid loops and desired state, matching the resident
-process's fail-closed posture.
+The evaluator lives in `plect serve`. A population selecting query receives its
+own `poll_every` clock; one selecting stream owns one supervised stream action;
+one selecting both runs both faces against shared population state. A successful
+config reload adds, replaces, or stops evaluator loops. A failed reload keeps
+the last valid loops and desired state, matching the resident process's
+fail-closed posture.
 
 Each evaluation is plan-then-apply for every source and task fact that exists
 at its start. It computes membership creates, initial task setups, and guarded
@@ -789,8 +832,8 @@ coordinator selects one eligible down candidate and retries admission rather
 than pretending the complete down set was knowable in the source plan. For an
 absent or expired member the evaluator never sets up a task before deciding
 whether destruction is guarded. Concurrent evaluations of one population are
-coalesced. A failed mutation remains visible and is retried on the next poll,
-appearance, inbound event, expiry deadline, or capacity change; it does not
+coalesced. A failed mutation remains visible and is retried on the next query,
+stream item, inbound event, expiry deadline, or capacity change; it does not
 stop or roll back a different session whose lifecycle already completed.
 
 Population-created sessions then use ordinary workflow tick reactors. The
@@ -799,9 +842,9 @@ destruction guard it invokes the same completion-evaluation path as the
 ordinary task evaluator rather than defining another interpretation. It records
 `plect.workflow_population.*` decision, deferral, conflict, and failure events
 on an affected session. Workflow `[[event.channel]]` bindings may relay those
-events like any other. A discover failure with no owned session is visible in
-resident logs; the language gains no destination, message, or notification
-field to special-case it.
+events like any other. A query or stream failure with no owned session is
+visible in resident logs; the language gains no destination, message, or
+notification field to special-case it.
 
 `max_up_children` is the only concurrency vocabulary. A real session's
 workflow continues to bound its direct children, including chain-spawned
@@ -818,57 +861,71 @@ same when a chain got there first. This preserves the chain's placement and
 the population's destruction guard rather than letting two authorities
 rewrite one session's provenance.
 
-### 6. Wake streams for poll populations
+### 6. Combined query and stream populations
 
 #### Options
 
 1. Reduce `poll_every` until creation latency is acceptable. This preserves
    correctness but converts a burst-latency requirement into continuous API
-   load, and still cannot provide a prompt reaction without aggressive
-   polling.
-2. Model an enumerable resource as `push` when webhooks are available. This
-   treats transport as membership semantics: one missed delivery can prevent
-   creation forever, and the evaluator loses snapshot absence as a destruction
-   signal.
-3. Keep the complete poll snapshot authoritative and let an optional stream
-   wake that snapshot early.
+   load.
+2. Keep query authoritative and add an untrusted wake stream that can only
+   request an early snapshot. This preserves one data path but cannot admit
+   from a validated webhook item; latency still includes the query.
+3. Let one population select both independently typed faces. Stream items
+   accelerate create and re-up, while query remains the membership authority.
 
 #### Recommendation
 
-A poll discover may additionally declare
-`[<observer>.discover.wake]`. It is an action with the same supervised-stream
-execution shape as a push discover action, but not the same data contract. The
-wake action has no `item_schema`; each complete output line is an untrusted
-hint whose bytes are discarded. A hint cannot name a resource, supply
-`discovery.*` values, admit a session, or destroy one. It only requests that
-each population using this observer run its ordinary complete snapshot now.
+Use option 3. A validated stream item may create a session immediately or
+request `plect up` for an owned down session. The stream item supplies the same
+typed production roots the query could supply, so admission does not wait for
+a network query. It does not establish continued membership: the next
+successful complete snapshot is authoritative even when it disagrees.
+In a combined population, stream never proves membership; it only accelerates
+admission and re-up.
 
-The wake action reads the same `inputs.*` root as the poll action, backed by
-the population's one `discover_inputs` object and validated once against the
-discover `inputs_schema`. A second parameter surface is rejected because the
-wake and snapshot are two timing faces of the same query, not independently
-selectable populations.
+Application is serialized per population. A stream item received while a
+query result is being validated waits until that snapshot is applied, avoiding
+two concurrent plans mutating one resource generation. A successful snapshot
+that omits an owned stream-admitted resource evaluates the task guard and
+automatic-destroy permission, then destroys it as absent when allowed. Query
+failure changes no membership and cannot close a generation.
 
-The evaluator maintains one pending-wake latch per population. Hints that
-arrive before an evaluation starts collapse into one immediate poll. A hint received
-while that poll is running requests at most one immediate follow-up; it does
-not start a concurrent evaluation. A scheduled `poll_every` tick coalesces
-with the same latch. The resulting snapshot follows the full validation,
-plan, and apply rules from Decisions 3–5.
+A successful query absence closes and tombstones an already accepted resource
+generation whether destruction runs, is task-deferred, or is dry-run only.
+Later stream items for that resource are validated and reported as suppressed
+in resident logs, but cannot recreate or re-up it. Only a later successful
+query snapshot containing the resource clears the tombstone and may create or bring it up.
+This rule prevents repeated webhook appearances from producing a
+create/destroy loop against an authoritative snapshot. Its cost is explicit: a
+resource that genuinely re-enters just after query absence waits at most
+`poll_every` for the query to confirm it, even if stream reports it sooner.
 
-Wake stream termination and restart use the same supervised bounded-backoff
-rules as a push discover stream. Stream failure does not change desired
-membership and never implies absence. `poll_every` remains required and is
-the recovery floor, so delayed, duplicated, reordered, or at-most-once webhook
-delivery can affect latency but not eventual correctness.
+No tombstone exists for every resource omitted from a snapshot; the evaluator
+can only tombstone a resource generation it has previously accepted. A first
+stream item received after an unrelated empty snapshot can therefore admit
+immediately. If the next successful snapshot omits it, that owned generation
+is destroyed and tombstoned under the rule above.
+
+A successful snapshot containing a resource repairs any missed stream
+appearance. Stream failure, duplicate delivery, reordering, or at-most-once
+delivery affects latency only and never implies absence. `poll_every` remains
+required for every query selection and is the self-healing floor.
+
+This is strictly stronger than the retired wake action: stream emits validated
+items that can admit or re-up immediately, whereas wake carried an untrusted
+hint and still required a complete query before any resource decision. The
+additional strength requires separate stream parameters and item schema plus
+the disagreement and tombstone rules above; keeping wake as a third face would
+duplicate the latency path without a remaining consumer.
 
 ### 7. Capacity-driven down/up and virtual-root admission
 
-Desired membership and run-resource occupancy are separate. Poll absence or
-push expiry decides whether a member remains; neither deployment predicates nor
-a new lifecycle state decide whether a retained member is up. The evaluator
-uses ordinary `plect down` and `plect up` only to reclaim and refill contended
-root capacity.
+Desired membership and run-resource occupancy are separate. Query absence or
+stream-only expiry decides whether a member remains; neither deployment
+predicates nor a new lifecycle state decide whether a retained member is up.
+The evaluator uses ordinary `plect down` and `plect up` only to reclaim and
+refill contended root capacity.
 
 The session forest is completed as one tree with a non-addressable virtual
 root. Every session with no real session parent is logically its direct child,
@@ -936,12 +993,12 @@ status write path emits that clear event for a session's first explicit empty
 report even when current state already stores no message; later identical
 empty reports remain idempotent.
 
-An accepted repeated appearance, an inbound session event, or a successful
-poll observation with changed resource facts invalidates an earlier idle
-report. A non-empty status report also supersedes it. The member cannot be
-selected again until the runtime emits a later explicit clear. For ordering,
+An accepted repeated stream appearance, an inbound session event, or a
+successful query observation with changed resource facts invalidates an
+earlier idle report. A non-empty status report also supersedes it. The member
+cannot be selected again until the runtime emits a later explicit clear. For ordering,
 the coordinator defines last activity as the latest of session creation,
-accepted re-appearance, inbound event, changed-resource observation, and
+accepted stream re-appearance, inbound event, changed-resource observation, and
 status-message event. It sorts eligible members by oldest last activity, with
 session name as the stable tie-breaker.
 
@@ -971,18 +1028,20 @@ independent failure-model question in
 
 A retained down member becomes an up candidate on exactly these signals:
 
-- an accepted repeated push appearance;
+- an accepted repeated stream appearance, unless a combined-face query
+  tombstone suppresses that resource generation;
 - an event appended to its log with `direction = "inbound"`; or
-- a successful scheduled or wake-requested poll that still contains the
-  resource and whose validated `resource.state` differs from the last
-  successfully persisted state for that member.
+- a successful query snapshot that reopens its absent generation, or one that
+  continues to contain the resource and whose validated `resource.state`
+  differs from the last successfully persisted state for that member.
 
 The evaluator compares a canonical representation of the complete validated
 observer state, not selected provider fields; a failed observation neither
-changes the persisted comparison value nor requests up. An unchanged poll
-snapshot does not wake a down member. Each wake signal invalidates earlier idle
-evidence before requesting ordinary `plect up`, preventing an immediate
-down/up cycle until the resumed runtime explicitly clears its status again.
+changes the persisted comparison value nor requests up. An unchanged query
+snapshot does not bring a down member up. Each activation signal invalidates
+earlier idle evidence before requesting ordinary `plect up`, preventing an
+immediate down/up cycle until the resumed runtime explicitly clears its status
+again.
 
 If the cap remains full, the evaluator persists the up request. Owned down
 members take available slots before never-created members; within each class,
@@ -993,12 +1052,12 @@ extension if observed saturation later defines the allocation policy.
 
 There is no separate bound on total retained membership. Such a bound would
 require a destructive eviction policy and could discard the continuity this
-decision preserves. Poll snapshot absence and guarded push expiry are the only
-automatic membership-removal paths.
+decision preserves. Query snapshot absence and guarded stream-only expiry are
+the only automatic membership-removal paths.
 
 This policy has no time-based grace. Capacity pressure is required before a
-session goes down, and an explicit idle report is consumed by any later wake
-signal. Those two edges provide hysteresis without another configuration
+session goes down, and an explicit idle report is consumed by any later
+activation signal. Those two edges provide hysteresis without another configuration
 field. If a runtime repeatedly clears immediately after every up, it is
 truthfully volunteering the session as the next oldest candidate; a concrete
 need for minimum residency or another neutral band can add such a guard later.
@@ -1008,10 +1067,11 @@ need for minimum residency or another neutral band can add such a guard later.
 Implementation changes the configuration language and therefore requires a
 dialect increment, a migration procedure with a backup step, structural schema
 updates, and conformance fixtures for every valid, invalid, and boundary case.
-It adds the workflow `populations` array, observer discover faces and wake
-action, the selected push-expiry duration, the two automatic-action
-permissions, and virtual-root `max_up_children`. It does not change the fact
-grammar, add a lifecycle condition site, or change task-extension composition.
+It adds the workflow `populations` array, observer query and stream faces, the
+`item.*` production root, the selected stream-expiry duration, the two
+automatic-action permissions, and virtual-root `max_up_children`. It does not
+add a source discriminator, change the fact grammar, add a lifecycle condition
+site, or change task-extension composition.
 
 Disjunction remains a real language issue: the GitHub observer documentation
 identifies its `"NULL"` enum sentinel as a workaround for the inability to
@@ -1038,14 +1098,18 @@ they show steady-state operation after rollout.
 Behavior fixtures and tests cover at least:
 
 - trusted ownership, whole-array replacement, provenance, and collisions;
-- poll and push discover validation, complete-snapshot failure, wake coalescing,
-  and supervised restart;
-- poll destruction from successful absence only, including tombstones and task
-  guard deferral, omitted-switch dry-run verdicts, and explicitly enabled
-  execution;
-- push expiry from the precise external-input clock, including repeated
+- independent query and stream parameter/item validation, face-presence errors,
+  combined-face `item.*` path compatibility, complete-snapshot failure, and
+  supervised stream restart;
+- query destruction from successful absence only, including generation
+  tombstones, task-guard deferral, omitted-switch dry-run verdicts, and
+  explicitly enabled execution;
+- stream-only expiry from the precise external-input clock, including repeated
   appearances, inbound resets, restart persistence, tombstones, and the same
   task guard and automatic-destroy control;
+- combined-face immediate admission, missed-appearance repair, serialized
+  query/stream races, authoritative absence, suppressed tombstoned appearances,
+  and later positive-query re-entry;
 - first-empty status recording, explicit-idle eligibility versus a runtime that
   never reports, default and explicit `auto_down` exclusion, explicitly enabled
   oldest-first selection, ordinary down cleanup, and failed-down fallback;
@@ -1056,10 +1120,10 @@ Behavior fixtures and tests cover at least:
 
 The implementation order is:
 
-1. Add poll and push discover faces to the relevant plugin observers,
-   including parameter and item schemas, then add the optional wake stream to
-   the poll observer. The Slack adapter exposes its unbound-mention stream
-   without deciding a workflow.
+1. Add query and stream faces to the relevant plugin observers, including their
+   independent parameter and item schemas. The Slack adapter exposes its
+   unbound-mention stream without deciding a workflow, and the GitHub webhook
+   receiver exposes validated pull-request items.
 2. Complete virtual-root admission and durable status-event lookup, then add
    workflow-population validation and the resident evaluator with provenance,
    snapshot/expiry lifecycle, the built-in task guard, capacity-driven down/up,
@@ -1079,19 +1143,22 @@ enumerate desired resources or choose sessions; this decision neither absorbs
 nor legitimizes its verify-before-skip behavior.
 
 The new surface is falsified before implementation is accepted if prototypes
-of the three concrete consumers cannot share the discover-item, provenance,
+of the three concrete consumers cannot share the source-item, provenance,
 membership, and capacity mechanisms without any of the following:
 
 - provider-specific vocabulary or branching in core;
 - dynamic workflow or task selection;
 - plugin-owned team repositories, channels, limits, or expiry values;
-- a poll member that must be destroyed while it remains in a successful
+- a query member that must be destroyed while it remains in a successful
   complete snapshot;
-- a push source that must treat stream termination or a quiet discover stream
+- a stream-only source that must treat stream termination or a quiet stream
   as immediate membership absence, or needs a removal rule that a single
   per-member external-input expiry duration cannot represent;
-- a wake stream that must carry trusted discovery items or change membership
-  without a complete snapshot;
+- a combined source whose stream must override successful query absence, or
+  whose query-positive repair and query-absence tombstone cannot prevent
+  missed-event loss and repeated-appearance flapping;
+- a source that requires a third untrusted wake face even though a validated
+  stream item can provide lower-latency admission;
 - automatic destruction of a member with an unsatisfied task, including a task
   whose completion can never become satisfied;
 - capacity reclamation from a runtime that has never explicitly reported idle,
@@ -1104,7 +1171,7 @@ membership, and capacity mechanisms without any of the following:
 - a down member that must come up for a signal other than re-appearance,
   inbound input, or changed observed resource facts;
 - a retained population that needs a total bound and deterministic destructive
-  eviction rather than snapshot absence or guarded push expiry;
+  eviction rather than snapshot absence or guarded stream-only expiry;
 - virtual-root capacity accounting that grants relation, judge, lifecycle, or
   delivery authority between independently created root-level sessions; or
 - adoption or destruction of sessions lacking matching workflow-population
@@ -1116,8 +1183,8 @@ deployment-local while a narrower language decision is made. Predicate-based
 lifecycle, finer task selection, expiry exceptions, residency guards, and
 per-population fairness can each return as pure extensions when a concrete
 consumer supplies their semantics. If only one consumer remains after the
-poll, push, and orchestrator prototypes, the shared abstraction also loses its
-justification under the repository's YAGNI rule.
+query, stream, and orchestrator prototypes, the shared abstraction also loses
+its justification under the repository's YAGNI rule.
 
 ## Alternatives considered
 
@@ -1142,30 +1209,52 @@ resident supervision, or event history, and every deployment must reproduce
 the same convergence and failure rules. This is the observed duplication the
 decision removes.
 
-### Make discover a new standalone plugin kind
+### Make item sourcing a new standalone plugin kind
 
-A standalone `resource_discoverer` could be referenced by both observer and
-population. No concrete consumer needs discovery independently of a resource
+A standalone source kind could be referenced by both observer and population.
+No concrete consumer needs query or stream independently of a resource
 contract, and it would introduce a second reference whose item resource must
-still be checked against an observer. Keeping discover as a face of the
-observer makes recognition, observation, finalization, and appearance one
+still be checked against an observer. Keeping both faces on the observer makes
+recognition, observation, finalization, enumeration, and appearance one
 contract for one external resource kind.
+
+### Keep one `discover` face with a `mode` discriminator
+
+One table gives query and stream superficially shared field names, but its
+discriminator controls incompatible output framing, supervision, and absence
+semantics. It also cannot select both faces without inventing another nesting
+or list shape. Separately named query and stream faces make applicability
+structural and allow the combined consumer directly, so the generic
+`discover` name and its `mode` field are retired.
 
 ### Extend workspace providers instead of resource observers
 
 A workspace provider recognizes a resource for session naming and owns
-workspace acquisition. Discovery and changed-resource wake decisions are useful
-without a workspace. Putting discovery on the provider would reunite
+workspace acquisition. Query, stream, and changed-resource activation are
+useful without a workspace. Putting those faces on the provider would reunite
 responsibilities the language deliberately separates and would make a provider
 and observer two authorities for the same resource kind.
 
-### Treat push appearances as ordinary session events
+### Treat stream appearances as ordinary session events
 
 There is no session log before the appearance creates a session. Inventing a
 placeholder session solely to receive that event would make bootstrap identity
-and cleanup circular. The discover stream is ingress to desired-state
+and cleanup circular. The observer stream is ingress to desired-state
 evaluation; after creation, ordinary inbound events belong to the real
-session's durable log and reset push expiry.
+session's durable log and reset stream-only expiry.
+
+### Keep `query.wake`
+
+The retired wake action supervised an untrusted hint stream and coalesced each
+hint into an immediate complete query. It preserved query authority and needed
+no item schema, but every admission still paid query latency and API cost. A
+separately typed stream is strictly stronger for the concrete latency consumer:
+it validates the resource item and can admit or re-up immediately, while the
+query still repairs missed appearances and proves absence. Combined-face
+generation tombstones close the flapping risk that wake avoided by carrying no
+items. A future source that can emit hints but cannot emit validated items would
+be evidence for adding wake back as a pure third-face extension; none of the
+three consumers requires it now.
 
 ### Configure lifecycle predicates
 
@@ -1187,9 +1276,9 @@ existing completion result is satisfied exposed the simpler rule: automatic
 population destruction should never discard unsatisfied work at all.
 
 The chosen design therefore replaces configurable destruction predicates with
-poll absence or push expiry plus a built-in completion guard, and replaces
-up/down predicates with capacity pressure plus explicit runtime-idle and wake
-signals. It needs no `not`, idle fact leaf, task quantifier, or grace field. The
+query absence or stream-only expiry plus a built-in completion guard, and
+replaces up/down predicates with capacity pressure plus explicit runtime-idle
+and activation signals. It needs no `not`, idle fact leaf, task quantifier, or grace field. The
 trigger triple, invariant pair, and completion-based quantifier remain possible
 pure extensions if a concrete consumer later needs policy finer than the safe
 built-in mechanisms.
