@@ -1,6 +1,6 @@
 // Package observe implements the observation contract behind the GitHub
 // plugin's two resource definitions: turning an issue or pull request
-// identifier into the state resources/issue.toml or resources/pull.toml
+// identifier into the state resources/issue.toml or resources/pull_request.toml
 // declares — check rollup, revision, mergeability, review verdict, and, for
 // an issue, its completion plus the pull request that closes it.
 //

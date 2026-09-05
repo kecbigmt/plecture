@@ -1,4 +1,4 @@
-// Package pullquery implements the pull resource observer's two query
+// Package pullquery implements the pull_request resource observer's two query
 // means: a complete search snapshot and a webhook-driven appearance
 // stream. Both filter on one Inputs shape and produce one Item shape,
 // carrying identity and appearance context only — never an observed
@@ -28,7 +28,7 @@ type Item struct {
 }
 
 // ItemSchemaRequired and ItemSchemaProperties list Item's properties for
-// the self-test that checks them against pull.toml's state_schema.
+// the self-test that checks them against pull_request.toml's state_schema.
 var (
 	ItemSchemaRequired   = []string{"resource"}
 	ItemSchemaProperties = []string{"resource", "owner", "repository"}

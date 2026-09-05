@@ -11,10 +11,10 @@ another plugin's package.
 
 ## Contents
 
-- `config/workspaces/thread.toml` — declares the `thread` workspace provider:
-  resolves a Slack thread permalink to a session id and acquires/releases a
-  bare workspace directory for it, with no GitHub artifact standing in for
-  the session. See "Workspace provider" below.
+- `config/workspaces/thread_workspace.toml` — declares the `thread_workspace`
+  workspace provider: resolves a Slack thread permalink to a session id and
+  acquires/releases a bare workspace directory for it, with no GitHub
+  artifact standing in for the session. See "Workspace provider" below.
 - `config/tasks/slack_thread.toml` — creates one Slack root message through
   `slack-adapter` and records the conversation with
   `plect state set-conversation`. Outputs: `thread_ts`, `channel_id`, and
@@ -42,6 +42,11 @@ another plugin's package.
   `include` list decides which events reach it. An event's body-or-summary
   becomes the sole `loading_messages` entry; an event whose body and summary
   are both empty clears the status instead.
+- `config/resources/thread.toml` — declares the `thread` resource observer:
+  a `[thread.query]` face whose `subscribe` means is the workflow
+  population source for an unbound Slack mention (see "Query (population
+  source)" below). Distinct from the `thread_workspace` provider above —
+  same permalink, different responsibility.
 - `src/slack-adapter/` — Slack-specific message relay + subscription
   broker. See `src/slack-adapter/CLAUDE.md`.
 
@@ -66,7 +71,7 @@ Socket Mode inbound relay.
 
 ## Workspace provider
 
-`config/workspaces/thread.toml` resolves a thread's Slack permalink —
+`config/workspaces/thread_workspace.toml` resolves a thread's Slack permalink —
 either the root message's own permalink or a reply's permalink carrying
 `?thread_ts=<root>&cid=<channel_id>` — to a session named
 `slack/<channel_id>-<root thread_ts digits>`, so both forms of the same
@@ -134,6 +139,29 @@ This is a display detail of an already-deprecated path, not a workflow
 commitment the config layer makes, so it is left as is rather than
 generalized.
 
+## Query (population source)
+
+`config/resources/thread.toml` declares the `thread` resource observer's
+`[thread.query]` face
+(`docs/adr/2026-09-05-standing-session-dispatch.md`, "Subscribe-only
+observer sketch"): the item source a workflow's `[[workflow.populations]]`
+entry binds to keep a session present for a Slack thread that received an
+unbound `app_mention`. It declares only `subscribe` — a mention is not
+enumerable, so there is no `poll` means, and a population entry using this
+observer always sets `expire_after` rather than `poll_every`.
+
+- **`slack-adapter subscribe unbound-mentions`** (see
+  `src/slack-adapter/README.md`) is the subscribe means: it never opens a
+  second Socket Mode connection, instead reading the resident adapter's own
+  `/unbound-mentions` feed and converting each `unboundMentionItem` straight
+  into the query's item shape: `resource` (the mention's permalink,
+  required) plus `channel_id`, `thread_ts`, and `mention_ts` context.
+- **`slack-adapter resource observe`** is `thread`'s `observe` action. The
+  language requires every `resource_observer` to declare one, but this
+  observer's `state_schema` is empty — a mention appearance is already the
+  only fact `query.subscribe` reports — so it prints `{}` rather than
+  fabricating a state key the schema does not declare.
+
 ## Not included
 
 - Which agent runtime delivers into Slack, or vice versa — a workflow's
@@ -142,10 +170,3 @@ generalized.
   channel-server socket or imports an agent-runtime plugin's package.
 - slack-adapter's Slack App manifest, HTTP API surface, and subscription
   broker behavior — see `src/slack-adapter/CLAUDE.md`.
-- A `resource_observer` config declaring the thread resource's
-  `query.subscribe` face (`docs/adr/2026-09-05-standing-session-dispatch.md`):
-  the config language's `resource_observer` surface has no `query` field yet,
-  so wiring one in would fail to load. `slack-adapter subscribe
-  unbound-mentions` (see `src/slack-adapter/README.md`) and its resident
-  `/unbound-mentions` feed are the plugin-side half already built for that
-  face to bind to once the language supports it.

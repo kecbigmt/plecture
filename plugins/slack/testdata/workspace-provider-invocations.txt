@@ -1,6 +1,6 @@
-== thread / setup
+== thread_workspace / setup
 
-== thread / cleanup
+== thread_workspace / cleanup
 
-== thread / subscribe
-declined: workspace provider "thread" declares no subscribe hook
+== thread_workspace / subscribe
+declined: workspace provider "thread_workspace" declares no subscribe hook

@@ -11,6 +11,7 @@ Slack-specific message relay + subscription broker.
 - Shows/clears a bound thread's assistant shimmer status line (`StatusManager`, `assistant.threads.setStatus`) around inbound delivery and outbound replies, with a TTL fallback for a session that never posts back
 - HTTP API: `/threads` (create a thread and return its permalink), `/messages` (post), `/status` (set/clear the shimmer status), `/subscribe` (register/unregister a subscription), `/subscribers` (list subscriptions), `/unbound-mentions` (stream every unbound app mention)
 - The `subscribe unbound-mentions` CLI subcommand is a client of its own resident service's `/unbound-mentions` feed, not a separate integration: it never opens a second Socket Mode connection
+- The `resource observe` CLI subcommand is `thread`'s (the resource observer's) `observe` action (the config language requires one); it never contacts the resident service, since the observer's `state_schema` is empty and there is nothing live to fetch
 
 ## Dependency rules
 

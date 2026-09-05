@@ -7,7 +7,7 @@
 #
 # No `subscribe`/`unsubscribe`: this plugin owns no watcher a session could
 # bind to or drop a binding from for a thread resource.
-[thread]
+[thread_workspace]
 kind  = "workspace_provider"
 match = '^https://[A-Za-z0-9.-]+\.slack\.com/archives/(?P<channel_id>[A-Z0-9]+)/p(?P<ts16>\d{16})(?:\?thread_ts=(?P<thread_ts>\d{10}\.\d{6})&cid=[A-Z0-9]+)?$'
 name  = { expr = "'slack/' + match.channel_id + '-' + (match.thread_ts != '' ? match.thread_ts.replace('.', '') : match.ts16)" }
@@ -18,7 +18,7 @@ name  = { expr = "'slack/' + match.channel_id + '-' + (match.thread_ts != '' ? m
 # with a second regex. That keeps the directory `setup` creates and the
 # session `name` already picked in agreement by construction: one
 # derivation of those digits, not two that could drift apart.
-[thread.setup]
+[thread_workspace.setup]
 type = "shell"
 script = '''
 set -eu
@@ -73,30 +73,30 @@ printf '{"workspace_dir":"%s","channel_id":"%s","thread_ts":"%s","permalink":"%s
   "$(json_escape "$thread_ts")" "$(json_escape "$permalink")"
 '''
 
-[thread.setup.bind]
+[thread_workspace.setup.bind]
 session_name         = { from = "session.name" }
 permalink            = { from = "resource.id" }
 workspace_dirs_root  = { from = "config.workspace_dirs_root" }
 
-[thread.cleanup]
+[thread_workspace.cleanup]
 type   = "shell"
 script = 'rm -rf "$workspace_dir"'
 
-[thread.cleanup.bind]
+[thread_workspace.cleanup.bind]
 workspace_dir = { from = "self.outputs.workspace_dir" }
 
-[thread.outputs_schema]
+[thread_workspace.outputs_schema]
 type     = "object"
 required = ["workspace_dir", "channel_id", "thread_ts", "permalink"]
 
-[thread.outputs_schema.properties.workspace_dir]
+[thread_workspace.outputs_schema.properties.workspace_dir]
 type = "string"
 
-[thread.outputs_schema.properties.channel_id]
+[thread_workspace.outputs_schema.properties.channel_id]
 type = "string"
 
-[thread.outputs_schema.properties.thread_ts]
+[thread_workspace.outputs_schema.properties.thread_ts]
 type = "string"
 
-[thread.outputs_schema.properties.permalink]
+[thread_workspace.outputs_schema.properties.permalink]
 type = "string"
