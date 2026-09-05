@@ -11,13 +11,15 @@ rollup, and linked-PR discovery.
 ## Contents
 
 - `plugin.toml` — declares the executables this plugin builds or ships:
-  `github-worktree` (setup/cleanup), `github-issue-pr` (observe),
-  `github-watcher` (subscribe/serve/gh-api), and `gh-app-token` (mint/cache a
-  GitHub App installation token), all built from `src/`, this plugin's own Go
-  module (`src/cmd/github-worktree`, `src/cmd/github-issue-pr`,
-  `src/cmd/github-watcher`, `src/cmd/gh-app-token`); plus `gh-guard`
-  (`scripts/gh-guard`) and `gh-app-guard` (`scripts/gh-app-guard`), shipped
-  shell shims, not build targets.
+  `github-worktree` (setup/cleanup), `github-issue-pr` (observe,
+  query-pulls), `github-watcher` (subscribe/serve/gh-api),
+  `github-webhook-receiver` (subscribe-pulls), and `gh-app-token`
+  (mint/cache a GitHub App installation token), all built from `src/`, this
+  plugin's own Go module (`src/cmd/github-worktree`,
+  `src/cmd/github-issue-pr`, `src/cmd/github-watcher`,
+  `src/cmd/github-webhook-receiver`, `src/cmd/gh-app-token`); plus
+  `gh-guard` (`scripts/gh-guard`) and `gh-app-guard`
+  (`scripts/gh-app-guard`), shipped shell shims, not build targets.
 - `workspaces/worktree.toml` — declares the `worktree` provider: resolves a GitHub issue/PR URL to a session id
   and acquires/releases the git worktree it maps to.
 - `resources/issue.toml`, `resources/pull.toml` — the standalone observation contracts, one per resource kind
@@ -84,6 +86,42 @@ Left off, the branch decision falls through to the workspace provider's
 workflow says otherwise (the safer default for a review-only or
 shared-branch session). Branch deletion uses a safe `git branch -d`, so it
 still refuses a branch carrying unmerged commits regardless of this flag.
+
+## Query (population source)
+
+`resources/pull.toml`'s pull request observer will gain a `[pull.query]`
+face once core's `resource_observer` surface accepts one
+(`docs/adr/2026-09-05-standing-session-dispatch.md`, "Query contract: one
+purpose with poll and subscribe means"). This plugin ships that face's two
+means now, callable directly, so they can be wired into `pull.toml` in one
+small follow-up once core support lands rather than being designed then:
+
+- **`github-issue-pr query-pulls`** — the poll means: one complete REST
+  list-pull-requests scan per requested repository, paginated to
+  exhaustion, filtered by `--labels` (every one must be present),
+  `--state` (`open`/`closed`/`all`), and `--draft`. Prints one JSON array on
+  stdout; any fetch or parse failure fails the whole snapshot rather than
+  printing a partial one. It favors the same deployment-level GitHub App
+  auth `github-watcher serve` reads (`GITHUB_WATCHER_APP_*`, see "App auth"
+  below) over `--watcher-bin`'s shared rate budget, since a query means
+  invoked by a resident evaluator has no per-call `app_id`/`private_key_path`
+  input to select a token by.
+- **`github-webhook-receiver subscribe-pulls`** — the subscribe means: an
+  HTTP service that verifies each delivery's `X-Hub-Signature-256` against
+  `GITHUB_WEBHOOK_RECEIVER_SECRET` (required; the process refuses to start
+  without it) and, for each verified `pull_request` delivery whose current
+  state matches the same `--repositories`/`--labels`/`--state`/`--draft`
+  filter, writes one JSON item to stdout. An unverified delivery, a
+  non-matching verified delivery, or a non-`pull_request` event yields
+  nothing — subscribe only ever reports a match, never an absence; poll
+  above stays the sole authority for that. Exposing this service's endpoint
+  publicly and provisioning its secret are deployment infrastructure, not
+  something this binary or `plugin.toml` does.
+
+Both share the query's item shape: `resource` (the pull request URL,
+required) plus optional `owner`/`repository` identity decomposition —
+never a `state_schema` fact (`plugins/github/src/internal/pullquery`'s
+self-test asserts the two never overlap).
 
 ## Parameters
 
@@ -203,12 +241,16 @@ instead of staying process-healthy while every subsequent fetch dies quietly.
 Multi-installation watcher auth (a per-session or per-repository identity)
 stays out of scope until a concrete consumer needs it.
 
-`github-issue-pr` accepts a bare-`gh`, no-App-auth mode (omitting
+`github-issue-pr observe` accepts a bare-`gh`, no-App-auth mode (omitting
 `--watcher-bin`), which the shipped `resources/issue.toml`/`pull.toml`
 configs never select — they always pass `--watcher-bin` so calls route
 through the shared rate budget above. It has no App-auth inputs of its
 own, so invoking it directly without that flag is operator-auth only and
-out of scope for an App-only deployment. `github-worktree` is different:
+out of scope for an App-only deployment. (`github-issue-pr query-pulls`,
+covered under "Query" above, is different again: it favors
+`GITHUB_WATCHER_APP_*` over `--watcher-bin` outright, with no per-call
+App-auth flags of its own — there is no session to carry them.)
+`github-worktree` is different:
 its `--app-id`/`--private-key-path` App-auth inputs (see above) win
 outright over its own `--watcher-bin` selection, so a direct
 `github-worktree setup` invocation authenticates as the App whenever
@@ -264,8 +306,9 @@ supervisor.
   login` by default. An App-only deployment replaces every use of that
   ambient auth instead of running `gh auth login` at all — see "One
   credential story for an App-only deployment" above.
-- a Go toolchain, to build the three executables at `plect plugin add`/`update`
-  time (see `docs/design/plugin-packaging.md`'s Executable Build Model)
+- a Go toolchain, to build this plugin's Go executables at `plect plugin
+  add`/`update` time (see `docs/design/plugin-packaging.md`'s Executable
+  Build Model)
 
 ## Residual config
 

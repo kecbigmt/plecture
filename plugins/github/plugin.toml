@@ -22,6 +22,17 @@ name = "github-watcher"
 path = "bin/github-watcher"
 build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
 
+# The pull resource observer's query.subscribe means: an HTTP service that
+# verifies GitHub webhook deliveries and streams matching pull-request
+# appearances. Exposing its endpoint and provisioning its signing secret
+# (GITHUB_WEBHOOK_RECEIVER_SECRET) are deployment infrastructure, not this
+# plugin's own executables[]/services[] surface — see the README's Query
+# section.
+[[executables]]
+name = "github-webhook-receiver"
+path = "bin/github-webhook-receiver"
+build = "go -C src build -o ../bin/github-webhook-receiver ./cmd/github-webhook-receiver"
+
 # Mints and caches GitHub App installation access tokens, consumed by
 # gh-app-guard and the workspace provider's git credential helper path.
 [[executables]]
