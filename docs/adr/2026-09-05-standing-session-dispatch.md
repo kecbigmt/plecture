@@ -392,6 +392,8 @@ The closed workflow-population surface is:
 | `populations.session.destroy.force` | Optional boolean; default false. | Uses the lifecycle service's explicit force-destroy path for entry-owned sessions. |
 | `populations.poll_every` | Required positive duration for poll; forbidden for push. | Sets complete-snapshot cadence. |
 | `populations.expire_after` | Required positive duration for push; forbidden for poll. | Expires a push appearance after that duration of external-input quiescence, subject to the task guard below. The spelling is recommended pending the ruling below. |
+| `populations.auto_down` | Optional boolean; recommended default true. | Allows the evaluator to select this entry's explicitly idle sessions under root-cap pressure. |
+| `populations.auto_destroy` | Optional boolean; recommended default true. | Allows the evaluator to execute an otherwise eligible guarded destruction. False retains the session and emits the same decision as a dry-run event. |
 
 The complete `session.inputs` object is validated against the target
 workflow's `inputs_schema` at load time: literal types are checked directly,
@@ -426,6 +428,26 @@ does not count. This measures external-input quiescence; it is independent of
 the runtime's explicit empty status message used for capacity decisions and a
 health probe's `silence_expected` turn-boundary exception.
 
+#### Automatic-action controls: owner confirmation required
+
+Independent down and destroy controls are required; their spelling and defaults
+need confirmation. Three compact shapes are available:
+
+| Shape | Strength | Cost |
+|---|---|---|
+| Booleans `auto_down` / `auto_destroy` | Directly represents the two independent permissions; omission can carry a default. | Negative overrides such as `auto_destroy = false` require care when scanning. |
+| Strings `down = "auto"` or `"manual"`, and likewise for destroy | Each value reads positively and can gain modes later. | Adds enum vocabulary when only permission is demonstrated. |
+| One combined mode | Uses one field. | Needs four combinations and couples permissions the owner requires independently. |
+
+Recommend the two booleans. They add only the two decisions that exist and do
+not speculate about additional modes. Recommend both default to true, pending
+owner confirmation: a declared population then fulfills its config-only
+convergence promise, while a cautious create-only rollout opts out explicitly
+with `auto_destroy = false`. Making destroy manual by default would silently
+leave every ordinary population outside its declared snapshot or expiry policy.
+Automatic down is reversible and occurs only under actual cap pressure, so it
+has no separate reason to default off.
+
 Poll membership is exactly the latest successful complete snapshot. For an
 owned member missing from that snapshot, the evaluator plans destruction; the
 discover query itself expresses exclusions such as `state = "open"`. A
@@ -453,6 +475,15 @@ ordinary cleanup and force rules. Consequently a task that can never become
 satisfied prevents automatic expiry forever; the operator must resolve it
 explicitly or fix the task's own completion design.
 
+With `auto_destroy = false`, the evaluator still computes snapshot absence or
+push expiry and runs the built-in task guard. An unsatisfied task records the
+same deferral. Once the guard is clear, it records
+`plect.workflow_population.destroy_dry_run` with the source reason and
+provenance instead of calling the lifecycle service. Repeated identical
+evaluations do not duplicate that event; a changed verdict, blocker set, or
+discovery generation does. Turning `auto_destroy` on triggers re-evaluation.
+No destruction tombstone is written until a destroy is actually attempted.
+
 The evaluator persists a discovery-generation tombstone before completing an
 owned destruction. For poll, the successful absent generation remains closed
 until a later successful snapshot contains the resource. For push, only a later
@@ -474,7 +505,9 @@ silently weakens cleanup guards. A population persists its containing workflow
 address and entry name on sessions it creates and may mutate only those
 sessions. It never adopts an existing session with the same derived name. A
 population/chain or population/population name collision records a conflict and
-leaves the existing session untouched.
+leaves the existing session untouched. Manual `plect down`, `plect up`, and
+`plect destroy` remain available regardless of `auto_down` and `auto_destroy`;
+the switches constrain only evaluator-initiated actions.
 
 When `session.task` is present, a successful `up` is followed by the
 existing task-setup service with the fixed instance name `initial` and the
@@ -585,6 +618,8 @@ heartbeat = "15m"
 name              = "review_dispatch"
 resource_observer = "official.github.pull"
 poll_every        = "1m"
+auto_down         = true
+auto_destroy      = true
 
 [review_agent.populations.discover_inputs]
 repositories = ["example/widgets"]
@@ -624,6 +659,9 @@ a review session waiting for a reply can go down after its runtime explicitly
 reports idle, freeing a slot for a newly discovered pull request. The reply is
 an inbound session event, so it requests that retained member come back up; if
 the cap is still full, that request remains pending.
+A cautious first rollout can set `auto_destroy = false`: the same absence and
+task-guard verdicts are emitted, but teardown remains manual until the owner
+enables it.
 
 #### Operations-chat configuration
 
@@ -691,6 +729,8 @@ heartbeat = "15m"
 name              = "ops_mentions"
 resource_observer = "official.slack.thread_state"
 expire_after      = "8h"
+auto_down         = true
+auto_destroy      = true
 
 [ops_chat_session.populations.discover_inputs]
 base_url    = "http://127.0.0.1:7890"
@@ -882,8 +922,9 @@ and re-ups and may reclaim capacity only from population-owned sessions.
 
 When an evaluator's atomic virtual-root admission is rejected at the cap, the
 resident root-cap coordinator considers up, parentless, population-owned
-members across all populations. A member is eligible to go down only after its
-runtime has explicitly reported idle by clearing the session status message.
+members across entries whose `auto_down` is true. A member is eligible to go
+down only after its runtime has explicitly reported idle by clearing the
+session status message.
 The durable latest `plect.status_message` event must therefore exist and have
 `cleared = "true"`; an absent event is “never reported,” not idle. A runtime
 that never reports idle is never selected, which is the safe default. The
@@ -907,6 +948,12 @@ population failure event, leaves that candidate's actual run state
 authoritative, and lets the coordinator try the next eligible candidate. It
 never selects a manually created session or a session owned by a different
 lifecycle authority merely because both count at the virtual root.
+
+With `auto_down = false`, the entry's sessions are omitted from the candidate
+set and continue to count while up. The evaluator records that no permitted
+candidate was available when this prevents an admission; it does not treat the
+switch as a lifecycle failure. Manual `plect down` remains available and frees
+capacity normally.
 
 A successful down frees root capacity while preserving population membership.
 It runs ordinary run-scoped cleanup and retains the session, workspace, event
@@ -958,9 +1005,9 @@ Implementation changes the configuration language and therefore requires a
 dialect increment, a migration procedure with a backup step, structural schema
 updates, and conformance fixtures for every valid, invalid, and boundary case.
 It adds the workflow `populations` array, observer discover faces and wake
-action, the selected push-expiry duration, and virtual-root
-`max_up_children`. It does not change the fact grammar, add a lifecycle
-condition site, or change task-extension composition.
+action, the selected push-expiry duration, the two automatic-action
+permissions, and virtual-root `max_up_children`. It does not change the fact
+grammar, add a lifecycle condition site, or change task-extension composition.
 
 Disjunction remains a real language issue: the GitHub observer documentation
 identifies its `"NULL"` enum sentinel as a workaround for the inability to
@@ -982,13 +1029,13 @@ Behavior fixtures and tests cover at least:
 - poll and push discover validation, complete-snapshot failure, wake coalescing,
   and supervised restart;
 - poll destruction from successful absence only, including tombstones and task
-  guard deferral;
+  guard deferral, automatic execution, and dry-run-only verdicts;
 - push expiry from the precise external-input clock, including repeated
   appearances, inbound resets, restart persistence, tombstones, and the same
-  task guard;
+  task guard and automatic-destroy control;
 - first-empty status recording, explicit-idle eligibility versus a runtime that
-  never reports, oldest-first selection, ordinary down cleanup, and failed-down
-  fallback;
+  never reports, `auto_down` exclusion, oldest-first selection, ordinary down
+  cleanup, and failed-down fallback;
 - the three up signals, canonical resource-state comparison, invalidated idle
   evidence, pending existing-member priority, and concurrent admissions; and
 - one virtual-root cap for all parentless ups, including manual commands,
@@ -1003,13 +1050,14 @@ The implementation order is:
 2. Complete virtual-root admission and durable status-event lookup, then add
    workflow-population validation and the resident evaluator with provenance,
    snapshot/expiry lifecycle, the built-in task guard, capacity-driven down/up,
-   and population events.
+   automatic-action permissions, dry-run verdicts, and population events.
 3. Cut a downstream deployment over to each user-owned workflow population
    entry and remove its dispatch loop.
 4. Remove the Slack opaque command hook and publish its one-time migration.
 
 After cutover, configuration in a downstream deployment retains team
-parameters, workflows, task specialization, expiry, and instructions. Its
+parameters, workflows, task specialization, automatic-action permissions,
+expiry, and instructions. Its
 deployment infrastructure retains credentials, service management, endpoint
 exposure, signature verification, and Terraform. Until the failure-model work
 lands, a downstream deployment may also retain the narrow recovery shim that
@@ -1035,6 +1083,8 @@ membership, and capacity mechanisms without any of the following:
   whose completion can never become satisfied;
 - capacity reclamation from a runtime that has never explicitly reported idle,
   from a manually owned session, or without virtual-root contention;
+- automatic down or destroy control that cannot be represented by two
+  independent per-entry permissions;
 - a down member that must come up for a signal other than re-appearance,
   inbound input, or changed observed resource facts;
 - a retained population that needs a total bound and deterministic destructive
