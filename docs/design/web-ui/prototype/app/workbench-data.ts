@@ -116,7 +116,7 @@ function nodes(name: string, failed = false): NodeRecord[] {
             queue_dir: '/demo/runtime/' + name + '/queue',
             task: 'goal_review',
           },
-      outputs: failed ? {} : {},
+      outputs: {},
       at: failed ? '13:58:00' : '14:00:03',
     },
   ];

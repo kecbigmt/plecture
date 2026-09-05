@@ -39,9 +39,8 @@ credentials, backend service, deployment account, or environment file is needed.
 - Bounded mock Home activity and an Escalations history entry point.
 - Session-local drafts and selection during the current page lifetime.
 
-The source snapshot is the reference prototype commit
-`6f1582103584069c4ddd452082d9392c21f59c46`. The code is included here;
-that source repository or its hosting service is not needed to run it.
+The reference code is included here; no external source repository or hosting
+service is needed to run it.
 The archive uses a plain Vite entry point, excludes deployment settings and
 unused screens/components, and translates sample content into English.
 Styles from the source snapshot are retained to preserve appearance.
