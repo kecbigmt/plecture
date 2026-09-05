@@ -6,7 +6,7 @@ package lang
 // such a plan is a load error. A reference the registry cannot resolve is
 // left to reference resolution, which reports it in its own layer.
 func (v Validation) ValidatePlan(workflow *Definition, r *Registry) error {
-	if err := v.validatePopulationContracts(workflow, r); err != nil {
+	if err := v.ValidatePopulationContracts(workflow, r); err != nil {
 		return err
 	}
 	var members []*Definition

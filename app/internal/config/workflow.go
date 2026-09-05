@@ -541,7 +541,38 @@ func (c *Config) LoadWorkflows(workspaceDirPath string) (map[string]WorkflowFile
 		}
 		out[entry.address] = wf
 	}
+	if !workflowsHavePopulations(out) {
+		return out, nil
+	}
+	observers, err := c.LoadResourceDefs()
+	if err != nil {
+		return nil, err
+	}
+	docs, err := c.LoadTaskDocuments(workspaceDirPath)
+	if err != nil {
+		return nil, err
+	}
+	registry := c.taskReferenceRegistry(docs, observers, out)
+	for _, address := range Addresses(out) {
+		wf := out[address]
+		if len(wf.Populations) == 0 {
+			continue
+		}
+		validation := lang.Validation{From: registry.OwnerOf(wf.Definition), Executables: c.binResolver(wf.SourcePath)}
+		if err := validation.ValidatePopulationContracts(wf.Definition, registry); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
+}
+
+func workflowsHavePopulations(workflows map[string]WorkflowFile) bool {
+	for _, workflow := range workflows {
+		if len(workflow.Populations) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // LoadTaskDefinitions merges plugin + global + ancestor `.plect/tasks/`

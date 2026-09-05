@@ -196,7 +196,10 @@ func (v Validation) validateWorkflowPopulations(def *Definition, pos Position) e
 	return nil
 }
 
-func (v Validation) validatePopulationContracts(workflow *Definition, registry *Registry) error {
+// ValidatePopulationContracts is separate from ValidatePlan because config
+// loading must reject an invalid population even when the caller does not
+// compile an executable plan.
+func (v Validation) ValidatePopulationContracts(workflow *Definition, registry *Registry) error {
 	entries, err := tableArray(workflow.Body, "populations", Position{File: workflow.File, Path: workflow.ID})
 	if err != nil || len(entries) == 0 {
 		return err
@@ -288,12 +291,21 @@ func (v Validation) validatePopulationSessionContracts(entry map[string]any, obs
 		if err != nil {
 			return err
 		}
-		taskObserverRef, ok := task.Body["resource_observer"].(string)
+		taskValidation := Validation{From: registry.OwnerOf(task)}
+		chain, err := taskValidation.ExtendsChain(task, registry)
+		if err != nil {
+			return err
+		}
+		root := task
+		if len(chain) > 0 {
+			root = chain[0]
+		}
+		taskObserverRef, ok := root.Body["resource_observer"].(string)
 		if !ok {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "session.task"),
 				fmt.Sprintf("task %q declares no resource_observer", taskRef))
 		}
-		taskObserver, err := registry.ExpectKind(taskObserverRef, registry.OwnerOf(task), KindResourceObserver, task.ID+".resource_observer")
+		taskObserver, err := registry.ExpectKind(taskObserverRef, registry.OwnerOf(root), KindResourceObserver, root.ID+".resource_observer")
 		if err != nil {
 			return err
 		}
