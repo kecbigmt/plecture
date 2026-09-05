@@ -31,12 +31,10 @@ args = [
   { bin = "github-watcher" },
 ]
 
-# query-pulls (poll) is the sole authority for presence and absence, while
-# the webhook-receiver subscribe-pulls stream only accelerates admission of
-# a pull request poll would confirm anyway. --watcher-bin/--cache-path are
-# omitted here: a population evaluator has no per-call
-# app_id/private_key_path input to select a token by, so both binaries read
-# deployment-level GitHub App auth from the environment instead.
+# --watcher-bin/--cache-path are omitted: a population evaluator has no
+# per-call app_id/private_key_path input to select a token by, so both
+# binaries read deployment-level GitHub App auth from the environment
+# instead.
 [pull.query.poll]
 type = "exec"
 bin  = "github-issue-pr"
@@ -78,9 +76,6 @@ labels       = { type = "array", items = { type = "string" } }
 state        = { type = "string", enum = ["open", "closed", "all"] }
 draft        = { type = "boolean" }
 
-# resource, owner, and repository mirror the query executables' own item
-# shape exactly; a self-test decodes this file to confirm no property here
-# also appears in state_schema below.
 [pull.query.item_schema]
 type                 = "object"
 required             = ["resource"]

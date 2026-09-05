@@ -64,12 +64,9 @@ func runSubscribeCommand(args []string, out, errOut io.Writer) int {
 	return 0
 }
 
-// runResourceCommand implements `slack-adapter resource observe`, the
-// thread_state resource observer's observe action. A mention appearance is
-// the only fact the thread resource contributes to population dispatch,
-// and that already flows through the query.subscribe stream, so this
-// action has nothing live left to report; printing "{}" says exactly that,
-// matching the observer's empty state_schema instead of a fabricated key.
+// thread_state has nothing live to report beyond a mention appearance,
+// which already flows through query.subscribe, so this prints "{}" rather
+// than fabricate a state key.
 func runResourceCommand(args []string, out, errOut io.Writer) int {
 	if len(args) == 0 || args[0] != "observe" {
 		fmt.Fprintln(errOut, "usage: slack-adapter resource observe --resource <url>")

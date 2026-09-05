@@ -211,11 +211,6 @@ func renderQueryArgv(t *testing.T, cfg *Config, def ResourceDef, action *lang.Ac
 	return execution.Argv
 }
 
-// TestShippedCatalog_GitHubPullQueryInvokesDocumentedFlags guards
-// resources/pull.toml's query face: poll and subscribe must invoke
-// github-issue-pr query-pulls and github-webhook-receiver subscribe-pulls
-// with the same --repositories/--labels/--state/--draft flags
-// plugins/github/src/internal/pullquery.ParseInputs expects.
 func TestShippedCatalog_GitHubPullQueryInvokesDocumentedFlags(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	observers, err := cfg.LoadResourceDefs()
@@ -286,10 +281,6 @@ func assertGitHubQueryArgv(t *testing.T, argv []string, wantBin, wantSubcommand 
 	}
 }
 
-// TestShippedCatalog_GitHubPullQueryItemSchemaBoundary guards the
-// observe/query boundary directly on the shipped declaration: the query
-// item schema requires only "resource" and shares no property with
-// state_schema.
 func TestShippedCatalog_GitHubPullQueryItemSchemaBoundary(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	observers, err := cfg.LoadResourceDefs()
@@ -313,11 +304,6 @@ func TestShippedCatalog_GitHubPullQueryItemSchemaBoundary(t *testing.T) {
 	}
 }
 
-// TestShippedCatalog_SlackThreadStateQueryInvokesDocumentedFlags guards the
-// Slack thread resource observer's subscribe-only query face: it must
-// invoke slack-adapter subscribe unbound-mentions with the flags
-// RunSubscribeUnboundMentions expects, and it declares no poll means since
-// a mention appearance is not enumerable.
 func TestShippedCatalog_SlackThreadStateQueryInvokesDocumentedFlags(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	observers, err := cfg.LoadResourceDefs()
@@ -377,11 +363,9 @@ func TestShippedCatalog_SlackThreadStateQueryInvokesDocumentedFlags(t *testing.T
 	}
 }
 
-// TestShippedCatalog_WorkflowPopulationResolvesGitHubPullQuery is a
-// host-owned test workflow, not shipped config (populations declarations
-// are deployment policy, out of scope for this plugin): it only proves
-// that official.github.pull's combined poll/subscribe query face is a
-// valid population source.
+// The workflow here is a throwaway test fixture, not shipped config:
+// populations declarations are deployment policy, out of scope for this
+// plugin.
 func TestShippedCatalog_WorkflowPopulationResolvesGitHubPullQuery(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	cfg.BaseDir = t.TempDir()
@@ -413,10 +397,8 @@ draft        = false
 	}
 }
 
-// TestShippedCatalog_WorkflowPopulationResolvesSlackThreadStateQuery mirrors
-// the test above for the subscribe-only Slack case; expire_after (not
-// poll_every) is required because official.slack.thread_state declares no
-// poll means.
+// expire_after (not poll_every) is required here because
+// official.slack.thread_state declares no poll means.
 func TestShippedCatalog_WorkflowPopulationResolvesSlackThreadStateQuery(t *testing.T) {
 	cfg := loadShippedCatalog(t, "official")
 	cfg.BaseDir = t.TempDir()
