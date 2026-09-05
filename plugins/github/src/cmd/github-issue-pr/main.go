@@ -28,12 +28,9 @@ func ghClient(watcherBin string) github.GHClient {
 	return ghapi.ViaWatcher(watcherBin)
 }
 
-// queryClient favors deployment-level GitHub App auth (the same
-// GITHUB_WATCHER_APP_* env github-watcher serve reads) over the plain
-// gh-api client: the query means run standalone, invoked by the resident
-// evaluator rather than a session's own task, so there is no per-call
-// app_id/private_key_path input to select a token by — see the README's
-// "App auth" section.
+// queryClient favors deployment-level GitHub App auth over the plain
+// gh-api client: this runs standalone with no owning session, so there is
+// no per-call app_id/private_key_path input to select a token by.
 func queryClient(watcherBin, cachePathOverride string) (github.GHClient, error) {
 	appClient, err := ghapi.AppFromEnv(defaultAppCachePath(cachePathOverride))
 	if err != nil {

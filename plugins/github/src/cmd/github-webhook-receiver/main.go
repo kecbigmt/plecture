@@ -1,12 +1,9 @@
-// Command github-webhook-receiver is the executable the shipped GitHub pull
-// resource's query.subscribe action runs: a supervised HTTP service that
+// Command github-webhook-receiver is a supervised HTTP service that
 // receives GitHub webhook deliveries and streams validated pull-request
-// appearances, one JSON item per line, to stdout. Exposing its endpoint and
-// provisioning its signing secret are deployment-infrastructure
+// appearances, one JSON item per line, to stdout. Exposing its endpoint
+// and provisioning its signing secret are deployment-infrastructure
 // responsibilities; this binary only verifies deliveries against a secret
-// already present in its environment. See
-// docs/adr/2026-09-05-standing-session-dispatch.md, "Poll-and-subscribe
-// observer sketch".
+// already present in its environment.
 package main
 
 import (

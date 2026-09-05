@@ -82,6 +82,6 @@ func TestValidateState(t *testing.T) {
 
 func TestItemSchemaBoundary_RequiresOnlyResource(t *testing.T) {
 	if len(ItemSchemaRequired) != 1 || ItemSchemaRequired[0] != "resource" {
-		t.Errorf("ItemSchemaRequired = %v, want exactly [\"resource\"] per the ADR's query contract", ItemSchemaRequired)
+		t.Errorf("ItemSchemaRequired = %v, want exactly [\"resource\"]", ItemSchemaRequired)
 	}
 }

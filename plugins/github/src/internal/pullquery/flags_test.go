@@ -43,11 +43,6 @@ func TestParseInputs_InvalidState(t *testing.T) {
 	}
 }
 
-// TestParseInputs_DraftMustBeExactlyTrueOrFalse pins the shape the ADR's
-// query.poll/query.subscribe sketch renders: `{ expr = "inputs.draft ?
-// 'true' : 'false'" }` never produces anything else, so any other value
-// (including Go's flag.Bool-style "1"/"0" or an empty default) is a
-// misrendered action rather than a valid input.
 func TestParseInputs_DraftMustBeExactlyTrueOrFalse(t *testing.T) {
 	for _, bad := range []string{"", "1", "0", "True", "yes"} {
 		if _, err := ParseInputs(`[]`, `[]`, "open", bad); err == nil {

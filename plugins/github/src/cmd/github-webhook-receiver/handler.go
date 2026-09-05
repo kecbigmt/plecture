@@ -16,12 +16,6 @@ import (
 // instead of unbounded memory growth.
 const maxBodyBytes = 5 << 20
 
-// newHandler builds the subscribe-pulls HTTP handler: it verifies each
-// delivery's signature, decodes only "pull_request" events, and writes one
-// JSON item per line to out for each delivery whose current state matches
-// in. Every other outcome — bad signature, wrong event type, no match —
-// responds without writing to out; out is never asked to prove absence,
-// only appearance, per the ADR's query.subscribe contract.
 func newHandler(secret string, in pullquery.Inputs, out io.Writer, logger *slog.Logger) http.HandlerFunc {
 	var mu sync.Mutex
 	return func(w http.ResponseWriter, r *http.Request) {

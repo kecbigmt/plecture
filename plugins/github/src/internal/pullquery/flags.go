@@ -5,17 +5,11 @@ import (
 	"fmt"
 )
 
-// ParseInputs decodes the query's shared inputs_schema from the flag shape
-// both query-pulls and subscribe-pulls accept: `repositories`/`labels` as
-// JSON arrays (matching the ADR's `{ json = { from = ... } }` argument
-// rendering), `state` as a plain string, and `draft` as the literal string
-// "true" or "false" — the ADR's own sketch renders it with
-// `{ expr = "inputs.draft ? 'true' : 'false'" }` as one argv element
-// separate from `--draft`, which rules out a `flag.Bool`: Go's flag package
-// only accepts a bool flag's value joined as `-draft=false`, not the
-// two-argv-element `-draft false` shape a rendered exec action produces
-// (that shape is instead read as bare `-draft` followed by an unrelated
-// positional argument).
+// ParseInputs takes draft as a string, not a bool: a config-rendered exec
+// action passes "--draft" and its value as two separate argv elements, and
+// Go's flag package only accepts a bool flag's value joined as
+// "-draft=false" — the space-separated form is read as bare "-draft"
+// (true) followed by an unrelated positional argument.
 func ParseInputs(repositoriesJSON, labelsJSON, state, draft string) (Inputs, error) {
 	var repositories []string
 	if err := json.Unmarshal([]byte(repositoriesJSON), &repositories); err != nil {

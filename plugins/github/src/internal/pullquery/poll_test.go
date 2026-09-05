@@ -57,9 +57,6 @@ func TestPoll_OneCompletePageEmitsMatchingItems(t *testing.T) {
 	}
 }
 
-// TestPoll_SpansPagination pins the pagination contract the ADR requires:
-// a full first page means there may be more, and enumeration is not
-// complete until a page comes back short.
 func TestPoll_SpansPagination(t *testing.T) {
 	fullPage := make([]string, pollPageSize)
 	for i := range fullPage {
@@ -95,10 +92,6 @@ func TestPoll_SpansMultipleRepositories(t *testing.T) {
 	}
 }
 
-// TestPoll_MidPaginationFailureFailsTheWholeSnapshot pins the ADR's poll
-// contract: a partial result must never reach the caller, so a failure on
-// a later page invalidates everything already fetched rather than
-// returning what was gathered so far.
 func TestPoll_MidPaginationFailureFailsTheWholeSnapshot(t *testing.T) {
 	fullPage := make([]string, pollPageSize)
 	for i := range fullPage {

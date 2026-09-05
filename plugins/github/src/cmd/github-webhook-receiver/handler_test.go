@@ -53,9 +53,6 @@ func post(t *testing.T, h http.HandlerFunc, body []byte, headers map[string]stri
 	return rec
 }
 
-// TestHandler_ValidSignedMatchingDeliveryEmitsOneItem is the acceptance
-// scenario from the issue: a verified, matching delivery yields exactly one
-// stream item.
 func TestHandler_ValidSignedMatchingDeliveryEmitsOneItem(t *testing.T) {
 	var out bytes.Buffer
 	in := pullquery.Inputs{Repositories: []string{"acme/widgets"}, Labels: []string{"agent-review"}, State: "open", Draft: false}
@@ -79,9 +76,6 @@ func TestHandler_ValidSignedMatchingDeliveryEmitsOneItem(t *testing.T) {
 	}
 }
 
-// TestHandler_InvalidSignatureEmitsNoItem is the other half of the
-// acceptance scenario: an unverified delivery never reaches the stream,
-// regardless of whether its content would otherwise match.
 func TestHandler_InvalidSignatureEmitsNoItem(t *testing.T) {
 	var out bytes.Buffer
 	in := pullquery.Inputs{Repositories: []string{"acme/widgets"}, State: "open", Draft: false}

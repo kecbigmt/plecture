@@ -22,12 +22,10 @@ name = "github-watcher"
 path = "bin/github-watcher"
 build = "go -C src build -o ../bin/github-watcher ./cmd/github-watcher"
 
-# The pull resource observer's query.subscribe means: an HTTP service that
-# verifies GitHub webhook deliveries and streams matching pull-request
-# appearances. Exposing its endpoint and provisioning its signing secret
-# (GITHUB_WEBHOOK_RECEIVER_SECRET) are deployment infrastructure, not this
-# plugin's own executables[]/services[] surface — see the README's Query
-# section.
+# Verifies GitHub webhook deliveries and streams matching pull-request
+# appearances. Not declared under [[services]]: exposing its endpoint and
+# provisioning its signing secret are deployment infrastructure, so it runs
+# only when something invokes it, not as a plugin-managed daemon.
 [[executables]]
 name = "github-webhook-receiver"
 path = "bin/github-webhook-receiver"

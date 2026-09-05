@@ -34,11 +34,9 @@ func labelNames(labels []restLabel) []string {
 	return names
 }
 
-// Poll runs the query's complete-membership means: one REST list-pulls scan
-// per requested repository, paginated to exhaustion, filtered by Matches. A
-// single fetch or parse failure fails the whole snapshot — the ADR's poll
-// contract makes successful exit the only way to assert either presence or
-// absence, so a partial result must never reach the caller.
+// Poll fails on the first error rather than returning what it gathered so
+// far: a partial snapshot would misreport a resource missing only because
+// pagination stopped early as actually absent.
 func Poll(ctx context.Context, client github.GHClient, in Inputs) ([]Item, error) {
 	if len(in.Repositories) == 0 {
 		return nil, fmt.Errorf("query requires at least one repository")

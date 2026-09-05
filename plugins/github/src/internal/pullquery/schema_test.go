@@ -8,10 +8,6 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// pullResourceDoc decodes exactly the two tables this self-test compares:
-// resources/pull.toml's state_schema (the observe/query boundary's other
-// side) and, once it exists, its query.item_schema. Everything else in the
-// file is irrelevant here and left undecoded.
 type pullResourceDoc struct {
 	Pull struct {
 		StateSchema struct {
@@ -30,13 +26,9 @@ func pullTOMLPath(t *testing.T) string {
 	return filepath.Join(filepath.Dir(thisFile), "..", "..", "..", "config", "resources", "pull.toml")
 }
 
-// TestItemSchema_NeverOverlapsStateSchema is the self-test the ADR requires:
-// "query items carry identity plus appearance context, not observed
-// resource state" — a query item_schema that mirrors a state_schema key
-// would make query, not observe, an authority on what a resource's state
-// is. This loads the real, shipped resources/pull.toml rather than a copy,
-// so a future state_schema addition that collides with the query's item
-// shape fails here instead of silently drifting.
+// This decodes the real, shipped resources/pull.toml rather than a local
+// copy of its properties, so a future state_schema addition that collides
+// with the query's item shape fails here instead of silently drifting.
 func TestItemSchema_NeverOverlapsStateSchema(t *testing.T) {
 	var doc pullResourceDoc
 	if _, err := toml.DecodeFile(pullTOMLPath(t), &doc); err != nil {
