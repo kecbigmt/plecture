@@ -377,6 +377,7 @@ workspace_provider = "official.github.worktree"
 [[agent.populations]]
 name              = "dispatch"
 resource_observer = "official.github.pull_request"
+uses              = ["poll"]
 poll_every        = "1m"
 auto_down         = true
 auto_destroy      = true
@@ -410,6 +411,7 @@ workspace_provider = "official.slack.thread_workspace"
 [[ops.populations]]
 name              = "mentions"
 resource_observer = "official.slack.thread"
+uses              = ["subscribe"]
 expire_after      = "8h"
 auto_down         = true
 auto_destroy      = true

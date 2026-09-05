@@ -103,7 +103,7 @@ func (e *Engine) ApplyAppearance(ctx context.Context, item map[string]any) error
 		population.Workflow = e.definition.Workflow.Address
 		population.Name = e.definition.Population.Name
 		member := population.Members[resource]
-		if member != nil && member.Tombstoned && e.definition.Observer.Query.Poll != nil {
+		if member != nil && member.Tombstoned && e.definition.Population.UsesPoll() {
 			suppressed = true
 			return nil
 		}
@@ -174,7 +174,7 @@ func (e *Engine) SweepExpiry(ctx context.Context) error {
 	if err := e.processInbound(); err != nil {
 		return err
 	}
-	if e.definition.Observer.Query.Poll != nil {
+	if e.definition.Population.UsesPoll() {
 		return e.Reconcile(ctx)
 	}
 	population, err := e.state.Population(e.key)

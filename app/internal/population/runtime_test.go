@@ -34,7 +34,7 @@ func TestPopulationCannotAdoptSameProvenanceSessionForAnotherResource(t *testing
 	cfg := populationConfig(t, `[source.query.poll]
 type = "exec"
 command = "true"
-`, `poll_every = "1m"`, `resource = { from = "resource.id" }`)
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
 	definitions, err := Load(cfg)
 	if err != nil {
 		t.Fatal(err)

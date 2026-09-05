@@ -915,7 +915,8 @@
       "required": [
         "name",
         "resource_observer",
-        "query"
+        "query",
+        "uses"
       ],
       "properties": {
         "name": {
@@ -929,6 +930,18 @@
           "type": "object",
           "additionalProperties": {
             "$ref": "#/$defs/literalData"
+          }
+        },
+        "uses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": [
+              "poll",
+              "subscribe"
+            ]
           }
         },
         "session": {
@@ -971,7 +984,7 @@
           "default": false
         }
       },
-      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-ID-INVALID, PLECTURE-CFG-REF-DYNAMIC."
+      "$comment": "PLECTURE-CFG-FIELD-UNKNOWN, PLECTURE-CFG-FIELD-REQUIRED, PLECTURE-CFG-FIELD-TYPE, PLECTURE-CFG-ID-INVALID, PLECTURE-CFG-REF-DYNAMIC."
     },
     "channelInputSpec": {
       "type": "object",

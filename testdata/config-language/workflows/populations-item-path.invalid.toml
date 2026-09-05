@@ -8,6 +8,7 @@ workspace_provider = "query_provider"
 [[bad_item_path.populations]]
 name              = "dispatch"
 resource_observer = "query_source"
+uses              = ["poll"]
 poll_every        = "5m"
 
 [bad_item_path.populations.query]

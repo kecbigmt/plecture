@@ -82,6 +82,7 @@ workspace_provider = "provider"
 [[agent.populations]]
 name = "dispatch"
 resource_observer = "source"
+uses = ["poll"]
 poll_every = "45s"
 [agent.populations.query]
 scope = "all"
@@ -113,6 +114,9 @@ context = { from = "item.context", optional = true }
 	if population.Session.Inputs["resource"].From != "resource.id" {
 		t.Fatalf("inputs = %+v", population.Session.Inputs)
 	}
+	if len(population.Uses) != 1 || population.Uses[0] != "poll" {
+		t.Fatalf("uses = %+v", population.Uses)
+	}
 }
 
 func TestPopulationDurationsMustBePositive(t *testing.T) {
@@ -137,21 +141,24 @@ func TestLoadWorkflowsEnforcesPopulationContracts(t *testing.T) {
 	}{
 		{
 			name: "query parameters",
-			population: `poll_every = "1m"
+			population: `uses = ["poll"]
+poll_every = "1m"
 [agent.populations.query]
 wrong = "all"
 `,
 		},
 		{
 			name: "query timing",
-			population: `expire_after = "1h"
+			population: `uses = ["poll"]
+expire_after = "1h"
 [agent.populations.query]
 scope = "all"
 `,
 		},
 		{
 			name: "initial task observer",
-			population: `poll_every = "1m"
+			population: `uses = ["poll"]
+poll_every = "1m"
 [agent.populations.query]
 scope = "all"
 [agent.populations.session]

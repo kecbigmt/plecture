@@ -1,0 +1,38 @@
+# plect-fixture: result=valid entry=definitions
+# reason: an observer whose query declares only subscribe has no poll means for a population to fall back on.
+
+[subscribe_only_source]
+kind  = "resource_observer"
+match = '^urn:subscribe-case:[A-Za-z0-9]+$'
+
+[subscribe_only_source.observe]
+type    = "exec"
+command = "observe-case"
+args    = [{ from = "resource.id" }]
+
+[subscribe_only_source.state_schema]
+type = "object"
+
+[subscribe_only_source.state_schema.properties]
+phase = { type = "string" }
+
+[subscribe_only_source.query.inputs_schema]
+type                 = "object"
+required             = ["scope"]
+additionalProperties = false
+
+[subscribe_only_source.query.inputs_schema.properties]
+scope = { type = "string" }
+
+[subscribe_only_source.query.item_schema]
+type                 = "object"
+required             = ["resource"]
+additionalProperties = false
+
+[subscribe_only_source.query.item_schema.properties]
+resource = { type = "string" }
+
+[subscribe_only_source.query.subscribe]
+type    = "exec"
+command = "subscribe-cases"
+args    = ["--scope", { from = "inputs.scope" }]

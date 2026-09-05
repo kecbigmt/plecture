@@ -182,6 +182,11 @@ func workflowPopulationsFrom(def *lang.Definition, pos lang.Position) ([]Workflo
 		}
 		p.AutoDown, _ = entry["auto_down"].(bool)
 		p.AutoDestroy, _ = entry["auto_destroy"].(bool)
+		uses, err := stringList(entry, "uses")
+		if err != nil {
+			return nil, fmt.Errorf("population %q: %w", p.Name, err)
+		}
+		p.Uses = uses
 		if session, ok := entry["session"].(map[string]any); ok {
 			p.Session.Task, _ = session["task"].(string)
 			at := childPosition(childPosition(pos, "populations"), fmt.Sprintf("[%d].session", i))

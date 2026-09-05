@@ -8,6 +8,7 @@ workspace_provider = "query_provider"
 [[bad_timing.populations]]
 name              = "dispatch"
 resource_observer = "query_source"
+uses              = ["poll"]
 
 [bad_timing.populations.query]
 scope = "open"

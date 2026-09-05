@@ -45,6 +45,7 @@ var fixtureContext = []string{
 	"observers/issue-pr.toml",
 	"observers/observe-finalize.toml",
 	"observers/query.toml",
+	"observers/query-subscribe-only.toml",
 	"providers/query.toml",
 	"tasks/population.toml",
 	"workflows/nodes.toml",

@@ -203,10 +203,28 @@ type WorkflowPopulation struct {
 	ResourceObserver string
 	Query            map[string]any
 	Session          PopulationSession
+	Uses             []string
 	PollEvery        Duration
 	ExpireAfter      Duration
 	AutoDown         bool
 	AutoDestroy      bool
+}
+
+func (p WorkflowPopulation) UsesPoll() bool {
+	return usesContains(p.Uses, "poll")
+}
+
+func (p WorkflowPopulation) UsesSubscribe() bool {
+	return usesContains(p.Uses, "subscribe")
+}
+
+func usesContains(uses []string, means string) bool {
+	for _, u := range uses {
+		if u == means {
+			return true
+		}
+	}
+	return false
 }
 
 type PopulationSession struct {

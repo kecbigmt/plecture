@@ -150,14 +150,17 @@ func (v Validation) validateWorkflowPopulations(def *Definition, pos Position) e
 	names := make(map[string]bool, len(entries))
 	for i, entry := range entries {
 		at := childPos(childPos(pos, "populations"), fmt.Sprintf("[%d]", i))
-		if err := rejectUnknownFields(entry, at, "name", "resource_observer", "query", "session", "poll_every", "expire_after", "auto_down", "auto_destroy"); err != nil {
+		if err := rejectUnknownFields(entry, at, "name", "resource_observer", "query", "session", "uses", "poll_every", "expire_after", "auto_down", "auto_destroy"); err != nil {
 			return err
 		}
-		for _, field := range []string{"name", "resource_observer", "query"} {
+		for _, field := range []string{"name", "resource_observer", "query", "uses"} {
 			if _, ok := entry[field]; !ok {
 				return newDiag(CodeFieldRequired, LayerStructural, childPos(at, field),
 					fmt.Sprintf("a population declares `%s`", field))
 			}
+		}
+		if err := validatePopulationUses(entry, at); err != nil {
+			return err
 		}
 		name, ok := entry["name"].(string)
 		if !ok {
@@ -224,7 +227,10 @@ func (v Validation) ValidatePopulationContracts(workflow *Definition, registry *
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "query"),
 				"population query parameters do not satisfy the observer query inputs_schema: "+err.Error())
 		}
-		if err := validatePopulationTiming(entry, query, at); err != nil {
+		if err := validatePopulationUsesContract(entry, query, at); err != nil {
+			return err
+		}
+		if err := validatePopulationTiming(entry, at); err != nil {
 			return err
 		}
 		if err := v.validatePopulationSessionContracts(entry, observer, query, registry, at); err != nil {
@@ -234,26 +240,28 @@ func (v Validation) ValidatePopulationContracts(workflow *Definition, registry *
 	return nil
 }
 
-func validatePopulationTiming(entry, query map[string]any, at Position) error {
-	_, poll := query["poll"]
-	_, subscribe := query["subscribe"]
-	if poll {
+// validatePopulationTiming branches on the entry's own `uses` selection
+// rather than the observer's declared means, so a population selecting only
+// `subscribe` follows the subscribe-only rules even against an observer
+// whose query also offers poll.
+func validatePopulationTiming(entry map[string]any, at Position) error {
+	if populationUses(entry, "poll") {
 		if _, ok := entry["poll_every"]; !ok {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "poll_every"),
-				"poll_every is required when the observer query declares poll")
+				"poll_every is required when `uses` selects poll")
 		}
 		if _, ok := entry["expire_after"]; ok {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "expire_after"),
-				"expire_after is forbidden when the observer query declares poll")
+				"expire_after is forbidden when `uses` selects poll")
 		}
-	} else if subscribe {
+	} else {
 		if _, ok := entry["expire_after"]; !ok {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "expire_after"),
-				"expire_after is required for a subscribe-only observer query")
+				"expire_after is required when `uses` does not select poll")
 		}
 		if _, ok := entry["poll_every"]; ok {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, "poll_every"),
-				"poll_every is forbidden for a subscribe-only observer query")
+				"poll_every is forbidden when `uses` does not select poll")
 		}
 	}
 	for _, field := range []string{"poll_every", "expire_after"} {
@@ -268,6 +276,65 @@ func validatePopulationTiming(entry, query map[string]any, at Position) error {
 		duration, parseErr := parsePopulationDuration(value)
 		if parseErr != nil || duration <= 0 {
 			return newDiag(CodePopulationContract, LayerSemantic, childPos(at, field), field+" is a positive duration")
+		}
+	}
+	return nil
+}
+
+// populationUses assumes validatePopulationUses has already confirmed the
+// array's shape, so the type assertion below cannot fail.
+func populationUses(entry map[string]any, means string) bool {
+	list, _ := entry["uses"].([]any)
+	for _, item := range list {
+		if item.(string) == means {
+			return true
+		}
+	}
+	return false
+}
+
+var populationMeans = map[string]bool{"poll": true, "subscribe": true}
+
+// validatePopulationUses checks only the shape of `uses`; whether a keyword
+// is one the resolved observer's query declares needs the registry, so
+// validatePopulationUsesContract checks that separately once the observer
+// resolves.
+func validatePopulationUses(entry map[string]any, at Position) error {
+	usesPos := childPos(at, "uses")
+	list, ok := entry["uses"].([]any)
+	if !ok {
+		return newDiag(CodeFieldType, LayerStructural, usesPos, "`uses` is an array of strings")
+	}
+	if len(list) == 0 {
+		return newDiag(CodeFieldType, LayerStructural, usesPos, "`uses` must select at least one query means")
+	}
+	seen := make(map[string]bool, len(list))
+	for i, item := range list {
+		means, ok := item.(string)
+		if !ok {
+			return newDiag(CodeFieldType, LayerStructural, childPos(usesPos, fmt.Sprintf("[%d]", i)),
+				"`uses` is an array of strings")
+		}
+		if !populationMeans[means] {
+			return newDiag(CodeFieldType, LayerStructural, childPos(usesPos, fmt.Sprintf("[%d]", i)),
+				fmt.Sprintf("%q is not one of the query means poll, subscribe", means))
+		}
+		if seen[means] {
+			return newDiag(CodeFieldType, LayerStructural, childPos(usesPos, fmt.Sprintf("[%d]", i)),
+				fmt.Sprintf("`uses` declares %q more than once", means))
+		}
+		seen[means] = true
+	}
+	return nil
+}
+
+func validatePopulationUsesContract(entry, query map[string]any, at Position) error {
+	list, _ := entry["uses"].([]any)
+	for i, item := range list {
+		means := item.(string)
+		if _, declared := query[means]; !declared {
+			return newDiag(CodePopulationContract, LayerSemantic, childPos(childPos(at, "uses"), fmt.Sprintf("[%d]", i)),
+				fmt.Sprintf("population %q selects %q, but its resource observer query declares no %s means", entry["name"], means, means))
 		}
 	}
 	return nil
