@@ -218,6 +218,42 @@ if [ -n "$PREV_SID" ]; then
   CLAUDE_CMD="$CLAUDE_CMD || claude --session-id $SID --mcp-config $MCP --settings $HOOKS $CHANNELS_FLAG $MODEL_FLAG $EFFORT_FLAG $PERMISSION_MODE_FLAG $DISALLOWED_FLAG"
 fi
 
+# The CLI asks for workspace trust the first time it runs in a directory it
+# has no record for, and that prompt's default choice is refusal — so the
+# banner-clearing Enter loop below would answer "no" and exit before any
+# session file was ever written. Nothing else covers it: the permission mode
+# does not, and the CLI offers no flag for it, so this per-directory record
+# is the only thing it consults. A directory reached here was produced by the
+# workspace provider of the session being launched, so there is no third
+# party whose judgment the prompt would have been collecting.
+#
+# Converged, never rewritten: the record lives in a whole-file state document
+# the CLI itself rewrites from every running session, with no cross-process
+# lock, so each write risks discarding a concurrent one. Returning early on
+# an already-trusted directory keeps that window to a directory's first
+# launch, and the temp-file-then-rename matches how the CLI writes the same
+# file, so no reader can observe a partial one.
+trust_workspace_dir() {
+  STATE="$HOME/.claude.json"
+  CURRENT=$(cat "$STATE" 2>/dev/null)
+  [ -n "$CURRENT" ] || CURRENT='{}'
+  [ "$(printf '%s' "$CURRENT" | jq -r --arg dir "$1" '.projects[$dir].hasTrustDialogAccepted // false' 2>/dev/null)" = "true" ] && return 0
+  TRUST_TMP=$(mktemp "${TMPDIR:-/tmp}/plect-claude-state.XXXXXX") || return 1
+  printf '%s' "$CURRENT" \
+    | jq --arg dir "$1" '.projects[$dir].hasTrustDialogAccepted = true' > "$TRUST_TMP" \
+    && mv "$TRUST_TMP" "$STATE" && return 0
+  rm -f "$TRUST_TMP"
+  return 1
+}
+
+# Absent when the session has no workspace provider, which leaves this
+# effect no directory of its own to name.
+WORKSPACE_DIR="${workspace_dir-}"
+if [ -n "$WORKSPACE_DIR" ] && ! trust_workspace_dir "$WORKSPACE_DIR"; then
+  echo "could not record $WORKSPACE_DIR as a trusted workspace before launch" >&2
+  exit 1
+fi
+
 # Resolved before anything is typed: this is the identity terminate_claude_
 # children searches under, so a launch is only attempted once it exists.
 PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
@@ -297,6 +333,7 @@ printf '%s\n' "$OUTPUT"
 
 [runtime.setup.bind]
 session_name        = { from = "session.name" }
+workspace_dir       = { from = "workspace.dir", optional = true }
 prev_session_id     = { from = "prev.session_id", optional = true }
 prev_pid            = { from = "prev.pid", optional = true }
 model               = { from = "inputs.model", optional = true }

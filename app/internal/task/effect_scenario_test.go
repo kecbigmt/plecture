@@ -35,8 +35,8 @@ type effectScenario struct {
 	// Capture is what the terminal's capture verb reports, for a script that
 	// waits on what the endpoint displays.
 	Capture string `toml:"capture"`
-	// Artifacts name files a setup generated rather than invoked, each
-	// located by the output key that carries its directory. A generated
+	// Artifacts name files a setup produced rather than invoked, located by
+	// an output key that carries its directory or under the home. A generated
 	// wrapper script is as much the effect's product as any call it made.
 	Artifacts []effectScenarioArtifact `toml:"artifacts"`
 	// AbsentExecutables names this plugin's own declared executables to
@@ -81,6 +81,27 @@ type effectScenarioFile struct {
 type effectScenarioArtifact struct {
 	Output string `toml:"output"`
 	Path   string `toml:"path"`
+	// Home addresses a file under the sandbox home, for state a script
+	// converges in place. Exactly one of Home and Output is set.
+	Home string `toml:"home"`
+}
+
+// Naming neither place, or both, would have the record report something other
+// than the file the scenario meant to assert on, and not fail doing it.
+func validateScenarioArtifacts(scenarios map[string][]effectScenario) error {
+	for id, variants := range scenarios {
+		for _, variant := range variants {
+			for _, artifact := range variant.Artifacts {
+				switch {
+				case artifact.Output == "" && artifact.Home == "":
+					return fmt.Errorf("%q declares an artifact naming neither an output nor a home path", id)
+				case artifact.Output != "" && artifact.Home != "":
+					return fmt.Errorf("%q declares an artifact naming both output %q and home path %q; name one", id, artifact.Output, artifact.Home)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // validateScenarioVariantNames rejects the two ways a multi-variant id's
@@ -150,5 +171,45 @@ func TestValidateScenarioVariantNames_AllowsASoleUnnamedVariant(t *testing.T) {
 	}
 	if err := validateScenarioVariantNames(scenarios); err != nil {
 		t.Errorf("a lone unnamed variant rejected: %v", err)
+	}
+}
+
+func TestValidateScenarioArtifacts_RejectsArtifactNamingNeitherPlace(t *testing.T) {
+	scenarios := map[string][]effectScenario{
+		"runtime": {{Artifacts: []effectScenarioArtifact{{Path: "x"}}}},
+	}
+	err := validateScenarioArtifacts(scenarios)
+	if err == nil {
+		t.Fatal("want an error for an artifact naming neither an output nor a home path, got nil")
+	}
+	const want = `"runtime" declares an artifact naming neither an output nor a home path`
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestValidateScenarioArtifacts_RejectsArtifactNamingBothPlaces(t *testing.T) {
+	scenarios := map[string][]effectScenario{
+		"runtime": {{Artifacts: []effectScenarioArtifact{{Output: "settings", Home: ".agent-state.json"}}}},
+	}
+	err := validateScenarioArtifacts(scenarios)
+	if err == nil {
+		t.Fatal("want an error for an artifact naming both places, got nil")
+	}
+	const want = `"runtime" declares an artifact naming both output "settings" and home path ".agent-state.json"; name one`
+	if err.Error() != want {
+		t.Errorf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestValidateScenarioArtifacts_AllowsEitherPlaceAlone(t *testing.T) {
+	scenarios := map[string][]effectScenario{
+		"runtime": {
+			{Name: "generated", Artifacts: []effectScenarioArtifact{{Output: "settings", Path: ""}}},
+			{Name: "converged", Artifacts: []effectScenarioArtifact{{Home: ".agent-state.json"}}},
+		},
+	}
+	if err := validateScenarioArtifacts(scenarios); err != nil {
+		t.Errorf("an artifact naming exactly one place rejected: %v", err)
 	}
 }

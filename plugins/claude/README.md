@@ -13,7 +13,12 @@ independently selectable plugin this one composes through `{ terminal = "..." }`
   persisted conversation) via `{ terminal = "send_text" }`/`{ terminal = "send_keys" }`, waits for it to come up by polling
   `~/.claude/sessions/*.json`, wires a channel-server MCP socket when
   `channel-server` is on `PATH`, and registers turn-boundary activity and
-  turn-reporting hooks (`publish_events`, see Parameters below).
+  turn-reporting hooks (`publish_events`, see Parameters below). Before
+  typing the launch line it records the session's workspace directory as
+  trusted in `~/.claude.json`, which is what keeps the CLI's first-run
+  workspace-trust prompt — whose default choice is refusal — from consuming
+  the launch's own keystrokes; see
+  `docs/adr/2026-09-13-agent-workspace-trust-at-launch.md`.
   `[health].alive` self-heals a stale pid by re-deriving the live
   process from the pane's process tree, reached via
   `{ terminal = "pid" }` for the pane's own root process id, so a

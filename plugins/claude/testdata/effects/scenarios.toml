@@ -107,3 +107,51 @@ content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 [[claude_initial_prompt]]
 inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
 capture = "› "
+
+# Proves a workspace directory the agent CLI has no trust record for is
+# recorded as trusted before the launch line is typed, and that the rest of
+# that shared state file survives the edit. Without it the launch's own
+# banner-clearing keystrokes answer the CLI's trust prompt, whose default
+# choice is refusal.
+[[runtime]]
+name = "workspace-dir-untrusted"
+
+[[runtime.files]]
+path    = ".claude.json"
+content = '{"firstStartTime":"2026-01-01","projects":{"/elsewhere":{"hasTrustDialogAccepted":true}}}'
+
+[[runtime.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
+[[runtime.artifacts]]
+home = ".claude.json"
+
+# Proves the trust record is converged, not rewritten: an already-trusted
+# directory produces no scratch file, so a launch into a directory used
+# before never reopens the window in which a concurrent writer of that
+# whole-file state could lose its own update.
+[[runtime]]
+name = "workspace-dir-already-trusted"
+
+[[runtime.files]]
+path    = ".claude.json"
+content = '{"projects":{"WORKSPACE":{"hasTrustDialogAccepted":true}}}'
+
+[[runtime.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
+[[runtime.artifacts]]
+home = ".claude.json"
+
+# Proves a trust record that cannot be written fails the launch immediately,
+# rather than typing a launch line whose only possible end is the detection
+# timeout. Nothing has been started at that point, so nothing is killed.
+[[runtime]]
+name  = "workspace-dir-trust-write-fails"
+hooks = ["setup"]
+
+[[runtime.files]]
+path    = ".claude.json"
+content = 'truncated'
