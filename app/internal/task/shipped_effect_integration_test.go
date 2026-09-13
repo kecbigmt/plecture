@@ -91,6 +91,9 @@ func loadEffectScenarios(t *testing.T, source string) map[string][]effectScenari
 	if err := validateScenarioVariantNames(scenarios); err != nil {
 		t.Fatalf("%s: %v", path, err)
 	}
+	if err := validateScenarioArtifacts(scenarios); err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
 	return scenarios
 }
 
@@ -485,17 +488,24 @@ func (h *effectHarness) assertPaneProcessAlive(t *testing.T) {
 func (h *effectHarness) writeArtifacts(t *testing.T, b *strings.Builder, artifacts []effectScenarioArtifact, self map[string]any) {
 	t.Helper()
 	for _, artifact := range artifacts {
-		dir, _ := self[artifact.Output].(string)
-		if dir == "" {
-			fmt.Fprintf(b, "artifact %s/%s: no %s output\n", artifact.Output, artifact.Path, artifact.Output)
-			continue
+		label := artifact.Output + "/" + artifact.Path
+		path := filepath.Join(h.homeDir, artifact.Home)
+		if artifact.Home != "" {
+			label = "home/" + artifact.Home
+		} else {
+			dir, _ := self[artifact.Output].(string)
+			if dir == "" {
+				fmt.Fprintf(b, "artifact %s: no %s output\n", label, artifact.Output)
+				continue
+			}
+			path = filepath.Join(dir, artifact.Path)
 		}
-		raw, err := os.ReadFile(filepath.Join(dir, artifact.Path))
+		raw, err := os.ReadFile(path)
 		if err != nil {
-			fmt.Fprintf(b, "artifact %s/%s: %v\n", artifact.Output, artifact.Path, err)
+			fmt.Fprintf(b, "artifact %s: %v\n", label, err)
 			continue
 		}
-		fmt.Fprintf(b, "artifact %s/%s:\n%s", artifact.Output, artifact.Path, h.scrubbed(string(raw)))
+		fmt.Fprintf(b, "artifact %s:\n%s", label, h.scrubbed(string(raw)))
 		if !strings.HasSuffix(string(raw), "\n") {
 			b.WriteString("\n")
 		}

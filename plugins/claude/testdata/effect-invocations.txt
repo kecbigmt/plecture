@@ -13,10 +13,11 @@ call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
 call[1]: "claude-mcp-servers"
 call[2]: "claude-agent-activity" "reset" "acme/widget-1"
 call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
-call[4]: "terminal-pid"
-call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json --dangerously-load-development-channels server:channel-server   --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json --dangerously-load-development-channels server:channel-server   --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
-call[6]: "terminal-send_keys" "Enter"
+call[4]: "mktemp" "<state>/plect-claude-state.XXXXXX"
+call[5]: "terminal-pid"
+call[6]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json --dangerously-load-development-channels server:channel-server   --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json --dangerously-load-development-channels server:channel-server   --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
 call[7]: "terminal-send_keys" "Enter"
+call[8]: "terminal-send_keys" "Enter"
 outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock"}
 artifact hooks_settings/:
 {"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"Stop":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity waiting"},{"type":"command","command":"<plugin>/scripts/claude-agent-activity reply"}]}]},"skipDangerousModePermissionPrompt":true}
@@ -179,4 +180,72 @@ call[10]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[11]: "ps" "-p" "<pid>" "-o" "comm="
 call[12]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[13]: "ps" "-p" "<pid>" "-o" "comm="
+declined: task "runtime" setup: exit status 1
+
+== runtime:workspace-dir-untrusted / setup
+call[0]: "uuidgen"
+call[1]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[2]: "claude-mcp-servers"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+call[4]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[5]: "mktemp" "<state>/plect-claude-state.XXXXXX"
+call[6]: "terminal-pid"
+call[7]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --session-id aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[8]: "terminal-send_keys" "Enter"
+outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","socket_path":"<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock"}
+artifact home/.claude.json:
+{
+  "firstStartTime": "2026-01-01",
+  "projects": {
+    "/elsewhere": {
+      "hasTrustDialogAccepted": true
+    },
+    "<workspace>": {
+      "hasTrustDialogAccepted": true
+    }
+  }
+}
+
+== runtime:workspace-dir-untrusted / health.alive
+alive
+
+== runtime:workspace-dir-untrusted / health.activity
+call[0]: "claude-agent-activity" "probe" "acme/widget-1"
+activity: fingerprint="spy-turn-1" silence_expected=false
+
+== runtime:workspace-dir-untrusted / cleanup
+call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
+== runtime:workspace-dir-already-trusted / setup
+call[0]: "uuidgen"
+call[1]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[2]: "claude-mcp-servers"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+call[4]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[5]: "terminal-pid"
+call[6]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --session-id aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[7]: "terminal-send_keys" "Enter"
+outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","socket_path":"<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock"}
+artifact home/.claude.json:
+{"projects":{"<workspace>":{"hasTrustDialogAccepted":true}}}
+
+== runtime:workspace-dir-already-trusted / health.alive
+alive
+
+== runtime:workspace-dir-already-trusted / health.activity
+call[0]: "claude-agent-activity" "probe" "acme/widget-1"
+activity: fingerprint="spy-turn-1" silence_expected=false
+
+== runtime:workspace-dir-already-trusted / cleanup
+call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
+== runtime:workspace-dir-trust-write-fails / setup
+call[0]: "uuidgen"
+call[1]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[2]: "claude-mcp-servers"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+call[4]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[5]: "mktemp" "<state>/plect-claude-state.XXXXXX"
 declined: task "runtime" setup: exit status 1
