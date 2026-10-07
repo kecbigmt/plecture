@@ -119,7 +119,7 @@ to the runtime.
 
 ```
 slack-adapter subscribe unbound-mentions --base-url <url> --channel-ids '["C...", "C..."]' \
-  [--user-ids '["U...", "U..."]'] [--deny-message '<text>']
+  [--user-ids '["U...", "U..."]'] [--denied-user-message '<text>'] [--denied-channel-message '<text>']
 ```
 
 A separate invocation of the `slack-adapter` binary — not the resident
@@ -131,14 +131,21 @@ below.
 
 `--user-ids` restricts which users may start a session: when given and
 non-empty, only mentions whose `user_id` equals one of the listed Slack user
-IDs (exact match; no email or display name) are emitted, and the rest are
-dropped. Omitted or empty, every user passes. With `--deny-message` as well,
-a mention from a user outside the list is answered once with that text in
-the mention's thread (through the resident's `POST /messages`), deduplicated
-per channel, thread and user for the life of the subscribe process, so a
-restart may repeat a reply. A reply that fails to post is logged and retried
-on that user's next mention. A mention in a channel outside `--channel-ids`
-is never answered. This is the
+IDs (exact match; no email or display name) are emitted. Omitted or empty,
+every user passes.
+
+A mention that is not emitted is dropped silently unless a reply is
+configured. `--denied-user-message` answers a mention from a user outside
+`--user-ids`, and `--denied-channel-message` answers a mention in a channel
+outside `--channel-ids`; each is posted into the mention's thread through the
+resident's `POST /messages`. A mention in an unwatched channel is only ever
+answered with the channel message. Replies are deduplicated per channel,
+thread and user for the life of the subscribe process (a restart may repeat
+one), and a failed post is logged and never retried: the bot cannot post into
+a channel it has not joined, and that fails the same way every time. Neither
+case produces an item.
+
+This is the
 
 `query.subscribe` means `../../config/resources/thread.toml` binds for the
 Slack thread resource

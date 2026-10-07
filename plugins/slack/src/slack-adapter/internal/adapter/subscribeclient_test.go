@@ -173,11 +173,15 @@ func TestMentionFilterJudge(t *testing.T) {
 	}{
 		{"unset user_ids passes every user", MentionFilter{}, item, verdictEmit},
 		{"member passes", MentionFilter{UserIDs: []string{"U-ann", "U-dana"}}, item, verdictEmit},
-		{"non-member without deny_message is dropped", MentionFilter{UserIDs: []string{"U-ann"}}, item, verdictDrop},
-		{"non-member with deny_message is denied", MentionFilter{UserIDs: []string{"U-ann"}, DenyMessage: "no"}, item, verdictDeny},
-		{"member with deny_message still passes", MentionFilter{UserIDs: []string{"U-dana"}, DenyMessage: "no"}, item, verdictEmit},
-		{"deny_message alone does not restrict", MentionFilter{DenyMessage: "no"}, item, verdictEmit},
-		{"other channel is dropped before the user check", MentionFilter{ChannelIDs: []string{"C2"}, UserIDs: []string{"U-ann"}, DenyMessage: "no"}, item, verdictDrop},
+		{"non-member without denied_user_message is dropped", MentionFilter{UserIDs: []string{"U-ann"}}, item, verdictDrop},
+		{"non-member with denied_user_message is denied", MentionFilter{UserIDs: []string{"U-ann"}, DeniedUserMessage: "no"}, item, verdictDenyUser},
+		{"member with denied_user_message still passes", MentionFilter{UserIDs: []string{"U-dana"}, DeniedUserMessage: "no"}, item, verdictEmit},
+		{"denied_user_message alone does not restrict", MentionFilter{DeniedUserMessage: "no"}, item, verdictEmit},
+		{"other channel without denied_channel_message is dropped", MentionFilter{ChannelIDs: []string{"C2"}}, item, verdictDrop},
+		{"other channel with denied_channel_message is denied", MentionFilter{ChannelIDs: []string{"C2"}, DeniedChannelMessage: "use C2"}, item, verdictDenyChannel},
+		{"watched channel ignores denied_channel_message", MentionFilter{ChannelIDs: []string{"C1"}, DeniedChannelMessage: "use C2"}, item, verdictEmit},
+		{"other channel never draws the user message", MentionFilter{ChannelIDs: []string{"C2"}, UserIDs: []string{"U-ann"}, DeniedUserMessage: "no"}, item, verdictDrop},
+		{"other channel with both messages is denied as a channel", MentionFilter{ChannelIDs: []string{"C2"}, UserIDs: []string{"U-ann"}, DeniedUserMessage: "no", DeniedChannelMessage: "use C2"}, item, verdictDenyChannel},
 		{"match is exact, not a prefix", MentionFilter{UserIDs: []string{"U-dan"}}, item, verdictDrop},
 		{"an item without a user id is not a member", MentionFilter{UserIDs: []string{"U-ann"}}, unboundMentionItem{ChannelID: "C1"}, verdictDrop},
 	}
@@ -258,7 +262,7 @@ func TestRunSubscribeUnboundMentionsDeniesNonMembersOncePerThreadAndUser(t *test
 	srv := denyServer(t, items, posts, http.StatusOK)
 	defer srv.Close()
 
-	out := runUntilOutputContains(t, srv.URL, MentionFilter{UserIDs: []string{"U-ann"}, DenyMessage: "not allowed"}, `"3.1"`)
+	out := runUntilOutputContains(t, srv.URL, MentionFilter{UserIDs: []string{"U-ann"}, DeniedUserMessage: "not allowed"}, `"3.1"`)
 
 	var got []denyPost
 	for len(posts) > 0 {
@@ -282,7 +286,7 @@ func TestRunSubscribeUnboundMentionsDeniesNonMembersOncePerThreadAndUser(t *test
 	}
 }
 
-func TestRunSubscribeUnboundMentionsDropsNonMembersSilentlyWithoutDenyMessage(t *testing.T) {
+func TestRunSubscribeUnboundMentionsDropsNonMembersSilentlyWithoutDeniedUserMessage(t *testing.T) {
 	items := []unboundMentionItem{
 		{ChannelID: "C1", ThreadTS: "1.1", UserID: "U-eve"},
 		{ChannelID: "C1", ThreadTS: "3.1", UserID: "U-ann"},
@@ -294,28 +298,53 @@ func TestRunSubscribeUnboundMentionsDropsNonMembersSilentlyWithoutDenyMessage(t 
 	out := runUntilOutputContains(t, srv.URL, MentionFilter{UserIDs: []string{"U-ann"}}, `"3.1"`)
 
 	if len(posts) != 0 {
-		t.Errorf("posted %d replies, want none when deny_message is unset", len(posts))
+		t.Errorf("posted %d replies, want none when denied_user_message is unset", len(posts))
 	}
 	if strings.Contains(out.String(), "U-eve") {
 		t.Errorf("a denied mention was emitted: %q", out.String())
 	}
 }
 
-func TestRunSubscribeUnboundMentionsRetriesADenyReplyThatFailedToPost(t *testing.T) {
+func TestRunSubscribeUnboundMentionsDoesNotRetryADenyReplyThatFailedToPost(t *testing.T) {
 	items := []unboundMentionItem{
-		{ChannelID: "C1", ThreadTS: "1.1", MentionTS: "1.1", UserID: "U-eve"},
-		{ChannelID: "C1", ThreadTS: "1.1", MentionTS: "1.2", UserID: "U-eve"},
+		{ChannelID: "C-not-a-member", ThreadTS: "1.1", MentionTS: "1.1", UserID: "U-eve"},
+		{ChannelID: "C-not-a-member", ThreadTS: "1.1", MentionTS: "1.2", UserID: "U-eve"},
 		{ChannelID: "C1", ThreadTS: "3.1", UserID: "U-ann"},
 	}
 	posts := make(chan denyPost, 16)
+	// The resident answers 500 the way it does when Slack rejects a post
+	// into a channel the bot has not joined.
 	srv := denyServer(t, items, posts, http.StatusInternalServerError)
 	defer srv.Close()
 
-	// A failed reply must neither end the subscription nor count as
-	// delivered: the member's item after it still has to arrive.
-	runUntilOutputContains(t, srv.URL, MentionFilter{UserIDs: []string{"U-ann"}, DenyMessage: "no"}, `"3.1"`)
+	// A failed reply must neither end the subscription nor be retried: the
+	// allowed channel's item after it still has to arrive.
+	out := runUntilOutputContains(t, srv.URL, MentionFilter{ChannelIDs: []string{"C1"}, DeniedChannelMessage: "use C1"}, `"3.1"`)
 
-	if len(posts) != 2 {
-		t.Errorf("post attempts = %d, want 2 (the second mention retries the failed reply)", len(posts))
+	if len(posts) != 1 {
+		t.Errorf("post attempts = %d, want exactly 1 (no retry on the same thread and user)", len(posts))
+	}
+	if strings.Contains(out.String(), "C-not-a-member") {
+		t.Errorf("a denied mention was emitted: %q", out.String())
+	}
+}
+
+func TestRunSubscribeUnboundMentionsRepliesToMentionsOutsideChannelIDsOnce(t *testing.T) {
+	items := []unboundMentionItem{
+		{ChannelID: "C-other", ThreadTS: "1.1", MentionTS: "1.1", UserID: "U-ann"},
+		{ChannelID: "C-other", ThreadTS: "1.1", MentionTS: "1.2", UserID: "U-ann"},
+		{ChannelID: "C1", ThreadTS: "3.1", UserID: "U-ann"},
+	}
+	posts := make(chan denyPost, 16)
+	srv := denyServer(t, items, posts, http.StatusOK)
+	defer srv.Close()
+
+	runUntilOutputContains(t, srv.URL, MentionFilter{ChannelIDs: []string{"C1"}, DeniedChannelMessage: "use C1"}, `"3.1"`)
+
+	if len(posts) != 1 {
+		t.Fatalf("posted %d replies, want 1", len(posts))
+	}
+	if got, want := <-posts, (denyPost{"C-other", "1.1", "use C1"}); got != want {
+		t.Errorf("reply = %+v, want %+v", got, want)
 	}
 }

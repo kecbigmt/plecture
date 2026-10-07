@@ -390,15 +390,16 @@ func TestShippedCatalog_SlackThreadQueryPassesUserPolicyFlags(t *testing.T) {
 	base := map[string]any{"base_url": "http://127.0.0.1:7890", "channel_ids": []any{"C01234567"}}
 
 	unset := flagsFor(base)
-	if unset["--user-ids"] != "[]" || unset["--deny-message"] != "" {
-		t.Errorf("without user_ids/deny_message, flags = %v, want --user-ids [] and an empty --deny-message", unset)
+	if unset["--user-ids"] != "[]" || unset["--denied-user-message"] != "" || unset["--denied-channel-message"] != "" {
+		t.Errorf("without the user policy inputs, flags = %v, want --user-ids [] and empty denied messages", unset)
 	}
 
 	set := flagsFor(map[string]any{
-		"base_url":     "http://127.0.0.1:7890",
-		"channel_ids":  []any{"C01234567"},
-		"user_ids":     []any{"U01234567", "U07654321"},
-		"deny_message": "Not allowed.",
+		"base_url":               "http://127.0.0.1:7890",
+		"channel_ids":            []any{"C01234567"},
+		"user_ids":               []any{"U01234567", "U07654321"},
+		"denied_user_message":    "Not allowed.",
+		"denied_channel_message": "Use the other channel.",
 	})
 	var userIDs []string
 	if err := json.Unmarshal([]byte(set["--user-ids"]), &userIDs); err != nil {
@@ -407,8 +408,11 @@ func TestShippedCatalog_SlackThreadQueryPassesUserPolicyFlags(t *testing.T) {
 	if len(userIDs) != 2 || userIDs[0] != "U01234567" || userIDs[1] != "U07654321" {
 		t.Errorf("--user-ids = %v, want [U01234567 U07654321]", userIDs)
 	}
-	if set["--deny-message"] != "Not allowed." {
-		t.Errorf("--deny-message = %q, want %q", set["--deny-message"], "Not allowed.")
+	if set["--denied-user-message"] != "Not allowed." {
+		t.Errorf("--denied-user-message = %q, want %q", set["--denied-user-message"], "Not allowed.")
+	}
+	if set["--denied-channel-message"] != "Use the other channel." {
+		t.Errorf("--denied-channel-message = %q, want %q", set["--denied-channel-message"], "Use the other channel.")
 	}
 }
 
@@ -466,10 +470,11 @@ auto_down         = true
 auto_destroy      = true
 
 [ops.populations.query]
-base_url     = "http://127.0.0.1:7890"
-channel_ids  = ["C01234567"]
-user_ids     = ["U01234567"]
-deny_message = "Not allowed."
+base_url               = "http://127.0.0.1:7890"
+channel_ids            = ["C01234567"]
+user_ids               = ["U01234567"]
+denied_user_message    = "Not allowed."
+denied_channel_message = "Use the other channel."
 `)
 	workflows, err := cfg.LoadWorkflows("")
 	if err != nil {

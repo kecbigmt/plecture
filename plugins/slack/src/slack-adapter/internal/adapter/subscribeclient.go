@@ -20,9 +20,12 @@ type MentionFilter struct {
 	// UserIDs matches every user when empty; otherwise it is compared
 	// exactly against the mentioning user's Slack ID.
 	UserIDs []string
-	// DenyMessage is posted into the thread of a mention rejected by
-	// UserIDs; empty means rejected mentions are dropped silently.
-	DenyMessage string
+	// DeniedUserMessage is posted into the thread of a mention rejected by
+	// UserIDs; empty means such mentions are dropped silently.
+	DeniedUserMessage string
+	// DeniedChannelMessage is posted into the thread of a mention outside
+	// ChannelIDs; empty means such mentions are dropped silently.
+	DeniedChannelMessage string
 }
 
 type mentionVerdict int
@@ -30,22 +33,26 @@ type mentionVerdict int
 const (
 	verdictEmit mentionVerdict = iota
 	verdictDrop
-	verdictDeny
+	verdictDenyUser
+	verdictDenyChannel
 )
 
 // judge checks the channel before the user so a mention in an unwatched
-// channel never draws a deny reply from a population that does not cover it.
+// channel is answered with the channel message only, never the user one.
 func (f MentionFilter) judge(item unboundMentionItem) mentionVerdict {
 	if !listAllows(f.ChannelIDs, item.ChannelID) {
-		return verdictDrop
+		if f.DeniedChannelMessage == "" {
+			return verdictDrop
+		}
+		return verdictDenyChannel
 	}
 	if listAllows(f.UserIDs, item.UserID) {
 		return verdictEmit
 	}
-	if f.DenyMessage == "" {
+	if f.DeniedUserMessage == "" {
 		return verdictDrop
 	}
-	return verdictDeny
+	return verdictDenyUser
 }
 
 type denyKey struct{ channelID, threadTS, userID string }
@@ -89,22 +96,27 @@ func RunSubscribeUnboundMentions(ctx context.Context, baseURL string, filter Men
 			}
 			return fmt.Errorf("unbound-mentions stream ended: %w", err)
 		}
-		switch filter.judge(item) {
-		case verdictDrop:
+		verdict := filter.judge(item)
+		if verdict == verdictDrop {
 			continue
-		case verdictDeny:
+		}
+		if verdict != verdictEmit {
+			text := filter.DeniedUserMessage
+			if verdict == verdictDenyChannel {
+				text = filter.DeniedChannelMessage
+			}
 			key := denyKey{item.ChannelID, item.ThreadTS, item.UserID}
 			if _, done := denied[key]; done {
 				continue
 			}
-			// A failed reply is logged, not returned: ending the subscription
-			// would stop every allowed user's mentions over a courtesy message.
-			// It is left unrecorded so the user's next mention retries it.
-			if err := postDenyReply(ctx, base, item, filter.DenyMessage); err != nil {
-				slog.Warn("deny reply not posted", "channel_id", item.ChannelID, "thread_ts", item.ThreadTS, "error", err)
-				continue
-			}
+			// Recorded before posting and never retried: the bot may not be a
+			// member of the channel, where every attempt fails the same way,
+			// and a failed courtesy reply must not end the subscription over
+			// every allowed user's mentions either.
 			denied[key] = struct{}{}
+			if err := postDenyReply(ctx, base, item, text); err != nil {
+				slog.Warn("deny reply not posted", "channel_id", item.ChannelID, "thread_ts", item.ThreadTS, "error", err)
+			}
 			continue
 		}
 		line, err := json.Marshal(item)

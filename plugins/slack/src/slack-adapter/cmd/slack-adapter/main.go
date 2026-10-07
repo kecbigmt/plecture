@@ -33,7 +33,7 @@ func main() {
 // without each consuming another connection to Slack.
 func runSubscribeCommand(args []string, out, errOut io.Writer) int {
 	if len(args) == 0 || args[0] != "unbound-mentions" {
-		fmt.Fprintln(errOut, "usage: slack-adapter subscribe unbound-mentions --base-url <url> --channel-ids <json-array> [--user-ids <json-array>] [--deny-message <text>]")
+		fmt.Fprintln(errOut, "usage: slack-adapter subscribe unbound-mentions --base-url <url> --channel-ids <json-array> [--user-ids <json-array>] [--denied-user-message <text>] [--denied-channel-message <text>]")
 		return 2
 	}
 
@@ -42,7 +42,8 @@ func runSubscribeCommand(args []string, out, errOut io.Writer) int {
 	baseURL := fs.String("base-url", "", "resident slack-adapter base URL (required)")
 	channelIDsJSON := fs.String("channel-ids", "[]", "JSON array of channel IDs to include")
 	userIDsJSON := fs.String("user-ids", "[]", "JSON array of Slack user IDs allowed to start a session; empty allows everyone")
-	denyMessage := fs.String("deny-message", "", "reply posted once per thread and user to a mention from a user outside --user-ids; empty drops them silently")
+	deniedUserMessage := fs.String("denied-user-message", "", "reply posted once per thread and user to a mention from a user outside --user-ids; empty drops them silently")
+	deniedChannelMessage := fs.String("denied-channel-message", "", "reply posted once per thread and user to a mention in a channel outside --channel-ids; empty drops them silently")
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -65,7 +66,7 @@ func runSubscribeCommand(args []string, out, errOut io.Writer) int {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
-	filter := adapter.MentionFilter{ChannelIDs: channelIDs, UserIDs: userIDs, DenyMessage: *denyMessage}
+	filter := adapter.MentionFilter{ChannelIDs: channelIDs, UserIDs: userIDs, DeniedUserMessage: *deniedUserMessage, DeniedChannelMessage: *deniedChannelMessage}
 	if err := adapter.RunSubscribeUnboundMentions(ctx, *baseURL, filter, out); err != nil {
 		fmt.Fprintln(errOut, "slack-adapter subscribe unbound-mentions:", err)
 		return 1
