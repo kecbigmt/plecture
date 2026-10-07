@@ -79,6 +79,7 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 			ChannelID: ev.Channel,
 			ThreadTS:  threadTS,
 			MentionTS: ev.TimeStamp,
+			UserID:    ev.User,
 		})
 	}
 

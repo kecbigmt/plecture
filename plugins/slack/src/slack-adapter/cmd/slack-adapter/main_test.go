@@ -41,6 +41,17 @@ func TestRunSubscribeCommandRejectsMalformedChannelIDs(t *testing.T) {
 	}
 }
 
+func TestRunSubscribeCommandRejectsMalformedUserIDs(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := runSubscribeCommand([]string{"unbound-mentions", "--base-url", "http://127.0.0.1:7890", "--user-ids", "not-json"}, &out, &errOut)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2", code)
+	}
+	if !strings.Contains(errOut.String(), "--user-ids") {
+		t.Errorf("stderr = %q, want a mention of --user-ids", errOut.String())
+	}
+}
+
 func TestRunSubscribeCommandReturnsNonZeroWhenTheResidentAdapterIsUnreachable(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := runSubscribeCommand([]string{"unbound-mentions", "--base-url", "http://127.0.0.1:1"}, &out, &errOut)

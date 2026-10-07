@@ -1,18 +1,59 @@
 package adapter
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 )
 
+// MentionFilter lives in this client, not the resident feed, so one resident
+// connection serves any number of populations, each with its own policy. An
+// empty ChannelIDs or UserIDs allows everything; an empty denied message
+// drops the rejected mention silently.
+type MentionFilter struct {
+	ChannelIDs           []string
+	UserIDs              []string
+	DeniedUserMessage    string
+	DeniedChannelMessage string
+}
+
+type mentionVerdict int
+
+const (
+	verdictEmit mentionVerdict = iota
+	verdictDrop
+	verdictDenyUser
+	verdictDenyChannel
+)
+
+// judge checks the channel before the user so a mention in an unwatched
+// channel is answered with the channel message only, never the user one.
+func (f MentionFilter) judge(item unboundMentionItem) mentionVerdict {
+	if !listAllows(f.ChannelIDs, item.ChannelID) {
+		if f.DeniedChannelMessage == "" {
+			return verdictDrop
+		}
+		return verdictDenyChannel
+	}
+	if listAllows(f.UserIDs, item.UserID) {
+		return verdictEmit
+	}
+	if f.DeniedUserMessage == "" {
+		return verdictDrop
+	}
+	return verdictDenyUser
+}
+
+type denyKey struct{ channelID, threadTS, userID string }
+
 // RunSubscribeUnboundMentions connects to the resident adapter's
 // /unbound-mentions feed at baseURL and writes one query.subscribe item per
-// line to out for each mention in a channel named by channelIDs. An empty
-// channelIDs matches every channel.
+// line to out for each mention that filter lets through.
 //
 // It returns nil only when ctx itself ends the connection — the process was
 // asked to stop. Any other termination (the initial connect failing, the
@@ -21,8 +62,9 @@ import (
 // channel from a dead connection any other way, and mistaking the latter
 // for the former would mean missing every mention until something else
 // notices.
-func RunSubscribeUnboundMentions(ctx context.Context, baseURL string, channelIDs []string, out io.Writer) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/unbound-mentions", nil)
+func RunSubscribeUnboundMentions(ctx context.Context, baseURL string, filter MentionFilter, out io.Writer) error {
+	base := strings.TrimRight(baseURL, "/")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/unbound-mentions", nil)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
@@ -38,6 +80,7 @@ func RunSubscribeUnboundMentions(ctx context.Context, baseURL string, channelIDs
 		return fmt.Errorf("unbound-mentions stream returned %s", resp.Status)
 	}
 
+	denied := make(map[denyKey]struct{})
 	dec := json.NewDecoder(resp.Body)
 	for {
 		var item unboundMentionItem
@@ -47,7 +90,27 @@ func RunSubscribeUnboundMentions(ctx context.Context, baseURL string, channelIDs
 			}
 			return fmt.Errorf("unbound-mentions stream ended: %w", err)
 		}
-		if !channelAllowed(channelIDs, item.ChannelID) {
+		verdict := filter.judge(item)
+		if verdict == verdictDrop {
+			continue
+		}
+		if verdict != verdictEmit {
+			text := filter.DeniedUserMessage
+			if verdict == verdictDenyChannel {
+				text = filter.DeniedChannelMessage
+			}
+			key := denyKey{item.ChannelID, item.ThreadTS, item.UserID}
+			if _, done := denied[key]; done {
+				continue
+			}
+			// Recorded before posting and never retried: the bot may not be a
+			// member of the channel, where every attempt fails the same way,
+			// and a failed courtesy reply must not end the subscription over
+			// every allowed user's mentions either.
+			denied[key] = struct{}{}
+			if err := postDenyReply(ctx, base, item, text); err != nil {
+				slog.Warn("deny reply not posted", "channel_id", item.ChannelID, "thread_ts", item.ThreadTS, "error", err)
+			}
 			continue
 		}
 		line, err := json.Marshal(item)
@@ -60,12 +123,34 @@ func RunSubscribeUnboundMentions(ctx context.Context, baseURL string, channelIDs
 	}
 }
 
-func channelAllowed(allowed []string, channelID string) bool {
+// Only the resident holds Slack credentials, hence POST /messages.
+func postDenyReply(ctx context.Context, base string, item unboundMentionItem, text string) error {
+	body, err := json.Marshal(postMessageRequest{ChannelID: item.ChannelID, ThreadTS: item.ThreadTS, Text: text})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/messages", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("POST /messages returned %s", resp.Status)
+	}
+	return nil
+}
+
+func listAllows(allowed []string, id string) bool {
 	if len(allowed) == 0 {
 		return true
 	}
-	for _, id := range allowed {
-		if id == channelID {
+	for _, a := range allowed {
+		if a == id {
 			return true
 		}
 	}

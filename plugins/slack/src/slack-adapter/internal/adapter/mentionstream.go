@@ -10,6 +10,7 @@ type unboundMentionItem struct {
 	ChannelID string `json:"channel_id"`
 	ThreadTS  string `json:"thread_ts"`
 	MentionTS string `json:"mention_ts"`
+	UserID    string `json:"user_id"`
 }
 
 // mentionStreamBuffer bounds how far a slow /unbound-mentions reader can lag

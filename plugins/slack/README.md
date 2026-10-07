@@ -181,7 +181,35 @@ observer always sets `expire_after` rather than `poll_every`.
   second Socket Mode connection, instead reading the resident adapter's own
   `/unbound-mentions` feed and converting each `unboundMentionItem` straight
   into the query's item shape: `resource` (the mention's permalink,
-  required) plus `channel_id`, `thread_ts`, and `mention_ts` context.
+  required) plus `channel_id`, `thread_ts`, `mention_ts`, and `user_id` (the
+  mentioning user's Slack ID) context.
+- **Restricting who can start a session.** The query's optional `user_ids`
+  (a non-empty array of Slack user IDs, matched exactly) lets only those
+  users' mentions through; without it everyone passes. Rejected mentions are
+  dropped silently unless a reply is configured: `denied_user_message` is
+  posted once into the thread of a mention from a user outside `user_ids`,
+  and `denied_channel_message` once into the thread of a mention in a channel
+  outside `channel_ids`, e.g. a redirect to the right channel. A failed post
+  (such as into a channel the bot has not joined) is logged and not retried.
+  A rejected mention never becomes an item, so a workflow never sees it.
+  Copyable population entry:
+
+  ```toml
+  [[ops.populations]]
+  name              = "mentions"
+  resource_observer = "official.slack.thread"
+  uses              = ["subscribe"]
+  expire_after      = "8h"
+
+  [ops.populations.query]
+  base_url               = "http://127.0.0.1:7890"
+  channel_ids            = ["C01234567"]
+  user_ids               = ["U01234567", "U07654321"]
+  denied_user_message    = "Sorry, you are not authorized to start a session here."
+  denied_channel_message = "Please mention me in #ops instead."
+  ```
+
+  A workflow can record who asked with `{ from = "item.user_id" }`.
 - **`slack-adapter resource observe`** is `thread`'s `observe` action. The
   language requires every `resource_observer` to declare one, but this
   observer's `state_schema` is empty — a mention appearance is already the

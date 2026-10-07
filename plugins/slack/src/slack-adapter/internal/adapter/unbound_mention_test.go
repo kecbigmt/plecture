@@ -230,6 +230,7 @@ func TestHandleAppMentionPublishesToStreamAlongsideOnUnboundMentionHook(t *testi
 			ChannelID: "C-review",
 			ThreadTS:  "1000.000001",
 			MentionTS: "1000.000005",
+			UserID:    "U-dana",
 		}
 		if item != want {
 			t.Errorf("stream item = %+v, want %+v", item, want)

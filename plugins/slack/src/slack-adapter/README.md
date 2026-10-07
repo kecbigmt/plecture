@@ -118,7 +118,8 @@ to the runtime.
 ### `subscribe unbound-mentions` (query.subscribe action)
 
 ```
-slack-adapter subscribe unbound-mentions --base-url <url> --channel-ids '["C...", "C..."]'
+slack-adapter subscribe unbound-mentions --base-url <url> --channel-ids '["C...", "C..."]' \
+  [--user-ids '["U...", "U..."]'] [--denied-user-message '<text>'] [--denied-channel-message '<text>']
 ```
 
 A separate invocation of the `slack-adapter` binary — not the resident
@@ -126,7 +127,26 @@ service — that connects to a *running* resident adapter's `GET
 /unbound-mentions` feed (never opening a second Socket Mode connection
 itself), filters to `--channel-ids`, and writes one JSON item per line to
 stdout for each match, in the item shape `GET /unbound-mentions` documents
-below. This is the
+below.
+
+`--user-ids` restricts which users may start a session: when given and
+non-empty, only mentions whose `user_id` equals one of the listed Slack user
+IDs (exact match; no email or display name) are emitted. Omitted or empty,
+every user passes.
+
+A mention that is not emitted is dropped silently unless a reply is
+configured. `--denied-user-message` answers a mention from a user outside
+`--user-ids`, and `--denied-channel-message` answers a mention in a channel
+outside `--channel-ids`; each is posted into the mention's thread through the
+resident's `POST /messages`. A mention in an unwatched channel is only ever
+answered with the channel message. Replies are deduplicated per channel,
+thread and user for the life of the subscribe process (a restart may repeat
+one), and a failed post is logged and never retried: the bot cannot post into
+a channel it has not joined, and that fails the same way every time. Neither
+case produces an item.
+
+This is the
+
 `query.subscribe` means `../../config/resources/thread.toml` binds for the
 Slack thread resource
 (`docs/adr/2026-09-05-standing-session-dispatch.md`), and coexists with
@@ -325,11 +345,11 @@ connection. `allowed_user_ids` is applied first, so a mention from a
 disallowed user reaches neither this feed nor the hook.
 
 ```json
-{"resource": "https://<ws>.slack.com/archives/C.../p...", "channel_id": "C...", "thread_ts": "1788222413.916339", "mention_ts": "1788224629.760139"}
+{"resource": "https://<ws>.slack.com/archives/C.../p...", "channel_id": "C...", "thread_ts": "1788222413.916339", "mention_ts": "1788224629.760139", "user_id": "U..."}
 ```
 
 `resource` is the thread root's permalink, matching `official.slack.thread`'s
-`match` regex. A reader that disconnects (its request context ends) is
+`match` regex; `user_id` is the Slack user ID of whoever mentioned the app. A reader that disconnects (its request context ends) is
 unregistered; a mention that occurs while nothing is connected is simply
 lost, not queued — see `subscribe unbound-mentions` above for the supervised
 CLI client built on this feed.
