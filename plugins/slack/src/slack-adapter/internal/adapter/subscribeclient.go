@@ -11,20 +11,14 @@ import (
 	"strings"
 )
 
-// MentionFilter is the per-population policy `subscribe unbound-mentions`
-// applies to the raw feed. The resident adapter stays policy-free so one
-// connection serves any number of populations, each with its own filter.
+// MentionFilter lives in this client, not the resident feed, so one resident
+// connection serves any number of populations, each with its own policy. An
+// empty ChannelIDs or UserIDs allows everything; an empty denied message
+// drops the rejected mention silently.
 type MentionFilter struct {
-	// ChannelIDs matches every channel when empty.
-	ChannelIDs []string
-	// UserIDs matches every user when empty; otherwise it is compared
-	// exactly against the mentioning user's Slack ID.
-	UserIDs []string
-	// DeniedUserMessage is posted into the thread of a mention rejected by
-	// UserIDs; empty means such mentions are dropped silently.
-	DeniedUserMessage string
-	// DeniedChannelMessage is posted into the thread of a mention outside
-	// ChannelIDs; empty means such mentions are dropped silently.
+	ChannelIDs           []string
+	UserIDs              []string
+	DeniedUserMessage    string
 	DeniedChannelMessage string
 }
 
@@ -129,8 +123,7 @@ func RunSubscribeUnboundMentions(ctx context.Context, baseURL string, filter Men
 	}
 }
 
-// postDenyReply goes through the resident adapter's POST /messages because
-// only the resident holds Slack credentials.
+// Only the resident holds Slack credentials, hence POST /messages.
 func postDenyReply(ctx context.Context, base string, item unboundMentionItem, text string) error {
 	body, err := json.Marshal(postMessageRequest{ChannelID: item.ChannelID, ThreadTS: item.ThreadTS, Text: text})
 	if err != nil {
@@ -152,7 +145,6 @@ func postDenyReply(ctx context.Context, base string, item unboundMentionItem, te
 	return nil
 }
 
-// listAllows treats an empty list as "no restriction".
 func listAllows(allowed []string, id string) bool {
 	if len(allowed) == 0 {
 		return true
