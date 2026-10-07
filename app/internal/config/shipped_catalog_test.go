@@ -363,6 +363,55 @@ func TestShippedCatalog_SlackThreadQueryInvokesDocumentedFlags(t *testing.T) {
 	}
 }
 
+func TestShippedCatalog_SlackThreadQueryPassesUserPolicyFlags(t *testing.T) {
+	cfg := loadShippedCatalog(t, "official")
+	observers, err := cfg.LoadResourceDefs()
+	if err != nil {
+		t.Fatalf("LoadResourceDefs(shipped catalog): %v", err)
+	}
+	def := observers["official.slack.thread"]
+	if def.Query == nil || def.Query.Subscribe == nil {
+		t.Fatal("official.slack.thread declares no subscribe means")
+	}
+
+	itemProps, _ := def.Query.ItemSchema["properties"].(map[string]any)
+	if _, ok := itemProps["user_id"]; !ok {
+		t.Error("query.item_schema does not declare user_id")
+	}
+
+	flagsFor := func(inputs map[string]any) map[string]string {
+		argv := renderQueryArgv(t, cfg, def, def.Query.Subscribe, inputs)
+		flags := map[string]string{}
+		for i := 3; i+1 < len(argv); i += 2 {
+			flags[argv[i]] = argv[i+1]
+		}
+		return flags
+	}
+	base := map[string]any{"base_url": "http://127.0.0.1:7890", "channel_ids": []any{"C01234567"}}
+
+	unset := flagsFor(base)
+	if unset["--user-ids"] != "[]" || unset["--deny-message"] != "" {
+		t.Errorf("without user_ids/deny_message, flags = %v, want --user-ids [] and an empty --deny-message", unset)
+	}
+
+	set := flagsFor(map[string]any{
+		"base_url":     "http://127.0.0.1:7890",
+		"channel_ids":  []any{"C01234567"},
+		"user_ids":     []any{"U01234567", "U07654321"},
+		"deny_message": "Not allowed.",
+	})
+	var userIDs []string
+	if err := json.Unmarshal([]byte(set["--user-ids"]), &userIDs); err != nil {
+		t.Fatalf("--user-ids %q is not JSON: %v", set["--user-ids"], err)
+	}
+	if len(userIDs) != 2 || userIDs[0] != "U01234567" || userIDs[1] != "U07654321" {
+		t.Errorf("--user-ids = %v, want [U01234567 U07654321]", userIDs)
+	}
+	if set["--deny-message"] != "Not allowed." {
+		t.Errorf("--deny-message = %q, want %q", set["--deny-message"], "Not allowed.")
+	}
+}
+
 // The workflow here is a throwaway test fixture, not shipped config:
 // populations declarations are deployment policy, out of scope for this
 // plugin.
@@ -417,8 +466,10 @@ auto_down         = true
 auto_destroy      = true
 
 [ops.populations.query]
-base_url    = "http://127.0.0.1:7890"
-channel_ids = ["C01234567"]
+base_url     = "http://127.0.0.1:7890"
+channel_ids  = ["C01234567"]
+user_ids     = ["U01234567"]
+deny_message = "Not allowed."
 `)
 	workflows, err := cfg.LoadWorkflows("")
 	if err != nil {
