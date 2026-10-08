@@ -14,8 +14,16 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/admitstatus"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
+)
+
+const (
+	admitRetryBase       = 5 * time.Second
+	admitRetryMax        = time.Minute
+	admitFailureLimit    = 5
+	executionCollisionID = "a concurrent writer already created execution"
 )
 
 // UpOutcome reports what one Up hook call did. AlreadyUp is captured before
@@ -79,6 +87,7 @@ func (e *Engine) ApplyPoll(ctx context.Context, items []map[string]any) error {
 				member.LastInbound = time.Time{}
 				member.LastDecision = ""
 				member.LastBlockers = nil
+				clearAdmitRetry(member)
 			}
 			member.Item = item
 			if member.SessionName == "" {
@@ -93,6 +102,7 @@ func (e *Engine) ApplyPoll(ctx context.Context, items []map[string]any) error {
 			member.PendingUp = false
 			member.LastDecision = ""
 			member.LastBlockers = nil
+			clearAdmitRetry(member)
 		}
 		return nil
 	}); err != nil {
@@ -118,7 +128,8 @@ func (e *Engine) ApplyAppearance(ctx context.Context, item map[string]any) error
 			suppressed = true
 			return nil
 		}
-		if member == nil || member.Tombstoned {
+		wasTombstoned := member != nil && member.Tombstoned
+		if member == nil || wasTombstoned {
 			generation := uint64(1)
 			if member != nil {
 				generation = member.Generation + 1
@@ -132,6 +143,9 @@ func (e *Engine) ApplyAppearance(ctx context.Context, item map[string]any) error
 		member.Tombstoned = false
 		member.LastDecision = ""
 		member.LastBlockers = nil
+		if wasTombstoned {
+			clearAdmitRetry(member)
+		}
 		return nil
 	}); err != nil {
 		return err
@@ -172,6 +186,9 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 	for _, resource := range resources {
 		member := population.Members[resource]
 		if member.Tombstoned || !member.PendingUp {
+			continue
+		}
+		if member.AdmitSuspended || (!member.AdmitRetryAt.IsZero() && e.now().Before(member.AdmitRetryAt)) {
 			continue
 		}
 		if err := e.admit(ctx, member); err != nil && firstErr == nil {
@@ -264,28 +281,22 @@ func (e *Engine) processInbound() error {
 func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) error {
 	inputs, err := e.sessionInputs(member.ResourceID, member.Item)
 	if err != nil {
-		e.record(member.SessionName, event.TypeWorkflowPopulationFailure, "input", err.Error(), member.ResourceID)
-		e.recordAdmit(member.SessionName, member.ResourceID, false, "input", err.Error())
-		return err
+		return e.failAdmit(member, member.SessionName, "input", err)
 	}
 	if e.hooks.Up == nil {
-		return fmt.Errorf("population admission has no lifecycle hook")
+		return e.failAdmit(member, member.SessionName, "up", fmt.Errorf("population admission has no lifecycle hook"))
 	}
 	outcome, err := e.hooks.Up(ctx, member.ResourceID, inputs)
 	if err != nil {
 		var conflict *populationConflictError
 		if errors.As(err, &conflict) {
-			e.record(conflict.session, event.TypeWorkflowPopulationConflict, "provenance", err.Error(), member.ResourceID)
-			e.recordAdmit(conflict.session, member.ResourceID, false, "provenance", err.Error())
-			return err
+			return e.failAdmit(member, conflict.session, "provenance", err)
 		}
 		reason := "up" // pendingExistingAhead reads this tag back to decide whether the member keeps priority
 		if isCapacityRefusal(err) {
 			reason = "capacity"
 		}
-		e.record(member.SessionName, event.TypeWorkflowPopulationFailure, reason, err.Error(), member.ResourceID)
-		e.recordAdmit(member.SessionName, member.ResourceID, false, reason, err.Error())
-		return err
+		return e.failAdmit(member, member.SessionName, reason, err)
 	}
 	session := outcome.SessionName
 	now := e.now()
@@ -311,9 +322,7 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	}
 	if e.definition.Population.Session.Task != "" && e.hooks.EnsureInitial != nil {
 		if err := e.hooks.EnsureInitial(ctx, session, e.definition.Population.Session.Task, member.ResourceID); err != nil {
-			e.record(session, event.TypeWorkflowPopulationFailure, "task_setup", err.Error(), member.ResourceID)
-			e.recordAdmit(session, member.ResourceID, false, "task_setup", err.Error())
-			return err
+			return e.failAdmit(member, session, "task_setup", err)
 		}
 	}
 	if err := e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
@@ -323,6 +332,7 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 		}
 		current.SessionName = session
 		current.PendingUp = false
+		clearAdmitRetry(current)
 		return nil
 	}); err != nil {
 		return err
@@ -331,6 +341,76 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	e.record(session, event.TypeWorkflowPopulationAdmitOK, "admit", "population member admission succeeded", member.ResourceID)
 	e.recordAdmit(session, member.ResourceID, true, "", "")
 	return nil
+}
+
+func (e *Engine) failAdmit(member *state.PopulationMember, session, reason string, failure error) error {
+	if reason == "provenance" {
+		e.record(session, event.TypeWorkflowPopulationConflict, reason, failure.Error(), member.ResourceID)
+	} else {
+		e.record(session, event.TypeWorkflowPopulationFailure, reason, failure.Error(), member.ResourceID)
+	}
+	e.recordAdmit(session, member.ResourceID, false, reason, failure.Error())
+	if err := e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
+		current := population.Members[member.ResourceID]
+		if current == nil || current.Generation != member.Generation || current.Tombstoned {
+			return nil
+		}
+		current.LastAdmitReason = reason
+		current.LastAdmitError = failure.Error()
+		if isCapacityRefusal(failure) {
+			current.AdmitRetryAt = e.now().Add(admitRetryBase)
+			return nil
+		}
+		current.ConsecutiveAdmitFailures++
+		if isPermanentAdmitFailure(reason, failure) || current.ConsecutiveAdmitFailures >= admitFailureLimit {
+			current.AdmitSuspended = true
+			current.AdmitRetryAt = time.Time{}
+			return nil
+		}
+		current.AdmitRetryAt = e.now().Add(admitRetryDelay(current.ConsecutiveAdmitFailures))
+		return nil
+	}); err != nil {
+		return err
+	}
+	return failure
+}
+
+func clearAdmitRetry(member *state.PopulationMember) {
+	member.ConsecutiveAdmitFailures = 0
+	member.LastAdmitReason = ""
+	member.LastAdmitError = ""
+	member.AdmitRetryAt = time.Time{}
+	member.AdmitSuspended = false
+}
+
+func admitRetryDelay(failures uint) time.Duration {
+	delay := admitRetryBase
+	for attempt := uint(1); attempt < failures && delay < admitRetryMax; attempt++ {
+		delay *= 2
+	}
+	if delay > admitRetryMax {
+		return admitRetryMax
+	}
+	return delay
+}
+
+func isPermanentAdmitFailure(reason string, failure error) bool {
+	if reason == "input" {
+		return true
+	}
+	var conflict *populationConflictError
+	if errors.As(failure, &conflict) {
+		return true
+	}
+	var initial *initialTaskCleanupRequiredError
+	if errors.As(failure, &initial) {
+		return true
+	}
+	var serviceErr *service.Error
+	if errors.As(failure, &serviceErr) && serviceErr.Code == service.ErrInvalidInput {
+		return true
+	}
+	return strings.Contains(failure.Error(), executionCollisionID)
 }
 
 // recordAdmit mirrors an e.record call above, one for one, at every site

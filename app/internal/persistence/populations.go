@@ -176,18 +176,27 @@ func populationMemberFromRow(row sqlcgen.PopulationMember, blockers []string) (*
 	if err != nil {
 		return nil, fmt.Errorf("parse population member %q last_inbound: %w", row.ResourceID, err)
 	}
+	retryAt, err := parseTimeNull(row.AdmitRetryAt)
+	if err != nil {
+		return nil, fmt.Errorf("parse population member %q admit_retry_at: %w", row.ResourceID, err)
+	}
 	return &domain.PopulationMember{
-		ResourceID:     row.ResourceID,
-		Item:           item,
-		SessionName:    row.SessionName.String,
-		Generation:     uint64(row.Generation),
-		AcceptedAt:     acceptedAt,
-		LastAppearance: lastAppearance,
-		LastInbound:    lastInbound,
-		Tombstoned:     row.Tombstoned,
-		PendingUp:      row.PendingUp,
-		LastDecision:   lastDecisionFromColumns(row.DecisionKind, row.DecisionReason),
-		LastBlockers:   blockers,
+		ResourceID:               row.ResourceID,
+		Item:                     item,
+		SessionName:              row.SessionName.String,
+		Generation:               uint64(row.Generation),
+		AcceptedAt:               acceptedAt,
+		LastAppearance:           lastAppearance,
+		LastInbound:              lastInbound,
+		Tombstoned:               row.Tombstoned,
+		PendingUp:                row.PendingUp,
+		ConsecutiveAdmitFailures: uint(row.ConsecutiveAdmitFailures),
+		LastAdmitReason:          row.LastAdmitReason.String,
+		LastAdmitError:           row.LastAdmitError.String,
+		AdmitRetryAt:             retryAt,
+		AdmitSuspended:           row.AdmitSuspended,
+		LastDecision:             lastDecisionFromColumns(row.DecisionKind, row.DecisionReason),
+		LastBlockers:             blockers,
 	}, nil
 }
 
@@ -198,19 +207,24 @@ func insertPopulationMemberTx(ctx context.Context, q *sqlcgen.Queries, workflow,
 	}
 	decisionKind, decisionReason := splitLastDecision(member.LastDecision)
 	if err := q.InsertPopulationMember(ctx, sqlcgen.InsertPopulationMemberParams{
-		Workflow:       workflow,
-		Name:           name,
-		ResourceID:     resource,
-		SessionName:    nullString(member.SessionName),
-		Generation:     int64(member.Generation),
-		AcceptedAt:     formatTimeNull(member.AcceptedAt),
-		LastAppearance: formatTimeNull(member.LastAppearance),
-		LastInbound:    formatTimeNull(member.LastInbound),
-		Tombstoned:     member.Tombstoned,
-		PendingUp:      member.PendingUp,
-		DecisionKind:   decisionKind,
-		DecisionReason: decisionReason,
-		ItemJson:       string(itemJSON),
+		Workflow:                 workflow,
+		Name:                     name,
+		ResourceID:               resource,
+		SessionName:              nullString(member.SessionName),
+		Generation:               int64(member.Generation),
+		AcceptedAt:               formatTimeNull(member.AcceptedAt),
+		LastAppearance:           formatTimeNull(member.LastAppearance),
+		LastInbound:              formatTimeNull(member.LastInbound),
+		Tombstoned:               member.Tombstoned,
+		PendingUp:                member.PendingUp,
+		ConsecutiveAdmitFailures: int64(member.ConsecutiveAdmitFailures),
+		LastAdmitReason:          nullString(member.LastAdmitReason),
+		LastAdmitError:           nullString(member.LastAdmitError),
+		AdmitRetryAt:             formatTimeNull(member.AdmitRetryAt),
+		AdmitSuspended:           member.AdmitSuspended,
+		DecisionKind:             decisionKind,
+		DecisionReason:           decisionReason,
+		ItemJson:                 string(itemJSON),
 	}); err != nil {
 		return fmt.Errorf("insert population member %q: %w", resource, err)
 	}

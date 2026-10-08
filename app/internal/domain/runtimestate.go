@@ -33,17 +33,22 @@ type PopulationState struct {
 }
 
 type PopulationMember struct {
-	ResourceID     string         `json:"resource_id"`
-	Item           map[string]any `json:"item,omitempty"`
-	SessionName    string         `json:"session_name,omitempty"`
-	Generation     uint64         `json:"generation"`
-	AcceptedAt     time.Time      `json:"accepted_at,omitzero"`
-	LastAppearance time.Time      `json:"last_appearance,omitzero"`
-	LastInbound    time.Time      `json:"last_inbound,omitzero"`
-	Tombstoned     bool           `json:"tombstoned,omitempty"`
-	PendingUp      bool           `json:"pending_up,omitempty"`
-	LastDecision   string         `json:"last_decision,omitempty"`
-	LastBlockers   []string       `json:"last_blockers,omitempty"`
+	ResourceID               string         `json:"resource_id"`
+	Item                     map[string]any `json:"item,omitempty"`
+	SessionName              string         `json:"session_name,omitempty"`
+	Generation               uint64         `json:"generation"`
+	AcceptedAt               time.Time      `json:"accepted_at,omitzero"`
+	LastAppearance           time.Time      `json:"last_appearance,omitzero"`
+	LastInbound              time.Time      `json:"last_inbound,omitzero"`
+	Tombstoned               bool           `json:"tombstoned,omitempty"`
+	PendingUp                bool           `json:"pending_up,omitempty"`
+	ConsecutiveAdmitFailures uint           `json:"consecutive_admit_failures,omitempty"`
+	LastAdmitReason          string         `json:"last_admit_reason,omitempty"`
+	LastAdmitError           string         `json:"last_admit_error,omitempty"`
+	AdmitRetryAt             time.Time      `json:"admit_retry_at,omitzero"`
+	AdmitSuspended           bool           `json:"admit_suspended,omitempty"`
+	LastDecision             string         `json:"last_decision,omitempty"`
+	LastBlockers             []string       `json:"last_blockers,omitempty"`
 }
 
 // ErrUpAlreadyReserved: childName's reservation is held by another live

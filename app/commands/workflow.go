@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/population"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 )
@@ -169,9 +171,42 @@ population whose config was just changed or removed out from under it.`,
 	},
 }
 
+var workflowPopulationsRetryCmd = &cobra.Command{
+	Use:   "retry <workflow-id> <population-name> <resource-id>",
+	Short: "Re-enable one suspended population member",
+	Long: `Re-enable one live population member after its admission failure was
+resolved. If initial-task setup left an instance behind, first run
+plect task cleanup initial --session <session> successfully; this command
+refuses to re-enable it while that instance remains.`,
+	Args: cobra.ExactArgs(3),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store := state.NewStore("")
+		return population.RetryPopulationMember(store, eventlog.NewStore(store.Dir()), args[0], args[1], args[2], func() (string, error) {
+			cfg, err := config.Load()
+			if err != nil {
+				return "", err
+			}
+			workflows, err := cfg.LoadWorkflows("")
+			if err != nil {
+				return "", err
+			}
+			workflow, ok := workflows[args[0]]
+			if !ok {
+				return "", fmt.Errorf("workflow %q not found", args[0])
+			}
+			for _, candidate := range workflow.Populations {
+				if candidate.Name == args[1] {
+					return candidate.Session.Task, nil
+				}
+			}
+			return "", fmt.Errorf("population %q not found in workflow %q", args[1], args[0])
+		})
+	},
+}
+
 func writePopulationMembers(out io.Writer, members []service.PopulationMemberStatus) error {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "RESOURCE\tSESSION\tPENDING\tLAST_ADMIT_ERROR\tSTREAK")
+	fmt.Fprintln(w, "RESOURCE\tSESSION\tPENDING\tLAST_ADMIT_ERROR\tSTREAK\tRETRY_AT\tSUSPENDED")
 	for _, m := range members {
 		session := m.Session
 		if session == "" {
@@ -185,7 +220,11 @@ func writePopulationMembers(out io.Writer, members []service.PopulationMemberSta
 		if m.ConsecutiveAdmitFailures > 0 {
 			streak = fmt.Sprintf("%d", m.ConsecutiveAdmitFailures)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%t\t%s\t%s\n", m.Resource, session, m.PendingUp, lastError, streak)
+		retryAt := m.AdmitRetryAt
+		if retryAt == "" {
+			retryAt = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%t\t%s\t%s\t%s\t%t\n", m.Resource, session, m.PendingUp, lastError, streak, retryAt, m.AdmitSuspended)
 	}
 	return w.Flush()
 }
@@ -452,5 +491,6 @@ func init() {
 	workflowCmd.AddCommand(workflowListCmd)
 	workflowCmd.AddCommand(workflowShowCmd)
 	workflowCmd.AddCommand(workflowPopulationsCmd)
+	workflowPopulationsCmd.AddCommand(workflowPopulationsRetryCmd)
 	rootCmd.AddCommand(workflowCmd)
 }

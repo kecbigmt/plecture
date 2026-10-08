@@ -121,6 +121,7 @@ const (
 	// consumer that needs "has this member recovered since its last
 	// failure," not "did presence just change," keys off this instead.
 	TypeWorkflowPopulationAdmitOK         = "plect.workflow_population.admit_ok"
+	TypeWorkflowPopulationRetry           = "plect.workflow_population.retry"
 	TypeWorkflowPopulationConflict        = "plect.workflow_population.conflict"
 	TypeWorkflowPopulationFailure         = "plect.workflow_population.failure"
 	TypeWorkflowPopulationDestroyDeferred = "plect.workflow_population.destroy_deferred"
