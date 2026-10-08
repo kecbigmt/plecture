@@ -6,6 +6,10 @@ Generic message delivery to Claude Code. **It has no knowledge of message source
 
 - Receives messages from external adapters over a Unix socket
 - Pushes messages to Claude Code via MCP `claude/channel`
+- In `queue` mode (`channel-server queue --socket <path> --queue-dir <dir>`),
+  serves the same socket protocol for a print-mode runtime instead: each
+  `message` becomes a turn file in the queue directory its worker drains,
+  and nothing is relayed as a permission verdict
 - Relays approve/deny via `claude/channel/permission`. It exposes no reply
   tool: the agent's turn-boundary hooks (`claude-agent-activity`) publish the
   agent's own text as `plect.message` / `plect.message_delta` events
@@ -43,6 +47,6 @@ go test ./...
 ## Directory layout
 
 ```
-cmd/channel-server/   entry point (CHANNEL_SOCKET_PATH required)
+cmd/channel-server/   entry point (CHANNEL_SOCKET_PATH required; `queue` and `send` subcommands)
 server/               MCP server, Unix socket listener, MessageSender interface
 ```

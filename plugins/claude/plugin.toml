@@ -4,7 +4,7 @@ version = "0.1.0"
 # release/tagging process yet, so any higher floor would reject the plugin
 # against every build until real versioning exists.
 plect_min_version = "0.0.0"
-description = "Claude Code launch task, initial-prompt submit/readiness composition, and the channel-server delivery daemon."
+description = "Claude Code launch task, initial-prompt submit/readiness composition, the channel-server delivery daemon, and the headless claude -p worker/enqueue pair."
 
 [[executables]]
 name = "claude-agent-activity"
@@ -13,6 +13,14 @@ path = "scripts/claude-agent-activity"
 [[executables]]
 name = "claude-mcp-servers"
 path = "scripts/claude-mcp-servers"
+
+[[executables]]
+name = "claude-headless-worker"
+path = "scripts/claude-headless-worker"
+
+[[executables]]
+name = "claude-headless-enqueue"
+path = "scripts/claude-headless-enqueue"
 
 [[executables]]
 name = "channel-server"

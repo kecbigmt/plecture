@@ -153,3 +153,58 @@ content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 [[claude_initial_prompt]]
 inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
 capture = "› "
+
+[[headless_runtime]]
+name   = "fresh-with-inputs"
+inputs = { model = "opus", effort = "high", api_key_file = "/spy/secrets/anthropic-key", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', mcp_servers = '[{"name":"kbn","command":"kbn-mcp"}]', path_prepend = "/spy/guard" }
+
+[[headless_runtime.artifacts]]
+output = "state_dir"
+path   = "hooks.json"
+
+[[headless_runtime.artifacts]]
+output = "state_dir"
+path   = "mcp.json"
+
+# A resumed session keeps the conversation it already started: the worker is
+# relaunched under the previous session id, not a fresh one.
+[[headless_runtime]]
+name  = "resume-keeps-session"
+prev  = { session_id = "11111111-2222-3333-4444-555555555555" }
+hooks = ["setup"]
+
+# This proves the timed-out launch's worker is killed and the pane
+# survives. No retry_inputs: a retry here would make bin/terminal-send_keys
+# seed the runtime effect's own retry session file into the shared home,
+# where it outlives this scenario.
+[[headless_runtime]]
+name                       = "launch-timeout-kills-worker"
+inputs                     = { launch_env = '{"PLECT_TEST_NEVER_READY":"1"}', launch_timeout = "1s" }
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+# This proves a worker.pid naming the pane's own pid is rejected, and
+# cleanup still lands on the real worker.
+[[headless_runtime]]
+name                       = "poisoned-pidfile-kills-real-worker"
+inputs                     = { launch_env = '{"PLECT_TEST_POISON_PID":"1"}', launch_timeout = "1s" }
+pane_child                 = true
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+# This proves cleanup still finds the worker when it never wrote
+# worker.pid at all.
+[[headless_runtime]]
+name                       = "no-pid-report-kills-real-worker"
+inputs                     = { launch_env = '{"PLECT_TEST_NO_PID_REPORT":"1"}', launch_timeout = "1s" }
+pane_child                 = true
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+# This proves cleanup also runs when the final output-construction call
+# fails (see bin/jq), not only on a detection timeout.
+[[headless_runtime]]
+name                       = "launch-succeeds-then-output-fails-kills-worker"
+fail_output                = true
+expect_worker_process_dead = true
+hooks                      = ["setup"]
