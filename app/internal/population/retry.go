@@ -6,10 +6,11 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // RetryPopulationMember clears an operator-approved admission suspension.
-func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, name, resource string) error {
+func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, name, resource string, initialTaskID func() (string, error)) error {
 	key := workflow + "/" + name
 	population, err := store.Population(key)
 	if err != nil {
@@ -27,8 +28,16 @@ func RetryPopulationMember(store *state.Store, log *eventlog.Store, workflow, na
 		if err != nil {
 			return fmt.Errorf("read session %q: %w", member.SessionName, err)
 		}
-		if session != nil && session.Tasks["initial"] != nil {
-			return fmt.Errorf("session %q still has initial task state; run `plect task cleanup initial --session %s` successfully before retrying", member.SessionName, member.SessionName)
+		if session != nil {
+			if initial := session.Tasks["initial"]; initial != nil {
+				taskID, err := initialTaskID()
+				if err != nil {
+					return err
+				}
+				if initial.Name != "initial" || initial.TaskID != taskID || initial.Resource != resource || initial.Status != contract.TaskStatusProduced {
+					return fmt.Errorf("session %q still has initial task state; run `plect task cleanup initial --session %s` successfully before retrying", member.SessionName, member.SessionName)
+				}
+			}
 		}
 	}
 

@@ -413,7 +413,7 @@ func TestPollTombstoneCancelsAdmitRetry(t *testing.T) {
 	}
 }
 
-func TestPopulationRetryRequiresInitialTaskCleanup(t *testing.T) {
+func TestPopulationRetryAllowsProducedInitialTask(t *testing.T) {
 	engine, _, _ := engineFixture(t, false)
 	member := &state.PopulationMember{
 		ResourceID:               "urn:case:a",
@@ -432,13 +432,14 @@ func TestPopulationRetryRequiresInitialTaskCleanup(t *testing.T) {
 	if err := engine.state.Put(&domain.Session{
 		Name: "session-urn:case:a",
 		Tasks: map[string]*contract.TaskState{
-			"initial": {Name: "initial", Scope: "session", Status: contract.TaskStatusFailed},
+			"initial": {Name: "initial", Scope: "session", TaskID: "work", Resource: member.ResourceID, Status: contract.TaskStatusFailed},
 		},
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID); err == nil {
+	initialTaskID := func() (string, error) { return "work", nil }
+	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID, initialTaskID); err == nil {
 		t.Fatal("retry succeeded before initial task cleanup")
 	}
 	population, err := engine.state.Population(engine.key)
@@ -449,13 +450,23 @@ func TestPopulationRetryRequiresInitialTaskCleanup(t *testing.T) {
 		t.Fatal("failed cleanup check cleared the suspension")
 	}
 	if err := engine.state.Update(member.SessionName, func(session *domain.Session) error {
-		delete(session.Tasks, "initial")
+		session.Tasks["initial"].Status = contract.TaskStatusProduced
+		session.Tasks["initial"].TaskID = "different"
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID); err != nil {
-		t.Fatalf("retry after cleanup: %v", err)
+	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID, initialTaskID); err == nil {
+		t.Fatal("retry succeeded with a conflicting initial task")
+	}
+	if err := engine.state.Update(member.SessionName, func(session *domain.Session) error {
+		session.Tasks["initial"].TaskID = "work"
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID, initialTaskID); err != nil {
+		t.Fatalf("retry with produced initial task: %v", err)
 	}
 	population, err = engine.state.Population(engine.key)
 	if err != nil {
@@ -502,7 +513,7 @@ func TestFailedInitialTaskDoesNotRunSetupAgainBeforeCleanup(t *testing.T) {
 	if setupCalls != 1 {
 		t.Fatalf("initial setup calls before cleanup = %d, want 1", setupCalls)
 	}
-	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, "urn:case:a"); err == nil {
+	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, "urn:case:a", func() (string, error) { return "work", nil }); err == nil {
 		t.Fatal("retry succeeded before initial task cleanup")
 	}
 	if setupCalls != 1 {

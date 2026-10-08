@@ -181,7 +181,26 @@ refuses to re-enable it while that instance remains.`,
 	Args: cobra.ExactArgs(3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store := state.NewStore("")
-		return population.RetryPopulationMember(store, eventlog.NewStore(store.Dir()), args[0], args[1], args[2])
+		return population.RetryPopulationMember(store, eventlog.NewStore(store.Dir()), args[0], args[1], args[2], func() (string, error) {
+			cfg, err := config.Load()
+			if err != nil {
+				return "", err
+			}
+			workflows, err := cfg.LoadWorkflows("")
+			if err != nil {
+				return "", err
+			}
+			workflow, ok := workflows[args[0]]
+			if !ok {
+				return "", fmt.Errorf("workflow %q not found", args[0])
+			}
+			for _, candidate := range workflow.Populations {
+				if candidate.Name == args[1] {
+					return candidate.Session.Task, nil
+				}
+			}
+			return "", fmt.Errorf("population %q not found in workflow %q", args[1], args[0])
+		})
 	},
 }
 
