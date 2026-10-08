@@ -91,19 +91,24 @@ type Population struct {
 }
 
 type PopulationMember struct {
-	Workflow       string
-	Name           string
-	ResourceID     string
-	SessionName    sql.NullString
-	Generation     int64
-	AcceptedAt     sql.NullString
-	LastAppearance sql.NullString
-	LastInbound    sql.NullString
-	Tombstoned     bool
-	PendingUp      bool
-	DecisionKind   sql.NullString
-	DecisionReason sql.NullString
-	ItemJson       string
+	Workflow                 string
+	Name                     string
+	ResourceID               string
+	SessionName              sql.NullString
+	Generation               int64
+	AcceptedAt               sql.NullString
+	LastAppearance           sql.NullString
+	LastInbound              sql.NullString
+	Tombstoned               bool
+	PendingUp                bool
+	ConsecutiveAdmitFailures int64
+	LastAdmitReason          sql.NullString
+	LastAdmitError           sql.NullString
+	AdmitRetryAt             sql.NullString
+	AdmitSuspended           bool
+	DecisionKind             sql.NullString
+	DecisionReason           sql.NullString
+	ItemJson                 string
 }
 
 type PopulationMemberBlocker struct {

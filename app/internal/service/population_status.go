@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/admitstatus"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
@@ -17,6 +18,8 @@ type PopulationMemberStatus struct {
 	LastAdmitReason          string `json:"last_admit_reason,omitempty"`
 	LastAdmitError           string `json:"last_admit_error,omitempty"`
 	ConsecutiveAdmitFailures int    `json:"consecutive_admit_failures,omitempty"`
+	AdmitRetryAt             string `json:"admit_retry_at,omitempty"`
+	AdmitSuspended           bool   `json:"admit_suspended,omitempty"`
 }
 
 // PopulationStatus reads runtime state directly rather than resolving
@@ -43,10 +46,18 @@ func PopulationStatus(store *state.Store, workflow, population string) ([]Popula
 		st := PopulationMemberStatus{
 			Resource: resource, Session: member.SessionName,
 			PendingUp: member.PendingUp, Tombstoned: member.Tombstoned,
+			LastAdmitReason: member.LastAdmitReason, LastAdmitError: member.LastAdmitError,
+			ConsecutiveAdmitFailures: int(member.ConsecutiveAdmitFailures),
+			AdmitSuspended:           member.AdmitSuspended,
 		}
-		status := admitstatus.Member(log, member.SessionName, resource)
-		st.LastAdmitReason, st.LastAdmitError, st.ConsecutiveAdmitFailures =
-			status.LastReason, status.LastError, status.Consecutive
+		if !member.AdmitRetryAt.IsZero() {
+			st.AdmitRetryAt = member.AdmitRetryAt.Format(time.RFC3339Nano)
+		}
+		if !member.Tombstoned && st.LastAdmitReason == "" && st.ConsecutiveAdmitFailures == 0 {
+			status := admitstatus.Member(log, member.SessionName, resource)
+			st.LastAdmitReason, st.LastAdmitError, st.ConsecutiveAdmitFailures =
+				status.LastReason, status.LastError, status.Consecutive
+		}
 		out = append(out, st)
 	}
 	return out, nil

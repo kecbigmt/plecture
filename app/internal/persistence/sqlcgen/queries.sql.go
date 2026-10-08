@@ -567,24 +567,30 @@ const insertPopulationMember = `-- name: InsertPopulationMember :exec
 INSERT INTO population_members (
     workflow, name, resource_id, session_name, generation, accepted_at,
     last_appearance, last_inbound, tombstoned, pending_up,
-    decision_kind, decision_reason, item_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    consecutive_admit_failures, last_admit_reason, last_admit_error,
+    admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertPopulationMemberParams struct {
-	Workflow       string
-	Name           string
-	ResourceID     string
-	SessionName    sql.NullString
-	Generation     int64
-	AcceptedAt     sql.NullString
-	LastAppearance sql.NullString
-	LastInbound    sql.NullString
-	Tombstoned     bool
-	PendingUp      bool
-	DecisionKind   sql.NullString
-	DecisionReason sql.NullString
-	ItemJson       string
+	Workflow                 string
+	Name                     string
+	ResourceID               string
+	SessionName              sql.NullString
+	Generation               int64
+	AcceptedAt               sql.NullString
+	LastAppearance           sql.NullString
+	LastInbound              sql.NullString
+	Tombstoned               bool
+	PendingUp                bool
+	ConsecutiveAdmitFailures int64
+	LastAdmitReason          sql.NullString
+	LastAdmitError           sql.NullString
+	AdmitRetryAt             sql.NullString
+	AdmitSuspended           bool
+	DecisionKind             sql.NullString
+	DecisionReason           sql.NullString
+	ItemJson                 string
 }
 
 func (q *Queries) InsertPopulationMember(ctx context.Context, arg InsertPopulationMemberParams) error {
@@ -599,6 +605,11 @@ func (q *Queries) InsertPopulationMember(ctx context.Context, arg InsertPopulati
 		arg.LastInbound,
 		arg.Tombstoned,
 		arg.PendingUp,
+		arg.ConsecutiveAdmitFailures,
+		arg.LastAdmitReason,
+		arg.LastAdmitError,
+		arg.AdmitRetryAt,
+		arg.AdmitSuspended,
 		arg.DecisionKind,
 		arg.DecisionReason,
 		arg.ItemJson,
@@ -1524,7 +1535,8 @@ func (q *Queries) ListPopulationMemberBlockersForPopulation(ctx context.Context,
 const listPopulationMembers = `-- name: ListPopulationMembers :many
 SELECT workflow, name, resource_id, session_name, generation, accepted_at,
        last_appearance, last_inbound, tombstoned, pending_up,
-       decision_kind, decision_reason, item_json
+       consecutive_admit_failures, last_admit_reason, last_admit_error,
+       admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
 FROM population_members WHERE workflow = ? AND name = ? ORDER BY resource_id
 `
 
@@ -1553,6 +1565,11 @@ func (q *Queries) ListPopulationMembers(ctx context.Context, arg ListPopulationM
 			&i.LastInbound,
 			&i.Tombstoned,
 			&i.PendingUp,
+			&i.ConsecutiveAdmitFailures,
+			&i.LastAdmitReason,
+			&i.LastAdmitError,
+			&i.AdmitRetryAt,
+			&i.AdmitSuspended,
 			&i.DecisionKind,
 			&i.DecisionReason,
 			&i.ItemJson,

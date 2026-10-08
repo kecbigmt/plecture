@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/admitstatus"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 type hookRecorder struct {
@@ -243,6 +245,271 @@ func TestUpFailureLeavesAcceptedAppearancePending(t *testing.T) {
 	}
 }
 
+func TestTransientAdmitFailureBacksOffWithoutBlockingOtherMembers(t *testing.T) {
+	engine, _, now := engineFixture(t, false)
+	engine.now = func() time.Time { return now }
+	attempts := map[string]int{}
+	engine.hooks.Up = func(_ context.Context, resource string, _ map[string]any) (UpOutcome, error) {
+		attempts[resource]++
+		if resource == "urn:case:a" {
+			return UpOutcome{}, errors.New("temporary up failure")
+		}
+		return UpOutcome{SessionName: "session-" + resource}, nil
+	}
+
+	if err := engine.ApplyPoll(context.Background(), []map[string]any{{"resource": "urn:case:a"}, {"resource": "urn:case:b"}}); err == nil {
+		t.Fatal("expected one member admission to fail")
+	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := population.Members["urn:case:a"]
+	if failed.ConsecutiveAdmitFailures != 1 || !failed.AdmitRetryAt.Equal(now.Add(5*time.Second)) || failed.AdmitSuspended {
+		t.Fatalf("failed member = %+v, want first failure with a five-second retry gate", failed)
+	}
+	if member := population.Members["urn:case:b"]; member.PendingUp || attempts["urn:case:b"] != 1 {
+		t.Fatalf("healthy member = %+v, attempts = %v, want it admitted despite a's failure", member, attempts)
+	}
+
+	if err := engine.Reconcile(context.Background()); err != nil {
+		t.Fatalf("Reconcile during backoff: %v", err)
+	}
+	if attempts["urn:case:a"] != 1 {
+		t.Fatalf("attempts for failed member = %d, want no retry before backoff", attempts["urn:case:a"])
+	}
+}
+
+func TestTransientAdmitRecoveryClearsDurableRetryState(t *testing.T) {
+	engine, _, now := engineFixture(t, false)
+	engine.now = func() time.Time { return now }
+	attempts := 0
+	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
+		attempts++
+		if attempts == 1 {
+			return UpOutcome{}, errors.New("temporary up failure")
+		}
+		return UpOutcome{SessionName: "session-urn:case:a"}, nil
+	}
+	ctx := context.Background()
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err == nil {
+		t.Fatal("expected first admission to fail")
+	}
+	now = now.Add(5 * time.Second)
+	if err := engine.Reconcile(ctx); err != nil {
+		t.Fatalf("Reconcile after backoff: %v", err)
+	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members["urn:case:a"]
+	if member.PendingUp || member.ConsecutiveAdmitFailures != 0 || member.LastAdmitReason != "" || member.LastAdmitError != "" || !member.AdmitRetryAt.IsZero() || member.AdmitSuspended {
+		t.Fatalf("recovered member = %+v, want all retry state cleared", member)
+	}
+}
+
+func TestAdmitRetryStateSurvivesEngineRestart(t *testing.T) {
+	engine, _, now := engineFixture(t, false)
+	engine.now = func() time.Time { return now }
+	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
+		return UpOutcome{}, errors.New("temporary up failure")
+	}
+	ctx := context.Background()
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err == nil {
+		t.Fatal("expected first admission to fail")
+	}
+
+	attempts := 0
+	restarted := NewEngine(engine.definition, engine.state, engine.log, engine.cache, Hooks{
+		Up: func(context.Context, string, map[string]any) (UpOutcome, error) {
+			attempts++
+			return UpOutcome{SessionName: "session-urn:case:a"}, nil
+		},
+	})
+	restarted.now = func() time.Time { return now }
+	if err := restarted.Reconcile(ctx); err != nil {
+		t.Fatalf("Reconcile before persisted retry time: %v", err)
+	}
+	if attempts != 0 {
+		t.Fatalf("attempts after restart before retry time = %d, want 0", attempts)
+	}
+	now = now.Add(5 * time.Second)
+	if err := restarted.Reconcile(ctx); err != nil {
+		t.Fatalf("Reconcile after persisted retry time: %v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts after retry time = %d, want 1", attempts)
+	}
+}
+
+func TestPermanentAdmitFailureSuspendsImmediately(t *testing.T) {
+	engine, _, _ := engineFixture(t, false)
+	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
+		return UpOutcome{}, &service.Error{Code: service.ErrInvalidInput, Message: "configuration is invalid"}
+	}
+	if err := engine.ApplyAppearance(context.Background(), map[string]any{"resource": "urn:case:a"}); err == nil {
+		t.Fatal("expected admission to fail")
+	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members["urn:case:a"]
+	if !member.AdmitSuspended || member.ConsecutiveAdmitFailures != 1 || !member.AdmitRetryAt.IsZero() {
+		t.Fatalf("member = %+v, want an immediately suspended permanent failure", member)
+	}
+}
+
+func TestFifthUnknownAdmitFailureSuspends(t *testing.T) {
+	engine, _, now := engineFixture(t, false)
+	engine.now = func() time.Time { return now }
+	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
+		return UpOutcome{}, errors.New("unknown failure")
+	}
+	ctx := context.Background()
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err == nil {
+		t.Fatal("expected first admission to fail")
+	}
+	for attempt := 2; attempt <= 5; attempt++ {
+		population, err := engine.state.Population(engine.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		now = population.Members["urn:case:a"].AdmitRetryAt
+		if err := engine.Reconcile(ctx); err == nil {
+			t.Fatalf("attempt %d unexpectedly succeeded", attempt)
+		}
+	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members["urn:case:a"]
+	if !member.AdmitSuspended || member.ConsecutiveAdmitFailures != 5 || !member.AdmitRetryAt.IsZero() {
+		t.Fatalf("member = %+v, want suspension after fifth unknown failure", member)
+	}
+}
+
+func TestPollTombstoneCancelsAdmitRetry(t *testing.T) {
+	engine, _, _ := engineFixture(t, false)
+	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
+		return UpOutcome{}, errors.New("temporary up failure")
+	}
+	ctx := context.Background()
+	if err := engine.ApplyPoll(ctx, []map[string]any{{"resource": "urn:case:a"}}); err == nil {
+		t.Fatal("expected admission to fail")
+	}
+	if err := engine.ApplyPoll(ctx, nil); err != nil {
+		t.Fatalf("ApplyPoll tombstone: %v", err)
+	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members["urn:case:a"]
+	if !member.Tombstoned || member.ConsecutiveAdmitFailures != 0 || member.LastAdmitReason != "" || member.LastAdmitError != "" || !member.AdmitRetryAt.IsZero() || member.AdmitSuspended {
+		t.Fatalf("tombstoned member = %+v, want retry state cancelled", member)
+	}
+}
+
+func TestPopulationRetryRequiresInitialTaskCleanup(t *testing.T) {
+	engine, _, _ := engineFixture(t, false)
+	member := &state.PopulationMember{
+		ResourceID:               "urn:case:a",
+		SessionName:              "session-urn:case:a",
+		PendingUp:                true,
+		ConsecutiveAdmitFailures: 5,
+		AdmitSuspended:           true,
+		LastAdmitReason:          "task_setup",
+	}
+	if err := engine.state.UpdatePopulation(engine.key, func(population *state.PopulationState) error {
+		population.Members[member.ResourceID] = member
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.state.Put(&domain.Session{
+		Name: "session-urn:case:a",
+		Tasks: map[string]*contract.TaskState{
+			"initial": {Name: "initial", Scope: "session", Status: contract.TaskStatusFailed},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID); err == nil {
+		t.Fatal("retry succeeded before initial task cleanup")
+	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !population.Members[member.ResourceID].AdmitSuspended {
+		t.Fatal("failed cleanup check cleared the suspension")
+	}
+	if err := engine.state.Update(member.SessionName, func(session *domain.Session) error {
+		delete(session.Tasks, "initial")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, member.ResourceID); err != nil {
+		t.Fatalf("retry after cleanup: %v", err)
+	}
+	population, err = engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := population.Members[member.ResourceID]; got.AdmitSuspended || got.ConsecutiveAdmitFailures != 0 || got.LastAdmitReason != "" {
+		t.Fatalf("member after explicit retry = %+v, want retry state cleared", got)
+	}
+	events, _, _, err := engine.log.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationRetry}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Metadata["reason"] != "operator_retry" {
+		t.Fatalf("retry events = %+v, want one operator retry event", events)
+	}
+}
+
+func TestFailedInitialTaskDoesNotRunSetupAgainBeforeCleanup(t *testing.T) {
+	engine, _, _ := engineFixture(t, false)
+	engine.definition.Population.Session.Task = "work"
+	if err := engine.state.Put(&domain.Session{
+		Name: "session-urn:case:a",
+		Tasks: map[string]*contract.TaskState{
+			"initial": {Name: "initial", Scope: "session", Status: contract.TaskStatusFailed},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	setupCalls := 0
+	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
+		return UpOutcome{SessionName: "session-urn:case:a", AlreadyUp: true}, nil
+	}
+	engine.hooks.EnsureInitial = func(context.Context, string, string, string) error {
+		setupCalls++
+		return &initialTaskCleanupRequiredError{session: "session-urn:case:a", reason: "initial task needs cleanup"}
+	}
+	ctx := context.Background()
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err == nil {
+		t.Fatal("expected initial task failure")
+	}
+	if err := engine.Reconcile(ctx); err != nil {
+		t.Fatalf("Reconcile while suspended: %v", err)
+	}
+	if setupCalls != 1 {
+		t.Fatalf("initial setup calls before cleanup = %d, want 1", setupCalls)
+	}
+	if err := RetryPopulationMember(engine.state, engine.log, engine.definition.Workflow.Address, engine.definition.Population.Name, "urn:case:a"); err == nil {
+		t.Fatal("retry succeeded before initial task cleanup")
+	}
+	if setupCalls != 1 {
+		t.Fatalf("initial setup calls after rejected retry = %d, want 1", setupCalls)
+	}
+}
+
 // The reason tag this asserts is read back by pendingExistingAhead
 // (capacity.go), not consumed anywhere in this file.
 func TestAdmitFailureReasonsDrivePriorityClassification(t *testing.T) {
@@ -263,6 +530,14 @@ func TestAdmitFailureReasonsDrivePriorityClassification(t *testing.T) {
 	if err != nil || len(events) != 1 || events[0].Metadata["reason"] != "capacity" {
 		t.Fatalf("failure events = %v, %v, want a single capacity-tagged failure", events, err)
 	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if member := population.Members["urn:case:a"]; member.ConsecutiveAdmitFailures != 0 || member.AdmitRetryAt.IsZero() {
+		t.Fatalf("capacity-refused member = %+v, want a retry gate without consuming its failure budget", member)
+	}
+	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
 
 	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
 		return UpOutcome{}, errors.New("boom")
@@ -284,6 +559,11 @@ func TestAdmitFailureReasonsDrivePriorityClassification(t *testing.T) {
 		t.Fatal("hooks.Up called despite a session-input resolution failure")
 		return UpOutcome{}, nil
 	}
+	population, err = engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
 	if err := engine.Reconcile(ctx); err == nil {
 		t.Fatal("expected session-input resolution failure")
 	}
@@ -320,6 +600,11 @@ func TestAdmitUpdatesTheSharedCacheInPlace(t *testing.T) {
 		t.Fatalf("cache after one failure = %+v, want reason \"up\", consecutive 1", status)
 	}
 
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
 	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err == nil {
 		t.Fatal("expected a second failure")
 	}
@@ -330,6 +615,11 @@ func TestAdmitUpdatesTheSharedCacheInPlace(t *testing.T) {
 	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
 		return UpOutcome{SessionName: "session-urn:case:a"}, nil
 	}
+	population, err = engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
 	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err != nil {
 		t.Fatal(err)
 	}
@@ -495,10 +785,15 @@ func TestUpSurvivesAnInitialTaskFailureAndItsRetry(t *testing.T) {
 	// The retry's Up hook finds the session the failed attempt left running.
 	hooks.sessionUp = true
 	engine.hooks.EnsureInitial = func(context.Context, string, string, string) error { return nil }
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine.now = func() time.Time { return population.Members["urn:case:a"].AdmitRetryAt }
 	if err := engine.Reconcile(ctx); err != nil {
 		t.Fatal(err)
 	}
-	population, err := engine.state.Population(engine.key)
+	population, err = engine.state.Population(engine.key)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -143,6 +143,25 @@ func TestMemberAdmitOKResetsAcrossIgnoredFailures(t *testing.T) {
 	}
 }
 
+func TestMemberRetryResetsFailures(t *testing.T) {
+	log := eventlog.NewStore(state.NewStore(t.TempDir()).Dir())
+	for _, ev := range []event.Event{
+		{Type: event.TypeWorkflowPopulationFailure, Metadata: map[string]string{"reason": "up", "resource": "urn:case:a"}},
+		{Type: event.TypeWorkflowPopulationRetry, Metadata: map[string]string{"reason": "operator_retry", "resource": "urn:case:a"}},
+	} {
+		ev.SessionName = "a+agent"
+		ev.Direction = event.Internal
+		if _, _, _, err := log.Append(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	status := Member(log, "a+agent", "urn:case:a")
+	if status.LastReason != "" || status.Consecutive != 0 {
+		t.Fatalf("status after explicit retry = %+v, want reset", status)
+	}
+}
+
 // TestMemberCountsProvenanceConflict guards a real bug found in review: a
 // provenance conflict (plect.workflow_population.conflict) is not a
 // plect.workflow_population.failure at all, so it was invisible to the

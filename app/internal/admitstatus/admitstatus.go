@@ -21,6 +21,7 @@ var scannedTypes = []string{
 	event.TypeWorkflowPopulationFailure,
 	event.TypeWorkflowPopulationConflict,
 	event.TypeWorkflowPopulationAdmitOK,
+	event.TypeWorkflowPopulationRetry,
 }
 
 type Status struct {
@@ -53,7 +54,7 @@ func scan(log *eventlog.Store, session, resource string) Status {
 		}
 		reason := ev.Metadata["reason"]
 		switch {
-		case ev.Type == event.TypeWorkflowPopulationAdmitOK:
+		case ev.Type == event.TypeWorkflowPopulationAdmitOK || ev.Type == event.TypeWorkflowPopulationRetry:
 			return status
 		case ev.Type == event.TypeWorkflowPopulationFailure && !admitReasons[reason]:
 			continue

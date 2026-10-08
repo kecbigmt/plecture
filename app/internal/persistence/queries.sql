@@ -435,7 +435,8 @@ ON CONFLICT(workflow, name) DO NOTHING;
 -- name: ListPopulationMembers :many
 SELECT workflow, name, resource_id, session_name, generation, accepted_at,
        last_appearance, last_inbound, tombstoned, pending_up,
-       decision_kind, decision_reason, item_json
+       consecutive_admit_failures, last_admit_reason, last_admit_error,
+       admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
 FROM population_members WHERE workflow = ? AND name = ? ORDER BY resource_id;
 
 -- name: DeletePopulationMembersForPopulation :exec
@@ -445,8 +446,9 @@ DELETE FROM population_members WHERE workflow = ? AND name = ?;
 INSERT INTO population_members (
     workflow, name, resource_id, session_name, generation, accepted_at,
     last_appearance, last_inbound, tombstoned, pending_up,
-    decision_kind, decision_reason, item_json
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    consecutive_admit_failures, last_admit_reason, last_admit_error,
+    admit_retry_at, admit_suspended, decision_kind, decision_reason, item_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: InsertPopulationMemberBlocker :exec
 INSERT INTO population_member_blockers (workflow, name, resource_id, position, reason)

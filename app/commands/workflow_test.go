@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kecbigmt/plecture/app/internal/datahome"
 	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
 )
 
 func writeWorkflowShowFixtureFile(t *testing.T, path, content string) {
@@ -156,6 +158,37 @@ func TestWritePopulationMembers_ShowsLastErrorAndStreak(t *testing.T) {
 	}
 	if !strings.Contains(got, "RESOURCE") {
 		t.Errorf("expected a header row; got:\n%s", got)
+	}
+}
+
+func TestWorkflowPopulationsRetryClearsSuspension(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv(datahome.EnvVar, dataDir)
+	store := state.NewStore(dataDir)
+	if err := store.UpdatePopulation("agent/dispatch", func(population *state.PopulationState) error {
+		population.Members["urn:case:a"] = &state.PopulationMember{
+			ResourceID:               "urn:case:a",
+			PendingUp:                true,
+			ConsecutiveAdmitFailures: 5,
+			LastAdmitReason:          "input",
+			AdmitSuspended:           true,
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dataHomeFlag = "" })
+	out, err := execRoot(t, "--data-home", dataDir, "workflow", "populations", "retry", "agent", "dispatch", "urn:case:a")
+	if err != nil {
+		t.Fatalf("workflow populations retry: %v; output:\n%s", err, out)
+	}
+	population, err := store.Population("agent/dispatch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members["urn:case:a"]
+	if member.AdmitSuspended || member.ConsecutiveAdmitFailures != 0 || member.LastAdmitReason != "" {
+		t.Fatalf("member after CLI retry = %+v, want retry state cleared", member)
 	}
 }
 

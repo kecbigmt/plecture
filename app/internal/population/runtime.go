@@ -17,6 +17,13 @@ type populationConflictError struct {
 
 func (e *populationConflictError) Error() string { return e.reason }
 
+type initialTaskCleanupRequiredError struct {
+	session string
+	reason  string
+}
+
+func (e *initialTaskCleanupRequiredError) Error() string { return e.reason }
+
 func serviceHooks(cfg func() *config.Config, store *state.Store, def Definition, coordinator *capacityCoordinator) Hooks {
 	provenance := &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name}
 	return Hooks{
@@ -47,12 +54,12 @@ func serviceHooks(cfg func() *config.Config, store *state.Store, def Definition,
 			}
 			if existing := current.Tasks["initial"]; existing != nil {
 				if existing.Name != "initial" || existing.TaskID != taskID || existing.Resource != resource {
-					return fmt.Errorf("session %q already has a conflicting initial task instance", session)
+					return &initialTaskCleanupRequiredError{session: session, reason: fmt.Sprintf("session %q already has a conflicting initial task instance", session)}
 				}
 				if existing.Status == contract.TaskStatusProduced {
 					return nil
 				}
-				return fmt.Errorf("session %q initial task is %q; clean it before population setup can retry", session, existing.Status)
+				return &initialTaskCleanupRequiredError{session: session, reason: fmt.Sprintf("session %q initial task is %q; clean it before population setup can retry", session, existing.Status)}
 			}
 			_, err = service.TaskSetup(cfg(), store, service.TaskSetupParams{
 				TaskID: taskID, SessionName: session, Name: "initial", Resource: resource,
