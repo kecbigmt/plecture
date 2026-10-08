@@ -152,13 +152,24 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
+# The start time is what tells this worker apart from a later process that
+# reuses its pid, even one the same pane starts; worker.pid and parentage
+# alone can both still match after the worker exits.
+PID_STARTED=$(ps -o lstart= -p "$PID" 2>/dev/null | sed 's/^ *//; s/ *$//')
+if [ -z "$PID_STARTED" ]; then
+  echo "could not read the start time of worker pid $PID" >&2
+  terminate_if_owned "$PID"
+  exit 1
+fi
+
 OUTPUT=$(jq -nc \
   --argjson pid "$PID" \
+  --arg pid_started "$PID_STARTED" \
   --arg sid "$SID" \
   --arg queue_dir "$QUEUE_DIR" \
   --arg state_dir "$STATE_DIR" \
   --arg sock "$SOCKET" \
-  '{pid:$pid, session_id:$sid, queue_dir:$queue_dir, state_dir:$state_dir}
+  '{pid:$pid, pid_started:$pid_started, session_id:$sid, queue_dir:$queue_dir, state_dir:$state_dir}
    + (if $sock == "" then {} else {socket_path:$sock} end)') || {
     terminate_if_owned "$PID"
     exit 1
@@ -194,15 +205,18 @@ terminal_pid    = { terminal = "pid" }
 type   = "shell"
 script = '''
 # Reconfirmed before each signal, since the worker can exit during the TERM
-# grace period and its pid be reused: still the pane's child, and still the
-# pid the worker itself recorded. Without a pane there is no parent to
-# confirm against, and a worker whose pane is gone has gone with it.
+# grace period and its pid be reused: still the pane's child, still the pid
+# the worker recorded, and still started when setup saw it start — the only
+# check a reuse by another process of the same pane cannot also pass.
+# Without a pane there is no parent to confirm against, and a worker whose
+# pane is gone has gone with it.
 PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
 is_worker() {
-  [ -n "$PANE_PID" ] || return 1
+  [ -n "$PANE_PID" ] && [ -n "${pid_started-}" ] || return 1
   case "${pid-}" in ''|0|*[!0-9]*) return 1 ;; esac
   [ "$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
-  [ "$(cat "${state_dir-}/worker.pid" 2>/dev/null)" = "$pid" ]
+  [ "$(cat "${state_dir-}/worker.pid" 2>/dev/null)" = "$pid" ] || return 1
+  [ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ]
 }
 if is_worker; then
   kill -TERM "$pid" 2>/dev/null
@@ -220,6 +234,7 @@ true
 
 [headless_runtime.cleanup.bind]
 pid          = { from = "self.outputs.pid", optional = true }
+pid_started  = { from = "self.outputs.pid_started", optional = true }
 state_dir    = { from = "self.outputs.state_dir", optional = true }
 socket_path  = { from = "self.outputs.socket_path", optional = true }
 session_name = { from = "session.name" }
@@ -232,14 +247,16 @@ terminal_pid = { terminal = "pid" }
 type   = "shell"
 script = '''
 kill -0 "$pid" || exit 1
+[ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ] || exit 1
 HEALTH="$state_dir/health.json"
 [ -f "$HEALTH" ] || exit 0
 jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null
 '''
 
 [headless_runtime.health.alive.bind]
-pid       = { from = "self.outputs.pid" }
-state_dir = { from = "self.outputs.state_dir" }
+pid         = { from = "self.outputs.pid" }
+pid_started = { from = "self.outputs.pid_started" }
+state_dir   = { from = "self.outputs.state_dir" }
 
 [headless_runtime.health.activity]
 type = "exec"
@@ -266,10 +283,11 @@ publish_events  = { type = "array", items = { type = "string", enum = ["message"
 
 [headless_runtime.outputs_schema]
 type     = "object"
-required = ["pid", "session_id", "queue_dir", "state_dir"]
+required = ["pid", "pid_started", "session_id", "queue_dir", "state_dir"]
 
 [headless_runtime.outputs_schema.properties]
 pid         = { type = "integer" }
+pid_started = { type = "string" }
 session_id  = { type = "string" }
 queue_dir   = { type = "string" }
 state_dir   = { type = "string" }

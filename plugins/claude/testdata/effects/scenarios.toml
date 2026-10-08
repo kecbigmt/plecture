@@ -174,11 +174,12 @@ prev  = { session_id = "11111111-2222-3333-4444-555555555555" }
 hooks = ["setup"]
 
 # Cleanup confirms a stored pid is still this effect's worker — the pane's
-# child that wrote worker.pid — before each signal: a worker that exited can
-# have had its pid reused by an unrelated process.
+# child that wrote worker.pid, started when setup recorded — before each
+# signal: a worker that exited can have had its pid reused by an unrelated
+# process, even one the same pane started.
 [[headless_runtime]]
 name                       = "cleanup-kills-confirmed-worker"
-self                       = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID", state_dir = "HOME/headless" }
 hooks                      = ["cleanup"]
 expect_worker_process_dead = true
 
@@ -186,16 +187,28 @@ expect_worker_process_dead = true
 path    = "headless/worker.pid"
 content = "WORKER_PID"
 
+# The stale worker.pid and the pane parentage both still match; only the
+# start time tells this reused pid apart from the worker that exited.
+[[headless_runtime]]
+name                        = "cleanup-spares-pid-reused-in-same-pane"
+self                        = { pid = "WORKER_PID", pid_started = "started-before-reuse", state_dir = "HOME/headless" }
+hooks                       = ["cleanup"]
+expect_worker_process_alive = true
+
+[[headless_runtime.files]]
+path    = "headless/worker.pid"
+content = "WORKER_PID"
+
 [[headless_runtime]]
 name                        = "cleanup-spares-pid-without-worker-pidfile"
-self                        = { pid = "WORKER_PID", state_dir = "HOME/headless-other" }
+self                        = { pid = "WORKER_PID", pid_started = "started-WORKER_PID", state_dir = "HOME/headless-other" }
 hooks                       = ["cleanup"]
 expect_worker_process_alive = true
 
 # With the pane gone there is nothing to confirm parentage against.
 [[headless_runtime]]
 name                        = "cleanup-spares-pid-without-pane"
-self                        = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+self                        = { pid = "WORKER_PID", pid_started = "started-WORKER_PID", state_dir = "HOME/headless" }
 hooks                       = ["cleanup"]
 no_terminal_pid             = true
 expect_worker_process_alive = true
