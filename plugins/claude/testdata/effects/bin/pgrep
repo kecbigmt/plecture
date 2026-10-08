@@ -2,4 +2,4 @@
 # A process distinct from the pane's own root (PLECT_EFFECT_PID), so a
 # scenario can prove a kill-on-failure path left the pane alone.
 plect-effect-record pgrep "$@"
-printf '%s\n' "$PLECT_EFFECT_WORKER_PID"
+[ -n "${PLECT_EFFECT_PANE_CLAUDE:-}" ] && printf '%s\n' "$PLECT_EFFECT_WORKER_PID"

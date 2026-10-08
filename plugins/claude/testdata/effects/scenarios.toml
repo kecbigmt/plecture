@@ -24,13 +24,39 @@ path   = ""
 # advertises another live process in the same pane. Recovery owns cleanup and
 # setup; a probe must not repair state as an observation side effect.
 [[runtime]]
-name  = "stale-pid-is-not-rediscovered"
-self  = { pid = "999999999" }
-hooks = ["health.alive"]
+name    = "stale-pid-is-not-rediscovered"
+node_id = "agent"
+self    = { pid = "999999999" }
+hooks   = ["health.alive"]
 
 [[runtime.files]]
 path    = ".claude/sessions/live.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
+# Normal recovery may replace a matching Claude process left in the pane,
+# ensuring setup never types its launch line into that process's conversation.
+[[runtime]]
+name                       = "stale-pid-cleans-matching-pane-claude"
+self                       = { pid = "999999999", session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }
+hooks                      = ["cleanup"]
+expect_worker_process_dead = true
+
+[[runtime.files]]
+path    = ".claude/sessions/restarted.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":WORKER_PID}'
+
+# A different Claude conversation makes recovery unsafe. Cleanup must fail
+# before setup can type a launch command, leaving that process untouched.
+[[runtime]]
+name                        = "stale-pid-refuses-foreign-pane-claude"
+self                        = { pid = "999999999", session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }
+hooks                       = ["cleanup"]
+expect_worker_process_alive = true
+pane_child                  = true
+
+[[runtime.files]]
+path    = ".claude/sessions/foreign.json"
+content = '{"sessionId":"bbbbbbbb-cccc-dddd-eeee-ffffffffffff","pid":WORKER_PID}'
 
 [[runtime]]
 name   = "channel-server-present"

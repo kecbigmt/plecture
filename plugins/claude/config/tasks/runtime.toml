@@ -317,12 +317,43 @@ terminal_pid        = { terminal = "pid" }
 [runtime.cleanup]
 type   = "shell"
 script = '''
-kill -TERM "$pid" 2>/dev/null || exit 0
-for _ in 1 2 3 4 5; do
-  sleep 0.5
-  kill -0 "$pid" 2>/dev/null || break
+is_claude_child() {
+  [ "$(ps -o ppid= -p "$1" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
+  case "$(ps -p "$1" -o comm= 2>/dev/null | tr -d '[:space:]')" in claude|claude-*) return 0 ;; esac
+  return 1
+}
+
+belongs_to_session() {
+  for f in "$HOME/.claude/sessions/"*.json; do
+    [ -e "$f" ] || continue
+    [ "$(jq -r '.pid // empty' "$f" 2>/dev/null)" = "$1" ] || continue
+    [ "$(jq -r '.sessionId // empty' "$f" 2>/dev/null)" = "$session_id" ] && return 0
+  done
+  return 1
+}
+
+terminate_claude_child() {
+  kill -TERM "$1" 2>/dev/null
+  for _ in 1 2 3 4 5; do
+    sleep 0.5
+    kill -0 "$1" 2>/dev/null || break
+  done
+  is_claude_child "$1" && kill -KILL "$1" 2>/dev/null || true
+}
+
+PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
+[ -n "$PANE_PID" ] || {
+  echo "could not resolve the pane's own pid for cleanup" >&2
+  exit 1
+}
+for CHILD in $(pgrep -P "$PANE_PID" 2>/dev/null); do
+  is_claude_child "$CHILD" || continue
+  if ! belongs_to_session "$CHILD"; then
+    echo "refusing to replace live claude process $CHILD in the pane: it does not belong to session_id $session_id" >&2
+    exit 1
+  fi
+  terminate_claude_child "$CHILD"
 done
-kill -KILL "$pid" 2>/dev/null || true
 rm -f "$mcp_config" "$socket_path"
 # optional, not required: a session produced before this field existed has
 # no such key, and a required projection of it would fail the release.
@@ -332,12 +363,13 @@ true
 '''
 
 [runtime.cleanup.bind]
-pid             = { from = "self.outputs.pid", optional = true }
 mcp_config      = { from = "self.outputs.mcp_config", optional = true }
 socket_path     = { from = "self.outputs.socket_path", optional = true }
 hooks_settings  = { from = "self.outputs.hooks_settings", optional = true }
 session_name    = { from = "session.name" }
+session_id      = { from = "self.outputs.session_id", optional = true }
 activity_bin    = { bin = "claude-agent-activity" }
+terminal_pid    = { terminal = "pid" }
 
 [runtime.health.alive]
 type   = "shell"
