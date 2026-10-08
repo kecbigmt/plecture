@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# Headless Claude Code runtime worker: the sole consumer of a session's
+# queue directory. Runs as an ordinary child of the pane's shell (not
+# exec'd), so a stuck worker can be terminated by its own pid without ending
+# the pane's root process — `claude -p` has no input box to wedge, so this
+# needs no TUI-boot detection.
+#
+# Turns are drained strictly serially (one `claude -p` at a time) so a kick
+# arriving mid-turn queues instead of racing the running one. Every turn
+# runs under the one session id setup handed this worker: the first with
+# --session-id, every later one with --resume.
+#
+# With a socket path and PLECT_CLAUDE_CHANNEL_SERVER_BIN, the worker also
+# keeps a channel-server queue bridge listening there, so an adapter that
+# speaks the channel-server protocol reaches this queue the same way it would
+# reach an interactive session.
+#
+# Usage: claude-headless-worker <queue_dir> <state_dir> <session_id> <mcp_config> <hooks_settings> [socket_path]
+
+set -u
+
+queue_dir="${1:?queue_dir required}"
+state_dir="${2:?state_dir required}"
+session_id="${3:?session_id required}"
+mcp_config="${4:?mcp_config required}"
+hooks_settings="${5:?hooks_settings required}"
+socket_path="${6-}"
+bridge_bin="${PLECT_CLAUDE_CHANNEL_SERVER_BIN-}"
+
+mkdir -p "$queue_dir" "$state_dir/log"
+
+# comm is always "bash" for a script run this way, so this is the only way
+# the owning effect's setup can identify (and later terminate) this worker.
+printf '%s' "$$" > "$state_dir/worker.pid"
+
+# claude runs in the background and is waited on, not run in the
+# foreground: bash defers a trap until a foreground child exits, so a TERM
+# from cleanup would otherwise kill only this worker and leave the turn
+# running — and spending — with nothing left to stop it.
+child=""
+bridge=""
+terminate() {
+    [ -n "$child" ] && kill -TERM "$child" 2>/dev/null
+    [ -n "$bridge" ] && kill -TERM "$bridge" 2>/dev/null
+    exit 143
+}
+trap terminate TERM INT HUP
+
+extra_args=()
+[ -n "${PLECT_CLAUDE_MODEL:-}" ] && extra_args+=(--model "$PLECT_CLAUDE_MODEL")
+[ -n "${PLECT_CLAUDE_EFFORT:-}" ] && extra_args+=(--effort "$PLECT_CLAUDE_EFFORT")
+[ -n "${PLECT_CLAUDE_PERMISSION_MODE:-}" ] && extra_args+=(--permission-mode "$PLECT_CLAUDE_PERMISSION_MODE")
+
+# The stale socket is removed first so the wait below cannot mistake a
+# previous run's leftover file for this bridge being up.
+start_bridge() {
+    rm -f "$socket_path"
+    "$bridge_bin" queue --socket "$socket_path" --queue-dir "$queue_dir" >> "$state_dir/log/bridge.log" 2>&1 &
+    bridge=$!
+    local _
+    for _ in $(seq 1 100); do
+        [ -e "$socket_path" ] && return 0
+        kill -0 "$bridge" 2>/dev/null || return 1
+        sleep 0.1
+    done
+    return 1
+}
+
+# Checked while a turn runs too, not only between turns: an adapter dialing
+# a dead bridge mid-turn would otherwise lose its message for the whole turn.
+ensure_bridge() {
+    [ -n "$bridge" ] || return 0
+    kill -0 "$bridge" 2>/dev/null && return 0
+    echo "channel-server queue bridge exited; relaunching" >> "$state_dir/log/bridge.log"
+    start_bridge || true
+}
+
+# A bridge that never comes up fails the launch rather than leaving setup to
+# report a socket no adapter can dial.
+if [ -n "$socket_path" ] && [ -n "$bridge_bin" ]; then
+    if ! start_bridge; then
+        echo "channel-server queue bridge did not listen on $socket_path" >&2
+        kill -TERM "$bridge" 2>/dev/null
+        exit 1
+    fi
+fi
+
+# Marks the worker loop as reachable before the first turn ever runs; the
+# owning effect's setup polls this file instead of a TUI-readiness heuristic.
+touch "$state_dir/ready"
+
+write_health() {
+    local exit_code="$1" event_type="$2"
+    local tmp
+    tmp="$(mktemp "$state_dir/.health.XXXXXX")"
+    jq -n --argjson code "$exit_code" --arg type "$event_type" --arg ts "$(date +%s)" \
+        '{last_exit_code: $code, last_event_type: $type, last_ts: ($ts | tonumber)}' > "$tmp"
+    mv "$tmp" "$state_dir/health.json"
+}
+
+tick_session() {
+    [ -n "${PLECT_SESSION_NAME:-}" ] || return 0
+    plect tick "$PLECT_SESSION_NAME" >/dev/null 2>&1 || true
+}
+
+# run_claude scopes ANTHROPIC_API_KEY to the claude process alone and reads
+# it from the file on every turn, so the key never crosses the pane's
+# keystrokes or scrollback, and a rotated key takes effect on the next turn
+# without a relaunch. An unreadable file fails the turn rather than falling
+# back to whatever login claude would otherwise pick, which would silently
+# bill a different account.
+run_claude() {
+    if [ -n "${PLECT_CLAUDE_API_KEY_FILE:-}" ]; then
+        local key
+        key="$(cat "$PLECT_CLAUDE_API_KEY_FILE" 2>/dev/null)" || key=""
+        if [ -z "$key" ]; then
+            echo "api_key_file $PLECT_CLAUDE_API_KEY_FILE is unreadable or empty" >&2
+            return 1
+        fi
+        ANTHROPIC_API_KEY="$key" claude "$@" &
+    else
+        claude "$@" &
+    fi
+    child=$!
+    while kill -0 "$child" 2>/dev/null; do
+        ensure_bridge
+        sleep 1
+    done
+    wait "$child"
+    local status=$?
+    child=""
+    return "$status"
+}
+
+while true; do
+    for f in "$queue_dir"/*.json; do
+        [ -e "$f" ] || continue
+
+        event_type="$(jq -r '.type' "$f" 2>/dev/null || true)"
+        text="$(jq -r '.text' "$f" 2>/dev/null || true)"
+        if [ -z "$text" ]; then
+            rm -f "$f"
+            continue
+        fi
+
+        # A conversation exists once claude has reported its session id for
+        # it, even from a turn that later failed; a turn that never got that
+        # far persisted nothing, so --resume would find no conversation. The
+        # marker names the id it was written for, so one left by another
+        # session sharing this directory never counts.
+        session_arg=(--session-id "$session_id")
+        [ "$(cat "$state_dir/started" 2>/dev/null)" = "$session_id" ] && session_arg=(--resume "$session_id")
+
+        log_base="$state_dir/log/$(date +%s%N)"
+        run_claude -p --output-format json \
+            "${session_arg[@]}" \
+            --mcp-config "$mcp_config" \
+            --settings "$hooks_settings" \
+            --disallowedTools AskUserQuestion \
+            ${extra_args[@]+"${extra_args[@]}"} \
+            -- "$text" > "$log_base.json" 2> "$log_base.err" < /dev/null
+        exit_code=$?
+
+        jq -e '.session_id // empty' "$log_base.json" >/dev/null 2>&1 && printf '%s' "$session_id" > "$state_dir/started"
+
+        write_health "$exit_code" "$event_type"
+        rm -f "$f"
+        tick_session
+    done
+    ensure_bridge
+    sleep 1
+done

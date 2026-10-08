@@ -2,7 +2,8 @@
 # comm: the pane's found child reports itself as the agent CLI. ppid:
 # answers whether a self-reported pid is really the pane's child, using
 # PLECT_EFFECT_PID as the pane's own identity so an unrelated pid can be
-# told apart from a real one.
+# told apart from a real one. lstart: a start time unique to each pid, so a
+# stored one can be told apart from a reused pid's.
 plect-effect-record ps "$@"
 target=""
 prev=""
@@ -17,6 +18,9 @@ case "$*" in
     else
       printf '%s\n' "1"
     fi
+    ;;
+  *lstart=*)
+    printf '%s\n' "started-$target"
     ;;
   *)
     printf '%s\n' "claude"

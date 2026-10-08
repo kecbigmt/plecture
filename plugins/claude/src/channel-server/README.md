@@ -18,6 +18,10 @@ Claude Code
      adapter (slack-adapter, etc.)
 ```
 
+## Queue mode
+
+`channel-server queue --socket <path> --queue-dir <dir>` serves the same socket protocol for the `headless_runtime` effect, which has no live Claude Code process to notify. Each `message` is written to `<dir>` as a turn file (`{"type":"channel.message","text":"<channel ...>...</channel>"}`) that `claude-headless-worker` drains into `claude -p`. Permission verdicts are not relayed in this mode.
+
 ## Environment variables
 
 | Variable | Required | Description |

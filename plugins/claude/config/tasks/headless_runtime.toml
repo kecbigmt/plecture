@@ -1,0 +1,294 @@
+[headless_runtime]
+kind  = "effect"
+scope = "run"
+
+# Each turn is its own `claude -p` drained from a queue, not keystrokes into
+# a TUI, so there is no input box to wedge; turns billed through api_key_file
+# are API usage, which an interactive session is not. socket_path is offered
+# when channel-server is installed, so an adapter wired to a runtime's
+# socket_path reaches this queue without knowing which shape is behind it.
+# The README's Parameters table documents each input.
+[headless_runtime.setup]
+type   = "shell"
+script = '''
+# Terminates $1, but only once reconfirmed as the pane's own child — a pid
+# read from worker.pid (a workflow-configurable path) may be stale — and
+# reconfirmed again before the KILL escalation, since a process that
+# exited during the TERM grace period can have had its pid reused by then.
+terminate_if_owned() {
+  case "$1" in ''|0|*[!0-9]*) return 0 ;; esac
+  [ "$(ps -o ppid= -p "$1" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 0
+  kill -TERM "$1" 2>/dev/null
+  for _ in 1 2 3 4 5; do
+    sleep 0.5
+    kill -0 "$1" 2>/dev/null || break
+  done
+  [ "$(ps -o ppid= -p "$1" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] && kill -KILL "$1" 2>/dev/null
+  true
+}
+
+# The reset drops any record a previous run left behind, so this run's
+# activity probe reports "no basis yet" until this run's first turn boundary
+# rather than inheriting a stale fingerprint.
+"$activity_bin" reset "$session_name"
+
+SID="${prev_session_id-}"
+[ -n "$SID" ] || SID=$(uuidgen | tr 'A-Z' 'a-z')
+
+# Keyed by session id, not only by name: a session destroyed and recreated
+# under the same name is a new conversation, and must not inherit the old
+# one's queue or started marker. A resumed session keeps all three.
+STATE_ROOT="${state_root-}"
+[ -n "$STATE_ROOT" ] || STATE_ROOT="${TMPDIR:-/tmp}/plect-claude-headless"
+STATE_DIR="$STATE_ROOT/$session_name/$SID"
+PREV_STATE_DIR="${prev_state_dir-}"
+[ -n "${prev_session_id-}" ] && [ -n "$PREV_STATE_DIR" ] && STATE_DIR="$PREV_STATE_DIR"
+QUEUE_DIR="$STATE_DIR/queue"
+mkdir -p "$QUEUE_DIR"
+
+# The same per-session path the interactive runtime derives: a socket path
+# under STATE_DIR could exceed the platform's sun_path limit. channel_server_bin
+# resolves whether or not the binary was built, so presence is a file test.
+SOCKET=""
+if [ -x "$channel_server_bin" ]; then
+  SOCKET_DIR="${XDG_RUNTIME_DIR:-/tmp}/claude-channel"
+  mkdir -p "$SOCKET_DIR"
+  SOCKET="$SOCKET_DIR/$SID.sock"
+fi
+
+# No channel-server MCP registration: a later event reaches this runtime
+# through the queue, never through a notification into a running process.
+MCP="$STATE_DIR/mcp.json"
+printf '%s' '{"mcpServers":{}}' \
+  | CLAUDE_MCP_SERVERS="${mcp_servers-}" "$mcp_servers_bin" > "$MCP" || exit 1
+
+# The same turn-boundary hooks the interactive runtime registers fire under
+# `claude -p` too, so activity and turn reporting share one implementation
+# across both shapes. message_delta is not offered: it rides a TUI display
+# hook that a print-mode turn never renders.
+HAS_MESSAGE=false
+printf '%s' "$publish_events" | jq -e 'any(.[]?; . == "message")' >/dev/null 2>&1 && HAS_MESSAGE=true
+HOOKS="$STATE_DIR/hooks.json"
+jq -nc --arg activity "$activity_bin" --argjson has_message "$HAS_MESSAGE" '
+  {
+    hooks: {
+      UserPromptSubmit: [{hooks: [{type: "command", command: ($activity + " working")}]}],
+      PreToolUse:       [{hooks: [{type: "command", command: ($activity + " working")}]}],
+      Stop: [{hooks: ([{type: "command", command: ($activity + " waiting")}]
+                     + (if $has_message then [{type: "command", command: ($activity + " reply")}] else [] end))}]
+    }
+  }
+' > "$HOOKS" || exit 1
+
+EXPORTS="export PLECT_SESSION_NAME=$session_name; "
+
+# launch_env crosses one boundary the binding transport does not close: the
+# keystrokes sent to the pane. jq's @sh closes it by quoting each value, and
+# the key test rejects anything that is not an environment variable name — an
+# unquoted or oddly-named key is the only way a data-shaped parameter could
+# turn into a command.
+LAUNCH_ENV="${launch_env-}"
+if [ -n "$LAUNCH_ENV" ]; then
+  LAUNCH_EXPORTS=$(printf '%s' "$LAUNCH_ENV" | jq -er '
+    to_entries
+    | map(if (.key | test("^[A-Za-z_][A-Za-z0-9_]*$")) then .
+          else error("launch_env key \(.key) is not a valid environment variable name") end)
+    | map("export \(.key)=\(.value | tostring | @sh); ")
+    | add // ""') || exit 1
+  EXPORTS="${EXPORTS}${LAUNCH_EXPORTS}"
+fi
+
+PATH_PREPEND="${path_prepend-}"
+[ -n "$PATH_PREPEND" ] && EXPORTS="${EXPORTS}export PATH=$PATH_PREPEND:\$PATH; "
+
+# Exported after launch_env and unconditionally, so an author-supplied
+# launch_env key of the same name can neither set nor clear what the
+# declared inputs say. The values reach the pane's shell as keystrokes,
+# which the inputs_schema patterns below close; the single quotes are the
+# redundant defense on top.
+EXPORTS="${EXPORTS}export PLECT_CLAUDE_MODEL='${model-}'; "
+EXPORTS="${EXPORTS}export PLECT_CLAUDE_EFFORT='${effort-}'; "
+EXPORTS="${EXPORTS}export PLECT_CLAUDE_PERMISSION_MODE='${permission_mode-}'; "
+EXPORTS="${EXPORTS}export PLECT_CLAUDE_API_KEY_FILE='${api_key_file-}'; "
+BRIDGE_BIN=""
+[ -n "$SOCKET" ] && BRIDGE_BIN="$channel_server_bin"
+EXPORTS="${EXPORTS}export PLECT_CLAUDE_CHANNEL_SERVER_BIN='$BRIDGE_BIN'; "
+
+rm -f "$STATE_DIR/ready" "$STATE_DIR/worker.pid"
+# Resolved before anything is typed: this is the identity every cleanup
+# path below searches under, so a launch is only attempted once it exists.
+PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
+if [ -z "$PANE_PID" ]; then
+  echo "could not resolve the pane's own pid before launch" >&2
+  exit 1
+fi
+# Not exec'd, so killing the worker cannot take the pane (or its
+# multiplexer session, a lifecycle this plugin does not own) down too. A
+# bash script's comm is always "bash", so worker.pid — written by the
+# worker itself — is this effect's only way to identify its own pid.
+sh -c "$send_text" terminal-send-text "${EXPORTS}$worker_bin '$QUEUE_DIR' '$STATE_DIR' '$SID' '$MCP' '$HOOKS' '$SOCKET'"
+sh -c "$send_keys" terminal-send-keys Enter
+
+READY_TIMEOUT_SECONDS="${launch_timeout%s}"
+PID=""
+READY=0
+for _ in $(seq 1 $((READY_TIMEOUT_SECONDS * 2))); do
+  sleep 0.5
+  kill -0 "$PANE_PID" 2>/dev/null || continue
+  if [ -z "$PID" ] && [ -s "$STATE_DIR/worker.pid" ]; then
+    CANDIDATE=$(cat "$STATE_DIR/worker.pid")
+    case "$CANDIDATE" in ''|0|*[!0-9]*) CANDIDATE="" ;; esac
+    [ -n "$CANDIDATE" ] && [ "$(ps -o ppid= -p "$CANDIDATE" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] && PID="$CANDIDATE"
+  fi
+  [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null && [ -f "$STATE_DIR/ready" ] && READY=1 && break
+done
+if [ "$READY" -ne 1 ]; then
+  echo "claude-headless worker not ready within ${launch_timeout} under pane pid $PANE_PID" >&2
+  # A worker that never reported its own pid — stuck before that point, or
+  # its report was rejected above — is still the pane's one direct child:
+  # the only launch this script could have started here.
+  [ -z "$PID" ] && PID=$(pgrep -P "$PANE_PID" 2>/dev/null | head -1)
+  terminate_if_owned "$PID"
+  exit 1
+fi
+
+# The start time is what tells this worker apart from a later process that
+# reuses its pid, even one the same pane starts; worker.pid and parentage
+# alone can both still match after the worker exits.
+PID_STARTED=$(ps -o lstart= -p "$PID" 2>/dev/null | sed 's/^ *//; s/ *$//')
+if [ -z "$PID_STARTED" ]; then
+  echo "could not read the start time of worker pid $PID" >&2
+  terminate_if_owned "$PID"
+  exit 1
+fi
+
+OUTPUT=$(jq -nc \
+  --argjson pid "$PID" \
+  --arg pid_started "$PID_STARTED" \
+  --arg sid "$SID" \
+  --arg queue_dir "$QUEUE_DIR" \
+  --arg state_dir "$STATE_DIR" \
+  --arg sock "$SOCKET" \
+  '{pid:$pid, pid_started:$pid_started, session_id:$sid, queue_dir:$queue_dir, state_dir:$state_dir}
+   + (if $sock == "" then {} else {socket_path:$sock} end)') || {
+    terminate_if_owned "$PID"
+    exit 1
+  }
+printf '%s\n' "$OUTPUT"
+'''
+
+[headless_runtime.setup.bind]
+session_name    = { from = "session.name" }
+prev_session_id = { from = "prev.session_id", optional = true }
+prev_state_dir  = { from = "prev.state_dir", optional = true }
+model           = { from = "inputs.model", optional = true }
+effort          = { from = "inputs.effort", optional = true }
+permission_mode = { from = "inputs.permission_mode", default = "bypassPermissions" }
+api_key_file    = { from = "inputs.api_key_file", optional = true }
+launch_env      = { from = "inputs.launch_env", optional = true }
+mcp_servers     = { from = "inputs.mcp_servers", optional = true }
+state_root      = { from = "inputs.state_root", optional = true }
+path_prepend    = { from = "inputs.path_prepend", optional = true }
+launch_timeout  = { from = "inputs.launch_timeout", default = "120s" }
+publish_events  = { json = { from = "inputs.publish_events", default = ["message"] } }
+activity_bin    = { bin = "claude-agent-activity" }
+mcp_servers_bin = { bin = "claude-mcp-servers" }
+worker_bin      = { bin = "claude-headless-worker" }
+channel_server_bin = { bin = "channel-server" }
+send_text       = { terminal = "send_text" }
+send_keys       = { terminal = "send_keys" }
+terminal_pid    = { terminal = "pid" }
+
+# The worker forwards TERM to a running `claude -p`, so stopping the worker
+# also stops the turn it is spending on.
+[headless_runtime.cleanup]
+type   = "shell"
+script = '''
+# Reconfirmed before each signal, since the worker can exit during the TERM
+# grace period and its pid be reused: still the pane's child, still the pid
+# the worker recorded, and still started when setup saw it start — the only
+# check a reuse by another process of the same pane cannot also pass.
+# Without a pane there is no parent to confirm against, and a worker whose
+# pane is gone has gone with it.
+PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
+is_worker() {
+  [ -n "$PANE_PID" ] && [ -n "${pid_started-}" ] || return 1
+  case "${pid-}" in ''|0|*[!0-9]*) return 1 ;; esac
+  [ "$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
+  [ "$(cat "${state_dir-}/worker.pid" 2>/dev/null)" = "$pid" ] || return 1
+  [ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ]
+}
+if is_worker; then
+  kill -TERM "$pid" 2>/dev/null
+  for _ in 1 2 3 4 5; do
+    sleep 0.5
+    kill -0 "$pid" 2>/dev/null || break
+  done
+  is_worker && kill -KILL "$pid" 2>/dev/null
+fi
+# A bridge killed with its worker never gets to remove its own socket.
+[ -n "${socket_path-}" ] && rm -f "$socket_path"
+"$activity_bin" reset "$session_name"
+true
+'''
+
+[headless_runtime.cleanup.bind]
+pid          = { from = "self.outputs.pid", optional = true }
+pid_started  = { from = "self.outputs.pid_started", optional = true }
+state_dir    = { from = "self.outputs.state_dir", optional = true }
+socket_path  = { from = "self.outputs.socket_path", optional = true }
+session_name = { from = "session.name" }
+activity_bin = { bin = "claude-agent-activity" }
+terminal_pid = { terminal = "pid" }
+
+# A live PID alone would hide a worker stuck on a permanently failing turn,
+# such as one with an exhausted or revoked API key.
+[headless_runtime.health.alive]
+type   = "shell"
+script = '''
+kill -0 "$pid" || exit 1
+[ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ] || exit 1
+HEALTH="$state_dir/health.json"
+[ -f "$HEALTH" ] || exit 0
+jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null
+'''
+
+[headless_runtime.health.alive.bind]
+pid         = { from = "self.outputs.pid" }
+pid_started = { from = "self.outputs.pid_started" }
+state_dir   = { from = "self.outputs.state_dir" }
+
+[headless_runtime.health.activity]
+type = "exec"
+bin  = "claude-agent-activity"
+args = ["probe", { from = "session.name" }]
+
+[headless_runtime.inputs_schema]
+type                 = "object"
+additionalProperties = false
+
+# Every string input reaches the pane's shell as keystrokes, so each is held
+# to a charset that cannot carry a quote or a newline.
+[headless_runtime.inputs_schema.properties]
+model           = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+effort          = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
+permission_mode = { type = "string", enum = ["", "acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"], default = "bypassPermissions" }
+api_key_file    = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
+launch_env      = { type = "string", pattern = "^[^']*$" }
+mcp_servers     = { type = "string", pattern = "^[^']*$" }
+state_root      = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
+path_prepend    = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
+launch_timeout  = { type = "string", pattern = "^[1-9][0-9]*s$", default = "120s" }
+publish_events  = { type = "array", items = { type = "string", enum = ["message"] }, default = ["message"] }
+
+[headless_runtime.outputs_schema]
+type     = "object"
+required = ["pid", "pid_started", "session_id", "queue_dir", "state_dir"]
+
+[headless_runtime.outputs_schema.properties]
+pid         = { type = "integer" }
+pid_started = { type = "string" }
+session_id  = { type = "string" }
+queue_dir   = { type = "string" }
+state_dir   = { type = "string" }
+socket_path = { type = "string" }

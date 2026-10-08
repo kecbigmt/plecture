@@ -9,3 +9,25 @@ type: unix_socket
 path: "stand-in-path"
 body: "{\"body\":\"\",\"direction\":\"internal\",\"id\":\"01DEF\",\"metadata\":{},\"session_name\":\"acme-widget-1\",\"source\":\"plect\",\"summary\":\"only a summary\",\"time\":\"2026-08-22T09:00:00Z\",\"type\":\"example.status\"}"
 timeout: 0s
+
+== headless_delivery / with-body
+type: exec
+argv[0]: "<plugin>/scripts/claude-headless-enqueue"
+argv[1]: "stand-in-queue_dir"
+argv[2]: "[{type}] {body_or_summary}{url_suffix}"
+argv[3]: "user.emit"
+argv[4]: "a <tag> & an \"amp\"\nover two lines"
+argv[5]: "a summary"
+argv[6]: "https://example.test/x"
+timeout: 5s
+
+== headless_delivery / summary-only
+type: exec
+argv[0]: "<plugin>/scripts/claude-headless-enqueue"
+argv[1]: "stand-in-queue_dir"
+argv[2]: "[{type}] {body_or_summary}{url_suffix}"
+argv[3]: "example.status"
+argv[4]: ""
+argv[5]: "only a summary"
+argv[6]: ""
+timeout: 5s

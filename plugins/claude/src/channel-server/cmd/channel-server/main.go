@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/mark3labs/mcp-go/server"
 
@@ -20,8 +22,54 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "queue" {
+		if err := runQueue(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	runServe()
+}
+
+func runQueue(args []string) error {
+	var socketPath, queueDir string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--socket":
+			if i+1 < len(args) {
+				socketPath = args[i+1]
+				i++
+			}
+		case "--queue-dir":
+			if i+1 < len(args) {
+				queueDir = args[i+1]
+				i++
+			}
+		}
+	}
+	if socketPath == "" || queueDir == "" {
+		return fmt.Errorf("usage: channel-server queue --socket <path> --queue-dir <dir>")
+	}
+
+	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})).
+		With("component", "channel-server", "mode", "queue")
+	listener, err := channelserver.NewQueueBridge(socketPath, queueDir, logger)
+	if err != nil {
+		return err
+	}
+	// Close on TERM rather than dying with the default disposition, so the
+	// socket file is removed and a relaunch never dials a dead listener.
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	go func() {
+		<-sigs
+		listener.Close()
+	}()
+	logger.Info("listening", "socket_path", socketPath, "queue_dir", queueDir)
+	listener.Serve()
+	return nil
 }
 
 func runServe() {

@@ -1,0 +1,20 @@
+# Enqueue only writes a file and returns, so delivery never waits on the
+# worker's current turn and stays inside the exec channel's timeout.
+[headless_delivery]
+kind = "channel"
+type = "exec"
+bin  = "claude-headless-enqueue"
+args = [
+  { from = "inputs.queue_dir" },
+  { from = "inputs.message_envelope" },
+  { from = "event.type" },
+  { from = "event.body" },
+  { from = "event.summary" },
+  { from = "event.metadata.url", default = "" },
+]
+timeout = { from = "inputs.enqueue_timeout" }
+
+[headless_delivery.input_schema]
+queue_dir        = { type = "string", required = true }
+enqueue_timeout  = { type = "string", default = "5s" }
+message_envelope = { type = "string", default = "[{type}] {body_or_summary}{url_suffix}" }

@@ -386,7 +386,13 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 		}
 	}
 
-	self := asAnyMap(scenario.Self)
+	// Self names a process or path this run created, so it takes the same
+	// placeholders a seeded file does.
+	selfValues := make(map[string]string, len(scenario.Self))
+	for k, v := range scenario.Self {
+		selfValues[k] = h.expanded(v)
+	}
+	self := asAnyMap(selfValues)
 	// A hook after "setup" (health.alive, cleanup, ...) must see whichever
 	// inputs actually produced the instance it inspects.
 	currentInputs := scenario.Inputs
