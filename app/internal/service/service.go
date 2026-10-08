@@ -520,8 +520,10 @@ func workflowDisplayOutputs(s *domain.Session) map[string]any {
 	return out
 }
 
-// SetMessage updates the session's status line, appending nothing when
-// text is unchanged from the latest plect.status_message event.
+// SetMessage updates the session's status line. An unchanged non-empty text
+// appends nothing, but an empty text always appends: the cleared event is
+// also the only record of an idle confirmation, so de-duplicating it would
+// leave a re-reported wait looking older than the activity that preceded it.
 func SetMessage(cfg *config.Config, store *state.Store, identifier string, text string) error {
 	sessionName, _, err := resolveSession(cfg, store, identifier)
 	if err != nil {
@@ -539,8 +541,7 @@ func SetMessage(cfg *config.Config, store *state.Store, identifier string, text 
 	if ok && latest.Metadata["cleared"] != "true" {
 		previous = latest.Metadata["text"]
 	}
-	changed := previous != text || !ok
-	if !changed {
+	if text != "" && previous == text && ok {
 		return nil
 	}
 	cleared := "false"

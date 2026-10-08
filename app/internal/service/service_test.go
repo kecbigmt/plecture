@@ -720,7 +720,7 @@ func TestSetMessage(t *testing.T) {
 	}
 }
 
-func TestSetMessage_EmitsStatusMessageEventsOnlyWhenTextChanges(t *testing.T) {
+func TestSetMessage_DeduplicatesIdenticalNonEmptyText(t *testing.T) {
 	store := testStore(t)
 	now := time.Now()
 	store.Put(&domain.Session{Name: "owner/repo-1", CreatedAt: now, UpdatedAt: now})
@@ -757,9 +757,6 @@ func TestSetMessage_EmitsStatusMessageEventsOnlyWhenTextChanges(t *testing.T) {
 	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
 		t.Fatalf("SetMessage(clear) error: %v", err)
 	}
-	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
-		t.Fatalf("SetMessage(clear same) error: %v", err)
-	}
 	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{
 		{
 			Type:      event.TypeStatusMessage,
@@ -785,26 +782,27 @@ func TestSetMessage_EmitsStatusMessageEventsOnlyWhenTextChanges(t *testing.T) {
 	})
 }
 
-func TestSetMessage_FirstExplicitEmptyReportEmitsClearEvent(t *testing.T) {
+func TestSetMessage_RepeatedEmptyReportAppendsFreshClearEvent(t *testing.T) {
 	store := testStore(t)
 	now := time.Now()
 	store.Put(&domain.Session{Name: "owner/repo-1", CreatedAt: now, UpdatedAt: now})
 
-	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
-		t.Fatalf("SetMessage(empty) error: %v", err)
-	}
-	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
-		t.Fatalf("SetMessage(repeated empty) error: %v", err)
+	for range 2 {
+		if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
+			t.Fatalf("SetMessage(empty) error: %v", err)
+		}
 	}
 
-	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{
-		{
-			Type:      event.TypeStatusMessage,
-			Source:    event.SourcePlect,
-			Direction: event.Outbound,
-			Metadata:  map[string]string{"text": "", "cleared": "true", "previous": ""},
-		},
-	})
+	clear := event.Event{
+		Type:      event.TypeStatusMessage,
+		Source:    event.SourcePlect,
+		Direction: event.Outbound,
+		Metadata:  map[string]string{"text": "", "cleared": "true", "previous": ""},
+	}
+	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{clear, clear})
+	if LatestStatusMessage(store, "owner/repo-1") != nil {
+		t.Error("repeated empty report should leave the display empty")
+	}
 }
 
 func assertStatusMessageEvents(t *testing.T, store *state.Store, sessionName string, want []event.Event) {
