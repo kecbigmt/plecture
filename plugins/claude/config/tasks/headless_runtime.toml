@@ -32,18 +32,19 @@ terminate_if_owned() {
 # rather than inheriting a stale fingerprint.
 "$activity_bin" reset "$session_name"
 
-STATE_ROOT="${state_root-}"
-[ -n "$STATE_ROOT" ] || STATE_ROOT="${TMPDIR:-/tmp}/plect-claude-headless"
-STATE_DIR="$STATE_ROOT/$session_name"
-# A resumed session keeps its queue, state dir, and session id — the worker
-# just needs restarting, not reseeding.
-PREV_STATE_DIR="${prev_state_dir-}"
-[ -n "$PREV_STATE_DIR" ] && STATE_DIR="$PREV_STATE_DIR"
-QUEUE_DIR="$STATE_DIR/queue"
-mkdir -p "$QUEUE_DIR"
-
 SID="${prev_session_id-}"
 [ -n "$SID" ] || SID=$(uuidgen | tr 'A-Z' 'a-z')
+
+# Keyed by session id, not only by name: a session destroyed and recreated
+# under the same name is a new conversation, and must not inherit the old
+# one's queue or started marker. A resumed session keeps all three.
+STATE_ROOT="${state_root-}"
+[ -n "$STATE_ROOT" ] || STATE_ROOT="${TMPDIR:-/tmp}/plect-claude-headless"
+STATE_DIR="$STATE_ROOT/$session_name/$SID"
+PREV_STATE_DIR="${prev_state_dir-}"
+[ -n "${prev_session_id-}" ] && [ -n "$PREV_STATE_DIR" ] && STATE_DIR="$PREV_STATE_DIR"
+QUEUE_DIR="$STATE_DIR/queue"
+mkdir -p "$QUEUE_DIR"
 
 # The same per-session path the interactive runtime derives: a socket path
 # under STATE_DIR could exceed the platform's sun_path limit. channel_server_bin
@@ -192,12 +193,24 @@ terminal_pid    = { terminal = "pid" }
 [headless_runtime.cleanup]
 type   = "shell"
 script = '''
-if kill -TERM "$pid" 2>/dev/null; then
+# Reconfirmed before each signal, since the worker can exit during the TERM
+# grace period and its pid be reused: still the pane's child, and still the
+# pid the worker itself recorded. Without a pane there is no parent to
+# confirm against, and a worker whose pane is gone has gone with it.
+PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
+is_worker() {
+  [ -n "$PANE_PID" ] || return 1
+  case "${pid-}" in ''|0|*[!0-9]*) return 1 ;; esac
+  [ "$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
+  [ "$(cat "${state_dir-}/worker.pid" 2>/dev/null)" = "$pid" ]
+}
+if is_worker; then
+  kill -TERM "$pid" 2>/dev/null
   for _ in 1 2 3 4 5; do
     sleep 0.5
     kill -0 "$pid" 2>/dev/null || break
   done
-  kill -KILL "$pid" 2>/dev/null || true
+  is_worker && kill -KILL "$pid" 2>/dev/null
 fi
 # A bridge killed with its worker never gets to remove its own socket.
 [ -n "${socket_path-}" ] && rm -f "$socket_path"
@@ -207,9 +220,11 @@ true
 
 [headless_runtime.cleanup.bind]
 pid          = { from = "self.outputs.pid", optional = true }
+state_dir    = { from = "self.outputs.state_dir", optional = true }
 socket_path  = { from = "self.outputs.socket_path", optional = true }
 session_name = { from = "session.name" }
 activity_bin = { bin = "claude-agent-activity" }
+terminal_pid = { terminal = "pid" }
 
 # A live PID alone would hide a worker stuck on a permanently failing turn,
 # such as one with an exhausted or revoked API key.

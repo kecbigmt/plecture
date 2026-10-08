@@ -173,6 +173,33 @@ name  = "resume-keeps-session"
 prev  = { session_id = "11111111-2222-3333-4444-555555555555" }
 hooks = ["setup"]
 
+# Cleanup confirms a stored pid is still this effect's worker — the pane's
+# child that wrote worker.pid — before each signal: a worker that exited can
+# have had its pid reused by an unrelated process.
+[[headless_runtime]]
+name                       = "cleanup-kills-confirmed-worker"
+self                       = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+hooks                      = ["cleanup"]
+expect_worker_process_dead = true
+
+[[headless_runtime.files]]
+path    = "headless/worker.pid"
+content = "WORKER_PID"
+
+[[headless_runtime]]
+name                        = "cleanup-spares-pid-without-worker-pidfile"
+self                        = { pid = "WORKER_PID", state_dir = "HOME/headless-other" }
+hooks                       = ["cleanup"]
+expect_worker_process_alive = true
+
+# With the pane gone there is nothing to confirm parentage against.
+[[headless_runtime]]
+name                        = "cleanup-spares-pid-without-pane"
+self                        = { pid = "WORKER_PID", state_dir = "HOME/headless" }
+hooks                       = ["cleanup"]
+no_terminal_pid             = true
+expect_worker_process_alive = true
+
 # This proves the timed-out launch's worker is killed and the pane
 # survives. No retry_inputs: a retry here would make bin/terminal-send_keys
 # seed the runtime effect's own retry session file into the shared home,

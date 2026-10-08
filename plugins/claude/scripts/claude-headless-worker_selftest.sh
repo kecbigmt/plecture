@@ -7,7 +7,8 @@
 #      handed, and every later turn resumes that same id.
 #   2. A first turn that fails before claude reports a session id leaves
 #      the next turn starting fresh, not resuming a conversation that was
-#      never persisted.
+#      never persisted — and so does a marker some other session id left
+#      in the same state dir.
 #   3. An api_key_file's content reaches claude as ANTHROPIC_API_KEY, and
 #      the key never appears on claude's own command line.
 #   4. Terminating the worker mid-turn also terminates the running claude,
@@ -75,6 +76,9 @@ state_dir="$tmp/state"
 sid="11111111-2222-3333-4444-555555555555"
 mkdir -p "$queue_dir"
 
+mkdir -p "$state_dir"
+printf '%s' "99999999-8888-7777-6666-555555555555" > "$state_dir/started"
+
 "$worker" "$queue_dir" "$state_dir" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" &
 worker_pid=$!
 
@@ -103,7 +107,7 @@ expect_last_argv() {
 
 echo fail-early > "$STUB_MODE_FILE"
 enqueue t1 "turn one"
-expect_last_argv "a first turn starts under the handed session id" "--session-id $sid"
+expect_last_argv "a first turn starts under the handed session id despite another id's marker" "--session-id $sid"
 
 echo ok > "$STUB_MODE_FILE"
 enqueue t2 "turn two"

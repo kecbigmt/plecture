@@ -145,9 +145,11 @@ while true; do
 
         # A conversation exists once claude has reported its session id for
         # it, even from a turn that later failed; a turn that never got that
-        # far persisted nothing, so --resume would find no conversation.
+        # far persisted nothing, so --resume would find no conversation. The
+        # marker names the id it was written for, so one left by another
+        # session sharing this directory never counts.
         session_arg=(--session-id "$session_id")
-        [ -f "$state_dir/started" ] && session_arg=(--resume "$session_id")
+        [ "$(cat "$state_dir/started" 2>/dev/null)" = "$session_id" ] && session_arg=(--resume "$session_id")
 
         log_base="$state_dir/log/$(date +%s%N)"
         run_claude -p --output-format json \
@@ -159,7 +161,7 @@ while true; do
             -- "$text" > "$log_base.json" 2> "$log_base.err" < /dev/null
         exit_code=$?
 
-        jq -e '.session_id // empty' "$log_base.json" >/dev/null 2>&1 && touch "$state_dir/started"
+        jq -e '.session_id // empty' "$log_base.json" >/dev/null 2>&1 && printf '%s' "$session_id" > "$state_dir/started"
 
         write_health "$exit_code" "$event_type"
         rm -f "$f"

@@ -13,10 +13,10 @@ call[0]: "claude-agent-activity" "reset" "acme/widget-1"
 call[1]: "uuidgen"
 call[2]: "claude-mcp-servers"
 call[3]: "terminal-pid"
-call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_TEAM_CONTEXT='acme'; export PATH=/spy/guard:$PATH; export PLECT_CLAUDE_MODEL='opus'; export PLECT_CLAUDE_EFFORT='high'; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE='/spy/secrets/anthropic-key'; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/queue' '<state>/plect-claude-headless/acme/widget-1' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/mcp.json' '<state>/plect-claude-headless/acme/widget-1/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
+call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_TEAM_CONTEXT='acme'; export PATH=/spy/guard:$PATH; export PLECT_CLAUDE_MODEL='opus'; export PLECT_CLAUDE_EFFORT='high'; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE='/spy/secrets/anthropic-key'; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/mcp.json' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
 call[5]: "terminal-send_keys" "Enter"
 call[6]: "ps" "-o" "ppid=" "-p" "<pid>"
-outputs: {"pid":<pid>,"queue_dir":"<state>/plect-claude-headless/acme/widget-1/queue","session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","socket_path":"<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1"}
+outputs: {"pid":<pid>,"queue_dir":"<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue","session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","socket_path":"<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
 artifact state_dir/hooks.json:
 {"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"Stop":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity waiting"},{"type":"command","command":"<plugin>/scripts/claude-agent-activity reply"}]}]}}
 artifact state_dir/mcp.json:
@@ -36,24 +36,45 @@ call[0]: "claude-agent-activity" "probe" "acme/widget-1"
 activity: fingerprint="spy-turn-1" silence_expected=false
 
 == headless_runtime:fresh-with-inputs / cleanup
-call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+call[0]: "terminal-pid"
+call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[2]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == headless_runtime:resume-keeps-session / setup
 call[0]: "claude-agent-activity" "reset" "acme/widget-1"
 call[1]: "claude-mcp-servers"
 call[2]: "terminal-pid"
-call[3]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/queue' '<state>/plect-claude-headless/acme/widget-1' '11111111-2222-3333-4444-555555555555' '<state>/plect-claude-headless/acme/widget-1/mcp.json' '<state>/plect-claude-headless/acme/widget-1/hooks.json' '<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock'"
+call[3]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/queue' '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555' '11111111-2222-3333-4444-555555555555' '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/mcp.json' '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/hooks.json' '<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock'"
 call[4]: "terminal-send_keys" "Enter"
 call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
-outputs: {"pid":<pid>,"queue_dir":"<state>/plect-claude-headless/acme/widget-1/queue","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1"}
+outputs: {"pid":<pid>,"queue_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/queue","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555"}
+
+== headless_runtime:cleanup-kills-confirmed-worker / cleanup
+call[0]: "terminal-pid"
+call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[2]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
+== headless_runtime:cleanup-spares-pid-without-worker-pidfile / cleanup
+call[0]: "terminal-pid"
+call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
+== headless_runtime:cleanup-spares-pid-without-pane / cleanup
+call[0]: "terminal-pid"
+call[1]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
 
 == headless_runtime:launch-timeout-kills-worker / setup
 call[0]: "claude-agent-activity" "reset" "acme/widget-1"
 call[1]: "uuidgen"
 call[2]: "claude-mcp-servers"
 call[3]: "terminal-pid"
-call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_TEST_NEVER_READY='1'; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/queue' '<state>/plect-claude-headless/acme/widget-1' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/mcp.json' '<state>/plect-claude-headless/acme/widget-1/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
+call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_TEST_NEVER_READY='1'; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/mcp.json' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
 call[5]: "terminal-send_keys" "Enter"
 call[6]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[7]: "ps" "-o" "ppid=" "-p" "<pid>"
@@ -65,7 +86,7 @@ call[0]: "claude-agent-activity" "reset" "acme/widget-1"
 call[1]: "uuidgen"
 call[2]: "claude-mcp-servers"
 call[3]: "terminal-pid"
-call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_TEST_POISON_PID='1'; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/queue' '<state>/plect-claude-headless/acme/widget-1' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/mcp.json' '<state>/plect-claude-headless/acme/widget-1/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
+call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_TEST_POISON_PID='1'; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/mcp.json' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
 call[5]: "terminal-send_keys" "Enter"
 call[6]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[7]: "ps" "-o" "ppid=" "-p" "<pid>"
@@ -79,7 +100,7 @@ call[0]: "claude-agent-activity" "reset" "acme/widget-1"
 call[1]: "uuidgen"
 call[2]: "claude-mcp-servers"
 call[3]: "terminal-pid"
-call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_TEST_NO_PID_REPORT='1'; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/queue' '<state>/plect-claude-headless/acme/widget-1' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/mcp.json' '<state>/plect-claude-headless/acme/widget-1/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
+call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_TEST_NO_PID_REPORT='1'; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/mcp.json' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
 call[5]: "terminal-send_keys" "Enter"
 call[6]: "pgrep" "-P" "<pid>"
 call[7]: "ps" "-o" "ppid=" "-p" "<pid>"
@@ -91,10 +112,10 @@ call[0]: "claude-agent-activity" "reset" "acme/widget-1"
 call[1]: "uuidgen"
 call[2]: "claude-mcp-servers"
 call[3]: "terminal-pid"
-call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/queue' '<state>/plect-claude-headless/acme/widget-1' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/mcp.json' '<state>/plect-claude-headless/acme/widget-1/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
+call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/mcp.json' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
 call[5]: "terminal-send_keys" "Enter"
 call[6]: "ps" "-o" "ppid=" "-p" "<pid>"
-call[7]: "jq" "-nc" "--argjson" "pid" "<pid>" "--arg" "sid" "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" "--arg" "queue_dir" "<state>/plect-claude-headless/acme/widget-1/queue" "--arg" "state_dir" "<state>/plect-claude-headless/acme/widget-1" "--arg" "sock" "<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock" "{pid:$pid, session_id:$sid, queue_dir:$queue_dir, state_dir:$state_dir}\n   + (if $sock == \"\" then {} else {socket_path:$sock} end)"
+call[7]: "jq" "-nc" "--argjson" "pid" "<pid>" "--arg" "sid" "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" "--arg" "queue_dir" "<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue" "--arg" "state_dir" "<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" "--arg" "sock" "<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock" "{pid:$pid, session_id:$sid, queue_dir:$queue_dir, state_dir:$state_dir}\n   + (if $sock == \"\" then {} else {socket_path:$sock} end)"
 call[8]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[9]: "ps" "-o" "ppid=" "-p" "<pid>"
 declined: task "headless_runtime" setup: exit status 1
