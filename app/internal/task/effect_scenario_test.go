@@ -66,6 +66,9 @@ type effectScenario struct {
 	// PaneChild makes the worker process appear as a direct child of the
 	// terminal endpoint for process-tree discovery scenarios.
 	PaneChild bool `toml:"pane_child"`
+	// NoTerminalPID makes the terminal pid verb report no endpoint, as when
+	// the terminal resource has already gone away.
+	NoTerminalPID bool `toml:"no_terminal_pid"`
 	// RetryInputs reruns setup with these inputs against the same sandbox
 	// and live processes a first attempt (using Inputs) left behind, so a
 	// retry-succeeds claim is checked against that exact state rather than

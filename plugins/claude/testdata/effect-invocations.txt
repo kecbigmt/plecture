@@ -65,6 +65,11 @@ call[2]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[3]: "ps" "-p" "<pid>" "-o" "comm="
 declined: task "runtime" cleanup: exit status 1
 
+== runtime:cleanup-succeeds-without-pane / cleanup
+call[0]: "terminal-pid"
+call[1]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
 == runtime:channel-server-present / setup
 call[0]: "uuidgen"
 call[1]: "mktemp" "<state>/plect-mcp.XXXXXX"

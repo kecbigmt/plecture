@@ -58,6 +58,14 @@ pane_child                  = true
 path    = ".claude/sessions/foreign.json"
 content = '{"sessionId":"bbbbbbbb-cccc-dddd-eeee-ffffffffffff","pid":WORKER_PID}'
 
+# A missing pane leaves no process that setup could type into, so cleanup
+# still releases local state and lets the same up invocation recreate it.
+[[runtime]]
+name            = "cleanup-succeeds-without-pane"
+self            = { session_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" }
+hooks           = ["cleanup"]
+no_terminal_pid = true
+
 [[runtime]]
 name   = "channel-server-present"
 inputs = { model = "opus", effort = "high", permission_mode = "plan", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', mcp_servers = '[{"name":"kbn","command":"kbn-mcp"}]', path_prepend = "/spy/guard" }

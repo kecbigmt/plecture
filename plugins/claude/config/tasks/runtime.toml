@@ -342,18 +342,16 @@ terminate_claude_child() {
 }
 
 PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
-[ -n "$PANE_PID" ] || {
-  echo "could not resolve the pane's own pid for cleanup" >&2
-  exit 1
-}
-for CHILD in $(pgrep -P "$PANE_PID" 2>/dev/null); do
-  is_claude_child "$CHILD" || continue
-  if ! belongs_to_session "$CHILD"; then
-    echo "refusing to replace live claude process $CHILD in the pane: it does not belong to session_id $session_id" >&2
-    exit 1
-  fi
-  terminate_claude_child "$CHILD"
-done
+if [ -n "$PANE_PID" ]; then
+  for CHILD in $(pgrep -P "$PANE_PID" 2>/dev/null); do
+    is_claude_child "$CHILD" || continue
+    if ! belongs_to_session "$CHILD"; then
+      echo "refusing to replace live claude process $CHILD in the pane: it does not belong to session_id $session_id" >&2
+      exit 1
+    fi
+    terminate_claude_child "$CHILD"
+  done
+fi
 rm -f "$mcp_config" "$socket_path"
 # optional, not required: a session produced before this field existed has
 # no such key, and a required projection of it would fail the release.

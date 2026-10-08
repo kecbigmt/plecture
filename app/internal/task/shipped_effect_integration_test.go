@@ -305,7 +305,7 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 		case "pid":
 			// The scenario's own live process stands in for the endpoint's
 			// root process, the same one a liveness check finds.
-			body += "printf '%s\\n' \"$PLECT_EFFECT_PID\"\n"
+			body += "[ -n \"${PLECT_EFFECT_NO_TERMINAL_PID:-}\" ] || printf '%s\\n' \"$PLECT_EFFECT_PID\"\n"
 		}
 		h.writeSpy(t, "terminal-"+verb, body)
 	}
@@ -344,6 +344,11 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	h.startWorkerProcess(t)
 	t.Setenv("PLECT_EFFECT_CAPTURE", scenario.Capture)
 	t.Setenv("PLECT_EFFECT_RETRY", "")
+	if scenario.NoTerminalPID {
+		t.Setenv("PLECT_EFFECT_NO_TERMINAL_PID", "1")
+	} else {
+		t.Setenv("PLECT_EFFECT_NO_TERMINAL_PID", "")
+	}
 	if scenario.PaneChild || scenario.ExpectWorkerProcessDead {
 		t.Setenv("PLECT_EFFECT_PANE_CLAUDE", "1")
 	} else {
