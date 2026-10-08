@@ -10,6 +10,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/admitstatus"
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -417,3 +418,92 @@ func TestCapacityCandidatesExcludeAutoDownFalse(t *testing.T) {
 		t.Fatalf("candidates = %+v, want auto_down=false excluded", candidates)
 	}
 }
+
+func setMemberAppearance(t *testing.T, def Definition, store *state.Store, resource string, at time.Time) {
+	t.Helper()
+	if err := store.UpdatePopulation(populationKey(def), func(population *state.PopulationState) error {
+		population.Members[resource].LastAppearance = at
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCapacityCandidatesAfterRealSetMessage(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	for _, tc := range []struct {
+		name          string
+		initialClear  bool
+		reappear      bool
+		reportMessage *string
+		wantCandidate bool
+	}{
+		{name: "empty, new appearance, empty re-report", initialClear: true, reappear: true, reportMessage: ptr(""), wantCandidate: true},
+		{name: "empty, new appearance, no re-report", initialClear: true, reappear: true},
+		{name: "working message, then empty", reportMessage: ptr(""), wantCandidate: true},
+		{name: "empty, repeated empty without new activity", initialClear: true, reportMessage: ptr(""), wantCandidate: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			coordinator, def, store, logStore, base := capacityFixture(t)
+			cleared := time.Time{}
+			if tc.initialClear {
+				cleared = base.Add(time.Minute)
+			}
+			addCapacityMember(t, def, store, logStore, "member", "urn:case:member", base, cleared)
+			if !tc.initialClear {
+				if _, _, _, err := logStore.Append(event.Event{
+					SessionName: "member",
+					Time:        base.Add(time.Minute),
+					Type:        event.TypeStatusMessage,
+					Direction:   event.Outbound,
+					Summary:     "working",
+					Metadata:    map[string]string{"text": "working", "cleared": "false"},
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.reappear {
+				setMemberAppearance(t, def, store, "urn:case:member", base.Add(2*time.Minute))
+			}
+			if tc.reportMessage != nil {
+				if err := service.SetMessage(&config.Config{}, store, "member", *tc.reportMessage); err != nil {
+					t.Fatalf("SetMessage: %v", err)
+				}
+			}
+
+			candidates, err := coordinator.idleCandidates()
+			if err != nil {
+				t.Fatalf("idleCandidates: %v", err)
+			}
+			if got := len(candidates) == 1; got != tc.wantCandidate {
+				t.Fatalf("candidates = %+v, want candidate=%v", candidates, tc.wantCandidate)
+			}
+		})
+	}
+}
+
+func TestCapacityRepeatedEmptyReportLeavesOtherMembersUntouched(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	coordinator, def, store, logStore, base := capacityFixture(t)
+	addCapacityMember(t, def, store, logStore, "reporter", "urn:case:reporter", base, base.Add(time.Minute))
+	addCapacityMember(t, def, store, logStore, "other", "urn:case:other", base, time.Time{})
+
+	for range 2 {
+		if err := service.SetMessage(&config.Config{}, store, "reporter", ""); err != nil {
+			t.Fatalf("SetMessage: %v", err)
+		}
+	}
+
+	if got := service.LatestStatusMessage(store, "other"); got != nil {
+		t.Fatalf("other member message = %+v, want none", got)
+	}
+	candidates, err := coordinator.idleCandidates()
+	if err != nil {
+		t.Fatalf("idleCandidates: %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].session != "reporter" {
+		t.Fatalf("candidates = %+v, want only the reporting member", candidates)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }

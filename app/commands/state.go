@@ -32,7 +32,8 @@ activity, or empty when the session is idle. plect does not interpret the
 text — it is a slot for external self-reports (e.g. an agent's
 turn-boundary hook).
 
-An empty string clears the message.
+An empty string clears the message. Each empty report is recorded as a fresh
+idle confirmation, even when the message is already empty.
 
 Example:
   plect state set-message session-1 "running tests"
