@@ -751,22 +751,36 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		// handle on retry.
 		var prev map[string]any
 		var continuingExecID string
+		var continuingSeq int
 		if existing, ok := tasks[r.NodeID]; ok && existing != nil {
 			prev = existing.Outputs
 			if existing.Status != contract.TaskStatusCleaned {
 				continuingExecID = existing.ExecutionID
+				continuingSeq = existing.Seq
 			}
+		}
+		// A failed attempt is persisted like a successful one, so it needs a
+		// real Seq: at 0 it would sort below an older cleaned execution of the
+		// same node, which the next load would then read as the current one.
+		failed := func(errMsg string, inputs map[string]any) *contract.TaskState {
+			st := failedState(r, now, errMsg, prev, inputs, continuingExecID)
+			if continuingExecID != "" {
+				st.Seq = continuingSeq
+			} else {
+				st.Seq = nextSeq(tasks)
+			}
+			return st
 		}
 		deps := dependencyOutputs(r.DependsOn, tasks)
 		resolvedInputs, inputErr := ResolveNodeInputs(r.Inputs, deps, workflowOutputs(tasks), session)
 		if inputErr != nil {
-			tasks[r.NodeID] = failedState(r, now, inputErr.Error(), prev, nil, continuingExecID)
+			tasks[r.NodeID] = failed(inputErr.Error(), nil)
 			wrapped := fmt.Errorf("node %q input: %w", r.NodeID, inputErr)
 			return reportSetupFailure(obs, r, time.Since(now), wrapped, nil)
 		}
 		if r.InputsSchema != nil {
 			if vErr := r.InputsSchema.Validate(toJSONShape(resolvedInputs)); vErr != nil {
-				tasks[r.NodeID] = failedState(r, now, vErr.Error(), prev, resolvedInputs, continuingExecID)
+				tasks[r.NodeID] = failed(vErr.Error(), resolvedInputs)
 				wrapped := fmt.Errorf("node %q input schema: %w", r.NodeID, vErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, nil)
 			}
@@ -785,17 +799,17 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			if nestErr != nil {
 				// The layers that did produce are persisted with the
 				// failure: the next cleanup has to unwind exactly those.
-				failed := failedState(r, now, nestErr.Error(), prev, resolvedInputs, continuingExecID)
-				failed.Layers = layers
-				tasks[r.NodeID] = failed
+				st := failed(nestErr.Error(), resolvedInputs)
+				st.Layers = layers
+				tasks[r.NodeID] = st
 				wrapped := fmt.Errorf("task %q: %w", r.NodeID, nestErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, stderr)
 			}
 			outputs, projErr := projectNestedOutputs(r, layers, session)
 			if projErr != nil {
-				failed := failedState(r, now, projErr.Error(), prev, resolvedInputs, continuingExecID)
-				failed.Layers = layers
-				tasks[r.NodeID] = failed
+				st := failed(projErr.Error(), resolvedInputs)
+				st.Layers = layers
+				tasks[r.NodeID] = st
 				wrapped := fmt.Errorf("task %q: %w", r.NodeID, projErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, stderr)
 			}
@@ -820,7 +834,7 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 		if r.Setup != nil {
 			resolved, resolveErr := resolveEffect(r.Setup, setupRoots(ctx), ctx, r.From, nil)
 			if resolveErr != nil {
-				tasks[r.NodeID] = failedState(r, now, resolveErr.Error(), prev, resolvedInputs, continuingExecID)
+				tasks[r.NodeID] = failed(resolveErr.Error(), resolvedInputs)
 				wrapped := fmt.Errorf("effect %q setup: %w", r.NodeID, resolveErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, nil)
 			}
@@ -828,21 +842,21 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 			resolved.Close()
 			stderrCaptured = stderr
 			if runErr != nil {
-				tasks[r.NodeID] = failedState(r, now, runErr.Error(), prev, resolvedInputs, continuingExecID)
+				tasks[r.NodeID] = failed(runErr.Error(), resolvedInputs)
 				wrapped := fmt.Errorf("task %q setup: %w", r.NodeID, runErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, stderr)
 			}
 			var parseErr error
 			outputs, parseErr = lang.ParseOutputs(stdout)
 			if parseErr != nil {
-				tasks[r.NodeID] = failedState(r, now, parseErr.Error(), prev, resolvedInputs, continuingExecID)
+				tasks[r.NodeID] = failed(parseErr.Error(), resolvedInputs)
 				wrapped := fmt.Errorf("task %q setup: %w", r.NodeID, parseErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, stderr)
 			}
 		}
 		if r.OutputsSchema != nil {
 			if vErr := r.OutputsSchema.Validate(outputs); vErr != nil {
-				tasks[r.NodeID] = failedState(r, now, vErr.Error(), prev, resolvedInputs, continuingExecID)
+				tasks[r.NodeID] = failed(vErr.Error(), resolvedInputs)
 				wrapped := fmt.Errorf("task %q setup: outputs schema: %w", r.NodeID, vErr)
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, stderrCaptured)
 			}

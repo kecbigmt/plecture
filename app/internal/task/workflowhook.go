@@ -54,6 +54,7 @@ func RunWorkflowSetup(prov config.WorkspaceProviderConfig, vars effect.WorkflowH
 			Scope:    contract.TaskScopeSession,
 			Status:   contract.TaskStatusFailed,
 			Outputs:  prev,
+			Seq:      nextSeq(tasks),
 			FailedAt: now,
 			Error:    errMsg,
 		}
