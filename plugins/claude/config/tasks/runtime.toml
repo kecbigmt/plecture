@@ -317,12 +317,41 @@ terminal_pid        = { terminal = "pid" }
 [runtime.cleanup]
 type   = "shell"
 script = '''
-kill -TERM "$pid" 2>/dev/null || exit 0
-for _ in 1 2 3 4 5; do
-  sleep 0.5
-  kill -0 "$pid" 2>/dev/null || break
-done
-kill -KILL "$pid" 2>/dev/null || true
+is_claude_child() {
+  [ "$(ps -o ppid= -p "$1" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
+  case "$(ps -p "$1" -o comm= 2>/dev/null | tr -d '[:space:]')" in claude|claude-*) return 0 ;; esac
+  return 1
+}
+
+belongs_to_session() {
+  for f in "$HOME/.claude/sessions/"*.json; do
+    [ -e "$f" ] || continue
+    [ "$(jq -r '.pid // empty' "$f" 2>/dev/null)" = "$1" ] || continue
+    [ "$(jq -r '.sessionId // empty' "$f" 2>/dev/null)" = "$session_id" ] && return 0
+  done
+  return 1
+}
+
+terminate_claude_child() {
+  kill -TERM "$1" 2>/dev/null
+  for _ in 1 2 3 4 5; do
+    sleep 0.5
+    kill -0 "$1" 2>/dev/null || break
+  done
+  is_claude_child "$1" && kill -KILL "$1" 2>/dev/null || true
+}
+
+PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
+if [ -n "$PANE_PID" ]; then
+  for CHILD in $(pgrep -P "$PANE_PID" 2>/dev/null); do
+    is_claude_child "$CHILD" || continue
+    if ! belongs_to_session "$CHILD"; then
+      echo "refusing to replace live claude process $CHILD in the pane: it does not belong to session_id $session_id" >&2
+      exit 1
+    fi
+    terminate_claude_child "$CHILD"
+  done
+fi
 rm -f "$mcp_config" "$socket_path"
 # optional, not required: a session produced before this field existed has
 # no such key, and a required projection of it would fail the release.
@@ -332,63 +361,22 @@ true
 '''
 
 [runtime.cleanup.bind]
-pid             = { from = "self.outputs.pid", optional = true }
 mcp_config      = { from = "self.outputs.mcp_config", optional = true }
 socket_path     = { from = "self.outputs.socket_path", optional = true }
 hooks_settings  = { from = "self.outputs.hooks_settings", optional = true }
 session_name    = { from = "session.name" }
+session_id      = { from = "self.outputs.session_id", optional = true }
 activity_bin    = { bin = "claude-agent-activity" }
+terminal_pid    = { terminal = "pid" }
 
-# alive: a bare `kill -0` only detects death, not restart-with-new-pid: the
-# pane's claude process can get relaunched underneath plect (crash +
-# relaunch, manual --resume) with no other update path (outputs are otherwise
-# write-once at setup). On a stale pid, search this pane's process tree for a
-# live claude and re-derive its identity from ~/.claude/sessions/*.json (the
-# same discovery setup performs), then write it back via the mutable outputs
-# below — the next dispatch batch re-resolves channel inputs from persisted
-# outputs, so delivery self-heals without a session down/up.
 [runtime.health.alive]
 type   = "shell"
 script = '''
-kill -0 "$pid" 2>/dev/null && exit 0
-
-# The terminal verbs compose against whichever effect in this workflow
-# declares the interactive endpoint — never a concrete multiplexer named
-# here directly.
-PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
-[ -n "$PANE_PID" ] || exit 1
-
-FOUND_PID=""
-FOUND_SID=""
-for f in "$HOME/.claude/sessions/"*.json; do
-  [ -e "$f" ] || continue
-  P=$(jq -r '.pid // empty' "$f" 2>/dev/null)
-  [ -n "$P" ] || continue
-  kill -0 "$P" 2>/dev/null || continue
-  cur="$P"
-  ok=0
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    [ "$cur" = "$PANE_PID" ] && { ok=1; break; }
-    cur=$(ps -o ppid= -p "$cur" 2>/dev/null | tr -d ' ')
-    [ -n "$cur" ] && [ "$cur" != "1" ] || break
-  done
-  [ "$ok" = 1 ] || continue
-  FOUND_PID="$P"
-  FOUND_SID=$(jq -r '.sessionId // empty' "$f")
-  break
-done
-[ -n "$FOUND_PID" ] && [ -n "$FOUND_SID" ] || exit 1
-
-SOCKET="${XDG_RUNTIME_DIR:-/tmp}/claude-channel/$FOUND_SID.sock"
-plect state set-output "$session_name" --node claude "$(jq -nc \
-  --argjson pid "$FOUND_PID" --arg sid "$FOUND_SID" --arg sock "$SOCKET" \
-  '{pid:$pid, session_id:$sid, socket_path:$sock}')"
+kill -0 "$pid" 2>/dev/null
 '''
 
 [runtime.health.alive.bind]
-pid          = { from = "self.outputs.pid", optional = true }
-terminal_pid = { terminal = "pid" }
-session_name = { from = "session.name" }
+pid = { from = "self.outputs.pid", optional = true }
 
 # activity: the turn-boundary hook this effect registers at setup is its
 # activity probe — the hook records each boundary and the probe reads the
@@ -441,8 +429,8 @@ type     = "object"
 required = ["pid", "session_id", "socket_path", "mcp_config"]
 
 [runtime.outputs_schema.properties]
-pid            = { type = "integer", mutable = true }
-session_id     = { type = "string", mutable = true }
-socket_path    = { type = "string", mutable = true }
+pid            = { type = "integer" }
+session_id     = { type = "string" }
+socket_path    = { type = "string" }
 mcp_config     = { type = "string" }
 hooks_settings = { type = "string" }

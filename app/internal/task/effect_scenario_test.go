@@ -19,6 +19,9 @@ type effectScenario struct {
 	// Name distinguishes one variant from another under the same id. Only
 	// required when an id declares more than one variant.
 	Name string `toml:"name"`
+	// NodeID runs the declaration under a workflow-assigned node name rather
+	// than its definition id.
+	NodeID string `toml:"node_id"`
 	// Inputs are the node inputs this effect is set up with, and Prev the
 	// outputs a prior run of it left behind.
 	Inputs map[string]string `toml:"inputs"`
@@ -57,6 +60,15 @@ type effectScenario struct {
 	// kill-on-failure path needs when the launched thing is not the
 	// endpoint's own root process.
 	ExpectWorkerProcessDead bool `toml:"expect_worker_process_dead"`
+	// ExpectWorkerProcessAlive proves a cleanup rejected an unsafe recovery
+	// without terminating the other process in the endpoint.
+	ExpectWorkerProcessAlive bool `toml:"expect_worker_process_alive"`
+	// PaneChild makes the worker process appear as a direct child of the
+	// terminal endpoint for process-tree discovery scenarios.
+	PaneChild bool `toml:"pane_child"`
+	// NoTerminalPID makes the terminal pid verb report no endpoint, as when
+	// the terminal resource has already gone away.
+	NoTerminalPID bool `toml:"no_terminal_pid"`
 	// RetryInputs reruns setup with these inputs against the same sandbox
 	// and live processes a first attempt (using Inputs) left behind, so a
 	// retry-succeeds claim is checked against that exact state rather than

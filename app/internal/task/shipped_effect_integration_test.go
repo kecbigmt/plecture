@@ -260,6 +260,7 @@ func (h *effectHarness) startWorkerProcess(t *testing.T) {
 	h.workerProcess = cmd.Process.Pid
 	h.workerCmd = cmd
 	t.Setenv("PLECT_EFFECT_WORKER_PID", strconv.Itoa(h.workerProcess))
+	h.expand = append([]struct{ from, to string }{{"WORKER_PID", strconv.Itoa(h.workerProcess)}}, h.expand...)
 }
 
 // effectSpyAnswer lets each plugin say how its own executables answer, as
@@ -304,7 +305,7 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 		case "pid":
 			// The scenario's own live process stands in for the endpoint's
 			// root process, the same one a liveness check finds.
-			body += "printf '%s\\n' \"$PLECT_EFFECT_PID\"\n"
+			body += "[ -n \"${PLECT_EFFECT_NO_TERMINAL_PID:-}\" ] || printf '%s\\n' \"$PLECT_EFFECT_PID\"\n"
 		}
 		h.writeSpy(t, "terminal-"+verb, body)
 	}
@@ -343,6 +344,16 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	h.startWorkerProcess(t)
 	t.Setenv("PLECT_EFFECT_CAPTURE", scenario.Capture)
 	t.Setenv("PLECT_EFFECT_RETRY", "")
+	if scenario.NoTerminalPID {
+		t.Setenv("PLECT_EFFECT_NO_TERMINAL_PID", "1")
+	} else {
+		t.Setenv("PLECT_EFFECT_NO_TERMINAL_PID", "")
+	}
+	if scenario.PaneChild || scenario.ExpectWorkerProcessDead {
+		t.Setenv("PLECT_EFFECT_PANE_CLAUDE", "1")
+	} else {
+		t.Setenv("PLECT_EFFECT_PANE_CLAUDE", "")
+	}
 	if scenario.FailOutput {
 		t.Setenv("PLECT_EFFECT_FAIL_OUTPUT", "1")
 	} else {
@@ -357,14 +368,18 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 			t.Fatal(err)
 		}
 	}
-	resolved, err := ResolveDefinition(def, id)
+	nodeID := id
+	if scenario.NodeID != "" {
+		nodeID = scenario.NodeID
+	}
+	resolved, err := ResolveDefinition(def, nodeID)
 	if err != nil {
-		t.Fatalf("ResolveDefinition(%s): %v", id, err)
+		t.Fatalf("ResolveDefinition(%s): %v", nodeID, err)
 	}
 	session := h.sessionVars()
 	tasks := map[string]*contract.TaskState{}
 	if len(scenario.Prev) > 0 {
-		tasks[id] = &contract.TaskState{
+		tasks[nodeID] = &contract.TaskState{
 			Scope:   resolved.Scope,
 			Status:  contract.TaskStatusCleaned,
 			Outputs: asAnyMap(scenario.Prev),
@@ -380,7 +395,7 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 			// Two runs against the same sandbox and live processes, not two
 			// scenarios, is what makes "retry succeeds" a claim about this
 			// exact failed state rather than a coincidence of shared paths.
-			self = h.runOneHook(t, b, def, "setup", "", resolved, id, label, session, tasks, self, scenario.Inputs, scenario.Artifacts)
+			self = h.runOneHook(t, b, def, "setup", "", resolved, nodeID, label, session, tasks, self, scenario.Inputs, scenario.Artifacts)
 			if scenario.ExpectWorkerProcessDead {
 				h.assertWorkerProcessDead(t)
 				h.assertPaneProcessAlive(t)
@@ -391,10 +406,10 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 			}
 			t.Setenv("PLECT_EFFECT_RETRY", "1")
 			currentInputs = scenario.RetryInputs
-			self = h.runOneHook(t, b, def, "setup", " (retry)", resolved, id, label, session, tasks, self, currentInputs, scenario.Artifacts)
+			self = h.runOneHook(t, b, def, "setup", " (retry)", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 			continue
 		}
-		self = h.runOneHook(t, b, def, hook, "", resolved, id, label, session, tasks, self, currentInputs, scenario.Artifacts)
+		self = h.runOneHook(t, b, def, hook, "", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 	}
 	if scenario.ExpectLiveProcessDead {
 		h.assertLiveProcessDead(t)
@@ -402,6 +417,9 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	if scenario.ExpectWorkerProcessDead && len(scenario.RetryInputs) == 0 {
 		h.assertWorkerProcessDead(t)
 		h.assertPaneProcessAlive(t)
+	}
+	if scenario.ExpectWorkerProcessAlive {
+		h.assertWorkerProcessAlive(t)
 	}
 }
 
@@ -466,6 +484,14 @@ func (h *effectHarness) assertWorkerProcessDead(t *testing.T) {
 		t.Error("scenario declares expect_worker_process_dead, but the sandbox's worker process is still running")
 		_ = h.workerCmd.Process.Kill()
 		<-done
+	}
+}
+
+func (h *effectHarness) assertWorkerProcessAlive(t *testing.T) {
+	t.Helper()
+	wpid, err := syscall.Wait4(h.workerProcess, nil, syscall.WNOHANG, nil)
+	if err != nil || wpid == h.workerProcess {
+		t.Error("scenario declares expect_worker_process_alive, but the sandbox's worker process is gone")
 	}
 }
 

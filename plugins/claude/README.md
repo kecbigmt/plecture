@@ -14,13 +14,13 @@ independently selectable plugin this one composes through `{ terminal = "..." }`
   `~/.claude/sessions/*.json`, wires a channel-server MCP socket when
   `channel-server` is on `PATH`, and registers turn-boundary activity and
   turn-reporting hooks (`publish_events`, see Parameters below).
-  `[health].alive` self-heals a stale pid by re-deriving the live
-  process from the pane's process tree, reached via
-  `{ terminal = "pid" }` for the pane's own root process id, so a
-  crash-and-relaunch or a manual `--resume` does not require a session
-  down/up to keep event delivery working. `[health].activity` reads back the
-  record those turn-boundary hooks write, so hook and probe are two halves of
-  one fingerprint format.
+  `[health].alive` checks only the recorded process. A failed check makes the
+  next `plect up` clean up and rebuild the effect with its prior session ID.
+  Cleanup replaces a live Claude process only when its session record matches
+  that ID; it fails before setup when another conversation occupies the pane,
+  so a launch command is never submitted as that conversation's message.
+  `[health].activity` reads back the record those turn-boundary hooks write,
+  so hook and probe are two halves of one fingerprint format.
 - `config/tasks/claude_initial_prompt.toml` — sends a session's initial prompt via
   `{ terminal = "..." }` once the CLI's input box is visible, or on every
   `plect up` when `repeat = "true"`.

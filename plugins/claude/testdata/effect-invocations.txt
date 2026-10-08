@@ -40,7 +40,34 @@ call[0]: "claude-agent-activity" "probe" "acme/widget-1"
 activity: fingerprint="spy-turn-1" silence_expected=false
 
 == runtime:resume-stale-record / cleanup
-call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+call[0]: "terminal-pid"
+call[1]: "pgrep" "-P" "<pid>"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
+== runtime:stale-pid-is-not-rediscovered / health.alive
+declined: exit status 1
+
+== runtime:stale-pid-cleans-matching-pane-claude / cleanup
+call[0]: "terminal-pid"
+call[1]: "pgrep" "-P" "<pid>"
+call[2]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[3]: "ps" "-p" "<pid>" "-o" "comm="
+call[4]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[5]: "ps" "-p" "<pid>" "-o" "comm="
+call[6]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
+== runtime:stale-pid-refuses-foreign-pane-claude / cleanup
+call[0]: "terminal-pid"
+call[1]: "pgrep" "-P" "<pid>"
+call[2]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[3]: "ps" "-p" "<pid>" "-o" "comm="
+declined: task "runtime" cleanup: exit status 1
+
+== runtime:cleanup-succeeds-without-pane / cleanup
+call[0]: "terminal-pid"
+call[1]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == runtime:channel-server-present / setup
@@ -78,7 +105,9 @@ call[0]: "claude-agent-activity" "probe" "acme/widget-1"
 activity: fingerprint="spy-turn-1" silence_expected=false
 
 == runtime:channel-server-present / cleanup
-call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+call[0]: "terminal-pid"
+call[1]: "pgrep" "-P" "<pid>"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == runtime:channel-server-absent / setup
@@ -104,7 +133,9 @@ call[0]: "claude-agent-activity" "probe" "acme/widget-1"
 activity: fingerprint="spy-turn-1" silence_expected=false
 
 == runtime:channel-server-absent / cleanup
-call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+call[0]: "terminal-pid"
+call[1]: "pgrep" "-P" "<pid>"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == runtime:permission-mode-rejected / setup
@@ -134,7 +165,9 @@ call[0]: "claude-agent-activity" "probe" "acme/widget-1"
 activity: fingerprint="spy-turn-1" silence_expected=false
 
 == runtime:permission-mode-empty-opt-out / cleanup
-call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+call[0]: "terminal-pid"
+call[1]: "pgrep" "-P" "<pid>"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == runtime:launch-timeout-then-retry-succeeds / setup
