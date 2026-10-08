@@ -9,7 +9,7 @@ import (
 )
 
 // BackupDatabaseFiles copies dbPath and its WAL-mode siblings, if any, to a
-// dated backup next to it, called before dbPath is ever opened.
+// dated backup next to it, called before dbPath is opened for writing or migrated.
 func BackupDatabaseFiles(dbPath string) (string, error) {
 	// Nanosecond precision: a quick re-run must never overwrite the very
 	// backup it is trying to recover from.

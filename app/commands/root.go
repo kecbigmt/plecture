@@ -72,9 +72,9 @@ identifier no resolver matches selects a workflow explicitly (see
 		}
 		if cmd == storageRepairCmd || cmd == storageRepairExecutionsCmd {
 			// Both repair commands must back up the data home's storage.db
-			// before anything opens or migrates it; opening the default path
-			// here first (--data-home or not) would risk a silent migration
-			// landing ahead of that backup.
+			// before anything opens it for writing or migrates it; opening
+			// the default path here first (--data-home or not) would risk a
+			// silent migration landing ahead of that backup.
 			return nil
 		}
 		if err := state.NewStore("").CheckReadable(); err != nil {

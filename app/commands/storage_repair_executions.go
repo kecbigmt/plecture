@@ -25,8 +25,9 @@ session records, which makes it the node's current execution again. It
 changes only that one column: no execution, output or history is deleted.
 
 Stop every plect process against the data directory first: the backup is a
-raw file copy of storage.db (plus its -wal/-shm siblings) taken before the
-database is opened, and it is only a reliable snapshot when nothing else is
+raw file copy of storage.db (plus its -wal/-shm siblings) taken after the
+read-only scan but before the database is opened for writing or migrated, and
+it is only a reliable snapshot when nothing else is
 writing. A store with nothing to repair is left untouched and gets no backup.
 --dry-run lists the affected executions without writing anything. The data
 directory is the global --data-home.`,

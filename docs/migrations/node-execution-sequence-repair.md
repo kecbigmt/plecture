@@ -36,8 +36,9 @@ plect storage repair-node-executions
 ```
 
 The command copies `storage.db` and its `-wal` and `-shm` siblings to a dated
-`storage.db.backup-<timestamp>` next to it before opening the database, and
-prints that path. A database with nothing to repair gets no backup. Run the
+`storage.db.backup-<timestamp>` next to it, and prints that path. The command
+first reads the database read-only to find the affected executions; the
+backup is taken before anything writes to it or migrates it. A database with nothing to repair gets no backup. Run the
 command again afterward; it reports `nothing to repair`.
 
 ## Roll back
