@@ -20,6 +20,18 @@ path   = ""
 output = "mcp_config"
 path   = ""
 
+# A stale stored PID is a failed liveness check, even when a session file
+# advertises another live process in the same pane. Recovery owns cleanup and
+# setup; a probe must not repair state as an observation side effect.
+[[runtime]]
+name  = "stale-pid-is-not-rediscovered"
+self  = { pid = "999999999" }
+hooks = ["health.alive"]
+
+[[runtime.files]]
+path    = ".claude/sessions/live.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
 [[runtime]]
 name   = "channel-server-present"
 inputs = { model = "opus", effort = "high", permission_mode = "plan", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', mcp_servers = '[{"name":"kbn","command":"kbn-mcp"}]', path_prepend = "/spy/guard" }
