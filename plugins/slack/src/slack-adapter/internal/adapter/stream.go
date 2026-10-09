@@ -18,6 +18,13 @@ import (
 // a stalled or dropped chunk would otherwise buffer forever.
 const maxPendingStreamChunks = 32
 
+// maxRecordedThreads bounds per-thread recipient bookkeeping; evicting an
+// idle thread costs one logged fallback post at worst.
+const maxRecordedThreads = 4096
+
+// maxPendingRecipients bounds the unanswered senders one thread remembers.
+const maxPendingRecipients = 16
+
 type Streamer interface {
 	StartStream(channelID, threadTS, teamID, recipientUserID, text string) (ts string, err error)
 	AppendStream(channelID, ts, text string) error
@@ -73,10 +80,33 @@ type streamState struct {
 	mu        sync.Mutex
 	started   bool
 	failed    bool
+	recipient streamRecipient
 	ts        string
 	nextIndex int64
 	pending   map[int64]streamChunk
 	text      string
+}
+
+// streamRecipient is the Slack user a stream is addressed to, and that
+// user's workspace: chat.startStream needs both to stream into a channel.
+type streamRecipient struct {
+	UserID string `json:"user_id"`
+	TeamID string `json:"team_id"`
+}
+
+// threadRecipients: pending holds senders no stream has answered yet, oldest
+// first; last keeps the previous addressee so a reply with nobody pending
+// (an unprompted turn) still has one.
+type threadRecipients struct {
+	pending  []streamRecipient
+	last     streamRecipient
+	lastTurn string
+	touched  uint64
+}
+
+type threadKey struct {
+	channelID string
+	threadTS  string
 }
 
 type streamIdentity struct {
@@ -98,6 +128,7 @@ type persistedStream struct {
 	StreamKey string                         `json:"stream_key"`
 	Started   bool                           `json:"started"`
 	Failed    bool                           `json:"failed"`
+	Recipient streamRecipient                `json:"recipient"`
 	TS        string                         `json:"ts"`
 	NextIndex int64                          `json:"next_index"`
 	Pending   map[int64]persistedStreamChunk `json:"pending,omitempty"`
@@ -122,33 +153,32 @@ type persistedStreamManagerState struct {
 const finalizedRetention = 10 * time.Minute
 
 type StreamManager struct {
-	streamer        Streamer
-	poster          ThreadPoster
-	teamID          string
-	recipientUserID string
-	logger          *slog.Logger
+	streamer Streamer
+	poster   ThreadPoster
+	logger   *slog.Logger
 
 	mu        sync.Mutex
 	state     map[streamIdentity]*streamState
 	finalized map[streamIdentity]time.Time
+	threads   map[threadKey]*threadRecipients
+	threadSeq uint64
 	statePath string
 	persistMu sync.Mutex
 }
 
-func NewStreamManager(streamer Streamer, poster ThreadPoster, teamID, recipientUserID string, logger *slog.Logger) *StreamManager {
-	return NewStreamManagerWithStatePath(streamer, poster, teamID, recipientUserID, logger, "")
+func NewStreamManager(streamer Streamer, poster ThreadPoster, logger *slog.Logger) *StreamManager {
+	return NewStreamManagerWithStatePath(streamer, poster, logger, "")
 }
 
-func NewStreamManagerWithStatePath(streamer Streamer, poster ThreadPoster, teamID, recipientUserID string, logger *slog.Logger, statePath string) *StreamManager {
+func NewStreamManagerWithStatePath(streamer Streamer, poster ThreadPoster, logger *slog.Logger, statePath string) *StreamManager {
 	m := &StreamManager{
-		streamer:        streamer,
-		poster:          poster,
-		teamID:          teamID,
-		recipientUserID: recipientUserID,
-		logger:          logger,
-		state:           make(map[streamIdentity]*streamState),
-		finalized:       make(map[streamIdentity]time.Time),
-		statePath:       statePath,
+		streamer:  streamer,
+		poster:    poster,
+		logger:    logger,
+		state:     make(map[streamIdentity]*streamState),
+		finalized: make(map[streamIdentity]time.Time),
+		threads:   make(map[threadKey]*threadRecipients),
+		statePath: statePath,
 	}
 	if statePath != "" {
 		m.load()
@@ -156,13 +186,77 @@ func NewStreamManagerWithStatePath(streamer Streamer, poster ThreadPoster, teamI
 	return m
 }
 
+// RecordRecipient queues the sender of an accepted inbound message as the
+// addressee of one of the thread's next streams. The recipient is a property
+// of the conversation, not of the access-control list: several people may be
+// allowed to talk to a session, and only the one being answered can be named.
+// A burst from one sender is one entry, since an agent may answer it in one turn.
+func (m *StreamManager) RecordRecipient(channelID, threadTS, userID, teamID string) {
+	if channelID == "" || threadTS == "" {
+		return
+	}
+	r := streamRecipient{UserID: userID, TeamID: teamID}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t := m.threadLocked(threadKey{channelID, threadTS})
+	if n := len(t.pending); n > 0 && t.pending[n-1] == r {
+		return
+	}
+	t.pending = append(t.pending, r)
+	if len(t.pending) > maxPendingRecipients {
+		t.pending = t.pending[1:]
+	}
+}
+
+func (m *StreamManager) threadLocked(k threadKey) *threadRecipients {
+	m.threadSeq++
+	t, ok := m.threads[k]
+	if !ok {
+		t = &threadRecipients{}
+		m.threads[k] = t
+	}
+	t.touched = m.threadSeq
+	if len(m.threads) > maxRecordedThreads {
+		var oldest threadKey
+		var oldestSeq uint64
+		for key, other := range m.threads {
+			if key != k && (oldestSeq == 0 || other.touched < oldestSeq) {
+				oldest, oldestSeq = key, other.touched
+			}
+		}
+		delete(m.threads, oldest)
+	}
+	return t
+}
+
+// claimRecipientLocked binds a new stream to the oldest unanswered sender, so
+// a message arriving before this reply's first chunk cannot take it over.
+// Streams of one turn share that sender; turns are told apart by the
+// harness's turn id when it supplies one, else by stream key.
+func (m *StreamManager) claimRecipientLocked(id streamIdentity, turnID string) streamRecipient {
+	t := m.threadLocked(threadKey{id.channelID, id.threadTS})
+	turn := turnID
+	if turn == "" {
+		turn = "stream:" + id.streamKey
+	}
+	if turn == t.lastTurn {
+		return t.last
+	}
+	t.lastTurn = turn
+	if len(t.pending) > 0 {
+		t.last = t.pending[0]
+		t.pending = t.pending[1:]
+	}
+	return t.last
+}
+
 // Deliver processes one chunk for streamKey, ordered by index. Draining
 // stops at the first failure, leaving that chunk (and anything after it)
 // pending instead of skipped, so a caller's retry of the same index
 // re-attempts it rather than the stream silently completing short.
-func (m *StreamManager) Deliver(channelID, threadTS, streamKey string, index int64, text string, final bool) error {
+func (m *StreamManager) Deliver(channelID, threadTS, streamKey, turnID string, index int64, text string, final bool) error {
 	id := streamIdentity{channelID: channelID, threadTS: threadTS, streamKey: streamKey}
-	st, alreadyFinalized := m.stateOrFinalized(id)
+	st, alreadyFinalized := m.stateOrFinalized(id, turnID)
 	if alreadyFinalized {
 		m.logger.Info("stream delivery dropped: stream already finalized",
 			"component", "slack-adapter", "event", "stream_deliver_duplicate",
@@ -183,7 +277,7 @@ func (m *StreamManager) Deliver(channelID, threadTS, streamKey string, index int
 			m.persist()
 			return nil
 		}
-		if err := m.apply(channelID, threadTS, st, c); err != nil {
+		if err := m.apply(id, st, c); err != nil {
 			m.logger.Warn("stream delivery failed, will retry on redelivery",
 				"component", "slack-adapter", "event", "stream_deliver_error",
 				"stream_key", streamKey, "error", err)
@@ -204,7 +298,7 @@ func (m *StreamManager) Deliver(channelID, threadTS, streamKey string, index int
 
 // stateOrFinalized combines both checks under one lock: split into two, a
 // concurrent forget could land between them and let a duplicate through.
-func (m *StreamManager) stateOrFinalized(id streamIdentity) (st *streamState, alreadyFinalized bool) {
+func (m *StreamManager) stateOrFinalized(id streamIdentity, turnID string) (st *streamState, alreadyFinalized bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if t, ok := m.finalized[id]; ok {
@@ -215,7 +309,12 @@ func (m *StreamManager) stateOrFinalized(id streamIdentity) (st *streamState, al
 	}
 	st, ok := m.state[id]
 	if !ok {
-		st = &streamState{pending: make(map[int64]streamChunk)}
+		// Claimed now rather than at start: a message that arrives while
+		// this stream's first chunks are still buffered must not redirect it.
+		st = &streamState{
+			pending:   make(map[int64]streamChunk),
+			recipient: m.claimRecipientLocked(id, turnID),
+		}
 		m.state[id] = st
 	}
 	return st, false
@@ -262,6 +361,7 @@ func (m *StreamManager) load() {
 		m.state[id] = &streamState{
 			started:   saved.Started,
 			failed:    saved.Failed,
+			recipient: saved.Recipient,
 			ts:        saved.TS,
 			nextIndex: saved.NextIndex,
 			pending:   pending,
@@ -318,7 +418,7 @@ func (m *StreamManager) persist() {
 		}
 		persisted.Streams = append(persisted.Streams, persistedStream{
 			ChannelID: id.channelID, ThreadTS: id.threadTS, StreamKey: id.streamKey,
-			Started: st.started, Failed: st.failed, TS: st.ts, NextIndex: st.nextIndex,
+			Started: st.started, Failed: st.failed, Recipient: st.recipient, TS: st.ts, NextIndex: st.nextIndex,
 			Pending: pending, Text: st.text,
 		})
 		st.mu.Unlock()
@@ -373,14 +473,28 @@ func nextChunk(st *streamState) (int64, streamChunk, bool) {
 	return lowest, st.pending[lowest], true
 }
 
-func (m *StreamManager) apply(channelID, threadTS string, st *streamState, c streamChunk) error {
+func (m *StreamManager) apply(id streamIdentity, st *streamState, c streamChunk) error {
+	channelID, threadTS := id.channelID, id.threadTS
 	if st.failed {
 		return m.applyFallback(channelID, threadTS, st, c)
 	}
 
 	if !st.started {
-		ts, err := m.streamer.StartStream(channelID, threadTS, m.teamID, m.recipientUserID, c.text)
+		if reason := missingRecipientReason(st.recipient); reason != "" {
+			m.logger.Warn("stream start skipped, falling back to one post",
+				"component", "slack-adapter", "event", "stream_start_skipped",
+				"reason", reason,
+				"channel_id", channelID, "thread_ts", threadTS, "stream_key", id.streamKey)
+			st.failed = true
+			return m.applyFallback(channelID, threadTS, st, c)
+		}
+		ts, err := m.streamer.StartStream(channelID, threadTS, st.recipient.TeamID, st.recipient.UserID, c.text)
 		if err != nil {
+			m.logger.Warn("stream start failed, falling back to one post",
+				"component", "slack-adapter", "event", "stream_start_failed",
+				"reason", "start_failed",
+				"channel_id", channelID, "thread_ts", threadTS, "stream_key", id.streamKey,
+				"error", err)
 			st.failed = true
 			return m.applyFallback(channelID, threadTS, st, c)
 		}
@@ -397,6 +511,16 @@ func (m *StreamManager) apply(channelID, threadTS string, st *streamState, c str
 		return m.streamer.StopStream(channelID, st.ts, c.text)
 	}
 	return m.streamer.AppendStream(channelID, st.ts, c.text)
+}
+
+func missingRecipientReason(r streamRecipient) string {
+	switch {
+	case r.UserID == "":
+		return "recipient_unknown"
+	case r.TeamID == "":
+		return "recipient_team_unknown"
+	}
+	return ""
 }
 
 // applyFallback buffers c into the fallback text and, on final, posts it

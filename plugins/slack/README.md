@@ -44,8 +44,9 @@ another plugin's package.
   `plect.message`, and renders either as one live-updating Slack thread
   reply via the `slack-adapter` service's `POST /stream`. Same
   `base_url`/`channel_id`/`thread_ts` inputs as `slack.toml`; `stream_key`,
-  `text`, `index`, and `final` are read straight from the delivered event's
-  own fields (`event.metadata.message_id`, `event.body`,
+  `turn_id`, `text`, `index`, and `final` are read straight from the delivered
+  event's own fields (`event.metadata.message_id`, `event.metadata.turn_id`
+  (empty when the harness supplies none), `event.body`,
   `event.metadata.index`, `event.metadata.final`, the last two defaulting to
   `0`/`true` for a `plect.message`, which carries no chunk sequence of its
   own) rather than declared as inputs, since an `[[event.channel]].inputs`

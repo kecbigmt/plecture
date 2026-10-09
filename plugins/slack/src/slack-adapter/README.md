@@ -305,25 +305,45 @@ bounded finalized-identity set. Startup logs once and starts empty if the
 file is missing, unreadable, corrupt, or a different version; that condition
 never prevents the adapter from starting.
 
-`recipient_user_id` (required by `chat.startStream` when streaming to a
-channel — confirmed empirically against a live workspace, and required for
-any thread with more than the sender in it, not documented) is resolved
-from `allowed_user_ids` when it names exactly one user; any other count of
-allowed users has no single answer, so streaming falls back the same way a
-rejected `chat.startStream` call does — see below.
+`chat.startStream` requires a recipient user and that user's workspace
+when streaming into a channel. The adapter keeps, per channel and thread, a
+queue of the senders of inbound messages that reached their session (thread
+messages and app mentions, including a mention handed to an unbound-mention
+reader or hook that succeeded); a message whose delivery failed is never
+queued. A
+stream claims the oldest sender still unanswered when it first appears, so a
+message that arrives before a reply's first chunk cannot take that reply
+over; it is addressed by a later reply instead. Messages of one turn,
+identified by the optional `turn_id` (or else one stream each), share the
+turn's sender, and a reply with nobody pending keeps the last sender.
+Consecutive messages from the same sender count once. Recipients are never
+shared between threads. The workspace is the sender's own for a
+shared-channel sender, and the app's otherwise. `allowed_user_ids` only
+decides who may talk to a session; it does not choose the recipient, so any
+number of allowed users (or none, for app mentions) can stream. The claimed
+recipient is kept in the stream snapshot; the queue is in memory, so a
+restart between a message and the reply's first chunk can lose it and the
+reply falls back as below. Known limit: nothing links a reply to the
+inbound message it answers, so a sender who interleaves can shift the
+recipient by one turn, and when one agent turn answers several different
+senders at once only the oldest is addressed.
 
 If `chat.startStream` itself fails (the workspace/app doesn't support
-streaming, or nothing resolves `recipient_user_id`), every chunk under that
+streaming) or no recipient is known for the thread, every chunk under that
 `stream_key` is accumulated instead, and the full text is posted once — via
-`POST /messages`'s own mechanics — on `final`. A failure after
-`chat.startStream` already succeeded (an `appendStream`/`stopStream` call
-rejected) is returned to the caller rather than triggering this fallback:
-a native message already exists by then, and posting a second one would
-violate "exactly one Slack thread message appears".
+`POST /messages`'s own mechanics — on `final`. Each such stream logs one
+structured line, `stream_start_skipped` (`reason` is `recipient_unknown` or
+`recipient_team_unknown`) or `stream_start_failed` (with the Slack error),
+carrying the channel, thread and stream key; no line carries a token or
+message text. A failure after `chat.startStream` already succeeded (an
+`appendStream`/`stopStream` call rejected) is returned to the caller rather
+than triggering this fallback: a native message already exists by then, and
+posting a second one would violate "exactly one Slack thread message
+appears".
 
 ```json
 // Request
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "stream_key": "msg-1", "text": "Hello", "index": "0", "final": "false"}
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "stream_key": "msg-1", "turn_id": "turn-1", "text": "Hello", "index": "0", "final": "false"}
 ```
 
 `index` and `final` are strings, not a JSON number/bool: they originate as

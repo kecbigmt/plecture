@@ -104,7 +104,7 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 		}
 		a.teamID = resp.TeamID
 	}
-	a.streamManager = NewStreamManagerWithStatePath(a, a.poster, a.teamID, cfg.StreamRecipientUserID(), logger, StreamStatePath())
+	a.streamManager = NewStreamManagerWithStatePath(a, a.poster, logger, StreamStatePath())
 
 	// Pre-connect so restored subscribers can push replies immediately.
 	for _, sub := range a.broker.List() {
@@ -250,7 +250,24 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 		}
 		return
 	}
+	a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
 	a.captureInbound(sub, msg)
+}
+
+// recordStreamRecipient makes the sender of an inbound message that actually
+// reached its session the addressee of one of the thread's next streams: a
+// message that never ran a turn must not claim a later reply. A sender from another workspace of
+// a shared channel is addressed in their own workspace; the Slack event
+// names that workspace only for such senders, so any other falls back to
+// the app's own.
+func (a *Adapter) recordStreamRecipient(channelID, threadTS, userID, userTeam string) {
+	if a.streamManager == nil {
+		return
+	}
+	if userTeam == "" {
+		userTeam = a.teamID
+	}
+	a.streamManager.RecordRecipient(channelID, threadTS, userID, userTeam)
 }
 
 // deliverToChannelServer sends msg over the subscriber's Unix socket,
