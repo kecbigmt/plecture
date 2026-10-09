@@ -78,11 +78,18 @@ Code hooks that installs is this plugin's own concern:
   at all) and `turn_id` from that same `prompt_id`. With `"message_delta"`
   also requested, it is published once a message's final delta arrives
   (full text now known), carrying that delta's own `message_id`
-  (`message_id_origin = native`) and `turn_id`; `claude-agent-activity`
-  itself then skips the Stop-hook copy for that same message (a marker
-  file records which message_id was just covered), so a live consumer and
-  a finished-messages consumer never both see the text and never see it
-  twice. Metadata otherwise: `role = assistant`, `source = claude`.
+  (`message_id_origin = native`) and `turn_id`. The hooks use atomic,
+  turn-scoped state under XDG state to choose that native event when Stop
+  begins first as well as when MessageDisplay does. Stop waits briefly for a
+  single final display; if none arrives, it publishes its synthetic event.
+  A later matching display is then suppressed, including its deltas, so
+  both event types cannot open different streams for the same answer.
+  When a non-empty display delta starts the stream before Stop publishes,
+  its native identity owns the answer even if the final delta arrives later.
+  The state is removed after Stop consumes it and on runtime reset. Remove
+  this handoff state when Claude Code guarantees the ordering of its Stop
+  and final MessageDisplay hooks. Metadata otherwise: `role = assistant`,
+  `source = claude`.
 - `"message_delta"` also publishes `plect.message_delta` once per streamed
   delta, as a preview: body is that delta alone, metadata carries
   `message_id`, `message_id_origin = native`, `kind = text`, `turn_id`,

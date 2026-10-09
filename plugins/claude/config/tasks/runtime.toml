@@ -143,17 +143,19 @@ HAS_MESSAGE=false
 printf '%s' "$publish_events" | jq -e 'any(.[]?; . == "message")' >/dev/null 2>&1 && HAS_MESSAGE=true
 HAS_MESSAGE_DELTA=false
 printf '%s' "$publish_events" | jq -e 'any(.[]?; . == "message_delta")' >/dev/null 2>&1 && HAS_MESSAGE_DELTA=true
-jq -nc --arg activity "$activity_bin" --argjson has_message "$HAS_MESSAGE" --argjson has_message_delta "$HAS_MESSAGE_DELTA" --argjson skip_bypass_warning "$SKIP_BYPASS_WARNING" '
+DEDUP_PREFIX=""
+[ "$HAS_MESSAGE" = true ] && [ "$HAS_MESSAGE_DELTA" = true ] && DEDUP_PREFIX="PLECT_CLAUDE_MESSAGE_DEDUP=true "
+jq -nc --arg activity "$activity_bin" --arg dedup_prefix "$DEDUP_PREFIX" --argjson has_message "$HAS_MESSAGE" --argjson has_message_delta "$HAS_MESSAGE_DELTA" --argjson skip_bypass_warning "$SKIP_BYPASS_WARNING" '
   {
     hooks: (
       {
         UserPromptSubmit: [{hooks: [{type: "command", command: ($activity + " working")}]}],
         PreToolUse:       [{hooks: [{type: "command", command: ($activity + " working")}]}],
         Stop: [{hooks: ([{type: "command", command: ($activity + " waiting")}]
-                       + (if $has_message then [{type: "command", command: ($activity + " reply")}] else [] end))}]
+                       + (if $has_message then [{type: "command", command: ($dedup_prefix + $activity + " reply")}] else [] end))}]
       }
       + (if $has_message_delta then
-           {MessageDisplay: [{hooks: [{type: "command", command: ($activity + " message_display")}]}]}
+           {MessageDisplay: [{hooks: [{type: "command", command: ($dedup_prefix + $activity + " message_display")}]}]}
          else {} end)
     )
   } + (if $skip_bypass_warning then {skipDangerousModePermissionPrompt: true} else {} end)

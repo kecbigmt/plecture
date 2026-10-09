@@ -216,7 +216,7 @@ case "$got" in
   *) printf 'Stop on the next turn should publish again once the marker is consumed, got: %s\n' "$got" >&2; exit 1 ;;
 esac
 
-# message_display + reply: a marker left by a message_display final delta
+# message_display + reply: state left by a message_display final delta
 # must be consumed even by a Stop whose own last_assistant_message is empty
 # (e.g. the turn's last content block was a tool call, carrying no text) --
 # otherwise it survives into the *next* turn's Stop and wrongly suppresses a
@@ -224,18 +224,142 @@ esac
 run_report message_display '{"hook_event_name":"MessageDisplay","message_id":"msg-tool-tail","turn_id":"turn-ghi","index":0,"final":true,"delta":"streamed before a trailing tool call"}' >/dev/null
 got="$(run_report reply '{"hook_event_name":"Stop","last_assistant_message":"","prompt_id":"turn-ghi"}')"
 [ -z "$got" ] || { printf 'an empty-text Stop should still publish nothing, got: %s\n' "$got" >&2; exit 1; }
-[ ! -s "$tmp/state/plect/claude-activity/owner_repo-1.last-message-id" ] || { echo "an empty-text Stop must still consume the message_display marker" >&2; exit 1; }
+[ ! -e "$tmp/state/plect/claude-activity/owner_repo-1.turns/turn-7475726e2d676869" ] || { echo "an empty-text Stop must still consume the message_display handoff state" >&2; exit 1; }
 got="$(run_report reply '{"hook_event_name":"Stop","last_assistant_message":"a genuinely new turn","prompt_id":"turn-jkl"}')"
 case "$got" in
   event\ publish*) ;;
   *) printf 'a later turn must not be suppressed by a marker an empty-text Stop failed to clear, got: %s\n' "$got" >&2; exit 1 ;;
 esac
 
-# message_display: the marker must be on disk before the plect.message
-# publish call returns, not merely before the whole hook process exits --
+# Both reporting hooks are installed independently, so Stop can begin before
+# MessageDisplay. In that order the native MessageDisplay id remains
+# canonical, and the turn-scoped handoff cannot suppress the next turn.
+: > "$tmp/calls"
+PLECT_SESSION_NAME="owner/repo-1" \
+PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true \
+XDG_STATE_HOME="$tmp/state" \
+PATH="$bin_dir:$PATH" \
+"$subject" reply <<<'{"hook_event_name":"Stop","last_assistant_message":"same answer","prompt_id":"turn-reverse"}' &
+reverse_pid=$!
+sleep 0.02
+PLECT_SESSION_NAME="owner/repo-1" \
+PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true \
+XDG_STATE_HOME="$tmp/state" \
+PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-reverse","turn_id":"turn-reverse","final":true,"delta":"same answer"}'
+wait "$reverse_pid"
+[ "$(grep -c -- '--type plect.message ' "$tmp/calls")" -eq 1 ] || {
+  printf 'Stop before MessageDisplay published more than one plect.message: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+grep -- '--type plect.message ' "$tmp/calls" | grep -q -- 'message_id=native-reverse' &&
+  grep -- '--type plect.message_delta ' "$tmp/calls" | grep -q -- 'message_id=native-reverse' || {
+  printf 'Stop before MessageDisplay split one answer across message ids: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+
+# A final display arriving after Stop has returned must not open a second
+# Slack stream under its native id. The synthetic Stop event has already
+# escaped, so the late matching display contributes no deltas or message.
+: > "$tmp/calls"
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" reply <<<'{"hook_event_name":"Stop","last_assistant_message":"same answer","prompt_id":"turn-late"}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-late","turn_id":"turn-late","final":true,"delta":"same answer"}'
+[ "$(wc -l < "$tmp/calls")" -eq 1 ] &&
+  grep -q -- '--type plect.message .*message_id=owner/repo-1/turn-late' "$tmp/calls" || {
+  printf 'late final display opened a second stream: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+
+# An earlier delta claims the native stream before Stop begins. Its final
+# delta may arrive later than Stop's fallback window without minting a
+# synthetic identity.
+: > "$tmp/calls"
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-stream","turn_id":"turn-stream","final":false,"delta":"same "}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" reply <<<'{"hook_event_name":"Stop","last_assistant_message":"same answer","prompt_id":"turn-stream"}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-stream","turn_id":"turn-stream","final":true,"delta":"answer"}'
+[ "$(grep -c -- '--type plect.message ' "$tmp/calls")" -eq 1 ] &&
+  ! grep -q -- 'message_id=owner/repo-1/turn-stream' "$tmp/calls" || {
+  printf 'a native stream was duplicated by Stop: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+
+# A late display with different text is a distinct message. Its buffered
+# deltas can be sent as one final delta once comparison proves it differs.
+: > "$tmp/calls"
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" reply <<<'{"hook_event_name":"Stop","last_assistant_message":"first answer","prompt_id":"turn-late-distinct"}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-distinct","turn_id":"turn-late-distinct","final":false,"delta":"second "}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-distinct","turn_id":"turn-late-distinct","final":true,"delta":"answer"}'
+[ "$(grep -c -- '--type plect.message ' "$tmp/calls")" -eq 2 ] &&
+  [ "$(grep -c -- '--type plect.message_delta ' "$tmp/calls")" -eq 1 ] &&
+  grep -q -- '--body second answer .*message_id=native-distinct.*final=true' "$tmp/calls" || {
+  printf 'a distinct late display was lost or fragmented: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+
+: > "$tmp/calls"
+PLECT_SESSION_NAME="owner/repo-1" \
+PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true \
+XDG_STATE_HOME="$tmp/state" \
+PATH="$bin_dir:$PATH" \
+"$subject" reply <<<'{"hook_event_name":"Stop","last_assistant_message":"a later answer","prompt_id":"turn-after-reverse"}'
+[ "$(grep -c -- '--type plect.message ' "$tmp/calls")" -eq 1 ] || {
+  printf 'a later turn was suppressed by the reverse-order handoff: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+
+# Two final displays in one turn remain distinct messages. Stop only settles
+# its own duplicate; it cannot collapse distinct native message ids merely
+# because their turn_id matches.
+: > "$tmp/calls"
+for event in \
+  '{"hook_event_name":"MessageDisplay","message_id":"native-first","turn_id":"turn-many","final":true,"delta":"first answer"}' \
+  '{"hook_event_name":"MessageDisplay","message_id":"native-second","turn_id":"turn-many","final":true,"delta":"second answer"}'; do
+  PLECT_SESSION_NAME="owner/repo-1" \
+  PLECT_CALLS="$tmp/calls" \
+  PLECT_CLAUDE_MESSAGE_DEDUP=true \
+  XDG_STATE_HOME="$tmp/state" \
+  PATH="$bin_dir:$PATH" \
+  "$subject" message_display <<<"$event"
+done
+PLECT_SESSION_NAME="owner/repo-1" \
+PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true \
+XDG_STATE_HOME="$tmp/state" \
+PATH="$bin_dir:$PATH" \
+"$subject" reply <<<'{"hook_event_name":"Stop","last_assistant_message":"second answer","prompt_id":"turn-many"}'
+[ "$(grep -c -- '--type plect.message ' "$tmp/calls")" -eq 2 ] || {
+  printf 'multiple native messages in one turn were merged: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+grep -q -- 'message_id=native-first' "$tmp/calls" && grep -q -- 'message_id=native-second' "$tmp/calls" || {
+  printf 'multiple native message ids were not retained: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+
+# message_display: the marker must be on disk before the final delta's
+# publish call begins, not merely before the whole hook process exits --
 # otherwise a Stop invocation that races in during that exact call still
 # observes "no marker" and publishes its own duplicate. Simulated with a mock
-# plect binary that, the instant it sees the final delta's plect.message
+# plect binary that, the instant it sees the final plect.message_delta
 # publish, itself invokes the Stop hook for the same turn synchronously
 # (mid-call), rather than after the hook process would have returned.
 race_bin_dir="$tmp/bin-race"
@@ -244,7 +368,7 @@ cat > "$race_bin_dir/plect" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PLECT_CALLS"
 case "$*" in
-  *"--type plect.message "*"message_id=msg-race"*)
+  *"--type plect.message_delta "*"message_id=msg-race"*)
     PLECT_SESSION_NAME="owner/repo-1" \
     PLECT_CALLS="$PLECT_CALLS" \
     XDG_STATE_HOME="$XDG_STATE_HOME" \
@@ -330,20 +454,20 @@ PATH="$noplect_path" \
 grep -q 'plect event publish' "$errlog" || { printf 'errors.log missing the failed plect invocation: %s\n' "$(cat "$errlog")" >&2; exit 1; }
 
 # reset also drops the message-buffer directory (including a message's own
-# index-counter file), the last-emitted marker, and the reply-seq counter,
+# index-counter file), the turn-scoped handoff state, and the reply-seq counter,
 # so a crashed turn cannot leak partial text or a stale suppression into
 # the next run, and a resumed session doesn't inherit a stale reply
 # fallback count either.
 run_report message_display '{"hook_event_name":"MessageDisplay","message_id":"msg-5","index":0,"final":false,"delta":"orphaned"}' >/dev/null
 [ -e "$tmp/state/plect/claude-activity/owner_repo-1.messages/msg-5" ] || { echo "expected an orphaned buffer file before reset" >&2; exit 1; }
 [ -e "$tmp/state/plect/claude-activity/owner_repo-1.messages/msg-5.index" ] || { echo "expected an orphaned index file before reset" >&2; exit 1; }
-run_report message_display '{"hook_event_name":"MessageDisplay","message_id":"msg-6","index":0,"final":true,"delta":"done"}' >/dev/null
-[ -s "$tmp/state/plect/claude-activity/owner_repo-1.last-message-id" ] || { echo "expected a last-message-id marker before reset" >&2; exit 1; }
+run_report message_display '{"hook_event_name":"MessageDisplay","message_id":"msg-6","turn_id":"turn-reset","index":0,"final":true,"delta":"done"}' >/dev/null
+[ -s "$tmp/state/plect/claude-activity/owner_repo-1.turns/turn-7475726e2d7265736574/state" ] || { echo "expected turn-scoped handoff state before reset" >&2; exit 1; }
 run_report reply '{"hook_event_name":"Stop","last_assistant_message":"no prompt_id here either"}' >/dev/null
 [ -s "$tmp/state/plect/claude-activity/owner_repo-1.reply-seq" ] || { echo "expected a reply-seq counter file before reset" >&2; exit 1; }
 XDG_STATE_HOME="$tmp/state" "$subject" reset "owner/repo-1"
 [ ! -e "$tmp/state/plect/claude-activity/owner_repo-1.messages" ] || { echo "reset must remove the session's message buffer directory" >&2; exit 1; }
-[ ! -e "$tmp/state/plect/claude-activity/owner_repo-1.last-message-id" ] || { echo "reset must remove the session's last-message-id marker" >&2; exit 1; }
+[ ! -e "$tmp/state/plect/claude-activity/owner_repo-1.turns" ] || { echo "reset must remove the session's turn-scoped handoff state" >&2; exit 1; }
 [ ! -e "$tmp/state/plect/claude-activity/owner_repo-1.reply-seq" ] || { echo "reset must remove the session's reply-seq counter" >&2; exit 1; }
 
 echo "claude-agent-activity selftest passed"
