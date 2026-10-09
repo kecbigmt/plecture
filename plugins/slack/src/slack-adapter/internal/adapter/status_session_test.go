@@ -84,7 +84,7 @@ func TestSessionStatusLatePreviousTurnActivityDoesNotReplaceCurrentTurn(t *testi
 	}
 }
 
-func TestSessionStatusLateStreamCannotRestartCompletedTurn(t *testing.T) {
+func TestSessionStatusLateContentIsDeliveredWithoutRestartingCompletedTurn(t *testing.T) {
 	setter := &sessionStatusSetter{}
 	mgr := NewStatusManager(setter, time.Hour, testLogger())
 	defer mgr.Stop()
@@ -98,8 +98,33 @@ func TestSessionStatusLateStreamCannotRestartCompletedTurn(t *testing.T) {
 	if err := mgr.Deliver("C1", "T1", "old", func() error { delivered = true; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if delivered {
-		t.Fatal("late old-turn stream was delivered")
+	if !delivered {
+		t.Fatal("late old-turn content was discarded")
+	}
+	if got := setter.snapshot(); len(got) != 2 || got[1].status != "active" {
+		t.Fatalf("status calls = %+v, want completed turn to stay active", got)
+	}
+}
+
+func TestSessionStatusLateContentPreservesNewTurnProcessing(t *testing.T) {
+	setter := &sessionStatusSetter{}
+	mgr := NewStatusManager(setter, time.Hour, testLogger())
+	defer mgr.Stop()
+	if err := mgr.Begin("C1", "T1", "old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.Begin("C1", "T1", "new"); err != nil {
+		t.Fatal(err)
+	}
+	delivered := false
+	if err := mgr.Deliver("C1", "T1", "old", func() error { delivered = true; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if !delivered {
+		t.Fatal("late old-turn content was discarded")
+	}
+	if got := setter.snapshot(); len(got) != 2 || got[1].status != "processing" {
+		t.Fatalf("status calls = %+v, want new turn to stay processing", got)
 	}
 }
 
@@ -231,6 +256,8 @@ func TestSessionStatusWaitsForOutboundDelivery(t *testing.T) {
 type sequenceSlack struct {
 	events   []string
 	startErr error
+	postErr  error
+	stopErr  error
 }
 
 func (s *sequenceSlack) SetThreadStatus(_, _, status string) error {
@@ -239,7 +266,7 @@ func (s *sequenceSlack) SetThreadStatus(_, _, status string) error {
 }
 func (s *sequenceSlack) PostToThread(_, _, _ string) (string, error) {
 	s.events = append(s.events, "post")
-	return "reply-ts", nil
+	return "reply-ts", s.postErr
 }
 func (s *sequenceSlack) StartStream(_, _, _, _, _ string) (string, error) {
 	s.events = append(s.events, "start")
@@ -254,7 +281,7 @@ func (s *sequenceSlack) AppendStream(_, _, _ string) error {
 }
 func (s *sequenceSlack) StopStream(_, _, _, status string) error {
 	s.events = append(s.events, "stop:"+status)
-	return nil
+	return s.stopErr
 }
 
 func TestSessionStatusCompletesAfterNativeOrFallbackAnswer(t *testing.T) {
@@ -290,6 +317,112 @@ func TestSessionStatusCompletesAfterNativeOrFallbackAnswer(t *testing.T) {
 				if api.events[i] != tc.want[i] {
 					t.Errorf("event %d = %q, want %q", i, api.events[i], tc.want[i])
 				}
+			}
+		})
+	}
+}
+
+func TestSessionStatusDeliversLateAnswerWithoutChangingCurrentStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		started    bool
+		newTurn    bool
+		wantEvents []string
+	}{
+		{"completed turn, no stream", false, false, []string{"status:processing", "status:active", "post"}},
+		{"completed turn, existing stream", true, false, []string{"status:processing", "start", "status:active", "stop:active"}},
+		{"new turn, no old stream", false, true, []string{"status:processing", "status:processing", "post"}},
+		{"new turn, existing old stream", true, true, []string{"status:processing", "start", "status:processing", "stop:processing"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := &sequenceSlack{}
+			status := NewStatusManager(api, time.Hour, testLogger())
+			defer status.Stop()
+			stream := NewStreamManager(api, api, testLogger())
+			stream.RecordRecipient("C1", "T1", "U1", "TEAM")
+			if err := status.Begin("C1", "T1", "old"); err != nil {
+				t.Fatal(err)
+			}
+			index := int64(0)
+			if tc.started {
+				if err := status.Deliver("C1", "T1", "old", func() error {
+					return stream.Deliver("C1", "T1", "msg", "old", 0, "first ", false)
+				}); err != nil {
+					t.Fatal(err)
+				}
+				index = 1
+			}
+			if tc.newTurn {
+				if err := status.Begin("C1", "T1", "new"); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := status.End("C1", "T1", "old"); err != nil {
+				t.Fatal(err)
+			}
+			if err := status.DeliveryContext("C1", "T1", "old", func(late bool, currentStatus string) error {
+				if !late {
+					t.Fatal("old-turn answer should be late")
+				}
+				return stream.DeliverLate("C1", "T1", "msg", "old", index, "answer", true, currentStatus)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if len(api.events) != len(tc.wantEvents) {
+				t.Fatalf("events = %v, want %v", api.events, tc.wantEvents)
+			}
+			for i, want := range tc.wantEvents {
+				if api.events[i] != want {
+					t.Errorf("event %d = %q, want %q", i, api.events[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestSessionStatusRetriesFailedLateAnswerWithoutChangingCurrentStatus(t *testing.T) {
+	for _, started := range []bool{false, true} {
+		t.Run(map[bool]string{false: "fallback", true: "native"}[started], func(t *testing.T) {
+			api := &sequenceSlack{}
+			status := NewStatusManager(api, time.Hour, testLogger())
+			defer status.Stop()
+			stream := NewStreamManager(api, api, testLogger())
+			stream.RecordRecipient("C1", "T1", "U1", "TEAM")
+			if err := status.Begin("C1", "T1", "old"); err != nil {
+				t.Fatal(err)
+			}
+			index := int64(0)
+			if started {
+				if err := stream.Deliver("C1", "T1", "msg", "old", 0, "first ", false); err != nil {
+					t.Fatal(err)
+				}
+				index = 1
+				api.stopErr = errors.New("offline")
+			} else {
+				api.postErr = errors.New("offline")
+			}
+			if err := status.End("C1", "T1", "old"); err != nil {
+				t.Fatal(err)
+			}
+			deliver := func() error {
+				return status.DeliveryContext("C1", "T1", "old", func(late bool, currentStatus string) error {
+					if !late {
+						t.Fatal("expected late delivery")
+					}
+					return stream.DeliverLate("C1", "T1", "msg", "old", index, "answer", true, currentStatus)
+				})
+			}
+			if err := deliver(); err == nil {
+				t.Fatal("failed late delivery returned success")
+			}
+			api.postErr, api.stopErr = nil, nil
+			if err := deliver(); err != nil {
+				t.Fatal(err)
+			}
+			if got := api.events[len(api.events)-1]; got != map[bool]string{false: "post", true: "stop:active"}[started] {
+				t.Fatalf("last event = %q", got)
+			}
+			if got := api.events[len(api.events)-3]; got != "status:active" {
+				t.Fatalf("status was changed by late retry: %v", api.events)
 			}
 		})
 	}

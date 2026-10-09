@@ -250,6 +250,14 @@ func (m *StreamManager) claimRecipientLocked(id streamIdentity, turnID string) s
 // pending instead of skipped, so a caller's retry of the same index
 // re-attempts it rather than the stream silently completing short.
 func (m *StreamManager) Deliver(channelID, threadTS, streamKey, turnID string, index int64, text string, final bool) error {
+	return m.deliver(channelID, threadTS, streamKey, turnID, index, text, final, false, "processing")
+}
+
+func (m *StreamManager) DeliverLate(channelID, threadTS, streamKey, turnID string, index int64, text string, final bool, currentStatus string) error {
+	return m.deliver(channelID, threadTS, streamKey, turnID, index, text, final, true, currentStatus)
+}
+
+func (m *StreamManager) deliver(channelID, threadTS, streamKey, turnID string, index int64, text string, final, late bool, currentStatus string) error {
 	id := streamIdentity{channelID: channelID, threadTS: threadTS, streamKey: streamKey}
 	st, alreadyFinalized := m.stateOrFinalized(id, turnID)
 	if alreadyFinalized {
@@ -260,6 +268,9 @@ func (m *StreamManager) Deliver(channelID, threadTS, streamKey, turnID string, i
 	}
 
 	st.mu.Lock()
+	if late && !st.started {
+		st.failed = true
+	}
 	// A lower index is a duplicate of an already-applied chunk, not a retry.
 	if index >= st.nextIndex {
 		st.pending[index] = streamChunk{text: text, final: final}
@@ -273,7 +284,7 @@ func (m *StreamManager) Deliver(channelID, threadTS, streamKey, turnID string, i
 			return nil
 		}
 		st.attempt++
-		if err := m.apply(id, st, c); err != nil {
+		if err := m.apply(id, st, c, currentStatus); err != nil {
 			m.logger.Warn("stream delivery failed, will retry on redelivery",
 				"component", "slack-adapter", "event", "stream_deliver_error",
 				"channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID,
@@ -488,7 +499,7 @@ func nextChunk(st *streamState) (int64, streamChunk, bool) {
 	return lowest, st.pending[lowest], true
 }
 
-func (m *StreamManager) apply(id streamIdentity, st *streamState, c streamChunk) error {
+func (m *StreamManager) apply(id streamIdentity, st *streamState, c streamChunk, currentStatus string) error {
 	channelID, threadTS := id.channelID, id.threadTS
 	if st.failed {
 		return m.applyFallback(channelID, threadTS, st, c)
@@ -519,11 +530,11 @@ func (m *StreamManager) apply(id streamIdentity, st *streamState, c streamChunk)
 			return nil
 		}
 		// The seed text above already carries this chunk (see StopStream).
-		return m.streamer.StopStream(channelID, ts, "", "processing")
+		return m.streamer.StopStream(channelID, ts, "", currentStatus)
 	}
 
 	if c.final {
-		return m.streamer.StopStream(channelID, st.ts, c.text, "processing")
+		return m.streamer.StopStream(channelID, st.ts, c.text, currentStatus)
 	}
 	return m.streamer.AppendStream(channelID, st.ts, c.text)
 }

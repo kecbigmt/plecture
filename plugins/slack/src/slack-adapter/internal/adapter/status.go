@@ -127,17 +127,28 @@ func (m *StatusManager) End(channelID, threadTS, turnID string) error {
 	return nil
 }
 
-// Deliver holds the same per-thread lock as status changes through a Slack
-// delivery, so an idle transition cannot overtake its final post or stream.
 func (m *StatusManager) Deliver(channelID, threadTS, turnID string, deliver func() error) error {
+	return m.DeliveryContext(channelID, threadTS, turnID, func(_ bool, _ string) error {
+		return deliver()
+	})
+}
+
+// DeliveryContext holds the status lock through delivery and gives late
+// content the current session status, so its completion cannot undo a newer
+// turn's processing state or leave an already completed turn processing.
+func (m *StatusManager) DeliveryContext(channelID, threadTS, turnID string, deliver func(late bool, currentStatus string) error) error {
 	st := m.thread(channelID, threadTS)
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if turnID != "" && (turnID == st.priorTurnID || turnID == st.turnID && !st.processing) {
-		m.logger.Info("stale stream delivery ignored", "channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID, "generation", st.generation)
-		return nil
+	late := turnID != "" && (turnID == st.priorTurnID || turnID == st.turnID && !st.processing)
+	currentStatus := "processing"
+	if st.known && !st.processing {
+		currentStatus = "active"
 	}
-	return deliver()
+	if late {
+		m.logger.Info("late content delivered", "channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID, "generation", st.generation, "current_status", currentStatus)
+	}
+	return deliver(late, currentStatus)
 }
 
 func (m *StatusManager) startOverdueTimer(st *statusThread, channelID, threadTS string) {

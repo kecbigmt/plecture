@@ -216,7 +216,10 @@ func (a *Adapter) HandleStream(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := a.statusManager.Deliver(channelID, body.ThreadTS, body.TurnID, func() error {
+	if err := a.statusManager.DeliveryContext(channelID, body.ThreadTS, body.TurnID, func(late bool, currentStatus string) error {
+		if late {
+			return a.streamManager.DeliverLate(channelID, body.ThreadTS, body.StreamKey, body.TurnID, index, body.Text, final, currentStatus)
+		}
 		return a.streamManager.Deliver(channelID, body.ThreadTS, body.StreamKey, body.TurnID, index, body.Text, final)
 	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
