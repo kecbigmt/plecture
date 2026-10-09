@@ -37,13 +37,57 @@ messages_dir() {
   printf '%s/%s.messages' "$dir" "$(printf '%s' "$1" | tr '/' '_')"
 }
 
-# last_emitted_path names the marker MessageDisplay leaves behind when its
-# final delta already published this turn's plect.message: Stop's own hook
-# invocation reads and consumes it to skip publishing a second one for the
-# same text, since Stop's payload carries no message_id to compare against.
-last_emitted_path() {
+# turn_state_dir holds the handoff between independently scheduled Stop and
+# MessageDisplay hooks. Its path is per turn, so one completed turn cannot
+# suppress another one.
+turn_state_dir() {
   local dir="${XDG_STATE_HOME:-$HOME/.local/state}/plect/claude-activity"
-  printf '%s/%s.last-message-id' "$dir" "$(printf '%s' "$1" | tr '/' '_')"
+  local turn_key
+  turn_key="$(printf '%s' "$2" | od -An -tx1 | tr -d ' \n')"
+  printf '%s/%s.turns/turn-%s' "$dir" "$(printf '%s' "$1" | tr '/' '_')" "$turn_key"
+}
+
+turn_state() {
+  cat "$(turn_state_dir "$1" "$2")/state" 2>/dev/null
+}
+
+write_turn_state() {
+  local dir tmp
+  dir="$(turn_state_dir "$1" "$2")"
+  mkdir -p "$dir" 2>/dev/null || return 1
+  tmp="$dir/state.$BASHPID"
+  printf '%s' "$3" > "$tmp" 2>/dev/null && mv -f "$tmp" "$dir/state" 2>/dev/null
+}
+
+acquire_turn_lock() {
+  local lock holder attempt=0
+  lock="$(turn_state_dir "$1" "$2").lock"
+  mkdir -p "$(dirname "$lock")" 2>/dev/null || return 1
+  while ! mkdir "$lock" 2>/dev/null; do
+    holder="$(cat "$lock/owner" 2>/dev/null)"
+    case "$holder" in
+      ''|*[!0-9]*) ;;
+      *)
+        if ! kill -0 "$holder" 2>/dev/null; then
+          rm -rf "$lock" 2>/dev/null
+          continue
+        fi
+        ;;
+    esac
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 100 ] || return 1
+    sleep 0.01
+  done
+  printf '%s' "$BASHPID" > "$lock/owner" 2>/dev/null
+  REPLY="$lock"
+}
+
+release_turn_lock() {
+  rm -rf "$1" 2>/dev/null
+}
+
+turn_reply_matches() {
+  printf '%s' "$3" | cmp -s - "$(turn_state_dir "$1" "$2")/reply"
 }
 
 # reply_seq_path backs the fallback branch of reply's message_id: a counter
@@ -144,30 +188,15 @@ case "${1:-}" in
   reset)
     session="${2:-}"
     if [ -n "$session" ]; then
-      rm -f "$(record_path "$session")" "$(last_emitted_path "$session")" "$(reply_seq_path "$session")"
+      rm -f "$(record_path "$session")" "$(reply_seq_path "$session")"
       rm -rf "$(messages_dir "$session")"
+      rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/plect/claude-activity/$(printf '%s' "$session" | tr '/' '_').turns"
     fi
     exit 0
     ;;
   reply)
     [ -n "${PLECT_SESSION_NAME:-}" ] || exit 0
     payload="$(cat)"
-
-    # plect.message is emitted exactly once per message_id: when
-    # MessageDisplay is enabled, its final delta already published this
-    # turn's plect.message (full text known at that point), and consuming
-    # the marker here is this hook's only way to tell — Stop's own payload
-    # carries no message_id. Checked before last_assistant_message even
-    # below: a turn whose last content block carries no text (an empty
-    # last_assistant_message, e.g. it ends on a tool call) must still
-    # clear a marker an earlier message in the same turn left behind, or
-    # it survives to the *next* turn's Stop and wrongly suppresses a
-    # message MessageDisplay never actually covered.
-    last_emitted="$(last_emitted_path "$PLECT_SESSION_NAME")"
-    if [ -s "$last_emitted" ]; then
-      rm -f "$last_emitted" 2>/dev/null
-      exit 0
-    fi
 
     # last_assistant_message is documented on Stop/SubagentStop specifically
     # so a hook never needs to parse the transcript file, which is written
@@ -179,9 +208,54 @@ case "${1:-}" in
     # trailing one) would corrupt.
     jq_field_exact '.last_assistant_message // empty'
     message="$REPLY"
+    turn_id="$(printf '%s' "$payload" | jq -r '.prompt_id // empty' 2>/dev/null)" || turn_id=""
+
+    if [ -n "$turn_id" ]; then
+      turn_dir="$(turn_state_dir "$PLECT_SESSION_NAME" "$turn_id")"
+      if acquire_turn_lock "$PLECT_SESSION_NAME" "$turn_id"; then
+        turn_lock="$REPLY"
+        state="$(turn_state "$PLECT_SESSION_NAME" "$turn_id")"
+        if [ "$state" = native ]; then
+          rm -rf "$turn_dir" 2>/dev/null
+          release_turn_lock "$turn_lock"
+          exit 0
+        fi
+        if [ "$state" = reply ]; then
+          release_turn_lock "$turn_lock"
+          exit 0
+        fi
+        if [ "${PLECT_CLAUDE_MESSAGE_DEDUP:-}" = true ] && [ -n "$message" ]; then
+          write_turn_state "$PLECT_SESSION_NAME" "$turn_id" pending
+        fi
+        release_turn_lock "$turn_lock"
+      fi
+    fi
+
     [ -n "$message" ] || exit 0
 
-    turn_id="$(printf '%s' "$payload" | jq -r '.prompt_id // empty' 2>/dev/null)" || turn_id=""
+    if [ -n "$turn_id" ] && [ "${PLECT_CLAUDE_MESSAGE_DEDUP:-}" = true ]; then
+      for ((attempt = 0; attempt < 25; attempt++)); do
+        [ "$(turn_state "$PLECT_SESSION_NAME" "$turn_id")" = native ] && break
+        sleep 0.01
+      done
+      if acquire_turn_lock "$PLECT_SESSION_NAME" "$turn_id"; then
+        turn_lock="$REPLY"
+        state="$(turn_state "$PLECT_SESSION_NAME" "$turn_id")"
+        if [ "$state" = native ]; then
+          rm -rf "$turn_dir" 2>/dev/null
+          release_turn_lock "$turn_lock"
+          exit 0
+        fi
+        if [ "$state" = reply ]; then
+          release_turn_lock "$turn_lock"
+          exit 0
+        fi
+        mkdir -p "$turn_dir" 2>/dev/null
+        printf '%s' "$message" > "$turn_dir/reply" 2>/dev/null
+        write_turn_state "$PLECT_SESSION_NAME" "$turn_id" reply
+        release_turn_lock "$turn_lock"
+      fi
+    fi
 
     # message_id is a deterministic synthetic id, per the core contract, not
     # a random one: turn_id already identifies this turn uniquely within the
@@ -263,15 +337,23 @@ case "${1:-}" in
       full="$REPLY"
       rm -f "$buf_file" "$idx_file" 2>/dev/null
       if [ -n "$full" ]; then
-        # The marker must land on disk before the plect.message publish call
-        # below returns: a concurrent Stop invocation can race in during that
-        # call, and it must find "already covered" rather than "no marker
-        # yet" for a message this process has already committed to
-        # publishing.
-        printf '%s' "$message_id" > "$(last_emitted_path "$PLECT_SESSION_NAME")" 2>/dev/null
-        meta=(--meta "message_id=$message_id" --meta "message_id_origin=native" --meta "role=assistant" --meta "source=claude")
-        [ -n "$turn_id" ] && meta+=(--meta "turn_id=$turn_id")
-        publish_report plect.message "$full" "${meta[@]}"
+        emit=true
+        if [ -n "$turn_id" ] && acquire_turn_lock "$PLECT_SESSION_NAME" "$turn_id"; then
+          turn_lock="$REPLY"
+          state="$(turn_state "$PLECT_SESSION_NAME" "$turn_id")"
+          if [ "$state" = reply ] && turn_reply_matches "$PLECT_SESSION_NAME" "$turn_id" "$full"; then
+            emit=false
+            rm -rf "$(turn_state_dir "$PLECT_SESSION_NAME" "$turn_id")" 2>/dev/null
+          else
+            write_turn_state "$PLECT_SESSION_NAME" "$turn_id" native
+          fi
+          release_turn_lock "$turn_lock"
+        fi
+        if [ "$emit" = true ]; then
+          meta=(--meta "message_id=$message_id" --meta "message_id_origin=native" --meta "role=assistant" --meta "source=claude")
+          [ -n "$turn_id" ] && meta+=(--meta "turn_id=$turn_id")
+          publish_report plect.message "$full" "${meta[@]}"
+        fi
       fi
     fi
     exit 0
