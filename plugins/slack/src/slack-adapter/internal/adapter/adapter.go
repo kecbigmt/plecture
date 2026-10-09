@@ -104,7 +104,7 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 		}
 		a.teamID = resp.TeamID
 	}
-	a.streamManager = NewStreamManagerWithStatePath(a, a.poster, a.teamID, cfg.StreamRecipientUserID(), logger, StreamStatePath())
+	a.streamManager = NewStreamManagerWithStatePath(a, a.poster, logger, StreamStatePath())
 
 	// Pre-connect so restored subscribers can push replies immediately.
 	for _, sub := range a.broker.List() {
@@ -239,6 +239,7 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 	if sub.ChannelID == "" {
 		sub.ChannelID = ev.Channel
 	}
+	a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
 
 	if err := a.deliverToChannelServer(sub, msg); err != nil {
 		if _, perr := a.poster.PostToThread(ev.Channel, threadTS, ":warning: Failed to deliver the message. The session may have ended."); perr != nil {
@@ -251,6 +252,21 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 		return
 	}
 	a.captureInbound(sub, msg)
+}
+
+// recordStreamRecipient makes the sender of a gated-in inbound message the
+// addressee of the thread's next stream. A sender from another workspace of
+// a shared channel is addressed in their own workspace; the Slack event
+// names that workspace only for such senders, so any other falls back to
+// the app's own.
+func (a *Adapter) recordStreamRecipient(channelID, threadTS, userID, userTeam string) {
+	if a.streamManager == nil {
+		return
+	}
+	if userTeam == "" {
+		userTeam = a.teamID
+	}
+	a.streamManager.RecordRecipient(channelID, threadTS, userID, userTeam)
 }
 
 // deliverToChannelServer sends msg over the subscriber's Unix socket,

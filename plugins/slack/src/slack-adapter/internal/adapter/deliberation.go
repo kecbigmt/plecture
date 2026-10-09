@@ -52,6 +52,10 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 		return
 	}
 
+	// Recorded before the bound/unbound split: an unbound mention starts a
+	// session whose first reply answers this mention's author.
+	a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
+
 	sub, ok := a.broker.Find(threadTS)
 	if !ok {
 		a.logger.Info("app mention skipped: unbound thread", "thread_ts", threadTS, "channel_id", ev.Channel)

@@ -67,7 +67,7 @@ func (f *recordingStreamer) StopStream(channelID, ts, text string) error {
 func TestStreamManager_InOrderChunks_StartsAppendsAndStops(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
@@ -109,7 +109,7 @@ func TestStreamManager_InOrderChunks_StartsAppendsAndStops(t *testing.T) {
 func TestStreamManager_SingleChunkFinal_SeedsStartThenStopsWithNoFurtherText(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
@@ -129,7 +129,7 @@ func TestStreamManager_SingleChunkFinal_SeedsStartThenStopsWithNoFurtherText(t *
 func TestStreamManager_OutOfOrderChunks_BufferUntilGapCloses(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, "world", false); err != nil {
 		t.Fatalf("chunk 1: %v", err)
@@ -153,7 +153,7 @@ func TestStreamManager_OutOfOrderChunks_BufferUntilGapCloses(t *testing.T) {
 func TestStreamManager_BufferBoundExceeded_FlushesDespiteGap(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	for i := int64(1); i <= maxPendingStreamChunks; i++ {
 		if err := mgr.Deliver("C1", "111.0", "msg-1", i, "x", false); err != nil {
@@ -172,7 +172,7 @@ func TestStreamManager_BufferBoundExceeded_FlushesDespiteGap(t *testing.T) {
 func TestStreamManager_StartFailure_FallsBackToOnePostOnFinal(t *testing.T) {
 	streamer := &recordingStreamer{startErr: errors.New("streaming not enabled for this app")}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
@@ -203,7 +203,7 @@ func TestStreamManager_StartFailure_FallsBackToOnePostOnFinal(t *testing.T) {
 func TestStreamManager_AppendFailure_PreservesChunkForRetry(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
@@ -236,7 +236,7 @@ func TestStreamManager_AppendFailure_PreservesChunkForRetry(t *testing.T) {
 func TestStreamManager_FallbackPostFailure_RetriesWithoutDuplicatingText(t *testing.T) {
 	streamer := &recordingStreamer{startErr: errors.New("streaming not enabled for this app")}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
@@ -271,7 +271,7 @@ func TestStreamManager_FallbackPostFailure_RetriesWithoutDuplicatingText(t *test
 func TestStreamManager_StopFailure_PreservesFinalChunkForRetryWithoutRestarting(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
@@ -306,7 +306,7 @@ func TestStreamManager_StopFailure_PreservesFinalChunkForRetryWithoutRestarting(
 func TestStreamManager_ForgetsLiveStateAfterFinal(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
@@ -321,7 +321,7 @@ func TestStreamManager_ForgetsLiveStateAfterFinal(t *testing.T) {
 func TestStreamManager_DuplicateAfterFinal_IsDroppedNotReposted(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
@@ -342,7 +342,7 @@ func TestStreamManager_DuplicateAfterFinal_IsDroppedNotReposted(t *testing.T) {
 func TestStreamManager_DuplicateAfterFallbackFinal_IsDroppedNotReposted(t *testing.T) {
 	streamer := &recordingStreamer{startErr: errors.New("streaming not enabled for this app")}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
@@ -358,7 +358,7 @@ func TestStreamManager_DuplicateAfterFallbackFinal_IsDroppedNotReposted(t *testi
 func TestStreamManager_IdenticalStreamKeysInDifferentThreadsRemainIndependent(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "first", false); err != nil {
 		t.Fatalf("first thread's initial chunk: %v", err)
@@ -397,7 +397,7 @@ func TestStreamManager_RestartCompletesAndSuppressesTrailingMessage(t *testing.T
 	path := filepath.Join(t.TempDir(), "streams.json")
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	beforeRestart := NewStreamManagerWithStatePath(streamer, poster, "T1", "U1", testLogger(), path)
+	beforeRestart := newRecipientStreamManagerAt(streamer, poster, path)
 
 	if err := beforeRestart.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
 		t.Fatalf("initial chunk: %v", err)
@@ -416,7 +416,7 @@ func TestStreamManager_RestartCompletesAndSuppressesTrailingMessage(t *testing.T
 		t.Fatalf("snapshot version = %d, want 1", header.Version)
 	}
 
-	afterRestart := NewStreamManagerWithStatePath(streamer, poster, "T1", "U1", testLogger(), path)
+	afterRestart := newRecipientStreamManagerAt(streamer, poster, path)
 	if err := afterRestart.Deliver("C1", "111.0", "msg-1", 1, ", world", true); err != nil {
 		t.Fatalf("final chunk after restart: %v", err)
 	}
@@ -465,7 +465,7 @@ func TestStreamManager_InvalidSnapshotStartsEmptyAndLogsOnce(t *testing.T) {
 			tc.setup(t, path)
 			var logs bytes.Buffer
 			logger := slog.New(slog.NewTextHandler(&logs, nil))
-			mgr := NewStreamManagerWithStatePath(&recordingStreamer{}, &recordingPoster{}, "T1", "U1", logger, path)
+			mgr := NewStreamManagerWithStatePath(&recordingStreamer{}, &recordingPoster{}, logger, path)
 
 			if got := len(mgr.state); got != 0 {
 				t.Errorf("live streams = %d, want 0", got)
@@ -484,7 +484,7 @@ func TestStreamManager_InvalidSnapshotStartsEmptyAndLogsOnce(t *testing.T) {
 func TestStreamManager_ConcurrentDeliverToSameKey_PostsExactlyOnce(t *testing.T) {
 	streamer := &recordingStreamer{}
 	poster := &recordingPoster{}
-	mgr := NewStreamManager(streamer, poster, "T1", "U1", testLogger())
+	mgr := newRecipientStreamManager(streamer, poster)
 
 	const goroutines = 50
 	var wg sync.WaitGroup
@@ -504,5 +504,233 @@ func TestStreamManager_ConcurrentDeliverToSameKey_PostsExactlyOnce(t *testing.T)
 	}
 	if got := len(streamer.stopCalls); got != 1 {
 		t.Fatalf("StopStream calls = %d, want 1", got)
+	}
+}
+
+// newRecipientStreamManager returns a manager that already knows who each
+// of the test threads' replies go to, so a test that is not about recipient
+// selection still starts a native stream.
+func newRecipientStreamManager(streamer Streamer, poster ThreadPoster) *StreamManager {
+	return withTestRecipients(NewStreamManager(streamer, poster, testLogger()))
+}
+
+func newRecipientStreamManagerAt(streamer Streamer, poster ThreadPoster, path string) *StreamManager {
+	return withTestRecipients(NewStreamManagerWithStatePath(streamer, poster, testLogger(), path))
+}
+
+func withTestRecipients(m *StreamManager) *StreamManager {
+	m.RecordRecipient("C1", "111.0", "U1", "T1")
+	m.RecordRecipient("C1", "222.0", "U1", "T1")
+	return m
+}
+
+func newLoggedStreamManager(streamer Streamer, poster ThreadPoster) (*StreamManager, *bytes.Buffer) {
+	var logs bytes.Buffer
+	return NewStreamManager(streamer, poster, slog.New(slog.NewTextHandler(&logs, nil))), &logs
+}
+
+func TestStreamManager_RecipientIsKeyedByThread(t *testing.T) {
+	streamer := &recordingStreamer{}
+	poster := &recordingPoster{}
+	mgr := NewStreamManager(streamer, poster, testLogger())
+	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
+	mgr.RecordRecipient("C1", "222.0", "U-bob", "T-b")
+
+	if err := mgr.Deliver("C1", "222.0", "msg-1", 0, "to bob", false); err != nil {
+		t.Fatalf("second thread: %v", err)
+	}
+	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "to alice", false); err != nil {
+		t.Fatalf("first thread: %v", err)
+	}
+
+	if len(streamer.startCalls) != 2 {
+		t.Fatalf("StartStream calls = %d, want 2", len(streamer.startCalls))
+	}
+	if got := streamer.startCalls[0]; got.recipientUserID != "U-bob" || got.teamID != "T-b" {
+		t.Errorf("thread 222.0 start = %+v, want U-bob/T-b", got)
+	}
+	if got := streamer.startCalls[1]; got.recipientUserID != "U-alice" || got.teamID != "T-a" {
+		t.Errorf("thread 111.0 start = %+v, want U-alice/T-a", got)
+	}
+}
+
+func TestStreamManager_RecipientIsNotSharedAcrossChannels(t *testing.T) {
+	streamer := &recordingStreamer{}
+	poster := &recordingPoster{}
+	mgr := NewStreamManager(streamer, poster, testLogger())
+	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
+
+	if err := mgr.Deliver("C2", "111.0", "msg-1", 0, "other channel", true); err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+
+	if len(streamer.startCalls) != 0 {
+		t.Errorf("StartStream calls = %+v, want none: C2's thread has no recipient of its own", streamer.startCalls)
+	}
+	if len(poster.calls) != 1 || poster.calls[0].Text != "other channel" {
+		t.Errorf("PostToThread calls = %+v, want the one fallback post", poster.calls)
+	}
+}
+
+func TestStreamManager_LaterSpeakerIsRecipientOfNextStreamOnly(t *testing.T) {
+	streamer := &recordingStreamer{}
+	poster := &recordingPoster{}
+	mgr := NewStreamManager(streamer, poster, testLogger())
+	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
+
+	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "first", false); err != nil {
+		t.Fatalf("first turn start: %v", err)
+	}
+	mgr.RecordRecipient("C1", "111.0", "U-bob", "T-a")
+	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, " turn", true); err != nil {
+		t.Fatalf("first turn final: %v", err)
+	}
+	if err := mgr.Deliver("C1", "111.0", "msg-2", 0, "second", true); err != nil {
+		t.Fatalf("second turn: %v", err)
+	}
+
+	if len(streamer.startCalls) != 2 {
+		t.Fatalf("StartStream calls = %d, want 2 (a new speaker must not restart a running stream)", len(streamer.startCalls))
+	}
+	if got := streamer.startCalls[0].recipientUserID; got != "U-alice" {
+		t.Errorf("first stream recipient = %q, want U-alice", got)
+	}
+	if got := streamer.startCalls[1].recipientUserID; got != "U-bob" {
+		t.Errorf("second stream recipient = %q, want U-bob (the latest speaker)", got)
+	}
+}
+
+func TestStreamManager_RecipientSurvivesRestartBeforeStreamStarts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "streams.json")
+	streamer := &recordingStreamer{}
+	poster := &recordingPoster{}
+	beforeRestart := NewStreamManagerWithStatePath(streamer, poster, testLogger(), path)
+	beforeRestart.RecordRecipient("C1", "111.0", "U-alice", "T-a")
+
+	if err := beforeRestart.Deliver("C1", "111.0", "msg-1", 1, "world", false); err != nil {
+		t.Fatalf("buffered chunk: %v", err)
+	}
+	afterRestart := NewStreamManagerWithStatePath(streamer, poster, testLogger(), path)
+	if err := afterRestart.Deliver("C1", "111.0", "msg-1", 0, "Hello ", false); err != nil {
+		t.Fatalf("gap-closing chunk: %v", err)
+	}
+
+	if len(streamer.startCalls) != 1 {
+		t.Fatalf("StartStream calls = %d, want 1", len(streamer.startCalls))
+	}
+	if got := streamer.startCalls[0]; got.recipientUserID != "U-alice" || got.teamID != "T-a" {
+		t.Errorf("start after restart = %+v, want the recipient captured before the restart", got)
+	}
+}
+
+func TestStreamManager_UnresolvedRecipient_FallsBackToOnePostAndLogsReason(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		userID     string
+		teamID     string
+		wantReason string
+	}{
+		{name: "no recipient recorded", wantReason: "recipient_unknown"},
+		{name: "recipient without team", userID: "U-alice", wantReason: "recipient_team_unknown"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			streamer := &recordingStreamer{}
+			poster := &recordingPoster{}
+			mgr, logs := newLoggedStreamManager(streamer, poster)
+			if tc.userID != "" {
+				mgr.RecordRecipient("C1", "111.0", tc.userID, tc.teamID)
+			}
+
+			for i, text := range []string{"SECRET-BODY-1 ", "SECRET-BODY-2"} {
+				if err := mgr.Deliver("C1", "111.0", "msg-1", int64(i), text, i == 1); err != nil {
+					t.Fatalf("chunk %d: %v", i, err)
+				}
+			}
+
+			if len(streamer.startCalls) != 0 {
+				t.Errorf("StartStream calls = %+v, want none without a complete recipient", streamer.startCalls)
+			}
+			if len(poster.calls) != 1 {
+				t.Fatalf("PostToThread calls = %d, want exactly 1", len(poster.calls))
+			}
+			out := logs.String()
+			if got := strings.Count(out, "event=stream_start_skipped"); got != 1 {
+				t.Fatalf("stream_start_skipped logs = %d, want 1; logs=%s", got, out)
+			}
+			for _, want := range []string{"reason=" + tc.wantReason, "thread_ts=111.0", "stream_key=msg-1"} {
+				if !strings.Contains(out, want) {
+					t.Errorf("log missing %q; logs=%s", want, out)
+				}
+			}
+			if strings.Contains(out, "SECRET-BODY") {
+				t.Errorf("log must not contain message text; logs=%s", out)
+			}
+		})
+	}
+}
+
+func TestStreamManager_StartFailure_LogsReasonOnceWithoutBodyAndPostsOnce(t *testing.T) {
+	streamer := &recordingStreamer{startErr: errors.New("channel_not_found")}
+	poster := &recordingPoster{}
+	mgr, logs := newLoggedStreamManager(streamer, poster)
+	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
+
+	for i, text := range []string{"SECRET-BODY-1 ", "SECRET-BODY-2 ", "SECRET-BODY-3"} {
+		if err := mgr.Deliver("C1", "111.0", "msg-1", int64(i), text, i == 2); err != nil {
+			t.Fatalf("chunk %d: %v", i, err)
+		}
+	}
+
+	if len(streamer.startCalls) != 1 {
+		t.Errorf("StartStream calls = %d, want 1 (no retry per chunk)", len(streamer.startCalls))
+	}
+	if len(poster.calls) != 1 {
+		t.Fatalf("PostToThread calls = %d, want exactly 1", len(poster.calls))
+	}
+	out := logs.String()
+	if got := strings.Count(out, "event=stream_start_failed"); got != 1 {
+		t.Fatalf("stream_start_failed logs = %d, want 1; logs=%s", got, out)
+	}
+	for _, want := range []string{"thread_ts=111.0", "stream_key=msg-1", "channel_not_found"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log missing %q; logs=%s", want, out)
+		}
+	}
+	if strings.Contains(out, "SECRET-BODY") {
+		t.Errorf("log must not contain message text; logs=%s", out)
+	}
+}
+
+func TestStreamManager_MidStreamFailure_NeverPostsAlongsideNativeStream(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fail func(s *recordingStreamer)
+	}{
+		{name: "append", fail: func(s *recordingStreamer) { s.appendErr = errors.New("ratelimited") }},
+		{name: "stop", fail: func(s *recordingStreamer) { s.stopErr = errors.New("ratelimited") }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			streamer := &recordingStreamer{}
+			poster := &recordingPoster{}
+			mgr := newRecipientStreamManager(streamer, poster)
+
+			if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
+				t.Fatalf("start: %v", err)
+			}
+			tc.fail(streamer)
+			if err := mgr.Deliver("C1", "111.0", "msg-1", 1, ", world", false); tc.name == "append" && err == nil {
+				t.Fatal("append failure must be returned to the caller")
+			}
+			if err := mgr.Deliver("C1", "111.0", "msg-1", 2, "!", true); err == nil {
+				t.Fatal("a failed stream must keep reporting the failure so the caller retries")
+			}
+
+			if len(poster.calls) != 0 {
+				t.Errorf("PostToThread calls = %+v, want none: a native message already exists", poster.calls)
+			}
+			if len(streamer.startCalls) != 1 {
+				t.Errorf("StartStream calls = %d, want 1: a retry must not open a second stream", len(streamer.startCalls))
+			}
+		})
 	}
 }

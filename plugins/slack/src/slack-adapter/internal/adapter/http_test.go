@@ -127,7 +127,7 @@ func newTestAdapter(cfg *Config) *Adapter {
 		logger: logger,
 	}
 	a.statusManager = NewStatusManager(a.poster, cfg.StatusTTLDuration(), logger)
-	a.streamManager = NewStreamManager(&recordingStreamer{}, a.poster, "T-team", cfg.StreamRecipientUserID(), logger)
+	a.streamManager = NewStreamManager(&recordingStreamer{}, a.poster, logger)
 	a.socketPool = NewSocketPool(a.poster, logger, nil, a.statusManager)
 	a.mentions = newMentionStream()
 	return a
@@ -1496,6 +1496,7 @@ func TestHandleSetStatus_MethodNotAllowed(t *testing.T) {
 func TestHandleStream_DeliversChunkToStreamManager(t *testing.T) {
 	a := newTestAdapter(&Config{ChannelID: "C0"})
 	streamer := a.streamManager.streamer.(*recordingStreamer)
+	a.streamManager.RecordRecipient("C123", "1111.000", "U1", "T1")
 
 	body, _ := json.Marshal(streamRequest{
 		ChannelID: "C123",
@@ -1523,6 +1524,7 @@ func TestHandleStream_DeliversChunkToStreamManager(t *testing.T) {
 func TestHandleStream_FallsBackToConfiguredChannel(t *testing.T) {
 	a := newTestAdapter(&Config{ChannelID: "C-default"})
 	streamer := a.streamManager.streamer.(*recordingStreamer)
+	a.streamManager.RecordRecipient("C-default", "1111.000", "U1", "T1")
 
 	body, _ := json.Marshal(streamRequest{ThreadTS: "1111.000", StreamKey: "msg-1", Text: "Hello", Index: "0", Final: "true"})
 	req := httptest.NewRequest(http.MethodPost, "/stream", bytes.NewBuffer(body))

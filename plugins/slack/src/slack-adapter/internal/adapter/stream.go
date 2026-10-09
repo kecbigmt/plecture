@@ -18,6 +18,11 @@ import (
 // a stalled or dropped chunk would otherwise buffer forever.
 const maxPendingStreamChunks = 32
 
+// maxRecordedRecipients bounds the thread-to-recipient map: it is only ever
+// consulted for a thread that is still conversing, so evicting the oldest
+// entry costs one logged fallback post at worst.
+const maxRecordedRecipients = 4096
+
 type Streamer interface {
 	StartStream(channelID, threadTS, teamID, recipientUserID, text string) (ts string, err error)
 	AppendStream(channelID, ts, text string) error
@@ -73,10 +78,28 @@ type streamState struct {
 	mu        sync.Mutex
 	started   bool
 	failed    bool
+	recipient streamRecipient
 	ts        string
 	nextIndex int64
 	pending   map[int64]streamChunk
 	text      string
+}
+
+// streamRecipient is the Slack user a stream is addressed to, and that
+// user's workspace: chat.startStream needs both to stream into a channel.
+type streamRecipient struct {
+	UserID string `json:"user_id"`
+	TeamID string `json:"team_id"`
+}
+
+type recordedRecipient struct {
+	streamRecipient
+	seq uint64
+}
+
+type threadKey struct {
+	channelID string
+	threadTS  string
 }
 
 type streamIdentity struct {
@@ -98,6 +121,7 @@ type persistedStream struct {
 	StreamKey string                         `json:"stream_key"`
 	Started   bool                           `json:"started"`
 	Failed    bool                           `json:"failed"`
+	Recipient streamRecipient                `json:"recipient"`
 	TS        string                         `json:"ts"`
 	NextIndex int64                          `json:"next_index"`
 	Pending   map[int64]persistedStreamChunk `json:"pending,omitempty"`
@@ -122,38 +146,65 @@ type persistedStreamManagerState struct {
 const finalizedRetention = 10 * time.Minute
 
 type StreamManager struct {
-	streamer        Streamer
-	poster          ThreadPoster
-	teamID          string
-	recipientUserID string
-	logger          *slog.Logger
+	streamer Streamer
+	poster   ThreadPoster
+	logger   *slog.Logger
 
-	mu        sync.Mutex
-	state     map[streamIdentity]*streamState
-	finalized map[streamIdentity]time.Time
-	statePath string
-	persistMu sync.Mutex
+	mu         sync.Mutex
+	state      map[streamIdentity]*streamState
+	finalized  map[streamIdentity]time.Time
+	recipients map[threadKey]recordedRecipient
+	recipSeq   uint64
+	statePath  string
+	persistMu  sync.Mutex
 }
 
-func NewStreamManager(streamer Streamer, poster ThreadPoster, teamID, recipientUserID string, logger *slog.Logger) *StreamManager {
-	return NewStreamManagerWithStatePath(streamer, poster, teamID, recipientUserID, logger, "")
+func NewStreamManager(streamer Streamer, poster ThreadPoster, logger *slog.Logger) *StreamManager {
+	return NewStreamManagerWithStatePath(streamer, poster, logger, "")
 }
 
-func NewStreamManagerWithStatePath(streamer Streamer, poster ThreadPoster, teamID, recipientUserID string, logger *slog.Logger, statePath string) *StreamManager {
+func NewStreamManagerWithStatePath(streamer Streamer, poster ThreadPoster, logger *slog.Logger, statePath string) *StreamManager {
 	m := &StreamManager{
-		streamer:        streamer,
-		poster:          poster,
-		teamID:          teamID,
-		recipientUserID: recipientUserID,
-		logger:          logger,
-		state:           make(map[streamIdentity]*streamState),
-		finalized:       make(map[streamIdentity]time.Time),
-		statePath:       statePath,
+		streamer:   streamer,
+		poster:     poster,
+		logger:     logger,
+		state:      make(map[streamIdentity]*streamState),
+		finalized:  make(map[streamIdentity]time.Time),
+		recipients: make(map[threadKey]recordedRecipient),
+		statePath:  statePath,
 	}
 	if statePath != "" {
 		m.load()
 	}
 	return m
+}
+
+// RecordRecipient notes who triggered the latest turn in a thread; the next
+// stream opened there is addressed to them. The recipient is a property of
+// the conversation, not of the access-control list: several people may be
+// allowed to talk to a session, and only the one being answered can be named.
+func (m *StreamManager) RecordRecipient(channelID, threadTS, userID, teamID string) {
+	if channelID == "" || threadTS == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.recipSeq++
+	m.recipients[threadKey{channelID, threadTS}] = recordedRecipient{
+		streamRecipient: streamRecipient{UserID: userID, TeamID: teamID},
+		seq:             m.recipSeq,
+	}
+	if len(m.recipients) <= maxRecordedRecipients {
+		return
+	}
+	var oldest threadKey
+	var oldestSeq uint64
+	for k, r := range m.recipients {
+		if oldestSeq == 0 || r.seq < oldestSeq {
+			oldest, oldestSeq = k, r.seq
+		}
+	}
+	delete(m.recipients, oldest)
 }
 
 // Deliver processes one chunk for streamKey, ordered by index. Draining
@@ -183,7 +234,7 @@ func (m *StreamManager) Deliver(channelID, threadTS, streamKey string, index int
 			m.persist()
 			return nil
 		}
-		if err := m.apply(channelID, threadTS, st, c); err != nil {
+		if err := m.apply(id, st, c); err != nil {
 			m.logger.Warn("stream delivery failed, will retry on redelivery",
 				"component", "slack-adapter", "event", "stream_deliver_error",
 				"stream_key", streamKey, "error", err)
@@ -215,7 +266,12 @@ func (m *StreamManager) stateOrFinalized(id streamIdentity) (st *streamState, al
 	}
 	st, ok := m.state[id]
 	if !ok {
-		st = &streamState{pending: make(map[int64]streamChunk)}
+		// Captured now rather than at start: a speaker who arrives while
+		// this stream's first chunks are still buffered must not redirect it.
+		st = &streamState{
+			pending:   make(map[int64]streamChunk),
+			recipient: m.recipients[threadKey{id.channelID, id.threadTS}].streamRecipient,
+		}
 		m.state[id] = st
 	}
 	return st, false
@@ -262,6 +318,7 @@ func (m *StreamManager) load() {
 		m.state[id] = &streamState{
 			started:   saved.Started,
 			failed:    saved.Failed,
+			recipient: saved.Recipient,
 			ts:        saved.TS,
 			nextIndex: saved.NextIndex,
 			pending:   pending,
@@ -318,7 +375,7 @@ func (m *StreamManager) persist() {
 		}
 		persisted.Streams = append(persisted.Streams, persistedStream{
 			ChannelID: id.channelID, ThreadTS: id.threadTS, StreamKey: id.streamKey,
-			Started: st.started, Failed: st.failed, TS: st.ts, NextIndex: st.nextIndex,
+			Started: st.started, Failed: st.failed, Recipient: st.recipient, TS: st.ts, NextIndex: st.nextIndex,
 			Pending: pending, Text: st.text,
 		})
 		st.mu.Unlock()
@@ -373,14 +430,28 @@ func nextChunk(st *streamState) (int64, streamChunk, bool) {
 	return lowest, st.pending[lowest], true
 }
 
-func (m *StreamManager) apply(channelID, threadTS string, st *streamState, c streamChunk) error {
+func (m *StreamManager) apply(id streamIdentity, st *streamState, c streamChunk) error {
+	channelID, threadTS := id.channelID, id.threadTS
 	if st.failed {
 		return m.applyFallback(channelID, threadTS, st, c)
 	}
 
 	if !st.started {
-		ts, err := m.streamer.StartStream(channelID, threadTS, m.teamID, m.recipientUserID, c.text)
+		if reason := missingRecipientReason(st.recipient); reason != "" {
+			m.logger.Warn("stream start skipped, falling back to one post",
+				"component", "slack-adapter", "event", "stream_start_skipped",
+				"reason", reason,
+				"channel_id", channelID, "thread_ts", threadTS, "stream_key", id.streamKey)
+			st.failed = true
+			return m.applyFallback(channelID, threadTS, st, c)
+		}
+		ts, err := m.streamer.StartStream(channelID, threadTS, st.recipient.TeamID, st.recipient.UserID, c.text)
 		if err != nil {
+			m.logger.Warn("stream start failed, falling back to one post",
+				"component", "slack-adapter", "event", "stream_start_failed",
+				"reason", "start_failed",
+				"channel_id", channelID, "thread_ts", threadTS, "stream_key", id.streamKey,
+				"error", err)
 			st.failed = true
 			return m.applyFallback(channelID, threadTS, st, c)
 		}
@@ -397,6 +468,16 @@ func (m *StreamManager) apply(channelID, threadTS string, st *streamState, c str
 		return m.streamer.StopStream(channelID, st.ts, c.text)
 	}
 	return m.streamer.AppendStream(channelID, st.ts, c.text)
+}
+
+func missingRecipientReason(r streamRecipient) string {
+	switch {
+	case r.UserID == "":
+		return "recipient_unknown"
+	case r.TeamID == "":
+		return "recipient_team_unknown"
+	}
+	return ""
 }
 
 // applyFallback buffers c into the fallback text and, on final, posts it

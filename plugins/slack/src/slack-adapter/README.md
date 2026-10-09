@@ -305,21 +305,32 @@ bounded finalized-identity set. Startup logs once and starts empty if the
 file is missing, unreadable, corrupt, or a different version; that condition
 never prevents the adapter from starting.
 
-`recipient_user_id` (required by `chat.startStream` when streaming to a
-channel — confirmed empirically against a live workspace, and required for
-any thread with more than the sender in it, not documented) is resolved
-from `allowed_user_ids` when it names exactly one user; any other count of
-allowed users has no single answer, so streaming falls back the same way a
-rejected `chat.startStream` call does — see below.
+`chat.startStream` requires a recipient user and that user's workspace
+when streaming into a channel. The adapter addresses each stream to the
+sender of the most recent inbound message in the stream's thread (a thread
+message or an app mention, including the mention that starts an unbound
+thread's session): when another person speaks later, the next stream goes to
+them, while a stream already running keeps its recipient. Recipients are
+tracked per channel and thread and are never shared between threads. The
+workspace is the sender's own for a shared-channel sender, and the app's
+otherwise. `allowed_user_ids` only decides who may talk to a session; it does
+not choose the recipient, so any number of allowed users (or none, for app
+mentions) can stream. The recipient is held in memory until a stream opens
+and is then kept in the stream snapshot, so a restart between a message and
+the reply's first chunk can lose it; the reply then falls back as below.
 
 If `chat.startStream` itself fails (the workspace/app doesn't support
-streaming, or nothing resolves `recipient_user_id`), every chunk under that
+streaming) or no recipient is known for the thread, every chunk under that
 `stream_key` is accumulated instead, and the full text is posted once — via
-`POST /messages`'s own mechanics — on `final`. A failure after
-`chat.startStream` already succeeded (an `appendStream`/`stopStream` call
-rejected) is returned to the caller rather than triggering this fallback:
-a native message already exists by then, and posting a second one would
-violate "exactly one Slack thread message appears".
+`POST /messages`'s own mechanics — on `final`. Each such stream logs one
+structured line, `stream_start_skipped` (`reason` is `recipient_unknown` or
+`recipient_team_unknown`) or `stream_start_failed` (with the Slack error),
+carrying the channel, thread and stream key; no line carries a token or
+message text. A failure after `chat.startStream` already succeeded (an
+`appendStream`/`stopStream` call rejected) is returned to the caller rather
+than triggering this fallback: a native message already exists by then, and
+posting a second one would violate "exactly one Slack thread message
+appears".
 
 ```json
 // Request
