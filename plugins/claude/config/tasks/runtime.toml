@@ -145,14 +145,13 @@ HAS_MESSAGE_DELTA=false
 printf '%s' "$publish_events" | jq -e 'any(.[]?; . == "message_delta")' >/dev/null 2>&1 && HAS_MESSAGE_DELTA=true
 DEDUP_PREFIX=""
 [ "$HAS_MESSAGE" = true ] && [ "$HAS_MESSAGE_DELTA" = true ] && DEDUP_PREFIX="PLECT_CLAUDE_MESSAGE_DEDUP=true "
-jq -nc --arg activity "$activity_bin" --arg dedup_prefix "$DEDUP_PREFIX" --argjson has_message "$HAS_MESSAGE" --argjson has_message_delta "$HAS_MESSAGE_DELTA" --argjson skip_bypass_warning "$SKIP_BYPASS_WARNING" '
+jq -nc --arg activity "$activity_bin" --arg dedup_prefix "$DEDUP_PREFIX" --arg has_message "$HAS_MESSAGE" --argjson has_message_delta "$HAS_MESSAGE_DELTA" --argjson skip_bypass_warning "$SKIP_BYPASS_WARNING" '
   {
     hooks: (
       {
         UserPromptSubmit: [{hooks: [{type: "command", command: ($activity + " working")}]}],
         PreToolUse:       [{hooks: [{type: "command", command: ($activity + " working")}]}],
-        Stop: [{hooks: ([{type: "command", command: ($activity + " waiting")}]
-                       + (if $has_message then [{type: "command", command: ($dedup_prefix + $activity + " reply")}] else [] end))}]
+        Stop: [{hooks: [{type: "command", command: ($dedup_prefix + "PLECT_CLAUDE_REPORT_REPLY=" + $has_message + " " + $activity + " finish")}]}]
       }
       + (if $has_message_delta then
            {MessageDisplay: [{hooks: [{type: "command", command: ($dedup_prefix + $activity + " message_display")}]}]}

@@ -36,7 +36,7 @@ channel_id = "C..."          # optional default for requests without channel_id
 listen_addr = "127.0.0.1:7890"
 allowed_user_ids = ["U..."]
 deliver_full_thread = false # optional; default is root + delta on @-mention
-status_ttl = "15m"          # optional; clears a stale status if nothing posts by then
+status_ttl = "15m"          # optional; logs an overdue processing state
 on_unbound_mention = "/path/to/dispatch-command" # optional; see below
 ```
 
@@ -47,20 +47,23 @@ fields above.
 Outbound-only operation requires only `slack_bot_token`. Requests that omit
 `channel_id` require the optional configured default.
 
-### Thread status (shimmer)
+### Thread status
 
-slack-adapter never sets a bound thread's assistant status line
-(`assistant.threads.setStatus`) on inbound receipt (a message or an
-app-mention): the adapter cannot confirm delivery reached a live runtime,
-so a shimmer set at receipt time would assert progress the system has not
-observed. The shimmer is instead driven entirely by
-`POST /status` — the `status` channel a workflow wires to the runtime's own
-`plect.status_message` reports (see the top-level `plugins/slack` README) —
-so it only ever shows what a live runtime has actually said about itself.
-Once shown, the status is cleared once the session posts a reply or a
-permission prompt through this adapter, or after `status_ttl` elapses with
-nothing posted (covers a session that ends its turn without ever calling
-reply).
+The `status` channel maps a nonempty `plect.status_message` to
+`agents.sessions.setStatus(processing)` and the runtime's empty waiting
+report to `active`. The event's wording remains available to other event
+consumers; Slack renders its own “Working…” text. An individual reply,
+permission prompt, or final stream chunk does not end the turn. The session
+dispatcher delivers earlier message events before the waiting event, and
+the adapter serializes delivery and status calls per channel and thread.
+Native stream completion explicitly requests `session_status=processing`
+until the waiting event arrives. If a turn posts no answer, the waiting
+event still sets `active`.
+
+`status_ttl` logs an overdue processing state without changing it. Slack
+times out processing after one hour. A late waiting event with a different
+`turn_id` is ignored; events without a turn ID use generation-only handling
+and produce a diagnostic.
 
 `status_loading_messages` (the old receipt-time shimmer's text) is a
 retired config key: `ValidateStartup` fails startup with an error naming it
@@ -68,17 +71,13 @@ if a `config.toml` still sets it, rather than silently ignoring a setting
 that no longer does anything. See
 `docs/migrations/slack-status-loading-messages-migration.md` to remove it.
 
-There is no `status_text` config: confirmed empirically against real Slack
-workspaces, a channel thread never renders `assistant.threads.setStatus`'s
-`status` string, only `loading_messages`. `SetThreadStatus`'s `status`
-parameter (and `POST /status`'s `status` field) stay purely an on/off flag
-because of this — the API still requires a non-empty value to mean "show" —
-and a caller who wants text supplies it via `loading_messages`.
-`StatusManager.Set` always clears before it sets, because a
-`loading_messages` entry sent right after a prior status-only call on the
-same thread was observed to flash once and revert to Slack's default text,
-while the same entry sent right after an explicit clear renders
-persistently.
+The Slack app must be declared as an agent. The existing bot token already
+has `assistant:write`, and `chat:write` remains required. Agent declaration
+is an owner action; see
+`docs/migrations/slack-agent-session-status.md`. The adapter does not
+subscribe to `agent_session_stopped`, so Slack may return a
+`missing_agent_session_stopped_event_subscription` warning and shows no
+interactive stop button. This API migration does not switch `agent_view`.
 
 When Socket Mode is enabled, an `app_mention` in a subscribed thread publishes
 one inbound `user.emit` to the bound `session_name`. The event body is an
@@ -266,19 +265,16 @@ resumed one, and gets no watermark.
 
 ### POST /status
 
-Sets or clears a thread's assistant shimmer status line directly, without
-posting a message. `status` is only an on/off flag (empty clears; any
-non-empty value shows); the visible text belongs in `loading_messages` (max
-10) — `status`'s own content never renders in a channel thread. Wiring this
-to agent hooks (e.g. reporting the current tool name as status) is left to a
-caller of this endpoint, not built into the plugin.
+Maps a status-line event to a Slack agent session state without posting a
+message. Nonempty `status` means `processing`; empty means `active` after
+turn completion. `turn_id` is optional, but enables stale-turn rejection.
 
 ```json
 // Request
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "status": "1", "loading_messages": ["Checking CI…"]}
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "status": "Checking CI…", "turn_id": "turn-1"}
 
 // Request (clear)
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "status": ""}
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "status": "", "turn_id": "turn-1"}
 ```
 
 ### POST /stream

@@ -9,6 +9,7 @@
 # Usage:
 #   claude-agent-activity working|waiting   # activity hook; session from $PLECT_SESSION_NAME
 #   claude-agent-activity reply             # Stop reporting hook; publishes plect.message
+#   claude-agent-activity finish            # Stop hook; reports reply, then completes status
 #   claude-agent-activity message_display   # MessageDisplay reporting hook; publishes plect.message_delta, then plect.message on its final delta
 #   claude-agent-activity probe <session>   # activity probe; writes the envelope
 #   claude-agent-activity reset <session>   # drop the record and any buffered messages (setup/cleanup)
@@ -175,6 +176,28 @@ read_exact_file() {
 }
 
 case "${1:-}" in
+  finish)
+    [ -n "${PLECT_SESSION_NAME:-}" ] || exit 0
+    payload="$(cat)"
+    if [ "${PLECT_CLAUDE_REPORT_REPLY:-true}" = true ]; then
+      "$0" reply <<<"$payload"
+    fi
+    turn_id="$(printf '%s' "$payload" | jq -r '.prompt_id // .turn_id // empty' 2>/dev/null)" || turn_id=""
+    pending=false
+    if [ -n "$turn_id" ] && acquire_turn_lock "$PLECT_SESSION_NAME" "$turn_id"; then
+      turn_lock="$REPLY"
+      turn_dir="$(turn_state_dir "$PLECT_SESSION_NAME" "$turn_id")"
+      state="$(turn_state "$PLECT_SESSION_NAME" "$turn_id")"
+      if [ "$state" = streaming ] || [ -e "$turn_dir/delivering" ]; then
+        mkdir -p "$turn_dir" 2>/dev/null
+        : > "$turn_dir/finish_pending" 2>/dev/null
+        pending=true
+      fi
+      release_turn_lock "$turn_lock"
+    fi
+    [ "$pending" = true ] || "$0" waiting <<<"$payload"
+    exit 0
+    ;;
   probe)
     session="${2:-}"
     [ -n "$session" ] || { echo "probe: session name required" >&2; exit 1; }
@@ -216,11 +239,11 @@ case "${1:-}" in
         turn_lock="$REPLY"
         state="$(turn_state "$PLECT_SESSION_NAME" "$turn_id")"
         if [ "$state" = native ]; then
-          rm -rf "$turn_dir" 2>/dev/null
+          [ -e "$turn_dir/delivering" ] || rm -rf "$turn_dir" 2>/dev/null
           release_turn_lock "$turn_lock"
           exit 0
         fi
-        if [ "$state" = streaming ]; then
+        if [ "$state" = streaming ] || [ -e "$turn_dir/delivering" ]; then
           release_turn_lock "$turn_lock"
           exit 0
         fi
@@ -248,11 +271,11 @@ case "${1:-}" in
         turn_lock="$REPLY"
         state="$(turn_state "$PLECT_SESSION_NAME" "$turn_id")"
         if [ "$state" = native ]; then
-          rm -rf "$turn_dir" 2>/dev/null
+          [ -e "$turn_dir/delivering" ] || rm -rf "$turn_dir" 2>/dev/null
           release_turn_lock "$turn_lock"
           exit 0
         fi
-        if [ "$state" = streaming ]; then
+        if [ "$state" = streaming ] || [ -e "$turn_dir/delivering" ]; then
           release_turn_lock "$turn_lock"
           exit 0
         fi
@@ -328,7 +351,6 @@ case "${1:-}" in
         if [ "$final" = true ]; then
           if turn_reply_matches "$PLECT_SESSION_NAME" "$turn_id" "$full"; then
             emit_message=false
-            rm -rf "$(turn_state_dir "$PLECT_SESSION_NAME" "$turn_id")" 2>/dev/null
           else
             write_turn_state "$PLECT_SESSION_NAME" "$turn_id" native
           fi
@@ -338,6 +360,7 @@ case "${1:-}" in
       elif [ -n "$delta" ] && [ "$state" != native ]; then
         write_turn_state "$PLECT_SESSION_NAME" "$turn_id" streaming
       fi
+      [ "$final" = true ] && : > "$(turn_state_dir "$PLECT_SESSION_NAME" "$turn_id")/delivering" 2>/dev/null
       release_turn_lock "$turn_lock"
     fi
 
@@ -381,6 +404,18 @@ case "${1:-}" in
         [ -n "$turn_id" ] && meta+=(--meta "turn_id=$turn_id")
         publish_report plect.message "$full" "${meta[@]}"
       fi
+      if [ -n "$turn_id" ] && acquire_turn_lock "$PLECT_SESSION_NAME" "$turn_id"; then
+        turn_lock="$REPLY"
+        turn_dir="$(turn_state_dir "$PLECT_SESSION_NAME" "$turn_id")"
+        pending=false
+        [ -e "$turn_dir/finish_pending" ] && pending=true
+        rm -f "$turn_dir/delivering" "$turn_dir/finish_pending" 2>/dev/null
+        release_turn_lock "$turn_lock"
+        if [ "$pending" = true ]; then
+          completion_payload="$(jq -nc --arg prompt_id "$turn_id" '{prompt_id: $prompt_id}')"
+          "$0" waiting <<<"$completion_payload"
+        fi
+      fi
     fi
     exit 0
     ;;
@@ -392,7 +427,8 @@ if [ -z "${PLECT_SESSION_NAME:-}" ] || [ -z "$activity" ]; then
   exit 0
 fi
 
-parsed="$(jq -r 'def clean: tostring | gsub("[\n\t\r]+"; " "); [(.hook_event_name // "" | clean), (.tool_name // "" | clean), (.tool_input.command // "" | clean), ((.tool_input.file_path // .tool_input.path // .tool_input.notebook_path // "") | clean)] | join("\u001f")' 2>/dev/null)" || parsed=$'\037\037\037'
+payload="$(cat)"
+parsed="$(printf '%s' "$payload" | jq -r 'def clean: tostring | gsub("[\n\t\r]+"; " "); [(.hook_event_name // "" | clean), (.tool_name // "" | clean), (.tool_input.command // "" | clean), ((.tool_input.file_path // .tool_input.path // .tool_input.notebook_path // "") | clean)] | join("\u001f")' 2>/dev/null)" || parsed=$'\037\037\037'
 IFS=$'\037' read -r event tool command target_path <<EOF
 $parsed
 EOF
@@ -428,7 +464,12 @@ text="${text:0:80}"
 # is reported as an empty message, not the literal word "waiting".
 [ "$activity" = "waiting" ] && text=""
 
-run_plect state set-message "$PLECT_SESSION_NAME" "$text"
+turn_id="$(printf '%s' "$payload" | jq -r '.prompt_id // .turn_id // empty' 2>/dev/null)" || turn_id=""
+if [ -n "$turn_id" ]; then
+  run_plect state set-message "$PLECT_SESSION_NAME" "$text" --turn-id "$turn_id"
+else
+  run_plect state set-message "$PLECT_SESSION_NAME" "$text"
+fi
 
 file="$(record_path "$PLECT_SESSION_NAME")"
 mkdir -p "$(dirname "$file")" 2>/dev/null

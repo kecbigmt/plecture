@@ -8,8 +8,8 @@ Slack-specific message relay + subscription broker.
 - Resolves `thread_ts → {channel_id, socket_path}` with an in-memory map (`Broker`)
 - Persists subscriptions (and unsubscribed threads' delivery-watermark tombstones) to `$XDG_STATE_HOME/slack-adapter/subscribers.json` via atomic write and reloads them at startup (makes broker restarts transparent to plect)
 - Forwards messages to channel-server; posts replies via the Slack API
-- Shows/clears a bound thread's assistant shimmer status line (`StatusManager`, `assistant.threads.setStatus`) around inbound delivery and outbound replies, with a TTL fallback for a session that never posts back
-- HTTP API: `/threads` (create a thread and return its permalink), `/messages` (post), `/status` (set/clear the shimmer status), `/stream` (render a `plect.message_delta` chunk sequence as one live-updating thread reply), `/subscribe` (register/unregister a subscription), `/subscribers` (list subscriptions), `/unbound-mentions` (stream every unbound app mention)
+- Maps a bound thread's runtime status events to Slack agent session processing and active states, serialized with outbound delivery per thread
+- HTTP API: `/threads` (create a thread and return its permalink), `/messages` (post), `/status` (set processing or active), `/stream` (render a `plect.message_delta` chunk sequence as one live-updating thread reply), `/subscribe` (register/unregister a subscription), `/subscribers` (list subscriptions), `/unbound-mentions` (stream every unbound app mention)
 - The `subscribe unbound-mentions` CLI subcommand is a client of its own resident service's `/unbound-mentions` feed, not a separate integration: it never opens a second Socket Mode connection
 - The `resource observe` CLI subcommand is `thread`'s (the resource observer's) `observe` action (the config language requires one); it never contacts the resident service, since the observer's `state_schema` is empty and there is nothing live to fetch
 
@@ -43,7 +43,7 @@ Slack-specific message relay + subscription broker.
 | `GET /info` | Returns workspace name and default channel ID | plect task (`slack_thread`) |
 | `POST /threads` | Creates a Slack thread and returns its permalink | plect task (`slack_thread`) |
 | `POST /messages` | Posts a message to a thread | plect channel (`slack`), `claude-slack-notify.sh` |
-| `POST /status` | Sets/clears a thread's shimmer status line without posting | future agent-hook wiring (not yet a caller) |
+| `POST /status` | Maps a runtime status line to processing or active without posting | plect channel (`status`) |
 | `POST /stream` | Renders a `plect.message_delta` chunk as part of one live-updating thread reply | plect channel (`stream`) |
 | `POST /subscribe` / `DELETE /subscribe?thread_ts=...` / `DELETE /subscribe?session_name=...` | Register/unregister a subscription (one live registration per `socket_path`; the `session_name` form drops every registration for a session) | plect task (`slack_subscribe`) |
 | `GET /subscribers` | Lists subscriptions (for the `[health].alive` probe) | plect task (`slack_subscribe`) |

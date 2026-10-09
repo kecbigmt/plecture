@@ -1,8 +1,15 @@
 package commands
 
 import (
+	"io"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/contracts/event"
 )
 
 // The facts a chat thread's setup once copied into Conversation already live
@@ -29,6 +36,48 @@ func TestSetOutputHelpDocumentsRuntimeTaskTarget(t *testing.T) {
 	}
 	if !strings.Contains(setOutputCmd.Long, "plect state set-output session-1 --task review#1") {
 		t.Fatalf("set-output examples must show --task review#1; got:\n%s", setOutputCmd.Long)
+	}
+}
+
+func TestSetMessageAcceptsOptionalTurnID(t *testing.T) {
+	flag := setMessageCmd.Flags().Lookup("turn-id")
+	if flag == nil {
+		t.Fatal("state set-message missing --turn-id flag")
+	}
+	if flag.DefValue != "" {
+		t.Fatalf("--turn-id default = %q, want empty", flag.DefValue)
+	}
+}
+
+func TestSetMessageCommandForwardsTurnID(t *testing.T) {
+	dataDir := t.TempDir()
+	t.Setenv("PLECT_DATA_HOME", dataDir)
+	t.Setenv("PLECT_CONFIG_HOME", t.TempDir())
+	store := state.NewStore(dataDir)
+	now := time.Now()
+	store.Put(&domain.Session{Name: "session-1", CreatedAt: now, UpdatedAt: now})
+
+	flag := setMessageCmd.Flags().Lookup("turn-id")
+	oldValue, oldChanged := setMessageTurnID, flag.Changed
+	t.Cleanup(func() {
+		setMessageTurnID = oldValue
+		flag.Changed = oldChanged
+		setMessageCmd.SetErr(nil)
+	})
+	if err := setMessageCmd.Flags().Set("turn-id", "turn-1"); err != nil {
+		t.Fatal(err)
+	}
+	setMessageCmd.SetErr(io.Discard)
+	if err := setMessageCmd.RunE(setMessageCmd, []string{"session-1", "working"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _, _, err := eventlog.NewStore(dataDir).List("session-1", 0, event.Filter{Types: []string{event.TypeStatusMessage}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Metadata["turn_id"] != "turn-1" {
+		t.Fatalf("status events = %+v, want one event with turn_id=turn-1", got)
 	}
 }
 

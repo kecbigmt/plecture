@@ -17,6 +17,7 @@ var (
 	setOutputWorkflow bool
 	setOutputTask     string
 	setStateInstance  string
+	setMessageTurnID  string
 )
 
 var stateCmd = &cobra.Command{
@@ -35,8 +36,12 @@ turn-boundary hook).
 An empty string clears the message. Each empty report is recorded as a fresh
 idle confirmation, even when the message is already empty.
 
+Use --turn-id to associate the report with a runtime turn. Reports with the
+same text from different turns are recorded separately.
+
 Example:
   plect state set-message session-1 "running tests"
+  plect state set-message session-1 "running tests" --turn-id turn-123
   plect state set-message session-1 ""`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -46,7 +51,11 @@ Example:
 		}
 		store := state.NewStore("")
 
-		if err := service.SetMessage(cfg, store, args[0], args[1]); err != nil {
+		var turnID *string
+		if cmd.Flags().Changed("turn-id") {
+			turnID = &setMessageTurnID
+		}
+		if err := service.SetMessage(cfg, store, args[0], args[1], turnID); err != nil {
 			return err
 		}
 
@@ -163,6 +172,8 @@ Example:
 }
 
 func init() {
+	setMessageCmd.Flags().StringVar(&setMessageTurnID, "turn-id", "", "Runtime turn id for this status report")
+
 	setOutputCmd.Flags().StringVar(&setOutputNode, "node", "", "Target workflow node id")
 	setOutputCmd.Flags().BoolVar(&setOutputWorkflow, "workflow", false, "Target the workflow pseudo-node")
 	setOutputCmd.Flags().StringVar(&setOutputTask, "task", "", "Target a produced runtime task such as review#1")

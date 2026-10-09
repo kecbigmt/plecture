@@ -84,9 +84,8 @@ func (c *Config) ValidateStartup() error {
 	return nil
 }
 
-// StatusTTLDuration falls back to defaultStatusTTL (with a warning) on an
-// unparsable value, so a config typo disables the TTL fallback rather than
-// startup itself.
+// StatusTTLDuration falls back to defaultStatusTTL on invalid input; it only
+// controls the overdue diagnostic and does not change Slack's status.
 func (c *Config) StatusTTLDuration() time.Duration {
 	if c.StatusTTL == "" {
 		return defaultStatusTTL

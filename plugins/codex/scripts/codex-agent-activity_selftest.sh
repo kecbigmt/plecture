@@ -100,8 +100,7 @@ working_envelope="$("$activity" probe "$session" "$state_dir")"
 check "hook activity is not silence-expected" "false" "$(printf '%s' "$working_envelope" | jq -r .silence_expected)"
 check "working reports its activity as the message" "state set-message selftest/session-1 working (codex UserPromptSubmit)" "$(tail -n 1 "$tmp/calls")"
 
-# working: an unreachable plect never fails the hook, and state
-# set-message's own failure is logged the same way event publish's is above.
+# An unreachable plect must not fail the hook or lose the error.
 PLECT_SESSION_NAME="$session" \
 XDG_STATE_HOME="$XDG_STATE_HOME" \
 PATH="$noplect_path" \
@@ -122,6 +121,24 @@ check "a completed turn's hook pardons silence" "true" "$(printf '%s' "$waiting_
 # The waiting phase marks a completed turn, not an activity: an idle session
 # is reported as an empty message, not the literal word "waiting".
 check "waiting clears the message instead of reporting itself as an activity" "state set-message selftest/session-1 " "$(tail -n 1 "$tmp/calls")"
+
+: > "$tmp/calls"
+"$activity" waiting <<<'{"hook_event_name":"Stop","turn_id":"turn-abc"}'
+check "turn-scoped waiting carries the same turn id as its reply" \
+  "state set-message selftest/session-1  --turn-id turn-abc" \
+  "$(tail -n 1 "$tmp/calls")"
+check "turn-scoped waiting uses one state command" "1" "$(wc -l < "$tmp/calls" | tr -d ' ')"
+
+: > "$tmp/calls"
+"$activity" working <<<'{"hook_event_name":"UserPromptSubmit","turn_id":"turn-next"}'
+check "turn-scoped working status starts processing" \
+  "state set-message selftest/session-1 working (codex UserPromptSubmit) --turn-id turn-next" \
+  "$(tail -n 1 "$tmp/calls")"
+
+: > "$tmp/calls"
+"$activity" working <<<'{"hook_event_name":"UserPromptSubmit","turn_id":"turn-next"}'
+check "repeated status delegates dedupe to state" "state set-message selftest/session-1 working (codex UserPromptSubmit) --turn-id turn-next" "$(tail -n 1 "$tmp/calls")"
+check "repeated status uses one state command" "1" "$(wc -l < "$tmp/calls" | tr -d ' ')"
 
 fp_before_hooks="$fp_grown"
 fp_after_hooks="$(printf '%s' "$waiting_envelope" | jq -r .fingerprint)"

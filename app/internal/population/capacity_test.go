@@ -466,7 +466,7 @@ func TestCapacityCandidatesAfterRealSetMessage(t *testing.T) {
 				setMemberAppearance(t, def, store, "urn:case:member", base.Add(2*time.Minute))
 			}
 			if tc.reportMessage != nil {
-				if err := service.SetMessage(&config.Config{}, store, "member", *tc.reportMessage); err != nil {
+				if err := service.SetMessage(&config.Config{}, store, "member", *tc.reportMessage, nil); err != nil {
 					t.Fatalf("SetMessage: %v", err)
 				}
 			}
@@ -489,7 +489,7 @@ func TestCapacityRepeatedEmptyReportLeavesOtherMembersUntouched(t *testing.T) {
 	addCapacityMember(t, def, store, logStore, "other", "urn:case:other", base, time.Time{})
 
 	for range 2 {
-		if err := service.SetMessage(&config.Config{}, store, "reporter", ""); err != nil {
+		if err := service.SetMessage(&config.Config{}, store, "reporter", "", nil); err != nil {
 			t.Fatalf("SetMessage: %v", err)
 		}
 	}

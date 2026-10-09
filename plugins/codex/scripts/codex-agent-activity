@@ -201,7 +201,8 @@ if [ -z "${PLECT_SESSION_NAME:-}" ] || [ -z "$activity" ]; then
   exit 0
 fi
 
-event="$(jq -r '.hook_event_name // ""' 2>/dev/null)" || event=""
+payload="$(cat)"
+event="$(printf '%s' "$payload" | jq -r '.hook_event_name // ""' 2>/dev/null)" || event=""
 
 text="$activity"
 [ -n "$event" ] && text="$activity (codex $event)"
@@ -210,7 +211,12 @@ text="$activity"
 # is reported as an empty message, not the literal word "waiting".
 [ "$activity" = "waiting" ] && text=""
 
-run_plect state set-message "$PLECT_SESSION_NAME" "$text"
+turn_id="$(printf '%s' "$payload" | jq -r '.turn_id // empty' 2>/dev/null)" || turn_id=""
+if [ -n "$turn_id" ]; then
+  run_plect state set-message "$PLECT_SESSION_NAME" "$text" --turn-id "$turn_id"
+else
+  run_plect state set-message "$PLECT_SESSION_NAME" "$text"
+fi
 
 file="$(record_path "$PLECT_SESSION_NAME")"
 mkdir -p "$(dirname "$file")" 2>/dev/null

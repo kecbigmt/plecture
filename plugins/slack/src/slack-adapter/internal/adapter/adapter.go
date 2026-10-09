@@ -20,6 +20,7 @@ import (
 type Adapter struct {
 	cfg            *Config
 	api            *slack.Client
+	sessionAPI     *slackSessionClient
 	sm             *socketmode.Client
 	workspace      string
 	teamID         string
@@ -73,10 +74,11 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 	api := slack.New(cfg.SlackBotToken, options...)
 
 	a := &Adapter{
-		cfg:    cfg,
-		api:    api,
-		broker: NewBroker(SubscribersStatePath(), logger),
-		logger: logger,
+		cfg:        cfg,
+		api:        api,
+		sessionAPI: newSlackSessionClient(cfg.SlackBotToken, "https://slack.com/api/", nil),
+		broker:     NewBroker(SubscribersStatePath(), logger),
+		logger:     logger,
 	}
 	if cfg.SlackAppToken != "" {
 		a.sm = socketmode.New(api)
@@ -89,7 +91,7 @@ func New(cfg *Config, logger *slog.Logger) *Adapter {
 	a.mentionHook = cliMentionHookRunner{}
 	a.mentions = newMentionStream()
 	a.statusManager = NewStatusManager(a.poster, cfg.StatusTTLDuration(), logger)
-	a.socketPool = NewSocketPool(a.poster, logger, a.captureOutbound, a.statusManager)
+	a.socketPool = NewSocketPool(a.poster, logger, a.captureOutbound)
 	// Cache workspace name from Slack API
 	resp, err := api.AuthTest()
 	if err != nil {
@@ -328,13 +330,8 @@ func (a *Adapter) PostToThread(channelID, threadTS, text string) (string, error)
 	return ts, err
 }
 
-func (a *Adapter) SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error {
-	return a.api.SetAssistantThreadsStatus(slack.AssistantThreadsSetStatusParameters{
-		ChannelID:       channelID,
-		ThreadTS:        threadTS,
-		Status:          status,
-		LoadingMessages: loadingMessages,
-	})
+func (a *Adapter) SetThreadStatus(channelID, threadTS, status string) error {
+	return a.sessionAPI.SetStatus(channelID, threadTS, status)
 }
 
 // CreateThread posts a new message to a channel and returns Slack's permalink.

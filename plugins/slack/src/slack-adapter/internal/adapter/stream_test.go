@@ -37,7 +37,7 @@ type appendCall struct {
 }
 
 type stopCall struct {
-	channelID, ts, text string
+	channelID, ts, text, sessionStatus string
 }
 
 func (f *recordingStreamer) StartStream(channelID, threadTS, teamID, recipientUserID, text string) (string, error) {
@@ -58,10 +58,10 @@ func (f *recordingStreamer) AppendStream(channelID, ts, text string) error {
 	return f.appendErr
 }
 
-func (f *recordingStreamer) StopStream(channelID, ts, text string) error {
+func (f *recordingStreamer) StopStream(channelID, ts, text, sessionStatus string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.stopCalls = append(f.stopCalls, stopCall{channelID, ts, text})
+	f.stopCalls = append(f.stopCalls, stopCall{channelID, ts, text, sessionStatus})
 	return f.stopErr
 }
 
@@ -100,6 +100,8 @@ func TestStreamManager_InOrderChunks_StartsAppendsAndStops(t *testing.T) {
 	}
 	if got := streamer.stopCalls[0]; got.text != "!" {
 		t.Errorf("StopStream text = %q, want %q (only the final delta)", got.text, "!")
+	} else if got.sessionStatus != "processing" {
+		t.Errorf("StopStream session_status = %q, want processing until turn completion", got.sessionStatus)
 	}
 
 	if len(poster.calls) != 0 {

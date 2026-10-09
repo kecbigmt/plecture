@@ -69,13 +69,12 @@ printf '%s' '{"mcpServers":{}}' \
 HAS_MESSAGE=false
 printf '%s' "$publish_events" | jq -e 'any(.[]?; . == "message")' >/dev/null 2>&1 && HAS_MESSAGE=true
 HOOKS="$STATE_DIR/hooks.json"
-jq -nc --arg activity "$activity_bin" --argjson has_message "$HAS_MESSAGE" '
+jq -nc --arg activity "$activity_bin" --arg has_message "$HAS_MESSAGE" '
   {
     hooks: {
       UserPromptSubmit: [{hooks: [{type: "command", command: ($activity + " working")}]}],
       PreToolUse:       [{hooks: [{type: "command", command: ($activity + " working")}]}],
-      Stop: [{hooks: ([{type: "command", command: ($activity + " waiting")}]
-                     + (if $has_message then [{type: "command", command: ($activity + " reply")}] else [] end))}]
+      Stop: [{hooks: [{type: "command", command: ("PLECT_CLAUDE_REPORT_REPLY=" + $has_message + " " + $activity + " finish")}]}]
     }
   }
 ' > "$HOOKS" || exit 1
