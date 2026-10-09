@@ -80,8 +80,12 @@ Code hooks that installs is this plugin's own concern:
   (full text now known), carrying that delta's own `message_id`
   (`message_id_origin = native`) and `turn_id`. The hooks use atomic,
   turn-scoped state under XDG state to choose that native event when Stop
-  begins first as well as when MessageDisplay does; a bounded Stop wait
-  preserves the message-only configuration when no display event follows.
+  begins first as well as when MessageDisplay does. Stop waits briefly for a
+  single final display; if none arrives, it publishes its synthetic event.
+  A later matching display is then suppressed, including its deltas, so
+  both event types cannot open different streams for the same answer.
+  When a non-empty display delta starts the stream before Stop publishes,
+  its native identity owns the answer even if the final delta arrives later.
   The state is removed after Stop consumes it and on runtime reset. Remove
   this handoff state when Claude Code guarantees the ordering of its Stop
   and final MessageDisplay hooks. Metadata otherwise: `role = assistant`,

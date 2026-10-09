@@ -254,8 +254,63 @@ wait "$reverse_pid"
   printf 'Stop before MessageDisplay published more than one plect.message: %s\n' "$(cat "$tmp/calls")" >&2
   exit 1
 }
-grep -q -- 'message_id=native-reverse' "$tmp/calls" || {
-  printf 'Stop before MessageDisplay did not retain the native message id: %s\n' "$(cat "$tmp/calls")" >&2
+grep -- '--type plect.message ' "$tmp/calls" | grep -q -- 'message_id=native-reverse' &&
+  grep -- '--type plect.message_delta ' "$tmp/calls" | grep -q -- 'message_id=native-reverse' || {
+  printf 'Stop before MessageDisplay split one answer across message ids: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+
+# A final display arriving after Stop has returned must not open a second
+# Slack stream under its native id. The synthetic Stop event has already
+# escaped, so the late matching display contributes no deltas or message.
+: > "$tmp/calls"
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" reply <<<'{"hook_event_name":"Stop","last_assistant_message":"same answer","prompt_id":"turn-late"}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-late","turn_id":"turn-late","final":true,"delta":"same answer"}'
+[ "$(wc -l < "$tmp/calls")" -eq 1 ] &&
+  grep -q -- '--type plect.message .*message_id=owner/repo-1/turn-late' "$tmp/calls" || {
+  printf 'late final display opened a second stream: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+
+# An earlier delta claims the native stream before Stop begins. Its final
+# delta may arrive later than Stop's fallback window without minting a
+# synthetic identity.
+: > "$tmp/calls"
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-stream","turn_id":"turn-stream","final":false,"delta":"same "}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" reply <<<'{"hook_event_name":"Stop","last_assistant_message":"same answer","prompt_id":"turn-stream"}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-stream","turn_id":"turn-stream","final":true,"delta":"answer"}'
+[ "$(grep -c -- '--type plect.message ' "$tmp/calls")" -eq 1 ] &&
+  ! grep -q -- 'message_id=owner/repo-1/turn-stream' "$tmp/calls" || {
+  printf 'a native stream was duplicated by Stop: %s\n' "$(cat "$tmp/calls")" >&2
+  exit 1
+}
+
+# A late display with different text is a distinct message. Its buffered
+# deltas can be sent as one final delta once comparison proves it differs.
+: > "$tmp/calls"
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" reply <<<'{"hook_event_name":"Stop","last_assistant_message":"first answer","prompt_id":"turn-late-distinct"}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-distinct","turn_id":"turn-late-distinct","final":false,"delta":"second "}'
+PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
+PLECT_CLAUDE_MESSAGE_DEDUP=true XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
+"$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-distinct","turn_id":"turn-late-distinct","final":true,"delta":"answer"}'
+[ "$(grep -c -- '--type plect.message ' "$tmp/calls")" -eq 2 ] &&
+  [ "$(grep -c -- '--type plect.message_delta ' "$tmp/calls")" -eq 1 ] &&
+  grep -q -- '--body second answer .*message_id=native-distinct.*final=true' "$tmp/calls" || {
+  printf 'a distinct late display was lost or fragmented: %s\n' "$(cat "$tmp/calls")" >&2
   exit 1
 }
 
@@ -300,11 +355,11 @@ grep -q -- 'message_id=native-first' "$tmp/calls" && grep -q -- 'message_id=nati
   exit 1
 }
 
-# message_display: the marker must be on disk before the plect.message
-# publish call returns, not merely before the whole hook process exits --
+# message_display: the marker must be on disk before the final delta's
+# publish call begins, not merely before the whole hook process exits --
 # otherwise a Stop invocation that races in during that exact call still
 # observes "no marker" and publishes its own duplicate. Simulated with a mock
-# plect binary that, the instant it sees the final delta's plect.message
+# plect binary that, the instant it sees the final plect.message_delta
 # publish, itself invokes the Stop hook for the same turn synchronously
 # (mid-call), rather than after the hook process would have returned.
 race_bin_dir="$tmp/bin-race"
@@ -313,7 +368,7 @@ cat > "$race_bin_dir/plect" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PLECT_CALLS"
 case "$*" in
-  *"--type plect.message "*"message_id=msg-race"*)
+  *"--type plect.message_delta "*"message_id=msg-race"*)
     PLECT_SESSION_NAME="owner/repo-1" \
     PLECT_CALLS="$PLECT_CALLS" \
     XDG_STATE_HOME="$XDG_STATE_HOME" \

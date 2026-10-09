@@ -220,6 +220,10 @@ case "${1:-}" in
           release_turn_lock "$turn_lock"
           exit 0
         fi
+        if [ "$state" = streaming ]; then
+          release_turn_lock "$turn_lock"
+          exit 0
+        fi
         if [ "$state" = reply ]; then
           release_turn_lock "$turn_lock"
           exit 0
@@ -234,8 +238,10 @@ case "${1:-}" in
     [ -n "$message" ] || exit 0
 
     if [ -n "$turn_id" ] && [ "${PLECT_CLAUDE_MESSAGE_DEDUP:-}" = true ]; then
+      # A short grace period lets a single final display win the native id.
+      # Once a display has started streaming, Stop leaves publication to it.
       for ((attempt = 0; attempt < 25; attempt++)); do
-        [ "$(turn_state "$PLECT_SESSION_NAME" "$turn_id")" = native ] && break
+        case "$(turn_state "$PLECT_SESSION_NAME" "$turn_id")" in native|streaming) break ;; esac
         sleep 0.01
       done
       if acquire_turn_lock "$PLECT_SESSION_NAME" "$turn_id"; then
@@ -243,6 +249,10 @@ case "${1:-}" in
         state="$(turn_state "$PLECT_SESSION_NAME" "$turn_id")"
         if [ "$state" = native ]; then
           rm -rf "$turn_dir" 2>/dev/null
+          release_turn_lock "$turn_lock"
+          exit 0
+        fi
+        if [ "$state" = streaming ]; then
           release_turn_lock "$turn_lock"
           exit 0
         fi
@@ -302,15 +312,47 @@ case "${1:-}" in
 
     [ -n "$delta" ] && printf '%s' "$delta" >> "$buf_file" 2>/dev/null
 
-    # publishes is false only for a non-final empty delta: Claude Code's own
-    # newline-driven split routinely lands the message's *last* hook
-    # invocation on an empty delta, and a delta-driven consumer (this
-    # channel's own stream state, e.g.) needs a real final=true delta to
-    # close its stream — it never sees the plect.message that follows,
-    # which is a different event type. A non-final empty delta still has no
-    # reason to reach a consumer at all.
+    full=""
+    if [ "$final" = true ]; then
+      read_exact_file "$buf_file"
+      full="$REPLY"
+    fi
+
+    defer_delta=false
+    emit_message=true
+    if [ -n "$turn_id" ] && [ -n "$delta$full" ] && acquire_turn_lock "$PLECT_SESSION_NAME" "$turn_id"; then
+      turn_lock="$REPLY"
+      state="$(turn_state "$PLECT_SESSION_NAME" "$turn_id")"
+      if [ "$state" = reply ]; then
+        defer_delta=true
+        if [ "$final" = true ]; then
+          if turn_reply_matches "$PLECT_SESSION_NAME" "$turn_id" "$full"; then
+            emit_message=false
+            rm -rf "$(turn_state_dir "$PLECT_SESSION_NAME" "$turn_id")" 2>/dev/null
+          else
+            write_turn_state "$PLECT_SESSION_NAME" "$turn_id" native
+          fi
+        fi
+      elif [ "$final" = true ]; then
+        write_turn_state "$PLECT_SESSION_NAME" "$turn_id" native
+      elif [ -n "$delta" ] && [ "$state" != native ]; then
+        write_turn_state "$PLECT_SESSION_NAME" "$turn_id" streaming
+      fi
+      release_turn_lock "$turn_lock"
+    fi
+
+    if [ "$defer_delta" = true ] && [ "$final" = true ] && [ "$emit_message" = true ]; then
+      delta="$full"
+    fi
+
+    # An empty final delta still closes a native stream. After Stop already
+    # published, deltas wait until the full text can be compared: a matching
+    # display would otherwise create a second Slack stream under its native id.
     publishes=true
     [ -n "$delta" ] || [ "$final" = "true" ] || publishes=false
+    if [ "$defer_delta" = true ]; then
+      [ "$final" = true ] && [ "$emit_message" = true ] || publishes=false
+    fi
 
     # index is an emitter-owned counter per (message_id, kind), not
     # Claude's own .index forwarded from the payload: the core contract
@@ -333,27 +375,11 @@ case "${1:-}" in
     [ "$publishes" = true ] && publish_event plect.message_delta "$delta" "${meta[@]}"
 
     if [ "$final" = "true" ]; then
-      read_exact_file "$buf_file"
-      full="$REPLY"
       rm -f "$buf_file" "$idx_file" 2>/dev/null
-      if [ -n "$full" ]; then
-        emit=true
-        if [ -n "$turn_id" ] && acquire_turn_lock "$PLECT_SESSION_NAME" "$turn_id"; then
-          turn_lock="$REPLY"
-          state="$(turn_state "$PLECT_SESSION_NAME" "$turn_id")"
-          if [ "$state" = reply ] && turn_reply_matches "$PLECT_SESSION_NAME" "$turn_id" "$full"; then
-            emit=false
-            rm -rf "$(turn_state_dir "$PLECT_SESSION_NAME" "$turn_id")" 2>/dev/null
-          else
-            write_turn_state "$PLECT_SESSION_NAME" "$turn_id" native
-          fi
-          release_turn_lock "$turn_lock"
-        fi
-        if [ "$emit" = true ]; then
-          meta=(--meta "message_id=$message_id" --meta "message_id_origin=native" --meta "role=assistant" --meta "source=claude")
-          [ -n "$turn_id" ] && meta+=(--meta "turn_id=$turn_id")
-          publish_report plect.message "$full" "${meta[@]}"
-        fi
+      if [ -n "$full" ] && [ "$emit_message" = true ]; then
+        meta=(--meta "message_id=$message_id" --meta "message_id_origin=native" --meta "role=assistant" --meta "source=claude")
+        [ -n "$turn_id" ] && meta+=(--meta "turn_id=$turn_id")
+        publish_report plect.message "$full" "${meta[@]}"
       fi
     fi
     exit 0
