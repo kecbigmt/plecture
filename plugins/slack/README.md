@@ -145,9 +145,9 @@ runtime, and `plect.message` is not reserved for the `slack` channel.
 
 ### Agent session setup
 
-The app owner must declare the Slack app as an agent and reinstall it so
-the resulting `assistant:write` scope is granted; `chat:write` is already
-in the shipped manifest. The API migration leaves `agent_view` alone. A
+The app owner must declare the Slack app as an agent. The existing bot token
+already has `assistant:write`, and `chat:write` is in the shipped manifest.
+The API migration leaves `agent_view` alone. A
 later switch to `agent_view` is irreversible. The owner also verifies the
 real Slack display after the adapter deploys. See
 `docs/migrations/slack-agent-session-status.md` for the procedure.

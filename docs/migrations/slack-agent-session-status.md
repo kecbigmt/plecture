@@ -5,9 +5,9 @@ deploying the new adapter.
 
 1. Back up the Slack app manifest and the adapter's `config.toml`. Keep a
    copy of the previous plugin revision so a deployment can be rolled back.
-2. In Slack app settings, declare the app as an agent. Slack adds the
-   `assistant:write` scope. Confirm that `chat:write` remains granted,
-   then reinstall or reauthorize the app in its workspace.
+2. In Slack app settings, declare the app as an agent. Confirm that the
+   declaration is active in the workspace. The existing bot token already
+   has `assistant:write` and `chat:write`.
 3. Change workflow bindings for `official.slack.status` to include only
    `plect.status_message`. Remove `plect.node.result` or other event types
    from that binding. The status event's text remains available to other

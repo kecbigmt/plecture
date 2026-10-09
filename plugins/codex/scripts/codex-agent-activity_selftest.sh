@@ -23,6 +23,9 @@ mkdir -p "$bin_dir"
 cat > "$bin_dir/plect" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PLECT_CALLS"
+if [ "$1 $2" = "event list" ]; then
+  printf '%s\n' "${PLECT_LATEST_STATUS_JSON:-}"
+fi
 EOF
 chmod +x "$bin_dir/plect"
 export PLECT_CALLS="$tmp/calls"
@@ -122,6 +125,25 @@ check "a completed turn's hook pardons silence" "true" "$(printf '%s' "$waiting_
 # The waiting phase marks a completed turn, not an activity: an idle session
 # is reported as an empty message, not the literal word "waiting".
 check "waiting clears the message instead of reporting itself as an activity" "state set-message selftest/session-1 " "$(tail -n 1 "$tmp/calls")"
+
+: > "$tmp/calls"
+PLECT_LATEST_STATUS_JSON='{"events":[{"metadata":{"text":"working","cleared":"false"}}]}' \
+  "$activity" waiting <<<'{"hook_event_name":"Stop","turn_id":"turn-abc"}'
+check "turn-scoped waiting carries the same turn id as its reply" \
+  "event publish selftest/session-1 --type plect.status_message --source plect --direction outbound --summary  --meta text= --meta cleared=true --meta previous=working --meta turn_id=turn-abc" \
+  "$(tail -n 1 "$tmp/calls")"
+
+: > "$tmp/calls"
+PLECT_LATEST_STATUS_JSON='{"events":[{"metadata":{"text":"","cleared":"true"}}]}' \
+  "$activity" working <<<'{"hook_event_name":"UserPromptSubmit","turn_id":"turn-next"}'
+check "turn-scoped working status starts processing" \
+  "event publish selftest/session-1 --type plect.status_message --source plect --direction outbound --summary working (codex UserPromptSubmit) --meta text=working (codex UserPromptSubmit) --meta cleared=false --meta previous= --meta turn_id=turn-next" \
+  "$(tail -n 1 "$tmp/calls")"
+
+: > "$tmp/calls"
+PLECT_LATEST_STATUS_JSON='{"events":[{"metadata":{"text":"working (codex UserPromptSubmit)","cleared":"false"}}]}' \
+  "$activity" working <<<'{"hook_event_name":"UserPromptSubmit","turn_id":"turn-next"}'
+check "unchanged nonempty status is deduped" "1" "$(wc -l < "$tmp/calls" | tr -d ' ')"
 
 fp_before_hooks="$fp_grown"
 fp_after_hooks="$(printf '%s' "$waiting_envelope" | jq -r .fingerprint)"

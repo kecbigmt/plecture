@@ -71,9 +71,9 @@ if a `config.toml` still sets it, rather than silently ignoring a setting
 that no longer does anything. See
 `docs/migrations/slack-status-loading-messages-migration.md` to remove it.
 
-The Slack app must be declared as an agent, then reinstalled to grant the
-resulting `assistant:write` scope. The existing `chat:write` scope is also
-required. These are owner actions; see
+The Slack app must be declared as an agent. The existing bot token already
+has `assistant:write`, and `chat:write` remains required. Agent declaration
+is an owner action; see
 `docs/migrations/slack-agent-session-status.md`. The adapter does not
 subscribe to `agent_session_stopped`, so Slack may return a
 `missing_agent_session_stopped_event_subscription` warning and shows no
