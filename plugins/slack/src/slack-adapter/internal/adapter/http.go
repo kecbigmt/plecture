@@ -78,10 +78,10 @@ type streamRequest struct {
 }
 
 type setStatusRequest struct {
-	ChannelID       string   `json:"channel_id"`
-	ThreadTS        string   `json:"thread_ts"`
-	Status          string   `json:"status"`
-	LoadingMessages []string `json:"loading_messages,omitempty"`
+	ChannelID string `json:"channel_id"`
+	ThreadTS  string `json:"thread_ts"`
+	Status    string `json:"status"`
+	TurnID    string `json:"turn_id,omitempty"`
 }
 
 // HandleInfo handles GET /info to return workspace and channel information.
@@ -168,7 +168,11 @@ func (a *Adapter) HandlePostMessage(w http.ResponseWriter, req *http.Request) {
 		text = a.cfg.MentionPrefix() + text
 	}
 
-	_, err := a.PostToThread(channelID, body.ThreadTS, text)
+	var err error
+	err = a.statusManager.Deliver(channelID, body.ThreadTS, "", func() error {
+		_, postErr := a.PostToThread(channelID, body.ThreadTS, text)
+		return postErr
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -212,17 +216,16 @@ func (a *Adapter) HandleStream(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := a.streamManager.Deliver(channelID, body.ThreadTS, body.StreamKey, body.TurnID, index, body.Text, final); err != nil {
+	if err := a.statusManager.Deliver(channelID, body.ThreadTS, body.TurnID, func() error {
+		return a.streamManager.Deliver(channelID, body.ThreadTS, body.StreamKey, body.TurnID, index, body.Text, final)
+	}); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-// HandleSetStatus lets a caller report what a session is doing right now
-// without posting a message. `status` is only an on/off flag (empty
-// clears); custom text belongs in `loading_messages`, the only part of a
-// channel thread's shimmer status that actually renders.
+// HandleSetStatus maps a runtime status line to the Slack session lifecycle.
 func (a *Adapter) HandleSetStatus(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -247,17 +250,11 @@ func (a *Adapter) HandleSetStatus(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "channel_id is required", http.StatusBadRequest)
 		return
 	}
-	if err := validateLoadingMessages(body.LoadingMessages); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	body.LoadingMessages = clipLoadingMessages(body.LoadingMessages)
-
 	var err error
 	if body.Status == "" {
-		err = a.statusManager.Clear(channelID, body.ThreadTS)
+		err = a.statusManager.End(channelID, body.ThreadTS, body.TurnID)
 	} else {
-		err = a.statusManager.Set(channelID, body.ThreadTS, body.Status, body.LoadingMessages)
+		err = a.statusManager.Begin(channelID, body.ThreadTS, body.TurnID)
 	}
 	if err != nil {
 		writeStatusError(a.logger, w, err)

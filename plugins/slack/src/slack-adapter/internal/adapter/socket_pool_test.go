@@ -33,7 +33,6 @@ type postedMessage struct {
 
 type postedStatus struct {
 	channelID, threadTS, status string
-	loadingMessages             []string
 }
 
 func (m *mockPoster) PostToThread(channelID, threadTS, text string) (string, error) {
@@ -46,10 +45,10 @@ func (m *mockPoster) PostToThread(channelID, threadTS, text string) (string, err
 	return "ts", nil
 }
 
-func (m *mockPoster) SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error {
+func (m *mockPoster) SetThreadStatus(channelID, threadTS, status string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.statusCalls = append(m.statusCalls, postedStatus{channelID, threadTS, status, loadingMessages})
+	m.statusCalls = append(m.statusCalls, postedStatus{channelID, threadTS, status})
 	return nil
 }
 
@@ -89,7 +88,7 @@ func TestSocketPool_SendAndReceive(t *testing.T) {
 	go listener.Serve()
 
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil, nil)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	msg := protocol.MessagePayload{
@@ -154,7 +153,7 @@ func TestSocketPool_CaptureGatedOnPostSuccess(t *testing.T) {
 			captureMu.Lock()
 			captures++
 			captureMu.Unlock()
-		}, nil)
+		})
 		defer pool.Close()
 
 		_ = pool.Send(socketPath, "C01", protocol.MessagePayload{Text: "go", ThreadTS: "111.0"})
@@ -204,7 +203,7 @@ func TestSocketPool_ReplyPostsToSlack(t *testing.T) {
 	go listener.Serve()
 
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil, nil)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	_ = router.Send(socketPath, "C01TEST", protocol.MessagePayload{
@@ -238,7 +237,7 @@ func TestSocketPool_ReplyPostsToSlack(t *testing.T) {
 	poster.mu.Unlock()
 }
 
-func TestSocketPool_ReplyClearsThreadStatus(t *testing.T) {
+func TestSocketPool_ReplyDoesNotEndTurn(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "test.sock")
 	listener, err := newFakeSocketListener(socketPath, func(env protocol.Envelope, conn net.Conn) {
 		if env.Type == protocol.MsgMessage {
@@ -255,16 +254,16 @@ func TestSocketPool_ReplyClearsThreadStatus(t *testing.T) {
 	poster := &mockPoster{}
 	statusMgr := NewStatusManager(poster, time.Hour, testLogger())
 	defer statusMgr.Stop()
-	router := NewSocketPool(poster, testLogger(), nil, statusMgr)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	_ = router.Send(socketPath, "C01TEST", protocol.MessagePayload{Text: "go", ThreadTS: "111.0"})
 
 	deadline := time.After(2 * time.Second)
-	for poster.statusCallCount() == 0 {
+	for poster.postCount() == 0 {
 		select {
 		case <-deadline:
-			t.Fatal("timeout waiting for status clear")
+			t.Fatal("timeout waiting for reply post")
 		default:
 			time.Sleep(10 * time.Millisecond)
 		}
@@ -272,12 +271,12 @@ func TestSocketPool_ReplyClearsThreadStatus(t *testing.T) {
 
 	poster.mu.Lock()
 	defer poster.mu.Unlock()
-	if got := poster.statusCalls[0]; got.channelID != "C01TEST" || got.threadTS != "111.0" || got.status != "" {
-		t.Errorf("status clear call = %+v, want C01TEST/111.0/empty", got)
+	if len(poster.statusCalls) != 0 {
+		t.Errorf("status calls = %+v, want none before turn completion", poster.statusCalls)
 	}
 }
 
-func TestSocketPool_PermissionPromptClearsThreadStatus(t *testing.T) {
+func TestSocketPool_PermissionPromptDoesNotEndTurn(t *testing.T) {
 	socketPath := filepath.Join(t.TempDir(), "test.sock")
 	listener, err := newFakeSocketListener(socketPath, func(env protocol.Envelope, conn net.Conn) {
 		if env.Type == protocol.MsgMessage {
@@ -294,16 +293,16 @@ func TestSocketPool_PermissionPromptClearsThreadStatus(t *testing.T) {
 	poster := &mockPoster{}
 	statusMgr := NewStatusManager(poster, time.Hour, testLogger())
 	defer statusMgr.Stop()
-	router := NewSocketPool(poster, testLogger(), nil, statusMgr)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	_ = router.Send(socketPath, "C01TEST", protocol.MessagePayload{Text: "go", ThreadTS: "111.0"})
 
 	deadline := time.After(2 * time.Second)
-	for poster.statusCallCount() == 0 {
+	for poster.postCount() == 0 {
 		select {
 		case <-deadline:
-			t.Fatal("timeout waiting for status clear")
+			t.Fatal("timeout waiting for permission post")
 		default:
 			time.Sleep(10 * time.Millisecond)
 		}
@@ -311,8 +310,8 @@ func TestSocketPool_PermissionPromptClearsThreadStatus(t *testing.T) {
 
 	poster.mu.Lock()
 	defer poster.mu.Unlock()
-	if got := poster.statusCalls[0]; got.status != "" {
-		t.Errorf("status clear call = %+v, want empty status", got)
+	if len(poster.statusCalls) != 0 {
+		t.Errorf("status calls = %+v, want none before turn completion", poster.statusCalls)
 	}
 }
 
@@ -333,7 +332,7 @@ func TestSocketPool_ReplyPostFailureDoesNotClearThreadStatus(t *testing.T) {
 	poster := &mockPoster{err: errors.New("slack down")}
 	statusMgr := NewStatusManager(poster, time.Hour, testLogger())
 	defer statusMgr.Stop()
-	router := NewSocketPool(poster, testLogger(), nil, statusMgr)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	_ = router.Send(socketPath, "C01TEST", protocol.MessagePayload{Text: "go", ThreadTS: "111.0"})
@@ -355,7 +354,7 @@ func TestSocketPool_ReplyPostFailureDoesNotClearThreadStatus(t *testing.T) {
 
 func TestSocketPool_SendToInvalidSocket(t *testing.T) {
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil, nil)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	err := router.Send("/nonexistent/path.sock", "C01TEST", protocol.MessagePayload{
@@ -388,7 +387,7 @@ func TestSocketPool_ReusesConnection(t *testing.T) {
 	go listener.Serve()
 
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil, nil)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	// Send two messages to the same socket
@@ -435,7 +434,7 @@ func TestSocketPool_RebindsExistingConnectionOnThreadChange(t *testing.T) {
 	go listener.Serve()
 
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil, nil)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	if err := router.Send(socketPath, "C01", protocol.MessagePayload{Text: "hi", ThreadTS: "1111111111.100000"}); err != nil {
@@ -498,7 +497,7 @@ func TestSocketPool_GetOrConnect_ReconnectsWhenRebindFails(t *testing.T) {
 	go listener.Serve()
 
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil, nil)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	deadClient, err := NewSocketClient(socketPath, "1111111111.100000", "C-OLD", testLogger(), nil, nil)
@@ -597,7 +596,7 @@ func TestSocketPool_ReusedSocketRoutesPermissionToCurrentSubscription(t *testing
 	go listener.Serve()
 
 	poster := &mockPoster{}
-	router := NewSocketPool(poster, testLogger(), nil, nil)
+	router := NewSocketPool(poster, testLogger(), nil)
 	defer router.Close()
 
 	// First subscription binds the socket to the old thread/channel.

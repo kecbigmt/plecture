@@ -28,7 +28,7 @@ const maxPendingRecipients = 16
 type Streamer interface {
 	StartStream(channelID, threadTS, teamID, recipientUserID, text string) (ts string, err error)
 	AppendStream(channelID, ts, text string) error
-	StopStream(channelID, ts, text string) error
+	StopStream(channelID, ts, text, sessionStatus string) error
 }
 
 // StartStream seeds a streaming message; chat.startStream's undocumented
@@ -53,16 +53,10 @@ func (a *Adapter) AppendStream(channelID, ts, text string) error {
 	return err
 }
 
-// StopStream finalizes a streaming message. chat.stopStream's own
-// markdown_text appends rather than replaces (verified empirically): text
-// must be only the unposted remainder, never the full accumulated text.
-func (a *Adapter) StopStream(channelID, ts, text string) error {
-	var opts []slack.MsgOption
-	if text != "" {
-		opts = append(opts, slack.MsgOptionMarkdownText(text))
-	}
-	_, _, err := a.api.StopStream(channelID, ts, opts...)
-	return err
+// StopStream keeps the session processing because a message boundary is not
+// a turn boundary. Its markdown_text appends, so text is only the remainder.
+func (a *Adapter) StopStream(channelID, ts, text, sessionStatus string) error {
+	return a.sessionAPI.StopStream(channelID, ts, text, sessionStatus)
 }
 
 type streamChunk struct {
@@ -85,6 +79,7 @@ type streamState struct {
 	nextIndex int64
 	pending   map[int64]streamChunk
 	text      string
+	attempt   uint64
 }
 
 // streamRecipient is the Slack user a stream is addressed to, and that
@@ -277,10 +272,13 @@ func (m *StreamManager) Deliver(channelID, threadTS, streamKey, turnID string, i
 			m.persist()
 			return nil
 		}
+		st.attempt++
 		if err := m.apply(id, st, c); err != nil {
 			m.logger.Warn("stream delivery failed, will retry on redelivery",
 				"component", "slack-adapter", "event", "stream_deliver_error",
-				"stream_key", streamKey, "error", err)
+				"channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID,
+				"stream_key", streamKey, "index", idx, "attempt", st.attempt,
+				"operation", streamOperation(st, c), "error", err)
 			st.mu.Unlock()
 			m.persist()
 			return err
@@ -288,12 +286,29 @@ func (m *StreamManager) Deliver(channelID, threadTS, streamKey, turnID string, i
 		delete(st.pending, idx)
 		st.nextIndex = idx + 1
 		if c.final {
+			m.logger.Info("stream message delivered",
+				"component", "slack-adapter", "event", "stream_deliver_final",
+				"channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID,
+				"stream_key", streamKey, "index", idx, "attempt", st.attempt)
 			m.forget(id)
 			st.mu.Unlock()
 			m.persist()
 			return nil
 		}
 	}
+}
+
+func streamOperation(st *streamState, c streamChunk) string {
+	if st.failed {
+		return "chat.postMessage"
+	}
+	if !st.started {
+		return "chat.startStream"
+	}
+	if c.final {
+		return "chat.stopStream"
+	}
+	return "chat.appendStream"
 }
 
 // stateOrFinalized combines both checks under one lock: split into two, a
@@ -504,11 +519,11 @@ func (m *StreamManager) apply(id streamIdentity, st *streamState, c streamChunk)
 			return nil
 		}
 		// The seed text above already carries this chunk (see StopStream).
-		return m.streamer.StopStream(channelID, ts, "")
+		return m.streamer.StopStream(channelID, ts, "", "processing")
 	}
 
 	if c.final {
-		return m.streamer.StopStream(channelID, st.ts, c.text)
+		return m.streamer.StopStream(channelID, st.ts, c.text, "processing")
 	}
 	return m.streamer.AppendStream(channelID, st.ts, c.text)
 }

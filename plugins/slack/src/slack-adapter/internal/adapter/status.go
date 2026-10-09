@@ -3,7 +3,6 @@ package adapter
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,62 +12,16 @@ import (
 	"github.com/slack-go/slack"
 )
 
-const (
-	defaultStatusTTL   = 15 * time.Minute
-	maxLoadingMessages = 10
-	// Not documented by Slack; measured against a live workspace.
-	maxLoadingMessageLen = 48
-)
+const defaultStatusTTL = 15 * time.Minute
 
-// ThreadStatusSetter sets a Slack thread's shimmer status line
-// (assistant.threads.setStatus). `status` is purely an on/off flag: a
-// non-empty value shows the thread's loading_messages (or, absent any,
-// Slack's own default text); empty clears it. `status`'s own content is
-// never rendered in a channel thread.
 type ThreadStatusSetter interface {
-	SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error
+	SetThreadStatus(channelID, threadTS, status string) error
 }
 
-// validateLoadingMessages rejects a POST /status request over Slack's
-// 10-message limit.
-func validateLoadingMessages(msgs []string) error {
-	if len(msgs) > maxLoadingMessages {
-		return fmt.Errorf("loading_messages must have at most %d entries, got %d", maxLoadingMessages, len(msgs))
-	}
-	return nil
-}
-
-// Clipped here rather than at the producer: the same status text also
-// feeds non-Slack consumers, which shouldn't lose characters they could
-// otherwise display.
-func clipLoadingMessages(msgs []string) []string {
-	if len(msgs) == 0 {
-		return msgs
-	}
-	clipped := make([]string, len(msgs))
-	for i, msg := range msgs {
-		clipped[i] = clipText(msg, maxLoadingMessageLen)
-	}
-	return clipped
-}
-
-// Rune-sliced, not byte-sliced: this text may be multibyte, and a byte cut
-// could split a character.
-func clipText(s string, max int) string {
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	return string(r[:max-1]) + "…"
-}
-
-// Only a Slack API rejection carries a name the caller can act on; any
-// other error stays a 500.
 func writeStatusError(logger *slog.Logger, w http.ResponseWriter, err error) {
 	var slackErr slack.SlackErrorResponse
 	if errors.As(err, &slackErr) {
-		logger.Warn("status: slack api rejected request",
-			"component", "slack-adapter", "event", "status_slack_error", "error", slackErr.Err)
+		logger.Warn("status: slack api rejected request", "component", "slack-adapter", "event", "status_slack_error", "error", slackErr.Err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		json.NewEncoder(w).Encode(map[string]string{"error": slackErr.Err})
@@ -77,17 +30,22 @@ func writeStatusError(logger *slog.Logger, w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), http.StatusInternalServerError)
 }
 
-// StatusManager shows a thread's shimmer status and enforces the TTL
-// fallback: a session can end its turn without ever calling reply (e.g. it
-// reports on the PR instead), and nothing else would clear the shimmer in
-// that case.
-type StatusManager struct {
-	setter ThreadStatusSetter
-	ttl    time.Duration
-	logger *slog.Logger
+type statusThread struct {
+	mu          sync.Mutex
+	generation  uint64
+	turnID      string
+	priorTurnID string
+	known       bool
+	processing  bool
+	timer       *time.Timer
+}
 
-	mu     sync.Mutex
-	timers map[string]*time.Timer // keyed by thread_ts
+type StatusManager struct {
+	setter  ThreadStatusSetter
+	ttl     time.Duration
+	logger  *slog.Logger
+	mu      sync.Mutex
+	threads map[threadKey]*statusThread
 }
 
 func NewStatusManager(setter ThreadStatusSetter, ttl time.Duration, logger *slog.Logger) *StatusManager {
@@ -97,76 +55,111 @@ func NewStatusManager(setter ThreadStatusSetter, ttl time.Duration, logger *slog
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	}
-	return &StatusManager{
-		setter: setter,
-		ttl:    ttl,
-		logger: logger,
-		timers: make(map[string]*time.Timer),
-	}
+	return &StatusManager{setter: setter, ttl: ttl, logger: logger, threads: make(map[threadKey]*statusThread)}
 }
 
-// Set clears before it sets: a loading_messages entry sent right after an
-// earlier status call on the same thread was observed (against a live
-// workspace) to flash once and then revert to Slack's own default text,
-// while the same entry sent right after an explicit clear renders
-// persistently. This can collapse back to a single call if a later check
-// shows a direct overwrite rendering reliably too.
-//
-// It also pushes the TTL timer out on a later call for the same thread
-// rather than stacking a second clear.
-func (m *StatusManager) Set(channelID, threadTS, status string, loadingMessages []string) error {
-	if err := m.setter.SetThreadStatus(channelID, threadTS, "", nil); err != nil {
+func (m *StatusManager) thread(channelID, threadTS string) *statusThread {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := threadKey{channelID: channelID, threadTS: threadTS}
+	if m.threads[key] == nil {
+		m.threads[key] = &statusThread{}
+	}
+	return m.threads[key]
+}
+
+func (m *StatusManager) Begin(channelID, threadTS, turnID string) error {
+	st := m.thread(channelID, threadTS)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if turnID == "" {
+		m.logger.Warn("status activity missing turn correlation", "channel_id", channelID, "thread_ts", threadTS, "generation", st.generation)
+	}
+	if turnID != "" && (turnID == st.priorTurnID || turnID == st.turnID && !st.processing) {
+		m.logger.Info("stale status activity ignored", "channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID, "generation", st.generation)
+		return nil
+	}
+	if turnID != "" && st.turnID != "" && turnID != st.turnID {
+		st.priorTurnID = st.turnID
+	}
+	st.generation++
+	st.turnID = turnID
+	st.known = true
+	st.processing = true
+	if st.timer != nil {
+		st.timer.Stop()
+	}
+	if err := m.setter.SetThreadStatus(channelID, threadTS, "processing"); err != nil {
+		m.logger.Warn("status transition failed", "channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID, "generation", st.generation, "status", "processing", "error", err)
 		return err
 	}
-	if err := m.setter.SetThreadStatus(channelID, threadTS, status, loadingMessages); err != nil {
-		return err
-	}
-	m.startTimer(channelID, threadTS)
+	m.logger.Info("status transition delivered", "channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID, "generation", st.generation, "status", "processing")
+	m.startOverdueTimer(st, channelID, threadTS)
 	return nil
 }
 
-// Clear cancels any pending TTL timer first, so an idle period afterward
-// doesn't fire a redundant (or, once the thread has moved on to a new
-// status, incorrect) clear.
-func (m *StatusManager) Clear(channelID, threadTS string) error {
-	m.cancelTimer(threadTS)
-	return m.setter.SetThreadStatus(channelID, threadTS, "", nil)
+func (m *StatusManager) End(channelID, threadTS, turnID string) error {
+	st := m.thread(channelID, threadTS)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.known && !st.processing {
+		return nil
+	}
+	if turnID != "" && st.turnID != "" && turnID != st.turnID {
+		m.logger.Info("stale status completion ignored", "channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID, "current_turn_id", st.turnID, "generation", st.generation)
+		return nil
+	}
+	if turnID == "" || st.turnID == "" {
+		m.logger.Warn("status completion missing turn correlation", "channel_id", channelID, "thread_ts", threadTS, "generation", st.generation)
+	}
+	if err := m.setter.SetThreadStatus(channelID, threadTS, "active"); err != nil {
+		m.logger.Warn("status transition failed", "channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID, "generation", st.generation, "status", "active", "error", err)
+		return err
+	}
+	m.logger.Info("status transition delivered", "channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID, "generation", st.generation, "status", "active")
+	st.processing = false
+	st.known = true
+	st.turnID = turnID
+	if st.timer != nil {
+		st.timer.Stop()
+		st.timer = nil
+	}
+	return nil
 }
 
-// Stop is for shutdown, not a substitute for Clear: it cancels pending
-// timers without touching Slack.
-func (m *StatusManager) Stop() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	for threadTS, t := range m.timers {
-		t.Stop()
-		delete(m.timers, threadTS)
+// Deliver holds the same per-thread lock as status changes through a Slack
+// delivery, so an idle transition cannot overtake its final post or stream.
+func (m *StatusManager) Deliver(channelID, threadTS, turnID string, deliver func() error) error {
+	st := m.thread(channelID, threadTS)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if turnID != "" && (turnID == st.priorTurnID || turnID == st.turnID && !st.processing) {
+		m.logger.Info("stale stream delivery ignored", "channel_id", channelID, "thread_ts", threadTS, "turn_id", turnID, "generation", st.generation)
+		return nil
 	}
+	return deliver()
 }
 
-func (m *StatusManager) startTimer(channelID, threadTS string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if t, ok := m.timers[threadTS]; ok {
-		t.Stop()
-	}
-	m.timers[threadTS] = time.AfterFunc(m.ttl, func() {
-		m.mu.Lock()
-		delete(m.timers, threadTS)
-		m.mu.Unlock()
-		if err := m.setter.SetThreadStatus(channelID, threadTS, "", nil); err != nil {
-			m.logger.Error("status ttl clear failed",
-				"component", "slack-adapter", "event", "status_ttl_clear_error",
-				"thread_ts", threadTS, "error", err)
+func (m *StatusManager) startOverdueTimer(st *statusThread, channelID, threadTS string) {
+	generation := st.generation
+	st.timer = time.AfterFunc(m.ttl, func() {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if st.generation == generation && st.processing {
+			m.logger.Warn("status processing overdue", "component", "slack-adapter", "event", "status_overdue", "channel_id", channelID, "thread_ts", threadTS, "turn_id", st.turnID, "generation", generation)
 		}
 	})
 }
 
-func (m *StatusManager) cancelTimer(threadTS string) {
+func (m *StatusManager) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if t, ok := m.timers[threadTS]; ok {
-		t.Stop()
-		delete(m.timers, threadTS)
+	for _, st := range m.threads {
+		st.mu.Lock()
+		if st.timer != nil {
+			st.timer.Stop()
+			st.timer = nil
+		}
+		st.mu.Unlock()
 	}
 }

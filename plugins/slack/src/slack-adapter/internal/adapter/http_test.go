@@ -89,7 +89,6 @@ type recordedPost struct {
 
 type recordedStatus struct {
 	ChannelID, ThreadTS, Status string
-	LoadingMessages             []string
 }
 
 func (p *recordingPoster) PostToThread(channelID, threadTS, text string) (string, error) {
@@ -100,8 +99,8 @@ func (p *recordingPoster) PostToThread(channelID, threadTS, text string) (string
 	return "ts-" + threadTS, nil
 }
 
-func (p *recordingPoster) SetThreadStatus(channelID, threadTS, status string, loadingMessages []string) error {
-	p.statusCalls = append(p.statusCalls, recordedStatus{channelID, threadTS, status, loadingMessages})
+func (p *recordingPoster) SetThreadStatus(channelID, threadTS, status string) error {
+	p.statusCalls = append(p.statusCalls, recordedStatus{channelID, threadTS, status})
 	return p.statusErr
 }
 
@@ -128,7 +127,7 @@ func newTestAdapter(cfg *Config) *Adapter {
 	}
 	a.statusManager = NewStatusManager(a.poster, cfg.StatusTTLDuration(), logger)
 	a.streamManager = NewStreamManager(&recordingStreamer{}, a.poster, logger)
-	a.socketPool = NewSocketPool(a.poster, logger, nil, a.statusManager)
+	a.socketPool = NewSocketPool(a.poster, logger, nil)
 	a.mentions = newMentionStream()
 	return a
 }
@@ -1291,10 +1290,10 @@ func TestHandleSetStatus_NonEmptyStatusSetsWithoutPosting(t *testing.T) {
 	poster := a.poster.(*recordingPoster)
 
 	body, _ := json.Marshal(setStatusRequest{
-		ChannelID:       "C123",
-		ThreadTS:        "1111.000",
-		Status:          "is reviewing…",
-		LoadingMessages: []string{"Checking CI…"},
+		ChannelID: "C123",
+		ThreadTS:  "1111.000",
+		Status:    "is reviewing…",
+		TurnID:    "turn-1",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
@@ -1306,15 +1305,12 @@ func TestHandleSetStatus_NonEmptyStatusSetsWithoutPosting(t *testing.T) {
 	if len(poster.calls) != 0 {
 		t.Errorf("PostToThread calls = %d, want 0 (status update must not post a message)", len(poster.calls))
 	}
-	if len(poster.statusCalls) != 2 {
-		t.Fatalf("SetThreadStatus calls = %d, want 2 (clear, then show)", len(poster.statusCalls))
+	if len(poster.statusCalls) != 1 {
+		t.Fatalf("SetThreadStatus calls = %d, want 1", len(poster.statusCalls))
 	}
-	got := poster.statusCalls[1]
-	if got.ChannelID != "C123" || got.ThreadTS != "1111.000" || got.Status != "is reviewing…" {
-		t.Errorf("show call = %+v, want C123/1111.000/is reviewing…", got)
-	}
-	if len(got.LoadingMessages) != 1 || got.LoadingMessages[0] != "Checking CI…" {
-		t.Errorf("loading_messages = %v, want [Checking CI…]", got.LoadingMessages)
+	got := poster.statusCalls[0]
+	if got.ChannelID != "C123" || got.ThreadTS != "1111.000" || got.Status != "processing" {
+		t.Errorf("show call = %+v, want C123/1111.000/processing", got)
 	}
 }
 
@@ -1322,7 +1318,10 @@ func TestHandleSetStatus_EmptyStatusClears(t *testing.T) {
 	a := newTestAdapter(&Config{ChannelID: "C0"})
 	poster := a.poster.(*recordingPoster)
 
-	body, _ := json.Marshal(setStatusRequest{ChannelID: "C123", ThreadTS: "1111.000", Status: ""})
+	if err := a.statusManager.Begin("C123", "1111.000", "turn-1"); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(setStatusRequest{ChannelID: "C123", ThreadTS: "1111.000", Status: "", TurnID: "turn-1"})
 	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
 	w := httptest.NewRecorder()
 	a.HandleSetStatus(w, req)
@@ -1330,11 +1329,11 @@ func TestHandleSetStatus_EmptyStatusClears(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
 	}
-	if len(poster.statusCalls) != 1 {
-		t.Fatalf("SetThreadStatus calls = %d, want 1", len(poster.statusCalls))
+	if len(poster.statusCalls) != 2 {
+		t.Fatalf("SetThreadStatus calls = %d, want 2", len(poster.statusCalls))
 	}
-	if got := poster.statusCalls[0].Status; got != "" {
-		t.Errorf("status = %q, want empty (clear)", got)
+	if got := poster.statusCalls[1].Status; got != "active" {
+		t.Errorf("status = %q, want active", got)
 	}
 }
 
@@ -1352,55 +1351,6 @@ func TestHandleSetStatus_FallsBackToConfiguredChannel(t *testing.T) {
 	}
 	if poster.statusCalls[0].ChannelID != "C-default" {
 		t.Errorf("channel_id = %q, want C-default", poster.statusCalls[0].ChannelID)
-	}
-}
-
-func TestHandleSetStatus_ClipsLongLoadingMessage(t *testing.T) {
-	a := newTestAdapter(&Config{ChannelID: "C0"})
-	poster := a.poster.(*recordingPoster)
-
-	long := strings.Repeat("x", 200)
-	body, _ := json.Marshal(setStatusRequest{
-		ThreadTS:        "1111.000",
-		Status:          "is thinking…",
-		LoadingMessages: []string{long},
-	})
-	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
-	w := httptest.NewRecorder()
-	a.HandleSetStatus(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
-	}
-	got := poster.statusCalls[len(poster.statusCalls)-1].LoadingMessages[0]
-	if r := []rune(got); len(r) != maxLoadingMessageLen {
-		t.Errorf("relayed loading message length = %d, want %d (clipped)", len(r), maxLoadingMessageLen)
-	}
-	if !strings.HasSuffix(got, "…") {
-		t.Errorf("relayed loading message = %q, want an ellipsis suffix", got)
-	}
-}
-
-func TestHandleSetStatus_ShortLoadingMessageUnchanged(t *testing.T) {
-	a := newTestAdapter(&Config{ChannelID: "C0"})
-	poster := a.poster.(*recordingPoster)
-
-	exactly48 := strings.Repeat("x", 48)
-	body, _ := json.Marshal(setStatusRequest{
-		ThreadTS:        "1111.000",
-		Status:          "is thinking…",
-		LoadingMessages: []string{exactly48},
-	})
-	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
-	w := httptest.NewRecorder()
-	a.HandleSetStatus(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("got status %d, want %d, body=%s", w.Code, http.StatusOK, w.Body.String())
-	}
-	got := poster.statusCalls[len(poster.statusCalls)-1].LoadingMessages[0]
-	if got != exactly48 {
-		t.Errorf("relayed loading message = %q, want unchanged 48-char entry", got)
 	}
 }
 
@@ -1445,27 +1395,6 @@ func TestHandleSetStatus_RejectsMissingThreadTS(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("got status %d, want %d", w.Code, http.StatusBadRequest)
-	}
-}
-
-func TestHandleSetStatus_RejectsTooManyLoadingMessages(t *testing.T) {
-	a := newTestAdapter(&Config{ChannelID: "C0"})
-	poster := a.poster.(*recordingPoster)
-
-	body, _ := json.Marshal(setStatusRequest{
-		ThreadTS:        "1111.000",
-		Status:          "is thinking…",
-		LoadingMessages: make([]string, 11),
-	})
-	req := httptest.NewRequest(http.MethodPost, "/status", bytes.NewBuffer(body))
-	w := httptest.NewRecorder()
-	a.HandleSetStatus(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("got status %d, want %d", w.Code, http.StatusBadRequest)
-	}
-	if len(poster.statusCalls) != 0 {
-		t.Errorf("SetThreadStatus calls = %d, want 0 (rejected before reaching Slack)", len(poster.statusCalls))
 	}
 }
 

@@ -35,11 +35,11 @@ another plugin's package.
   the thread via slack-adapter's `POST /threads`).
 - `config/channels/status.toml` — same inputs and delivery mechanics as
   `slack.toml`, but posts to `POST /status` instead of `POST /messages`: the
-  event's text becomes the thread's shimmer status line instead of a posted
-  message. Carries no event-type logic of its own — the composing workflow's
-  `include` list decides which events reach it. An event's body-or-summary
-  becomes the sole `loading_messages` entry; an event whose body and summary
-  are both empty clears the status instead.
+  event's nonempty text maps to the agent session's `processing` state and
+  an empty `plect.status_message` maps to `active`. The text remains in
+  the event for other consumers; Slack shows its own processing text. The
+  channel also passes optional `turn_id` metadata to reject delayed
+  old-turn completion. Bind this channel only to `plect.status_message`.
 - `config/channels/stream.toml` — accepts both `plect.message_delta` and
   `plect.message`, and renders either as one live-updating Slack thread
   reply via the `slack-adapter` service's `POST /stream`. Same
@@ -143,19 +143,14 @@ one that needs posting is `StreamManager`'s job
 workflow never needs a separate binding — or a separate channel — per
 runtime, and `plect.message` is not reserved for the `slack` channel.
 
-### Verified channel-thread rendering facts
+### Agent session setup
 
-Confirmed empirically against real Slack workspaces (bot scopes as shipped,
-no `features.assistant_view`): in a bound **channel thread**,
-`assistant.threads.setStatus`'s `status` string is never rendered — Slack
-shows its own localized default text instead — and only `loading_messages`
-entries render. A `loading_messages` entry sent right after a prior
-status-only call on the same thread flashes once and reverts to the
-default text; the same entry sent right after an explicit clear (`status:
-""`) renders persistently. This is why `StatusManager.Set` always clears
-before it sets, and why `status_text` is not a config option: only
-`loading_messages`, supplied per-event via the `status` channel, ever
-reaches the thread.
+The app owner must declare the Slack app as an agent and reinstall it so
+the resulting `assistant:write` scope is granted; `chat:write` is already
+in the shipped manifest. The API migration leaves `agent_view` alone. A
+later switch to `agent_view` is irreversible. The owner also verifies the
+real Slack display after the adapter deploys. See
+`docs/migrations/slack-agent-session-status.md` for the procedure.
 
 ## Presentation-only exceptions
 
