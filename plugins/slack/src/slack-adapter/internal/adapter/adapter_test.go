@@ -147,7 +147,15 @@ func TestAdapterSetThreadStatus_EmptyStatusStillSendsField(t *testing.T) {
 
 func streamStartsAfter(t *testing.T, a *Adapter, channelID, threadTS string) []startCall {
 	t.Helper()
-	if err := a.streamManager.Deliver(channelID, threadTS, "msg-1", 0, "reply", true); err != nil {
+	if err := a.streamManager.Deliver(channelID, threadTS, "msg-1", "", 0, "reply", true); err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	return a.streamManager.streamer.(*recordingStreamer).startCalls
+}
+
+func streamStartsAfter2(t *testing.T, a *Adapter, channelID, threadTS string) []startCall {
+	t.Helper()
+	if err := a.streamManager.Deliver(channelID, threadTS, "msg-2", "", 0, "reply", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
 	return a.streamManager.streamer.(*recordingStreamer).startCalls
@@ -198,7 +206,7 @@ func TestHandleMessage_SharedChannelSenderTeamIsRecipientTeam(t *testing.T) {
 	}
 }
 
-func TestHandleMessage_LaterSpeakerReceivesNextStreamAndThreadsStaySeparate(t *testing.T) {
+func TestHandleMessage_EachReplyGoesToItsOwnTriggeringSenderAndThreadsStaySeparate(t *testing.T) {
 	socketA, msgsA := startCapturingListener(t)
 	socketB, msgsB := startCapturingListener(t)
 	a := newTestAdapter(&Config{AllowedUserIDs: []string{"U-dana", "U-eli"}})
@@ -215,18 +223,24 @@ func TestHandleMessage_LaterSpeakerReceivesNextStreamAndThreadsStaySeparate(t *t
 	a.handleMessage(&slackevents.MessageEvent{User: "U-eli", Text: "three", ThreadTimeStamp: "1111.000", Channel: "C123"})
 	<-msgsA
 
-	if err := a.streamManager.Deliver("C123", "2222.000", "msg-1", 0, "reply", true); err != nil {
+	if err := a.streamManager.Deliver("C123", "2222.000", "msg-1", "", 0, "reply", true); err != nil {
 		t.Fatalf("thread 2222.000: %v", err)
 	}
-	starts := streamStartsAfter(t, a, "C123", "1111.000")
-	if len(starts) != 2 {
-		t.Fatalf("StartStream calls = %+v, want 2", starts)
+	if err := a.streamManager.Deliver("C123", "1111.000", "msg-1", "", 0, "reply", true); err != nil {
+		t.Fatalf("thread 1111.000, first reply: %v", err)
+	}
+	starts := streamStartsAfter2(t, a, "C123", "1111.000")
+	if len(starts) != 3 {
+		t.Fatalf("StartStream calls = %+v, want 3", starts)
 	}
 	if starts[0].threadTS != "2222.000" || starts[0].recipientUserID != "U-eli" {
 		t.Errorf("thread 2222.000 start = %+v, want U-eli", starts[0])
 	}
-	if starts[1].threadTS != "1111.000" || starts[1].recipientUserID != "U-eli" {
-		t.Errorf("thread 1111.000 start = %+v, want U-eli, who spoke last there", starts[1])
+	if starts[1].threadTS != "1111.000" || starts[1].recipientUserID != "U-dana" {
+		t.Errorf("thread 1111.000 first reply = %+v, want U-dana, whose message it answers", starts[1])
+	}
+	if starts[2].threadTS != "1111.000" || starts[2].recipientUserID != "U-eli" {
+		t.Errorf("thread 1111.000 second reply = %+v, want U-eli", starts[2])
 	}
 }
 

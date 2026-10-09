@@ -5,7 +5,9 @@
 # `inputs` binding has no access to the event being delivered
 # (docs/language/values.md), so only this channel's own action can. index/
 # final default to "0"/"true" since a plect.message carries no chunk
-# sequence of its own.
+# sequence of its own. turn_id groups the messages of one agent turn so the
+# adapter addresses them all to the same Slack user; it is empty for a
+# harness that supplies none.
 
 # This channel runs unconditionally (an exec action always runs), so a
 # plect.message whose deltas already closed the same channel/thread/message
@@ -26,7 +28,7 @@ args = [
   "-H",
   "Content-Type: application/json",
   "-d",
-  { json = { thread_ts = { from = "inputs.thread_ts" }, channel_id = { from = "inputs.channel_id" }, stream_key = { from = "event.metadata.message_id", default = "" }, text = { from = "event.body" }, index = { expr = "has(event.metadata.index) ? event.metadata.index : '0'" }, final = { expr = "has(event.metadata.final) ? event.metadata.final : 'true'" } } },
+  { json = { thread_ts = { from = "inputs.thread_ts" }, channel_id = { from = "inputs.channel_id" }, stream_key = { from = "event.metadata.message_id", default = "" }, turn_id = { from = "event.metadata.turn_id", default = "" }, text = { from = "event.body" }, index = { expr = "has(event.metadata.index) ? event.metadata.index : '0'" }, final = { expr = "has(event.metadata.final) ? event.metadata.final : 'true'" } } },
 ]
 timeout = "10s"
 

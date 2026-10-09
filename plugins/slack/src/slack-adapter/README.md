@@ -306,18 +306,24 @@ file is missing, unreadable, corrupt, or a different version; that condition
 never prevents the adapter from starting.
 
 `chat.startStream` requires a recipient user and that user's workspace
-when streaming into a channel. The adapter addresses each stream to the
-sender of the most recent inbound message in the stream's thread (a thread
-message or an app mention, including the mention that starts an unbound
-thread's session): when another person speaks later, the next stream goes to
-them, while a stream already running keeps its recipient. Recipients are
-tracked per channel and thread and are never shared between threads. The
-workspace is the sender's own for a shared-channel sender, and the app's
-otherwise. `allowed_user_ids` only decides who may talk to a session; it does
-not choose the recipient, so any number of allowed users (or none, for app
-mentions) can stream. The recipient is held in memory until a stream opens
-and is then kept in the stream snapshot, so a restart between a message and
-the reply's first chunk can lose it; the reply then falls back as below.
+when streaming into a channel. The adapter keeps, per channel and thread, a
+queue of the senders of accepted inbound messages (thread messages and app
+mentions, including the mention that starts an unbound thread's session). A
+stream claims the oldest sender still unanswered when it first appears, so a
+message that arrives before a reply's first chunk cannot take that reply
+over; it is addressed by a later reply instead. Messages of one turn,
+identified by the optional `turn_id` (or else one stream each), share the
+turn's sender, and a reply with nobody pending keeps the last sender.
+Consecutive messages from the same sender count once. Recipients are never
+shared between threads. The workspace is the sender's own for a
+shared-channel sender, and the app's otherwise. `allowed_user_ids` only
+decides who may talk to a session; it does not choose the recipient, so any
+number of allowed users (or none, for app mentions) can stream. The claimed
+recipient is kept in the stream snapshot; the queue is in memory, so a
+restart between a message and the reply's first chunk can lose it and the
+reply falls back as below. When one agent turn answers several different
+senders at once, only the oldest is addressed, since nothing links a reply to
+the messages it answers.
 
 If `chat.startStream` itself fails (the workspace/app doesn't support
 streaming) or no recipient is known for the thread, every chunk under that
@@ -334,7 +340,7 @@ appears".
 
 ```json
 // Request
-{"thread_ts": "1234567890.123456", "channel_id": "C...", "stream_key": "msg-1", "text": "Hello", "index": "0", "final": "false"}
+{"thread_ts": "1234567890.123456", "channel_id": "C...", "stream_key": "msg-1", "turn_id": "turn-1", "text": "Hello", "index": "0", "final": "false"}
 ```
 
 `index` and `final` are strings, not a JSON number/bool: they originate as

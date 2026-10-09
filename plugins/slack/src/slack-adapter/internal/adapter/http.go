@@ -71,6 +71,7 @@ type streamRequest struct {
 	ChannelID string `json:"channel_id"`
 	ThreadTS  string `json:"thread_ts"`
 	StreamKey string `json:"stream_key"`
+	TurnID    string `json:"turn_id"`
 	Text      string `json:"text"`
 	Index     string `json:"index"`
 	Final     string `json:"final"`
@@ -211,7 +212,7 @@ func (a *Adapter) HandleStream(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := a.streamManager.Deliver(channelID, body.ThreadTS, body.StreamKey, index, body.Text, final); err != nil {
+	if err := a.streamManager.Deliver(channelID, body.ThreadTS, body.StreamKey, body.TurnID, index, body.Text, final); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

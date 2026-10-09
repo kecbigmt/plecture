@@ -18,10 +18,14 @@ import (
 // a stalled or dropped chunk would otherwise buffer forever.
 const maxPendingStreamChunks = 32
 
-// maxRecordedRecipients bounds the thread-to-recipient map: it is only ever
-// consulted for a thread that is still conversing, so evicting the oldest
-// entry costs one logged fallback post at worst.
-const maxRecordedRecipients = 4096
+// maxRecordedThreads bounds the per-thread recipient bookkeeping: it is only
+// ever consulted for a thread that is still conversing, so evicting the
+// least recently touched thread costs one logged fallback post at worst.
+const maxRecordedThreads = 4096
+
+// maxPendingRecipients bounds how many unanswered senders one thread
+// remembers; past it the oldest is forgotten rather than growing forever.
+const maxPendingRecipients = 16
 
 type Streamer interface {
 	StartStream(channelID, threadTS, teamID, recipientUserID, text string) (ts string, err error)
@@ -92,9 +96,16 @@ type streamRecipient struct {
 	TeamID string `json:"team_id"`
 }
 
-type recordedRecipient struct {
-	streamRecipient
-	seq uint64
+// threadRecipients is one thread's conversation state. Pending holds the
+// senders no stream has answered yet, oldest first; last is who the most
+// recent turn answered, kept so a reply with nobody pending (a follow-up
+// message of the same turn, or a turn the agent started unprompted) still
+// has an addressee.
+type threadRecipients struct {
+	pending  []streamRecipient
+	last     streamRecipient
+	lastTurn string
+	touched  uint64
 }
 
 type threadKey struct {
@@ -150,13 +161,13 @@ type StreamManager struct {
 	poster   ThreadPoster
 	logger   *slog.Logger
 
-	mu         sync.Mutex
-	state      map[streamIdentity]*streamState
-	finalized  map[streamIdentity]time.Time
-	recipients map[threadKey]recordedRecipient
-	recipSeq   uint64
-	statePath  string
-	persistMu  sync.Mutex
+	mu        sync.Mutex
+	state     map[streamIdentity]*streamState
+	finalized map[streamIdentity]time.Time
+	threads   map[threadKey]*threadRecipients
+	threadSeq uint64
+	statePath string
+	persistMu sync.Mutex
 }
 
 func NewStreamManager(streamer Streamer, poster ThreadPoster, logger *slog.Logger) *StreamManager {
@@ -165,13 +176,13 @@ func NewStreamManager(streamer Streamer, poster ThreadPoster, logger *slog.Logge
 
 func NewStreamManagerWithStatePath(streamer Streamer, poster ThreadPoster, logger *slog.Logger, statePath string) *StreamManager {
 	m := &StreamManager{
-		streamer:   streamer,
-		poster:     poster,
-		logger:     logger,
-		state:      make(map[streamIdentity]*streamState),
-		finalized:  make(map[streamIdentity]time.Time),
-		recipients: make(map[threadKey]recordedRecipient),
-		statePath:  statePath,
+		streamer:  streamer,
+		poster:    poster,
+		logger:    logger,
+		state:     make(map[streamIdentity]*streamState),
+		finalized: make(map[streamIdentity]time.Time),
+		threads:   make(map[threadKey]*threadRecipients),
+		statePath: statePath,
 	}
 	if statePath != "" {
 		m.load()
@@ -179,41 +190,79 @@ func NewStreamManagerWithStatePath(streamer Streamer, poster ThreadPoster, logge
 	return m
 }
 
-// RecordRecipient notes who triggered the latest turn in a thread; the next
-// stream opened there is addressed to them. The recipient is a property of
-// the conversation, not of the access-control list: several people may be
+// RecordRecipient queues the sender of an accepted inbound message as the
+// addressee of one of the thread's next streams. The recipient is a property
+// of the conversation, not of the access-control list: several people may be
 // allowed to talk to a session, and only the one being answered can be named.
+// A burst from one sender is a single entry, since an agent may answer it in
+// one turn, and a repeat that carries the same addressee adds nothing.
 func (m *StreamManager) RecordRecipient(channelID, threadTS, userID, teamID string) {
 	if channelID == "" || threadTS == "" {
 		return
 	}
+	r := streamRecipient{UserID: userID, TeamID: teamID}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.recipSeq++
-	m.recipients[threadKey{channelID, threadTS}] = recordedRecipient{
-		streamRecipient: streamRecipient{UserID: userID, TeamID: teamID},
-		seq:             m.recipSeq,
-	}
-	if len(m.recipients) <= maxRecordedRecipients {
+	t := m.threadLocked(threadKey{channelID, threadTS})
+	if n := len(t.pending); n > 0 && t.pending[n-1] == r {
 		return
 	}
-	var oldest threadKey
-	var oldestSeq uint64
-	for k, r := range m.recipients {
-		if oldestSeq == 0 || r.seq < oldestSeq {
-			oldest, oldestSeq = k, r.seq
-		}
+	t.pending = append(t.pending, r)
+	if len(t.pending) > maxPendingRecipients {
+		t.pending = t.pending[1:]
 	}
-	delete(m.recipients, oldest)
+}
+
+func (m *StreamManager) threadLocked(k threadKey) *threadRecipients {
+	m.threadSeq++
+	t, ok := m.threads[k]
+	if !ok {
+		t = &threadRecipients{}
+		m.threads[k] = t
+	}
+	t.touched = m.threadSeq
+	if len(m.threads) > maxRecordedThreads {
+		var oldest threadKey
+		var oldestSeq uint64
+		for key, other := range m.threads {
+			if key != k && (oldestSeq == 0 || other.touched < oldestSeq) {
+				oldest, oldestSeq = key, other.touched
+			}
+		}
+		delete(m.threads, oldest)
+	}
+	return t
+}
+
+// claimRecipientLocked binds a new stream to the sender whose message it
+// answers. Streams of one turn share that sender; the first stream of a new
+// turn takes the oldest sender still unanswered, so a message that arrives
+// before this reply's first chunk cannot take the reply over. Turns are told
+// apart by the harness's turn id when it supplies one, else by stream key.
+func (m *StreamManager) claimRecipientLocked(id streamIdentity, turnID string) streamRecipient {
+	t := m.threadLocked(threadKey{id.channelID, id.threadTS})
+	turn := turnID
+	if turn == "" {
+		turn = "stream:" + id.streamKey
+	}
+	if turn == t.lastTurn {
+		return t.last
+	}
+	t.lastTurn = turn
+	if len(t.pending) > 0 {
+		t.last = t.pending[0]
+		t.pending = t.pending[1:]
+	}
+	return t.last
 }
 
 // Deliver processes one chunk for streamKey, ordered by index. Draining
 // stops at the first failure, leaving that chunk (and anything after it)
 // pending instead of skipped, so a caller's retry of the same index
 // re-attempts it rather than the stream silently completing short.
-func (m *StreamManager) Deliver(channelID, threadTS, streamKey string, index int64, text string, final bool) error {
+func (m *StreamManager) Deliver(channelID, threadTS, streamKey, turnID string, index int64, text string, final bool) error {
 	id := streamIdentity{channelID: channelID, threadTS: threadTS, streamKey: streamKey}
-	st, alreadyFinalized := m.stateOrFinalized(id)
+	st, alreadyFinalized := m.stateOrFinalized(id, turnID)
 	if alreadyFinalized {
 		m.logger.Info("stream delivery dropped: stream already finalized",
 			"component", "slack-adapter", "event", "stream_deliver_duplicate",
@@ -255,7 +304,7 @@ func (m *StreamManager) Deliver(channelID, threadTS, streamKey string, index int
 
 // stateOrFinalized combines both checks under one lock: split into two, a
 // concurrent forget could land between them and let a duplicate through.
-func (m *StreamManager) stateOrFinalized(id streamIdentity) (st *streamState, alreadyFinalized bool) {
+func (m *StreamManager) stateOrFinalized(id streamIdentity, turnID string) (st *streamState, alreadyFinalized bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if t, ok := m.finalized[id]; ok {
@@ -266,11 +315,11 @@ func (m *StreamManager) stateOrFinalized(id streamIdentity) (st *streamState, al
 	}
 	st, ok := m.state[id]
 	if !ok {
-		// Captured now rather than at start: a speaker who arrives while
+		// Claimed now rather than at start: a message that arrives while
 		// this stream's first chunks are still buffered must not redirect it.
 		st = &streamState{
 			pending:   make(map[int64]streamChunk),
-			recipient: m.recipients[threadKey{id.channelID, id.threadTS}].streamRecipient,
+			recipient: m.claimRecipientLocked(id, turnID),
 		}
 		m.state[id] = st
 	}

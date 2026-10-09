@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -69,13 +70,13 @@ func TestStreamManager_InOrderChunks_StartsAppendsAndStops(t *testing.T) {
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
 	}
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, ", world", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, ", world", false); err != nil {
 		t.Fatalf("chunk 1: %v", err)
 	}
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 2, "!", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 2, "!", true); err != nil {
 		t.Fatalf("chunk 2 (final): %v", err)
 	}
 
@@ -111,7 +112,7 @@ func TestStreamManager_SingleChunkFinal_SeedsStartThenStopsWithNoFurtherText(t *
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
 
@@ -131,7 +132,7 @@ func TestStreamManager_OutOfOrderChunks_BufferUntilGapCloses(t *testing.T) {
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, "world", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, "world", false); err != nil {
 		t.Fatalf("chunk 1: %v", err)
 	}
 	if len(streamer.startCalls) != 0 || len(streamer.appendCalls) != 0 {
@@ -139,7 +140,7 @@ func TestStreamManager_OutOfOrderChunks_BufferUntilGapCloses(t *testing.T) {
 			streamer.startCalls, streamer.appendCalls)
 	}
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "hello ", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "hello ", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
 	}
 	if len(streamer.startCalls) != 1 || streamer.startCalls[0].text != "hello " {
@@ -156,7 +157,7 @@ func TestStreamManager_BufferBoundExceeded_FlushesDespiteGap(t *testing.T) {
 	mgr := newRecipientStreamManager(streamer, poster)
 
 	for i := int64(1); i <= maxPendingStreamChunks; i++ {
-		if err := mgr.Deliver("C1", "111.0", "msg-1", i, "x", false); err != nil {
+		if err := mgr.Deliver("C1", "111.0", "msg-1", "", i, "x", false); err != nil {
 			t.Fatalf("chunk %d: %v", i, err)
 		}
 	}
@@ -174,17 +175,17 @@ func TestStreamManager_StartFailure_FallsBackToOnePostOnFinal(t *testing.T) {
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
 	}
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, ", world", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, ", world", false); err != nil {
 		t.Fatalf("chunk 1: %v", err)
 	}
 	if len(poster.calls) != 0 {
 		t.Fatalf("PostToThread calls = %d, want 0 before final", len(poster.calls))
 	}
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 2, "!", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 2, "!", true); err != nil {
 		t.Fatalf("chunk 2 (final): %v", err)
 	}
 
@@ -205,12 +206,12 @@ func TestStreamManager_AppendFailure_PreservesChunkForRetry(t *testing.T) {
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
 	}
 
 	streamer.appendErr = errors.New("temporary network error")
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, ", world", false); err == nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, ", world", false); err == nil {
 		t.Fatal("Deliver should surface the append failure, not silently succeed")
 	}
 	if len(streamer.appendCalls) != 1 {
@@ -218,14 +219,14 @@ func TestStreamManager_AppendFailure_PreservesChunkForRetry(t *testing.T) {
 	}
 
 	streamer.appendErr = nil
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, ", world", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, ", world", false); err != nil {
 		t.Fatalf("retry of chunk 1: %v", err)
 	}
 	if len(streamer.appendCalls) != 2 {
 		t.Fatalf("AppendStream calls = %d, want 2 (the retry resent the same chunk)", len(streamer.appendCalls))
 	}
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 2, "!", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 2, "!", true); err != nil {
 		t.Fatalf("chunk 2 (final): %v", err)
 	}
 	if len(streamer.stopCalls) != 1 || streamer.stopCalls[0].text != "!" {
@@ -238,12 +239,12 @@ func TestStreamManager_FallbackPostFailure_RetriesWithoutDuplicatingText(t *test
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
 	}
 
 	poster.postErr = errors.New("temporary network error")
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, ", world!", true); err == nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, ", world!", true); err == nil {
 		t.Fatal("Deliver should surface the fallback post failure, not silently succeed")
 	}
 	if len(poster.calls) != 1 {
@@ -254,7 +255,7 @@ func TestStreamManager_FallbackPostFailure_RetriesWithoutDuplicatingText(t *test
 	}
 
 	poster.postErr = nil
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, ", world!", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, ", world!", true); err != nil {
 		t.Fatalf("retry of the final chunk: %v", err)
 	}
 	if len(poster.calls) != 2 {
@@ -273,12 +274,12 @@ func TestStreamManager_StopFailure_PreservesFinalChunkForRetryWithoutRestarting(
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", false); err != nil {
 		t.Fatalf("chunk 0: %v", err)
 	}
 
 	streamer.stopErr = errors.New("temporary network error")
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, "!", true); err == nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, "!", true); err == nil {
 		t.Fatal("Deliver should surface the stop failure, not silently succeed")
 	}
 	if len(streamer.stopCalls) != 1 {
@@ -289,7 +290,7 @@ func TestStreamManager_StopFailure_PreservesFinalChunkForRetryWithoutRestarting(
 	}
 
 	streamer.stopErr = nil
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, "!", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, "!", true); err != nil {
 		t.Fatalf("retry of the final chunk: %v", err)
 	}
 	if len(streamer.startCalls) != 1 {
@@ -308,7 +309,7 @@ func TestStreamManager_ForgetsLiveStateAfterFinal(t *testing.T) {
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
 	if got := len(mgr.state); got != 0 {
@@ -323,10 +324,10 @@ func TestStreamManager_DuplicateAfterFinal_IsDroppedNotReposted(t *testing.T) {
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver (duplicate): %v", err)
 	}
 	if len(streamer.startCalls) != 1 {
@@ -344,10 +345,10 @@ func TestStreamManager_DuplicateAfterFallbackFinal_IsDroppedNotReposted(t *testi
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", true); err != nil {
 		t.Fatalf("Deliver (duplicate): %v", err)
 	}
 	if len(poster.calls) != 1 {
@@ -360,16 +361,16 @@ func TestStreamManager_IdenticalStreamKeysInDifferentThreadsRemainIndependent(t 
 	poster := &recordingPoster{}
 	mgr := newRecipientStreamManager(streamer, poster)
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "first", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "first", false); err != nil {
 		t.Fatalf("first thread's initial chunk: %v", err)
 	}
-	if err := mgr.Deliver("C1", "222.0", "msg-1", 0, "second", false); err != nil {
+	if err := mgr.Deliver("C1", "222.0", "msg-1", "", 0, "second", false); err != nil {
 		t.Fatalf("second thread's initial chunk: %v", err)
 	}
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, " one", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, " one", true); err != nil {
 		t.Fatalf("first thread's final chunk: %v", err)
 	}
-	if err := mgr.Deliver("C1", "222.0", "msg-1", 1, " two", true); err != nil {
+	if err := mgr.Deliver("C1", "222.0", "msg-1", "", 1, " two", true); err != nil {
 		t.Fatalf("second thread's final chunk: %v", err)
 	}
 
@@ -399,7 +400,7 @@ func TestStreamManager_RestartCompletesAndSuppressesTrailingMessage(t *testing.T
 	poster := &recordingPoster{}
 	beforeRestart := newRecipientStreamManagerAt(streamer, poster, path)
 
-	if err := beforeRestart.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
+	if err := beforeRestart.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", false); err != nil {
 		t.Fatalf("initial chunk: %v", err)
 	}
 	data, err := os.ReadFile(path)
@@ -417,10 +418,10 @@ func TestStreamManager_RestartCompletesAndSuppressesTrailingMessage(t *testing.T
 	}
 
 	afterRestart := newRecipientStreamManagerAt(streamer, poster, path)
-	if err := afterRestart.Deliver("C1", "111.0", "msg-1", 1, ", world", true); err != nil {
+	if err := afterRestart.Deliver("C1", "111.0", "msg-1", "", 1, ", world", true); err != nil {
 		t.Fatalf("final chunk after restart: %v", err)
 	}
-	if err := afterRestart.Deliver("C1", "111.0", "msg-1", 0, "Hello, world", true); err != nil {
+	if err := afterRestart.Deliver("C1", "111.0", "msg-1", "", 0, "Hello, world", true); err != nil {
 		t.Fatalf("trailing message after restart: %v", err)
 	}
 
@@ -492,7 +493,7 @@ func TestStreamManager_ConcurrentDeliverToSameKey_PostsExactlyOnce(t *testing.T)
 	for range goroutines {
 		go func() {
 			defer wg.Done()
-			if err := mgr.Deliver("C1", "111.0", "msg-race", 0, "Hello", true); err != nil {
+			if err := mgr.Deliver("C1", "111.0", "msg-race", "", 0, "Hello", true); err != nil {
 				t.Errorf("Deliver: %v", err)
 			}
 		}()
@@ -536,10 +537,10 @@ func TestStreamManager_RecipientIsKeyedByThread(t *testing.T) {
 	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
 	mgr.RecordRecipient("C1", "222.0", "U-bob", "T-b")
 
-	if err := mgr.Deliver("C1", "222.0", "msg-1", 0, "to bob", false); err != nil {
+	if err := mgr.Deliver("C1", "222.0", "msg-1", "", 0, "to bob", false); err != nil {
 		t.Fatalf("second thread: %v", err)
 	}
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "to alice", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "to alice", false); err != nil {
 		t.Fatalf("first thread: %v", err)
 	}
 
@@ -560,7 +561,7 @@ func TestStreamManager_RecipientIsNotSharedAcrossChannels(t *testing.T) {
 	mgr := NewStreamManager(streamer, poster, testLogger())
 	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
 
-	if err := mgr.Deliver("C2", "111.0", "msg-1", 0, "other channel", true); err != nil {
+	if err := mgr.Deliver("C2", "111.0", "msg-1", "", 0, "other channel", true); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
 
@@ -578,14 +579,14 @@ func TestStreamManager_LaterSpeakerIsRecipientOfNextStreamOnly(t *testing.T) {
 	mgr := NewStreamManager(streamer, poster, testLogger())
 	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
 
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "first", false); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "first", false); err != nil {
 		t.Fatalf("first turn start: %v", err)
 	}
 	mgr.RecordRecipient("C1", "111.0", "U-bob", "T-a")
-	if err := mgr.Deliver("C1", "111.0", "msg-1", 1, " turn", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, " turn", true); err != nil {
 		t.Fatalf("first turn final: %v", err)
 	}
-	if err := mgr.Deliver("C1", "111.0", "msg-2", 0, "second", true); err != nil {
+	if err := mgr.Deliver("C1", "111.0", "msg-2", "", 0, "second", true); err != nil {
 		t.Fatalf("second turn: %v", err)
 	}
 
@@ -607,11 +608,11 @@ func TestStreamManager_RecipientSurvivesRestartBeforeStreamStarts(t *testing.T) 
 	beforeRestart := NewStreamManagerWithStatePath(streamer, poster, testLogger(), path)
 	beforeRestart.RecordRecipient("C1", "111.0", "U-alice", "T-a")
 
-	if err := beforeRestart.Deliver("C1", "111.0", "msg-1", 1, "world", false); err != nil {
+	if err := beforeRestart.Deliver("C1", "111.0", "msg-1", "", 1, "world", false); err != nil {
 		t.Fatalf("buffered chunk: %v", err)
 	}
 	afterRestart := NewStreamManagerWithStatePath(streamer, poster, testLogger(), path)
-	if err := afterRestart.Deliver("C1", "111.0", "msg-1", 0, "Hello ", false); err != nil {
+	if err := afterRestart.Deliver("C1", "111.0", "msg-1", "", 0, "Hello ", false); err != nil {
 		t.Fatalf("gap-closing chunk: %v", err)
 	}
 
@@ -642,7 +643,7 @@ func TestStreamManager_UnresolvedRecipient_FallsBackToOnePostAndLogsReason(t *te
 			}
 
 			for i, text := range []string{"SECRET-BODY-1 ", "SECRET-BODY-2"} {
-				if err := mgr.Deliver("C1", "111.0", "msg-1", int64(i), text, i == 1); err != nil {
+				if err := mgr.Deliver("C1", "111.0", "msg-1", "", int64(i), text, i == 1); err != nil {
 					t.Fatalf("chunk %d: %v", i, err)
 				}
 			}
@@ -676,7 +677,7 @@ func TestStreamManager_StartFailure_LogsReasonOnceWithoutBodyAndPostsOnce(t *tes
 	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
 
 	for i, text := range []string{"SECRET-BODY-1 ", "SECRET-BODY-2 ", "SECRET-BODY-3"} {
-		if err := mgr.Deliver("C1", "111.0", "msg-1", int64(i), text, i == 2); err != nil {
+		if err := mgr.Deliver("C1", "111.0", "msg-1", "", int64(i), text, i == 2); err != nil {
 			t.Fatalf("chunk %d: %v", i, err)
 		}
 	}
@@ -714,14 +715,14 @@ func TestStreamManager_MidStreamFailure_NeverPostsAlongsideNativeStream(t *testi
 			poster := &recordingPoster{}
 			mgr := newRecipientStreamManager(streamer, poster)
 
-			if err := mgr.Deliver("C1", "111.0", "msg-1", 0, "Hello", false); err != nil {
+			if err := mgr.Deliver("C1", "111.0", "msg-1", "", 0, "Hello", false); err != nil {
 				t.Fatalf("start: %v", err)
 			}
 			tc.fail(streamer)
-			if err := mgr.Deliver("C1", "111.0", "msg-1", 1, ", world", false); tc.name == "append" && err == nil {
+			if err := mgr.Deliver("C1", "111.0", "msg-1", "", 1, ", world", false); tc.name == "append" && err == nil {
 				t.Fatal("append failure must be returned to the caller")
 			}
-			if err := mgr.Deliver("C1", "111.0", "msg-1", 2, "!", true); err == nil {
+			if err := mgr.Deliver("C1", "111.0", "msg-1", "", 2, "!", true); err == nil {
 				t.Fatal("a failed stream must keep reporting the failure so the caller retries")
 			}
 
@@ -732,5 +733,68 @@ func TestStreamManager_MidStreamFailure_NeverPostsAlongsideNativeStream(t *testi
 				t.Errorf("StartStream calls = %d, want 1: a retry must not open a second stream", len(streamer.startCalls))
 			}
 		})
+	}
+}
+
+func TestStreamManager_LaterMessageBeforeFirstChunkDoesNotTakeOverEarlierReply(t *testing.T) {
+	streamer := &recordingStreamer{}
+	poster := &recordingPoster{}
+	mgr := NewStreamManager(streamer, poster, testLogger())
+	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
+	mgr.RecordRecipient("C1", "111.0", "U-bob", "T-a")
+
+	for _, key := range []string{"msg-1", "msg-2", "msg-3"} {
+		if err := mgr.Deliver("C1", "111.0", key, "", 0, "reply", true); err != nil {
+			t.Fatalf("%s: %v", key, err)
+		}
+	}
+
+	var got []string
+	for _, c := range streamer.startCalls {
+		got = append(got, c.recipientUserID)
+	}
+	if want := []string{"U-alice", "U-bob", "U-bob"}; !slices.Equal(got, want) {
+		t.Errorf("recipients of the three replies = %v, want %v: each reply answers the oldest unanswered sender, and a reply with nobody pending keeps the last one", got, want)
+	}
+}
+
+func TestStreamManager_MessagesOfOneTurnShareTheTurnsRecipient(t *testing.T) {
+	streamer := &recordingStreamer{}
+	poster := &recordingPoster{}
+	mgr := NewStreamManager(streamer, poster, testLogger())
+	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
+	mgr.RecordRecipient("C1", "111.0", "U-bob", "T-a")
+
+	for _, d := range []struct{ key, turn string }{{"msg-1", "turn-1"}, {"msg-2", "turn-1"}, {"msg-3", "turn-2"}} {
+		if err := mgr.Deliver("C1", "111.0", d.key, d.turn, 0, "reply", true); err != nil {
+			t.Fatalf("%s: %v", d.key, err)
+		}
+	}
+
+	var got []string
+	for _, c := range streamer.startCalls {
+		got = append(got, c.recipientUserID)
+	}
+	if want := []string{"U-alice", "U-alice", "U-bob"}; !slices.Equal(got, want) {
+		t.Errorf("recipients = %v, want %v: an interim message must not consume the next sender's turn", got, want)
+	}
+}
+
+func TestStreamManager_RepeatedMessagesFromOneSenderCountAsOnePendingTurn(t *testing.T) {
+	streamer := &recordingStreamer{}
+	poster := &recordingPoster{}
+	mgr := NewStreamManager(streamer, poster, testLogger())
+	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
+	mgr.RecordRecipient("C1", "111.0", "U-alice", "T-a")
+	mgr.RecordRecipient("C1", "111.0", "U-bob", "T-a")
+
+	for _, key := range []string{"msg-1", "msg-2"} {
+		if err := mgr.Deliver("C1", "111.0", key, "", 0, "reply", true); err != nil {
+			t.Fatalf("%s: %v", key, err)
+		}
+	}
+
+	if got := streamer.startCalls[1].recipientUserID; got != "U-bob" {
+		t.Errorf("second reply recipient = %q, want U-bob: an agent may answer a sender's burst in one turn", got)
 	}
 }

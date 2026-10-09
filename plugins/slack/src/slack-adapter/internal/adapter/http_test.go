@@ -1521,6 +1521,26 @@ func TestHandleStream_DeliversChunkToStreamManager(t *testing.T) {
 	}
 }
 
+func TestHandleStream_TurnIDGroupsStreamsUnderOneRecipient(t *testing.T) {
+	a := newTestAdapter(&Config{ChannelID: "C0"})
+	streamer := a.streamManager.streamer.(*recordingStreamer)
+	a.streamManager.RecordRecipient("C123", "1111.000", "U-alice", "T1")
+	a.streamManager.RecordRecipient("C123", "1111.000", "U-bob", "T1")
+
+	for _, key := range []string{"msg-1", "msg-2"} {
+		body, _ := json.Marshal(streamRequest{ChannelID: "C123", ThreadTS: "1111.000", StreamKey: key, TurnID: "turn-1", Text: "x", Index: "0", Final: "true"})
+		w := httptest.NewRecorder()
+		a.HandleStream(w, httptest.NewRequest(http.MethodPost, "/stream", bytes.NewBuffer(body)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s: got status %d, body=%s", key, w.Code, w.Body.String())
+		}
+	}
+
+	if len(streamer.startCalls) != 2 || streamer.startCalls[0].recipientUserID != "U-alice" || streamer.startCalls[1].recipientUserID != "U-alice" {
+		t.Errorf("StartStream calls = %+v, want both addressed to U-alice", streamer.startCalls)
+	}
+}
+
 func TestHandleStream_FallsBackToConfiguredChannel(t *testing.T) {
 	a := newTestAdapter(&Config{ChannelID: "C-default"})
 	streamer := a.streamManager.streamer.(*recordingStreamer)
