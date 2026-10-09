@@ -18,13 +18,11 @@ import (
 // a stalled or dropped chunk would otherwise buffer forever.
 const maxPendingStreamChunks = 32
 
-// maxRecordedThreads bounds the per-thread recipient bookkeeping: it is only
-// ever consulted for a thread that is still conversing, so evicting the
-// least recently touched thread costs one logged fallback post at worst.
+// maxRecordedThreads bounds per-thread recipient bookkeeping; evicting an
+// idle thread costs one logged fallback post at worst.
 const maxRecordedThreads = 4096
 
-// maxPendingRecipients bounds how many unanswered senders one thread
-// remembers; past it the oldest is forgotten rather than growing forever.
+// maxPendingRecipients bounds the unanswered senders one thread remembers.
 const maxPendingRecipients = 16
 
 type Streamer interface {
@@ -96,11 +94,9 @@ type streamRecipient struct {
 	TeamID string `json:"team_id"`
 }
 
-// threadRecipients is one thread's conversation state. Pending holds the
-// senders no stream has answered yet, oldest first; last is who the most
-// recent turn answered, kept so a reply with nobody pending (a follow-up
-// message of the same turn, or a turn the agent started unprompted) still
-// has an addressee.
+// threadRecipients: pending holds senders no stream has answered yet, oldest
+// first; last keeps the previous addressee so a reply with nobody pending
+// (an unprompted turn) still has one.
 type threadRecipients struct {
 	pending  []streamRecipient
 	last     streamRecipient
@@ -194,8 +190,7 @@ func NewStreamManagerWithStatePath(streamer Streamer, poster ThreadPoster, logge
 // addressee of one of the thread's next streams. The recipient is a property
 // of the conversation, not of the access-control list: several people may be
 // allowed to talk to a session, and only the one being answered can be named.
-// A burst from one sender is a single entry, since an agent may answer it in
-// one turn, and a repeat that carries the same addressee adds nothing.
+// A burst from one sender is one entry, since an agent may answer it in one turn.
 func (m *StreamManager) RecordRecipient(channelID, threadTS, userID, teamID string) {
 	if channelID == "" || threadTS == "" {
 		return
@@ -234,11 +229,10 @@ func (m *StreamManager) threadLocked(k threadKey) *threadRecipients {
 	return t
 }
 
-// claimRecipientLocked binds a new stream to the sender whose message it
-// answers. Streams of one turn share that sender; the first stream of a new
-// turn takes the oldest sender still unanswered, so a message that arrives
-// before this reply's first chunk cannot take the reply over. Turns are told
-// apart by the harness's turn id when it supplies one, else by stream key.
+// claimRecipientLocked binds a new stream to the oldest unanswered sender, so
+// a message arriving before this reply's first chunk cannot take it over.
+// Streams of one turn share that sender; turns are told apart by the
+// harness's turn id when it supplies one, else by stream key.
 func (m *StreamManager) claimRecipientLocked(id streamIdentity, turnID string) streamRecipient {
 	t := m.threadLocked(threadKey{id.channelID, id.threadTS})
 	turn := turnID
