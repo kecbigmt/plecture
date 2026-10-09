@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -696,7 +697,7 @@ func TestSetMessage(t *testing.T) {
 		UpdatedAt: now,
 	})
 
-	if err := SetMessage(nil, store, "owner/repo-1", "working"); err != nil {
+	if err := SetMessage(nil, store, "owner/repo-1", "working", nil); err != nil {
 		t.Fatalf("SetMessage() error: %v", err)
 	}
 
@@ -712,7 +713,7 @@ func TestSetMessage(t *testing.T) {
 	}
 
 	// Empty text unsets the message rather than persisting a blank line.
-	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
+	if err := SetMessage(nil, store, "owner/repo-1", "", nil); err != nil {
 		t.Fatalf("SetMessage(\"\") error: %v", err)
 	}
 	if LatestStatusMessage(store, "owner/repo-1") != nil {
@@ -725,7 +726,7 @@ func TestSetMessage_DeduplicatesIdenticalNonEmptyText(t *testing.T) {
 	now := time.Now()
 	store.Put(&domain.Session{Name: "owner/repo-1", CreatedAt: now, UpdatedAt: now})
 
-	if err := SetMessage(nil, store, "owner/repo-1", "working"); err != nil {
+	if err := SetMessage(nil, store, "owner/repo-1", "working", nil); err != nil {
 		t.Fatalf("SetMessage(working) error: %v", err)
 	}
 	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{
@@ -738,7 +739,7 @@ func TestSetMessage_DeduplicatesIdenticalNonEmptyText(t *testing.T) {
 		},
 	})
 
-	if err := SetMessage(nil, store, "owner/repo-1", "working"); err != nil {
+	if err := SetMessage(nil, store, "owner/repo-1", "working", nil); err != nil {
 		t.Fatalf("SetMessage(same) error: %v", err)
 	}
 	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{
@@ -751,10 +752,10 @@ func TestSetMessage_DeduplicatesIdenticalNonEmptyText(t *testing.T) {
 		},
 	})
 
-	if err := SetMessage(nil, store, "owner/repo-1", "working: Bash go"); err != nil {
+	if err := SetMessage(nil, store, "owner/repo-1", "working: Bash go", nil); err != nil {
 		t.Fatalf("SetMessage(changed) error: %v", err)
 	}
-	if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
+	if err := SetMessage(nil, store, "owner/repo-1", "", nil); err != nil {
 		t.Fatalf("SetMessage(clear) error: %v", err)
 	}
 	assertStatusMessageEvents(t, store, "owner/repo-1", []event.Event{
@@ -782,13 +783,57 @@ func TestSetMessage_DeduplicatesIdenticalNonEmptyText(t *testing.T) {
 	})
 }
 
+func TestSetMessage_TurnIDMetadataAndDedupe(t *testing.T) {
+	store := testStore(t)
+	now := time.Now()
+	store.Put(&domain.Session{Name: "owner/repo-1", CreatedAt: now, UpdatedAt: now})
+
+	first, second := "turn-1", "turn-2"
+	for _, report := range []struct {
+		text   string
+		turnID *string
+	}{
+		{"working", nil},
+		{"working", nil},
+		{"working", &first},
+		{"working", &first},
+		{"working", &second},
+		{"", &second},
+		{"", &second},
+	} {
+		if err := SetMessage(nil, store, "owner/repo-1", report.text, report.turnID); err != nil {
+			t.Fatalf("SetMessage(%q, %v): %v", report.text, report.turnID, err)
+		}
+	}
+
+	want := []map[string]string{
+		{"text": "working", "cleared": "false", "previous": ""},
+		{"text": "working", "cleared": "false", "previous": "working", "turn_id": first},
+		{"text": "working", "cleared": "false", "previous": "working", "turn_id": second},
+		{"text": "", "cleared": "true", "previous": "working", "turn_id": second},
+		{"text": "", "cleared": "true", "previous": "", "turn_id": second},
+	}
+	got, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{event.TypeStatusMessage}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("status events = %d, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if !maps.Equal(got[i].Metadata, want[i]) {
+			t.Errorf("event[%d].Metadata = %+v, want %+v", i, got[i].Metadata, want[i])
+		}
+	}
+}
+
 func TestSetMessage_RepeatedEmptyReportAppendsFreshClearEvent(t *testing.T) {
 	store := testStore(t)
 	now := time.Now()
 	store.Put(&domain.Session{Name: "owner/repo-1", CreatedAt: now, UpdatedAt: now})
 
 	for range 2 {
-		if err := SetMessage(nil, store, "owner/repo-1", ""); err != nil {
+		if err := SetMessage(nil, store, "owner/repo-1", "", nil); err != nil {
 			t.Fatalf("SetMessage(empty) error: %v", err)
 		}
 	}
@@ -828,7 +873,7 @@ func assertStatusMessageEvents(t *testing.T, store *state.Store, sessionName str
 
 func TestSetMessage_SessionNotFound(t *testing.T) {
 	store := testStore(t)
-	err := SetMessage(nil, store, "owner/repo-999", "working")
+	err := SetMessage(nil, store, "owner/repo-999", "working", nil)
 	if err == nil {
 		t.Fatal("expected error for missing session")
 	}
@@ -851,7 +896,7 @@ func TestSetMessage_SessionGuardBlocksCrossOwner(t *testing.T) {
 	store.Put(&domain.Session{Name: "exampleorg/repo-26", CreatedAt: now, UpdatedAt: now})
 	cfg := &config.Config{SessionGuard: "^acme/"}
 
-	err := SetMessage(cfg, store, "exampleorg/repo-26", "working")
+	err := SetMessage(cfg, store, "exampleorg/repo-26", "working", nil)
 	if err == nil {
 		t.Fatal("expected session-guard rejection for cross-owner message write")
 	}

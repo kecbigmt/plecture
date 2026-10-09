@@ -11,9 +11,6 @@ mkdir -p "$bin_dir"
 cat > "$bin_dir/plect" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PLECT_CALLS"
-if [ "$1 $2" = "event list" ]; then
-  printf '%s\n' "${PLECT_LATEST_STATUS_JSON:-}"
-fi
 EOF
 chmod +x "$bin_dir/plect"
 
@@ -85,38 +82,36 @@ want='state set-message owner/repo-1 '
 : > "$tmp/calls"
 PLECT_SESSION_NAME="owner/repo-1" \
 PLECT_CALLS="$tmp/calls" \
-PLECT_LATEST_STATUS_JSON='{"events":[{"metadata":{"text":"working","cleared":"false"}}]}' \
 XDG_STATE_HOME="$tmp/state" \
 PATH="$bin_dir:$PATH" \
 "$subject" waiting <<<'{"hook_event_name":"Stop","prompt_id":"turn-abc"}'
 got="$(tail -n 1 "$tmp/calls")"
 case "$got" in
-  'event publish owner/repo-1 --type plect.status_message --source plect --direction outbound --summary  --meta text= --meta cleared=true --meta previous=working --meta turn_id=turn-abc') ;;
+  'state set-message owner/repo-1  --turn-id turn-abc') ;;
   *) printf 'turn-scoped Stop status = %q\n' "$got" >&2; exit 1 ;;
 esac
+[ "$(wc -l < "$tmp/calls")" -eq 1 ] || { printf 'turn-scoped Stop must use one state command: %s\n' "$(cat "$tmp/calls")" >&2; exit 1; }
 
 : > "$tmp/calls"
 PLECT_SESSION_NAME="owner/repo-1" \
 PLECT_CALLS="$tmp/calls" \
-PLECT_LATEST_STATUS_JSON='{"events":[{"metadata":{"text":"","cleared":"true"}}]}' \
 XDG_STATE_HOME="$tmp/state" \
 PATH="$bin_dir:$PATH" \
 "$subject" working <<<'{"hook_event_name":"UserPromptSubmit","prompt_id":"turn-next"}'
 got="$(tail -n 1 "$tmp/calls")"
-want='event publish owner/repo-1 --type plect.status_message --source plect --direction outbound --summary working --meta text=working --meta cleared=false --meta previous= --meta turn_id=turn-next'
+want='state set-message owner/repo-1 working --turn-id turn-next'
 [ "$got" = "$want" ] || { printf 'turn-scoped working status = %q, want %q\n' "$got" "$want" >&2; exit 1; }
 
 : > "$tmp/calls"
 PLECT_SESSION_NAME="owner/repo-1" \
 PLECT_CALLS="$tmp/calls" \
-PLECT_LATEST_STATUS_JSON='{"events":[{"metadata":{"text":"working","cleared":"false"}}]}' \
 XDG_STATE_HOME="$tmp/state" \
 PATH="$bin_dir:$PATH" \
 "$subject" working <<<'{"hook_event_name":"UserPromptSubmit","prompt_id":"turn-next"}'
-[ "$(wc -l < "$tmp/calls")" -eq 1 ] || { printf 'unchanged status published: %s\n' "$(cat "$tmp/calls")" >&2; exit 1; }
+[ "$(wc -l < "$tmp/calls")" -eq 1 ] || { printf 'repeated status must use one state command: %s\n' "$(cat "$tmp/calls")" >&2; exit 1; }
+[ "$(tail -n 1 "$tmp/calls")" = 'state set-message owner/repo-1 working --turn-id turn-next' ] || { printf 'repeated status did not delegate dedupe to state: %s\n' "$(cat "$tmp/calls")" >&2; exit 1; }
 
-# working: an unreachable plect never fails the hook, and state
-# set-message's own failure is logged the same way event publish's is below.
+# An unreachable plect must not fail the hook or lose the error.
 PLECT_SESSION_NAME="owner/repo-1" \
 XDG_STATE_HOME="$tmp/state" \
 PATH="$noplect_path" \
@@ -145,7 +140,7 @@ PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 "$subject" finish <<<'{"hook_event_name":"Stop","last_assistant_message":"finish answer","prompt_id":"turn-finish"}'
 [ "$(grep -nE 'plect.message |set-message' "$tmp/calls" | cut -d: -f2- | paste -sd '|' -)" = \
-  'event publish owner/repo-1 --type plect.message --summary finish answer --body finish answer --meta message_id=owner/repo-1/turn-finish --meta message_id_origin=synthetic --meta role=assistant --meta source=claude --meta turn_id=turn-finish|state set-message owner/repo-1 ' ] || { echo "Stop did not finish after its answer" >&2; exit 1; }
+  'event publish owner/repo-1 --type plect.message --summary finish answer --body finish answer --meta message_id=owner/repo-1/turn-finish --meta message_id_origin=synthetic --meta role=assistant --meta source=claude --meta turn_id=turn-finish|state set-message owner/repo-1  --turn-id turn-finish' ] || { echo "Stop did not finish after its answer" >&2; exit 1; }
 
 : > "$tmp/calls"
 PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
@@ -158,7 +153,7 @@ XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 "$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-finish","turn_id":"turn-stream-finish","final":true,"delta":"done"}'
-[ "$(tail -n 1 "$tmp/calls")" = 'state set-message owner/repo-1 ' ] || { echo "final delta did not complete the turn" >&2; exit 1; }
+[ "$(tail -n 1 "$tmp/calls")" = 'state set-message owner/repo-1  --turn-id turn-stream-finish' ] || { echo "final delta did not complete the turn" >&2; exit 1; }
 
 # reply: a non-empty last_assistant_message publishes exactly one
 # plect.message event, summary truncated to its first line, message_id

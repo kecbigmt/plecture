@@ -520,11 +520,9 @@ func workflowDisplayOutputs(s *domain.Session) map[string]any {
 	return out
 }
 
-// SetMessage updates the session's status line. An unchanged non-empty text
-// appends nothing, but an empty text always appends: the cleared event is
-// also the only record of an idle confirmation, so de-duplicating it would
-// leave a re-reported wait looking older than the activity that preceded it.
-func SetMessage(cfg *config.Config, store *state.Store, identifier string, text string) error {
+// An empty report always appends because it is the only record of a fresh
+// idle confirmation. A new turn also appends even when its text is unchanged.
+func SetMessage(cfg *config.Config, store *state.Store, identifier string, text string, turnID *string) error {
 	sessionName, _, err := resolveSession(cfg, store, identifier)
 	if err != nil {
 		return err
@@ -541,12 +539,22 @@ func SetMessage(cfg *config.Config, store *state.Store, identifier string, text 
 	if ok && latest.Metadata["cleared"] != "true" {
 		previous = latest.Metadata["text"]
 	}
-	if text != "" && previous == text && ok {
+	latestTurnID, latestHasTurnID := latest.Metadata["turn_id"]
+	turnIDMatches := turnID == nil && !latestHasTurnID || turnID != nil && latestHasTurnID && *turnID == latestTurnID
+	if text != "" && previous == text && ok && turnIDMatches {
 		return nil
 	}
 	cleared := "false"
 	if text == "" {
 		cleared = "true"
+	}
+	metadata := map[string]string{
+		"text":     text,
+		"cleared":  cleared,
+		"previous": previous,
+	}
+	if turnID != nil {
+		metadata["turn_id"] = *turnID
 	}
 	if _, _, _, err := log.Append(event.Event{
 		SessionName: sessionName,
@@ -554,11 +562,7 @@ func SetMessage(cfg *config.Config, store *state.Store, identifier string, text 
 		Source:      event.SourcePlect,
 		Direction:   event.Outbound,
 		Summary:     text,
-		Metadata: map[string]string{
-			"text":     text,
-			"cleared":  cleared,
-			"previous": previous,
-		},
+		Metadata:    metadata,
 	}); err != nil {
 		return &Error{Code: ErrExecutionFailed, Message: err.Error()}
 	}

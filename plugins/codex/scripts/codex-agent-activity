@@ -72,29 +72,6 @@ run_plect() {
   return 0
 }
 
-publish_status_with_turn() {
-  local text="$1" turn_id="$2" latest count previous cleared target
-  target="$PLECT_SESSION_NAME"
-  latest="$(plect event list "$target" --type plect.status_message --order desc --limit 1 --json 2>/dev/null)" || {
-    run_plect state set-message "$target" "$text"
-    return 0
-  }
-  count="$(printf '%s' "$latest" | jq -er '.events | length' 2>/dev/null)" || {
-    run_plect state set-message "$target" "$text"
-    return 0
-  }
-  previous="$(printf '%s' "$latest" | jq -j '(if .events[0].metadata.cleared == "true" then "" else (.events[0].metadata.text // "") end) + "\u0001"' 2>/dev/null)" || {
-    run_plect state set-message "$target" "$text"
-    return 0
-  }
-  previous="${previous%$'\001'}"
-  [ -n "$text" ] && [ "$count" -gt 0 ] && [ "$text" = "$previous" ] && return 0
-  cleared=false
-  [ -z "$text" ] && cleared=true
-  PLECT_SESSION_NAME= run_plect event publish "$target" --type plect.status_message --source plect --direction outbound --summary "$text" \
-    --meta "text=$text" --meta "cleared=$cleared" --meta "previous=$previous" --meta "turn_id=$turn_id"
-}
-
 # publish_report fires the same event-shape rule the reporting hook follows:
 # empty text publishes nothing, and a non-empty one goes out with a
 # first-line summary. Never fails the caller — a publish failure is silently
@@ -236,7 +213,7 @@ text="$activity"
 
 turn_id="$(printf '%s' "$payload" | jq -r '.turn_id // empty' 2>/dev/null)" || turn_id=""
 if [ -n "$turn_id" ]; then
-  publish_status_with_turn "$text" "$turn_id"
+  run_plect state set-message "$PLECT_SESSION_NAME" "$text" --turn-id "$turn_id"
 else
   run_plect state set-message "$PLECT_SESSION_NAME" "$text"
 fi
