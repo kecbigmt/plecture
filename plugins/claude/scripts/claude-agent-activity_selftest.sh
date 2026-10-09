@@ -144,7 +144,7 @@ run_report() {
 PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 "$subject" finish <<<'{"hook_event_name":"Stop","last_assistant_message":"finish answer","prompt_id":"turn-finish"}'
-[ "$(rg -n 'plect.message |set-message' "$tmp/calls" | cut -d: -f2- | paste -sd '|' -)" = \
+[ "$(grep -nE 'plect.message |set-message' "$tmp/calls" | cut -d: -f2- | paste -sd '|' -)" = \
   'event publish owner/repo-1 --type plect.message --summary finish answer --body finish answer --meta message_id=owner/repo-1/turn-finish --meta message_id_origin=synthetic --meta role=assistant --meta source=claude --meta turn_id=turn-finish|state set-message owner/repo-1 ' ] || { echo "Stop did not finish after its answer" >&2; exit 1; }
 
 : > "$tmp/calls"
@@ -154,7 +154,7 @@ XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" PLECT_CLAUDE_MESSAGE_DEDUP=true \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 "$subject" finish <<<'{"hook_event_name":"Stop","last_assistant_message":"answer done","prompt_id":"turn-stream-finish"}'
-! rg -q 'state set-message owner/repo-1 ' "$tmp/calls" || { echo "Stop cleared an unfinished stream" >&2; exit 1; }
+! grep -q 'state set-message owner/repo-1 ' "$tmp/calls" || { echo "Stop cleared an unfinished stream" >&2; exit 1; }
 PLECT_SESSION_NAME="owner/repo-1" PLECT_CALLS="$tmp/calls" \
 XDG_STATE_HOME="$tmp/state" PATH="$bin_dir:$PATH" \
 "$subject" message_display <<<'{"hook_event_name":"MessageDisplay","message_id":"native-finish","turn_id":"turn-stream-finish","final":true,"delta":"done"}'
