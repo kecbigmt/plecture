@@ -323,9 +323,10 @@ decides who may talk to a session; it does not choose the recipient, so any
 number of allowed users (or none, for app mentions) can stream. The claimed
 recipient is kept in the stream snapshot; the queue is in memory, so a
 restart between a message and the reply's first chunk can lose it and the
-reply falls back as below. When one agent turn answers several different
-senders at once, only the oldest is addressed, since nothing links a reply to
-the messages it answers.
+reply falls back as below. Known limit: nothing links a reply to the
+inbound message it answers, so a sender who interleaves can shift the
+recipient by one turn, and when one agent turn answers several different
+senders at once only the oldest is addressed.
 
 If `chat.startStream` itself fails (the workspace/app doesn't support
 streaming) or no recipient is known for the thread, every chunk under that
