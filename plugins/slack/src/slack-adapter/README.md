@@ -307,8 +307,10 @@ never prevents the adapter from starting.
 
 `chat.startStream` requires a recipient user and that user's workspace
 when streaming into a channel. The adapter keeps, per channel and thread, a
-queue of the senders of accepted inbound messages (thread messages and app
-mentions, including the mention that starts an unbound thread's session). A
+queue of the senders of inbound messages that reached their session (thread
+messages and app mentions, including a mention handed to an unbound-mention
+reader or hook that succeeded); a message whose delivery failed is never
+queued. A
 stream claims the oldest sender still unanswered when it first appears, so a
 message that arrives before a reply's first chunk cannot take that reply
 over; it is addressed by a later reply instead. Messages of one turn,

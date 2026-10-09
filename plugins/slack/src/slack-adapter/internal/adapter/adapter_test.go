@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -273,16 +274,81 @@ func TestHandleAppMention_MentionerBecomesStreamRecipientWithoutAllowlist(t *tes
 	}
 }
 
-func TestHandleAppMention_UnboundMentionerIsRecipientOfTheSessionItStarts(t *testing.T) {
+func TestHandleAppMention_UnboundMentionerIsRecipientOnlyWhenDispatchSucceeds(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		hookErr   error
+		linkErr   error
+		wantStart bool
+	}{
+		{name: "hook succeeds", wantStart: true},
+		{name: "hook fails", hookErr: errors.New("exit status 1")},
+		{name: "permalink fails", linkErr: errors.New("no permalink")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newTestAdapter(&Config{OnUnboundMention: "/path/to/dispatch"})
+			a.teamID = "T-home"
+			a.permalinkResolver = &fakePermalinkResolver{link: "https://example.slack.com/p1", err: tc.linkErr}
+			a.mentionHook = &recordingMentionHookRunner{err: tc.hookErr}
+
+			a.handleAppMention(&slackevents.AppMentionEvent{User: "U-eli", Text: "<@U-bot> go", TimeStamp: "1000.000001", Channel: "C-review"})
+
+			starts := streamStartsAfter(t, a, "C-review", "1000.000001")
+			if got := len(starts) == 1 && starts[0].recipientUserID == "U-eli"; got != tc.wantStart {
+				t.Fatalf("StartStream calls = %+v, want a stream for U-eli: %v", starts, tc.wantStart)
+			}
+		})
+	}
+}
+
+func TestHandleAppMention_UnboundMentionWithNoDispatchTargetIsNotARecipient(t *testing.T) {
 	a := newTestAdapter(&Config{})
 	a.teamID = "T-home"
 
 	a.handleAppMention(&slackevents.AppMentionEvent{User: "U-eli", Text: "<@U-bot> go", TimeStamp: "1000.000001", Channel: "C-review"})
 
-	starts := streamStartsAfter(t, a, "C-review", "1000.000001")
-	if len(starts) != 1 || starts[0].recipientUserID != "U-eli" {
-		t.Fatalf("StartStream calls = %+v, want one for U-eli: the mention is the turn's trigger", starts)
+	if starts := streamStartsAfter(t, a, "C-review", "1000.000001"); len(starts) != 0 {
+		t.Fatalf("StartStream calls = %+v, want none: no session was started for this mention", starts)
 	}
+}
+
+func TestHandleAppMention_BoundMentionWhoseEventFailedToPublishIsNotARecipient(t *testing.T) {
+	a := newTestAdapter(&Config{})
+	a.teamID = "T-home"
+	a.threadFetcher = &fakeThreadFetcher{messages: []slack.Message{slackMessage("1000.000001", "U-eli", "<@U-bot> go")}}
+	a.eventPublisher = failingEventPublisher{}
+	a.broker.Subscribe(Subscriber{ThreadTS: "1000.000001", ChannelID: "C-review", SessionName: "owner/repo-1"})
+
+	a.handleAppMention(&slackevents.AppMentionEvent{User: "U-eli", Text: "<@U-bot> go", TimeStamp: "1000.000002", ThreadTimeStamp: "1000.000001", Channel: "C-review"})
+
+	if starts := streamStartsAfter(t, a, "C-review", "1000.000001"); len(starts) != 0 {
+		t.Fatalf("StartStream calls = %+v, want none: the session never received this mention", starts)
+	}
+}
+
+func TestHandleMessage_RejectedDeliveryDoesNotQueueTheSenderForTheNextReply(t *testing.T) {
+	socketPath, msgs := startCapturingListener(t)
+	a := newTestAdapter(&Config{AllowedUserIDs: []string{"U-dana", "U-eli"}})
+	a.api = fakeSlackAPI(t)
+	a.eventPublisher = &recordingEventPublisher{}
+	a.teamID = "T-home"
+	a.broker.Subscribe(Subscriber{ThreadTS: "1111.000", ChannelID: "C123", SocketPath: filepath.Join(t.TempDir(), "gone.sock"), SessionName: "owner/repo-1"})
+
+	a.handleMessage(&slackevents.MessageEvent{User: "U-dana", Text: "lost", ThreadTimeStamp: "1111.000", Channel: "C123"})
+	a.broker.Subscribe(Subscriber{ThreadTS: "1111.000", ChannelID: "C123", SocketPath: socketPath, SessionName: "owner/repo-1"})
+	a.handleMessage(&slackevents.MessageEvent{User: "U-eli", Text: "delivered", ThreadTimeStamp: "1111.000", Channel: "C123"})
+	<-msgs
+
+	starts := streamStartsAfter(t, a, "C123", "1111.000")
+	if len(starts) != 1 || starts[0].recipientUserID != "U-eli" {
+		t.Fatalf("StartStream calls = %+v, want U-eli: U-dana's message never reached the session", starts)
+	}
+}
+
+type failingEventPublisher struct{}
+
+func (failingEventPublisher) PublishSessionEvent(string, publishedEvent) error {
+	return errors.New("publish failed")
 }
 
 func TestHandleAppMention_BotMentionIsNeverStreamRecipient(t *testing.T) {

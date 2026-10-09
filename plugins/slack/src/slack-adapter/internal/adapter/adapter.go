@@ -239,7 +239,6 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 	if sub.ChannelID == "" {
 		sub.ChannelID = ev.Channel
 	}
-	a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
 
 	if err := a.deliverToChannelServer(sub, msg); err != nil {
 		if _, perr := a.poster.PostToThread(ev.Channel, threadTS, ":warning: Failed to deliver the message. The session may have ended."); perr != nil {
@@ -251,11 +250,13 @@ func (a *Adapter) handleMessage(ev *slackevents.MessageEvent) {
 		}
 		return
 	}
+	a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
 	a.captureInbound(sub, msg)
 }
 
-// recordStreamRecipient makes the sender of a gated-in inbound message the
-// addressee of the thread's next stream. A sender from another workspace of
+// recordStreamRecipient makes the sender of an inbound message that actually
+// reached its session the addressee of one of the thread's next streams: a
+// message that never ran a turn must not claim a later reply. A sender from another workspace of
 // a shared channel is addressed in their own workspace; the Slack event
 // names that workspace only for such senders, so any other falls back to
 // the app's own.

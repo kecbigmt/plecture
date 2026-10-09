@@ -54,12 +54,14 @@ func (cliMentionHookRunner) Run(command string, payload []byte) error {
 // silently dropping its deliveries would be a regression this function has
 // no way to detect. The hook command's exit status is only ever inspected,
 // never retried: which workflow to start and which channels to honour is
-// deployment policy this plugin must not encode.
-func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, threadTS string) {
+// deployment policy this plugin must not encode. It reports whether the
+// mention was handed to a stream reader or a succeeding hook, i.e. whether a
+// session may now start for it.
+func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, threadTS string) bool {
 	hasHook := a.cfg.OnUnboundMention != ""
 	hasStreamReaders := a.mentions != nil && a.mentions.hasSubscribers()
 	if !hasHook && !hasStreamReaders {
-		return
+		return false
 	}
 
 	resolver := a.permalinkResolver
@@ -70,10 +72,12 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 	if err != nil {
 		a.logger.Warn("unbound mention dispatch skipped: failed to resolve permalink",
 			"thread_ts", threadTS, "channel_id", ev.Channel, "error", err)
-		return
+		return false
 	}
 
+	published := false
 	if a.mentions != nil {
+		published = hasStreamReaders
 		a.mentions.publish(unboundMentionItem{
 			Resource:  link,
 			ChannelID: ev.Channel,
@@ -84,7 +88,7 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 	}
 
 	if !hasHook {
-		return
+		return published
 	}
 
 	payload, err := json.Marshal(unboundMentionPayload{
@@ -98,7 +102,7 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 	if err != nil {
 		a.logger.Warn("on_unbound_mention skipped: failed to encode payload",
 			"thread_ts", threadTS, "channel_id", ev.Channel, "error", err)
-		return
+		return published
 	}
 
 	runner := a.mentionHook
@@ -108,8 +112,9 @@ func (a *Adapter) dispatchUnboundMention(ev *slackevents.AppMentionEvent, thread
 	if err := runner.Run(a.cfg.OnUnboundMention, payload); err != nil {
 		a.logger.Warn("on_unbound_mention command exited with an error",
 			"command", a.cfg.OnUnboundMention, "thread_ts", threadTS, "channel_id", ev.Channel, "error", err)
-		return
+		return published
 	}
 	a.logger.Info("on_unbound_mention command completed",
 		"command", a.cfg.OnUnboundMention, "thread_ts", threadTS, "channel_id", ev.Channel)
+	return true
 }
