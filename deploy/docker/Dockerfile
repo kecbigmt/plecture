@@ -92,7 +92,7 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
   ca-certificates=20250419~deb12u1 \
   curl=7.88.1-10+deb12u15 \
   git=1:2.39.5-0+deb12u3 \
-  jq=1.6-2.1+deb12u2 \
+  jq=1.6-2.1+deb12u3 \
   procps=2:4.0.2-3 \
   runit=2.1.2-54 \
   tmux=3.3a-3 \
