@@ -118,8 +118,8 @@ RUN curl -fsSL -o /tmp/gh.tar.gz \
 
 # Pinned tarball rather than apt's nodejs package or a floating NodeSource
 # script — only to run the two npm-distributed agent CLIs below.
-ARG NODE_VERSION=24.19.0
-ARG NODE_SHA256=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647
+ARG NODE_VERSION=24.22.1
+ARG NODE_SHA256=6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6
 RUN curl -fsSL -o /tmp/node.tar.xz \
   "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
   && echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c - \
