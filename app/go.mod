@@ -1,6 +1,6 @@
 module github.com/kecbigmt/plecture/app
 
-go 1.25.6
+go 1.26.10
 
 require (
 	cel.dev/cel-go v0.32.0
