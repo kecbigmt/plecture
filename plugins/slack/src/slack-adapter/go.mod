@@ -1,6 +1,6 @@
 module github.com/kecbigmt/plecture/plugins/slack/src/slack-adapter
 
-go 1.25.6
+go 1.26.10
 
 require (
 	github.com/BurntSushi/toml v1.6.0

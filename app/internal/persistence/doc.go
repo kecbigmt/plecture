@@ -43,18 +43,6 @@
 // Query code (schema.sql + queries.sql -> sqlcgen):
 //
 //	go generate ./internal/persistence/...
-//
-// # Pinned tool versions
-//
-// github.com/mattn/go-sqlite3 v1.14.52, github.com/pressly/goose/v3
-// v3.27.0, and sqlc v1.30.0 (a go.mod tool directive) are each held one or
-// two minors behind their own latest tag deliberately: goose v3.28.0 and
-// sqlc v1.31.x each declare `go 1.26.0` in their own go.mod, and adding
-// either as-is would force this module's toolchain to 1.26 as a side
-// effect of a library/tool pin rather than as its own deliberate decision.
-// The pins above are each the newest tag still compatible with this
-// module's `go 1.25.6`. Revisit them together with a real toolchain bump,
-// not incidentally.
 package persistence
 
 //go:generate go tool sqlc generate --file sqlc.yaml
