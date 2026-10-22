@@ -13,7 +13,7 @@
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS source
 
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
-  ca-certificates=20250419~deb12u1 \
+  ca-certificates=20250419~deb12u2 \
   git=1:2.39.5-0+deb12u3 \
   && rm -rf /var/lib/apt/lists/*
 
@@ -34,7 +34,7 @@ RUN git init -q /src \
   && test "$(git -C /src rev-parse HEAD)" = "${PLECT_SOURCE_SHA}"
 
 # ---- builder ---------------------------------------------------------
-FROM golang:1.25.6-bookworm@sha256:f4490d7b261d73af4543c46ac6597d7d101b6e1755bcdd8c5159fda7046b6b3e AS builder
+FROM golang:1.26.10-bookworm@sha256:632dff7351799a5a9954a48dc06670ade72ee44e8c351cdc0e5a57af2fea21af AS builder
 
 COPY --from=source /src /opt/plect-repo
 # Left empty (the default), the build stays a development build: Current
@@ -89,7 +89,7 @@ RUN echo "${PLECT_SOURCE_SHA}" > /etc/plecture-source-revision
 # runit: the outer supervisor — see README's Process model section for
 # the s6-overlay/supervisord/runit choice.
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
-  ca-certificates=20250419~deb12u1 \
+  ca-certificates=20250419~deb12u2 \
   curl=7.88.1-10+deb12u15 \
   git=1:2.39.5-0+deb12u3 \
   jq=1.6-2.1+deb12u3 \
@@ -118,8 +118,8 @@ RUN curl -fsSL -o /tmp/gh.tar.gz \
 
 # Pinned tarball rather than apt's nodejs package or a floating NodeSource
 # script — only to run the two npm-distributed agent CLIs below.
-ARG NODE_VERSION=24.19.0
-ARG NODE_SHA256=14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647
+ARG NODE_VERSION=24.22.1
+ARG NODE_SHA256=6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6
 RUN curl -fsSL -o /tmp/node.tar.xz \
   "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
   && echo "${NODE_SHA256}  /tmp/node.tar.xz" | sha256sum -c - \

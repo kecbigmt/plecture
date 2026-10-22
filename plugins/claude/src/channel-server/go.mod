@@ -1,6 +1,6 @@
 module github.com/kecbigmt/plecture/plugins/claude/src/channel-server
 
-go 1.25.6
+go 1.26.10
 
 require (
 	github.com/kecbigmt/plecture/contracts/channel-protocol v0.0.0
