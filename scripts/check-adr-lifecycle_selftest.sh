@@ -12,7 +12,7 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 old=2026-01-01-old-decision
-new=2026-02-01-new-decision
+new=2026-11-05-new-decision
 
 commit_all() {
   git -C "$1" add -A
@@ -116,6 +116,23 @@ printf -- '---\nsuperseded_by: %s\n---\n\n# Other\n' "$new" >"$d/docs/adr/$other
 printf -- '---\nsupersedes:\n  - %s\n  - %s\n---\n\n# New decision\n\n## Context\n\n### Supersession scope\n\nBoth.\n\n## Decision\n' "$old" "$other" >"$d/docs/adr/$new.md"
 commit_all "$d" base
 expect clean-list-form pass ""
+
+# pre-rule-superseding-adr: a superseding ADR dated before the scope rule
+# needs no heading, and its list-form supersedes still links both ways.
+d="$(new_fixture pre-rule-superseding-adr)"
+printf -- '---\nsuperseded_by: 2026-11-03-early\n---\n\n# A\n' >"$d/docs/adr/2026-01-01-a.md"
+printf -- '---\nsuperseded_by: 2026-11-03-early\n---\n\n# B\n' >"$d/docs/adr/2026-01-02-b.md"
+printf -- '---\nsupersedes:\n  - 2026-01-01-a\n  - 2026-01-02-b\n---\n\n# Early\n' >"$d/docs/adr/2026-11-03-early.md"
+commit_all "$d" base
+expect pre-rule-superseding-adr pass ""
+
+# list-form-one-directional: every list item must link back.
+d="$(new_fixture list-form-one-directional)"
+printf -- '---\nsuperseded_by: 2026-11-03-early\n---\n\n# A\n' >"$d/docs/adr/2026-01-01-a.md"
+printf -- '# B\n' >"$d/docs/adr/2026-01-02-b.md"
+printf -- '---\nsupersedes:\n  - 2026-01-01-a\n  - 2026-01-02-b\n---\n\n# Early\n' >"$d/docs/adr/2026-11-03-early.md"
+commit_all "$d" base
+expect list-form-one-directional fail "2026-01-02-b.md lacks"
 
 # dangling-supersedes: supersedes names an ADR that does not exist.
 d="$(new_fixture dangling-supersedes)"
