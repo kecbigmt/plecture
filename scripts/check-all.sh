@@ -48,5 +48,6 @@ step "scripts/check-comment-references.sh" "$scripts_dir/check-comment-reference
 step "scripts/check-comment-density.sh $base_ref HEAD" "$scripts_dir/check-comment-density.sh" "$base_ref" HEAD
 step "scripts/check-instruction-orphans.sh" "$scripts_dir/check-instruction-orphans.sh"
 step "scripts/check-agent-config.sh" "$scripts_dir/check-agent-config.sh"
+step "scripts/check-adr-lifecycle.sh $base_ref HEAD" "$scripts_dir/check-adr-lifecycle.sh" "$base_ref" HEAD
 
 echo "check-all.sh: all checks passed"
