@@ -130,7 +130,10 @@ verify-before-skip behavior and its `plect.node.result` account of each node.
 
 The implementation adds workflow configuration, probe timeout handling,
 repair scheduling, event-derived budget accounting, status reporting, and
-regression tests. No standing CI check is required for this decision.
+regression tests. Once fault-injection scenarios S1 and S2 pass with automatic
+repair, the Docker fault harness runs nightly as well as by manual dispatch.
+This is the one standing check added by the repair work: without it, a later
+change could silently break recovery after a container restart.
 
 ## Alternatives considered
 
