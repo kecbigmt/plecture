@@ -198,6 +198,49 @@ hooks                      = ["setup"]
 path    = ".claude/sessions/11111111-2222-3333-4444-555555555555.json"
 content = '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":PID}'
 
+# A terminal call that fails while the notice is being delivered leaves it
+# unknown whether the agent heard it, so each one fails setup and takes the
+# launched claude down with it. The launch line is the first send_text and
+# the first Enter, so the notice is the second of each; the input box is
+# read once before typing and once after.
+[[runtime]]
+name                       = "resume-notice-send-text-failure-fails-setup"
+prev                       = { session_id = "11111111-2222-3333-4444-555555555555" }
+capture                    = "› "
+fail_calls                 = ["terminal-send_text#2"]
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/11111111-2222-3333-4444-555555555555.json"
+content = '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":PID}'
+
+[[runtime]]
+name                       = "resume-notice-submit-failure-fails-setup"
+prev                       = { session_id = "11111111-2222-3333-4444-555555555555" }
+capture                    = "› "
+fail_calls                 = ["terminal-send_keys#2"]
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/11111111-2222-3333-4444-555555555555.json"
+content = '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":PID}'
+
+# A capture that fails after the notice was typed must not read as an empty,
+# and so submitted, input box.
+[[runtime]]
+name                       = "resume-notice-capture-failure-after-send-fails-setup"
+prev                       = { session_id = "11111111-2222-3333-4444-555555555555" }
+capture                    = "› "
+fail_calls                 = ["terminal-capture#2"]
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/11111111-2222-3333-4444-555555555555.json"
+content = '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":PID}'
+
 # This proves the timed-out launch's child is killed, the pane survives,
 # and a retry against that same pane succeeds.
 [[runtime]]

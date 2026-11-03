@@ -5,7 +5,7 @@
 # kill), only ready is withheld. PLECT_TEST_POISON_PID and
 # PLECT_TEST_NO_PID_REPORT exercise the two ways that self-report can't be
 # trusted: a syntactically valid but unrelated pid, and no report at all.
-plect-effect-record terminal-send_text "$@"
+plect-effect-record terminal-send_text "$@" || exit $?
 state_dir=$(printf '%s' "$1" | sed -n "s/.*claude-headless-worker '[^']*' '\([^']*\)'.*/\1/p")
 [ -n "$state_dir" ] || exit 0
 mkdir -p "$state_dir"

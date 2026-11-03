@@ -287,7 +287,10 @@ func effectSpyAnswer(t *testing.T, source string) func(string) string {
 func (h *effectHarness) writeRecorders(t *testing.T) {
 	t.Helper()
 	record := "#!/usr/bin/env sh\n" +
-		"{ printf '%s' \"$1\"; shift; for a in \"$@\"; do printf '\\036%s' \"$a\"; done; printf '\\035'; } >> \"$PLECT_EFFECT_LOG\"\n"
+		"name=\"$1\"\n" +
+		"prior=$(tr '\\035' '\\n' < \"$PLECT_EFFECT_LOG\" 2>/dev/null | grep -c \"^$name\" || true)\n" +
+		"{ printf '%s' \"$1\"; shift; for a in \"$@\"; do printf '\\036%s' \"$a\"; done; printf '\\035'; } >> \"$PLECT_EFFECT_LOG\"\n" +
+		"case \" ${PLECT_EFFECT_FAIL_CALLS-} \" in *\" $name \"*|*\" $name#$((prior + 1)) \"*) exit 7 ;; esac\n"
 	h.writeSpy(t, "plect-effect-record", record)
 	// A stand-in for a command the script needs to really run records the
 	// call and then hands it to the real one, which is off this PATH.
@@ -298,7 +301,7 @@ func (h *effectHarness) writeRecorders(t *testing.T) {
 		"exec \"$@\"\n")
 	for _, verb := range []string{"attach", "capture", "send_text", "send_keys", "pid"} {
 		body := "#!/usr/bin/env sh\n" +
-			"plect-effect-record terminal-" + verb + " \"$@\"\n"
+			"plect-effect-record terminal-" + verb + " \"$@\" || exit $?\n"
 		switch verb {
 		case "capture":
 			body += "[ -n \"$PLECT_EFFECT_CAPTURE\" ] && printf '%s\\n' \"$PLECT_EFFECT_CAPTURE\"\ntrue\n"
@@ -344,6 +347,7 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	h.startWorkerProcess(t)
 	t.Setenv("PLECT_EFFECT_CAPTURE", scenario.Capture)
 	t.Setenv("PLECT_EFFECT_RETRY", "")
+	t.Setenv("PLECT_EFFECT_FAIL_CALLS", strings.Join(scenario.FailCalls, " "))
 	if scenario.NoTerminalPID {
 		t.Setenv("PLECT_EFFECT_NO_TERMINAL_PID", "1")
 	} else {

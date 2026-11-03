@@ -439,6 +439,63 @@ call[12]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[13]: "ps" "-p" "<pid>" "-o" "comm="
 declined: task "runtime" setup: exit status 1
 
+== runtime:resume-notice-send-text-failure-fails-setup / setup
+call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[1]: "claude-mcp-servers"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[4]: "terminal-pid"
+call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[6]: "terminal-send_keys" "Enter"
+call[7]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[8]: "terminal-capture"
+call[9]: "terminal-send_text" "実行環境の再起動により、直前のターンが中断された可能性がある。作業を続ける前に、worktree(`git status`)や関連する PR・スレッドの状態を確認し、完了済みの操作を繰り返さないこと。 (The runtime was restarted, so your previous turn may have been interrupted. Before continuing, check the worktree (`git status`) and the state of related PRs and threads, and do not repeat operations that are already complete.)"
+call[10]: "pgrep" "-P" "<pid>"
+call[11]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[12]: "ps" "-p" "<pid>" "-o" "comm="
+call[13]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[14]: "ps" "-p" "<pid>" "-o" "comm="
+declined: task "runtime" setup: exit status 1
+
+== runtime:resume-notice-submit-failure-fails-setup / setup
+call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[1]: "claude-mcp-servers"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[4]: "terminal-pid"
+call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[6]: "terminal-send_keys" "Enter"
+call[7]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[8]: "terminal-capture"
+call[9]: "terminal-send_text" "実行環境の再起動により、直前のターンが中断された可能性がある。作業を続ける前に、worktree(`git status`)や関連する PR・スレッドの状態を確認し、完了済みの操作を繰り返さないこと。 (The runtime was restarted, so your previous turn may have been interrupted. Before continuing, check the worktree (`git status`) and the state of related PRs and threads, and do not repeat operations that are already complete.)"
+call[10]: "terminal-send_keys" "Enter"
+call[11]: "pgrep" "-P" "<pid>"
+call[12]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[13]: "ps" "-p" "<pid>" "-o" "comm="
+call[14]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[15]: "ps" "-p" "<pid>" "-o" "comm="
+declined: task "runtime" setup: exit status 1
+
+== runtime:resume-notice-capture-failure-after-send-fails-setup / setup
+call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[1]: "claude-mcp-servers"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[4]: "terminal-pid"
+call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[6]: "terminal-send_keys" "Enter"
+call[7]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[8]: "terminal-capture"
+call[9]: "terminal-send_text" "実行環境の再起動により、直前のターンが中断された可能性がある。作業を続ける前に、worktree(`git status`)や関連する PR・スレッドの状態を確認し、完了済みの操作を繰り返さないこと。 (The runtime was restarted, so your previous turn may have been interrupted. Before continuing, check the worktree (`git status`) and the state of related PRs and threads, and do not repeat operations that are already complete.)"
+call[10]: "terminal-send_keys" "Enter"
+call[11]: "terminal-capture"
+call[12]: "pgrep" "-P" "<pid>"
+call[13]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[14]: "ps" "-p" "<pid>" "-o" "comm="
+call[15]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[16]: "ps" "-p" "<pid>" "-o" "comm="
+declined: task "runtime" setup: exit status 1
+
 == runtime:launch-timeout-then-retry-succeeds / setup
 call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
 call[1]: "claude-mcp-servers"

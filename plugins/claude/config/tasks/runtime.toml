@@ -301,6 +301,23 @@ fi
 # repeated because both face the same paste-burst race; extract at a third.
 RESUME_NOTICE="${resume_notice-}"
 if [ -n "$PREV_SID" ] && [ -n "$RESUME_NOTICE" ]; then
+  # A terminal call that fails leaves it unknown whether the agent heard the
+  # notice, so every one is a launch failure rather than a skipped step.
+  notice_fail() {
+    echo "resume notice: $1" >&2
+    terminate_claude_children
+    exit 1
+  }
+  # The substitution's own status is what tells a failed capture apart from
+  # an empty input box.
+  pane_input() {
+    out=$(sh -c "$capture" terminal-capture 2>/dev/null) || return 1
+    printf '%s\n' "$out" | grep '^[›❯]' | tail -n 1 | sed 's/\xc2\xa0/ /g'
+  }
+  input_is_empty() {
+    case "$1" in ''|'›'|'› '|'❯'|'❯ ') return 0 ;; esac
+    return 1
+  }
   ready=0
   for _ in $(seq 1 "$LAUNCH_TIMEOUT_SECONDS"); do
     if sh -c "$capture" terminal-capture 2>/dev/null | grep -q '^[›❯]'; then
@@ -309,36 +326,22 @@ if [ -n "$PREV_SID" ] && [ -n "$RESUME_NOTICE" ]; then
     fi
     sleep 1
   done
-  if [ "$ready" != 1 ]; then
-    echo "resume notice: terminal did not show input box within $launch_timeout" >&2
-    terminate_claude_children
-    exit 1
-  fi
-  sh -c "$send_text" terminal-send-text "$RESUME_NOTICE"
+  [ "$ready" = 1 ] || notice_fail "terminal did not show input box within $launch_timeout"
+  sh -c "$send_text" terminal-send-text "$RESUME_NOTICE" || notice_fail "could not type the notice"
   sleep 1
-  sh -c "$send_keys" terminal-send-keys Enter
+  sh -c "$send_keys" terminal-send-keys Enter || notice_fail "could not submit the notice"
   submitted=0
   for delay in 2 4 8 16; do
-    input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
-    input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
-    case "$input" in
-      ''|'›'|'› '|'❯'|'❯ ') submitted=1; break ;;
-    esac
+    input=$(pane_input) || notice_fail "could not read the input box"
+    if input_is_empty "$input"; then submitted=1; break; fi
     sleep "$delay"
-    sh -c "$send_keys" terminal-send-keys Enter
+    sh -c "$send_keys" terminal-send-keys Enter || notice_fail "could not resubmit the notice"
   done
   if [ "$submitted" != 1 ]; then
-    input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
-    input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
-    case "$input" in
-      ''|'›'|'› '|'❯'|'❯ ') submitted=1 ;;
-    esac
+    input=$(pane_input) || notice_fail "could not read the input box"
+    input_is_empty "$input" && submitted=1
   fi
-  if [ "$submitted" != 1 ]; then
-    echo "resume notice: still unsubmitted after retries" >&2
-    terminate_claude_children
-    exit 1
-  fi
+  [ "$submitted" = 1 ] || notice_fail "still unsubmitted after retries"
 fi
 
 OUTPUT=$(jq -nc \

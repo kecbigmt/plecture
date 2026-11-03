@@ -86,6 +86,11 @@ type effectScenario struct {
 	// EmptyStartTime makes each plugin's own ps stand-in report no start
 	// time for any pid, as when the process table cannot be read.
 	EmptyStartTime bool `toml:"empty_start_time"`
+	// FailCalls names recorded stand-in calls that exit non-zero, each as
+	// "<name>" for every call or "<name>#<n>" for only the nth, so a script
+	// that issues the same terminal verb several times can be failed at one
+	// particular step.
+	FailCalls []string `toml:"fail_calls"`
 }
 
 type effectScenarioFile struct {
