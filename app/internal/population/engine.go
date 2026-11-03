@@ -288,6 +288,17 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	}
 	outcome, err := e.hooks.Up(ctx, member.ResourceID, inputs)
 	if err != nil {
+		var serviceErr *service.Error
+		if errors.As(err, &serviceErr) && serviceErr.Code == service.ErrChildUpInProgress {
+			return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
+				current := population.Members[member.ResourceID]
+				if current == nil || current.Generation != member.Generation || current.Tombstoned {
+					return nil
+				}
+				current.AdmitRetryAt = e.now().Add(admitRetryBase)
+				return nil
+			})
+		}
 		var conflict *populationConflictError
 		if errors.As(err, &conflict) {
 			return e.failAdmit(member, conflict.session, "provenance", err)

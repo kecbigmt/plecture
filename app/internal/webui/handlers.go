@@ -237,10 +237,11 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := s.svc.Up(service.UpParams{
-		Identifier: rawURL,
-		Tag:        strings.TrimSpace(r.FormValue("tag")),
-		Workflow:   strings.TrimSpace(r.FormValue("workflow")),
-		Inputs:     inputs,
+		Identifier:     rawURL,
+		Tag:            strings.TrimSpace(r.FormValue("tag")),
+		Workflow:       strings.TrimSpace(r.FormValue("workflow")),
+		Inputs:         inputs,
+		HumanInitiated: true,
 	})
 	if err != nil {
 		s.renderStatusError(w, httpStatusForError(err), err.Error())
@@ -252,7 +253,7 @@ func (s *Server) handleSessionCreate(w http.ResponseWriter, r *http.Request) {
 // handleSessionUp runs run-scoped setup for the named session.
 func (s *Server) handleSessionUp(w http.ResponseWriter, r *http.Request) {
 	name := r.FormValue("name")
-	if _, err := s.svc.Up(service.UpParams{Identifier: name}); err != nil {
+	if _, err := s.svc.Up(service.UpParams{Identifier: name, HumanInitiated: true}); err != nil {
 		s.renderStatusError(w, httpStatusForError(err), err.Error())
 		return
 	}
