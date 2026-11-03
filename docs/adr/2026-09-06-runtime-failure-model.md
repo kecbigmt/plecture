@@ -1,10 +1,8 @@
 ---
-amended_by: 2026-11-04-opt-in-session-repair
+superseded_by: 2026-11-04-opt-in-session-repair
 ---
 
 # Runtime failure model
-
-Only section 1's rule that the health cycle never repairs is narrowed by 2026-11-04-opt-in-session-repair; all other decisions remain in force.
 
 ## Context
 
