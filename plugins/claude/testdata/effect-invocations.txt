@@ -56,6 +56,59 @@ call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[6]: "ps" "-o" "lstart=" "-p" "<pid>"
 outputs: {"pid":<pid>,"pid_started":"started-<pid>","queue_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/queue","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555"}
 
+== headless_runtime:first-setup-queues-no-resume-notice / setup
+call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+call[1]: "uuidgen"
+call[2]: "claude-mcp-servers"
+call[3]: "terminal-pid"
+call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/mcp.json' '<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/hooks.json' '<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock'"
+call[5]: "terminal-send_keys" "Enter"
+call[6]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[7]: "ps" "-o" "lstart=" "-p" "<pid>"
+outputs: {"pid":<pid>,"pid_started":"started-<pid>","queue_dir":"<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue","session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","socket_path":"<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}
+artifact queue_dir/0-resume-notice.json: open <state>/plect-claude-headless/acme/widget-1/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/queue/0-resume-notice.json: no such file or directory
+
+== headless_runtime:prev-setup-queues-resume-notice-once / setup
+call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+call[1]: "claude-mcp-servers"
+call[2]: "terminal-pid"
+call[3]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/queue' '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555' '11111111-2222-3333-4444-555555555555' '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/mcp.json' '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/hooks.json' '<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock'"
+call[4]: "terminal-send_keys" "Enter"
+call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[6]: "ps" "-o" "lstart=" "-p" "<pid>"
+outputs: {"pid":<pid>,"pid_started":"started-<pid>","queue_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/queue","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555"}
+artifact queue_dir/0-resume-notice.json:
+{
+  "type": "resume_notice",
+  "text": "実行環境の再起動により、直前のターンが中断された可能性がある。作業を続ける前に、worktree(`git status`)や関連する PR・スレッドの状態を確認し、完了済みの操作を繰り返さないこと。 (The runtime was restarted, so your previous turn may have been interrupted. Before continuing, check the worktree (`git status`) and the state of related PRs and threads, and do not repeat operations that are already complete.)"
+}
+
+== headless_runtime:resume-notice-input-overrides-default / setup
+call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+call[1]: "claude-mcp-servers"
+call[2]: "terminal-pid"
+call[3]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/queue' '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555' '11111111-2222-3333-4444-555555555555' '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/mcp.json' '<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/hooks.json' '<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock'"
+call[4]: "terminal-send_keys" "Enter"
+call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[6]: "ps" "-o" "lstart=" "-p" "<pid>"
+outputs: {"pid":<pid>,"pid_started":"started-<pid>","queue_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555/queue","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1/11111111-2222-3333-4444-555555555555"}
+artifact queue_dir/0-resume-notice.json:
+{
+  "type": "resume_notice",
+  "text": "Run the boot reconcile before taking any other action."
+}
+
+== headless_runtime:empty-resume-notice-queues-nothing / setup
+call[0]: "claude-agent-activity" "reset" "acme/widget-1"
+call[1]: "claude-mcp-servers"
+call[2]: "terminal-pid"
+call[3]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_CLAUDE_MODEL=''; export PLECT_CLAUDE_EFFORT=''; export PLECT_CLAUDE_PERMISSION_MODE='bypassPermissions'; export PLECT_CLAUDE_API_KEY_FILE=''; export PLECT_CLAUDE_CHANNEL_SERVER_BIN='<plugin>/bin/channel-server'; <plugin>/scripts/claude-headless-worker '<state>/plect-claude-headless/acme/widget-1/22222222-3333-4444-5555-666666666666/queue' '<state>/plect-claude-headless/acme/widget-1/22222222-3333-4444-5555-666666666666' '22222222-3333-4444-5555-666666666666' '<state>/plect-claude-headless/acme/widget-1/22222222-3333-4444-5555-666666666666/mcp.json' '<state>/plect-claude-headless/acme/widget-1/22222222-3333-4444-5555-666666666666/hooks.json' '<state>/claude-channel/22222222-3333-4444-5555-666666666666.sock'"
+call[4]: "terminal-send_keys" "Enter"
+call[5]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[6]: "ps" "-o" "lstart=" "-p" "<pid>"
+outputs: {"pid":<pid>,"pid_started":"started-<pid>","queue_dir":"<state>/plect-claude-headless/acme/widget-1/22222222-3333-4444-5555-666666666666/queue","session_id":"22222222-3333-4444-5555-666666666666","socket_path":"<state>/claude-channel/22222222-3333-4444-5555-666666666666.sock","state_dir":"<state>/plect-claude-headless/acme/widget-1/22222222-3333-4444-5555-666666666666"}
+artifact queue_dir/0-resume-notice.json: open <state>/plect-claude-headless/acme/widget-1/22222222-3333-4444-5555-666666666666/queue/0-resume-notice.json: no such file or directory
+
 == headless_runtime:cleanup-kills-confirmed-worker / cleanup
 call[0]: "terminal-pid"
 call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
@@ -145,6 +198,10 @@ call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude -
 call[6]: "terminal-send_keys" "Enter"
 call[7]: "terminal-send_keys" "Enter"
 call[8]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[9]: "terminal-capture"
+call[10]: "terminal-send_text" "実行環境の再起動により、直前のターンが中断された可能性がある。作業を続ける前に、worktree(`git status`)や関連する PR・スレッドの状態を確認し、完了済みの操作を繰り返さないこと。 (The runtime was restarted, so your previous turn may have been interrupted. Before continuing, check the worktree (`git status`) and the state of related PRs and threads, and do not repeat operations that are already complete.)"
+call[11]: "terminal-send_keys" "Enter"
+call[12]: "terminal-capture"
 outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"pid_started":"started-<pid>","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock"}
 artifact hooks_settings/:
 {"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"PreToolUse":[{"hooks":[{"type":"command","command":"<plugin>/scripts/claude-agent-activity working"}]}],"Stop":[{"hooks":[{"type":"command","command":"PLECT_CLAUDE_REPORT_REPLY=true <plugin>/scripts/claude-agent-activity finish"}]}]},"skipDangerousModePermissionPrompt":true}
@@ -312,6 +369,76 @@ call[1]: "pgrep" "-P" "<pid>"
 call[2]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
+== runtime:first-setup-sends-no-resume-notice / setup
+call[0]: "uuidgen"
+call[1]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[2]: "claude-mcp-servers"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+call[4]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[5]: "terminal-pid"
+call[6]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --session-id aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[7]: "terminal-send_keys" "Enter"
+call[8]: "ps" "-o" "lstart=" "-p" "<pid>"
+outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"pid_started":"started-<pid>","session_id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","socket_path":"<state>/claude-channel/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.sock"}
+
+== runtime:prev-setup-sends-resume-notice-once / setup
+call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[1]: "claude-mcp-servers"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[4]: "terminal-pid"
+call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[6]: "terminal-send_keys" "Enter"
+call[7]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[8]: "terminal-capture"
+call[9]: "terminal-send_text" "実行環境の再起動により、直前のターンが中断された可能性がある。作業を続ける前に、worktree(`git status`)や関連する PR・スレッドの状態を確認し、完了済みの操作を繰り返さないこと。 (The runtime was restarted, so your previous turn may have been interrupted. Before continuing, check the worktree (`git status`) and the state of related PRs and threads, and do not repeat operations that are already complete.)"
+call[10]: "terminal-send_keys" "Enter"
+call[11]: "terminal-capture"
+outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"pid_started":"started-<pid>","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock"}
+
+== runtime:resume-notice-input-overrides-default / setup
+call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[1]: "claude-mcp-servers"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[4]: "terminal-pid"
+call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[6]: "terminal-send_keys" "Enter"
+call[7]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[8]: "terminal-capture"
+call[9]: "terminal-send_text" "Run the boot reconcile before taking any other action."
+call[10]: "terminal-send_keys" "Enter"
+call[11]: "terminal-capture"
+outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"pid_started":"started-<pid>","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock"}
+
+== runtime:empty-resume-notice-sends-nothing / setup
+call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[1]: "claude-mcp-servers"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[4]: "terminal-pid"
+call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[6]: "terminal-send_keys" "Enter"
+call[7]: "ps" "-o" "lstart=" "-p" "<pid>"
+outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"pid_started":"started-<pid>","session_id":"11111111-2222-3333-4444-555555555555","socket_path":"<state>/claude-channel/11111111-2222-3333-4444-555555555555.sock"}
+
+== runtime:resume-notice-box-never-ready-fails-setup / setup
+call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[1]: "claude-mcp-servers"
+call[2]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[4]: "terminal-pid"
+call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --resume 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 11111111-2222-3333-4444-555555555555 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[6]: "terminal-send_keys" "Enter"
+call[7]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[8]: "terminal-capture"
+call[9]: "pgrep" "-P" "<pid>"
+call[10]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[11]: "ps" "-p" "<pid>" "-o" "comm="
+call[12]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[13]: "ps" "-p" "<pid>" "-o" "comm="
+declined: task "runtime" setup: exit status 1
+
 == runtime:launch-timeout-then-retry-succeeds / setup
 call[0]: "mktemp" "<state>/plect-mcp.XXXXXX"
 call[1]: "claude-mcp-servers"
@@ -338,6 +465,10 @@ call[4]: "terminal-pid"
 call[5]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; export PLECT_TEAM_CONTEXT='acme'; export PATH=/spy/guard:$PATH; claude --resume 33333333-4444-5555-6666-777777777777 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json  --model opus --effort high --permission-mode bypassPermissions --disallowedTools AskUserQuestion || claude --session-id 33333333-4444-5555-6666-777777777777 --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json  --model opus --effort high --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
 call[6]: "terminal-send_keys" "Enter"
 call[7]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[8]: "terminal-capture"
+call[9]: "terminal-send_text" "実行環境の再起動により、直前のターンが中断された可能性がある。作業を続ける前に、worktree(`git status`)や関連する PR・スレッドの状態を確認し、完了済みの操作を繰り返さないこと。 (The runtime was restarted, so your previous turn may have been interrupted. Before continuing, check the worktree (`git status`) and the state of related PRs and threads, and do not repeat operations that are already complete.)"
+call[10]: "terminal-send_keys" "Enter"
+call[11]: "terminal-capture"
 outputs: {"hooks_settings":"<state>/plect-hooks.json","mcp_config":"<state>/plect-mcp.json","pid":<pid>,"pid_started":"started-<pid>","session_id":"33333333-4444-5555-6666-777777777777","socket_path":"<state>/claude-channel/33333333-4444-5555-6666-777777777777.sock"}
 
 == runtime:launch-succeeds-then-output-fails-kills-worker / setup

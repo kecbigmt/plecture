@@ -5,8 +5,9 @@
 # scenario can prove it left the pane alone.
 
 [[runtime]]
-name = "resume-stale-record"
-prev = { session_id = "11111111-2222-3333-4444-555555555555", pid = "999999" }
+name    = "resume-stale-record"
+prev    = { session_id = "11111111-2222-3333-4444-555555555555", pid = "999999" }
+capture = "› "
 
 [[runtime.files]]
 path    = ".claude/sessions/stale.json"
@@ -137,12 +138,73 @@ path   = ""
 output = "mcp_config"
 path   = ""
 
+# A first launch has no earlier conversation to warn about; the initial
+# prompt effect alone speaks first, so nothing is typed here even though the
+# input box is up.
+[[runtime]]
+name    = "first-setup-sends-no-resume-notice"
+capture = "› "
+hooks   = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
+# A setup that has a previous run is a resumed conversation: the agent is
+# told once, after the launch line, that its last turn may have been cut off.
+[[runtime]]
+name    = "prev-setup-sends-resume-notice-once"
+prev    = { session_id = "11111111-2222-3333-4444-555555555555" }
+capture = "› "
+hooks   = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/11111111-2222-3333-4444-555555555555.json"
+content = '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":PID}'
+
+[[runtime]]
+name    = "resume-notice-input-overrides-default"
+prev    = { session_id = "11111111-2222-3333-4444-555555555555" }
+inputs  = { resume_notice = "Run the boot reconcile before taking any other action." }
+capture = "› "
+hooks   = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/11111111-2222-3333-4444-555555555555.json"
+content = '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":PID}'
+
+[[runtime]]
+name    = "empty-resume-notice-sends-nothing"
+prev    = { session_id = "11111111-2222-3333-4444-555555555555" }
+inputs  = { resume_notice = "" }
+capture = "› "
+hooks   = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/11111111-2222-3333-4444-555555555555.json"
+content = '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":PID}'
+
+# An input box that never draws is a failed launch, not a silent skip: a
+# resumed agent that was never told about the interruption must not look
+# recovered, and the launched claude must not be left running.
+[[runtime]]
+name                       = "resume-notice-box-never-ready-fails-setup"
+prev                       = { session_id = "11111111-2222-3333-4444-555555555555" }
+inputs                     = { launch_timeout = "1s" }
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/11111111-2222-3333-4444-555555555555.json"
+content = '{"sessionId":"11111111-2222-3333-4444-555555555555","pid":PID}'
+
 # This proves the timed-out launch's child is killed, the pane survives,
 # and a retry against that same pane succeeds.
 [[runtime]]
 name                       = "launch-timeout-then-retry-succeeds"
 prev                       = { session_id = "33333333-4444-5555-6666-777777777777" }
 inputs                     = { launch_timeout = "1s" }
+capture                    = "› "
 retry_inputs               = { model = "opus", effort = "high", launch_env = '{"PLECT_TEAM_CONTEXT":"acme"}', path_prepend = "/spy/guard" }
 expect_worker_process_dead = true
 # A failed node never reaches health probes in real orchestration.
@@ -195,6 +257,47 @@ path   = "mcp.json"
 name  = "resume-keeps-session"
 prev  = { session_id = "11111111-2222-3333-4444-555555555555" }
 hooks = ["setup"]
+
+# A first launch queues nothing of its own: the initial prompt, if any, is
+# the first turn.
+[[headless_runtime]]
+name  = "first-setup-queues-no-resume-notice"
+hooks = ["setup"]
+
+[[headless_runtime.artifacts]]
+output = "queue_dir"
+path   = "0-resume-notice.json"
+
+# The notice is queued ahead of a turn the previous worker left unfinished,
+# so the agent reconciles before that turn is run again from its start.
+[[headless_runtime]]
+name  = "prev-setup-queues-resume-notice-once"
+prev  = { session_id = "11111111-2222-3333-4444-555555555555" }
+hooks = ["setup"]
+
+[[headless_runtime.artifacts]]
+output = "queue_dir"
+path   = "0-resume-notice.json"
+
+[[headless_runtime]]
+name   = "resume-notice-input-overrides-default"
+prev   = { session_id = "11111111-2222-3333-4444-555555555555" }
+inputs = { resume_notice = "Run the boot reconcile before taking any other action." }
+hooks  = ["setup"]
+
+[[headless_runtime.artifacts]]
+output = "queue_dir"
+path   = "0-resume-notice.json"
+
+[[headless_runtime]]
+name   = "empty-resume-notice-queues-nothing"
+prev   = { session_id = "22222222-3333-4444-5555-666666666666" }
+inputs = { resume_notice = "" }
+hooks  = ["setup"]
+
+[[headless_runtime.artifacts]]
+output = "queue_dir"
+path   = "0-resume-notice.json"
 
 # Cleanup confirms a stored pid is still this effect's worker — the pane's
 # child that wrote worker.pid, started when setup recorded — before each

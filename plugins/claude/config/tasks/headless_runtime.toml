@@ -113,6 +113,17 @@ BRIDGE_BIN=""
 [ -n "$SOCKET" ] && BRIDGE_BIN="$channel_server_bin"
 EXPORTS="${EXPORTS}export PLECT_CLAUDE_CHANNEL_SERVER_BIN='$BRIDGE_BIN'; "
 
+# A turn the previous worker was running when it died is still queued and is
+# run again from its start, so the notice must sort ahead of it: queued
+# turns are named by their epoch-nanosecond write time, and a leading zero
+# orders before every one of those. A fixed name also keeps a repeated setup
+# from queueing the notice twice.
+RESUME_NOTICE="${resume_notice-}"
+if [ -n "${prev_session_id-}" ] && [ -n "$RESUME_NOTICE" ]; then
+  jq -n --arg text "$RESUME_NOTICE" '{type: "resume_notice", text: $text}' \
+    > "$QUEUE_DIR/0-resume-notice.json" || exit 1
+fi
+
 rm -f "$STATE_DIR/ready" "$STATE_DIR/worker.pid"
 # Resolved before anything is typed: this is the identity every cleanup
 # path below searches under, so a launch is only attempted once it exists.
@@ -190,6 +201,7 @@ state_root      = { from = "inputs.state_root", optional = true }
 path_prepend    = { from = "inputs.path_prepend", optional = true }
 launch_timeout  = { from = "inputs.launch_timeout", default = "120s" }
 publish_events  = { json = { from = "inputs.publish_events", default = ["message"] } }
+resume_notice   = { from = "inputs.resume_notice", default = "実行環境の再起動により、直前のターンが中断された可能性がある。作業を続ける前に、worktree(`git status`)や関連する PR・スレッドの状態を確認し、完了済みの操作を繰り返さないこと。 (The runtime was restarted, so your previous turn may have been interrupted. Before continuing, check the worktree (`git status`) and the state of related PRs and threads, and do not repeat operations that are already complete.)" }
 activity_bin    = { bin = "claude-agent-activity" }
 mcp_servers_bin = { bin = "claude-mcp-servers" }
 worker_bin      = { bin = "claude-headless-worker" }
@@ -267,7 +279,8 @@ type                 = "object"
 additionalProperties = false
 
 # Every string input reaches the pane's shell as keystrokes, so each is held
-# to a charset that cannot carry a quote or a newline.
+# to a charset that cannot carry a quote or a newline — except resume_notice,
+# which is written into a queue file and never typed.
 [headless_runtime.inputs_schema.properties]
 model           = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
 effort          = { type = "string", pattern = "^[A-Za-z0-9_.:-]*$" }
@@ -279,6 +292,7 @@ state_root      = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 path_prepend    = { type = "string", pattern = "^[A-Za-z0-9_./:-]*$" }
 launch_timeout  = { type = "string", pattern = "^[1-9][0-9]*s$", default = "120s" }
 publish_events  = { type = "array", items = { type = "string", enum = ["message"] }, default = ["message"] }
+resume_notice   = { type = "string" }
 
 [headless_runtime.outputs_schema]
 type     = "object"

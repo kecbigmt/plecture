@@ -16,6 +16,8 @@
 #   5. With a socket path, the worker reports ready only once its
 #      channel-server queue bridge listens there, relaunches a bridge that
 #      dies, and takes the bridge down with it.
+#   6. A queued resume notice runs before a turn the previous worker left
+#      unfinished, whatever that turn's own file name.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -131,6 +133,29 @@ if jq -e '.last_exit_code == 0' "$state_dir/health.json" >/dev/null 2>&1; then
   echo "ok   health.json records the last turn's exit code"
 else
   echo "FAIL health.json after a successful turn: $(cat "$state_dir/health.json" 2>/dev/null)" >&2
+  fail=1
+fi
+
+# A second worker over a queue that already holds both files, so neither can
+# be picked up before the other exists. The leftover is named the way
+# claude-headless-enqueue names a turn.
+queue2="$tmp/queue2"
+state2="$tmp/state2"
+mkdir -p "$queue2" "$state2"
+printf '%s' "$sid" > "$state2/started"
+echo '{"type":"user.emit","text":"interrupted turn"}' > "$queue2/1700000000000000000-1.json"
+echo '{"type":"resume_notice","text":"resume notice"}' > "$queue2/0-resume-notice.json"
+echo ok > "$STUB_MODE_FILE"
+"$worker" "$queue2" "$state2" "$sid" "$tmp/mcp.json" "$tmp/hooks.json" &
+worker2_pid=$!
+wait_for_drain "$queue2/1700000000000000000-1.json" || { echo "FAIL the leftover turn was never drained" >&2; fail=1; }
+kill -TERM "$worker2_pid" 2>/dev/null || true
+wait "$worker2_pid" 2>/dev/null || true
+if [ "$(tail -n 2 "$STUB_ARGV" | sed -n 1p | sed 's/.*-- //')" = "resume notice" ] \
+  && [ "$(tail -n 1 "$STUB_ARGV" | sed 's/.*-- //')" = "interrupted turn" ]; then
+  echo "ok   a resume notice runs before the unfinished turn it was queued ahead of"
+else
+  printf 'FAIL turn order: got %q\n' "$(tail -n 2 "$STUB_ARGV" | tr '\n' '|')" >&2
   fail=1
 fi
 

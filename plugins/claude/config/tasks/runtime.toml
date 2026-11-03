@@ -41,6 +41,9 @@ scope = "run"
 #   publish_events — core events to publish ("message" and/or
 #                  "message_delta"). Default ["message"]. See the README's
 #                  Turn Reporting section for the hook mapping and contract.
+#   resume_notice — text typed once after a setup that has a previous run
+#                  relaunches claude with --resume; "" disables it. A first
+#                  launch sends nothing.
 #
 # Every value the script needs arrives through the binding transport, so
 # nothing below is spliced into this source and no value can become part of
@@ -293,6 +296,51 @@ if [ -z "$PID_STARTED" ]; then
   exit 1
 fi
 
+# Typed here, not by claude_initial_prompt, whose prev.sent gate keeps a
+# resumed session quiet by design. Its readiness and submit steps are
+# repeated because both face the same paste-burst race; extract at a third.
+RESUME_NOTICE="${resume_notice-}"
+if [ -n "$PREV_SID" ] && [ -n "$RESUME_NOTICE" ]; then
+  ready=0
+  for _ in $(seq 1 "$LAUNCH_TIMEOUT_SECONDS"); do
+    if sh -c "$capture" terminal-capture 2>/dev/null | grep -q '^[›❯]'; then
+      ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [ "$ready" != 1 ]; then
+    echo "resume notice: terminal did not show input box within $launch_timeout" >&2
+    terminate_claude_children
+    exit 1
+  fi
+  sh -c "$send_text" terminal-send-text "$RESUME_NOTICE"
+  sleep 1
+  sh -c "$send_keys" terminal-send-keys Enter
+  submitted=0
+  for delay in 2 4 8 16; do
+    input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
+    input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
+    case "$input" in
+      ''|'›'|'› '|'❯'|'❯ ') submitted=1; break ;;
+    esac
+    sleep "$delay"
+    sh -c "$send_keys" terminal-send-keys Enter
+  done
+  if [ "$submitted" != 1 ]; then
+    input=$(sh -c "$capture" terminal-capture 2>/dev/null | grep '^[›❯]' | tail -n 1)
+    input=$(printf '%s' "$input" | sed 's/\xc2\xa0/ /g')
+    case "$input" in
+      ''|'›'|'› '|'❯'|'❯ ') submitted=1 ;;
+    esac
+  fi
+  if [ "$submitted" != 1 ]; then
+    echo "resume notice: still unsubmitted after retries" >&2
+    terminate_claude_children
+    exit 1
+  fi
+fi
+
 OUTPUT=$(jq -nc \
   --argjson pid "$PID" \
   --arg pid_started "$PID_STARTED" \
@@ -319,9 +367,11 @@ mcp_servers         = { from = "inputs.mcp_servers", optional = true }
 path_prepend        = { from = "inputs.path_prepend", optional = true }
 launch_timeout      = { from = "inputs.launch_timeout", default = "120s" }
 publish_events      = { json = { from = "inputs.publish_events", default = ["message"] } }
+resume_notice       = { from = "inputs.resume_notice", default = "実行環境の再起動により、直前のターンが中断された可能性がある。作業を続ける前に、worktree(`git status`)や関連する PR・スレッドの状態を確認し、完了済みの操作を繰り返さないこと。 (The runtime was restarted, so your previous turn may have been interrupted. Before continuing, check the worktree (`git status`) and the state of related PRs and threads, and do not repeat operations that are already complete.)" }
 activity_bin        = { bin = "claude-agent-activity" }
 mcp_servers_bin     = { bin = "claude-mcp-servers" }
 channel_server_bin  = { bin = "channel-server" }
+capture             = { terminal = "capture" }
 send_text           = { terminal = "send_text" }
 send_keys           = { terminal = "send_keys" }
 terminal_pid        = { terminal = "pid" }
@@ -441,6 +491,9 @@ launch_timeout = { type = "string", pattern = "^[1-9][0-9]*s$", default = "120s"
 # publish_events: the effective default of ["message"] is applied by this
 # effect's own setup.bind (the `json` binding's `default`), not by this key.
 publish_events = { type = "array", items = { type = "string", enum = ["message", "message_delta"] }, default = ["message"] }
+# resume_notice: free text; it crosses the pane as one send_text argument,
+# not a parsed command line. The default is applied by setup.bind.
+resume_notice = { type = "string" }
 
 [runtime.outputs_schema]
 type     = "object"

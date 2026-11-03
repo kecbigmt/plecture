@@ -529,7 +529,7 @@ func (h *effectHarness) writeArtifacts(t *testing.T, b *strings.Builder, artifac
 		}
 		raw, err := os.ReadFile(filepath.Join(dir, artifact.Path))
 		if err != nil {
-			fmt.Fprintf(b, "artifact %s/%s: %v\n", artifact.Output, artifact.Path, err)
+			fmt.Fprintf(b, "artifact %s/%s: %s\n", artifact.Output, artifact.Path, h.scrubbed(err.Error()))
 			continue
 		}
 		fmt.Fprintf(b, "artifact %s/%s:\n%s", artifact.Output, artifact.Path, h.scrubbed(string(raw)))
