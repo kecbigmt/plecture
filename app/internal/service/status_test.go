@@ -100,6 +100,113 @@ func TestStatus_RuntimeCarriesHealthMovementTimestamps(t *testing.T) {
 	}
 }
 
+func TestStatus_DerivesRepairSuspensionFromEvents(t *testing.T) {
+	store := testStore(t)
+	cfg := aliveFixtureConfig(t, "true")
+	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+	if err := appendRepairEvent(store, "owner/repo-1", "health", 3, "suspended", "automatic repair suspended after 3 attempts"); err != nil {
+		t.Fatal(err)
+	}
+	if err := appendRepairEvent(store, "owner/repo-1", "health", 0, "skipped_probe_error", "probe timed out"); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Status(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Runtime.RepairStatus != "repair_suspended" || result.Runtime.RepairReason != "automatic repair suspended after 3 attempts" {
+		t.Fatalf("runtime repair = %+v", result.Runtime)
+	}
+	if summary := Summarize(result); summary.RepairStatus != "repair_suspended" || summary.RepairReason == "" {
+		t.Fatalf("summary repair = %+v", summary)
+	}
+	if err := appendRepairEvent(store, "owner/repo-1", "manual_up", 0, "succeeded", "human up succeeded"); err != nil {
+		t.Fatal(err)
+	}
+	result, err = Status(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Runtime.RepairStatus != "" || result.Runtime.RepairReason != "" {
+		t.Fatalf("runtime repair after reset = %+v", result.Runtime)
+	}
+}
+
+func TestStatus_RepairSuspensionMatchesAttemptObservation(t *testing.T) {
+	type repairEvent struct {
+		result  string
+		attempt int
+	}
+	tests := []struct {
+		name          string
+		events        []repairEvent
+		wantSuspended bool
+	}{
+		{"no events", nil, false},
+		{"started", []repairEvent{{"started", 1}}, false},
+		{"suspended", []repairEvent{{"started", 1}, {"suspended", 1}}, true},
+		{"skipped probe preserves suspension", []repairEvent{{"suspended", 1}, {"skipped_probe_error", 0}}, true},
+		{"failed attempt preserves suspension", []repairEvent{{"suspended", 1}, {"failed", 1}}, true},
+		{"nonreset success preserves suspension", []repairEvent{{"suspended", 1}, {"succeeded", 1}}, true},
+		{"reset clears suspension", []repairEvent{{"suspended", 1}, {"succeeded", 0}}, false},
+		{"new attempt clears suspension", []repairEvent{{"suspended", 1}, {"started", 2}}, false},
+	}
+	cfg := aliveFixtureConfig(t, "true")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := testStore(t)
+			const name = "owner/repo-1"
+			seedSessionWithNodes(t, store, name, "owner/repo", 1, "default", map[string]*contract.TaskState{
+				"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+			})
+			for _, ev := range tt.events {
+				if err := appendRepairEvent(store, name, "health", ev.attempt, ev.result, "repair reason"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, suspended, reason, err := repairAttemptObservation(store, name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := Status(cfg, store, name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			statusSuspended := result.Runtime.RepairStatus == "repair_suspended"
+			if suspended != tt.wantSuspended || statusSuspended != suspended {
+				t.Fatalf("suspended = %t, status = %q; want suspended = %t", suspended, result.Runtime.RepairStatus, tt.wantSuspended)
+			}
+			if result.Runtime.RepairReason != reason {
+				t.Fatalf("status reason = %q, observation reason = %q", result.Runtime.RepairReason, reason)
+			}
+		})
+	}
+}
+
+func TestStatus_DerivesUndecidableFromHealthObservation(t *testing.T) {
+	store := testStore(t)
+	cfg := aliveFixtureConfig(t, "true")
+	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Status = contract.SessionStatusUp
+		s.Health = &contract.HealthState{UnevaluableCycles: 3, LastState: "unhealthy", LastReason: "agent: probe timed out"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Status(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Runtime.RepairStatus != "repair_undecidable" || result.Runtime.RepairReason != "agent: probe timed out" {
+		t.Fatalf("runtime repair = %+v", result.Runtime)
+	}
+}
+
 // TestStatus_SurfacesActivityProbeFaultsAsWarnings pins the user-facing half
 // of the probe-fault report: a probe that cannot produce an envelope
 // contributes nothing to health, so without a warning it would be

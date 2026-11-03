@@ -1031,6 +1031,79 @@ period = "2m"
 	}
 }
 
+func TestLoadWorkflows_HealthRepairAttempts(t *testing.T) {
+	tests := []struct {
+		name     string
+		table    string
+		want     int
+		wantFail bool
+	}{
+		{"absent", "", 0, false},
+		{"disabled", "[w.health]\nauto_repair_attempts = 0", 0, false},
+		{"enabled", "[w.health]\nauto_repair_attempts = 3", 3, false},
+		{"negative", "[w.health]\nauto_repair_attempts = -1", 0, true},
+		{"fractional", "[w.health]\nauto_repair_attempts = 1.5", 0, true},
+		{"string", "[w.health]\nauto_repair_attempts = \"3\"", 0, true},
+		{"empty", "[w.health]", 0, true},
+		{"unknown", "[w.health]\nauto_repair_attempts = 1\nunknown = true", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := t.TempDir()
+			writeFile(t, filepath.Join(base, "workflows", "w.toml"), "[w]\nkind = \"workflow\"\n"+tt.table+"\n")
+			got, err := (&Config{BaseDir: base}).LoadWorkflows(t.TempDir())
+			if tt.wantFail {
+				if err == nil {
+					t.Fatal("expected invalid workflow health declaration to fail")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got["w"].Health.AutoRepairAttempts != tt.want {
+				t.Fatalf("auto_repair_attempts = %d, want %d", got["w"].Health.AutoRepairAttempts, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadWorkflows_HealthRepairOverlayCanDisableInheritedPermission(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		overlay string
+		want    int
+	}{
+		{"omitted", "[w]\nkind = \"workflow\"\n", 3},
+		{"disabled", "[w]\nkind = \"workflow\"\n[w.health]\nauto_repair_attempts = 0\n", 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			globalDir := filepath.Join(home, ".config", "plect")
+			writeFile(t, filepath.Join(globalDir, "config.toml"), "schema_version = 2\n")
+			writeFile(t, filepath.Join(globalDir, "workflows", "w.toml"), "[w]\nkind = \"workflow\"\n[w.health]\nauto_repair_attempts = 3\n")
+			projectDir := filepath.Join(home, "projects", "project")
+			writeFile(t, filepath.Join(projectDir, ".plect", "workflows", "w.toml"), tt.overlay)
+			workspace := filepath.Join(projectDir, "session")
+			if err := os.MkdirAll(workspace, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := cfg.LoadWorkflows(workspace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got["w"].Health.AutoRepairAttempts != tt.want {
+				t.Fatalf("auto_repair_attempts = %d, want %d", got["w"].Health.AutoRepairAttempts, tt.want)
+			}
+		})
+	}
+}
+
 // TestLoadWorkflows_WorkspaceDirLayerRejectsTick covers the trust boundary: a
 // `[tick]` declaration produces automatic execution, so clone content (the
 // workspace-dir layer) must not be able to supply one, same as setup/cleanup shell

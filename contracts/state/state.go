@@ -306,13 +306,14 @@ type PopulationProvenance struct {
 // health judgment. LastActivityAt is core's own clock, not any timestamp an
 // activity probe may report.
 type HealthState struct {
-	LastCheckedAt   time.Time `json:"last_checked_at,omitzero"`
-	LastActivityAt  time.Time `json:"last_activity_at,omitzero"`
-	LastFingerprint string    `json:"last_fingerprint,omitempty"`
-	LastState       string    `json:"last_state,omitempty"`
-	LastReason      string    `json:"last_reason,omitempty"`
-	LastNotifiedAt  time.Time `json:"last_notified_at,omitzero"`
-	NotifyCount     int       `json:"notify_count,omitempty"`
+	LastCheckedAt     time.Time `json:"last_checked_at,omitzero"`
+	LastActivityAt    time.Time `json:"last_activity_at,omitzero"`
+	LastFingerprint   string    `json:"last_fingerprint,omitempty"`
+	LastState         string    `json:"last_state,omitempty"`
+	LastReason        string    `json:"last_reason,omitempty"`
+	LastNotifiedAt    time.Time `json:"last_notified_at,omitzero"`
+	NotifyCount       int       `json:"notify_count,omitempty"`
+	UnevaluableCycles int       `json:"unevaluable_cycles,omitempty"`
 }
 
 // Channel failure kinds, naming which of Session's two ChannelHealth streaks

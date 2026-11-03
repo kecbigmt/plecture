@@ -779,6 +779,64 @@ func TestReadmissionRecordsUpOnlyOnRunStateTransition(t *testing.T) {
 	}
 }
 
+func TestInboundDuringRepairRetriesAdmissionWithoutFailureBudget(t *testing.T) {
+	engine, hooks, now := engineFixture(t, false)
+	ctx := context.Background()
+	const resource = "urn:case:a"
+	const session = "session-urn:case:a"
+	if err := engine.ApplyPoll(ctx, []map[string]any{{"resource": resource}}); err != nil {
+		t.Fatal(err)
+	}
+
+	up := engine.hooks.Up
+	repairing := true
+	engine.hooks.Up = func(ctx context.Context, resource string, inputs map[string]any) (UpOutcome, error) {
+		if repairing {
+			return UpOutcome{}, &service.Error{Code: service.ErrChildUpInProgress, Message: "repair holds the lifecycle lock"}
+		}
+		return up(ctx, resource, inputs)
+	}
+	if _, _, _, err := engine.log.Append(event.Event{SessionName: session, Type: "external.message", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	currentTime := now
+	engine.now = func() time.Time { return currentTime }
+	for attempt := 0; attempt <= admitFailureLimit; attempt++ {
+		if err := engine.SweepExpiry(ctx); err != nil {
+			t.Fatalf("admission while repair holds the lock: %v", err)
+		}
+		population, err := engine.state.Population(engine.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		member := population.Members[resource]
+		if !member.PendingUp || member.ConsecutiveAdmitFailures != 0 || member.AdmitSuspended {
+			t.Fatalf("member after busy admission = %+v", member)
+		}
+		if !member.AdmitRetryAt.After(currentTime) {
+			t.Fatalf("retry time = %s, want after %s", member.AdmitRetryAt, currentTime)
+		}
+		currentTime = member.AdmitRetryAt
+	}
+
+	repairing = false
+	hooks.sessionUp = true
+	if err := engine.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	population, err := engine.state.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members[resource]
+	if member.PendingUp || member.ConsecutiveAdmitFailures != 0 || member.AdmitSuspended {
+		t.Fatalf("member after repair completes = %+v", member)
+	}
+	if got := admitOKEventCount(t, engine, session); got != 2 {
+		t.Fatalf("admit_ok events = %d, want initial and post-repair admissions", got)
+	}
+}
+
 // Initial-task setup runs after the session is already up, and its failure
 // leaves the member pending for a retry whose Up hook then reports no
 // transition — so a record deferred until after setup is lost for good.

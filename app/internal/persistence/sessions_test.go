@@ -880,13 +880,14 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 		Workflow:         "coding-agent",
 		Inputs:           map[string]any{"reason": "investigate"},
 		Health: &contract.HealthState{
-			LastCheckedAt:   earlier,
-			LastActivityAt:  earlier,
-			LastFingerprint: "fp-1",
-			LastState:       "healthy",
-			LastReason:      "alive probe passed",
-			LastNotifiedAt:  earlier,
-			NotifyCount:     2,
+			LastCheckedAt:     earlier,
+			LastActivityAt:    earlier,
+			LastFingerprint:   "fp-1",
+			LastState:         "healthy",
+			LastReason:        "alive probe passed",
+			LastNotifiedAt:    earlier,
+			NotifyCount:       2,
+			UnevaluableCycles: 3,
 		},
 		ChannelValidationHealth: &contract.ChannelHealth{
 			ConsecutiveFailures: 1,
@@ -966,7 +967,8 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 	}
 	if !got.Health.LastCheckedAt.Equal(earlier) || !got.Health.LastActivityAt.Equal(earlier) ||
 		got.Health.LastFingerprint != "fp-1" || got.Health.LastState != "healthy" || got.Health.LastReason != "alive probe passed" ||
-		!got.Health.LastNotifiedAt.Equal(earlier) || got.Health.NotifyCount != 2 {
+		!got.Health.LastNotifiedAt.Equal(earlier) || got.Health.NotifyCount != 2 ||
+		got.Health.UnevaluableCycles != 3 {
 		t.Errorf("Health = %+v", got.Health)
 	}
 	if got.ChannelValidationHealth == nil || got.ChannelValidationHealth.ConsecutiveFailures != 1 || got.ChannelValidationHealth.LastError != "no valid channel definition" {

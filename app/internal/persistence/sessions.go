@@ -366,6 +366,7 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		HealthLastReason:         health.lastReason,
 		HealthLastNotifiedAt:     health.lastNotifiedAt,
 		HealthNotifyCount:        health.notifyCount,
+		HealthUnevaluableCycles:  health.unevaluableCycles,
 		TickConsecutiveUnchanged: tickConsecutiveUnchanged,
 		TickLastFingerprint:      tickLastFingerprint,
 		LastTickAt:               formatTimeNull(s.LastTickAt),
@@ -405,6 +406,7 @@ func insertSessionParams(id, status string, parentCol, rootCol, populationWorkfl
 		HealthLastReason:         health.lastReason,
 		HealthLastNotifiedAt:     health.lastNotifiedAt,
 		HealthNotifyCount:        health.notifyCount,
+		HealthUnevaluableCycles:  health.unevaluableCycles,
 		TickConsecutiveUnchanged: tickConsecutiveUnchanged,
 		TickLastFingerprint:      tickLastFingerprint,
 		LastTickAt:               formatTimeNull(s.LastTickAt),
@@ -451,13 +453,14 @@ func (db *DB) ImportSession(ctx context.Context, id string, s *domain.Session) e
 
 // healthColumns is sessionHealthColumns' result: one *HealthState's health_* column values.
 type healthColumns struct {
-	lastCheckedAt   sql.NullString
-	lastActivityAt  sql.NullString
-	lastFingerprint sql.NullString
-	lastState       sql.NullString
-	lastReason      sql.NullString
-	lastNotifiedAt  sql.NullString
-	notifyCount     sql.NullInt64
+	lastCheckedAt     sql.NullString
+	lastActivityAt    sql.NullString
+	lastFingerprint   sql.NullString
+	lastState         sql.NullString
+	lastReason        sql.NullString
+	lastNotifiedAt    sql.NullString
+	notifyCount       sql.NullInt64
+	unevaluableCycles sql.NullInt64
 }
 
 // sessionHealthColumns flattens a possibly-nil *HealthState. NotifyCount
@@ -468,13 +471,14 @@ func sessionHealthColumns(h *contract.HealthState) healthColumns {
 		return healthColumns{}
 	}
 	return healthColumns{
-		lastCheckedAt:   formatTimeNull(h.LastCheckedAt),
-		lastActivityAt:  formatTimeNull(h.LastActivityAt),
-		lastFingerprint: nullString(h.LastFingerprint),
-		lastState:       nullString(h.LastState),
-		lastReason:      nullString(h.LastReason),
-		lastNotifiedAt:  formatTimeNull(h.LastNotifiedAt),
-		notifyCount:     sql.NullInt64{Int64: int64(h.NotifyCount), Valid: true},
+		lastCheckedAt:     formatTimeNull(h.LastCheckedAt),
+		lastActivityAt:    formatTimeNull(h.LastActivityAt),
+		lastFingerprint:   nullString(h.LastFingerprint),
+		lastState:         nullString(h.LastState),
+		lastReason:        nullString(h.LastReason),
+		lastNotifiedAt:    formatTimeNull(h.LastNotifiedAt),
+		notifyCount:       sql.NullInt64{Int64: int64(h.NotifyCount), Valid: true},
+		unevaluableCycles: sql.NullInt64{Int64: int64(h.UnevaluableCycles), Valid: true},
 	}
 }
 
@@ -653,7 +657,8 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 // of them were ever populated (no healthcheck sweep has run yet).
 func healthFromRow(row sqlcgen.Session) (*contract.HealthState, error) {
 	if !row.HealthLastCheckedAt.Valid && !row.HealthLastActivityAt.Valid && !row.HealthLastFingerprint.Valid &&
-		!row.HealthLastState.Valid && !row.HealthLastReason.Valid && !row.HealthLastNotifiedAt.Valid && !row.HealthNotifyCount.Valid {
+		!row.HealthLastState.Valid && !row.HealthLastReason.Valid && !row.HealthLastNotifiedAt.Valid && !row.HealthNotifyCount.Valid &&
+		!row.HealthUnevaluableCycles.Valid {
 		return nil, nil
 	}
 	lastCheckedAt, err := parseTimeNull(row.HealthLastCheckedAt)
@@ -669,13 +674,14 @@ func healthFromRow(row sqlcgen.Session) (*contract.HealthState, error) {
 		return nil, fmt.Errorf("last_notified_at: %w", err)
 	}
 	return &contract.HealthState{
-		LastCheckedAt:   lastCheckedAt,
-		LastActivityAt:  lastActivityAt,
-		LastFingerprint: row.HealthLastFingerprint.String,
-		LastState:       row.HealthLastState.String,
-		LastReason:      row.HealthLastReason.String,
-		LastNotifiedAt:  lastNotifiedAt,
-		NotifyCount:     int(row.HealthNotifyCount.Int64),
+		LastCheckedAt:     lastCheckedAt,
+		LastActivityAt:    lastActivityAt,
+		LastFingerprint:   row.HealthLastFingerprint.String,
+		LastState:         row.HealthLastState.String,
+		LastReason:        row.HealthLastReason.String,
+		LastNotifiedAt:    lastNotifiedAt,
+		NotifyCount:       int(row.HealthNotifyCount.Int64),
+		UnevaluableCycles: int(row.HealthUnevaluableCycles.Int64),
 	}, nil
 }
 

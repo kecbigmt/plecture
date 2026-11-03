@@ -113,8 +113,7 @@ PLECT_FAULT_SOURCE=local deploy/docker/fault/run.sh
 S1 (kill the agent process mid-turn) and S2 (kill and replace the container
 on the same volume) assert that the same session resumes the same Claude
 conversation ID, reports `.runtime.health` as `healthy`, and keeps its
-uncommitted change. Recovery is pending; these assertions are opt-in until the
-recovery work lands, and a failure exits non-zero:
+uncommitted change. Enable the recovery assertions locally with:
 
 ```bash
 PLECT_FAULT_RECOVERY=1 deploy/docker/fault/run.sh
@@ -127,10 +126,11 @@ without Docker, including that a resumed session whose health is not
 Both switches combine. The resume waits scale with the fixture's health period
 in `deploy/docker/fault/workflow.toml`.
 
-The `Docker fault injection` workflow runs only through `workflow_dispatch`.
-Its `recovery` input enables the recovery assertions; it always builds from
-the pushed commit. The harness removes its containers, volumes, and derived
-image when it exits and keeps a container log under `/tmp` if a run fails. Set
+The `Docker fault injection` workflow runs nightly with recovery assertions
+and supports manual `workflow_dispatch` runs. Its `recovery` input enables the
+recovery assertions for a manual run; CI builds from the pushed commit. The
+harness removes its containers, volumes, and derived image when it exits and
+keeps a container log under `/tmp` if a run fails. Set
 `PLECT_FAULT_BASE_IMAGE` to a locally available base image to skip the base
 build; it cannot be combined with `PLECT_FAULT_SOURCE=local`.
 
@@ -180,10 +180,11 @@ container restart; everything else is recreated on boot.
 Restart behavior to expect: `plect serve` and plugin services restart and
 resume from persisted state; the bus healthcheck passes again once `plect
 serve` is back up. tmux panes, agent CLI processes, and anything under
-`/run/plect` do not survive — an existing session's runtime (its pane, its
-agent process) needs `plect up <session>` after a restart, the same as after
-any host reboot. This is exactly the #309 investigation's "Restart mid-
-session" section; nothing about running in a container changes it.
+`/run/plect` do not survive. For a workflow with `[health].auto_repair_attempts`
+greater than zero, `plect serve` repairs a session whose recorded status is
+`up` on the health cycle. A workflow without that opt-in still needs
+`plect up <session>` after a restart. A session deliberately brought down is
+never repaired automatically.
 
 If the volume backing `/var/lib/plect` (and so `XDG_DATA_HOME`'s
 `storage.db`) is a network filesystem rather than local block storage — an

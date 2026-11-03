@@ -30,7 +30,8 @@ type UpParams struct {
 	Population    *contract.PopulationProvenance
 	// ForceRecreate rebuilds the runtime for an existing session while
 	// preserving durable identity and event log state.
-	ForceRecreate bool
+	ForceRecreate  bool
+	HumanInitiated bool
 }
 
 // UpResult holds the outcome of Up.
@@ -50,6 +51,43 @@ type UpResult struct {
 // without a state entry still errors out — Create needs URL information
 // to resolve session/branch, so the asymmetry is intentional.
 func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
+	name, err := upLifecycleLockName(cfg, store, params)
+	if err != nil {
+		return nil, err
+	}
+	var result *UpResult
+	err = tryLifecycleLock(store, name, func() error {
+		var upErr error
+		result, upErr = upUnlocked(cfg, store, params)
+		if upErr != nil {
+			return upErr
+		}
+		if params.HumanInitiated {
+			if err := resetRepairStreak(store, name, "manual_up"); err != nil {
+				return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but repair reset event failed: %v", err)}
+			}
+		}
+		return nil
+	})
+	if err == errLifecycleBusy {
+		return nil, &Error{Code: ErrChildUpInProgress, Message: fmt.Sprintf("session %q already has an up in progress", name)}
+	}
+	return result, err
+}
+
+func upLifecycleLockName(cfg *config.Config, store *state.Store, params UpParams) (string, error) {
+	disp, matched, err := dispatchResource(cfg, params.Workflow, params.Identifier)
+	if err == nil && matched {
+		tag, tagErr := effectiveTag(params.Tag, disp.Workflow.ID)
+		if tagErr != nil {
+			return "", tagErr
+		}
+		return disp.Name + "+" + tag, nil
+	}
+	return resolveSessionName(cfg, store, params.Identifier)
+}
+
+func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, error) {
 	identifier := params.Identifier
 	forceRecreateExisting := false
 	disp, matched, dispErr := dispatchResource(cfg, params.Workflow, params.Identifier)

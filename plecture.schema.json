@@ -959,6 +959,17 @@
               "minimum": 1
             }
           }
+        },
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["auto_repair_attempts"],
+          "properties": {
+            "auto_repair_attempts": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         }
       }
     },

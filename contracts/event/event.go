@@ -68,6 +68,7 @@ const (
 	// TypeStatusMessage records a session's self-reported status line whenever
 	// it changes.
 	TypeStatusMessage = "plect.status_message"
+	TypeSessionRepair = "plect.session.repair"
 	// TypeTerminalPrefix namespaces the cross-session terminal signals defined
 	// by the terminal-event-propagation ADR: done, escalate, dead. A terminal
 	// event is pushed one hop into the *receiving* session's own log (D1-D3),
