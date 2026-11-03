@@ -21,6 +21,17 @@ per-layer cleanup-digest and plugin-content-pin proposal conflated notification
 with execution authorization and added retention solely to refuse an edited
 cleanup.
 
+## Supersession scope
+
+This decision supersedes `2026-09-07-resource-and-workspace-effects` and `2026-09-07-invocation-project-context` in part.
+
+- `2026-09-07-resource-and-workspace-effects`, `### Execution identity and ownership`: retained cleanup contract and plugin references.
+- `2026-09-07-resource-and-workspace-effects`, `## Decision`: the operator-confirmation operation for external release.
+- `2026-09-07-resource-and-workspace-effects`, `### Configuration selection`: narrowed: the digest baseline becomes one session-wide lifecycle baseline.
+- `2026-09-07-invocation-project-context`, `## Decision`: the digest recorded at creation and compared on each desired operation.
+- `2026-09-07-invocation-project-context`, `## Decision`: retained cleanup declarations and plugin executables in execution records.
+- `2026-09-07-invocation-project-context`, `## Decision`: cleanup from execution records when the recorded root is unavailable.
+
 ## Decision
 
 ### Lifecycle-configuration change notification

@@ -20,6 +20,14 @@ identity and delivery, ordinary setup/cleanup effects, an agent's work
 directory when applicable, public outputs consumed by display and delivery,
 and tasks which may concern a resource other than the session's entry resource.
 
+## Supersession scope
+
+This decision supersedes `2026-08-17-workspace-provider-vocabulary` in part.
+
+- `## Decision`: the workspace provider concept, its definition, and its pairing with `resource definition`.
+- `## Decision`: the code-facing vocabulary (`workspaces/`, `workspace_provider`, `workspace_dir`).
+- `## Decision`: `github-worktree` as the workspace provider's executable name.
+
 ## Decision
 
 `workspace_provider` and `resource_observer` are replaced by `kind =

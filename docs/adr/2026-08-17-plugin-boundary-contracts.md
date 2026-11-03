@@ -27,6 +27,13 @@ The split must not replace the merged plugin with plugin-to-plugin contracts.
 Core still must not know that any specific provider, chat service, VCS, agent
 CLI, or terminal multiplexer exists.
 
+## Supersession scope
+
+This decision supersedes `2026-08-16-plugin-service-lifecycle` in part.
+
+- `## Decision`: the merge-first remedy for plugin boundaries.
+- `## Decision`: the regrouping into one session-runtime plugin.
+
 ## Decision
 
 Plecture keeps first-class plugin service declarations from the superseded
