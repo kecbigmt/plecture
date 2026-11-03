@@ -298,7 +298,8 @@ the breaking change — not as follow-up work.
   superseding ADR declares YAML frontmatter
   `supersedes: <YYYY-MM-DD-slug>`, and the old ADR gets YAML frontmatter
   `superseded_by: <YYYY-MM-DD-slug>`. That frontmatter edit is the only edit
-  permitted to an accepted ADR.
+  permitted to an accepted ADR. A superseding ADR states which decisions of the
+  superseded ADR it replaces; decisions it does not list remain in force.
 - ADR frontmatter is present only when metadata exists, matching the
   knowledge-bundle documents' existing practice. Do not add empty frontmatter
   blocks or status keys. The ADR title remains the Markdown H1.

@@ -20,12 +20,25 @@ session may therefore have `status = up` while its run is down. A deliberate
 
 ## Decision
 
+### Supersession scope
+
+This ADR supersedes the runtime failure model only for the rule in section 1,
+"Liveness verification and verify-before-skip," that the health cycle never
+repairs. The following decisions remain in force and are not restated here:
+
+- Section 1, "Liveness verification and verify-before-skip": liveness probing,
+  the `Up`-time invalidation rule, and the other reuse and health evaluation
+  rules apart from the no-repair rule.
+- Section 2, "Complete-plan health and binary run state."
+- Section 3, "Node-result lifecycle events."
+- Section 4, "Cleanup-on-failure and launch timeouts."
+- Section 5, "Forced full rebuild remains the last-resort operation."
+- Section 6, "Population-produced sessions receive node-result events directly."
+
 The health cycle may call plain `service.Up` only for a session whose frozen
-workflow opts in and whose persisted `status` is `up`. This narrows the earlier
-rule that health only reports failures; the runtime failure model's other
-liveness, node-result, and lifecycle decisions remain in force. The workflow's
-intent and the session's persisted lifecycle intent are both required before
-periodic observation may cause a mutation.
+workflow opts in and whose persisted `status` is `up`. The workflow's intent
+and the session's persisted lifecycle intent are both required before periodic
+observation may cause a mutation.
 
 The workflow-level `[health]` table carries `auto_repair_attempts`, a
 non-negative integer with default `0` (disabled). It is distinct from an
