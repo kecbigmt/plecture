@@ -222,11 +222,22 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
+# The start time is what tells this process apart from an unrelated one that
+# reuses its pid after the container, and with it the pid namespace, is
+# replaced.
+PID_STARTED=$(ps -o lstart= -p "$PID" 2>/dev/null | sed 's/^ *//; s/ *$//')
+if [ -z "$PID_STARTED" ]; then
+  echo "could not read the start time of codex pid $PID" >&2
+  terminate_if_codex "$PID"
+  exit 1
+fi
+
 OUTPUT=$(jq -nc \
   --argjson pid "$PID" \
+  --arg pid_started "$PID_STARTED" \
   --arg sid "$SID" \
   --arg profile "$PROFILE_PATH" \
-  '{pid:$pid, session_id:$sid, profile_path:$profile}') || {
+  '{pid:$pid, pid_started:$pid_started, session_id:$sid, profile_path:$profile}') || {
     terminate_if_codex "$PID"
     exit 1
   }
@@ -272,10 +283,16 @@ activity_bin = { bin = "codex-agent-activity" }
 
 [codex.health.alive]
 type   = "shell"
-script = 'kill -0 "$pid"'
+script = '''
+kill -0 "$pid" || exit 1
+if [ -n "${pid_started-}" ]; then
+  [ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ] || exit 1
+fi
+'''
 
 [codex.health.alive.bind]
-pid = { from = "self.outputs.pid" }
+pid         = { from = "self.outputs.pid" }
+pid_started = { from = "self.outputs.pid_started", optional = true }
 
 # The turn-boundary hooks registered at setup are this effect's activity
 # probe: the hook records each boundary and the probe reads the record back,
@@ -318,5 +335,6 @@ required = ["pid", "session_id"]
 
 [codex.outputs_schema.properties]
 pid          = { type = "integer" }
+pid_started  = { type = "string" }
 session_id   = { type = "string" }
 profile_path = { type = "string" }
