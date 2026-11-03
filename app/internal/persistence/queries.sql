@@ -539,6 +539,17 @@ FROM events WHERE session_id = ? AND sequence >= ? ORDER BY sequence;
 SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
 FROM events WHERE session_id = ? AND type = ? ORDER BY sequence DESC LIMIT 1;
 
+-- name: LatestRepairStateChange :one
+-- The broader type index would scan every skipped probe after the last repair state change.
+SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
+FROM events INDEXED BY events_repair_state_change_idx
+WHERE session_id = ? AND type = ?
+  AND (
+    json_extract(metadata_json, '$.result') IN ('started', 'suspended')
+    OR (json_extract(metadata_json, '$.result') = 'succeeded' AND json_extract(metadata_json, '$.attempt') = '0')
+  )
+ORDER BY sequence DESC LIMIT 1;
+
 -- name: HasEventCursor :one
 SELECT COUNT(*) FROM event_cursors WHERE session_id = ? AND kind = ?;
 

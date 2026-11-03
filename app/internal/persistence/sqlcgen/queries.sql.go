@@ -895,6 +895,52 @@ func (q *Queries) LatestEventByType(ctx context.Context, arg LatestEventByTypePa
 	return i, err
 }
 
+const latestRepairStateChange = `-- name: LatestRepairStateChange :one
+SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
+FROM events INDEXED BY events_repair_state_change_idx
+WHERE session_id = ? AND type = ?
+  AND (
+    json_extract(metadata_json, '$.result') IN ('started', 'suspended')
+    OR (json_extract(metadata_json, '$.result') = 'succeeded' AND json_extract(metadata_json, '$.attempt') = '0')
+  )
+ORDER BY sequence DESC LIMIT 1
+`
+
+type LatestRepairStateChangeParams struct {
+	SessionID string
+	Type      string
+}
+
+type LatestRepairStateChangeRow struct {
+	ID           string
+	Sequence     int64
+	Time         string
+	Type         string
+	Source       string
+	Direction    string
+	Summary      string
+	Body         string
+	MetadataJson string
+}
+
+// The broader type index would scan every skipped probe after the last repair state change.
+func (q *Queries) LatestRepairStateChange(ctx context.Context, arg LatestRepairStateChangeParams) (LatestRepairStateChangeRow, error) {
+	row := q.db.QueryRowContext(ctx, latestRepairStateChange, arg.SessionID, arg.Type)
+	var i LatestRepairStateChangeRow
+	err := row.Scan(
+		&i.ID,
+		&i.Sequence,
+		&i.Time,
+		&i.Type,
+		&i.Source,
+		&i.Direction,
+		&i.Summary,
+		&i.Body,
+		&i.MetadataJson,
+	)
+	return i, err
+}
+
 const listCurrentNodeExecutions = `-- name: ListCurrentNodeExecutions :many
 SELECT ne.id, ne.session_id, ne.node_id, ne.sequence, ne.task_id, ne.name,
        ne.scope, ne.status, ne.resource, ne.inputs_json,

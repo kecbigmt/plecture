@@ -321,6 +321,34 @@ func (db *DB) LatestSessionEventByType(ctx context.Context, session, eventType s
 	return ev, ok, err
 }
 
+func (db *DB) LatestSessionRepairStateChange(ctx context.Context, session string) (ev event.Event, ok bool, err error) {
+	err = db.WithReadTx(ctx, func(tx *sql.Tx) error {
+		q := sqlcgen.New(tx)
+		sessionID, gerr := q.SessionIDByLiveName(ctx, session)
+		if gerr != nil {
+			if errors.Is(gerr, sql.ErrNoRows) {
+				return nil
+			}
+			return fmt.Errorf("get session id for %q: %w", session, gerr)
+		}
+		row, lerr := q.LatestRepairStateChange(ctx, sqlcgen.LatestRepairStateChangeParams{SessionID: sessionID, Type: event.TypeSessionRepair})
+		if lerr != nil {
+			if errors.Is(lerr, sql.ErrNoRows) {
+				return nil
+			}
+			return fmt.Errorf("get latest repair state change for %q: %w", session, lerr)
+		}
+		parsed, perr := eventFromRow(sqlcgen.ListEventsFromBySessionRow(row), session)
+		if perr != nil {
+			return perr
+		}
+		ev = parsed
+		ok = true
+		return nil
+	})
+	return ev, ok, err
+}
+
 // currentSessionID errors on a missing session rather than silently minting one.
 func currentSessionID(ctx context.Context, q *sqlcgen.Queries, session string) (string, error) {
 	id, err := q.SessionIDByLiveName(ctx, session)
