@@ -23,47 +23,14 @@ cleanup.
 
 ## Supersession scope
 
-This decision supersedes `2026-09-07-resource-and-workspace-effects` and
-`2026-09-07-invocation-project-context`. It replaces these decisions of
-`2026-09-07-resource-and-workspace-effects`:
+This decision supersedes `2026-09-07-resource-and-workspace-effects` and `2026-09-07-invocation-project-context` in part.
 
-- Retained cleanup contract and plugin references: under
-  `### Execution identity and ownership`, the statements that the execution
-  record owns its cleanup contract and resolved plugin references and that
-  cleanup inputs are validated against the retained cleanup contract.
-- The operator-confirmation operation: the `## Decision` statements, and the
-  matching sentence under `### Execution identity and ownership`, that an
-  explicit operator-confirmation operation records the operator's assertion
-  of external release.
-
-It replaces these decisions of `2026-09-07-invocation-project-context`:
-
-- Recording the layer revisions and effective digest at session creation, and
-  comparing the digest on each desired operation to report a difference.
-- The execution-record paragraph beginning "Each node also has an execution
-  record", insofar as the record retains a cleanup declaration and resolved
-  plugin version and reference, cleanup uses that record, and resolved plugin
-  executables and instruction sidecars stay available until release.
-- The statement that, when the recorded root is unavailable, cleanup and
-  release that can be performed from execution records remain available.
-
-Every other decision of both ADRs remains in force, including:
-
-- Everything else in `2026-09-07-resource-and-workspace-effects`: the
-  resource kind, entry resource and session naming, environment effects and
-  `workdir`, public outputs, initial task selection, chains and populations,
-  `### Session entry identity`, `### Workflow public outputs`,
-  `### Resource bindings`, `### Population identity across project contexts`,
-  `### Configuration selection` (the digest as a comparison baseline kept
-  separate from execution records and never an operation blocker, which this
-  ADR's session-wide baseline specifies further rather than replaces), its
-  `## Consequences`, and its `## Alternatives considered`.
-- Everything else in `2026-09-07-invocation-project-context`: invocation-time
-  root selection through `.plect/project.toml`, definition layering, the
-  trusted-root model, the session's recorded project root, the diagnostic that
-  directs a caller to `--force-recreate`, state-store ownership of execution
-  records, chain and population root inheritance, its `## Consequences`, and
-  its `## Alternatives considered`.
+- `2026-09-07-resource-and-workspace-effects`, `### Execution identity and ownership`: retained cleanup contract and plugin references.
+- `2026-09-07-resource-and-workspace-effects`, `## Decision`: the operator-confirmation operation for external release.
+- `2026-09-07-resource-and-workspace-effects`, `### Configuration selection`: narrowed: the digest baseline becomes one session-wide lifecycle baseline.
+- `2026-09-07-invocation-project-context`, `## Decision`: the digest recorded at creation and compared on each desired operation.
+- `2026-09-07-invocation-project-context`, `## Decision`: retained cleanup declarations and plugin executables in execution records.
+- `2026-09-07-invocation-project-context`, `## Decision`: cleanup from execution records when the recorded root is unavailable.
 
 ## Decision
 
