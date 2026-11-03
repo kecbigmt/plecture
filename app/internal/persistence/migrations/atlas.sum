@@ -1,4 +1,4 @@
-h1:1II/kYitDeM6+dcdTFfWEhUqa/cTKt9Wz6TqSLw/vrc=
+h1:VKRPPuNNZsynKehel/ZpoNhUFbfXLmd1d4LMY3CSVqY=
 20260906051929_persistence_smoke.sql h1:VJQbsA+3kdW09JOA/7fdHbtscHLy6/jFDEL+ECJl9WI=
 20260906071015_add_runtime_state_tables.sql h1:lQ0V2wgPlls9T1lbkNb5OAMaibpbrU+kCzsFa/WoR7o=
 20260906085730_drop_persistence_smoke.sql h1:2sJTGdSHyAu6UyBQO56htsBLZJw1tjZVqoHjtaLsDnM=
@@ -10,3 +10,4 @@ h1:1II/kYitDeM6+dcdTFfWEhUqa/cTKt9Wz6TqSLw/vrc=
 20260908130000_add_sidecar_state.sql h1:5JM3KzkftxbVf0uAOmj7cl1+KQBtHfFW128H2VR8ALM=
 20261008155752_add_population_admit_retry.sql h1:25i5NCmPbvsyWcpAANuXPFOiBmIzBOV4IvbSOXJolCI=
 20261103194111_add_health_unevaluable_cycles.sql h1:sCjA4BeUb0ZnvmmB6FD9CUI2L9Sz2NHCEGIJmnqFebY=
+20261103200131_index_repair_state_changes.sql h1:Yurj0cfzR9mxSwA/dsOKaNdterzDmOVFL1E24qG49/M=

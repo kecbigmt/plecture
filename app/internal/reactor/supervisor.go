@@ -61,9 +61,10 @@ type Supervisor struct {
 	// deadmanFn defaults to service.CheckHeartbeatDeadman; overridable in
 	// tests to observe invocation without depending on real terminal-event
 	// delivery, matching sessionReactor's tickFn/healthcheckFn convention.
-	deadmanFn  func(*config.Config, *state.Store, string, config.TickConfig, time.Time) (bool, error)
-	repairGate *service.RepairGate
-	repairFn   func(*config.Config, *state.Store, string, *service.HealthReport, *service.RepairGate) (bool, error)
+	deadmanFn            func(*config.Config, *state.Store, string, config.TickConfig, time.Time) (bool, error)
+	repairGate           *service.RepairGate
+	repairFn             func(*config.Config, *state.Store, string, *service.HealthReport, *service.RepairGate) (bool, error)
+	repairWorkflowErrors map[string]string
 }
 
 // NewSupervisor builds a supervisor over the same event log, session state,
@@ -132,54 +133,76 @@ func (sup *Supervisor) Run(ctx context.Context) {
 
 func (sup *Supervisor) repairDownLoop(ctx context.Context) {
 	last := map[string]time.Time{}
-	sup.checkRepairDown(ctx, time.Now(), last)
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	delay := sup.checkRepairDown(ctx, time.Now(), last)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case now := <-ticker.C:
-			sup.checkRepairDown(ctx, now, last)
+		case now := <-timer.C:
+			delay = sup.checkRepairDown(ctx, now, last)
+			timer.Reset(delay)
 		}
 	}
 }
 
-func (sup *Supervisor) checkRepairDown(ctx context.Context, now time.Time, last map[string]time.Time) {
+func (sup *Supervisor) checkRepairDown(ctx context.Context, now time.Time, last map[string]time.Time) time.Duration {
+	fallback := config.DefaultHealthcheckConfig().Period.Duration
 	if ctx.Err() != nil {
-		return
+		return fallback
 	}
 	cfg := sup.cfg()
 	sessions, err := sup.state.AllE()
 	if err != nil {
 		sup.logger.Warn("reactor: read session state failed; skipping repair sweep", "error", err)
-		return
+		return fallback
 	}
 	for name := range last {
 		if _, ok := sessions[name]; !ok {
 			delete(last, name)
 		}
 	}
+	for name := range sup.repairWorkflowErrors {
+		if _, ok := sessions[name]; !ok {
+			delete(sup.repairWorkflowErrors, name)
+		}
+	}
+	next := fallback
 	for name, s := range sessions {
 		if ctx.Err() != nil {
-			return
+			return next
 		}
 		if s.Status != contract.SessionStatusUp || cfg.RunScopeUp(s) {
+			delete(last, name)
+			delete(sup.repairWorkflowErrors, name)
 			continue
 		}
 		wf, err := cfg.ResolveSessionWorkflow(s)
 		if err != nil {
-			sup.logger.Warn("reactor: resolve workflow failed; skipping repair", "session", name, "error", err)
+			if sup.repairWorkflowErrors == nil {
+				sup.repairWorkflowErrors = map[string]string{}
+			}
+			failure := s.ID + "\x00" + err.Error()
+			if sup.repairWorkflowErrors[name] != failure {
+				sup.logger.Warn("reactor: resolve workflow failed; skipping repair", "session", name, "error", err)
+				sup.repairWorkflowErrors[name] = failure
+			}
 			continue
 		}
+		delete(sup.repairWorkflowErrors, name)
 		if wf == nil || wf.Health.AutoRepairAttempts <= 0 {
+			delete(last, name)
 			continue
 		}
 		period := config.NormalizeHealthcheckConfig(wf.Healthcheck).Period.Duration
-		if now.Sub(last[name]) < period {
+		elapsed := now.Sub(last[name])
+		if elapsed < period {
+			next = min(next, period-elapsed)
 			continue
 		}
 		last[name] = now
+		next = min(next, period)
 		repair := sup.repairFn
 		if repair == nil {
 			repair = service.RepairSession
@@ -188,6 +211,7 @@ func (sup *Supervisor) checkRepairDown(ctx context.Context, now time.Time, last 
 			sup.logger.Warn("reactor: session repair failed", "session", name, "error", err)
 		}
 	}
+	return next
 }
 
 // checkDeadman sweeps every up session with a declared `heartbeat` for the

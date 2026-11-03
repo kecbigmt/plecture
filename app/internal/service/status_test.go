@@ -109,6 +109,9 @@ func TestStatus_DerivesRepairSuspensionFromEvents(t *testing.T) {
 	if err := appendRepairEvent(store, "owner/repo-1", "health", 3, "suspended", "automatic repair suspended after 3 attempts"); err != nil {
 		t.Fatal(err)
 	}
+	if err := appendRepairEvent(store, "owner/repo-1", "health", 0, "skipped_probe_error", "probe timed out"); err != nil {
+		t.Fatal(err)
+	}
 	result, err := Status(cfg, store, "owner/repo-1")
 	if err != nil {
 		t.Fatal(err)

@@ -319,6 +319,11 @@ CREATE UNIQUE INDEX events_session_id_sequence ON events(session_id, sequence);
 CREATE INDEX events_session_id_id_idx ON events(session_id, id);
 -- Backs the status-message reader's latest-event-of-this-type lookup.
 CREATE INDEX events_session_id_type_sequence_idx ON events(session_id, type, sequence);
+CREATE INDEX events_repair_state_change_idx ON events(session_id, type, sequence)
+WHERE (
+    json_extract(metadata_json, '$.result') IN ('started', 'suspended')
+    OR (json_extract(metadata_json, '$.result') = 'succeeded' AND json_extract(metadata_json, '$.attempt') = '0')
+  );
 
 -- heartbeat is the reactor's resettable quiet-backoff position; next_sequence is exclusive.
 CREATE TABLE event_cursors (

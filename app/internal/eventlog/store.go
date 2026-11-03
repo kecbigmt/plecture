@@ -369,6 +369,18 @@ func (s *Store) LatestByType(session, eventType string) (event.Event, bool, erro
 	return ev, ok, nil
 }
 
+func (s *Store) LatestRepairStateChange(session string) (event.Event, bool, error) {
+	db, err := s.dbHandle()
+	if err != nil {
+		return event.Event{}, false, err
+	}
+	ev, ok, err := db.LatestSessionRepairStateChange(context.Background(), session)
+	if err != nil {
+		return event.Event{}, false, fmt.Errorf("eventlog: latest repair state change: %w", err)
+	}
+	return ev, ok, nil
+}
+
 // Follow delivers events from `since`, then polls for new ones until ctx ends.
 func (s *Store) Follow(ctx context.Context, session string, since int64, fn func(event.Event, int64)) error {
 	cursor := since

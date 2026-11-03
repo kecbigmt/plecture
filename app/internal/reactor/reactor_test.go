@@ -1,8 +1,10 @@
 package reactor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -185,8 +187,12 @@ period = "1m"
 	}
 	last := map[string]time.Time{}
 	now := time.Now()
-	sup.checkRepairDown(context.Background(), now, last)
-	sup.checkRepairDown(context.Background(), now.Add(30*time.Second), last)
+	if delay := sup.checkRepairDown(context.Background(), now, last); delay != time.Minute {
+		t.Fatalf("next repair sweep = %s, want workflow health period 1m", delay)
+	}
+	if delay := sup.checkRepairDown(context.Background(), now.Add(30*time.Second), last); delay != 30*time.Second {
+		t.Fatalf("next repair sweep mid-period = %s, want 30s until due", delay)
+	}
 	if calls != 1 {
 		t.Fatalf("repair calls within period = %d, want 1", calls)
 	}
@@ -200,6 +206,35 @@ period = "1m"
 	sup.checkRepairDown(context.Background(), now.Add(2*time.Minute), last)
 	if calls != 2 {
 		t.Fatalf("repair calls after down = %d, want 2", calls)
+	}
+}
+
+func TestSupervisor_RepairDownSweepWarnsOncePerWorkflowFailureStreak(t *testing.T) {
+	pluginDir := t.TempDir()
+	cfg := &config.Config{PluginDirs: []string{pluginDir}}
+	st := state.NewStore(t.TempDir())
+	if err := st.Put(&domain.Session{Name: "o/r-1", Workflow: "missing", Status: contract.SessionStatusUp}); err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	sup := NewSupervisor(func() *config.Config { return cfg }, st, eventlog.NewStore(st.Dir()), nil)
+	sup.logger = slog.New(slog.NewTextHandler(&logs, nil))
+	last := map[string]time.Time{}
+	now := time.Now()
+	sup.checkRepairDown(context.Background(), now, last)
+	sup.checkRepairDown(context.Background(), now.Add(time.Minute), last)
+	if got := bytes.Count(logs.Bytes(), []byte("resolve workflow failed; skipping repair")); got != 1 {
+		t.Fatalf("warning count = %d, want 1 during unresolved streak", got)
+	}
+	workflowPath := filepath.Join(pluginDir, "config", "workflows", "missing.toml")
+	writeFile(t, workflowPath, "[missing]\nkind = \"workflow\"\n")
+	sup.checkRepairDown(context.Background(), now.Add(2*time.Minute), last)
+	if err := os.Remove(workflowPath); err != nil {
+		t.Fatal(err)
+	}
+	sup.checkRepairDown(context.Background(), now.Add(3*time.Minute), last)
+	if got := bytes.Count(logs.Bytes(), []byte("resolve workflow failed; skipping repair")); got != 2 {
+		t.Fatalf("warning count after resolution and recurrence = %d, want 2", got)
 	}
 }
 
