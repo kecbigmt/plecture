@@ -1,0 +1,27 @@
+[fault_workspace]
+kind  = "workspace_provider"
+match = '^fault://(?P<name>[a-z]+)$'
+name  = { expr = "'fault/' + match.name" }
+
+[fault_workspace.setup]
+type   = "shell"
+script = '''
+dir="$workspace_dirs_root/$session_name"
+mkdir -p "$dir"
+if [ ! -d "$dir/.git" ]; then
+  git -C "$dir" init -q
+  git -C "$dir" -c user.name=Fixture -c user.email=fixture@example.invalid commit --allow-empty -qm initial
+fi
+jq -nc --arg dir "$dir" '{workspace_dir:$dir}'
+'''
+
+[fault_workspace.setup.bind]
+workspace_dirs_root = { from = "config.workspace_dirs_root" }
+session_name        = { from = "session.name" }
+
+[fault_workspace.outputs_schema]
+type     = "object"
+required = ["workspace_dir"]
+
+[fault_workspace.outputs_schema.properties.workspace_dir]
+type = "string"

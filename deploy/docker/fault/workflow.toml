@@ -1,0 +1,15 @@
+[fault_recovery]
+kind               = "workflow"
+name               = "Docker fault recovery fixture"
+workspace_provider = "fault_workspace"
+
+[[fault_recovery.nodes]]
+uses = "official.tmux.pane"
+
+[[fault_recovery.nodes]]
+id   = "agent"
+uses = "official.claude.runtime"
+
+[fault_recovery.healthcheck]
+period          = "15s"
+stall_threshold = "45s"
