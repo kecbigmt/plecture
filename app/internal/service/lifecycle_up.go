@@ -36,8 +36,10 @@ type UpParams struct {
 
 // UpResult holds the outcome of Up.
 type UpResult struct {
-	SessionName string                         `json:"session_name"`
-	Tasks       map[string]*contract.TaskState `json:"tasks,omitempty"`
+	SessionName   string                         `json:"session_name"`
+	Result        string                         `json:"result"`
+	QueuePosition int                            `json:"queue_position,omitempty"`
+	Tasks         map[string]*contract.TaskState `json:"tasks,omitempty"`
 }
 
 // Up runs run-scoped tasks for the given session.
@@ -146,7 +148,11 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 			parentSessionName = resolved
 		}
 		reserved, capErr := reserveChildCapSlot(cfg, store, sessionName, parentSessionName, targetAlreadyUp)
+		capped := false
 		if capErr != nil {
+			_, capped = asChildCapExceeded(capErr)
+		}
+		if capErr != nil && !capped {
 			return nil, capErr
 		}
 		if reserved {
@@ -165,6 +171,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 				return nil, err
 			}
 		}
+		if capped {
+			return acceptSleepingUp(store, sessionName)
+		}
 		identifier = sessionName
 	} else {
 		if params.Tag != "" {
@@ -179,6 +188,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	if err != nil {
 		return nil, err
 	}
+	wasSleeping := !session.SleepSince.IsZero()
 	// This covers every path below, including callers that pass no
 	// Observer at all.
 	params.Observer = withNodeResultRecording(store, sessionName, params.Observer)
@@ -194,6 +204,9 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		targetAlreadyUp := sessionRunState(cfg, session) == domain.RunUp && !params.ForceRecreate
 		reserved, capErr := reserveChildCapSlot(cfg, store, sessionName, session.ParentSession, targetAlreadyUp)
 		if capErr != nil {
+			if _, capped := asChildCapExceeded(capErr); capped {
+				return acceptSleepingUp(store, sessionName)
+			}
 			return nil, capErr
 		}
 		if reserved {
@@ -261,7 +274,23 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to record session status: %v", err)}
 	}
 	recordLifecycle(store, sessionName, "up", "run-scoped tasks produced")
-	return &UpResult{SessionName: sessionName, Tasks: domain.MergedTasks(session)}, nil
+	if wasSleeping {
+		if err := appendWakeEvent(store, sessionName, "succeeded", "runtime started"); err != nil {
+			return nil, err
+		}
+	}
+	return &UpResult{SessionName: sessionName, Result: "up", Tasks: domain.MergedTasks(session)}, nil
+}
+
+func acceptSleepingUp(store *state.Store, name string) (*UpResult, error) {
+	if _, err := queueSleep(store, name, "capacity", time.Now()); err != nil {
+		return nil, err
+	}
+	position, err := SleepQueuePosition(store, name)
+	if err != nil {
+		return nil, err
+	}
+	return &UpResult{SessionName: name, Result: "sleeping", QueuePosition: position}, nil
 }
 
 func cleanupStaleWorkflowNodes(cfg *config.Config, store *state.Store, sessionName string, session *domain.Session, plan *task.Plan, observer task.Observer) error {

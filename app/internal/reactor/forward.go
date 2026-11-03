@@ -15,9 +15,9 @@ import (
 
 const forwardConsumer = "forward"
 
-// sessionForwarder relays a down-but-not-destroyed session's new Inbound
-// events to its nearest live ancestor, since no sessionReactor drains that
-// session's own log while it is down.
+// sessionForwarder handles inbound events while the run scope is down:
+// full-stop sessions forward them to an ancestor, and sleeping sessions
+// request their own wake.
 type sessionForwarder struct {
 	session string
 	cfg     *config.Config
@@ -107,6 +107,15 @@ func (f *sessionForwarder) drain(ctx context.Context, startGen *string) {
 		f.effectiveLogger().Warn("forward: list events failed; skipping this drain, will retry on next wake", "session", f.session, "error", err)
 		return
 	}
+	_, stops, _, err := f.log.List(f.session, 0, event.Filter{Types: []string{event.TypeSessionStop}})
+	if err != nil {
+		f.effectiveLogger().Warn("forward: read stop boundary failed", "session", f.session, "error", err)
+		return
+	}
+	stopSeq := int64(0)
+	if len(stops) > 0 {
+		stopSeq = stops[len(stops)-1]
+	}
 	fn := f.forwardFn
 	if fn == nil {
 		fn = service.ForwardDownSessionEvent
@@ -115,7 +124,19 @@ func (f *sessionForwarder) drain(ctx context.Context, startGen *string) {
 		if ctx.Err() != nil {
 			return
 		}
-		if _, err := fn(f.cfg, f.state, f.session, ev); err != nil {
+		session, err := f.state.GetE(f.session)
+		if err != nil || session == nil {
+			return
+		}
+		if session.SleepSince.IsZero() && offs[i] < stopSeq {
+			// The event arrived during an earlier sleep, before the operator's
+			// full stop; it belongs to that sleep even if this follower was down.
+		} else if !session.SleepSince.IsZero() {
+			_, err = service.RequestWake(f.state, f.session, ev.Time)
+		} else {
+			_, err = fn(f.cfg, f.state, f.session, ev)
+		}
+		if err != nil {
 			f.effectiveLogger().Warn("forward: relay event failed; will retry on next wake", "session", f.session, "event_id", ev.ID, "error", err)
 			return // leave the cursor before ev so it is retried
 		}

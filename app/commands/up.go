@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -23,6 +24,7 @@ var (
 	upParent     string
 	upDetach     bool
 	upRecreate   bool
+	upJSON       bool
 )
 
 var upCmd = &cobra.Command{
@@ -57,7 +59,10 @@ path. Workflows that require a task reject auto-create without it; pass
 --force-recreate rebuilds the session runtime for an existing session while
 keeping its durable identity and event log. It cleans and forgets workflow
 node state, dynamic task instances, environment state, and runtime observation
-state so the next setup cannot resume from .Prev, then runs setup again.`,
+state so the next setup cannot resume from .Prev, then runs setup again.
+
+If max_up_children is full, up accepts the session as sleeping and prints its
+queue position. --json reports result and queue_position for scripts.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		inputs, err := resolveInputsFlags(upInputs, upInputsFile)
@@ -85,6 +90,18 @@ state so the next setup cannot resume from .Prev, then runs setup again.`,
 		})
 		if err != nil {
 			return err
+		}
+		if upJSON {
+			b, err := json.Marshal(result)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), string(b))
+			return nil
+		}
+		if result.Result == "sleeping" {
+			fmt.Fprintf(cmd.OutOrStdout(), "accepted: sleeping (queue position %d)\n", result.QueuePosition)
+			return nil
 		}
 		fmt.Fprintf(os.Stderr, "Session: %s\n", result.SessionName)
 
@@ -134,5 +151,6 @@ func init() {
 	upCmd.Flags().StringVar(&upParent, "parent", "", "Parent session name for auto-created sessions, or \"root:<session>\" to join that (possibly parentless) session's siblings; falls back to $PLECT_SESSION_NAME when it names an existing session")
 	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Return after setup instead of attaching (docker-compose-style up -d)")
 	upCmd.Flags().BoolVar(&upRecreate, "force-recreate", false, "Rebuild the session runtime instead of resuming existing task outputs")
+	upCmd.Flags().BoolVar(&upJSON, "json", false, "Output the accepted result as JSON")
 	rootCmd.AddCommand(upCmd)
 }

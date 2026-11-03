@@ -68,7 +68,7 @@ func (c *capacityCoordinator) definitionKeys() []string {
 func (c *capacityCoordinator) up(_ context.Context, def Definition, resource string, inputs map[string]any) (UpOutcome, error) {
 	provenance := &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name}
 	outcome, err := upPopulation(c.cfg, c.state, def, provenance, resource, inputs)
-	if !isCapError(err) {
+	if err != nil || !outcome.Sleeping {
 		return outcome, err
 	}
 	if blocker, blocked := c.pendingExistingAhead(def, resource); blocked {
@@ -83,13 +83,13 @@ func (c *capacityCoordinator) up(_ context.Context, def Definition, resource str
 		return UpOutcome{}, fmt.Errorf("find idle candidates to free capacity: %w", candidatesErr)
 	}
 	for _, candidate := range candidates {
-		if _, downErr := service.Down(c.cfg(), c.state, service.DownParams{Identifier: candidate.session}); downErr != nil {
+		if _, downErr := service.Down(c.cfg(), c.state, service.DownParams{Identifier: candidate.session, Sleep: true}); downErr != nil {
 			c.record(candidate, event.TypeWorkflowPopulationFailure, "down", downErr.Error())
 			continue
 		}
 		c.record(candidate, event.TypeWorkflowPopulationDown, "capacity", "population member brought down for virtual-root capacity")
 		outcome, err = upPopulation(c.cfg, c.state, def, provenance, resource, inputs)
-		if !isCapError(err) {
+		if err != nil || !outcome.Sleeping {
 			return outcome, err
 		}
 	}
@@ -97,7 +97,7 @@ func (c *capacityCoordinator) up(_ context.Context, def Definition, resource str
 		c.record(idleCandidate{session: target, resource: resource, key: populationKey(def)}, event.TypeWorkflowPopulationDown,
 			"capacity", "virtual-root capacity remains full with no eligible population member to bring down")
 	}
-	return UpOutcome{}, err
+	return outcome, nil
 }
 
 func isCapError(err error) bool {

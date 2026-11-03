@@ -123,6 +123,7 @@ type Session struct {
 	ID                       string
 	Name                     string
 	Status                   string
+	SleepSince               sql.NullString
 	DestroyedAt              sql.NullString
 	ParentSessionID          sql.NullString
 	RootSessionID            sql.NullString

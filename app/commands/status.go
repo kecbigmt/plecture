@@ -128,6 +128,12 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 
 	rt := result.Runtime
 	fmt.Fprintf(w, "Run:\t%s\n", formatRunLine(rt))
+	if rt.Sleep != "" {
+		fmt.Fprintf(w, "Sleep:\t%s\n", formatSleep(rt.Sleep, rt.QueuePosition))
+	}
+	if rt.WakeReason != "" {
+		fmt.Fprintf(w, "Wake:\t%s\n", rt.WakeReason)
+	}
 	fmt.Fprintf(w, "Health:\t%s\n", formatHealthLine(rt))
 	if rt.RepairStatus != "" {
 		fmt.Fprintf(w, "Repair:\t%s\n", formatRepairLine(rt))

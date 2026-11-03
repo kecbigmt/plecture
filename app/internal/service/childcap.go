@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // reserveChildCapSlot decides inside ReserveUpSlot's locked snapshot rather
@@ -48,9 +50,41 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 	if limit < 1 {
 		return false, nil
 	}
+	queued := map[string]bool{}
+	all, err := store.AllE()
+	if err != nil {
+		return false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("read queued sessions: %v", err)}
+	}
+	for name, s := range all {
+		if s == nil || s.SleepSince.IsZero() || s.Status != contract.SessionStatusDown {
+			continue
+		}
+		memberOfCap := (virtualRoot && (s.ParentSession == "" || strings.HasPrefix(s.ParentSession, "root:"))) || (!virtualRoot && s.ParentSession == parentSessionName)
+		if !memberOfCap {
+			continue
+		}
+		waiting, err := sleepQueued(store, name)
+		if err != nil {
+			return false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("read sleep queue: %v", err)}
+		}
+		queued[name] = waiting
+	}
 
 	var rejection *Error
 	approved, lockErr := store.ReserveUpSlot(childSessionName, capParent, func(sessions map[string]*domain.Session, reservations map[string]state.UpReservation) bool {
+		var targetAt time.Time
+		if target := sessions[childSessionName]; target != nil && queued[childSessionName] {
+			targetAt = target.SleepSince
+		}
+		for name, s := range sessions {
+			if name == childSessionName || s == nil || !queued[name] || s.SleepSince.IsZero() {
+				continue
+			}
+			if targetAt.IsZero() || s.SleepSince.Before(targetAt) || (s.SleepSince.Equal(targetAt) && name < childSessionName) {
+				rejection = &Error{Code: ErrChildCapExceeded, Message: fmt.Sprintf("%s has an earlier sleeping child waiting for capacity", capLabel)}
+				return false
+			}
+		}
 		up := make(map[string]bool)
 		count := 0
 		var children []string
@@ -112,13 +146,11 @@ func releaseChildCapSlot(store *state.Store, childSessionName string) {
 	_ = store.ReleaseUpSlot(childSessionName) // best-effort: a retry or Destroy still recovers it
 }
 
-// asChildCapExceeded reports whether err is specifically the structured
-// max_up_children cap rejection reserveChildCapSlot returns through Up, as
-// opposed to any other Up failure — the distinction TickSession's chain spawn
-// reports as a typed cap-refused outcome rather than a generic warning.
+// asChildCapExceeded identifies the capacity result before Up converts it to
+// an accepted sleep.
 func asChildCapExceeded(err error) (*Error, bool) {
 	svcErr, ok := err.(*Error)
-	if !ok || svcErr.Code != ErrChildCapExceeded {
+	if !ok || svcErr == nil || svcErr.Code != ErrChildCapExceeded {
 		return nil, false
 	}
 	return svcErr, true

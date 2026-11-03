@@ -241,6 +241,7 @@ type Session struct {
 	ID          string    `json:"id,omitempty"`
 	Name        string    `json:"session_name"`
 	Status      string    `json:"status,omitempty"`
+	SleepSince  time.Time `json:"sleep_since,omitzero"`
 	DestroyedAt time.Time `json:"destroyed_at,omitzero"`
 	ResourceID  string    `json:"resource_id,omitempty"`
 	// ParentSessionID and RootSessionID are ParentSession's durable

@@ -258,14 +258,9 @@ func TestPublishTerminalToParent_RunScopeUpTargetIsNotWoken(t *testing.T) {
 	}
 }
 
-func TestPublishTerminalToParent_DownTargetWakeFailureIsReturnedButDoesNotBreakThePush(t *testing.T) {
+func TestPublishTerminalToParent_FullStopTargetRecordsPushWithoutWake(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
-	// Parent has no run-scoped task at all (down/never-up). Up will be
-	// attempted best-effort and, with no workflow configured, will fail
-	// internally — the push itself must still have succeeded and been
-	// recorded (err is nil), but the wake failure must now be observable via
-	// wakeErr rather than silently discarded.
 	seedSessionWithNodes(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
 	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "claude", nil)
 	setParent(t, store, "owner/repo-1", "owner/repo-orchestrator")
@@ -276,8 +271,8 @@ func TestPublishTerminalToParent_DownTargetWakeFailureIsReturnedButDoesNotBreakT
 	if err != nil || id == "" {
 		t.Fatalf("PublishTerminalToParent: id=%q err=%v", id, err)
 	}
-	if wakeErr == nil {
-		t.Fatal("wakeErr = nil, want non-nil (Up has no configured workflow for the down target)")
+	if wakeErr != nil {
+		t.Fatalf("full-stop target attempted a wake: %v", wakeErr)
 	}
 
 	evs, _, _, lerr := eventlog.NewStore(store.Dir()).List("owner/repo-orchestrator", 0, event.Filter{Types: []string{event.TypeTerminalDone}})

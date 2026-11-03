@@ -2,7 +2,7 @@
 
 -- name: InsertSession :exec
 INSERT INTO sessions (
-    id, name, status, destroyed_at, parent_session_id, root_session_id,
+    id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
     resource_id, alias, workflow, workspace_dir,
     population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
@@ -10,12 +10,13 @@ INSERT INTO sessions (
     health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateSessionByID :exec
 UPDATE sessions SET
     name = ?,
     status = ?,
+    sleep_since = ?,
     destroyed_at = ?,
     parent_session_id = ?,
     root_session_id = ?,
@@ -41,7 +42,7 @@ UPDATE sessions SET
 WHERE id = ?;
 
 -- name: GetLiveSession :one
-SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
+SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, alias, workflow, workspace_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
@@ -52,7 +53,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
 FROM sessions WHERE name = ? AND status <> 'destroyed';
 
 -- name: GetLatestDestroyedSession :one
-SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
+SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, alias, workflow, workspace_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
@@ -66,7 +67,7 @@ ORDER BY destroyed_at DESC
 LIMIT 1;
 
 -- name: ListLiveSessions :many
-SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
+SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, alias, workflow, workspace_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
@@ -77,7 +78,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
 FROM sessions WHERE status <> 'destroyed' ORDER BY name;
 
 -- name: ListLiveSessionsByAlias :many
-SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
+SELECT id, name, status, sleep_since, destroyed_at, parent_session_id, root_session_id,
        resource_id, alias, workflow, workspace_dir,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,

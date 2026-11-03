@@ -17,6 +17,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 const (
@@ -33,6 +34,7 @@ const (
 type UpOutcome struct {
 	SessionName string
 	AlreadyUp   bool
+	Sleeping    bool
 }
 
 type Hooks struct {
@@ -188,6 +190,18 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 		if member.Tombstoned || !member.PendingUp {
 			continue
 		}
+		if member.SessionName != "" {
+			session, err := e.state.GetE(member.SessionName)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			if session != nil && session.Status == contract.SessionStatusDown && e.cache.Get(member.SessionName, member.ResourceID).LastReason == "" {
+				continue
+			}
+		}
 		if member.AdmitSuspended || (!member.AdmitRetryAt.IsZero() && e.now().Before(member.AdmitRetryAt)) {
 			continue
 		}
@@ -199,9 +213,6 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 }
 
 func (e *Engine) SweepExpiry(ctx context.Context) error {
-	if err := e.processInbound(); err != nil {
-		return err
-	}
 	if e.definition.Population.UsesPoll() {
 		return e.Reconcile(ctx)
 	}
@@ -241,41 +252,6 @@ func (e *Engine) SweepExpiry(ctx context.Context) error {
 		firstErr = err
 	}
 	return firstErr
-}
-
-func (e *Engine) processInbound() error {
-	population, err := e.state.Population(e.key)
-	if err != nil || population == nil {
-		return err
-	}
-	updates := make(map[string]time.Time)
-	for _, resource := range sortedMembers(population.Members) {
-		member := population.Members[resource]
-		if member.Tombstoned || member.SessionName == "" {
-			continue
-		}
-		inbound, err := e.latestInbound(member.SessionName)
-		if err != nil {
-			return err
-		}
-		if inbound.After(member.LastInbound) {
-			updates[resource] = inbound
-		}
-	}
-	if len(updates) == 0 {
-		return nil
-	}
-	return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
-		for resource, inbound := range updates {
-			member := population.Members[resource]
-			if member == nil || member.Tombstoned {
-				continue
-			}
-			member.LastInbound = inbound
-			member.PendingUp = true
-		}
-		return nil
-	})
 }
 
 func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) error {

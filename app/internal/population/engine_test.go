@@ -84,6 +84,31 @@ func TestAppearanceIsPersistedBeforeAdmission(t *testing.T) {
 	}
 }
 
+func TestFullStopMemberIsNotReadmittedByAppearanceOrInbound(t *testing.T) {
+	engine, hooks, now := engineFixture(t, false)
+	ctx := context.Background()
+	item := map[string]any{"resource": "urn:case:a"}
+	if err := engine.ApplyAppearance(ctx, item); err != nil {
+		t.Fatal(err)
+	}
+	name := "session-urn:case:a"
+	if err := engine.state.Put(&domain.Session{Name: name, Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.ApplyAppearance(ctx, item); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := engine.log.Append(event.Event{SessionName: name, Type: "resource.changed", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.SweepExpiry(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(hooks.ups) != 1 {
+		t.Fatalf("admissions = %v, want only the initial admission", hooks.ups)
+	}
+}
+
 func TestMalformedPollSnapshotChangesNoMembership(t *testing.T) {
 	engine, hooks, _ := engineFixture(t, true)
 	if err := engine.ApplyPoll(context.Background(), []map[string]any{{"resource": "urn:case:a"}}); err != nil {
@@ -530,6 +555,9 @@ func TestAdmitFailureReasonsDrivePriorityClassification(t *testing.T) {
 	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := engine.state.Update("session-urn:case:a", func(s *domain.Session) error { s.Status = contract.SessionStatusUp; return nil }); err != nil {
+		t.Fatal(err)
+	}
 
 	engine.hooks.Up = func(context.Context, string, map[string]any) (UpOutcome, error) {
 		return UpOutcome{}, &service.Error{Code: service.ErrChildCapExceeded, Message: "cap"}
@@ -595,6 +623,9 @@ func TestAdmitUpdatesTheSharedCacheInPlace(t *testing.T) {
 	ctx := context.Background()
 
 	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": "urn:case:a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.state.Update("session-urn:case:a", func(s *domain.Session) error { s.Status = contract.SessionStatusUp; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if got := cache.Get("session-urn:case:a", "urn:case:a").LastReason; got != "" {
@@ -733,14 +764,13 @@ func admitOKEventCount(t *testing.T, engine *Engine, session string) int {
 // An inbound event on a member re-admits it, which re-runs the idempotent Up
 // hook; only a hook call that actually took the session from not-up to up is
 // a presence change a relay downstream should see.
-func TestReadmissionRecordsUpOnlyOnRunStateTransition(t *testing.T) {
+func TestInboundDoesNotReadmitPopulationMember(t *testing.T) {
 	tests := []struct {
-		name          string
-		sessionWasUp  bool
-		wantUpRecords int
+		name         string
+		sessionWasUp bool
 	}{
-		{name: "session already up", sessionWasUp: true, wantUpRecords: 1},
-		{name: "session down and resuming", sessionWasUp: false, wantUpRecords: 2},
+		{name: "session already up", sessionWasUp: true},
+		{name: "session down", sessionWasUp: false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -764,16 +794,14 @@ func TestReadmissionRecordsUpOnlyOnRunStateTransition(t *testing.T) {
 			if err := engine.SweepExpiry(ctx); err != nil {
 				t.Fatal(err)
 			}
-			if len(hooks.ups) != 2 {
-				t.Fatalf("Up hook calls = %v, want the inbound event to re-run it", hooks.ups)
+			if len(hooks.ups) != 1 {
+				t.Fatalf("Up hook calls = %v, want no inbound readmission", hooks.ups)
 			}
-			if got := upEventCount(t, engine, "session-urn:case:a"); got != tt.wantUpRecords {
-				t.Fatalf("up events = %d, want %d", got, tt.wantUpRecords)
+			if got := upEventCount(t, engine, "session-urn:case:a"); got != 1 {
+				t.Fatalf("up events = %d, want initial admission only", got)
 			}
-			// Unlike the presence-only up event above, admit_ok records
-			// every successful admit, so it's 2 either way.
-			if got := admitOKEventCount(t, engine, "session-urn:case:a"); got != 2 {
-				t.Fatalf("admit_ok events = %d, want 2 regardless of presence change", got)
+			if got := admitOKEventCount(t, engine, "session-urn:case:a"); got != 1 {
+				t.Fatalf("admit_ok events = %d, want initial admission only", got)
 			}
 		})
 	}

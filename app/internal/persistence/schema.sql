@@ -21,6 +21,7 @@ CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('down', 'up', 'destroyed')),
+    sleep_since TEXT,
     destroyed_at TEXT,
     parent_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,
     root_session_id TEXT REFERENCES sessions(id) ON DELETE NO ACTION,

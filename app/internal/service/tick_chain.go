@@ -44,7 +44,7 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 	_, err = EventPublish(cfg, store, sp.TargetSession, EventPublishParams{
 		Type:      event.TypeUserEmit,
 		Source:    event.SourceTick,
-		Direction: event.Outbound,
+		Direction: event.Inbound,
 		Summary:   fmt.Sprintf("Re-evaluate %s at revision %s", workSession, metaValue(meta, "revision", "current")),
 		Body:      chainKickBody(workSession, sp, meta),
 		Metadata:  meta,
@@ -53,60 +53,6 @@ func publishAlreadyActiveChainKick(cfg *config.Config, store *state.Store, workS
 		return false, err
 	}
 	return true, nil
-}
-
-const chainAttemptReasonCap = "cap"
-
-func chainAttemptFingerprint(capRefused bool, target string) string {
-	if !capRefused || target == "" {
-		return ""
-	}
-	return chainAttemptReasonCap + "|" + target
-}
-
-// syncChainAttemptStreak atomically compares-and-sets the persisted
-// chain-attempt streak marker for one instance's chain, reporting the prior
-// value (for revertChainAttemptStreak) and whether this call is the one that
-// changed it. The event log alone cannot tell an interrupted refusal streak
-// from an uninterrupted one — it only ever records a refusal, so a
-// resolved-then-refused-again recurrence looks identical to a continuing one
-// — so TickSession keeps this boundary marker instead, synced for every
-// chain on every tick regardless of outcome.
-func syncChainAttemptStreak(store *state.Store, sessionName, instance, chainID, newFingerprint string) (previous string, won bool, err error) {
-	return eventlog.NewStore(store.Dir()).SwapChainAttempt(sessionName, instance, chainID, newFingerprint)
-}
-
-// revertChainAttemptStreak compensates a syncChainAttemptStreak win (claimed)
-// whose event never actually got published, restoring previous — but only if
-// the marker still holds claimed. See eventlog.Store.RevertChainAttempt for
-// why the restore must stay conditional.
-func revertChainAttemptStreak(store *state.Store, sessionName, instance, chainID, claimed, previous string) error {
-	_, err := eventlog.NewStore(store.Dir()).RevertChainAttempt(sessionName, instance, chainID, claimed, previous)
-	return err
-}
-
-// publishChainCapAttempt appends one plect.chain.attempt event to the ticking
-// session's own log (workSession) when its chain's spawn was refused by the
-// parent's max_up_children cap. The caller (TickSession) only calls this once
-// syncChainAttemptStreak has confirmed the refusal starts a new streak.
-func publishChainCapAttempt(cfg *config.Config, store *state.Store, workSession string, sp ChainSpawn) error {
-	if sp.TargetSession == "" {
-		return nil
-	}
-	_, err := EventPublish(cfg, store, workSession, EventPublishParams{
-		Type:      event.TypeChainAttempt,
-		Source:    event.SourceTick,
-		Direction: event.Internal,
-		Summary:   fmt.Sprintf("chain %s refused: parent at its max_up_children cap (target %s)", sp.ChainID, sp.TargetSession),
-		Body:      strings.Join(sp.Warnings, "\n"),
-		Metadata: map[string]string{
-			"chain_id": sp.ChainID,
-			"instance": sp.Instance,
-			"target":   sp.TargetSession,
-			"reason":   chainAttemptReasonCap,
-		},
-	})
-	return err
 }
 
 func chainKickDedupKey(workSession string, sp ChainSpawn) string {
