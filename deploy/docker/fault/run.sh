@@ -28,6 +28,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# shellcheck source=lib.sh
+. "$fixture/lib.sh"
+
 health_period="$(sed -n 's/^period *= *"\([0-9]*\)s"$/\1/p' "$fixture/workflow.toml")"
 [ -n "$health_period" ] || { echo "No health period in seconds found in $fixture/workflow.toml" >&2; exit 1; }
 # Two full health periods let the watchdog observe the loss and the resume
@@ -78,32 +81,8 @@ start_container() {
   wait_for 'docker health' 45 docker inspect --format '{{.State.Health.Status}}' "$container" healthy
 }
 
-wait_for() {
-  local label="$1" timeout="$2"; shift 2
-  local deadline=$((SECONDS + timeout))
-  while [ "$SECONDS" -lt "$deadline" ]; do
-    local got
-    got="$("${@:1:$#-1}" 2>/dev/null || true)"
-    [ "$got" = "${@: -1}" ] && return 0
-    sleep 1
-  done
-  printf 'Timed out waiting for %s (last value: %s)\n' "$label" "$got" >&2
-  docker logs "$container" >&2 || true
-  return 1
-}
-
 inside() {
   docker exec -u plect "$container" "$@"
-}
-
-runtime_health() {
-  inside sh -c 'plect status "$1" --json --full | jq -r ".runtime.health // empty"' _ "$session"
-}
-
-assert_recovered() {
-  inside sh -c 'tail -n 1 "$HOME/fault/launches"' | grep -F -- "--resume $sid" \
-    && wait_for 'runtime health healthy' "$recovery_wait" runtime_health healthy \
-    && inside git -C "/var/lib/plect/workspace_dirs/$session" status --short | grep -q 'uncommitted-change'
 }
 
 plect() {
