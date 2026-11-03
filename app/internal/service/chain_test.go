@@ -356,6 +356,9 @@ pr_url = { from = "resource.state.pr_url" }
 	if evs[0].Source != event.SourceTick || evs[0].Metadata["revision"] != "sha1" || evs[0].Metadata["judge_ids"] != "ac-met" {
 		t.Fatalf("unexpected kick event: %+v", evs[0])
 	}
+	if evs[0].Direction != event.Inbound || store.Get("owner/repo-1+review-work").Status != contract.SessionStatusDown {
+		t.Fatalf("full-stop target must retain an inbound kick without waking: %+v", evs[0])
+	}
 
 	res2, err := TickSession(cfg, store, TickParams{SessionName: "owner/repo-1", SkipRefresh: true})
 	if err != nil {

@@ -106,8 +106,7 @@ type CheckResult struct {
 	// evaluation) always reports it as a dry-run plan (Spawned is always
 	// false, so a fired entry is reported by its callers as eligible, not as
 	// having fired); TickSession spawns each fired, not-already-active entry
-	// and, on a cap refusal specifically, marks CapRefused instead of a
-	// generic spawn failure.
+	// and records whether capacity deferred that accepted spawn as sleep.
 	Chains []ChainSpawn `json:"chains,omitempty"`
 }
 

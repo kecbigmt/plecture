@@ -1147,8 +1147,8 @@ func TestTickSession_SatisfiedWakeFailureIsWarnedNotFatal(t *testing.T) {
 	if len(result.Actions) != 1 || result.Actions[0].Action != "satisfied" {
 		t.Fatalf("actions = %+v, want satisfied despite the wake failure", result.Actions)
 	}
-	if len(result.Actions[0].Warnings) != 1 || !strings.Contains(result.Actions[0].Warnings[0], "wake") {
-		t.Fatalf("warnings = %+v, want a wake-failure warning", result.Actions[0].Warnings)
+	if len(result.Actions[0].Warnings) != 0 {
+		t.Fatalf("warnings = %+v, want no wake attempt for a full stop", result.Actions[0].Warnings)
 	}
 
 	evs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-orchestrator", 0, event.Filter{Types: []string{event.TypeTerminalDone}})

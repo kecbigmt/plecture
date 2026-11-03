@@ -9,6 +9,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/service"
 	"github.com/kecbigmt/plecture/app/internal/sessionhub"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
@@ -35,6 +36,82 @@ func newTestForwarder(t *testing.T) (*sessionForwarder, *state.Store, *eventlog.
 		hub:     hub,
 	}
 	return f, st, log
+}
+
+func TestForwarder_SleepQueuesOnInboundWithoutForwarding(t *testing.T) {
+	f, st, log := newTestForwarder(t)
+	if err := st.Update(f.session, func(s *domain.Session) error {
+		s.SleepSince = time.Now().Add(-time.Minute)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := log.Append(event.Event{SessionName: f.session, Type: event.TypeSessionSleep, Source: event.SourcePlect, Direction: event.Internal, Metadata: map[string]string{"reason": "idle"}}); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	called := false
+	f.forwardFn = func(*config.Config, *state.Store, string, event.Event) (bool, error) {
+		mu.Lock()
+		called = true
+		mu.Unlock()
+		return true, nil
+	}
+	stop := startForwarder(t, f)
+	defer stop()
+	if _, _, _, err := log.Append(event.Event{SessionName: f.session, Type: "resource.updated", Source: "observer", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		position, err := service.SleepQueuePosition(st, f.session)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if position == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("sleeping session was not queued")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if called {
+		t.Fatal("sleeping event was forwarded to an ancestor")
+	}
+}
+
+func TestForwarder_FullStopDoesNotForwardUnreadSleepEvents(t *testing.T) {
+	f, st, log := newTestForwarder(t)
+	if err := st.Update(f.session, func(s *domain.Session) error { s.SleepSince = time.Now(); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := log.Append(event.Event{SessionName: f.session, Type: "resource.changed", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := log.Append(event.Event{SessionName: f.session, Type: event.TypeSessionStop, Direction: event.Internal}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Update(f.session, func(s *domain.Session) error { s.SleepSince = time.Time{}; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var forwarded []event.Event
+	f.forwardFn = func(_ *config.Config, _ *state.Store, _ string, ev event.Event) (bool, error) {
+		mu.Lock()
+		forwarded = append(forwarded, ev)
+		mu.Unlock()
+		return true, nil
+	}
+	stop := startForwarder(t, f)
+	defer stop()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(forwarded) != 0 {
+		t.Fatalf("forwarded old sleep events: %+v", forwarded)
+	}
 }
 
 // startForwarder starts f.run and blocks until its first drain has run, so

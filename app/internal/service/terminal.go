@@ -51,10 +51,8 @@ func resolveTerminalTarget(parent string) string {
 // origin to origin's immediate parent (D1: single-hop; D2/D3: the parent
 // decides whether to handle it or forward further). Returns ("", nil, nil)
 // when origin has no parent — a root session has no immediate parent to push
-// to, which D1 leaves undefined rather than treating as an error. wakeErr is
-// non-nil when the target had to be woken and that wake failed; the event was
-// still recorded (err is nil), so callers should surface wakeErr as a warning
-// rather than fail the caller's own operation on it.
+// to, which D1 leaves undefined rather than treating as an error. wakeErr
+// reports a failed sleep wake request after the push was recorded.
 func PublishTerminalToParent(cfg *config.Config, store *state.Store, origin string, p TerminalParams) (id string, wakeErr error, err error) {
 	s, err := store.GetE(origin)
 	if err != nil {
@@ -77,17 +75,10 @@ func PublishTerminalToParent(cfg *config.Config, store *state.Store, origin stri
 // the plect.terminal.* type). Metadata carries the origin session and its
 // relation to target so readers don't need a second tree lookup.
 //
-// When wakeIfDown is true and target's run scope is currently down, this also
-// best-effort brings it up (D9: delivery must create a handle-or-forward
-// opportunity within bounded time regardless of the receiver's run state).
-// Up is idempotent (already-produced tasks are skipped), so this is safe even
-// if another actor is concurrently bringing target up. wakeIfDown is ignored
-// (forced false) whenever target == origin, regardless of what the caller
-// passes: a self-targeted push is the subject reporting on its own bad news,
-// and waking it on that news would silently undo an operator's explicit
-// `down` and keep the session perpetually re-upped. Enforced here rather
-// than trusted to every call site, since a self-target push is never itself
-// a wake opportunity.
+// A down target requests a wake only when it is sleeping. A deliberate full
+// stop must retain the push without allowing a child to restart its parent.
+// A self-targeted push also cannot request a wake: its own bad news must not
+// reverse the session's lifecycle decision.
 func publishTerminalTo(cfg *config.Config, store *state.Store, origin, target string, wakeIfDown bool, p TerminalParams) (id string, wakeErr error, err error) {
 	if target == origin {
 		wakeIfDown = false
@@ -138,9 +129,9 @@ func publishTerminalTo(cfg *config.Config, store *state.Store, origin, target st
 		if err != nil {
 			return "", nil, err
 		}
-		if ts != nil && !cfg.RunScopeUp(ts) {
-			if _, uerr := Up(cfg, store, UpParams{Identifier: target}); uerr != nil {
-				wakeErr = fmt.Errorf("wake %q: %w", target, uerr)
+		if ts != nil && !cfg.RunScopeUp(ts) && !ts.SleepSince.IsZero() {
+			if _, requestErr := RequestWake(store, target, stored.Time); requestErr != nil {
+				wakeErr = fmt.Errorf("request wake %q: %w", target, requestErr)
 			}
 		}
 	}

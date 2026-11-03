@@ -2,6 +2,7 @@ package persistence
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 
@@ -18,6 +19,44 @@ import (
 const eventTablesVersion = 20260906143514
 const preDissolutionVersion = 20260906231449
 const preForwardCursorVersion = 20260907085032
+
+func TestMigrate_CapacityDownBecomesSleepAndManualDownStaysStopped(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.write, db.migrations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(ctx, 20261103194111); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"capacity", "manual"} {
+		if _, err := db.write.ExecContext(ctx, `INSERT INTO sessions(id,name,status,workflow,created_at,updated_at) VALUES(?,?, 'down','wf',?,?)`, name, name, "2026-11-03T10:00:00.000000000Z", "2026-11-03T10:00:00.000000000Z"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES(?,?,1,?,'lifecycle.down','plect','internal','','','{}')`, name+"-down", name, "2026-11-03T10:01:00.000000000Z"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES('cap-event','capacity',2,?,'plect.workflow_population.down','plect','internal','','','{"reason":"capacity"}')`, "2026-11-03T10:02:00.000000000Z"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name     string
+		sleeping bool
+	}{{"capacity", true}, {"manual", false}} {
+		var since sql.NullString
+		if err := db.write.QueryRowContext(ctx, `SELECT sleep_since FROM sessions WHERE name=?`, tc.name).Scan(&since); err != nil {
+			t.Fatal(err)
+		}
+		if since.Valid != tc.sleeping {
+			t.Errorf("%s sleep_since = %+v, want sleeping=%t", tc.name, since, tc.sleeping)
+		}
+	}
+}
 
 // seedEventRow uses raw SQL rather than AppendEvent: AppendEvent's generated
 // insert targets only the current, already-migrated column set.

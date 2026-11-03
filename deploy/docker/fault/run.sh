@@ -84,7 +84,7 @@ inside() {
 }
 
 plect() {
-  inside plect "$@"
+  inside plect --data-home /var/lib/plect/data/plect "$@"
 }
 
 new_session() {
@@ -138,6 +138,31 @@ if wait_for 'S2 resumed launch after container replacement' "$recovery_wait" ins
   echo 'PASS: S2 container replacement recovered the same conversation and worktree'
 else
   echo 'FAIL: S2 container replacement did not recover the same conversation and worktree' >&2
+  failed=1
+fi
+
+# S5: a deliberate stop survives a resident crash and a child terminal
+# notification, while a sleeping session resumes for its own resource event.
+plect down "$session" >/dev/null
+docker kill "$container" >/dev/null
+docker rm "$container" >/dev/null
+container=""
+start_container
+plect event publish "$session" --type plect.terminal.done --direction inbound --summary 'child completed' >/dev/null
+sleep 3
+if [ "$(plect status "$session" --json --full | jq -r .runtime.run)" = down ] \
+  && [ "$(plect status "$session" --json --full | jq -r '.runtime.sleep // empty')" = "" ]; then
+  echo 'PASS: S5 full stop survives container kill and child completion'
+else
+  echo 'FAIL: S5 full stop woke after container kill or child completion' >&2
+  failed=1
+fi
+plect down "$session" --sleep >/dev/null
+plect event publish "$session" --type resource.updated --direction inbound --summary 'resource changed' >/dev/null
+if wait_for 'S5 sleeping session wakes for resource event' "$recovery_wait" inside sh -c 'plect --data-home /var/lib/plect/data/plect status "$1" --json --full | jq -r .runtime.run' _ "$session" up; then
+  echo 'PASS: S5 sleep wakes for a resource event'
+else
+  echo 'FAIL: S5 sleep did not wake for a resource event' >&2
   failed=1
 fi
 exit "$failed"

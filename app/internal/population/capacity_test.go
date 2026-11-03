@@ -111,6 +111,7 @@ type = "object"
 // Both a broken and a genuinely idle member occupy the cap, so success here
 // can only mean the broken one stopped blocking the idle one's eviction.
 func TestCapacityPriorityIgnoresMemberWithNonCapacityFailure(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
 	cfg := populationConfig(t, `[source.query.poll]
 type = "exec"
 command = "true"
@@ -153,8 +154,9 @@ type = "object"
 	}
 	if err := store.Put(&contract.Session{
 		Name: "broken+agent", ResourceID: "urn:case:broken",
+		Workflow:   def.Workflow.Address,
 		Population: &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name},
-		Tasks: map[string]*contract.TaskState{
+		Nodes: map[string]*contract.TaskState{
 			"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
 	}); err != nil {
@@ -177,8 +179,8 @@ type = "object"
 	if outcome.SessionName == "" || store.Get(outcome.SessionName) == nil {
 		t.Fatalf("session = %q, want a newly admitted population session", outcome.SessionName)
 	}
-	if idle := store.Get("idle+agent"); idle == nil || cfg.RunScopeUp(idle) {
-		t.Fatalf("idle session = %+v, want it brought down to free capacity", idle)
+	if idle := store.Get("idle+agent"); idle == nil || cfg.RunScopeUp(idle) || idle.SleepSince.IsZero() {
+		t.Fatalf("idle session = %+v, want it sleeping to free capacity", idle)
 	}
 }
 
@@ -349,7 +351,7 @@ func addCapacityMember(t *testing.T, def Definition, store *state.Store, logStor
 		ResourceID: resource,
 		Workflow:   def.Workflow.Address,
 		Population: &contract.PopulationProvenance{Workflow: def.Workflow.Address, Name: def.Population.Name},
-		Tasks: map[string]*contract.TaskState{
+		Nodes: map[string]*contract.TaskState{
 			"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
 		CreatedAt: created,
