@@ -28,12 +28,43 @@ cleanup() {
 }
 trap cleanup EXIT
 
+health_period="$(sed -n 's/^period *= *"\([0-9]*\)s"$/\1/p' "$fixture/workflow.toml")"
+[ -n "$health_period" ] || { echo "No health period in seconds found in $fixture/workflow.toml" >&2; exit 1; }
+# Two full health periods let the watchdog observe the loss and the resume
+# land; the margin covers a slow launch.
+recovery_wait=$((2 * health_period + 10))
+
+source_mode="${PLECT_FAULT_SOURCE:-pushed}"
+case "$source_mode" in
+  pushed | local) ;;
+  *) echo "PLECT_FAULT_SOURCE must be 'pushed' or 'local', got '$source_mode'" >&2; exit 1 ;;
+esac
+
 if [ -n "${PLECT_FAULT_BASE_IMAGE:-}" ]; then
+  [ "$source_mode" = pushed ] || { echo "PLECT_FAULT_SOURCE=local conflicts with PLECT_FAULT_BASE_IMAGE, which skips the base build" >&2; exit 1; }
   base="$PLECT_FAULT_BASE_IMAGE"
 else
   sha="$(git -C "$repo" rev-parse HEAD)"
-  base="plecture-fault-base:$sha"
-  docker build -f "$repo/deploy/docker/Dockerfile" --build-arg "PLECT_SOURCE_SHA=$sha" -t "$base" "$repo"
+  if [ "$source_mode" = pushed ]; then
+    base="plecture-fault-base:$sha"
+    docker build -f "$repo/deploy/docker/Dockerfile" --build-arg "PLECT_SOURCE_SHA=$sha" -t "$base" "$repo"
+  else
+    # A named build context replaces the Dockerfile's `source` stage, so the
+    # unmodified base Dockerfile packages the working tree instead of a
+    # fetched commit. Tracked and untracked-but-not-ignored files are copied;
+    # a deleted tracked file is skipped.
+    mkdir -p "$tmp/local-source/src"
+    git -C "$repo" ls-files -z --cached --others --exclude-standard \
+      | while IFS= read -r -d '' f; do
+          if [ -e "$repo/$f" ] || [ -L "$repo/$f" ]; then printf '%s\0' "$f"; fi
+        done \
+      | tar -C "$repo" --null -T - -cf - | tar -C "$tmp/local-source/src" -xf -
+    revision="local-$sha"
+    [ -z "$(git -C "$repo" status --porcelain)" ] || revision="$revision-dirty"
+    base="plecture-fault-base:$revision"
+    docker build -f "$repo/deploy/docker/Dockerfile" --build-context "source=$tmp/local-source" \
+      --build-arg "PLECT_SOURCE_SHA=$revision" -t "$base" "$repo"
+  fi
 fi
 
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$tmp/claude" "$fixture/claude.go"
@@ -65,9 +96,13 @@ inside() {
   docker exec -u plect "$container" "$@"
 }
 
+runtime_health() {
+  inside sh -c 'plect status "$1" --json --full | jq -r ".runtime.health // empty"' _ "$session"
+}
+
 assert_recovered() {
   inside sh -c 'tail -n 1 "$HOME/fault/launches"' | grep -F -- "--resume $sid" \
-    && plect status "$session" --json >/dev/null \
+    && wait_for 'runtime health healthy' "$recovery_wait" runtime_health healthy \
     && inside git -C "/var/lib/plect/workspace_dirs/$session" status --short | grep -q 'uncommitted-change'
 }
 
@@ -95,14 +130,14 @@ start_container
 new_session one
 echo 'PASS: packaged image launches the stub, records a prompt, and keeps an uncommitted change'
 
-if [ "${PLECT_FAULT_EXPECT_RED:-0}" != 1 ]; then
-  echo 'SKIP: S1 and S2 recovery assertions (set PLECT_FAULT_EXPECT_RED=1)'
+if [ "${PLECT_FAULT_RECOVERY:-0}" != 1 ]; then
+  echo 'SKIP: S1 and S2 recovery assertions (set PLECT_FAULT_RECOVERY=1)'
   exit 0
 fi
 
 inside kill -9 "$pid"
 failed=0
-if wait_for 'S1 resumed launch' 20 inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
+if wait_for 'S1 resumed launch' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
   && assert_recovered; then
   echo 'PASS: S1 agent loss recovered the same conversation and worktree'
 else
@@ -121,7 +156,7 @@ docker kill "$container" >/dev/null
 docker rm "$container" >/dev/null
 container=""
 start_container
-if wait_for 'S2 resumed launch after container replacement' 20 inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
+if wait_for 'S2 resumed launch after container replacement' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 2 \
   && assert_recovered; then
   echo 'PASS: S2 container replacement recovered the same conversation and worktree'
 else
