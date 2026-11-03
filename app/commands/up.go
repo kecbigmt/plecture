@@ -74,13 +74,14 @@ state so the next setup cannot resume from .Prev, then runs setup again.`,
 		}
 		store := state.NewStore("")
 		result, err := service.Up(cfg, store, service.UpParams{
-			Identifier:    args[0],
-			Tag:           upTag,
-			Workflow:      upWorkflow,
-			Inputs:        inputs,
-			ParentSession: upParent,
-			Observer:      newTaskObserver(cfg),
-			ForceRecreate: upRecreate,
+			Identifier:     args[0],
+			Tag:            upTag,
+			Workflow:       upWorkflow,
+			Inputs:         inputs,
+			ParentSession:  upParent,
+			Observer:       newTaskObserver(cfg),
+			ForceRecreate:  upRecreate,
+			HumanInitiated: true,
 		})
 		if err != nil {
 			return err

@@ -10,6 +10,35 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
+func TestPublishTerminalToParent_WakePreservesSuspendedRepairStreak(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default", []taskFixture{{id: "runner", scope: contract.TaskScopeRun, setup: "echo '{}'", alive: "true"}}, []nodeFixture{{id: "initial", uses: "runner"}})
+	parent := "owner/repo-parent"
+	seedRepairSession(t, store, parent, nil)
+	if err := store.Update(parent, func(s *domain.Session) error {
+		s.Status = contract.SessionStatusUp
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seedRepairSession(t, store, "owner/repo-child", nil)
+	setParent(t, store, "owner/repo-child", parent)
+	if err := appendRepairEvent(store, parent, "run_down", 1, "started", "run down"); err != nil {
+		t.Fatal(err)
+	}
+	if err := appendRepairEvent(store, parent, "run_down", 1, "suspended", "automatic repair suspended"); err != nil {
+		t.Fatal(err)
+	}
+	_, wakeErr, err := PublishTerminalToParent(cfg, store, "owner/repo-child", TerminalParams{Type: event.TypeTerminalDone, Summary: "done", DedupKey: "child-done"})
+	if err != nil || wakeErr != nil {
+		t.Fatalf("push = (%v, %v)", err, wakeErr)
+	}
+	attempts, suspended, err := repairAttemptState(store, parent)
+	if err != nil || attempts != 1 || !suspended {
+		t.Fatalf("wake repair state = (%d, %t, %v), want suspended streak", attempts, suspended, err)
+	}
+}
+
 func TestPublishTerminalToParent_NoParentIsNoOp(t *testing.T) {
 	store := testStore(t)
 	cfg := &config.Config{WorkspaceDirsRoot: t.TempDir()}
