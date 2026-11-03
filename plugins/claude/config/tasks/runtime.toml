@@ -58,8 +58,11 @@ script = '''
 # KILL escalation: a child that exited and had its pid reused by an
 # unrelated same-user claude process must not carry the escalation to it.
 # The pane's own root process, and the multiplexer session behind it, are
-# never touched.
+# never touched. The abort marker is created first because the launch line's
+# `||` fallback would otherwise start a fresh claude the moment the resumed
+# one dies.
 terminate_claude_children() {
+  [ -n "${ABORT_MARK-}" ] && : > "$ABORT_MARK"
   is_claude_child() {
     [ "$(ps -o ppid= -p "$1" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
     case "$(ps -p "$1" -o comm= 2>/dev/null | tr -d '[:space:]')" in claude|claude-*) return 0 ;; esac
@@ -98,6 +101,7 @@ SOCKET="$SOCKET_DIR/$SID.sock"
 # keep the .json path on both.
 MCP=$(mktemp "${TMPDIR:-/tmp}/plect-mcp.XXXXXX")
 mv "$MCP" "$MCP.json" && MCP="$MCP.json"
+ABORT_MARK="$MCP.abort"
 
 # Only register channel-server as an MCP server when it is actually
 # installed: claude fails the whole launch on an MCP entry pointing at a
@@ -219,7 +223,7 @@ if [ -n "$PREV_SID" ]; then
   # its first turn ever landed). Fall back to a fresh launch under the same
   # session id — the socket path is already derived from SID, so keeping the
   # id lets the MCP config stay valid across the fallback.
-  CLAUDE_CMD="$CLAUDE_CMD || claude --session-id $SID --mcp-config $MCP --settings $HOOKS $CHANNELS_FLAG $MODEL_FLAG $EFFORT_FLAG $PERMISSION_MODE_FLAG $DISALLOWED_FLAG"
+  CLAUDE_CMD="$CLAUDE_CMD || [ -e $ABORT_MARK ] || claude --session-id $SID --mcp-config $MCP --settings $HOOKS $CHANNELS_FLAG $MODEL_FLAG $EFFORT_FLAG $PERMISSION_MODE_FLAG $DISALLOWED_FLAG"
 fi
 
 # Resolved before anything is typed: this is the identity terminate_claude_

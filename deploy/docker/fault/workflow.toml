@@ -10,6 +10,11 @@ uses = "official.tmux.pane"
 id   = "agent"
 uses = "official.claude.runtime"
 
+# Short so S6 does not wait out the default 120s for an input box that never
+# draws.
+[fault_recovery.nodes.inputs]
+launch_timeout = "10s"
+
 [fault_recovery.health]
 auto_repair_attempts = 3
 

@@ -34,7 +34,13 @@ func main() {
 	if err := os.WriteFile(filepath.Join(home, ".claude", "sessions", sid+".json"), record, 0600); err != nil {
 		panic(err)
 	}
-	fmt.Println("›")
+	// A muted stub clears the pane instead of drawing its input box, because
+	// the previous launch's box would otherwise still be on screen.
+	if _, err := os.Stat(filepath.Join(logDir, "mute")); err != nil {
+		fmt.Println("›")
+	} else {
+		fmt.Print("\x1b[2J\x1b[H")
+	}
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		prompt := scanner.Text()

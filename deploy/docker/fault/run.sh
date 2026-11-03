@@ -165,4 +165,27 @@ else
   echo 'FAIL: S5 sleep did not wake for a resource event' >&2
   failed=1
 fi
+# S6: a notice that cannot be delivered fails the launch, and the resumed
+# agent's death must not hand the pane to the launch line's fresh-start
+# fallback. The stub stops drawing its input box, so the notice cannot be
+# typed.
+docker rm -f "$container" >/dev/null
+container=""
+docker volume rm "$volume" >/dev/null
+volume="plecture-fault-$RANDOM-$RANDOM"
+docker volume create "$volume" >/dev/null
+start_container
+new_session three
+inside sh -c 'touch "$HOME/fault/mute"'
+inside kill -9 "$pid"
+wait_for 'S6 resumed launch' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 2
+# The input-box wait (10s) plus the terminate grace period, then margin for
+# a fallback launch to have appeared had one been started.
+sleep 25
+if [ "$(inside sh -c 'grep -c -e "--session-id" "$HOME/fault/launches" || true')" = 1 ]; then
+  echo 'PASS: S6 a failed resume notice leaves no fresh-start fallback agent'
+else
+  echo 'FAIL: S6 a failed resume notice started a fresh-start fallback agent' >&2
+  failed=1
+fi
 exit "$failed"
