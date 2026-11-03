@@ -254,6 +254,9 @@ func wakeSuspensionReason(store *state.Store, name string) (string, error) {
 		if evs[i].Type == event.TypeSessionSleep {
 			return "", nil
 		}
+		if evs[i].Metadata["result"] == "succeeded" {
+			return "", nil
+		}
 		if evs[i].Metadata["result"] == "suspended" {
 			return evs[i].Summary, nil
 		}
