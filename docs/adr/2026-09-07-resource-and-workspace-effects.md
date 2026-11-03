@@ -27,16 +27,6 @@ This decision supersedes `2026-08-17-workspace-provider-vocabulary` in part.
 - `## Decision`: the workspace provider concept, its definition, and its pairing with `resource definition`.
 - `## Decision`: the code-facing vocabulary (`workspaces/`, `workspace_provider`, `workspace_dir`).
 - `## Decision`: `github-worktree` as the workspace provider's executable name.
-- `## Consequences`: the rename-based migration shape.
-- ``### Keep bare `provider` ``: rejection of a name for the retired concept.
-- `### Workspace definition`: rejection of a name for the retired concept.
-- `### Workspace source`: rejection of a name for the retired concept.
-- `### Bare source`: rejection of a name for the retired concept.
-- `### Workdir source`: rejection of a name for the retired concept.
-- `### Workdir provider`: rejection of a name for the retired concept.
-- ``### Workspace provider with `workspace_providers/` ``: rejection of a name for the retired concept.
-- `### Provider/resource concept-split mains`: rejection of a name for the retired concept.
-- `### Workspace as generic runner language`: rejection of a name for the retired concept.
 
 ## Decision
 

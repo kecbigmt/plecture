@@ -33,9 +33,6 @@ This decision supersedes `2026-08-16-plugin-service-lifecycle` in part.
 
 - `## Decision`: the merge-first remedy for plugin boundaries.
 - `## Decision`: the regrouping into one session-runtime plugin.
-- `## Consequences`: the session-runtime plugin's services and follow-up work.
-- `### Channel-server as its own plugin`: rejection replaced.
-- `### Zero-declaration Unix framing`: endorsement replaced.
 
 ## Decision
 

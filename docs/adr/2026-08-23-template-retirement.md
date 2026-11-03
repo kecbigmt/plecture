@@ -54,13 +54,13 @@ Every control-flow use found was one of two shapes:
 
 ## Supersession scope
 
-This decision supersedes `2026-08-18-template-get-default-argument` in full.
-That ADR's `## Decision` specifies the three-argument `get` helper, its edge
-semantics, its render-time arity enforcement, and the TOML literal-string
-convention for template-bearing values. The helper belonged to the second
-render pass, which this ADR retires entirely, and a `{{ ... }}` that is not a
-bare dotted path is now a load-time diagnostic. No decision of
-`2026-08-18-template-get-default-argument` remains in force.
+This decision supersedes `2026-08-18-template-get-default-argument` in full,
+because the `get` helper belonged to the render pass this ADR retires.
+
+- `## Decision`: the mandatory three-argument `get` helper.
+- `## Decision`: the helper's edge semantics for absent, nil, and empty values.
+- `## Decision`: render-time arity enforcement.
+- `## Decision`: the TOML literal-string convention for template-bearing values.
 
 ## Decision
 
