@@ -34,11 +34,14 @@ func TestMigrate_CapacityDownBecomesSleepAndManualDownStaysStopped(t *testing.T)
 		if _, err := db.write.ExecContext(ctx, `INSERT INTO sessions(id,name,status,workflow,created_at,updated_at) VALUES(?,?, 'down','wf',?,?)`, name, name, "2026-11-03T10:00:00.000000000Z", "2026-11-03T10:00:00.000000000Z"); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES(?,?,1,?,'lifecycle.down','plect','internal','','','{}')`, name+"-down", name, "2026-11-03T10:01:00.000000000Z"); err != nil {
+		if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES(?,?,1,?,'lifecycle.up','plect','internal','','','{}')`, name+"-up", name, "2026-11-03T10:00:30.000000000Z"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES(?,?,2,?,'lifecycle.down','plect','internal','','','{}')`, name+"-down", name, "2026-11-03T10:01:00.000000000Z"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES('cap-event','capacity',2,?,'plect.workflow_population.down','plect','internal','','','{"reason":"capacity"}')`, "2026-11-03T10:02:00.000000000Z"); err != nil {
+	if _, err := db.write.ExecContext(ctx, `INSERT INTO events(id,session_id,sequence,time,type,source,direction,summary,body,metadata_json) VALUES('cap-event','capacity',3,?,'plect.workflow_population.down','plect','internal','','','{"reason":"capacity"}')`, "2026-11-03T10:02:00.000000000Z"); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Migrate(ctx); err != nil {
@@ -60,7 +63,11 @@ func TestMigrate_CapacityDownBecomesSleepAndManualDownStaysStopped(t *testing.T)
 			t.Fatal(err)
 		}
 		stops := 0
+		latestIntent := ""
 		for _, ev := range events {
+			if ev.Type == event.TypeLifecyclePrefix+"up" || ev.Type == event.TypeSessionStop {
+				latestIntent = ev.Type
+			}
 			if ev.Type == event.TypeSessionStop {
 				stops++
 				if ev.Metadata["origin"] != "migration" {
@@ -70,6 +77,9 @@ func TestMigrate_CapacityDownBecomesSleepAndManualDownStaysStopped(t *testing.T)
 		}
 		if tc.sleeping && stops != 0 || !tc.sleeping && stops != 1 {
 			t.Errorf("%s stop events = %d, sleeping=%t", tc.name, stops, tc.sleeping)
+		}
+		if !tc.sleeping && latestIntent != event.TypeSessionStop {
+			t.Errorf("%s latest lifecycle intent = %q, want %q", tc.name, latestIntent, event.TypeSessionStop)
 		}
 	}
 }
