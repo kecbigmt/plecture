@@ -52,6 +52,16 @@ Every control-flow use found was one of two shapes:
   with no exact plain-projection equivalent, because a bare
   `{{ inputs.instruction }}` has no syntax for "render as this when absent."
 
+## Supersession scope
+
+This decision supersedes `2026-08-18-template-get-default-argument` in full.
+That ADR's `## Decision` specifies the three-argument `get` helper, its edge
+semantics, its render-time arity enforcement, and the TOML literal-string
+convention for template-bearing values. The helper belonged to the second
+render pass, which this ADR retires entirely, and a `{{ ... }}` that is not a
+bare dotted path is now a load-time diagnostic. No decision of
+`2026-08-18-template-get-default-argument` remains in force.
+
 ## Decision
 
 Retire the second render pass entirely. An instruction body supports exactly

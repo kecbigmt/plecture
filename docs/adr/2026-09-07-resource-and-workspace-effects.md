@@ -20,6 +20,52 @@ identity and delivery, ordinary setup/cleanup effects, an agent's work
 directory when applicable, public outputs consumed by display and delivery,
 and tasks which may concern a resource other than the session's entry resource.
 
+## Supersession scope
+
+This decision supersedes `2026-08-17-workspace-provider-vocabulary`. It
+replaces these decisions of that ADR:
+
+- The workspace provider concept and its definition: the `## Decision`
+  statements that name the core concept "workspace provider", define it as a
+  trusted declaration that resolves, acquires, releases, subscribes, and
+  declares setup outputs, and define a workspace as the session's acquired
+  work surface; and the pairing of that concept with `resource definition`.
+- The code-facing vocabulary list for the workspace provider: the
+  `workspaces/` config directory, the `workspace_provider` workflow field, the
+  `WorkspaceProviderConfig` and `LoadWorkspaceProviders` identifiers, the
+  `workspace_provider` and `workspace_provider_info` JSON fields, the
+  `workspace-provider` CLI noun, and the `workspace_dir`,
+  `workspace_dir_path`, and `workspace_dirs_root` path names.
+- The statement that `github-worktree` is the GitHub workspace provider's
+  executable name.
+- The `## Consequences` migration shape and its dependent statements, which
+  rename `providers/` to `workspaces/` and `workdir` to `workspace_dir`.
+- Under `## Alternatives considered`, the entries that reject names for the
+  retired concept:
+  - ``### Keep bare `provider` ``
+  - `### Workspace definition`
+  - `### Workspace source`
+  - `### Bare source`
+  - `### Workdir source`
+  - `### Workdir provider`
+  - ``### Workspace provider with `workspace_providers/` ``
+  - `### Provider/resource concept-split mains`
+  - `### Workspace as generic runner language`
+
+Every other decision of `2026-08-17-workspace-provider-vocabulary` remains in
+force, including:
+
+- The three-layer naming principle: core concepts named by responsibility,
+  config directories as short plural nouns, and plugin executables named for
+  the plugin's concrete realization of a core capability.
+- Plugin executables not using the `plect-` prefix.
+- `provider` remaining acceptable generic English for an external
+  integration, and the provider-boundary checker keeping its name.
+- Under `## Alternatives considered`:
+  - `### Mechanical concept-to-binary naming`
+  - ``### Retain `plect-` for plugin executables ``
+  - `### CLI as the executable noun`
+
 ## Decision
 
 `workspace_provider` and `resource_observer` are replaced by `kind =

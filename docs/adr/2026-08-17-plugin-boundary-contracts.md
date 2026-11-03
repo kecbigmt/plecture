@@ -27,6 +27,47 @@ The split must not replace the merged plugin with plugin-to-plugin contracts.
 Core still must not know that any specific provider, chat service, VCS, agent
 CLI, or terminal multiplexer exists.
 
+## Supersession scope
+
+This decision supersedes `2026-08-16-plugin-service-lifecycle`. It replaces
+these decisions of that ADR:
+
+- The merge-first boundary remedy: in the `## Decision` paragraph beginning
+  "Plecture introduces no plugin dependency mechanism.", the statement that an
+  apparent dependency edge is a boundary smell whose first remedy is merging
+  the plugins that share the runtime contract.
+- The planned regrouping: the `## Decision` paragraphs beginning "The planned
+  regrouping merges" and "`plect-agent-activity` is de-generalized.", insofar
+  as they place `agent/runtime`, `agent/claude`, `agent/codex`,
+  `channel-server`, and `channel/slack` in one session-runtime plugin, and the
+  `## Consequences` statements about that plugin declaring the
+  `channel-server` and `slack-adapter` services and about regrouping it.
+- Under `## Alternatives considered`, whose rejections rest on the merged
+  session-runtime plugin:
+  - `### Channel-server as its own plugin`
+  - `### Zero-declaration Unix framing`
+
+Every other decision of `2026-08-16-plugin-service-lifecycle` remains in
+force, including:
+
+- First-class `[[services]]` declarations, provider-agnostic declarations
+  with user-owned secret material, and plugin service supervision, which
+  this ADR carries forward.
+- The no-plugin-dependency-mechanism statement in the paragraph beginning
+  "Plecture introduces no plugin dependency mechanism.".
+- `github` remaining self-contained and declaring the `github-watcher`
+  service, and `okf` remaining self-contained.
+- The branch-free per-agent activity scripts, and the `## Consequences`
+  statements about service state and core manifest and supervisor needs.
+- Every other entry under `## Alternatives considered`:
+  - `### Bus-scoped supervised tasks`
+  - `### Host-owned service units`
+  - ``### Sharing agent activity through `requiredBin` ``
+  - ``### Identity-based plugin `requires` ``
+  - ``### Capability `provides` and `uses` ``
+  - `### Derived file-backed contracts with signature depth`
+  - `### Dependency version constraints`
+
 ## Decision
 
 Plecture keeps first-class plugin service declarations from the superseded
