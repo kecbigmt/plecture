@@ -112,7 +112,11 @@ not need a new state column. A successful automatic `Up` does not by itself
 reset the budget: a later healthy observation must prove recovery. A failed
 automatic `Up` also consumes its started attempt, including an admission-cap
 rejection. A successful human-initiated `up` through the `plect up` CLI command
-or Web UI resets the budget; an MCP `plect_up` does not. The serve loop's `Up`
+or Web UI resets the budget; an MCP `plect_up` does not. The caller surface is
+the criterion for `HumanInitiated`: CLI and Web UI `up` are treated as operator
+requests even when an agent invokes the CLI, whereas MCP `plect_up` is an
+automation surface, so resetting on every successful `Up` would let an
+unattended caller erase the repair limit. The serve loop's `Up`
 call is identified as an automatic repair and cannot reset
 its own budget. When the count reaches the configured limit and the session
 still needs repair, the cycle emits `suspended` once for that streak, makes no
