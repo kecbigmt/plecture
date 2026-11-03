@@ -10,8 +10,11 @@ On the first start, the database migration adds nullable
 `sessions.sleep_since`. An existing `down` session stays fully stopped by
 default. A `down` session whose latest `lifecycle.down` event is followed by
 `plect.workflow_population.down` with `reason=capacity` receives the timestamp
-of that capacity event as its sleep marker. The migration does not start any
-runtime nodes. A future inbound event requests a wake for that member.
+of that capacity event as its sleep marker. Other `down` sessions receive a
+`plect.session.stop` event so population admission can recognize their full
+stop after upgrading. That migration event does not suppress forwarding of
+inbound events that were already unread. The migration does not start any
+runtime nodes. A future inbound event requests a wake for a sleeping member.
 
 After upgrading, run `plect ls` and inspect the `SLEEP` column. A full stop
 shows `-`; an event-waiting sleep shows `event`; a queued sleep shows its queue

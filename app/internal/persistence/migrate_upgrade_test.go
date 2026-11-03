@@ -55,6 +55,22 @@ func TestMigrate_CapacityDownBecomesSleepAndManualDownStaysStopped(t *testing.T)
 		if since.Valid != tc.sleeping {
 			t.Errorf("%s sleep_since = %+v, want sleeping=%t", tc.name, since, tc.sleeping)
 		}
+		events, _, err := db.ListEventsFrom(ctx, tc.name, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stops := 0
+		for _, ev := range events {
+			if ev.Type == event.TypeSessionStop {
+				stops++
+				if ev.Metadata["origin"] != "migration" {
+					t.Fatalf("%s stop event = %+v, want migration origin", tc.name, ev)
+				}
+			}
+		}
+		if tc.sleeping && stops != 0 || !tc.sleeping && stops != 1 {
+			t.Errorf("%s stop events = %d, sleeping=%t", tc.name, stops, tc.sleeping)
+		}
 	}
 }
 
@@ -94,10 +110,17 @@ func assertEventRowIntact(t *testing.T, db *DB, ctx context.Context, session, ev
 	if err != nil {
 		t.Fatalf("ListEventsFrom: %v", err)
 	}
-	if len(evs) != 1 || len(seqs) != 1 {
-		t.Fatalf("got %d events, want 1", len(evs))
+	var got event.Event
+	sequence := int64(0)
+	for i, ev := range evs {
+		if ev.ID == eventID {
+			got = ev
+			sequence = seqs[i]
+		}
 	}
-	got := evs[0]
+	if got.ID == "" {
+		t.Fatalf("event %q missing after migration", eventID)
+	}
 	if got.ID != eventID || got.Type != "widget.message" || got.Source != "widget" ||
 		string(got.Direction) != "inbound" || got.Summary != "hello" || got.Body != "hello body" {
 		t.Fatalf("surviving columns = %+v, want the seeded values intact", got)
@@ -108,8 +131,8 @@ func assertEventRowIntact(t *testing.T, db *DB, ctx context.Context, session, ev
 	if got.Metadata["k"] != "v" {
 		t.Errorf("Metadata = %v, want k=v", got.Metadata)
 	}
-	if seqs[0] != 1 {
-		t.Fatalf("sequence = %d, want 1", seqs[0])
+	if sequence != 1 {
+		t.Fatalf("sequence = %d, want 1", sequence)
 	}
 }
 

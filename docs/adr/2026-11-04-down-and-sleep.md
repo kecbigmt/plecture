@@ -46,8 +46,11 @@ other `up` callers.
 The one-time [migration procedure](../migrations/down-and-sleep.md) keeps
 existing `down` sessions stopped, except those whose latest down was followed
 by a `plect.workflow_population.down` event with reason `capacity`; those
-receive a sleep marker. The ADR for down-session event forwarding is left
-unchanged because its forwarding rule still applies to full stops.
+receive a sleep marker. Other existing `down` sessions receive a stop event
+so population admission recognizes their full-stop intent. That migration
+event does not suppress forwarding of previously unread inbound events. The
+ADR for down-session event forwarding is left unchanged because its forwarding
+rule still applies to full stops.
 
 ## Consequences
 

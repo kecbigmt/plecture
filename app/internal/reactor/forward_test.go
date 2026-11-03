@@ -114,6 +114,30 @@ func TestForwarder_FullStopDoesNotForwardUnreadSleepEvents(t *testing.T) {
 	}
 }
 
+func TestForwarder_MigrationStopPreservesUnreadInboundEvents(t *testing.T) {
+	f, _, log := newTestForwarder(t)
+	if _, _, _, err := log.Append(event.Event{SessionName: f.session, Type: "resource.changed", Direction: event.Inbound}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := log.Append(event.Event{SessionName: f.session, Type: event.TypeSessionStop, Direction: event.Internal, Metadata: map[string]string{"origin": "migration"}}); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var forwarded []event.Event
+	f.forwardFn = func(_ *config.Config, _ *state.Store, _ string, ev event.Event) (bool, error) {
+		mu.Lock()
+		forwarded = append(forwarded, ev)
+		mu.Unlock()
+		return true, nil
+	}
+	stop := startForwarder(t, f)
+	defer stop()
+	got := waitForwardCalls(t, &mu, &forwarded, 1)
+	if len(got) != 1 || got[0].Type != "resource.changed" {
+		t.Fatalf("forwarded events = %+v", got)
+	}
+}
+
 // startForwarder starts f.run and blocks until its first drain has run, so
 // callers need no fixed sleep despite SQLite's variable first-touch cost —
 // mirroring startReactor.

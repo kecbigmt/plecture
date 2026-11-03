@@ -25,6 +25,16 @@ WHERE status = 'down'
       ), 0)
   );
 
+INSERT INTO events (id, session_id, sequence, time, type, source, direction, summary, body, metadata_json)
+SELECT 'migration-stop-' || s.id, s.id,
+       COALESCE((SELECT MAX(e.sequence) FROM events e WHERE e.session_id = s.id), 0) + 1,
+       strftime('%Y-%m-%dT%H:%M:%f', 'now') || '000000Z',
+       'plect.session.stop', 'plect', 'internal', 'session fully stopped', '', '{"origin":"migration"}'
+FROM sessions s
+WHERE s.status = 'down' AND s.sleep_since IS NULL;
+
 -- +goose Down
 -- reverse: add column "sleep_since" to table: "sessions"
+DELETE FROM events WHERE id LIKE 'migration-stop-%' AND type = 'plect.session.stop'
+  AND json_extract(metadata_json, '$.origin') = 'migration';
 ALTER TABLE `sessions` DROP COLUMN `sleep_since`;

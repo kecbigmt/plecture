@@ -107,14 +107,17 @@ func (f *sessionForwarder) drain(ctx context.Context, startGen *string) {
 		f.effectiveLogger().Warn("forward: list events failed; skipping this drain, will retry on next wake", "session", f.session, "error", err)
 		return
 	}
-	_, stops, _, err := f.log.List(f.session, 0, event.Filter{Types: []string{event.TypeSessionStop}})
+	stopEvents, stops, _, err := f.log.List(f.session, 0, event.Filter{Types: []string{event.TypeSessionStop}})
 	if err != nil {
 		f.effectiveLogger().Warn("forward: read stop boundary failed", "session", f.session, "error", err)
 		return
 	}
 	stopSeq := int64(0)
-	if len(stops) > 0 {
-		stopSeq = stops[len(stops)-1]
+	for i := len(stops) - 1; i >= 0; i-- {
+		if stopEvents[i].Metadata["origin"] != "migration" {
+			stopSeq = stops[i]
+			break
+		}
 	}
 	fn := f.forwardFn
 	if fn == nil {
