@@ -67,6 +67,11 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 	}
 
 	transitionAt := time.Now()
+	if params.Sleep {
+		if err := appendSleepEvent(store, sessionName, "idle", "waiting for an inbound event"); err != nil {
+			return nil, err
+		}
+	}
 	if err := store.Update(sessionName, func(current *domain.Session) error {
 		current.Status = contract.SessionStatusDown
 		current.SleepSince = time.Time{}
@@ -77,11 +82,6 @@ func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*D
 		return nil
 	}); err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to record session status: %v", err)}
-	}
-	if params.Sleep {
-		if err := appendSleepEvent(store, sessionName, "idle", "waiting for an inbound event"); err != nil {
-			return nil, err
-		}
 	}
 	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if err != nil {

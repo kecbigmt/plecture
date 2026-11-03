@@ -196,6 +196,33 @@ func TestRequestWake_SkipsFinalizedSession(t *testing.T) {
 	}
 }
 
+func TestQueueSleep_EventFailureLeavesSessionStopped(t *testing.T) {
+	store := testStore(t)
+	seedSessionWithNodes(t, store, "queued", "acct", 1, "default", nil)
+	eventlog.FailNextAppend(store.Dir(), fmt.Errorf("injected event failure"))
+	if _, err := queueSleep(store, "queued", "capacity", time.Now()); err == nil {
+		t.Fatal("queueSleep succeeded despite event failure")
+	}
+	if got := store.Get("queued"); !got.SleepSince.IsZero() {
+		t.Fatalf("failed queue request left a sleep marker: %+v", got)
+	}
+}
+
+func TestDownSleep_EventFailureLeavesSessionStopped(t *testing.T) {
+	store := testStore(t)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "default",
+		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
+		[]nodeFixture{{id: "runtime"}})
+	seedSessionWithNodes(t, store, "sleep-failure", "acct", 1, "default", nil)
+	eventlog.FailNextAppend(store.Dir(), fmt.Errorf("injected event failure"))
+	if _, err := Down(cfg, store, DownParams{Identifier: "sleep-failure", Sleep: true}); err == nil {
+		t.Fatal("Down --sleep succeeded despite event failure")
+	}
+	if got := store.Get("sleep-failure"); !got.SleepSince.IsZero() {
+		t.Fatalf("failed sleep request left a sleep marker: %+v", got)
+	}
+}
+
 func TestUp_FailedForceRecreateFromUpSessionSetsStatusDown(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")

@@ -109,27 +109,24 @@ func queueSleep(store *state.Store, name, reason string, at time.Time) (bool, er
 	if err != nil {
 		return false, err
 	}
-	queued := false
+	s, err := store.GetE(name)
+	if err != nil {
+		return false, err
+	}
+	if s == nil || s.Status == contract.SessionStatusDestroyed || (!s.SleepSince.IsZero() && pending) {
+		return false, nil
+	}
+	// An append failure must not leave a sleep marker with no queue reason.
+	if err := appendSleepEvent(store, name, reason, "waiting for capacity"); err != nil {
+		return false, fmt.Errorf("record sleep event: %w", err)
+	}
 	err = store.Update(name, func(s *domain.Session) error {
-		if s.Status == contract.SessionStatusDestroyed {
-			return nil
-		}
-		if !s.SleepSince.IsZero() && pending {
-			return nil
-		}
 		s.SleepSince = at.UTC()
 		s.Status = contract.SessionStatusDown
 		s.UpdatedAt = time.Now()
-		queued = true
 		return nil
 	})
-	if err != nil || !queued {
-		return queued, err
-	}
-	if err := appendSleepEvent(store, name, reason, "waiting for capacity"); err != nil {
-		return true, fmt.Errorf("record sleep event: %w", err)
-	}
-	return true, nil
+	return err == nil, err
 }
 
 // RequestWake records the first inbound wake request for a sleeping session.
