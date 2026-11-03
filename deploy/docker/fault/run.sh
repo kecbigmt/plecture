@@ -6,13 +6,23 @@ fixture="$repo/deploy/docker/fault"
 tmp="$(mktemp -d)"
 container=""
 volume=""
+image=""
 cleanup() {
+  local status=$?
   if [ -n "$container" ]; then
-    docker logs "$container" > "$tmp/container.log" 2>&1 || true
+    if [ "$status" -ne 0 ]; then
+      local log_file
+      log_file="$(mktemp /tmp/plecture-fault-container.XXXXXX.log)"
+      docker logs "$container" > "$log_file" 2>&1 || true
+      printf 'Container log: %s\n' "$log_file" >&2
+    fi
     docker rm -f "$container" >/dev/null 2>&1 || true
   fi
   if [ -n "$volume" ]; then
     docker volume rm -f "$volume" >/dev/null 2>&1 || true
+  fi
+  if [ -n "$image" ]; then
+    docker image rm "$image" >/dev/null 2>&1 || true
   fi
   rm -rf "$tmp"
 }
@@ -26,8 +36,8 @@ else
   docker build -f "$repo/deploy/docker/Dockerfile" --build-arg "PLECT_SOURCE_SHA=$sha" -t "$base" "$repo"
 fi
 
-go build -o "$tmp/claude" "$fixture/claude.go"
-cp "$fixture"/{Dockerfile,workspace.toml,workflow.toml,entrypoint.sh,service-run} "$tmp/"
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$tmp/claude" "$fixture/claude.go"
+cp "$fixture"/{Dockerfile,workspace.toml,workflow.toml,entrypoint.sh} "$tmp/"
 image="plecture-fault:$RANDOM-$RANDOM"
 docker build -f "$tmp/Dockerfile" --build-arg "BASE_IMAGE=$base" -t "$image" "$tmp"
 
@@ -62,7 +72,7 @@ assert_recovered() {
 }
 
 plect() {
-  inside plect --data-home /var/lib/plect/data/plect "$@"
+  inside plect "$@"
 }
 
 new_session() {

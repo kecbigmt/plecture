@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-exec 2>&1
-exec chpst -u plect:plect plect --data-home /var/lib/plect/data/plect serve --socket "$PLECT_BUS_SOCKET"

@@ -108,7 +108,8 @@ PLECT_FAULT_EXPECT_RED=1 deploy/docker/fault/run.sh
 
 The `Docker fault injection` workflow runs only through `workflow_dispatch`.
 Its `expect_red` input enables the Red assertions. The harness removes its
-containers and volumes when it exits. Set `PLECT_FAULT_BASE_IMAGE` to a
+containers, volumes, and derived image when it exits and keeps a container log under `/tmp`
+if a run fails. Set `PLECT_FAULT_BASE_IMAGE` to a
 locally available base image to skip the base build.
 
 ## Process model
