@@ -134,6 +134,18 @@ printf -- '---\nsupersedes: %s\n---\n\n# New\n\n## Context\n\n````\n```\n## Supe
 commit_all "$d" base
 expect nested-fenced-scope-heading fail "Supersession scope"
 
+d="$(new_fixture mixed-marker-fenced-scope-heading)"
+write_old_linked "$d"
+printf -- '---\nsupersedes: %s\n---\n\n# New\n\n## Context\n\n````\n```~~~\n## Supersession scope\n````\n\n## Decision\n' "$old" >"$d/docs/adr/$new.md"
+commit_all "$d" base
+expect mixed-marker-fenced-scope-heading fail "Supersession scope"
+
+d="$(new_fixture spaced-marker-fenced-scope-heading)"
+write_old_linked "$d"
+printf -- '---\nsupersedes: %s\n---\n\n# New\n\n## Context\n\n```\n` ` `\n## Supersession scope\n```\n\n## Decision\n' "$old" >"$d/docs/adr/$new.md"
+commit_all "$d" base
+expect spaced-marker-fenced-scope-heading fail "Supersession scope"
+
 d="$(new_fixture list-form-one-directional)"
 printf -- '---\nsuperseded_by: 2026-11-03-early\n---\n\n# A\n' >"$d/docs/adr/2026-01-01-a.md"
 printf -- '# B\n' >"$d/docs/adr/2026-01-02-b.md"

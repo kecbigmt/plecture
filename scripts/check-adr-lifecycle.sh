@@ -67,10 +67,9 @@ has_link() {
 has_scope_heading() {
   awk '
     fenced {
-      if (match($0, /^ {0,3}[`~]+[ \t\r]*$/)) {
-        t = $0; gsub(/[ \t\r]/, "", t)
-        if (substr(t, 1, 1) == fchar && length(t) >= flen) { fenced = 0; next }
-      }
+      closing = (fchar == "`") ? ($0 ~ /^ {0,3}`+[ \t\r]*$/) : ($0 ~ /^ {0,3}~+[ \t\r]*$/)
+      t = $0; gsub(/[ \t\r]/, "", t)
+      if (closing && length(t) >= flen) { fenced = 0 }
       next
     }
     /^ {0,3}(```|~~~)/ {
