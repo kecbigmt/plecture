@@ -1,3 +1,7 @@
+---
+supersedes: 2026-09-08-down-session-resource-event-forwarding
+---
+
 # Separate full stop from capacity sleep
 
 ## Context
@@ -10,6 +14,16 @@ decision in [the down-session resource event ADR](2026-09-08-down-session-resour
 remains appropriate for a deliberate full stop. The cross-session terminal
 push decision in the devbox D9 record supplied an unconditional wake; that
 permission must follow lifecycle intent.
+
+## Supersession scope
+
+The earlier forwarding decision's rule that every down session forwards its
+inbound events applies only to fully stopped sessions. A sleeping session
+requests its own wake and does not forward those events. Its rule that only an
+explicit `up` resumes the origin's tick also applies only to fully stopped
+sessions; an inbound event can wake a sleeping session. The earlier decision's
+forwarding path, ancestor selection, deduplication, and ancestor tick behavior
+remain in force for fully stopped sessions.
 
 ## Decision
 
@@ -48,9 +62,7 @@ existing `down` sessions stopped, except those whose latest down was followed
 by a `plect.workflow_population.down` event with reason `capacity`; those
 receive a sleep marker. Other existing `down` sessions receive a stop event
 so population admission recognizes their full-stop intent. That migration
-event does not suppress forwarding of previously unread inbound events. The
-ADR for down-session event forwarding is left unchanged because its forwarding
-rule still applies to full stops.
+event does not suppress forwarding of previously unread inbound events.
 
 ## Consequences
 
@@ -68,5 +80,5 @@ rule still applies to full stops.
   sleep event and make ordinary transitions update two authorities.
 - Reusing plain `down` for both intents would preserve the ambiguity that
   caused unsolicited wakes and missed reviews.
-- Updating the older forwarding ADR would rewrite an accepted decision whose
-  full-stop behavior still holds.
+- Rewriting the older forwarding ADR's body would obscure the forwarding rules
+  that remain in force for fully stopped sessions.
