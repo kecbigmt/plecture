@@ -65,5 +65,55 @@ q="$tmp/literal"
 check "an envelope is never evaluated as shell" \
   'literal $(echo pwned) `echo pwned`' "$(queued_field "$q" text)"
 
+# queued_count <queue_dir> prints how many queue files remain.
+queued_count() {
+  find "$1" -maxdepth 1 -name '*.json' | wc -l | tr -d ' '
+}
+
+# Only the newest unconsumed github.* notification per (type, url) survives.
+q="$tmp/coalesce"
+"$enqueue" "$q" "$envelope" "github.ci_status" "pending" "" "https://example.test/pr/1"
+"$enqueue" "$q" "$envelope" "github.ci_status" "running" "" "https://example.test/pr/1"
+"$enqueue" "$q" "$envelope" "github.ci_status" "success" "" "https://example.test/pr/1"
+check "repeated github.* for one (type, url) leaves one file" "1" "$(queued_count "$q")"
+check "the surviving file carries the newest text" \
+  "[github.ci_status] success (https://example.test/pr/1)" "$(queued_field "$q" text)"
+check "the url is stored in the queue file" \
+  "https://example.test/pr/1" "$(queued_field "$q" url)"
+
+# The same type under another url is another resource.
+q="$tmp/other-url"
+"$enqueue" "$q" "$envelope" "github.ci_status" "a" "" "https://example.test/pr/1"
+"$enqueue" "$q" "$envelope" "github.ci_status" "b" "" "https://example.test/issues/1"
+check "different urls are never coalesced" "2" "$(queued_count "$q")"
+
+# Another type under the same url is another fact.
+q="$tmp/other-type"
+"$enqueue" "$q" "$envelope" "github.ci_status" "a" "" "https://example.test/pr/1"
+"$enqueue" "$q" "$envelope" "github.mergeable" "b" "" "https://example.test/pr/1"
+check "different types are never coalesced" "2" "$(queued_count "$q")"
+
+# Instructions are not snapshots.
+q="$tmp/user-emit"
+for _ in 1 2 3; do
+  "$enqueue" "$q" "$envelope" "user.emit" "same text" "" "https://example.test/pr/1"
+done
+check "user.emit is never coalesced" "3" "$(queued_count "$q")"
+
+# A file written before url was stored cannot be matched, so it stays.
+q="$tmp/legacy"
+mkdir -p "$q"
+jq -n '{type: "github.ci_status", text: "legacy"}' > "$q/0-legacy.json"
+"$enqueue" "$q" "$envelope" "github.ci_status" "new" "" "https://example.test/pr/1"
+check "a file without url is not coalesced" "2" "$(queued_count "$q")"
+check "the legacy file itself is still queued" \
+  "legacy" "$(jq -r '.text' "$q/0-legacy.json")"
+
+# An event with no url identifies no resource.
+q="$tmp/no-url"
+"$enqueue" "$q" "$envelope" "github.ci_status" "a" "" ""
+"$enqueue" "$q" "$envelope" "github.ci_status" "b" "" ""
+check "github.* with an empty url is not coalesced" "2" "$(queued_count "$q")"
+
 [ "$fail" -eq 0 ] || { echo "enqueue selftest failed" >&2; exit 1; }
 echo "enqueue selftest passed"
