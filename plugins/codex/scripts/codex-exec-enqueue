@@ -37,5 +37,23 @@ mkdir -p "$queue_dir"
 # Filename orders FIFO by write time; the worker only reads oldest-first, so
 # a collision just needs a unique suffix, not a globally sortable one.
 tmp="$(mktemp "$queue_dir/.enqueue.XXXXXX")"
-jq -n --arg type "$event_type" --arg text "$text" '{type: $type, text: $text}' > "$tmp"
+jq -n --arg type "$event_type" --arg text "$text" --arg url "$url" \
+  '{type: $type, text: $text, url: $url}' > "$tmp"
+
+# A github.* notification is a snapshot of a resource's state, so an unconsumed
+# one for the same (type, url) is stale the moment a newer one arrives and
+# would only cost the agent a wasted turn. Other types (user.emit above all)
+# are instructions, not snapshots, and are never dropped. A file with no url
+# key predates this rule and an empty url identifies no resource; neither is
+# ever coalesced.
+if [[ "$event_type" == github.* && -n "$url" ]]; then
+  for old in "$queue_dir"/*.json; do
+    [ -e "$old" ] || continue
+    if jq -e --arg type "$event_type" --arg url "$url" \
+      'has("url") and .type == $type and .url == $url' "$old" > /dev/null 2>&1; then
+      rm -f "$old"
+    fi
+  done
+fi
+
 mv "$tmp" "$queue_dir/$(date +%s%N)-$$.json"
