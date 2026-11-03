@@ -13,6 +13,7 @@ import (
 
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
@@ -203,14 +204,20 @@ missing = { from = "self.outputs.nope" }
 }
 
 func TestRunAliveForHealth_TimedOutProbeIsUnevaluable(t *testing.T) {
-	probe := task.Probe{Action: &lang.Action{Type: lang.ActionShell, Script: "sleep 1"}}
+	// The child outlives the budget so only enforcement, never a natural
+	// exit, can end the call in time. The budget is the executor's documented
+	// WaitDelay fallback plus a margin, because the process-group kill can
+	// miss a descendant that is mid-fork when the timeout fires on darwin.
+	const childSleep = 8 * time.Second
+	const budget = effect.CancelWaitDelay + time.Second
+	probe := task.Probe{Action: &lang.Action{Type: lang.ActionShell, Script: fmt.Sprintf("sleep %d", int(childSleep/time.Second))}}
 	started := time.Now()
 	err, repairable := runAliveForHealth(probe, task.SessionVars{Name: "s"}, 20*time.Millisecond)
 	if err == nil || repairable {
 		t.Fatalf("probe = %v, repairable = %t; want an unevaluable timeout", err, repairable)
 	}
-	if time.Since(started) > 500*time.Millisecond {
-		t.Fatal("timed out probe kept the health cycle blocked")
+	if elapsed := time.Since(started); elapsed > budget {
+		t.Fatalf("timed out probe kept the health cycle blocked for %v, want under %v", elapsed, budget)
 	}
 }
 
