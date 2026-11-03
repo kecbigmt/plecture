@@ -31,9 +31,14 @@ The workflow-level `[health]` table carries `auto_repair_attempts`, a
 non-negative integer with default `0` (disabled). It is distinct from an
 effect's `[health]` probe table: the workflow owns permission to repair its
 session, while effects define the facts used to evaluate liveness. The existing
-workflow `[healthcheck]` table continues to set sampling cadence. A negative,
-fractional, or non-integer value is a load error. No `[repair]` table is added
-because repair is a response to the health cycle's observation.
+workflow `[healthcheck]` table continues to set sampling cadence and
+renotification. The workflow `[health]` table accepts only
+`auto_repair_attempts`; an explicitly declared table must set it. A negative,
+fractional, or non-integer value, or an unknown field, is a load error. A
+deeper workflow overlay that omits `[health]` inherits it; one that declares
+`[health]` replaces the shallower table wholesale, as `[healthcheck]` does.
+Declaring `auto_repair_attempts = 0` in an overlay disables inherited repair
+permission.
 
 ```toml
 [review_agent]
@@ -55,13 +60,17 @@ also attempts repair when `status = up` but derived run state is `down`; that
 case cannot acquire a complete-plan health verdict. Stalled activity, an
 undeclared probe, and other health outcomes do not authorize repair.
 
-An executable `alive` action has a 30-second timeout by default. Timeout,
-launch failure, unresolved inputs, and invalid probe configuration mean the
-probe could not be evaluated; they do not establish that the surface is gone.
-The cycle records `skipped_probe_error` and retries observation at the next
-cycle without calling `Up` or consuming an attempt. The same distinction
-applies when `Up` verifies a produced node for reuse, so an indeterminate
-probe never causes cleanup or reconstruction.
+An executable `alive` action has a 30-second timeout by default. During the
+periodic health cycle, timeout, launch failure, unresolved inputs, and invalid
+probe configuration mean the cycle could not evaluate the probe; they do not
+authorize automatic repair. If any required `alive` probe is unevaluable, the
+cycle records `skipped_probe_error` and retries observation at the next cycle
+without calling `Up` or consuming an attempt, even if another node has a
+repairable failure. This classification applies only to the automatic repair
+gate. When `Up` verifies a produced node for reuse, the runtime failure
+model's existing rule remains: a non-zero exit, timeout, unresolved required
+value, or invalid action configuration prevents reuse and follows the
+invalidation path.
 
 The serve process admits at most one repair at a time across all sessions. It
 acquires the target session's lifecycle lock, then re-reads intent and
@@ -76,10 +85,13 @@ healthy state. A successful human `up` or healthy observation records a reset
 boundary in the same session event stream when a repair streak exists; it does
 not need a new state column. A successful automatic `Up` does not by itself
 reset the budget: a later healthy observation must prove recovery. A failed
-automatic `Up` also consumes its started attempt. When the count reaches the
-configured limit and the session still needs repair, the cycle emits
-`suspended` once for that streak, makes no further `Up` calls, and reports
-`repair_suspended` with the reason and attempt limit in `plect status`.
+automatic `Up` also consumes its started attempt, including an admission-cap
+rejection. A successful explicit `plect up` command is the human reset; the
+serve loop's `Up` call is identified as an automatic repair and cannot reset
+its own budget. When the count reaches the configured limit and the session
+still needs repair, the cycle emits `suspended` once for that streak, makes no
+further `Up` calls, and reports `repair_suspended` with the reason and attempt
+limit in `plect status`.
 Healthy observation or successful human `up` clears suspension and starts a
 new budget.
 
@@ -142,8 +154,16 @@ no actor to invoke the already safe plain `up` convergence operation. Using
 derived run state alone as intent would also wake deliberately down sessions
 and miss a failed setup that produced no run-scoped node.
 
-A separate `[repair]` table would split one health-cycle policy across two
-workflow sections without a distinct consumer. A stored attempt counter would
-create a second authority for the same repair history already recorded in the
-event log. Counting only failed attempts would permit an unbounded sequence of
-started repairs whose success never yields a healthy observation.
+Adding `auto_repair_attempts` to workflow `[healthcheck]` would put permission
+to mutate external resources among sampling and notification controls. A
+deeper overlay changing the healthcheck period could then accidentally replace
+repair permission, or an overlay changing permission could replace the period.
+Workflow `[health]` keeps that permission separate while retaining explicit
+whole-table replacement for its own policy.
+
+A separate `[repair]` table would introduce a third workflow section for one
+response to health observation, without a distinct repair mechanism to
+configure. A stored attempt counter would create a second authority for the
+same repair history already recorded in the event log. Counting only failed
+attempts would permit an unbounded sequence of started repairs whose success
+never yields a healthy observation.
