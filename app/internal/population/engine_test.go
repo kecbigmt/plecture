@@ -839,7 +839,7 @@ func TestInboundDoesNotReadmitPopulationMember(t *testing.T) {
 	}
 }
 
-func TestInboundDuringRepairRetriesAdmissionWithoutFailureBudget(t *testing.T) {
+func TestAppearanceDuringRepairRetriesAdmissionWithoutFailureBudget(t *testing.T) {
 	engine, hooks, now := engineFixture(t, false)
 	ctx := context.Background()
 	const resource = "urn:case:a"
@@ -856,7 +856,7 @@ func TestInboundDuringRepairRetriesAdmissionWithoutFailureBudget(t *testing.T) {
 		}
 		return up(ctx, resource, inputs)
 	}
-	if _, _, _, err := engine.log.Append(event.Event{SessionName: session, Type: "external.message", Direction: event.Inbound}); err != nil {
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": resource}); err != nil {
 		t.Fatal(err)
 	}
 	currentTime := now
