@@ -158,7 +158,7 @@ func TestDown_SleepAndFullStopTransitions(t *testing.T) {
 	if got := store.Get("sleep-transition"); !got.SleepSince.IsZero() {
 		t.Fatalf("full stop retained sleep marker: %v", got.SleepSince)
 	}
-	if position, err := SleepQueuePosition(store, "sleep-transition"); err != nil || position != 0 {
+	if position, err := SleepQueuePosition(cfg, store, "sleep-transition"); err != nil || position != 0 {
 		t.Fatalf("full stop queue position = %d, %v", position, err)
 	}
 	if _, err := Down(cfg, store, DownParams{Identifier: "sleep-transition", Sleep: true}); err != nil {
@@ -191,7 +191,7 @@ func TestRequestWake_SkipsFinalizedSession(t *testing.T) {
 	if err != nil || requested {
 		t.Fatalf("RequestWake = %t, %v; want no wake", requested, err)
 	}
-	if position, err := SleepQueuePosition(store, "finalized"); err != nil || position != 0 {
+	if position, err := SleepQueuePosition(nil, store, "finalized"); err != nil || position != 0 {
 		t.Fatalf("finalized queue position = %d, %v", position, err)
 	}
 }

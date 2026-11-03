@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/admitstatus"
+	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/service"
@@ -198,7 +199,14 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 				}
 				continue
 			}
-			if session != nil && session.Status == contract.SessionStatusDown && e.cache.Get(member.SessionName, member.ResourceID).LastReason == "" {
+			stopped, err := e.fullyStopped(session)
+			if err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
+			}
+			if stopped {
 				continue
 			}
 		}
@@ -210,6 +218,17 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 		}
 	}
 	return firstErr
+}
+
+func (e *Engine) fullyStopped(session *domain.Session) (bool, error) {
+	if session == nil || session.Status != contract.SessionStatusDown || !session.SleepSince.IsZero() {
+		return false, nil
+	}
+	events, err := e.log.Tail(session.Name, event.Filter{Types: []string{event.TypeSessionStop, event.TypeLifecyclePrefix + "up"}}, 1)
+	if err != nil {
+		return false, err
+	}
+	return len(events) > 0 && events[0].Type == event.TypeSessionStop, nil
 }
 
 func (e *Engine) SweepExpiry(ctx context.Context) error {

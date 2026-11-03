@@ -356,7 +356,7 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 	applyDisplay(displayWorkflows, s, &cached)
 
 	run := sessionRunState(cfg, s)
-	sleep, position, err := sleepVisibility(store, s)
+	sleep, position, err := sleepVisibility(cfg, store, s)
 	if err != nil {
 		return ListEntry{}, err
 	}

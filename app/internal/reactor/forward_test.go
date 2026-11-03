@@ -64,7 +64,7 @@ func TestForwarder_SleepQueuesOnInboundWithoutForwarding(t *testing.T) {
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		position, err := service.SleepQueuePosition(st, f.session)
+		position, err := service.SleepQueuePosition(f.cfg, st, f.session)
 		if err != nil {
 			t.Fatal(err)
 		}

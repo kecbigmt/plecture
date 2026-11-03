@@ -47,8 +47,36 @@ func sleepQueued(store *state.Store, name string) (bool, error) {
 	return evs[0].Metadata["reason"] != "idle", nil
 }
 
-// SleepQueuePosition returns zero for a full stop or event-waiting sleep.
-func SleepQueuePosition(store *state.Store, name string) (int, error) {
+func queuedForWake(cfg *config.Config, store *state.Store, s *domain.Session) (bool, error) {
+	if s == nil || s.Status != contract.SessionStatusDown || s.SleepSince.IsZero() || sessionFinalized(s) {
+		return false, nil
+	}
+	queued, err := sleepQueued(store, s.Name)
+	if err != nil || !queued {
+		return false, err
+	}
+	suspended, err := wakeSuspensionReason(store, s.Name)
+	if err != nil || suspended != "" {
+		return false, err
+	}
+	count, err := wakeFailureCount(store, s.Name)
+	if err != nil {
+		return false, err
+	}
+	return count < wakeAttemptLimit(cfg, s), nil
+}
+
+func wakeAttemptLimit(cfg *config.Config, s *domain.Session) int {
+	if cfg != nil {
+		if wf, err := cfg.ResolveSessionWorkflow(s); err == nil && wf != nil && wf.Health.AutoRepairAttempts > 0 {
+			return wf.Health.AutoRepairAttempts
+		}
+	}
+	return 3
+}
+
+// SleepQueuePosition returns zero when a session is ineligible for automatic wake.
+func SleepQueuePosition(cfg *config.Config, store *state.Store, name string) (int, error) {
 	sessions, err := store.AllE()
 	if err != nil {
 		return 0, err
@@ -59,10 +87,7 @@ func SleepQueuePosition(store *state.Store, name string) (int, error) {
 	}
 	var waiting []queued
 	for candidate, s := range sessions {
-		if s.SleepSince.IsZero() || s.Status != contract.SessionStatusDown || sessionFinalized(s) {
-			continue
-		}
-		ready, err := sleepQueued(store, candidate)
+		ready, err := queuedForWake(cfg, store, s)
 		if err != nil {
 			return 0, err
 		}
@@ -90,16 +115,23 @@ func SleepQueuePosition(store *state.Store, name string) (int, error) {
 	return 0, nil
 }
 
-func sleepVisibility(store *state.Store, s *domain.Session) (string, int, error) {
+func sleepVisibility(cfg *config.Config, store *state.Store, s *domain.Session) (string, int, error) {
 	if s.SleepSince.IsZero() || s.Status != contract.SessionStatusDown {
 		return "", 0, nil
 	}
-	position, err := SleepQueuePosition(store, s.Name)
+	position, err := SleepQueuePosition(cfg, store, s.Name)
 	if err != nil {
 		return "", 0, err
 	}
 	if position > 0 {
 		return "waiting_capacity", position, nil
+	}
+	suspended, err := wakeSuspensionReason(store, s.Name)
+	if err != nil {
+		return "", 0, err
+	}
+	if suspended != "" {
+		return "suspended", 0, nil
 	}
 	return "waiting_event", 0, nil
 }
@@ -113,7 +145,11 @@ func queueSleep(store *state.Store, name, reason string, at time.Time) (bool, er
 	if err != nil {
 		return false, err
 	}
-	if s == nil || s.Status == contract.SessionStatusDestroyed || (!s.SleepSince.IsZero() && pending) {
+	suspended, err := wakeSuspensionReason(store, name)
+	if err != nil {
+		return false, err
+	}
+	if s == nil || s.Status == contract.SessionStatusDestroyed || (!s.SleepSince.IsZero() && pending && suspended == "") {
 		return false, nil
 	}
 	// An append failure must not leave a sleep marker with no queue reason.
@@ -170,10 +206,7 @@ func WakeQueuedSessions(cfg *config.Config, store *state.Store) error {
 	}
 	var pending []candidate
 	for name, s := range sessions {
-		if s.Status != contract.SessionStatusDown || s.SleepSince.IsZero() || sessionFinalized(s) {
-			continue
-		}
-		queued, err := sleepQueued(store, name)
+		queued, err := queuedForWake(cfg, store, s)
 		if err != nil {
 			return err
 		}
@@ -194,33 +227,43 @@ func WakeQueuedSessions(cfg *config.Config, store *state.Store) error {
 		return 0
 	})
 	for _, item := range pending {
-		count, err := wakeFailureCount(store, item.name)
-		if err != nil {
-			return err
-		}
-		limit := 3
-		if wf, err := cfg.ResolveSessionWorkflow(sessions[item.name]); err == nil && wf != nil && wf.Health.AutoRepairAttempts > 0 {
-			limit = wf.Health.AutoRepairAttempts
-		}
-		if count >= limit {
-			continue
-		}
-		result, err := Up(cfg, store, UpParams{Identifier: item.name})
-		if err == nil && result.Result == "sleeping" {
-			continue
-		}
-		if err != nil {
-			if svcErr, ok := err.(*Error); ok && svcErr.Code == ErrChildUpInProgress {
-				continue
+		err := tryLifecycleLock(store, item.name, func() error {
+			current, err := store.GetE(item.name)
+			if err != nil {
+				return err
 			}
-			if appendErr := appendWakeEvent(store, item.name, "failed", err.Error()); appendErr != nil {
-				return appendErr
+			queued, err := queuedForWake(cfg, store, current)
+			if err != nil || !queued {
+				return err
+			}
+			count, err := wakeFailureCount(store, item.name)
+			if err != nil {
+				return err
+			}
+			limit := wakeAttemptLimit(cfg, current)
+			result, upErr := upUnlocked(cfg, store, UpParams{Identifier: item.name})
+			if upErr == nil && result.Result == "sleeping" {
+				return nil
+			}
+			if upErr == nil {
+				return nil
+			}
+			if svcErr, ok := upErr.(*Error); ok && svcErr.Code == ErrChildUpInProgress {
+				return nil
+			}
+			if err := appendWakeEvent(store, item.name, "failed", upErr.Error()); err != nil {
+				return err
 			}
 			if count+1 >= limit {
-				if appendErr := appendWakeEvent(store, item.name, "suspended", fmt.Sprintf("automatic wake suspended after %d attempts: %v", limit, err)); appendErr != nil {
-					return appendErr
-				}
+				return appendWakeEvent(store, item.name, "suspended", fmt.Sprintf("automatic wake suspended after %d attempts: %v", limit, upErr))
 			}
+			return nil
+		})
+		if err == errLifecycleBusy {
+			continue
+		}
+		if err != nil {
+			return err
 		}
 	}
 	return nil

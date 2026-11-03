@@ -166,7 +166,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 
 	wtExists := fileExists(session.WorkspaceDirPath)
 	runState := sessionRunState(cfg, session)
-	sleep, queuePosition, err := sleepVisibility(store, session)
+	sleep, queuePosition, err := sleepVisibility(cfg, store, session)
 	if err != nil {
 		return nil, err
 	}
