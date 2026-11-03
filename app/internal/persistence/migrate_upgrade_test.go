@@ -16,6 +16,8 @@ import (
 // events.delivery_mode column drop — the last migration where a row can
 // still be inserted with that column present.
 const eventTablesVersion = 20260906143514
+const preDissolutionVersion = 20260906231449
+const preForwardCursorVersion = 20260907085032
 
 // seedEventRow uses raw SQL rather than AppendEvent: AppendEvent's generated
 // insert targets only the current, already-migrated column set.
@@ -180,23 +182,8 @@ func TestMigrate_DownRestoresPreDissolutionSchemaWithoutError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
 	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (health repair observation): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (population admission retry): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (sidecar state): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (forward-cursor-kind): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (node-execution-identity): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (dissolution): %v", err)
+	if _, err := provider.DownTo(ctx, preDissolutionVersion); err != nil {
+		t.Fatalf("DownTo(%d): %v", preDissolutionVersion, err)
 	}
 
 	var count int
@@ -312,20 +299,8 @@ func TestMigrate_DownRestoresNodeInstancesColumnsWithoutError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
 	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (health repair observation): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (population admission retry): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (sidecar state): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (forward-cursor-kind): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (node-execution-identity): %v", err)
+	if _, err := provider.DownTo(ctx, preNodeExecutionIdentityVersion); err != nil {
+		t.Fatalf("DownTo(%d): %v", preNodeExecutionIdentityVersion, err)
 	}
 
 	var taskID, scope, status, outputsJSON string
@@ -365,17 +340,8 @@ func TestMigrate_DownDropsForwardCursorRowsWithoutError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
 	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (health repair observation): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (population admission retry): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (sidecar state): %v", err)
-	}
-	if _, err := provider.Down(ctx); err != nil {
-		t.Fatalf("Down (forward-cursor-kind): %v", err)
+	if _, err := provider.DownTo(ctx, preForwardCursorVersion); err != nil {
+		t.Fatalf("DownTo(%d): %v", preForwardCursorVersion, err)
 	}
 
 	var kindCount int
