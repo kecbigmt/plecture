@@ -319,6 +319,16 @@ func (e *Engine) admit(ctx context.Context, member *state.PopulationMember) erro
 	}); err != nil {
 		return err
 	}
+	if outcome.Sleeping {
+		return e.state.UpdatePopulation(e.key, func(population *state.PopulationState) error {
+			current := population.Members[member.ResourceID]
+			if current == nil || current.Generation != member.Generation || current.Tombstoned {
+				return nil
+			}
+			current.AdmitRetryAt = e.now().Add(admitRetryBase)
+			return nil
+		})
+	}
 	// The record has to land here rather than after a completed admission:
 	// initial-task setup runs against an already-up session, and its failure
 	// leaves a retry whose up hook reports no transition, so a record deferred

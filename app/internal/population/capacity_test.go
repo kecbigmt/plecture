@@ -332,6 +332,100 @@ type = "object"
 	}
 }
 
+func TestQueuedAdmissionWaitsForWakeBeforeInitialTask(t *testing.T) {
+	t.Setenv("PLECT_SESSION_NAME", "")
+	cfg := populationConfig(t, `[source.query.poll]
+type = "exec"
+command = "true"
+`, "uses = [\"poll\"]\npoll_every = \"1m\"", `resource = { from = "resource.id" }`)
+	writeDefinition(t, cfg.BaseDir, "provider", fmt.Sprintf(`[provider]
+kind = "workspace_provider"
+match = "^urn:case:(?P<id>[A-Za-z0-9]+)$"
+name = { from = "match.id" }
+[provider.setup]
+type = "exec"
+command = "printf"
+args = ['{"workspace_dir":"%s","branch":"main"}']
+[provider.outputs_schema]
+type = "object"
+`, cfg.WorkspaceDirsRoot))
+	writeDefinition(t, cfg.BaseDir, "work", `[work]
+kind = "effect"
+scope = "run"
+[work.setup]
+type = "exec"
+command = "printf"
+args = ['{}']
+[work.outputs_schema]
+type = "object"
+[work.health.alive]
+type = "noop"
+`)
+	limit := 1
+	cfg.MaxUpChildren = &limit
+	definitions, err := Load(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def := definitions[0]
+	def.Population.Session.Task = "work"
+	store := state.NewStore(t.TempDir())
+	logStore := eventlog.NewStore(store.Dir())
+	coordinator := newCapacityCoordinator(func() *config.Config { return cfg }, store, logStore, admitstatus.NewCache(logStore))
+	coordinator.setDefinitions([]Definition{def})
+	engine := NewEngine(def, store, logStore, coordinator.cache, serviceHooks(func() *config.Config { return cfg }, store, def, coordinator))
+	if err := store.Put(&contract.Session{Name: "manual", Tasks: map[string]*contract.TaskState{
+		"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	resource := "urn:case:new"
+	if err := engine.ApplyAppearance(ctx, map[string]any{"resource": resource}); err != nil {
+		t.Fatalf("admit while cap is full: %v", err)
+	}
+	population, err := store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := population.Members[resource]
+	if member == nil || !member.PendingUp || member.AdmitSuspended || member.ConsecutiveAdmitFailures != 0 || member.AdmitRetryAt.IsZero() {
+		t.Fatalf("queued member = %+v, want pending retry without a failure", member)
+	}
+	queued := store.Get(member.SessionName)
+	if queued == nil || queued.SleepSince.IsZero() || cfg.RunScopeUp(queued) {
+		t.Fatalf("queued session = %+v, want sleeping with run scope down", queued)
+	}
+	events, _, _, err := logStore.List(member.SessionName, 0, event.Filter{Types: []string{event.TypeWorkflowPopulationUp}})
+	if err != nil || len(events) != 0 {
+		t.Fatalf("population up events before wake = %v, %v; want none", events, err)
+	}
+	if err := store.Update("manual", func(session *contract.Session) error {
+		session.Tasks["runtime"].Status = contract.TaskStatusCleaned
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.WakeQueuedSessions(cfg, store); err != nil {
+		t.Fatalf("wake queued session: %v", err)
+	}
+	engine.now = func() time.Time { return member.AdmitRetryAt }
+	if err := engine.Reconcile(ctx); err != nil {
+		t.Fatalf("admit after wake: %v", err)
+	}
+	population, err = store.Population(engine.key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := population.Members[resource]; got.PendingUp || got.AdmitSuspended {
+		t.Fatalf("member after wake = %+v, want completed admission", got)
+	}
+	session := store.Get(member.SessionName)
+	if session == nil || session.Tasks["initial"] == nil || session.Tasks["initial"].Status != contract.TaskStatusProduced {
+		t.Fatalf("initial task after wake = %+v, want produced", session)
+	}
+}
+
 func addCapacityMember(t *testing.T, def Definition, store *state.Store, logStore *eventlog.Store, name, resource string, created, cleared time.Time) {
 	t.Helper()
 	// The population row must exist before a session can reference it
