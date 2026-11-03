@@ -1,7 +1,3 @@
----
-supersedes: 2026-09-06-runtime-failure-model
----
-
 # Opt-in repair of sessions intended to be up
 
 ## Context
@@ -71,6 +67,18 @@ gate. When `Up` verifies a produced node for reuse, the runtime failure
 model's existing rule remains: a non-zero exit, timeout, unresolved required
 value, or invalid action configuration prevents reuse and follows the
 invalidation path.
+
+For an opted-in session with `status = up`, three consecutive health cycles
+with an unevaluable `alive` probe report `repair_undecidable` in `plect status`
+with the probe error as its reason. Three cycles avoid escalating one transient
+probe failure while bounding the delay in units of the configured health
+period. This is distinct from `repair_suspended`: no automatic `Up` has been
+attempted and no repair attempt is consumed. The health cycle pushes the
+reason through the existing `health.unhealthy` escalation route, including its
+nearest-live-ancestor delivery and root-session fallback. The next cycle in
+which all required probes are evaluable clears the undecidable streak and
+status; the health observation state holds the consecutive-cycle count. No
+workflow knob is added for this threshold.
 
 The serve process admits at most one repair at a time across all sessions. It
 acquires the target session's lifecycle lock, then re-reads intent and
