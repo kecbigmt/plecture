@@ -172,7 +172,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 			}
 		}
 		if capped {
-			return acceptSleepingUp(store, sessionName)
+			return acceptSleepingUp(cfg, store, sessionName)
 		}
 		identifier = sessionName
 	} else {
@@ -205,7 +205,7 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 		reserved, capErr := reserveChildCapSlot(cfg, store, sessionName, session.ParentSession, targetAlreadyUp)
 		if capErr != nil {
 			if _, capped := asChildCapExceeded(capErr); capped {
-				return acceptSleepingUp(store, sessionName)
+				return acceptSleepingUp(cfg, store, sessionName)
 			}
 			return nil, capErr
 		}
@@ -282,11 +282,11 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	return &UpResult{SessionName: sessionName, Result: "up", Tasks: domain.MergedTasks(session)}, nil
 }
 
-func acceptSleepingUp(store *state.Store, name string) (*UpResult, error) {
+func acceptSleepingUp(cfg *config.Config, store *state.Store, name string) (*UpResult, error) {
 	if _, err := queueSleep(store, name, "capacity", time.Now()); err != nil {
 		return nil, err
 	}
-	position, err := SleepQueuePosition(store, name)
+	position, err := SleepQueuePosition(cfg, store, name)
 	if err != nil {
 		return nil, err
 	}

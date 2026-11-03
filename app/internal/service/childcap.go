@@ -56,14 +56,14 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 		return false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("read queued sessions: %v", err)}
 	}
 	for name, s := range all {
-		if s == nil || s.SleepSince.IsZero() || s.Status != contract.SessionStatusDown {
+		if s == nil {
 			continue
 		}
 		memberOfCap := (virtualRoot && (s.ParentSession == "" || strings.HasPrefix(s.ParentSession, "root:"))) || (!virtualRoot && s.ParentSession == parentSessionName)
 		if !memberOfCap {
 			continue
 		}
-		waiting, err := sleepQueued(store, name)
+		waiting, err := queuedForWake(cfg, store, s)
 		if err != nil {
 			return false, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("read sleep queue: %v", err)}
 		}
@@ -77,7 +77,7 @@ func reserveChildCapSlot(cfg *config.Config, store *state.Store, childSessionNam
 			targetAt = target.SleepSince
 		}
 		for name, s := range sessions {
-			if name == childSessionName || s == nil || !queued[name] || s.SleepSince.IsZero() {
+			if name == childSessionName || s == nil || !queued[name] || s.Status != contract.SessionStatusDown || s.SleepSince.IsZero() || sessionFinalized(s) {
 				continue
 			}
 			if targetAt.IsZero() || s.SleepSince.Before(targetAt) || (s.SleepSince.Equal(targetAt) && name < childSessionName) {

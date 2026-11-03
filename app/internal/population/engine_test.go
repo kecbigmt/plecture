@@ -95,6 +95,9 @@ func TestFullStopMemberIsNotReadmittedByAppearanceOrInbound(t *testing.T) {
 	if err := engine.state.Put(&domain.Session{Name: name, Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
+	if _, _, _, err := engine.log.Append(event.Event{SessionName: name, Type: event.TypeSessionStop, Direction: event.Internal}); err != nil {
+		t.Fatal(err)
+	}
 	if err := engine.ApplyAppearance(ctx, item); err != nil {
 		t.Fatal(err)
 	}
@@ -106,6 +109,35 @@ func TestFullStopMemberIsNotReadmittedByAppearanceOrInbound(t *testing.T) {
 	}
 	if len(hooks.ups) != 1 {
 		t.Fatalf("admissions = %v, want only the initial admission", hooks.ups)
+	}
+}
+
+func TestFullStopMemberIsNotReadmittedAfterEarlierAdmitFailure(t *testing.T) {
+	engine, hooks, now, cache := engineFixtureWithCache(t, false)
+	ctx := context.Background()
+	item := map[string]any{"resource": "urn:case:a"}
+	if err := engine.ApplyAppearance(ctx, item); err != nil {
+		t.Fatal(err)
+	}
+	name := "session-urn:case:a"
+	if err := engine.state.Put(&domain.Session{Name: name, Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := engine.log.Append(event.Event{SessionName: name, Type: event.TypeSessionStop, Direction: event.Internal}); err != nil {
+		t.Fatal(err)
+	}
+	cache.Record(name, "urn:case:a", false, "task_setup", "earlier failure")
+	if err := engine.state.UpdatePopulation(engine.key, func(population *state.PopulationState) error {
+		population.Members["urn:case:a"].PendingUp = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := engine.ApplyAppearance(ctx, item); err != nil {
+		t.Fatal(err)
+	}
+	if len(hooks.ups) != 1 {
+		t.Fatalf("admissions = %v, want no retry of a full stop", hooks.ups)
 	}
 }
 

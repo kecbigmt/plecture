@@ -116,6 +116,9 @@ func TestStatus_ReportsSuspendedWakeFailure(t *testing.T) {
 	if !strings.Contains(got.Runtime.WakeReason, "suspended after 3 attempts") {
 		t.Fatalf("wake reason = %q", got.Runtime.WakeReason)
 	}
+	if got.Runtime.Sleep != "suspended" || got.Runtime.QueuePosition != 0 {
+		t.Fatalf("suspended sleep = %q at position %d", got.Runtime.Sleep, got.Runtime.QueuePosition)
+	}
 	if err := appendWakeEvent(store, "failed-wake", "succeeded", "runtime started"); err != nil {
 		t.Fatal(err)
 	}

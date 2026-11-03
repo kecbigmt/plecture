@@ -76,6 +76,8 @@ func formatSleep(state string, position int) string {
 		return "event"
 	case "waiting_capacity":
 		return fmt.Sprintf("queue #%d", position)
+	case "suspended":
+		return "suspended"
 	default:
 		return "-"
 	}

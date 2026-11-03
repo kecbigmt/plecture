@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/state"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -127,6 +129,113 @@ func TestWakeQueuedSessions_UsesCapacityInQueueOrder(t *testing.T) {
 	}
 	if got := store.Get("second"); got.SleepSince.IsZero() {
 		t.Fatalf("second = %+v, want queued", got)
+	}
+}
+
+func TestUp_IgnoresQueuedSessionsThatCannotWake(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		prepare func(*testing.T, *state.Store, *config.Config)
+	}{
+		{"suspended", func(t *testing.T, store *state.Store, cfg *config.Config) {
+			for i := 0; i < 4; i++ {
+				if err := WakeQueuedSessions(cfg, store); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if reason, err := wakeSuspensionReason(store, "broken"); err != nil || reason == "" {
+				t.Fatalf("wake suspension = %q, %v", reason, err)
+			}
+		}},
+		{"finalized", func(t *testing.T, store *state.Store, _ *config.Config) {
+			if err := store.Update("broken", func(s *domain.Session) error {
+				s.Tasks = map[string]*contract.TaskState{"work": {Scope: contract.TaskScopeSession, Status: contract.TaskStatusProduced, FinalizedAt: time.Now()}}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := writeWorkflowFixture(t, t.TempDir(), "child_wf",
+				[]taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'"}},
+				[]nodeFixture{{id: "runtime"}})
+			writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+			seedSessionWithNodes(t, store, "parent", "acct", 1, "parent_wf", nil)
+			brokenWorkflow := "child_wf"
+			if tc.name == "suspended" {
+				brokenWorkflow = "missing_wf"
+			}
+			seedSessionWithNodes(t, store, "broken", "acct", 2, brokenWorkflow, nil)
+			seedSessionWithNodes(t, store, "ok", "acct", 3, "child_wf", nil)
+			setParent(t, store, "broken", "parent")
+			setParent(t, store, "ok", "parent")
+			if _, err := queueSleep(store, "broken", "capacity", time.Now().Add(-time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			tc.prepare(t, store, cfg)
+			if position, err := SleepQueuePosition(cfg, store, "broken"); err != nil || position != 0 {
+				t.Fatalf("blocked session queue position = %d, %v; want zero", position, err)
+			}
+			result, err := Up(cfg, store, UpParams{Identifier: "ok"})
+			if err != nil || result.Result != "up" {
+				t.Fatalf("Up(ok) = %+v, %v; want up with free capacity", result, err)
+			}
+			if tc.name == "suspended" {
+				result, err := Up(cfg, store, UpParams{Identifier: "broken", HumanInitiated: true})
+				if err != nil || result.Result != "sleeping" || result.QueuePosition != 1 {
+					t.Fatalf("manual Up(broken) = %+v, %v; want a fresh queued request", result, err)
+				}
+			}
+		})
+	}
+}
+
+func TestWakeQueuedSessions_DoesNotRestartFullStoppedSnapshotEntry(t *testing.T) {
+	store := testStore(t)
+	started := filepath.Join(t.TempDir(), "started")
+	release := filepath.Join(t.TempDir(), "release")
+	setup := fmt.Sprintf("touch %q; while [ ! -e %q ]; do sleep 0.01; done; echo '{}'", started, release)
+	cfg := writeWorkflowFixture(t, t.TempDir(), "child_wf",
+		[]taskFixture{{id: "runtime", scope: "run", setup: setup, cleanup: "true"}},
+		[]nodeFixture{{id: "runtime"}})
+	writeCapWorkflow(t, cfg.BaseDir, "parent_wf", intPtr(1))
+	seedSessionWithNodes(t, store, "parent", "acct", 1, "parent_wf", nil)
+	for _, name := range []string{"first", "second"} {
+		seedSessionWithNodes(t, store, name, "acct", 1, "child_wf", nil)
+		setParent(t, store, name, "parent")
+	}
+	if _, err := queueSleep(store, "first", "capacity", time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := queueSleep(store, "second", "capacity", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- WakeQueuedSessions(cfg, store) }()
+	defer os.WriteFile(release, nil, 0o644)
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("first wake did not start")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if _, err := Down(cfg, store, DownParams{Identifier: "second"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(release, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Get("second"); got.Status != contract.SessionStatusDown || !got.SleepSince.IsZero() {
+		t.Fatalf("full-stopped session restarted: %+v", got)
 	}
 }
 
