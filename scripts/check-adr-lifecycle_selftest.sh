@@ -59,9 +59,17 @@ supersedes: $old
 
 # New decision
 
+## Context
+
+Why.
+
 ## Supersession scope
 
 Replaces the original context.
+
+## Decision
+
+What.
 EOF
 }
 
@@ -105,7 +113,7 @@ write_old_linked "$d"
 write_new_linked "$d"
 other=2026-01-15-other-decision
 printf -- '---\nsuperseded_by: %s\n---\n\n# Other\n' "$new" >"$d/docs/adr/$other.md"
-printf -- '---\nsupersedes:\n  - %s\n  - %s\n---\n\n# New decision\n\n### Supersession scope\n\nBoth.\n' "$old" "$other" >"$d/docs/adr/$new.md"
+printf -- '---\nsupersedes:\n  - %s\n  - %s\n---\n\n# New decision\n\n## Context\n\n### Supersession scope\n\nBoth.\n\n## Decision\n' "$old" "$other" >"$d/docs/adr/$new.md"
 commit_all "$d" base
 expect clean-list-form pass ""
 
@@ -160,6 +168,13 @@ printf '\nAn added scope sentence.\n' >>"$d/docs/adr/$old.md"
 commit_all "$d" "link and edit body"
 expect body-edit-with-link fail "An added scope sentence." HEAD~1 HEAD
 
+# misplaced-scope-heading: the heading must come between Context and Decision.
+d="$(new_fixture misplaced-scope-heading)"
+write_old_linked "$d"
+printf -- '---\nsupersedes: %s\n---\n\n# New decision\n\n## Decision\n\n## Context\n\n## Supersession scope\n' "$old" >"$d/docs/adr/$new.md"
+commit_all "$d" base
+expect misplaced-scope-heading fail "between its"
+
 # frontmatter-only-without-fence: the file had no frontmatter, so the fence
 # and the superseded_by line are added together.
 d="$(new_fixture frontmatter-only-without-fence)"
@@ -174,9 +189,9 @@ expect frontmatter-only-without-fence pass "" HEAD~1 HEAD
 # supersedes), and gains superseded_by inside it.
 d="$(new_fixture frontmatter-only-with-fence)"
 printf -- '---\nsuperseded_by: mid\n---\n\n# Old\n' >"$d/docs/adr/$old.md"
-mid_body='\n# Mid\n\n## Supersession scope\n\nAll of it.\n'
+mid_body='\n# Mid\n\n## Context\n\n## Supersession scope\n\nAll of it.\n\n## Decision\n'
 printf -- "---\nsupersedes: $old\n---\n$mid_body" >"$d/docs/adr/mid.md"
-printf -- "---\nsupersedes: mid\n---\n\n# New\n\n## Supersession scope\n\nAll of it.\n" >"$d/docs/adr/$new.md"
+printf -- "---\nsupersedes: mid\n---\n\n# New\n\n## Context\n\n## Supersession scope\n\nAll of it.\n\n## Decision\n" >"$d/docs/adr/$new.md"
 commit_all "$d" base
 printf -- "---\nsupersedes: $old\nsuperseded_by: $new\n---\n$mid_body" >"$d/docs/adr/mid.md"
 commit_all "$d" "supersede mid"

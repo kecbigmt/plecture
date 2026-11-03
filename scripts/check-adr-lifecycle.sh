@@ -8,8 +8,9 @@
 # when both <base-ref> and <head-ref> are given: it compares each ADR that
 # exists at the merge base of the two against its head version.
 #
-# The `Supersession scope` heading is a weak proxy for "states which
-# decisions are replaced": it catches omission, not vagueness.
+# The `Supersession scope` heading (positioned after Context, before
+# Decision) is a weak proxy for "states which decisions are replaced": it
+# catches omission, not vagueness.
 set -euo pipefail
 
 root="${ADR_LIFECYCLE_CHECK_ROOT:-$(pwd)}"
@@ -69,11 +70,16 @@ has_link() {
   return 1
 }
 
+# Exits 0 when a `Supersession scope` heading sits after the `Context`
+# heading and before the `Decision` heading, ignoring headings in code fences.
 has_scope_heading() {
   awk '
     /^(```|~~~)/ { fenced = !fenced; next }
-    !fenced && /^#{1,6}[ \t]+Supersession scope[ \t\r]*$/ { found = 1 }
-    END { exit found ? 0 : 1 }
+    fenced { next }
+    /^#{1,6}[ \t]+Context[ \t\r]*$/ && !ctx { ctx = NR }
+    /^#{1,6}[ \t]+Decision[ \t\r]*$/ && !dec { dec = NR }
+    /^#{1,6}[ \t]+Supersession scope[ \t\r]*$/ && !scope { scope = NR }
+    END { exit (ctx && dec && scope && ctx < scope && scope < dec) ? 0 : 1 }
   ' "$1"
 }
 
@@ -104,7 +110,7 @@ check_links_and_scope() {
       fi
     done < <(frontmatter_links "$f")
     if [ "$has_supersedes" -eq 1 ] && ! has_scope_heading "$f"; then
-      report "$f: declares \`supersedes:\` but has no \`Supersession scope\` heading"
+      report "$f: declares \`supersedes:\` but has no \`Supersession scope\` heading between its \`Context\` and \`Decision\` headings"
     fi
   done
 }
