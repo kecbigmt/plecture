@@ -4,11 +4,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/kecbigmt/plecture/app/internal/config"
+	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/service"
+	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/contracts/event"
+	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
 // postForm drives a same-origin htmx POST: it carries the matching CSRF cookie
@@ -46,6 +55,9 @@ func TestCreate_Success(t *testing.T) {
 	}
 	if svc.gotUp.Identifier != "https://github.com/owner/repo/issues/1" || svc.gotUp.Tag != "exp" {
 		t.Errorf("Up params = %+v", svc.gotUp)
+	}
+	if !svc.gotUp.HumanInitiated {
+		t.Error("create form Up was not marked human-initiated")
 	}
 	if svc.gotUp.Inputs["a"] == nil {
 		t.Errorf("inputs not forwarded: %+v", svc.gotUp.Inputs)
@@ -166,6 +178,74 @@ func TestUp_Success(t *testing.T) {
 	}
 	if svc.gotUp == nil || svc.gotUp.Identifier != "owner/repo-1" {
 		t.Errorf("Up params = %+v", svc.gotUp)
+	}
+	if svc.gotUp != nil && !svc.gotUp.HumanInitiated {
+		t.Error("session Up was not marked human-initiated")
+	}
+}
+
+func TestWebUIUpResetsSuspendedRepairStreak(t *testing.T) {
+	base := t.TempDir()
+	for _, dir := range []string{"workflows", "tasks"} {
+		if err := os.MkdirAll(filepath.Join(base, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(base, "workflows", "default.toml"), []byte(`[default]
+kind = "workflow"
+[[default.nodes]]
+uses = "runner"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(base, "tasks", "runner.toml"), []byte(`[runner]
+kind = "effect"
+scope = "run"
+[runner.setup]
+type = "shell"
+script = "echo '{}'"
+[runner.health.alive]
+type = "shell"
+script = "true"
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+	store := state.NewStore(t.TempDir())
+	const name = "owner/repo-1"
+	now := time.Now()
+	if err := store.Put(&domain.Session{Name: name, Workflow: "default", Status: contract.SessionStatusUp, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	log := eventlog.NewStore(store.Dir())
+	for _, result := range []string{"started", "suspended"} {
+		if _, _, _, err := log.Append(event.Event{
+			SessionName: name, Type: event.TypeSessionRepair, Direction: event.Internal,
+			Metadata: map[string]string{"trigger": "health", "attempt": "1", "result": result, "reason": "runtime failed"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before, found, err := log.LatestRepairStateChange(name)
+	if err != nil || !found || before.Metadata["result"] != "suspended" {
+		t.Fatalf("repair state before Web UI up = (%+v, %t, %v), want suspended", before, found, err)
+	}
+
+	svc := newLiveService(cfg, store)
+	rec := postForm(t, New(svc).Routes(), "/sessions/up", url.Values{"name": {name}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Web UI up status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	after, found, err := log.LatestRepairStateChange(name)
+	if err != nil || !found || after.Metadata["result"] != "succeeded" || after.Metadata["attempt"] != "0" || after.Metadata["trigger"] != "manual_up" {
+		t.Fatalf("repair state after Web UI up = (%+v, %t, %v), want human reset", after, found, err)
+	}
+	status, err := svc.Status(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Runtime.RepairStatus != "" {
+		t.Fatalf("repair status after Web UI up = %q, want no suspension", status.Runtime.RepairStatus)
 	}
 }
 
