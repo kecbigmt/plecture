@@ -14,8 +14,10 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
+	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
@@ -133,6 +135,152 @@ func TestEvaluateHealth_FailedCurrentPlanNodeIsUnhealthyNamingNodeAndError(t *te
 	}
 	if sessionRunState(cfg, sess) != domain.RunUp {
 		t.Fatalf("run = %q, want up (a run-scoped node produced)", sessionRunState(cfg, sess))
+	}
+}
+
+func TestEvaluateHealth_RepairClassification(t *testing.T) {
+	tests := []struct {
+		name       string
+		alive      string
+		nodeStatus string
+		wantRepair bool
+	}{
+		{"alive passed", "true", contract.TaskStatusProduced, false},
+		{"alive exited nonzero", "false", contract.TaskStatusProduced, true},
+		{"failed node", "true", contract.TaskStatusFailed, true},
+		{"missing node", "true", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := currentPlanConfig(t, "true", tt.alive)
+			nodes := map[string]*contract.TaskState{
+				"pane": {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+			}
+			if tt.nodeStatus != "" {
+				nodes["agent"] = &contract.TaskState{Scope: contract.TaskScopeRun, TaskID: "agent", Status: tt.nodeStatus}
+			}
+			seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", nodes)
+			report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.Repairable != tt.wantRepair {
+				t.Fatalf("report = %+v, want repairable %t", report, tt.wantRepair)
+			}
+		})
+	}
+}
+
+func TestEvaluateHealth_UnevaluableAliveBlocksRepairableFailure(t *testing.T) {
+	store := testStore(t)
+	cfg := currentPlanConfig(t, "false", "true")
+	definition := `[agent]
+kind = "effect"
+scope = "run"
+
+[agent.health.alive]
+type = "shell"
+script = 'test -n "$missing"'
+
+[agent.health.alive.bind]
+missing = { from = "self.outputs.nope" }
+`
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "agent.toml"), []byte(definition), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"pane":  {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
+		"agent": {Scope: contract.TaskScopeRun, TaskID: "agent", Status: contract.TaskStatusProduced},
+	})
+	report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.ProbeUnevaluable || report.Repairable || !strings.Contains(report.Reason, "agent") {
+		t.Fatalf("report = %+v, want an unevaluable probe to block automatic repair", report)
+	}
+}
+
+func TestRunAliveForHealth_TimedOutProbeIsUnevaluable(t *testing.T) {
+	probe := task.Probe{Action: &lang.Action{Type: lang.ActionShell, Script: "sleep 1"}}
+	started := time.Now()
+	err, repairable := runAliveForHealth(probe, task.SessionVars{Name: "s"}, 20*time.Millisecond)
+	if err == nil || repairable {
+		t.Fatalf("probe = %v, repairable = %t; want an unevaluable timeout", err, repairable)
+	}
+	if time.Since(started) > 500*time.Millisecond {
+		t.Fatal("timed out probe kept the health cycle blocked")
+	}
+}
+
+func TestHealthcheckSession_UnevaluableRepairProbeEscalatesOnThirdCycleAndResets(t *testing.T) {
+	store := testStore(t)
+	cfg := aliveFixtureConfig(t, "true")
+	workflowPath := filepath.Join(cfg.BaseDir, "workflows", "default.toml")
+	workflow, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(workflowPath, append(workflow, []byte("\n[default.health]\nauto_repair_attempts = 2\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	brokenProbe := `[runner]
+kind = "effect"
+scope = "run"
+[runner.health.alive]
+type = "shell"
+script = 'test -n "$missing"'
+[runner.health.alive.bind]
+missing = { from = "self.outputs.nope" }
+`
+	probePath := filepath.Join(cfg.BaseDir, "tasks", "runner.toml")
+	if err := os.WriteFile(probePath, []byte(brokenProbe), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Status = contract.SessionStatusUp
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for cycle := 1; cycle <= 3; cycle++ {
+		report, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: "owner/repo-1"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := store.Get("owner/repo-1").Health
+		if got.UnevaluableCycles != cycle {
+			t.Fatalf("cycle %d: health = %+v", cycle, got)
+		}
+		if cycle < 3 && (got.RepairStatus != "" || report.Pushed) {
+			t.Fatalf("cycle %d: health = %+v, report = %+v; want no escalation yet", cycle, got, report)
+		}
+		if cycle == 3 && (got.RepairStatus != "repair_undecidable" || got.RepairReason == "" || !report.Pushed) {
+			t.Fatalf("cycle %d: health = %+v, report = %+v; want undecidable escalation", cycle, got, report)
+		}
+	}
+	repairs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{"plect.session.repair"}})
+	if err != nil || len(repairs) != 3 {
+		t.Fatalf("repair events = %+v, %v; want three probe skips", repairs, err)
+	}
+	for _, ev := range repairs {
+		if ev.Metadata["result"] != "skipped_probe_error" || ev.Metadata["attempt"] != "0" {
+			t.Fatalf("repair event = %+v; want no attempt consumed", ev)
+		}
+	}
+	if err := os.WriteFile(probePath, []byte(effectFixtureDoc(taskFixture{id: "runner", scope: contract.TaskScopeRun, alive: "true"})), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := HealthcheckSession(cfg, store, HealthcheckParams{SessionName: "owner/repo-1"}); err != nil {
+		t.Fatal(err)
+	}
+	got := store.Get("owner/repo-1").Health
+	if got.UnevaluableCycles != 0 || got.RepairStatus != "" {
+		t.Fatalf("health after evaluable cycle = %+v; want undecidable state cleared", got)
 	}
 }
 

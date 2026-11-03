@@ -26,6 +26,20 @@ type DownResult struct {
 
 // Down runs run-scoped cleanup (in reverse order) for the given session.
 func Down(cfg *config.Config, store *state.Store, params DownParams) (*DownResult, error) {
+	name, err := resolveSessionName(cfg, store, params.Identifier)
+	if err != nil {
+		return nil, err
+	}
+	var result *DownResult
+	err = withLifecycleLock(store, name, func() error {
+		var downErr error
+		result, downErr = downUnlocked(cfg, store, params)
+		return downErr
+	})
+	return result, err
+}
+
+func downUnlocked(cfg *config.Config, store *state.Store, params DownParams) (*DownResult, error) {
 	sessionName, session, err := resolveSession(cfg, store, params.Identifier)
 	if err != nil {
 		return nil, err

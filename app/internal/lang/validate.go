@@ -321,6 +321,7 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 	}{
 		{"tick", []string{"on", "heartbeat", "max_heartbeat", "backoff_reset"}},
 		{"healthcheck", []string{"period", "stall_threshold", "renotify_every"}},
+		{"health", []string{"auto_repair_attempts"}},
 	} {
 		raw, ok := def.Body[clock.field]
 		if !ok {
@@ -333,6 +334,11 @@ func (v Validation) validateWorkflow(def *Definition, pos Position) error {
 		}
 		if err := rejectUnknownFields(tbl, at, clock.fields...); err != nil {
 			return err
+		}
+		if clock.field == "health" {
+			if _, ok := tbl["auto_repair_attempts"]; !ok {
+				return newDiag(CodeFieldRequired, LayerStructural, childPos(at, "auto_repair_attempts"), "workflow [health] declares `auto_repair_attempts`")
+			}
 		}
 	}
 	_, err = WorkflowNodes(def)

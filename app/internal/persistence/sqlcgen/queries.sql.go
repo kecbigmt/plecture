@@ -285,6 +285,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
+       health_repair_status, health_repair_reason, health_unevaluable_cycles,
        tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
        created_at, updated_at
 FROM sessions
@@ -317,6 +318,9 @@ func (q *Queries) GetLatestDestroyedSession(ctx context.Context, name string) (S
 		&i.HealthLastReason,
 		&i.HealthLastNotifiedAt,
 		&i.HealthNotifyCount,
+		&i.HealthRepairStatus,
+		&i.HealthRepairReason,
+		&i.HealthUnevaluableCycles,
 		&i.TickConsecutiveUnchanged,
 		&i.TickLastFingerprint,
 		&i.LastTickAt,
@@ -332,6 +336,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
+       health_repair_status, health_repair_reason, health_unevaluable_cycles,
        tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
        created_at, updated_at
 FROM sessions WHERE name = ? AND status <> 'destroyed'
@@ -361,6 +366,9 @@ func (q *Queries) GetLiveSession(ctx context.Context, name string) (Session, err
 		&i.HealthLastReason,
 		&i.HealthLastNotifiedAt,
 		&i.HealthNotifyCount,
+		&i.HealthRepairStatus,
+		&i.HealthRepairReason,
+		&i.HealthUnevaluableCycles,
 		&i.TickConsecutiveUnchanged,
 		&i.TickLastFingerprint,
 		&i.LastTickAt,
@@ -649,9 +657,10 @@ INSERT INTO sessions (
     population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
+    health_repair_status, health_repair_reason, health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type InsertSessionParams struct {
@@ -675,6 +684,9 @@ type InsertSessionParams struct {
 	HealthLastReason         sql.NullString
 	HealthLastNotifiedAt     sql.NullString
 	HealthNotifyCount        sql.NullInt64
+	HealthRepairStatus       sql.NullString
+	HealthRepairReason       sql.NullString
+	HealthUnevaluableCycles  sql.NullInt64
 	TickConsecutiveUnchanged sql.NullInt64
 	TickLastFingerprint      sql.NullString
 	LastTickAt               sql.NullString
@@ -705,6 +717,9 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.HealthLastReason,
 		arg.HealthLastNotifiedAt,
 		arg.HealthNotifyCount,
+		arg.HealthRepairStatus,
+		arg.HealthRepairReason,
+		arg.HealthUnevaluableCycles,
 		arg.TickConsecutiveUnchanged,
 		arg.TickLastFingerprint,
 		arg.LastTickAt,
@@ -1185,6 +1200,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
+       health_repair_status, health_repair_reason, health_unevaluable_cycles,
        tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
        created_at, updated_at
 FROM sessions WHERE status <> 'destroyed' ORDER BY name
@@ -1220,6 +1236,9 @@ func (q *Queries) ListLiveSessions(ctx context.Context) ([]Session, error) {
 			&i.HealthLastReason,
 			&i.HealthLastNotifiedAt,
 			&i.HealthNotifyCount,
+			&i.HealthRepairStatus,
+			&i.HealthRepairReason,
+			&i.HealthUnevaluableCycles,
 			&i.TickConsecutiveUnchanged,
 			&i.TickLastFingerprint,
 			&i.LastTickAt,
@@ -1245,6 +1264,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
+       health_repair_status, health_repair_reason, health_unevaluable_cycles,
        tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
        created_at, updated_at
 FROM sessions WHERE alias = ? AND status <> 'destroyed' ORDER BY name
@@ -1280,6 +1300,9 @@ func (q *Queries) ListLiveSessionsByAlias(ctx context.Context, alias sql.NullStr
 			&i.HealthLastReason,
 			&i.HealthLastNotifiedAt,
 			&i.HealthNotifyCount,
+			&i.HealthRepairStatus,
+			&i.HealthRepairReason,
+			&i.HealthUnevaluableCycles,
 			&i.TickConsecutiveUnchanged,
 			&i.TickLastFingerprint,
 			&i.LastTickAt,
@@ -2443,6 +2466,9 @@ UPDATE sessions SET
     health_last_reason = ?,
     health_last_notified_at = ?,
     health_notify_count = ?,
+    health_repair_status = ?,
+    health_repair_reason = ?,
+    health_unevaluable_cycles = ?,
     tick_consecutive_unchanged = ?,
     tick_last_fingerprint = ?,
     last_tick_at = ?,
@@ -2470,6 +2496,9 @@ type UpdateSessionByIDParams struct {
 	HealthLastReason         sql.NullString
 	HealthLastNotifiedAt     sql.NullString
 	HealthNotifyCount        sql.NullInt64
+	HealthRepairStatus       sql.NullString
+	HealthRepairReason       sql.NullString
+	HealthUnevaluableCycles  sql.NullInt64
 	TickConsecutiveUnchanged sql.NullInt64
 	TickLastFingerprint      sql.NullString
 	LastTickAt               sql.NullString
@@ -2498,6 +2527,9 @@ func (q *Queries) UpdateSessionByID(ctx context.Context, arg UpdateSessionByIDPa
 		arg.HealthLastReason,
 		arg.HealthLastNotifiedAt,
 		arg.HealthNotifyCount,
+		arg.HealthRepairStatus,
+		arg.HealthRepairReason,
+		arg.HealthUnevaluableCycles,
 		arg.TickConsecutiveUnchanged,
 		arg.TickLastFingerprint,
 		arg.LastTickAt,

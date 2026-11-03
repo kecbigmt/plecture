@@ -8,6 +8,7 @@ import "fmt"
 var cascadeWholeFields = map[string]bool{
 	"tick":        true,
 	"healthcheck": true,
+	"health":      true,
 	"populations": true,
 }
 

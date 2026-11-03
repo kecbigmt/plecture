@@ -129,6 +129,9 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 	rt := result.Runtime
 	fmt.Fprintf(w, "Run:\t%s\n", formatRunLine(rt))
 	fmt.Fprintf(w, "Health:\t%s\n", formatHealthLine(rt))
+	if rt.RepairStatus != "" {
+		fmt.Fprintf(w, "Repair:\t%s\n", formatRepairLine(rt))
+	}
 	if rt.Message != nil && rt.Message.Text != "" {
 		fmt.Fprintf(w, "Message:\t%s (%s)\n", rt.Message.Text, formatLastActive(rt.Message.UpdatedAt))
 	} else {
@@ -368,6 +371,13 @@ func formatHealthLine(rt service.StatusRuntime) string {
 		parts = append(parts, "last_activity_at "+rt.LastActivityAt.Format("2006-01-02 15:04:05"))
 	}
 	return strings.Join(parts, "   ")
+}
+
+func formatRepairLine(rt service.StatusRuntime) string {
+	if rt.RepairReason == "" {
+		return rt.RepairStatus
+	}
+	return fmt.Sprintf("%s (%s)", rt.RepairStatus, rt.RepairReason)
 }
 
 // statusChainSpawnStatus renders a StatusChain the same way chainSpawnStatus

@@ -149,6 +149,13 @@ func TestFormatHealthLine_Stalled(t *testing.T) {
 	}
 }
 
+func TestFormatRepairLine_ShowsSuspensionForDownRun(t *testing.T) {
+	rt := service.StatusRuntime{Run: domain.RunDown, RepairStatus: "repair_suspended", RepairReason: "automatic repair suspended after 3 attempts"}
+	if got := formatRepairLine(rt); got != "repair_suspended (automatic repair suspended after 3 attempts)" {
+		t.Fatalf("formatRepairLine() = %q", got)
+	}
+}
+
 // A run=up session with no produced task shows the bare run state — no
 // parenthetical, since there is nothing to attribute it to.
 func TestFormatRunLine_RunUpWithNoProducedTask(t *testing.T) {

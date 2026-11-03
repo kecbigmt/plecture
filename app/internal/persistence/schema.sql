@@ -40,6 +40,9 @@ CREATE TABLE sessions (
     health_last_reason TEXT,
     health_last_notified_at TEXT,
     health_notify_count INTEGER,
+    health_repair_status TEXT CHECK (health_repair_status IS NULL OR health_repair_status IN ('repair_undecidable', 'repair_suspended')),
+    health_repair_reason TEXT,
+    health_unevaluable_cycles INTEGER,
     -- Tick backoff's own log-position watermark lives in event_cursors'
     -- `heartbeat` kind instead of a column here; see that table.
     tick_consecutive_unchanged INTEGER,

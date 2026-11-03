@@ -21,7 +21,7 @@ var kindFields = map[Kind]map[string]bool{
 		"args", "bin", "bind", "body", "command", "input_schema", "path",
 		"script", "stdin", "timeout", "type"),
 	KindWorkflow: fieldSet(
-		"auto_select", "description", "display", "event", "healthcheck",
+		"auto_select", "description", "display", "event", "health", "healthcheck",
 		"inputs_schema", "inputs_schema_file", "max_up_children", "name",
 		"nodes", "populations", "tick", "workspace_provider", "workspace_provider_inputs"),
 	KindWorkspaceProvider: fieldSet(
