@@ -299,9 +299,10 @@ the breaking change — not as follow-up work.
   `supersedes: <YYYY-MM-DD-slug>`, and the old ADR gets YAML frontmatter
   `superseded_by: <YYYY-MM-DD-slug>`. That frontmatter edit is the only edit
   permitted to an accepted ADR. A superseding ADR has a section titled
-  "Supersession scope", placed between Context and Decision, that states which
-  decisions of the superseded ADR it replaces; decisions it does not list
-  remain in force.
+  "Supersession scope", placed between Context and Decision, that lists only
+  the decisions of the superseded ADR it replaces, one bullet per decision
+  citing the superseded ADR's heading; it does not enumerate what remains in
+  force, because every decision not listed remains in force.
 - ADR frontmatter is present only when metadata exists, matching the
   knowledge-bundle documents' existing practice. Do not add empty frontmatter
   blocks or status keys. The ADR title remains the Markdown H1.
