@@ -222,9 +222,6 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
-# The start time is what tells this process apart from an unrelated one that
-# reuses its pid after the container, and with it the pid namespace, is
-# replaced.
 PID_STARTED=$(ps -o lstart= -p "$PID" 2>/dev/null | sed 's/^ *//; s/ *$//')
 if [ -z "$PID_STARTED" ]; then
   echo "could not read the start time of codex pid $PID" >&2

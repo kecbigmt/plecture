@@ -20,7 +20,7 @@ case "$*" in
     fi
     ;;
   *lstart=*)
-    printf '%s\n' "started-$target"
+    [ -n "${PLECT_EFFECT_EMPTY_LSTART-}" ] || printf '%s\n' "started-$target"
     ;;
   *)
     printf '%s\n' "claude"

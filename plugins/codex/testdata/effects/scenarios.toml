@@ -4,7 +4,6 @@
 # from the pane's own root (PLECT_EFFECT_PID), so a kill-on-failure
 # scenario can prove it left the pane alone.
 
-# This proves a launch's own record is alive straight after setup.
 [[codex]]
 name    = "launch-then-alive"
 capture = "› "
@@ -14,16 +13,11 @@ hooks   = ["setup", "health.alive"]
 path    = ".codex/sessions/rollout.jsonl"
 content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
 
-# The recorded pid is live, but its start time is not the one setup
-# recorded: a replaced container can hand the same pid number to an
-# unrelated process.
 [[codex]]
 name  = "pid-reused-by-unrelated-process-is-not-alive"
 self  = { pid = "WORKER_PID", pid_started = "started-before-reuse" }
 hooks = ["health.alive"]
 
-# A record written before pid_started existed carries only the pid, and is
-# judged by that alone.
 [[codex]]
 name  = "record-without-pid-started-is-judged-by-pid"
 self  = { pid = "WORKER_PID" }
@@ -51,6 +45,17 @@ content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"111
 name                       = "launch-succeeds-then-output-fails-kills-worker"
 capture                    = "› "
 fail_output                = true
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+[[codex.files]]
+path    = ".codex/sessions/rollout.jsonl"
+content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
+
+[[codex]]
+name                       = "unreadable-start-time-kills-worker"
+capture                    = "› "
+empty_start_time           = true
 expect_worker_process_dead = true
 hooks                      = ["setup"]
 

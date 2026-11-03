@@ -165,6 +165,19 @@ hooks                      = ["setup"]
 path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
+# This proves a start time that cannot be read declines setup rather than
+# recording a pid that alive could not later tell apart from a reused one,
+# and the launched child is killed while the pane survives.
+[[runtime]]
+name                       = "unreadable-start-time-kills-worker"
+empty_start_time           = true
+expect_worker_process_dead = true
+hooks                      = ["setup"]
+
+[[runtime.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
 [[claude_initial_prompt]]
 inputs  = { terminal_ready = "acme-widget-1", agent_session = "1234", prompt = "rendered instruction", repeat = "" }
 capture = "› "

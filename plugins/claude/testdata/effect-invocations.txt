@@ -357,3 +357,20 @@ call[12]: "ps" "-p" "<pid>" "-o" "comm="
 call[13]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[14]: "ps" "-p" "<pid>" "-o" "comm="
 declined: task "runtime" setup: exit status 1
+
+== runtime:unreadable-start-time-kills-worker / setup
+call[0]: "uuidgen"
+call[1]: "mktemp" "<state>/plect-mcp.XXXXXX"
+call[2]: "claude-mcp-servers"
+call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+call[4]: "mktemp" "<state>/plect-hooks.XXXXXX"
+call[5]: "terminal-pid"
+call[6]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; claude --session-id aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee --mcp-config <state>/plect-mcp.json --settings <state>/plect-hooks.json    --permission-mode bypassPermissions --disallowedTools AskUserQuestion"
+call[7]: "terminal-send_keys" "Enter"
+call[8]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[9]: "pgrep" "-P" "<pid>"
+call[10]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[11]: "ps" "-p" "<pid>" "-o" "comm="
+call[12]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[13]: "ps" "-p" "<pid>" "-o" "comm="
+declined: task "runtime" setup: exit status 1

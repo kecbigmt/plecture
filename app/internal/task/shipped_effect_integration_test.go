@@ -359,6 +359,11 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 	} else {
 		t.Setenv("PLECT_EFFECT_FAIL_OUTPUT", "")
 	}
+	if scenario.EmptyStartTime {
+		t.Setenv("PLECT_EFFECT_EMPTY_LSTART", "1")
+	} else {
+		t.Setenv("PLECT_EFFECT_EMPTY_LSTART", "")
+	}
 	for _, file := range scenario.Files {
 		path := filepath.Join(h.homeDir, file.Path)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

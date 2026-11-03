@@ -83,6 +83,9 @@ type effectScenario struct {
 	// assembles is already validated by the time setup reaches it, so no
 	// scenario input can make it fail on its own.
 	FailOutput bool `toml:"fail_output"`
+	// EmptyStartTime makes each plugin's own ps stand-in report no start
+	// time for any pid, as when the process table cannot be read.
+	EmptyStartTime bool `toml:"empty_start_time"`
 }
 
 type effectScenarioFile struct {
