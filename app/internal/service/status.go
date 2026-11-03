@@ -164,9 +164,14 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	runState := sessionRunState(cfg, session)
 	healthReport, healthState := sessionHealthReport(cfg, store, sessionName)
 	repairStatus, repairReason := "", ""
-	if session.Health != nil {
-		repairStatus = session.Health.RepairStatus
-		repairReason = session.Health.RepairReason
+	_, suspended, suspensionReason, err := repairAttemptObservation(store, sessionName)
+	if err != nil {
+		return nil, err
+	}
+	if suspended {
+		repairStatus, repairReason = "repair_suspended", suspensionReason
+	} else if session.Health != nil && session.Health.UnevaluableCycles >= 3 {
+		repairStatus, repairReason = "repair_undecidable", session.Health.LastReason
 	}
 
 	displayTitle := sessionDisplayTitle(cfg, session)

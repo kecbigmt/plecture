@@ -887,8 +887,6 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 			LastReason:        "alive probe passed",
 			LastNotifiedAt:    earlier,
 			NotifyCount:       2,
-			RepairStatus:      "repair_undecidable",
-			RepairReason:      "agent: probe timed out",
 			UnevaluableCycles: 3,
 		},
 		ChannelValidationHealth: &contract.ChannelHealth{
@@ -970,7 +968,7 @@ func TestPutSessionAndGetSession_EveryFieldRoundTrips(t *testing.T) {
 	if !got.Health.LastCheckedAt.Equal(earlier) || !got.Health.LastActivityAt.Equal(earlier) ||
 		got.Health.LastFingerprint != "fp-1" || got.Health.LastState != "healthy" || got.Health.LastReason != "alive probe passed" ||
 		!got.Health.LastNotifiedAt.Equal(earlier) || got.Health.NotifyCount != 2 ||
-		got.Health.RepairStatus != "repair_undecidable" || got.Health.RepairReason != "agent: probe timed out" || got.Health.UnevaluableCycles != 3 {
+		got.Health.UnevaluableCycles != 3 {
 		t.Errorf("Health = %+v", got.Health)
 	}
 	if got.ChannelValidationHealth == nil || got.ChannelValidationHealth.ConsecutiveFailures != 1 || got.ChannelValidationHealth.LastError != "no valid channel definition" {

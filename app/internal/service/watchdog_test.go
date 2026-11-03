@@ -256,11 +256,18 @@ missing = { from = "self.outputs.nope" }
 		if got.UnevaluableCycles != cycle {
 			t.Fatalf("cycle %d: health = %+v", cycle, got)
 		}
-		if cycle < 3 && (got.RepairStatus != "" || report.Pushed) {
+		if cycle < 3 && report.Pushed {
 			t.Fatalf("cycle %d: health = %+v, report = %+v; want no escalation yet", cycle, got, report)
 		}
-		if cycle == 3 && (got.RepairStatus != "repair_undecidable" || got.RepairReason == "" || !report.Pushed) {
+		if cycle == 3 && !report.Pushed {
 			t.Fatalf("cycle %d: health = %+v, report = %+v; want undecidable escalation", cycle, got, report)
+		}
+		status, err := Status(cfg, store, "owner/repo-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cycle == 3 && (status.Runtime.RepairStatus != "repair_undecidable" || status.Runtime.RepairReason == "") {
+			t.Fatalf("cycle %d: runtime = %+v; want undecidable", cycle, status.Runtime)
 		}
 	}
 	repairs, _, _, err := eventlog.NewStore(store.Dir()).List("owner/repo-1", 0, event.Filter{Types: []string{"plect.session.repair"}})
@@ -279,7 +286,7 @@ missing = { from = "self.outputs.nope" }
 		t.Fatal(err)
 	}
 	got := store.Get("owner/repo-1").Health
-	if got.UnevaluableCycles != 0 || got.RepairStatus != "" {
+	if got.UnevaluableCycles != 0 {
 		t.Fatalf("health after evaluable cycle = %+v; want undecidable state cleared", got)
 	}
 }

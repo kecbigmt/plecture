@@ -207,10 +207,7 @@ func TestRepairAttemptState_SuccessfulHumanUpResetsStreak(t *testing.T) {
 	if err := appendRepairEvent(store, name, "health", 1, "started", "agent failed"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Update(name, func(s *domain.Session) error {
-		s.Health = &contract.HealthState{RepairStatus: "repair_suspended", RepairReason: "automatic repair suspended"}
-		return nil
-	}); err != nil {
+	if err := appendRepairEvent(store, name, "health", 1, "suspended", "automatic repair suspended"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
@@ -219,9 +216,6 @@ func TestRepairAttemptState_SuccessfulHumanUpResetsStreak(t *testing.T) {
 	count, suspended, err := repairAttemptState(store, name)
 	if err != nil || count != 0 || suspended {
 		t.Fatalf("attempt state after human Up = (%d, %t, %v), want reset", count, suspended, err)
-	}
-	if got := store.Get(name).Health; got == nil || got.RepairStatus != "" || got.RepairReason != "" {
-		t.Fatalf("health after human Up = %+v, want suspension cleared", got)
 	}
 }
 
@@ -324,8 +318,8 @@ func TestRepairSession_SuspendsAfterAttemptLimit(t *testing.T) {
 	if err != nil || attempted {
 		t.Fatalf("after limit = (%t, %v), want suspended without Up", attempted, err)
 	}
-	if got := store.Get(name).Health; got == nil || got.RepairStatus != "repair_suspended" || got.RepairReason == "" {
-		t.Fatalf("health after limit = %+v", got)
+	if _, suspended, reason, err := repairAttemptObservation(store, name); err != nil || !suspended || reason == "" {
+		t.Fatalf("repair observation after limit = (%t, %q, %v)", suspended, reason, err)
 	}
 	count, suspended, err := repairAttemptState(store, name)
 	if err != nil || count != 2 || !suspended {

@@ -366,8 +366,6 @@ func (db *DB) writeSessionTx(ctx context.Context, tx *sql.Tx, s *domain.Session)
 		HealthLastReason:         health.lastReason,
 		HealthLastNotifiedAt:     health.lastNotifiedAt,
 		HealthNotifyCount:        health.notifyCount,
-		HealthRepairStatus:       health.repairStatus,
-		HealthRepairReason:       health.repairReason,
 		HealthUnevaluableCycles:  health.unevaluableCycles,
 		TickConsecutiveUnchanged: tickConsecutiveUnchanged,
 		TickLastFingerprint:      tickLastFingerprint,
@@ -408,8 +406,6 @@ func insertSessionParams(id, status string, parentCol, rootCol, populationWorkfl
 		HealthLastReason:         health.lastReason,
 		HealthLastNotifiedAt:     health.lastNotifiedAt,
 		HealthNotifyCount:        health.notifyCount,
-		HealthRepairStatus:       health.repairStatus,
-		HealthRepairReason:       health.repairReason,
 		HealthUnevaluableCycles:  health.unevaluableCycles,
 		TickConsecutiveUnchanged: tickConsecutiveUnchanged,
 		TickLastFingerprint:      tickLastFingerprint,
@@ -464,8 +460,6 @@ type healthColumns struct {
 	lastReason        sql.NullString
 	lastNotifiedAt    sql.NullString
 	notifyCount       sql.NullInt64
-	repairStatus      sql.NullString
-	repairReason      sql.NullString
 	unevaluableCycles sql.NullInt64
 }
 
@@ -484,8 +478,6 @@ func sessionHealthColumns(h *contract.HealthState) healthColumns {
 		lastReason:        nullString(h.LastReason),
 		lastNotifiedAt:    formatTimeNull(h.LastNotifiedAt),
 		notifyCount:       sql.NullInt64{Int64: int64(h.NotifyCount), Valid: true},
-		repairStatus:      nullString(h.RepairStatus),
-		repairReason:      nullString(h.RepairReason),
 		unevaluableCycles: sql.NullInt64{Int64: int64(h.UnevaluableCycles), Valid: true},
 	}
 }
@@ -666,7 +658,7 @@ func sessionFromRow(row sqlcgen.Session) (*domain.Session, error) {
 func healthFromRow(row sqlcgen.Session) (*contract.HealthState, error) {
 	if !row.HealthLastCheckedAt.Valid && !row.HealthLastActivityAt.Valid && !row.HealthLastFingerprint.Valid &&
 		!row.HealthLastState.Valid && !row.HealthLastReason.Valid && !row.HealthLastNotifiedAt.Valid && !row.HealthNotifyCount.Valid &&
-		!row.HealthRepairStatus.Valid && !row.HealthRepairReason.Valid && !row.HealthUnevaluableCycles.Valid {
+		!row.HealthUnevaluableCycles.Valid {
 		return nil, nil
 	}
 	lastCheckedAt, err := parseTimeNull(row.HealthLastCheckedAt)
@@ -689,8 +681,6 @@ func healthFromRow(row sqlcgen.Session) (*contract.HealthState, error) {
 		LastReason:        row.HealthLastReason.String,
 		LastNotifiedAt:    lastNotifiedAt,
 		NotifyCount:       int(row.HealthNotifyCount.Int64),
-		RepairStatus:      row.HealthRepairStatus.String,
-		RepairReason:      row.HealthRepairReason.String,
 		UnevaluableCycles: int(row.HealthUnevaluableCycles.Int64),
 	}, nil
 }
