@@ -319,7 +319,6 @@ CREATE UNIQUE INDEX events_session_id_sequence ON events(session_id, sequence);
 CREATE INDEX events_session_id_id_idx ON events(session_id, id);
 -- Backs the status-message reader's latest-event-of-this-type lookup.
 CREATE INDEX events_session_id_type_sequence_idx ON events(session_id, type, sequence);
--- Keep this predicate aligned with repairAttemptObservation in app/internal/service/repair.go.
 CREATE INDEX events_repair_state_change_idx ON events(session_id, type, sequence)
 WHERE (
     json_extract(metadata_json, '$.result') IN ('started', 'suspended')
