@@ -1,3 +1,7 @@
+---
+superseded_by: 2026-11-04-opt-in-session-repair
+---
+
 # Runtime failure model
 
 ## Context
