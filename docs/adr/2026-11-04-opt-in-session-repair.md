@@ -98,8 +98,9 @@ boundary in the same session event stream when a repair streak exists; it does
 not need a new state column. A successful automatic `Up` does not by itself
 reset the budget: a later healthy observation must prove recovery. A failed
 automatic `Up` also consumes its started attempt, including an admission-cap
-rejection. A successful explicit `plect up` command is the human reset; the
-serve loop's `Up` call is identified as an automatic repair and cannot reset
+rejection. A successful human-initiated `up` through the `plect up` CLI command
+or Web UI resets the budget; an MCP `plect_up` does not. The serve loop's `Up`
+call is identified as an automatic repair and cannot reset
 its own budget. When the count reaches the configured limit and the session
 still needs repair, the cycle emits `suspended` once for that streak, makes no
 further `Up` calls, and reports `repair_suspended` with the reason and attempt
