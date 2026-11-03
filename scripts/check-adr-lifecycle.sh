@@ -8,8 +8,7 @@
 # when both <base-ref> and <head-ref> are given: it compares each ADR that
 # exists at the merge base of the two against its head version.
 #
-# The `Supersession scope` heading, required of ADRs dated on or after
-# scope_rule_since (positioned after Context, before
+# The `Supersession scope` heading (positioned after Context, before
 # Decision) is a weak proxy for "states which decisions are replaced": it
 # catches omission, not vagueness.
 set -euo pipefail
@@ -23,11 +22,6 @@ if [ "$#" -ne 0 ] && [ "$#" -ne 2 ]; then
 fi
 
 adr_dir="docs/adr"
-
-# ADRs dated before the Supersession scope rule entered CLAUDE.md predate it
-# and cannot gain the heading, because their bodies are immutable; the
-# filename date is compared, so a rebase or revert cannot shift the gate.
-scope_rule_since="2026-11-04"
 fail=0
 
 report() {
@@ -89,14 +83,6 @@ has_scope_heading() {
   ' "$1"
 }
 
-scope_rule_applies() {
-  local date="${1:0:10}"
-  if [[ ! "$date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-    return 0
-  fi
-  [[ ! "$date" < "$scope_rule_since" ]]
-}
-
 check_links_and_scope() {
   local f slug key target other want
   for f in "$adr_dir"/*.md; do
@@ -123,7 +109,7 @@ check_links_and_scope() {
         report "$f: \`$key: $target\` is one-directional; $adr_dir/$target.md lacks \`$want: $slug\`"
       fi
     done < <(frontmatter_links "$f")
-    if [ "$has_supersedes" -eq 1 ] && scope_rule_applies "$slug" && ! has_scope_heading "$f"; then
+    if [ "$has_supersedes" -eq 1 ] && ! has_scope_heading "$f"; then
       report "$f: declares \`supersedes:\` but has no \`Supersession scope\` heading between its \`Context\` and \`Decision\` headings"
     fi
   done

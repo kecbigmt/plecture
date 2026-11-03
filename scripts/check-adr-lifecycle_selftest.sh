@@ -117,14 +117,20 @@ printf -- '---\nsupersedes:\n  - %s\n  - %s\n---\n\n# New decision\n\n## Context
 commit_all "$d" base
 expect clean-list-form pass ""
 
-# pre-rule-superseding-adr: a superseding ADR dated before the scope rule
-# needs no heading, and its list-form supersedes still links both ways.
-d="$(new_fixture pre-rule-superseding-adr)"
+# list-form-clean: a list-valued supersedes links both ways.
+d="$(new_fixture list-form-clean)"
 printf -- '---\nsuperseded_by: 2026-11-03-early\n---\n\n# A\n' >"$d/docs/adr/2026-01-01-a.md"
 printf -- '---\nsuperseded_by: 2026-11-03-early\n---\n\n# B\n' >"$d/docs/adr/2026-01-02-b.md"
-printf -- '---\nsupersedes:\n  - 2026-01-01-a\n  - 2026-01-02-b\n---\n\n# Early\n' >"$d/docs/adr/2026-11-03-early.md"
+printf -- '---\nsupersedes:\n  - 2026-01-01-a\n  - 2026-01-02-b\n---\n\n# Early\n\n## Context\n\n## Supersession scope\n\n## Decision\n' >"$d/docs/adr/2026-11-03-early.md"
 commit_all "$d" base
-expect pre-rule-superseding-adr pass ""
+expect list-form-clean pass ""
+
+# old-superseding-adr-without-heading: no date exemption exists.
+d="$(new_fixture old-superseding-adr-without-heading)"
+printf -- '---\nsuperseded_by: 2026-02-01-early\n---\n\n# A\n' >"$d/docs/adr/2026-01-01-a.md"
+printf -- '---\nsupersedes: 2026-01-01-a\n---\n\n# Early\n' >"$d/docs/adr/2026-02-01-early.md"
+commit_all "$d" base
+expect old-superseding-adr-without-heading fail "Supersession scope"
 
 # list-form-one-directional: every list item must link back.
 d="$(new_fixture list-form-one-directional)"
