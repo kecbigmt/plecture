@@ -924,6 +924,7 @@ type LatestRepairStateChangeRow struct {
 }
 
 // The broader type index would scan every skipped probe after the last repair state change.
+// Keep this predicate aligned with events_repair_state_change_idx and repairAttemptObservation.
 func (q *Queries) LatestRepairStateChange(ctx context.Context, arg LatestRepairStateChangeParams) (LatestRepairStateChangeRow, error) {
 	row := q.db.QueryRowContext(ctx, latestRepairStateChange, arg.SessionID, arg.Type)
 	var i LatestRepairStateChangeRow
