@@ -1,8 +1,10 @@
 ---
-superseded_by: 2026-11-04-opt-in-session-repair
+amended_by: 2026-11-04-opt-in-session-repair
 ---
 
 # Runtime failure model
+
+§1 の「health は修復しない」だけを 2026-11-04-opt-in-session-repair で狭めた。他の決定は有効。
 
 ## Context
 

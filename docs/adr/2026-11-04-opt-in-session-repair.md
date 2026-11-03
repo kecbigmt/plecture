@@ -1,5 +1,5 @@
 ---
-supersedes: 2026-09-06-runtime-failure-model
+amends: 2026-09-06-runtime-failure-model
 ---
 
 # Opt-in repair of sessions intended to be up
