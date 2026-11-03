@@ -28,7 +28,15 @@ This decision supersedes `2026-08-17-workspace-provider-vocabulary` in part.
 - `## Decision`: the code-facing vocabulary (`workspaces/`, `workspace_provider`, `workspace_dir`).
 - `## Decision`: `github-worktree` as the workspace provider's executable name.
 - `## Consequences`: the rename-based migration shape.
-- `## Alternatives considered`: every entry except `### Mechanical concept-to-binary naming`, ``### Retain `plect-` for plugin executables ``, and `### CLI as the executable noun`.
+- ``### Keep bare `provider` ``: rejection of a name for the retired concept.
+- `### Workspace definition`: rejection of a name for the retired concept.
+- `### Workspace source`: rejection of a name for the retired concept.
+- `### Bare source`: rejection of a name for the retired concept.
+- `### Workdir source`: rejection of a name for the retired concept.
+- `### Workdir provider`: rejection of a name for the retired concept.
+- ``### Workspace provider with `workspace_providers/` ``: rejection of a name for the retired concept.
+- `### Provider/resource concept-split mains`: rejection of a name for the retired concept.
+- `### Workspace as generic runner language`: rejection of a name for the retired concept.
 
 ## Decision
 
