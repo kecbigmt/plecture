@@ -33,6 +33,21 @@ hooks   = ["health.alive"]
 path    = ".claude/sessions/live.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
+# The recorded pid is live, but its start time is not the one setup
+# recorded: a replaced container can hand the same pid number to an
+# unrelated process.
+[[runtime]]
+name  = "pid-reused-by-unrelated-process-is-not-alive"
+self  = { pid = "WORKER_PID", pid_started = "started-before-reuse" }
+hooks = ["health.alive"]
+
+# A record written before pid_started existed carries only the pid, and is
+# judged by that alone.
+[[runtime]]
+name  = "record-without-pid-started-is-judged-by-pid"
+self  = { pid = "WORKER_PID" }
+hooks = ["health.alive"]
+
 # Normal recovery may replace a matching Claude process left in the pane,
 # ensuring setup never types its launch line into that process's conversation.
 [[runtime]]
