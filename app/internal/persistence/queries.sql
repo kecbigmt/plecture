@@ -541,7 +541,6 @@ FROM events WHERE session_id = ? AND type = ? ORDER BY sequence DESC LIMIT 1;
 
 -- name: LatestRepairStateChange :one
 -- The broader type index would scan every skipped probe after the last repair state change.
--- Keep this predicate aligned with events_repair_state_change_idx and repairAttemptObservation.
 SELECT id, sequence, time, type, source, direction, summary, body, metadata_json
 FROM events INDEXED BY events_repair_state_change_idx
 WHERE session_id = ? AND type = ?

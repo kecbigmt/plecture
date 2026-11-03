@@ -137,7 +137,6 @@ func repairAttemptObservation(store *state.Store, name string) (int, bool, strin
 	suspended := false
 	reason := ""
 	for _, ev := range events {
-		// Keep these state changes aligned with events_repair_state_change_idx in persistence/schema.sql.
 		switch {
 		case ev.Metadata["result"] == "succeeded" && ev.Metadata["attempt"] == "0":
 			attempts = 0
