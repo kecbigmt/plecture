@@ -132,6 +132,20 @@ printf -- '---\nsupersedes: 2026-01-01-a\n---\n\n# Early\n' >"$d/docs/adr/2026-0
 commit_all "$d" base
 expect old-superseding-adr-without-heading fail "Supersession scope"
 
+# indentless-list-form: a block list whose dashes are not indented is valid YAML.
+d="$(new_fixture indentless-list-form)"
+printf -- '---\nsuperseded_by: 2026-11-03-early\n---\n\n# A\n' >"$d/docs/adr/2026-01-01-a.md"
+printf -- '---\nsupersedes:\n- 2026-01-01-a\n---\n\n# Early\n\n## Context\n\n## Supersession scope\n\n## Decision\n' >"$d/docs/adr/2026-11-03-early.md"
+commit_all "$d" base
+expect indentless-list-form pass ""
+
+# indented-fenced-scope-heading: a fence indented up to three spaces still hides the heading.
+d="$(new_fixture indented-fenced-scope-heading)"
+write_old_linked "$d"
+printf -- '---\nsupersedes: %s\n---\n\n# New\n\n## Context\n\n   ```\n## Supersession scope\n   ```\n\n## Decision\n' "$old" >"$d/docs/adr/$new.md"
+commit_all "$d" base
+expect indented-fenced-scope-heading fail "Supersession scope"
+
 # list-form-one-directional: every list item must link back.
 d="$(new_fixture list-form-one-directional)"
 printf -- '---\nsuperseded_by: 2026-11-03-early\n---\n\n# A\n' >"$d/docs/adr/2026-01-01-a.md"
@@ -219,6 +233,32 @@ commit_all "$d" base
 printf -- "---\nsupersedes: $old\nsuperseded_by: $new\n---\n$mid_body" >"$d/docs/adr/mid.md"
 commit_all "$d" "supersede mid"
 expect frontmatter-only-with-fence pass "" HEAD~1 HEAD
+
+# deleted-adr: removing an accepted ADR is not the permitted edit.
+d="$(new_fixture deleted-adr)"
+write_old_plain "$d"
+commit_all "$d" base
+git -C "$d" rm -q "docs/adr/$old.md"
+commit_all "$d" "delete adr"
+expect deleted-adr fail "removed or changed file type" HEAD~1 HEAD
+
+# renamed-and-rewritten-adr: a rename with a new body is a delete plus an add.
+d="$(new_fixture renamed-and-rewritten-adr)"
+write_old_plain "$d"
+commit_all "$d" base
+git -C "$d" mv "docs/adr/$old.md" "docs/adr/2026-03-01-renamed.md"
+printf '# Rewritten\n' >"$d/docs/adr/2026-03-01-renamed.md"
+commit_all "$d" "rename and rewrite"
+expect renamed-and-rewritten-adr fail "removed or changed file type" HEAD~1 HEAD
+
+# type-changed-adr: replacing an accepted ADR with a symlink changes its file type.
+d="$(new_fixture type-changed-adr)"
+write_old_plain "$d"
+commit_all "$d" base
+rm "$d/docs/adr/$old.md"
+ln -s elsewhere.md "$d/docs/adr/$old.md"
+commit_all "$d" "symlink adr"
+expect type-changed-adr fail "removed or changed file type" HEAD~1 HEAD
 
 # changed-superseded-by: re-pointing an existing superseded_by is not the
 # permitted addition.

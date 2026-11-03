@@ -1,16 +1,10 @@
 #!/usr/bin/env bash
-# Enforces the ADR lifecycle rules CLAUDE.md states for docs/adr/: supersession
-# links are bidirectional, an accepted ADR is immutable apart from gaining a
-# `superseded_by:` frontmatter line, and a superseding ADR names the
-# decisions it replaces under a `Supersession scope` heading.
+# Enforces the ADR lifecycle rules CLAUDE.md states for docs/adr/. The
+# immutability rule needs a diff, so it runs only when a base and head ref are
+# given; the link and scope rules need only the tree.
 #
-# Checks 1 and 3 scan the whole tree. Check 2 is diff-scoped and runs only
-# when both <base-ref> and <head-ref> are given: it compares each ADR that
-# exists at the merge base of the two against its head version.
-#
-# The `Supersession scope` heading (positioned after Context, before
-# Decision) is a weak proxy for "states which decisions are replaced": it
-# catches omission, not vagueness.
+# The scope heading is a weak proxy for "states which decisions are
+# replaced": it catches omission, not vagueness.
 set -euo pipefail
 
 root="${ADR_LIFECYCLE_CHECK_ROOT:-$(pwd)}"
@@ -29,10 +23,8 @@ report() {
   fail=1
 }
 
-# Prints "<key> <value>" for each supersedes/superseded_by value in a file's
-# frontmatter, accepting both `key: value` and a `key:` followed by `- value`
-# list items. A key with no value at all prints "<key> " so the caller can
-# flag it.
+# A key with no value prints an empty value rather than nothing, so an empty
+# `supersedes:` is reported instead of silently reading as no supersession.
 frontmatter_links() {
   awk '
     function clean(v) {
@@ -51,8 +43,8 @@ frontmatter_links() {
       if (v != "") { print key " " v; emitted = 1 }
       next
     }
-    key != "" && /^[ \t]+-[ \t]*/ {
-      v = $0; sub(/^[ \t]+-[ \t]*/, "", v); v = clean(v)
+    key != "" && /^[ \t]*-[ \t]*/ {
+      v = $0; sub(/^[ \t]*-[ \t]*/, "", v); v = clean(v)
       if (v != "") { print key " " v; emitted = 1 }
       next
     }
@@ -70,11 +62,15 @@ has_link() {
   return 1
 }
 
-# Exits 0 when a `Supersession scope` heading sits after the `Context`
-# heading and before the `Decision` heading, ignoring headings in code fences.
+# Ordering is checked, not just presence, because CLAUDE.md fixes the section
+# between Context and Decision.
 has_scope_heading() {
   awk '
-    /^(```|~~~)/ { fenced = !fenced; next }
+    /^ {0,3}(```|~~~)/ {
+      c = substr($0, match($0, /[`~]/), 1)
+      if (!fenced) { fenced = 1; fchar = c } else if (c == fchar) { fenced = 0 }
+      next
+    }
     fenced { next }
     /^#{1,6}[ \t]+Context[ \t\r]*$/ && !ctx { ctx = NR }
     /^#{1,6}[ \t]+Decision[ \t\r]*$/ && !dec { dec = NR }
@@ -115,10 +111,8 @@ check_links_and_scope() {
   done
 }
 
-# Prints the head version of an ADR with the one permitted lifecycle edit
-# undone, so a byte-for-byte comparison with the base version isolates every
-# other change. Prints nothing and returns 1 when the base already carried a
-# superseded_by line, since then no superseded_by edit is permitted at all.
+# Undoing the one permitted edit lets a byte-for-byte comparison with the base
+# version isolate every other change, including a rewritten superseded_by.
 undo_permitted_edit() {
   local base_file="$1" head_file="$2"
   if [ "$(head -n 1 "$base_file")" = "---" ]; then
@@ -147,7 +141,14 @@ check_immutability() {
   fi
   tmp="$(mktemp -d)"
   while IFS=$'\t' read -r status path; do
-    [ "$status" = "M" ] || continue
+    case "$status" in
+      A) continue ;;
+      M) ;;
+      *)
+        report "$path: accepted ADR was removed or changed file type (status $status); only a frontmatter \`superseded_by:\` addition is permitted"
+        continue
+        ;;
+    esac
     git show "$merge_base:$path" >"$tmp/base"
     git show "$head_ref:$path" >"$tmp/head"
     if [ "$(head -n 1 "$tmp/base")" = "---" ] &&
