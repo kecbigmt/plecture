@@ -120,6 +120,10 @@ recovery work lands, and a failure exits non-zero:
 PLECT_FAULT_RECOVERY=1 deploy/docker/fault/run.sh
 ```
 
+`deploy/docker/fault/lib_selftest.sh` checks the recovery assertion's helper
+without Docker, including that a resumed session whose health is not
+`healthy` is rejected.
+
 Both switches combine. The resume waits scale with the fixture's health period
 in `deploy/docker/fault/workflow.toml`.
 

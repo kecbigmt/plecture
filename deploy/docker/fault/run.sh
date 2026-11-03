@@ -52,10 +52,8 @@ else
     base="plecture-fault-base:$sha"
     docker build -f "$repo/deploy/docker/Dockerfile" --build-arg "PLECT_SOURCE_SHA=$sha" -t "$base" "$repo"
   else
-    # A named build context replaces the Dockerfile's `source` stage, so the
-    # unmodified base Dockerfile packages the working tree instead of a
-    # fetched commit. Tracked and untracked-but-not-ignored files are copied;
-    # a deleted tracked file is skipped.
+    # Reusing the base Dockerfile unmodified keeps the tested image from
+    # drifting from the shipped one.
     mkdir -p "$tmp/local-source/src"
     git -C "$repo" ls-files -z --cached --others --exclude-standard \
       | while IFS= read -r -d '' f; do
