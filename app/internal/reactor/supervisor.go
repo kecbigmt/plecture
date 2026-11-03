@@ -173,13 +173,19 @@ func (sup *Supervisor) checkRepairDown(ctx context.Context, now time.Time, last 
 		if ctx.Err() != nil {
 			return next
 		}
-		if s.Status != contract.SessionStatusUp || cfg.RunScopeUp(s) {
+		if s.Status != contract.SessionStatusUp {
 			delete(last, name)
 			delete(sup.repairWorkflowErrors, name)
 			continue
 		}
+		runUp := cfg.RunScopeUp(s)
 		wf, err := cfg.ResolveSessionWorkflow(s)
 		if err != nil {
+			if runUp {
+				delete(last, name)
+				delete(sup.repairWorkflowErrors, name)
+				continue
+			}
 			if sup.repairWorkflowErrors == nil {
 				sup.repairWorkflowErrors = map[string]string{}
 			}
@@ -196,6 +202,11 @@ func (sup *Supervisor) checkRepairDown(ctx context.Context, now time.Time, last 
 			continue
 		}
 		period := config.NormalizeHealthcheckConfig(wf.Healthcheck).Period.Duration
+		next = min(next, period)
+		if runUp {
+			delete(last, name)
+			continue
+		}
 		elapsed := now.Sub(last[name])
 		if elapsed < period {
 			next = min(next, period-elapsed)

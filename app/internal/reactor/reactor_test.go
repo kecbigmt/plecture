@@ -170,7 +170,8 @@ period = "1m"
 `)
 	cfg := &config.Config{PluginDirs: []string{pluginDir}}
 	st := state.NewStore(t.TempDir())
-	if err := st.Put(&domain.Session{Name: "o/r-1", Workflow: "reactive", Status: contract.SessionStatusUp}); err != nil {
+	if err := st.Put(&domain.Session{Name: "o/r-1", Workflow: "reactive", Status: contract.SessionStatusUp,
+		Nodes: map[string]*contract.TaskState{"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}}}); err != nil {
 		t.Fatal(err)
 	}
 	log := eventlog.NewStore(st.Dir())
@@ -187,6 +188,15 @@ period = "1m"
 	}
 	last := map[string]time.Time{}
 	now := time.Now()
+	if delay := sup.checkRepairDown(context.Background(), now, last); delay != time.Minute {
+		t.Fatalf("next sweep with an up run = %s, want workflow health period 1m", delay)
+	}
+	if calls != 0 {
+		t.Fatalf("repair calls with an up run = %d, want 0", calls)
+	}
+	if err := st.ResetNodes("o/r-1"); err != nil {
+		t.Fatal(err)
+	}
 	if delay := sup.checkRepairDown(context.Background(), now, last); delay != time.Minute {
 		t.Fatalf("next repair sweep = %s, want workflow health period 1m", delay)
 	}
