@@ -182,11 +182,18 @@ jobs:
   # fixture; the individual checks it wraps are exercised for real by the
   # jobs above, so re-running check-all.sh itself against this repository
   # here would only duplicate their coverage.
+  #
+  # The ADR lifecycle check lives here rather than in its own job: its
+  # whole-repo links and scope heading run on every event, and its
+  # immutability comparison needs the PR's base/head shas and full history,
+  # so that part runs only on pull_request events.
   check-all:
     name: check-all
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -195,6 +202,14 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - name: Prove check-all.sh sequences its steps and stops naming the first failure
         run: ./scripts/check-all_selftest.sh
+      - name: Prove the ADR lifecycle checker catches seeded violations
+        run: ./scripts/check-adr-lifecycle_selftest.sh
+      - name: Check ADR supersession links, immutability, and scope
+        if: github.event_name != 'pull_request'
+        run: ./scripts/check-adr-lifecycle.sh
+      - name: Check ADR supersession links, immutability, and scope against the PR diff
+        if: github.event_name == 'pull_request'
+        run: ./scripts/check-adr-lifecycle.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
   gh-guard:
     name: gh-guard
