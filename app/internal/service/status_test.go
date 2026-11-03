@@ -116,6 +116,13 @@ func TestStatus_ReportsSuspendedWakeFailure(t *testing.T) {
 	if !strings.Contains(got.Runtime.WakeReason, "suspended after 3 attempts") {
 		t.Fatalf("wake reason = %q", got.Runtime.WakeReason)
 	}
+	if err := appendWakeEvent(store, "failed-wake", "succeeded", "runtime started"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = Status(cfg, store, "failed-wake")
+	if err != nil || got.Runtime.WakeReason != "" {
+		t.Fatalf("wake reason after success = %+v, %v; want empty", got, err)
+	}
 }
 
 func TestStatus_RuntimeCarriesHealthMovementTimestamps(t *testing.T) {
