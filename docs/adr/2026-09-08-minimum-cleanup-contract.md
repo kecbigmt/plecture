@@ -35,8 +35,6 @@ This decision supersedes `2026-09-07-resource-and-workspace-effects` and
   matching sentence under `### Execution identity and ownership`, that an
   explicit operator-confirmation operation records the operator's assertion
   of external release.
-- `### Configuration selection`, insofar as it makes the digest a comparison
-  baseline kept separate from execution records.
 
 It replaces these decisions of `2026-09-07-invocation-project-context`:
 
@@ -56,8 +54,10 @@ Every other decision of both ADRs remains in force, including:
   `workdir`, public outputs, initial task selection, chains and populations,
   `### Session entry identity`, `### Workflow public outputs`,
   `### Resource bindings`, `### Population identity across project contexts`,
-  the selected project root and preparation directory as durable session
-  facts, its `## Consequences`, and its `## Alternatives considered`.
+  `### Configuration selection` (the digest as a comparison baseline kept
+  separate from execution records and never an operation blocker, which this
+  ADR's session-wide baseline specifies further rather than replaces), its
+  `## Consequences`, and its `## Alternatives considered`.
 - Everything else in `2026-09-07-invocation-project-context`: invocation-time
   root selection through `.plect/project.toml`, definition layering, the
   trusted-root model, the session's recorded project root, the diagnostic that
