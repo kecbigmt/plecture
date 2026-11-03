@@ -97,6 +97,39 @@ func TestEvaluateHealth_NestedLayerDeclaringNoHealthIsVacuous(t *testing.T) {
 	}
 }
 
+func TestEvaluateHealth_NestedCompositionFaultWithoutRepairOptInPreservesVerdict(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		alive string
+	}{
+		{name: "no alive probe"},
+		{name: "declared alive probe", alive: "true"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			store := testStore(t)
+			cfg := nestedConfig(t, taskFixture{alive: tt.alive}, `[outputs.bind]
+pid = { expr = "int(inner.outputs.pid) / 0" }
+
+[outputs_schema]
+type = "object"
+
+[outputs_schema.properties.pid]
+type = "integer"
+`)
+			seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default",
+				nestedTasks(map[string]any{"pid": "1"}, map[string]any{"pid": "1"}, nil))
+
+			report, err := EvaluateHealth(cfg, store, "owner/repo-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !report.Healthy || report.ProbeUnevaluable || len(report.ProbeErrors) == 0 {
+				t.Fatalf("report = %+v, want old verdict with composition warning", report)
+			}
+		})
+	}
+}
+
 // TestEvaluateHealth_NestedActivityComposesByOr covers the activity OR:
 // evidence from any layer counts, and each layer's fingerprint is carried
 // under its own name so a change anywhere is visible as movement.

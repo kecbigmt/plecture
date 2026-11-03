@@ -176,7 +176,8 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	// current plan up" (reactor, dispatch, and population capacity all go
 	// through it too), so the structural gate below defers to it rather than
 	// deriving its own answer.
-	report := evaluateHealthFor(name, cfg.RunScopeUp(s), domain.MergedTasks(s), docs, defs, nodes, sessionVars(cfg, s, plan), healthCfg.StallThreshold.Duration, s.Health, now)
+	repairObservationEnabled := wf != nil && wf.Health.AutoRepairAttempts > 0 && s.Status == contract.SessionStatusUp
+	report := evaluateHealthFor(name, cfg.RunScopeUp(s), repairObservationEnabled, domain.MergedTasks(s), docs, defs, nodes, sessionVars(cfg, s, plan), healthCfg.StallThreshold.Duration, s.Health, now)
 	finalizeActivityObservation(&report, s.Health, healthCfg.StallThreshold.Duration, now)
 	persistHealthState(store, name, report, now)
 	return report, nil
@@ -314,7 +315,7 @@ func sessionOwesProgress(tasks map[string]*contract.TaskState, docs map[string]c
 // for this session, computed once by the caller: the same shared authority
 // every run-fact consumer defers to, so the structural composition below
 // cannot disagree with it.
-func evaluateHealthFor(name string, gateOpen bool, tasks map[string]*contract.TaskState, docs map[string]config.TaskDocument, defs map[string]config.TaskDefinition, nodes map[string]string, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
+func evaluateHealthFor(name string, gateOpen, repairObservationEnabled bool, tasks map[string]*contract.TaskState, docs map[string]config.TaskDocument, defs map[string]config.TaskDefinition, nodes map[string]string, vars task.SessionVars, stallThreshold time.Duration, prev *contract.HealthState, now time.Time) HealthReport {
 	declared := false
 	// The accusation side of a stall is unmet work, and work is what a task
 	// document declares. The probes that can pardon silence are a run-scoped
@@ -370,7 +371,11 @@ func evaluateHealthFor(name string, gateOpen bool, tasks map[string]*contract.Ta
 			comp, compErr := composeInstance(def, st, vars)
 			if compErr != nil {
 				probeErrors = append(probeErrors, ProbeError{Instance: nodeID, Reason: compErr.Error()})
-				if unevaluableReason == "" {
+				hasAlive := def.Health.AliveProbe() != nil
+				for _, layer := range def.InnerChain {
+					hasAlive = hasAlive || layer.Health.AliveProbe() != nil
+				}
+				if repairObservationEnabled && hasAlive && unevaluableReason == "" {
 					unevaluableReason = fmt.Sprintf("%s: %v", nodeID, compErr)
 				}
 				continue

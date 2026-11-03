@@ -30,7 +30,8 @@ type UpParams struct {
 	Population    *contract.PopulationProvenance
 	// ForceRecreate rebuilds the runtime for an existing session while
 	// preserving durable identity and event log state.
-	ForceRecreate bool
+	ForceRecreate  bool
+	HumanInitiated bool
 }
 
 // UpResult holds the outcome of Up.
@@ -61,8 +62,10 @@ func Up(cfg *config.Config, store *state.Store, params UpParams) (*UpResult, err
 		if upErr != nil {
 			return upErr
 		}
-		if err := resetRepairStreak(store, name, "manual_up"); err != nil {
-			return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but repair reset event failed: %v", err)}
+		if params.HumanInitiated {
+			if err := resetRepairStreak(store, name, "manual_up"); err != nil {
+				return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("up completed but repair reset event failed: %v", err)}
+			}
 		}
 		return nil
 	})

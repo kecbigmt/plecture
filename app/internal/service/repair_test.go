@@ -210,7 +210,7 @@ func TestRepairAttemptState_SuccessfulHumanUpResetsStreak(t *testing.T) {
 	if err := appendRepairEvent(store, name, "health", 1, "suspended", "automatic repair suspended"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Up(cfg, store, UpParams{Identifier: name}); err != nil {
+	if _, err := Up(cfg, store, UpParams{Identifier: name, HumanInitiated: true}); err != nil {
 		t.Fatal(err)
 	}
 	count, suspended, err := repairAttemptState(store, name)
