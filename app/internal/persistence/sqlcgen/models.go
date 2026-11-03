@@ -140,8 +140,6 @@ type Session struct {
 	HealthLastReason         sql.NullString
 	HealthLastNotifiedAt     sql.NullString
 	HealthNotifyCount        sql.NullInt64
-	HealthRepairStatus       sql.NullString
-	HealthRepairReason       sql.NullString
 	HealthUnevaluableCycles  sql.NullInt64
 	TickConsecutiveUnchanged sql.NullInt64
 	TickLastFingerprint      sql.NullString

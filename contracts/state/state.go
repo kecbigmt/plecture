@@ -313,8 +313,6 @@ type HealthState struct {
 	LastReason        string    `json:"last_reason,omitempty"`
 	LastNotifiedAt    time.Time `json:"last_notified_at,omitzero"`
 	NotifyCount       int       `json:"notify_count,omitempty"`
-	RepairStatus      string    `json:"repair_status,omitempty"`
-	RepairReason      string    `json:"repair_reason,omitempty"`
 	UnevaluableCycles int       `json:"unevaluable_cycles,omitempty"`
 }
 

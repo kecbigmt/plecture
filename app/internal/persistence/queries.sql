@@ -7,10 +7,10 @@ INSERT INTO sessions (
     population_workflow, population_name, inputs_json,
     health_last_checked_at, health_last_activity_at, health_last_fingerprint,
     health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
-    health_repair_status, health_repair_reason, health_unevaluable_cycles,
+    health_unevaluable_cycles,
     tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
     created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateSessionByID :exec
 UPDATE sessions SET
@@ -33,8 +33,6 @@ UPDATE sessions SET
     health_last_reason = ?,
     health_last_notified_at = ?,
     health_notify_count = ?,
-    health_repair_status = ?,
-    health_repair_reason = ?,
     health_unevaluable_cycles = ?,
     tick_consecutive_unchanged = ?,
     tick_last_fingerprint = ?,
@@ -48,7 +46,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
-       health_repair_status, health_repair_reason, health_unevaluable_cycles,
+       health_unevaluable_cycles,
        tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
        created_at, updated_at
 FROM sessions WHERE name = ? AND status <> 'destroyed';
@@ -59,7 +57,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
-       health_repair_status, health_repair_reason, health_unevaluable_cycles,
+       health_unevaluable_cycles,
        tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
        created_at, updated_at
 FROM sessions
@@ -73,7 +71,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
-       health_repair_status, health_repair_reason, health_unevaluable_cycles,
+       health_unevaluable_cycles,
        tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
        created_at, updated_at
 FROM sessions WHERE status <> 'destroyed' ORDER BY name;
@@ -84,7 +82,7 @@ SELECT id, name, status, destroyed_at, parent_session_id, root_session_id,
        population_workflow, population_name, inputs_json,
        health_last_checked_at, health_last_activity_at, health_last_fingerprint,
        health_last_state, health_last_reason, health_last_notified_at, health_notify_count,
-       health_repair_status, health_repair_reason, health_unevaluable_cycles,
+       health_unevaluable_cycles,
        tick_consecutive_unchanged, tick_last_fingerprint, last_tick_at,
        created_at, updated_at
 FROM sessions WHERE alias = ? AND status <> 'destroyed' ORDER BY name;

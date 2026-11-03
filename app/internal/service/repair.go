@@ -90,14 +90,7 @@ func RepairSession(cfg *config.Config, store *state.Store, name string, report *
 					return err
 				}
 			}
-			return store.Update(name, func(s *domain.Session) error {
-				if s.Health == nil {
-					s.Health = &contract.HealthState{}
-				}
-				s.Health.RepairStatus = "repair_suspended"
-				s.Health.RepairReason = suspendReason
-				return nil
-			})
+			return nil
 		}
 		if err := appendRepairEvent(store, name, trigger, attempts+1, "started", reason); err != nil {
 			return err
@@ -131,25 +124,34 @@ func workflowRepairLimit(cfg *config.Config, s *domain.Session) (int, error) {
 }
 
 func repairAttemptState(store *state.Store, name string) (int, bool, error) {
+	attempts, suspended, _, err := repairAttemptObservation(store, name)
+	return attempts, suspended, err
+}
+
+func repairAttemptObservation(store *state.Store, name string) (int, bool, string, error) {
 	events, _, _, err := eventlog.NewStore(store.Dir()).List(name, 0, event.Filter{Types: []string{event.TypeSessionRepair}})
 	if err != nil {
-		return 0, false, err
+		return 0, false, "", err
 	}
 	attempts := 0
 	suspended := false
+	reason := ""
 	for _, ev := range events {
 		switch {
 		case ev.Metadata["result"] == "succeeded" && ev.Metadata["attempt"] == "0":
 			attempts = 0
 			suspended = false
+			reason = ""
 		case ev.Metadata["result"] == "started":
 			attempts++
 			suspended = false
+			reason = ""
 		case ev.Metadata["result"] == "suspended":
 			suspended = true
+			reason = ev.Metadata["reason"]
 		}
 	}
-	return attempts, suspended, nil
+	return attempts, suspended, reason, nil
 }
 
 func resetRepairStreak(store *state.Store, name, trigger string) error {
@@ -167,16 +169,7 @@ func resetRepairStreak(store *state.Store, name, trigger string) error {
 	if err := appendRepairEvent(store, name, trigger, 0, "succeeded", reason); err != nil {
 		return err
 	}
-	if trigger != "manual_up" {
-		return nil
-	}
-	return store.Update(name, func(s *domain.Session) error {
-		if s.Health != nil && s.Health.RepairStatus == "repair_suspended" {
-			s.Health.RepairStatus = ""
-			s.Health.RepairReason = ""
-		}
-		return nil
-	})
+	return nil
 }
 
 func repairCandidate(s *domain.Session, limit int, run domain.RunState, report *HealthReport) (string, string) {

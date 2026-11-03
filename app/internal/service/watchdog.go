@@ -271,8 +271,6 @@ func persistHealthState(store *state.Store, name string, report HealthReport, ch
 			LastReason:        reportReason(report),
 			LastNotifiedAt:    prev.LastNotifiedAt,
 			NotifyCount:       prev.NotifyCount,
-			RepairStatus:      prev.RepairStatus,
-			RepairReason:      prev.RepairReason,
 			UnevaluableCycles: prev.UnevaluableCycles,
 		}
 		s.UpdatedAt = checkedAt
@@ -537,13 +535,6 @@ func HealthcheckSession(cfg *config.Config, store *state.Store, params Healthche
 				s.Health = &contract.HealthState{}
 			}
 			s.Health.UnevaluableCycles = cycles
-			if cycles >= 3 {
-				s.Health.RepairStatus = "repair_undecidable"
-				s.Health.RepairReason = report.Reason
-			} else if s.Health.RepairStatus == "repair_undecidable" {
-				s.Health.RepairStatus = ""
-				s.Health.RepairReason = ""
-			}
 			return nil
 		}); err != nil {
 			return nil, err
@@ -570,13 +561,7 @@ func HealthcheckSession(cfg *config.Config, store *state.Store, params Healthche
 				if err := resetRepairStreak(store, params.SessionName, "healthy_observed"); err != nil {
 					return err
 				}
-				return store.Update(params.SessionName, func(s *domain.Session) error {
-					if s.Health != nil {
-						s.Health.RepairStatus = ""
-						s.Health.RepairReason = ""
-					}
-					return nil
-				})
+				return nil
 			}); err != nil {
 				return nil, err
 			}
