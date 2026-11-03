@@ -66,12 +66,21 @@ has_link() {
 # between Context and Decision.
 has_scope_heading() {
   awk '
-    /^ {0,3}(```|~~~)/ {
-      c = substr($0, match($0, /[`~]/), 1)
-      if (!fenced) { fenced = 1; fchar = c } else if (c == fchar) { fenced = 0 }
+    fenced {
+      if (match($0, /^ {0,3}[`~]+[ \t\r]*$/)) {
+        t = $0; gsub(/[ \t\r]/, "", t)
+        if (substr(t, 1, 1) == fchar && length(t) >= flen) { fenced = 0; next }
+      }
       next
     }
-    fenced { next }
+    /^ {0,3}(```|~~~)/ {
+      t = $0; sub(/^ {0,3}/, "", t)
+      fchar = substr(t, 1, 1)
+      flen = 0
+      while (substr(t, flen + 1, 1) == fchar) flen++
+      fenced = 1
+      next
+    }
     /^#{1,6}[ \t]+Context[ \t\r]*$/ && !ctx { ctx = NR }
     /^#{1,6}[ \t]+Decision[ \t\r]*$/ && !dec { dec = NR }
     /^#{1,6}[ \t]+Supersession scope[ \t\r]*$/ && !scope { scope = NR }
