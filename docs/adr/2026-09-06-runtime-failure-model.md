@@ -4,7 +4,7 @@ amended_by: 2026-11-04-opt-in-session-repair
 
 # Runtime failure model
 
-§1 の「health は修復しない」だけを 2026-11-04-opt-in-session-repair で狭めた。他の決定は有効。
+Only section 1's rule that the health cycle never repairs is narrowed by 2026-11-04-opt-in-session-repair; all other decisions remain in force.
 
 ## Context
 
