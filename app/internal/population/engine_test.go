@@ -123,7 +123,7 @@ func TestFullStopMemberIsNotReadmittedAfterEarlierAdmitFailure(t *testing.T) {
 	if err := engine.state.Put(&domain.Session{Name: name, Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := engine.log.Append(event.Event{SessionName: name, Type: event.TypeSessionStop, Direction: event.Internal}); err != nil {
+	if _, _, _, err := engine.log.Append(event.Event{SessionName: name, Type: event.TypeSessionStop, Direction: event.Internal, Metadata: map[string]string{"origin": "migration"}}); err != nil {
 		t.Fatal(err)
 	}
 	cache.Record(name, "urn:case:a", false, "task_setup", "earlier failure")
