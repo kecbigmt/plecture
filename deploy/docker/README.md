@@ -86,31 +86,53 @@ itself.
 
 ## Fault injection harness
 
-`deploy/docker/fault/run.sh` builds the base image from the pushed `HEAD`
-commit, then derives a test image with a local workspace provider and a
-stub `claude` binary. It uses a named volume at `/var/lib/plect`, creates a
-session through the packaged `plect`, and verifies that the stub records a
-prompt and leaves an uncommitted worktree change. Docker and Go are required.
-Run it from a pushed commit so the base Dockerfile can fetch that SHA:
+`deploy/docker/fault/run.sh` builds a base image, then derives a test image
+with a local workspace provider and a stub `claude` binary. It uses a named
+volume at `/var/lib/plect`, creates a session through the packaged `plect`,
+and verifies that the stub records a prompt and leaves an uncommitted worktree
+change. Docker and Go are required.
+
+By default the base image is built from the pushed `HEAD` commit, so the base
+Dockerfile can fetch that SHA:
 
 ```bash
 deploy/docker/fault/run.sh
 ```
 
-S1 (kill the agent process mid-turn) and S2 (kill and replace the container
-on the same volume) assert that the same session resumes the same Claude
-conversation ID and keeps its uncommitted change. Recovery is pending; these
-assertions are opt-in Red tests until the recovery work lands:
+To test an unpushed or uncommitted change, set `PLECT_FAULT_SOURCE=local`. The
+unmodified base Dockerfile then packages the working tree (tracked files plus
+untracked files that are not ignored) through a named build context in place
+of its fetched `source` stage. The image's `/etc/plecture-source-revision` is
+`local-<HEAD sha>`, with a `-dirty` suffix when the tree has uncommitted
+changes:
 
 ```bash
-PLECT_FAULT_EXPECT_RED=1 deploy/docker/fault/run.sh
+PLECT_FAULT_SOURCE=local deploy/docker/fault/run.sh
 ```
 
+S1 (kill the agent process mid-turn) and S2 (kill and replace the container
+on the same volume) assert that the same session resumes the same Claude
+conversation ID, reports `.runtime.health` as `healthy`, and keeps its
+uncommitted change. Recovery is pending; these assertions are opt-in until the
+recovery work lands, and a failure exits non-zero:
+
+```bash
+PLECT_FAULT_RECOVERY=1 deploy/docker/fault/run.sh
+```
+
+`deploy/docker/fault/lib_selftest.sh` checks the recovery assertion's helper
+without Docker, including that a resumed session whose health is not
+`healthy` is rejected.
+
+Both switches combine. The resume waits scale with the fixture's health period
+in `deploy/docker/fault/workflow.toml`.
+
 The `Docker fault injection` workflow runs only through `workflow_dispatch`.
-Its `expect_red` input enables the Red assertions. The harness removes its
-containers, volumes, and derived image when it exits and keeps a container log under `/tmp`
-if a run fails. Set `PLECT_FAULT_BASE_IMAGE` to a
-locally available base image to skip the base build.
+Its `recovery` input enables the recovery assertions; it always builds from
+the pushed commit. The harness removes its containers, volumes, and derived
+image when it exits and keeps a container log under `/tmp` if a run fails. Set
+`PLECT_FAULT_BASE_IMAGE` to a locally available base image to skip the base
+build; it cannot be combined with `PLECT_FAULT_SOURCE=local`.
 
 ## Process model
 

@@ -10,6 +10,7 @@ uses = "official.tmux.pane"
 id   = "agent"
 uses = "official.claude.runtime"
 
+# Recovery work adds [health].auto_repair_attempts alongside these timings.
 [fault_recovery.healthcheck]
 period          = "15s"
 stall_threshold = "45s"
