@@ -1,0 +1,23 @@
+name: Docker fault injection
+
+on:
+  workflow_dispatch:
+    inputs:
+      expect_red:
+        description: Run the S1 and S2 recovery assertions
+        type: boolean
+        default: false
+
+jobs:
+  fault:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+      - name: Exercise the packaged image with a stub agent
+        env:
+          PLECT_FAULT_EXPECT_RED: ${{ inputs.expect_red && '1' || '0' }}
+        run: deploy/docker/fault/run.sh
