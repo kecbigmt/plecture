@@ -18,9 +18,7 @@ state answers a different question: whether a run-scoped node is produced. A
 session may therefore have `status = up` while its run is down. A deliberate
 `down`, including sleep, must never be undone by the health cycle.
 
-## Decision
-
-### Supersession scope
+## Supersession scope
 
 This ADR supersedes the runtime failure model only for the rule in section 1,
 "Liveness verification and verify-before-skip," that the health cycle never
@@ -34,6 +32,8 @@ repairs. The following decisions remain in force and are not restated here:
 - Section 4, "Cleanup-on-failure and launch timeouts."
 - Section 5, "Forced full rebuild remains the last-resort operation."
 - Section 6, "Population-produced sessions receive node-result events directly."
+
+## Decision
 
 The health cycle may call plain `service.Up` only for a session whose frozen
 workflow opts in and whose persisted `status` is `up`. The workflow's intent

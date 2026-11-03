@@ -291,15 +291,17 @@ the breaking change — not as follow-up work.
   `docs/adr/2026-08-16-plugin-service-lifecycle.md`). Filename sort is
   chronological, matching the knowledge-bundle retrospective naming already
   in use. Each ADR has the sections Context, Decision, Consequences, and
-  Alternatives considered.
+  Alternatives considered; superseding ADRs also have Supersession scope.
 - ADRs carry no Proposed or Accepted status. An unmerged PR is the proposal,
   merging is acceptance, and git history records date and author.
 - Supersession is the only lifecycle fact recorded in ADR files. A
   superseding ADR declares YAML frontmatter
   `supersedes: <YYYY-MM-DD-slug>`, and the old ADR gets YAML frontmatter
   `superseded_by: <YYYY-MM-DD-slug>`. That frontmatter edit is the only edit
-  permitted to an accepted ADR. A superseding ADR states which decisions of the
-  superseded ADR it replaces; decisions it does not list remain in force.
+  permitted to an accepted ADR. A superseding ADR has a section titled
+  "Supersession scope", placed between Context and Decision, that states which
+  decisions of the superseded ADR it replaces; decisions it does not list
+  remain in force.
 - ADR frontmatter is present only when metadata exists, matching the
   knowledge-bundle documents' existing practice. Do not add empty frontmatter
   blocks or status keys. The ADR title remains the Markdown H1.
