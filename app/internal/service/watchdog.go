@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"slices"
 	"strings"
 	"time"
@@ -46,6 +47,8 @@ type HealthReport struct {
 	// probe would be indistinguishable from a quiet one.
 	ProbeErrors         []ProbeError `json:"probe_errors,omitempty"`
 	Reason              string       `json:"reason,omitempty"`
+	Repairable          bool         `json:"repairable,omitempty"`
+	ProbeUnevaluable    bool         `json:"probe_unevaluable,omitempty"`
 	LastCheckedAt       time.Time    `json:"last_checked_at,omitzero"`
 	LastActivityAt      time.Time    `json:"last_activity_at,omitzero"`
 	ActivityFingerprint string       `json:"-"`
@@ -71,6 +74,23 @@ type ProbeError struct {
 type HealthcheckParams struct {
 	SessionName string
 	Config      config.HealthcheckConfig
+}
+
+const aliveProbeTimeout = 30 * time.Second
+
+func runAliveForHealth(probe task.Probe, vars task.SessionVars, timeout time.Duration) (error, bool) {
+	probeCtx, cancel := context.WithTimeout(context.Background(), timeout)
+	aliveErr := task.RunAliveProbe(probeCtx, probe, vars)
+	ctxErr := probeCtx.Err()
+	cancel()
+	if ctxErr != nil {
+		return fmt.Errorf("alive probe: %w", ctxErr), false
+	}
+	if aliveErr == nil {
+		return nil, false
+	}
+	var exitErr *exec.ExitError
+	return aliveErr, errors.As(aliveErr, &exitErr)
 }
 
 // State projects the report to the four-value display fact `plect status`
@@ -244,13 +264,16 @@ func persistHealthState(store *state.Store, name string, report HealthReport, ch
 		}
 		stateText := string(report.State())
 		s.Health = &contract.HealthState{
-			LastCheckedAt:   checkedAt,
-			LastActivityAt:  lastActivityAt,
-			LastFingerprint: fingerprint,
-			LastState:       stateText,
-			LastReason:      reportReason(report),
-			LastNotifiedAt:  prev.LastNotifiedAt,
-			NotifyCount:     prev.NotifyCount,
+			LastCheckedAt:     checkedAt,
+			LastActivityAt:    lastActivityAt,
+			LastFingerprint:   fingerprint,
+			LastState:         stateText,
+			LastReason:        reportReason(report),
+			LastNotifiedAt:    prev.LastNotifiedAt,
+			NotifyCount:       prev.NotifyCount,
+			RepairStatus:      prev.RepairStatus,
+			RepairReason:      prev.RepairReason,
+			UnevaluableCycles: prev.UnevaluableCycles,
 		}
 		s.UpdatedAt = checkedAt
 		return nil
@@ -303,6 +326,9 @@ func evaluateHealthFor(name string, gateOpen bool, tasks map[string]*contract.Ta
 	activityDeclared := false
 	activityFingerprintParts := []string{}
 	probeErrors := []ProbeError{}
+	failureReason := ""
+	repairable := false
+	unevaluableReason := ""
 
 	// The structural composition — a failed or missing current-plan node is
 	// itself an AND failure — only applies once the session has actually come
@@ -316,7 +342,11 @@ func evaluateHealthFor(name string, gateOpen bool, tasks map[string]*contract.Ta
 			st := tasks[nodeID]
 			switch {
 			case st == nil:
-				return HealthReport{SessionName: name, Healthy: false, Declared: true, ProbeErrors: probeErrors, Reason: fmt.Sprintf("%s: missing from the current plan", nodeID), LastCheckedAt: now}
+				if failureReason == "" {
+					failureReason = fmt.Sprintf("%s: missing from the current plan", nodeID)
+					repairable = true
+				}
+				continue
 			case st.Status == contract.TaskStatusCleaned:
 				// Deliberately torn down, not failed or missing: contributes
 				// nothing.
@@ -329,7 +359,11 @@ func evaluateHealthFor(name string, gateOpen bool, tasks map[string]*contract.Ta
 				if errText == "" {
 					errText = "setup failed"
 				}
-				return HealthReport{SessionName: name, Healthy: false, Declared: true, ProbeErrors: probeErrors, Reason: fmt.Sprintf("%s: %s", nodeID, errText), LastCheckedAt: now}
+				if failureReason == "" {
+					failureReason = fmt.Sprintf("%s: %s", nodeID, errText)
+					repairable = true
+				}
+				continue
 			case st.Status != contract.TaskStatusProduced:
 				continue
 			}
@@ -338,6 +372,9 @@ func evaluateHealthFor(name string, gateOpen bool, tasks map[string]*contract.Ta
 			comp, compErr := composeInstance(def, st, vars)
 			if compErr != nil {
 				probeErrors = append(probeErrors, ProbeError{Instance: nodeID, Reason: compErr.Error()})
+				if unevaluableReason == "" {
+					unevaluableReason = fmt.Sprintf("%s: %v", nodeID, compErr)
+				}
 				continue
 			}
 
@@ -347,8 +384,17 @@ func evaluateHealthFor(name string, gateOpen bool, tasks map[string]*contract.Ta
 			for _, target := range probeTargets(nodeID, def, st, comp) {
 				if target.Alive != nil {
 					declared = true
-					if aliveErr := task.RunAliveProbe(context.Background(), target.probe(target.Alive), vars); aliveErr != nil {
-						return HealthReport{SessionName: name, Healthy: false, Declared: true, ProbeErrors: probeErrors, Reason: fmt.Sprintf("%s: %v", target.Label, aliveErr), LastCheckedAt: now}
+					aliveErr, observedExit := runAliveForHealth(target.probe(target.Alive), vars, aliveProbeTimeout)
+					if aliveErr != nil {
+						reason := fmt.Sprintf("%s: %v", target.Label, aliveErr)
+						if observedExit {
+							if failureReason == "" {
+								failureReason = reason
+								repairable = true
+							}
+						} else if unevaluableReason == "" {
+							unevaluableReason = reason
+						}
 					}
 				}
 				if target.Activity == nil {
@@ -374,11 +420,17 @@ func evaluateHealthFor(name string, gateOpen bool, tasks map[string]*contract.Ta
 
 	report := HealthReport{
 		SessionName:      name,
-		Healthy:          true,
-		Declared:         declared,
+		Healthy:          failureReason == "" && unevaluableReason == "",
+		Declared:         declared || failureReason != "" || unevaluableReason != "",
 		ActivityDue:      activityDue,
 		ActivityDeclared: activityDeclared,
 		LastCheckedAt:    now,
+		Reason:           failureReason,
+		Repairable:       repairable && unevaluableReason == "",
+		ProbeUnevaluable: unevaluableReason != "",
+	}
+	if unevaluableReason != "" {
+		report.Reason = unevaluableReason
 	}
 	if len(probeErrors) > 0 {
 		report.ProbeErrors = probeErrors
@@ -463,11 +515,86 @@ func HealthcheckSession(cfg *config.Config, store *state.Store, params Healthche
 	if err != nil {
 		return nil, err
 	}
+	optedIn := false
+	if before != nil && before.Status == contract.SessionStatusUp {
+		wf, wfErr := cfg.ResolveSessionWorkflow(before)
+		if wfErr != nil {
+			return nil, wfErr
+		}
+		optedIn = wf != nil && wf.Health.AutoRepairAttempts > 0
+	}
+	undecidableCrossed := false
+	if optedIn {
+		cycles := 0
+		if report.ProbeUnevaluable {
+			if prev != nil {
+				cycles = prev.UnevaluableCycles
+			}
+			cycles++
+		}
+		if err := store.Update(params.SessionName, func(s *domain.Session) error {
+			if s.Health == nil {
+				s.Health = &contract.HealthState{}
+			}
+			s.Health.UnevaluableCycles = cycles
+			if cycles >= 3 {
+				s.Health.RepairStatus = "repair_undecidable"
+				s.Health.RepairReason = report.Reason
+			} else if s.Health.RepairStatus == "repair_undecidable" {
+				s.Health.RepairStatus = ""
+				s.Health.RepairReason = ""
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+		if report.ProbeUnevaluable {
+			if err := appendRepairEvent(store, params.SessionName, "health", 0, "skipped_probe_error", report.Reason); err != nil {
+				return nil, err
+			}
+			if cycles < 3 {
+				return &report, nil
+			}
+			undecidableCrossed = cycles == 3
+		}
+		if report.State() == domain.HealthHealthy {
+			if err := withLifecycleLock(store, params.SessionName, func() error {
+				latest, err := store.GetE(params.SessionName)
+				if err != nil || latest == nil {
+					return err
+				}
+				if latest.Status != contract.SessionStatusUp || latest.Health == nil ||
+					!latest.Health.LastCheckedAt.Equal(report.LastCheckedAt) || !latest.UpdatedAt.Equal(report.LastCheckedAt) {
+					return nil
+				}
+				if err := resetRepairStreak(store, params.SessionName, "healthy_observed"); err != nil {
+					return err
+				}
+				return store.Update(params.SessionName, func(s *domain.Session) error {
+					if s.Health != nil {
+						s.Health.RepairStatus = ""
+						s.Health.RepairReason = ""
+					}
+					return nil
+				})
+			}); err != nil {
+				return nil, err
+			}
+		}
+	}
 	stateText := string(report.State())
 	if stateText != string(domain.HealthUnhealthy) && stateText != string(domain.HealthStalled) {
 		return &report, nil
 	}
 	notify, notifyCount := shouldNotifyHealth(prev, stateText, healthCfg)
+	if undecidableCrossed {
+		notify = true
+		if prev == nil {
+			notifyCount = 1
+		} else {
+			notifyCount = prev.NotifyCount + 1
+		}
+	}
 	if !notify {
 		return &report, nil
 	}

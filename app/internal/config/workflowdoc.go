@@ -133,7 +133,26 @@ func workflowFrom(def *lang.Definition, sourcePath string) (WorkflowFile, error)
 	if w.Healthcheck, err = healthcheckFrom(def.Body); err != nil {
 		return w, err
 	}
+	if w.Health, err = workflowHealthFrom(def.Body); err != nil {
+		return w, err
+	}
 	return w, nil
+}
+
+func workflowHealthFrom(body map[string]any) (WorkflowHealthConfig, error) {
+	raw, ok := body["health"]
+	if !ok {
+		return WorkflowHealthConfig{}, nil
+	}
+	tbl, ok := raw.(map[string]any)
+	if !ok {
+		return WorkflowHealthConfig{}, fmt.Errorf("workflow [health] is a table")
+	}
+	value, ok := tbl["auto_repair_attempts"].(int64)
+	if !ok || value < 0 || value > int64(^uint(0)>>1) {
+		return WorkflowHealthConfig{}, fmt.Errorf("workflow [health].auto_repair_attempts must be a non-negative integer")
+	}
+	return WorkflowHealthConfig{AutoRepairAttempts: int(value)}, nil
 }
 
 func workflowPopulationsFrom(def *lang.Definition, pos lang.Position) ([]WorkflowPopulation, error) {

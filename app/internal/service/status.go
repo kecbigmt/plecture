@@ -49,6 +49,8 @@ type StatusRuntimeTask struct {
 type StatusRuntime struct {
 	Run                domain.RunState     `json:"run"`
 	Health             domain.HealthState  `json:"health,omitempty"`
+	RepairStatus       string              `json:"repair_status,omitempty"`
+	RepairReason       string              `json:"repair_reason,omitempty"`
 	LastCheckedAt      time.Time           `json:"last_checked_at,omitzero"`
 	LastActivityAt     time.Time           `json:"last_activity_at,omitzero"`
 	Tasks              []StatusRuntimeTask `json:"tasks,omitempty"`
@@ -161,6 +163,11 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	wtExists := fileExists(session.WorkspaceDirPath)
 	runState := sessionRunState(cfg, session)
 	healthReport, healthState := sessionHealthReport(cfg, store, sessionName)
+	repairStatus, repairReason := "", ""
+	if session.Health != nil {
+		repairStatus = session.Health.RepairStatus
+		repairReason = session.Health.RepairReason
+	}
 
 	displayTitle := sessionDisplayTitle(cfg, session)
 
@@ -214,6 +221,8 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 		Runtime: StatusRuntime{
 			Run:                runState,
 			Health:             healthState,
+			RepairStatus:       repairStatus,
+			RepairReason:       repairReason,
 			LastCheckedAt:      healthReport.LastCheckedAt,
 			LastActivityAt:     healthReport.LastActivityAt,
 			Tasks:              runtimeTaskViews(session),
@@ -393,8 +402,10 @@ func sessionTag(name string) string {
 // done_when-bearing instance only, the material an orchestrator needs to pick
 // its next action — no full outputs/flow/runtime dump (that's --full).
 type StatusSummary struct {
-	Identity StatusSummaryIdentity `json:"identity"`
-	Work     []StatusSummaryWork   `json:"work,omitempty"`
+	Identity     StatusSummaryIdentity `json:"identity"`
+	RepairStatus string                `json:"repair_status,omitempty"`
+	RepairReason string                `json:"repair_reason,omitempty"`
+	Work         []StatusSummaryWork   `json:"work,omitempty"`
 }
 
 type StatusSummaryIdentity struct {
@@ -449,6 +460,8 @@ type StatusSummaryChain struct {
 // orchestrator's next-action decision needs.
 func Summarize(result *StatusResult) *StatusSummary {
 	sum := &StatusSummary{
+		RepairStatus: result.Runtime.RepairStatus,
+		RepairReason: result.Runtime.RepairReason,
 		Identity: StatusSummaryIdentity{
 			SessionName:   result.Identity.SessionName,
 			ResourceID:    result.Identity.ResourceID,

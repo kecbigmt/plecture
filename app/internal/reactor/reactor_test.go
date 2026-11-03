@@ -115,6 +115,94 @@ func newTestReactor(t *testing.T, tc config.TickConfig) (*sessionReactor, *state
 	return r, st, log
 }
 
+func TestCheckHealth_PassesCompletedReportToRepair(t *testing.T) {
+	pluginDir := t.TempDir()
+	writeClaudeRunTask(t, filepath.Join(pluginDir, "config"))
+	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
+[reactive]
+kind = "workflow"
+[[reactive.nodes]]
+id = "claude"
+uses = "claude"
+[reactive.health]
+auto_repair_attempts = 2
+`)
+	cfg := &config.Config{PluginDirs: []string{pluginDir}}
+	st := state.NewStore(t.TempDir())
+	if err := st.Put(&domain.Session{Name: "o/r-1", Workflow: "reactive", Status: contract.SessionStatusUp,
+		Nodes: map[string]*contract.TaskState{"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}}}); err != nil {
+		t.Fatal(err)
+	}
+	log := eventlog.NewStore(st.Dir())
+	hub := sessionhub.NewRegistry(log)
+	defer hub.Close()
+	r := NewSupervisor(func() *config.Config { return cfg }, st, log, hub).buildReactor("o/r-1", st.Get("o/r-1"))
+	want := &service.HealthReport{SessionName: "o/r-1", Repairable: true, Reason: "claude: alive failed"}
+	r.healthcheckFn = func(*config.Config, *state.Store, service.HealthcheckParams) (*service.HealthReport, error) {
+		return want, nil
+	}
+	called := false
+	r.repairFn = func(_ *config.Config, _ *state.Store, name string, report *service.HealthReport, gate *service.RepairGate) (bool, error) {
+		called = name == "o/r-1" && report == want && gate == r.repairGate
+		return true, nil
+	}
+	r.checkHealth(context.Background())
+	if !called {
+		t.Fatal("repair did not receive the completed health report and shared gate")
+	}
+}
+
+func TestSupervisor_RepairDownSweepRespectsWorkflowPeriod(t *testing.T) {
+	pluginDir := t.TempDir()
+	writeClaudeRunTask(t, filepath.Join(pluginDir, "config"))
+	writeFile(t, filepath.Join(pluginDir, "config", "workflows", "reactive.toml"), `
+[reactive]
+kind = "workflow"
+[[reactive.nodes]]
+id = "claude"
+uses = "claude"
+[reactive.health]
+auto_repair_attempts = 2
+[reactive.healthcheck]
+period = "1m"
+`)
+	cfg := &config.Config{PluginDirs: []string{pluginDir}}
+	st := state.NewStore(t.TempDir())
+	if err := st.Put(&domain.Session{Name: "o/r-1", Workflow: "reactive", Status: contract.SessionStatusUp}); err != nil {
+		t.Fatal(err)
+	}
+	log := eventlog.NewStore(st.Dir())
+	hub := sessionhub.NewRegistry(log)
+	defer hub.Close()
+	sup := NewSupervisor(func() *config.Config { return cfg }, st, log, hub)
+	calls := 0
+	sup.repairFn = func(_ *config.Config, _ *state.Store, name string, report *service.HealthReport, gate *service.RepairGate) (bool, error) {
+		if name != "o/r-1" || report != nil || gate != sup.repairGate {
+			t.Fatalf("repair arguments = (%q, %+v, %p)", name, report, gate)
+		}
+		calls++
+		return true, nil
+	}
+	last := map[string]time.Time{}
+	now := time.Now()
+	sup.checkRepairDown(context.Background(), now, last)
+	sup.checkRepairDown(context.Background(), now.Add(30*time.Second), last)
+	if calls != 1 {
+		t.Fatalf("repair calls within period = %d, want 1", calls)
+	}
+	sup.checkRepairDown(context.Background(), now.Add(time.Minute), last)
+	if calls != 2 {
+		t.Fatalf("repair calls after period = %d, want 2", calls)
+	}
+	if err := st.Update("o/r-1", func(s *domain.Session) error { s.Status = contract.SessionStatusDown; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	sup.checkRepairDown(context.Background(), now.Add(2*time.Minute), last)
+	if calls != 2 {
+		t.Fatalf("repair calls after down = %d, want 2", calls)
+	}
+}
+
 // startReactor starts r.run and blocks until its cursor/Watch are seeded, so callers need no fixed sleep despite SQLite's variable first-touch cost.
 func startReactor(t *testing.T, r *sessionReactor) func() {
 	t.Helper()

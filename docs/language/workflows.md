@@ -245,6 +245,18 @@ to decide which children it can safely bring down.
 whole-table runtime tuning: a later workflow replacement replaces each table,
 not individual keys.
 
+`[<id>.health]` optionally permits automatic repair with
+`auto_repair_attempts`, a required non-negative integer when the table is
+declared. The default is `0`, which disables repair. A later workflow table
+replaces an inherited `[health]` table as a whole; setting the value to `0`
+disables inherited permission. The health cycle may run plain `up` only while
+the session's recorded status is `up`, after a non-zero `alive` exit, a failed
+or missing current-plan node, or a down run state. Probe errors that prevent
+evaluation do not permit repair. Each started repair consumes one attempt until
+a healthy observation or successful human `up` resets the budget. Exhaustion
+reports `repair_suspended`; three consecutive cycles with an unevaluable
+`alive` probe report `repair_undecidable` without consuming an attempt.
+
 ## Concurrency
 
 `max_up_children` optionally caps sessions parented on a session this workflow

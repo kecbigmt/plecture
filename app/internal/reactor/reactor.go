@@ -81,6 +81,8 @@ type sessionReactor struct {
 	// behavior — buildReactor never sets it.
 	tickFn        func(*config.Config, *state.Store, service.TickParams) (*service.CheckResult, error)
 	healthcheckFn func(*config.Config, *state.Store, service.HealthcheckParams) (*service.HealthReport, error)
+	repairFn      func(*config.Config, *state.Store, string, *service.HealthReport, *service.RepairGate) (bool, error)
+	repairGate    *service.RepairGate
 	// channelHealthFn defaults to service.CheckChannelHealth; overridable in
 	// tests to observe invocation without waiting on real wall-clock tickers.
 	channelHealthFn func(*config.Config, *state.Store, string) (bool, error)
@@ -397,8 +399,20 @@ func (r *sessionReactor) checkHealth(ctx context.Context) {
 	if fn == nil {
 		fn = service.HealthcheckSession
 	}
-	if _, err := fn(r.cfg, r.state, service.HealthcheckParams{SessionName: r.session, Config: r.healthcheck}); err != nil {
+	report, err := fn(r.cfg, r.state, service.HealthcheckParams{SessionName: r.session, Config: r.healthcheck})
+	if err != nil {
 		slog.Default().Warn("reactor: healthcheck failed", "session", r.session, "error", err)
+		return
+	}
+	if report == nil || r.repairGate == nil {
+		return
+	}
+	repair := r.repairFn
+	if repair == nil {
+		repair = service.RepairSession
+	}
+	if _, err := repair(r.cfg, r.state, r.session, report, r.repairGate); err != nil {
+		r.effectiveLogger().Warn("reactor: session repair failed", "session", r.session, "error", err)
 	}
 }
 

@@ -72,6 +72,7 @@ type WorkflowFile struct {
 	// not what health means: what each probe observes is an effect-level
 	// `[health]` declaration.
 	Healthcheck      *HealthcheckConfig
+	Health           WorkflowHealthConfig
 	InputsSchema     map[string]any
 	InputsSchemaFile string
 	// BaseDir anchors InputsSchemaFile so the resolved location is
@@ -165,6 +166,10 @@ type HealthcheckConfig struct {
 	Period         Duration
 	StallThreshold Duration
 	RenotifyEvery  int
+}
+
+type WorkflowHealthConfig struct {
+	AutoRepairAttempts int
 }
 
 // DefaultHealthcheckConfig returns the workflow healthcheck defaults.

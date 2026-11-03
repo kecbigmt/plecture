@@ -100,6 +100,30 @@ func TestStatus_RuntimeCarriesHealthMovementTimestamps(t *testing.T) {
 	}
 }
 
+func TestStatus_CarriesPersistedRepairSuspension(t *testing.T) {
+	store := testStore(t)
+	cfg := aliveFixtureConfig(t, "true")
+	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
+		"initial": {Scope: contract.TaskScopeRun, TaskID: "runner", Status: contract.TaskStatusProduced},
+	})
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Health = &contract.HealthState{RepairStatus: "repair_suspended", RepairReason: "automatic repair suspended after 3 attempts"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Status(cfg, store, "owner/repo-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Runtime.RepairStatus != "repair_suspended" || result.Runtime.RepairReason != "automatic repair suspended after 3 attempts" {
+		t.Fatalf("runtime repair = %+v", result.Runtime)
+	}
+	if summary := Summarize(result); summary.RepairStatus != "repair_suspended" || summary.RepairReason == "" {
+		t.Fatalf("summary repair = %+v", summary)
+	}
+}
+
 // TestStatus_SurfacesActivityProbeFaultsAsWarnings pins the user-facing half
 // of the probe-fault report: a probe that cannot produce an envelope
 // contributes nothing to health, so without a warning it would be

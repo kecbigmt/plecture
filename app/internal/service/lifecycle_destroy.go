@@ -43,6 +43,20 @@ type DestroyResult struct {
 // even under --force — silent partial teardown would be worse than a
 // noisy one.
 func Destroy(cfg *config.Config, store *state.Store, params DestroyParams) (*DestroyResult, error) {
+	name, err := resolveSessionName(cfg, store, params.Identifier)
+	if err != nil {
+		return nil, err
+	}
+	var result *DestroyResult
+	err = withLifecycleLock(store, name, func() error {
+		var destroyErr error
+		result, destroyErr = destroyUnlocked(cfg, store, params)
+		return destroyErr
+	})
+	return result, err
+}
+
+func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParams) (*DestroyResult, error) {
 	sessionName, session, err := resolveSession(cfg, store, params.Identifier)
 	if err != nil {
 		return nil, err
