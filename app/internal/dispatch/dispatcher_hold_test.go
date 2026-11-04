@@ -19,7 +19,7 @@ import (
 
 func channelErrors(t *testing.T, log *eventlog.Store) []event.Event {
 	t.Helper()
-	errs, _, _, err := log.List("o/r-1", 0, event.Filter{Types: []string{event.TypeChannelError}})
+	errs, _, _, err := log.List("session-1", 0, event.Filter{Types: []string{event.TypeChannelError}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func channelErrors(t *testing.T, log *eventlog.Store) []event.Event {
 }
 
 func appendInstruction(log *eventlog.Store, at time.Time) event.Event {
-	ev, _, _, _ := log.Append(event.Event{SessionName: "o/r-1", Type: event.TypeInstruction, Body: "do it", Direction: event.Internal, Time: at})
+	ev, _, _, _ := log.Append(event.Event{SessionName: "session-1", Type: event.TypeInstruction, Body: "do it", Direction: event.Internal, Time: at})
 	return ev
 }
 
@@ -41,7 +41,7 @@ func awaitingRepair(initial bool) (func(string) (bool, error), *atomic.Bool) {
 func TestDispatcherHold_EventAppendedWhileRuntimeDownIsDeliveredOnceAfterRepair(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	path := filepath.Join(t.TempDir(), "rt.sock")
-	d, s := runtimeDispatcher(t, "o/r-1", log, path, "plect.instruction")
+	d, s := runtimeDispatcher(t, "session-1", log, path, "plect.instruction")
 	fn, repairing := awaitingRepair(true)
 	d.awaitingRepair = fn
 
@@ -52,10 +52,10 @@ func TestDispatcherHold_EventAppendedWhileRuntimeDownIsDeliveredOnceAfterRepair(
 	if errs := channelErrors(t, log); len(errs) != 0 {
 		t.Fatalf("held event wrote plect.channel.error: %+v", errs)
 	}
-	if cur, _ := log.ReadCursor("o/r-1", dispatcherConsumer); cur != 0 {
+	if cur, _ := log.ReadCursor("session-1", dispatcherConsumer); cur != 0 {
 		t.Fatalf("cursor advanced to %d while the event was held", cur)
 	}
-	if ch := d.state.Get("o/r-1").ChannelDeliveryHealth; ch != nil {
+	if ch := d.state.Get("session-1").ChannelDeliveryHealth; ch != nil {
 		t.Fatalf("a held delivery counted toward the failure streak: %+v", ch)
 	}
 
@@ -75,7 +75,7 @@ func TestDispatcherHold_EventAppendedWhileRuntimeDownIsDeliveredOnceAfterRepair(
 func TestDispatcherHold_ExpiredHoldWritesChannelErrorAndAdvances(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	path := filepath.Join(t.TempDir(), "rt.sock")
-	d, s := runtimeDispatcher(t, "o/r-1", log, path, "plect.instruction")
+	d, s := runtimeDispatcher(t, "session-1", log, path, "plect.instruction")
 	fn, _ := awaitingRepair(true)
 	d.awaitingRepair = fn
 
@@ -100,7 +100,7 @@ func TestDispatcherHold_ExpiredHoldWritesChannelErrorAndAdvances(t *testing.T) {
 func TestDispatcherHold_StopsWhenRepairIsNoLongerExpected(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	path := filepath.Join(t.TempDir(), "rt.sock")
-	d, s := runtimeDispatcher(t, "o/r-1", log, path, "plect.instruction")
+	d, s := runtimeDispatcher(t, "session-1", log, path, "plect.instruction")
 	fn, repairing := awaitingRepair(true)
 	d.awaitingRepair = fn
 
@@ -113,14 +113,14 @@ func TestDispatcherHold_StopsWhenRepairIsNoLongerExpected(t *testing.T) {
 	if len(errs) != 1 || errs[0].Metadata["event_id"] != orig.ID {
 		t.Fatalf("channel errors = %+v, want one for the released event", errs)
 	}
-	if cur, _ := log.ReadCursor("o/r-1", dispatcherConsumer); cur == 0 {
+	if cur, _ := log.ReadCursor("session-1", dispatcherConsumer); cur == 0 {
 		t.Fatal("cursor did not advance once repair was no longer expected")
 	}
 }
 
 func TestDispatcherHold_NoPredicateKeepsImmediateChannelError(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
-	d, s := runtimeDispatcher(t, "o/r-1", log, filepath.Join(t.TempDir(), "absent.sock"), "plect.instruction")
+	d, s := runtimeDispatcher(t, "session-1", log, filepath.Join(t.TempDir(), "absent.sock"), "plect.instruction")
 
 	appendInstruction(log, time.Now())
 	drainOnce(d, s)
@@ -128,14 +128,14 @@ func TestDispatcherHold_NoPredicateKeepsImmediateChannelError(t *testing.T) {
 	if errs := channelErrors(t, log); len(errs) != 1 {
 		t.Fatalf("channel errors = %+v, want one", errs)
 	}
-	if cur, _ := log.ReadCursor("o/r-1", dispatcherConsumer); cur == 0 {
+	if cur, _ := log.ReadCursor("session-1", dispatcherConsumer); cur == 0 {
 		t.Fatal("cursor did not advance")
 	}
 }
 
 func TestDispatcherHold_PredicateFailureFallsBackToChannelError(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
-	d, s := runtimeDispatcher(t, "o/r-1", log, filepath.Join(t.TempDir(), "absent.sock"), "plect.instruction")
+	d, s := runtimeDispatcher(t, "session-1", log, filepath.Join(t.TempDir(), "absent.sock"), "plect.instruction")
 	d.awaitingRepair = func(string) (bool, error) { return false, errors.New("health unreadable") }
 
 	appendInstruction(log, time.Now())
@@ -148,7 +148,7 @@ func TestDispatcherHold_PredicateFailureFallsBackToChannelError(t *testing.T) {
 
 func TestDispatcherHold_ChannelInputFailureIsNeverHeld(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
-	d, s := runtimeDispatcher(t, "o/r-1", log, "", "plect.instruction")
+	d, s := runtimeDispatcher(t, "session-1", log, "", "plect.instruction")
 	d.channels[0].Inputs = map[string]*lang.Value{"path": fromValue("nodes.absent.outputs.socket_path")}
 	fn, _ := awaitingRepair(true)
 	d.awaitingRepair = fn
@@ -165,14 +165,14 @@ func TestDispatcherHold_RetryDoesNotRedeliverToChannelsThatSucceeded(t *testing.
 	log := eventlog.NewStore(t.TempDir())
 	live, recv := startFakeSocket(t)
 	dead := filepath.Join(t.TempDir(), "rt.sock")
-	s := &domain.Session{Name: "o/r-1", Tasks: map[string]*contract.TaskState{}}
+	s := &domain.Session{Name: "session-1", Tasks: map[string]*contract.TaskState{}}
 	st := state.NewStore(log.Dir())
 	if err := st.Put(s); err != nil {
 		t.Fatal(err)
 	}
 	fn, repairing := awaitingRepair(true)
 	d := &sessionDispatcher{
-		session: "o/r-1",
+		session: "session-1",
 		channels: []config.EventChannel{
 			{Name: "live", Uses: "sock", Inputs: map[string]*lang.Value{"path": literalValue(live)}, Include: []string{"plect.instruction"}},
 			{Name: "dead", Uses: "sock", Inputs: map[string]*lang.Value{"path": literalValue(dead)}, Include: []string{"plect.instruction"}},
