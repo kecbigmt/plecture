@@ -160,8 +160,6 @@ hooks                      = ["setup"]
 path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
-# This proves the start time setup records still matches when the alive probe
-# runs under another time zone.
 [[runtime]]
 name     = "alive-under-a-different-time-zone-than-setup"
 hook_tz  = "Asia/Tokyo"
