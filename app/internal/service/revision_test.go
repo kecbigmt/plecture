@@ -224,6 +224,43 @@ func TestUpUsesStoredNodeDeclarationAfterEdit(t *testing.T) {
 	}
 }
 
+func TestUpUsesStoredRevisionWhenDispatchFailsAfterWorkflowFileRemoval(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "ran")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
+		[]taskFixture{{id: "runtime", scope: "run", setup: fmt.Sprintf("printf stored > %q; echo '{}'", marker)}},
+		[]nodeFixture{{id: "runtime"}},
+	)
+	revision, err := cfg.CaptureWorkflowRevision("", "coding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := testStore(t)
+	now := time.Now()
+	if err := store.Put(&domain.Session{Name: "existing", Workflow: "coding", WorkflowRevision: digest,
+		WorkflowRevisionBody: string(body), Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(cfg.BaseDir, "workflows", "coding.toml")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "broken.toml"), []byte("invalid workflow data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := dispatchResource(cfg, "", "existing"); err == nil {
+		t.Fatal("dispatch unexpectedly succeeded")
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: "existing"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(marker); err != nil || string(got) != "stored" {
+		t.Fatalf("stored setup wrote %q, err %v", got, err)
+	}
+}
+
 func TestEvaluateHealthUsesStoredProbeAfterEdit(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
 		[]taskFixture{{id: "runtime", scope: "run", alive: "false"}},

@@ -37,6 +37,8 @@ sorts object keys recursively, retains array order, uses UTF-8 without HTML
 escaping, and contains no insignificant whitespace. The workflow address is
 part of the body, so distinct workflow identities cannot share one row. Equal
 expanded definitions share a revision row.
+An edit to any captured effect or task declaration in the cascade changes the
+digest, even when that declaration is unrelated to a workflow node.
 
 Each session with a workflow references one revision. Lifecycle planning and
 run-state evaluation use that revision for setup, repair, health, tick,
