@@ -120,9 +120,6 @@ func sweepOrphanedPendingDeliveries(cfg *config.Config, store *state.Store) {
 	}
 }
 
-// flushPendingDelivery retries every operation owned by sessionName's live
-// incarnation under its delivery lock. Ordinary activity, not a background
-// worker, drains live retries.
 func flushPendingDelivery(cfg *config.Config, store *state.Store, sessionName string) []error {
 	var errs []error
 	if lockErr := withDeliveryLock(store, sessionName, func() {
