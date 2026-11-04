@@ -138,6 +138,9 @@ func resourceDefFrom(def *lang.Definition, path string, fromPlugin bool) (Resour
 		if !ok {
 			return r, fmt.Errorf("`inputs_schema` is a JSON Schema document")
 		}
+		if _, err := lang.CompileInlineSchema(schema, "plect:resource:"+r.ID+":inputs"); err != nil {
+			return r, fmt.Errorf("`inputs_schema`: %w", err)
+		}
 		r.InputsSchema = schema
 	}
 	if raw, ok := def.Body["query"]; ok {

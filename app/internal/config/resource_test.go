@@ -180,6 +180,11 @@ func TestLoadResourceDefs_RejectedDeclarations(t *testing.T) {
 			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"shell\"\nscript = \"echo {{.ResourceID}}\\n\"\n",
 			want: "bind",
 		},
+		{
+			name: "malformed resource inputs schema",
+			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n\n[broken.inputs_schema]\ntype = \"bogus\"\n",
+			want: "inputs_schema",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
