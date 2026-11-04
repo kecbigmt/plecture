@@ -285,8 +285,10 @@ fi
 
 # The start time is what tells this process apart from an unrelated one that
 # reuses its pid after the container, and with it the pid namespace, is
-# replaced.
-PID_STARTED=$(ps -o lstart= -p "$PID" 2>/dev/null | sed 's/^ *//; s/ *$//')
+# replaced. LC_ALL=C TZ=UTC pins how every start time is rendered, which
+# otherwise follows the caller's locale and zone, so a setup and a later
+# probe run under different environments still compare equal.
+PID_STARTED=$(LC_ALL=C TZ=UTC ps -o lstart= -p "$PID" 2>/dev/null | sed 's/^ *//; s/ *$//')
 if [ -z "$PID_STARTED" ]; then
   echo "could not read the start time of claude pid $PID" >&2
   terminate_claude_children
@@ -388,7 +390,7 @@ type   = "shell"
 script = '''
 kill -0 "$pid" 2>/dev/null || exit 1
 if [ -n "${pid_started-}" ]; then
-  [ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ] || exit 1
+  [ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ] || exit 1
 fi
 '''
 

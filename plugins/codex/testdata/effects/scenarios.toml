@@ -53,6 +53,16 @@ path    = ".codex/sessions/rollout.jsonl"
 content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
 
 [[codex]]
+name     = "alive-under-a-different-time-zone-than-setup"
+capture  = "› "
+alive_tz = "Asia/Tokyo"
+hooks    = ["setup", "health.alive"]
+
+[[codex.files]]
+path    = ".codex/sessions/rollout.jsonl"
+content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"11111111-2222-3333-4444-555555555555"}}'
+
+[[codex]]
 name                       = "unreadable-start-time-kills-worker"
 capture                    = "› "
 empty_start_time           = true

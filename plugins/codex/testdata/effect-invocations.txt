@@ -80,6 +80,26 @@ call[16]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[17]: "ps" "-p" "<pid>" "-o" "comm="
 declined: task "codex" setup: exit status 1
 
+== codex:alive-under-a-different-time-zone-than-setup / setup
+call[0]: "codex-agent-activity" "reset" "acme/widget-1"
+call[1]: "uuidgen"
+call[2]: "mktemp"
+call[3]: "terminal-pid"
+call[4]: "terminal-send_text" "export PLECT_SESSION_NAME=acme/widget-1; codex --dangerously-bypass-approvals-and-sandbox --profile plect-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee  "
+call[5]: "terminal-send_keys" "Enter"
+call[6]: "pgrep" "-P" "<pid>"
+call[7]: "ps" "-p" "<pid>" "-o" "comm="
+call[8]: "find" "<home>/.codex/sessions" "-type" "f" "-newer" "<state>/plect" "-name" "*.jsonl"
+call[9]: "terminal-capture"
+call[10]: "terminal-capture"
+call[11]: "terminal-capture"
+call[12]: "ps" "-o" "lstart=" "-p" "<pid>"
+outputs: {"pid":<pid>,"pid_started":"started-<pid>","profile_path":"<home>/.codex/plect-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.config.toml","session_id":"11111111-2222-3333-4444-555555555555"}
+
+== codex:alive-under-a-different-time-zone-than-setup / health.alive
+call[0]: "ps" "-o" "lstart=" "-p" "<pid>"
+alive
+
 == codex:unreadable-start-time-kills-worker / setup
 call[0]: "codex-agent-activity" "reset" "acme/widget-1"
 call[1]: "uuidgen"

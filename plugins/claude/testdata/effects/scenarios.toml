@@ -160,6 +160,17 @@ hooks                      = ["setup"]
 path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
 content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 
+# This proves the start time setup records still matches when the alive probe
+# runs under another time zone.
+[[runtime]]
+name     = "alive-under-a-different-time-zone-than-setup"
+alive_tz = "Asia/Tokyo"
+hooks    = ["setup", "health.alive"]
+
+[[runtime.files]]
+path    = ".claude/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.json"
+content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
+
 # This proves a start time that cannot be read declines setup rather than
 # recording a pid that alive could not later tell apart from a reused one,
 # and the launched child is killed while the pane survives.

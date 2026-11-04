@@ -86,6 +86,10 @@ type effectScenario struct {
 	// EmptyStartTime makes each plugin's own ps stand-in report no start
 	// time for any pid, as when the process table cannot be read.
 	EmptyStartTime bool `toml:"empty_start_time"`
+	// AliveTZ is the time zone the process environment holds while the
+	// alive probe runs, so a probe that reads a rendered timestamp can be
+	// shown not to depend on the zone the instance was set up under.
+	AliveTZ string `toml:"alive_tz"`
 }
 
 type effectScenarioFile struct {

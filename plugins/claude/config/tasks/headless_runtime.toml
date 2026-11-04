@@ -154,7 +154,7 @@ fi
 # The start time is what tells this worker apart from a later process that
 # reuses its pid, even one the same pane starts; worker.pid and parentage
 # alone can both still match after the worker exits.
-PID_STARTED=$(ps -o lstart= -p "$PID" 2>/dev/null | sed 's/^ *//; s/ *$//')
+PID_STARTED=$(LC_ALL=C TZ=UTC ps -o lstart= -p "$PID" 2>/dev/null | sed 's/^ *//; s/ *$//')
 if [ -z "$PID_STARTED" ]; then
   echo "could not read the start time of worker pid $PID" >&2
   terminate_if_owned "$PID"
@@ -215,7 +215,7 @@ is_worker() {
   case "${pid-}" in ''|0|*[!0-9]*) return 1 ;; esac
   [ "$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
   [ "$(cat "${state_dir-}/worker.pid" 2>/dev/null)" = "$pid" ] || return 1
-  [ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ]
+  [ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ]
 }
 if is_worker; then
   kill -TERM "$pid" 2>/dev/null
@@ -246,7 +246,7 @@ terminal_pid = { terminal = "pid" }
 type   = "shell"
 script = '''
 kill -0 "$pid" || exit 1
-[ "$(ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ] || exit 1
+[ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ] || exit 1
 HEALTH="$state_dir/health.json"
 [ -f "$HEALTH" ] || exit 0
 jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null
