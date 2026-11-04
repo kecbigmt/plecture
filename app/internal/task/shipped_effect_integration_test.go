@@ -420,8 +420,8 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 			self = h.runOneHook(t, b, def, "setup", " (retry)", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 			continue
 		}
-		if hook == "health.alive" && scenario.AliveTZ != "" {
-			t.Setenv("TZ", scenario.AliveTZ)
+		if hook != "setup" && scenario.HookTZ != "" {
+			t.Setenv("TZ", scenario.HookTZ)
 		}
 		self = h.runOneHook(t, b, def, hook, "", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 	}

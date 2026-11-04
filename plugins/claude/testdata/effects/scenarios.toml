@@ -164,7 +164,7 @@ content = '{"sessionId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","pid":PID}'
 # runs under another time zone.
 [[runtime]]
 name     = "alive-under-a-different-time-zone-than-setup"
-alive_tz = "Asia/Tokyo"
+hook_tz  = "Asia/Tokyo"
 hooks    = ["setup", "health.alive"]
 
 [[runtime.files]]
@@ -215,6 +215,17 @@ hooks = ["setup"]
 name                       = "cleanup-kills-confirmed-worker"
 self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID", state_dir = "HOME/headless" }
 hooks                      = ["cleanup"]
+expect_worker_process_dead = true
+
+[[headless_runtime.files]]
+path    = "headless/worker.pid"
+content = "WORKER_PID"
+
+[[headless_runtime]]
+name                       = "ambient-start-time-record-is-alive-and-cleaned-up"
+self                       = { pid = "WORKER_PID", pid_started = "started-WORKER_PID@Asia/Tokyo", state_dir = "HOME/headless" }
+hook_tz                    = "Asia/Tokyo"
+hooks                      = ["health.alive", "cleanup"]
 expect_worker_process_dead = true
 
 [[headless_runtime.files]]

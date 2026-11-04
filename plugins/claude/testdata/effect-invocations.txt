@@ -65,11 +65,28 @@ call[4]: "ps" "-o" "lstart=" "-p" "<pid>"
 call[5]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
+== headless_runtime:ambient-start-time-record-is-alive-and-cleaned-up / health.alive
+call[0]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[1]: "ps" "-o" "lstart=" "-p" "<pid>"
+alive
+
+== headless_runtime:ambient-start-time-record-is-alive-and-cleaned-up / cleanup
+call[0]: "terminal-pid"
+call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[2]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[3]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[4]: "ps" "-o" "ppid=" "-p" "<pid>"
+call[5]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[6]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[7]: "claude-agent-activity" "reset" "acme/widget-1"
+cleaned
+
 == headless_runtime:cleanup-spares-pid-reused-in-same-pane / cleanup
 call[0]: "terminal-pid"
 call[1]: "ps" "-o" "ppid=" "-p" "<pid>"
 call[2]: "ps" "-o" "lstart=" "-p" "<pid>"
-call[3]: "claude-agent-activity" "reset" "acme/widget-1"
+call[3]: "ps" "-o" "lstart=" "-p" "<pid>"
+call[4]: "claude-agent-activity" "reset" "acme/widget-1"
 cleaned
 
 == headless_runtime:cleanup-spares-pid-without-worker-pidfile / cleanup

@@ -24,7 +24,7 @@ case "$*" in
     if [ "${TZ-}" = UTC ] && [ "${LC_ALL-}" = C ]; then
       printf '%s\n' "started-$target"
     else
-      printf '%s\n' "started-$target@${TZ-}/${LC_ALL-}"
+      printf '%s\n' "started-$target@${TZ-}"
     fi
     ;;
   *)

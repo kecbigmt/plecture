@@ -208,14 +208,18 @@ script = '''
 # the worker recorded, and still started when setup saw it start — the only
 # check a reuse by another process of the same pane cannot also pass.
 # Without a pane there is no parent to confirm against, and a worker whose
-# pane is gone has gone with it.
+# pane is gone has gone with it. A record written before start times were
+# pinned holds the caller's own rendering, so either rendering is accepted
+# until the core probe takes this comparison over.
+started_pinned() { LC_ALL=C TZ=UTC ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
+started_ambient() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
 PANE_PID=$(sh -c "$terminal_pid" terminal-pid 2>/dev/null)
 is_worker() {
   [ -n "$PANE_PID" ] && [ -n "${pid_started-}" ] || return 1
   case "${pid-}" in ''|0|*[!0-9]*) return 1 ;; esac
   [ "$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" = "$PANE_PID" ] || return 1
   [ "$(cat "${state_dir-}/worker.pid" 2>/dev/null)" = "$pid" ] || return 1
-  [ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ]
+  [ "$(started_pinned "$pid")" = "$pid_started" ] || [ "$(started_ambient "$pid")" = "$pid_started" ]
 }
 if is_worker; then
   kill -TERM "$pid" 2>/dev/null
@@ -245,8 +249,10 @@ terminal_pid = { terminal = "pid" }
 [headless_runtime.health.alive]
 type   = "shell"
 script = '''
+started_pinned() { LC_ALL=C TZ=UTC ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
+started_ambient() { ps -o lstart= -p "$1" 2>/dev/null | sed 's/^ *//; s/ *$//'; }
 kill -0 "$pid" || exit 1
-[ "$(LC_ALL=C TZ=UTC ps -o lstart= -p "$pid" 2>/dev/null | sed 's/^ *//; s/ *$//')" = "$pid_started" ] || exit 1
+[ "$(started_pinned "$pid")" = "$pid_started" ] || [ "$(started_ambient "$pid")" = "$pid_started" ] || exit 1
 HEALTH="$state_dir/health.json"
 [ -f "$HEALTH" ] || exit 0
 jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null

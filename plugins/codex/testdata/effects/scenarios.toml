@@ -55,7 +55,7 @@ content = '{"type":"session_meta","payload":{"cwd":"WORKSPACE","session_id":"111
 [[codex]]
 name     = "alive-under-a-different-time-zone-than-setup"
 capture  = "› "
-alive_tz = "Asia/Tokyo"
+hook_tz  = "Asia/Tokyo"
 hooks    = ["setup", "health.alive"]
 
 [[codex.files]]
