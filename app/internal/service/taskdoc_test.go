@@ -21,7 +21,7 @@ import (
 const reviewDocument = `[review]
 kind              = "task"
 description       = "Review a resource and record a verdict"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Review {{ resource.id }} and record a verdict against its current revision." }]
 
 [review.inputs_schema]
@@ -56,7 +56,8 @@ func observerDocument(state map[string]string) string {
 	}
 	return fmt.Sprintf(`
 [issue_pr]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://'
 
 [issue_pr.observe]
@@ -228,7 +229,8 @@ func TestTaskSetup_TaskDocumentFirstObservationFails(t *testing.T) {
 	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "issue_pr.toml"), []byte(`
 [issue_pr]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = '^https://'
 [issue_pr.observe]
 type = "shell"
@@ -355,7 +357,8 @@ func writeObservedRevisionFixture(t *testing.T, revisionFile string, documents .
 	}
 	write(filepath.Join("resources", "issue_pr.toml"), fmt.Sprintf(`
 [issue_pr]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://'
 
 [issue_pr.observe]
@@ -389,8 +392,8 @@ func TestTaskShow_TaskDocument(t *testing.T) {
 	if detail.Kind != "task" {
 		t.Errorf("Kind = %q, want task", detail.Kind)
 	}
-	if detail.ResourceObserver != "issue_pr" {
-		t.Errorf("ResourceObserver = %q, want the observer the document is written for", detail.ResourceObserver)
+	if detail.Resource != "issue_pr" {
+		t.Errorf("Resource = %q, want the resource the document is written for", detail.Resource)
 	}
 	if detail.Scope != "" {
 		t.Errorf("Scope = %q, want none: a task document owns no lifecycle", detail.Scope)
@@ -639,7 +642,7 @@ func TestSetTaskState_PayloadViolatingTheSchemaRejected(t *testing.T) {
 const judgedDocument = `[work]
 kind              = "task"
 description       = "Do the work and wait for an independent verdict"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Do the work at {{ resource.id }}." }]
 
 [work.done_when]
@@ -728,7 +731,7 @@ func TestRecordJudge_InstanceWithNoGateRejectsEveryLeaf(t *testing.T) {
 const gatelessDocument = `[note]
 kind              = "task"
 description       = "Work with nothing to reconfirm"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Note something about {{ resource.id }}." }]
 `
 
@@ -760,7 +763,7 @@ func TestTaskSetup_TaskDocumentBodyDefaultsAnAbsentOptionalInput(t *testing.T) {
 	document := `[review]
 kind              = "task"
 description       = "Review a resource"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = """
 Review {{ resource.id }}.
 

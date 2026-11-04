@@ -2,7 +2,7 @@
 # reason: resource is the query item's only universally required property because either means may omit optional context.
 
 [source]
-kind = "resource_observer"
+kind = "resource"
 
 [source.query.inputs_schema]
 type = "object"

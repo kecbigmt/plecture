@@ -4,7 +4,7 @@
 [review]
 kind              = "task"
 description       = "Review a pull request, addressing it by what the observer reports"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = """
 Review {{ resource.id }} at revision {{ resource.state.revision }}.
 

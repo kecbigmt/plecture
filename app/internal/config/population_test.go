@@ -12,7 +12,8 @@ import (
 func TestLoadResourceDefsDecodesSharedQueryContract(t *testing.T) {
 	base := t.TempDir()
 	if err := os.WriteFile(filepath.Join(base, "source.toml"), []byte(`[source]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = "^urn:case:"
 [source.observe]
 type = "exec"
@@ -50,7 +51,8 @@ command = "printf"
 func TestLoadWorkflowsDecodesPopulationDefaultsAndDurations(t *testing.T) {
 	base := t.TempDir()
 	if err := os.WriteFile(filepath.Join(base, "agent.toml"), []byte(`[source]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = "^urn:case:"
 [source.observe]
 type = "exec"
@@ -70,7 +72,7 @@ command = "true"
 
 [base_work]
 kind = "task"
-resource_observer = "source"
+resource          = "source"
 
 [work]
 kind = "task"
@@ -170,7 +172,8 @@ task = "work"
 		t.Run(tt.name, func(t *testing.T) {
 			base := t.TempDir()
 			definitions := `[source]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = "^urn:case:"
 [source.observe]
 type = "exec"
@@ -191,7 +194,8 @@ type = "exec"
 command = "true"
 
 [other]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = "^urn:case:"
 [other.observe]
 type = "exec"
@@ -199,7 +203,7 @@ command = "true"
 
 [work]
 kind = "task"
-resource_observer = "other"
+resource          = "other"
 
 [agent]
 kind = "workflow"

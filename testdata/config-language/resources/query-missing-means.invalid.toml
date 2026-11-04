@@ -2,7 +2,7 @@
 # reason: a query without poll or subscribe cannot produce any items.
 
 [source]
-kind = "resource_observer"
+kind = "resource"
 
 [source.query.inputs_schema]
 type = "object"

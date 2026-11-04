@@ -119,73 +119,8 @@ name  = { expr = "match.project + '-issue-' + match.number" }
 	}
 }
 
-const resourceTaskContext = `[issue_pr]
-kind  = "resource"
-match = '^https://forge\.example/(?P<number>\d+)$'
-name  = { from = "match.number" }
-
-[issue_pr.observe]
-type = "exec"
-bin  = "github-issue-pr"
-args = ["observe"]
-
-[issue_pr.state_schema]
-type = "object"
-
-[issue_pr.state_schema.properties]
-revision = { type = "string" }
-
-[reviewer]
-kind = "workflow"
-`
-
-func resolveTaskAgainstResources(t *testing.T, src string) error {
-	t.Helper()
-	context, err := ParseDefinitionDocument("context.toml", []byte(resourceTaskContext))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defs, err := ParseDefinitionDocument("task.toml", []byte(src))
-	if err != nil {
-		return err
-	}
-	def := defs[0]
-	if err := resolveTaskInstructions(def, "."); err != nil {
-		return err
-	}
-	v := Validation{From: Ownership{IsPlugin: true, Alias: fixtureAlias, Path: fixturePath}}
-	if err := v.ValidateDefinition(def); err != nil {
-		return err
-	}
-	registry := NewRegistry([]PluginLayer{{Alias: fixtureAlias, Path: fixturePath, Defs: append(context, def)}}, nil)
-	return v.ValidateTaskContracts(def, registry)
-}
-
-func TestTaskResourceFieldNamesAResource(t *testing.T) {
-	err := resolveTaskAgainstResources(t, `[work]
-kind         = "task"
-resource     = "issue_pr"
-instructions = [{ text = "Resolve {{ resource.id }}." }]
-
-[work.done_when]
-all = [{ check = "resource.state.revision", ne = "" }]
-`)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestTaskResourceFieldRejectsADeclarationThatIsNotAResource(t *testing.T) {
-	err := resolveTaskAgainstResources(t, `[work]
-kind         = "task"
-resource     = "reviewer"
-instructions = [{ text = "Resolve {{ resource.id }}." }]
-`)
-	wantDiag(t, err, CodeKindMismatch, LayerSemantic)
-}
-
 func TestTaskRejectsTheRetiredResourceObserverField(t *testing.T) {
-	err := resolveTaskAgainstResources(t, `[work]
+	err := resolveTaskDocument(t, `[work]
 kind              = "task"
 resource_observer = "issue_pr"
 instructions      = [{ text = "Resolve {{ resource.id }}." }]

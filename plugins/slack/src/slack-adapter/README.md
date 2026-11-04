@@ -154,7 +154,7 @@ is non-zero, and never means "no mentions occurred."
 slack-adapter resource observe --resource <permalink>
 ```
 
-`thread`'s `resource_observer` declaration requires an `observe` action,
+`thread`'s resource declaration requires an `observe` action,
 but the observer's `state_schema` is empty: a mention's appearance is
 already the only fact its `query.subscribe` means reports, and `observe`
 has nothing live to add without inventing a fact the schema does not

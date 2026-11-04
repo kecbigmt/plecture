@@ -42,10 +42,10 @@ var fixtureExecutables = []string{
 // this list is only what stands in for the layer a real load would have
 // discovered around them.
 var fixtureContext = []string{
-	"observers/issue-pr.toml",
-	"observers/observe-finalize.toml",
-	"observers/query.toml",
-	"observers/query-subscribe-only.toml",
+	"resources/issue-pr.toml",
+	"resources/observe-finalize.toml",
+	"resources/query.toml",
+	"resources/query-subscribe-only.toml",
 	"providers/query.toml",
 	"tasks/population.toml",
 	"workflows/nodes.toml",

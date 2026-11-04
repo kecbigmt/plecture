@@ -443,7 +443,8 @@ func TestTaskCleanup_UnsubscribeHookFailureDoesNotFailCleanup(t *testing.T) {
 	)
 	body := `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + ghMatch + `'
 
 [github.observe]

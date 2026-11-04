@@ -12,7 +12,7 @@ import (
 // rules (see layer.go); the directory is only an allowlist, so nothing
 // outside it is even read. A kind = "effect" fragment there is a load error,
 // because cloned content must not carry shell. A workspace_provider,
-// resource_observer, or channel fragment is not loaded at all — not an
+// resource, or channel fragment is not loaded at all — not an
 // error, simply absent from the result. A missing root is not an error: it
 // means the clone carries no overlay.
 func DiscoverWorkspaceOverlay(root string) ([]*Definition, error) {
@@ -31,7 +31,7 @@ func DiscoverWorkspaceOverlay(root string) ([]*Definition, error) {
 			fragments = append(fragments, def)
 		case KindEffect:
 			return nil, fmt.Errorf("%s: a workspace overlay may not declare an effect definition (%q); cloned content must not carry shell", def.File, def.ID)
-		case KindWorkspaceProvider, KindResourceObserver, KindChannel, KindTask:
+		case KindWorkspaceProvider, KindResource, KindChannel, KindTask:
 			// Not loaded at all: declarations.md's trust boundary for
 			// this overlay.
 		}

@@ -8,8 +8,9 @@
 # as code.
 
 [okf_goal]
-kind  = "resource_observer"
-match = '^local-okf://[A-Za-z0-9][A-Za-z0-9-]*/goals/[A-Za-z0-9._/-]+\.md$'
+kind  = "resource"
+match = '^local-okf://(?P<owner>[A-Za-z0-9][A-Za-z0-9-]*)/goals/(?:[A-Za-z0-9._/-]*/)?(?P<slug>[A-Za-z0-9._-]+)\.md$'
+name  = { expr = "match.owner + '/okf-' + match.slug" }
 
 # goal_parse_status UNRESOLVED means the observation could not even locate
 # the goal (no orchestrator session, workspace directory unreadable —

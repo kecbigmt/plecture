@@ -23,7 +23,7 @@ mkdir -p "$dirty/plugins/acme/config/tasks"
 cat >"$dirty/plugins/acme/config/tasks/work.toml" <<'EOF'
 [work]
 kind              = "task"
-resource_observer = "issue"
+resource          = "issue"
 instructions      = [{ file = "work.md" }]
 EOF
 cat >"$dirty/plugins/acme/config/tasks/work.md" <<'EOF'
@@ -55,7 +55,7 @@ mkdir -p "$clean/plugins/acme/config/tasks"
 cat >"$clean/plugins/acme/config/tasks/work.toml" <<'EOF'
 [work]
 kind              = "task"
-resource_observer = "issue"
+resource          = "issue"
 instructions      = [{ file = "work.md" }]
 EOF
 cat >"$clean/plugins/acme/config/tasks/work.md" <<'EOF'

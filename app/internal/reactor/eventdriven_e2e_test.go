@@ -353,7 +353,7 @@ func writeEventDrivenObserverDoc(t *testing.T, baseDir string, facts map[string]
 	// stubObservedFacts test helper (a proven fixture-writer for exactly this
 	// "cat a heredoc of JSON" observer shape).
 	script := fmt.Sprintf("%q", "cat <<'JSON'\n"+string(encoded)+"\nJSON")
-	doc := "[fixture]\nkind  = \"resource_observer\"\nmatch = '.'\n\n" +
+	doc := "[fixture]\nkind  = \"resource\"\nname  = \"fixture\"\nmatch = '.'\n\n" +
 		"[fixture.observe]\ntype   = \"shell\"\nscript = " + script + "\n\n" +
 		fmt.Sprintf("[fixture.subscribe]\ntype = \"exec\"\nbin = %q\nargs = [\"subscribe\", \"--session\", { from = \"session.name\" }, \"--resource\", { from = \"resource.id\" }, \"--branch\", { from = \"session.branch\", default = \"\" }]\n\n", mountedID+"/"+watcherBin) +
 		fmt.Sprintf("[fixture.unsubscribe]\ntype = \"exec\"\nbin = %q\nargs = [\"unsubscribe\", \"--session\", { from = \"session.name\" }, \"--resource\", { from = \"resource.id\" }]\n\n", mountedID+"/"+watcherBin) +
@@ -451,7 +451,7 @@ args    = ['{"workdir":"/tmp/followup"}']
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
 description       = "work fixture"
-resource_observer = "fixture"
+resource          = "fixture"
 instructions      = [{ text = "Carry out the work." }]
 
 [work.done_when]
@@ -688,7 +688,7 @@ args    = ['{"workdir":"/tmp/followup"}']
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
 description       = "work fixture"
-resource_observer = "fixture"
+resource          = "fixture"
 instructions      = [{ text = "Carry out the work." }]
 
 [work.done_when]

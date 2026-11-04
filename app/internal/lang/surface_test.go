@@ -14,10 +14,10 @@ func TestSurfaceRootsMatchValuesTable(t *testing.T) {
 		{surfaceProviderName, []string{"match.owner", "match.repo"}, []string{"session.name", "inputs.owner"}},
 		{surfaceProviderSetup, []string{"resource.id", "session.name", "session.inputs.owner", "inputs.owner", "prev.dir", "config.workspace_dirs_root"}, []string{"event.type", "self.outputs.dir", "force"}},
 		{surfaceProviderCleanup, []string{"self.outputs.workspace_dir", "inputs.x", "cleanup.inputs.delete_branch", "session.name", "config.workspace_dirs_root", "force"}, []string{"resource.id", "prev.dir"}},
-		{surfaceObserverSubscribe, []string{"session.name", "session.branch", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir"}},
-		{surfaceObserverUnsubscribe, []string{"session.name", "session.branch", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir"}},
-		{surfaceObserverObserve, []string{"resource.id", "workspace.dir", "workspace.branch"}, []string{"resource.revision", "judges", "session.name"}},
-		{surfaceObserverFinalize, []string{"resource.id", "session.name", "resource.revision", "judges"}, []string{"workspace.dir", "effect.instance", "inputs.x"}},
+		{surfaceResourceSubscribe, []string{"session.name", "session.branch", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir"}},
+		{surfaceResourceUnsubscribe, []string{"session.name", "session.branch", "resource.id", "resource.inputs.token"}, []string{"inputs.x", "workspace.dir"}},
+		{surfaceResourceObserve, []string{"resource.id", "workspace.dir", "workspace.branch"}, []string{"resource.revision", "judges", "session.name"}},
+		{surfaceResourceFinalize, []string{"resource.id", "session.name", "resource.revision", "judges"}, []string{"workspace.dir", "effect.instance", "inputs.x"}},
 		{surfaceWorkflowDisplay, []string{"workflow.outputs.concept_id", "session.inputs.task"}, []string{"nodes.pane.outputs.session_name", "resource.id"}},
 		{surfaceWorkflowNodeInputs, []string{"nodes.pane.outputs.session_name", "workflow.outputs.x", "session.name", "session.inputs.task", "workspace.dir"}, []string{"resource.id", "locals.x", "event.type"}},
 		{surfaceChannelDelivery, []string{"event.type", "event.body", "event.metadata.url", "inputs.queue_dir"}, []string{"workflow.outputs.branch", "session.name"}},
@@ -52,10 +52,10 @@ func TestSurfaceRootsAcceptAWholeRoot(t *testing.T) {
 	if !surfaceChannelDelivery.offers("event") {
 		t.Error("event.* covers the whole event, which a channel body serializes")
 	}
-	if !surfaceObserverFinalize.offers("judges") {
+	if !surfaceResourceFinalize.offers("judges") {
 		t.Error("judges is a whole root on the finalize surface")
 	}
-	if surfaceObserverObserve.offers("workspace") {
+	if surfaceResourceObserve.offers("workspace") {
 		t.Error("the observe surface lists workspace.dir and workspace.branch, not workspace itself")
 	}
 }

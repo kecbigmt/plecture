@@ -20,7 +20,10 @@ type ResourceDef struct {
 	// unlike WorkspaceProviderConfig's optional resolver, an observer exists
 	// only to recognize and observe ids, so it has no other reason to load.
 	Match string
-	Name  *lang.Value
+	// Name derives the resource instance's name from Match's named captures,
+	// which are the only root it observes. Required: a session name is built
+	// from it, so a resource without one could not be addressed.
+	Name *lang.Value
 	// Observe reads the resource's current state. It must emit a JSON object
 	// on stdout, validated against StateSchema when one is declared.
 	Observe *lang.Action
@@ -53,6 +56,17 @@ type ResourceQuery struct {
 	Subscribe    *lang.Action
 }
 
+// InstanceName derives the resource instance's name from id. A id Match does
+// not recognize reports matched=false rather than an error, so a caller can
+// try several resources.
+func (r ResourceDef) InstanceName(id string) (name string, matched bool, err error) {
+	name, matched, err = lang.MatchName(r.Match, r.Name, id)
+	if err != nil {
+		return "", false, fmt.Errorf("resource %q %w", r.ID, err)
+	}
+	return name, matched, nil
+}
+
 // ResolvedStateSchemaPath joins StateSchemaFile with BaseDir.
 func (r ResourceDef) ResolvedStateSchemaPath() string {
 	return resolveSchemaPath(r.StateSchemaFile, r.BaseDir)
@@ -64,12 +78,12 @@ func (r ResourceDef) Ownership() lang.Ownership {
 	return lang.Ownership{IsPlugin: r.FromPlugin}
 }
 
-// LoadResourceDefs loads every resource observer the trusted base layers
+// LoadResourceDefs loads every resource the trusted base layers
 // declare: plugin roots first, then the global config dir. Mirrors
 // LoadWorkspaceProviders, including its exclusion of the per-workspace-dir
 // ancestor cascade.
 func (c *Config) LoadResourceDefs() (map[string]ResourceDef, error) {
-	resolved, err := c.trustedKind(lang.KindResourceObserver)
+	resolved, err := c.trustedKind(lang.KindResource)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +100,7 @@ func (c *Config) resourceDefFromDefinition(def *lang.Definition, fromPlugin bool
 	}
 	observer, err := resourceDefFrom(def, def.File, fromPlugin)
 	if err != nil {
-		return ResourceDef{}, fmt.Errorf("resource observer %s in %s: %w", def.ID, def.File, err)
+		return ResourceDef{}, fmt.Errorf("resource %s in %s: %w", def.ID, def.File, err)
 	}
 	return observer, nil
 }
@@ -117,6 +131,15 @@ func resourceDefFrom(def *lang.Definition, path string, fromPlugin bool) (Resour
 	if _, err := regexp.Compile(r.Match); err != nil {
 		return r, fmt.Errorf("`match` %q does not compile: %w", r.Match, err)
 	}
+	rawName, ok := def.Body["name"]
+	if !ok {
+		return r, fmt.Errorf("`name` is required: a resource must declare how its instance name derives from its match captures")
+	}
+	name, err := lang.ParseValue(rawName, lang.ClassData, lang.Position{File: path, Path: def.ID + ".name"})
+	if err != nil {
+		return r, err
+	}
+	r.Name = name
 	observe, err := actionField(def, path, "observe")
 	if err != nil {
 		return r, err
@@ -194,5 +217,3 @@ func actionField(def *lang.Definition, path, field string) (*lang.Action, error)
 	}
 	return lang.ParseAction(raw, lang.Position{File: path, Path: def.ID + "." + field})
 }
-
-func (r ResourceDef) InstanceName(id string) (string, bool, error) { return "", false, nil }

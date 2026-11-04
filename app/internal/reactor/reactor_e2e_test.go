@@ -26,7 +26,7 @@ func newE2EConfig(t *testing.T) *config.Config {
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
 description       = "work fixture"
-resource_observer = "fixture"
+resource          = "fixture"
 instructions      = [{ text = "Carry out the work." }]
 
 [work.done_when]
@@ -47,7 +47,8 @@ func writeE2EWorkflow(t *testing.T, base string) {
 // last observation a test seeded stands.
 const e2eObserver = `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^fixture://'
 
 [fixture.observe]
@@ -140,7 +141,7 @@ func newPendingJudgeConfig(t *testing.T) *config.Config {
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
 description       = "work fixture"
-resource_observer = "fixture"
+resource          = "fixture"
 instructions      = [{ text = "Carry out the work." }]
 
 [work.done_when]

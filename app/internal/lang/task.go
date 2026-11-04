@@ -31,17 +31,17 @@ func (v Validation) ValidateTaskContracts(def *Definition, r *Registry) error {
 	if root != def {
 		rootFrom = r.OwnerOf(root)
 	}
-	at := childPos(Position{File: root.File, Path: root.ID}, "resource_observer")
-	raw, ok := root.Body["resource_observer"]
+	at := childPos(Position{File: root.File, Path: root.ID}, "resource")
+	raw, ok := root.Body["resource"]
 	if !ok {
 		return newDiag(CodeFieldRequired, LayerStructural, at,
-			"a task document declares the resource observer it is written for")
+			"a task document declares the resource it is written for")
 	}
 	ref, err := staticRef(raw, at.Path)
 	if err != nil {
 		return err
 	}
-	observer, err := r.ExpectKind(ref, rootFrom, KindResourceObserver, at.Path)
+	observer, err := r.ExpectKind(ref, rootFrom, KindResource, at.Path)
 	if err != nil {
 		return err
 	}

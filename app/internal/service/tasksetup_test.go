@@ -98,7 +98,8 @@ func TestTaskSetup_ResourceSubscribeCarriesSessionBranch(t *testing.T) {
 	subRec := filepath.Join(t.TempDir(), "sub-rec")
 	body := `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + ghMatch + `'
 
 [github.observe]
@@ -233,7 +234,8 @@ func TestTaskSetup_SubscribeHookFailureDoesNotFailSetup(t *testing.T) {
 	)
 	body := `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + ghMatch + `'
 
 [github.observe]

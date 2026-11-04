@@ -12,7 +12,7 @@
 [review]
 kind              = "task"
 description       = "Review a pull request and record a verdict"
-resource_observer = "pull_request"
+resource          = "pull_request"
 instructions      = [{ file = "review.md" }]
 
 [review.inputs_schema]

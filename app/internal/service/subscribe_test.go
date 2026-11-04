@@ -26,7 +26,8 @@ func writeSubscribeProvider(t *testing.T, id, match, recordPath string) *config.
 	}
 	body := fmt.Sprintf(`
 [%[1]s]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = %[2]q
 
 [%[1]s.observe]
@@ -97,7 +98,8 @@ func TestSubscribe_ForwardsSessionBranch(t *testing.T) {
 	}
 	body := fmt.Sprintf(`
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = %q
 
 [github.observe]
@@ -227,7 +229,8 @@ func TestSubscribe_ProviderWithoutSubscribeHook(t *testing.T) {
 	}
 	body := fmt.Sprintf(`
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = %q
 
 [github.observe]
@@ -258,7 +261,8 @@ func TestSubscribe_HookFailureSurfacesStderr(t *testing.T) {
 	}
 	body := fmt.Sprintf(`
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = %q
 
 [github.observe]

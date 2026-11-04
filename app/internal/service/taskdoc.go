@@ -42,7 +42,7 @@ func validateTaskDocuments(cfg *config.Config, session *domain.Session, docs map
 	}
 	observers, err := cfg.LoadResourceDefs()
 	if err != nil {
-		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resource observers: %v", err)}
+		return &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
 	workflows, err := cfg.LoadWorkflows(session.WorkspaceDirPath)
 	if err != nil {
@@ -163,18 +163,18 @@ func SetTaskState(cfg *config.Config, store *state.Store, params SetTaskStatePar
 func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName string, session *domain.Session, doc config.TaskDocument, params TaskSetupParams) (*TaskSetupResult, error) {
 	observers, err := cfg.LoadResourceDefs()
 	if err != nil {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resource observers: %v", err)}
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load resources: %v", err)}
 	}
-	observer, ok := observers[doc.ResourceObserver]
+	observer, ok := observers[doc.Resource]
 	if !ok {
-		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s is written for resource observer %q, which no config layer declares", doc.ID, doc.ResourceObserver)}
+		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("task %s is written for resource %q, which no config layer declares", doc.ID, doc.Resource)}
 	}
 	resourceID := params.Resource
 	if resourceID == "" {
 		resourceID = session.ResourceID
 	}
 	if resourceID == "" {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource observer %q, so an instance needs a resource; pass --resource", doc.ID, doc.ResourceObserver)}
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource %q, so an instance needs a resource; pass --resource", doc.ID, doc.Resource)}
 	}
 	// The document states a type, so compatibility is checked up front: an
 	// instance bound to a resource the declared observer does not claim can
@@ -183,8 +183,8 @@ func setupTaskDocument(cfg *config.Config, store *state.Store, resolvedName stri
 	if merr != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: merr.Error()}
 	}
-	if !ok || matchedAddress != doc.ResourceObserver {
-		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource observer %q, which does not claim resource %q", doc.ID, doc.ResourceObserver, resourceID)}
+	if !ok || matchedAddress != doc.Resource {
+		return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("task %s is written for resource %q, which does not claim resource %q", doc.ID, doc.Resource, resourceID)}
 	}
 
 	inputs, bindErr := bindDocumentInputs(doc, params.Inputs, session)

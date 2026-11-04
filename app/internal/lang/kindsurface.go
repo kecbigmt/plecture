@@ -16,7 +16,7 @@ var kindFields = map[Kind]map[string]bool{
 	KindTask: fieldSet(
 		"budget", "chains", "description", "done_when", "extends", "inputs_schema",
 		"inputs_schema_file", "instructions",
-		"resource_observer", "state_schema", "state_schema_file"),
+		"resource", "state_schema", "state_schema_file"),
 	KindChannel: fieldSet(
 		"args", "bin", "bind", "body", "command", "input_schema", "path",
 		"script", "stdin", "timeout", "type"),
@@ -27,8 +27,8 @@ var kindFields = map[Kind]map[string]bool{
 	KindWorkspaceProvider: fieldSet(
 		"cleanup", "inputs_schema", "inputs_schema_file", "match", "name",
 		"outputs_schema", "outputs_schema_file", "setup"),
-	KindResourceObserver: fieldSet(
-		"finalize", "match", "observe", "query", "state_schema", "state_schema_file", "subscribe", "unsubscribe", "inputs_schema"),
+	KindResource: fieldSet(
+		"finalize", "match", "name", "observe", "query", "state_schema", "state_schema_file", "subscribe", "unsubscribe", "inputs_schema"),
 }
 
 func fieldSet(names ...string) map[string]bool {

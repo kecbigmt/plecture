@@ -136,7 +136,8 @@ func TestSubscribeIfWired_HookFailureSurfacesStderr(t *testing.T) {
 	baseDir := t.TempDir()
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -220,7 +221,8 @@ func TestUnsubscribeIfWired_HookFailureSurfacesStderr(t *testing.T) {
 	baseDir := t.TempDir()
 	body := `
 [fixture]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + fixtureResourceMatch + `'
 
 [fixture.observe]
@@ -250,7 +252,8 @@ func writeProviderDoc(t *testing.T, baseDir, id, match, extra string) {
 	t.Helper()
 	body := `
 [` + id + `]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '` + match + `'
 
 [` + id + `.observe]

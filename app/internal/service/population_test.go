@@ -77,7 +77,7 @@ func TestChainStyleDispatchCannotAdoptAPopulationSession(t *testing.T) {
 func TestPopulationTaskBlockersFailsClosedAndClearsOnlySatisfiedTasks(t *testing.T) {
 	missingPolicy := `[unbounded]
 kind              = "task"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Handle {{ resource.id }}." }]
 `
 	store := testStore(t)

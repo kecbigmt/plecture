@@ -68,7 +68,7 @@ func TestDocumentChain_Validate(t *testing.T) {
 [pursue]
 kind              = "task"
 description       = "Pursue one goal"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Pursue the goal." }]
 
 [pursue.done_when]
@@ -128,7 +128,7 @@ func TestValidateTaskDocuments_ChainReferences(t *testing.T) {
 [pursue]
 kind              = "task"
 description       = "Pursue one goal"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ text = "Pursue the goal." }]
 
 [pursue.done_when]

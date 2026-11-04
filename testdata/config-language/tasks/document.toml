@@ -4,7 +4,7 @@
 [work]
 kind              = "task"
 description       = "Implement a fix or feature for an issue and create a PR"
-resource_observer = "issue_pr"
+resource          = "issue_pr"
 instructions      = [{ file = "document.md" }]
 
 [work.inputs_schema]

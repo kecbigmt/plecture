@@ -261,7 +261,8 @@ plect_min_version = "0.0.0"
 	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "config.toml"), "schema_version = 2\n")
 	writeFile(t, filepath.Join(tmpHome, ".config", "plect", "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = "^gh:"
 
 [github.observe]

@@ -27,7 +27,7 @@ type discoveredLayer struct {
 // this layer is skipped, because a project's own directory holding one is not
 // a mistake — it just does not participate.
 //
-// A workspace provider, a resource observer and a channel are trusted-base
+// A workspace provider, a resource and a channel are trusted-base
 // content: they decide how a session's identity is resolved and how a process
 // is reached, so one in an ancestor overlay is skipped — it does not
 // participate, and does not stop the layer loading either. Effects and task
@@ -39,7 +39,7 @@ var (
 	loadedKinds = map[layerScope]map[lang.Kind]bool{
 		layerScopeTrusted: {
 			lang.KindWorkspaceProvider: true,
-			lang.KindResourceObserver:  true,
+			lang.KindResource:          true,
 			lang.KindChannel:           true,
 			lang.KindEffect:            true,
 			lang.KindTask:              true,
@@ -362,17 +362,17 @@ func canonicalizeWorkflowRefs(wf *WorkflowFile, prefix string) error {
 	return nil
 }
 
-// canonicalizeDocumentRefs rewrites a task document's observer reference and
+// canonicalizeDocumentRefs rewrites a task document's resource reference and
 // each chain's workflow reference to the addresses they select.
 func canonicalizeDocumentRefs(doc *TaskDocument, prefix string) error {
 	if prefix == "" {
 		return nil
 	}
-	observer, err := referenceAddress(prefix, doc.ResourceObserver)
+	resource, err := referenceAddress(prefix, doc.Resource)
 	if err != nil {
-		return fmt.Errorf("task %q resource_observer: %w", doc.ID, err)
+		return fmt.Errorf("task %q resource: %w", doc.ID, err)
 	}
-	doc.ResourceObserver = observer
+	doc.Resource = resource
 	extends, err := referenceAddress(prefix, doc.Extends)
 	if err != nil {
 		return fmt.Errorf("task %q extends: %w", doc.ID, err)

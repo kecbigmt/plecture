@@ -4,7 +4,7 @@
 [investigate]
 kind              = "task"
 description       = "Investigate an issue and summarize feasible approaches"
-resource_observer = "issue"
+resource          = "issue"
 instructions      = [{ text = """
 Investigate the issue at {{ resource.id }}.
 

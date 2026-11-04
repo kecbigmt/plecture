@@ -21,7 +21,8 @@ func TestLoadResourceDefs_GlobalLayer(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/'
 `+observerObserveHook)
 	cfg := &Config{BaseDir: baseDir}
@@ -48,7 +49,8 @@ func TestLoadResourceDefs_IDComesFromTheTableNotTheFilename(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(baseDir, "resources", "anything.toml"), `
 [issue]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/[^/]+/[^/]+/issues/'
 
 [issue.observe]
@@ -56,7 +58,8 @@ type    = "exec"
 command = "true"
 
 [pull]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^https://github\.com/[^/]+/[^/]+/pull/'
 
 [pull.observe]
@@ -82,7 +85,8 @@ func TestLoadResourceDefs_GlobalOverridesPlugin(t *testing.T) {
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [github.observe]
@@ -91,7 +95,8 @@ command = "plugin"
 `)
 	writeFile(t, filepath.Join(baseDir, "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [github.observe]
@@ -118,7 +123,8 @@ func TestLoadResourceDefs_TwoUnaddressablePluginLayersSameIDFailsLoud(t *testing
 	for _, dir := range []string{pluginA, pluginB} {
 		writeFile(t, filepath.Join(dir, "config", "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [github.observe]
@@ -142,17 +148,17 @@ func TestLoadResourceDefs_RejectedDeclarations(t *testing.T) {
 	}{
 		{
 			name: "match required",
-			body: "[broken]\nkind = \"resource_observer\"\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
 			want: "match",
 		},
 		{
 			name: "observe required",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n",
 			want: "observe",
 		},
 		{
 			name: "match does not compile",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '('\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '('\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
 			want: "match",
 		},
 		{
@@ -162,27 +168,27 @@ func TestLoadResourceDefs_RejectedDeclarations(t *testing.T) {
 		},
 		{
 			name: "a field outside the observer surface",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\nexecution = \"environment\"\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\nexecution = \"environment\"\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n",
 			want: "execution",
 		},
 		{
 			name: "a root the observe surface does not offer",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"session.name\" }]\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"session.name\" }]\n",
 			want: "session.name",
 		},
 		{
 			name: "a root the finalize surface does not offer",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n\n[broken.finalize]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"workspace.dir\" }]\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n\n[broken.finalize]\ntype = \"exec\"\ncommand = \"true\"\nargs = [{ from = \"workspace.dir\" }]\n",
 			want: "workspace.dir",
 		},
 		{
 			name: "an interpolated shell script",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"shell\"\nscript = \"echo {{.ResourceID}}\\n\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"shell\"\nscript = \"echo {{.ResourceID}}\\n\"\n",
 			want: "bind",
 		},
 		{
 			name: "malformed resource inputs schema",
-			body: "[broken]\nkind = \"resource_observer\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n\n[broken.inputs_schema]\ntype = \"bogus\"\n",
+			body: "[broken]\nkind = \"resource\"\nname = \"fixture\"\nmatch = '^x'\n\n[broken.observe]\ntype = \"exec\"\ncommand = \"true\"\n\n[broken.inputs_schema]\ntype = \"bogus\"\n",
 			want: "inputs_schema",
 		},
 	}
@@ -211,7 +217,8 @@ func TestLoadResourceDefs_NotInWorkspaceDirCascade(t *testing.T) {
 	workspaceDirPath := filepath.Join(tmpHome, "workspace_dirs", "session")
 	writeFile(t, filepath.Join(workspaceDirPath, ".plect", "resources", "evil.toml"), `
 [evil]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '.*'
 
 [evil.observe]
@@ -236,7 +243,8 @@ func TestLoadResourceDefs_PluginOwnedBinRefStaysInsideItsPlugin(t *testing.T) {
 	pluginDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "github.toml"), `
 [github]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^gh:'
 
 [github.observe]
@@ -255,7 +263,8 @@ bin  = "local/runtime/watcher"
 func TestLoadResourceDefs_SameLayerDuplicateIDAcrossFiles(t *testing.T) {
 	const body = `
 [same]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [same.observe]
@@ -292,7 +301,8 @@ func TestLoadResourceDefs_GlobalReplacingAPluginIDIsNotADuplicate(t *testing.T) 
 	baseDir := t.TempDir()
 	writeFile(t, filepath.Join(pluginDir, "config", "resources", "a.toml"), `
 [same]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [same.observe]
@@ -301,7 +311,8 @@ command = "plugin"
 `)
 	writeFile(t, filepath.Join(baseDir, "resources", "b.toml"), `
 [same]
-kind  = "resource_observer"
+kind  = "resource"
+name  = "fixture"
 match = '^x'
 
 [same.observe]
@@ -402,32 +413,47 @@ command = "true"
 
 // A task document's resource must be a resource declaration: pointing it at
 // another kind is rejected when the config loads, not when an instance binds.
-func TestLoadTaskDocuments_ResourceNamesAResourceDeclaration(t *testing.T) {
-	base := t.TempDir()
-	writeFile(t, filepath.Join(base, "resources", "issue.toml"), forgeIssueResource)
-	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
-[work]
+func TestValidateTaskDocuments_ResourceNamesAResourceDeclaration(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource string
+		wantErr  string
+	}{
+		{name: "a resource declaration", resource: "issue"},
+		{name: "a declaration of another kind", resource: "other", wantErr: "KIND-MISMATCH"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			base := t.TempDir()
+			writeFile(t, filepath.Join(base, "resources", "issue.toml"), forgeIssueResource)
+			writeFile(t, filepath.Join(base, "tasks", "other.toml"), `
+[other]
 kind         = "task"
 resource     = "issue"
-instructions = [{ text = "Resolve {{ resource.id }}." }]
+instructions = [{ text = "Other." }]
 `)
-	docs, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := docs["work"].Resource; got != "issue" {
-		t.Errorf("Resource = %q, want issue", got)
-	}
-
-	writeFile(t, filepath.Join(base, "workflows", "other.toml"), "[issue_flow]\nkind = \"workflow\"\n")
-	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
+			writeFile(t, filepath.Join(base, "tasks", "work.toml"), fmt.Sprintf(`
 [work]
 kind         = "task"
-resource     = "issue_flow"
+resource     = %q
 instructions = [{ text = "Resolve {{ resource.id }}." }]
-`)
-	if _, err := (&Config{BaseDir: base}).LoadTaskDocuments(""); err == nil || !strings.Contains(err.Error(), "KIND-MISMATCH") {
-		t.Fatalf("error = %v, want PLECTURE-CFG-KIND-MISMATCH", err)
+`, tc.resource))
+			cfg := &Config{BaseDir: base}
+			docs, resources := loadDocsAndObservers(t, cfg)
+			if got := docs["work"].Resource; got != tc.resource {
+				t.Errorf("Resource = %q, want %q", got, tc.resource)
+			}
+			err := cfg.ValidateTaskDocuments(docs, resources, nil)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("error = %v, want %s", err, tc.wantErr)
+			}
+		})
 	}
 }
 

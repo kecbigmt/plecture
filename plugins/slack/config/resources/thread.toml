@@ -4,8 +4,9 @@
 # mention is not enumerable, so this observer declares no query.poll.
 
 [thread]
-kind  = "resource_observer"
-match = '^https://[A-Za-z0-9.-]+\.slack\.com/archives/[A-Z0-9]+/p\d{16}(?:\?thread_ts=\d{10}\.\d{6}&cid=[A-Z0-9]+)?$'
+kind  = "resource"
+match = '^https://[A-Za-z0-9.-]+\.slack\.com/archives/(?P<channel_id>[A-Z0-9]+)/p(?P<ts16>\d{16})(?:\?thread_ts=(?P<thread_ts>\d{10}\.\d{6})&cid=[A-Z0-9]+)?$'
+name  = { expr = "'slack/' + match.channel_id + '-' + (match.thread_ts != '' ? match.thread_ts.replace('.', '') : match.ts16)" }
 
 # observe is required even though this observer has no live fact of its
 # own to add; the bound command prints "{}" rather than fabricate one.

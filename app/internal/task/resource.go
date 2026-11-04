@@ -14,7 +14,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
-// MatchResourceDef finds the resource observer whose `match` recognizes
+// MatchResourceDef finds the resource whose `match` recognizes
 // resourceID. Ok=false with a nil error means no observer claims this id —
 // a legitimate, common case: most instance-local resources have no declared
 // kind, and stay the opaque passthrough dynamic instantiation already
@@ -50,7 +50,7 @@ func MatchResourceDef(defs map[string]config.ResourceDef, resourceID string) (st
 	}
 }
 
-// ResourceStatus observes a resource id: it finds the resource observer whose
+// ResourceStatus observes a resource id: it finds the resource whose
 // `match` accepts the id, runs its `observe` action, and validates the
 // result against the observer's state schema. Ok=false with a nil error
 // means no observer recognizes this id — the Resource contract is

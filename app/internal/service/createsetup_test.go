@@ -193,7 +193,8 @@ func TestCreate_ResourceSubscribesToMatchingProvider(t *testing.T) {
 echo '{"workspace_dir":"%s"}'
 `, workdir, workdir))
 	resourceHooks := `[delivery]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = '^https://github\.com/'
 [delivery.observe]
 type = "exec"
@@ -242,7 +243,8 @@ func TestCreate_ResourceSubscribeCarriesSetupProducedBranch(t *testing.T) {
 echo '{"workspace_dir":"%s","branch":"issue/9"}'
 `, workdir, workdir))
 	resourceHooks := `[delivery]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = '^https://github\.com/'
 [delivery.observe]
 type = "exec"
@@ -409,7 +411,8 @@ func TestDestroy_UnsubscribesSessionResource(t *testing.T) {
 echo '{"workspace_dir":"%s"}'
 `, workdir, workdir))
 	resourceHooks := `[delivery]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = '^https://github\.com/'
 [delivery.observe]
 type = "exec"
@@ -473,7 +476,8 @@ func TestDestroy_UnsubscribeFailureIsDurablyQueuedAndDrainsViaAnotherSession(t *
 echo '{"workspace_dir":"%s"}'
 `, workdir, workdir))
 	resourceHooks := `[delivery]
-kind = "resource_observer"
+kind = "resource"
+name = "fixture"
 match = '^https://github\.com/'
 [delivery.observe]
 type = "exec"

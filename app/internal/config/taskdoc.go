@@ -22,15 +22,14 @@ import (
 type TaskDocument struct {
 	ID          string
 	Description string
-	// ResourceObserver is the observer this document is written for. It closes
-	// the completion chain at load: the observer's state_schema says which
-	// keys exist, so a `resource.state.*` a gate reads is resolved against a
-	// declaration rather than discovered at run time.
-	ResourceObserver string
-	Resource         string
+	// Resource is the resource declaration this document is written for. It
+	// closes the completion chain at load: the resource's state_schema says
+	// which keys exist, so a `resource.state.*` a gate reads is resolved
+	// against a declaration rather than discovered at run time.
+	Resource string
 	// Extends names the base task this declaration specializes, the ordinary
 	// task reference `extends` carries. Empty for a document that is not an
-	// extension. An extension inherits ResourceObserver from its base rather
+	// extension. An extension inherits Resource from its base rather
 	// than declaring its own.
 	Extends          string
 	InputsSchema     map[string]any
@@ -169,7 +168,7 @@ func taskDocumentFrom(def *lang.Definition, path string, fromPlugin bool) (TaskD
 		target *string
 	}{
 		{"description", &d.Description},
-		{"resource_observer", &d.ResourceObserver},
+		{"resource", &d.Resource},
 		{"extends", &d.Extends},
 		{"inputs_schema_file", &d.InputsSchemaFile},
 		{"state_schema_file", &d.StateSchemaFile},
