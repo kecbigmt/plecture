@@ -275,6 +275,23 @@ script = "true"
 			wantErr: "[terminal]",
 		},
 		{
+			name: "two layers of the nesting chain declare a process alive probe",
+			files: map[string]string{
+				"claude": strings.Replace(innerRuntime, `type = "noop"`, `process = "self.outputs.pid"`, 1),
+				"outer": `
+[outer]
+kind = "effect"
+
+[outer.health.alive]
+process = "self.outputs.pid"
+
+[outer.inner]
+uses = "claude"
+`,
+			},
+			wantErr: "process",
+		},
+		{
 			name: "outputs.bind reads a root the surface does not observe",
 			files: map[string]string{
 				"claude": innerRuntime,

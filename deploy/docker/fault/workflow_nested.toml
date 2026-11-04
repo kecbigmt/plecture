@@ -1,0 +1,26 @@
+[fault_recovery_nested]
+kind               = "workflow"
+name               = "Docker fault recovery fixture with the runtime nested in a guard layer"
+workspace_provider = "fault_workspace"
+
+[[fault_recovery_nested.nodes]]
+uses = "official.tmux.pane"
+
+[[fault_recovery_nested.nodes]]
+id   = "agent"
+uses = "fault_guarded_runtime"
+
+[[fault_recovery_nested.event.channel]]
+name    = "runtime"
+uses    = "official.claude.delivery"
+include = ["plect.instruction"]
+
+[fault_recovery_nested.event.channel.inputs]
+path = { from = "nodes.agent.outputs.socket_path" }
+
+[fault_recovery_nested.health]
+auto_repair_attempts = 3
+
+[fault_recovery_nested.healthcheck]
+period          = "15s"
+stall_threshold = "45s"

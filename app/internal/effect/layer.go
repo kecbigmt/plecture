@@ -42,6 +42,22 @@ type Layer struct {
 	Terminal *config.TerminalConfig
 }
 
+func (l Layer) DeclaresProcess() bool {
+	alive := l.Health.AliveProbe()
+	return alive != nil && alive.Process != nil
+}
+
+// ProcessLayer needs no tie-break because the instance carries one recorded
+// identity and config load admits at most one declaring layer per chain.
+func ProcessLayer(layers []Layer) int {
+	for i, layer := range layers {
+		if layer.DeclaresProcess() {
+			return i
+		}
+	}
+	return -1
+}
+
 // ResolveLayers compiles the schemas and output bindings of every layer of
 // def's nesting chain, outermost first. Returns nil for a plain task.
 func ResolveLayers(def config.TaskDefinition) ([]Layer, error) {
@@ -51,9 +67,6 @@ func ResolveLayers(def config.TaskDefinition) ([]Layer, error) {
 	defs := append([]config.TaskDefinition{def}, def.InnerChain...)
 	out := make([]Layer, 0, len(defs))
 	for i, d := range defs {
-		if alive := d.Health.AliveProbe(); alive != nil && alive.Process != nil {
-			return nil, fmt.Errorf("layer %q: a process alive probe records the identity of a plain instance's process, and is not available inside a nesting chain", d.ID)
-		}
 		layer := Layer{
 			EffectID:    d.ID,
 			Setup:       d.Setup,
@@ -92,7 +105,9 @@ func ResolveLayers(def config.TaskDefinition) ([]Layer, error) {
 // optional here — a layer's cleanup reads its own public contract, and that
 // contract exists only because `[outputs.bind]` projects it, so a chain
 // rebuilt without the bindings could never release what a layer produced as
-// a private local. Classifying them needs no schema.
+// a private local. Classifying them needs no schema. Health rides along for
+// the same reason: only the layer that declared a process probe may be handed
+// the recorded identity, and which layer that is lives in the declaration.
 func CleanupLayers(def config.TaskDefinition) []Layer {
 	if !def.IsNested() {
 		return nil
@@ -106,6 +121,7 @@ func CleanupLayers(def config.TaskDefinition) []Layer {
 			SourcePath:  d.SourcePath,
 			From:        d.Ownership(),
 			BindOutputs: d.ClassifiedOutputBindings(),
+			Health:      d.Health,
 		})
 	}
 	return out

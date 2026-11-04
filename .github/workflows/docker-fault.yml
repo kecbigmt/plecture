@@ -15,6 +15,10 @@ on:
 
 jobs:
   fault:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [plain, nested]
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -25,4 +29,5 @@ jobs:
       - name: Exercise the packaged image with a stub agent
         env:
           PLECT_FAULT_RECOVERY: ${{ (github.event_name == 'schedule' || inputs.recovery) && '1' || '0' }}
+          PLECT_FAULT_VARIANT: ${{ matrix.variant }}
         run: deploy/docker/fault/run.sh

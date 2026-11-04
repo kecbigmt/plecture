@@ -109,7 +109,14 @@ func ExecuteTaskSetup(goCtx context.Context, r Resolved, inputs map[string]any, 
 			return InstanceSetup{Layers: layers, Stderr: stderr}, err
 		}
 		outputs, projErr := projectNestedOutputs(r, layers, session)
-		return InstanceSetup{Outputs: outputs, Layers: layers, Stderr: stderr}, projErr
+		if projErr != nil {
+			return InstanceSetup{Outputs: outputs, Layers: layers, Stderr: stderr}, projErr
+		}
+		process, err := captureNestedProcess(r, layers, session)
+		if err != nil {
+			return InstanceSetup{Layers: layers, Stderr: stderr}, fmt.Errorf("setup: %w", err)
+		}
+		return InstanceSetup{Outputs: outputs, Process: process, Layers: layers, Stderr: stderr}, nil
 	}
 	outputs := map[string]any{}
 	var stderr []byte

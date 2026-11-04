@@ -87,6 +87,9 @@ func validateNesting(layers []TaskDefinition) error {
 	if err := validateChainTerminalCount(layers); err != nil {
 		return err
 	}
+	if err := validateChainProcessCount(layers); err != nil {
+		return err
+	}
 	if err := validateChainEnv(layers); err != nil {
 		return err
 	}
@@ -128,6 +131,19 @@ func validateChainTerminalCount(layers []TaskDefinition) error {
 	}
 	if len(declaring) > 1 {
 		return fmt.Errorf("layers %v both declare [terminal]; a nesting chain admits at most one", declaring)
+	}
+	return nil
+}
+
+func validateChainProcessCount(layers []TaskDefinition) error {
+	var declaring []string
+	for _, layer := range layers {
+		if alive := layer.Health.AliveProbe(); alive != nil && alive.Process != nil {
+			declaring = append(declaring, layer.ID)
+		}
+	}
+	if len(declaring) > 1 {
+		return fmt.Errorf("layers %v both declare a process alive probe; a nesting chain records one process identity", declaring)
 	}
 	return nil
 }
