@@ -276,7 +276,7 @@ After a runtime is recreated from a previous run, core publishes one inbound
 notice; `trigger` metadata is `repair`, `up`, or `recreate`, and
 `prev_session_id` identifies the previous runtime when available. A first
 launch and an `up` that reuses a live runtime publish no notice. The event is
-delivered through runtime channels that include `plect.instruction`.
+delivered through any channel whose `include` matches `plect.instruction`.
 
 The health cycle may run plain `up` only while
 the session's recorded status is `up`, after a non-zero `alive` exit (a
