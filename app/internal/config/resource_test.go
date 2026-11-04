@@ -316,3 +316,174 @@ command = "global"
 		t.Errorf("Command = %q, want the global layer to win", got["same"].Observe.Command)
 	}
 }
+
+const forgeIssueResource = `
+[issue]
+kind  = "resource"
+match = '^https://forge\.example/(?P<project>[^/]+)/issues/(?P<number>\d+)$'
+name  = { expr = "match.project + '-issue-' + match.number" }
+
+[issue.observe]
+type    = "exec"
+command = "true"
+`
+
+func TestLoadResourceDefs_NameDerivesTheInstanceNameFromMatchCaptures(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "resources", "issue.toml"), forgeIssueResource)
+	got, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, ok := got["issue"]
+	if !ok {
+		t.Fatalf("resource not loaded: %v", got)
+	}
+	name, matched, err := def.InstanceName("https://forge.example/acme/issues/42")
+	if err != nil || !matched || name != "acme-issue-42" {
+		t.Errorf("InstanceName = (%q, %v, %v), want (acme-issue-42, true, nil)", name, matched, err)
+	}
+	if _, matched, err := def.InstanceName("https://forge.example/acme/pulls/42"); err != nil || matched {
+		t.Errorf("an id the match does not recognize = (matched %v, err %v), want unmatched and no error", matched, err)
+	}
+}
+
+func TestLoadResourceDefs_NameIsRequired(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "resources", "issue.toml"), `
+[issue]
+kind  = "resource"
+match = '^https://forge\.example/'
+
+[issue.observe]
+type    = "exec"
+command = "true"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	if err == nil || !strings.Contains(err.Error(), "`name` is required") {
+		t.Fatalf("error = %v, want a load error saying `name` is required", err)
+	}
+}
+
+func TestLoadResourceDefs_NameMayNotOutrunItsCaptures(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "resources", "issue.toml"), `
+[issue]
+kind  = "resource"
+match = '^https://forge\.example/(?P<number>\d+)$'
+name  = { from = "match.project" }
+
+[issue.observe]
+type    = "exec"
+command = "true"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	if err == nil || !strings.Contains(err.Error(), "match.project") {
+		t.Fatalf("error = %v, want a load error naming match.project", err)
+	}
+}
+
+func TestLoadResourceDefs_RetiredKindPointsAtTheMigrationGuide(t *testing.T) {
+	baseDir := t.TempDir()
+	writeFile(t, filepath.Join(baseDir, "resources", "issue.toml"), `
+[issue]
+kind  = "resource_observer"
+match = '^https://forge\.example/'
+
+[issue.observe]
+type    = "exec"
+command = "true"
+`)
+	_, err := (&Config{BaseDir: baseDir}).LoadResourceDefs()
+	if err == nil || !strings.Contains(err.Error(), "docs/migrations/resource-kind-migration.md") {
+		t.Fatalf("error = %v, want a load error pointing at the migration guide", err)
+	}
+}
+
+// A task document's resource must be a resource declaration: pointing it at
+// another kind is rejected when the config loads, not when an instance binds.
+func TestLoadTaskDocuments_ResourceNamesAResourceDeclaration(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue.toml"), forgeIssueResource)
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
+[work]
+kind         = "task"
+resource     = "issue"
+instructions = [{ text = "Resolve {{ resource.id }}." }]
+`)
+	docs, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := docs["work"].Resource; got != "issue" {
+		t.Errorf("Resource = %q, want issue", got)
+	}
+
+	writeFile(t, filepath.Join(base, "workflows", "other.toml"), "[issue_flow]\nkind = \"workflow\"\n")
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
+[work]
+kind         = "task"
+resource     = "issue_flow"
+instructions = [{ text = "Resolve {{ resource.id }}." }]
+`)
+	if _, err := (&Config{BaseDir: base}).LoadTaskDocuments(""); err == nil || !strings.Contains(err.Error(), "KIND-MISMATCH") {
+		t.Fatalf("error = %v, want PLECTURE-CFG-KIND-MISMATCH", err)
+	}
+}
+
+func TestWorkflowRevisionBodyRecordsResourceDeclarationsInTheNewForm(t *testing.T) {
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "resources", "issue.toml"), forgeIssueResource)
+	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `
+[work]
+kind         = "task"
+resource     = "issue"
+instructions = [{ text = "Resolve {{ resource.id }}." }]
+`)
+	docs, err := (&Config{BaseDir: base}).LoadTaskDocuments("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _, err := WorkflowRevision{Workflow: WorkflowFile{ID: "work"}, Tasks: docs}.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.ToLower(string(body)), "resource_observer") || strings.Contains(string(body), "ResourceObserver") {
+		t.Errorf("revision body still records the retired field: %s", body)
+	}
+	if !strings.Contains(string(body), `"Resource":"issue"`) {
+		t.Errorf("revision body does not record the task's resource: %s", body)
+	}
+}
+
+// A resource's name fails with the resource's id, so the declaration an
+// author must fix is named, whichever way the derivation broke.
+func TestResourceDefInstanceNameFailurePathsNameTheResource(t *testing.T) {
+	tests := []struct {
+		name  string
+		match string
+		value map[string]any
+		id    string
+	}{
+		{name: "a match that does not compile", match: `^(`, value: map[string]any{"from": "match.n"}, id: "x"},
+		{name: "a name reading an undeclared capture", match: `^x/(?P<n>\d+)$`, value: map[string]any{"from": "match.other"}, id: "x/1"},
+		{name: "a name that evaluates to the empty string", match: `^x/(?P<n>\d*)$`, value: map[string]any{"from": "match.n"}, id: "x/"},
+		{name: "a name that evaluates to whitespace only", match: `^x/(?P<n>\s+)$`, value: map[string]any{"from": "match.n"}, id: "x/  "},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			name, err := lang.ParseValue(tc.value, lang.ClassData, lang.Position{File: "r.toml", Path: "res.name"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			res := ResourceDef{ID: "res", Match: tc.match, Name: name}
+			got, matched, err := res.InstanceName(tc.id)
+			if err == nil || !strings.Contains(err.Error(), `"res"`) {
+				t.Fatalf("error = %v, want one naming resource \"res\"", err)
+			}
+			if got != "" || matched {
+				t.Errorf("a failed resolution returned (%q, %v), want no name", got, matched)
+			}
+		})
+	}
+}

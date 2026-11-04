@@ -20,6 +20,7 @@ type ResourceDef struct {
 	// unlike WorkspaceProviderConfig's optional resolver, an observer exists
 	// only to recognize and observe ids, so it has no other reason to load.
 	Match string
+	Name  *lang.Value
 	// Observe reads the resource's current state. It must emit a JSON object
 	// on stdout, validated against StateSchema when one is declared.
 	Observe *lang.Action
@@ -193,3 +194,5 @@ func actionField(def *lang.Definition, path, field string) (*lang.Action, error)
 	}
 	return lang.ParseAction(raw, lang.Position{File: path, Path: def.ID + "." + field})
 }
+
+func (r ResourceDef) InstanceName(id string) (string, bool, error) { return "", false, nil }

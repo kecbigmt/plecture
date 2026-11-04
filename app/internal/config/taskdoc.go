@@ -27,6 +27,7 @@ type TaskDocument struct {
 	// keys exist, so a `resource.state.*` a gate reads is resolved against a
 	// declaration rather than discovered at run time.
 	ResourceObserver string
+	Resource         string
 	// Extends names the base task this declaration specializes, the ordinary
 	// task reference `extends` carries. Empty for a document that is not an
 	// extension. An extension inherits ResourceObserver from its base rather

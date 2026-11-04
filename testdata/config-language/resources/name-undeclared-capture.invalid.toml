@@ -1,0 +1,7 @@
+# plect-fixture: result=invalid layer=semantic diagnostic=PLECTURE-CFG-FROM-PATH entry=definitions
+# reason: name reads the right root but names a capture this resource's own match does not declare — the root exists, the key inside it does not.
+
+[issue]
+kind  = "resource"
+match = '^https://forge\.example/(?P<project>[^/]+)/issues/(?P<number>\d+)$'
+name  = { expr = "match.project + '-' + match.id" }

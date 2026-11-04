@@ -18,6 +18,7 @@ const (
 	KindWorkflow          Kind = "workflow"
 	KindWorkspaceProvider Kind = "workspace_provider"
 	KindResourceObserver  Kind = "resource_observer"
+	KindResource          Kind = "resource"
 )
 
 var validKinds = map[Kind]bool{
