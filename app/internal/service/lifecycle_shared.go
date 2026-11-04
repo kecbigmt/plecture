@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -190,9 +191,10 @@ func resolveParentSession(store *state.Store, sessionName, explicit string) (str
 // scope, e.g. a dynamic instance's own cleanup) — it feeds the terminal
 // "..."}} helper binding; every other field is plan-independent.
 func sessionVars(cfg *config.Config, s *domain.Session, plan *task.Plan) task.SessionVars {
-	// An unreadable revision declares no public outputs; the store's refresh
-	// reports it where the session is saved.
-	publicOutputs, _ := publicoutput.Declare(s)
+	publicOutputs, err := publicoutput.Declare(s)
+	if err != nil {
+		slog.Warn("public outputs not declared", "session", s.Name, "error", err)
+	}
 	return task.SessionVars{
 		PublicOutputs:    publicOutputs,
 		Name:             s.Name,
