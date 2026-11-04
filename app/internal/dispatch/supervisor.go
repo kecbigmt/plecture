@@ -112,25 +112,24 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 		return nil, true
 	}
 	cfg := sup.cfg()
-	workflows, err := cfg.LoadWorkflows(s.WorkspaceDirPath)
+	wf, err := cfg.ResolveSessionWorkflow(s)
 	if err != nil {
 		return nil, false
 	}
-	wf, ok := workflows[s.Workflow]
-	if !ok {
+	if wf == nil {
 		return nil, false
 	}
 	if len(wf.Event.Channel) == 0 {
 		return nil, true
 	}
-	defs, err := cfg.LoadChannels()
+	defs, err := cfg.ChannelsForSession(s)
 	if err != nil {
 		return nil, false
 	}
 	// Validate at dispatch (config only checks it on `workflow show`): a bad
 	// `uses`/input no-ops in processEvent, so surface it in the daemon log. Valid
 	// channels still deliver.
-	if verr := config.ValidateWorkflowChannels(wf, defs); verr != nil {
+	if verr := config.ValidateWorkflowChannels(*wf, defs); verr != nil {
 		sup.logger.Warn("event channels did not validate; some may not deliver",
 			"session", name, "workflow", wf.ID, "error", verr)
 		_, _, _, _ = sup.log.Append(channel.ChannelValidationErrorEvent(name, wf.ID, verr))
@@ -138,7 +137,7 @@ func (sup *Supervisor) buildDispatcher(name string, s *domain.Session) (*session
 	} else {
 		recordValidationSuccess(sup.state, name)
 	}
-	terminal := resolveTerminalOwner(sup.logger, cfg, s, wf)
+	terminal := resolveTerminalOwner(sup.logger, cfg, s, *wf)
 	return &sessionDispatcher{
 		session:  name,
 		cfg:      cfg,

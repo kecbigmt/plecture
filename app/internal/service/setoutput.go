@@ -153,24 +153,16 @@ func SetOutput(cfg *config.Config, store *state.Store, params SetOutputParams) (
 // layer chain a write routes through.
 func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params SetOutputParams) (target string, mutable []string, schema *jsonschema.Schema, layers []effect.Layer, err *Error) {
 	if params.Workflow {
-		workflows, loadErr := cfg.LoadWorkflows(session.WorkspaceDirPath)
+		wf, loadErr := cfg.ResolveSessionWorkflow(session)
 		if loadErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workflows: %v", loadErr)}
 		}
-		wf, ok := workflows[session.Workflow]
-		if !ok {
+		if wf == nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q not found in .plect/workflows or global config", session.Workflow)}
 		}
-		workspaceProviders, loadErr := cfg.LoadWorkspaceProviders()
+		prov, loadErr := cfg.WorkspaceProviderForSession(session)
 		if loadErr != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace providers: %v", loadErr)}
-		}
-		prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
-		if provErr != nil {
-			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: provErr.Error()}
-		}
-		if !ok {
-			return "", nil, nil, nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("workflow %q declares no workspace provider; the @workflow pseudo-node has no outputs contract", session.Workflow)}
+			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load workspace provider: %v", loadErr)}
 		}
 		mutableKeys, mErr := task.MutableOutputKeys(prov.OutputsSchema, prov.ResolvedOutputsSchemaPath())
 		if mErr != nil {
@@ -197,7 +189,7 @@ func resolveSetOutputTarget(cfg *config.Config, session *domain.Session, params 
 		// loader's answer rather than this branch's guess — and a document
 		// that will not load is reported as that rather than as a missing
 		// declaration.
-		docs, defs, loadErr := cfg.LoadTaskDeclarations(session.WorkspaceDirPath)
+		docs, defs, loadErr := cfg.TaskDeclarationsForSession(session)
 		if loadErr != nil {
 			return "", nil, nil, nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task declarations: %v", loadErr)}
 		}

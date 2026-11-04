@@ -303,6 +303,7 @@ func childNames(sessions map[string]*domain.Session, name string) []string {
 // ListEntry represents a single entry in the session list.
 type ListEntry struct {
 	SessionName      string             `json:"session_name"`
+	Revision         string             `json:"revision,omitempty"`
 	Title            string             `json:"title,omitempty"`
 	Run              domain.RunState    `json:"run"`
 	Sleep            string             `json:"sleep,omitempty"`
@@ -335,7 +336,15 @@ func List(cfg *config.Config, store *state.Store) ([]ListEntry, error) {
 
 	entries := make([]ListEntry, 0, len(sessions))
 	for _, s := range sessions {
-		entry, err := buildListEntry(cfg, store, displayWorkflows, displayTasks, s, sessions)
+		declarations := displayTasks
+		if s.WorkflowRevision != "" {
+			docs, effects, err := cfg.TaskDeclarationsForSession(s)
+			if err != nil {
+				return nil, err
+			}
+			declarations = taskDeclarations{docs: docs, effects: effects}
+		}
+		entry, err := buildListEntry(cfg, store, displayWorkflows, declarations, s, sessions)
 		if err != nil {
 			return nil, err
 		}
@@ -369,6 +378,7 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 	}
 	entry := ListEntry{
 		SessionName:      s.Name,
+		Revision:         shortWorkflowRevision(s.WorkflowRevision),
 		Title:            cached.Title,
 		Run:              run,
 		Sleep:            sleep,
@@ -387,6 +397,13 @@ func buildListEntry(cfg *config.Config, store *state.Store, displayWorkflows map
 	}
 
 	return entry, nil
+}
+
+func shortWorkflowRevision(digest string) string {
+	if len(digest) < 8 {
+		return digest
+	}
+	return digest[:8]
 }
 
 // sessionRunState reports the "run" fact: whether a current-plan run-scoped
@@ -503,6 +520,13 @@ func applyDisplay(workflows map[string]config.WorkflowFile, s *domain.Session, c
 		return
 	}
 	wf, ok := workflows[s.Workflow]
+	if s.WorkflowRevision != "" {
+		stored, _, err := config.RevisionForSession(s)
+		if err != nil {
+			return
+		}
+		wf, ok = stored.Workflow, true
+	}
 	if !ok || len(wf.Display) == 0 {
 		return
 	}

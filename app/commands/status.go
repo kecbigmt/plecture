@@ -122,6 +122,9 @@ func renderStatus(cmd *cobra.Command, result *service.StatusResult) {
 	case id.Tag != "":
 		fmt.Fprintf(w, "Tag:\t%s\n", id.Tag)
 	}
+	if id.Revision != "" {
+		fmt.Fprintf(w, "Revision:\t%s\n", id.Revision)
+	}
 	if id.ParentSession != "" {
 		fmt.Fprintf(w, "Parent:\t%s\n", id.ParentSession)
 	}

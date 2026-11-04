@@ -97,6 +97,16 @@ func upUnlocked(cfg *config.Config, store *state.Store, params UpParams) (*UpRes
 	forceRecreateExisting := false
 	disp, matched, dispErr := dispatchResource(cfg, params.Workflow, params.Identifier)
 	if dispErr != nil {
+		if params.Tag == "" {
+			if _, existing, lookupErr := resolveSession(cfg, store, params.Identifier); lookupErr == nil && existing != nil {
+				if params.Workflow != "" && params.Workflow != existing.Workflow {
+					return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("--workflow %q does not match the session's frozen workflow %q", params.Workflow, existing.Workflow)}
+				}
+				dispErr = nil
+			}
+		}
+	}
+	if dispErr != nil {
 		// Ambiguous resolver match / invalid resolver / explicit --workflow
 		// mismatch must fail here exactly as Create would — falling through
 		// to the legacy path would let `plect up` silently disagree with
@@ -383,7 +393,7 @@ func staleProducedWorkflowNodes(cfg *config.Config, session *domain.Session, pla
 	for _, r := range plan.UpOrder() {
 		current[r.NodeID] = true
 	}
-	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
+	defs, err := cfg.TaskDefinitionsForSession(session)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}
@@ -508,16 +518,9 @@ func recreateSessionRuntime(cfg *config.Config, store *state.Store, sessionName 
 }
 
 func runWorkflowSetupForSession(cfg *config.Config, wf config.WorkflowFile, session *domain.Session, observer task.Observer) (map[string]any, error) {
-	workspaceProviders, err := cfg.LoadWorkspaceProviders()
+	prov, err := cfg.WorkspaceProviderForSession(session)
 	if err != nil {
-		return nil, fmt.Errorf("load workspace providers: %w", err)
-	}
-	prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
-	if provErr != nil {
-		return nil, provErr
-	}
-	if !ok {
-		return nil, fmt.Errorf("workflow %q declares no workspace provider; its setup hook cannot run", wf.ID)
+		return nil, err
 	}
 	provInputs, inputsErr := resolveWorkspaceProviderInputs(prov, wf)
 	if inputsErr != nil {

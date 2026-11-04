@@ -17,6 +17,13 @@
 -- "2026-09-06T08:50:42.821423717Z"), or NULL when unset — never a
 -- variable-width fractional part, so lexical order equals time order. See
 -- timeconv.go.
+CREATE TABLE workflow_revisions (
+    digest TEXT PRIMARY KEY,
+    workflow TEXT NOT NULL,
+    body TEXT NOT NULL CHECK (json_valid(body)),
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -28,6 +35,7 @@ CREATE TABLE sessions (
     resource_id TEXT,
     alias TEXT,
     workflow TEXT NOT NULL,
+    workflow_revision TEXT,
     workspace_dir TEXT,
     population_workflow TEXT,
     population_name TEXT,

@@ -18,6 +18,12 @@ func (c *Config) ResolveSessionWorkflow(s *domain.Session) (*WorkflowFile, error
 	if s.Workflow == "" {
 		return nil, nil
 	}
+	if r, ok, err := RevisionForSession(s); ok || err != nil {
+		if err != nil {
+			return nil, err
+		}
+		return &r.Workflow, nil
+	}
 	workflows, err := c.LoadWorkflows(s.WorkspaceDirPath)
 	if err != nil {
 		return nil, err
@@ -39,6 +45,7 @@ type runScopeCache struct {
 
 type runScopeCacheKey struct {
 	workflow         string
+	revision         string
 	workspaceDirPath string
 }
 
@@ -75,16 +82,10 @@ func (c *Config) runScopeCacheInstance() *runScopeCache {
 	return rc
 }
 
-// CurrentPlanRunScopedNodeSet resolves s's frozen workflow's declared
-// run-scoped node ids as a set. ok is false when the workflow or its task
-// definitions do not resolve at all, which a caller must tell apart from a
-// legitimately empty node set (ok=true).
-// Memoized per (workflow, workspaceDirPath) for this *Config's lifetime:
-// dispatch/reactor Supervisor.reconcile calls RunScopeUp every ~1s poll per
-// up session, re-resolving the workflow and task definitions from scratch to
-// answer it; a new *Config (config.Live's own refresh) invalidates the cache.
+// The cache key includes the revision because one config instance can observe
+// sessions pinned to different declarations of the same workflow.
 func (c *Config) CurrentPlanRunScopedNodeSet(s *domain.Session) (set map[string]bool, ok bool) {
-	key := runScopeCacheKey{workflow: s.Workflow, workspaceDirPath: s.WorkspaceDirPath}
+	key := runScopeCacheKey{workflow: s.Workflow, revision: s.WorkflowRevision, workspaceDirPath: s.WorkspaceDirPath}
 	cache := c.runScopeCacheInstance()
 	if entry, hit := cache.get(key); hit {
 		return entry.set, entry.ok
@@ -99,7 +100,7 @@ func (c *Config) resolveCurrentPlanRunScopedNodeSet(s *domain.Session) (set map[
 	if err != nil || wf == nil {
 		return nil, false
 	}
-	defs, err := c.LoadTaskDefinitions(s.WorkspaceDirPath)
+	defs, err := c.TaskDefinitionsForSession(s)
 	if err != nil {
 		return nil, false
 	}

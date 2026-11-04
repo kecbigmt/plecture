@@ -252,13 +252,15 @@ type Session struct {
 	// ParentSession is a read-side projection of the above onto the
 	// referenced session's current name ("root:"-prefixed for
 	// RootSessionID), not itself a write-time identity.
-	ParentSession    string                `json:"parent_session,omitempty"`
-	Children         []string              `json:"children,omitempty"`
-	Alias            string                `json:"alias,omitempty"`
-	WorkspaceDirPath string                `json:"workspace_dir_path"`
-	Workflow         string                `json:"workflow,omitempty"`
-	Population       *PopulationProvenance `json:"population,omitempty"`
-	Inputs           map[string]any        `json:"inputs,omitempty"`
+	ParentSession        string                `json:"parent_session,omitempty"`
+	Children             []string              `json:"children,omitempty"`
+	Alias                string                `json:"alias,omitempty"`
+	WorkspaceDirPath     string                `json:"workspace_dir_path"`
+	Workflow             string                `json:"workflow,omitempty"`
+	WorkflowRevision     string                `json:"workflow_revision,omitempty"`
+	WorkflowRevisionBody string                `json:"-"`
+	Population           *PopulationProvenance `json:"population,omitempty"`
+	Inputs               map[string]any        `json:"inputs,omitempty"`
 	// Nodes holds workflow DAG node production records, keyed by node id,
 	// including the @workflow pseudo-node (WorkflowPseudoNodeID). Tasks holds
 	// `plect task setup` instances, keyed by instance handle (a `--name` or

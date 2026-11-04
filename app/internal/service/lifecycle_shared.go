@@ -276,8 +276,8 @@ func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool 
 	// A workspace-provider-backed workflow needs its pseudo-node produced
 	// too — a failed/absent setup is exactly the partial-create state to
 	// recover.
-	if workflows, err := cfg.LoadWorkflows(session.WorkspaceDirPath); err == nil {
-		if wf, ok := workflows[session.Workflow]; ok && wf.WorkspaceProvider != "" {
+	if wf, err := cfg.ResolveSessionWorkflow(session); err == nil {
+		if wf != nil && wf.WorkspaceProvider != "" {
 			st, ok := session.Nodes[contract.WorkflowPseudoNodeID]
 			if !ok || st == nil || st.Status != contract.TaskStatusProduced {
 				return true
@@ -303,6 +303,9 @@ func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool 
 func loadSessionWorkflow(cfg *config.Config, workspaceDirPath string, session *domain.Session) (config.WorkflowFile, error) {
 	if session == nil || session.Workflow == "" {
 		return config.WorkflowFile{}, nil
+	}
+	if r, ok, err := config.RevisionForSession(session); ok || err != nil {
+		return r.Workflow, err
 	}
 	workflows, err := cfg.LoadWorkflows(workspaceDirPath)
 	if err != nil {

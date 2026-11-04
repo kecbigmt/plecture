@@ -141,6 +141,24 @@ else
   failed=1
 fi
 
+original_revision="$(plect status "$session" --json --full | jq -r .identity.revision)"
+inside sed -i 's/auto_repair_attempts = 3/auto_repair_attempts = 0/' /var/lib/plect/fault-config/workflows/fault.toml
+inside grep -q 'auto_repair_attempts = 0' /var/lib/plect/fault-config/workflows/fault.toml
+recovered_pid="$(inside jq -r .pid "/var/lib/plect/home/.claude/sessions/$sid.json")"
+inside kill -9 "$recovered_pid"
+if wait_for 'S3 repair after workflow edit' "$recovery_wait" inside sh -c 'wc -l < "$HOME/fault/launches"' 3 \
+  && wait_for 'S3 runtime health healthy' "$recovery_wait" runtime_health healthy \
+  && inside git -C "/var/lib/plect/workspace_dirs/$session" status --short | grep -q 'uncommitted-change' \
+  && [ "$(plect status "$session" --json --full | jq -r .identity.revision)" = "$original_revision" ]; then
+  echo 'PASS: S3 workflow edit did not change the session revision or repair behavior'
+else
+  echo 'FAIL: S3 workflow edit changed the session revision or repair behavior' >&2
+  inside sh -c 'tail -n 3 "$HOME/fault/launches"' >&2 || true
+  plect status "$session" --json --full | jq '{revision: .identity.revision, health: .runtime.health, run: .runtime.run}' >&2 || true
+  failed=1
+fi
+inside sed -i 's/auto_repair_attempts = 0/auto_repair_attempts = 3/' /var/lib/plect/fault-config/workflows/fault.toml
+
 # S5: a deliberate stop survives a resident crash and a child terminal
 # notification, while a sleeping session resumes for its own resource event.
 plect down "$session" >/dev/null

@@ -148,7 +148,7 @@ func EvaluateHealth(cfg *config.Config, store *state.Store, name string) (Health
 	if s == nil {
 		return HealthReport{}, &Error{Code: ErrSessionNotFound, Message: fmt.Sprintf("session %q not found", name)}
 	}
-	docs, defs, err := cfg.LoadTaskDeclarations(s.WorkspaceDirPath)
+	docs, defs, err := cfg.TaskDeclarationsForSession(s)
 	if err != nil {
 		return HealthReport{}, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("load task declarations: %v", err)}
 	}

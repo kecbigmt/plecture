@@ -128,6 +128,9 @@ func (sup *Supervisor) Run(ctx context.Context) {
 		case <-tick.C:
 		case <-deadman.C:
 			sup.checkDeadman(ctx)
+			if err := sup.state.PruneWorkflowRevisions(); err != nil {
+				sup.logger.Warn("reactor: prune workflow revisions failed", "error", err)
+			}
 		}
 	}
 }
@@ -290,12 +293,11 @@ func resolveTickConfig(cfg *config.Config, s *domain.Session) (config.TickConfig
 	if s.Workflow == "" {
 		return config.TickConfig{}, nil
 	}
-	workflows, err := cfg.LoadWorkflows(s.WorkspaceDirPath)
+	wf, err := cfg.ResolveSessionWorkflow(s)
 	if err != nil {
 		return config.TickConfig{}, err
 	}
-	wf, ok := workflows[s.Workflow]
-	if !ok || wf.Tick == nil {
+	if wf == nil || wf.Tick == nil {
 		return config.TickConfig{}, nil
 	}
 	return *wf.Tick, nil
@@ -361,10 +363,10 @@ func (sup *Supervisor) buildReactor(name string, s *domain.Session) *sessionReac
 	var tc config.TickConfig
 	hc := config.DefaultHealthcheckConfig()
 	if s.Workflow != "" {
-		workflows, err := cfg.LoadWorkflows(s.WorkspaceDirPath)
+		wf, err := cfg.ResolveSessionWorkflow(s)
 		if err != nil {
 			sup.logger.Warn("reactor: load workflows failed; declared [tick]/heartbeat inactive, judge builtin still active", "session", name, "error", err)
-		} else if wf, ok := workflows[s.Workflow]; ok {
+		} else if wf != nil {
 			if wf.Tick != nil {
 				tc = *wf.Tick
 			}

@@ -17,24 +17,13 @@ import (
 // session's workspace directory path is safe even though that path is clone
 // content.
 func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, cleanupInputs map[string]string, observer task.Observer) error {
-	workflows, err := cfg.LoadWorkflows(session.WorkspaceDirPath)
+	wf, err := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
 	if err != nil {
-		return fmt.Errorf("load workflows: %w", err)
+		return err
 	}
-	wf, ok := workflows[session.Workflow]
-	if !ok {
-		return fmt.Errorf("workflow %q not found; its cleanup hook cannot run", session.Workflow)
-	}
-	workspaceProviders, err := cfg.LoadWorkspaceProviders()
+	prov, err := cfg.WorkspaceProviderForSession(session)
 	if err != nil {
-		return fmt.Errorf("load workspace providers: %w", err)
-	}
-	prov, ok, provErr := workspaceProviderFor(wf, workspaceProviders)
-	if provErr != nil {
-		return provErr
-	}
-	if !ok {
-		return fmt.Errorf("workflow %q declares no workspace provider; its cleanup hook cannot run", session.Workflow)
+		return err
 	}
 	provInputs, inputsErr := resolveWorkspaceProviderInputs(prov, wf)
 	if inputsErr != nil {
@@ -67,7 +56,7 @@ type teardownItem struct {
 // workspace provider cleanup hook. Static nodes are enumerated from
 // session.Nodes, not plan, so a dropped node is still torn down.
 func unifiedTeardownList(cfg *config.Config, session *domain.Session, runOnly bool) ([]task.Resolved, error) {
-	defs, err := cfg.LoadTaskDefinitions(session.WorkspaceDirPath)
+	defs, err := cfg.TaskDefinitionsForSession(session)
 	if err != nil {
 		return nil, fmt.Errorf("load task definitions: %w", err)
 	}

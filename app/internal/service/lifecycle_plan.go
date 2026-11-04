@@ -17,6 +17,12 @@ func buildPlanForSession(cfg *config.Config, workdirDir string, session *domain.
 	if session == nil || session.Workflow == "" {
 		return nil, fmt.Errorf("session has no frozen workflow; destroy and recreate it with --workflow")
 	}
+	if r, ok, err := config.RevisionForSession(session); ok || err != nil {
+		if err != nil {
+			return nil, err
+		}
+		return task.CompileWorkflow(r.Workflow, r.Effects)
+	}
 	return buildWorkflowPlan(cfg, workdirDir, session.Workflow)
 }
 

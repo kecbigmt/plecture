@@ -27,7 +27,7 @@ type terminalOwner struct {
 // one that actually consumes a terminal verb would then fail per-delivery
 // with a clear error, the same as a channel referencing an unwired input.
 func resolveTerminalOwner(logger *slog.Logger, cfg *config.Config, s *domain.Session, wf config.WorkflowFile) *terminalOwner {
-	defs, err := cfg.LoadTaskDefinitions(s.WorkspaceDirPath)
+	defs, err := cfg.TaskDefinitionsForSession(s)
 	if err != nil {
 		logger.Warn("event channel terminal capability unavailable; load effect declarations failed",
 			"session", s.Name, "workflow", wf.ID, "error", err)

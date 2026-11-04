@@ -12,6 +12,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/effect"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/state"
+	"github.com/kecbigmt/plecture/app/internal/task"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -53,6 +54,16 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		}
 		if existing.Workflow != "" && existing.Workflow != wf.Address {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource dispatches to workflow %q but session %q is frozen to %q; destroy and recreate to switch", wf.Address, sessionName, existing.Workflow)}
+		}
+		if revision, ok, revisionErr := config.RevisionForSession(existing); ok || revisionErr != nil {
+			if revisionErr != nil {
+				return nil, &Error{Code: ErrExecutionFailed, Message: revisionErr.Error()}
+			}
+			if revision.Provider == nil {
+				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("workflow %q has no stored workspace provider", existing.Workflow)}
+			}
+			wf = revision.Workflow
+			prov = *revision.Provider
 		}
 		session = existing
 		if session.Nodes == nil {
@@ -151,6 +162,24 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	// The workspace now exists: resolve the full cascade (incl. overlays
 	// above and the node-only layer inside the workspace dir) and run
 	// session tasks.
+	if session.WorkflowRevision == "" {
+		revision, captureErr := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+		if captureErr != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", captureErr)}
+		}
+		if _, compileErr := task.CompileWorkflow(revision.Workflow, revision.Effects); compileErr != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("compile workflow revision: %v", compileErr)}
+		}
+		body, digest, encodeErr := revision.CanonicalBody()
+		if encodeErr != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: encodeErr.Error()}
+		}
+		session.WorkflowRevision = digest
+		session.WorkflowRevisionBody = string(body)
+		if err := store.Put(session); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("save workflow revision: %v", err)}
+		}
+	}
 	plan, err := buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}

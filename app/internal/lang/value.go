@@ -46,7 +46,7 @@ type Value struct {
 
 	JSON *JSONOperand
 
-	Pos Position
+	Pos Position `json:"-"`
 }
 
 type JSONOperand struct {

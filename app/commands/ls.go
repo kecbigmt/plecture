@@ -58,13 +58,13 @@ var lsCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "SESSION\tRUN\tSLEEP\tHEALTH\tDONE_WHEN\tMESSAGE")
+		fmt.Fprintln(w, "SESSION\tREVISION\tRUN\tSLEEP\tHEALTH\tDONE_WHEN\tMESSAGE")
 		for _, e := range entries {
 			health := string(e.Health)
 			if health == "" {
 				health = "-"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", e.SessionName, e.Run, formatSleep(e.Sleep, e.QueuePosition), health, service.DoneWhenCell(e.Tasks), formatMessage(e))
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", e.SessionName, e.Revision, e.Run, formatSleep(e.Sleep, e.QueuePosition), health, service.DoneWhenCell(e.Tasks), formatMessage(e))
 		}
 		return w.Flush()
 	},

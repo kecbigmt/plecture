@@ -79,6 +79,22 @@ func (s *Store) CheckReadable() error {
 	return err
 }
 
+func (s *Store) NeedsWorkflowRevisionBackfill() (bool, error) {
+	db, err := s.dbHandle()
+	if err != nil {
+		return false, err
+	}
+	return db.NeedsWorkflowRevisionBackfill(context.Background())
+}
+
+func (s *Store) PruneWorkflowRevisions() error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return err
+	}
+	return db.PruneWorkflowRevisions(context.Background())
+}
+
 // Get returns a session by name, or nil if not found or unreadable.
 // Compatibility read paths degrade to nil when callers have no error
 // return to propagate; new read paths should use GetE.
@@ -220,7 +236,7 @@ func (s *Store) Destroy(name string) error {
 	if err := db.DestroySession(context.Background(), name, time.Now()); err != nil {
 		return fmt.Errorf("state: destroy %q: %w", name, err)
 	}
-	return nil
+	return db.PruneWorkflowRevisions(context.Background())
 }
 
 // Tombstone returns the most recently destroyed incarnation of name.
