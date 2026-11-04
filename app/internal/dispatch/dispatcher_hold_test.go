@@ -12,6 +12,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/eventlog"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/sockettest"
 	"github.com/kecbigmt/plecture/app/internal/state"
 	"github.com/kecbigmt/plecture/contracts/event"
 	contract "github.com/kecbigmt/plecture/contracts/state"
@@ -40,7 +41,7 @@ func awaitingRepair(initial bool) (func(string) (bool, error), *atomic.Bool) {
 
 func TestDispatcherHold_EventAppendedWhileRuntimeDownIsDeliveredOnceAfterRepair(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
-	path := filepath.Join(t.TempDir(), "rt.sock")
+	path := filepath.Join(sockettest.Dir(t), "rt.sock")
 	d, s := runtimeDispatcher(t, "session-1", log, path, "plect.instruction")
 	fn, repairing := awaitingRepair(true)
 	d.awaitingRepair = fn
@@ -74,7 +75,7 @@ func TestDispatcherHold_EventAppendedWhileRuntimeDownIsDeliveredOnceAfterRepair(
 
 func TestDispatcherHold_ExpiredHoldWritesChannelErrorAndAdvances(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
-	path := filepath.Join(t.TempDir(), "rt.sock")
+	path := filepath.Join(sockettest.Dir(t), "rt.sock")
 	d, s := runtimeDispatcher(t, "session-1", log, path, "plect.instruction")
 	fn, _ := awaitingRepair(true)
 	d.awaitingRepair = fn
@@ -99,7 +100,7 @@ func TestDispatcherHold_ExpiredHoldWritesChannelErrorAndAdvances(t *testing.T) {
 
 func TestDispatcherHold_StopsWhenRepairIsNoLongerExpected(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
-	path := filepath.Join(t.TempDir(), "rt.sock")
+	path := filepath.Join(sockettest.Dir(t), "rt.sock")
 	d, s := runtimeDispatcher(t, "session-1", log, path, "plect.instruction")
 	fn, repairing := awaitingRepair(true)
 	d.awaitingRepair = fn
@@ -164,7 +165,7 @@ func TestDispatcherHold_ChannelInputFailureIsNeverHeld(t *testing.T) {
 func TestDispatcherHold_RetryDoesNotRedeliverToChannelsThatSucceeded(t *testing.T) {
 	log := eventlog.NewStore(t.TempDir())
 	live, recv := startFakeSocket(t)
-	dead := filepath.Join(t.TempDir(), "rt.sock")
+	dead := filepath.Join(sockettest.Dir(t), "rt.sock")
 	s := &domain.Session{Name: "session-1", Tasks: map[string]*contract.TaskState{}}
 	st := state.NewStore(log.Dir())
 	if err := st.Put(s); err != nil {
