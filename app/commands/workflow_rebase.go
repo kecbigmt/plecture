@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -55,6 +56,7 @@ var workflowRebaseCmd = &cobra.Command{
 			}
 		}
 		sort.Strings(args)
+		var failures []error
 		for _, name := range args {
 			result, err := service.WorkflowRebase(cfg, store, service.RebaseParams{Identifier: name, DryRun: workflowRebaseDryRun, WithRestart: workflowRebaseWithRestart, Observer: newTaskObserver(cfg)})
 			if result != nil {
@@ -67,10 +69,10 @@ var workflowRebaseCmd = &cobra.Command{
 				}
 			}
 			if err != nil {
-				return fmt.Errorf("rebase %q: %w", name, err)
+				failures = append(failures, fmt.Errorf("rebase %q: %w", name, err))
 			}
 		}
-		return nil
+		return errors.Join(failures...)
 	},
 }
 

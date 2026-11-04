@@ -108,6 +108,75 @@ func TestWorkflowRebaseAutomaticallyAddsNode(t *testing.T) {
 	if after.Nodes["runtime"].ExecutionID != before.Nodes["runtime"].ExecutionID {
 		t.Fatal("unchanged node was recreated")
 	}
+	events, _, _, err := eventlog.NewStore(store.Dir()).List("one", 0, event.Filter{Types: []string{"plect.session.rebase"}})
+	if err != nil || len(events) != 1 || events[0].Metadata["class"] != string(RebaseAutomatic) || events[0].Metadata["result"] != "succeeded" {
+		t.Fatalf("automatic rebase events = %+v, err = %v", events, err)
+	}
+}
+
+func TestWorkflowRebasePreservesStoppedAndSleepingSessions(t *testing.T) {
+	for _, sleeping := range []bool{false, true} {
+		name := "stopped"
+		if sleeping {
+			name = "sleeping"
+		}
+		t.Run(name, func(t *testing.T) {
+			cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "runtime", scope: "run", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "runtime"}})
+			store := testStore(t)
+			now := time.Now()
+			session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
+			pinSessionRevision(t, cfg, session)
+			if err := store.Put(session); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Up(cfg, store, UpParams{Identifier: "one"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Down(cfg, store, DownParams{Identifier: "one", Sleep: sleeping}); err != nil {
+				t.Fatal(err)
+			}
+			before := store.Get("one")
+			addWorkflowFields(t, cfg, "work", "name = \"Updated\"\n")
+			if _, err := WorkflowRebase(cfg, store, RebaseParams{Identifier: "one"}); err != nil {
+				t.Fatal(err)
+			}
+			after := store.Get("one")
+			if after.WorkflowRevision == before.WorkflowRevision || after.Status != contract.SessionStatusDown || after.SleepSince.IsZero() != before.SleepSince.IsZero() || !reflect.DeepEqual(after.Nodes["runtime"], before.Nodes["runtime"]) {
+				t.Fatalf("rebase changed %s session lifecycle: before status=%s sleep=%v node=%+v; after status=%s sleep=%v node=%+v", name, before.Status, before.SleepSince, before.Nodes["runtime"], after.Status, after.SleepSince, after.Nodes["runtime"])
+			}
+		})
+	}
+}
+
+func TestWorkflowRebaseAliveProbeKeepsLiveSessionNode(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "cleaned")
+	oldTask := taskFixture{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "touch '" + marker + "'", alive: "true"}
+	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{oldTask}, []nodeFixture{{id: "workspace"}})
+	store := testStore(t)
+	now := time.Now()
+	session := &domain.Session{Name: "one", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}
+	pinSessionRevision(t, cfg, session)
+	if err := store.Put(session); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	before := store.Get("one")
+	oldTask.alive = "test 1 -eq 1"
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "workspace.toml"), []byte(effectFixtureDoc(oldTask)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WorkflowRebase(cfg, store, RebaseParams{Identifier: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	after := store.Get("one")
+	if after.Nodes["workspace"] == nil || after.Nodes["workspace"].ExecutionID != before.Nodes["workspace"].ExecutionID {
+		t.Fatal("live session node was recreated")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("session cleanup ran: %v", err)
+	}
 }
 
 func TestWorkflowRebaseRejectsSessionDeclarationChange(t *testing.T) {
@@ -189,12 +258,12 @@ func TestClassifyWorkflowRebase(t *testing.T) {
 			d := r.Effects["runtime"]
 			d.Health = &config.HealthConfig{Alive: &lang.Action{Type: lang.ActionNoop}}
 			r.Effects["runtime"] = d
-		}, RebaseAutomatic, []string{"runtime"}},
+		}, RebaseAutomatic, nil},
 		{"session alive probe", func(r *config.WorkflowRevision) {
 			d := r.Effects["workspace"]
 			d.Health = &config.HealthConfig{Alive: &lang.Action{Type: lang.ActionNoop}}
 			r.Effects["workspace"] = d
-		}, RebaseAutomatic, []string{"workspace"}},
+		}, RebaseAutomatic, nil},
 		{"removed definition", func(r *config.WorkflowRevision) {
 			r.Workflow.Nodes = r.Workflow.Nodes[:1]
 			delete(r.Effects, "runtime")

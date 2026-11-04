@@ -142,9 +142,11 @@ func workflowRebaseUnlocked(cfg *config.Config, store *state.Store, name string,
 		_ = logResult("failed")
 		return result, err
 	}
-	if _, err := upUnlocked(cfg, store, UpParams{Identifier: name, Observer: params.Observer}); err != nil {
-		_ = logResult("failed")
-		return result, err
+	if session.Status == contract.SessionStatusUp {
+		if _, err := upUnlocked(cfg, store, UpParams{Identifier: name, Observer: params.Observer}); err != nil {
+			_ = logResult("failed")
+			return result, err
+		}
 	}
 	if err := logResult("succeeded"); err != nil {
 		return result, err
@@ -244,7 +246,6 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 		}
 		if equalRevisionPart(oldNodes[node.NodeID], current) && onlyAliveChanged(oldDef, nextDef) {
 			result.raise(RebaseAutomatic, fmt.Sprintf("alive probe changed for node %q", node.NodeID))
-			result.RecreateNodes = append(result.RecreateNodes, node.NodeID)
 			continue
 		}
 		if node.Scope != nextResolved[node.NodeID].Scope || node.Scope == config.TaskScopeSession {
