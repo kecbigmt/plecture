@@ -51,6 +51,9 @@ func ResolveLayers(def config.TaskDefinition) ([]Layer, error) {
 	defs := append([]config.TaskDefinition{def}, def.InnerChain...)
 	out := make([]Layer, 0, len(defs))
 	for i, d := range defs {
+		if alive := d.Health.AliveProbe(); alive != nil && alive.Process != nil {
+			return nil, fmt.Errorf("layer %q: a process alive probe records the identity of a plain instance's process, and is not available inside a nesting chain", d.ID)
+		}
 		layer := Layer{
 			EffectID:    d.ID,
 			Setup:       d.Setup,

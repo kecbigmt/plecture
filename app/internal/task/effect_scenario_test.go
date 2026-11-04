@@ -32,6 +32,20 @@ type effectScenario struct {
 	// Hooks selects what to run, defaulting to every action the declaration
 	// carries.
 	Hooks []string `toml:"hooks"`
+	// ProcessIdentity states the identity core holds for the instance a
+	// health.alive hook probes when the scenario does not set it up first:
+	// "recorded" is the live process's own, "reused" one whose start time
+	// differs, as a recycled pid's would. Absent, the instance has no recorded
+	// identity, like one set up before the process probe existed.
+	ProcessIdentity string `toml:"process_identity"`
+	// ProcessVerify is how the sandbox's `plect process verify` answers each
+	// call a script makes: "always" confirms, "never" refuses, and "once"
+	// confirms the first call only, as when the pid is reused after the first
+	// signal. It defaults to "never" for a "reused" identity, else "always".
+	ProcessVerify string `toml:"process_verify"`
+	// WorkerIgnoresTerm makes the worker process survive TERM, so a cleanup
+	// has to decide about KILL.
+	WorkerIgnoresTerm bool `toml:"worker_ignores_term"`
 	// Files are seeded into the sandbox home before the run, for a script
 	// that discovers its own subject by reading the filesystem.
 	Files []effectScenarioFile `toml:"files"`
@@ -83,14 +97,6 @@ type effectScenario struct {
 	// assembles is already validated by the time setup reaches it, so no
 	// scenario input can make it fail on its own.
 	FailOutput bool `toml:"fail_output"`
-	// EmptyStartTime makes each plugin's own ps stand-in report no start
-	// time for any pid, as when the process table cannot be read.
-	EmptyStartTime bool `toml:"empty_start_time"`
-	// HookTZ is the time zone the process environment holds while every hook
-	// after setup runs, so a script that reads a rendered timestamp can be
-	// shown not to depend on the zone the instance was set up under, which
-	// is always UTC.
-	HookTZ string `toml:"hook_tz"`
 }
 
 type effectScenarioFile struct {

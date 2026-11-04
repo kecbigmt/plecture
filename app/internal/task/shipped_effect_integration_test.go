@@ -21,6 +21,7 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/config"
 	"github.com/kecbigmt/plecture/app/internal/lang"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
+	"github.com/kecbigmt/plecture/app/internal/procid"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -111,7 +112,10 @@ type effectHarness struct {
 	// process's *exec.Cmd, kept so a scenario can wait for its real exit
 	// rather than polling signal 0 (which a zombie still answers).
 	liveProcess int
-	liveCmd     *exec.Cmd
+	// aliveProcess is the current scenario's ProcessIdentity.
+	aliveProcess string
+	ignoreTerm   bool
+	liveCmd      *exec.Cmd
 	// workerProcess/workerCmd stands in for a launched thing distinct from
 	// the endpoint's own root process (liveProcess), so a scenario can
 	// assert this one died without the endpoint dying too.
@@ -250,6 +254,9 @@ func (h *effectHarness) startLiveProcess(t *testing.T) {
 func (h *effectHarness) startWorkerProcess(t *testing.T) {
 	t.Helper()
 	cmd := exec.Command("sleep", "600")
+	if h.ignoreTerm {
+		cmd = exec.Command("sh", "-c", `trap '' TERM; while :; do sleep 1; done`)
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -340,8 +347,21 @@ func copyDirOver(t *testing.T, from, to string) {
 
 func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config.TaskDefinition, id, label string, scenario effectScenario) {
 	t.Helper()
+	h.ignoreTerm = scenario.WorkerIgnoresTerm
 	h.startLiveProcess(t)
 	h.startWorkerProcess(t)
+	h.aliveProcess = scenario.ProcessIdentity
+	verify := scenario.ProcessVerify
+	if verify == "" {
+		verify = "always"
+		if scenario.ProcessIdentity == "reused" {
+			verify = "never"
+		}
+	}
+	t.Setenv("PLECT_EFFECT_PROCESS_VERIFY", verify)
+	if err := os.Remove(filepath.Join(h.stateDir, "verified-once")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 	t.Setenv("PLECT_EFFECT_CAPTURE", scenario.Capture)
 	t.Setenv("PLECT_EFFECT_RETRY", "")
 	if scenario.NoTerminalPID {
@@ -358,15 +378,6 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 		t.Setenv("PLECT_EFFECT_FAIL_OUTPUT", "1")
 	} else {
 		t.Setenv("PLECT_EFFECT_FAIL_OUTPUT", "")
-	}
-	// Every scenario starts from the same zone: t.Setenv restores only when
-	// the shared plugin subtest ends, so a HookTZ set by one scenario would
-	// otherwise carry into the next one's setup.
-	t.Setenv("TZ", "UTC")
-	if scenario.EmptyStartTime {
-		t.Setenv("PLECT_EFFECT_EMPTY_LSTART", "1")
-	} else {
-		t.Setenv("PLECT_EFFECT_EMPTY_LSTART", "")
 	}
 	for _, file := range scenario.Files {
 		path := filepath.Join(h.homeDir, file.Path)
@@ -423,9 +434,6 @@ func (h *effectHarness) runScenario(t *testing.T, b *strings.Builder, def config
 			currentInputs = scenario.RetryInputs
 			self = h.runOneHook(t, b, def, "setup", " (retry)", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 			continue
-		}
-		if hook != "setup" && scenario.HookTZ != "" {
-			t.Setenv("TZ", scenario.HookTZ)
 		}
 		self = h.runOneHook(t, b, def, hook, "", resolved, nodeID, label, session, tasks, self, currentInputs, scenario.Artifacts)
 	}
@@ -622,6 +630,7 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 				Status:  contract.TaskStatusProduced,
 				Inputs:  inputs,
 				Outputs: self,
+				Process: h.recordedProcess(t, nil, self),
 			}
 		}
 		if err := RunCleanup(ctx, []Resolved{r}, session, tasks, nil); err != nil {
@@ -629,7 +638,9 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 		}
 		return "cleaned"
 	case "health.alive":
-		if err := RunAliveProbe(ctx, h.probe(def, def.Health.AliveProbe(), self, inputs), session); err != nil {
+		probe := h.probe(def, def.Health.AliveProbe(), self, inputs)
+		probe.Process = h.recordedProcess(t, tasks[r.NodeID], self)
+		if err := RunAliveProbe(ctx, probe, session); err != nil {
 			return "declined: " + err.Error()
 		}
 		return "alive"
@@ -661,6 +672,31 @@ func (h *effectHarness) runHook(t *testing.T, hook string, def config.TaskDefini
 		t.Fatalf("scenario names unknown hook %q", hook)
 		return ""
 	}
+}
+
+// recordedProcess is the identity a health.alive hook probes against: the one
+// core recorded when this scenario's own setup ran, or the one the scenario
+// states for an instance it did not set up.
+func (h *effectHarness) recordedProcess(t *testing.T, state *contract.TaskState, self map[string]any) *contract.ProcessIdentity {
+	t.Helper()
+	if h.aliveProcess == "" {
+		if state == nil {
+			return nil
+		}
+		return state.Process
+	}
+	pid, ok := asPID(self["pid"])
+	if !ok {
+		t.Fatalf("process_identity needs a pid output, have %v", self["pid"])
+	}
+	identity, err := procid.Capture(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.aliveProcess == "reused" {
+		identity.Start += 1000
+	}
+	return &identity
 }
 
 func (h *effectHarness) probe(def config.TaskDefinition, action *lang.Action, self, inputs map[string]any) Probe {

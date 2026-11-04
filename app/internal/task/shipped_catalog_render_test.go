@@ -91,7 +91,6 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 	kitchen := map[string]any{
 		"session_id":     "11111111-1111-1111-1111-111111111111",
 		"pid":            12345,
-		"pid_started":    "Fri Oct  9 01:16:30 2026",
 		"socket_path":    "/tmp/claude-channel/x.sock",
 		"mcp_config":     "/tmp/plect-mcp.json",
 		"hooks_settings": "/tmp/plect-hooks.json",
@@ -145,9 +144,9 @@ func TestShippedCatalog_EffectActionsResolve(t *testing.T) {
 			{"health.alive", def.Health.AliveProbe(), healthRoots(ctx)},
 			{"health.activity", def.Health.ActivityProbe(), healthRoots(ctx)},
 		} {
-			// A noop action deliberately runs nothing, so there is nothing
-			// for a resolution check to exercise.
-			if probe.action == nil || probe.action.Type == lang.ActionNoop {
+			// A noop or process action runs nothing, so there is nothing for a
+			// resolution check to exercise.
+			if probe.action == nil || probe.action.Type == lang.ActionNoop || probe.action.Type == lang.ActionProcess {
 				continue
 			}
 			resolved, err := resolveEffect(probe.action, probe.env, ctx, def.Ownership(), nil)

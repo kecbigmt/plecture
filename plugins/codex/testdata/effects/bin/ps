@@ -18,14 +18,6 @@ case "$*" in
       printf '%s\n' "1"
     fi
     ;;
-  *lstart=*)
-    [ -n "${PLECT_EFFECT_EMPTY_LSTART-}" ] && exit 0
-    if [ "${TZ-}" = UTC ] && [ "${LC_ALL-}" = C ]; then
-      printf '%s\n' "started-$target"
-    else
-      printf '%s\n' "started-$target@${TZ-}"
-    fi
-    ;;
   *)
     printf '%s\n' "codex"
     ;;

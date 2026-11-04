@@ -1,0 +1,21 @@
+# plect-fixture: result=valid entry=definitions
+# reason: an effect whose setup starts a process may declare liveness as the identity of the pid it outputs, which core records and compares itself.
+
+[runtime]
+kind  = "effect"
+scope = "run"
+
+[runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch"]
+
+[runtime.health.alive]
+process = "self.outputs.pid"
+
+[runtime.outputs_schema]
+type     = "object"
+required = ["pid"]
+
+[runtime.outputs_schema.properties]
+pid = { type = "integer" }

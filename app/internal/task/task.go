@@ -134,6 +134,7 @@ type Probe struct {
 	SourcePath string
 	From       lang.Ownership
 	Env        []string
+	Process    *contract.ProcessIdentity
 }
 
 func (p Probe) context(session SessionVars) RenderContext {
@@ -143,10 +144,20 @@ func (p Probe) context(session SessionVars) RenderContext {
 // RunAliveProbe runs one liveness probe. A non-zero exit or a resolution
 // failure is returned as an error carrying stderr; nil means the execution
 // surface is present. A noop action runs nothing and always reports nil: it
-// is a declared non-observation, not a check that happens to pass.
+// is a declared non-observation, not a check that happens to pass. A process
+// action runs nothing either, but is a real check core makes itself; one
+// beside an exec or shell action runs first and, failing, spares the action.
 func RunAliveProbe(goCtx context.Context, p Probe, session SessionVars) error {
 	if p.Action.Type == lang.ActionNoop {
 		return nil
+	}
+	if p.Action.Process != nil {
+		if err := verifyProcess(p); err != nil {
+			return err
+		}
+		if p.Action.Type == lang.ActionProcess {
+			return nil
+		}
 	}
 	ctx := p.context(session)
 	resolved, err := resolveEffect(p.Action, healthRoots(ctx), ctx, p.From, nil)
@@ -512,6 +523,7 @@ func topoSortNodes(list []Resolved) ([]Resolved, error) {
 // alias that resolves to the same value.
 type RenderContext struct {
 	Self     map[string]any
+	Process  *contract.ProcessIdentity
 	Prev     map[string]any
 	Tasks    map[string]map[string]any
 	Inputs   map[string]any
@@ -861,12 +873,19 @@ func RunSetup(goCtx context.Context, ordered []Resolved, session SessionVars, ta
 				return reportSetupFailure(obs, r, time.Since(now), wrapped, stderrCaptured)
 			}
 		}
+		process, captureErr := CaptureProcess(r.Health, outputs)
+		if captureErr != nil {
+			tasks[r.NodeID] = failed(captureErr.Error(), resolvedInputs)
+			wrapped := fmt.Errorf("task %q setup: %w", r.NodeID, captureErr)
+			return reportSetupFailure(obs, r, time.Since(now), wrapped, stderrCaptured)
+		}
 		tasks[r.NodeID] = &contract.TaskState{
 			Scope:        r.Scope,
 			TaskID:       taskIDFor(r),
 			Status:       contract.TaskStatusProduced,
 			Inputs:       resolvedInputs,
 			Outputs:      outputs,
+			Process:      process,
 			DependsOn:    append([]string(nil), r.DependsOn...),
 			ExecutionID:  continuingExecID,
 			NewExecution: continuingExecID == "",
@@ -1085,6 +1104,7 @@ func RunCleanup(goCtx context.Context, ordered []Resolved, session SessionVars, 
 		}
 		ctx := RenderContext{
 			Self:       state.Outputs,
+			Process:    state.Process,
 			Tasks:      dependencyOutputs(r.DependsOn, tasks),
 			Inputs:     state.Inputs,
 			Workflow:   workflowOutputs(tasks),

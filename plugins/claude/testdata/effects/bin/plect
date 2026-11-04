@@ -1,3 +1,16 @@
 #!/usr/bin/env sh
-# Stands in for plect's own state writes.
+# Stands in for plect's own state writes and for its process identity check,
+# which records no token because the token holds a start time that differs
+# on every run.
+if [ "$1 $2" = "process verify" ]; then
+  plect-effect-record plect process verify
+  case "${PLECT_EFFECT_PROCESS_VERIFY:-always}" in
+    never) exit 1 ;;
+    once)
+      [ -e "$PLECT_EFFECT_STATE/verified-once" ] && exit 1
+      : > "$PLECT_EFFECT_STATE/verified-once"
+      ;;
+  esac
+  exit 0
+fi
 plect-effect-record plect "$@"

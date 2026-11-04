@@ -1,0 +1,14 @@
+# plect-fixture: result=invalid layer=structural diagnostic=PLECTURE-CFG-FROM-ROOT entry=definitions
+# reason: core records an identity only for a process the effect's own setup produced, so the pid may be read only from self.outputs.
+
+[runtime]
+kind  = "effect"
+scope = "run"
+
+[runtime.setup]
+type = "exec"
+bin  = "agent-runtime"
+args = ["launch"]
+
+[runtime.health.alive]
+process = "inputs.pid"

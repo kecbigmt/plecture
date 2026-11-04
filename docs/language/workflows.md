@@ -250,12 +250,31 @@ not individual keys.
 declared. The default is `0`, which disables repair. A later workflow table
 replaces an inherited `[health]` table as a whole; setting the value to `0`
 disables inherited permission. The health cycle may run plain `up` only while
-the session's recorded status is `up`, after a non-zero `alive` exit, a failed
+the session's recorded status is `up`, after a non-zero `alive` exit (a
+`process` probe that finds its pid gone or reused counts as one), a failed
 or missing current-plan node, or a down run state. Probe errors that prevent
 evaluation do not permit repair. Each started repair consumes one attempt until
 a healthy observation or successful human `up` resets the budget. Exhaustion
 reports `repair_suspended`; three consecutive cycles with an unevaluable
 `alive` probe report `repair_undecidable` without consuming an attempt.
+
+An agent runtime whose worker can stay up while every turn fails composes
+core's process check with a script that reads the turn outcome. The script runs
+only while the pid is still the recorded process:
+
+```toml
+[headless_runtime.health.alive]
+process = "self.outputs.pid"
+type    = "shell"
+script  = '''
+HEALTH="$state_dir/health.json"
+[ -f "$HEALTH" ] || exit 0
+jq -e ".last_exit_code == 0" "$HEALTH" >/dev/null
+'''
+
+[headless_runtime.health.alive.bind]
+state_dir = { from = "self.outputs.state_dir" }
+```
 
 ## Concurrency
 
