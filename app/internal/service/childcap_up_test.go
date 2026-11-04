@@ -143,7 +143,7 @@ func TestUp_IgnoresQueuedSessionsThatCannotWake(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if reason, err := wakeSuspensionReason(store, "broken"); err != nil || reason == "" {
+			if reason, err := WakeSuspensionReason(store, "broken"); err != nil || reason == "" {
 				t.Fatalf("wake suspension = %q, %v", reason, err)
 			}
 		}},

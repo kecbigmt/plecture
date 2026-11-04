@@ -55,7 +55,7 @@ func queuedForWake(cfg *config.Config, store *state.Store, s *domain.Session) (b
 	if err != nil || !queued {
 		return false, err
 	}
-	suspended, err := wakeSuspensionReason(store, s.Name)
+	suspended, err := WakeSuspensionReason(store, s.Name)
 	if err != nil || suspended != "" {
 		return false, err
 	}
@@ -126,7 +126,7 @@ func sleepVisibility(cfg *config.Config, store *state.Store, s *domain.Session) 
 	if position > 0 {
 		return "waiting_capacity", position, nil
 	}
-	suspended, err := wakeSuspensionReason(store, s.Name)
+	suspended, err := WakeSuspensionReason(store, s.Name)
 	if err != nil {
 		return "", 0, err
 	}
@@ -145,7 +145,7 @@ func queueSleep(store *state.Store, name, reason string, at time.Time) (bool, er
 	if err != nil {
 		return false, err
 	}
-	suspended, err := wakeSuspensionReason(store, name)
+	suspended, err := WakeSuspensionReason(store, name)
 	if err != nil {
 		return false, err
 	}
@@ -285,7 +285,7 @@ func wakeFailureCount(store *state.Store, name string) (int, error) {
 	return count, nil
 }
 
-func wakeSuspensionReason(store *state.Store, name string) (string, error) {
+func WakeSuspensionReason(store *state.Store, name string) (string, error) {
 	evs, _, _, err := eventlog.NewStore(store.Dir()).List(name, 0, event.Filter{Types: []string{event.TypeSessionSleep, event.TypeSessionWake}})
 	if err != nil {
 		return "", err
@@ -302,8 +302,4 @@ func wakeSuspensionReason(store *state.Store, name string) (string, error) {
 		}
 	}
 	return "", nil
-}
-
-func WakeSuspensionReason(store *state.Store, name string) (string, error) {
-	return wakeSuspensionReason(store, name)
 }
