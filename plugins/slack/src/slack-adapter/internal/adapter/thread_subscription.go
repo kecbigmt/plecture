@@ -17,6 +17,15 @@ import (
 )
 
 var threadResourcePattern = regexp.MustCompile(`^/archives/([A-Z0-9]+)/p(\d{16})$`)
+var mentionResourcePattern = regexp.MustCompile(`^[A-Z0-9]+$`)
+
+func ParseMentionResource(resource string) (string, error) {
+	u, err := url.Parse(resource)
+	if err != nil || u.Scheme != "slack" || !mentionResourcePattern.MatchString(u.Host) || u.Path != "/mentions" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return "", errors.New("invalid Slack mention resource")
+	}
+	return u.Host, nil
+}
 
 func ParseThreadResource(resource string) (channelID, threadTS string, err error) {
 	u, err := url.Parse(resource)
@@ -66,6 +75,47 @@ func ThreadSubscription(ctx context.Context, client *http.Client, baseURL, actio
 		req, err = http.NewRequestWithContext(ctx, http.MethodDelete, baseURL+"/subscribe?"+values.Encode(), nil)
 	default:
 		return fmt.Errorf("unknown thread subscription action %q", action)
+	}
+	if err != nil {
+		return err
+	}
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	response, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		return fmt.Errorf("slack-adapter %s: %s: %s", action, response.Status, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func MentionSubscription(ctx context.Context, client *http.Client, baseURL, action, session, resource string) error {
+	team, err := ParseMentionResource(resource)
+	if err != nil {
+		return err
+	}
+	if session == "" {
+		return errors.New("session is required")
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	var req *http.Request
+	switch action {
+	case "subscribe":
+		body, _ := json.Marshal(subscribeRequest{SessionName: session, ThreadTS: mentionSubscriptionKey, TeamID: team})
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/subscribe", bytes.NewReader(body))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+	case "unsubscribe":
+		values := url.Values{"session_name": {session}, "thread_ts": {mentionSubscriptionKey}}
+		req, err = http.NewRequestWithContext(ctx, http.MethodDelete, baseURL+"/subscribe?"+values.Encode(), nil)
+	default:
+		return fmt.Errorf("unknown mention subscription action %q", action)
 	}
 	if err != nil {
 		return err

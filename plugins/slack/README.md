@@ -14,6 +14,8 @@ logs. Runtime delivery uses the core dispatcher and workflow channels.
   `slack-adapter`. Outputs: `thread_ts`, `channel_id`, and `permalink`.
 - `config/resources/thread.toml` — declares inputs-free thread subscription
   hooks and the query source for unbound mentions.
+- `config/resources/mentions.toml` — declares the workspace-wide bot mention
+  subscription.
 - `config/channels/slack.toml` — delivers a session event to its Slack
   thread by posting to the `slack-adapter` service's HTTP API. Inputs:
   `base_url` (e.g. `http://127.0.0.1:7890` for its default `listen_addr`),
@@ -85,6 +87,17 @@ repository checkout composes a separate effect for it.
 This workspace provider declares no subscription hook. The separate `thread`
 resource observer owns the subscription hooks, so a session whose entry
 resource is a thread subscribes on creation and unsubscribes on destroy.
+
+The `mentions` resource observer matches `slack://<team_id>/mentions`, where
+`team_id` is the Slack workspace ID returned by `auth.test`. Subscribe an
+existing session with `plect subscribe slack://T01234567/mentions --session
+<session-name>`. Every `app_mention` the bot receives then appends a
+`user.emit` to that session's event log, including when the session is down.
+Each event includes the thread root, replies since that session's previous
+mention in the thread, and the mention. Its metadata includes `channel_id`,
+`thread_ts`, and `mention_ts`. A thread subscription remains independent; a
+plain reply reaches thread subscribers only. `plect unsubscribe` removes the
+mention subscription, and session destroy removes it automatically.
 
 ## Thread contract
 

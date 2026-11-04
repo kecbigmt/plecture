@@ -32,20 +32,31 @@ type pendingMention struct {
 
 const pendingMentionLifetime = 24 * time.Hour
 
+const mentionSubscriptionKey = "mentions"
+const mentionWatermarkRetention = 30 * 24 * time.Hour
+
+type mentionWatermark struct {
+	SessionName string    `json:"session_name"`
+	ThreadTS    string    `json:"thread_ts"`
+	Through     string    `json:"through"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type Broker struct {
-	mu      sync.RWMutex
-	subs    map[subscriptionKey]Subscriber
-	pending map[pendingMentionKey]pendingMention
-	path    string
-	logger  *slog.Logger
-	loadErr error
+	mu       sync.RWMutex
+	subs     map[subscriptionKey]Subscriber
+	pending  map[pendingMentionKey]pendingMention
+	mentions map[subscriptionKey]mentionWatermark
+	path     string
+	logger   *slog.Logger
+	loadErr  error
 }
 
 func NewBroker(path string, logger *slog.Logger) *Broker {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 	}
-	b := &Broker{subs: make(map[subscriptionKey]Subscriber), pending: make(map[pendingMentionKey]pendingMention), path: path, logger: logger}
+	b := &Broker{subs: make(map[subscriptionKey]Subscriber), pending: make(map[pendingMentionKey]pendingMention), mentions: make(map[subscriptionKey]mentionWatermark), path: path, logger: logger}
 	if path != "" {
 		b.loadErr = b.load()
 	}
@@ -125,6 +136,9 @@ func (b *Broker) Unsubscribe(session, thread string) (Subscriber, bool) {
 	s, ok := b.subs[key]
 	if ok {
 		delete(b.subs, key)
+		if thread == mentionSubscriptionKey {
+			b.removeMentionWatermarksLocked(session)
+		}
 		b.persistLocked()
 	}
 	return s, ok
@@ -150,6 +164,9 @@ func (b *Broker) UnsubscribeUniqueThread(thread string) bool {
 		return true
 	}
 	delete(b.subs, found)
+	if thread == mentionSubscriptionKey {
+		b.removeMentionWatermarksLocked(found.session)
+	}
 	b.persistLocked()
 	return true
 }
@@ -164,8 +181,20 @@ func (b *Broker) UnsubscribeBySession(session string) []Subscriber {
 			delete(b.subs, key)
 		}
 	}
-	if len(removed) != 0 {
+	watermarksRemoved := b.removeMentionWatermarksLocked(session)
+	if len(removed) != 0 || watermarksRemoved {
 		b.persistLocked()
+	}
+	return removed
+}
+
+func (b *Broker) removeMentionWatermarksLocked(session string) bool {
+	removed := false
+	for key := range b.mentions {
+		if key.session == session {
+			delete(b.mentions, key)
+			removed = true
+		}
 	}
 	return removed
 }
@@ -187,6 +216,33 @@ func (b *Broker) ListThread(thread string) []Subscriber {
 		}
 	}
 	return out
+}
+
+func (b *Broker) ListMentions() []Subscriber {
+	return b.ListThread(mentionSubscriptionKey)
+}
+
+func (b *Broker) MentionWatermark(session, thread string) string {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if _, ok := b.subs[subscriptionKey{session, mentionSubscriptionKey}]; !ok {
+		return ""
+	}
+	return b.mentions[subscriptionKey{session, thread}].Through
+}
+
+func (b *Broker) MarkMentionDelivered(session, thread, through string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	key := subscriptionKey{session, thread}
+	if _, ok := b.subs[subscriptionKey{session, mentionSubscriptionKey}]; !ok {
+		return
+	}
+	if old := b.mentions[key].Through; old != "" && compareSlackTS(old, through) >= 0 {
+		return
+	}
+	b.mentions[key] = mentionWatermark{SessionName: session, ThreadTS: thread, Through: through, UpdatedAt: time.Now()}
+	b.persistLocked()
 }
 
 func (b *Broker) MarkDelivered(session, thread, through string) (Subscriber, bool) {
@@ -241,9 +297,10 @@ func (b *Broker) snapshotLocked() []Subscriber {
 }
 
 type persistedState struct {
-	Version         int              `json:"version"`
-	Subscribers     []Subscriber     `json:"subscribers"`
-	PendingMentions []pendingMention `json:"pending_mentions,omitempty"`
+	Version           int                `json:"version"`
+	Subscribers       []Subscriber       `json:"subscribers"`
+	PendingMentions   []pendingMention   `json:"pending_mentions,omitempty"`
+	MentionWatermarks []mentionWatermark `json:"mention_watermarks,omitempty"`
 }
 
 func (b *Broker) load() error {
@@ -262,7 +319,7 @@ func (b *Broker) load() error {
 		return fmt.Errorf("unsupported subscriber state version %d at %s; run the migration", ps.Version, b.path)
 	}
 	for _, s := range ps.Subscribers {
-		if s.SessionName == "" || s.ThreadTS == "" || s.ChannelID == "" {
+		if s.SessionName == "" || s.ThreadTS == "" || (s.ChannelID == "" && s.ThreadTS != mentionSubscriptionKey) {
 			continue
 		}
 		b.subs[subscriptionKey{s.SessionName, s.ThreadTS}] = s
@@ -274,6 +331,12 @@ func (b *Broker) load() error {
 		b.pending[pendingMentionKey{mention.ChannelID, mention.ThreadTS}] = mention
 	}
 	b.prunePendingLocked(time.Now())
+	for _, wm := range ps.MentionWatermarks {
+		_, subscribed := b.subs[subscriptionKey{wm.SessionName, mentionSubscriptionKey}]
+		if subscribed && isSlackTimestampShape(wm.ThreadTS) && isSlackTimestampShape(wm.Through) && time.Since(wm.UpdatedAt) < mentionWatermarkRetention {
+			b.mentions[subscriptionKey{wm.SessionName, wm.ThreadTS}] = wm
+		}
+	}
 	return nil
 }
 
@@ -298,7 +361,15 @@ func (b *Broker) persistLocked() {
 	for _, mention := range b.pending {
 		pending = append(pending, mention)
 	}
-	if err := enc.Encode(persistedState{Version: 2, Subscribers: b.snapshotLocked(), PendingMentions: pending}); err != nil {
+	watermarks := make([]mentionWatermark, 0, len(b.mentions))
+	for key, wm := range b.mentions {
+		if time.Since(wm.UpdatedAt) >= mentionWatermarkRetention {
+			delete(b.mentions, key)
+			continue
+		}
+		watermarks = append(watermarks, wm)
+	}
+	if err := enc.Encode(persistedState{Version: 2, Subscribers: b.snapshotLocked(), PendingMentions: pending, MentionWatermarks: watermarks}); err != nil {
 		f.Close()
 		b.logger.Error("write subscriber state", "error", err)
 		return

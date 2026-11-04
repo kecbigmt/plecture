@@ -52,22 +52,21 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 		return
 	}
 
-	subs := a.broker.ListThread(threadTS)
-	if len(subs) == 0 {
+	threadSubs := a.broker.ListThread(threadTS)
+	if len(threadSubs) == 0 {
 		a.logger.Info("app mention skipped: unbound thread", "thread_ts", threadTS, "channel_id", ev.Channel)
 		if a.dispatchUnboundMention(ev, threadTS) {
 			a.recordStreamRecipient(ev.Channel, threadTS, ev.User, ev.UserTeam)
 		}
-		return
 	}
-	valid := subs[:0]
-	for _, sub := range subs {
+	valid := threadSubs[:0]
+	for _, sub := range threadSubs {
 		if sub.SessionName != "" && sub.ChannelID == ev.Channel {
 			valid = append(valid, sub)
 		}
 	}
-	subs = valid
-	if len(subs) == 0 {
+	mentions := a.broker.ListMentions()
+	if len(valid) == 0 && len(mentions) == 0 {
 		return
 	}
 	channelID := ev.Channel
@@ -85,20 +84,30 @@ func (a *Adapter) handleAppMention(ev *slackevents.AppMentionEvent) {
 		mentionUser = ev.User
 	}
 	delivered := false
-	for _, sub := range subs {
-		if sub.ChannelID != channelID {
-			continue
-		}
+	for _, sub := range valid {
 		body, through := buildDeliberationTranscript(fetcher, replies, *ev, sub, a.cfg.DeliverFullThread)
 		if body == "" {
 			continue
 		}
 		if err := a.publishEvent(sub.SessionName, "user.emit", "slack", "inbound",
 			"Slack deliberation from "+mentionUser, body,
-			map[string]string{"thread_ts": threadTS, "channel_id": channelID, "user_id": ev.User, "user": mentionUser}); err != nil {
+			map[string]string{"thread_ts": threadTS, "channel_id": channelID, "mention_ts": ev.TimeStamp, "user_id": ev.User, "user": mentionUser}); err != nil {
 			continue
 		}
 		a.broker.MarkDelivered(sub.SessionName, threadTS, through)
+		delivered = true
+	}
+	for _, sub := range mentions {
+		sub.ThreadTS = threadTS
+		sub.ChannelID = channelID
+		sub.DeliveredThrough = a.broker.MentionWatermark(sub.SessionName, threadTS)
+		body, through := buildDeliberationTranscript(fetcher, replies, *ev, sub, false)
+		if err := a.publishEvent(sub.SessionName, "user.emit", "slack", "inbound",
+			"Slack deliberation from "+mentionUser, body,
+			map[string]string{"thread_ts": threadTS, "channel_id": channelID, "mention_ts": ev.TimeStamp, "user_id": ev.User, "user": mentionUser}); err != nil {
+			continue
+		}
+		a.broker.MarkMentionDelivered(sub.SessionName, threadTS, through)
 		delivered = true
 	}
 	if delivered {

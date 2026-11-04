@@ -1,0 +1,22 @@
+[mentions]
+kind  = "resource_observer"
+match = '^slack://[A-Z0-9]+/mentions$'
+
+[mentions.observe]
+type = "exec"
+bin  = "slack-adapter"
+args = ["resource", "observe", "--resource", { from = "resource.id" }]
+
+[mentions.subscribe]
+type = "exec"
+bin  = "slack-adapter"
+args = ["resource", "subscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
+
+[mentions.unsubscribe]
+type = "exec"
+bin  = "slack-adapter"
+args = ["resource", "unsubscribe", "--session", { from = "session.name" }, "--resource", { from = "resource.id" }]
+
+[mentions.state_schema]
+type = "object"
+additionalProperties = false
