@@ -154,6 +154,22 @@ func repairAttemptObservation(store *state.Store, name string) (int, bool, strin
 	return attempts, suspended, reason, nil
 }
 
+// repairHalt names why automatic repair has stopped for a session, or returns
+// an empty status while repair is still being attempted.
+func repairHalt(store *state.Store, name string, s *domain.Session) (status, reason string, err error) {
+	boundary, found, err := eventlog.NewStore(store.Dir()).LatestRepairStateChange(name)
+	if err != nil {
+		return "", "", err
+	}
+	if found && boundary.Metadata["result"] == "suspended" {
+		return "repair_suspended", boundary.Metadata["reason"], nil
+	}
+	if s.Health != nil && s.Health.UnevaluableCycles >= 3 {
+		return "repair_undecidable", s.Health.LastReason, nil
+	}
+	return "", "", nil
+}
+
 func resetRepairStreak(store *state.Store, name, trigger string) error {
 	attempts, suspended, err := repairAttemptState(store, name)
 	if err != nil {
