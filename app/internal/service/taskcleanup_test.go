@@ -604,6 +604,7 @@ uses = "official.acme.runner"
 		PluginDirs: []string{pluginDir},
 		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
 	}
+	registerFixture(t, cfg)
 	store := testStore(t)
 	// TaskID omitted, as it is for a node whose id equals the definition's.
 	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{

@@ -262,9 +262,16 @@ func TestList_DownSessionMasksStalePersistedHealth(t *testing.T) {
 func TestList_GhostWorkflowSessionHasNoHealthButOthersListNormally(t *testing.T) {
 	store := testStore(t)
 	cfg := currentPlanConfig(t, "true", "true") // only declares workflow "default"
-	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "ghost-workflow", map[string]*contract.TaskState{
+	seedSessionWithNodes(t, store, "owner/repo-1", "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"pane": {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
 	})
+	if err := store.Update("owner/repo-1", func(s *domain.Session) error {
+		s.Workflow = "ghost-workflow"
+		s.WorkflowRevision, s.WorkflowRevisionBody = "", ""
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	seedSessionWithNodes(t, store, "owner/repo-2", "owner/repo", 2, "default", map[string]*contract.TaskState{
 		"pane":  {Scope: contract.TaskScopeRun, TaskID: "pane", Status: contract.TaskStatusProduced},
 		"agent": {Scope: contract.TaskScopeRun, TaskID: "agent", Status: contract.TaskStatusProduced},
@@ -929,8 +936,9 @@ func TestApplyDisplay_OverridesFromOutputs(t *testing.T) {
 			},
 		},
 	}
+	pinDisplayWorkflow(t, workflows["wf"], s)
 	cached := cachedInfo{Title: "from-cache", DisplayStatus: "cache-status"}
-	applyDisplay(workflows, s, &cached)
+	applyDisplay(s, &cached)
 	if cached.Title != "Fix the bug" {
 		t.Errorf("Title = %q, want display override", cached.Title)
 	}
@@ -946,11 +954,22 @@ func TestApplyDisplay_EmptyRenderKeepsFallback(t *testing.T) {
 	// No outputs at all: the projection resolves to nothing, so the prior
 	// title survives rather than being replaced with a blank.
 	s := &domain.Session{Name: "org/repo-2", Workflow: "wf"}
+	pinDisplayWorkflow(t, workflows["wf"], s)
 	cached := cachedInfo{Title: "from-cache"}
-	applyDisplay(workflows, s, &cached)
+	applyDisplay(s, &cached)
 	if cached.Title != "from-cache" {
 		t.Errorf("Title = %q, want unchanged fallback", cached.Title)
 	}
+}
+
+func pinDisplayWorkflow(t *testing.T, wf config.WorkflowFile, s *domain.Session) {
+	t.Helper()
+	wf.Address = s.Workflow
+	body, digest, err := (config.WorkflowRevision{Workflow: wf}).CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.WorkflowRevision, s.WorkflowRevisionBody = digest, string(body)
 }
 
 // Each instance of one document is evaluated against its own recorded state,

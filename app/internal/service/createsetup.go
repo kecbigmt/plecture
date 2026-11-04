@@ -55,7 +55,8 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if existing.Workflow != "" && existing.Workflow != wf.Address {
 			return nil, &Error{Code: ErrInvalidInput, Message: fmt.Sprintf("resource dispatches to workflow %q but session %q is frozen to %q; destroy and recreate to switch", wf.Address, sessionName, existing.Workflow)}
 		}
-		if revision, ok, revisionErr := config.RevisionForSession(existing); ok || revisionErr != nil {
+		if existing.WorkflowRevision != "" {
+			revision, _, revisionErr := config.RevisionForSession(existing)
 			if revisionErr != nil {
 				return nil, &Error{Code: ErrExecutionFailed, Message: revisionErr.Error()}
 			}

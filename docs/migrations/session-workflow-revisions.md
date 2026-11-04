@@ -3,8 +3,13 @@
 The first ordinary plect command or plect-web startup after this upgrade expands
 each live session's workflow from the trusted configuration available at that
 moment and assigns a stored revision. The database schema migration adds the
-revision table and a nullable session reference first; the application fills
-that reference before serving requests. A session whose workflow or referenced
+revision table, a nullable session reference, and a one-time completion marker
+first; the application fills the references and marks completion before serving
+requests. Later sessions whose workspace setup fails may have no revision and
+do not restart the migration. Retry setup while its declaration exists, or use
+`plect destroy --force <session>` to remove the incomplete entry.
+
+A session whose workflow or referenced
 declaration cannot be resolved stops the migration with its name in the error.
 Restore the missing trusted declaration from backup and retry. Do not replace
 an unresolved session with a partial definition.

@@ -185,6 +185,7 @@ uses = "official.acme.runner"
 		PluginDirs: []string{pluginDir},
 		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
 	}
+	registerFixture(t, cfg)
 	store := testStore(t)
 	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
 
@@ -262,6 +263,7 @@ uses = "official.acme.runner"
 		PluginDirs: []string{pluginDir},
 		Plugins:    []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
 	}
+	registerFixture(t, cfg)
 	store := testStore(t)
 	seedSession(t, store, "o/r-1", "o/r", 1, "coding", map[string]*contract.TaskState{})
 

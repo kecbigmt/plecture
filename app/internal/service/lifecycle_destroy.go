@@ -105,6 +105,14 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("orphaned %d child session(s): %s", len(children), strings.Join(children, ", ")))
 	}
+	if session.Workflow != "" && session.WorkflowRevision == "" && params.Force {
+		result.CleanupWarnings = append(result.CleanupWarnings, "no stored workflow revision; cleanup skipped")
+		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
+		if err := store.Destroy(sessionName); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to destroy state entry: %v", err)}
+		}
+		return result, nil
+	}
 
 	// buildPlanForSession hard-requires a frozen workflow. Skip that
 	// requirement under --force for a session with nothing recorded to tear

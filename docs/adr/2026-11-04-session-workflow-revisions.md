@@ -54,7 +54,9 @@ inputs, untrusted messages, and stored execution results cannot author one.
 Plugin executable contents, executable lookup through `PATH`, and population
 definitions are outside the revision. Population continues to use current
 configuration. Executable references resolve against the mounted plugins when
-an operation runs.
+an operation runs. A plugin-owned declaration records its catalog-qualified
+plugin ID and path relative to the plugin mount. A change in the mount's cache
+directory does not change the revision or break a bare executable reference.
 
 `workflow_revisions` has `digest` as primary key, plus `workflow`, `body`, and
 `created_at`. `sessions.workflow_revision` identifies the stored body. A
@@ -67,7 +69,9 @@ each existing session's workflow from the configuration present at migration
 time and assigns its revision. Startup stops with the affected session's name
 if a required definition cannot be resolved. The operator restores that
 trusted declaration from backup and retries. Migration does not invent a
-partial revision or reconstruct missing execution facts.
+partial revision or reconstruct missing execution facts. A durable completion
+marker prevents an incomplete session created after migration from restarting
+the backfill. Such a session can retry setup or be removed with force.
 
 ## Consequences
 

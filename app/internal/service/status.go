@@ -221,7 +221,7 @@ func Status(cfg *config.Config, store *state.Store, identifier string) (*StatusR
 	if err != nil {
 		return nil, err
 	}
-	declarations := loadDisplayTasks(cfg)
+	declarations := taskDeclarations{}
 	if session.WorkflowRevision != "" {
 		docs, effects, err := cfg.TaskDeclarationsForSession(session)
 		if err != nil {
@@ -302,7 +302,7 @@ func attachCommandFor(cfg *config.Config, session *domain.Session) string {
 // alongside it.
 func sessionDisplayTitle(cfg *config.Config, session *domain.Session) string {
 	var cached cachedInfo
-	applyDisplay(loadDisplayWorkflows(cfg), session, &cached)
+	applyDisplay(session, &cached)
 	return cached.Title
 }
 

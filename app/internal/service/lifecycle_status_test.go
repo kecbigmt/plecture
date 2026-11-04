@@ -256,14 +256,12 @@ func TestDown_PlanConstructionFailureSetsStatusDown(t *testing.T) {
 		[]taskFixture{{id: "runtime", scope: "run", cleanup: "true"}},
 		[]nodeFixture{{id: "runtime"}},
 	)
-	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "broken.toml"), []byte("scope = \n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	seedSessionWithNodes(t, store, sessionName, "acct", 24, "default", map[string]*contract.TaskState{
 		"runtime": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced, Outputs: map[string]any{}},
 	})
 	if err := store.Update(sessionName, func(s *domain.Session) error {
 		s.Status = contract.SessionStatusUp
+		s.WorkflowRevision, s.WorkflowRevisionBody = "", ""
 		return nil
 	}); err != nil {
 		t.Fatal(err)

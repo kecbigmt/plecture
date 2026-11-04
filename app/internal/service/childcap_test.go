@@ -30,6 +30,7 @@ func writeCapWorkflow(t *testing.T, baseDir, id string, maxUpChildren *int) {
 	if err := os.WriteFile(filepath.Join(dir, id+".toml"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	registerFixture(t, &config.Config{BaseDir: baseDir})
 }
 
 func upTasks() map[string]*contract.TaskState {

@@ -320,7 +320,7 @@ func TestCheckSession_DefaultPolicyAcceptsSiblingRejectsChild(t *testing.T) {
 		work, reviewer := "owner/repo-1", "owner/repo-1+review"
 		seedJudgeWork(t, store, work, judgeLeaf)
 		seedSession(t, store, "owner/repo-orchestrator", "owner/repo", 1, "", nil)
-		seedSession(t, store, reviewer, "owner/repo", 1, "codex", nil)
+		seedSession(t, store, reviewer, "owner/repo", 1, "", nil)
 		setParent(t, store, work, "owner/repo-orchestrator")
 		setParent(t, store, reviewer, "owner/repo-orchestrator")
 		recordApproval(t, cfg, store, work, reviewer)
@@ -336,7 +336,7 @@ func TestCheckSession_DefaultPolicyAcceptsSiblingRejectsChild(t *testing.T) {
 		cfg := checkStatusOnlyConfig(t, 1)
 		work, reviewer := "owner/repo-1", "owner/repo-1+child"
 		seedJudgeWork(t, store, work, judgeLeaf)
-		seedSession(t, store, reviewer, "owner/repo", 1, "codex", nil)
+		seedSession(t, store, reviewer, "owner/repo", 1, "", nil)
 		setParent(t, store, reviewer, work)
 		recordApproval(t, cfg, store, work, reviewer)
 
@@ -354,7 +354,7 @@ func TestCheckSession_ExplicitChildRelationAccepted(t *testing.T) {
 	cfg := checkStatusOnlyConfig(t, 1)
 	work, reviewer := "owner/repo-1", "owner/repo-1+child"
 	seedJudgeWork(t, store, work, `{"all":[{"judge":"AC met","id":"ac-met","relation":["child"]}]}`)
-	seedSession(t, store, reviewer, "owner/repo", 1, "codex", nil)
+	seedSession(t, store, reviewer, "owner/repo", 1, "", nil)
 	setParent(t, store, reviewer, work)
 	recordApproval(t, cfg, store, work, reviewer)
 
@@ -366,7 +366,7 @@ func TestCheckSession_ExplicitChildRelationAccepted(t *testing.T) {
 
 func seedJudgeWork(t *testing.T, store *state.Store, work, judgeLeaf string) {
 	t.Helper()
-	seedSession(t, store, work, "owner/repo", 1, "claude", map[string]*contract.TaskState{
+	seedSession(t, store, work, "owner/repo", 1, "default", map[string]*contract.TaskState{
 		"initial": {
 			Scope:         contract.TaskScopeSession,
 			TaskID:        "work",

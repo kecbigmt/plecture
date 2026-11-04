@@ -57,8 +57,14 @@ func (db *DB) PruneWorkflowRevisions(ctx context.Context) error {
 func (db *DB) NeedsWorkflowRevisionBackfill(ctx context.Context) (bool, error) {
 	var pending bool
 	err := db.WithReadTx(ctx, func(tx *sql.Tx) error {
-		return tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM sessions
-			WHERE status <> 'destroyed' AND workflow <> '' AND workflow_revision IS NULL)`).Scan(&pending)
+		return tx.QueryRowContext(ctx, `SELECT completed = 0 FROM workflow_revision_migration WHERE id = 1`).Scan(&pending)
 	})
 	return pending, err
+}
+
+func (db *DB) CompleteWorkflowRevisionBackfill(ctx context.Context) error {
+	return db.WithImmediateTx(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE workflow_revision_migration SET completed = 1 WHERE id = 1`)
+		return err
+	})
 }

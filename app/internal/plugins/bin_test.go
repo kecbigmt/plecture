@@ -66,6 +66,17 @@ func TestResolveBin_BareNameWithNoSourcePathFailsLoud(t *testing.T) {
 	}
 }
 
+func TestResolveBin_RevisionSourceRequiresExactPluginID(t *testing.T) {
+	mounted := []Mounted{mustMount("official/agent", "/mnt/agent", Executable{Name: "runner", Path: "bin/runner"})}
+	if _, err := ResolveBin(mounted, "plugin://official%2Fagent%2Fruntime/config/tasks/run.toml", "runner"); err == nil {
+		t.Fatal("bare executable resolved from a different plugin")
+	}
+	got, err := ResolveBin(mounted, "plugin://official%2Fagent/config/tasks/run.toml", "runner")
+	if err != nil || got != filepath.Join("/mnt/agent", "bin", "runner") {
+		t.Fatalf("own plugin executable = %q, %v", got, err)
+	}
+}
+
 // TestResolveBin_PluginLocalBareNameResolvesWithinContainingPlugin covers
 // the plugin-local reading: a bare executable name inside a file mounted
 // from a plugin resolves against that plugin's own [[executables]], with no

@@ -1,12 +1,14 @@
 package config
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/lang"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
@@ -47,6 +49,88 @@ func TestWorkflowRevisionCanonicalBodyAndRoundTrip(t *testing.T) {
 	}
 	if _, err := DecodeWorkflowRevision(oneBody, strings.Repeat("0", 64)); err == nil {
 		t.Fatal("digest mismatch accepted")
+	}
+}
+
+func TestWorkflowRevisionPluginSourceSurvivesMountChange(t *testing.T) {
+	oldDir := filepath.Join(t.TempDir(), "old")
+	newDir := filepath.Join(t.TempDir(), "new")
+	base := t.TempDir()
+	writeFile(t, filepath.Join(base, "workflows", "work.toml"), "[work]\nkind = \"workflow\"\n[[work.nodes]]\nuses = \"catalog.agent.effect\"\n")
+	for _, dir := range []string{oldDir, newDir} {
+		writeFile(t, filepath.Join(dir, "config", "tasks", "effect.toml"), "[effect]\nkind = \"effect\"\nscope = \"run\"\n")
+	}
+	mount := func(dir string) plugins.Mounted {
+		return plugins.Mounted{ID: "catalog/agent", Dir: dir, Manifest: plugins.Manifest{Executables: []plugins.Executable{{Name: "runner", Path: "bin/runner"}}}}
+	}
+	oldConfig := &Config{BaseDir: base, PluginDirs: []string{oldDir}, Plugins: []plugins.Mounted{mount(oldDir)}}
+	revision, err := oldConfig.CaptureWorkflowRevision("", "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := DecodeWorkflowRevision(body, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newConfig := &Config{BaseDir: base, PluginDirs: []string{newDir}, Plugins: []plugins.Mounted{mount(newDir)}}
+	newRevision, err := newConfig.CaptureWorkflowRevision("", "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, newDigest, err := newRevision.CanonicalBody()
+	if err != nil || newDigest != digest {
+		t.Fatalf("mount changed revision digest: %q, %v", newDigest, err)
+	}
+	def := decoded.Effects["catalog.agent.effect"]
+	if def.SourcePath != "plugin://catalog%2Fagent/config/tasks/effect.toml" {
+		t.Fatalf("stored plugin source = %q", def.SourcePath)
+	}
+	bins := MountedBins{Mounted: []plugins.Mounted{mount(newDir)}, SourcePath: def.SourcePath}
+	got, err := bins.ResolveBin("runner", def.Ownership())
+	if err != nil || got != filepath.Join(newDir, "bin", "runner") {
+		t.Fatalf("resolve after mount change = %q, %v", got, err)
+	}
+	if strings.Contains(string(body), oldDir) {
+		t.Fatalf("revision captured old mount directory: %s", body)
+	}
+}
+
+func TestWorkflowRevisionUncataloguedPluginSourceDoesNotPinDirectory(t *testing.T) {
+	revision := WorkflowRevision{Effects: map[string]TaskDefinition{
+		"effect": {FromPlugin: true, SourcePath: "/local/plugin/config/tasks/effect.toml"},
+	}}
+	if err := revision.PortablePluginSources(nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := revision.Effects["effect"].SourcePath; got != "" {
+		t.Fatalf("uncatalogued plugin source = %q, want no host path", got)
+	}
+}
+
+func TestSessionWithWorkflowRequiresStoredRevision(t *testing.T) {
+	session := &domain.Session{Name: "pending", Workflow: "work"}
+	cfg := &Config{}
+	if _, _, err := RevisionForSession(session); err == nil {
+		t.Fatal("missing revision accepted")
+	}
+	if _, err := cfg.ResolveSessionWorkflow(session); err == nil {
+		t.Fatal("workflow resolved from live configuration")
+	}
+	if _, err := cfg.TaskDefinitionsForSession(session); err == nil {
+		t.Fatal("effects resolved from live configuration")
+	}
+	if _, _, err := cfg.TaskDeclarationsForSession(session); err == nil {
+		t.Fatal("tasks resolved from live configuration")
+	}
+	if _, err := cfg.ChannelsForSession(session); err == nil {
+		t.Fatal("channels resolved from live configuration")
+	}
+	if _, err := cfg.WorkspaceProviderForSession(session); err == nil {
+		t.Fatal("provider resolved from live configuration")
 	}
 }
 

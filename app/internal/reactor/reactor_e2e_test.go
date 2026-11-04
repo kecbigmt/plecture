@@ -21,6 +21,7 @@ import (
 func newE2EConfig(t *testing.T) *config.Config {
 	t.Helper()
 	base := t.TempDir()
+	writeE2EWorkflow(t, base)
 	writeFile(t, filepath.Join(base, "resources", "fixture.toml"), e2eObserver)
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
@@ -34,6 +35,12 @@ all = [
 ]
 `)
 	return &config.Config{BaseDir: base, WorkspaceDirsRoot: t.TempDir()}
+}
+
+func writeE2EWorkflow(t *testing.T, base string) {
+	t.Helper()
+	writeFile(t, filepath.Join(base, "tasks", "claude.toml"), "[claude]\nkind = \"effect\"\nscope = \"run\"\n")
+	writeFile(t, filepath.Join(base, "workflows", "session.toml"), "[session]\nkind = \"workflow\"\n[[session.nodes]]\nuses = \"claude\"\n")
 }
 
 // e2eObserver has no real resource to look at, so observing one fails and the
@@ -73,8 +80,9 @@ func TestSessionReactor_ReactiveTickReachesDoneWhenConsequence(t *testing.T) {
 	if err := st.Put(&domain.Session{Name: "o/parent"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Put(&domain.Session{
+	session := &domain.Session{
 		Name:          "o/r-1",
+		Workflow:      "session",
 		ParentSession: "o/parent",
 		Nodes: map[string]*contract.TaskState{
 			// A run-scope task keeps the reactor's drain loop active (mirrors a
@@ -88,7 +96,9 @@ func TestSessionReactor_ReactiveTickReachesDoneWhenConsequence(t *testing.T) {
 				Observed: &contract.ResourceObservation{State: map[string]any{"checks_status": "SUCCESS"}, At: time.Now()},
 			},
 		},
-	}); err != nil {
+	}
+	pinRevision(t, cfg, session)
+	if err := st.Put(session); err != nil {
 		t.Fatal(err)
 	}
 
@@ -125,6 +135,7 @@ func TestSessionReactor_ReactiveTickReachesDoneWhenConsequence(t *testing.T) {
 func newPendingJudgeConfig(t *testing.T) *config.Config {
 	t.Helper()
 	base := t.TempDir()
+	writeE2EWorkflow(t, base)
 	writeFile(t, filepath.Join(base, "resources", "fixture.toml"), e2eObserver)
 	writeFile(t, filepath.Join(base, "tasks", "work.toml"), `[work]
 kind              = "task"
@@ -152,8 +163,9 @@ func TestSessionReactor_UnchangedUnmetStateAnnouncesOnce(t *testing.T) {
 	hub := sessionhub.NewRegistry(log, sessionhub.WithPollInterval(2*time.Millisecond))
 	t.Cleanup(hub.Close)
 
-	if err := st.Put(&domain.Session{
-		Name: "o/r-1",
+	session := &domain.Session{
+		Name:     "o/r-1",
+		Workflow: "session",
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 			"initial": {
@@ -163,7 +175,9 @@ func TestSessionReactor_UnchangedUnmetStateAnnouncesOnce(t *testing.T) {
 				Resource: "https://github.com/o/r/pull/1",
 			},
 		},
-	}); err != nil {
+	}
+	pinRevision(t, cfg, session)
+	if err := st.Put(session); err != nil {
 		t.Fatal(err)
 	}
 

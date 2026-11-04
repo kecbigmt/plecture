@@ -49,5 +49,5 @@ func BackfillWorkflowRevisions(cfg *config.Config, store *state.Store) error {
 			return fmt.Errorf("migrate session %q workflow revision: %w", name, err)
 		}
 	}
-	return nil
+	return store.CompleteWorkflowRevisionBackfill()
 }

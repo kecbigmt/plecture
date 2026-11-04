@@ -22,11 +22,8 @@ func TestSessionDisplayUsesStoredWorkflowDeclaration(t *testing.T) {
 		t.Fatal(err)
 	}
 	session := &domain.Session{Workflow: "work", WorkflowRevision: digest, WorkflowRevisionBody: string(body)}
-	current := map[string]config.WorkflowFile{"work": {Display: map[string]*lang.Value{
-		"title": {Form: lang.FormLiteral, Literal: "edited"},
-	}}}
 	var display cachedInfo
-	applyDisplay(current, session, &display)
+	applyDisplay(session, &display)
 	if display.Title != "original" {
 		t.Fatalf("display title = %q, want stored declaration", display.Title)
 	}
@@ -108,6 +105,25 @@ func TestBackfillWorkflowRevisionsPinsExistingSessionAtMigration(t *testing.T) {
 	plan, err := buildPlanForSession(cfg, "", session)
 	if err != nil || plan == nil || len(plan.Run) != 1 {
 		t.Fatalf("migrated plan = %+v, err %v", plan, err)
+	}
+}
+
+func TestDestroyForceRemovesFailedSetupWithoutRevision(t *testing.T) {
+	store := testStore(t)
+	now := time.Now()
+	session := &domain.Session{
+		Name: "failed-setup", Workflow: "removed", Status: contract.SessionStatusDown,
+		CreatedAt: now, UpdatedAt: now,
+		Nodes: map[string]*contract.TaskState{contract.WorkflowPseudoNodeID: {Status: contract.TaskStatusFailed, Scope: contract.TaskScopeSession}},
+	}
+	if err := store.Put(session); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Destroy(&config.Config{}, store, DestroyParams{Identifier: session.Name, Force: true}); err != nil {
+		t.Fatalf("force destroy failed: %v", err)
+	}
+	if got := store.Get(session.Name); got != nil {
+		t.Fatalf("session remains: %+v", got)
 	}
 }
 

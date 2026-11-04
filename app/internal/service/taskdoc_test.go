@@ -92,7 +92,7 @@ func writeTaskDocumentFixture(t *testing.T, workdirsRoot, wfID string, observerS
 	for i, doc := range documents {
 		write(filepath.Join("tasks", fmt.Sprintf("doc%d.toml", i)), doc)
 	}
-	return &config.Config{WorkspaceDirsRoot: workdirsRoot, BaseDir: baseDir}
+	return registerFixture(t, &config.Config{WorkspaceDirsRoot: workdirsRoot, BaseDir: baseDir})
 }
 
 func TestSetTaskState_RecordsDeclaredKey(t *testing.T) {
@@ -225,7 +225,22 @@ func TestTaskSetup_TaskDocumentInstance(t *testing.T) {
 // never satisfy is worse than no instance.
 func TestTaskSetup_TaskDocumentFirstObservationFails(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", nil, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "resources", "issue_pr.toml"), []byte(`
+[issue_pr]
+kind = "resource_observer"
+match = '^https://'
+[issue_pr.observe]
+type = "shell"
+script = "exit 1"
+[issue_pr.state_schema]
+type = "object"
+[issue_pr.state_schema.properties]
+resource_kind = { type = "string" }
+revision = { type = "string" }
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 
 	_, err := TaskSetup(cfg, store, TaskSetupParams{
@@ -362,7 +377,7 @@ pr_url        = { type = "string" }
 	for i, doc := range documents {
 		write(filepath.Join("tasks", fmt.Sprintf("doc%d.toml", i)), doc)
 	}
-	return &config.Config{WorkspaceDirsRoot: t.TempDir(), BaseDir: baseDir}
+	return registerFixture(t, &config.Config{WorkspaceDirsRoot: t.TempDir(), BaseDir: baseDir})
 }
 
 func TestTaskShow_TaskDocument(t *testing.T) {
@@ -386,7 +401,7 @@ func TestTaskShow_TaskDocument(t *testing.T) {
 // rather than failing for want of a cleanup action.
 func TestTaskCleanup_TaskDocumentInstance(t *testing.T) {
 	store := testStore(t)
-	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"revision": "sha2"}, reviewDocument)
+	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
 		"review#1": {Scope: contract.TaskScopeSession, TaskID: "review", Status: contract.TaskStatusProduced, SetupAt: time.Now()},
 	})
@@ -439,6 +454,14 @@ func TestTaskSetup_PluginTaskDocumentResolvesItsOwnObserver(t *testing.T) {
 		PluginDirs:        []string{pluginDir},
 		Plugins:           []plugins.Mounted{{ID: "official/acme", Dir: pluginDir}},
 	}
+	cfg.BaseDir = t.TempDir()
+	if err := os.MkdirAll(filepath.Join(cfg.BaseDir, "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "workflows", "wf.toml"), []byte("[wf]\nkind = \"workflow\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	registerFixture(t, cfg)
 	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
 
 	result, err := TaskSetup(cfg, store, TaskSetupParams{
@@ -464,7 +487,6 @@ func TestTaskSetup_PluginTaskDocumentResolvesItsOwnObserver(t *testing.T) {
 // An id names one declaration. A document and an effect claiming the same id
 // fails at load, rather than instantiation silently picking one of them.
 func TestTaskSetup_TaskDocumentCollidingWithAnEffectFails(t *testing.T) {
-	store := testStore(t)
 	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "review.toml"), []byte(`
 [review]
@@ -477,19 +499,12 @@ script = "true"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", nil)
-
-	_, err := TaskSetup(cfg, store, TaskSetupParams{
-		TaskID: "review", SessionName: "org/repo-1", Resource: "https://example.test/pull/1",
-	})
+	_, err := cfg.CaptureWorkflowRevision("", "wf")
 	if err == nil {
 		t.Fatal("expected instantiation to fail while one id names two declarations")
 	}
 	if !strings.Contains(err.Error(), "review") {
 		t.Errorf("error = %v, want it to name the id", err)
-	}
-	if got := store.Get("org/repo-1").Tasks["review#1"]; got != nil {
-		t.Errorf("an instance was created anyway: %+v", got)
 	}
 }
 
@@ -721,7 +736,6 @@ instructions      = [{ text = "Note something about {{ resource.id }}." }]
 // document that will not load is reported as that rather than as a
 // declaration nobody wrote.
 func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
-	store := testStore(t)
 	cfg := writeTaskDocumentFixture(t, t.TempDir(), "wf", map[string]string{"resource_kind": "pull", "revision": "sha2"}, reviewDocument)
 	// A declaration that parses but carries a field outside the task surface:
 	// a `.md` that no instructions element's file names is a template asset
@@ -729,12 +743,7 @@ func TestSetOutput_ReportsAnUnloadableDocument(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cfg.BaseDir, "tasks", "broken.toml"), []byte("[broken]\nkind = \"task\"\nbogus = 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	seedSession(t, store, "org/repo-1", "org/repo", 1, "wf", map[string]*contract.TaskState{
-		"watch#1": {Scope: contract.TaskScopeSession, TaskID: "watch", Status: contract.TaskStatusProduced, SetupAt: time.Now()},
-	})
-	_, err := SetOutput(cfg, store, SetOutputParams{
-		Identifier: "org/repo-1", Task: "watch#1", Outputs: map[string]any{"pr_state": "merged"},
-	})
+	_, err := cfg.CaptureWorkflowRevision("", "wf")
 	if err == nil {
 		t.Fatal("expected the unloadable document to be reported")
 	}

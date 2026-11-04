@@ -105,7 +105,7 @@ identifier no resolver matches selects a workflow explicitly (see
 				return err
 			}
 		}
-		return store.PruneWorkflowRevisions()
+		return nil
 	},
 }
 

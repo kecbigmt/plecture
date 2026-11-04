@@ -253,3 +253,8 @@ type WorkflowRevision struct {
 	Body      string
 	CreatedAt string
 }
+
+type WorkflowRevisionMigration struct {
+	ID        int64
+	Completed int64
+}

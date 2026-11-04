@@ -37,9 +37,6 @@ func NewLiveService() (*LiveService, error) {
 			return nil, err
 		}
 	}
-	if err := store.PruneWorkflowRevisions(); err != nil {
-		return nil, err
-	}
 	return newLiveService(cfg, store), nil
 }
 

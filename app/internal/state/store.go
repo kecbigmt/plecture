@@ -87,6 +87,14 @@ func (s *Store) NeedsWorkflowRevisionBackfill() (bool, error) {
 	return db.NeedsWorkflowRevisionBackfill(context.Background())
 }
 
+func (s *Store) CompleteWorkflowRevisionBackfill() error {
+	db, err := s.dbHandle()
+	if err != nil {
+		return err
+	}
+	return db.CompleteWorkflowRevisionBackfill(context.Background())
+}
+
 func (s *Store) PruneWorkflowRevisions() error {
 	db, err := s.dbHandle()
 	if err != nil {

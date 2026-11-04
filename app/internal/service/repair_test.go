@@ -18,10 +18,14 @@ import (
 func seedRepairSession(t *testing.T, store *state.Store, name string, nodes map[string]*contract.TaskState) {
 	t.Helper()
 	now := time.Now()
-	if err := store.Put(&domain.Session{
+	session := &domain.Session{
 		Name: name, ResourceID: "resource:1", Workflow: "default", Nodes: nodes,
 		CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
+	}
+	if cfg := fixtureConfig(t); cfg != nil {
+		pinSessionRevision(t, cfg, session)
+	}
+	if err := store.Put(session); err != nil {
 		t.Fatal(err)
 	}
 }

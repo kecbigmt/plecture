@@ -23,7 +23,7 @@ func buildPlanForSession(cfg *config.Config, workdirDir string, session *domain.
 		}
 		return task.CompileWorkflow(r.Workflow, r.Effects)
 	}
-	return buildWorkflowPlan(cfg, workdirDir, session.Workflow)
+	return nil, fmt.Errorf("session %q has no stored workflow revision", session.Name)
 }
 
 // buildWorkflowPlan loads `.plect/workflows/<name>.toml` (+ referenced task

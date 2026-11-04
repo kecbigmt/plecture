@@ -10,6 +10,19 @@ import (
 	"github.com/kecbigmt/plecture/app/internal/domain"
 )
 
+func terminalRevisionSession(t *testing.T, cfg *config.Config) *domain.Session {
+	t.Helper()
+	revision, err := cfg.CaptureWorkflowRevision("", "coding")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &domain.Session{Name: "o/r-1", Workflow: "coding", WorkflowRevision: digest, WorkflowRevisionBody: string(body)}
+}
+
 func TestResolveTerminalOwner_FindsDeclaringNode(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -47,7 +60,7 @@ uses = "tmux"
 		t.Fatal(err)
 	}
 	wf := workflows["coding"]
-	s := &domain.Session{Name: "o/r-1"}
+	s := terminalRevisionSession(t, cfg)
 
 	owner := resolveTerminalOwner(slog.Default(), cfg, s, wf)
 	if owner == nil || owner.NodeID != "tmux" {
@@ -71,6 +84,9 @@ scope = "session"
 [envfile.setup]
 type   = "shell"
 script = "echo '{}'"
+
+[envfile.health.alive]
+type = "noop"
 `)
 	writeFile(t, filepath.Join(globalDir, "workflows", "coding.toml"), `
 [coding]
@@ -87,7 +103,7 @@ uses = "envfile"
 		t.Fatal(err)
 	}
 	wf := workflows["coding"]
-	s := &domain.Session{Name: "o/r-1"}
+	s := terminalRevisionSession(t, cfg)
 
 	if owner := resolveTerminalOwner(slog.Default(), cfg, s, wf); owner != nil {
 		t.Fatalf("owner = %+v, want none when no effect declares an interactive endpoint", owner)

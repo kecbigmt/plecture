@@ -44,6 +44,19 @@ func TestNewLiveServiceBackfillsExistingSessionRevision(t *testing.T) {
 	if err := store.Put(&domain.Session{Name: "existing", Workflow: "work", Status: contract.SessionStatusDown, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
+	db, err := persistence.EnsureCurrent(context.Background(), persistence.PathIn(store.Dir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithImmediateTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.Exec(`UPDATE workflow_revision_migration SET completed = 0 WHERE id = 1`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := NewLiveService(); err != nil {
 		t.Fatal(err)
 	}

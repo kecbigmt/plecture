@@ -6,8 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"path/filepath"
+	"strings"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
+	"github.com/kecbigmt/plecture/app/internal/plugins"
 )
 
 type WorkflowRevision struct {
@@ -16,6 +20,74 @@ type WorkflowRevision struct {
 	Tasks    map[string]TaskDocument      `json:"tasks"`
 	Provider *WorkspaceProviderConfig     `json:"provider,omitempty"`
 	Channels map[string]ChannelDefinition `json:"channels,omitempty"`
+}
+
+func (r *WorkflowRevision) PortablePluginSources(mounted []plugins.Mounted) error {
+	var source func(string) (string, error)
+	source = func(path string) (string, error) {
+		var owner plugins.Mounted
+		var relative string
+		for _, plugin := range mounted {
+			if plugin.Dir == "" {
+				continue
+			}
+			rel, err := filepath.Rel(plugin.Dir, path)
+			if err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				if len(plugin.Dir) > len(owner.Dir) {
+					owner, relative = plugin, rel
+				}
+			}
+		}
+		if owner.Dir != "" {
+			return "plugin://" + url.PathEscape(owner.ID) + "/" + filepath.ToSlash(relative), nil
+		}
+		// A directory without a catalog identity cannot resolve a bare executable
+		// through the mounted-plugin set, so its absolute path has no runtime role.
+		return "", nil
+	}
+	var convertEffect func(TaskDefinition) (TaskDefinition, error)
+	convertEffect = func(def TaskDefinition) (TaskDefinition, error) {
+		if def.FromPlugin {
+			var err error
+			def.SourcePath, err = source(def.SourcePath)
+			if err != nil {
+				return def, err
+			}
+		}
+		for i := range def.InnerChain {
+			var err error
+			def.InnerChain[i], err = convertEffect(def.InnerChain[i])
+			if err != nil {
+				return def, err
+			}
+		}
+		return def, nil
+	}
+	for key, def := range r.Effects {
+		var err error
+		r.Effects[key], err = convertEffect(def)
+		if err != nil {
+			return fmt.Errorf("effect %q: %w", key, err)
+		}
+	}
+	if r.Provider != nil && r.Provider.FromPlugin {
+		var err error
+		r.Provider.SourcePath, err = source(r.Provider.SourcePath)
+		if err != nil {
+			return fmt.Errorf("workspace provider %q: %w", r.Provider.ID, err)
+		}
+	}
+	for key, channel := range r.Channels {
+		if channel.FromPlugin {
+			var err error
+			channel.SourcePath, err = source(channel.SourcePath)
+			if err != nil {
+				return fmt.Errorf("channel %q: %w", key, err)
+			}
+			r.Channels[key] = channel
+		}
+	}
+	return nil
 }
 
 func (r WorkflowRevision) CanonicalBody() ([]byte, string, error) {
@@ -110,7 +182,13 @@ func DecodeWorkflowRevision(body []byte, digest string) (WorkflowRevision, error
 }
 
 func RevisionForSession(s *domain.Session) (WorkflowRevision, bool, error) {
-	if s == nil || s.WorkflowRevision == "" {
+	if s == nil {
+		return WorkflowRevision{}, false, fmt.Errorf("session is nil")
+	}
+	if s.WorkflowRevision == "" && s.Workflow != "" {
+		return WorkflowRevision{}, false, fmt.Errorf("session %q has no stored workflow revision", s.Name)
+	}
+	if s.WorkflowRevision == "" {
 		return WorkflowRevision{}, false, nil
 	}
 	r, err := DecodeWorkflowRevision([]byte(s.WorkflowRevisionBody), s.WorkflowRevision)
@@ -127,14 +205,14 @@ func (c *Config) TaskDefinitionsForSession(s *domain.Session) (map[string]TaskDe
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Effects, err
 	}
-	return c.LoadTaskDefinitions(s.WorkspaceDirPath)
+	return nil, nil
 }
 
 func (c *Config) TaskDeclarationsForSession(s *domain.Session) (map[string]TaskDocument, map[string]TaskDefinition, error) {
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Tasks, r.Effects, err
 	}
-	return c.LoadTaskDeclarations(s.WorkspaceDirPath)
+	return nil, nil, nil
 }
 
 func (c *Config) WorkspaceProviderForSession(s *domain.Session) (WorkspaceProviderConfig, error) {
@@ -147,26 +225,14 @@ func (c *Config) WorkspaceProviderForSession(s *domain.Session) (WorkspaceProvid
 		}
 		return *r.Provider, nil
 	}
-	wf, err := c.ResolveSessionWorkflow(s)
-	if err != nil {
-		return WorkspaceProviderConfig{}, err
-	}
-	providers, err := c.LoadWorkspaceProviders()
-	if err != nil {
-		return WorkspaceProviderConfig{}, err
-	}
-	provider, ok := providers[wf.WorkspaceProvider]
-	if !ok {
-		return WorkspaceProviderConfig{}, fmt.Errorf("workflow %q: workspace provider %q not found", s.Workflow, wf.WorkspaceProvider)
-	}
-	return provider, nil
+	return WorkspaceProviderConfig{}, fmt.Errorf("session %q has no workflow", s.Name)
 }
 
 func (c *Config) ChannelsForSession(s *domain.Session) (map[string]ChannelDefinition, error) {
 	if r, ok, err := RevisionForSession(s); ok || err != nil {
 		return r.Channels, err
 	}
-	return c.LoadChannels()
+	return nil, nil
 }
 
 func (c *Config) CaptureWorkflowRevision(workspaceDirPath, name string) (WorkflowRevision, error) {
@@ -258,6 +324,9 @@ func (c *Config) CaptureWorkflowRevision(workspaceDirPath, name string) (Workflo
 			}
 			revision.Channels[binding.Uses] = channel
 		}
+	}
+	if err := revision.PortablePluginSources(c.Plugins); err != nil {
+		return WorkflowRevision{}, err
 	}
 	return revision, nil
 }

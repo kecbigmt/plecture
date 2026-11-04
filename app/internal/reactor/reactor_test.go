@@ -76,6 +76,22 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+func pinRevision(t *testing.T, cfg *config.Config, session *domain.Session) {
+	t.Helper()
+	if session.Workflow == "" {
+		return
+	}
+	revision, err := cfg.CaptureWorkflowRevision(session.WorkspaceDirPath, session.Workflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.WorkflowRevision, session.WorkflowRevisionBody = digest, string(body)
+}
+
 // writeClaudeRunTask declares the run-scoped effect a "claude" node uses,
 // under root/tasks — cfg.RunScopeUp resolves a produced "claude" task-state
 // entry against this declaration to decide the node is current-plan
@@ -131,8 +147,10 @@ auto_repair_attempts = 2
 `)
 	cfg := &config.Config{PluginDirs: []string{pluginDir}}
 	st := state.NewStore(t.TempDir())
-	if err := st.Put(&domain.Session{Name: "o/r-1", Workflow: "reactive", Status: contract.SessionStatusUp,
-		Nodes: map[string]*contract.TaskState{"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}}}); err != nil {
+	session := &domain.Session{Name: "o/r-1", Workflow: "reactive", Status: contract.SessionStatusUp,
+		Nodes: map[string]*contract.TaskState{"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}}}
+	pinRevision(t, cfg, session)
+	if err := st.Put(session); err != nil {
 		t.Fatal(err)
 	}
 	log := eventlog.NewStore(st.Dir())
@@ -170,8 +188,10 @@ period = "1m"
 `)
 	cfg := &config.Config{PluginDirs: []string{pluginDir}}
 	st := state.NewStore(t.TempDir())
-	if err := st.Put(&domain.Session{Name: "o/r-1", Workflow: "reactive", Status: contract.SessionStatusUp,
-		Nodes: map[string]*contract.TaskState{"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}}}); err != nil {
+	session := &domain.Session{Name: "o/r-1", Workflow: "reactive", Status: contract.SessionStatusUp,
+		Nodes: map[string]*contract.TaskState{"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}}}
+	pinRevision(t, cfg, session)
+	if err := st.Put(session); err != nil {
 		t.Fatal(err)
 	}
 	log := eventlog.NewStore(st.Dir())
@@ -238,8 +258,19 @@ func TestSupervisor_RepairDownSweepWarnsOncePerWorkflowFailureStreak(t *testing.
 	}
 	workflowPath := filepath.Join(pluginDir, "config", "workflows", "missing.toml")
 	writeFile(t, workflowPath, "[missing]\nkind = \"workflow\"\n")
+	session := st.Get("o/r-1")
+	pinRevision(t, cfg, session)
+	if err := st.Update(session.Name, func(current *domain.Session) error {
+		current.WorkflowRevision, current.WorkflowRevisionBody = session.WorkflowRevision, session.WorkflowRevisionBody
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	sup.checkRepairDown(context.Background(), now.Add(2*time.Minute), last)
-	if err := os.Remove(workflowPath); err != nil {
+	if err := st.Update(session.Name, func(current *domain.Session) error {
+		current.WorkflowRevision, current.WorkflowRevisionBody = "", ""
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	sup.checkRepairDown(context.Background(), now.Add(3*time.Minute), last)
@@ -856,13 +887,16 @@ on = ["github.*"]
 	// its current value, so reassigning it simulates config.Live swapping in
 	// a freshly-resolved Config on its next periodic refresh.
 	currentCfg := &config.Config{}
+	mountedCfg := &config.Config{PluginDirs: []string{pluginDir}}
 	st := state.NewStore(t.TempDir())
-	if err := st.Put(&domain.Session{
+	session := &domain.Session{
 		Name: "o/r-1", Workflow: "coding",
 		Nodes: map[string]*contract.TaskState{
 			"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced},
 		},
-	}); err != nil {
+	}
+	pinRevision(t, mountedCfg, session)
+	if err := st.Put(session); err != nil {
 		t.Fatal(err)
 	}
 	log := eventlog.NewStore(t.TempDir())
@@ -872,7 +906,7 @@ on = ["github.*"]
 
 	// The plugin mounts (config refresh happens) before this session's
 	// reactor is built.
-	currentCfg = &config.Config{PluginDirs: []string{pluginDir}}
+	currentCfg = mountedCfg
 
 	r := sup.buildReactor("o/r-1", st.Get("o/r-1"))
 	if len(r.tick.On) != 1 || r.tick.On[0] != "github.*" {
@@ -896,10 +930,12 @@ on = ["resource.*"]
 `)
 	cfg := &config.Config{PluginDirs: []string{pluginDir}}
 	st := state.NewStore(t.TempDir())
-	if err := st.Put(&domain.Session{
+	session := &domain.Session{
 		Name: "o/r-1", Workflow: "reactive",
 		Nodes: map[string]*contract.TaskState{"claude": {Scope: contract.TaskScopeRun, Status: contract.TaskStatusProduced}},
-	}); err != nil {
+	}
+	pinRevision(t, cfg, session)
+	if err := st.Put(session); err != nil {
 		t.Fatal(err)
 	}
 	log := eventlog.NewStore(st.Dir())
@@ -980,7 +1016,9 @@ on = ["resource.*"]
 `)
 	cfg := &config.Config{PluginDirs: []string{pluginDir}}
 	st := state.NewStore(t.TempDir())
-	if err := st.Put(&domain.Session{Name: "o/r-1", Workflow: "reactive"}); err != nil {
+	session := &domain.Session{Name: "o/r-1", Workflow: "reactive"}
+	pinRevision(t, cfg, session)
+	if err := st.Put(session); err != nil {
 		t.Fatal(err)
 	}
 	log := eventlog.NewStore(st.Dir())

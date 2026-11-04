@@ -214,7 +214,15 @@ script = "true"
 	store := state.NewStore(t.TempDir())
 	const name = "owner/repo-1"
 	now := time.Now()
-	if err := store.Put(&domain.Session{Name: name, Workflow: "default", Status: contract.SessionStatusUp, CreatedAt: now, UpdatedAt: now}); err != nil {
+	revision, err := cfg.CaptureWorkflowRevision("", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(&domain.Session{Name: name, Workflow: "default", WorkflowRevision: digest, WorkflowRevisionBody: string(body), Status: contract.SessionStatusUp, CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	log := eventlog.NewStore(store.Dir())

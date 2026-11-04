@@ -24,6 +24,11 @@ CREATE TABLE workflow_revisions (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE workflow_revision_migration (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    completed INTEGER NOT NULL CHECK (completed IN (0, 1))
+);
+
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

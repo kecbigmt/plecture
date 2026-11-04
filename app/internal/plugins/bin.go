@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"strings"
 )
@@ -15,11 +16,11 @@ type binCandidate struct {
 
 // ResolveBin resolves a `bin = "<ref>"` reference against mounted (the
 // catalog-qualified plugins folded into the current config, in declaration
-// order) to an absolute executable path. sourcePath is the file the
-// referencing declaration came from — the catalog-load worktree's absolute
-// path — used only to find ref's containing plugin for the bare-name
-// reading below; pass "" when the reference has no file origin (e.g. it was
-// built in-process by a test).
+// order) to an absolute executable path. sourcePath identifies the plugin
+// containing the referencing declaration, either by its current file path or
+// by the plugin://escaped-ID/relative-path form stored in a workflow revision. Pass
+// "" when the reference has no file origin (e.g. it was built in-process by
+// a test).
 //
 // ref has two readings:
 //
@@ -98,11 +99,26 @@ func resolvePluginLocalBin(mounted []Mounted, sourcePath, ref string) (string, e
 	return "", fmt.Errorf("bin %q: plugin %q declares no executable named %q", ref, owner.ID, ref)
 }
 
-// containingPlugin finds the mounted plugin whose directory contains
-// sourcePath, i.e. the plugin sourcePath's file was mounted from. Picks the
-// longest matching Dir so a plugin nested under another plugin's directory
-// resolves to its own, more specific, manifest rather than the outer one's.
+// containingPlugin picks the most specific mounted owner for a source path.
+// A revision's plugin://escaped-ID/relative-path remains tied to that owner when its
+// cache directory changes.
 func containingPlugin(mounted []Mounted, sourcePath string) (Mounted, bool) {
+	if encoded, ok := strings.CutPrefix(sourcePath, "plugin://"); ok {
+		id, _, ok := strings.Cut(encoded, "/")
+		if !ok {
+			return Mounted{}, false
+		}
+		decoded, err := url.PathUnescape(id)
+		if err != nil {
+			return Mounted{}, false
+		}
+		for _, m := range mounted {
+			if m.ID == decoded {
+				return m, true
+			}
+		}
+		return Mounted{}, false
+	}
 	var best Mounted
 	found := false
 	for _, m := range mounted {

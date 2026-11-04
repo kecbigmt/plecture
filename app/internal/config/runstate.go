@@ -24,15 +24,7 @@ func (c *Config) ResolveSessionWorkflow(s *domain.Session) (*WorkflowFile, error
 		}
 		return &r.Workflow, nil
 	}
-	workflows, err := c.LoadWorkflows(s.WorkspaceDirPath)
-	if err != nil {
-		return nil, err
-	}
-	wf, ok := workflows[s.Workflow]
-	if !ok {
-		return nil, fmt.Errorf("workflow %q not found", s.Workflow)
-	}
-	return &wf, nil
+	return nil, fmt.Errorf("session %q has no stored workflow revision", s.Name)
 }
 
 // runScopeCache memoizes CurrentPlanRunScopedNodeSet by (workflow,
