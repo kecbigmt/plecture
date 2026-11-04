@@ -5,9 +5,10 @@ each live session's workflow from the trusted configuration available at that
 moment and assigns a stored revision. The database schema migration adds the
 revision table, a nullable session reference, and a one-time completion marker
 first; the application fills the references and marks completion before serving
-requests. Later sessions whose workspace setup fails may have no revision and
-do not restart the migration. Retry setup while its declaration exists, or use
-`plect destroy --force <session>` to remove the incomplete entry.
+requests. New sessions store their provider revision before workspace setup, so
+a failed setup can be retried or cleaned up with `plect destroy <session>` even
+if the provider declaration changes. A session without a revision does not
+restart the migration and can be removed with `plect destroy --force <session>`.
 
 A session whose workflow or referenced
 declaration cannot be resolved stops the migration with its name in the error.

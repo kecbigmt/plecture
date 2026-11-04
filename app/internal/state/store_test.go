@@ -2,7 +2,9 @@ package state
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -105,6 +107,71 @@ func TestStore_Destroy(t *testing.T) {
 
 	if got := store.Get("owner/repo-1"); got != nil {
 		t.Error("Get() after Destroy() should return nil")
+	}
+}
+
+func TestStoreDestroyPrunesUnreferencedRevision(t *testing.T) {
+	store := NewStore(t.TempDir())
+	body := `{"workflow":{"ID":"work"}}`
+	sum := sha256.Sum256([]byte(body))
+	if err := store.Put(&domain.Session{
+		Name: "session", Workflow: "work", WorkflowRevision: hex.EncodeToString(sum[:]),
+		WorkflowRevisionBody: body, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Destroy("session"); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.dbHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := db.WithReadTx(context.Background(), func(tx *sql.Tx) error {
+		return tx.QueryRowContext(context.Background(), `SELECT count(*) FROM workflow_revisions`).Scan(&count)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("revision rows after destroy = %d, want immediate prune", count)
+	}
+}
+
+func TestStoreDestroyCompletesWhenRevisionPruneFails(t *testing.T) {
+	store := NewStore(t.TempDir())
+	body := `{"workflow":{"ID":"work"}}`
+	sum := sha256.Sum256([]byte(body))
+	if err := store.Put(&domain.Session{
+		Name: "session", Workflow: "work", WorkflowRevision: hex.EncodeToString(sum[:]),
+		WorkflowRevisionBody: body, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.dbHandle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithImmediateTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(context.Background(), `CREATE TRIGGER fail_revision_prune BEFORE DELETE ON workflow_revisions BEGIN SELECT RAISE(ABORT, 'prune blocked'); END`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Destroy("session"); err != nil {
+		t.Fatalf("destroy committed before prune failure: %v", err)
+	}
+	if got := store.Get("session"); got != nil {
+		t.Fatalf("destroyed session remains live: %+v", got)
+	}
+	if err := db.WithImmediateTx(context.Background(), func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(context.Background(), `DROP TRIGGER fail_revision_prune`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PruneWorkflowRevisions(); err != nil {
+		t.Fatalf("periodic sweep after prune failure: %v", err)
 	}
 }
 

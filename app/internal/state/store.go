@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/kecbigmt/plecture/app/internal/datahome"
@@ -244,7 +245,10 @@ func (s *Store) Destroy(name string) error {
 	if err := db.DestroySession(context.Background(), name, time.Now()); err != nil {
 		return fmt.Errorf("state: destroy %q: %w", name, err)
 	}
-	return db.PruneWorkflowRevisions(context.Background())
+	if err := db.PruneWorkflowRevisions(context.Background()); err != nil {
+		slog.Warn("workflow revision prune failed after session destroy", "session", name, "error", err)
+	}
+	return nil
 }
 
 // Tombstone returns the most recently destroyed incarnation of name.

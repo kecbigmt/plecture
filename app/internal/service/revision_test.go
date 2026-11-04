@@ -131,6 +131,146 @@ func TestDestroyForceRemovesFailedSetupWithoutRevision(t *testing.T) {
 	}
 }
 
+func TestDestroyFailedWorkspaceSetupUsesCapturedCleanupAfterProviderEdit(t *testing.T) {
+	root := t.TempDir()
+	allocation := filepath.Join(root, "allocation")
+	cleanupLog := filepath.Join(root, "cleanup.log")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf("mkdir -p %q; exit 1", allocation))+fmt.Sprintf(`
+[wf.cleanup]
+type = "exec"
+command = "sh"
+args = ["-c", %q]
+`, fmt.Sprintf("rm -rf %q; printf original > %q", allocation, cleanupLog)))
+	store := testStore(t)
+	resource := "https://github.com/org/repo/issues/5"
+	_, createErr := Create(cfg, store, CreateParams{URL: resource})
+	if createErr == nil {
+		t.Fatal("Create succeeded despite failed provider setup")
+	}
+	sessions, err := store.AllE()
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("failed setup sessions = %+v, err %v", sessions, err)
+	}
+	var session *domain.Session
+	for _, candidate := range sessions {
+		session = candidate
+	}
+	if session == nil || session.Nodes[contract.WorkflowPseudoNodeID] == nil {
+		t.Fatalf("failed setup session = %+v, create error = %v", session, createErr)
+	}
+	if _, err := os.Stat(allocation); err != nil {
+		t.Fatalf("setup allocation: %v", err)
+	}
+	providerPath := filepath.Join(cfg.BaseDir, "workspaces", "wf_provider.toml")
+	changed := providerRunningScript("wf_provider", "exit 1") + fmt.Sprintf(`
+[wf_provider.cleanup]
+type = "exec"
+command = "sh"
+args = ["-c", %q]
+`, fmt.Sprintf("printf changed > %q", cleanupLog))
+	if err := os.WriteFile(providerPath, []byte(changed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: session.Name}); err != nil {
+		t.Fatalf("Destroy failed setup: %v", err)
+	}
+	if _, err := os.Stat(allocation); !os.IsNotExist(err) {
+		t.Fatalf("allocation remains after cleanup: %v", err)
+	}
+	if got, err := os.ReadFile(cleanupLog); err != nil || string(got) != "original" {
+		t.Fatalf("cleanup = %q, err %v, want captured provider", got, err)
+	}
+}
+
+func TestCreateRetryKeepsProviderRevisionAfterFailedSetup(t *testing.T) {
+	root := t.TempDir()
+	firstAttempt := filepath.Join(root, "attempted")
+	workspace := filepath.Join(root, "workspace")
+	cleanupLog := filepath.Join(root, "cleanup.log")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{{id: "runtime", scope: "run", setup: `echo '{}'`}},
+		[]nodeFixture{{id: "runtime"}},
+	)
+	setup := fmt.Sprintf("if [ ! -e %q ]; then touch %q; exit 1; fi; mkdir -p %q; printf '{\"workspace_dir\":\"%s\"}'", firstAttempt, firstAttempt, workspace, workspace)
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", setup)+fmt.Sprintf(`
+[wf.cleanup]
+type = "exec"
+command = "sh"
+args = ["-c", %q]
+`, fmt.Sprintf("printf original > %q", cleanupLog)))
+	store := testStore(t)
+	resource := "https://github.com/org/repo/issues/5"
+	if _, err := Create(cfg, store, CreateParams{URL: resource}); err == nil {
+		t.Fatal("first setup succeeded")
+	}
+	sessions, err := store.AllE()
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("failed setup sessions = %+v, err %v", sessions, err)
+	}
+	var name string
+	for name = range sessions {
+	}
+	providerPath := filepath.Join(cfg.BaseDir, "workspaces", "wf_provider.toml")
+	changed := providerRunningScript("wf_provider", "exit 1") + fmt.Sprintf(`
+[wf_provider.cleanup]
+type = "exec"
+command = "sh"
+args = ["-c", %q]
+`, fmt.Sprintf("printf changed > %q", cleanupLog))
+	if err := os.WriteFile(providerPath, []byte(changed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Create(cfg, store, CreateParams{URL: resource}); err != nil {
+		t.Fatalf("retry with captured provider: %v", err)
+	}
+	if _, err := Destroy(cfg, store, DestroyParams{Identifier: name}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(cleanupLog); err != nil || string(got) != "original" {
+		t.Fatalf("cleanup = %q, err %v, want captured provider", got, err)
+	}
+}
+
+func TestDestroyAfterWorkspaceRevisionCaptureFailsUsesBaseProvider(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	badLayer := filepath.Join(workspace, ".plect", "workflows")
+	if err := os.MkdirAll(badLayer, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(badLayer, "wf.toml"), []byte("not valid TOML = ["), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cleanupLog := filepath.Join(root, "cleanup.log")
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf", nil, nil)
+	writeSetupWorkflow(t, cfg, "wf", providerRunningScript("wf", fmt.Sprintf(`printf '{"workspace_dir":"%s"}'`, workspace))+fmt.Sprintf(`
+[wf.cleanup]
+type = "exec"
+command = "sh"
+args = ["-c", %q]
+`, fmt.Sprintf("printf cleaned > %q", cleanupLog)))
+	store := testStore(t)
+	if _, err := Create(cfg, store, CreateParams{URL: "https://github.com/org/repo/issues/5"}); err == nil {
+		t.Fatal("Create succeeded despite invalid workspace layer")
+	}
+	sessions, err := store.AllE()
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions after capture failure = %+v, err %v", sessions, err)
+	}
+	for name, session := range sessions {
+		if session.WorkflowRevision == "" {
+			t.Fatal("base revision was not retained")
+		}
+		if _, err := Destroy(cfg, store, DestroyParams{Identifier: name}); err != nil {
+			t.Fatalf("Destroy after capture failure: %v", err)
+		}
+	}
+	if got, err := os.ReadFile(cleanupLog); err != nil || string(got) != "cleaned" {
+		t.Fatalf("cleanup = %q, err %v", got, err)
+	}
+}
+
 func TestCreateSharesRevisionUntilDeclarationChanges(t *testing.T) {
 	workdir := filepath.Join(t.TempDir(), "workspace")
 	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",

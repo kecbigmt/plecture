@@ -11,11 +11,6 @@ import (
 	contract "github.com/kecbigmt/plecture/contracts/state"
 )
 
-// runWorkflowCleanupForDestroy resolves the session's workflow definition and
-// runs its cleanup hook. The definition comes from the trusted layers (the
-// workspace-dir layer cannot declare hooks), so resolving against the
-// session's workspace directory path is safe even though that path is clone
-// content.
 func runWorkflowCleanupForDestroy(cfg *config.Config, session *domain.Session, force bool, cleanupInputs map[string]string, observer task.Observer) error {
 	wf, err := loadSessionWorkflow(cfg, session.WorkspaceDirPath, session)
 	if err != nil {

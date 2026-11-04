@@ -118,12 +118,16 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 		return result, nil
 	}
 
-	// buildPlanForSession hard-requires a frozen workflow. Skip that
-	// requirement under --force for a session with nothing recorded to tear
-	// down; a workflow-less session with real executions is a genuinely
-	// broken state and still hits the error below.
+	// A workspace setup can fail before workspace overlays supply the plan's
+	// nodes. Its provider cleanup only needs the stored provider declaration.
 	var plan *task.Plan
-	if session.Workflow != "" || len(session.Nodes) > 0 || len(session.Tasks) > 0 || !params.Force {
+	needsPlan := len(session.Tasks) > 0 || (session.Workflow == "" && !params.Force)
+	for key, node := range session.Nodes {
+		if key != contract.WorkflowPseudoNodeID && node != nil && node.Status != contract.TaskStatusCleaned {
+			needsPlan = true
+		}
+	}
+	if needsPlan {
 		var planErr error
 		plan, planErr = buildPlanForSession(cfg, session.WorkspaceDirPath, session)
 		if planErr != nil {

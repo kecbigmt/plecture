@@ -39,6 +39,11 @@ part of the body, so distinct workflow identities cannot share one row. Equal
 expanded definitions share a revision row.
 An edit to any captured effect or task declaration in the cascade changes the
 digest, even when that declaration is unrelated to a workflow node.
+Creation stores a revision from trusted layers with the session row before
+workspace setup runs. After successful setup, creation replaces it with a
+revision that includes workspace overlays before session tasks run. A failed
+setup retains the first revision so cleanup uses the provider declaration
+that made the allocation.
 
 Each session with a workflow references one revision. Lifecycle planning and
 run-state evaluation use that revision for setup, repair, health, tick,
@@ -64,8 +69,9 @@ directory does not change the revision or break a bare executable reference.
 
 `workflow_revisions` has `digest` as primary key, plus `workflow`, `body`, and
 `created_at`. `sessions.workflow_revision` identifies the stored body. A
-revision with no live session references is deleted after destroy and during
-periodic cleanup; there is no reference counter. `plect ls` and `plect status`
+revision with no live session references is pruned after destroy and during
+periodic cleanup; a prune failure after destroy does not undo the completed
+transition. There is no reference counter. `plect ls` and `plect status`
 show the first eight hexadecimal characters of the digest.
 
 Migration backs up the data directory and trusted configuration, then expands
@@ -75,7 +81,8 @@ if a required definition cannot be resolved. The operator restores that
 trusted declaration from backup and retries. Migration does not invent a
 partial revision or reconstruct missing execution facts. A durable completion
 marker prevents an incomplete session created after migration from restarting
-the backfill. Such a session can retry setup or be removed with force.
+the backfill. A session whose setup failed can retry or run cleanup using its
+stored revision. A session without a revision can be removed with force.
 
 ## Consequences
 
