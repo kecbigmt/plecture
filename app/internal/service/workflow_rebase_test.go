@@ -334,6 +334,42 @@ func TestClassifyWorkflowRebaseDynamicEffects(t *testing.T) {
 	})
 }
 
+func TestClassifyWorkflowRebaseDynamicInstanceStatus(t *testing.T) {
+	removed := func(defs map[string]config.TaskDefinition) { delete(defs, "dynamic") }
+	changed := func(defs map[string]config.TaskDefinition) {
+		d := defs["dynamic"]
+		d.Setup = &lang.Action{Type: lang.ActionShell, Script: "true"}
+		defs["dynamic"] = d
+	}
+	for _, tc := range []struct {
+		name   string
+		status string
+		edit   func(map[string]config.TaskDefinition)
+		want   RebaseClass
+	}{
+		{"failed removed", contract.TaskStatusFailed, removed, RebaseRecreate},
+		{"produced removed", contract.TaskStatusProduced, removed, RebaseRecreate},
+		{"cleaned removed", contract.TaskStatusCleaned, removed, RebaseCompatible},
+		{"failed changed", contract.TaskStatusFailed, changed, RebaseRestart},
+		{"produced changed", contract.TaskStatusProduced, changed, RebaseRestart},
+		{"cleaned changed", contract.TaskStatusCleaned, changed, RebaseCompatible},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			oldDef := config.TaskDefinition{ID: "dynamic", Scope: "run", Setup: &lang.Action{Type: lang.ActionNoop}}
+			staticDef := config.TaskDefinition{ID: "static", Scope: "run", Setup: &lang.Action{Type: lang.ActionNoop}}
+			wf := config.WorkflowFile{Address: "work", Nodes: []config.WorkflowNode{{ID: "static", Uses: "static"}}}
+			old := config.WorkflowRevision{Workflow: wf, Effects: map[string]config.TaskDefinition{"static": staticDef, "dynamic": oldDef}}
+			next := config.WorkflowRevision{Workflow: wf, Effects: map[string]config.TaskDefinition{"static": staticDef, "dynamic": oldDef}}
+			tc.edit(next.Effects)
+			session := &domain.Session{Tasks: map[string]*contract.TaskState{"instance": {TaskID: "dynamic", Scope: "run", Status: tc.status}}}
+			got, err := ClassifyWorkflowRebase(old, next, session)
+			if err != nil || got.Class != tc.want {
+				t.Fatalf("classification = %+v, %v; want %s", got, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestWorkflowRebaseRejectsSessionDeclarationChange(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "work", []taskFixture{{id: "workspace", scope: "session", setup: "echo '{}'", cleanup: "true"}}, []nodeFixture{{id: "workspace"}})
 	store := testStore(t)

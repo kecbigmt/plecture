@@ -282,7 +282,9 @@ func ClassifyWorkflowRebase(old, next config.WorkflowRevision, session *domain.S
 	}
 	for _, key := range sortedTaskKeys(session.Tasks) {
 		st := session.Tasks[key]
-		if st == nil || st.Status != contract.TaskStatusProduced {
+		// Cleanup acts on every instance that is not cleaned, so a failed
+		// instance still depends on the definition its setup ran under.
+		if st == nil || st.Status == contract.TaskStatusCleaned {
 			continue
 		}
 		address := instanceDefinitionAddress(key, st, true, nil)
