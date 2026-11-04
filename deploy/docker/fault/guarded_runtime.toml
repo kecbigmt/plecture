@@ -1,0 +1,25 @@
+[fault_guarded_runtime]
+kind  = "effect"
+scope = "run"
+
+[fault_guarded_runtime.inner]
+uses = "official.claude.runtime"
+
+[fault_guarded_runtime.inner.env]
+PLECT_FAULT_NESTED = { from = "session.name" }
+
+[fault_guarded_runtime.outputs.bind]
+pid         = { from = "inner.outputs.pid" }
+session_id  = { from = "inner.outputs.session_id" }
+socket_path = { from = "inner.outputs.socket_path" }
+mcp_config  = { from = "inner.outputs.mcp_config" }
+
+[fault_guarded_runtime.outputs_schema]
+type     = "object"
+required = ["pid", "session_id", "socket_path", "mcp_config"]
+
+[fault_guarded_runtime.outputs_schema.properties]
+pid         = { type = "integer" }
+session_id  = { type = "string" }
+socket_path = { type = "string" }
+mcp_config  = { type = "string" }

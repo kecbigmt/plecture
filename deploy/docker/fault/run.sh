@@ -31,8 +31,15 @@ trap cleanup EXIT
 # shellcheck source=lib.sh
 . "$fixture/lib.sh"
 
-health_period="$(sed -n 's/^period *= *"\([0-9]*\)s"$/\1/p' "$fixture/workflow.toml")"
-[ -n "$health_period" ] || { echo "No health period in seconds found in $fixture/workflow.toml" >&2; exit 1; }
+variant="${PLECT_FAULT_VARIANT:-plain}"
+case "$variant" in
+  plain) workflow_file=workflow.toml; workflow_name=fault_recovery ;;
+  nested) workflow_file=workflow_nested.toml; workflow_name=fault_recovery_nested ;;
+  *) echo "PLECT_FAULT_VARIANT must be 'plain' or 'nested', got '$variant'" >&2; exit 1 ;;
+esac
+
+health_period="$(sed -n 's/^period *= *"\([0-9]*\)s"$/\1/p' "$fixture/$workflow_file")"
+[ -n "$health_period" ] || { echo "No health period in seconds found in $fixture/$workflow_file" >&2; exit 1; }
 # Two full health periods let the watchdog observe the loss and the resume
 # land; the margin covers a slow launch.
 recovery_wait=$((2 * health_period + 10))
@@ -69,7 +76,7 @@ else
 fi
 
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o "$tmp/claude" "$fixture/claude.go"
-cp "$fixture"/{Dockerfile,workspace.toml,workflow.toml,entrypoint.sh} "$tmp/"
+cp "$fixture"/{Dockerfile,workspace.toml,workflow.toml,workflow_nested.toml,guarded_runtime.toml,entrypoint.sh} "$tmp/"
 image="plecture-fault:$RANDOM-$RANDOM"
 docker build -f "$tmp/Dockerfile" --build-arg "BASE_IMAGE=$base" -t "$image" "$tmp"
 
@@ -90,7 +97,7 @@ plect() {
 new_session() {
   local label="$1" out
   inside sh -c 'mkdir -p "$HOME/fault" && echo hang > "$HOME/fault/mode"'
-  out="$(plect up "fault://$label" --workflow fault_recovery --detach 2>&1)" || { echo "$out" >&2; return 1; }
+  out="$(plect up "fault://$label" --workflow "$workflow_name" --detach 2>&1)" || { echo "$out" >&2; return 1; }
   session="$(printf '%s\n' "$out" | sed -n 's/^Session: //p' | tail -1)"
   [ -n "$session" ] || { echo "No session name in: $out" >&2; return 1; }
   inside tmux send-keys -t "$session" -- 'turn one' Enter

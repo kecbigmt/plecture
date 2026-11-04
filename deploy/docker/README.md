@@ -125,8 +125,17 @@ PLECT_FAULT_RECOVERY=1 deploy/docker/fault/run.sh
 without Docker, including that a resumed session whose health is not
 `healthy` is rejected.
 
-Both switches combine. The resume waits scale with the fixture's health period
-in `deploy/docker/fault/workflow.toml`.
+`PLECT_FAULT_VARIANT=nested` runs the same scenarios with the agent runtime
+wrapped in a nesting layer (`fault_guarded_runtime`), the shape a workflow takes
+when it adds environment around the shipped runtime. The default `plain`
+variant uses the shipped runtime directly.
+
+```bash
+PLECT_FAULT_VARIANT=nested PLECT_FAULT_RECOVERY=1 deploy/docker/fault/run.sh
+```
+
+The switches combine. The resume waits scale with the fixture's health period
+in the selected workflow file, `workflow.toml` or `workflow_nested.toml`.
 
 The `Docker fault injection` workflow runs nightly with recovery assertions
 and supports manual `workflow_dispatch` runs. Its `recovery` input enables the
