@@ -30,6 +30,18 @@ func TestSessionDisplayUsesStoredWorkflowDeclaration(t *testing.T) {
 	}
 }
 
+func TestBuildPlanForSessionRejectsPendingWorkspaceCapture(t *testing.T) {
+	revision := config.WorkflowRevision{Workflow: config.WorkflowFile{Address: "work"}, WorkspaceCapturePending: true}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &domain.Session{Name: "session", Workflow: "work", WorkflowRevision: digest, WorkflowRevisionBody: string(body)}
+	if _, err := buildPlanForSession(&config.Config{}, "", session); err == nil || !strings.Contains(err.Error(), "pending workspace capture") {
+		t.Fatalf("plan error = %v, want pending workspace capture", err)
+	}
+}
+
 func TestBuildPlanForSessionUsesRevisionAfterDefinitionsDisappear(t *testing.T) {
 	cfg := writeWorkflowFixture(t, t.TempDir(), "coding",
 		[]taskFixture{{id: "original", scope: "run", setup: `echo '{}'`, cleanup: "true"}},
@@ -268,6 +280,68 @@ args = ["-c", %q]
 	}
 	if got, err := os.ReadFile(cleanupLog); err != nil || string(got) != "cleaned" {
 		t.Fatalf("cleanup = %q, err %v", got, err)
+	}
+}
+
+func TestCreateRetryCapturesWorkspaceOverlayAfterCaptureFailure(t *testing.T) {
+	workspace := filepath.Join(t.TempDir(), "workspace")
+	layer := filepath.Join(workspace, ".plect", "workflows")
+	if err := os.MkdirAll(layer, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	overlay := filepath.Join(layer, "wf.toml")
+	if err := os.WriteFile(overlay, []byte("not valid TOML = ["), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := writeWorkflowFixture(t, t.TempDir(), "wf",
+		[]taskFixture{
+			{id: "base", scope: "run", setup: `echo '{}'`},
+			{id: "extra", scope: "run", setup: `echo '{}'`},
+		},
+		[]nodeFixture{{id: "base"}},
+	)
+	writeSetupWorkflow(t, cfg, "wf", providerCreatingWorkspace("wf", workspace))
+	store := testStore(t)
+	resource := "https://github.com/org/repo/issues/5"
+	if _, err := Create(cfg, store, CreateParams{URL: resource}); err == nil {
+		t.Fatal("Create succeeded despite invalid workspace overlay")
+	}
+	if err := os.WriteFile(overlay, []byte("[wf]\nkind = \"workflow\"\n[[wf.nodes]]\nuses = \"extra\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	baseTaskPath := filepath.Join(cfg.BaseDir, "tasks", "base.toml")
+	originalBase, err := os.ReadFile(baseTaskPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(baseTaskPath, []byte(effectFixtureDoc(taskFixture{id: "base", scope: "run", setup: `printf '{}'`})), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Create(cfg, store, CreateParams{URL: resource}); err == nil || !strings.Contains(err.Error(), "trusted configuration changed") {
+		t.Fatalf("retry with changed trusted configuration = %v", err)
+	}
+	if err := os.WriteFile(baseTaskPath, originalBase, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Up(cfg, store, UpParams{Identifier: resource}); err != nil {
+		t.Fatalf("up after overlay repair: %v", err)
+	}
+	want, err := cfg.CaptureWorkflowRevision(workspace, "wf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, digest, err := want.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := store.AllE()
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("sessions = %+v, err %v", sessions, err)
+	}
+	for _, session := range sessions {
+		if session.WorkflowRevision != digest {
+			t.Fatalf("stored revision = %q, want overlay revision %q", session.WorkflowRevision, digest)
+		}
 	}
 }
 

@@ -21,6 +21,9 @@ func buildPlanForSession(cfg *config.Config, workdirDir string, session *domain.
 		if err != nil {
 			return nil, err
 		}
+		if r.WorkspaceCapturePending {
+			return nil, fmt.Errorf("session %q has pending workspace capture; retry create or destroy it", session.Name)
+		}
 		return task.CompileWorkflow(r.Workflow, r.Effects)
 	}
 	return nil, fmt.Errorf("session %q has no stored workflow revision", session.Name)

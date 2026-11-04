@@ -37,6 +37,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 
 	now := time.Now()
 	var session *domain.Session
+	revisionPending := false
 	existing, err := store.GetE(sessionName)
 	if err != nil {
 		return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("failed to check for an existing session %q: %v", sessionName, err)}
@@ -64,6 +65,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 			}
 			wf = revision.Workflow
 			prov = *revision.Provider
+			revisionPending = revision.WorkspaceCapturePending
 		}
 		session = existing
 		if session.Nodes == nil {
@@ -105,9 +107,15 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	session.UpdatedAt = now
 	initialCapture := session.WorkflowRevision == ""
 	if initialCapture {
-		if err := captureSessionRevision(cfg, session, "", false); err != nil {
+		revision, err := cfg.CaptureWorkflowRevision("", session.Workflow)
+		if err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
 		}
+		revision.WorkspaceCapturePending = true
+		if err := setSessionRevision(session, revision, false); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
+		}
+		revisionPending = true
 	}
 
 	existingBeforePut := existing != nil
@@ -168,12 +176,12 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 	// The workspace now exists: resolve the full cascade (incl. overlays
 	// above and the node-only layer inside the workspace dir) and run
 	// session tasks.
-	revisionUpdated := initialCapture
-	if initialCapture {
-		if err := captureSessionRevision(cfg, session, session.WorkspaceDirPath, true); err != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
+	if revisionPending {
+		stored, _, err := config.RevisionForSession(session)
+		if err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: err.Error()}
 		}
-	} else if !reused {
+		stored.WorkspaceCapturePending = false
 		base, baseErr := cfg.CaptureWorkflowRevision("", session.Workflow)
 		if baseErr != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", baseErr)}
@@ -182,22 +190,22 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		if fullErr != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", fullErr)}
 		}
+		_, storedDigest, storedErr := stored.CanonicalBody()
 		_, baseDigest, baseErr := base.CanonicalBody()
 		_, fullDigest, fullErr := full.CanonicalBody()
-		if baseErr != nil || fullErr != nil {
-			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("encode workflow revision: %v, %v", baseErr, fullErr)}
+		if storedErr != nil || baseErr != nil || fullErr != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("encode workflow revision: %v, %v, %v", storedErr, baseErr, fullErr)}
 		}
+		final := stored
 		if baseDigest != fullDigest {
-			if baseDigest != session.WorkflowRevision {
+			if baseDigest != storedDigest {
 				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("trusted configuration changed since session %q failed setup; restore it before retrying, or destroy the session", session.Name)}
 			}
-			if err := setSessionRevision(session, full, true); err != nil {
-				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
-			}
-			revisionUpdated = true
+			final = full
 		}
-	}
-	if revisionUpdated {
+		if err := setSessionRevision(session, final, true); err != nil {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("capture workflow revision: %v", err)}
+		}
 		if err := store.Put(session); err != nil {
 			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("save workflow revision: %v", err)}
 		}
@@ -243,14 +251,6 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		ReusedWorkspaceDir: reused,
 		Tasks:              domain.MergedTasks(session),
 	}, nil
-}
-
-func captureSessionRevision(cfg *config.Config, session *domain.Session, workspaceDirPath string, compile bool) error {
-	revision, err := cfg.CaptureWorkflowRevision(workspaceDirPath, session.Workflow)
-	if err != nil {
-		return err
-	}
-	return setSessionRevision(session, revision, compile)
 }
 
 func setSessionRevision(session *domain.Session, revision config.WorkflowRevision, compile bool) error {

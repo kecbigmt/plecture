@@ -276,6 +276,9 @@ func hasIncompleteSessionTask(cfg *config.Config, session *domain.Session) bool 
 	if session.Workflow != "" && session.WorkflowRevision == "" {
 		return true
 	}
+	if revision, ok, err := config.RevisionForSession(session); err == nil && ok && revision.WorkspaceCapturePending {
+		return true
+	}
 	// A workspace-provider-backed workflow needs its pseudo-node produced
 	// too — a failed/absent setup is exactly the partial-create state to
 	// recover.

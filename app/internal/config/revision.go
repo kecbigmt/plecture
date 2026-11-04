@@ -15,11 +15,12 @@ import (
 )
 
 type WorkflowRevision struct {
-	Workflow WorkflowFile                 `json:"workflow"`
-	Effects  map[string]TaskDefinition    `json:"effects"`
-	Tasks    map[string]TaskDocument      `json:"tasks"`
-	Provider *WorkspaceProviderConfig     `json:"provider,omitempty"`
-	Channels map[string]ChannelDefinition `json:"channels,omitempty"`
+	Workflow                WorkflowFile                 `json:"workflow"`
+	Effects                 map[string]TaskDefinition    `json:"effects"`
+	Tasks                   map[string]TaskDocument      `json:"tasks"`
+	Provider                *WorkspaceProviderConfig     `json:"provider,omitempty"`
+	Channels                map[string]ChannelDefinition `json:"channels,omitempty"`
+	WorkspaceCapturePending bool                         `json:"workspace_capture_pending,omitempty"`
 }
 
 func (r *WorkflowRevision) PortablePluginSources(mounted []plugins.Mounted) error {

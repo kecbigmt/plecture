@@ -43,7 +43,10 @@ Creation stores a revision from trusted layers with the session row before
 workspace setup runs. After successful setup, creation replaces it with a
 revision that includes workspace overlays before session tasks run. A failed
 setup retains the first revision so cleanup uses the provider declaration
-that made the allocation.
+that made the allocation. The stored body marks workspace capture as pending
+until the overlay-inclusive revision is saved. A create retry completes pending
+capture even when workspace setup has already succeeded. A completed revision
+is not replaced by an idempotent create.
 
 Each session with a workflow references one revision. Lifecycle planning and
 run-state evaluation use that revision for setup, repair, health, tick,
