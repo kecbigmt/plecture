@@ -105,7 +105,10 @@ func destroyUnlocked(cfg *config.Config, store *state.Store, params DestroyParam
 		}
 		result.CleanupWarnings = append(result.CleanupWarnings, fmt.Sprintf("orphaned %d child session(s): %s", len(children), strings.Join(children, ", ")))
 	}
-	if session.Workflow != "" && session.WorkflowRevision == "" && params.Force {
+	if session.Workflow != "" && session.WorkflowRevision == "" {
+		if !params.Force {
+			return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("session %q has no stored workflow revision; re-run with `plect destroy %s --force` to remove it without cleanup", sessionName, sessionName)}
+		}
 		result.CleanupWarnings = append(result.CleanupWarnings, "no stored workflow revision; cleanup skipped")
 		recordLifecycle(store, sessionName, "destroyed", "session destroyed")
 		if err := store.Destroy(sessionName); err != nil {

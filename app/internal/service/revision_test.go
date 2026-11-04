@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,6 +119,9 @@ func TestDestroyForceRemovesFailedSetupWithoutRevision(t *testing.T) {
 	}
 	if err := store.Put(session); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := Destroy(&config.Config{}, store, DestroyParams{Identifier: session.Name}); err == nil || !strings.Contains(err.Error(), "--force") {
+		t.Fatalf("non-force destroy error = %v, want --force remedy", err)
 	}
 	if _, err := Destroy(&config.Config{}, store, DestroyParams{Identifier: session.Name, Force: true}); err != nil {
 		t.Fatalf("force destroy failed: %v", err)
