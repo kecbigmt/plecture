@@ -330,6 +330,21 @@ printf -- '---\nsupersedes: 2026-01-01-unrelated\nsuperseded_by:\n  - %s\n  - %s
 commit_all "$d" "second superseder and a supersedes line"
 expect append-with-supersedes-edit fail "docs/adr/$old.md: accepted ADR changed beyond" HEAD~1 HEAD
 
+d="$(new_fixture empty-frontmatter-added)"
+write_old_plain "$d"
+commit_all "$d" base
+printf -- '---\n---\n\n' | cat - "$d/docs/adr/$old.md" >"$d/tmp.md"
+mv "$d/tmp.md" "$d/docs/adr/$old.md"
+commit_all "$d" "prepend empty frontmatter"
+expect empty-frontmatter-added fail "docs/adr/$old.md: accepted ADR changed beyond" HEAD~1 HEAD
+
+d="$(new_fixture empty-frontmatter-kept)"
+printf -- '---\n---\n\n# Old decision\n\n## Context\n\nOriginal context.\n' >"$d/docs/adr/$old.md"
+commit_all "$d" base
+printf '\nA sentence.\n' >>"$d/docs/adr/$old.md"
+commit_all "$d" "body edit"
+expect empty-frontmatter-kept fail "docs/adr/$old.md: accepted ADR changed beyond" HEAD~1 HEAD
+
 d="$(new_fixture new-file)"
 write_old_plain "$d"
 commit_all "$d" base

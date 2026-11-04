@@ -121,15 +121,16 @@ check_links_and_scope() {
 
 # The one permitted edit is adding entries to `superseded_by`, whether it is a
 # single value or a list. Stripping that key from both versions lets a
-# byte-for-byte comparison isolate every other change; a frontmatter block left
-# empty is dropped with its trailing blank line, so a file that gained its first
-# frontmatter compares equal to one that had none.
+# byte-for-byte comparison isolate every other change. A block the strip itself
+# emptied is dropped with its trailing blank line, so a file that gained its
+# first frontmatter compares equal to one that had none; a block that was empty
+# before the strip is kept, because adding one is not a permitted edit.
 strip_superseded_by() {
   awk '
     NR == 1 && $0 == "---" { infm = 1; next }
     infm && $0 == "---" {
       infm = 0
-      if (kept > 0) {
+      if (kept > 0 || !removed) {
         print "---"
         for (i = 1; i <= kept; i++) print held[i]
         print "---"
@@ -139,7 +140,7 @@ strip_superseded_by() {
       next
     }
     infm {
-      if ($0 ~ /^superseded_by:/) { skipping = 1; next }
+      if ($0 ~ /^superseded_by:/) { skipping = 1; removed = 1; next }
       if (skipping && $0 ~ /^[ \t]*-[ \t]*/) next
       skipping = 0
       held[++kept] = $0
