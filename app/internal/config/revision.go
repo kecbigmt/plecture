@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/kecbigmt/plecture/app/internal/domain"
 	"github.com/kecbigmt/plecture/app/internal/plugins"
@@ -182,6 +183,31 @@ func DecodeWorkflowRevision(body []byte, digest string) (WorkflowRevision, error
 	return revision, nil
 }
 
+type decodedRevisionCache struct {
+	mu      sync.Mutex
+	entries map[string]WorkflowRevision
+	decode  func([]byte, string) (WorkflowRevision, error)
+}
+
+func (c *decodedRevisionCache) load(body []byte, digest string) (WorkflowRevision, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if revision, ok := c.entries[digest]; ok {
+		return revision, nil
+	}
+	revision, err := c.decode(body, digest)
+	if err != nil {
+		return WorkflowRevision{}, err
+	}
+	if c.entries == nil {
+		c.entries = make(map[string]WorkflowRevision)
+	}
+	c.entries[digest] = revision
+	return revision, nil
+}
+
+var decodedRevisions = decodedRevisionCache{decode: DecodeWorkflowRevision}
+
 func RevisionForSession(s *domain.Session) (WorkflowRevision, bool, error) {
 	if s == nil {
 		return WorkflowRevision{}, false, fmt.Errorf("session is nil")
@@ -192,7 +218,7 @@ func RevisionForSession(s *domain.Session) (WorkflowRevision, bool, error) {
 	if s.WorkflowRevision == "" {
 		return WorkflowRevision{}, false, nil
 	}
-	r, err := DecodeWorkflowRevision([]byte(s.WorkflowRevisionBody), s.WorkflowRevision)
+	r, err := decodedRevisions.load([]byte(s.WorkflowRevisionBody), s.WorkflowRevision)
 	if err != nil {
 		return WorkflowRevision{}, true, err
 	}

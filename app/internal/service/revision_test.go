@@ -317,7 +317,7 @@ func TestCreateRetryCapturesWorkspaceOverlayAfterCaptureFailure(t *testing.T) {
 	if err := os.WriteFile(baseTaskPath, []byte(effectFixtureDoc(taskFixture{id: "base", scope: "run", setup: `printf '{}'`})), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Create(cfg, store, CreateParams{URL: resource}); err == nil || !strings.Contains(err.Error(), "trusted configuration changed") {
+	if _, err := Create(cfg, store, CreateParams{URL: resource}); err == nil || !strings.Contains(err.Error(), "trusted configuration changed since session") || !strings.Contains(err.Error(), "was created; restore it before retrying") {
 		t.Fatalf("retry with changed trusted configuration = %v", err)
 	}
 	if err := os.WriteFile(baseTaskPath, originalBase, 0o644); err != nil {

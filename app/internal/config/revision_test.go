@@ -52,6 +52,28 @@ func TestWorkflowRevisionCanonicalBodyAndRoundTrip(t *testing.T) {
 	}
 }
 
+func TestDecodedRevisionCacheDecodesDigestOnce(t *testing.T) {
+	revision := WorkflowRevision{Workflow: WorkflowFile{ID: "work", Address: "work"}}
+	body, digest, err := revision.CanonicalBody()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodes := 0
+	cache := decodedRevisionCache{decode: func(body []byte, digest string) (WorkflowRevision, error) {
+		decodes++
+		return DecodeWorkflowRevision(body, digest)
+	}}
+	for range 2 {
+		got, err := cache.load(body, digest)
+		if err != nil || got.Workflow.Address != "work" {
+			t.Fatalf("cache lookup = %+v, %v", got, err)
+		}
+	}
+	if decodes != 1 {
+		t.Fatalf("decode calls = %d, want 1", decodes)
+	}
+}
+
 func TestWorkflowRevisionPluginSourceSurvivesMountChange(t *testing.T) {
 	oldDir := filepath.Join(t.TempDir(), "old")
 	newDir := filepath.Join(t.TempDir(), "new")

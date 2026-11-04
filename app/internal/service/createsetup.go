@@ -199,7 +199,7 @@ func createWithWorkflowSetup(cfg *config.Config, store *state.Store, params Crea
 		final := stored
 		if baseDigest != fullDigest {
 			if baseDigest != storedDigest {
-				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("trusted configuration changed since session %q failed setup; restore it before retrying, or destroy the session", session.Name)}
+				return nil, &Error{Code: ErrExecutionFailed, Message: fmt.Sprintf("trusted configuration changed since session %q was created; restore it before retrying, or destroy the session", session.Name)}
 			}
 			final = full
 		}
